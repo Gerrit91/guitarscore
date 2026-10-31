@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<guitarpro xmlns="http://www.guitarpro.com/XMLSchema/gp5" version="5">
+  <tablature>
+    <track id="1"/>
+    <measurements number="1">
+      <beats>
+        <beat>
+          <note string="1" fret="1" step="1" octave="4"/>
+        </beat>
+      </beats>
+    </measurements>
+  </tablature>
+</guitarpro>

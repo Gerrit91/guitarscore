@@ -1,0 +1,55 @@
+[workspace]
+clippy = {
+    # Deny problematic lints
+    deny = [
+        "clippy::unwrap_used",
+        "clippy::expect_used",
+        "clippy::panic",
+        "clippy::todo",
+        "clippy::unimplemented",
+        "clippy::unreachable",
+        "clippy::indexing_slicing",
+    ],
+    
+    # Enable arithmetic side effects in parsing, layout, and sequencing code
+    warn = [
+        "arithmetic_side_effects",
+    ],
+}
+
+# Allow these lints in tests only
+[[package]]
+name = "gscore-test"
+lints = { clippy = { warn = ["clippy::unwrap_used", "clippy::expect_used", "clippy::panic", "clippy::todo", "clippy::unimplemented", "clippy::unreachable", "clippy::indexing_slicing"] } }
+
+[[package]]
+name = "gscore-edit"
+lints = { clippy = { warn = ["clippy::unwrap_used", "clippy::expect_used", "clippy::panic", "clippy::todo", "clippy::unimplemented", "clippy::unreachable", "clippy::indexing_slicing"] } }
+
+[[package]]
+name = "gscore-model"
+lints = { clippy = { warn = ["clippy::unwrap_used", "clippy::expect_used", "clippy::panic", "clippy::todo", "clippy::unimplemented", "clippy::unreachable", "clippy::indexing_slicing"] } }
+
+[[package]]
+name = "gscore-io"
+lints = { clippy = { warn = ["clippy::unwrap_used", "clippy::expect_used", "clippy::panic", "clippy::todo", "clippy::unimplemented", "clippy::unreachable", "clippy::indexing_slicing"] } }
+
+[[package]]
+name = "gscore-layout"
+lints = { clippy = { warn = ["clippy::unwrap_used", "clippy::expect_used", "clippy::panic", "clippy::todo", "clippy::unimplemented", "clippy::unreachable", "clippy::indexing_slicing"] } }
+
+[[package]]
+name = "gscore-play"
+lints = { clippy = { warn = ["clippy::unwrap_used", "clippy::expect_used", "clippy::panic", "clippy::todo", "clippy::unimplemented", "clippy::unreachable", "clippy::indexing_slicing"] } }
+
+[[package]]
+name = "gscore-session"
+lints = { clippy = { warn = ["clippy::unwrap_used", "clippy::expect_used", "clippy::panic", "clippy::todo", "clippy::unimplemented", "clippy::unreachable", "clippy::indexing_slicing"] } }
+
+[[package]]
+name = "gscore-cli"
+lints = { clippy = { warn = ["clippy::unwrap_used", "clippy::expect_used", "clippy::panic", "clippy::todo", "clippy::unimplemented", "clippy::unreachable", "clippy::indexing_slicing"] } }
+
+[[package]]
+name = "gscore-app"
+lints = { clippy = { warn = ["clippy::unwrap_used", "clippy::expect_used", "clippy::panic", "clippy::todo", "clippy::unimplemented", "clippy::unreachable", "clippy::indexing_slicing"] } }

@@ -1,16 +1,42 @@
-[package]
-name = "guitarscore"
+[workspace]
+resolver = "2"
+members = [
+    "crates/gscore-model",
+    "crates/gscore-io",
+    "crates/gscore-layout",
+    "crates/gscore-play",
+    "crates/gscore-edit",
+    "crates/gscore-audio",
+    "crates/gscore-session",
+    "crates/gscore-cli",
+    "crates/gscore-app",
+]
+
+[workspace.package]
 version = "0.1.0"
-edition = "2024"
+authors = ["GuitarScore Team"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/Gerrit91/guitarscore"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+unused_imports = "warn"
+unused_variables = "warn"
+unused_must_use = "warn"
+unused_qualifications = "warn"
+nonstandard_style = "warn"
+missing_debug_implementations = "warn"
+arithmetic_side_effects = "warn"
+unused_crate_dependencies = "warn"
+unreachable_pub = "warn"
 
 [workspace.lints.clippy]
-cognitive_complexity = "deny"
-too_many_arguments = "deny"
-wildcard_imports = "deny"
-dbg_macro = "warn"
-todo = "warn"
-
-[dependencies]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+indexing_slicing = "deny"
+arithmetic_side_effects = { level = "warn", priority = -1 }

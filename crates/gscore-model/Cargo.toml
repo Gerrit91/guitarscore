@@ -1,0 +1,11 @@
+[package]
+name = "gscore-model"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[lints]
+workspace = true
+
+[dev-dependencies]

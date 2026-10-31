@@ -1,0 +1,11 @@
+[package]
+name = "gscore-audio"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gscore-play = { path = "../gscore-play" }
+# Add any dependencies needed in this crate here
+
+[lints]
+workspace = true

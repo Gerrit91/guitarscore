@@ -1,0 +1,13 @@
+[package]
+name = "gscore-session"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gscore-model = { path = "../gscore-model" }
+gscore-io = { path = "../gscore-io" }
+gscore-edit = { path = "../gscore-edit" }
+# Add any dependencies needed in this crate here
+
+[lints]
+workspace = true

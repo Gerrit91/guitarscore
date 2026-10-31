@@ -1,0 +1,10 @@
+[package]
+name = "gscore-layout"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gscore-model = { path = "../gscore-model" }
+
+[lints]
+workspace = true

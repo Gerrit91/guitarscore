@@ -1,5 +1,13 @@
 # AGENTS.md: guide for AI agents and contributors
 
+## 🚨 AGENT PROTOCOL (Read First)
+To avoid execution errors and "weird behavior," all agents must follow these three rules:
+1. **TOOLING:** Follow the strict tool-use protocol in `docs/tool-guide.md`. **Never** mix Top-Level tools (read, write, shell, websearch) and Execute-Only tools (codegraph, rust-analyzer).
+2. **STABILITY:** Adhere to the stability rules in Section 2 of this document. No panics, no `unwrap()`, and verify all changes with the required tests.
+3. **DIRECT ACTION:** You are an agent with full write access. **Do not provide code for the user to copy-paste.** You must implement changes directly using the `write` and `edit` tools. Saying "I will provide the code for you to add" is considered a task failure.
+
+---
+
 ## 1. What this project is
 
 **GuitarScore** is a cross-platform (Linux first, also Windows and macOS) desktop editor for guitar tablature, with a workflow and feel similar to Guitar Pro: fast, **keyboard-only note entry**, a clean modern UI, and solid playback. It opens and saves Guitar Pro files. The command-line name is `guitarscore`.
@@ -12,8 +20,6 @@ Not goals: pixel-copying Guitar Pro, full engraving parity with MuseScore, or a 
 - **Do not copy code from GPL-licensed projects** (MuseScore, TuxGuitar, and others) unless the owner explicitly decides on a compatible repository license. Studying their *behavior and output* as a reference is fine.
 - Test and demo scores must be created by the owner or be clearly permissively licensed. Never commit copyrighted tabs.
 - Every third-party asset (font, icon, soundfont, sample) keeps its license file next to it and gets a row in `THIRD_PARTY.md` (path, title, author, source, license) in the same change. Check licenses before bundling; do not guess.
-
-## 2. Stability: the top priority
 
 **GuitarScore must never crash, never panic, and never lose the user's work.** A user who forgets to save must still get everything back after any failure. This outranks features, speed, and elegance. **A known crash bug blocks new feature work:** fix it before building on top.
 
