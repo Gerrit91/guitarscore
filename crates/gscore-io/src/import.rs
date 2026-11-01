@@ -2,7 +2,7 @@
 
 use std::panic;
 
-use crate::gp::{Song as GpSong, SongCodec};
+use gscore_gp::Song as GpSong;
 use gscore_model::{Song, interop};
 
 use crate::error::IoError;

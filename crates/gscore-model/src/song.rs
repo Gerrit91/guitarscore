@@ -12,18 +12,18 @@ use crate::views::{BeatView, TrackView};
 /// empty document. Always satisfies the invariants checked on creation.
 #[derive(Debug, Clone, Default)]
 pub struct Song {
-    inner: crate::gp::Song,
+    inner: gscore_gp::Song,
 }
 
 impl Song {
     /// Wraps Guitar Pro song data after checking the invariants.
-    pub(crate) fn from_inner(inner: crate::gp::Song) -> Result<Self, ModelError> {
+    pub(crate) fn from_inner(inner: gscore_gp::Song) -> Result<Self, ModelError> {
         let song = Song { inner };
         validate::check(&song)?;
         Ok(song)
     }
 
-    pub(crate) fn inner(&self) -> &crate::gp::Song {
+    pub(crate) fn inner(&self) -> &gscore_gp::Song {
         &self.inner
     }
 

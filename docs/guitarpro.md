@@ -5,21 +5,20 @@ GuitarScore reads and writes Guitar Pro files with code derived from the
 Thank you!
 
 - **Upstream commit:** `b62be7c5e4bedb0c6eb283ac40aa8371adab5c2a` (version 0.4.4)
-- **License:** MIT; the notice is kept next to the code as `LICENSE-guitarpro` in both
-  places below, and listed in `THIRD_PARTY.md`.
+- **License:** MIT; the notice is kept next to the code as
+  `crates/gscore-gp/LICENSE-guitarpro`, and listed in `THIRD_PARTY.md`.
 
 ## Where the code lives
 
-| Part | Location | Contents |
-|---|---|---|
-| Song data | `crates/gscore-model/src/gp/` | `Song`, `Track`, `Measure`, `Beat`, `Note`, effects, enums, `MidiChannel`: structs, enums, defaults, small helpers |
-| Reading and writing | `crates/gscore-io/src/gp/` | GP3/GP4/GP5 binary codec (`Song*Ops` traits), GPIF XML import/export, GPX (BCFZ/BCFS) and GP7 (zip) containers, byte primitives, `GpError` |
+The `gscore-gp` crate (lowest layer):
 
-Only `gscore-io` may use `gscore_model::gp` (`cargo xtask layers`); everything else uses
-the `gscore_model::Song` wrapper. Methods of the data types that need the reader's error
-type or byte helpers became extension traits in `gscore-io` (`DurationExt`,
-`MeasureHeaderExt`, `NoteExt`, ...); the former inherent `Song::read_gp5`/`write` family is
-the `SongCodec` trait.
+| Module | Contents |
+|---|---|
+| `src/model/` | `Song`, `Track`, `Measure`, `Beat`, `Note`, effects, enums, `MidiChannel`: structs, enums, defaults, small helpers (public) |
+| `src/io/` | GP3/GP4/GP5 binary codec (`Song*Ops` traits), GPIF XML import/export, GPX (BCFZ/BCFS) and GP7 (zip) containers, byte primitives, `GpError` (private; entry points are `Song::read_*` and `Song::write*`) |
+
+Only `gscore-model` (which wraps `Song`) and `gscore-io` (format detection, size limits,
+`catch_unwind`) may depend on it (`cargo xtask layers`).
 
 Not taken over: upstream's CLI, web server, benches, test files, and the library modules
 GuitarScore does not use (`analysis`, `convert`, the optimized/MusicXML/MNX/MuseScore
@@ -29,10 +28,11 @@ models; about 21k of 32k lines).
 
 1. 2026-11-01: vendored unchanged as `vendor/guitarpro` to fix the GP7 tuning bug.
 2. 2026-11-01: fixes and additions below (changes 1-13).
-3. 2026-11-01: unused modules removed; split into `gscore-model/src/gp` (data) and
-   `gscore-io/src/gp` (reading/writing); moved to Rust edition 2024 with the workspace.
-   The code is still exempt from the workspace's no-panic lints (module-level `allow`);
-   see `docs/gaps.md`.
+3. 2026-11-01: unused modules removed; briefly split into `gscore-model/src/gp` (data) and
+   `gscore-io/src/gp` (reading/writing), then, by owner decision, kept together as the
+   crate `gscore-gp` (data in `src/model`, reading/writing in `src/io`). Moved to Rust
+   edition 2024 with the workspace. The crate is still exempt from the workspace's no-panic
+   lints (crate-level `allow`); see `docs/gaps.md`.
 
 ## Changes to upstream
 

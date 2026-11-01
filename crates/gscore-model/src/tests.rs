@@ -1,9 +1,9 @@
 //! Tests for the model: durations, validation, issues, navigation.
 
-use crate::gp::Duration as GpDuration;
 use crate::interop::from_gp;
 use crate::test_support::*;
 use crate::*;
+use gscore_gp::Duration as GpDuration;
 
 fn d(num: u64, den: u64) -> Duration {
     Duration::new(num, den).unwrap()
@@ -298,7 +298,7 @@ fn bad_tracks_and_songs_are_rejected() {
 
 // --- Issues (measure fill) ----------------------------------------------------------------
 
-fn issues_of(time: (i8, u16), voices: Vec<Vec<gp::Beat>>) -> Vec<Issue> {
+fn issues_of(time: (i8, u16), voices: Vec<Vec<gscore_gp::Beat>>) -> Vec<Issue> {
     let gp = song(vec![track("T", GUITAR_6, vec![measure(time, voices)])]);
     from_gp(gp).unwrap().issues()
 }

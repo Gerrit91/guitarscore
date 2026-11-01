@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::num::{NonZeroU16, NonZeroU64};
 
-use crate::gp::Duration as GpDuration;
+use gscore_gp::Duration as GpDuration;
 
 use crate::error::ModelError;
 
@@ -181,7 +181,7 @@ impl TimeSignature {
         )
     }
 
-    pub(crate) fn from_gp(gp: &crate::gp::TimeSignature) -> Result<Self, ModelError> {
+    pub(crate) fn from_gp(gp: &gscore_gp::TimeSignature) -> Result<Self, ModelError> {
         let numerator = u8::try_from(gp.numerator).map_err(|_| {
             ModelError::Invalid(format!("time signature with {} beats", gp.numerator))
         })?;

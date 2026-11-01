@@ -18,6 +18,7 @@ The repository follows a standard Rust workspace structure with the following cr
 
 ```
 crates/
+├── gscore-gp/
 ├── gscore-model/
 ├── gscore-io/
 ├── gscore-layout/

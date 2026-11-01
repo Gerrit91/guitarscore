@@ -15,15 +15,16 @@ guitarscore/
   assets/fonts/              # SMuFL fonts + metadata, text font
   xtask/                     # project tasks: layers, corpus, ci
   crates/
-    gscore-model/             # L0: document model (wrapper over the Guitar Pro song data in `gp`), positions, queries
-    gscore-io/                # L1: GP files <-> model, reader/writer in `gp` (bytes in, bytes out; no file system)
-    gscore-layout/            # L1: model -> positioned draw ops. No GUI imports.
-    gscore-play/              # L1: sequencer, MIDI events, channel allocator, Player trait. No device crates.
-    gscore-edit/              # L2: cursor, selection, commands, undo/redo, keymap
-    gscore-audio/             # L2: output backends (midir, cpal, rustysynth) implementing Player
-    gscore-session/           # L3: open document, recovery journal, autosave, safe-save orchestration
-    gscore-cli/               # L4: headless tool (info, dump, render, convert, roundtrip-check)
-    gscore-app/               # L4: egui/eframe application shell (thin); produces the `guitarscore` binary
+    gscore-gp/                # L0: Guitar Pro song data + reading/writing GP3-5, GPX, GP7+ (derived from guitarpro, MIT)
+    gscore-model/             # L1: document model (wraps gscore-gp's song), positions, queries, invariants
+    gscore-io/                # L2: GP files <-> model: format detection, limits, catch_unwind (bytes in, bytes out)
+    gscore-layout/            # L2: model -> positioned draw ops. No GUI imports.
+    gscore-play/              # L2: sequencer, MIDI events, channel allocator, Player trait. No device crates.
+    gscore-edit/              # L3: cursor, selection, commands, undo/redo, keymap
+    gscore-audio/             # L3: output backends (midir, cpal, rustysynth) implementing Player
+    gscore-session/           # L4: open document, recovery journal, autosave, safe-save orchestration
+    gscore-cli/               # L5: headless tool (info, dump, render, convert, roundtrip-check)
+    gscore-app/               # L5: egui/eframe application shell (thin); produces the `guitarscore` binary
 ```
 
 ## Dependency Restrictions

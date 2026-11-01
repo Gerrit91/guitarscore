@@ -10,7 +10,6 @@
 pub mod error;
 pub mod export;
 pub mod format;
-mod gp;
 pub mod import;
 
 pub use error::IoError;

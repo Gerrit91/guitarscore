@@ -1,7 +1,7 @@
 //! Builders for Guitar Pro song data in tests.
 
-use crate::gp::Duration as GpDuration;
-use crate::gp::{
+use gscore_gp::Duration as GpDuration;
+use gscore_gp::{
     Beat, BeatStatus, Measure, MeasureHeader, Note, NoteType, Song, TimeSignature, Track, Voice,
 };
 

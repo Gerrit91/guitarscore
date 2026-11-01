@@ -48,8 +48,7 @@ pub(crate) fn check_wasm_std_usage(root: &Path, crates: &[&str]) -> Vec<String> 
 /// Modules only some crates may use: (module path, crates allowed to use it).
 /// The module's own crate is always allowed.
 const RESTRICTED_MODULES: &[(&str, &[&str])] = &[
-    // The Guitar Pro song data and its conversion; everyone else uses the wrapper API.
-    ("gscore_model::gp", &["gscore-model", "gscore-io"]),
+    // Conversion from Guitar Pro song data; everyone else uses the wrapper API.
     ("gscore_model::interop", &["gscore-model", "gscore-io"]),
 ];
 

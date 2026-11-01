@@ -380,16 +380,23 @@ name = "gscore-edit"
 version = "0.1.0"
 
 [[package]]
-name = "gscore-io"
+name = "gscore-gp"
 version = "0.1.0"
 dependencies = [
  "encoding_rs",
  "fraction",
- "gscore-model",
  "quick-xml",
  "serde",
  "thiserror",
  "zip",
+]
+
+[[package]]
+name = "gscore-io"
+version = "0.1.0"
+dependencies = [
+ "gscore-gp",
+ "gscore-model",
 ]
 
 [[package]]
@@ -402,6 +409,9 @@ dependencies = [
 [[package]]
 name = "gscore-model"
 version = "0.1.0"
+dependencies = [
+ "gscore-gp",
+]
 
 [[package]]
 name = "gscore-play"

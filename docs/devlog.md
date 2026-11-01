@@ -184,3 +184,17 @@ playback need them.
   `THIRD_PARTY.md`, history and change list in `docs/guitarpro.md`.
 - Tests: 78 (the derived code's 22 tests now live in gscore-io and gscore-model). All
   owner files still import.
+
+## 2026-11-01 — gscore-gp crate
+
+- Owner decision: the Guitar Pro data and its reading/writing belong together, so the split
+  from the previous entry became one crate, `gscore-gp` (layer 0): `src/model` (data, public)
+  and `src/io` (reading/writing, private; entry points `Song::read_*`/`write*`). The
+  extension traits are inherent methods again. gscore-model wraps its `Song` as before;
+  gscore-io keeps format detection, limits and `catch_unwind`. Layers shift up by one.
+- xtask: only gscore-model and gscore-io may depend on gscore-gp; gscore-gp is in the wasm
+  check; the lint exemption is confined to that crate.
+- AGENTS.md (architecture, decision 1 marked decided, rule 7, M2 note), README.md
+  (rewritten: status, building, CLI, layout, credits), CLAUDE.md, architecture.md,
+  THIRD_PARTY.md and docs/guitarpro.md updated.
+- Tests: 78, unchanged in number (the derived code's 22 now run in gscore-gp).

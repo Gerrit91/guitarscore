@@ -3,10 +3,10 @@
 //! Checks, collecting every violation before failing:
 //! 1. every workspace crate is registered in [`LAYERS`];
 //! 2. a crate depends only on workspace crates in strictly lower layers;
-//! 3. restricted third-party crates (GUI, audio devices) are used only where allowed;
+//! 3. restricted crates (GUI, audio devices, `gscore-gp`) are used only where allowed;
 //! 4. every crate opts into `[workspace.lints]`, the core crates avoid std APIs that do not
-//!    work on wasm, and restricted modules (`gscore_model::gp`, `gscore_model::interop`) are
-//!    used only where allowed (see [`crate::source_scan`]);
+//!    work on wasm, and restricted modules (`gscore_model::interop`) are used only where
+//!    allowed (see [`crate::source_scan`]);
 //! 5. the core crates build for `wasm32-unknown-unknown` (see [`crate::wasm`]).
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -16,19 +16,21 @@ use crate::{TaskResult, cmd, source_scan, wasm};
 
 /// Layer of every workspace crate, lowest first. Register new crates here.
 pub(crate) const LAYERS: &[(&str, u8)] = &[
-    ("gscore-model", 0),
-    ("gscore-io", 1),
-    ("gscore-layout", 1),
-    ("gscore-play", 1),
-    ("gscore-edit", 2),
-    ("gscore-audio", 2),
-    ("gscore-session", 3),
-    ("gscore-cli", 4),
-    ("gscore-app", 4),
+    ("gscore-gp", 0),
+    ("gscore-model", 1),
+    ("gscore-io", 2),
+    ("gscore-layout", 2),
+    ("gscore-play", 2),
+    ("gscore-edit", 3),
+    ("gscore-audio", 3),
+    ("gscore-session", 4),
+    ("gscore-cli", 5),
+    ("gscore-app", 5),
 ];
 
 /// Core crates that must compile for `wasm32-unknown-unknown` and stay free of fs/thread/time.
 pub(crate) const WASM_CRATES: &[&str] = &[
+    "gscore-gp",
     "gscore-model",
     "gscore-io",
     "gscore-layout",
@@ -39,11 +41,13 @@ pub(crate) const WASM_CRATES: &[&str] = &[
 /// Workspace members that are tools, not part of the layered application.
 const TOOLS: &[&str] = &["xtask"];
 
-/// Third-party crates that only the listed workspace crates may depend on directly:
+/// Crates that only the listed workspace crates may depend on directly:
 /// (allowed crates, restricted dependencies).
 const RESTRICTED: &[(&[&str], &[&str])] = &[
     (&["gscore-app"], &["egui", "eframe", "winit", "rfd"]),
     (&["gscore-audio"], &["cpal", "midir", "rustysynth"]),
+    // Guitar Pro file internals: the model wraps them, gscore-io is the safe entry point.
+    (&["gscore-model", "gscore-io"], &["gscore-gp"]),
 ];
 
 /// GUI crates that no crate below `gscore-app` may reach, even transitively.

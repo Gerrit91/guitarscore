@@ -16,7 +16,7 @@ Not goals: pixel-copying Guitar Pro, full engraving parity with MuseScore, or a 
 
 ### Legal / IP rules
 - Similar *workflows and shortcuts* are fine. **Never copy Guitar Pro's assets, icons, logos, name, or UI artwork.**
-- Do not use code or data from proprietary software. File format knowledge (via the `guitarpro` crate and public documentation) is fine for import/export.
+- Do not use code or data from proprietary software. File format knowledge (via the MIT-licensed `guitarpro` crate, now integrated as `gscore-gp`, and public documentation) is fine for import/export.
 - **Do not copy code from GPL-licensed projects** (MuseScore, TuxGuitar, and others) unless the owner explicitly decides on a compatible repository license. Studying their *behavior and output* as a reference is fine.
 - Test and demo scores must be created by the owner or be clearly permissively licensed. Never commit copyrighted tabs.
 - Every third-party asset (font, icon, soundfont, sample) keeps its license file next to it and gets a row in `THIRD_PARTY.md` (path, title, author, source, license) in the same change. Check licenses before bundling; do not guess.
@@ -32,7 +32,7 @@ A malformed file, a bad command parameter, a corrupt settings file, an odd keyst
 4. **Input-derived numbers are hostile.** This covers file contents, command parameters, selections, and arithmetic on them. Use `get()` instead of `[i]` or `[a..b]`; slice strings only at char boundaries; use `checked_*` and `saturating_*` for lengths, offsets, durations, and counts; guard division by zero and NaN/inf-to-integer casts; cap allocations that are sized by input.
 5. **Bound all recursion and loops** over input-derived structures with depth limits or seen-sets (files can be deep, cyclic, or enormous).
 6. **Do not cascade failures.** Handle lock poisoning (`lock().unwrap_or_else(PoisonError::into_inner)`) and treat thread joins as `Result`s.
-7. **Third-party code can panic too.** Every call into the `guitarpro` crate (and any other parser of untrusted data) happens inside `gscore-io` behind `std::panic::catch_unwind`, converting panics into errors. Fix such bugs upstream or in a vendored copy.
+7. **Third-party code can panic too.** Every call into the Guitar Pro reader in `gscore-gp` (derived from the `guitarpro` crate and not yet held to these lints) and into any other parser of untrusted data happens inside `gscore-io` behind `std::panic::catch_unwind`, converting panics into errors. Fix such bugs in `gscore-gp` with a regression test, and record the change in `docs/guitarpro.md`.
 8. **Commands are transactional.** A command either fully applies or leaves the model unchanged (validate before mutating, or work on a copy).
 9. **Never block the UI thread** with file I/O, parsing, or other long work. Use background threads with progress and cancellation. Use bounded queues; cap undo history by memory.
 10. **Prove every fix.** Each crash fix comes with a small synthetic regression test that panicked before the fix.
@@ -91,7 +91,7 @@ Communication: the owner is new to Rust and reviews the code. After each task, s
 
 ## 5. Architecture
 
-Cargo workspace. Layers are listed from lowest to highest; **a crate may depend only on lower layers**, and `cargo xtask layers` (reads `cargo metadata`, uses the table in `xtask/src/layers.rs`) fails the build otherwise. A new crate must be registered there.
+Cargo workspace. Layers are listed from lowest to highest; **a crate may depend only on lower layers**, and `cargo xtask layers` (reads `cargo tree`, uses the table in `xtask/src/layers.rs`) fails the build otherwise. A new crate must be registered there.
 
 ```
 guitarscore/
@@ -106,22 +106,24 @@ guitarscore/
   assets/fonts/              # SMuFL fonts + metadata, text font
   xtask/                     # project tasks: layers, corpus, ci
   crates/
-    gscore-model/             # L0: document model (thin layer over the guitarpro model), positions, queries
-    gscore-io/                # L1: GP files <-> model via the guitarpro crate (bytes in, bytes out; no file system)
-    gscore-layout/            # L1: model -> positioned draw ops. No GUI imports.
-    gscore-play/              # L1: sequencer, MIDI events, channel allocator, Player trait. No device crates.
-    gscore-edit/              # L2: cursor, selection, commands, undo/redo, keymap
-    gscore-audio/             # L2: output backends (midir, cpal, rustysynth) implementing Player
-    gscore-session/           # L3: open document, recovery journal, autosave, safe-save orchestration
-    gscore-cli/               # L4: headless tool (info, dump, render, convert, roundtrip-check)
-    gscore-app/               # L4: egui/eframe application shell (thin); produces the `guitarscore` binary
+    gscore-gp/                # L0: Guitar Pro song data + reading/writing GP3-5, GPX, GP7+ (derived from guitarpro, MIT)
+    gscore-model/             # L1: document model (wraps gscore-gp's song), positions, queries, invariants
+    gscore-io/                # L2: GP files <-> model: format detection, limits, catch_unwind (bytes in, bytes out; no file system)
+    gscore-layout/            # L2: model -> positioned draw ops. No GUI imports.
+    gscore-play/              # L2: sequencer, MIDI events, channel allocator, Player trait. No device crates.
+    gscore-edit/              # L3: cursor, selection, commands, undo/redo, keymap
+    gscore-audio/             # L3: output backends (midir, cpal, rustysynth) implementing Player
+    gscore-session/           # L4: open document, recovery journal, autosave, safe-save orchestration
+    gscore-cli/               # L5: headless tool (info, dump, render, convert, roundtrip-check)
+    gscore-app/               # L5: egui/eframe application shell (thin); produces the `guitarscore` binary
 ```
 
-Dependency restrictions enforced by the layers check: only `gscore-app` may use egui, eframe, winit, or rfd; only `gscore-audio` may use `cpal`, `midir`, or `rustysynth`; nothing below `gscore-app` may use a GUI crate.
+Dependency restrictions enforced by the layers check: only `gscore-app` may use egui, eframe, winit, or rfd; only `gscore-audio` may use `cpal`, `midir`, or `rustysynth`; nothing below `gscore-app` may use a GUI crate; only `gscore-model` and `gscore-io` may use `gscore-gp` (and only `gscore-io` may use `gscore_model::interop`).
 
 ### Key design decisions
 
 1. **Document model.** The `guitarpro` crate (MIT) reads and writes GP3-5, GPX, GP7+, MusicXML and MuseScore files and has its own score model. Since the app saves back to GP files, converting to a separate model risks silently dropping any field we do not map. **Default plan: use the crate's model directly**, wrapped by `gscore-model` with helper methods (queries, position types such as track/measure/voice/beat indices, invariant checks). Introduce our own data structures only where the editor demonstrably needs them. **Decision gate at M2:** evaluate the crate against the owner's real files, including corrupted ones. Because the crate is young and single-maintainer, the plan allows **vendoring it into the workspace** (MIT), in particular to fix panics. Never scatter direct uses of the crate's types across the code base; go through `gscore-model`.
+   **Decided (2026-11-01):** `gscore-model` wraps the crate's song model. The crate was vendored to fix data-loss bugs and then integrated as our own crate `gscore-gp` (unused parts removed); origin, license and every change are in `docs/guitarpro.md`.
 2. **No custom score file format.** The score is saved as a GP file (see "Saving"). User settings and UI state (theme, keymap, recent files, window layout) live in separate serializable config files, never inside score files.
 3. **Layout is headless.** `gscore-layout` turns the model plus viewport settings into a `Vec<DrawOp>` (lines, glyphs, text, rects). Colors are **semantic tokens** (for example `Staff`, `NoteText`, `Cursor`, `Selection`), never hard-coded RGB. The GUI maps tokens to a theme. This keeps layout testable without a window and makes theming a day-one feature.
 4. **Theming from day one.** Light and dark palettes defined once. Icons are monochrome SVG recolored by the theme. (Black icons on a dark theme are unusable; do not ship that.)
@@ -139,7 +141,7 @@ Dependency restrictions enforced by the layers check: only `gscore-app` may use 
 
 ### Portability (groundwork for a later web build)
 A browser (WebAssembly) build is not a current goal, but the groundwork is cheap now and painful to retrofit later:
-- **The core crates must compile for `wasm32-unknown-unknown`:** `gscore-model`, `gscore-io`, `gscore-layout`, `gscore-play`, and `gscore-edit`. `cargo xtask layers` also runs `cargo check --target wasm32-unknown-unknown` on them.
+- **The core crates must compile for `wasm32-unknown-unknown`:** `gscore-gp`, `gscore-model`, `gscore-io`, `gscore-layout`, `gscore-play`, and `gscore-edit`. `cargo xtask layers` also runs `cargo check --target wasm32-unknown-unknown` on them.
 - In those crates, **no direct use of `std::fs`, `std::thread`, `std::time::Instant`, or `std::time::SystemTime`** (the time types panic on that target as far as we know; verify). Pass such capabilities in through small traits (for example `Clock`, `Storage`, `BackgroundRunner`) implemented in `gscore-session` or `gscore-app`.
 - **`gscore-io` works on bytes, not paths:** bytes in, `Song` out, and `Song` in, bytes out. File system work (safe-save, backups, recovery journal files) belongs to `gscore-session`.
 - **Do not rely on `catch_unwind` in core logic.** On `wasm32-unknown-unknown` a panic aborts the instance by default, so the never-panic lints and rules in section 2 are the primary defense; containment is only a native safety net.
@@ -173,7 +175,7 @@ cargo xtask layers
 
 Also, when relevant:
 - commands added or changed: `cargo test -p gscore-edit --test panic_hunt`
-- importers, exporters, or `gscore-model` touched: `cargo test --workspace --features corpus` (opt-in tests over `corpus/` and `testdata/`; plain `cargo test` skips them, and with the feature on a missing corpus fails with a clear message)
+- importers, exporters, `gscore-gp`, or `gscore-model` touched: `cargo test --workspace --features corpus` (opt-in tests over `corpus/` and `testdata/`; plain `cargo test` skips them, and with the feature on a missing corpus fails with a clear message)
 - hot paths touched: run the benchmarks and record numbers in the devlog
 
 Required kinds of tests (in addition to the stability tests in section 2):
@@ -212,7 +214,7 @@ Strictly in this order; each stage plugs in behind the `Player` trait:
 
 - **M0:** workspace, toolchain pin, `[workspace.lints]`, `clippy.toml`, `xtask layers` (including the wasm check on the core crates), the commands in section 6, an empty devlog.
 - **M1:** `gscore-model` wrapper with tests.
-- **M2:** `gscore-io` import via the `guitarpro` crate (with `catch_unwind` containment), `gscore-cli` `info` and `dump`, fuzz and corrupt-file tests. **Decision gate** on using the crate's model directly and on vendoring it.
+- **M2:** `gscore-io` import via `gscore-gp` (with `catch_unwind` containment), `gscore-cli` `info` and `dump`, fuzz and corrupt-file tests. (The decision gate on using the crate's model directly and on vendoring it was settled early; see section 5, decision 1.)
 - **M3:** `gscore-layout` headless layout for one track's tab staff, SVG golden tests, SMuFL font loading and metadata, comparison against MuseScore output.
 - **M4:** `gscore-app` read-only egui view drawing the `DrawOp`s, with light and dark theme, plus the offscreen snapshot example.
 - **M5:** cursor, keyboard entry, undo/redo driven by the keymap file (tested on QWERTY, QWERTZ, and AZERTY layouts), the command registry with `panic_hunt`, **and `gscore-session` with the recovery journal and crash recovery**.
@@ -231,7 +233,6 @@ Strictly in this order; each stage plugs in behind the `Player` trait:
 
 - The repository license is MIT
 - Which SMuFL font(s) to bundle first, and which text font for fret numbers.
-- Whether to vendor the `guitarpro` crate from the start.
 - When (and whether) to ship a browser build. The groundwork rules in section 5 ("Portability") apply from the start either way; the web build itself is a later goal.
 - Performance budgets (latency, large-score layout time).
 - Name availability checks for GuitarScore (GitHub, crates.io, domain) before the first public release.
