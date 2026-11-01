@@ -373,6 +373,16 @@ fn build_beat_xml(
 
 impl SongGpifExportOps for Song {
     fn write_gpif_xml(&self) -> String {
+        // GuitarScore fix: GPIF numbers strings from the lowest; convert a copy.
+        let mut flipped = self.clone();
+        crate::io::gpif_import::flip_note_strings(&mut flipped.tracks);
+        flipped.write_gpif_xml_in_gpif_string_order()
+    }
+}
+
+impl Song {
+    /// The original `write_gpif_xml`; expects note strings already in GPIF order.
+    fn write_gpif_xml_in_gpif_string_order(&self) -> String {
         let mut xml = String::new();
         xml.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?><GPIF>");
 
@@ -391,13 +401,10 @@ impl SongGpifExportOps for Song {
             "<Copyright>{}</Copyright>",
             escape_xml(&self.copyright)
         ));
-        xml.push_str(&format!(
-            "<Tabber>{}</Tabber>",
-            escape_xml(&self.transcriber)
-        ));
+        xml.push_str(&format!("<Tabber>{}</Tabber>", escape_xml(&self.writer)));
         xml.push_str(&format!(
             "<Instructions>{}</Instructions>",
-            escape_xml(&self.comments)
+            escape_xml(&self.instructions)
         ));
         let notices = self.notice.join("\n");
         xml.push_str(&format!("<Notices>{}</Notices>", escape_xml(&notices)));

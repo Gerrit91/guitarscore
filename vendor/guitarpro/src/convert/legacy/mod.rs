@@ -620,6 +620,7 @@ fn build_tracks(
                 has_tuning: true,
                 instrument_type: None,
                 instrument_name: None,
+                tuning_label: None,
             }
         })
         .collect()

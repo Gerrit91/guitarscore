@@ -76,6 +76,9 @@ pub struct Track {
     pub instrument_type: Option<String>,
     /// GuitarScore addition: GP7 instrument display name ("Electric Guitar"), if stored.
     pub instrument_name: Option<String>,
+    /// GuitarScore addition: user-given tuning name from the file (GP6/GP7), if set.
+    /// Not written back yet.
+    pub tuning_label: Option<String>,
 }
 impl Default for Track {
     fn default() -> Self {
@@ -106,6 +109,7 @@ impl Default for Track {
             has_tuning: true,
             instrument_type: None,
             instrument_name: None,
+            tuning_label: None,
         }
     }
 }

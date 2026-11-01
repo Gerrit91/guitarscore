@@ -166,6 +166,15 @@ impl Pitch {
             .map_err(|_| ModelError::Invalid(format!("MIDI pitch {value}")))
             .and_then(Pitch::new)
     }
+
+    /// The note name without octave, spelled with sharps: `C`, `C#`, ..., `B`.
+    pub fn note_name(self) -> &'static str {
+        // `% 12` is always a valid index; the fallback is never used.
+        NOTE_NAMES
+            .get(usize::from(self.0 % 12))
+            .copied()
+            .unwrap_or("?")
+    }
 }
 
 /// Note names of the 12 pitch classes, spelled with sharps.

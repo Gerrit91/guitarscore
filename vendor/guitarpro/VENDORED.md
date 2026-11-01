@@ -38,4 +38,17 @@ Each change should be offered upstream.
    `<InstrumentSet>` (type and name) into new fields `Track::instrument_type` and
    `Track::instrument_name`; tracks of type `drumKit` are marked `percussion_track`.
    Not written back by the exporter yet. `src/convert/legacy/mod.rs` sets both to `None`.
-7. `src/io/gpif_import.rs`: regression tests `tuning_tests` for 2–6.
+7. `src/io/gpif.rs`, `src/io/gpif_import.rs`, `src/model/legacy/track.rs`: read the
+   tuning `<Label>` into new field `Track::tuning_label` (non-empty only). Not written back
+   yet. `src/convert/legacy/mod.rs` sets it to `None`.
+8. `src/io/gpif_import.rs`, `src/io/gpif_export.rs`: score metadata uses the same fields as
+   the GP3-5 reader: `Tabber` <-> `writer` (was: import wrote the composer into `writer`
+   and the tabber into `transcriber`; export read `transcriber`), `Instructions` <->
+   `instructions` (was `comments`). `WordsAndMusic` (new `Score::words_and_music`) fills
+   empty `words`/`author`.
+9. `src/io/gpif_import.rs` (`flip_note_strings`), `src/io/gpif_export.rs`: note string
+   numbers are converted between GPIF order (string 1 = lowest) and the legacy order
+   (string 1 = highest) on import and export. Upstream stored GPIF order unchanged, which
+   only matched its equally reversed tunings (change 3). Notes outside the track's strings
+   stay unchanged.
+10. `src/io/gpif_import.rs`: regression tests `tuning_tests` for 2–9.

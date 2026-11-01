@@ -46,6 +46,9 @@ pub struct Score {
     pub words: String,
     #[serde(rename = "Music", default)]
     pub music: String,
+    /// GuitarScore addition: used instead of Words and Music when both are the same person.
+    #[serde(default)]
+    pub words_and_music: String,
     #[serde(default)]
     pub copyright: String,
     #[serde(default)]
@@ -477,6 +480,9 @@ pub struct Property {
     pub htype: Option<String>,
     #[serde(rename = "Pitches", default)]
     pub pitches: Option<String>,
+    /// GuitarScore addition: user-given name of a tuning (empty for presets).
+    #[serde(rename = "Label", default)]
+    pub label: Option<String>,
     #[serde(rename = "Direction", default)]
     pub direction: Option<String>,
 }

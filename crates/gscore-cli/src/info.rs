@@ -31,18 +31,30 @@ fn read_capped(path: &Path) -> Result<Vec<u8>, CliError> {
     std::fs::read(path).map_err(fail)
 }
 
-/// Formats metadata, then each track's tuning, then the number of issues.
+/// Formats the file format and song information, each track, and the issues.
 fn summary(imported: &Imported) -> String {
     let song: &Song = &imported.song;
-    let mut out = format!(
-        "Format: {}\nTitle: {}\nArtist: {}\nTempo: {} BPM\nMeasures: {}\nTracks: {}\n",
-        imported.format,
-        or_not_set(song.title()),
-        or_not_set(song.artist()),
-        song.tempo(),
-        song.measure_count(),
-        song.track_count()
-    );
+    let notes: Vec<&str> = song.notes().collect();
+    let fields: [(&str, String); 14] = [
+        ("Format", imported.format.to_string()),
+        ("Title", or_not_set(song.title()).to_owned()),
+        ("Subtitle", or_not_set(song.subtitle()).to_owned()),
+        ("Artist", or_not_set(song.artist()).to_owned()),
+        ("Album", or_not_set(song.album()).to_owned()),
+        ("Lyrics by", or_not_set(song.lyricist()).to_owned()),
+        ("Music by", or_not_set(song.composer()).to_owned()),
+        ("Copyright", or_not_set(song.copyright()).to_owned()),
+        ("Tab by", or_not_set(song.tab_author()).to_owned()),
+        ("Instructions", or_not_set(song.instructions()).to_owned()),
+        ("Notes", or_not_set(&notes.join("\n")).to_owned()),
+        ("Tempo", format!("{} BPM", song.tempo())),
+        ("Measures", song.measure_count().to_string()),
+        ("Tracks", song.track_count().to_string()),
+    ];
+    let mut out = String::new();
+    for (label, value) in &fields {
+        push_field(&mut out, label, value);
+    }
     for track in song.tracks() {
         out.push_str(&format!(
             "  {}: {}: {}\n",
@@ -69,7 +81,7 @@ fn summary(imported: &Imported) -> String {
 }
 
 /// The instrument, and for string instruments the strings and tuning:
-/// "Electric Guitar, 6 strings, tuned E2 A2 D3 G3 B3 E4", "Drums", "Voice".
+/// "Electric Guitar, 6 strings, tuned E standard (E2 A2 D3 G3 B3 E4)", "Drums", "Voice".
 fn describe_instrument(track: &TrackView<'_>) -> String {
     let kind = track.instrument_kind();
     let name = track.instrument_name().unwrap_or(match kind {
@@ -80,10 +92,13 @@ fn describe_instrument(track: &TrackView<'_>) -> String {
     if kind != InstrumentKind::Strings {
         return name.to_owned();
     }
-    let tuning = match track.tuning() {
-        Ok(Some(strings)) => describe_tuning(&strings),
-        Ok(None) => "no tuning".to_owned(),
-        Err(e) => format!("<{e}>"),
+    let tuning = match (track.tuning(), track.tuning_name()) {
+        (Ok(Some(strings)), Ok(Some(name))) => {
+            format!("tuned {name} ({})", note_names(&strings))
+        }
+        (Ok(Some(strings)), _) => format!("tuned {}", note_names(&strings)),
+        (Ok(None), _) => "no tuning".to_owned(),
+        (Err(e), _) => format!("<{e}>"),
     };
     let strings = format!("{} strings, {tuning}", track.string_count());
     if name.is_empty() {
@@ -94,9 +109,23 @@ fn describe_instrument(track: &TrackView<'_>) -> String {
 }
 
 /// Note names from the lowest string up, as musicians read a tuning ("E2 A2 D3 G3 B3 E4").
-fn describe_tuning(strings: &[StringTuning]) -> String {
+fn note_names(strings: &[StringTuning]) -> String {
     let names: Vec<String> = strings.iter().rev().map(|s| s.pitch.to_string()).collect();
-    format!("tuned {}", names.join(" "))
+    names.join(" ")
+}
+
+/// Width of the label column, so values line up ("Instructions: " is the longest label).
+const LABEL_WIDTH: usize = "Instructions: ".len();
+
+/// Appends `Label: value`, aligned; continuation lines of a multi-line value are indented
+/// to the value column.
+fn push_field(out: &mut String, label: &str, value: &str) {
+    let mut lines = value.lines();
+    let first = lines.next().unwrap_or_default();
+    out.push_str(&format!("{:<LABEL_WIDTH$}{first}\n", format!("{label}:")));
+    for line in lines {
+        out.push_str(&format!("{:LABEL_WIDTH$}{line}\n", ""));
+    }
 }
 
 /// Shows an empty (or whitespace-only) text field explicitly instead of leaving it blank.
@@ -113,17 +142,47 @@ mod tests {
     use super::*;
     use gscore_io::FileFormat;
 
+    /// The value printed after `label:`, ignoring the alignment padding.
+    fn field<'a>(out: &'a str, label: &str) -> Option<&'a str> {
+        out.lines()
+            .find_map(|line| line.strip_prefix(&format!("{label}:")))
+            .map(str::trim)
+    }
+
     #[test]
-    fn summary_of_an_empty_song() {
+    fn summary_of_an_empty_song_shows_every_field() {
         let out = summary(&Imported {
             song: Song::default(),
             format: FileFormat::Gp,
         });
-        assert!(out.contains("Format: Guitar Pro 7+ (.gp)"), "{out}");
-        assert!(out.contains("Tracks: 0"), "{out}");
-        assert!(out.contains("Tempo: 120 BPM"), "{out}");
-        assert!(out.contains("Title: (not set)"), "{out}");
-        assert!(out.contains("Artist: (not set)"), "{out}");
+        assert_eq!(field(&out, "Format"), Some("Guitar Pro 7+ (.gp)"), "{out}");
+        assert_eq!(field(&out, "Tempo"), Some("120 BPM"), "{out}");
+        assert_eq!(field(&out, "Tracks"), Some("0"), "{out}");
+        for label in [
+            "Title",
+            "Subtitle",
+            "Artist",
+            "Album",
+            "Lyrics by",
+            "Music by",
+            "Copyright",
+            "Tab by",
+            "Instructions",
+            "Notes",
+        ] {
+            assert_eq!(field(&out, label), Some("(not set)"), "{label}: {out}");
+        }
+    }
+
+    #[test]
+    fn fields_are_aligned_and_multi_line_values_indented() {
+        let mut out = String::new();
+        push_field(&mut out, "Notes", "first\nsecond");
+        push_field(&mut out, "Instructions", "x");
+        assert_eq!(
+            out,
+            "Notes:        first\n              second\nInstructions: x\n"
+        );
     }
 
     #[test]
@@ -138,12 +197,9 @@ mod tests {
                 .collect()
         };
         assert_eq!(
-            describe_tuning(&tuning(&[64, 59, 55, 50, 45, 40])),
-            "tuned E2 A2 D3 G3 B3 E4"
+            note_names(&tuning(&[64, 59, 55, 50, 45, 40])),
+            "E2 A2 D3 G3 B3 E4"
         );
-        assert_eq!(
-            describe_tuning(&tuning(&[43, 38, 33, 28, 23])),
-            "tuned B0 E1 A1 D2 G2"
-        );
+        assert_eq!(note_names(&tuning(&[43, 38, 33, 28, 23])), "B0 E1 A1 D2 G2");
     }
 }

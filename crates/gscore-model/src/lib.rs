@@ -25,6 +25,7 @@ pub mod interop;
 mod issues;
 mod position;
 mod song;
+mod tuning;
 mod validate;
 mod views;
 

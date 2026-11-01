@@ -192,6 +192,17 @@ fn build_bend_effect(origin: f64, destination: f64) -> BendEffect {
     bend
 }
 
+/// GuitarScore addition: the user-given tuning name from a property list, if non-empty.
+fn extract_tuning_label(properties: &[Property]) -> Option<String> {
+    properties
+        .iter()
+        .find(|p| p.name == "Tuning")
+        .and_then(|p| p.label.as_deref())
+        .map(str::trim)
+        .filter(|label| !label.is_empty())
+        .map(str::to_owned)
+}
+
 /// Extract tuning pitches from a property list.
 ///
 /// GuitarScore fix: GPIF lists pitches from the lowest string up, while the legacy model
@@ -227,12 +238,21 @@ impl SongGpifOps for Song {
         self.subtitle = gpif.score.sub_title.clone();
         self.artist = gpif.score.artist.clone();
         self.album = gpif.score.album.clone();
+        // GuitarScore fix: use the same fields as the GP3-5 reader (`writer` is the tab
+        // author, `instructions` the instructions); `writer` used to receive the composer.
         self.words = gpif.score.words.clone();
         self.author = gpif.score.music.clone();
-        self.writer = gpif.score.music.clone();
-        self.transcriber = gpif.score.tabber.clone();
+        if !gpif.score.words_and_music.is_empty() {
+            if self.words.is_empty() {
+                self.words = gpif.score.words_and_music.clone();
+            }
+            if self.author.is_empty() {
+                self.author = gpif.score.words_and_music.clone();
+            }
+        }
+        self.writer = gpif.score.tabber.clone();
         self.copyright = gpif.score.copyright.clone();
-        self.comments = gpif.score.instructions.clone();
+        self.instructions = gpif.score.instructions.clone();
         // Notices
         if !gpif.score.notices.is_empty() {
             self.notice = gpif.score.notices.lines().map(|l| l.to_string()).collect();
@@ -426,6 +446,7 @@ impl SongGpifOps for Song {
             track.strings = Vec::new();
             if let Some(props) = &g_track.properties {
                 track.strings = extract_tuning(&props.properties);
+                track.tuning_label = extract_tuning_label(&props.properties);
             }
             if track.strings.is_empty()
                 && let Some(staves) = &g_track.staves
@@ -433,6 +454,7 @@ impl SongGpifOps for Song {
                 for staff in &staves.staves {
                     if let Some(props) = &staff.properties {
                         track.strings = extract_tuning(&props.properties);
+                        track.tuning_label = extract_tuning_label(&props.properties);
                         if !track.strings.is_empty() {
                             break;
                         }
@@ -530,6 +552,29 @@ impl SongGpifOps for Song {
                 track.measures.push(measure);
             }
             self.tracks.push(track);
+        }
+        // GuitarScore fix: GPIF numbers strings from the lowest; the legacy model's string 1
+        // is the highest (as its tuning list is, see `extract_tuning`).
+        flip_note_strings(&mut self.tracks);
+    }
+}
+
+/// GuitarScore addition: converts note string numbers between GPIF order (1 = lowest) and
+/// legacy order (1 = highest). Its own inverse, so import and export use the same function.
+/// Notes outside the track's strings (e.g. mapped piano notes) are left unchanged.
+pub(crate) fn flip_note_strings(tracks: &mut [SongTrack]) {
+    for track in tracks {
+        let count = i8::try_from(track.strings.len()).unwrap_or(i8::MAX);
+        for measure in &mut track.measures {
+            for voice in &mut measure.voices {
+                for beat in &mut voice.beats {
+                    for note in &mut beat.notes {
+                        if (1..=count).contains(&note.string) {
+                            note.string = count - note.string + 1;
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -861,6 +906,100 @@ mod tuning_tests {
         let voice = &song.tracks[1];
         assert_eq!(voice.instrument_type.as_deref(), Some("voice"));
         assert!(!voice.percussion_track);
+    }
+
+    #[test]
+    fn tuning_label_is_read_when_set() {
+        let xml = "<GPIF><Score></Score><MasterTrack></MasterTrack><Tracks><Track id=\"0\">\
+                   <Name>G</Name><Staves><Staff><Properties><Property name=\"Tuning\">\
+                   <Pitches>36 43 48 53 57 62</Pitches><Label><![CDATA[My Drop C]]></Label>\
+                   </Property></Properties></Staff></Staves></Track></Tracks>\
+                   <MasterBars></MasterBars><Bars></Bars><Voices></Voices><Beats></Beats>\
+                   <Notes></Notes><Rhythms></Rhythms></GPIF>";
+        let mut song = Song::default();
+        song.read_gpif(&quick_xml::de::from_str(xml).expect("test GPIF parses"));
+        assert_eq!(song.tracks[0].tuning_label.as_deref(), Some("My Drop C"));
+
+        let mut unlabeled = Song::default();
+        unlabeled.read_gpif(&gpif_with_staff_tuning("28 33 38 43"));
+        assert_eq!(unlabeled.tracks[0].tuning_label, None);
+    }
+
+    #[test]
+    fn score_metadata_maps_like_the_gp5_reader() {
+        let xml = "<GPIF><Score><Title>T</Title><Words>W</Words><Music>M</Music>\
+                   <Tabber>Tab</Tabber><Instructions>I</Instructions></Score>\
+                   <MasterTrack></MasterTrack><Tracks></Tracks><MasterBars></MasterBars>\
+                   <Bars></Bars><Voices></Voices><Beats></Beats><Notes></Notes>\
+                   <Rhythms></Rhythms></GPIF>";
+        let mut song = Song::default();
+        song.read_gpif(&quick_xml::de::from_str(xml).expect("test GPIF parses"));
+        assert_eq!(
+            (
+                song.words.as_str(),
+                song.author.as_str(),
+                song.writer.as_str()
+            ),
+            ("W", "M", "Tab")
+        );
+        assert_eq!(song.instructions, "I");
+
+        let both = xml.replace(
+            "<Words>W</Words><Music>M</Music>",
+            "<WordsAndMusic>WM</WordsAndMusic>",
+        );
+        let mut song = Song::default();
+        song.read_gpif(&quick_xml::de::from_str(&both).expect("test GPIF parses"));
+        assert_eq!((song.words.as_str(), song.author.as_str()), ("WM", "WM"));
+    }
+
+    #[test]
+    fn note_strings_are_flipped_and_round_trip() {
+        use crate::model::legacy::beat::{Beat, Voice};
+        use crate::model::legacy::headers::MeasureHeader;
+        use crate::model::legacy::measure::Measure;
+        use crate::model::legacy::note::Note;
+
+        let mut song = Song::default();
+        song.read_gpif(&gpif_with_staff_tuning("28 33 38 43"));
+        // GPIF string 0 (lowest) must come in as legacy string 4 (lowest of 4).
+        let mut tracks = song.tracks.clone();
+        tracks[0].measures = vec![Measure {
+            voices: vec![Voice {
+                beats: vec![Beat {
+                    notes: vec![Note {
+                        string: 1,
+                        ..Note::default()
+                    }],
+                    ..Beat::default()
+                }],
+                ..Voice::default()
+            }],
+            ..Measure::default()
+        }];
+        super::flip_note_strings(&mut tracks);
+        assert_eq!(tracks[0].measures[0].voices[0].beats[0].notes[0].string, 4);
+        super::flip_note_strings(&mut tracks);
+        assert_eq!(tracks[0].measures[0].voices[0].beats[0].notes[0].string, 1);
+
+        // Out-of-range strings are left alone.
+        tracks[0].measures[0].voices[0].beats[0].notes[0].string = 9;
+        super::flip_note_strings(&mut tracks);
+        assert_eq!(tracks[0].measures[0].voices[0].beats[0].notes[0].string, 9);
+
+        // Export and re-import keep the legacy string number.
+        song.measure_headers = vec![MeasureHeader::default()];
+        song.tracks[0].measures = tracks[0].measures.clone();
+        song.tracks[0].measures[0].voices[0].beats[0].notes[0].string = 4;
+        let bytes = song.write_gp().expect("write");
+        let mut reread = Song::default();
+        reread.read_gp(&bytes).expect("reread");
+        let strings: Vec<i8> = reread.tracks[0].measures[0].voices[0].beats[0]
+            .notes
+            .iter()
+            .map(|n| n.string)
+            .collect();
+        assert_eq!(strings, [4]);
     }
 
     #[test]

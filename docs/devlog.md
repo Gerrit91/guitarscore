@@ -133,3 +133,23 @@ playback need them.
 - Owner's files: instrument types found: electricGuitar 126, drumKit 48, voice 28,
   electricBass 21, padSynthesizer 7, electricPiano 4, trumpet 2, acousticPiano 1,
   electricOrgan 1.
+
+## 2026-11-01 — Song information, tuning names, first testdata tests
+
+- `info` shows every song field (subtitle, album, lyrics by, music by, copyright, tab by,
+  instructions, notes), aligned, `(not set)` when empty; model accessors on `Song`.
+- Tuning names: the file's tuning label if set, else recognized from the interval pattern
+  (standard incl. basses and 7/8-string, drop, double drop, open D/E/G/A/C, DADGAD family).
+  Owner's band files: 134 tracks in Drop A, plus D#, C#, E, B standard and Drop B.
+- Vendored guitarpro: reads tuning `<Label>`; GP7 metadata now uses the GP3-5 fields
+  (tab author was stored as transcriber, composer overwrote the tab author, instructions
+  went to comments; `WordsAndMusic` read).
+- Found by the owner's test file: GPIF note strings count from the lowest string; upstream
+  kept that order, which only matched its reversed tunings. After the tuning fix the notes
+  sat on mirrored strings. Now converted on import and export (`flip_note_strings`).
+  The new note test fails without this fix (checked).
+- Tests over `testdata/`: song information, track/instrument/tuning, notes (pitch from string
+  and fret), all `testdata/corrupt/` files rejected, ~1,500 truncated and byte-flipped
+  copies of the test file never panic (also not internally). `info` reference file
+  `testdata/basic/steel_guitar_dadgad.info.txt` (regenerate with GSCORE_UPDATE_GOLDEN=1).
+- Tests: 51 own + 166 vendored.

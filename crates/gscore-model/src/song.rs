@@ -32,9 +32,49 @@ impl Song {
         &self.inner.name
     }
 
+    /// The subtitle (may be empty).
+    pub fn subtitle(&self) -> &str {
+        &self.inner.subtitle
+    }
+
     /// The artist (may be empty).
     pub fn artist(&self) -> &str {
         &self.inner.artist
+    }
+
+    /// The album (may be empty).
+    pub fn album(&self) -> &str {
+        &self.inner.album
+    }
+
+    /// Who wrote the lyrics (may be empty).
+    pub fn lyricist(&self) -> &str {
+        &self.inner.words
+    }
+
+    /// Who wrote the music (may be empty).
+    pub fn composer(&self) -> &str {
+        &self.inner.author
+    }
+
+    /// The copyright notice (may be empty).
+    pub fn copyright(&self) -> &str {
+        &self.inner.copyright
+    }
+
+    /// Who wrote the tablature (may be empty).
+    pub fn tab_author(&self) -> &str {
+        &self.inner.writer
+    }
+
+    /// Performance instructions (may be empty).
+    pub fn instructions(&self) -> &str {
+        &self.inner.instructions
+    }
+
+    /// Free-text notes ("notices" in Guitar Pro), one entry per line; empty if none.
+    pub fn notes(&self) -> impl Iterator<Item = &str> {
+        self.inner.notice.iter().map(String::as_str)
     }
 
     /// The initial tempo in quarter notes per minute (always positive).

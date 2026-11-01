@@ -76,6 +76,20 @@ impl<'a> TrackView<'a> {
         Ok(Some(strings))
     }
 
+    /// The tuning's name: the one given in the file, or a recognized common tuning
+    /// ("E standard", "Drop D", "Open G", "DADGAD", ...). `None` if the track has no tuning
+    /// or it has no common name.
+    pub fn tuning_name(&self) -> Result<Option<String>, ModelError> {
+        let Some(strings) = self.tuning()? else {
+            return Ok(None);
+        };
+        if let Some(label) = &self.inner.tuning_label {
+            return Ok(Some(label.clone()));
+        }
+        let low_to_high: Vec<Pitch> = strings.iter().rev().map(|s| s.pitch).collect();
+        Ok(crate::tuning::recognize(&low_to_high))
+    }
+
     /// The strings as stored, including placeholder pitches of tracks without a tuning.
     pub(crate) fn strings(&self) -> Result<Vec<StringTuning>, ModelError> {
         self.inner
