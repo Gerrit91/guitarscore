@@ -15,6 +15,7 @@ files on the command line:
   the file content. Malformed files give an error, never a crash.
 - **`gscore-cli info`:** song information, tracks, instruments and tunings (with names such
   as "Drop D" or "DADGAD"), and problems such as unfilled measures.
+- **`gscore-cli dump`:** the tablature as ASCII tab.
 
 Milestones, progress and known gaps: `AGENTS.md` (section 9), `docs/devlog.md`,
 `docs/gaps.md`.
@@ -46,6 +47,21 @@ Artist:       GuitarScore
 ...
 Tracks:       1
   track 1: Steel Guitar: Steel Guitar, 6 strings, tuned DADGAD (D2 A2 D3 G3 A3 D4)
+```
+
+```bash
+cargo run -p gscore-cli -- dump testdata/basic/steel_guitar_dadgad.gp
+```
+
+```
+track 1: Steel Guitar (DADGAD)
+
+D |-----------------0----------||
+A |--------------0-------------||
+G |-----------0----------------||
+D |--------0-------------------||
+A |-----0----------------------||
+D |--0-------------------------||
 ```
 
 Exit codes: 0 success, 1 the command failed (e.g. unreadable file), 2 wrong usage.

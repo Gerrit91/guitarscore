@@ -4,7 +4,9 @@
 //! and its doc comment is its help text. A new subcommand gets a variant, a module, and a
 //! match arm in [`run_cli`].
 
+mod dump;
 mod info;
+mod input;
 
 use std::ffi::OsString;
 use std::fmt;
@@ -37,6 +39,23 @@ enum Command {
     Info {
         /// The Guitar Pro file to read
         file: PathBuf,
+    },
+    /// Print the tablature of a Guitar Pro file as ASCII tab
+    ///
+    /// One row per string, highest first, labelled with the open string's note name. Each
+    /// beat is as wide as its length (a whole note is 24 columns), all voices share one time
+    /// grid, and long tracks wrap at measure boundaries. Dead notes are shown as `x`, tied
+    /// notes as `(5)`. Tracks that are not string instruments (drums, voice, ...) are
+    /// listed without tablature. Effects (bends, slides, ...) are not shown yet.
+    Dump {
+        /// The Guitar Pro file to read
+        file: PathBuf,
+        /// Only this track (1-based, as `info` numbers them)
+        #[arg(long)]
+        track: Option<usize>,
+        /// Maximum line length before wrapping to the next system
+        #[arg(long, default_value_t = 80)]
+        width: usize,
     },
 }
 
@@ -98,6 +117,7 @@ where
     };
     match cli.command {
         Command::Info { file } => info::run(&file),
+        Command::Dump { file, track, width } => dump::run(&file, track, width),
     }
 }
 
@@ -142,6 +162,8 @@ mod tests {
             &[][..],
             &["info"],
             &["info", "a", "b"],
+            &["dump"],
+            &["dump", "a", "--width", "wide"],
             &["bogus"],
             &["--bogus"],
         ] {

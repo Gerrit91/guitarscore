@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use gscore_io::{Imported, MAX_INPUT_BYTES, import_guitar_pro_from_bytes};
+use gscore_io::Imported;
 use gscore_model::{InstrumentKind, Song, StringTuning, TrackView};
 
 use crate::CliError;
@@ -12,23 +12,7 @@ const MAX_LISTED_ISSUES: usize = 10;
 
 /// Reads the file at `path` and returns its summary.
 pub(crate) fn run(path: &Path) -> Result<String, CliError> {
-    let bytes = read_capped(path)?;
-    let imported = import_guitar_pro_from_bytes(&bytes)
-        .map_err(|e| CliError::Failed(format!("cannot import {}: {e}", path.display())))?;
-    Ok(summary(&imported))
-}
-
-/// Reads a file, refusing files larger than the importer accepts before reading them.
-fn read_capped(path: &Path) -> Result<Vec<u8>, CliError> {
-    let fail = |e: std::io::Error| CliError::Failed(format!("cannot read {}: {e}", path.display()));
-    let size = std::fs::metadata(path).map_err(fail)?.len();
-    if usize::try_from(size).map_or(true, |s| s > MAX_INPUT_BYTES) {
-        return Err(CliError::Failed(format!(
-            "{} is {size} bytes; the limit is {MAX_INPUT_BYTES}",
-            path.display()
-        )));
-    }
-    std::fs::read(path).map_err(fail)
+    Ok(summary(&crate::input::read_song(path)?))
 }
 
 /// Formats the file format and song information, each track, and the issues.

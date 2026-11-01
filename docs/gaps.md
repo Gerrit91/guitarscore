@@ -17,13 +17,17 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M2).
    ref="s-gtr6"/>`), no type or name; such tracks count as string instruments unless they
    are percussion. (The GP6 tuning order, unverified before, is now covered by the GPX
    test file.)
-4. **The model is read-only.** No edit methods yet; they arrive with the command layer (M4).
+4. **`dump` shows notes only.** No effects (bends, slides, hammer-ons, palm mutes, ...)
+   because the model does not expose them yet; drum, voice and keyboard tracks get no
+   tablature. The match with Guitar Pro's ASCII export is verified on one simple score
+   only.
+5. **The model is read-only.** No edit methods yet; they arrive with the command layer (M4).
    Only the initial tempo is exposed; tempo changes, repeats, effects and lyrics are kept in
    the file but have no accessors yet.
-5. **Saving is not implemented.** M3.
-6. **No recovery journal or autosave yet** (crash reports exist since M0). M7.
-7. **Little test data.** One song (`testdata/basic/steel_guitar_dadgad`) as GP7, GPX and
+6. **Saving is not implemented.** M3.
+7. **No recovery journal or autosave yet** (crash reports exist since M0). M7.
+8. **Little test data.** One song (`testdata/basic/steel_guitar_dadgad`) as GP7, GPX and
    GP5, with import and `info` reference tests and truncation/byte-flip robustness. No
    GP3/GP4 files, no effects, multiple tracks or voices yet, and no real fuzzer
    (cargo-fuzz; deferred to "Later" by the owner).
-8. Layout, playback, editing, session and app crates are placeholders.
+9. Layout, playback, editing and app crates are empty until their milestones.

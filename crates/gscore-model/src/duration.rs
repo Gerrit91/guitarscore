@@ -74,6 +74,22 @@ impl Duration {
         Duration::new(num, den)
     }
 
+    /// `self - other`, or an error if `other` is longer (lengths are never negative) or on
+    /// overflow.
+    pub fn checked_sub(self, other: Duration) -> Result<Duration, ModelError> {
+        let overflow = || ModelError::Overflow("a difference of durations");
+        let g = gcd(self.den, other.den);
+        let other_scale = self.den.checked_div(g).ok_or_else(overflow)?;
+        let self_scale = other.den.checked_div(g).ok_or_else(overflow)?;
+        let lhs = self.num.checked_mul(self_scale).ok_or_else(overflow)?;
+        let rhs = other.num.checked_mul(other_scale).ok_or_else(overflow)?;
+        let num = lhs.checked_sub(rhs).ok_or_else(|| {
+            ModelError::Invalid(format!("duration {self} minus the longer {other}"))
+        })?;
+        let den = self.den.checked_mul(self_scale).ok_or_else(overflow)?;
+        Duration::new(num, den)
+    }
+
     /// Converts a Guitar Pro beat duration: note value, dots and tuplet.
     pub(crate) fn from_gp(gp: &GpDuration) -> Result<Self, ModelError> {
         let value = gp.value;

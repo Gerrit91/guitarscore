@@ -222,3 +222,17 @@ Owner decision: headless editing and saving before the UI. New order: M2 import 
 interactive editing in the app (cursor, keymap, recovery journal); M8 MIDI playback; M9
 internal synth. `cargo-fuzz` deferred to "Later". Milestone references in crate docs,
 gaps, parity, testdata README and CLAUDE.md updated.
+
+## 2026-11-01 — `gscore-cli dump` (M2)
+
+- ASCII tablature: one row per string (highest first, labelled with note names), beats as
+  wide as their length (whole note = 24 columns, rounded up, at least text + 1), two
+  dashes at each barline, `||` at the end, all voices merged on one exact time grid, dead
+  notes `x`, ties `(5)`; wraps at measure boundaries (`--width`, default 80); `--track N`;
+  non-string tracks are listed without tablature.
+- For the DADGAD test file the grid is identical to Guitar Pro's own ASCII export, in all
+  three formats (test compares against `testdata/basic/steel_guitar_dadgad.txt`).
+- `Duration::checked_sub`; shared input reading (`gscore-cli/src/input.rs`); golden tests
+  generalized to `tests/test_golden.rs` (`<file>.<command>.txt`).
+- All 26 owner band files dump without errors.
+- Tests: 85. M2 still open: `roundtrip-check`.

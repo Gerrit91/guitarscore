@@ -110,6 +110,14 @@ fn invalid_durations_are_errors() {
 }
 
 #[test]
+fn checked_sub_is_exact_and_never_negative() {
+    assert_eq!(d(1, 1).checked_sub(d(3, 8)).unwrap(), d(5, 8));
+    assert_eq!(d(1, 4).checked_sub(d(1, 12)).unwrap(), d(1, 6));
+    assert_eq!(d(1, 4).checked_sub(d(1, 4)).unwrap(), Duration::ZERO);
+    assert!(d(1, 8).checked_sub(d(1, 4)).is_err());
+}
+
+#[test]
 fn checked_add_reports_overflow() {
     let huge = d(u64::MAX, 1);
     assert_eq!(
