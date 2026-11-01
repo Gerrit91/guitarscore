@@ -7,10 +7,12 @@
 //! - Layout algorithms for tablature rendering
 //! - No GUI dependencies (headless)
 
-pub mod layout;
+#![warn(clippy::arithmetic_side_effects)]
+
 pub mod draw_op;
+pub mod layout;
 pub mod types;
 
-pub use layout::layout;
 pub use draw_op::DrawOp;
+pub use layout::layout;
 pub use types::{Position, Size};

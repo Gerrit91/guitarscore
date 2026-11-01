@@ -7,12 +7,12 @@
 //! - Safe-save procedures
 
 // Placeholder for actual session implementation
-pub mod recovery;
 pub mod autosave;
+pub mod recovery;
 pub mod session;
 
 /// A placeholder struct for the session crate
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SessionPlaceholder;
 
 impl SessionPlaceholder {

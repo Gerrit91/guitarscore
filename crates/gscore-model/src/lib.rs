@@ -1,20 +1,12 @@
 //! The `gscore-model` crate provides the core data structures for a guitar score,
 //! completely independent of any specific file format or IO crate.
 //!
-//! This crate defines the "Internal Representation" (IR) that the rest of the 
+//! This crate defines the "Internal Representation" (IR) that the rest of the
 //! application (layout, playback, editing) depends on.
-
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
-#![deny(clippy::panic)]
-#![deny(clippy::todo)]
-#![deny(clippy::unimplemented)]
-#![deny(clippy::unreachable)]
-#![deny(clippy::indexing_slicing)]
-
-//! A thin layer over the guitarpro crate for GuitarScore
+//! Whether it stays a separate model or becomes a thin layer over the `guitarpro`
+//! crate's model is decided at the M2 gate (AGENTS.md section 5).
 //!
-//! This crate provides:
+//! Planned:
 //! - Helper methods for musical element access
 //! - Position types (track/measure/voice/beat indices)
 //! - Invariant checks to maintain data integrity
@@ -31,7 +23,12 @@ pub struct Song {
 
 impl Song {
     pub fn new(title: String, artist: String, tempo: i16, tracks: Vec<Track>) -> Self {
-        Self { title, artist, tempo, tracks }
+        Self {
+            title,
+            artist,
+            tempo,
+            tracks,
+        }
     }
 
     pub fn track_count(&self) -> usize {
@@ -90,23 +87,22 @@ pub struct Note {
     pub is_slide: bool,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_song_creation() {
-        let tracks = vec![Track { 
-            name: "Guitar 1".to_string(), 
-            measures: vec![], 
-            tuning: vec![64, 59, 55, 50, 45, 40] 
+        let tracks = vec![Track {
+            name: "Guitar 1".to_string(),
+            measures: vec![],
+            tuning: vec![64, 59, 55, 50, 45, 40],
         }];
         let song = Song::new(
-            "Test Song".to_string(), 
-            "Test Artist".to_string(), 
-            120, 
-            tracks
+            "Test Song".to_string(),
+            "Test Artist".to_string(),
+            120,
+            tracks,
         );
         assert_eq!(song.track_count(), 1);
     }

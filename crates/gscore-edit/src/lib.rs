@@ -9,11 +9,11 @@
 // Placeholder for actual editing implementation
 pub mod command;
 pub mod cursor;
-pub mod selection;
 pub mod keymap;
+pub mod selection;
 
 /// A placeholder struct for the edit crate
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct EditPlaceholder;
 
 impl EditPlaceholder {

@@ -8,7 +8,7 @@ pub mod app;
 pub mod ui;
 
 /// A placeholder struct for the app crate
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct AppPlaceholder;
 
 impl AppPlaceholder {

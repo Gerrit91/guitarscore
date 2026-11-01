@@ -10,12 +10,14 @@
 // - Audio backend implementations
 // - Channel allocation logic
 
-pub mod player;
-pub mod midi;
+#![warn(clippy::arithmetic_side_effects)]
+
 pub mod audio;
+pub mod midi;
+pub mod player;
 
 /// A placeholder struct for the play crate
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PlayPlaceholder;
 
 impl PlayPlaceholder {

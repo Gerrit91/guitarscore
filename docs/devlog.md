@@ -1,75 +1,34 @@
 # Development Log
 
-## Milestone 0: Workspace Foundation
+Terse entries, newest last: what landed, numbers, what is still open.
 
-### Date: [Insert Current Date]
+## 2026-11-01 — Status reset; M0 foundation repaired (M0 in progress)
 
-#### What was completed:
+Earlier entries claimed M0–M2 complete and M3 under way. They were removed: the tree did not
+pass its own checks (fmt failed, clippy failed on an invalid `clippy.toml`, `cargo xtask` did
+not exist, the only test was trivial) and most modules were 2-line stubs.
 
-- Initialized Rust workspace with Cargo.toml
-- Configured toolchain pinning with rust-toolchain.toml
-- Set up clippy linting configurations in clippy.toml
-- Created documentation directory structure
-- Implemented basic architecture documentation
-- Started development guide and feature parity tracking
+Landed:
+- Single workspace (removed the stray second workspace in `crates/Cargo.toml`); `xtask` is a
+  member, `cargo xtask` alias in `.cargo/config.toml`.
+- Lints: valid `clippy.toml` (panic-family lints allowed in tests only);
+  `arithmetic_side_effects` is now per crate (`gscore-io`, `gscore-layout`, `gscore-play`)
+  instead of an unknown rustc lint applied everywhere.
+- Toolchain pinned to 1.99.1 (`rust-toolchain.toml`, also CI); `guitarpro` pinned to rev
+  `b62be7c`.
+- `cargo xtask layers`: layer table, restricted GUI/audio crates, `[lints] workspace = true`
+  in every crate, no `std::fs`/`std::thread`/`Instant`/`SystemTime` in core crates, wasm
+  check of the core crates. `cargo xtask ci` runs the whole definition of done.
+- `gscore-io` is bytes-only (file reading moved to `gscore-cli`); import rejects out-of-range
+  fret/string values instead of truncating them; export returns "unsupported" instead of
+  writing a file with only the title (data loss).
+- `gscore-cli` no longer indexes `args`/`measures` or calls `process::exit` from the library.
+- Removed unused inter-crate dependencies from stub crates and `gscore-app -> gscore-cli`
+  (same layer).
+- Tests: 10 (xtask 6, io 2, cli 1, model 1).
 
-#### Next Steps:
-
-- Create gscore-model crate
-- Implement basic guitarpro file importing
-- Begin layout engine development
-- Design command system and undo/redo
-
-## Milestone 1: Document Model Layer
-
-### Date: [Insert Current Date]
-
-#### What was completed:
-
-- Implemented gscore-model crate as thin wrapper over guitarpro
-- Added helper methods for musical element access
-- Added position types (track/measure/voice/beat indices)
-- Added invariant checks
-- Enforced non-panicking code principles
-
-#### Next Steps:
-
-- Implement gscore-io import/export with containment
-- Create gscore-layout headless engine
-- Start command system and undo/redo
-
-## Milestone 2: Import/Export Layer
-
-### Date: [Insert Current Date]
-
-#### What was completed:
-
-- Implemented gscore-io crate with guitarpro integration
-- Added panic containment using std::panic::catch_unwind
-- Established safe import/export capabilities
-- Set up foundation for CLI commands
-
-#### Next Steps:
-
-- Implement headless layout engine
-- Add SVG golden tests
-- Begin font loading and metadata support
-
-## Milestone 3: Layout Engine (Current)
-
-### Date: [Insert Current Date]
-
-#### What was completed:
-
-- Implemented gscore-layout crate as headless layout engine
-- Created draw operation definitions for rendering
-- Added semantic color tokens for theming
-- Implemented position and size types
-- Created layout conversion functions
-
-#### Next Steps:
-
-- Develop full layout algorithms
-- Add SMuFL font loading support
-- Implement SVG golden tests
-- Compare with MuseScore visual output
+Open (M0):
+- wasm check not yet run: the local Rust (Arch package) lacks the `wasm32-unknown-unknown`
+  target. Likely failure: `guitarpro` pulls `zip` 9 with default features, including
+  `zstd-sys` (C code). See `docs/gaps.md`.
+- Panic hook / crash log not set up yet (AGENTS.md "Containment").

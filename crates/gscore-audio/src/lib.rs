@@ -4,12 +4,12 @@
 //! including MIDI output and internal synth implementations.
 
 // Placeholder for actual audio implementation
-pub mod player;
 pub mod midi;
+pub mod player;
 pub mod synth;
 
 /// A placeholder struct for the audio crate
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct AudioPlaceholder;
 
 impl AudioPlaceholder {

@@ -4,17 +4,13 @@ This document provides instructions for setting up Claude to work effectively wi
 
 ## Development Environment Setup
 
-1. Install Rust toolchain:
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   source $HOME/.cargo/env
-   ```
+1. Install Rust via rustup (https://rustup.rs). `rust-toolchain.toml` pins the version and
+   makes rustup install `rustfmt`, `clippy` and the `wasm32-unknown-unknown` target.
+   With a distribution Rust instead, install the wasm target yourself
+   (Arch: `pacman -S rust-wasm`).
 
-2. Install required tools:
-   ```bash
-   cargo install cargo-xbuild
-   cargo install cargo-xtask
-   ```
+2. Nothing else to install: `cargo xtask` is a cargo alias (`.cargo/config.toml`) for the
+   in-repo `xtask/` crate. `cargo xtask ci` runs the full definition of done.
 
 ## Workspace Access
 
@@ -49,7 +45,7 @@ crates/
 
 ## Branching Strategy
 
-- `main` branch contains stable code (M0 milestone completed)
+- `main` branch contains stable code (M0 in progress; see `docs/devlog.md`)
 - Feature branches should be used for implementation
 - Pull requests should include test coverage and validation with:
   - `cargo test --workspace`

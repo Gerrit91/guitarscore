@@ -1,1 +1,6 @@
-toolchain = "stable"
+# Pinned toolchain. rustup installs it (with the components and targets below)
+# automatically; a system Rust (e.g. a distro package) ignores this file.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]

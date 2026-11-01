@@ -1,10 +1,12 @@
 [package]
 name = "xtask"
 version = "0.1.0"
-vcs = "git"
-authors = ["GuitarScore Team"]
 edition = "2021"
+publish = false
+description = "Project tasks for GuitarScore (run as `cargo xtask <task>`)"
 
+# Deliberately dependency-free: the tasks shell out to `cargo` and `rustc`.
 [dependencies]
-cargo_metadata = "0.15"
-clap = { version = "4.0", features = ["derive"] }
+
+[lints]
+workspace = true

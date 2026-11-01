@@ -264,44 +264,22 @@ dependencies = [
 [[package]]
 name = "gscore-app"
 version = "0.1.0"
-dependencies = [
- "gscore-cli",
- "gscore-edit",
- "gscore-io",
- "gscore-layout",
- "gscore-model",
- "gscore-play",
- "gscore-session",
-]
 
 [[package]]
 name = "gscore-audio"
 version = "0.1.0"
-dependencies = [
- "gscore-play",
-]
 
 [[package]]
 name = "gscore-cli"
 version = "0.1.0"
 dependencies = [
- "gscore-edit",
  "gscore-io",
- "gscore-layout",
  "gscore-model",
- "gscore-play",
- "gscore-session",
 ]
 
 [[package]]
 name = "gscore-edit"
 version = "0.1.0"
-dependencies = [
- "gscore-io",
- "gscore-layout",
- "gscore-model",
- "gscore-play",
-]
 
 [[package]]
 name = "gscore-io"
@@ -325,23 +303,15 @@ version = "0.1.0"
 [[package]]
 name = "gscore-play"
 version = "0.1.0"
-dependencies = [
- "gscore-model",
-]
 
 [[package]]
 name = "gscore-session"
 version = "0.1.0"
-dependencies = [
- "gscore-edit",
- "gscore-io",
- "gscore-model",
-]
 
 [[package]]
 name = "guitarpro"
 version = "0.4.4"
-source = "git+https://github.com/slundi/guitarpro#b62be7c5e4bedb0c6eb283ac40aa8371adab5c2a"
+source = "git+https://github.com/slundi/guitarpro?rev=b62be7c5e4bedb0c6eb283ac40aa8371adab5c2a#b62be7c5e4bedb0c6eb283ac40aa8371adab5c2a"
 dependencies = [
  "encoding_rs",
  "fraction",
@@ -827,6 +797,10 @@ checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
 dependencies = [
  "windows-link",
 ]
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
 
 [[package]]
 name = "zeroize"

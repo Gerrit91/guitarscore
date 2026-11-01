@@ -1,45 +1,29 @@
-//! Export functionality for Guitar Pro files
+//! Export of a `Song` to Guitar Pro bytes.
 
-use std::panic;
-use std::path::Path;
-use std::fs;
-
-use guitarpro::Song as GpSong;
 use gscore_model::Song;
 
 use crate::error::IoError;
 
-/// Export a Song to a Guitar Pro file at the given path
-pub fn export_guitar_pro_file(song: &Song, file_path: &Path) -> Result<(), IoError> {
-    let result = panic::catch_unwind(|| {
-        let mut gp_song = GpSong::default();
-        gp_song.name = song.title.clone();
-        
-        let bytes = gp_song.write_gp().map_err(|e| format!("{:?}", e))?;
-        fs::write(file_path, bytes).map_err(|e| format!("{:?}", e))?;
-        Ok::<(), String>(())
-    });
-
-    match result {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(e)) => Err(IoError::GuitarProError(format!("GuitarPro export error: {}", e))),
-        Err(e) => Err(IoError::GuitarProError(format!("Panic during file export: {:?}", e))),
-    }
+/// Serializes a song to Guitar Pro bytes.
+///
+/// Not implemented yet (milestone M6). It returns an error rather than writing a partial
+/// file, because a file that silently drops the user's music is data loss.
+pub fn export_guitar_pro_to_bytes(_song: &Song) -> Result<Vec<u8>, IoError> {
+    Err(IoError::Unsupported(
+        "saving Guitar Pro files (planned for M6)",
+    ))
 }
 
-/// Export a Song to bytes
-pub fn export_guitar_pro_to_bytes(song: &Song) -> Result<Vec<u8>, IoError> {
-    let result = panic::catch_unwind(|| {
-        let mut gp_song = GpSong::default();
-        gp_song.name = song.title.clone();
-        
-        let bytes = gp_song.write_gpx().map_err(|e| format!("{:?}", e))?;
-        Ok::<Vec<u8>, String>(bytes)
-    });
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    match result {
-        Ok(Ok(bytes)) => Ok(bytes),
-        Ok(Err(e)) => Err(IoError::GuitarProError(format!("GuitarPro export error: {}", e))),
-        Err(e) => Err(IoError::GuitarProError(format!("Panic during file export: {:?}", e))),
+    #[test]
+    fn export_is_reported_as_unsupported() {
+        let song = Song::new(String::new(), String::new(), 120, Vec::new());
+        assert!(matches!(
+            export_guitar_pro_to_bytes(&song),
+            Err(IoError::Unsupported(_))
+        ));
     }
 }

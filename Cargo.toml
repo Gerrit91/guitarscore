@@ -10,6 +10,7 @@ members = [
     "crates/gscore-session",
     "crates/gscore-cli",
     "crates/gscore-app",
+    "xtask",
 ]
 
 [workspace.package]
@@ -25,9 +26,8 @@ unused_imports = "warn"
 unused_variables = "warn"
 unused_must_use = "warn"
 unused_qualifications = "warn"
-nonstandard_style = "warn"
+nonstandard_style = { level = "warn", priority = -1 }
 missing_debug_implementations = "warn"
-arithmetic_side_effects = "warn"
 unused_crate_dependencies = "warn"
 unreachable_pub = "warn"
 
@@ -39,4 +39,5 @@ todo = "deny"
 unimplemented = "deny"
 unreachable = "deny"
 indexing_slicing = "deny"
-arithmetic_side_effects = { level = "warn", priority = -1 }
+# `arithmetic_side_effects` is enabled per crate (parsing, layout, sequencing)
+# with `#![warn(clippy::arithmetic_side_effects)]` in lib.rs.

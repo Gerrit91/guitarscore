@@ -6,10 +6,7 @@ use crate::types::{Position, Size};
 #[derive(Debug, Clone)]
 pub enum DrawOp {
     /// Line operation
-    Line {
-        start: Position,
-        end: Position,
-    },
+    Line { start: Position, end: Position },
     /// Text operation
     Text {
         position: Position,
@@ -24,8 +21,5 @@ pub enum DrawOp {
         size: u32,
     },
     /// Rectangle operation
-    Rectangle {
-        position: Position,
-        size: Size,
-    },
+    Rectangle { position: Position, size: Size },
 }

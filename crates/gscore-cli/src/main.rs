@@ -1,10 +1,20 @@
-use gscore_cli::run_cli;
-use std::env;
+//! `gscore-cli` binary: thin wrapper around [`gscore_cli::run_cli`].
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    if let Err(e) = run_cli(args) {
-        eprintln!("Error: {}", e);
-        std::process::exit(1);
+// The lint checks each target separately; the dependencies are used by the library target.
+#![allow(unused_crate_dependencies)]
+
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match gscore_cli::run_cli(&args) {
+        Ok(output) => {
+            print!("{output}");
+            ExitCode::SUCCESS
+        }
+        Err(message) => {
+            eprintln!("Error: {message}");
+            ExitCode::FAILURE
+        }
     }
 }
