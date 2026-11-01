@@ -379,6 +379,9 @@ pub struct Beat {
     pub whammy: Option<Whammy>,
     #[serde(rename = "Wah", default)]
     pub wah: Option<String>,
+    /// GP6/GP7 beat-level legato (GuitarScore addition; it used to be dropped).
+    #[serde(rename = "Legato", default)]
+    pub legato: Option<LegatoInfo>,
     #[serde(rename = "FreeText", default)]
     pub free_text: Option<String>,
     #[serde(rename = "Properties", default)]
@@ -421,6 +424,9 @@ pub struct BeatProperty {
     pub float: Option<f64>,
     #[serde(rename = "Flags", default)]
     pub flags: Option<i32>,
+    /// Strength of `VibratoWTremBar` ("Slight" or "Wide").
+    #[serde(rename = "Strength", default)]
+    pub strength: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -463,6 +469,15 @@ pub struct Note {
 
 #[derive(Debug, Deserialize)]
 pub struct TieInfo {
+    #[serde(rename = "@origin", default)]
+    pub origin: String,
+    #[serde(rename = "@destination", default)]
+    pub destination: String,
+}
+
+/// The `<Legato>` tag of a beat; both attributes are `"true"` or `"false"`.
+#[derive(Debug, Deserialize)]
+pub struct LegatoInfo {
     #[serde(rename = "@origin", default)]
     pub origin: String,
     #[serde(rename = "@destination", default)]

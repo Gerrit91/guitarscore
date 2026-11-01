@@ -63,6 +63,41 @@ pub struct Bend {
     pub quarter_tones: i16,
 }
 
+/// How strongly a note is accented.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccentKind {
+    /// A normal accent (`>`).
+    Normal,
+    /// A heavy accent.
+    Heavy,
+}
+
+/// How wide a note's vibrato is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Vibrato {
+    /// A slight, narrow vibrato.
+    Slight,
+    /// A wide vibrato.
+    Wide,
+}
+
+/// A legato run written over one or more beats (not a slide or a hammer-on).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Legato {
+    /// This beat starts the run.
+    pub origin: bool,
+    /// This beat continues the run.
+    pub destination: bool,
+}
+
+/// A whammy (tremolo) bar effect and how far it moves the pitch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Whammy {
+    /// The furthest point of the shape, in quarter tones as the file stores them; negative
+    /// means down (a dive). A whole-step bend is 4.
+    pub quarter_tones: i16,
+}
+
 /// What kind of harmonic a note is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HarmonicKind {
@@ -126,6 +161,40 @@ impl BeatView<'_> {
     /// True if the beat uses the whammy bar (tremolo bar).
     pub fn has_whammy_bar(&self) -> bool {
         self.inner.effect.tremolo_bar.is_some()
+    }
+
+    /// How wide the beat's own vibrato is, if it has one. This is separate from a note's
+    /// vibrato: Guitar Pro writes it as the `VibratoWTremBar` beat property.
+    pub fn vibrato(&self) -> Option<Vibrato> {
+        if !self.inner.effect.vibrato {
+            return None;
+        }
+        Some(if self.inner.effect.wide_vibrato {
+            Vibrato::Wide
+        } else {
+            Vibrato::Slight
+        })
+    }
+
+    /// What the whammy bar does, if the beat uses it.
+    pub fn whammy_bar(&self) -> Option<Whammy> {
+        let bar = self.inner.effect.tremolo_bar.as_ref()?;
+        let quarter_tones = bar
+            .points
+            .iter()
+            .map(|point| i16::from(point.value))
+            .max_by_key(|value| value.unsigned_abs())
+            .unwrap_or(0);
+        Some(Whammy { quarter_tones })
+    }
+
+    /// The beat-level legato run this beat is part of, if any.
+    pub fn legato(&self) -> Option<Legato> {
+        let legato = self.inner.effect.legato;
+        (legato.origin || legato.destination).then_some(Legato {
+            origin: legato.origin,
+            destination: legato.destination,
+        })
     }
 }
 
@@ -205,9 +274,20 @@ impl NoteView<'_> {
         self.inner.effect.ghost_note
     }
 
-    /// True if the note is accentuated.
+    /// True if the note has a normal accent.
     pub fn is_accented(&self) -> bool {
         self.inner.effect.accentuated_note
+    }
+
+    /// How the note is accented, if it is.
+    pub fn accent(&self) -> Option<AccentKind> {
+        if self.inner.effect.heavy_accentuated_note {
+            Some(AccentKind::Heavy)
+        } else if self.inner.effect.accentuated_note {
+            Some(AccentKind::Normal)
+        } else {
+            None
+        }
     }
 
     /// True if the note is palm muted.
@@ -238,5 +318,17 @@ impl NoteView<'_> {
     /// True if the note has vibrato (slight or wide).
     pub fn has_vibrato(&self) -> bool {
         self.inner.effect.vibrato
+    }
+
+    /// How wide the note's vibrato is, if it has one.
+    pub fn vibrato(&self) -> Option<Vibrato> {
+        if !self.inner.effect.vibrato {
+            return None;
+        }
+        Some(if self.inner.effect.wide_vibrato {
+            Vibrato::Wide
+        } else {
+            Vibrato::Slight
+        })
     }
 }

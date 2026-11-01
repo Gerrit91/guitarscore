@@ -66,6 +66,28 @@ fn write_op(out: &mut String, op: &DrawOp, theme: &Theme) {
             num(rect.height),
             theme.color(*color)
         ),
+        DrawOp::Curve {
+            from,
+            to,
+            control1,
+            control2,
+            thickness,
+            color,
+        } => writeln!(
+            out,
+            "<path d=\"M {} {} C {} {} {} {} {} {}\" fill=\"none\" stroke=\"{}\" \
+             stroke-width=\"{}\" stroke-linecap=\"round\"/>",
+            num(from.x),
+            num(from.y),
+            num(control1.x),
+            num(control1.y),
+            num(control2.x),
+            num(control2.y),
+            num(to.x),
+            num(to.y),
+            theme.color(*color),
+            num(*thickness)
+        ),
         DrawOp::Glyph {
             glyph,
             at,

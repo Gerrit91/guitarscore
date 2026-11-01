@@ -42,7 +42,10 @@ mod tests;
 pub use compare::{Difference, differences};
 pub use duration::{Duration, NoteValue, TimeSignature};
 pub use edit::Change;
-pub use effects::{Bend, BendKind, Harmonic, HarmonicKind, SlapKind, SlideKind, StrokeDirection};
+pub use effects::{
+    AccentKind, Bend, BendKind, Harmonic, HarmonicKind, Legato, SlapKind, SlideKind,
+    StrokeDirection, Vibrato, Whammy,
+};
 pub use error::ModelError;
 pub use instrument::InstrumentKind;
 pub use issues::{Issue, IssueKind};

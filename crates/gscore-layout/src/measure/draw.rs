@@ -1,0 +1,221 @@
+//! Drawing a laid-out measure: its notes and the ornaments that connect them.
+//!
+//! Kept apart from the column layout in the parent module: this file only positions and
+//! paints, while `measure/mod.rs` decides the widths.
+
+use super::{Column, Item, MEASURE_NUMBER_RISE, MeasureLayout};
+use crate::Context;
+use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
+use crate::ornaments::{self, Fret};
+
+impl MeasureLayout {
+    /// Draws the measure's content (not the staff lines or barline) starting at `x`, with
+    /// the staff's top line at `top`.
+    pub(crate) fn draw(
+        &self,
+        x: f32,
+        top: f32,
+        stretch: f32,
+        ctx: &Context<'_>,
+        ops: &mut Vec<DrawOp>,
+    ) {
+        ops.push(DrawOp::Text {
+            text: self.index.get().saturating_add(1).to_string(),
+            at: Point::new(x, top - MEASURE_NUMBER_RISE),
+            size: ctx.options.measure_number_size,
+            font: TextFont::Regular,
+            anchor: TextAnchor::Start,
+            color: ColorToken::Annotation,
+        });
+        let mut cursor = x;
+        if let Some(time_signature) = &self.time_signature {
+            time_signature.draw(cursor, top, ctx, ops);
+            cursor += time_signature.width;
+        }
+        cursor += self.lead;
+        // Positions first: ornaments connect neighbouring columns.
+        let mut xs = Vec::with_capacity(self.columns.len());
+        for column in &self.columns {
+            xs.push(cursor);
+            cursor += column.space * stretch;
+        }
+        let right = cursor;
+        for (index, column) in self.columns.iter().enumerate() {
+            let at = xs.get(index).copied().unwrap_or(right);
+            for item in &column.items {
+                match item {
+                    Item::Fret(fret) => {
+                        fret.draw(at, top, ctx, ops);
+                        fret.draw_above(at, top, ctx, ops);
+                    }
+                    Item::Rest { .. } => item.draw(at, top, ctx, ops),
+                }
+            }
+        }
+        self.draw_links(&xs, top, ctx, ops);
+        for (index, column) in self.columns.iter().enumerate() {
+            let Some(&at) = xs.get(index) else {
+                continue;
+            };
+            if let Some(whammy) = column.marks.whammy {
+                ornaments::draw_whammy(at, top, whammy, ctx, ops);
+            }
+            if let Some(vibrato) = column.marks.vibrato {
+                ornaments::draw_vibrato(at, top, vibrato, ctx, ops);
+            }
+        }
+        self.draw_legato(&xs, top, ops);
+        self.draw_under_staff(&xs, right, top, ctx, ops);
+    }
+
+    /// Slurs and lines between one note and the next one on the same string.
+    fn draw_links(&self, xs: &[f32], top: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
+        for (index, column) in self.columns.iter().enumerate() {
+            let Some(&at) = xs.get(index) else {
+                continue;
+            };
+            for item in &column.items {
+                let Item::Fret(origin) = item else {
+                    continue;
+                };
+                if origin.tie_destination {
+                    continue;
+                }
+                let Some((target_index, target)) = next_on_line(&self.columns, index, origin.line)
+                else {
+                    continue;
+                };
+                let Some(&target_x) = xs.get(target_index) else {
+                    continue;
+                };
+                if target.tie_destination {
+                    ornaments::draw_tie(at, target_x, top, origin, target, ctx, ops);
+                } else if origin.marks.hammer || origin.marks.direct_slide().is_some() {
+                    ornaments::draw_link(at, target_x, top, origin, target, ctx, ops);
+                }
+            }
+        }
+    }
+
+    /// One slur over each contiguous beat-level legato run.
+    fn draw_legato(&self, xs: &[f32], top: f32, ops: &mut Vec<DrawOp>) {
+        let active =
+            |column: &Column| column.marks.legato_origin || column.marks.legato_destination;
+        let mut index = 0;
+        while let Some(column) = self.columns.get(index) {
+            if !active(column) {
+                index = index.saturating_add(1);
+                continue;
+            }
+            let start = index;
+            let mut end = index;
+            while self.columns.get(end.saturating_add(1)).is_some_and(active) {
+                end = end.saturating_add(1);
+            }
+            if let (Some(&start_x), Some(&end_x)) = (xs.get(start), xs.get(end)) {
+                let next = xs.get(end.saturating_add(1)).copied();
+                let run_end = next.map_or(end_x, |next| (end_x + next) / 2.0);
+                ornaments::draw_legato_run(start_x, run_end, top, ops);
+            }
+            index = end.saturating_add(1);
+        }
+    }
+
+    /// Palm-mute and let-ring rows below the staff.
+    fn draw_under_staff(
+        &self,
+        xs: &[f32],
+        right: f32,
+        top: f32,
+        ctx: &Context<'_>,
+        ops: &mut Vec<DrawOp>,
+    ) {
+        let mut lane = 0;
+        for row in [UnderRow::PalmMute, UnderRow::LetRing] {
+            // Only rows that occur in this measure take a lane, so a measure with let ring
+            // alone keeps it close to the staff.
+            if !self.columns.iter().any(|column| row.matches(column)) {
+                continue;
+            }
+            let mut index = 0;
+            while let Some(column) = self.columns.get(index) {
+                if !row.matches(column) {
+                    index = index.saturating_add(1);
+                    continue;
+                }
+                let start = index;
+                let mut end = index;
+                while self
+                    .columns
+                    .get(end.saturating_add(1))
+                    .is_some_and(|column| row.matches(column))
+                {
+                    end = end.saturating_add(1);
+                }
+                if let Some(&start_x) = xs.get(start) {
+                    let end_x = xs
+                        .get(end.saturating_add(1))
+                        .copied()
+                        .map_or(right, |next| {
+                            (next + xs.get(end).copied().unwrap_or(next)) / 2.0
+                        });
+                    ornaments::draw_under_staff_run(
+                        start_x - 0.7,
+                        end_x,
+                        row.label(),
+                        lane,
+                        top,
+                        ctx,
+                        ops,
+                    );
+                }
+                index = end.saturating_add(1);
+            }
+            lane = lane.saturating_add(1);
+        }
+    }
+}
+
+/// A row of marks below the staff.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnderRow {
+    PalmMute,
+    LetRing,
+}
+
+impl UnderRow {
+    fn label(self) -> &'static str {
+        match self {
+            UnderRow::PalmMute => "P.M.",
+            UnderRow::LetRing => "let ring",
+        }
+    }
+
+    fn matches(self, column: &Column) -> bool {
+        column.items.iter().any(|item| {
+            let Item::Fret(fret) = item else {
+                return false;
+            };
+            match self {
+                UnderRow::PalmMute => fret.marks.palm_mute,
+                UnderRow::LetRing => fret.marks.let_ring,
+            }
+        })
+    }
+}
+
+/// The next fret on `line` after column `from`, if there is one in this measure.
+fn next_on_line(columns: &[Column], from: usize, line: usize) -> Option<(usize, &Fret)> {
+    let mut index = from.saturating_add(1);
+    while let Some(column) = columns.get(index) {
+        for item in &column.items {
+            if let Item::Fret(fret) = item
+                && fret.line == line
+            {
+                return Some((index, fret));
+            }
+        }
+        index = index.saturating_add(1);
+    }
+    None
+}

@@ -28,7 +28,7 @@ Updated 2026-11-01 (M6: first read-only app).
 | Lyrics, chord diagrams, fingering | Partial: kept in the file; no accessors or editing |
 | Keymap configuration | Planned (M7) |
 | Desktop app | Partial: read-only viewer (`guitarscore`): open file (dialog or command line), track picker, zoom, light/dark theme |
-| Tablature display | Partial: one track's tab staff in the app and as SVG (`gscore-cli render`): title block, tuning, tempo, tab clef, time signatures, fret numbers (ties, dead notes), rests, measure numbers, line breaking and justification, light/dark theme. No effects, rhythm, repeats, pages or standard notation yet |
+| Tablature display | Partial: one track's tab staff in the app and as SVG (`gscore-cli render`): title block, tuning, tempo, tab clef, time signatures, fret numbers (dead and ghost notes; tie curves with the continuation number hidden), rests, measure numbers, ornaments (hammer/pull slurs, bends, slides, vibrato, harmonics, accents, staccato, trills, tremolo picking, palm mute and let ring rows, whammy bar, beat-level legato), line breaking and justification, light/dark theme. No rhythm stems/beams under the tab, repeats, pages or standard notation yet |
 
 ## Future Milestones
 

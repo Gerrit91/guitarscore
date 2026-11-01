@@ -77,6 +77,18 @@ impl Default for Voice {
     }
 }
 
+/// A legato run written over a whole beat (GP6/GP7 `<Legato>`).
+///
+/// The origin and destination flags overlap in the middle of a run: every beat between
+/// the first and the last one carries both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LegatoEffect {
+    /// This beat starts a legato group.
+    pub origin: bool,
+    /// This beat continues a legato group.
+    pub destination: bool,
+}
+
 /// This class contains all beat effects
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BeatEffects {
@@ -89,6 +101,11 @@ pub struct BeatEffects {
     pub mix_table_change: Option<MixTableChange>,
     pub slap_effect: SlapEffect,
     pub vibrato: bool,
+    /// Wide (as opposed to slight) beat vibrato. GuitarScore addition: GPIF's
+    /// `VibratoWTremBar` names the strength; the legacy flag alone lost it.
+    pub wide_vibrato: bool,
+    /// GuitarScore addition: GPIF's beat-level legato (not a slide or a hammer).
+    pub legato: LegatoEffect,
 }
 
 impl Default for BeatEffects {
@@ -103,6 +120,8 @@ impl Default for BeatEffects {
             mix_table_change: None,
             slap_effect: SlapEffect::None,
             vibrato: false,
+            wide_vibrato: false,
+            legato: LegatoEffect::default(),
         }
     }
 }
@@ -127,8 +146,10 @@ impl BeatEffects {
             && self.pick_stroke == d.pick_stroke
             && self.fade_in == d.fade_in
             && self.vibrato == d.vibrato
+            && self.wide_vibrato == d.wide_vibrato
             && self.tremolo_bar == d.tremolo_bar
             && self.slap_effect == d.slap_effect
+            && self.legato == d.legato
     }
 }
 

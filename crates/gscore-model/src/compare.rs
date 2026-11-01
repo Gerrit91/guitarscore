@@ -9,7 +9,9 @@
 use std::fmt;
 
 use crate::duration::Duration;
-use crate::effects::{Bend, Harmonic, SlapKind, SlideKind, StrokeDirection};
+use crate::effects::{
+    AccentKind, Bend, Harmonic, Legato, SlapKind, SlideKind, StrokeDirection, Vibrato, Whammy,
+};
 use crate::error::ModelError;
 use crate::position::VoiceIndex;
 use crate::song::Song;
@@ -136,7 +138,9 @@ struct BeatContent {
     brush_stroke: Option<StrokeDirection>,
     slap: Option<SlapKind>,
     fade_in: bool,
-    whammy_bar: bool,
+    whammy_bar: Option<Whammy>,
+    legato: Option<Legato>,
+    vibrato: Option<Vibrato>,
     notes: Vec<NoteContent>,
 }
 
@@ -151,13 +155,13 @@ struct NoteContent {
     slides: Vec<SlideKind>,
     harmonic: Option<Harmonic>,
     ghost: bool,
-    accent: bool,
+    accent: Option<AccentKind>,
     palm_mute: bool,
     let_ring: bool,
     staccato: bool,
     trill: bool,
     tremolo_picking: bool,
-    vibrato: bool,
+    vibrato: Option<Vibrato>,
 }
 
 impl NoteContent {
@@ -171,13 +175,13 @@ impl NoteContent {
             slides: note.slides().collect(),
             harmonic: note.harmonic(),
             ghost: note.is_ghost(),
-            accent: note.is_accented(),
+            accent: note.accent(),
             palm_mute: note.is_palm_muted(),
             let_ring: note.is_let_ring(),
             staccato: note.is_staccato(),
             trill: note.has_trill(),
             tremolo_picking: note.has_tremolo_picking(),
-            vibrato: note.has_vibrato(),
+            vibrato: note.vibrato(),
         }
     }
 }
@@ -200,7 +204,9 @@ fn beats(voice: Option<VoiceView<'_>>) -> Vec<BeatContent> {
                 brush_stroke: beat.brush_stroke(),
                 slap: beat.slap(),
                 fade_in: beat.has_fade_in(),
-                whammy_bar: beat.has_whammy_bar(),
+                whammy_bar: beat.whammy_bar(),
+                legato: beat.legato(),
+                vibrato: beat.vibrato(),
                 notes,
             }
         })
@@ -216,6 +222,8 @@ fn compare_beat(diff: &mut Diffs, at: &str, a: &BeatContent, b: &BeatContent) {
     diff.check(at, "slap", a.slap, b.slap);
     diff.check(at, "fade in", a.fade_in, b.fade_in);
     diff.check(at, "whammy bar", a.whammy_bar, b.whammy_bar);
+    diff.check(at, "legato", a.legato, b.legato);
+    diff.check(at, "vibrato", a.vibrato, b.vibrato);
     diff.check(at, "notes", a.notes.len(), b.notes.len());
     for (na, nb) in a.notes.iter().zip(&b.notes) {
         let at = match na.string {

@@ -38,6 +38,8 @@ pub struct Spacing {
     pub min_space: f32,
     /// Smallest gap between the fret numbers of neighbouring beats.
     pub min_gap: f32,
+    /// Smallest space between a fret number and the barline on either side of a measure.
+    pub barline_padding: f32,
 }
 
 /// A4 width in millimetres.
@@ -67,6 +69,7 @@ impl Default for Spacing {
             doubling_ratio: 1.3,
             min_space: 1.8,
             min_gap: 0.5,
+            barline_padding: 1.2,
         }
     }
 }

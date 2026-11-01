@@ -502,3 +502,45 @@ measure-layout cache, PNG output (a rasterizer such as resvg needs owner approva
 
 Open (rest of M6, docs/gaps.md #10): persist view state and window, recent files, zoom
 shortcuts (with the keymap, M7), macOS file dialog on the main thread.
+
+## 2026-11-01 — layout: ornaments on the tab staff
+
+- `gscore-layout` now draws the effects the model exposes, in tab conventions: tie
+  continuation number is hidden and a tie curve joins it to the origin (the old `(5)` was a
+  ghost-note mix-up), ghost notes are parenthesized, dead notes stay `x`. Hammer-ons and
+  pull-offs get a slur below the numbers and an `H`/`P` letter (from the two frets); shift
+  slides a line between them; legato slides a slur with `sl.`; slides in/out get a slash
+  before/after the fret; bends a curve with an arrow and `1/2`/`full`/`1 1/2`; slight and
+  wide vibrato are vector waves above the staff (no music-font glyph needed, so the golden
+  SVG shows them anywhere); harmonics print `<7>` and `7 <19>`; accents use `>` and `v`
+  (heavy), staccato a dot; trill/tremolo glyphs; bold `P.M.`/`let ring` rows 2.2 staff
+  spaces below the staff with dashed runs and a closing tick; the whammy line ends with an
+  arrow and its whole-step offset; beat-level legato is one slur over the run.
+- Owner review: measures now reserve `Spacing::barline_padding` (1.2 staff spaces by
+  default) at both ends, so a fret number keeps its distance from the previous and next
+  barline. The fret's mask counts as part of its width, so the padding is the visible gap.
+  Regression test `notes_keep_their_distance_from_barlines`.
+- Second owner review: bend and whammy arrowheads are vector V strokes now (up for a bend,
+  down for a dive), so they no longer depend on a music-font glyph; the shift-slide line
+  moved 0.3 staff spaces above the string line so the staff line cannot hide it; vibrato is
+  collected per column, so note vibrato and the beat's `VibratoWTremBar` both appear (all
+  four wiggles in `ornaments` measure 6 now show); pinch harmonics print `PH` above the
+  staff. Beat vibrato is imported and written back (`BeatEffects::vibrato`/`wide_vibrato`,
+  docs/guitarpro.md 25).
+- New `DrawOp::Curve` (cubic Bézier) for slurs and bends, drawn by the SVG writer and the
+  egui canvas. The model gained `NoteView::accent()`, `vibrato()`, `BeatView::whammy_bar()`
+  and `legato()`, plus `AccentKind`, `Vibrato`, `Whammy` and `Legato`.
+- Data that used to be lost on import/save is kept: GPIF wide vibrato (`wide_vibrato` in
+  `NoteEffect`) and beat-level `<Legato>` (`BeatEffects::legato`). The save comparison now
+  checks accent kind, vibrato kind, legato and the whammy shape. docs/guitarpro.md 23-24;
+  tests in `effect_tests`.
+- Goldens: `ornaments.svg` regenerated (the only layout golden that changes; the other
+  files have no effects). Rendered with `gscore-cli render` + `rsvg-convert` (Bravura
+  installed through a temporary fontconfig dir) and compared with Guitar Pro's reference:
+  slurs, slides, bend, vibrato, harmonics, let ring, whammy and palm mute all line up.
+- Tests: layout now counts only notes shown in tab (ties excluded) and asserts the
+  ornaments file really contains its texts, `H`/`P`/`PH`, the dot glyph and curves. Tests:
+  221 (+5). Workspace fmt/clippy/tests/xtask layers green.
+- Open (docs/gaps.md #9): cross-measure/system ornaments, rhythm under the tab, grace
+  notes/fingerings, beat-level pick/brush/slap/fade-in marks, and per-chord ornament
+  layout. Note positioning is the owner's next topic.

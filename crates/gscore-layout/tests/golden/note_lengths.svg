@@ -18,78 +18,78 @@
 <text x="11.22" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">1</text>
 <text x="12.02" y="36.69" font-family="Bravura" font-size="6" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
 <text x="12.02" y="39.69" font-family="Bravura" font-size="6" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
-<rect x="16.36" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="16.94" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<line x1="25.08" y1="34.44" x2="25.08" y2="41.94" stroke="#303030" stroke-width="0.16"/>
-<text x="25.16" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">2</text>
-<rect x="26.08" y="39.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="26.66" y="40.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="32.4" y="38.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="32.98" y="39.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="37.26" y="38.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="37.84" y="39.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<line x1="42.62" y1="34.44" x2="42.62" y2="41.94" stroke="#303030" stroke-width="0.16"/>
-<text x="42.7" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">3</text>
-<rect x="43.62" y="36.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="44.2" y="37.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="47.36" y="36.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="47.94" y="37.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="51.1" y="35.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="51.68" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="53.98" y="35.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="54.56" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="56.85" y="35.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="57.43" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="59.73" y="35.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="60.31" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="62.61" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="63.19" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="64.82" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="65.4" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="67.03" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="67.61" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="69.25" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="69.82" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="71.46" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="72.04" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="73.67" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="74.25" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="75.88" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="76.46" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="78.1" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="78.67" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="80.31" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="80.89" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="82.25" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="82.83" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="84.2" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="84.78" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="86.14" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="86.72" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="88.09" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="88.67" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="90.03" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="90.61" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="91.98" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="92.55" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="93.92" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="94.5" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="95.86" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="96.44" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="97.81" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="98.39" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="99.75" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="100.33" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="101.7" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="102.28" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="103.64" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="104.22" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="105.59" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="106.17" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="107.53" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="108.11" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="109.48" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="110.06" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="16.64" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="17.22" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<line x1="25.28" y1="34.44" x2="25.28" y2="41.94" stroke="#303030" stroke-width="0.16"/>
+<text x="25.36" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">2</text>
+<rect x="26.56" y="39.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="27.14" y="40.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="32.83" y="38.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="33.4" y="39.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="37.64" y="38.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="38.22" y="39.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<line x1="42.96" y1="34.44" x2="42.96" y2="41.94" stroke="#303030" stroke-width="0.16"/>
+<text x="43.04" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">3</text>
+<rect x="44.24" y="36.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="44.82" y="37.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="47.94" y="36.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="48.52" y="37.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="51.65" y="35.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="52.23" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="54.5" y="35.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="55.08" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="57.35" y="35.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="57.93" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="60.2" y="35.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="60.78" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="63.05" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="63.63" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="65.24" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="65.82" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="67.44" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="68.01" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="69.63" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="70.21" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="71.82" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="72.4" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="74.01" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="74.59" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="76.21" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="76.79" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="78.4" y="33.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="78.98" y="34.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="80.59" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="81.17" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="82.52" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="83.1" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="84.45" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="85.02" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="86.37" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="86.95" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="88.3" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="88.88" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="90.23" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="90.8" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="92.15" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="92.73" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="94.08" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="94.66" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="96.01" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="96.59" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="97.93" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="98.51" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="99.86" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="100.44" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="101.79" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="102.37" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="103.71" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="104.29" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="105.64" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="106.22" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="107.57" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="108.15" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="109.49" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="110.07" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
 <line x1="111.92" y1="34.44" x2="111.92" y2="41.94" stroke="#303030" stroke-width="0.16"/>
 <line x1="8" y1="51.94" x2="112" y2="51.94" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="53.44" x2="112" y2="53.44" stroke="#707070" stroke-width="0.13"/>
@@ -100,44 +100,44 @@
 <line x1="8.08" y1="51.94" x2="8.08" y2="59.44" stroke="#303030" stroke-width="0.16"/>
 <text x="8.6" y="55.72" font-family="Bravura" font-size="3.97" fill="#101010" data-glyph="6stringTabClef">&#xE06D;</text>
 <text x="11.22" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">4</text>
-<text x="12.16" y="54.94" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restWhole">&#xE4E3;</text>
-<line x1="20.67" y1="51.94" x2="20.67" y2="59.44" stroke="#303030" stroke-width="0.16"/>
-<text x="20.75" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">5</text>
-<text x="21.69" y="56.44" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restHalf">&#xE4E4;</text>
-<text x="27.89" y="55.69" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restQuarter">&#xE4E5;</text>
-<text x="32.64" y="55.69" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restQuarter">&#xE4E5;</text>
-<line x1="37.85" y1="51.94" x2="37.85" y2="59.44" stroke="#303030" stroke-width="0.16"/>
-<text x="37.93" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">6</text>
-<text x="38.94" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest8th">&#xE4E6;</text>
-<text x="42.59" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest8th">&#xE4E6;</text>
-<text x="46.1" y="55.05" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest16th">&#xE4E7;</text>
-<text x="48.91" y="55.05" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest16th">&#xE4E7;</text>
-<text x="51.73" y="55.05" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest16th">&#xE4E7;</text>
-<text x="54.54" y="55.05" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest16th">&#xE4E7;</text>
-<text x="57.26" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
-<text x="59.43" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
-<text x="61.59" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
-<text x="63.75" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
-<text x="65.91" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
-<text x="68.08" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
-<text x="70.24" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
-<text x="72.4" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
-<text x="74.47" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
-<text x="76.79" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
-<text x="79.11" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
-<text x="81.43" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
-<text x="83.75" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="12.43" y="54.94" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restWhole">&#xE4E3;</text>
+<line x1="20.86" y1="51.94" x2="20.86" y2="59.44" stroke="#303030" stroke-width="0.16"/>
+<text x="20.94" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">5</text>
+<text x="22.14" y="56.44" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restHalf">&#xE4E4;</text>
+<text x="28.27" y="55.69" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restQuarter">&#xE4E5;</text>
+<text x="32.98" y="55.69" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restQuarter">&#xE4E5;</text>
+<line x1="38.14" y1="51.94" x2="38.14" y2="59.44" stroke="#303030" stroke-width="0.16"/>
+<text x="38.22" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">6</text>
+<text x="39.43" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest8th">&#xE4E6;</text>
+<text x="43.04" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest8th">&#xE4E6;</text>
+<text x="46.52" y="55.05" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest16th">&#xE4E7;</text>
+<text x="49.3" y="55.05" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest16th">&#xE4E7;</text>
+<text x="52.08" y="55.05" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest16th">&#xE4E7;</text>
+<text x="54.86" y="55.05" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest16th">&#xE4E7;</text>
+<text x="57.56" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
+<text x="59.7" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
+<text x="61.84" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
+<text x="63.98" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
+<text x="66.12" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
+<text x="68.26" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
+<text x="70.4" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
+<text x="72.54" y="55.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest32nd">&#xE4E8;</text>
+<text x="74.59" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="76.89" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="79.18" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="81.48" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="83.77" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
 <text x="86.07" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
-<text x="88.38" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
-<text x="90.7" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
-<text x="93.02" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
-<text x="95.34" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
-<text x="97.66" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
-<text x="99.98" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
-<text x="102.3" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
-<text x="104.62" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
-<text x="106.93" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
-<text x="109.25" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="88.36" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="90.65" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="92.95" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="95.24" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="97.54" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="99.83" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="102.13" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="104.42" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="106.72" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
+<text x="109.01" y="55.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest64th">&#xE4E9;</text>
 <line x1="111.92" y1="51.94" x2="111.92" y2="59.44" stroke="#303030" stroke-width="0.16"/>
 <line x1="8" y1="69.44" x2="112" y2="69.44" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="70.94" x2="112" y2="70.94" stroke="#707070" stroke-width="0.13"/>
@@ -148,58 +148,58 @@
 <line x1="8.08" y1="69.44" x2="8.08" y2="76.94" stroke="#303030" stroke-width="0.16"/>
 <text x="8.6" y="73.22" font-family="Bravura" font-size="3.97" fill="#101010" data-glyph="6stringTabClef">&#xE06D;</text>
 <text x="11.22" y="68.64" font-family="Noto Sans" font-size="1.1" fill="#404040">7</text>
-<rect x="12.14" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="12.72" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="16.8" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="17.38" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="21.46" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="22.04" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="26.12" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="26.7" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="29.96" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="30.54" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="33.8" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="34.38" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="37.64" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="38.22" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="41.49" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="42.06" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="12.42" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="13" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="17.04" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="17.62" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="21.66" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="22.24" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="26.28" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="26.86" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="30.09" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="30.67" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="33.89" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="34.47" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="37.7" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="38.28" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="41.51" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="42.09" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
 <line x1="45.82" y1="69.44" x2="45.82" y2="76.94" stroke="#303030" stroke-width="0.16"/>
 <text x="45.9" y="68.64" font-family="Noto Sans" font-size="1.1" fill="#404040">8</text>
-<rect x="46.83" y="73.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="47.4" y="74.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="50.41" y="73.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="50.99" y="74.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="53.99" y="73.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="54.57" y="74.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="57.58" y="73.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="58.16" y="74.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="61.16" y="73.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="61.74" y="74.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="64.75" y="73.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="65.33" y="74.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="68.33" y="71.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="68.91" y="72.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="71.71" y="71.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="72.29" y="72.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="75.09" y="71.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="75.67" y="72.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="78.48" y="71.7" width="1.16" height="1.47" fill="#ffffff"/>
+<rect x="47.1" y="73.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="47.67" y="74.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="50.65" y="73.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="51.23" y="74.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="54.2" y="73.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="54.78" y="74.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="57.75" y="73.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="58.33" y="74.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="61.31" y="73.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="61.89" y="74.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="64.86" y="73.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="65.44" y="74.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="68.41" y="71.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="68.99" y="72.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="71.77" y="71.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="72.35" y="72.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="75.12" y="71.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="75.7" y="72.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="78.47" y="71.7" width="1.16" height="1.47" fill="#ffffff"/>
 <text x="79.05" y="72.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="81.86" y="71.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="82.44" y="72.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="85.24" y="71.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="85.82" y="72.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="88.62" y="71.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="89.2" y="72.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<line x1="92.5" y1="69.44" x2="92.5" y2="76.94" stroke="#303030" stroke-width="0.16"/>
-<text x="92.58" y="68.64" font-family="Noto Sans" font-size="1.1" fill="#404040">9</text>
-<rect x="93.5" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="94.08" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="99.83" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="100.41" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="106.55" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="107.13" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="81.82" y="71.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="82.4" y="72.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="85.17" y="71.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="85.75" y="72.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="88.53" y="71.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="89.1" y="72.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<line x1="92.38" y1="69.44" x2="92.38" y2="76.94" stroke="#303030" stroke-width="0.16"/>
+<text x="92.46" y="68.64" font-family="Noto Sans" font-size="1.1" fill="#404040">9</text>
+<rect x="93.66" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="94.24" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="99.94" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="100.51" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="106.59" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="107.17" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
 <line x1="111.02" y1="69.44" x2="111.02" y2="76.94" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.75" y1="69.44" x2="111.75" y2="76.94" stroke="#303030" stroke-width="0.5"/>
 </svg>

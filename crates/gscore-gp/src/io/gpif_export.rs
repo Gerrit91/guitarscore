@@ -230,7 +230,11 @@ fn build_note_xml(note: &Note, note_id: i32) -> String {
         s.push_str("<Tie destination=\"true\" />");
     }
     if note.effect.vibrato {
-        s.push_str("<Vibrato>Slight</Vibrato>");
+        if note.effect.wide_vibrato {
+            s.push_str("<Vibrato>Wide</Vibrato>");
+        } else {
+            s.push_str("<Vibrato>Slight</Vibrato>");
+        }
     }
     if note.effect.let_ring {
         s.push_str("<LetRing />");
@@ -345,6 +349,15 @@ fn build_beat_xml(
         bxml.push_str("<Fadding>FadeIn</Fadding>");
     }
 
+    // Beat-level legato (GP6/GP7 `<Legato>`).
+    let legato = beat.effect.legato;
+    if legato.origin || legato.destination {
+        bxml.push_str(&format!(
+            "<Legato origin=\"{}\" destination=\"{}\" />",
+            legato.origin, legato.destination
+        ));
+    }
+
     // Tremolo bar. GuitarScore fix: written as GP7's <Whammy> with origin, middle and
     // destination (the importer reads it back); the legacy <Tremolo> only held the
     // destination, so a dip (down and back up) was lost.
@@ -369,12 +382,13 @@ fn build_beat_xml(
         ));
     }
 
-    // Beat properties (Brush, Rasgueado, PickStroke)
+    // Beat properties (Brush, Rasgueado, PickStroke, VibratoWTremBar)
     let has_brush = !matches!(beat.effect.stroke.direction, BeatStrokeDirection::None);
     let has_pick = !matches!(beat.effect.pick_stroke, BeatStrokeDirection::None);
     let has_rasg = beat.effect.has_rasgueado;
+    let has_vibrato = beat.effect.vibrato;
 
-    if has_brush || has_pick || has_rasg {
+    if has_brush || has_pick || has_rasg || has_vibrato {
         bxml.push_str("<Properties>");
         if has_brush {
             let dir = if matches!(beat.effect.stroke.direction, BeatStrokeDirection::Down) {
@@ -398,6 +412,16 @@ fn build_beat_xml(
         }
         if has_rasg {
             bxml.push_str("<Property name=\"Rasgueado\"><Enable /></Property>");
+        }
+        if has_vibrato {
+            let strength = if beat.effect.wide_vibrato {
+                "Wide"
+            } else {
+                "Slight"
+            };
+            bxml.push_str(&format!(
+                "<Property name=\"VibratoWTremBar\"><Strength>{strength}</Strength></Property>"
+            ));
         }
         bxml.push_str("</Properties>");
     }
