@@ -19,12 +19,23 @@ impl Channel {
     }
 }
 
+/// A pitch bend with no offset: the middle of the 14-bit range.
+pub(crate) const PITCH_BEND_CENTER: u16 = 8192;
+
 /// MIDI controller numbers used by the sequencer.
 pub mod controller {
     /// Channel volume.
     pub const VOLUME: u8 = 7;
+    /// Data entry, most significant byte (for RPN values).
+    pub const DATA_ENTRY_MSB: u8 = 6;
     /// Pan.
     pub const PAN: u8 = 10;
+    /// Data entry, least significant byte (for RPN values).
+    pub const DATA_ENTRY_LSB: u8 = 38;
+    /// Registered parameter number, least significant byte.
+    pub const RPN_LSB: u8 = 100;
+    /// Registered parameter number, most significant byte.
+    pub const RPN_MSB: u8 = 101;
     /// All sound off: silences the channel at once.
     pub const ALL_SOUND_OFF: u8 = 120;
     /// Reset all controllers.
@@ -59,7 +70,7 @@ pub enum MidiEvent {
         /// The program.
         program: u8,
     },
-    /// Set a controller (volume, pan, ...).
+    /// Set a controller (volume, pan, RPN, ...).
     Control {
         /// The channel.
         channel: Channel,
@@ -67,6 +78,14 @@ pub enum MidiEvent {
         controller: u8,
         /// The value.
         value: u8,
+    },
+    /// Bend the pitch of every note on the channel. 8192 is no bend; the range is set with
+    /// RPN 0,0 (pitch bend sensitivity) before a borrowed channel plays.
+    PitchBend {
+        /// The channel.
+        channel: Channel,
+        /// The 14-bit bend value (0-16383, [`PITCH_BEND_CENTER`] at the middle).
+        value: u16,
     },
 }
 
@@ -89,6 +108,14 @@ impl MidiEvent {
                 controller,
                 value,
             } => vec![0xB0 | channel.get(), data(controller), data(value)],
+            MidiEvent::PitchBend { channel, value } => {
+                let value = value.min(0x3FFF);
+                vec![
+                    0xE0 | channel.get(),
+                    u8::try_from(value & 0x7F).unwrap_or(0),
+                    u8::try_from((value >> 7) & 0x7F).unwrap_or(0),
+                ]
+            }
         }
     }
 
@@ -97,18 +124,41 @@ impl MidiEvent {
         matches!(self, MidiEvent::NoteOn { .. } | MidiEvent::NoteOff { .. })
     }
 
-    /// The messages that silence `channels` at once (for stop, pause and seek).
+    /// The channel this message goes to.
+    pub fn channel(&self) -> Channel {
+        match *self {
+            MidiEvent::NoteOn { channel, .. }
+            | MidiEvent::NoteOff { channel, .. }
+            | MidiEvent::ProgramChange { channel, .. }
+            | MidiEvent::Control { channel, .. }
+            | MidiEvent::PitchBend { channel, .. } => channel,
+        }
+    }
+
+    /// The messages that silence `channels` at once (for stop, pause and seek) and leave
+    /// them ready for a fresh start: no notes, no stale pitch bend or controller values.
     pub fn silence(channels: impl IntoIterator<Item = Channel>) -> Vec<MidiEvent> {
         channels
             .into_iter()
             .flat_map(|channel| {
-                [controller::ALL_NOTES_OFF, controller::ALL_SOUND_OFF].map(|controller| {
+                [
                     MidiEvent::Control {
                         channel,
-                        controller,
+                        controller: controller::ALL_NOTES_OFF,
                         value: 0,
-                    }
-                })
+                    },
+                    MidiEvent::Control {
+                        channel,
+                        controller: controller::ALL_SOUND_OFF,
+                        value: 0,
+                    },
+                    // Do not reset controllers: a pause keeps program, volume and pan for
+                    // the resume. Only a stale bend has to go.
+                    MidiEvent::PitchBend {
+                        channel,
+                        value: PITCH_BEND_CENTER,
+                    },
+                ]
             })
             .collect()
     }
@@ -137,6 +187,36 @@ mod tests {
         };
         assert_eq!(program.bytes(), [0xC9, 25]);
         assert_eq!(Channel::new(16), None);
-        assert_eq!(MidiEvent::silence([channel]).len(), 2);
+        let silence = MidiEvent::silence([channel]);
+        assert_eq!(silence.len(), 3);
+        assert_eq!(
+            silence.last(),
+            Some(&MidiEvent::PitchBend {
+                channel,
+                value: PITCH_BEND_CENTER
+            }),
+            "silence also resets a stale bend"
+        );
+    }
+
+    #[test]
+    fn pitch_bend_is_a_fourteen_bit_little_endian_value() {
+        let channel = Channel::new(2).unwrap();
+        let center = MidiEvent::PitchBend {
+            channel,
+            value: PITCH_BEND_CENTER,
+        };
+        assert_eq!(center.bytes(), [0xE2, 0x00, 0x40]);
+        assert_eq!(center.channel(), channel);
+        let maximum = MidiEvent::PitchBend {
+            channel,
+            value: 0x3FFF,
+        };
+        assert_eq!(maximum.bytes(), [0xE2, 0x7F, 0x7F]);
+        let clamped = MidiEvent::PitchBend {
+            channel,
+            value: u16::MAX,
+        };
+        assert_eq!(clamped.bytes(), [0xE2, 0x7F, 0x7F]);
     }
 }

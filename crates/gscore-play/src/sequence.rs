@@ -1,16 +1,24 @@
 //! Turns a song into a [`Sequence`]: timed MIDI events per track, a tempo map, and where
 //! each played measure lies in time.
+//!
+//! Notes play on their track's channel. A note with a bend or slide borrows a free channel
+//! for its own pitch bend (AGENTS.md section 5, decision 10): the borrowed channel gets the
+//! track's program, volume and pan plus a 6-semitone bend range, and is released after the
+//! note. When every other channel is in use the note plays without its pitch movement and
+//! [`Sequence::degraded_pitch_bends`] counts it.
 
 use std::collections::HashMap;
 
 use gscore_model::{
-    BeatKind, Duration, MeasureIndex, ModelError, NoteKind, Song, TimeSignature, TrackIndex,
-    TrackSound,
+    BeatKind, BendKind, Duration, MeasureIndex, ModelError, NoteKind, SlideKind, Song,
+    TimeSignature, TrackIndex, TrackSound,
 };
 
 use crate::channels::ChannelAllocator;
-use crate::event::{Channel, MidiEvent, controller};
+use crate::event::{Channel, MidiEvent, PITCH_BEND_CENTER, controller};
 use crate::order::playback_order;
+use crate::pitch;
+use crate::sounding::{self, Sounding};
 use crate::tempo::{PPQ, TempoMap};
 
 /// Ticks in a whole note.
@@ -22,7 +30,6 @@ const DEAD_NOTE_VELOCITY_PERCENT: u16 = 60;
 /// A tied note continues the previous one if that ends within this many ticks of its start
 /// (rounding of tuplets).
 const TIE_TOLERANCE: u64 = 2;
-
 /// A track as the sequence plays it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SequenceTrack {
@@ -65,8 +72,8 @@ pub struct MeasureSpan {
 pub struct Sequence {
     /// The tracks that play.
     pub tracks: Vec<SequenceTrack>,
-    /// All events, sorted by tick; at the same tick, setup comes first, then note-offs,
-    /// then note-ons.
+    /// All events, sorted by tick. At one tick: note-offs, setup, pitch resets, pitch
+    /// movement, then note-ons.
     pub events: Vec<TimedEvent>,
     /// Tempo changes.
     pub tempo: TempoMap,
@@ -77,17 +84,9 @@ pub struct Sequence {
     /// Notes left out because their pitch could not be worked out (invalid string, fret or
     /// a pitch above MIDI's range). The model lists such notes as issues.
     pub skipped_notes: usize,
-}
-
-/// A note while the sequence is built.
-#[derive(Debug, Clone, Copy)]
-struct Sounding {
-    track: usize,
-    channel: Channel,
-    key: u8,
-    velocity: u8,
-    start: u64,
-    end: u64,
+    /// Notes whose bend or slide was dropped because every other MIDI channel was in use.
+    /// They still play, on their track's channel, without the pitch movement.
+    pub degraded_pitch_bends: usize,
 }
 
 impl Sequence {
@@ -209,14 +208,34 @@ impl Sequence {
                             } else {
                                 (end, note.velocity())
                             };
+                            // Drums have no pitch to bend or slide.
+                            let bend = if sound.percussion {
+                                None
+                            } else {
+                                note.bend()
+                                    .filter(|bend| bend.quarter_tones != 0)
+                                    .map(|bend| {
+                                        (bend.quarter_tones, bend.kind == BendKind::Release)
+                                    })
+                            };
+                            let slides: Vec<SlideKind> = if sound.percussion {
+                                Vec::new()
+                            } else {
+                                note.slides().collect()
+                            };
                             on_string.insert(string, notes.len());
                             notes.push(Sounding {
                                 track: number,
                                 channel,
+                                play_channel: channel,
                                 key: pitch.get(),
                                 velocity,
                                 start,
                                 end,
+                                string,
+                                slide: sounding::choose_slide(&slides),
+                                bend,
+                                shape: None,
                             });
                         }
                     }
@@ -224,27 +243,68 @@ impl Sequence {
             }
         }
 
-        for note in notes {
+        let free_channels = channels.free_channels();
+        sounding::apply_slide_targets(&mut notes);
+        sounding::apply_bends(&mut notes);
+        let degraded_pitch_bends = sounding::assign_pitch_channels(&mut notes, free_channels);
+
+        for note in &notes {
+            let borrowed = note.play_channel != note.channel;
+            if borrowed && let Some(track) = seq_tracks.get(note.track) {
+                for event in setup(note.play_channel, track.sound) {
+                    events.push(TimedEvent {
+                        tick: note.start,
+                        track: note.track,
+                        event,
+                    });
+                }
+                for event in pitch::bend_range_setup(note.play_channel) {
+                    events.push(TimedEvent {
+                        tick: note.start,
+                        track: note.track,
+                        event,
+                    });
+                }
+            }
+            if borrowed && let Some(shape) = note.shape {
+                for (tick, event) in shape.events(note.play_channel, note.start) {
+                    events.push(TimedEvent {
+                        tick,
+                        track: note.track,
+                        event,
+                    });
+                }
+            }
             events.push(TimedEvent {
                 tick: note.start,
                 track: note.track,
                 event: MidiEvent::NoteOn {
-                    channel: note.channel,
+                    channel: note.play_channel,
                     key: note.key,
                     velocity: note.velocity,
                 },
             });
+            let end = note.end.max(note.start.saturating_add(1));
             events.push(TimedEvent {
-                tick: note.end.max(note.start.saturating_add(1)),
+                tick: end,
                 track: note.track,
                 event: MidiEvent::NoteOff {
-                    channel: note.channel,
+                    channel: note.play_channel,
                     key: note.key,
                 },
             });
+            if borrowed && note.shape.is_some() {
+                // Reset after the note, so a reused channel starts unbent.
+                events.push(TimedEvent {
+                    tick: end,
+                    track: note.track,
+                    event: MidiEvent::PitchBend {
+                        channel: note.play_channel,
+                        value: PITCH_BEND_CENTER,
+                    },
+                });
+            }
         }
-        // Stable sort: at one tick, setup first, then note-offs (so a repeated note is
-        // released before it starts again), then note-ons.
         events.sort_by_key(|e| (e.tick, rank(&e.event)));
 
         tempo_changes.sort_by_key(|&(tick, _)| tick);
@@ -260,12 +320,14 @@ impl Sequence {
             measures,
             end: tick,
             skipped_notes,
+            degraded_pitch_bends,
         })
     }
 
-    /// The channels this sequence uses.
+    /// The channels this sequence uses, including borrowed ones.
     pub fn channels(&self) -> Vec<Channel> {
         let mut channels: Vec<Channel> = self.tracks.iter().map(|t| t.channel).collect();
+        channels.extend(self.events.iter().map(|event| event.event.channel()));
         channels.sort_unstable();
         channels.dedup();
         channels
@@ -278,7 +340,7 @@ impl Sequence {
     }
 }
 
-/// Program, volume and pan for a track's channel.
+/// Program, volume and pan for a channel.
 fn setup(channel: Channel, sound: TrackSound) -> Vec<MidiEvent> {
     let mut events = Vec::with_capacity(3);
     if !sound.percussion {
@@ -300,11 +362,17 @@ fn setup(channel: Channel, sound: TrackSound) -> Vec<MidiEvent> {
     events
 }
 
+/// The order of messages at one tick.
 fn rank(event: &MidiEvent) -> u8 {
     match event {
-        MidiEvent::ProgramChange { .. } | MidiEvent::Control { .. } => 0,
-        MidiEvent::NoteOff { .. } => 1,
-        MidiEvent::NoteOn { .. } => 2,
+        // A reused borrowed channel: release the old note before its channel is set up.
+        MidiEvent::NoteOff { .. } => 0,
+        MidiEvent::ProgramChange { .. } | MidiEvent::Control { .. } => 1,
+        // Reset a bend after the note that used it.
+        MidiEvent::PitchBend { value, .. } if *value == PITCH_BEND_CENTER => 2,
+        // The initial value or a ramp step, before the note starts.
+        MidiEvent::PitchBend { .. } => 3,
+        MidiEvent::NoteOn { .. } => 4,
     }
 }
 

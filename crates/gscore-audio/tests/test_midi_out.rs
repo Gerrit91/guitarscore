@@ -11,18 +11,28 @@
 // Integration tests are separate crates and see all of the library's dependencies.
 #![allow(unused_crate_dependencies)]
 
-use std::sync::Arc;
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use gscore_audio::{MidiOutPlayer, midi_output_ports};
-use gscore_model::testing::{self, GUITAR_6};
+use gscore_model::testing::{self, GUITAR_6, TestNote};
 use gscore_model::{
     BeatIndex, BeatPosition, Fret, MeasureIndex, StringNumber, TrackIndex, VoiceIndex,
 };
 use gscore_play::{PlayState, Player, Sequence};
 
 const THROUGH: &str = "Midi Through";
+
+/// The port tests share one ALSA port; run them one at a time so they do not hear each
+/// other's notes. (A poisoned lock only means an earlier test failed; keep going.)
+static PORT_TEST: Mutex<()> = Mutex::new(());
+
+fn lock_port() -> std::sync::MutexGuard<'static, ()> {
+    PORT_TEST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 /// Four quarter notes: open strings 6, 5, 4, 3 (E2 A2 D3 G3 = 40 45 50 55).
 fn four_notes() -> Arc<Sequence> {
@@ -47,6 +57,7 @@ fn four_notes() -> Arc<Sequence> {
 
 #[test]
 fn a_sequence_arrives_in_order_at_a_midi_port() {
+    let _guard = lock_port();
     let Ok(ports) = midi_output_ports() else {
         eprintln!("skipped: no MIDI system");
         return;
@@ -107,6 +118,58 @@ fn a_sequence_arrives_in_order_at_a_midi_port() {
         std::thread::sleep(Duration::from_millis(10));
     }
     assert_eq!(player.state(), PlayState::Stopped);
+    assert_eq!(player.error(), None);
+}
+
+#[test]
+fn a_pitch_bend_reaches_the_port() {
+    let _guard = lock_port();
+    let Ok(ports) = midi_output_ports() else {
+        eprintln!("skipped: no MIDI system");
+        return;
+    };
+    if !ports.iter().any(|p| p.contains(THROUGH)) {
+        eprintln!("skipped: no \"{THROUGH}\" port in {ports:?}");
+        return;
+    }
+
+    let input = midir::MidiInput::new("GuitarScore bend test").unwrap();
+    let port = input
+        .ports()
+        .into_iter()
+        .find(|p| input.port_name(p).is_ok_and(|n| n.contains(THROUGH)))
+        .unwrap();
+    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    let _listening = input
+        .connect(
+            &port,
+            "listen",
+            move |_, message, _| {
+                let _ = tx.send(message.to_vec());
+            },
+            (),
+        )
+        .unwrap();
+
+    let song = testing::song_with_notes(&[(1, &[TestNote::new(6, 3).with_bend(4)])]).unwrap();
+    let mut player = MidiOutPlayer::connect(Some(THROUGH)).unwrap();
+    player
+        .load(Arc::new(Sequence::new(&song, None).unwrap()))
+        .unwrap();
+    player.set_tempo_scale(4.0).unwrap();
+    player.play().unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut bent = false;
+    while Instant::now() < deadline && !bent {
+        if let Ok(message) = rx.recv_timeout(Duration::from_millis(100)) {
+            bent = message.first().is_some_and(|status| status & 0xF0 == 0xE0);
+        }
+        if player.state() == PlayState::Stopped {
+            break;
+        }
+    }
+    assert!(bent, "a pitch bend reached the port");
     assert_eq!(player.error(), None);
 }
 

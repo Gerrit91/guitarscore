@@ -610,3 +610,30 @@ a playhead on the page (after the layout work is merged), mute/solo.
 
 Open (docs/gaps.md #9): key signatures, second voice, ties across barlines, tuplet groups
 across beats, harmonic diamonds, notation-staff articulations.
+
+## 2026-11-01 — M7: bends and slides on borrowed MIDI channels
+
+- `gscore-play` now plays bends and slides. `MidiEvent::PitchBend` writes a 14-bit bend;
+  a note with a bend or slide borrows a free melodic channel (AGENTS.md section 5, decision
+  10), receives the track's program, volume and pan plus a 6-semitone bend range (RPN 0,0,
+  then RPN null), and is released after a center reset. The rest of the chord keeps its
+  pitch. Guitar Pro's own MIDI export sets the same six-semitone range (its first bend is
+  at tick 5760 at 480 PPQ with a 2621 offset, ours at 11520 at 960 PPQ with 2730).
+- Bends ramp to their highest point (an eighth note at most) and hold; release bends start
+  at the bent pitch and return. Shift/legato slides go to the next note on the same string;
+  in slides use the previous note when it lies in the slide's direction, otherwise a whole
+  step; out slides move a whole step. Notes that cannot get a channel play without the pitch
+  movement: `Sequence::degraded_pitch_bends` counts them and `gscore-cli midi`/`play` print a
+  warning.
+- `ChannelAllocator::free_channels`/`used_channels`; `MidiEvent::silence` also resets a
+  stale bend (but not volume/pan, so pause/resume keeps its mix). The test support gained
+  `TestNote`/`song_with_notes`/`song_with_notes_on_tracks` so bends, slides and chords can be
+  built without a fixture.
+- Tests: pitch-bend bytes and ramp/release shapes, RPN setup, synthetic bends/slides/chords,
+  graceful degradation with all 15 melodic channels in use, SMF output, and the owner's
+  `ornaments` file: 133 bend events on borrowed channels (Guitar Pro's own MIDI starts its
+  bends at tick 5760 at 480 PPQ, ours at 11520 at 960 PPQ, the same bar), and an end-to-end
+  test hears a pitch bend on ALSA's "Midi Through" port. Tests: 282 (+16).
+- Open (docs/gaps.md #11): bend curves are simplified (the model keeps only the highest
+  point), slides clamp to the 6-semitone range, and whammy, vibrato, let ring, palm mute,
+  grace notes and trills are still silent.

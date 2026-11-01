@@ -60,6 +60,10 @@ gscore-cli play testdata/basic/note_lengths.gp     # play to the first synth fou
 gscore-cli midi testdata/basic/note_lengths.gp -o note_lengths.mid   # export a MIDI file
 ```
 
+Playback covers all tracks, tempo changes, repeats, ties, harmonics, and bends and slides.
+Bends and slides use a borrowed MIDI channel per note, so a bend does not move the rest of
+the chord. Remaining technique limits are in `docs/gaps.md` (#11).
+
 On Linux, building needs the ALSA development files (`alsa-lib` on Arch, `libasound2-dev` on
 Debian/Ubuntu).
 
@@ -126,9 +130,9 @@ A Cargo workspace of small crates. A crate may only depend on crates in lower la
 | 1 | `gscore-model` | The document model the app works with: views, exact durations, positions, checks |
 | 2 | `gscore-io` | Safe entry point for files: format detection, size limits, crash containment |
 | 2 | `gscore-layout` | Tablature layout: draw operations, SVG output, light and dark theme |
-| 2 | `gscore-play` | Playback sequencing (planned) |
-| 3 | `gscore-edit`, `gscore-audio` | Editing commands with undo/redo; audio output (planned) |
-| 4 | `gscore-session` | Crash reports today; recovery journal and autosave planned |
+| 2 | `gscore-play` | Playback sequencing: MIDI events, channel borrowing for bends/slides, `.mid` writer |
+| 3 | `gscore-edit`, `gscore-audio` | Editing commands with undo/redo; MIDI output backend (`midir`) |
+| 4 | `gscore-session` | Crash reports and safe saving; recovery journal and autosave planned |
 | 5 | `gscore-cli`, `gscore-app` | Command-line tool; desktop app (`guitarscore`, read-only so far) |
 
 Test files made with Guitar Pro are in `testdata/` (see `testdata/basic/README.md`).

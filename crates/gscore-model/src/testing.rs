@@ -5,8 +5,12 @@
 //! a fixture file, so this module builds them from plain data. It is compiled only when the
 //! `test-support` feature is enabled.
 
-use gscore_gp::{Beat, BeatStatus, Measure, MeasureHeader, Song as GpSong, Track, Voice};
+use gscore_gp::{
+    Beat, BeatStatus, BendEffect, BendPoint, BendType, Measure, MeasureHeader, Note as GpNote,
+    NoteEffect, NoteType, SlideType, Song as GpSong, Track, Voice,
+};
 
+use crate::effects::SlideKind;
 use crate::error::ModelError;
 use crate::song::Song;
 
@@ -85,7 +89,7 @@ pub fn one_beat_with_raw_notes(notes: &[(i8, i16)]) -> Result<Song, ModelError> 
                 string,
                 value,
                 // `Note::default()` is a rest note.
-                kind: gscore_gp::NoteType::Normal,
+                kind: NoteType::Normal,
                 ..gscore_gp::Note::default()
             })
             .collect(),
@@ -100,6 +104,161 @@ pub fn one_beat_with_raw_notes(notes: &[(i8, i16)]) -> Result<Song, ModelError> 
         voice.beats = vec![beat.clone()];
     }
     Song::from_inner(inner)
+}
+
+/// A bend for [`song_with_notes`]: how far it reaches and whether it releases back down.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TestBend {
+    /// How far the bend reaches, in quarter tones (a whole step is 4).
+    pub quarter_tones: i16,
+    /// True for a release back to the unbent pitch.
+    pub release: bool,
+}
+
+/// A note for [`song_with_notes`]: a valid string and fret, plus the effects playback reads.
+#[derive(Debug, Clone, Copy)]
+pub struct TestNote<'a> {
+    /// String, 1-based (1 = highest).
+    pub string: u8,
+    /// Fret.
+    pub fret: u8,
+    /// A bend, if any.
+    pub bend: Option<TestBend>,
+    /// Slides, in file order.
+    pub slides: &'a [SlideKind],
+}
+
+impl<'a> TestNote<'a> {
+    /// A plain note.
+    pub fn new(string: u8, fret: u8) -> Self {
+        TestNote {
+            string,
+            fret,
+            bend: None,
+            slides: &[],
+        }
+    }
+
+    /// The same note with an upward bend.
+    pub fn with_bend(mut self, quarter_tones: i16) -> Self {
+        self.bend = Some(TestBend {
+            quarter_tones,
+            release: false,
+        });
+        self
+    }
+
+    /// The same note with a bend that releases back down.
+    pub fn with_release_bend(mut self, quarter_tones: i16) -> Self {
+        self.bend = Some(TestBend {
+            quarter_tones,
+            release: true,
+        });
+        self
+    }
+
+    /// The same note with slides.
+    pub fn with_slides(mut self, slides: &'a [SlideKind]) -> Self {
+        self.slides = slides;
+        self
+    }
+}
+
+/// A one-measure 4/4 song whose first voice has the given beats, each
+/// `(note value, notes)`. The note values need not fill the measure; the model reports an
+/// under- or overfilled measure as an issue, which playback ignores.
+pub fn song_with_notes(beats: &[(u16, &[TestNote<'_>])]) -> Result<Song, ModelError> {
+    song_with_notes_on_tracks(1, beats)
+}
+
+/// The same song on `track_count` six-string guitar tracks, all with the same beats. Used to
+/// fill every MIDI channel when testing how playback degrades.
+pub fn song_with_notes_on_tracks(
+    track_count: usize,
+    beats: &[(u16, &[TestNote<'_>])],
+) -> Result<Song, ModelError> {
+    let tunings: Vec<&[i8]> = (0..track_count).map(|_| GUITAR_6).collect();
+    let song = song(&tunings, 1)?;
+    let mut inner = song.inner().clone();
+    let beats = beats
+        .iter()
+        .map(|&(value, notes)| {
+            let notes = notes
+                .iter()
+                .map(note_for_playback)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Beat {
+                duration: gscore_gp::Duration {
+                    value,
+                    ..gscore_gp::Duration::default()
+                },
+                status: BeatStatus::Normal,
+                notes,
+                ..Beat::default()
+            })
+        })
+        .collect::<Result<Vec<_>, ModelError>>()?;
+    for voice in inner
+        .tracks
+        .iter_mut()
+        .flat_map(|track| track.measures.iter_mut())
+        .flat_map(|measure| measure.voices.iter_mut())
+    {
+        voice.beats = beats.clone();
+    }
+    Song::from_inner(inner)
+}
+
+/// The Guitar Pro note [`song_with_notes`] builds for one [`TestNote`].
+fn note_for_playback(note: &TestNote<'_>) -> Result<GpNote, ModelError> {
+    let string = i8::try_from(note.string)
+        .map_err(|_| ModelError::Invalid(format!("test note on string {}", note.string)))?;
+    let mut effect = NoteEffect::default();
+    if let Some(bend) = note.bend {
+        let value = i8::try_from(bend.quarter_tones).map_err(|_| {
+            ModelError::Invalid(format!("test bend of {} quarter tones", bend.quarter_tones))
+        })?;
+        effect.bend = Some(BendEffect {
+            kind: if bend.release {
+                BendType::ReleaseDown
+            } else {
+                BendType::Bend
+            },
+            points: vec![
+                BendPoint {
+                    position: 0,
+                    value: 0,
+                    ..BendPoint::default()
+                },
+                BendPoint {
+                    position: 12,
+                    value,
+                    ..BendPoint::default()
+                },
+            ],
+            ..BendEffect::default()
+        });
+    }
+    effect.slides = note.slides.iter().copied().map(slide_type).collect();
+    Ok(GpNote {
+        string,
+        value: i16::from(note.fret),
+        kind: NoteType::Normal,
+        effect,
+        ..GpNote::default()
+    })
+}
+
+/// This crate's slide kind as the Guitar Pro data stores it.
+fn slide_type(kind: SlideKind) -> SlideType {
+    match kind {
+        SlideKind::IntoFromAbove => SlideType::IntoFromAbove,
+        SlideKind::IntoFromBelow => SlideType::IntoFromBelow,
+        SlideKind::ShiftSlideTo => SlideType::ShiftSlideTo,
+        SlideKind::LegatoSlideTo => SlideType::LegatoSlideTo,
+        SlideKind::OutDownwards => SlideType::OutDownwards,
+        SlideKind::OutUpwards => SlideType::OutUpWards,
+    }
 }
 
 /// A 4/4 guitar song of `count` measures with repeat signs: each mark is
