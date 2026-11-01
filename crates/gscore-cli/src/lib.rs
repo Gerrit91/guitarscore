@@ -9,6 +9,7 @@ mod convert;
 mod dump;
 mod edit;
 mod format_arg;
+mod gui;
 mod info;
 mod input;
 mod legend;
@@ -147,6 +148,17 @@ enum Command {
     /// Prints what every marker after a fret or beat means, and what the rows under the
     /// staff (`PM`, `LR`) mark.
     Legend,
+    /// Start the desktop application
+    ///
+    /// Runs the `guitarscore` application, opening <FILE> if one is given, and waits until
+    /// it exits; this command fails if the application cannot be started or exits with an
+    /// error. The application is looked for next to `gscore-cli` (a workspace build puts
+    /// both in `target/<profile>/`), then on `PATH`; build it with
+    /// `cargo build -p gscore-app` if it is missing.
+    Gui {
+        /// The Guitar Pro file to open
+        file: Option<PathBuf>,
+    },
     /// Write a file, read it back and report what changed (development tool)
     ///
     /// Writes the song in its own format (or `--to`), reads the result back and compares
@@ -243,6 +255,7 @@ where
         } => edit::run(&file, &output, &commands, script.as_deref(), allow_losses),
         Command::Commands => Ok(commands::run()),
         Command::Legend => Ok(legend::run()),
+        Command::Gui { file } => gui::run(file.as_deref()),
         Command::RoundtripCheck { file, to } => roundtrip::run(&file, to),
     }
 }
@@ -264,6 +277,10 @@ mod tests {
             let out = run_cli(args).unwrap();
             assert!(out.contains("info"), "{args:?}: {out}");
             assert!(out.contains("Show format, title, tempo"), "{args:?}: {out}");
+            assert!(
+                out.contains("Start the desktop application"),
+                "{args:?}: {out}"
+            );
             assert!(out.contains("Supported formats"), "{args:?}: {out}");
         }
     }
@@ -275,6 +292,14 @@ mod tests {
             assert!(out.contains("Usage: gscore-cli info <FILE>"), "{out}");
             assert!(out.contains("detected from the file's content"), "{out}");
         }
+    }
+
+    #[test]
+    fn gui_help_names_the_application_and_the_optional_file() {
+        let out = run_cli(["help", "gui"]).unwrap();
+        assert!(out.contains("Usage: gscore-cli gui [FILE]"), "{out}");
+        assert!(out.contains("guitarscore"), "{out}");
+        assert!(out.contains("cargo build -p gscore-app"), "{out}");
     }
 
     #[test]

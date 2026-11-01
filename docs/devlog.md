@@ -502,3 +502,14 @@ measure-layout cache, PNG output (a rasterizer such as resvg needs owner approva
 
 Open (rest of M6, docs/gaps.md #10): persist view state and window, recent files, zoom
 shortcuts (with the keymap, M7), macOS file dialog on the main thread.
+
+## 2026-11-01 — `gscore-cli gui` starts the desktop application
+
+- New `gui [FILE]` subcommand: finds the `guitarscore` binary (next to the running
+  `gscore-cli` first, so a workspace build's `target/<profile>/` pair works, then `PATH`),
+  starts it with the optional file, and waits; a missing binary, a start failure and a
+  non-zero application exit are all reported (exit code 1) instead of being swallowed.
+  Still a child process, not a crate dependency, so `gscore-cli` and `gscore-app` stay in
+  the same layer (AGENTS.md section 5).
+- Tests: 4 (`gui` discovery order, directories are not binaries, missing binary, launch
+  forwards the file and reports a failing application) plus help assertions.
