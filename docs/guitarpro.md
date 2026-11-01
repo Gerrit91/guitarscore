@@ -95,3 +95,17 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
 16. `src/io/gpx.rs` (`pack_bcfs`): refuses files whose block index table does not fit into
     the directory sector (about 4 MB) instead of overwriting the file data with it.
 
+17. `src/io/gpif_import.rs` (`convert_note`): a hammer-on/pull-off is kept only on the
+    origin (`HopoOrigin`); `HopoDestination` is ignored. The legacy model has one `hammer`
+    flag that means "origin", as GP3-5 store it, so GP7/GPX and GP5 now agree. Regression
+    test `effect_tests::hammer_is_kept_on_the_origin_only`.
+18. `src/io/gpif.rs`, `src/io/gpif_import.rs`: read the whammy bar, which used to be
+    dropped (`ornaments` measure 9). GP7 stores `<Whammy originValue=...
+    destinationValue=...>`, GP6 stores the `WhammyBarOriginValue` /
+    `WhammyBarDestinationValue` beat properties (on every beat, 0 = none); both become
+    `BeatEffects::tremolo_bar`. Tests in `effect_tests`.
+19. `src/io/gpif_import.rs` (`convert_note`): the harmonic fret is applied after all note
+    properties are read, because Guitar Pro writes `HarmonicFret` before `HarmonicType`
+    and the fret used to be dropped. Test
+    `effect_tests::harmonic_fret_is_read_before_the_harmonic_type`.
+

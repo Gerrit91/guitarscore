@@ -636,8 +636,14 @@ fn convert_beat(
         s_beat.effect.slap_effect = SlapEffect::None; // placeholder, wah is stored at mix table level in GP5
     }
 
-    // Tremolo bar
-    if let Some(tremolo_str) = &g_beat.tremolo
+    // Whammy bar: GP7 stores the shape in <Whammy>, GP6 (GPX) in the WhammyBar* beat
+    // properties below. <Tremolo> is a separate legacy field.
+    if let Some(whammy) = &g_beat.whammy {
+        s_beat.effect.tremolo_bar = Some(build_bend_effect(
+            whammy.origin_value,
+            whammy.destination_value,
+        ));
+    } else if let Some(tremolo_str) = &g_beat.tremolo
         && let Ok(val) = tremolo_str.parse::<f64>()
         && val != 0.0
     {
@@ -645,6 +651,8 @@ fn convert_beat(
     }
 
     // Beat properties
+    let mut whammy_origin: Option<f64> = None;
+    let mut whammy_destination: Option<f64> = None;
     if let Some(beat_props) = &g_beat.properties {
         for bp in &beat_props.properties {
             match bp.name.as_str() {
@@ -670,9 +678,20 @@ fn convert_beat(
                         };
                     }
                 }
+                // GP6 (GPX) stores the whammy bar as three beat properties, in hundredths
+                // of a semitone; GP7 uses <Whammy> instead. Every beat carries them (0 for
+                // "no whammy"), so only a non-zero shape becomes an effect.
+                "WhammyBarOriginValue" => whammy_origin = bp.float,
+                "WhammyBarDestinationValue" => whammy_destination = bp.float,
                 _ => {}
             }
         }
+    }
+    if s_beat.effect.tremolo_bar.is_none()
+        && let (Some(origin), Some(destination)) = (whammy_origin, whammy_destination)
+        && (origin != 0.0 || destination != 0.0)
+    {
+        s_beat.effect.tremolo_bar = Some(build_bend_effect(origin, destination));
     }
 
     // Notes
@@ -715,6 +734,7 @@ fn convert_note(
 
     let mut bend_origin: Option<f64> = None;
     let mut bend_dest: Option<f64> = None;
+    let mut harmonic_fret: Option<f64> = None;
 
     for prop in &g_note.properties.properties {
         match prop.name.as_str() {
@@ -752,15 +772,19 @@ fn convert_note(
                 }
             }
             "HarmonicFret" => {
-                if let Some(hfret) = prop.hfret
-                    && let Some(ref mut h) = s_note.effect.harmonic
-                {
-                    h.fret = Some(hfret as i8);
-                }
+                // Guitar Pro writes HarmonicFret before HarmonicType, so remember it and
+                // apply it after the loop.
+                harmonic_fret = prop.hfret;
             }
-            "HopoOrigin" | "HopoDestination" if prop.enable.is_some() => {
+            // GuitarScore fix: GPIF marks both ends of a hammer-on/pull-off
+            // (`HopoOrigin` on the first note, `HopoDestination` on the second), while the
+            // legacy model has a single `hammer` flag that means "origin" (as GP3-5 store
+            // it). Ignoring the destination keeps both formats identical and lets the ASCII
+            // dump print one `h` per pair.
+            "HopoOrigin" if prop.enable.is_some() => {
                 s_note.effect.hammer = true;
             }
+            "HopoDestination" => {}
             "Dead" | "Muted" if prop.enable.is_some() => {
                 s_note.kind = NoteType::Dead;
             }
@@ -773,6 +797,13 @@ fn convert_note(
         && (orig != 0.0 || dest != 0.0)
     {
         s_note.effect.bend = Some(build_bend_effect(orig, dest));
+    }
+
+    // Guitar Pro's property order puts HarmonicFret before HarmonicType.
+    if let Some(hfret) = harmonic_fret
+        && let Some(ref mut harmonic) = s_note.effect.harmonic
+    {
+        harmonic.fret = Some(hfret as i8);
     }
 
     // Tie
@@ -1064,5 +1095,151 @@ mod tuning_tests {
         let mut reread = Song::default();
         reread.read_gp(&bytes).expect("reread");
         assert_eq!(reread.tracks[0].strings, song.tracks[0].strings);
+    }
+}
+
+/// Regression tests for effects that GP7/GPX and GP3-5 store differently.
+#[cfg(test)]
+mod effect_tests {
+    use std::collections::HashMap;
+
+    use crate::io::gpif::{
+        Beat as GpifBeat, BeatPropertiesWrapper, BeatProperty, EnableTag, Note, NoteProperties,
+        Property, Whammy,
+    };
+
+    fn note_with(property: &str) -> Note {
+        Note {
+            id: 0,
+            properties: NoteProperties {
+                properties: vec![Property {
+                    name: property.to_owned(),
+                    fret: None,
+                    string: None,
+                    pitch: None,
+                    number: None,
+                    enable: Some(EnableTag),
+                    float: None,
+                    flags: None,
+                    hfret: None,
+                    htype: None,
+                    pitches: None,
+                    label: None,
+                    direction: None,
+                }],
+            },
+            tie: None,
+            vibrato: None,
+            let_ring: None,
+            anti_accent: None,
+            accent: None,
+            trill: None,
+            ornament: None,
+        }
+    }
+
+    /// GPIF has both `HopoOrigin` and `HopoDestination`; the model's single `hammer` flag
+    /// means "origin", as in GP3-5, so a dump prints one `h` per hammer/pull pair.
+    #[test]
+    fn hammer_is_kept_on_the_origin_only() {
+        let origin = super::convert_note(&note_with("HopoOrigin"), 80, false, false);
+        assert!(origin.effect.hammer);
+        let destination = super::convert_note(&note_with("HopoDestination"), 80, false, false);
+        assert!(!destination.effect.hammer);
+    }
+
+    /// Guitar Pro writes `HarmonicFret` before `HarmonicType`; the reader used to drop the
+    /// fret because it applied it while the harmonic did not exist yet.
+    #[test]
+    fn harmonic_fret_is_read_before_the_harmonic_type() {
+        let mut note = note_with("HarmonicFret");
+        if let Some(property) = note.properties.properties.first_mut() {
+            property.hfret = Some(12.0);
+        }
+        note.properties.properties.push(Property {
+            name: "HarmonicType".to_owned(),
+            fret: None,
+            string: None,
+            pitch: None,
+            number: None,
+            enable: None,
+            float: None,
+            flags: None,
+            hfret: None,
+            htype: Some("Pinch".to_owned()),
+            pitches: None,
+            label: None,
+            direction: None,
+        });
+        let song_note = super::convert_note(&note, 80, false, false);
+        let harmonic = song_note.effect.harmonic.expect("harmonic imported");
+        assert_eq!(harmonic.kind, crate::model::HarmonicType::Pinch);
+        assert_eq!(harmonic.fret, Some(12));
+    }
+
+    /// GP7 keeps the dive bomb in `<Whammy>`, not `<Tremolo>`; the reader used to drop it.
+    #[test]
+    fn whammy_bar_is_imported() {
+        let beat = GpifBeat {
+            id: 0,
+            notes: None,
+            rhythm: None,
+            dynamic: None,
+            grace_notes: None,
+            fadding: None,
+            tremolo: None,
+            whammy: Some(Whammy {
+                origin_value: 0.0,
+                destination_value: -300.0,
+            }),
+            wah: None,
+            free_text: None,
+            properties: None,
+        };
+        let mut velocity = 0;
+        let song_beat = super::convert_beat(&beat, &HashMap::new(), &HashMap::new(), &mut velocity);
+        let tremolo = song_beat.effect.tremolo_bar.expect("whammy imported");
+        assert_eq!(tremolo.points.last().map(|point| point.value), Some(-12));
+    }
+
+    /// GP6 (GPX) writes the same effect as three beat properties, on every beat (0 = none).
+    #[test]
+    fn gp6_whammy_properties_are_imported() {
+        fn whammy_beat(destination: f64) -> GpifBeat {
+            let property = |name: &str, value: f64| BeatProperty {
+                name: name.to_owned(),
+                direction: None,
+                enable: None,
+                float: Some(value),
+                flags: None,
+            };
+            GpifBeat {
+                id: 0,
+                notes: None,
+                rhythm: None,
+                dynamic: None,
+                grace_notes: None,
+                fadding: None,
+                tremolo: None,
+                whammy: None,
+                wah: None,
+                free_text: None,
+                properties: Some(BeatPropertiesWrapper {
+                    properties: vec![
+                        property("WhammyBarOriginValue", 0.0),
+                        property("WhammyBarDestinationValue", destination),
+                    ],
+                }),
+            }
+        }
+
+        let mut velocity = 0;
+        let dive = whammy_beat(-300.0);
+        let song_beat = super::convert_beat(&dive, &HashMap::new(), &HashMap::new(), &mut velocity);
+        assert!(song_beat.effect.tremolo_bar.is_some());
+
+        let none = whammy_beat(0.0);
+        let song_beat = super::convert_beat(&none, &HashMap::new(), &HashMap::new(), &mut velocity);
+        assert!(song_beat.effect.tremolo_bar.is_none());
     }
 }

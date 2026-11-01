@@ -2,7 +2,8 @@
 //!
 //! A view borrows the song and knows its own index. Accessors that convert stored values
 //! return `Result`: songs are validated on creation, so they succeed in practice, but the
-//! types stay honest instead of hiding a fallback.
+//! types stay honest instead of hiding a fallback. Effects (bends, slides, harmonics, ...)
+//! are in [`crate::effects`].
 
 use gscore_gp::{BeatStatus, NoteType};
 
@@ -233,7 +234,7 @@ pub enum BeatKind {
 #[derive(Debug, Clone, Copy)]
 pub struct BeatView<'a> {
     index: BeatIndex,
-    inner: &'a gscore_gp::Beat,
+    pub(crate) inner: &'a gscore_gp::Beat,
 }
 
 impl<'a> BeatView<'a> {
@@ -284,7 +285,7 @@ pub enum NoteKind {
 /// One note: a fret on a string.
 #[derive(Debug, Clone, Copy)]
 pub struct NoteView<'a> {
-    inner: &'a gscore_gp::Note,
+    pub(crate) inner: &'a gscore_gp::Note,
 }
 
 impl<'a> NoteView<'a> {

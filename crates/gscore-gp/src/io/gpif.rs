@@ -374,6 +374,9 @@ pub struct Beat {
     pub fadding: Option<String>,
     #[serde(rename = "Tremolo", default)]
     pub tremolo: Option<String>,
+    /// GP7 whammy-bar shape (GuitarScore addition; the dive bomb was dropped).
+    #[serde(rename = "Whammy", default)]
+    pub whammy: Option<Whammy>,
     #[serde(rename = "Wah", default)]
     pub wah: Option<String>,
     #[serde(rename = "FreeText", default)]
@@ -386,6 +389,15 @@ pub struct Beat {
 pub struct BeatPropertiesWrapper {
     #[serde(rename = "Property", default)]
     pub properties: Vec<BeatProperty>,
+}
+
+/// The shape of a GP7 whammy-bar effect, in hundredths of a semitone.
+#[derive(Debug, Deserialize)]
+pub struct Whammy {
+    #[serde(rename = "@originValue", default)]
+    pub origin_value: f64,
+    #[serde(rename = "@destinationValue", default)]
+    pub destination_value: f64,
 }
 
 #[derive(Debug, Deserialize)]

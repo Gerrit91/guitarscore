@@ -1,0 +1,35 @@
+ASCII tablature symbols used by `gscore-cli dump`
+
+After a fret or beat
+  L      tie (on the first note; the continuation is a plain fret)
+  x      dead note
+  (5)    ghost note: the fret in parentheses
+  h      hammer-on
+  p      pull-off
+  b      bend up, followed by the target fret
+  r      release bend, followed by the target fret
+  /      slide up
+  \      slide down
+  S      shift slide, when the target note is unknown
+  s      legato slide, when the target note is unknown
+  ~      vibrato
+  tr     trill
+  t      tapping
+  TP     tremolo picking
+  *      natural harmonic
+  7[19]  pinch or artificial harmonic: the node after the fret
+  7(19)  tapped harmonic: written fret, then the node
+  >      accent
+  .      staccato
+  <      fade in
+  w      whammy bar
+  v      brush stroke up
+  ^      brush stroke down
+  V      pick stroke up
+  n      pick stroke down
+  T      slap (thumb)
+  P      pop
+
+Rows under the staff
+  PM     palm mute (its mark starts a run, `-` continues it, `|` ends it)
+  LR     let ring (its mark starts a run, `-` continues it, `|` ends it)

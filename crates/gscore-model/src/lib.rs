@@ -20,6 +20,7 @@
 
 mod compare;
 mod duration;
+mod effects;
 mod error;
 mod instrument;
 pub mod interop;
@@ -37,6 +38,7 @@ mod tests;
 
 pub use compare::{Difference, differences};
 pub use duration::{Duration, TimeSignature};
+pub use effects::{Bend, BendKind, Harmonic, HarmonicKind, SlapKind, SlideKind, StrokeDirection};
 pub use error::ModelError;
 pub use instrument::InstrumentKind;
 pub use issues::{Issue, IssueKind};

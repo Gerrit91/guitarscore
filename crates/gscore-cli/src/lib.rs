@@ -7,6 +7,7 @@
 mod dump;
 mod info;
 mod input;
+mod legend;
 mod roundtrip;
 
 use std::ffi::OsString;
@@ -46,8 +47,11 @@ enum Command {
     /// One row per string, highest first, labelled with the open string's note name. Each
     /// beat is as wide as its length (a whole note is 24 columns), all voices share one time
     /// grid, and long tracks wrap at measure boundaries. Dead notes are shown as `x`, tied
-    /// notes as `(5)`. Tracks that are not string instruments (drums, voice, ...) are
-    /// listed without tablature. Effects (bends, slides, ...) are not shown yet.
+    /// notes as `L`. Effects use the usual ASCII-tab symbols: `h`/`p`, `b`/`r` with the
+    /// target fret, `/`/`\`, `~`, `tr`, `t`, `TP`, `*` and harmonic nodes in brackets,
+    /// `>` and `.`. Palm mutes and let ring go on rows under the staff (`PM----|`,
+    /// `LR----|`). `gscore-cli legend` lists every symbol. Tracks that are not string
+    /// instruments (drums, voice, ...) are listed without tablature.
     Dump {
         /// The Guitar Pro file to read
         file: PathBuf,
@@ -58,6 +62,11 @@ enum Command {
         #[arg(long, default_value_t = 80)]
         width: usize,
     },
+    /// List the symbols `dump` writes in its ASCII tab
+    ///
+    /// Prints what every marker after a fret or beat means, and what the rows under the
+    /// staff (`PM`, `LR`) mark.
+    Legend,
     /// Write a file, read it back and report what changed (development tool)
     ///
     /// Writes the song in its own format (or `--to`), reads the result back and compares
@@ -133,6 +142,7 @@ where
     match cli.command {
         Command::Info { file } => info::run(&file),
         Command::Dump { file, track, width } => dump::run(&file, track, width),
+        Command::Legend => Ok(legend::run()),
         Command::RoundtripCheck { file, to } => roundtrip::run(&file, to),
     }
 }
