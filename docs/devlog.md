@@ -360,3 +360,22 @@ Test-first with `roundtrip-check` and the formerly ignored tests:
   under-staff lines. Goldens regenerated for all three `ornaments` exports.
 - Still open: `[?]` for GP5 pinch harmonics, and the cross-measure target/ties gap in
   gaps #4.
+
+## 2026-11-01 — Review of the `more-tests` branch
+
+- Bend unit: bend points are stored in quarter tones (`GP_BEND_SEMITONE` = 25 hundredths),
+  but `Bend::semitones` passed them through and `dump` silently compensated. Now
+  `Bend::quarter_tones` (a full bend is 4) taken from the highest point, so a bend that is
+  released again keeps its reach (it reported 0); `dump`'s `bend_target` uses the same
+  unit. Output unchanged.
+- Legend: slap is `T` (thumb) instead of a second `S`; the legend shows examples (`(5)`,
+  `7[19]`, `7(19)`) instead of `n` placeholders that clashed with `n` (pick stroke down). A
+  test checks that every marker is unique.
+- `Annotation::marks(note)` decides which notes a row covers, so a new row needs no change
+  in the grid code.
+- File sizes: effect types and accessors moved from `views.rs` (545 lines) to
+  `gscore-model/src/effects.rs`; `dump.rs` (904 lines) split into `dump/{mod, symbols,
+  grid, notation}.rs`. Unused `has_slide`/`is_harmonic` removed.
+- Model tests for the effect accessors (bends, harmonic nodes, slides, simple note and beat
+  effects); docs/guitarpro.md lists the harmonic-fret fix (19).
+- Goldens: only `legend.txt` changed; all dump goldens are byte-identical after the split.

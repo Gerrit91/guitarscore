@@ -500,3 +500,145 @@ fn empty_voices_and_placeholders_do_not_count() {
     let after = from_gp(gp).unwrap();
     assert_eq!(differences(&before, &after), []);
 }
+
+// --- Effects ------------------------------------------------------------------------------
+
+/// A one-note song whose single note (string 2, fret 15) is changed by `edit`.
+fn song_with_note(edit: impl FnOnce(&mut gscore_gp::Note)) -> Song {
+    let mut gp = one_measure(vec![beat(1, &[(2, 15)])]);
+    let note = &mut gp.tracks[0].measures[0].voices[0].beats[0].notes[0];
+    edit(note);
+    from_gp(gp).unwrap()
+}
+
+fn first_note<T>(song: &Song, read: impl FnOnce(NoteView<'_>) -> T) -> T {
+    let position = BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(0),
+    };
+    read(song.beat(position).unwrap().notes().next().unwrap())
+}
+
+fn bend(kind: gscore_gp::BendType, values: &[i8]) -> gscore_gp::BendEffect {
+    gscore_gp::BendEffect {
+        kind,
+        points: values
+            .iter()
+            .map(|&value| gscore_gp::BendPoint {
+                position: 0,
+                value,
+                vibrato: false,
+            })
+            .collect(),
+        ..gscore_gp::BendEffect::default()
+    }
+}
+
+#[test]
+fn bends_report_their_highest_point_in_quarter_tones() {
+    use gscore_gp::BendType;
+    let cases = [
+        // A full bend reaches 4 quarter tones (a whole step).
+        (bend(BendType::Bend, &[0, 2, 4]), BendKind::Up, 4),
+        // Bent and released again: the last point is 0, the bend still reached 4.
+        (bend(BendType::BendRelease, &[0, 4, 4, 0]), BendKind::Up, 4),
+        (bend(BendType::ReleaseDown, &[2, 0]), BendKind::Release, 2),
+        (bend(BendType::Bend, &[]), BendKind::Up, 0),
+    ];
+    for (effect, kind, quarter_tones) in cases {
+        let song = song_with_note(|note| note.effect.bend = Some(effect.clone()));
+        let found = first_note(&song, |note| note.bend());
+        assert_eq!(
+            found,
+            Some(Bend {
+                kind,
+                quarter_tones
+            }),
+            "{effect:?}"
+        );
+    }
+    // Whammy-bar shapes stored as bends are not note bends.
+    let song = song_with_note(|note| note.effect.bend = Some(bend(BendType::Dip, &[0, -4])));
+    assert_eq!(first_note(&song, |note| note.bend()), None);
+}
+
+#[test]
+fn harmonics_name_their_node() {
+    use gscore_gp::{HarmonicEffect, HarmonicType};
+    let song = song_with_note(|note| {
+        note.value = 7;
+        note.effect.harmonic = Some(HarmonicEffect {
+            kind: HarmonicType::Pinch,
+            fret: Some(12),
+            ..HarmonicEffect::default()
+        });
+    });
+    let harmonic = first_note(&song, |note| note.harmonic()).unwrap();
+    assert_eq!(harmonic.kind, HarmonicKind::Pinch);
+    assert_eq!(harmonic.node, Some(19));
+
+    let song = song_with_note(|note| {
+        note.effect.harmonic = Some(HarmonicEffect {
+            kind: HarmonicType::Natural,
+            fret: None,
+            ..HarmonicEffect::default()
+        });
+    });
+    let harmonic = first_note(&song, |note| note.harmonic()).unwrap();
+    assert_eq!(
+        (harmonic.kind, harmonic.node),
+        (HarmonicKind::Natural, None)
+    );
+}
+
+#[test]
+fn slides_and_simple_note_effects() {
+    use gscore_gp::SlideType;
+    let song = song_with_note(|note| {
+        note.effect.slides = vec![
+            SlideType::None,
+            SlideType::ShiftSlideTo,
+            SlideType::OutUpWards,
+        ];
+        note.effect.hammer = true;
+        note.effect.ghost_note = true;
+        note.effect.palm_mute = true;
+        note.effect.let_ring = true;
+        note.effect.vibrato = true;
+    });
+    first_note(&song, |note| {
+        assert_eq!(
+            note.slides().collect::<Vec<_>>(),
+            [SlideKind::ShiftSlideTo, SlideKind::OutUpwards]
+        );
+        assert!(note.is_hammer() && note.is_ghost() && note.is_palm_muted());
+        assert!(note.is_let_ring() && note.has_vibrato());
+        assert!(!note.is_accented() && !note.is_staccato() && !note.has_trill());
+    });
+}
+
+#[test]
+fn beat_effects() {
+    use gscore_gp::{BeatStrokeDirection, SlapEffect};
+    let mut gp = one_measure(vec![beat(1, &[(1, 0)])]);
+    let effect = &mut gp.tracks[0].measures[0].voices[0].beats[0].effect;
+    effect.pick_stroke = BeatStrokeDirection::Down;
+    effect.stroke.direction = BeatStrokeDirection::Up;
+    effect.slap_effect = SlapEffect::Popping;
+    effect.fade_in = true;
+    let song = from_gp(gp).unwrap();
+    let position = BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(0),
+    };
+    let beat = song.beat(position).unwrap();
+    assert_eq!(beat.pick_stroke(), Some(StrokeDirection::Down));
+    assert_eq!(beat.brush_stroke(), Some(StrokeDirection::Up));
+    assert_eq!(beat.slap(), Some(SlapKind::Popping));
+    assert!(beat.has_fade_in());
+    assert!(!beat.has_whammy_bar());
+}

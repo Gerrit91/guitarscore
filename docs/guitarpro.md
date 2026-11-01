@@ -104,3 +104,8 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     destinationValue=...>`, GP6 stores the `WhammyBarOriginValue` /
     `WhammyBarDestinationValue` beat properties (on every beat, 0 = none); both become
     `BeatEffects::tremolo_bar`. Tests in `effect_tests`.
+19. `src/io/gpif_import.rs` (`convert_note`): the harmonic fret is applied after all note
+    properties are read, because Guitar Pro writes `HarmonicFret` before `HarmonicType`
+    and the fret used to be dropped. Test
+    `effect_tests::harmonic_fret_is_read_before_the_harmonic_type`.
+

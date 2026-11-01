@@ -33,7 +33,7 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (dump effect s
    (`7(19)`), ghost notes (`(fret)`), accents (`>`), trills (`tr`), tremolo picking
    (`TP`), tapping (`t`) and staccato (`.`). Palm mutes and let ring go on rows under the
    staff (`PM----|`, `LR----|`). `gscore-cli legend` lists every symbol from the same
-   enums the dump uses. Concepts the table lacks keep letters: slap `S`, pop `P`, fade-in
+   enums the dump uses. Concepts the table lacks get letters: slap `T`, pop `P`, fade-in
    `<`, whammy `w`, brush `v`/`^`, pick stroke `V`/`n`. Grace notes, fingerings and other
    note ornaments are not drawn; wide vibrato shares `~` with slight vibrato and heavy
    accent shares `>` with accent because the model stores one flag. Hammer/pull and slide
