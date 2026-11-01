@@ -58,4 +58,21 @@ The steps:
    staff line does not run through them) and barlines.
 
 `svg::to_svg` writes the operations as SVG for golden tests and `gscore-cli render`; the
-GUI (M6) will paint the same operations.
+app paints the same operations with egui.
+
+## The app (`gscore-app`)
+
+A thin eframe/egui shell (wgpu renderer) that holds state and delegates:
+
+- `state`: `ViewState` (theme, zoom, track): plain data, no widgets, unit-tested.
+- `tasks`: the file dialog and opening files run on background threads and report through
+  a channel polled once per frame (AGENTS.md rule 9); a panicking job still reports back.
+- `document`: the song plus its layouts, cached per track; layout runs inside
+  `catch_unwind`.
+- `canvas`: paints `DrawOp`s (staff spaces times zoom), culling what is off screen; text
+  and glyphs are placed by their baseline as layout specifies.
+- `fonts`: Noto Sans (also the UI font), Noto Sans Bold and Bravura, compiled in.
+- `app`: menus, toolbar, page view, status bar, notices; drawing the page is wrapped in
+  `catch_unwind` so a bug shows a notice instead of closing the window.
+
+Opening a file (`gscore_session::open`: capped read, then import) is shared with the CLI.

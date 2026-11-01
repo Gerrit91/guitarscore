@@ -8,8 +8,12 @@ GuitarScore must never crash and never lose your work; that outranks features.
 
 ## Status
 
-Early development. There is no editor window yet; what works today is reading and saving
-Guitar Pro files on the command line:
+Early development. The desktop app shows a Guitar Pro file's tablature (read-only); reading,
+saving and editing work on the command line:
+
+- **`guitarscore [FILE]`:** the desktop app. Opens a file (File › Open… or the command
+  line) in the background and shows one track's tablature as a page; track picker, zoom,
+  light and dark theme.
 
 - **Import:** Guitar Pro 3, 4, 5 (`.gp3`–`.gp5`), 6 (`.gpx`) and 7+ (`.gp`), detected from
   the file content. Malformed files give an error, never a crash.
@@ -36,7 +40,11 @@ Guitar Pro reader for wasm also needs `clang`.
 ```bash
 cargo build
 cargo xtask ci   # everything a change must pass: fmt, clippy, tests, layer and wasm checks
+cargo run -p gscore-app --bin guitarscore -- testdata/basic/note_lengths.gp
 ```
+
+The app renders with wgpu (Vulkan, Metal or DirectX 12). Its snapshot test needs a GPU or a
+software Vulkan driver such as lavapipe.
 
 ## Command line
 
@@ -104,7 +112,7 @@ A Cargo workspace of small crates. A crate may only depend on crates in lower la
 | 2 | `gscore-play` | Playback sequencing (planned) |
 | 3 | `gscore-edit`, `gscore-audio` | Editing commands with undo/redo; audio output (planned) |
 | 4 | `gscore-session` | Crash reports today; recovery journal and autosave planned |
-| 5 | `gscore-cli`, `gscore-app` | Command-line tool; desktop app (planned) |
+| 5 | `gscore-cli`, `gscore-app` | Command-line tool; desktop app (`guitarscore`, read-only so far) |
 
 Test files made with Guitar Pro are in `testdata/` (see `testdata/basic/README.md`).
 `docs/architecture.md` describes the design; `AGENTS.md` holds the rules for contributors,

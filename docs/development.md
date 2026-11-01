@@ -14,9 +14,8 @@ The workspace is layered; a crate may only depend on crates in lower layers
 4. `gscore-session`: open document, crash reports, recovery, autosave
 5. `gscore-cli`, `gscore-app`: command-line tool, desktop application
 
-`gscore-gp`, `gscore-model`, `gscore-io`, `gscore-layout`, `gscore-edit`, `gscore-session`
-and `gscore-cli` contain code so far; `gscore-play`, `gscore-audio` and `gscore-app` are
-empty until their milestone (AGENTS.md section 9).
+`gscore-play` and `gscore-audio` are empty until their milestone (AGENTS.md section 9); the
+other crates contain code.
 
 ## Coding Standards
 
@@ -51,6 +50,16 @@ Additionally, specific tests apply based on what's modified.
   tablature. `GSCORE_UPDATE_GOLDEN=1 cargo test -p gscore-layout --test test_golden`
   regenerates the SVG references in `crates/gscore-layout/tests/golden/` (the owner reviews
   visual changes before they are committed).
+
+### Looking at the app without a window
+
+`cargo run -p gscore-app --example snapshot -- <file> <out.png> [--dark] [--track N]
+[--zoom Z] [--size WxH]` renders the whole app offscreen (wgpu, no window, no focus
+stealing) and saves a PNG. `crates/gscore-app/tests/test_app.rs` drives the app through its
+accessibility tree (clicking menus and buttons as a user would) and compares two
+snapshots with `crates/gscore-app/tests/snapshots/`; regenerate them with
+`UPDATE_SNAPSHOTS=1 cargo test -p gscore-app --test test_app` and have the owner review the
+images.
 
 ### Looking at rendered SVG
 

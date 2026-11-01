@@ -478,3 +478,27 @@ time signature and effect editing are not commands yet; undo history is in memor
 
 Open (rest of M5, docs/gaps.md #9): effects, rhythm under the tab, repeats, pages,
 measure-layout cache, PNG output (a rasterizer such as resvg needs owner approval).
+
+## 2026-11-01 — M6 started: read-only app
+
+- Owner decisions: eframe/egui 0.37 with the wgpu renderer (checked against PhotoCraft,
+  which uses the same setup), egui_kittest for headless UI tests and offscreen snapshots,
+  rfd 0.17 for file dialogs (XDG portal, no GTK). Rows in THIRD_PARTY.md.
+- `gscore-session::open`: capped read plus import, shared by the CLI and the app (the read
+  itself is now capped too, not only the size check).
+- `gscore-app` (binary `guitarscore [FILE]`): menus (File › Open…, Quit; View › theme,
+  zoom), track picker, zoom, page view with culling, status bar, dismissible notices.
+  Files open on a background thread; layout, drawing and background jobs are wrapped in
+  `catch_unwind`. Fonts (Noto Sans, Bravura) are compiled in; Noto Sans is also the UI
+  font.
+- `cargo run -p gscore-app --example snapshot -- <file> <out.png> [--dark] ...` renders the
+  app offscreen to PNG.
+- Tests: view-state unit tests; UI tests through the accessibility tree (open at start,
+  no file, unreadable and non-GP files give notices, View menu switches theme, toolbar
+  zooms); two snapshots (light and dark) in `crates/gscore-app/tests/snapshots/`, stable
+  over repeated runs. Snapshots showed two bugs, fixed: `set_visuals` left egui's widgets
+  light (now `set_theme`), and the absolute path in the status bar made images depend on
+  the checkout location (now the file name). Tests: 216 (+11).
+
+Open (rest of M6, docs/gaps.md #10): persist view state and window, recent files, zoom
+shortcuts (with the keymap, M7), macOS file dialog on the main thread.
