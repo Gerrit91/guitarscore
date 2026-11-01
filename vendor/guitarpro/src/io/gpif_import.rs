@@ -440,7 +440,10 @@ impl SongGpifOps for Song {
                 }
             }
             if track.strings.is_empty() {
+                // GuitarScore: keep placeholder strings (the code base indexes them), but
+                // record that the file has no tuning so it is neither shown nor written.
                 track.strings = vec![(1, 64), (2, 59), (3, 55), (4, 50), (5, 45), (6, 40)];
+                track.has_tuning = false;
             }
 
             track.fret_count = 24;
@@ -454,6 +457,16 @@ impl SongGpifOps for Song {
                 track.midi_program_gpif = gm.program;
                 if let Some(port) = gm.port {
                     track.port = port as u8;
+                }
+            }
+
+            // GuitarScore: instrument type and name (GP7). Drum kits are percussion even
+            // when their MIDI channel is not 10 (GP7 stores channels elsewhere).
+            if let Some(set) = &g_track.instrument_set {
+                track.instrument_type = set.kind.clone();
+                track.instrument_name = set.name.clone();
+                if set.kind.as_deref() == Some("drumKit") {
+                    track.percussion_track = true;
                 }
             }
 
@@ -804,11 +817,59 @@ mod tuning_tests {
     }
 
     #[test]
+    fn missing_tuning_is_marked_and_not_written() {
+        let xml = "<GPIF><Score></Score><MasterTrack></MasterTrack><Tracks><Track id=\"0\">\
+                   <Name>Singer</Name></Track></Tracks><MasterBars></MasterBars><Bars></Bars>\
+                   <Voices></Voices><Beats></Beats><Notes></Notes><Rhythms></Rhythms></GPIF>";
+        let mut song = Song::default();
+        song.read_gpif(&quick_xml::de::from_str(xml).expect("test GPIF parses"));
+        assert!(!song.tracks[0].has_tuning);
+        // Placeholder strings stay, because code indexes them.
+        assert_eq!(song.tracks[0].strings.len(), 6);
+
+        let bytes = song.write_gp().expect("write");
+        let gpif = crate::io::gpx::read_gp(&bytes).expect("read written file");
+        let written_tuning = gpif.tracks.tracks[0]
+            .properties
+            .iter()
+            .flat_map(|p| &p.properties)
+            .any(|p| p.name == "Tuning");
+        assert!(!written_tuning, "a tuning was invented on export");
+
+        let mut reread = Song::default();
+        reread.read_gp(&bytes).expect("reread");
+        assert!(!reread.tracks[0].has_tuning);
+    }
+
+    #[test]
+    fn instrument_set_is_read_and_drum_kits_are_percussion() {
+        let xml = "<GPIF><Score></Score><MasterTrack></MasterTrack><Tracks>\
+                   <Track id=\"0\"><Name>Fabi</Name><InstrumentSet><Name>Drums</Name>\
+                   <Type>drumKit</Type><LineCount>5</LineCount><Elements><Element>\
+                   <Name>Kick</Name><Type>kick</Type></Element></Elements></InstrumentSet>\
+                   </Track>\
+                   <Track id=\"1\"><Name>Singer</Name><InstrumentSet><Name>Voice</Name>\
+                   <Type>voice</Type></InstrumentSet></Track>\
+                   </Tracks><MasterBars></MasterBars><Bars></Bars><Voices></Voices>\
+                   <Beats></Beats><Notes></Notes><Rhythms></Rhythms></GPIF>";
+        let mut song = Song::default();
+        song.read_gpif(&quick_xml::de::from_str(xml).expect("test GPIF parses"));
+        let drums = &song.tracks[0];
+        assert_eq!(drums.instrument_type.as_deref(), Some("drumKit"));
+        assert_eq!(drums.instrument_name.as_deref(), Some("Drums"));
+        assert!(drums.percussion_track);
+        let voice = &song.tracks[1];
+        assert_eq!(voice.instrument_type.as_deref(), Some("voice"));
+        assert!(!voice.percussion_track);
+    }
+
+    #[test]
     fn staff_tuning_is_read_with_string_1_highest() {
         // GPIF lists pitches from the lowest string up.
         let mut song = Song::default();
         song.read_gpif(&gpif_with_staff_tuning("28 33 38 43"));
         assert_eq!(song.tracks[0].strings, [(1, 43), (2, 38), (3, 33), (4, 28)]);
+        assert!(song.tracks[0].has_tuning);
     }
 
     #[test]

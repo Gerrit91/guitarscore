@@ -616,6 +616,10 @@ fn build_tracks(
                 measures,
                 transpose_chromatic,
                 transpose_octave,
+                // GuitarScore addition; this converter keeps its previous behaviour.
+                has_tuning: true,
+                instrument_type: None,
+                instrument_name: None,
             }
         })
         .collect()

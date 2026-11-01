@@ -6,11 +6,11 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M1).
    `unwrap`, indexing and `as` casts; all lints are allowed for it (`vendor/guitarpro`).
    It is only called behind `catch_unwind`, which does not exist on wasm. Bring it under
    the lints module by module, starting with the parsers of untrusted input.
-2. **Tracks without a tuning get E standard invented.** GP7 vocal tracks have no tuning;
-   the importer falls back to 6-string E standard, and the exporter would write it.
-   Drum kits report 6 strings tuned to pitch 0. Drum and piano notes are mapped onto tab
-   strings (several drum notes on string 1, negative piano frets) and `percussion_track`
-   is not set for GP7. Reported as issues, kept unchanged.
+2. **Instrument data is read but not written.** GP7 `<InstrumentSet>` (type, name) is read
+   into the track, but the GPIF exporter does not write it, nor the placeholder-free
+   "no tuning" state beyond omitting the property. Must be handled before saving (M6).
+   Drum and piano notes are still mapped onto tab strings (several drum notes on string 1,
+   negative piano frets); reported as issues, kept unchanged.
 3. **GP6 (`.gpx`) tuning order unverified.** The fix assumes GP6 lists pitches lowest
    first, like GP7; no GP6 file was available to check.
 4. **The model is read-only.** No edit methods yet; they arrive with the command layer (M5).

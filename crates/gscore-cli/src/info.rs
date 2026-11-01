@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use gscore_io::{import_guitar_pro_from_bytes, Imported, MAX_INPUT_BYTES};
-use gscore_model::{Song, StringTuning};
+use gscore_model::{InstrumentKind, Song, StringTuning, TrackView};
 
 use crate::CliError;
 
@@ -44,20 +44,11 @@ fn summary(imported: &Imported) -> String {
         song.track_count()
     );
     for track in song.tracks() {
-        let tuning = match track.tuning() {
-            Ok(strings) => describe_tuning(&strings),
-            Err(e) => format!("<{e}>"),
-        };
-        let percussion = if track.is_percussion() {
-            ", percussion"
-        } else {
-            ""
-        };
         out.push_str(&format!(
-            "  {}: {}: {} strings{percussion}, {tuning}\n",
+            "  {}: {}: {}\n",
             track.index(),
             or_not_set(track.name()),
-            track.string_count(),
+            describe_instrument(&track),
         ));
     }
     let issues = song.issues();
@@ -77,12 +68,33 @@ fn summary(imported: &Imported) -> String {
     out
 }
 
-/// Note names from the lowest string up, as musicians read a tuning ("E2 A2 D3 G3 B3 E4").
-/// Drum kits store every string as pitch 0; that is shown as "no tuning".
-fn describe_tuning(strings: &[StringTuning]) -> String {
-    if strings.iter().all(|s| s.pitch.get() == 0) {
-        return "no tuning".to_owned();
+/// The instrument, and for string instruments the strings and tuning:
+/// "Electric Guitar, 6 strings, tuned E2 A2 D3 G3 B3 E4", "Drums", "Voice".
+fn describe_instrument(track: &TrackView<'_>) -> String {
+    let kind = track.instrument_kind();
+    let name = track.instrument_name().unwrap_or(match kind {
+        InstrumentKind::Strings => "",
+        InstrumentKind::Drums => "Drums",
+        InstrumentKind::Other => "other instrument",
+    });
+    if kind != InstrumentKind::Strings {
+        return name.to_owned();
     }
+    let tuning = match track.tuning() {
+        Ok(Some(strings)) => describe_tuning(&strings),
+        Ok(None) => "no tuning".to_owned(),
+        Err(e) => format!("<{e}>"),
+    };
+    let strings = format!("{} strings, {tuning}", track.string_count());
+    if name.is_empty() {
+        strings
+    } else {
+        format!("{name}, {strings}")
+    }
+}
+
+/// Note names from the lowest string up, as musicians read a tuning ("E2 A2 D3 G3 B3 E4").
+fn describe_tuning(strings: &[StringTuning]) -> String {
     let names: Vec<String> = strings.iter().rev().map(|s| s.pitch.to_string()).collect();
     format!("tuned {}", names.join(" "))
 }
@@ -133,6 +145,5 @@ mod tests {
             describe_tuning(&tuning(&[43, 38, 33, 28, 23])),
             "tuned B0 E1 A1 D2 G2"
         );
-        assert_eq!(describe_tuning(&tuning(&[0; 6])), "no tuning");
     }
 }

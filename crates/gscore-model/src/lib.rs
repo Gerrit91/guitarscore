@@ -20,6 +20,7 @@
 
 mod duration;
 mod error;
+mod instrument;
 pub mod interop;
 mod issues;
 mod position;
@@ -34,6 +35,7 @@ mod tests;
 
 pub use duration::{Duration, TimeSignature};
 pub use error::ModelError;
+pub use instrument::InstrumentKind;
 pub use issues::{Issue, IssueKind};
 pub use position::{
     BeatIndex, BeatPosition, Fret, MeasureIndex, Pitch, StringNumber, TrackIndex, VoiceIndex,

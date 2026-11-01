@@ -29,4 +29,13 @@ Each change should be offered upstream.
 3. `src/io/gpif_import.rs`, `extract_tuning`: reverse the pitch list. GPIF lists pitches
    from the lowest string up; the legacy model's string 1 is the highest.
 4. `src/io/gpif_export.rs`: write the pitch list lowest string first (mirror of 3).
-5. `src/io/gpif_import.rs`: regression tests `tuning_tests` for 2–4.
+5. `src/model/legacy/track.rs`: new field `Track::has_tuning` (default `true`). Set to
+   `false` by the GPIF importer when the file has no tuning (GP7 vocal/piano tracks); the
+   placeholder E-standard strings stay because code indexes `strings`. The GPIF exporter
+   writes a `Tuning` property only when `has_tuning` is true.
+   `src/convert/legacy/mod.rs` sets it to `true` (unchanged behaviour).
+6. `src/io/gpif.rs`, `src/io/gpif_import.rs`, `src/model/legacy/track.rs`: read the GP7
+   `<InstrumentSet>` (type and name) into new fields `Track::instrument_type` and
+   `Track::instrument_name`; tracks of type `drumKit` are marked `percussion_track`.
+   Not written back by the exporter yet. `src/convert/legacy/mod.rs` sets both to `None`.
+7. `src/io/gpif_import.rs`: regression tests `tuning_tests` for 2–6.

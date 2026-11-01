@@ -150,6 +150,20 @@ pub struct Track {
     pub general_midi: Option<GeneralMidi>,
     #[serde(rename = "Transpose", default)]
     pub transpose: Option<Transpose>,
+    /// GuitarScore addition: the instrument (GP7), e.g. type `electricGuitar`, `drumKit`.
+    #[serde(rename = "InstrumentSet", default)]
+    pub instrument_set: Option<InstrumentSet>,
+}
+
+/// GuitarScore addition: `<InstrumentSet>` of a GP7 track (only the fields used).
+#[derive(Debug, Deserialize)]
+pub struct InstrumentSet {
+    /// Display name, e.g. "Electric Guitar".
+    #[serde(rename = "Name", default)]
+    pub name: Option<String>,
+    /// Type id, e.g. `electricGuitar`, `electricBass`, `drumKit`, `voice`.
+    #[serde(rename = "Type", default)]
+    pub kind: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

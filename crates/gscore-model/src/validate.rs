@@ -34,7 +34,7 @@ fn check_track(song: &Song, track: &TrackView<'_>) -> Result<(), ModelError> {
         )));
     }
     // Strings must be numbered 1, 2, ..., n in order.
-    for (expected, tuning) in (1_u8..).zip(track.tuning()?) {
+    for (expected, tuning) in (1_u8..).zip(track.strings()?) {
         if tuning.string.get() != expected {
             return Err(ModelError::Invalid(format!(
                 "tuning lists {} where string {expected} was expected",

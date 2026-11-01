@@ -67,6 +67,15 @@ pub struct Track {
     pub transpose_chromatic: i32,
     /// Octave transposition (GP6/GP7)
     pub transpose_octave: i32,
+    /// GuitarScore addition: false if the file stores no tuning for this track (e.g. GP7
+    /// vocal or piano tracks). `strings` then holds placeholder E-standard strings, which
+    /// are not written back.
+    pub has_tuning: bool,
+    /// GuitarScore addition: GP7 instrument type id (`electricGuitar`, `drumKit`, `voice`,
+    /// ...), `None` for formats that do not store one. Not written back yet.
+    pub instrument_type: Option<String>,
+    /// GuitarScore addition: GP7 instrument display name ("Electric Guitar"), if stored.
+    pub instrument_name: Option<String>,
 }
 impl Default for Track {
     fn default() -> Self {
@@ -94,6 +103,9 @@ impl Default for Track {
             midi_program_gpif: None,
             transpose_chromatic: 0,
             transpose_octave: 0,
+            has_tuning: true,
+            instrument_type: None,
+            instrument_name: None,
         }
     }
 }

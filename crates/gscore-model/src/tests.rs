@@ -170,11 +170,37 @@ fn songs_for_several_instruments_load() {
         let pitches: Vec<i8> = track
             .tuning()
             .unwrap()
+            .unwrap()
             .iter()
             .map(|t| i8::try_from(t.pitch.get()).unwrap())
             .collect();
         assert_eq!(pitches, tuning);
     }
+}
+
+#[test]
+fn tracks_without_a_real_tuning_report_none() {
+    let mut gp = song(vec![
+        track("Singer", GUITAR_6, vec![measure((4, 4), vec![])]),
+        track("Drums", &[0; 6], vec![measure((4, 4), vec![])]),
+        track("Guitar", GUITAR_6, vec![measure((4, 4), vec![])]),
+    ]);
+    gp.tracks[0].has_tuning = false;
+    let mut voice = track("Voice", GUITAR_6, vec![measure((4, 4), vec![])]);
+    voice.instrument_type = Some("voice".to_owned());
+    voice.instrument_name = Some("Voice".to_owned());
+    gp.tracks.push(voice);
+    let song = from_guitarpro(gp).unwrap();
+    let tunings: Vec<bool> = song
+        .tracks()
+        .map(|t| t.tuning().unwrap().is_some())
+        .collect();
+    assert_eq!(tunings, [false, false, true, false]);
+    let voice = song.track(TrackIndex::new(3)).unwrap();
+    assert_eq!(voice.instrument_kind(), InstrumentKind::Other);
+    assert_eq!(voice.instrument_name(), Some("Voice"));
+    // The strings are still there for placing notes.
+    assert!(song.tracks().all(|t| t.string_count() == 6));
 }
 
 #[test]

@@ -118,3 +118,18 @@ playback need them.
   the process. Removed the hand-written parser, command table and help module.
 - Gains: typo suggestions, standard `help <command>`, `-h` short / `--help` long help.
   Exit codes unchanged (0 ok, 1 failed, 2 usage). `Cli::command().debug_assert()` test.
+
+## 2026-11-01 — Instruments and tunings
+
+- Tunings print as note names (scientific pitch notation, sharps), lowest string first.
+- Vendored guitarpro: reads GP7 `<InstrumentSet>` (type id and name) into the track; marks
+  `drumKit` tracks as percussion (before: only via MIDI channel 10, which GP7 does not
+  store there); `Track::has_tuning` is false when the file has no tuning, and the exporter
+  then writes none.
+- Model: `TrackView::instrument_kind()` (`Strings`, `Drums`, `Other`, from the last camelCase
+  word of the type id), `instrument_name()`; `tuning()` returns `Option` and is `None` for
+  non-string instruments (GP7 stores E standard on vocal and piano tracks), tracks without a
+  stored tuning, and all-zero tunings.
+- Owner's files: instrument types found: electricGuitar 126, drumKit 48, voice 28,
+  electricBass 21, padSynthesizer 7, electricPiano 4, trumpet 2, acousticPiano 1,
+  electricOrgan 1.

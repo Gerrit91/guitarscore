@@ -8,6 +8,7 @@ use guitarpro::{BeatStatus, NoteType};
 
 use crate::duration::{Duration, TimeSignature};
 use crate::error::ModelError;
+use crate::instrument::{self, InstrumentKind};
 use crate::position::{BeatIndex, Fret, MeasureIndex, Pitch, StringNumber, TrackIndex, VoiceIndex};
 
 /// One string of a track and the pitch it is tuned to.
@@ -46,8 +47,37 @@ impl<'a> TrackView<'a> {
         self.inner.strings.len()
     }
 
-    /// The tuning, from string 1 (highest) down.
-    pub fn tuning(&self) -> Result<Vec<StringTuning>, ModelError> {
+    /// The broad kind of instrument: string instrument, drums, or other.
+    pub fn instrument_kind(&self) -> InstrumentKind {
+        instrument::classify(
+            self.inner.instrument_type.as_deref(),
+            self.inner.percussion_track,
+        )
+    }
+
+    /// The instrument's display name ("Electric Guitar", "Voice"), if the file stores one
+    /// (GP7 and later).
+    pub fn instrument_name(&self) -> Option<&'a str> {
+        self.inner.instrument_name.as_deref()
+    }
+
+    /// The tuning, from string 1 (highest) down, or `None` if the track has none: it is
+    /// not a string instrument (Guitar Pro still stores E standard for vocal and piano
+    /// tracks), the file stores no tuning, or every string is at pitch 0 (drum kits).
+    /// The track still has [`Self::string_count`] strings for placing notes.
+    pub fn tuning(&self) -> Result<Option<Vec<StringTuning>>, ModelError> {
+        if !self.inner.has_tuning || self.instrument_kind() != InstrumentKind::Strings {
+            return Ok(None);
+        }
+        let strings = self.strings()?;
+        if strings.iter().all(|s| s.pitch.get() == 0) {
+            return Ok(None);
+        }
+        Ok(Some(strings))
+    }
+
+    /// The strings as stored, including placeholder pitches of tracks without a tuning.
+    pub(crate) fn strings(&self) -> Result<Vec<StringTuning>, ModelError> {
         self.inner
             .strings
             .iter()

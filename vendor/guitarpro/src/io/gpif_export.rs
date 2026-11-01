@@ -443,18 +443,21 @@ impl SongGpifExportOps for Song {
             let b = track.color & 0xFF;
             xml.push_str(&format!("<Color>{r} {g} {b}</Color>"));
             xml.push_str("<Properties>");
-            // GuitarScore fix: GPIF lists pitches from the lowest string up; `strings`
-            // starts at string 1, the highest.
-            let pitches: Vec<String> = track
-                .strings
-                .iter()
-                .rev()
-                .map(|(_, p)| p.to_string())
-                .collect();
-            xml.push_str(&format!(
-                "<Property name=\"Tuning\"><Pitches>{}</Pitches></Property>",
-                pitches.join(" ")
-            ));
+            // GuitarScore: only write a tuning the file had (see `Track::has_tuning`).
+            if track.has_tuning {
+                // GuitarScore fix: GPIF lists pitches from the lowest string up; `strings`
+                // starts at string 1, the highest.
+                let pitches: Vec<String> = track
+                    .strings
+                    .iter()
+                    .rev()
+                    .map(|(_, p)| p.to_string())
+                    .collect();
+                xml.push_str(&format!(
+                    "<Property name=\"Tuning\"><Pitches>{}</Pitches></Property>",
+                    pitches.join(" ")
+                ));
+            }
             xml.push_str("</Properties>");
             xml.push_str("<GeneralMidi>");
             if let Some(prog) = track.midi_program_gpif {
