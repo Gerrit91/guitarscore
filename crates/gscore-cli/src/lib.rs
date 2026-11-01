@@ -1,68 +1,166 @@
-//! gscore-cli crate - Command-line interface for GuitarScore
+//! Headless command-line tools for working with Guitar Pro files without the GUI.
 //!
-//! This crate provides headless tools for working with Guitar Pro files
-//! without requiring the GUI application.
+//! Argument parsing and help come from clap: every subcommand is a variant of [`Command`],
+//! and its doc comment is its help text. A new subcommand gets a variant, a module, and a
+//! match arm in [`run_cli`].
 
-use std::io::{self, Write};
+mod info;
 
-use gscore_io::{import_guitar_pro_file, IoError};
-use gscore_model::Song;
+use std::ffi::OsString;
+use std::fmt;
+use std::path::PathBuf;
 
+use clap::error::ErrorKind;
+use clap::{Parser, Subcommand};
 
-/// Display song information from a parsed song
-pub fn display_song_info(song: &Song) {
-    println!("Song Information:");
-    println!("  Title: {}", song.title);
-    println!("  Artist: {}", song.artist);
-    println!("  Tempo: {} BPM", song.get_tempo());
-    println!("  Number of tracks: {}", song.track_count());
+/// Headless tools for Guitar Pro files.
+#[derive(Debug, Parser)]
+#[command(
+    name = "gscore-cli",
+    version,
+    after_help = "Supported formats: .gp3, .gp4, .gp5, .gpx (Guitar Pro 6), .gp (Guitar Pro 7+)"
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
 
-    for (i, track) in song.tracks().iter().enumerate() {
-        println!("  Track {}: {}", i + 1, track.name);
-        println!("    Number of measures: {}", track.measures.len());
-        
-        if !track.measures.is_empty() {
-            let first_measure = &track.measures[0];
-            println!("    First measure voices: {}", first_measure.voices.len());
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Show format, title, tempo, tracks and tunings of a Guitar Pro file
+    ///
+    /// Prints the file's format, metadata, measure count, and each track with its tuning
+    /// (note names, lowest string first). Then lists issues that do not prevent opening the
+    /// file, such as measures that are not filled or several notes on one string (the first
+    /// 10, and how many more). The format is detected from the file's content, not its
+    /// extension.
+    Info {
+        /// The Guitar Pro file to read
+        file: PathBuf,
+    },
+}
+
+/// Why the CLI did not succeed. Decides the exit code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CliError {
+    /// The command line was wrong (unknown command, missing argument). Exit code 2.
+    /// The message is complete, including usage, and printed as is.
+    Usage(String),
+    /// The command ran but failed (unreadable or invalid file). Exit code 1.
+    Failed(String),
+}
+
+impl CliError {
+    /// The process exit code for this error.
+    pub fn exit_code(&self) -> u8 {
+        match self {
+            CliError::Usage(_) => 2,
+            CliError::Failed(_) => 1,
         }
     }
 }
 
-/// Run the CLI with provided arguments
-pub fn run_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
-    if args.len() < 2 {
-        eprintln!("Usage: gscore-cli info <file.gp>");
-        std::process::exit(1);
-    }
-
-    let command = &args[1];
-
-    match command.as_str() {
-        "info" => {
-            if args.len() < 3 {
-                eprintln!("Usage: gscore-cli info <file.gp>");
-                std::process::exit(1);
-            }
-            let file_path = &args[2];
-            println!("Displaying info for: {}", file_path);
-
-            // Import the file using our new gscore-io functionality
-            match import_guitar_pro_file(std::path::Path::new(file_path)) {
-                Ok(song) => {
-                    display_song_info(&song);
-                }
-                Err(e) => {
-                    eprintln!("Error importing file: {:?}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
-        _ => {
-            eprintln!("Unknown command: {}", command);
-            eprintln!("Available commands: info");
-            std::process::exit(1);
+impl fmt::Display for CliError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CliError::Usage(msg) => f.write_str(msg),
+            CliError::Failed(msg) => write!(f, "Error: {msg}"),
         }
     }
+}
 
-    Ok(())
+/// Installs the panic hook that writes crash reports to the per-user crash directory.
+/// Call once at the start of `main`.
+pub fn install_crash_reporting() {
+    if let Some(dir) = gscore_session::default_crash_dir() {
+        gscore_session::install_panic_hook(dir);
+    }
+}
+
+/// Runs the CLI with the arguments after the program name. Returns the text to print on
+/// stdout on success (including `--help` and `--version` output).
+pub fn run_cli<I, T>(args: I) -> Result<String, CliError>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    let argv =
+        std::iter::once(OsString::from("gscore-cli")).chain(args.into_iter().map(Into::into));
+    let cli = match Cli::try_parse_from(argv) {
+        Ok(cli) => cli,
+        Err(err) => {
+            let text = err.render().to_string();
+            return match err.kind() {
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => Ok(text),
+                _ => Err(CliError::Usage(text)),
+            };
+        }
+    };
+    match cli.command {
+        Command::Info { file } => info::run(&file),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn command_definitions_are_consistent() {
+        // Catches mistakes in the clap definitions (duplicate flags, bad defaults, ...).
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn help_lists_every_command() {
+        for args in [&["--help"][..], &["-h"], &["help"]] {
+            let out = run_cli(args).unwrap();
+            assert!(out.contains("info"), "{args:?}: {out}");
+            assert!(out.contains("Show format, title, tempo"), "{args:?}: {out}");
+            assert!(out.contains("Supported formats"), "{args:?}: {out}");
+        }
+    }
+
+    #[test]
+    fn command_help_shows_usage_and_details() {
+        for args in [&["help", "info"][..], &["info", "--help"]] {
+            let out = run_cli(args).unwrap();
+            assert!(out.contains("Usage: gscore-cli info <FILE>"), "{out}");
+            assert!(out.contains("detected from the file's content"), "{out}");
+        }
+    }
+
+    #[test]
+    fn version_is_printed() {
+        assert!(run_cli(["--version"]).unwrap().starts_with("gscore-cli "));
+    }
+
+    #[test]
+    fn bad_arguments_are_usage_errors_with_exit_code_2() {
+        for args in [
+            &[][..],
+            &["info"],
+            &["info", "a", "b"],
+            &["bogus"],
+            &["--bogus"],
+        ] {
+            let err = run_cli(args).unwrap_err();
+            assert!(matches!(err, CliError::Usage(_)), "{args:?}: {err:?}");
+            assert_eq!(err.exit_code(), 2);
+        }
+    }
+
+    #[test]
+    fn typos_get_a_suggestion() {
+        let err = run_cli(["inof", "x.gp"]).unwrap_err().to_string();
+        assert!(err.contains("info"), "{err}");
+    }
+
+    #[test]
+    fn unreadable_file_is_a_failure_with_exit_code_1() {
+        let err = run_cli(["info", "/nonexistent/file.gp"]).unwrap_err();
+        assert!(matches!(err, CliError::Failed(_)), "{err:?}");
+        assert_eq!(err.exit_code(), 1);
+    }
 }

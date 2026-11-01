@@ -1,16 +1,8 @@
-//! Headless layout engine that converts a document model into positioned draw operations.
-
+//! Headless layout: turns the model plus viewport settings into positioned draw operations
+//! (lines, glyphs by SMuFL name, text, rectangles) with semantic color tokens. No GUI
+//! imports.
 //!
-//! This crate provides:
-//! - Conversion of musical elements to positioned draw operations
-//! - Semantic color tokens (Staff, NoteText, Cursor, Selection)
-//! - Layout algorithms for tablature rendering
-//! - No GUI dependencies (headless)
+//! Not implemented yet (milestone M3; AGENTS.md section 5, decision 3, and "Notation
+//! fonts").
 
-pub mod layout;
-pub mod draw_op;
-pub mod types;
-
-pub use layout::layout;
-pub use draw_op::DrawOp;
-pub use types::{Position, Size};
+#![warn(clippy::arithmetic_side_effects)]

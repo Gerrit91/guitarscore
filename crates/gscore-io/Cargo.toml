@@ -1,12 +1,11 @@
 [package]
 name = "gscore-io"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 gscore-model = { path = "../gscore-model" }
-guitarpro = { git = "https://github.com/slundi/guitarpro" }
-# Add any dependencies needed in this crate here
+gscore-gp = { path = "../gscore-gp" }
 
 [lints]
 workspace = true

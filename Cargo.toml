@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/gscore-gp",
     "crates/gscore-model",
     "crates/gscore-io",
     "crates/gscore-layout",
@@ -10,14 +11,23 @@ members = [
     "crates/gscore-session",
     "crates/gscore-cli",
     "crates/gscore-app",
+    "xtask",
 ]
 
 [workspace.package]
 version = "0.1.0"
 authors = ["GuitarScore Team"]
-edition = "2021"
+edition = "2024"
 license = "MIT"
 repository = "https://github.com/Gerrit91/guitarscore"
+
+# Panics must unwind (never abort) so `catch_unwind` containment and the crash-report hook
+# work. This is the default; it is spelled out so nobody switches it off for speed.
+[profile.dev]
+panic = "unwind"
+
+[profile.release]
+panic = "unwind"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -25,9 +35,8 @@ unused_imports = "warn"
 unused_variables = "warn"
 unused_must_use = "warn"
 unused_qualifications = "warn"
-nonstandard_style = "warn"
+nonstandard_style = { level = "warn", priority = -1 }
 missing_debug_implementations = "warn"
-arithmetic_side_effects = "warn"
 unused_crate_dependencies = "warn"
 unreachable_pub = "warn"
 
@@ -39,4 +48,5 @@ todo = "deny"
 unimplemented = "deny"
 unreachable = "deny"
 indexing_slicing = "deny"
-arithmetic_side_effects = { level = "warn", priority = -1 }
+# `arithmetic_side_effects` is enabled per crate (parsing, layout, sequencing)
+# with `#![warn(clippy::arithmetic_side_effects)]` in lib.rs.

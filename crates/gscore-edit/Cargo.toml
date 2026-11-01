@@ -1,14 +1,9 @@
 [package]
 name = "gscore-edit"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-gscore-model = { path = "../gscore-model" }
-gscore-io = { path = "../gscore-io" }
-gscore-layout = { path = "../gscore-layout" }
-gscore-play = { path = "../gscore-play" }
-# Add any dependencies needed in this crate here
 
 [lints]
 workspace = true

@@ -1,10 +1,22 @@
-use gscore_cli::run_cli;
-use std::env;
+//! `gscore-cli` binary: thin wrapper around [`gscore_cli::run_cli`].
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    if let Err(e) = run_cli(args) {
-        eprintln!("Error: {}", e);
-        std::process::exit(1);
+// The lint checks each target separately; the dependencies are used by the library target.
+#![allow(unused_crate_dependencies)]
+
+use std::io::Write;
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
+    gscore_cli::install_crash_reporting();
+    match gscore_cli::run_cli(std::env::args_os().skip(1)) {
+        Ok(output) => {
+            // Ignore write errors (e.g. a closed pipe in `gscore-cli info x | head`).
+            let _ = std::io::stdout().write_all(output.as_bytes());
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            let _ = writeln!(std::io::stderr(), "{}", err.to_string().trim_end());
+            ExitCode::from(err.exit_code())
+        }
     }
 }

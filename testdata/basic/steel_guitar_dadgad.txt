@@ -1,0 +1,43 @@
+Title: Steel Guitar DADGAD
+SubTitle: Test Material
+Artist: GuitarScore
+Album: Basic Tests
+Words: Gerrit91
+Music: Gerrit91
+Copyright: Gerrit91
+Tabber: Gerrit91
+Tempo = 120
+Steel Guitar
+
+Legend
+L - tied note
+x - dead note
+h - hammer on/pull off
+b - bend
+s - slide
+~ - vibrato
+g - ghost note
+> - accentuated note
+t - trill
+M - palm mute
+. - staccato
+P - popping (bass)
+S - slapping (bass)
++ - tapping
+W - wide vibrato
+< - fade in
+w - whammy bar
+= - tremolo picking
+v - brush up
+^ - brush down
+V - pick stroke up
+n - pick stroke down
+
+
+D |-----------------0----------||
+A |--------------0-------------||
+G |-----------0----------------||
+D |--------0-------------------||
+A |-----0----------------------||
+D |--0-------------------------||
+

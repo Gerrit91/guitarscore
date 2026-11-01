@@ -1,0 +1,15 @@
+Format:       Guitar Pro 7+ (.gp)
+Title:        Steel Guitar DADGAD
+Subtitle:     Test Material
+Artist:       GuitarScore
+Album:        Basic Tests
+Lyrics by:    Gerrit91
+Music by:     Gerrit91
+Copyright:    Gerrit91
+Tab by:       Gerrit91
+Instructions: (not set)
+Notes:        Used for testing
+Tempo:        120 BPM
+Measures:     1
+Tracks:       1
+  track 1: Steel Guitar: Steel Guitar, 6 strings, tuned DADGAD (D2 A2 D3 G3 A3 D4)

@@ -4,40 +4,30 @@ This document provides guidelines for contributing to the GuitarScore project.
 
 ## Workspace Structure
 
-The workspace follows a clear layering system:
+The workspace is layered; a crate may only depend on crates in lower layers
+(`cargo xtask layers` enforces this, using the table in `xtask/src/layers.rs`):
 
-1. **Layer 0 (L0)**: `gscore-model`
-   - Document model wrapper
-   - Query helpers and position types
-   
-2. **Layer 1 (L1)**: `gscore-io`, `gscore-layout`, `gscore-play`
-   - File I/O operations
-   - Layout engine for drawing operations
-   - Playback system
-   
-3. **Layer 2 (L2)**: `gscore-edit`, `gscore-audio`
-   - Command system and editing logic
-   - Audio output implementations
-   
-4. **Layer 3 (L3)**: `gscore-session`
-   - Session management
-   - Recovery journaling
-   
-5. **Layer 4 (L4)**: `gscore-cli`, `gscore-app`
-   - Command-line tools
-   - GUI application shell
+0. `gscore-gp`: Guitar Pro song data and reading/writing (derived from guitarpro)
+1. `gscore-model`: document model wrapping the Guitar Pro song: views, positions, checks
+2. `gscore-io`, `gscore-layout`, `gscore-play`: file entry point, layout, playback
+3. `gscore-edit`, `gscore-audio`: editing commands, audio output
+4. `gscore-session`: open document, crash reports, recovery, autosave
+5. `gscore-cli`, `gscore-app`: command-line tool, desktop application
+
+Only `gscore-gp`, `gscore-model`, `gscore-io`, `gscore-session` and `gscore-cli` contain code
+so far; the other crates are empty until their milestone (AGENTS.md section 9).
 
 ## Coding Standards
 
 - Follow Rust idioms and best practices
 - Prefer small, focused crates with well-defined APIs
 - Avoid "big ball of mud" architecture
-- Ensure all code compiles for `wasm32-unknown-unknown` target
+- The core crates (`gscore-gp` up to `gscore-edit`) must compile for `wasm32-unknown-unknown`
 - Never panic in non-test code
 
 ## Testing Requirements
 
-All changes must pass:
+All changes must pass `cargo xtask ci`, which runs:
 
 - `cargo fmt --all -- --check`
 - `cargo clippy --workspace --all-targets -- -D warnings`

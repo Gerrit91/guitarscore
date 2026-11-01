@@ -1,26 +1,6 @@
-//! gscore-play crate - Playback and MIDI handling
+//! Playback sequencing: turns the model into timed MIDI events, allocates MIDI channels, and
+//! defines the `Player` trait that output backends implement. No device crates here.
+//!
+//! Not implemented yet (milestone M7; AGENTS.md section 5, decisions 8-10, and section 8).
 
-//! This crate provides the Player trait and playback functionality
-//! for GuitarScore, handling MIDI events and audio output.
-
-// Placeholder for actual playback implementation
-// This would normally contain:
-// - The Player trait definition
-// - MIDI event handling
-// - Audio backend implementations
-// - Channel allocation logic
-
-pub mod player;
-pub mod midi;
-pub mod audio;
-
-/// A placeholder struct for the play crate
-#[derive(Debug)]
-pub struct PlayPlaceholder;
-
-impl PlayPlaceholder {
-    /// Placeholder function
-    pub fn new() -> Self {
-        PlayPlaceholder
-    }
-}
+#![warn(clippy::arithmetic_side_effects)]

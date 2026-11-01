@@ -1,38 +1,35 @@
-//! Error types for gscore-io crate
+//! Error type of the gscore-io crate.
 
 use std::fmt;
 
-/// Custom error type for I/O operations in gscore-io
+use gscore_model::ModelError;
+
+/// Everything that can go wrong while converting between bytes and a `Song`.
 #[derive(Debug)]
 pub enum IoError {
-    /// Error from the guitarpro crate when parsing files
+    /// The Guitar Pro reader (`gscore-gp`) rejected the input or panicked while handling it.
     GuitarProError(String),
-    /// Error from standard I/O operations
-    IoError(std::io::Error),
-    /// Error when a file format is not supported
+    /// The file format is not supported, or the file is too large.
     UnsupportedFormat(String),
-    /// Error when a file cannot be parsed correctly
-    ParseError(String),
-    /// Error when a file cannot be written correctly
-    WriteError(String),
+    /// The file parsed, but the song breaks the model's invariants.
+    InvalidSong(ModelError),
 }
 
 impl fmt::Display for IoError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            IoError::GuitarProError(msg) => write!(f, "GuitarPro error: {}", msg),
-            IoError::IoError(err) => write!(f, "IO error: {}", err),
-            IoError::UnsupportedFormat(msg) => write!(f, "Unsupported format: {}", msg),
-            IoError::ParseError(msg) => write!(f, "Parse error: {}", msg),
-            IoError::WriteError(msg) => write!(f, "Write error: {}", msg),
+            IoError::GuitarProError(msg) => write!(f, "GuitarPro error: {msg}"),
+            IoError::UnsupportedFormat(msg) => write!(f, "Unsupported format: {msg}"),
+            IoError::InvalidSong(err) => write!(f, "{err}"),
         }
     }
 }
 
-impl std::error::Error for IoError {}
-
-impl From<std::io::Error> for IoError {
-    fn from(error: std::io::Error) -> Self {
-        IoError::IoError(error)
+impl std::error::Error for IoError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            IoError::InvalidSong(err) => Some(err),
+            _ => None,
+        }
     }
 }

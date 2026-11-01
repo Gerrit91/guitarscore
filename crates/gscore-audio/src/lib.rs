@@ -1,20 +1,5 @@
-//! gscore-audio crate - Audio output backends
-
-//! This crate provides audio output functionality for GuitarScore,
-//! including MIDI output and internal synth implementations.
-
-// Placeholder for actual audio implementation
-pub mod player;
-pub mod midi;
-pub mod synth;
-
-/// A placeholder struct for the audio crate
-#[derive(Debug)]
-pub struct AudioPlaceholder;
-
-impl AudioPlaceholder {
-    /// Placeholder function
-    pub fn new() -> Self {
-        AudioPlaceholder
-    }
-}
+//! Audio output backends implementing `gscore-play`'s `Player` trait: MIDI output first,
+//! later an internal synthesizer. The only crate allowed to use `midir`, `cpal` and
+//! `rustysynth`.
+//!
+//! Not implemented yet (milestones M7 and M8; AGENTS.md section 8).
