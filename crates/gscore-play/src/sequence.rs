@@ -3,9 +3,9 @@
 //!
 //! Notes play on their track's channel. A note with a bend or slide borrows a free channel
 //! for its own pitch bend (AGENTS.md section 5, decision 10): the borrowed channel gets the
-//! track's program, volume and pan plus a 6-semitone bend range, and is released after the
-//! note. When every other channel is in use the note plays without its pitch movement and
-//! [`Sequence::degraded_pitch_bends`] counts it.
+//! track's program, volume and pan plus a 6-semitone bend range (wider for a wide slide),
+//! and is released after the note. When every other channel is in use the note plays
+//! without its pitch movement and [`Sequence::degraded_pitch_bends`] counts it.
 
 use std::collections::HashMap;
 
@@ -258,7 +258,10 @@ impl Sequence {
                         event,
                     });
                 }
-                for event in pitch::bend_range_setup(note.play_channel) {
+                let range = note
+                    .shape
+                    .map_or(pitch::BEND_RANGE_SEMITONES, |shape| shape.range());
+                for event in pitch::bend_range_setup(note.play_channel, range) {
                     events.push(TimedEvent {
                         tick: note.start,
                         track: note.track,

@@ -98,14 +98,14 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M7: bends and
    harmonics, instruments, volume, pan, tempo changes, repeats, alternative endings, bends
    and shift/legato/in/out slides; `gscore-audio` sends them to a MIDI port. A note that
    bends or slides borrows a free channel with the track's program, volume and pan and a
-   6-semitone bend range (RPN 0,0), so the rest of the chord keeps its pitch; when every
-   channel is in use the note plays without the pitch movement and
-   `Sequence::degraded_pitch_bends` counts it.
+   6-semitone bend range (RPN 0,0; wider for a wide slide, up to 24), so the rest of the
+   chord keeps its pitch; when every channel is in use the note plays without the pitch
+   movement and `Sequence::degraded_pitch_bends` counts it.
    Simplifications: the model stores only a bend's highest point, so a bend that releases
    again plays as a bend up and hold, and a release bend starts bent and returns to center;
-   slides are pitch bends and are clamped to the 6-semitone range; an "out" slide moves a
-   whole step; a slide takes precedence over a bend on the same note. Not played yet: vibrato, let
-   ring, palm mute, grace notes, trills, whammy bar, D.C./D.S./coda, swing, mute/solo, GP7
+   slides are pitch bends (clamped to two octaves); an "out" slide moves a whole step; a
+   slide takes precedence over a bend on the same note. Not played yet: vibrato, let ring,
+   palm mute, grace notes, trills, whammy bar, D.C./D.S./coda, swing, mute/solo, GP7
    mixer volume and pan (GP7 tracks use defaults). The app shows the playing measure's
    number, not a playhead on the page. Pause/resume does not re-trigger notes that were
    sounding, and stopping `gscore-cli play` with Ctrl+C can leave notes hanging in the

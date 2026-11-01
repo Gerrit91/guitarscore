@@ -619,7 +619,7 @@ across beats, harmonic diamonds, notation-staff articulations.
   then RPN null), and is released after a center reset. The rest of the chord keeps its
   pitch. Guitar Pro's own MIDI export sets the same six-semitone range (its first bend is
   at tick 5760 at 480 PPQ with a 2621 offset, ours at 11520 at 960 PPQ with 2730).
-- Bends ramp to their highest point (an eighth note at most) and hold; release bends start
+- Bends ramp to their highest point (a quarter note at most) and hold; release bends start
   at the bent pitch and return. Shift/legato slides go to the next note on the same string;
   in slides use the previous note when it lies in the slide's direction, otherwise a whole
   step; out slides move a whole step. Notes that cannot get a channel play without the pitch
@@ -635,5 +635,7 @@ across beats, harmonic diamonds, notation-staff articulations.
   bends at tick 5760 at 480 PPQ, ours at 11520 at 960 PPQ, the same bar), and an end-to-end
   test hears a pitch bend on ALSA's "Midi Through" port. Tests: 282 (+16).
 - Open (docs/gaps.md #11): bend curves are simplified (the model keeps only the highest
-  point), slides clamp to the 6-semitone range, and whammy, vibrato, let ring, palm mute,
-  grace notes and trills are still silent.
+  point), and whammy, vibrato, let ring, palm mute, grace notes and trills are still silent.
+- Review fix: slides wider than six semitones (fret 5 to 12, say) stopped short. The range
+  is sent per borrowed note anyway, so such a slide now sets a wider range (up to 24
+  semitones); bends keep Guitar Pro's six. Tests: 284 (+2).
