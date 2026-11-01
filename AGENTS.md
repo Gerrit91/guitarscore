@@ -223,8 +223,8 @@ command layer.
 - **M4:** headless editing: checked editing methods on the model, the command registry in `gscore-edit` (id, label, `enabled`, parameters, `apply`, `undo`; transactional) with the shared apply-then-undo test helper, `panic_hunt` and property tests, and the CLI on top of it: `gscore-cli commands` (lists command ids and parameters) and `gscore-cli edit <in> -o <out>` with `-c "<command> key=value ..."` or `--script <file>` (positions 1-based). Script files double as regression tests.
 - **M5:** `gscore-layout` headless layout for one track's tab staff, SVG golden tests, SMuFL font loading and metadata, comparison against MuseScore output.
 - **M6:** `gscore-app` read-only egui view drawing the `DrawOp`s, with light and dark theme, plus the offscreen snapshot example.
-- **M7:** interactive editing in the app: cursor, keyboard entry and undo/redo through the M4 commands, driven by the keymap file (tested on QWERTY, QWERTZ, and AZERTY layouts), **and `gscore-session` with the recovery journal and crash recovery**.
-- **M8:** MIDI output playback and `.mid` export.
+- **M7:** MIDI output playback and `.mid` export (moved before interactive editing by the owner, 2026-11-01: sound first, for a first usable version).
+- **M8:** interactive editing in the app: cursor, keyboard entry and undo/redo through the M4 commands, driven by the keymap file (tested on QWERTY, QWERTZ, and AZERTY layouts), **and `gscore-session` with the recovery journal and crash recovery**.
 - **M9:** internal synth playback.
 - **Later:** fuzzing with `cargo-fuzz`, standard notation, more techniques, multi-track mixer, GP3/4/5 writing, JSON control channel, sound libraries.
 

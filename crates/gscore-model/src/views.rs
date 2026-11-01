@@ -25,7 +25,7 @@ pub struct StringTuning {
 #[derive(Debug, Clone, Copy)]
 pub struct TrackView<'a> {
     index: TrackIndex,
-    inner: &'a gscore_gp::Track,
+    pub(crate) inner: &'a gscore_gp::Track,
 }
 
 impl<'a> TrackView<'a> {

@@ -3,17 +3,19 @@
 //! `gscore-layout`, and the draw operations are painted with egui.
 //!
 //! Read-only for now (milestone M6); editing through the `gscore-edit` commands comes with
-//! M7.
+//! M8.
 
 mod app;
 mod canvas;
 mod document;
 mod fonts;
+mod playback;
 mod state;
 mod tasks;
 
 pub use app::GuitarScoreApp;
 pub use document::Document;
+pub use playback::Playback;
 pub use state::{ThemeChoice, ViewState, ZOOM_RANGE};
 
 // The snapshot test and example render the app offscreen and save PNGs; this marks the

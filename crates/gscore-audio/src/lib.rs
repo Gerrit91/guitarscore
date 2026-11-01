@@ -1,5 +1,15 @@
-//! Audio output backends implementing `gscore-play`'s `Player` trait: MIDI output first,
-//! later an internal synthesizer. The only crate allowed to use `midir`, `cpal` and
-//! `rustysynth`.
+//! Audio and MIDI output backends implementing `gscore_play::Player`. Only this crate may
+//! use device crates (`midir` now; `cpal` and `rustysynth` with the internal synth, M9).
 //!
-//! Not implemented yet (milestones M8 and M9; AGENTS.md section 8).
+//! Every backend runs on its own thread; the UI talks to it through a bounded channel, so a
+//! slow or failing device never blocks editing (AGENTS.md section 2 and section 5,
+//! decision 9). If output fails, playback stops with an error and editing continues.
+
+mod midi_out;
+
+pub use midi_out::{MidiOutPlayer, midi_output_ports};
+
+// The integration test builds songs with `gscore-model`'s test support; this marks the
+// test-only dependency for the library test target's unused-dependency check.
+#[cfg(test)]
+use gscore_model as _;

@@ -13,6 +13,8 @@ gscore-io = { path = "../gscore-io" }
 gscore-edit = { path = "../gscore-edit" }
 gscore-session = { path = "../gscore-session" }
 gscore-layout = { path = "../gscore-layout" }
+gscore-play = { path = "../gscore-play" }
+gscore-audio = { path = "../gscore-audio" }
 clap = { version = "4.6.7", features = ["derive"] }
 
 [lints]

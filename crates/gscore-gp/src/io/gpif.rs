@@ -159,6 +159,31 @@ pub struct Track {
     /// GuitarScore addition: the instrument (GP7), e.g. type `electricGuitar`, `drumKit`.
     #[serde(rename = "InstrumentSet", default)]
     pub instrument_set: Option<InstrumentSet>,
+    /// GuitarScore addition: the track's sounds (GP7). GP7 names the MIDI program here
+    /// instead of in `<GeneralMidi>`.
+    #[serde(rename = "Sounds", default)]
+    pub sounds: Option<SoundsWrapper>,
+}
+
+/// GuitarScore addition: `<Sounds>` of a GP7 track.
+#[derive(Debug, Deserialize)]
+pub struct SoundsWrapper {
+    #[serde(rename = "Sound", default)]
+    pub sounds: Vec<Sound>,
+}
+
+/// GuitarScore addition: one `<Sound>` of a GP7 track (only the MIDI part).
+#[derive(Debug, Deserialize)]
+pub struct Sound {
+    #[serde(rename = "MIDI", default)]
+    pub midi: Option<SoundMidi>,
+}
+
+/// GuitarScore addition: the `<MIDI>` part of a GP7 `<Sound>`.
+#[derive(Debug, Deserialize)]
+pub struct SoundMidi {
+    #[serde(rename = "Program", default)]
+    pub program: Option<i32>,
 }
 
 /// GuitarScore addition: `<InstrumentSet>` of a GP7 track (only the fields used).

@@ -54,19 +54,19 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M4 headless e
 5. **Editing is headless and narrow (M4).** The model has checked methods to set/clear a
    note, set a beat length, insert/delete a beat and insert/delete a measure; `gscore-edit`
    turns them into commands with undo/redo, and `gscore-cli edit` runs them from `-c` or a
-   script. Still missing: copy/cut/paste, cursor and selection (M7); editing tempo, time
+   script. Still missing: copy/cut/paste, cursor and selection (M8); editing tempo, time
    signatures, effects, chord diagrams and lyrics; lyric/chord/effect accessors. Every model
    edit clones the whole wrapped song (including embedded audio) to stay transactional; this
    is correct but must become a per-region copy for large scores: a single-note edit takes
    about 3.6 ms in release on `DrDr.gp` (172 measures x 16 tracks), mostly the clone plus
-   validating the whole song; M7 should copy and validate only the touched region. Undo history is in memory
+   validating the whole song; M8 should copy and validate only the touched region. Undo history is in memory
    only and capped by entry count (10,000), not by bytes (persisting it and a memory cap
-   belong with the recovery journal in M7). Only the initial tempo is exposed.
+   belong with the recovery journal in M8). Only the initial tempo is exposed.
 6. **Saving is GP7 only.** `gscore_session::save` and `gscore-cli convert` refuse other
    formats until their round trips pass (#2). Whether Guitar Pro itself opens our GP7 files
    is not verified yet (the owner can check). Effects the model has no accessor for (grace
    notes, fingerings, lyrics, mix tables, ...) are not part of the save verification.
-7. **No recovery journal or autosave yet** (crash reports exist since M0). M7.
+7. **No recovery journal or autosave yet** (crash reports exist since M0). M8.
 8. **Little test data.** Three songs (`steel_guitar_dadgad`, `note_lengths`, `ornaments`)
    as GP7, GPX and GP5, with import, `info` and `dump` reference tests and
    truncation/byte-flip robustness — still only one track and one voice per song. No
@@ -84,8 +84,15 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M4 headless e
 10. **The app is a read-only viewer (M6, first version).** It opens files in the
    background, shows one track's page (track picker, zoom, light and dark theme) and
    contains panics in layout, drawing and background jobs. Missing: editing, cursor and
-   keymap (M7), remembering the view state and window between runs, recent files, drag and
+   keymap (M8), remembering the view state and window between runs, recent files, drag and
    drop, keyboard shortcuts for zoom, a multi-page view. On macOS the file dialog must run
    on the main thread (rfd); it runs on a background thread here, so Open… needs a change
-   there. The snapshot test needs a GPU or software Vulkan. Playback crates are still
-   empty.
+   there. The snapshot test needs a GPU or software Vulkan.
+11. **Playback is MIDI only and plays notes, not techniques (M7, first version).**
+   `gscore-play` sequences notes (all voices, exact timing), ties, dead notes, harmonics,
+   instruments, volume, pan, tempo changes, repeats and alternative endings; `gscore-audio`
+   sends them to a MIDI port. Not played yet: bends and slides (need pitch bend and channel
+   borrowing), vibrato, let ring, palm mute, grace notes, trills, D.C./D.S./coda, swing,
+   mute/solo, GP7 mixer volume and pan (GP7 tracks use defaults). The app shows the playing
+   measure's number, not a playhead on the page. Stopping `gscore-cli play` with Ctrl+C
+   can leave notes hanging in the synth. No internal synth yet (M9).

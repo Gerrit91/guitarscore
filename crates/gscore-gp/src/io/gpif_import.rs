@@ -449,7 +449,9 @@ impl SongGpifOps for Song {
             if let Some(repeat) = &mb.repeat {
                 mh.repeat_open = repeat.start == "true";
                 if repeat.end == "true" {
-                    mh.repeat_close = repeat.count.max(1) as i8;
+                    // GPIF counts plays (2 for a plain repeat); the model counts repeats
+                    // (jumps back), as GP3-5 do after reading.
+                    mh.repeat_close = repeat.count.saturating_sub(1).clamp(1, 127) as i8;
                 }
             }
 
@@ -579,6 +581,15 @@ impl SongGpifOps for Song {
                 if let Some(port) = gm.port {
                     track.port = port as u8;
                 }
+            }
+            // GuitarScore: GP7 names the program in the track's first sound instead.
+            if track.midi_program_gpif.is_none() {
+                track.midi_program_gpif = g_track
+                    .sounds
+                    .as_ref()
+                    .and_then(|s| s.sounds.first())
+                    .and_then(|sound| sound.midi.as_ref())
+                    .and_then(|midi| midi.program);
             }
 
             // GuitarScore: instrument type and name (GP7). Drum kits are percussion even
