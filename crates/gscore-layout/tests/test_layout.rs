@@ -130,7 +130,7 @@ fn every_test_file_lays_out_on_the_page_with_one_fret_number_per_note() {
 fn every_string_count_gets_one_line_per_string() {
     for tuning in [BASS_4, GUITAR_6, GUITAR_7, GUITAR_8] {
         let song = testing::song(&[tuning], 3).unwrap();
-        let layout = common::layout(&song, 0);
+        let layout = common::layout_tab_only(&song, 0);
         assert_on_page(&layout, &format!("{} strings", tuning.len()));
         assert_eq!(staff_lines(&layout) % tuning.len(), 0);
         assert_eq!(
@@ -144,7 +144,7 @@ fn every_string_count_gets_one_line_per_string() {
 #[test]
 fn long_songs_break_into_lines_that_fit_the_page() {
     let song = testing::song(&[GUITAR_6], 200).unwrap();
-    let layout = common::layout(&song, 0);
+    let layout = common::layout_tab_only(&song, 0);
     assert_on_page(&layout, "200 measures");
     assert!(systems(&layout, 6) > 10, "{} systems", systems(&layout, 6));
     let right_margin = LayoutOptions::default().page_width - LayoutOptions::default().margin_x;
@@ -319,4 +319,41 @@ fn ornaments_are_drawn_on_the_tab_staff() {
             .any(|op| matches!(op, DrawOp::Curve { .. })),
         "slurs and bends are curves"
     );
+}
+
+#[test]
+fn notation_adds_a_five_line_staff_and_one_notehead_per_note() {
+    use gscore_layout::Glyph;
+    // DADGAD: six open strings as eighths, then a quarter rest; one system.
+    let song = common::open("basic/steel_guitar_dadgad.gp");
+    let with = common::layout(&song, 0);
+    let without = common::layout_tab_only(&song, 0);
+    assert_on_page(&with, "notation");
+    // Staff lines run across the system; ledger lines (also staff-colored) are short.
+    let long_lines = |layout: &Layout| {
+        layout
+            .ops
+            .iter()
+            .filter(|op| {
+                matches!(op, DrawOp::Line { from, to, color: ColorToken::Staff, .. }
+                    if to.x - from.x > 10.0)
+            })
+            .count()
+    };
+    assert_eq!(long_lines(&with), long_lines(&without) + 5);
+    let glyphs = |layout: &Layout, wanted: Glyph| {
+        layout
+            .ops
+            .iter()
+            .filter(|op| matches!(op, DrawOp::Glyph { glyph, .. } if *glyph == wanted))
+            .count()
+    };
+    assert_eq!(glyphs(&with, Glyph::NoteheadBlack), 6);
+    assert_eq!(glyphs(&with, Glyph::GClef), 1);
+    // The rest is written in the notation only, as in Guitar Pro.
+    assert_eq!(glyphs(&with, Glyph::RestQuarter), 1);
+    assert_eq!(glyphs(&without, Glyph::RestQuarter), 1);
+    // Bass tracks get the bass clef.
+    let bass = common::layout(&testing::song(&[BASS_4], 1).unwrap(), 0);
+    assert_eq!(glyphs(&bass, Glyph::FClef), 1);
 }

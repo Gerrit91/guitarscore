@@ -1,18 +1,32 @@
 //! Painting ornaments that sit on or above one note: number, mask, slashes, accents,
 //! vibrato, beats and bends.
 
-use super::{Fret, LINE_THICKNESS, MASK_PAD, SLASH_REACH};
+use super::{Fret, LINE_THICKNESS, MASK_PAD, SLASH_GAP, SLASH_REACH};
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, Rect, TextAnchor, TextFont};
 use crate::glyph::Glyph;
 use gscore_model::{AccentKind, Bend, BendKind, HarmonicKind, Vibrato};
 
-/// Baseline of an accent above the top staff line.
-const ACCENT_LANE: f32 = 1.0;
-/// Baseline of a trill or tremolo above the top staff line.
-const ORNAMENT_LANE: f32 = 1.4;
-/// Baseline of a vibrato wiggle above the staff.
-const WIGGLE_BOTTOM: f32 = 1.6;
+// Rows above the staff, measured up from the top line. Measure numbers take the band up
+// to about 1.6 staff spaces, so ornaments start above it and never collide with them.
+/// Baseline of accents, staccato, trill, tremolo and "PH".
+const ACCENT_LANE: f32 = 2.2;
+/// Baseline of a trill or tremolo (the same row as accents).
+const ORNAMENT_LANE: f32 = ACCENT_LANE;
+/// Middle of a vibrato wiggle.
+const WIGGLE_CENTER: f32 = 3.0;
+/// Where a vibrato starts before its note and stops before the next one.
+const WIGGLE_INSET: (f32, f32) = (0.3, 1.0);
+/// Shortest vibrato line.
+const WIGGLE_MIN: f32 = 1.2;
+/// Length of one slight-vibrato half wave and one wide-vibrato stroke.
+const WIGGLE_STEP: (f32, f32) = (0.45, 0.7);
+/// Most wiggle segments drawn for one note.
+const MAX_WIGGLES: f32 = 200.0;
+/// Gap between a bend's arrow and the next note.
+const BEND_END_GAP: f32 = 0.8;
+/// Shortest bend, from the number to the arrow.
+const BEND_MIN: f32 = 1.5;
 
 impl Fret {
     /// Draws the number (with its mask and inline slide slashes).
@@ -51,6 +65,8 @@ impl Fret {
         let half = self.width / 2.0;
         let top = line_y - cap / 2.0;
         let bottom = line_y + cap / 2.0;
+        let near = half + SLASH_GAP;
+        let far = near + SLASH_REACH;
         let slash = |from: Point, to: Point, ops: &mut Vec<DrawOp>| {
             ops.push(DrawOp::Line {
                 from,
@@ -60,37 +76,29 @@ impl Fret {
             });
         };
         if self.marks.slides_in_from_above() {
-            slash(
-                Point::new(x - half - SLASH_REACH, top),
-                Point::new(x - half - 0.05, bottom),
-                ops,
-            );
+            slash(Point::new(x - far, top), Point::new(x - near, bottom), ops);
         }
         if self.marks.slides_in_from_below() {
-            slash(
-                Point::new(x - half - SLASH_REACH, bottom),
-                Point::new(x - half - 0.05, top),
-                ops,
-            );
+            slash(Point::new(x - far, bottom), Point::new(x - near, top), ops);
         }
         if self.marks.slides_out_downwards() {
-            slash(
-                Point::new(x + half + 0.05, top),
-                Point::new(x + half + SLASH_REACH, bottom),
-                ops,
-            );
+            slash(Point::new(x + near, top), Point::new(x + far, bottom), ops);
         }
         if self.marks.slides_out_upwards() {
-            slash(
-                Point::new(x + half + 0.05, bottom),
-                Point::new(x + half + SLASH_REACH, top),
-                ops,
-            );
+            slash(Point::new(x + near, bottom), Point::new(x + far, top), ops);
         }
     }
 
-    /// Draws the ornaments that sit above the staff (or above the note).
-    pub(crate) fn draw_above(&self, x: f32, top: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
+    /// Draws the ornaments that sit above the staff (or above the note). `span_end` is
+    /// where the note's space ends: the next column, or the end of the measure.
+    pub(crate) fn draw_above(
+        &self,
+        x: f32,
+        span_end: f32,
+        top: f32,
+        ctx: &Context<'_>,
+        ops: &mut Vec<DrawOp>,
+    ) {
         if self.tie_destination {
             return;
         }
@@ -122,7 +130,7 @@ impl Fret {
             });
         }
         if let Some(bend) = self.marks.bend {
-            draw_bend(x, top, self, bend, ctx, ops);
+            draw_bend(x, span_end, top, self, bend, ctx, ops);
         }
     }
 }
@@ -159,27 +167,36 @@ fn draw_staccato(x: f32, top: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
     });
 }
 
+/// Draws a vibrato above the note at `x`, along the note's space up to `span_end`.
 pub(crate) fn draw_vibrato(
     x: f32,
+    span_end: f32,
     top: f32,
     vibrato: Vibrato,
-    _ctx: &Context<'_>,
     ops: &mut Vec<DrawOp>,
 ) {
     // Drawn as vector strokes rather than SMuFL wiggle glyphs, so the golden SVG shows
     // them even where the music font is not installed.
-    let center_y = top - WIGGLE_BOTTOM;
-    match vibrato {
-        Vibrato::Slight => {
-            let width = 2.4;
-            let amplitude = 0.18;
-            let half_waves: u8 = 6;
-            let step = width / f32::from(half_waves);
-            let start = x - width / 2.0;
-            for wave in 0..half_waves {
-                let from_x = start + step * f32::from(wave);
-                let to_x = from_x + step;
-                let peak = if wave & 1 == 0 {
+    let center_y = top - WIGGLE_CENTER;
+    let start = x - WIGGLE_INSET.0;
+    let width = (span_end - WIGGLE_INSET.1 - start).max(WIGGLE_MIN);
+    let (step_length, amplitude) = match vibrato {
+        Vibrato::Slight => (WIGGLE_STEP.0, 0.18),
+        Vibrato::Wide => (WIGGLE_STEP.1, 0.42),
+    };
+    // An even number of segments, so the line ends where it started.
+    let pairs = (width / step_length / 2.0)
+        .round()
+        .clamp(1.0, MAX_WIGGLES / 2.0);
+    let segments = (pairs * 2.0) as u16;
+    let step = width / f32::from(segments);
+    for segment in 0..segments {
+        let from_x = start + step * f32::from(segment);
+        let to_x = from_x + step;
+        let rising = segment % 2 == 0;
+        match vibrato {
+            Vibrato::Slight => {
+                let peak = if rising {
                     center_y - amplitude
                 } else {
                     center_y + amplitude
@@ -193,17 +210,8 @@ pub(crate) fn draw_vibrato(
                     color: ColorToken::Notation,
                 });
             }
-        }
-        Vibrato::Wide => {
-            let width = 2.6;
-            let amplitude = 0.42;
-            let segments: u8 = 4;
-            let step = width / f32::from(segments);
-            let start = x - width / 2.0;
-            for segment in 0..segments {
-                let from_x = start + step * f32::from(segment);
-                let to_x = from_x + step;
-                let (from_y, to_y) = if segment & 1 == 0 {
+            Vibrato::Wide => {
+                let (from_y, to_y) = if rising {
                     (center_y + amplitude, center_y - amplitude)
                 } else {
                     (center_y - amplitude, center_y + amplitude)
@@ -219,14 +227,24 @@ pub(crate) fn draw_vibrato(
     }
 }
 
-fn draw_bend(x: f32, top: f32, fret: &Fret, bend: Bend, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
+/// Draws a bend from the number at `x` to an arrow just before `span_end`, as Guitar Pro
+/// does: the curve spans the note's length and the arrow rises above the staff.
+fn draw_bend(
+    x: f32,
+    span_end: f32,
+    top: f32,
+    fret: &Fret,
+    bend: Bend,
+    ctx: &Context<'_>,
+    ops: &mut Vec<DrawOp>,
+) {
     let size = ctx.options.fret_size;
     let line_y = top + ctx.staff.line_y(fret.line);
     let cap = ctx.fonts.text.cap_height * size;
     let up = bend.kind == BendKind::Up;
     let start = Point::new(x + fret.width / 2.0 + 0.15, line_y - cap * 0.3);
     let right = ctx.options.page_width - ctx.options.margin_x;
-    let end_x = (x + 3.8).min(right);
+    let end_x = (span_end - BEND_END_GAP).max(start.x + BEND_MIN).min(right);
     if end_x <= start.x {
         return;
     }
@@ -235,8 +253,8 @@ fn draw_bend(x: f32, top: f32, fret: &Fret, bend: Bend, ctx: &Context<'_>, ops: 
     ops.push(DrawOp::Curve {
         from: start,
         to: end,
-        control1: Point::new(start.x + 1.0, start.y + direction * 0.4),
-        control2: Point::new(end.x - 1.2, end.y - direction * 0.4),
+        control1: Point::new(start.x + (end.x - start.x) * 0.55, start.y),
+        control2: Point::new(end.x, end.y - direction * 1.2),
         thickness: LINE_THICKNESS,
         color: ColorToken::Notation,
     });

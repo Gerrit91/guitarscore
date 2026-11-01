@@ -585,3 +585,28 @@ a playhead on the page (after the layout work is merged), mute/solo.
 - Open (docs/gaps.md #9): cross-measure/system ornaments, rhythm under the tab, grace
   notes/fingerings, beat-level pick/brush/slap/fade-in marks, and per-chord ornament
   layout. Note positioning is the owner's next topic.
+
+## 2026-11-01 — Layout polish and standard notation above the tab
+
+- Polish (owner review of the goldens): ornaments above the tab get rows above the
+  measure-number band; bends, vibrato and the whammy line follow their note's space; slides
+  slant with the pitch; slide slashes keep a gap; rests are spaced by their drawn width; the
+  tab time signature is smaller.
+- Standard notation above the tab, as in Guitar Pro (new `notation` module): treble clef
+  (bass clef below F1), written an octave above sounding; notes spelled with sharps and
+  placed by staff position; accidentals per measure (ties keep theirs); noteheads by value
+  (cross for dead notes), seconds side by side, ledger lines; stems from the font's
+  `stemUpSE`/`stemDownNW` anchors, at least to the middle line; flags; beams per beat
+  (dotted quarter in 6/8, 9/8, 12/8) with partial beams; dots; rests; ties; tuplet
+  numbers. With notation, rests and the time signature appear in the notation only and
+  measure numbers sit above it, as in Guitar Pro. `LayoutOptions::notation` turns it off.
+- Spacing now uses each column's left and right extent (accidentals left, dots and flags
+  right; beamed notes need no flag room), so 64th runs stay compact.
+- Font: engraving defaults for stems, beams and ledger lines, and glyph anchors, are read
+  from Bravura's metadata; new glyphs for clefs, noteheads, sharp, natural and the flags.
+- Compared with Guitar Pro's PNGs: DADGAD identical in beams and stem directions; note
+  lengths and ornaments match measure by measure (accidentals in ornaments m6 and m10 as in
+  Guitar Pro). Goldens and app snapshots regenerated (owner review). Tests: 266 (+6).
+
+Open (docs/gaps.md #9): key signatures, second voice, ties across barlines, tuplet groups
+across beats, harmonic diamonds, notation-staff articulations.

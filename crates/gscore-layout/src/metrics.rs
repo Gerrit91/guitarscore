@@ -27,6 +27,16 @@ pub struct EngravingDefaults {
     pub thick_barline_thickness: f32,
     /// Gap between the thin and thick line of a final barline.
     pub thin_thick_barline_separation: f32,
+    /// Thickness of note stems.
+    pub stem_thickness: f32,
+    /// Thickness of beams.
+    pub beam_thickness: f32,
+    /// Gap between two beams.
+    pub beam_spacing: f32,
+    /// Thickness of ledger lines.
+    pub leger_line_thickness: f32,
+    /// How far a ledger line extends beyond its notehead on each side.
+    pub leger_line_extension: f32,
 }
 
 /// A glyph's bounding box relative to its origin, with y **up** as in SMuFL.
@@ -56,6 +66,8 @@ pub struct MusicFont {
     engraving: EngravingDefaults,
     boxes: HashMap<Glyph, GlyphBox>,
     advances: HashMap<Glyph, f32>,
+    /// Named anchor points (`stemUpSE`, ...) of the glyphs that have them.
+    anchors: HashMap<(Glyph, String), (f32, f32)>,
 }
 
 impl MusicFont {
@@ -104,11 +116,22 @@ impl MusicFont {
                 .ok_or_else(|| missing("advance width"))?;
             advances.insert(glyph, advance);
         }
+        let mut anchors = HashMap::new();
+        for glyph in Glyph::all() {
+            if let Some(points) = raw.glyphs_with_anchors.get(glyph.name()) {
+                for (anchor, &[x, y]) in points {
+                    if x.is_finite() && y.is_finite() {
+                        anchors.insert((glyph, anchor.clone()), (x, y));
+                    }
+                }
+            }
+        }
         Ok(MusicFont {
             name: raw.font_name,
             engraving,
             boxes,
             advances,
+            anchors,
         })
     }
 
@@ -127,6 +150,12 @@ impl MusicFont {
         self.boxes.get(&glyph).copied().unwrap_or_default()
     }
 
+    /// A named anchor of the glyph (for example `stemUpSE`, where an up-stem attaches to a
+    /// notehead), relative to its origin with y up, if the font defines it.
+    pub fn anchor(&self, glyph: Glyph, name: &str) -> Option<(f32, f32)> {
+        self.anchors.get(&(glyph, name.to_owned())).copied()
+    }
+
     /// The glyph's advance width. Every glyph has one (checked when the font is loaded).
     pub fn advance(&self, glyph: Glyph) -> f32 {
         self.advances.get(&glyph).copied().unwrap_or_default()
@@ -142,6 +171,8 @@ struct RawMetadata {
     #[serde(rename = "glyphBBoxes")]
     glyph_b_boxes: HashMap<String, RawBox>,
     glyph_advance_widths: HashMap<String, f32>,
+    #[serde(default)]
+    glyphs_with_anchors: HashMap<String, HashMap<String, [f32; 2]>>,
 }
 
 #[derive(Deserialize)]
@@ -151,6 +182,11 @@ struct RawEngravingDefaults {
     thin_barline_thickness: f32,
     thick_barline_thickness: f32,
     thin_thick_barline_separation: f32,
+    stem_thickness: f32,
+    beam_thickness: f32,
+    beam_spacing: f32,
+    leger_line_thickness: f32,
+    leger_line_extension: f32,
 }
 
 impl RawEngravingDefaults {
@@ -164,6 +200,11 @@ impl RawEngravingDefaults {
                 "thinThickBarlineSeparation",
                 self.thin_thick_barline_separation,
             ),
+            ("stemThickness", self.stem_thickness),
+            ("beamThickness", self.beam_thickness),
+            ("beamSpacing", self.beam_spacing),
+            ("legerLineThickness", self.leger_line_thickness),
+            ("legerLineExtension", self.leger_line_extension),
         ];
         if let Some((name, value)) = values
             .iter()
@@ -178,6 +219,11 @@ impl RawEngravingDefaults {
             thin_barline_thickness: self.thin_barline_thickness,
             thick_barline_thickness: self.thick_barline_thickness,
             thin_thick_barline_separation: self.thin_thick_barline_separation,
+            stem_thickness: self.stem_thickness,
+            beam_thickness: self.beam_thickness,
+            beam_spacing: self.beam_spacing,
+            leger_line_thickness: self.leger_line_thickness,
+            leger_line_extension: self.leger_line_extension,
         })
     }
 }
@@ -247,6 +293,11 @@ mod tests {
         let clef = font.bbox(Glyph::TabClef6);
         assert!(clef.y_max > 2.0 && clef.y_min < -2.0, "{clef:?}");
         assert!(font.advance(Glyph::RestQuarter) > 0.5);
+        assert_eq!(
+            font.anchor(Glyph::NoteheadBlack, "stemUpSE"),
+            Some((1.18, 0.168))
+        );
+        assert_eq!(font.anchor(Glyph::NoteheadBlack, "noSuchAnchor"), None);
     }
 
     #[test]
@@ -261,7 +312,9 @@ mod tests {
         }
         let without_glyphs = r#"{"fontName": "X", "engravingDefaults": {
             "staffLineThickness": 0.13, "thinBarlineThickness": 0.16,
-            "thickBarlineThickness": 0.5, "thinThickBarlineSeparation": 0.4},
+            "thickBarlineThickness": 0.5, "thinThickBarlineSeparation": 0.4,
+            "stemThickness": 0.12, "beamThickness": 0.5, "beamSpacing": 0.25,
+            "legerLineThickness": 0.16, "legerLineExtension": 0.4},
             "glyphBBoxes": {}, "glyphAdvanceWidths": {}}"#;
         let error = MusicFont::from_metadata_json(without_glyphs).unwrap_err();
         assert!(error.to_string().contains("no box"), "{error}");

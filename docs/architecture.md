@@ -44,6 +44,10 @@ bundled Bravura metadata, read once with `MusicFont::bravura()`.
 
 The steps:
 
+Tracks with a tuning get standard notation above the tab (`notation`: spelling and clef,
+chords and accidentals per measure, noteheads/stems/flags/dots/rests, beams and ties),
+sharing the tab's columns so a note and its fret number line up.
+
 1. `header`: title block, credits, tuning, tempo mark.
 2. `measure`: each measure on its own. Beats of all voices are merged into columns by
    start time; each column gets space by the length until the next column (a quarter gets

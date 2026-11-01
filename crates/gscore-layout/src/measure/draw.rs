@@ -3,25 +3,28 @@
 //! Kept apart from the column layout in the parent module: this file only positions and
 //! paints, while `measure/mod.rs` decides the widths.
 
-use super::{Column, Item, MEASURE_NUMBER_RISE, MeasureLayout};
+use super::{Column, Item, MEASURE_NUMBER_RISE, MeasureLayout, Tops};
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
+use crate::notation::{self, BeamPlan};
 use crate::ornaments::{self, Fret};
 
 impl MeasureLayout {
-    /// Draws the measure's content (not the staff lines or barline) starting at `x`, with
-    /// the staff's top line at `top`.
+    /// Draws the measure's content (not the staff lines or barline) starting at `x`, on
+    /// the tab staff and, if shown, the notation staff above it.
     pub(crate) fn draw(
         &self,
         x: f32,
-        top: f32,
+        tops: Tops,
         stretch: f32,
         ctx: &Context<'_>,
         ops: &mut Vec<DrawOp>,
     ) {
+        let top = tops.tab;
+        // The measure number goes above the topmost staff, as in Guitar Pro.
         ops.push(DrawOp::Text {
             text: self.index.get().saturating_add(1).to_string(),
-            at: Point::new(x, top - MEASURE_NUMBER_RISE),
+            at: Point::new(x, tops.notation.unwrap_or(top) - MEASURE_NUMBER_RISE),
             size: ctx.options.measure_number_size,
             font: TextFont::Regular,
             anchor: TextAnchor::Start,
@@ -29,7 +32,14 @@ impl MeasureLayout {
         });
         let mut cursor = x;
         if let Some(time_signature) = &self.time_signature {
-            time_signature.draw(cursor, top, ctx, ops);
+            // With notation, the time signature is written there only, as in Guitar Pro.
+            match tops.notation {
+                Some(notation_top) => {
+                    let middle = notation_top + notation::staff().middle();
+                    time_signature.draw_at(cursor, middle, 1.0, ctx, ops);
+                }
+                None => time_signature.draw(cursor, top, ctx, ops),
+            }
             cursor += time_signature.width;
         }
         cursor += self.lead;
@@ -40,17 +50,34 @@ impl MeasureLayout {
             cursor += column.space * stretch;
         }
         let right = cursor;
+        // Where each column's space ends: the next column, or the end of the measure.
+        let span_end = |index: usize| xs.get(index.saturating_add(1)).copied().unwrap_or(right);
         for (index, column) in self.columns.iter().enumerate() {
             let at = xs.get(index).copied().unwrap_or(right);
             for item in &column.items {
                 match item {
                     Item::Fret(fret) => {
                         fret.draw(at, top, ctx, ops);
-                        fret.draw_above(at, top, ctx, ops);
+                        fret.draw_above(at, span_end(index), top, ctx, ops);
                     }
                     Item::Rest { .. } => item.draw(at, top, ctx, ops),
                 }
             }
+        }
+        if let Some(notation_top) = tops.notation {
+            let placed: Vec<BeamPlan<'_>> = self
+                .columns
+                .iter()
+                .zip(&xs)
+                .filter_map(|(column, &x)| {
+                    column.notation.as_ref().map(|item| BeamPlan {
+                        x,
+                        item,
+                        beat: column.beat,
+                    })
+                })
+                .collect();
+            notation::draw_measure(&placed, notation_top, ctx, ops);
         }
         self.draw_links(&xs, top, ctx, ops);
         for (index, column) in self.columns.iter().enumerate() {
@@ -58,10 +85,10 @@ impl MeasureLayout {
                 continue;
             };
             if let Some(whammy) = column.marks.whammy {
-                ornaments::draw_whammy(at, top, whammy, ctx, ops);
+                ornaments::draw_whammy(at, span_end(index), top, whammy, ctx, ops);
             }
             if let Some(vibrato) = column.marks.vibrato {
-                ornaments::draw_vibrato(at, top, vibrato, ctx, ops);
+                ornaments::draw_vibrato(at, span_end(index), top, vibrato, ops);
             }
         }
         self.draw_legato(&xs, top, ops);

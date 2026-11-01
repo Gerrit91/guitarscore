@@ -72,24 +72,20 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M4 headless e
    as GP7, GPX and GP5, with import, `info` and `dump` reference tests and
    truncation/byte-flip robustness — still only one track and one voice per song. No
    GP3/GP4 files, and no real fuzzer (cargo-fuzz; deferred to "Later" by the owner).
-9. **Layout is a first version (M5).** `gscore-layout` draws one track's tab staff
-   (header, tab clef, time signatures, fret numbers, rests, barlines, measure numbers,
-   line breaking and justification, and the ornaments the model exposes) on one endless
-   page. Ornaments live: tie curves (the continuation number is hidden as in Guitar Pro's
-   tab), hammer/pull slurs, shift and legato slides, slide-in/out slashes, bends, slight and wide vibrato,
-   ghost notes, natural/artificial/pinch/tapped harmonics, accents and staccato, trills,
-   tremolo picking, palm-mute and let-ring rows, the whammy bar and beat-level legato.
-   Still missing: rhythm notation under the tab, beams, tuplet numbers, repeats and
-   endings, tempo changes, section markers, lyrics, chord diagrams, page breaks, standard
-   notation, multi-track systems, grace notes, fingerings, and the beat-level pick/brush/
-   slap/fade-in marks. Ornaments that connect notes only look within one measure (a slide,
-   hammer or beat-level legato across a barline or system break is not drawn); effects on
-   several notes of one chord can overlap; rhythmic placement (the note's onset within the
-   column) is not yet drawn. Voice, piano and other non-string tracks are drawn as
-   six-line tab; drum tracks are refused. Text widths come from fixed Noto Sans digit
-   metrics (other characters are estimated) until the GUI can shape text; the dead-note
-   `x` sits a little low. No PNG output yet (needs a rasterizer dependency;
-   `rsvg-convert` works for checking). Unreadable frets show as `?`.
+9. **Layout is a first version (M5).** `gscore-layout` draws one track as standard
+   notation above tablature (as Guitar Pro does), on one endless page, with the tab's
+   ornaments, line breaking and justification. Notation: clef (treble, bass for basses),
+   time signatures, noteheads (cross for dead notes), ledger lines, sharps and naturals per
+   measure, stems, flags, beams per beat (partial beams included), dots, rests, ties within
+   a measure and tuplet numbers. Missing in notation: key signatures (notes are spelled with
+   sharps), the second voice, ties across barlines, tuplet groups spanning several beats
+   (each beat's beam gets its own number), grace notes, articulations and ornaments on the
+   notation staff (they stay on the tab), harmonic diamonds (harmonics are written at their
+   sounding pitch). Missing everywhere: repeats and endings, tempo changes, section
+   markers, lyrics, chord diagrams, page breaks, multi-track systems, rhythm under the tab
+   (shown in the notation instead). Ornaments that connect notes only look within one
+   measure. Voice, piano and drum tracks get no notation (no tuning); drum tracks are
+   refused. Text widths are estimated for non-digits; no PNG output (`rsvg-convert` works).
 10. **The app is a read-only viewer (M6, first version).** It opens files in the
    background, shows one track's page (track picker, zoom, light and dark theme) and
    contains panics in layout, drawing and background jobs. Missing: editing, cursor and

@@ -29,7 +29,7 @@ Updated 2026-11-01 (M6: first read-only app).
 | Keymap configuration | Planned (M8) |
 | Desktop app | Partial: read-only viewer (`guitarscore`): open file (dialog or command line), track picker, zoom, light/dark theme, play/pause/stop to a MIDI port |
 | Playback | Partial: MIDI output and `.mid` export: all tracks with their instruments, volume and pan, tempo changes, repeats and alternative endings, ties, dead notes, harmonics. No bends, slides, vibrato, let ring, palm mute, grace notes, D.C./D.S./coda, swing, mute/solo |
-| Tablature display | Partial: one track's tab staff in the app and as SVG (`gscore-cli render`): title block, tuning, tempo, tab clef, time signatures, fret numbers (dead and ghost notes; tie curves with the continuation number hidden), rests, measure numbers, ornaments (hammer/pull slurs, bends, slides, vibrato, harmonics, accents, staccato, trills, tremolo picking, palm mute and let ring rows, whammy bar, beat-level legato), line breaking and justification, light/dark theme. No rhythm stems/beams under the tab, repeats, pages or standard notation yet |
+| Tablature display | Partial: one track as standard notation above tab, in the app and as SVG (`gscore-cli render`): clef, time signatures, notes with accidentals, stems, flags, beams, dots, rests, ties and tuplet numbers; tab fret numbers with ornaments (slurs, bends, slides, vibrato, harmonics, accents, palm mute, let ring, whammy). No key signatures, second voice in notation, repeats, pages or multi-track systems yet |
 
 ## Future Milestones
 

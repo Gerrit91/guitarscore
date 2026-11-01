@@ -21,6 +21,10 @@ pub struct LayoutOptions {
     pub spacing: Spacing,
     /// Space between two systems (from the bottom of one staff to the top of the next).
     pub system_gap: f32,
+    /// Show standard notation above the tab (for tracks with a tuning).
+    pub notation: bool,
+    /// Space between the notation staff's bottom line and the tab's top line.
+    pub notation_gap: f32,
 }
 
 /// How much horizontal space a beat gets, depending on how long it lasts.
@@ -58,6 +62,8 @@ impl Default for LayoutOptions {
             measure_number_size: 1.1,
             spacing: Spacing::default(),
             system_gap: 6.0,
+            notation: true,
+            notation_gap: 8.0,
         }
     }
 }
