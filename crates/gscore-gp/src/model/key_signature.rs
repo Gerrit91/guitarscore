@@ -7,8 +7,6 @@ use crate::model::*;
 
 pub const DURATION_QUARTER_TIME: i64 = 960;
 
-//pub const DURATION_WHOLE: u8 = 1;
-//pub const DURATION_HALF: u8 = 2;
 pub const DURATION_QUARTER: u8 = 4;
 
 pub const DURATION_EIGHTH: u8 = 8;
@@ -82,7 +80,6 @@ pub struct KeySignature {
     pub is_minor: bool,
 }
 
-//impl Default for KeySignature { fn default() -> Self { KeySignature { key: 0, is_minor: false, }} }
 impl std::fmt::Display for KeySignature {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let base: i8 = if self.is_minor { 23 } else { 8 };
@@ -136,77 +133,11 @@ impl Default for Duration {
 }
 
 impl Duration {
-    //fn convert_time(&self, time: u64) -> u64 { time * self.division_times as u64 / self.division_enters as u64 }
-
     pub fn is_supported(&self) -> bool {
         SUPPORTED_TUPLETS.contains(&(self.tuplet_enters, self.tuplet_times))
     }
 
-    pub fn _index(&self) -> u8 {
-        let mut index = 0u8;
-        let mut value = self.value;
-        loop {
-            value >>= 1;
-            if value > 0 {
-                index += 1;
-            } else {
-                break;
-            }
-        }
-        index
-    }
     pub fn is_default_tuplet(&self) -> bool {
         self.tuplet_times == 1 && self.tuplet_enters == 1
     }
 }
-
-/*/// A *n:m* tuplet.
-#[derive(Clone)]
-struct Tuplet {
-    enters: u8,
-    times: u8,
-}*/
-/*impl Default for Tuplet { fn default() -> Self { Tuplet { enters: 1, times: 1 }}}
-impl Tuplet {
-    fn is_supported(self) -> bool { SUPPORTED_TUPLETS.contains(&(self.enters, self.times)) }
-    fn convert_time(self) -> u8 {
-        let result = fraction::Fraction::new(self.enters, self.times);
-        if result.denom().expect("Cannot get fraction denominator") == &1 {1}
-        else {result.to_u8().expect("Cannot get fraction result")}
-    }
-}*/
-
-/* Enum ?: const KEY_F_MAJOR_FLAT: (i8, bool) = (-8, false);
-const KEY_C_MAJOR_FLAT: (i8, bool) = (-7, false);
-const KEY_G_MAJOR_FLAT: (i8, bool) = (-6, false);
-const KEY_D_MAJOR_FLAT: (i8, bool) = (-5, false);
-const KEY_A_MAJOR_FLAT: (i8, bool) = (-4, false);
-const KEY_E_MAJOR_FLAT: (i8, bool) = (-3, false);
-const KEY_B_MAJOR_FLAT: (i8, bool) = (-2, false);
-const KEY_F_MAJOR: (i8, bool) = (-1, false);
-const KEY_C_MAJOR: (i8, bool) = (0, false);
-const KEY_G_MAJOR: (i8, bool) = (1, false);
-const KEY_D_MAJOR: (i8, bool) = (2, false);
-const KEY_A_MAJOR: (i8, bool) = (3, false);
-const KEY_E_MAJOR: (i8, bool) = (4, false);
-const KEY_B_MAJOR: (i8, bool) = (5, false);
-const KEY_F_MAJOR_SHARP: (i8, bool) = (6, false);
-const KEY_C_MAJOR_SHARP: (i8, bool) = (7, false);
-const KEY_G_MAJOR_SHARP: (i8, bool) = (8, false);
-const KEY_D_MINOR_FLAT: (i8, bool) = (-8, true);
-const KEY_A_MINOR_FLAT: (i8, bool) = (-7, true);
-const KEY_E_MINOR_FLAT: (i8, bool) = (-6, true);
-const KEY_B_MINOR_FLAT: (i8, bool) = (-5, true);
-const KEY_F_MINOR: (i8, bool) = (-4, true);
-const KEY_C_MINOR: (i8, bool) = (-3, true);
-const KEY_G_MINOR: (i8, bool) = (-2, true);
-const KEY_D_MINOR: (i8, bool) = (-1, true);
-const KEY_A_MINOR: (i8, bool) = (0, true);
-const KEY_E_MINOR: (i8, bool) = (1, true);
-const KEY_B_MINOR: (i8, bool) = (2, true);
-const KEY_F_MINOR_SHARP: (i8, bool) = (3, true);
-const KEY_C_MINOR_SHARP: (i8, bool) = (4, true);
-const KEY_G_MINOR_SHARP: (i8, bool) = (5, true);
-const KEY_D_MINOR_SHARP: (i8, bool) = (6, true);
-const KEY_A_MINOR_SHARP: (i8, bool) = (7, true);
-const KEY_E_MINOR_SHARP: (i8, bool) = (8, true);*/

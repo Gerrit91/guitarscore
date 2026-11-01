@@ -80,7 +80,6 @@ impl SongMeasureOps for Song {
                 }
                 self.tracks[t].measures.push(m);
             }
-            //println!("read_measures(), start: {} \t numerator: {} \t denominator: {} \t length: {}", start, self.measure_headers[h].time_signature.numerator, self.measure_headers[h].time_signature.denominator.value, self.measure_headers[h].length());
         }
         self.current_track = None;
         self.current_measure_number = None;
@@ -95,26 +94,11 @@ impl SongMeasureOps for Song {
         measure: &mut Measure,
         track_index: usize,
     ) -> GpResult<()> {
-        //println!("read_measure()");
         let mut voice = Voice::default();
         self.current_voice_number = Some(1);
         self.read_voice(data, seek, &mut voice, &mut measure.start, track_index)?;
         self.current_voice_number = None;
         measure.voices.push(voice);
-        /*
-        //read a voice
-        let beats = read_int(data, seek).to_usize().unwrap();
-
-        //println!("read_measure() read_voice(), beat count: {}", beats);
-        for i in 0..beats {
-            self.current_beat_number = Some(i + 1);
-            //println!("read_measure() read_voice(), start: {}", measure.start);
-            measure.start += self.read_beat(data, seek, &mut measure.voices[0], measure.start, track_index);
-            //println!("read_measure() read_voice(), start: {}", measure.start);
-        }
-        self.current_beat_number = None;
-        //end read a voice
-        self.current_voice_number = None;*/
         Ok(())
     }
     /// Read measure. Guitar Pro 5 stores twice more measures compared to Guitar Pro 3. One measure consists of two sub-measures for each of two voices.
@@ -127,11 +111,9 @@ impl SongMeasureOps for Song {
         measure: &mut Measure,
         track_index: usize,
     ) -> GpResult<()> {
-        //println!("read_measure_v5()");
         let mut start = measure.start;
         for number in 0..MAX_VOICES {
             self.current_voice_number = Some(number + 1);
-            //println!("read_measure_v5() {:?}",self.current_voice_number);
             let mut voice = Voice::default();
             self.read_voice(data, seek, &mut voice, &mut start, track_index)?;
             measure.voices.push(voice);
@@ -166,13 +148,11 @@ impl SongMeasureOps for Song {
                 break;
             }
             self.current_beat_number = Some(i + 1);
-            //println!("read_measure() read_voice(), start: {}", measure.start);
             *start += if self.version.number < (5, 0, 0) {
                 self.read_beat(data, seek, voice, *start, track_index)?
             } else {
                 self.read_beat_v5(data, seek, voice, &mut *start, track_index)?
             };
-            //println!("read_measure() read_voice(), start: {}", measure.start);
         }
         self.current_beat_number = None;
         Ok(())
@@ -193,7 +173,6 @@ impl SongMeasureOps for Song {
         measure: usize,
         version: &(u8, u8, u8),
     ) -> GpResult<()> {
-        //self.current_voice_number = Some(1);
         if version.0 < 5 {
             self.write_voice(data, track, measure, 0, version)?;
         } else {
@@ -207,7 +186,6 @@ impl SongMeasureOps for Song {
                 );
             }
         }
-        //self.current_voice_number = None;
         Ok(())
     }
     fn write_voice(
@@ -229,7 +207,6 @@ impl SongMeasureOps for Song {
             .beats
             .len()
         {
-            //self.current_beat_number = Some(b+1);
             if version.0 == 3 {
                 self.write_beat_v3(
                     data,
@@ -243,7 +220,6 @@ impl SongMeasureOps for Song {
                     version,
                 )?;
             }
-            //self.current_beat_number = None;
         }
         Ok(())
     }

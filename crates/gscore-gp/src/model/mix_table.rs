@@ -33,18 +33,6 @@ impl Default for WahEffect {
     }
 }
 
-impl WahEffect {
-    pub fn _is_on(&self) -> bool {
-        self.value >= 0 && self.value <= 100
-    }
-    pub fn _is_off(&self) -> bool {
-        self.value == WAH_EFFECT_OFF
-    }
-    pub fn _is_none(&self) -> bool {
-        self.value == WAH_EFFECT_NONE
-    }
-}
-
 /// A MixTableChange describes a change in mix parameters
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MixTableChange {

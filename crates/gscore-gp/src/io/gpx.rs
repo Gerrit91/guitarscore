@@ -193,11 +193,6 @@ pub fn write_gp_bytes(song: &crate::io::Song) -> GpResult<Vec<u8>> {
     Ok(cursor.into_inner())
 }
 
-/// Reads a .gp (GP7+) file which is a ZIP archive containing 'Content/score.gpif'.
-pub fn read_gp(data: &[u8]) -> GpResult<Gpif> {
-    Ok(read_gp_with_audio(data)?.0)
-}
-
 /// Reads a .gp (GP7+) file, returning the parsed GPIF plus any embedded
 /// backing-track audio found under `Content/Assets/` (e.g. `*.mp3`).
 ///

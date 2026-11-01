@@ -198,3 +198,18 @@ playback need them.
   (rewritten: status, building, CLI, layout, credits), CLAUDE.md, architecture.md,
   THIRD_PARTY.md and docs/guitarpro.md updated.
 - Tests: 78, unchanged in number (the derived code's 22 now run in gscore-gp).
+
+## 2026-11-01 — Cleanup of leftovers
+
+- Removed scaffold placeholders: `*Placeholder` structs and empty stub modules in
+  gscore-play, -edit, -audio, -app, -layout and -session (the crates keep a doc comment on
+  their future job; gscore-session keeps the crash reports); gscore-layout's unused
+  dependency on gscore-model.
+- gscore-io: removed the unused export stub and the `IoError` variants only it or nothing
+  used (`Unsupported`, `ParseError`, `WriteError`).
+- gscore-gp: removed 11 unused underscore-prefixed items, 3 unused trait methods, a
+  test-only wrapper, and about 120 lines of commented-out code (incl. debug `println!`s).
+- Removed stray files from the initial scaffolding: `test_gscore_io.rs` and `src/main.rs`
+  in the repo root (never compiled), and the stale `crates/gscore-cli/README.md`.
+  `docs/development.md` shows the current layers.
+- Tests: 77 (the export stub's test went with it).

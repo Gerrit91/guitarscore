@@ -876,7 +876,9 @@ mod tuning_tests {
         assert_eq!(song.tracks[0].strings.len(), 6);
 
         let bytes = song.write_gp().expect("write");
-        let gpif = crate::io::gpx::read_gp(&bytes).expect("read written file");
+        let gpif = crate::io::gpx::read_gp_with_audio(&bytes)
+            .expect("read written file")
+            .0;
         let written_tuning = gpif.tracks.tracks[0]
             .properties
             .iter()
@@ -1019,7 +1021,9 @@ mod tuning_tests {
         let mut song = Song::default();
         song.read_gpif(&gpif_with_staff_tuning("33 40 45 50 54 59"));
         let bytes = song.write_gp().expect("write");
-        let gpif = crate::io::gpx::read_gp(&bytes).expect("read written file");
+        let gpif = crate::io::gpx::read_gp_with_audio(&bytes)
+            .expect("read written file")
+            .0;
         let props = gpif.tracks.tracks[0]
             .properties
             .as_ref()

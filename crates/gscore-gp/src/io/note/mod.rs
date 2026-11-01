@@ -78,7 +78,6 @@ pub trait SongNoteOps {
         strings: &[(i8, i8)],
         version: &(u8, u8, u8),
     ) -> GpResult<()>;
-    fn pack_note_flags(&self, note: &Note, version: &(u8, u8, u8)) -> u8;
     fn write_note_effects_v3(&self, data: &mut Vec<u8>, note: &Note) -> GpResult<()>;
     fn write_note_effects(
         &self,
@@ -164,9 +163,6 @@ impl SongNoteOps for Song {
         version: &(u8, u8, u8),
     ) -> GpResult<()> {
         write::write_note_v5(self, data, note, strings, version)
-    }
-    fn pack_note_flags(&self, note: &Note, version: &(u8, u8, u8)) -> u8 {
-        write::pack_note_flags(self, note, version)
     }
     fn write_note_effects_v3(&self, data: &mut Vec<u8>, note: &Note) -> GpResult<()> {
         write::write_note_effects_v3(self, data, note)

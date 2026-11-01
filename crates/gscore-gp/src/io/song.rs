@@ -36,7 +36,6 @@ impl Song {
         } else {
             TripletFeel::None
         };
-        //println!("Triplet feel: {}", self.triplet_feel);
         // Tempo is written as `int` but semantically fits `i16` (real BPM).
         // Garbage in this slot (e.g. GP2 files loaded via the GP3 reader) is
         // truncated rather than rejected.
@@ -45,14 +44,12 @@ impl Song {
         // Key signature is `-7..=7`; garbage values mean the file was written
         // with an unusual editor. Truncate rather than fail.
         self.key.key = read_int(data, &mut seek)? as i8;
-        //println!("Tempo: {} bpm\t\tKey: {}", self.tempo, self.key.to_string());
         self.read_midi_channels(data, &mut seek)?;
         // Guard against negative counts in malformed files. Cap at a very
         // generous ceiling (100k) so we don't try to allocate absurd amounts
         // for a garbage-in-garbage-out header.
         let measure_count = read_int(data, &mut seek)?.clamp(0, 100_000) as usize;
         let track_count = read_int(data, &mut seek)?.clamp(0, 100_000) as usize;
-        //println!("Measures count: {}\tTrack count: {}", measure_count, track_count);
         // Read measure headers. The *measures* are written one after another, their number have been specified previously.
         self.read_measure_headers(data, &mut seek, measure_count)?;
         self.current_measure_number = Some(0);
@@ -84,7 +81,6 @@ impl Song {
         } else {
             TripletFeel::None
         };
-        //println!("Triplet feel: {}", self.triplet_feel);
         self.lyrics = self.read_lyrics(data, &mut seek)?; //read lyrics
         // Tempo is written as `int` but semantically fits `i16` (real BPM).
         // Garbage in this slot (e.g. GP2 files loaded via the GP3 reader) is
@@ -94,7 +90,6 @@ impl Song {
         // Key signature is `-7..=7`; garbage values mean the file was written
         // with an unusual editor. Truncate rather than fail.
         self.key.key = read_int(data, &mut seek)? as i8;
-        //println!("Tempo: {} bpm\t\tKey: {}", self.tempo, self.key.to_string());
         read_signed_byte(data, &mut seek)?; //octave
         self.read_midi_channels(data, &mut seek)?;
         // Guard against negative counts in malformed files. Cap at a very
@@ -102,10 +97,8 @@ impl Song {
         // for a garbage-in-garbage-out header.
         let measure_count = read_int(data, &mut seek)?.clamp(0, 100_000) as usize;
         let track_count = read_int(data, &mut seek)?.clamp(0, 100_000) as usize;
-        //println!("Measures count: {}\tTrack count: {}", measure_count, track_count);
         // Read measure headers. The *measures* are written one after another, their number have been specified previously.
         self.read_measure_headers(data, &mut seek, measure_count)?;
-        //self.current_measure_number = Some(0);
         self.read_tracks(data, &mut seek, track_count)?;
         self.read_measures(data, &mut seek)?;
         Ok(())
@@ -207,10 +200,6 @@ impl Song {
         }
         Ok(())
     }
-    /*pub const _MAX_STRINGS: i32 = 25;
-    pub const _MIN_STRINGS: i32 = 1;
-    pub const _MAX_OFFSET: i32 = 24;
-    pub const _MIN_OFFSET: i32 = -24;*/
 
     /// Write data to a Vec<u8>, you are free to use the encoded data to write it in a file or in a database or do something else.
     pub fn write(&self, version: (u8, u8, u8), clipboard: Option<bool>) -> GpResult<Vec<u8>> {

@@ -25,7 +25,6 @@ impl SongTrackOps for Song {
     /// Read tracks. The tracks are written one after another, their number having been specified previously in :meth:`GP3File.readSong`.
     /// - `track_count`: number of tracks to expect.
     fn read_tracks(&mut self, data: &[u8], seek: &mut usize, track_count: usize) -> GpResult<()> {
-        //println!("read_tracks()");
         for i in 0..track_count {
             self.read_track(data, seek, i)?;
         }
@@ -38,7 +37,6 @@ impl SongTrackOps for Song {
         seek: &mut usize,
         track_count: usize,
     ) -> GpResult<()> {
-        //println!("read_tracks_v5(): {:?} {}", self.version.number, self.version.number == (5,1,0));
         for i in 0..track_count {
             self.read_track_v5(data, seek, i)?;
         }
@@ -74,7 +72,6 @@ impl SongTrackOps for Song {
         };
         //read the flag
         let flags = read_byte(data, seek)?;
-        //println!("read_track(), flags: {}", flags);
         track.percussion_track = (flags & 0x01) == 0x01; //Drums track
         track.twelve_stringed_guitar_track = (flags & 0x02) == 0x02; //12 stringed guitar track
         track.banjo_track = (flags & 0x04) == 0x04; //Banjo track
@@ -92,7 +89,6 @@ impl SongTrackOps for Song {
                 track.strings.push((i + 1, i_tuning));
             }
         }
-        //println!("tuning: {:?}", track.strings);
         track.port = read_int(data, seek)?.clamp(0, 255) as u8;
         let index = self.read_channel(data, seek)?;
         if self.channels[index].channel == 9 {
@@ -101,7 +97,6 @@ impl SongTrackOps for Song {
         track.fret_count = read_int(data, seek)?.clamp(0, 255) as u8;
         track.offset = read_int(data, seek)?;
         track.color = read_color(data, seek)?;
-        //println!("\tInstrument: {} \t Strings: {}/{} ({:?})", self.channels[index].get_instrument_name(), string_count, track.strings.len(), track.strings);
         self.tracks.push(track);
         Ok(())
     }
@@ -152,7 +147,6 @@ impl SongTrackOps for Song {
             *seek += 1;
         } //always 0 //missing 3 skips?
         let flags1 = read_byte(data, seek)?;
-        //println!("read_track_v5(), flags1: {} \t seek: {}", flags1, *seek);
         track.percussion_track = (flags1 & 0x01) == 0x01;
         track.banjo_track = (flags1 & 0x02) == 0x02;
         track.visible = (flags1 & 0x04) == 0x04;
@@ -162,7 +156,6 @@ impl SongTrackOps for Song {
         track.indicate_tuning = (flags1 & 0x80) == 0x80;
         track.name = read_byte_size_string(data, seek, 40)?;
         let sc = read_int(data, seek)?;
-        //println!("read_track_v5(), track:name: \"{}\", string count: {}", track.name, sc);
         let string_count = sc.to_u8_gp("string count")?;
         track.strings.clear();
         for i in 0i8..7i8 {
@@ -181,7 +174,6 @@ impl SongTrackOps for Song {
         track.color = read_color(data, seek)?;
 
         let flags2 = read_short(data, seek)?;
-        //println!("read_track_v5(), flags2: {}", flags2);
         track.settings.tablature = (flags2 & 0x0001) == 0x0001;
         track.settings.notation = (flags2 & 0x0002) == 0x0002;
         track.settings.diagram_are_below = (flags2 & 0x0004) == 0x0004;

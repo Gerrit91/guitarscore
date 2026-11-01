@@ -46,7 +46,6 @@ impl SongRseOps for Song {
             me.volume = read_int(data, seek)?.to_f32_gp("rse master effect volume")?;
             read_int(data, seek)?; //???
             me.equalizer = self.read_rse_equalizer(data, seek, 11)?;
-            //println!("read_rse_master_effect(): {:?}", me);
         }
         Ok(me)
     }
@@ -78,7 +77,6 @@ impl SongRseOps for Song {
     /// - RSE instrument effect. See `read_rse_instrument_effect()`.
     fn read_track_rse(&mut self, data: &[u8], seek: &mut usize, track: &mut Track) -> GpResult<()> {
         track.rse.humanize = read_byte(data, seek)?;
-        //println!("read_track_rse(), humanize: {} \t\t seek: {}", track.rse.humanize, *seek);
         *seek += 12; //read_int(data, seek); read_int(data, seek); read_int(data, seek);  //??? 4 bytes*3 //*seek += 12;
         *seek += 12; //???
         track.rse.instrument = self.read_rse_instrument(data, seek)?;
@@ -100,14 +98,12 @@ impl SongRseOps for Song {
         };
         instrument.unknown = read_int(data, seek)?; //??? mostly 1
         instrument.sound_bank = read_int(data, seek)?;
-        //println!("read_rse_instrument(), instrument: {} {} {} \t\t seek: {}", instrument.instrument, instrument.unknown, instrument.sound_bank, *seek);
         if self.version.number == (5, 0, 0) {
             instrument.effect_number = i32::from(read_short(data, seek)?);
             *seek += 1;
         } else {
             instrument.effect_number = read_int(data, seek)?;
         }
-        //println!("read_rse_instrument(), instrument.effect_number: {} \t\t seek: {}", instrument.effect_number, *seek);
         Ok(instrument)
     }
     /// Read RSE instrument effect name. This feature was introduced in Guitar Pro 5.1.

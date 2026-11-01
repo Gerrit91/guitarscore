@@ -21,9 +21,6 @@ impl MeasureHeader {
                 .value
                 .to_i64_gp("time_signature.denominator.value")?)
     }
-    pub(crate) fn _end(&self) -> GpResult<i64> {
-        Ok(self.start + self.length()?)
-    }
 }
 
 pub(crate) fn read_marker(data: &[u8], seek: &mut usize) -> GpResult<Marker> {
@@ -37,7 +34,6 @@ pub(crate) fn read_marker(data: &[u8], seek: &mut usize) -> GpResult<Marker> {
 }
 
 pub trait SongHeaderOps {
-    fn _add_measure_header(&mut self, header: MeasureHeader);
     fn read_clipboard(&mut self, data: &[u8], seek: &mut usize) -> GpResult<Option<Clipboard>>;
     fn read_measure_headers(
         &mut self,
@@ -86,10 +82,6 @@ pub trait SongHeaderOps {
 }
 
 impl SongHeaderOps for Song {
-    fn _add_measure_header(&mut self, header: MeasureHeader) {
-        self.measure_headers.push(header);
-    }
-
     fn read_clipboard(&mut self, data: &[u8], seek: &mut usize) -> GpResult<Option<Clipboard>> {
         if !self.version.clipboard {
             return Ok(None);

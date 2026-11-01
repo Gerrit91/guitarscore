@@ -183,8 +183,4 @@ impl MidiChannel {
             self.instrument = instrument;
         }
     }
-
-    pub fn _get_instrument(self) -> i32 {
-        self.instrument
-    }
 }

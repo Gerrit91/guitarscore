@@ -91,16 +91,6 @@ pub(crate) fn read_int(data: &[u8], seek: &mut usize) -> GpResult<i32> {
     Ok(n)
 }
 
-/*/// Read a float and increase the cursor position by 4 (4 little-endian bytes)
-/// * `data` - array of bytes
-/// * `seek` - start position to read
-/// * returns the float value
-pub(crate) fn read_float(data: &[u8], seek: &mut usize ) -> GpResult<f32> {
-    let n = f32::from_le_bytes([data[*seek], data[*seek+1], data[*seek+2], data[*seek+3]]);
-    *seek += 4;
-    Ok(n)
-}*/
-
 /// Read a double and increase the cursor position by 8 (8 little-endian bytes)
 /// * `data` - array of bytes
 /// * `seek` - start position to read
@@ -251,12 +241,9 @@ pub(crate) fn write_bool(data: &mut Vec<u8>, value: bool) {
 pub(crate) fn write_i32(data: &mut Vec<u8>, value: i32) {
     data.extend(value.to_le_bytes());
 }
-//pub(crate) fn write_u32(data: &mut Vec<u8>, value: u32) {data.extend(value.to_le_bytes());}
 pub(crate) fn write_i16(data: &mut Vec<u8>, value: i16) {
     data.extend(value.to_le_bytes());
 }
-//pub(crate) fn write_u16(data: &mut Vec<u8>, value: u16) {data.extend(value.to_le_bytes());}
-//pub(crate) fn write_f32(data: &mut Vec<u8>, value: f32) {data.extend(value.to_le_bytes());}
 pub(crate) fn write_f64(data: &mut Vec<u8>, value: f64) {
     data.extend(value.to_le_bytes());
 }

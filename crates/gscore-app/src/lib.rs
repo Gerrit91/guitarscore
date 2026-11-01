@@ -1,19 +1,5 @@
-//! gscore-app crate - GUI application shell
-
-//! This crate provides the egui/eframe application shell for GuitarScore,
-//! producing the `guitarscore` binary.
-
-// Placeholder for actual application implementation
-pub mod app;
-pub mod ui;
-
-/// A placeholder struct for the app crate
-#[derive(Debug, Default)]
-pub struct AppPlaceholder;
-
-impl AppPlaceholder {
-    /// Placeholder function
-    pub fn new() -> Self {
-        AppPlaceholder
-    }
-}
+//! The desktop application shell (egui/eframe), producing the `guitarscore` binary. Thin: it
+//! holds UI state, draws layout output, and sends every action through `gscore-edit`
+//! commands.
+//!
+//! Not implemented yet (milestone M4).

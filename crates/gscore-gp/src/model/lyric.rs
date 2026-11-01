@@ -5,8 +5,6 @@
 
 use crate::model::*;
 
-pub const _MAX_LYRICS_LINE_COUNT: u8 = 5;
-
 /// Struct to keep lyrics
 /// On guitar pro files (gp4 or later), you can have 5 lines of lyrics.
 /// It is store on a BTreeMap:
@@ -21,7 +19,6 @@ pub struct Lyrics {
     pub lines: Vec<(u8, u16, String)>,
 }
 
-//impl Default for Lyrics { fn default() -> Self { Lyrics { track_choice: 0, line1: BTreeMap::new(), line2: BTreeMap::new(), line3: BTreeMap::new(), line4: BTreeMap::new(), line5: BTreeMap::new(), }}}
 impl std::fmt::Display for Lyrics {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let mut s = String::new();

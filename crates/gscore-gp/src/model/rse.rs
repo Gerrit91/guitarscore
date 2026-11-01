@@ -5,8 +5,6 @@
 
 use crate::model::*;
 
-// use crate::model::*;
-
 /// Equalizer found in master effect and track effect.
 ///
 /// Attribute :attr:`RSEEqualizer.knobs` is a list of values in range from -6.0 to 5.9. Master effect has 10 knobs, track effect has 3

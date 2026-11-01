@@ -32,7 +32,6 @@ pub trait SongBeatOps {
     ) -> GpResult<BeatEffects>;
     fn read_beat_effects_v4(&self, data: &[u8], seek: &mut usize) -> GpResult<BeatEffects>;
     fn read_beat_stroke(&self, data: &[u8], seek: &mut usize) -> GpResult<BeatStroke>;
-    fn stroke_value(&self, value: i8) -> u8;
     fn read_tremolo_bar(&self, data: &[u8], seek: &mut usize) -> GpResult<BendEffect>;
     fn write_beat_v3(&self, data: &mut Vec<u8>, beat: &Beat) -> GpResult<()>;
     fn write_beat(
@@ -56,7 +55,6 @@ pub trait SongBeatOps {
         stroke: &BeatStroke,
         version: &(u8, u8, u8),
     ) -> GpResult<()>;
-    fn from_stroke_value(value: u8) -> i8;
 }
 
 impl SongBeatOps for Song {
@@ -94,9 +92,6 @@ impl SongBeatOps for Song {
     fn read_beat_stroke(&self, data: &[u8], seek: &mut usize) -> GpResult<BeatStroke> {
         read::read_beat_stroke(self, data, seek)
     }
-    fn stroke_value(&self, value: i8) -> u8 {
-        read::stroke_value(self, value)
-    }
     fn read_tremolo_bar(&self, data: &[u8], seek: &mut usize) -> GpResult<BendEffect> {
         read::read_tremolo_bar(self, data, seek)
     }
@@ -133,8 +128,5 @@ impl SongBeatOps for Song {
         version: &(u8, u8, u8),
     ) -> GpResult<()> {
         write::write_beat_stroke(self, data, stroke, version)
-    }
-    fn from_stroke_value(value: u8) -> i8 {
-        write::from_stroke_value(value)
     }
 }

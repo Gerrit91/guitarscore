@@ -6,14 +6,6 @@
 use crate::io::*;
 use fraction::ToPrimitive;
 
-impl BendPoint {
-    pub(crate) fn _get_time(&self, duration: u8) -> GpResult<u16> {
-        let time =
-            f32::from(duration) * f32::from(self.position) / f32::from(BEND_EFFECT_MAX_POSITION);
-        Ok(time.to_i16_gp("bend point time")? as u16)
-    }
-}
-
 /// Convert Guitar Pro dynamic value to raw MIDI velocity
 pub(crate) fn unpack_velocity(v: i16) -> i16 {
     MIN_VELOCITY + VELOCITY_INCREMENT * v - VELOCITY_INCREMENT
@@ -23,14 +15,6 @@ pub(crate) fn pack_velocity(velocity: i16) -> GpResult<i8> {
     ((velocity + VELOCITY_INCREMENT - MIN_VELOCITY) as f32 / VELOCITY_INCREMENT as f32)
         .ceil()
         .to_i8_gp("pack_velocity")
-}
-
-impl GraceEffect {
-    pub(crate) fn _duration_time(self) -> GpResult<i16> {
-        let quarter_time = crate::io::DURATION_QUARTER_TIME.to_i16_gp("quarter time")?;
-        let time = f32::from(quarter_time) / 16f32 * f32::from(self.duration);
-        time.to_i16_gp("grace duration time")
-    }
 }
 
 pub(crate) fn from_tremolo_value(value: i8) -> GpResult<u8> {

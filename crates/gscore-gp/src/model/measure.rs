@@ -23,13 +23,6 @@ pub struct Measure {
     pub line_break: LineBreak,
     /// Simile mark from GPIF (GP6/GP7)
     pub simile_mark: Option<String>,
-    /*marker: Optional['Marker'] = None
-    isRepeatOpen: bool = False
-    repeatAlternative: int = 0
-    repeatClose: int = -1
-    tripletFeel: TripletFeel = TripletFeel.none
-    direction: Optional[DirectionSign] = None
-    fromDirection: Optional[DirectionSign] = None*/
 }
 
 impl Default for Measure {

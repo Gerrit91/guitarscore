@@ -31,19 +31,15 @@ impl Duration {
     pub(crate) fn time(&self) -> GpResult<u32> {
         let mut result =
             (f64::from(DURATION_QUARTER_TIME as i32) * 4f64 / f64::from(self.value)).trunc();
-        //println!("\tDuration.time(): result: {}", result);
         if self.dotted {
             result += (result / 2f64).trunc();
         }
-        //if self.dotted { result += (result/4f64).trunc() * 3f64; }
-        //println!("\tDuration.time(): result: {}", result);
         let time = result.to_u32().ok_or(GpError::TypeConversion {
             context: "duration time to u32",
             value: result as i64,
         })?;
         self.convert_time(time)
     }
-    //@classmethod def fromFraction(cls, frac): return cls(frac.denominator, frac.numerator)
     pub(crate) fn write_duration(&self, data: &mut Vec<u8>, flags: u8) -> GpResult<()> {
         let value = (16 - self.value.leading_zeros()).to_i8_gp("duration value bits")? - 3; //value = duration.value.bit_length() - 3
         write_signed_byte(data, value);
@@ -69,7 +65,6 @@ impl Duration {
 ///
 /// If flag at *0x20* is true, the tuplet is read
 pub(crate) fn read_duration(data: &[u8], seek: &mut usize, flags: u8) -> GpResult<Duration> {
-    //println!("read_duration()");
     let b = read_signed_byte(data, seek)?;
     // Compute in i16 to avoid overflow when `b` is a garbage byte (e.g. 127).
     // Guitar Pro's valid range is `-2..=3`; anything else is treated as whole
@@ -84,7 +79,6 @@ pub(crate) fn read_duration(data: &[u8], seek: &mut usize, flags: u8) -> GpResul
         value: val,
         ..Default::default()
     };
-    //let b = read_signed_byte(data, seek); println!("B: {}", b); d.value = 1 << (b + 2);
     d.dotted = (flags & 0x01) == 0x01;
     if (flags & 0x20) == 0x20 {
         let i_tuplet = read_int(data, seek)?;

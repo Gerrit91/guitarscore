@@ -58,7 +58,6 @@ impl SongMidiOps for Song {
         c.phaser = read_signed_byte(data, seek)?;
         c.tremolo = read_signed_byte(data, seek)?;
         c.set_instrument(instrument);
-        //println!("Channel: {}\t Volume: {}\tBalance: {}\tInstrument={}, {}, {}", c.channel, c.volume, c.balance, instrument, c.get_instrument(), c.get_instrument_name());
         *seek += 2; //Backward compatibility with version 3.0
         Ok(c)
     }

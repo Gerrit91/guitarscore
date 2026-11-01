@@ -5,18 +5,6 @@
 
 use crate::io::*;
 
-impl WahEffect {
-    pub(crate) fn _check_value(value: i8) -> GpResult<()> {
-        if !(WAH_EFFECT_OFF..=100).contains(&value) {
-            return Err(GpError::InvalidValue {
-                context: "wah effect",
-                value: value as i64,
-            });
-        }
-        Ok(())
-    }
-}
-
 pub trait SongMixTableOps {
     fn read_mix_table_change(&mut self, data: &[u8], seek: &mut usize) -> GpResult<MixTableChange>;
     fn read_mix_table_change_values(
