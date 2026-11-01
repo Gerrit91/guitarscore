@@ -271,3 +271,92 @@ Test-first with `roundtrip-check` and the formerly ignored tests:
   conversions between GP7, GPX and GP5 clean, except the expected loss of the instrument
   name in GP7 -> GP5.
 - Tests: no ignored tests left.
+
+## 2026-11-01 — testdata: note lengths and ornaments
+
+- Added `testdata/basic/note_lengths.*` and `ornaments.*` (GP7, GPX, GP5 plus Guitar
+  Pro's `.txt`, `.mid`, `.pdf` and `.png` exports; the README describes the music).
+- `test_golden` now covers all nine files with `info` and `dump` references, 12 new
+  golden files. `ornaments` must dump the same note grid in all three formats.
+- A test pins the GP5 double-dot limitation: Guitar Pro 5 writes the 7/16 note (a
+  double-dotted quarter) as 3/8, so measure 9 of `note_lengths.gp5` is 15/16 and `info`
+  reports the issue. GP7 and GPX keep it. The future GP5 writer should drop the second
+  dot and warn instead of failing (gaps #2).
+- Checked both dumps against the PDF and Guitar Pro's tab export: durations, 3/5/6/7
+  tuplets, dots, ties, dead notes and string assignment all match. Effects still do not
+  appear by design (gaps #4).
+- Found while comparing the exports: the GP6/GP7 reader ignores `<Whammy>`, so the dive
+  bomb in `ornaments` measure 9 is lost on import (GP5 keeps it); recorded in gaps #4.
+  GP5 also stores hammer-on flags only on the origin note, while GPIF has origin and
+  destination; the model keeps one `hammer` flag.
+
+## 2026-11-01 — dump: note and beat effect symbols
+
+- `gscore-model` views now expose note effects (hammer, bend, ghost, accent, palm mute,
+  staccato, trill, tremolo picking, vibrato, slide) and beat effects (pick/brush stroke,
+  tapping/slap/pop, fade-in, whammy bar), so `gscore-cli dump` can print Guitar Pro's
+  ASCII symbols without leaking `gscore-gp`.
+- `dump` writes `L` on the origin of a tie (the continuation stays a plain fret), `h` on
+  the first note of each hammer/pull pair, and `b`, `s`, `~`, `g`, `>`, `t`, `M`, `.`,
+  `+`, `S`, `P`, `<`, `w`, `=`, `v`/`^`, `V`/`n` after the fret. Harmonics, let ring,
+  grace notes and fingerings have no symbol in Guitar Pro's export.
+- Reader fixes in `gscore-gp`: `HopoDestination` no longer sets `hammer` (GP7/GPX had two
+  `h` per pair, GP5 one), and the whammy bar is read from GP7 `<Whammy>` and GP6
+  `WhammyBar*` beat properties, so the dive bomb in `ornaments` survives and GP7, GPX and
+  GP5 dump the same effects. Regression tests in `effect_tests`; docs/guitarpro.md 17-18.
+- `ornaments` goldens now contain the effects. A test asserts the two `h`, the single
+  `L` and every reference cell (`15b`, `15s`, `0g`, `0>`, `0.`, `2M`, `15w`). The
+  note-grid comparison ignores symbols because GP5 also sets the accent bit for heavy
+  accents and staccato. Testdata README and gaps #4 updated.
+
+## 2026-11-01 — dump: Wikipedia ASCII-tab symbols, palm mutes under the staff
+
+- The dump no longer copies Guitar Pro's ASCII legend. Note effects now use the usual
+  ASCII-tab symbols from Wikipedia's table: `h`/`p` (direction from the next note's pitch
+  on the same string, since Guitar Pro stores one hammer flag), `b` up / `r` release, `/`
+  up / `\` down for slides (falling back to `S`/`s` when the target pitch is unknown),
+  `~`, `tr`, `TP`, `t` for tapping, `*` for harmonics and `(fret)` for ghost notes.
+  Concepts the table does not cover keep their letters: slap `S`, pop `P`, fade-in `<`,
+  whammy `w`, brush `v`/`^`, pick stroke `V`/`n`; the tie `L` stays on the origin. Wah is
+  not drawn at all.
+- Palm mutes moved from a suffix (`2M`) to a row under the staff, aligned with the notes:
+  `PM` starts a run, `-` carries it and `|` closes it (`PM------|`). A system without palm
+  mutes gets no extra row. The row uses spaces where the staff has padding, so `PM` sits
+  above the first muted fret.
+- `gscore-model` exposes `NoteView::bend()`, `slides()` and `is_harmonic()`, plus
+  `BendKind` (up/release) and `SlideKind` (in/out directions and shift/legato), so the
+  dump can choose symbols without seeing `gscore-gp` types.
+- Goldens for `ornaments` (GP7, GPX, GP5) regenerated; `test_golden` expects `0h`, `2p`,
+  `(0)`, `15\`, `12/`, `7*`, `7~`, `15w`, asserts no `M` in the tab lines, and checks the
+  `PM...|` row is aligned with the first muted fret. The DADGAD cross-format grid and the
+  Guitar Pro layout comparison still pass. Testdata README and gaps #4 updated.
+- Still open: hammer/pull and slide targets in the next measure fall back (`h`, `S`/`s`),
+  and ties are matched within one measure only; both need a cross-measure pass.
+
+## 2026-11-01 — dump: bend targets, harmonic nodes, let ring, legend
+
+- Bends now name the target fret: the last bend point is the distance in semitones, so a
+  whole-step bend on fret 15 prints `15b17` (odd semitones print `.5`). Release bends keep
+  `r` and get a target only when the pitch moves. The `ornaments` bend now reads `15b17`.
+- Harmonics use the `Harmonic`/`HarmonicKind` view: natural harmonics stay `*`, pinch and
+  artificial harmonics print the node after the fret (`7[19]`) and tapped harmonics print
+  `7(19)`. The node is the fretted note plus the stored harmonic offset; a file without
+  one (GP5 pinch) prints `[?]`. Fixed a GPIF reader bug: Guitar Pro writes `HarmonicFret`
+  before `HarmonicType`, so the fret used to be dropped; a regression test covers it.
+- Let ring joins palm mute on rows under the staff, so `PalmMute`/`LetRing` share one
+  annotation-row implementation (`PM----|`, `LR----|`). The rows are independent and
+  stacked in `Annotation::ALL` order, so a system can print several at once (palm mute
+  and let ring now; up/down picking later), and a row only appears where it occurs. Both
+  marks are aligned with their first note.
+- Direct shift/legato slides of at least an eighth note sit right against the note they
+  slide to (`15\12` instead of `15\-12`) when every note in the column qualifies. Other
+  effects still keep their separating dash.
+- `gscore-cli legend` prints every symbol from the `Symbol`/`Annotation` enums the dump
+  uses, so the tablature and its documentation cannot drift apart. The dump help text is
+  current again.
+- `test_golden` compares `legend.txt`, checks `15b17`, `7[19]`, `15\12` and both annotation
+  rows, and strips bracketed harmonic nodes from the cross-format note grid (GP5 cannot
+  store them). A wide dump also proves palm mute and let ring stack as two separate
+  under-staff lines. Goldens regenerated for all three `ornaments` exports.
+- Still open: `[?]` for GP5 pinch harmonics, and the cross-measure target/ties gap in
+  gaps #4.

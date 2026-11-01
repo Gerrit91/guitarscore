@@ -45,5 +45,6 @@ pub use position::{
 };
 pub use song::Song;
 pub use views::{
-    BeatKind, BeatView, MeasureView, NoteKind, NoteView, StringTuning, TrackView, VoiceView,
+    BeatKind, BeatView, Bend, BendKind, Harmonic, HarmonicKind, MeasureView, NoteKind, NoteView,
+    SlapKind, SlideKind, StringTuning, StrokeDirection, TrackView, VoiceView,
 };
