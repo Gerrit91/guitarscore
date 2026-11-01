@@ -399,3 +399,52 @@ Test-first with `roundtrip-check` and the formerly ignored tests:
 End-of-M3 review: gscore-session now depends on gscore-io/gscore-model (layers 2/1, fine);
 the CLI gained `format_arg` shared by `convert` and `roundtrip-check`. Open risks: whether
 Guitar Pro opens our GP7 output (unverified), and the remaining unlinted `gscore-gp` code.
+
+## 2026-11-01 — M4 complete: headless editing
+
+- `gscore-model` gained checked editing methods (`src/edit/`): set/clear a note, set a beat
+  length, insert/delete a beat, insert/delete a measure. Every method runs on a copy of the
+  wrapped `gscore_gp::Song` and swaps it in only after validation, so a failed edit changes
+  nothing (AGENTS.md rule 8). Each returns an opaque `Change`; `Song::revert` undoes it with
+  the exact previous data, effects included. New `NoteValue` (note value + dots + tuplet)
+  parses and prints `1/8`, `1/16..`, `1/8*3:2` and keeps the exact `Duration`.
+- New measures decompose the time signature into exact rests (4/4 is one whole rest, 7/8 is
+  a double-dotted half), inherit time and key signature, and are inserted in every track plus
+  the measure header. Deleting the only measure is refused; insert/delete renumber headers,
+  measure numbers and track links.
+- `gscore-edit` is implemented: `Command` (id, label, `enabled`, `apply`), a static registry
+  (`COMMANDS` with aliases, help and parameter metadata), a text parser (`id key=value ...`,
+  1-based positions, `#` comments) and `Editor` (undo/redo, bounded history; failed commands
+  never enter it). `set_fret` is the CLI name; `enter_fret` is an alias.
+- `gscore-cli commands` lists every command and parameter; `gscore-cli edit <in> -o <out>`
+  takes repeatable `-c "<command> ..."` and/or `--script <file>` and saves through
+  `gscore_session::save`. A bad command or script line aborts before anything is written.
+- Tests: apply-then-undo helper (undo must leave `differences()` empty), per-command tests,
+  `panic_hunt` (every command x 8 song shapes x adversarial text and typed extremes),
+  property test (random sequences on 8 songs: invariants hold, undo-all restores, redo-all
+  returns), and a save round trip after every successful edit. CLI script
+  `tests/scripts/edit_basic.gscript` + golden dump; `undo_all.gscript` restores the input.
+- Tests: 179 (+53). `cargo xtask ci` green, wasm check included.
+
+End-of-M4 review: `gscore-edit` parses text itself (clap stays in the CLI), and the model
+owns undo data behind an opaque `Change`, so the command layer never sees `gscore-gp`. Open:
+copy/cut/paste and the cursor/selection belong to M7; every model edit clones the whole song
+(including embedded audio), which is correct but should become a per-region copy; tempo,
+time signature and effect editing are not commands yet; undo history is in memory only.
+
+## 2026-11-01 — Review of M4
+
+- New measures: only voice 1 is filled with rests; further voices get an empty placeholder
+  beat, as Guitar Pro stores unused voices. Before, voice 2 showed a full set of rests too.
+- Undo of `insert_beat` into a measure without voices (GP7 empty bars) also removes the
+  voice the insert created; before, an empty voice stayed behind. Test added.
+- `Editor` keeps its undo history in a `VecDeque`, so trimming the oldest entry at the
+  limit no longer shifts 10,000 entries per edit.
+- `gscore-cli`: `report.rs` holds the difference listing and save messages shared by
+  `convert`, `edit` and `roundtrip-check` (three copies before). Accepted losses now end
+  with "... and N more" like refused ones, instead of stopping silently at 20.
+- `gscore-edit/src/parse.rs` tests moved to `parse/tests.rs` (file under 400 lines).
+- Measured: a single-note edit takes about 3.6 ms in release on `DrDr.gp` (whole-song clone
+  plus full validation); noted in docs/gaps.md #5 for M7.
+- Open question for the owner: AGENTS.md section 7 says undo history should not be limited,
+  rule 9 says to cap it by memory. The code caps by entry count (10,000); unchanged.

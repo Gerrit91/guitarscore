@@ -7,5 +7,9 @@ edition = "2024"
 # Wrapped by `Song`, never exposed (see the crate docs and `cargo xtask layers`).
 gscore-gp = { path = "../gscore-gp" }
 
+[features]
+# Builders for songs in tests of other crates. Not part of the normal API.
+test-support = []
+
 [lints]
 workspace = true

@@ -19,6 +19,9 @@ Guitar Pro files on the command line:
 - **`gscore-cli convert`:** saves a file as Guitar Pro 7+ (`.gp`). The song is checked
   before anything is written, the previous file is kept as `.bak`, and the new file
   replaces it atomically.
+- **`gscore-cli edit`:** headless editing with undo/redo: set frets, change beat lengths,
+  insert/delete beats and measures, from `-c` commands or a script. `gscore-cli commands`
+  lists them. Every successful edit still round-trips through the GP7 writer.
 
 Milestones, progress and known gaps: `AGENTS.md` (section 9), `docs/devlog.md`,
 `docs/gaps.md`.
@@ -67,6 +70,17 @@ A |-----0----------------------||
 D |--0-------------------------||
 ```
 
+```bash
+cargo run -p gscore-cli -- commands
+cargo run -p gscore-cli -- edit testdata/basic/steel_guitar_dadgad.gp -o edited.gp \
+  -c "set_fret track=1 measure=1 beat=1 string=6 fret=7" \
+  -c "set_duration measure=1 beat=1 duration=1/8"
+cargo run -p gscore-cli -- edit song.gp -o edited.gp --script edits.txt
+```
+
+A script has one command per line; blank lines and `#` comments are ignored. Positions are
+1-based. The same parser drives scripts and `-c`, so a script is a regression test.
+
 Exit codes: 0 success, 1 the command failed (e.g. unreadable file), 2 wrong usage.
 
 ## Layout
@@ -80,7 +94,7 @@ A Cargo workspace of small crates. A crate may only depend on crates in lower la
 | 1 | `gscore-model` | The document model the app works with: views, exact durations, positions, checks |
 | 2 | `gscore-io` | Safe entry point for files: format detection, size limits, crash containment |
 | 2 | `gscore-layout`, `gscore-play` | Tablature layout, playback sequencing (planned) |
-| 3 | `gscore-edit`, `gscore-audio` | Editing commands, audio output (planned) |
+| 3 | `gscore-edit`, `gscore-audio` | Editing commands with undo/redo; audio output (planned) |
 | 4 | `gscore-session` | Crash reports today; recovery journal and autosave planned |
 | 5 | `gscore-cli`, `gscore-app` | Command-line tool; desktop app (planned) |
 

@@ -7,9 +7,7 @@ use gscore_model::differences;
 
 use crate::CliError;
 use crate::format_arg::FormatArg;
-
-/// How many differences are listed before summarizing the rest.
-const MAX_LISTED: usize = 20;
+use crate::report::push_differences;
 
 /// Reads `path`, writes it as `to` (default: its own format), reads that back and lists
 /// what changed. Differences are a failure (exit code 1).
@@ -30,8 +28,8 @@ pub(crate) fn run(path: &Path, to: Option<FormatArg>) -> Result<String, CliError
     if diffs.is_empty() {
         return Ok(format!(
             "Round trip OK: {route}, no differences.\n\
-             Compared: song information, tracks, tunings, time signatures, beats and notes \
-             (effects are not compared yet).\n"
+             Compared: song information, tracks, tunings, time signatures, beats, notes and \
+             their effects.\n"
         ));
     }
     let mut report = format!(
@@ -39,11 +37,6 @@ pub(crate) fn run(path: &Path, to: Option<FormatArg>) -> Result<String, CliError
         path.display(),
         diffs.len()
     );
-    for diff in diffs.iter().take(MAX_LISTED) {
-        report.push_str(&format!("  {diff}\n"));
-    }
-    if let Some(more) = diffs.len().checked_sub(MAX_LISTED).filter(|&n| n > 0) {
-        report.push_str(&format!("  ... and {more} more\n"));
-    }
+    push_differences(&mut report, &diffs);
     Err(CliError::Failed(report))
 }

@@ -370,6 +370,7 @@ name = "gscore-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "gscore-edit",
  "gscore-io",
  "gscore-model",
  "gscore-session",
@@ -378,6 +379,10 @@ dependencies = [
 [[package]]
 name = "gscore-edit"
 version = "0.1.0"
+dependencies = [
+ "gscore-io",
+ "gscore-model",
+]
 
 [[package]]
 name = "gscore-gp"

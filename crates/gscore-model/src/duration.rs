@@ -148,6 +148,192 @@ impl fmt::Display for Duration {
     }
 }
 
+/// A note value as Guitar Pro stores it: a `1/value` note, optionally dotted, optionally
+/// part of a tuplet.
+///
+/// Unlike [`Duration`], which is an exact length, a note value keeps the notation: a quarter
+/// and two eighths are both a quarter note long, but only one is written as `1/4`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NoteValue {
+    value: u16,
+    dots: u8,
+    tuplet: Option<(u8, u8)>,
+}
+
+impl NoteValue {
+    /// A `1/value` note with `dots` augmentation dots (0 to 2) and, if given,
+    /// `enters` notes in the time of `times`.
+    pub fn new(value: u16, dots: u8, tuplet: Option<(u8, u8)>) -> Result<Self, ModelError> {
+        if !(1..=MAX_NOTE_VALUE).contains(&value) || !value.is_power_of_two() {
+            return Err(ModelError::Invalid(format!(
+                "note value 1/{value} is not a power of two up to 1/{MAX_NOTE_VALUE}"
+            )));
+        }
+        if dots > 2 {
+            return Err(ModelError::Invalid(format!(
+                "{dots} augmentation dots (supported: 0, 1 or 2)"
+            )));
+        }
+        if let Some((enters, times)) = tuplet
+            && (!(1..=MAX_TUPLET).contains(&enters) || !(1..=MAX_TUPLET).contains(&times))
+        {
+            return Err(ModelError::Invalid(format!(
+                "tuplet {enters}:{times} is out of range 1..={MAX_TUPLET}"
+            )));
+        }
+        Ok(NoteValue {
+            value,
+            dots,
+            tuplet: tuplet.filter(|&(enters, times)| enters != 1 || times != 1),
+        })
+    }
+
+    /// The note value's denominator: `4` for a quarter note.
+    pub fn value(self) -> u16 {
+        self.value
+    }
+
+    /// The number of augmentation dots (0, 1 or 2).
+    pub fn dots(self) -> u8 {
+        self.dots
+    }
+
+    /// The tuplet as `enters:times` (3:2 is a triplet), if it has one.
+    pub fn tuplet(self) -> Option<(u8, u8)> {
+        self.tuplet
+    }
+
+    /// This note value's exact length.
+    pub fn duration(self) -> Result<Duration, ModelError> {
+        Duration::from_gp(&self.to_gp())
+    }
+
+    /// The Guitar Pro representation used when writing an edit into the song.
+    pub(crate) fn to_gp(self) -> GpDuration {
+        let (dotted, double_dotted) = match self.dots {
+            0 => (false, false),
+            1 => (true, false),
+            _ => (false, true),
+        };
+        let (tuplet_enters, tuplet_times) = self.tuplet.unwrap_or((1, 1));
+        GpDuration {
+            value: self.value,
+            dotted,
+            double_dotted,
+            tuplet_enters,
+            tuplet_times,
+            ..GpDuration::default()
+        }
+    }
+
+    /// Parses a note value as written on the command line: `1/4`, `4`, `quarter`,
+    /// `1/8.` (dotted), `1/16..` (double-dotted), optionally followed by `*3:2` for a
+    /// tuplet.
+    pub fn parse(text: &str) -> Result<Self, ModelError> {
+        let text = text.trim();
+        if text.is_empty() {
+            return Err(ModelError::Invalid("empty note value".to_owned()));
+        }
+        let (main, tuplet) = match text.split_once('*') {
+            Some((main, rest)) => {
+                if rest.contains('*') {
+                    return Err(ModelError::Invalid(format!(
+                        "more than one tuplet in note value \"{text}\""
+                    )));
+                }
+                (main, Some(parse_tuplet(rest)?))
+            }
+            None => (text, None),
+        };
+        let main = main.trim();
+        let trimmed = main.trim_end_matches('.');
+        let dots = u8::try_from(main.len().saturating_sub(trimmed.len()))
+            .map_err(|_| ModelError::Invalid("too many augmentation dots".to_owned()))?;
+        let value = parse_note_value(trimmed)?;
+        NoteValue::new(value, dots, tuplet)
+    }
+}
+
+impl fmt::Display for NoteValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "1/{}", self.value)?;
+        for _ in 0..self.dots {
+            f.write_str(".")?;
+        }
+        if let Some((enters, times)) = self.tuplet {
+            write!(f, "*{enters}:{times}")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::str::FromStr for NoteValue {
+    type Err = ModelError;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        NoteValue::parse(text)
+    }
+}
+
+/// Parses `1/8`, `8`, `eighth`, ... into the note value denominator.
+fn parse_note_value(text: &str) -> Result<u16, ModelError> {
+    let value = if let Some((numerator, denominator)) = text.split_once('/') {
+        let numerator: u64 = numerator
+            .trim()
+            .parse()
+            .map_err(|_| ModelError::Invalid(format!("note value \"{text}\"")))?;
+        let denominator: u64 = denominator
+            .trim()
+            .parse()
+            .map_err(|_| ModelError::Invalid(format!("note value \"{text}\"")))?;
+        if numerator != 1 {
+            return Err(ModelError::Invalid(format!(
+                "note value \"{text}\" is not 1/n"
+            )));
+        }
+        u16::try_from(denominator)
+            .map_err(|_| ModelError::Invalid(format!("note value \"{text}\" is too large")))?
+    } else if let Ok(value) = text.parse::<u16>() {
+        value
+    } else {
+        note_value_by_name(text)
+            .ok_or_else(|| ModelError::Invalid(format!("note value \"{text}\"")))?
+    };
+    Ok(value)
+}
+
+/// Common note names, so scripts can say `quarter` instead of `1/4`.
+fn note_value_by_name(name: &str) -> Option<u16> {
+    let names: [(&str, u16); 8] = [
+        ("whole", 1),
+        ("half", 2),
+        ("quarter", 4),
+        ("eighth", 8),
+        ("sixteenth", 16),
+        ("thirty-second", 32),
+        ("sixty-fourth", 64),
+        ("hundred-twenty-eighth", 128),
+    ];
+    names
+        .iter()
+        .find(|(candidate, _)| name.eq_ignore_ascii_case(candidate))
+        .map(|&(_, value)| value)
+}
+
+/// Parses the `enters:times` part of a tuplet note value.
+fn parse_tuplet(text: &str) -> Result<(u8, u8), ModelError> {
+    let invalid = || ModelError::Invalid(format!("tuplet \"{text}\" (expected enters:times)"));
+    let (enters, times) = text.split_once(':').ok_or_else(invalid)?;
+    let enters: u8 = enters.trim().parse().map_err(|_| invalid())?;
+    let times: u8 = times.trim().parse().map_err(|_| invalid())?;
+    if !(1..=MAX_TUPLET).contains(&enters) || !(1..=MAX_TUPLET).contains(&times) {
+        return Err(ModelError::Invalid(format!(
+            "tuplet {enters}:{times} is out of range 1..={MAX_TUPLET}"
+        )));
+    }
+    Ok((enters, times))
+}
+
 /// A time signature such as 4/4, 3/4 or 7/8.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TimeSignature {

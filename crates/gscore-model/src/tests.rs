@@ -110,6 +110,49 @@ fn invalid_durations_are_errors() {
 }
 
 #[test]
+fn note_values_parse_print_and_keep_their_length() {
+    let cases = [
+        ("1/4", "1/4", d(1, 4)),
+        ("4", "1/4", d(1, 4)),
+        ("quarter", "1/4", d(1, 4)),
+        ("1/8.", "1/8.", d(3, 16)),
+        ("1/16..", "1/16..", d(7, 64)),
+        ("1/8*3:2", "1/8*3:2", d(1, 12)),
+        ("1/8*5:4", "1/8*5:4", d(1, 10)),
+        ("whole", "1/1", d(1, 1)),
+        ("128", "1/128", d(1, 128)),
+    ];
+    for (text, printed, length) in cases {
+        let value: NoteValue = text.parse().unwrap_or_else(|e| panic!("{text}: {e}"));
+        assert_eq!(value.to_string(), printed, "{text}");
+        assert_eq!(value.duration().unwrap(), length, "{text}");
+    }
+}
+
+#[test]
+fn invalid_note_values_are_errors() {
+    for text in [
+        "",
+        "0",
+        "-1",
+        "1/0",
+        "1/3",
+        "1/256",
+        "NaN",
+        "abc",
+        "1/4...",
+        "1/4*0:2",
+        "1/4*65:2",
+        "1/4*3",
+        "1/4*3:2:1",
+        "1/4**3:2",
+        "2/4",
+    ] {
+        assert!(text.parse::<NoteValue>().is_err(), "{text}");
+    }
+}
+
+#[test]
 fn checked_sub_is_exact_and_never_negative() {
     assert_eq!(d(1, 1).checked_sub(d(3, 8)).unwrap(), d(5, 8));
     assert_eq!(d(1, 4).checked_sub(d(1, 12)).unwrap(), d(1, 6));

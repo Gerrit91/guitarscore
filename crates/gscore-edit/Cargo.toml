@@ -4,6 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+gscore-model = { path = "../gscore-model" }
+
+[dev-dependencies]
+# Songs built without a fixture file for the command tests.
+gscore-model = { path = "../gscore-model", features = ["test-support"] }
+# Saving edited songs again proves that every edit stays writable (no `unwrap`s here).
+gscore-io = { path = "../gscore-io" }
 
 [lints]
 workspace = true

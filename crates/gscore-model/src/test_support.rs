@@ -88,11 +88,23 @@ pub(crate) fn track(name: &str, tuning: &[i8], measures: Vec<Measure>) -> Track 
 }
 
 /// A song with the given tracks and one measure header per measure of the first track.
+/// The headers copy the first track's time and key signatures, as real files keep them in
+/// sync.
 pub(crate) fn song(tracks: Vec<Track>) -> Song {
-    let measure_count = tracks.first().map_or(0, |t| t.measures.len());
+    let measure_headers = tracks.first().map_or_else(Vec::new, |track| {
+        track
+            .measures
+            .iter()
+            .map(|measure| MeasureHeader {
+                time_signature: measure.time_signature.clone(),
+                key_signature: measure.key_signature.clone(),
+                ..MeasureHeader::default()
+            })
+            .collect()
+    });
     Song {
         name: "Test song".to_owned(),
-        measure_headers: vec![MeasureHeader::default(); measure_count],
+        measure_headers,
         tracks,
         ..Song::default()
     }

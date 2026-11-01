@@ -27,6 +27,22 @@ impl Song {
         &self.inner
     }
 
+    /// Runs `edit` on a copy of the wrapped song and swaps the copy in only when the edit
+    /// and the invariant check both succeeded (AGENTS.md rule 8: commands are
+    /// transactional). A failure leaves this song untouched.
+    pub(crate) fn edit_inner<T>(
+        &mut self,
+        edit: impl FnOnce(&mut gscore_gp::Song) -> Result<T, ModelError>,
+    ) -> Result<T, ModelError> {
+        let mut candidate = Song {
+            inner: self.inner.clone(),
+        };
+        let value = edit(&mut candidate.inner)?;
+        validate::check(&candidate)?;
+        *self = candidate;
+        Ok(value)
+    }
+
     /// The title (may be empty, may be any Unicode text).
     pub fn title(&self) -> &str {
         &self.inner.name
