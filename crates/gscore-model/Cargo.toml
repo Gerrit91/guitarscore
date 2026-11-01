@@ -1,11 +1,9 @@
 [package]
 name = "gscore-model"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-# Wrapped, never exposed: see the crate docs and `cargo xtask layers`.
-guitarpro = { path = "../../vendor/guitarpro" }
 
 [lints]
 workspace = true

@@ -168,3 +168,19 @@ playback need them.
   BCFZ declared size (up to 2 GB before), BCFS file sizes (negative became huge). Failed
   allocations abort the process and cannot be caught. `read_gpx` accepts plain BCFS.
 - Tests: 53 own + 170 vendored.
+
+## 2026-11-01 — guitarpro integrated into gscore-model and gscore-io
+
+- Owner decision: stop treating guitarpro as vendored third-party code. Removed the unused
+  modules (~21k lines), then split the rest (~10.4k lines, by a scanner script): data types
+  to `gscore_model::gp` (no dependencies), reading/writing to `gscore_io::gp` (private).
+  Inherent methods needing the reader's error type became extension traits; `Song`'s
+  read/write methods are the `SongCodec` trait. `vendor/` is gone.
+- `cargo xtask layers`: `gscore_model::gp` may only be used by gscore-io (like `interop`);
+  the vendored-crate mechanism and the `guitarpro` dependency rule were removed.
+- Workspace moved to edition 2024 (the derived code uses let-chains); four of our `if`s
+  became let-chains on clippy's advice.
+- Credits: README acknowledgements, `LICENSE-guitarpro` in both `gp` directories,
+  `THIRD_PARTY.md`, history and change list in `docs/guitarpro.md`.
+- Tests: 78 (the derived code's 22 tests now live in gscore-io and gscore-model). All
+  owner files still import.

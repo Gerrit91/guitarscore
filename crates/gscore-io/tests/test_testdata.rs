@@ -12,13 +12,12 @@
     clippy::expect_used,
     clippy::indexing_slicing
 )]
-
-// Integration tests are separate crates; these dependencies are used by the library only.
-use guitarpro as _;
+// Integration tests are separate crates and see all of the library's dependencies.
+#![allow(unused_crate_dependencies)]
 
 use std::path::PathBuf;
 
-use gscore_io::{import_guitar_pro_from_bytes, FileFormat, Imported, IoError};
+use gscore_io::{FileFormat, Imported, IoError, import_guitar_pro_from_bytes};
 use gscore_model::{
     BeatKind, Duration, InstrumentKind, MeasureIndex, NoteKind, TrackIndex, VoiceIndex,
 };
@@ -245,10 +244,10 @@ fn add_damaged_copies(original: &[u8], inputs: &mut Vec<Vec<u8>>) {
 fn check_no_panics(inputs: &[Vec<u8>]) {
     let mut internal_panics = Vec::new();
     for (i, bytes) in inputs.iter().enumerate() {
-        if let Err(IoError::GuitarProError(msg)) = import_guitar_pro_from_bytes(bytes) {
-            if msg.contains("panicked") {
-                internal_panics.push(format!("input {i} ({} bytes): {msg}", bytes.len()));
-            }
+        if let Err(IoError::GuitarProError(msg)) = import_guitar_pro_from_bytes(bytes)
+            && msg.contains("panicked")
+        {
+            internal_panics.push(format!("input {i} ({} bytes): {msg}", bytes.len()));
         }
     }
     assert!(

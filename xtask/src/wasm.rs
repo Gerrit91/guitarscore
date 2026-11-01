@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::{cmd, TaskResult};
+use crate::{TaskResult, cmd};
 
 const TARGET: &str = "wasm32-unknown-unknown";
 

@@ -2,10 +2,13 @@
 
 Ranked known shortfalls, most important first. Updated 2026-11-01 (M1).
 
-1. **Vendored `guitarpro` is not held to the workspace rules yet.** About 32k lines with
-   `unwrap`, indexing and `as` casts; all lints are allowed for it (`vendor/guitarpro`).
-   It is only called behind `catch_unwind`, which does not exist on wasm. Bring it under
-   the lints module by module, starting with the parsers of untrusted input.
+1. **The Guitar Pro reader/writer is not held to the workspace rules yet.** About 10k
+   lines derived from guitarpro in `crates/gscore-model/src/gp/` and
+   `crates/gscore-io/src/gp/` still use `unwrap`, indexing and `as` casts; a module-level
+   `allow` exempts them. Several files exceed 400 lines (`gpif_import.rs` 1,040,
+   `gpif_export.rs` 720). Bring them under the lints module by module, starting with the
+   parsers of untrusted input. Until then the reader runs behind `catch_unwind`, which does
+   not exist on wasm.
 2. **Instrument data and tuning labels are read but not written.** GP7 `<InstrumentSet>`
    (type, name) and the tuning `<Label>` are read into the track, but the GPIF exporter
    writes neither. Must be handled before saving (M6).

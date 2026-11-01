@@ -10,9 +10,10 @@
 pub mod error;
 pub mod export;
 pub mod format;
+mod gp;
 pub mod import;
 
 pub use error::IoError;
 pub use export::export_guitar_pro_to_bytes;
-pub use format::{detect_format, FileFormat};
-pub use import::{import_guitar_pro_from_bytes, Imported, MAX_INPUT_BYTES};
+pub use format::{FileFormat, detect_format};
+pub use import::{Imported, MAX_INPUT_BYTES, import_guitar_pro_from_bytes};

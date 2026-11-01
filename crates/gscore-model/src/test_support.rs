@@ -1,7 +1,7 @@
-//! Builders for `guitarpro` songs in tests.
+//! Builders for Guitar Pro song data in tests.
 
-use guitarpro::model::legacy::key_signature::Duration as GpDuration;
-use guitarpro::{
+use crate::gp::Duration as GpDuration;
+use crate::gp::{
     Beat, BeatStatus, Measure, MeasureHeader, Note, NoteType, Song, TimeSignature, Track, Voice,
 };
 

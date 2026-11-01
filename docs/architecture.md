@@ -15,8 +15,8 @@ guitarscore/
   assets/fonts/              # SMuFL fonts + metadata, text font
   xtask/                     # project tasks: layers, corpus, ci
   crates/
-    gscore-model/             # L0: document model (thin layer over the guitarpro model), positions, queries
-    gscore-io/                # L1: GP files <-> model via the guitarpro crate (bytes in, bytes out; no file system)
+    gscore-model/             # L0: document model (wrapper over the Guitar Pro song data in `gp`), positions, queries
+    gscore-io/                # L1: GP files <-> model, reader/writer in `gp` (bytes in, bytes out; no file system)
     gscore-layout/            # L1: model -> positioned draw ops. No GUI imports.
     gscore-play/              # L1: sequencer, MIDI events, channel allocator, Player trait. No device crates.
     gscore-edit/              # L2: cursor, selection, commands, undo/redo, keymap

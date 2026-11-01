@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::num::{NonZeroU16, NonZeroU64};
 
-use guitarpro::model::legacy::key_signature::Duration as GpDuration;
+use crate::gp::Duration as GpDuration;
 
 use crate::error::ModelError;
 
@@ -74,7 +74,7 @@ impl Duration {
         Duration::new(num, den)
     }
 
-    /// Converts a `guitarpro` beat duration: note value, dots and tuplet.
+    /// Converts a Guitar Pro beat duration: note value, dots and tuplet.
     pub(crate) fn from_gp(gp: &GpDuration) -> Result<Self, ModelError> {
         let value = gp.value;
         if !(1..=MAX_NOTE_VALUE).contains(&value) || !value.is_power_of_two() {
@@ -89,7 +89,7 @@ impl Duration {
             (true, true) => {
                 return Err(ModelError::Invalid(
                     "duration is both dotted and double-dotted".to_owned(),
-                ))
+                ));
             }
         };
         // `enters` notes in the time of `times`: each note lasts `times/enters` as long.
@@ -181,7 +181,7 @@ impl TimeSignature {
         )
     }
 
-    pub(crate) fn from_gp(gp: &guitarpro::TimeSignature) -> Result<Self, ModelError> {
+    pub(crate) fn from_gp(gp: &crate::gp::TimeSignature) -> Result<Self, ModelError> {
         let numerator = u8::try_from(gp.numerator).map_err(|_| {
             ModelError::Invalid(format!("time signature with {} beats", gp.numerator))
         })?;

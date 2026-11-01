@@ -64,3 +64,12 @@ The implementation has been designed to follow the project's stability guideline
 - Proper error handling for file operations
 - Graceful degradation when fields are missing
 - Follows all project architecture principles
+
+## Acknowledgements
+
+Reading and writing Guitar Pro files is based on the [`guitarpro`](https://github.com/slundi/guitarpro)
+crate by **slundi** (MIT license). GuitarScore includes a modified copy of its code in
+`crates/gscore-model/src/gp/` and `crates/gscore-io/src/gp/`; the license is kept next to it
+(`LICENSE-guitarpro`), and `docs/guitarpro.md` lists where it came from and what was changed.
+Many thanks for making the Guitar Pro formats accessible.
+

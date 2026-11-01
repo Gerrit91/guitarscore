@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use gscore_io::{import_guitar_pro_from_bytes, Imported, MAX_INPUT_BYTES};
+use gscore_io::{Imported, MAX_INPUT_BYTES, import_guitar_pro_from_bytes};
 use gscore_model::{InstrumentKind, Song, StringTuning, TrackView};
 
 use crate::CliError;

@@ -5,8 +5,6 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::layers::VENDORED;
-
 /// Max directory depth when walking a crate's `src/` (guards against symlink loops).
 const MAX_DEPTH: usize = 16;
 
@@ -50,7 +48,8 @@ pub(crate) fn check_wasm_std_usage(root: &Path, crates: &[&str]) -> Vec<String> 
 /// Modules only some crates may use: (module path, crates allowed to use it).
 /// The module's own crate is always allowed.
 const RESTRICTED_MODULES: &[(&str, &[&str])] = &[
-    // Conversion to and from `guitarpro` types; everyone else uses the wrapper API.
+    // The Guitar Pro song data and its conversion; everyone else uses the wrapper API.
+    ("gscore_model::gp", &["gscore-model", "gscore-io"]),
     ("gscore_model::interop", &["gscore-model", "gscore-io"]),
 ];
 
@@ -95,10 +94,10 @@ fn scan_sources(
     let mut files = Vec::new();
     for sub in subdirs {
         let sub = dir.join(sub);
-        if sub.is_dir() {
-            if let Err(e) = rust_files(&sub, 0, &mut files) {
-                errors.push(e);
-            }
+        if sub.is_dir()
+            && let Err(e) = rust_files(&sub, 0, &mut files)
+        {
+            errors.push(e);
         }
     }
     for file in files {
@@ -126,15 +125,12 @@ fn mentions_module(source: &str, module: &str) -> Vec<usize> {
         .collect()
 }
 
-/// Where a workspace member lives: `xtask/`, a vendored directory, or `crates/<name>/`.
+/// Where a workspace member lives: `xtask/` or `crates/<name>/`.
 fn crate_dir(root: &Path, name: &str) -> PathBuf {
     if name == "xtask" {
         return root.join("xtask");
     }
-    match VENDORED.iter().find(|(vendored, _)| *vendored == name) {
-        Some((_, dir)) => root.join(dir),
-        None => root.join("crates").join(name),
-    }
+    root.join("crates").join(name)
 }
 
 /// True if the manifest has a `[lints]` table whose first entry is `workspace = true`.
@@ -214,7 +210,7 @@ mod tests {
 
     #[test]
     fn finds_restricted_module_mentions() {
-        let src = "use gscore_model::interop::from_guitarpro;\n\
+        let src = "use gscore_model::interop::from_gp;\n\
                    use gscore_model::{interop, Song};\n\
                    // gscore_model::interop in a comment\n\
                    let interop = 1;\n";

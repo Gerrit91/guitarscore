@@ -1,12 +1,17 @@
 [package]
 name = "gscore-io"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 gscore-model = { path = "../gscore-model" }
-guitarpro = { path = "../../vendor/guitarpro" }
-# Add any dependencies needed in this crate here
+# Used by the Guitar Pro reader/writer in `src/gp` (derived from the guitarpro crate).
+encoding_rs = "0.8.42"
+fraction = "0.17.0"
+quick-xml = { version = "0.42", features = ["serialize"] }
+serde = { version = "1.0.228", features = ["derive"] }
+thiserror = "2.0.18"
+zip = "9.0.5"
 
 [lints]
 workspace = true

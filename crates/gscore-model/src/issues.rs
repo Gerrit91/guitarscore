@@ -108,10 +108,10 @@ pub(crate) fn find(song: &Song) -> Vec<Issue> {
                     });
                 };
                 // Validated on creation; an error here would only skip the check.
-                if let Ok(signature) = measure.time_signature() {
-                    if let Some(kind) = fill_issue(&voice, signature.measure_length()) {
-                        push(None, kind);
-                    }
+                if let Ok(signature) = measure.time_signature()
+                    && let Some(kind) = fill_issue(&voice, signature.measure_length())
+                {
+                    push(None, kind);
                 }
                 for beat in voice.beats() {
                     for kind in note_issues(&beat, string_count) {

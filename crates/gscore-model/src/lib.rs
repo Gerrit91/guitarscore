@@ -1,16 +1,16 @@
 //! The GuitarScore document model.
 //!
-//! [`Song`] wraps the `guitarpro` crate's song model, so every field of a loaded file is kept
+//! [`Song`] wraps the Guitar Pro song data in [`gp`], so every field of a loaded file is kept
 //! and written back unchanged, including the ones GuitarScore does not understand yet.
-//! The wrapped model is private: the rest of the code base sees only this crate's API —
+//! The wrapped data is private: the rest of the code base sees only this crate's API —
 //! read-only views ([`TrackView`], [`MeasureView`], [`VoiceView`], [`BeatView`],
 //! [`NoteView`]), value types ([`Duration`], [`TimeSignature`], [`Fret`], ...) and index
 //! types ([`TrackIndex`], [`BeatPosition`], ...). No public item takes or returns a
-//! `guitarpro` type, except in [`interop`], which only `gscore-io` may use
-//! (enforced by `cargo xtask layers`). Replacing the wrapped model later is therefore a
-//! change inside this crate only.
+//! [`gp`] type, except in [`interop`]; only `gscore-io` may use [`gp`] and [`interop`]
+//! (enforced by `cargo xtask layers`). Replacing the wrapped data later is therefore a
+//! change inside this crate (and the reader/writer in `gscore-io`) only.
 //!
-//! A song is validated when it is created ([`interop::from_guitarpro`]): structural
+//! A song is validated when it is created ([`interop::from_gp`]): structural
 //! problems that break timing or navigation (a duration that is not a power of two, a
 //! track with a different number of measures, ...) are rejected with a [`ModelError`].
 //! Everything real files contain, such as unfilled measures or notes on strings a track
@@ -20,6 +20,7 @@
 
 mod duration;
 mod error;
+pub mod gp;
 mod instrument;
 pub mod interop;
 mod issues;

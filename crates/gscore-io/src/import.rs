@@ -2,11 +2,11 @@
 
 use std::panic;
 
-use gscore_model::{interop, Song};
-use guitarpro::Song as GpSong;
+use crate::gp::{Song as GpSong, SongCodec};
+use gscore_model::{Song, interop};
 
 use crate::error::IoError;
-use crate::format::{detect_format, FileFormat};
+use crate::format::{FileFormat, detect_format};
 
 /// Largest input accepted, in bytes. Real scores are far smaller (even GP7+ files with
 /// embedded audio rarely exceed a few MB); the cap bounds what a hostile file can make the
@@ -52,10 +52,10 @@ pub fn import_guitar_pro_from_bytes(bytes: &[u8]) -> Result<Imported, IoError> {
             return Err(IoError::GuitarProError(format!(
                 "{format}: the parser panicked: {}",
                 panic_message(payload.as_ref())
-            )))
+            )));
         }
     };
-    let song = interop::from_guitarpro(gp_song).map_err(IoError::InvalidSong)?;
+    let song = interop::from_gp(gp_song).map_err(IoError::InvalidSong)?;
     Ok(Imported { song, format })
 }
 

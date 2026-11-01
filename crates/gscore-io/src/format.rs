@@ -62,18 +62,18 @@ pub fn detect_format(bytes: &[u8]) -> Result<FileFormat, IoError> {
         return Ok(FileFormat::Gpx);
     }
     // GP3-5: one length byte, then "FICHIER GUITAR PRO v<major>.<minor>".
-    if let Some(header) = bytes.get(1..) {
-        if let Some(version) = header.strip_prefix(LEGACY_MAGIC) {
-            return match version.first() {
-                Some(b'3') => Ok(FileFormat::Gp3),
-                Some(b'4') => Ok(FileFormat::Gp4),
-                Some(b'5') => Ok(FileFormat::Gp5),
-                _ => Err(IoError::UnsupportedFormat(format!(
-                    "Guitar Pro version {}",
-                    String::from_utf8_lossy(version.get(..4).unwrap_or(version))
-                ))),
-            };
-        }
+    if let Some(header) = bytes.get(1..)
+        && let Some(version) = header.strip_prefix(LEGACY_MAGIC)
+    {
+        return match version.first() {
+            Some(b'3') => Ok(FileFormat::Gp3),
+            Some(b'4') => Ok(FileFormat::Gp4),
+            Some(b'5') => Ok(FileFormat::Gp5),
+            _ => Err(IoError::UnsupportedFormat(format!(
+                "Guitar Pro version {}",
+                String::from_utf8_lossy(version.get(..4).unwrap_or(version))
+            ))),
+        };
     }
     Err(IoError::UnsupportedFormat(
         "not a Guitar Pro file (unknown header); supported: .gp3, .gp4, .gp5, .gpx, .gp".to_owned(),

@@ -3,17 +3,16 @@
 //! Checks, collecting every violation before failing:
 //! 1. every workspace crate is registered in [`LAYERS`];
 //! 2. a crate depends only on workspace crates in strictly lower layers;
-//! 3. restricted third-party crates (GUI, audio devices, `guitarpro`) are used only where
-//!    allowed;
+//! 3. restricted third-party crates (GUI, audio devices) are used only where allowed;
 //! 4. every crate opts into `[workspace.lints]`, the core crates avoid std APIs that do not
-//!    work on wasm, and restricted modules (`gscore_model::interop`) are used only where
-//!    allowed (see [`crate::source_scan`]);
+//!    work on wasm, and restricted modules (`gscore_model::gp`, `gscore_model::interop`) are
+//!    used only where allowed (see [`crate::source_scan`]);
 //! 5. the core crates build for `wasm32-unknown-unknown` (see [`crate::wasm`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use crate::{cmd, source_scan, wasm, TaskResult};
+use crate::{TaskResult, cmd, source_scan, wasm};
 
 /// Layer of every workspace crate, lowest first. Register new crates here.
 pub(crate) const LAYERS: &[(&str, u8)] = &[
@@ -40,22 +39,11 @@ pub(crate) const WASM_CRATES: &[&str] = &[
 /// Workspace members that are tools, not part of the layered application.
 const TOOLS: &[&str] = &["xtask"];
 
-/// Vendored third-party crates: (name, directory). They are treated like external
-/// dependencies: no layer, not (yet) held to the workspace lints, and they must not
-/// depend on any GuitarScore crate. See `vendor/*/VENDORED.md`.
-pub(crate) const VENDORED: &[(&str, &str)] = &[("guitarpro", "vendor/guitarpro")];
-
-pub(crate) fn is_vendored(name: &str) -> bool {
-    VENDORED.iter().any(|(vendored, _)| *vendored == name)
-}
-
 /// Third-party crates that only the listed workspace crates may depend on directly:
 /// (allowed crates, restricted dependencies).
 const RESTRICTED: &[(&[&str], &[&str])] = &[
     (&["gscore-app"], &["egui", "eframe", "winit", "rfd"]),
     (&["gscore-audio"], &["cpal", "midir", "rustysynth"]),
-    // Everyone else goes through gscore-model's wrapper (AGENTS.md section 5, decision 1).
-    (&["gscore-model", "gscore-io"], &["guitarpro"]),
 ];
 
 /// GUI crates that no crate below `gscore-app` may reach, even transitively.
@@ -76,15 +64,10 @@ pub(crate) fn run(root: &Path, skip_wasm: bool) -> TaskResult {
     }
 
     let mut errors = check_graph(&members, &deps);
-    let own_members: Vec<String> = members
-        .iter()
-        .filter(|m| !is_vendored(m))
-        .cloned()
-        .collect();
-    errors.extend(source_scan::check_manifests(root, &own_members));
+    errors.extend(source_scan::check_manifests(root, &members));
     errors.extend(source_scan::check_wasm_std_usage(root, WASM_CRATES));
     // Tools (xtask) mention restricted modules in their own test data; skip them.
-    let app_members: Vec<String> = own_members
+    let app_members: Vec<String> = members
         .iter()
         .filter(|m| !TOOLS.contains(&m.as_str()))
         .cloned()
@@ -116,15 +99,6 @@ fn check_graph(members: &[String], deps: &BTreeMap<String, Deps>) -> Vec<String>
         if TOOLS.contains(&member.as_str()) {
             continue;
         }
-        if is_vendored(member) {
-            let own_deps = deps.get(member).into_iter().flat_map(|d| &d.direct);
-            for dep in own_deps.filter(|d| layer_of(d).is_some() || TOOLS.contains(&d.as_str())) {
-                errors.push(format!(
-                    "vendored crate `{member}` depends on workspace crate `{dep}`"
-                ));
-            }
-            continue;
-        }
         let Some(layer) = layer_of(member) else {
             errors.push(format!(
                 "`{member}` is not registered in LAYERS (xtask/src/layers.rs)"
@@ -138,13 +112,13 @@ fn check_graph(members: &[String], deps: &BTreeMap<String, Deps>) -> Vec<String>
             if TOOLS.contains(&dep.as_str()) {
                 errors.push(format!("`{member}` depends on the tool crate `{dep}`"));
             }
-            if let Some(dep_layer) = layer_of(dep) {
-                if dep_layer >= layer {
-                    errors.push(format!(
-                        "`{member}` (layer {layer}) depends on `{dep}` (layer {dep_layer}); \
-                         only lower layers are allowed"
-                    ));
-                }
+            if let Some(dep_layer) = layer_of(dep)
+                && dep_layer >= layer
+            {
+                errors.push(format!(
+                    "`{member}` (layer {layer}) depends on `{dep}` (layer {dep_layer}); \
+                     only lower layers are allowed"
+                ));
             }
             for (allowed, restricted) in RESTRICTED {
                 if restricted.contains(&dep.as_str()) && !allowed.contains(&member.as_str()) {
@@ -252,18 +226,11 @@ mod tests {
     fn accepts_downward_dependencies() {
         let (m, d) = graph(&[
             ("gscore-model", &[]),
-            ("gscore-io", &["gscore-model", "guitarpro"]),
+            ("gscore-io", &["gscore-model", "zip"]),
             ("gscore-app", &["gscore-io", "egui"]),
-            ("guitarpro", &["zip", "serde"]),
             ("xtask", &[]),
         ]);
         assert_eq!(check_graph(&m, &d), Vec::<String>::new());
-    }
-
-    #[test]
-    fn vendored_crates_must_not_depend_on_workspace_crates() {
-        let (m, d) = graph(&[("guitarpro", &["zip", "gscore-model", "xtask"])]);
-        assert_eq!(check_graph(&m, &d).len(), 2);
     }
 
     #[test]
@@ -277,19 +244,15 @@ mod tests {
 
     #[test]
     fn rejects_unregistered_crates_and_restricted_deps() {
-        let (m, d) = graph(&[
-            ("gscore-new", &[]),
-            ("gscore-play", &["cpal", "egui", "guitarpro"]),
-            ("gscore-io", &["guitarpro"]),
-        ]);
-        // unregistered; cpal, egui and guitarpro not allowed in play; egui reached below app
-        assert_eq!(check_graph(&m, &d).len(), 5);
+        let (m, d) = graph(&[("gscore-new", &[]), ("gscore-play", &["cpal", "egui"])]);
+        // unregistered; cpal and egui not allowed in play; egui reached below app
+        assert_eq!(check_graph(&m, &d).len(), 4);
     }
 
     #[test]
     fn parses_cargo_tree_output() {
-        let out = "gscore-io v0.1.0 (/x)\nguitarpro v0.4.4 (https://y#z)\n\nzip v9.0.5 (*)\n";
+        let out = "gscore-io v0.1.0 (/x)\nzip v9.0.5 (https://y#z)\n\nserde v1.0.0 (*)\n";
         let names: Vec<String> = package_names(out).collect();
-        assert_eq!(names, ["gscore-io", "guitarpro", "zip"]);
+        assert_eq!(names, ["gscore-io", "zip", "serde"]);
     }
 }

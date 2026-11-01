@@ -1,4 +1,4 @@
-//! [`Song`]: the document, wrapping the `guitarpro` song.
+//! [`Song`]: the document, wrapping the Guitar Pro song data.
 
 use crate::error::ModelError;
 use crate::issues::{self, Issue};
@@ -12,18 +12,18 @@ use crate::views::{BeatView, TrackView};
 /// empty document. Always satisfies the invariants checked on creation.
 #[derive(Debug, Clone, Default)]
 pub struct Song {
-    inner: guitarpro::Song,
+    inner: crate::gp::Song,
 }
 
 impl Song {
-    /// Wraps a `guitarpro` song after checking the invariants.
-    pub(crate) fn from_inner(inner: guitarpro::Song) -> Result<Self, ModelError> {
+    /// Wraps Guitar Pro song data after checking the invariants.
+    pub(crate) fn from_inner(inner: crate::gp::Song) -> Result<Self, ModelError> {
         let song = Song { inner };
         validate::check(&song)?;
         Ok(song)
     }
 
-    pub(crate) fn inner(&self) -> &guitarpro::Song {
+    pub(crate) fn inner(&self) -> &crate::gp::Song {
         &self.inner
     }
 

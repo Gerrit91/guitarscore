@@ -1,9 +1,9 @@
 //! Tests for the model: durations, validation, issues, navigation.
 
-use crate::interop::from_guitarpro;
+use crate::gp::Duration as GpDuration;
+use crate::interop::from_gp;
 use crate::test_support::*;
 use crate::*;
-use guitarpro::model::legacy::key_signature::Duration as GpDuration;
 
 fn d(num: u64, den: u64) -> Duration {
     Duration::new(num, den).unwrap()
@@ -164,7 +164,7 @@ fn songs_for_several_instruments_load() {
                 vec![vec![beat(1, &[(1, 0), (top_string, 12)])]],
             )],
         )]);
-        let song = from_guitarpro(gp).unwrap();
+        let song = from_gp(gp).unwrap();
         let track = song.track(TrackIndex::new(0)).unwrap();
         assert_eq!(track.string_count(), tuning.len());
         let pitches: Vec<i8> = track
@@ -190,7 +190,7 @@ fn tracks_without_a_real_tuning_report_none() {
     voice.instrument_type = Some("voice".to_owned());
     voice.instrument_name = Some("Voice".to_owned());
     gp.tracks.push(voice);
-    let song = from_guitarpro(gp).unwrap();
+    let song = from_gp(gp).unwrap();
     let tunings: Vec<bool> = song
         .tracks()
         .map(|t| t.tuning().unwrap().is_some())
@@ -205,7 +205,7 @@ fn tracks_without_a_real_tuning_report_none() {
 
 #[test]
 fn empty_song_is_valid() {
-    let song = from_guitarpro(song(vec![])).unwrap();
+    let song = from_gp(song(vec![])).unwrap();
     assert_eq!(song.track_count(), 0);
     assert_eq!(song.measure_count(), 0);
     assert!(song.issues().is_empty());
@@ -214,7 +214,7 @@ fn empty_song_is_valid() {
 #[test]
 fn invalid_durations_in_a_song_are_rejected_with_location() {
     let gp = one_measure(vec![beat(4, &[]), beat(3, &[(1, 0)])]);
-    let err = from_guitarpro(gp).unwrap_err().to_string();
+    let err = from_gp(gp).unwrap_err().to_string();
     assert!(err.contains("track 1: measure 1: voice 1, beat 2"), "{err}");
     assert!(err.contains("1/3"), "{err}");
 }
@@ -240,7 +240,7 @@ fn odd_notes_open_and_are_reported_as_issues() {
         ),
     ];
     for (notes, expected) in cases {
-        let song = from_guitarpro(one_measure(vec![beat(1, notes)])).unwrap();
+        let song = from_gp(one_measure(vec![beat(1, notes)])).unwrap();
         let issues = song.issues();
         assert_eq!(issues.len(), 1, "{notes:?}: {issues:?}");
         assert!(expected(&issues[0].kind), "{notes:?}: {issues:?}");
@@ -258,7 +258,7 @@ fn odd_notes_open_and_are_reported_as_issues() {
 
 #[test]
 fn issues_display_their_location() {
-    let song = from_guitarpro(one_measure(vec![beat(2, &[(2, 3), (2, 5), (3, -5)])])).unwrap();
+    let song = from_gp(one_measure(vec![beat(2, &[(2, 3), (2, 5), (3, -5)])])).unwrap();
     let text: Vec<String> = song.issues().iter().map(ToString::to_string).collect();
     assert_eq!(
         text,
@@ -275,32 +275,32 @@ fn bad_tracks_and_songs_are_rejected() {
     // Measure count differs from the song's.
     let mut gp = one_measure(vec![beat(1, &[])]);
     gp.measure_headers.push(Default::default());
-    assert!(from_guitarpro(gp).is_err());
+    assert!(from_gp(gp).is_err());
 
     // No strings, and too many strings.
     for tuning in [&[][..], &[40; 13][..]] {
         let gp = song(vec![track("T", tuning, vec![measure((4, 4), vec![])])]);
-        assert!(from_guitarpro(gp).is_err(), "{} strings", tuning.len());
+        assert!(from_gp(gp).is_err(), "{} strings", tuning.len());
     }
 
     // Strings not numbered 1..=n.
     let mut gp = one_measure(vec![beat(1, &[])]);
     gp.tracks[0].strings[1].0 = 7;
-    assert!(from_guitarpro(gp).is_err());
+    assert!(from_gp(gp).is_err());
 
     // Non-positive tempo and invalid time signature.
     let mut gp = one_measure(vec![beat(1, &[])]);
     gp.tempo = 0;
-    assert!(from_guitarpro(gp).is_err());
+    assert!(from_gp(gp).is_err());
     let gp = song(vec![track("T", GUITAR_6, vec![measure((0, 4), vec![])])]);
-    assert!(from_guitarpro(gp).is_err());
+    assert!(from_gp(gp).is_err());
 }
 
 // --- Issues (measure fill) ----------------------------------------------------------------
 
-fn issues_of(time: (i8, u16), voices: Vec<Vec<guitarpro::Beat>>) -> Vec<Issue> {
+fn issues_of(time: (i8, u16), voices: Vec<Vec<gp::Beat>>) -> Vec<Issue> {
     let gp = song(vec![track("T", GUITAR_6, vec![measure(time, voices)])]);
-    from_guitarpro(gp).unwrap().issues()
+    from_gp(gp).unwrap().issues()
 }
 
 #[test]
@@ -383,7 +383,7 @@ fn beats_are_found_by_position() {
             )],
         ),
     ]);
-    let song = from_guitarpro(gp).unwrap();
+    let song = from_gp(gp).unwrap();
     let pos = BeatPosition {
         track: TrackIndex::new(1),
         measure: MeasureIndex::new(0),
@@ -425,7 +425,7 @@ fn unicode_metadata_is_kept() {
     let mut gp = one_measure(vec![beat(1, &[])]);
     gp.name = "Ünïcödé — 曲 🎸".to_owned();
     gp.tracks[0].name = "Gitarre ä".to_owned();
-    let song = from_guitarpro(gp).unwrap();
+    let song = from_gp(gp).unwrap();
     assert_eq!(song.title(), "Ünïcödé — 曲 🎸");
     assert_eq!(song.tracks().next().unwrap().name(), "Gitarre ä");
     assert_eq!(song.tempo(), 120);
@@ -436,8 +436,8 @@ fn unknown_fields_survive_wrapping() {
     let mut gp = one_measure(vec![beat(1, &[])]);
     gp.copyright = "© owner".to_owned();
     gp.tracks[0].color = 0x00ff00;
-    let song = from_guitarpro(gp).unwrap();
-    let inner = interop::as_guitarpro(&song);
+    let song = from_gp(gp).unwrap();
+    let inner = interop::as_gp(&song);
     assert_eq!(inner.copyright, "© owner");
     assert_eq!(inner.tracks[0].color, 0x00ff00);
 }

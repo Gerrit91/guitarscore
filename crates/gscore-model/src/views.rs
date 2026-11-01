@@ -4,7 +4,7 @@
 //! return `Result`: songs are validated on creation, so they succeed in practice, but the
 //! types stay honest instead of hiding a fallback.
 
-use guitarpro::{BeatStatus, NoteType};
+use crate::gp::{BeatStatus, NoteType};
 
 use crate::duration::{Duration, TimeSignature};
 use crate::error::ModelError;
@@ -24,11 +24,11 @@ pub struct StringTuning {
 #[derive(Debug, Clone, Copy)]
 pub struct TrackView<'a> {
     index: TrackIndex,
-    inner: &'a guitarpro::Track,
+    inner: &'a crate::gp::Track,
 }
 
 impl<'a> TrackView<'a> {
-    pub(crate) fn new(index: TrackIndex, inner: &'a guitarpro::Track) -> Self {
+    pub(crate) fn new(index: TrackIndex, inner: &'a crate::gp::Track) -> Self {
         TrackView { index, inner }
     }
 
@@ -131,11 +131,11 @@ impl<'a> TrackView<'a> {
 #[derive(Debug, Clone, Copy)]
 pub struct MeasureView<'a> {
     index: MeasureIndex,
-    inner: &'a guitarpro::Measure,
+    inner: &'a crate::gp::Measure,
 }
 
 impl<'a> MeasureView<'a> {
-    fn new(index: MeasureIndex, inner: &'a guitarpro::Measure) -> Self {
+    fn new(index: MeasureIndex, inner: &'a crate::gp::Measure) -> Self {
         MeasureView { index, inner }
     }
 
@@ -171,11 +171,11 @@ impl<'a> MeasureView<'a> {
 #[derive(Debug, Clone, Copy)]
 pub struct VoiceView<'a> {
     index: VoiceIndex,
-    inner: &'a guitarpro::Voice,
+    inner: &'a crate::gp::Voice,
 }
 
 impl<'a> VoiceView<'a> {
-    fn new(index: VoiceIndex, inner: &'a guitarpro::Voice) -> Self {
+    fn new(index: VoiceIndex, inner: &'a crate::gp::Voice) -> Self {
         VoiceView { index, inner }
     }
 
@@ -233,11 +233,11 @@ pub enum BeatKind {
 #[derive(Debug, Clone, Copy)]
 pub struct BeatView<'a> {
     index: BeatIndex,
-    inner: &'a guitarpro::Beat,
+    inner: &'a crate::gp::Beat,
 }
 
 impl<'a> BeatView<'a> {
-    fn new(index: BeatIndex, inner: &'a guitarpro::Beat) -> Self {
+    fn new(index: BeatIndex, inner: &'a crate::gp::Beat) -> Self {
         BeatView { index, inner }
     }
 
@@ -284,11 +284,11 @@ pub enum NoteKind {
 /// One note: a fret on a string.
 #[derive(Debug, Clone, Copy)]
 pub struct NoteView<'a> {
-    inner: &'a guitarpro::Note,
+    inner: &'a crate::gp::Note,
 }
 
 impl<'a> NoteView<'a> {
-    fn new(inner: &'a guitarpro::Note) -> Self {
+    fn new(inner: &'a crate::gp::Note) -> Self {
         NoteView { inner }
     }
 
