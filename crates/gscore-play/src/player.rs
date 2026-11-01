@@ -108,6 +108,10 @@ impl Scheduler {
         let tick = tick.min(self.sequence.end);
         self.next = self.sequence.events.partition_point(|e| e.tick < tick);
         self.anchor(tick, elapsed_micros);
+        if tick == 0 {
+            // From the start, the setup is sent with the other events anyway.
+            return Vec::new();
+        }
         self.sequence
             .events
             .iter()
@@ -201,6 +205,31 @@ mod tests {
         assert_eq!(scheduler.advance(1_000_000).len(), 2);
         assert_eq!(scheduler.advance(10_000_000).len(), 1);
         assert!(scheduler.finished());
+    }
+
+    #[test]
+    fn setup_is_sent_once_whether_starting_or_seeking() {
+        let channel = Channel::new(0).unwrap();
+        let mut sequence = (*quarters()).clone();
+        sequence.events.insert(
+            0,
+            TimedEvent {
+                tick: 0,
+                track: 0,
+                event: MidiEvent::ProgramChange {
+                    channel,
+                    program: 25,
+                },
+            },
+        );
+        let sequence = Arc::new(sequence);
+        let mut scheduler = Scheduler::new(Arc::clone(&sequence));
+        assert!(scheduler.seek(0, 0).is_empty());
+        let first = scheduler.advance(0);
+        assert_eq!(first.iter().filter(|e| !e.event.is_note()).count(), 1);
+        // Seeking into the piece skips tick 0, so the setup comes from `seek`.
+        let mut later = Scheduler::new(sequence);
+        assert_eq!(later.seek(u64::from(PPQ), 0).len(), 1);
     }
 
     #[test]

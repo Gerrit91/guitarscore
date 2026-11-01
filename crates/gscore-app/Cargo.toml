@@ -11,6 +11,8 @@ path = "src/main.rs"
 gscore-model = { path = "../gscore-model" }
 gscore-layout = { path = "../gscore-layout" }
 gscore-session = { path = "../gscore-session" }
+gscore-play = { path = "../gscore-play" }
+gscore-audio = { path = "../gscore-audio" }
 # GUI: egui with the wgpu renderer (the same renderer the snapshot tests use). Default
 # features off; window backends for Linux (Wayland, X11) and accessibility are named.
 eframe = { version = "0.37", default-features = false, features = ["wgpu", "accesskit", "wayland", "x11", "default_fonts"] }

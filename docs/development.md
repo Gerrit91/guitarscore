@@ -61,6 +61,13 @@ snapshots with `crates/gscore-app/tests/snapshots/`; regenerate them with
 `UPDATE_SNAPSHOTS=1 cargo test -p gscore-app --test test_app` and have the owner review the
 images.
 
+### Hearing and checking playback
+
+`gscore-cli play <file> --port "Midi Through"` plays silently through ALSA's through port;
+`aseqdump -p 14:0` in another terminal shows the messages. `crates/gscore-audio/tests/`
+does this automatically (and skips where there is no such port). `gscore-play`'s tests
+compare the sequenced notes with Guitar Pro's own MIDI export in `testdata/basic/*.mid`.
+
 ### Looking at rendered SVG
 
 The SVG names its fonts (Bravura, Noto Sans) instead of embedding them. To view it without

@@ -26,6 +26,7 @@ This file documents all third-party assets used in the GuitarScore project.
 | clap (with `derive`) | 4.6.7 | MIT OR Apache-2.0 | Argument parsing and help for `gscore-cli` (only that crate) |
 | serde_json | 1.0 | MIT OR Apache-2.0 | Reading the SMuFL font metadata in `gscore-layout` |
 | eframe, egui (wgpu renderer; `wayland`, `x11`, `accesskit`) | 0.37.0 | MIT OR Apache-2.0 | Desktop app window, widgets and rendering (only `gscore-app`) |
+| midir | 0.11.1 | MIT | MIDI output (ALSA sequencer via the system's libasound on Linux; only `gscore-audio`) |
 | rfd | 0.17.2 | MIT | Native file dialogs; XDG desktop portal on Linux (only `gscore-app`) |
 | egui_kittest (dev) | 0.37.0 | MIT OR Apache-2.0 | Headless UI tests and offscreen snapshots of the app |
 | image (dev, `png`) | 0.25.10 | MIT OR Apache-2.0 | Saving the snapshot example's PNG (already used by egui_kittest) |

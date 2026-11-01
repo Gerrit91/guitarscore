@@ -115,3 +115,49 @@ fn the_page_matches_its_snapshot_in_both_themes() {
     harness.run();
     harness.snapshot("steel_guitar_dadgad_dark");
 }
+
+#[test]
+fn play_and_stop_drive_the_midi_output() {
+    // Plays to ALSA's silent "Midi Through" port; skipped where there is none.
+    const THROUGH: &str = "Midi Through";
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    if harness.state_mut().playback_mut().refresh_ports().is_err()
+        || !harness
+            .state()
+            .playback()
+            .ports()
+            .iter()
+            .any(|p| p.contains(THROUGH))
+    {
+        eprintln!("skipped: no \"{THROUGH}\" MIDI port");
+        return;
+    }
+    let port = harness
+        .state()
+        .playback()
+        .ports()
+        .iter()
+        .find(|p| p.contains(THROUGH))
+        .cloned();
+    harness.state_mut().playback_mut().choose_port(port);
+
+    harness.get_by_label("Play").click();
+    harness.step();
+    let started = Instant::now();
+    while harness.state().playback().state() != gscore_play::PlayState::Playing {
+        assert!(started.elapsed() < Duration::from_secs(5), "did not start");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(harness.state().notice(), None);
+    harness.step();
+    harness.get_by_label("Pause");
+    harness.get_by_label("Measure 1");
+
+    harness.get_by_label("Stop").click();
+    harness.step();
+    let stopping = Instant::now();
+    while harness.state().playback().state() != gscore_play::PlayState::Stopped {
+        assert!(stopping.elapsed() < Duration::from_secs(5), "did not stop");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}

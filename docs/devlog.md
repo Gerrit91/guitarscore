@@ -502,3 +502,33 @@ measure-layout cache, PNG output (a rasterizer such as resvg needs owner approva
 
 Open (rest of M6, docs/gaps.md #10): persist view state and window, recent files, zoom
 shortcuts (with the keymap, M7), macOS file dialog on the main thread.
+
+## 2026-11-01 — M7 started: MIDI playback and export
+
+- Owner decisions: MIDI playback moves before interactive editing (M7 now, editing M8);
+  `midir` 0.11 for MIDI output (ALSA via libasound on Linux).
+- `gscore-cli gui [FILE]` starts the app as a process (the CLI cannot link the GUI: both
+  are top-layer crates); `cargo gui` builds and runs it.
+- Data-loss fixes in `gscore-gp` found on the way (docs/guitarpro.md 23-25): GP3-5 tempo
+  changes above 255 BPM were clamped; GP7 repeat counts were off by one (plays vs.
+  repeats) in both directions; GP7 programs (in `<Sounds>`) were not read, so every GP7
+  track had the default instrument. Each with a regression test.
+- Model (`playback.rs`): `Song::track_sound` (program, volume, pan, drums), `Song::repeat`,
+  `Song::tempo_change`, `BeatView::tempo_change`, `TrackView::capo`,
+  `TrackView::sounding_pitch` (open string + fret + capo; natural and artificial
+  harmonics by their node), `NoteView::velocity`.
+- `gscore-play`: playback order with repeats and alternative endings (bounded);
+  `Sequence` (exact tick positions at 960 PPQ, ties held, dead notes short and soft, one
+  channel per track, drums on channel 10); tempo map; SMF writer (format 1); `Player`
+  trait and a pure `Scheduler` that backends drive with their own clock.
+- `gscore-audio`: `MidiOutPlayer` on its own thread, commands through a bounded channel;
+  output errors stop playback and are reported, never panic.
+- CLI: `midi` (export), `ports`, `play [--port] [--track N] [--speed F]`.
+- App: Play/Pause and Stop in the toolbar, a "MIDI out" port picker, the playing measure's
+  number. Snapshots regenerated for the new toolbar.
+- Checks: the sequenced notes of all three owner files match Guitar Pro's own MIDI export
+  (pitches, start times within one tick of 480 per quarter, programs); end-to-end tests
+  play through ALSA's "Midi Through" port and listen on it (CLI, audio crate, app).
+
+Open (rest of M7, docs/gaps.md #11): bends/slides with channel borrowing, other techniques,
+a playhead on the page (after the layout work is merged), mute/solo.

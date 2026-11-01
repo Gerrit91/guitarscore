@@ -27,14 +27,15 @@ Updated 2026-11-01 (M6: first read-only app).
 | Time signature changes | Partial: kept and copied to new measures; no command to change one |
 | Lyrics, chord diagrams, fingering | Partial: kept in the file; no accessors or editing |
 | Keymap configuration | Planned (M8) |
-| Desktop app | Partial: read-only viewer (`guitarscore`): open file (dialog or command line), track picker, zoom, light/dark theme |
+| Desktop app | Partial: read-only viewer (`guitarscore`): open file (dialog or command line), track picker, zoom, light/dark theme, play/pause/stop to a MIDI port |
+| Playback | Partial: MIDI output and `.mid` export: all tracks with their instruments, volume and pan, tempo changes, repeats and alternative endings, ties, dead notes, harmonics. No bends, slides, vibrato, let ring, palm mute, grace notes, D.C./D.S./coda, swing, mute/solo |
 | Tablature display | Partial: one track's tab staff in the app and as SVG (`gscore-cli render`): title block, tuning, tempo, tab clef, time signatures, fret numbers (ties, dead notes), rests, measure numbers, line breaking and justification, light/dark theme. No effects, rhythm, repeats, pages or standard notation yet |
 
 ## Future Milestones
 
 - Tablature layout: effects, rhythm under the tab, pages (rest of M5)
 - Read-only egui app: view state persistence, recent files (rest of M6)
-- MIDI output and `.mid` export (M7)
+- Playback: effects (bends via channel borrowing), playhead on the page, mute/solo (rest of M7)
 - Interactive editing, cursor, keymap and recovery journal (M8)
 - Internal synth (M9)
 - Standard notation, more techniques, GP3/4/5 writing

@@ -87,5 +87,12 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M4 headless e
    keymap (M8), remembering the view state and window between runs, recent files, drag and
    drop, keyboard shortcuts for zoom, a multi-page view. On macOS the file dialog must run
    on the main thread (rfd); it runs on a background thread here, so Open… needs a change
-   there. The snapshot test needs a GPU or software Vulkan. Playback crates are still
-   empty.
+   there. The snapshot test needs a GPU or software Vulkan.
+11. **Playback is MIDI only and plays notes, not techniques (M7, first version).**
+   `gscore-play` sequences notes (all voices, exact timing), ties, dead notes, harmonics,
+   instruments, volume, pan, tempo changes, repeats and alternative endings; `gscore-audio`
+   sends them to a MIDI port. Not played yet: bends and slides (need pitch bend and channel
+   borrowing), vibrato, let ring, palm mute, grace notes, trills, D.C./D.S./coda, swing,
+   mute/solo, GP7 mixer volume and pan (GP7 tracks use defaults). The app shows the playing
+   measure's number, not a playhead on the page. Stopping `gscore-cli play` with Ctrl+C
+   can leave notes hanging in the synth. No internal synth yet (M9).

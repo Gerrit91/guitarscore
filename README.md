@@ -47,6 +47,22 @@ gscore-cli gui testdata/basic/note_lengths.gp # start the built app from the com
 The app renders with wgpu (Vulkan, Metal or DirectX 12). Its snapshot test needs a GPU or a
 software Vulkan driver such as lavapipe.
 
+### Sound
+
+GuitarScore plays through MIDI: start a synthesizer and pick it as "MIDI out" in the app's
+toolbar (or `--port` on the command line). With FluidSynth and a General MIDI soundfont
+(Arch: `pacman -S fluidsynth soundfont-fluid`):
+
+```bash
+fluidsynth -a pipewire -m alsa_seq -is /usr/share/soundfonts/FluidR3_GM.sf2
+gscore-cli ports                                   # list MIDI outputs
+gscore-cli play testdata/basic/note_lengths.gp     # play to the first synth found
+gscore-cli midi testdata/basic/note_lengths.gp -o note_lengths.mid   # export a MIDI file
+```
+
+On Linux, building needs the ALSA development files (`alsa-lib` on Arch, `libasound2-dev` on
+Debian/Ubuntu).
+
 ## Command line
 
 ```bash
