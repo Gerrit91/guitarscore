@@ -81,6 +81,13 @@ cargo run -p gscore-cli -- edit song.gp -o edited.gp --script edits.txt
 A script has one command per line; blank lines and `#` comments are ignored. Positions are
 1-based. The same parser drives scripts and `-c`, so a script is a regression test.
 
+```bash
+cargo run -p gscore-cli -- render testdata/basic/note_lengths.gp -o note_lengths.svg
+```
+
+Draws a track's tablature as SVG (`--track N`, `--theme dark`). The image uses the bundled
+Bravura and Noto Sans fonts by name; see `docs/development.md` for viewing it.
+
 Exit codes: 0 success, 1 the command failed (e.g. unreadable file), 2 wrong usage.
 
 ## Layout
@@ -93,7 +100,8 @@ A Cargo workspace of small crates. A crate may only depend on crates in lower la
 | 0 | `gscore-gp` | Guitar Pro song data and reading/writing of all GP formats |
 | 1 | `gscore-model` | The document model the app works with: views, exact durations, positions, checks |
 | 2 | `gscore-io` | Safe entry point for files: format detection, size limits, crash containment |
-| 2 | `gscore-layout`, `gscore-play` | Tablature layout, playback sequencing (planned) |
+| 2 | `gscore-layout` | Tablature layout: draw operations, SVG output, light and dark theme |
+| 2 | `gscore-play` | Playback sequencing (planned) |
 | 3 | `gscore-edit`, `gscore-audio` | Editing commands with undo/redo; audio output (planned) |
 | 4 | `gscore-session` | Crash reports today; recovery journal and autosave planned |
 | 5 | `gscore-cli`, `gscore-app` | Command-line tool; desktop app (planned) |

@@ -237,7 +237,7 @@ command layer.
 ## 11. Open questions
 
 - The repository license is MIT
-- Which SMuFL font(s) to bundle first, and which text font for fret numbers.
+- ~~Which SMuFL font(s) to bundle first, and which text font for fret numbers.~~ **Decided (2026-11-01):** Bravura (with its metadata) as the music font, Noto Sans as the text font, both SIL OFL 1.1 in `assets/fonts/`.
 - When (and whether) to ship a browser build. The groundwork rules in section 5 ("Portability") apply from the start either way; the web build itself is a later goal.
 - Performance budgets (latency, large-score layout time).
 - Name availability checks for GuitarScore (GitHub, crates.io, domain) before the first public release.

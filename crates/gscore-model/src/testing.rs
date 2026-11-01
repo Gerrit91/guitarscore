@@ -68,6 +68,40 @@ pub fn one_measure() -> Result<Song, ModelError> {
     song(&[GUITAR_6], 1)
 }
 
+/// A one-measure 4/4 song on a 6-string guitar whose only beat (a whole note) holds `notes`
+/// as a file stores them, `(string, fret)`, including values the model reports as issues
+/// (negative frets, strings the guitar does not have).
+pub fn one_beat_with_raw_notes(notes: &[(i8, i16)]) -> Result<Song, ModelError> {
+    let song = song(&[GUITAR_6], 1)?;
+    let mut inner = song.inner().clone();
+    let beat = Beat {
+        duration: gscore_gp::Duration {
+            value: 1,
+            ..gscore_gp::Duration::default()
+        },
+        notes: notes
+            .iter()
+            .map(|&(string, value)| gscore_gp::Note {
+                string,
+                value,
+                // `Note::default()` is a rest note.
+                kind: gscore_gp::NoteType::Normal,
+                ..gscore_gp::Note::default()
+            })
+            .collect(),
+        ..Beat::default()
+    };
+    for voice in inner
+        .tracks
+        .iter_mut()
+        .flat_map(|t| t.measures.iter_mut())
+        .flat_map(|m| m.voices.iter_mut())
+    {
+        voice.beats = vec![beat.clone()];
+    }
+    Song::from_inner(inner)
+}
+
 /// Four quarter-note rests.
 fn quarter_rests() -> Vec<Beat> {
     (0..4)

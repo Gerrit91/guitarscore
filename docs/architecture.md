@@ -23,7 +23,7 @@ guitarscore/
     gscore-edit/              # L3: cursor, selection, commands, undo/redo, keymap
     gscore-audio/             # L3: output backends (midir, cpal, rustysynth) implementing Player
     gscore-session/           # L4: open document, recovery journal, autosave, safe-save orchestration
-    gscore-cli/               # L5: headless tool (info, dump, commands, edit, convert, roundtrip-check)
+    gscore-cli/               # L5: headless tool (info, dump, render, commands, edit, convert, roundtrip-check)
     gscore-app/               # L5: egui/eframe application shell (thin); produces the `guitarscore` binary
 ```
 
@@ -32,3 +32,30 @@ guitarscore/
 - Only `gscore-app` may use egui, eframe, winit, or rfd
 - Only `gscore-audio` may use `cpal`, `midir`, or `rustysynth`
 - Nothing below `gscore-app` may use a GUI crate
+
+## Layout (`gscore-layout`)
+
+Layout is a pure function of the song, the settings and the font metrics:
+`layout_track(song, track, options, fonts) -> Layout { width, height, ops: Vec<DrawOp> }`.
+Coordinates are in staff spaces (y down); colors are `ColorToken`s that a `Theme` (light,
+dark) maps to RGB. Glyphs are referred to by SMuFL name (`Glyph`); the renderer resolves the
+code point. Engraving values (line thicknesses, glyph boxes and advances) come from the
+bundled Bravura metadata, read once with `MusicFont::bravura()`.
+
+The steps:
+
+1. `header`: title block, credits, tuning, tempo mark.
+2. `measure`: each measure on its own. Beats of all voices are merged into columns by
+   start time; each column gets space by the length until the next column (a quarter gets
+   `Spacing::quarter`, each doubling multiplies by `doubling_ratio`), but never so little
+   that fret numbers collide. A `MeasureLayout` does not depend on its position, so it is
+   the unit to cache per measure and document revision when editing needs incremental
+   relayout (M7).
+3. `system`: greedy line breaking; every line but the last is justified by stretching the
+   columns (not the clef, time signatures or leads); the last only if it is at least 75%
+   full.
+4. Drawing: staff lines first, then clef, measure content (masks behind fret numbers so the
+   staff line does not run through them) and barlines.
+
+`svg::to_svg` writes the operations as SVG for golden tests and `gscore-cli render`; the
+GUI (M6) will paint the same operations.

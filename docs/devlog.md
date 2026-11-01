@@ -448,3 +448,33 @@ time signature and effect editing are not commands yet; undo history is in memor
   plus full validation); noted in docs/gaps.md #5 for M7.
 - Open question for the owner: AGENTS.md section 7 says undo history should not be limited,
   rule 9 says to cap it by memory. The code caps by entry count (10,000); unchanged.
+
+## 2026-11-01 — M5 started: first tablature layout
+
+- Owner decisions: Bravura (SMuFL, with its metadata JSON) as the music font, Noto Sans as
+  the text font, both SIL OFL 1.1 in `assets/fonts/` (rows in THIRD_PARTY.md); `serde_json`
+  added to `gscore-layout` to read the metadata.
+- `gscore-layout` implemented: `layout_track` turns one track into `DrawOp`s (lines,
+  rectangles, glyphs by SMuFL name, text) in staff spaces with semantic `ColorToken`s.
+  Modules: `header` (title block, credits, tuning, tempo), `measure` (columns of beats
+  across voices, duration-based spacing, fret numbers with masks, rests, time
+  signatures), `system` (greedy line breaking, justification), `staff` (lines, barlines,
+  tab clef), `metrics` (Bravura metadata, Noto Sans digit widths), `theme` (light and
+  dark palettes), `svg` (SVG output with stable two-decimal numbers).
+- `gscore-cli render <file> -o out.svg [--track N] [--theme light|dark]`.
+- Model: `BeatView::note_value()` (written note value, dots, tuplet); the view iterators
+  (`measures`, `voices`, `beats`, `notes`) no longer borrow the view itself (`+ use<'a>`),
+  so they chain with `flat_map`; `testing::one_beat_with_raw_notes` for odd-note tests.
+- Robustness: an unreadable fret (DrDr.gp's piano and vocal tracks store `-7`) shows as
+  `?` instead of failing the whole track; drum tracks return an "unsupported" error.
+- Tests: SVG goldens for the three owner files (light, plus one dark), a 4-string bass and
+  an 8-string guitar; properties over every test file and track (all coordinates finite
+  and on the page, one fret number per shown note, deterministic), every string count,
+  200-measure line breaking, empty songs, nonsense options. Tests: 205 (+26).
+- Compared with Guitar Pro's PNG exports: header, fret positions, rests and line breaking
+  look right; Guitar Pro shows standard notation above the tab, which is out of scope.
+- Release timing on DrDr.gp (172 measures): 0.03-1.1 ms per track layout (8.7k draw ops for
+  the busiest track), 2.2 ms to read the Bravura metadata once, up to 4.8 ms to write SVG.
+
+Open (rest of M5, docs/gaps.md #9): effects, rhythm under the tab, repeats, pages,
+measure-layout cache, PNG output (a rasterizer such as resvg needs owner approval).

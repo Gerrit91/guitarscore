@@ -12,6 +12,7 @@ mod format_arg;
 mod info;
 mod input;
 mod legend;
+mod render;
 mod report;
 mod roundtrip;
 
@@ -66,6 +67,25 @@ enum Command {
         /// Maximum line length before wrapping to the next system
         #[arg(long, default_value_t = 80)]
         width: usize,
+    },
+    /// Draw one track's tablature as an SVG image
+    ///
+    /// Lays out the tab staff of one track (title, tuning, tempo, then the measures broken
+    /// into lines on an A4-wide page) and writes it as SVG. The image uses the Bravura and
+    /// Noto Sans fonts by name (bundled in assets/fonts/); install them to view it
+    /// correctly. Drum tracks are not supported yet.
+    Render {
+        /// The Guitar Pro file to read
+        file: PathBuf,
+        /// The SVG file to write
+        #[arg(short, long)]
+        output: PathBuf,
+        /// The track to draw (1-based, as `info` numbers them)
+        #[arg(long)]
+        track: Option<usize>,
+        /// Color theme
+        #[arg(long, value_enum, default_value = "light")]
+        theme: render::ThemeArg,
     },
     /// Save a Guitar Pro file in another (or the same) format
     ///
@@ -202,6 +222,12 @@ where
     match cli.command {
         Command::Info { file } => info::run(&file),
         Command::Dump { file, track, width } => dump::run(&file, track, width),
+        Command::Render {
+            file,
+            output,
+            track,
+            theme,
+        } => render::run(&file, &output, track, theme),
         Command::Convert {
             file,
             output,

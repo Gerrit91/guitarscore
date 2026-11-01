@@ -4,6 +4,16 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+gscore-model = { path = "../gscore-model" }
+# Reading the SMuFL font metadata (engraving defaults, glyph boxes and advances).
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+
+[dev-dependencies]
+# Golden tests lay out the owner's files in testdata/.
+gscore-io = { path = "../gscore-io" }
+# Varied songs (tunings, string counts) without fixture files.
+gscore-model = { path = "../gscore-model", features = ["test-support"] }
 
 [lints]
 workspace = true

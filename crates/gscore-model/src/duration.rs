@@ -208,6 +208,21 @@ impl NoteValue {
         Duration::from_gp(&self.to_gp())
     }
 
+    /// The note value a Guitar Pro duration is written as.
+    pub(crate) fn from_gp(gp: &GpDuration) -> Result<Self, ModelError> {
+        let dots = match (gp.dotted, gp.double_dotted) {
+            (false, false) => 0,
+            (true, false) => 1,
+            (false, true) => 2,
+            (true, true) => {
+                return Err(ModelError::Invalid(
+                    "duration is both dotted and double-dotted".to_owned(),
+                ));
+            }
+        };
+        NoteValue::new(gp.value, dots, Some((gp.tuplet_enters, gp.tuplet_times)))
+    }
+
     /// The Guitar Pro representation used when writing an edit into the song.
     pub(crate) fn to_gp(self) -> GpDuration {
         let (dotted, double_dotted) = match self.dots {

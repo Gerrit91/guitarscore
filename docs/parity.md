@@ -1,7 +1,7 @@
 # Guitar Pro Feature Parity Checklist
 
 This document tracks which Guitar Pro features are implemented in GuitarScore.
-Updated 2026-11-01 (M4: headless editing).
+Updated 2026-11-01 (M5: first tablature layout).
 
 ## Implemented Features
 
@@ -27,10 +27,11 @@ Updated 2026-11-01 (M4: headless editing).
 | Time signature changes | Partial: kept and copied to new measures; no command to change one |
 | Lyrics, chord diagrams, fingering | Partial: kept in the file; no accessors or editing |
 | Keymap configuration | Planned (M7) |
+| Tablature display | Partial: one track's tab staff as SVG (`gscore-cli render`): title block, tuning, tempo, tab clef, time signatures, fret numbers (ties, dead notes), rests, measure numbers, line breaking and justification, light/dark theme. No effects, rhythm, repeats, pages or standard notation yet |
 
 ## Future Milestones
 
-- Tablature layout with SVG goldens (M5)
+- Tablature layout: effects, rhythm under the tab, pages (rest of M5)
 - Read-only egui app (M6)
 - Interactive editing, cursor, keymap and recovery journal (M7)
 - MIDI output and `.mid` export (M8)
