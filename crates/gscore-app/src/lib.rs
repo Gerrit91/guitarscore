@@ -1,5 +1,22 @@
-//! The desktop application shell (egui/eframe), producing the `guitarscore` binary. Thin: it
-//! holds UI state, draws layout output, and sends every action through `gscore-edit`
-//! commands.
+//! The GuitarScore desktop application (egui/eframe): a thin shell that holds state and
+//! delegates. Files are opened in the background through `gscore-session`, laid out by
+//! `gscore-layout`, and the draw operations are painted with egui.
 //!
-//! Not implemented yet (milestone M6; interactive editing in M7).
+//! Read-only for now (milestone M6); editing through the `gscore-edit` commands comes with
+//! M7.
+
+mod app;
+mod canvas;
+mod document;
+mod fonts;
+mod state;
+mod tasks;
+
+pub use app::GuitarScoreApp;
+pub use document::Document;
+pub use state::{ThemeChoice, ViewState, ZOOM_RANGE};
+
+// The snapshot test and example render the app offscreen and save PNGs; this marks the
+// test-only dependencies for the library test target's unused-dependency check.
+#[cfg(test)]
+use {egui_kittest as _, image as _};

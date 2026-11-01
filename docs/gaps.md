@@ -81,5 +81,11 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M4 headless e
    Noto Sans digit metrics (other characters are estimated) until the GUI can shape text;
    the dead-note `x` sits a little low. No PNG output yet (needs a rasterizer dependency;
    `rsvg-convert` works for checking). Unreadable frets show as `?`.
-10. Playback and app crates are still empty until their milestones; editing is headless
-   only (M4).
+10. **The app is a read-only viewer (M6, first version).** It opens files in the
+   background, shows one track's page (track picker, zoom, light and dark theme) and
+   contains panics in layout, drawing and background jobs. Missing: editing, cursor and
+   keymap (M7), remembering the view state and window between runs, recent files, drag and
+   drop, keyboard shortcuts for zoom, a multi-page view. On macOS the file dialog must run
+   on the main thread (rfd); it runs on a background thread here, so Open… needs a change
+   there. The snapshot test needs a GPU or software Vulkan. Playback crates are still
+   empty.

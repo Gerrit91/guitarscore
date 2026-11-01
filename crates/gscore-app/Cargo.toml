@@ -3,7 +3,26 @@ name = "gscore-app"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "guitarscore"
+path = "src/main.rs"
+
 [dependencies]
+gscore-model = { path = "../gscore-model" }
+gscore-layout = { path = "../gscore-layout" }
+gscore-session = { path = "../gscore-session" }
+# GUI: egui with the wgpu renderer (the same renderer the snapshot tests use). Default
+# features off; window backends for Linux (Wayland, X11) and accessibility are named.
+eframe = { version = "0.37", default-features = false, features = ["wgpu", "accesskit", "wayland", "x11", "default_fonts"] }
+egui = "0.37"
+# Native file dialogs (XDG desktop portal on Linux, no GTK).
+rfd = "0.17"
+
+[dev-dependencies]
+# Drives the UI headlessly and renders it offscreen for snapshots (no window).
+egui_kittest = { version = "0.37", features = ["wgpu", "snapshot", "eframe"] }
+# Saving the snapshot example's image as PNG (the version egui_kittest already uses).
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [lints]
 workspace = true
