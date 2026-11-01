@@ -30,7 +30,7 @@ enum Command {
     /// Show format, title, tempo, tracks and tunings of a Guitar Pro file
     ///
     /// Prints the file's format, metadata, measure count, and each track with its tuning
-    /// (MIDI pitches, string 1 first). Then lists issues that do not prevent opening the
+    /// (note names, lowest string first). Then lists issues that do not prevent opening the
     /// file, such as measures that are not filled or several notes on one string (the first
     /// 10, and how many more). The format is detected from the file's content, not its
     /// extension.

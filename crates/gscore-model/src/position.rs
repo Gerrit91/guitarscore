@@ -167,3 +167,23 @@ impl Pitch {
             .and_then(Pitch::new)
     }
 }
+
+/// Note names of the 12 pitch classes, spelled with sharps.
+const NOTE_NAMES: [&str; 12] = [
+    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+];
+
+/// Scientific pitch notation with sharps: 60 is `C4`, 40 (a guitar's low E) is `E2`,
+/// 0 is `C-1`.
+impl fmt::Display for Pitch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // `% 12` is always a valid index; the fallback is never used.
+        let name = NOTE_NAMES
+            .get(usize::from(self.0 % 12))
+            .copied()
+            .unwrap_or("?");
+        // MIDI octave -1 starts at 0, so octave = pitch / 12 - 1.
+        let octave = i16::from(self.0 / 12).saturating_sub(1);
+        write!(f, "{name}{octave}")
+    }
+}

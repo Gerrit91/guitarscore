@@ -118,6 +118,26 @@ fn checked_add_reports_overflow() {
     );
 }
 
+// --- Pitch ------------------------------------------------------------------------------
+
+#[test]
+fn pitches_display_as_note_names() {
+    let cases = [
+        (0, "C-1"),
+        (21, "A0"),
+        (23, "B0"),
+        (33, "A1"),
+        (40, "E2"),
+        (54, "F#3"),
+        (60, "C4"),
+        (64, "E4"),
+        (127, "G9"),
+    ];
+    for (midi, name) in cases {
+        assert_eq!(Pitch::new(midi).unwrap().to_string(), name);
+    }
+}
+
 // --- TimeSignature ------------------------------------------------------------------------
 
 #[test]

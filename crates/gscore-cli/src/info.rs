@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use gscore_io::{import_guitar_pro_from_bytes, Imported, MAX_INPUT_BYTES};
-use gscore_model::Song;
+use gscore_model::{Song, StringTuning};
 
 use crate::CliError;
 
@@ -45,23 +45,19 @@ fn summary(imported: &Imported) -> String {
     );
     for track in song.tracks() {
         let tuning = match track.tuning() {
-            Ok(strings) => strings
-                .iter()
-                .map(|s| s.pitch.get().to_string())
-                .collect::<Vec<_>>()
-                .join(" "),
+            Ok(strings) => describe_tuning(&strings),
             Err(e) => format!("<{e}>"),
         };
+        let percussion = if track.is_percussion() {
+            ", percussion"
+        } else {
+            ""
+        };
         out.push_str(&format!(
-            "  {}: {} ({} strings, tuning {tuning}{})\n",
+            "  {}: {}: {} strings{percussion}, {tuning}\n",
             track.index(),
-            track.name(),
+            or_not_set(track.name()),
             track.string_count(),
-            if track.is_percussion() {
-                ", percussion"
-            } else {
-                ""
-            },
         ));
     }
     let issues = song.issues();
@@ -79,6 +75,16 @@ fn summary(imported: &Imported) -> String {
         }
     }
     out
+}
+
+/// Note names from the lowest string up, as musicians read a tuning ("E2 A2 D3 G3 B3 E4").
+/// Drum kits store every string as pitch 0; that is shown as "no tuning".
+fn describe_tuning(strings: &[StringTuning]) -> String {
+    if strings.iter().all(|s| s.pitch.get() == 0) {
+        return "no tuning".to_owned();
+    }
+    let names: Vec<String> = strings.iter().rev().map(|s| s.pitch.to_string()).collect();
+    format!("tuned {}", names.join(" "))
 }
 
 /// Shows an empty (or whitespace-only) text field explicitly instead of leaving it blank.
@@ -106,5 +112,27 @@ mod tests {
         assert!(out.contains("Tempo: 120 BPM"), "{out}");
         assert!(out.contains("Title: (not set)"), "{out}");
         assert!(out.contains("Artist: (not set)"), "{out}");
+    }
+
+    #[test]
+    fn tunings_are_note_names_lowest_string_first() {
+        let tuning = |pitches: &[u8]| -> Vec<StringTuning> {
+            (1_u8..)
+                .zip(pitches)
+                .map(|(string, &pitch)| StringTuning {
+                    string: gscore_model::StringNumber::new(string).unwrap(),
+                    pitch: gscore_model::Pitch::new(pitch).unwrap(),
+                })
+                .collect()
+        };
+        assert_eq!(
+            describe_tuning(&tuning(&[64, 59, 55, 50, 45, 40])),
+            "tuned E2 A2 D3 G3 B3 E4"
+        );
+        assert_eq!(
+            describe_tuning(&tuning(&[43, 38, 33, 28, 23])),
+            "tuned B0 E1 A1 D2 G2"
+        );
+        assert_eq!(describe_tuning(&tuning(&[0; 6])), "no tuning");
     }
 }
