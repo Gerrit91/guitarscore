@@ -38,7 +38,7 @@ pub(super) fn insert(
     length: NoteValue,
 ) -> Result<Change, ModelError> {
     song.edit_inner(|inner| {
-        let voice = voice_mut_or_create(inner, at)?;
+        let (voice, created_voice) = voice_mut_or_create(inner, at)?;
         let index = at.beat.get();
         if index > voice.beats.len() {
             return Err(ModelError::Invalid(format!(
@@ -55,7 +55,7 @@ pub(super) fn insert(
             },
         );
         Ok(Change {
-            kind: ChangeKind::BeatInserted { at },
+            kind: ChangeKind::BeatInserted { at, created_voice },
         })
     })
 }
@@ -82,19 +82,25 @@ pub(super) fn delete(song: &mut Song, at: BeatPosition) -> Result<Change, ModelE
 }
 
 /// The voice at `at`, creating voice 1 of a measure that has no voices (GP7 empty bars
-/// import that way), so a beat can be inserted into it.
-fn voice_mut_or_create(song: &mut GpSong, at: BeatPosition) -> Result<&mut GpVoice, ModelError> {
+/// import that way), so a beat can be inserted into it. Also returns whether it created the
+/// voice, so undo can remove it again.
+fn voice_mut_or_create(
+    song: &mut GpSong,
+    at: BeatPosition,
+) -> Result<(&mut GpVoice, bool), ModelError> {
     let track = super::track_mut(song, at.track)?;
     let measure = track
         .measures
         .get_mut(at.measure.get())
         .ok_or_else(|| ModelError::Invalid(format!("{at}: no such measure")))?;
-    if measure.voices.is_empty() && at.voice.get() == 0 {
+    let created = measure.voices.is_empty() && at.voice.get() == 0;
+    if created {
         measure.voices.push(GpVoice::default());
     }
     let voices = measure.voices.len();
     measure
         .voices
         .get_mut(at.voice.get())
+        .map(|voice| (voice, created))
         .ok_or_else(|| ModelError::Invalid(format!("{at}: the measure has {voices} voice(s)")))
 }

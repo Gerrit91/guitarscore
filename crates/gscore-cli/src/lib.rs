@@ -12,6 +12,7 @@ mod format_arg;
 mod info;
 mod input;
 mod legend;
+mod report;
 mod roundtrip;
 
 use std::ffi::OsString;

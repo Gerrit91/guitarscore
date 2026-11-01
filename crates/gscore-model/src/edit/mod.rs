@@ -53,8 +53,12 @@ enum ChangeKind {
         at: BeatPosition,
         previous: GpDuration,
     },
-    /// A rest beat was inserted before `at.beat`.
-    BeatInserted { at: BeatPosition },
+    /// A rest beat was inserted before `at.beat`; `created_voice` if the insertion had to
+    /// create the voice (a measure imported without voices).
+    BeatInserted {
+        at: BeatPosition,
+        created_voice: bool,
+    },
     /// The beat at `at.beat` was removed.
     BeatRemoved { at: BeatPosition, beat: Box<GpBeat> },
     /// A measure was inserted at `at` in every track.
@@ -162,13 +166,20 @@ fn revert(inner: &mut GpSong, kind: &ChangeKind) -> Result<(), ModelError> {
             beat_mut(inner, *at)?.duration = previous.clone();
             Ok(())
         }
-        ChangeKind::BeatInserted { at } => {
+        ChangeKind::BeatInserted { at, created_voice } => {
             let voice = voice_mut(inner, *at)?;
             let index = at.beat.get();
             if index >= voice.beats.len() {
                 return Err(ModelError::Invalid(format!("{at}: no such beat")));
             }
             voice.beats.remove(index);
+            if *created_voice && voice.beats.is_empty() {
+                let measure = track_mut(inner, at.track)?
+                    .measures
+                    .get_mut(at.measure.get())
+                    .ok_or_else(|| ModelError::Invalid(format!("{at}: no such measure")))?;
+                measure.voices.clear();
+            }
             Ok(())
         }
         ChangeKind::BeatRemoved { at, beat } => {

@@ -1,5 +1,6 @@
 //! The [`Editor`]: one song, a command history, undo and redo.
 
+use std::collections::VecDeque;
 use std::fmt;
 
 use gscore_model::{Change, ModelError, Song};
@@ -14,7 +15,8 @@ pub const DEFAULT_HISTORY_LIMIT: usize = 10_000;
 #[derive(Debug)]
 pub struct Editor {
     song: Song,
-    undo: Vec<Applied>,
+    /// Oldest first; a deque so trimming at the limit is cheap.
+    undo: VecDeque<Applied>,
     redo: Vec<Command>,
     history_limit: usize,
 }
@@ -72,7 +74,7 @@ impl Editor {
     pub fn with_history_limit(song: Song, history_limit: usize) -> Self {
         Editor {
             song,
-            undo: Vec::new(),
+            undo: VecDeque::new(),
             redo: Vec::new(),
             history_limit,
         }
@@ -112,7 +114,7 @@ impl Editor {
             command => {
                 let change = command.apply(&mut self.song)?;
                 self.redo.clear();
-                self.undo.push(Applied { command, change });
+                self.undo.push_back(Applied { command, change });
                 self.trim_history();
                 Ok(())
             }
@@ -121,10 +123,10 @@ impl Editor {
 
     /// Undoes the last applied edit. The edit can be redone afterwards.
     pub fn undo(&mut self) -> Result<(), EditError> {
-        let applied = self.undo.pop().ok_or(EditError::NothingToUndo)?;
+        let applied = self.undo.pop_back().ok_or(EditError::NothingToUndo)?;
         if let Err(error) = applied.command.undo(&mut self.song, &applied.change) {
             // Keep the entry: the song was not changed, so the history is still consistent.
-            self.undo.push(applied);
+            self.undo.push_back(applied);
             return Err(EditError::Model(error));
         }
         self.redo.push(applied.command);
@@ -136,7 +138,7 @@ impl Editor {
         let command = self.redo.pop().ok_or(EditError::NothingToRedo)?;
         match command.apply(&mut self.song) {
             Ok(change) => {
-                self.undo.push(Applied { command, change });
+                self.undo.push_back(Applied { command, change });
                 self.trim_history();
                 Ok(())
             }
@@ -151,7 +153,7 @@ impl Editor {
     /// Drops the oldest undo entries beyond the limit.
     fn trim_history(&mut self) {
         while self.undo.len() > self.history_limit {
-            self.undo.remove(0);
+            self.undo.pop_front();
         }
     }
 }

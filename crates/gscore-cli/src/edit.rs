@@ -5,13 +5,11 @@ use std::path::Path;
 
 use gscore_edit::{Editor, parse_line};
 use gscore_io::FileFormat;
-use gscore_session::{SaveError, SaveOptions, save};
+use gscore_session::{SaveOptions, save};
 
 use crate::CliError;
 use crate::format_arg::FormatArg;
-
-/// How many differences are listed before summarizing the rest.
-const MAX_LISTED: usize = 20;
+use crate::report;
 
 /// Largest script file accepted. A script is a batch of short command lines.
 const MAX_SCRIPT_BYTES: u64 = 1024 * 1024;
@@ -61,31 +59,14 @@ pub(crate) fn run(
             allow_losses,
         },
     )
-    .map_err(|error| match error {
-        SaveError::Losses(diffs) => losses_error(output, format, &diffs),
-        other => CliError::Failed(format!("cannot save {}: {other}", output.display())),
-    })?;
+    .map_err(|error| report::save_error(output, format, error))?;
 
     let mut out = format!(
         "Applied {applied} command(s) to {} and saved {} as {format}.\n",
         input.display(),
         report.path.display()
     );
-    if let Some(backup) = &report.backup {
-        out.push_str(&format!(
-            "The previous file was kept as {}.\n",
-            backup.display()
-        ));
-    }
-    if !report.losses.is_empty() {
-        out.push_str(&format!(
-            "Lost in the conversion ({} difference(s)):\n",
-            report.losses.len()
-        ));
-        for diff in report.losses.iter().take(MAX_LISTED) {
-            out.push_str(&format!("  {diff}\n"));
-        }
-    }
+    report::push_save_details(&mut out, &report);
     Ok(out)
 }
 
@@ -130,21 +111,4 @@ fn read_script(path: &Path) -> Result<String, CliError> {
         )));
     }
     Ok(text)
-}
-
-/// A save refused because the format would lose content: list the differences.
-fn losses_error(output: &Path, format: FileFormat, diffs: &[gscore_model::Difference]) -> CliError {
-    let mut text = format!(
-        "{} as {format} would change the song ({} difference(s)); nothing was written. Use \
-         --allow-losses to save anyway:\n",
-        output.display(),
-        diffs.len()
-    );
-    for diff in diffs.iter().take(MAX_LISTED) {
-        text.push_str(&format!("  {diff}\n"));
-    }
-    if let Some(more) = diffs.len().checked_sub(MAX_LISTED).filter(|&n| n > 0) {
-        text.push_str(&format!("  ... and {more} more\n"));
-    }
-    CliError::Failed(text)
 }

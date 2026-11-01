@@ -60,9 +60,15 @@ pub(super) fn insert(song: &mut Song, at: MeasureIndex) -> Result<Change, ModelE
         };
         inner.measure_headers.insert(at.get(), header);
         for (track_index, track) in inner.tracks.iter_mut().enumerate() {
+            // Voice 1 is filled with rests; further voices stay empty (one placeholder beat,
+            // as Guitar Pro stores unused voices), so no rests appear in voice 2.
             let voices = (0..voice_count)
-                .map(|_| GpVoice {
-                    beats: rests.clone(),
+                .map(|index| GpVoice {
+                    beats: if index == 0 {
+                        rests.clone()
+                    } else {
+                        vec![placeholder_beat()]
+                    },
                     ..GpVoice::default()
                 })
                 .collect();
@@ -255,6 +261,14 @@ pub(super) fn fill_rests(length: Duration) -> Result<Vec<NoteValue>, ModelError>
         beats.push(candidate);
     }
     Ok(beats)
+}
+
+/// A placeholder beat for an unused voice (no length, written as an empty voice).
+fn placeholder_beat() -> GpBeat {
+    GpBeat {
+        status: BeatStatus::Empty,
+        ..GpBeat::default()
+    }
 }
 
 /// Rest beats that fill a measure with `signature`.

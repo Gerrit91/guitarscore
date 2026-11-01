@@ -57,7 +57,9 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M4 headless e
    script. Still missing: copy/cut/paste, cursor and selection (M7); editing tempo, time
    signatures, effects, chord diagrams and lyrics; lyric/chord/effect accessors. Every model
    edit clones the whole wrapped song (including embedded audio) to stay transactional; this
-   is correct but must become a per-region copy for large scores. Undo history is in memory
+   is correct but must become a per-region copy for large scores: a single-note edit takes
+   about 3.6 ms in release on `DrDr.gp` (172 measures x 16 tracks), mostly the clone plus
+   validating the whole song; M7 should copy and validate only the touched region. Undo history is in memory
    only and capped by entry count (10,000), not by bytes (persisting it and a memory cap
    belong with the recovery journal in M7). Only the initial tempo is exposed.
 6. **Saving is GP7 only.** `gscore_session::save` and `gscore-cli convert` refuse other

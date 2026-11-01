@@ -431,3 +431,20 @@ owns undo data behind an opaque `Change`, so the command layer never sees `gscor
 copy/cut/paste and the cursor/selection belong to M7; every model edit clones the whole song
 (including embedded audio), which is correct but should become a per-region copy; tempo,
 time signature and effect editing are not commands yet; undo history is in memory only.
+
+## 2026-11-01 — Review of M4
+
+- New measures: only voice 1 is filled with rests; further voices get an empty placeholder
+  beat, as Guitar Pro stores unused voices. Before, voice 2 showed a full set of rests too.
+- Undo of `insert_beat` into a measure without voices (GP7 empty bars) also removes the
+  voice the insert created; before, an empty voice stayed behind. Test added.
+- `Editor` keeps its undo history in a `VecDeque`, so trimming the oldest entry at the
+  limit no longer shifts 10,000 entries per edit.
+- `gscore-cli`: `report.rs` holds the difference listing and save messages shared by
+  `convert`, `edit` and `roundtrip-check` (three copies before). Accepted losses now end
+  with "... and N more" like refused ones, instead of stopping silently at 20.
+- `gscore-edit/src/parse.rs` tests moved to `parse/tests.rs` (file under 400 lines).
+- Measured: a single-note edit takes about 3.6 ms in release on `DrDr.gp` (whole-song clone
+  plus full validation); noted in docs/gaps.md #5 for M7.
+- Open question for the owner: AGENTS.md section 7 says undo history should not be limited,
+  rule 9 says to cap it by memory. The code caps by entry count (10,000); unchanged.

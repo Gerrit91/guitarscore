@@ -270,12 +270,20 @@ fn a_new_measure_keeps_the_neighbours_voice_count() {
         .measure(MeasureIndex::new(1))
         .unwrap();
     assert_eq!(added.voices().len(), 2);
-    for voice in added.voices() {
-        assert_eq!(
-            voice.total_duration().unwrap(),
-            TimeSignature::new(4, 4).unwrap().measure_length()
-        );
-    }
+    // Voice 1 is filled with rests; voice 2 stays empty, as in Guitar Pro.
+    let voices: Vec<_> = added.voices().collect();
+    assert_eq!(
+        voices[0].total_duration().unwrap(),
+        TimeSignature::new(4, 4).unwrap().measure_length()
+    );
+    assert!(voices[1].is_empty());
+    // The fixture's first measure is underfull on purpose; the new one has no issues.
+    let issues: Vec<_> = song
+        .issues()
+        .into_iter()
+        .filter(|issue| issue.measure == MeasureIndex::new(1))
+        .collect();
+    assert!(issues.is_empty(), "{issues:?}");
 }
 
 #[test]
@@ -377,4 +385,28 @@ fn rest_filling_covers_common_time_signatures_exactly() {
         assert_eq!(sum.unwrap(), signature.measure_length(), "{signature}");
         assert!(!rests.is_empty(), "{signature}");
     }
+}
+
+#[test]
+fn undoing_an_insert_into_a_measure_without_voices_removes_the_created_voice() {
+    // GP7 imports an empty bar without voices; inserting a beat creates voice 1.
+    let mut song = from_gp(test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure((4, 4), vec![])],
+    )]))
+    .unwrap();
+    let measure = |song: &Song| {
+        song.track(TrackIndex::new(0))
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .voices()
+            .len()
+    };
+    assert_eq!(measure(&song), 0);
+    let change = song.insert_beat(at(0), note(4)).unwrap();
+    assert_eq!(measure(&song), 1);
+    song.revert(&change).unwrap();
+    assert_eq!(measure(&song), 0, "undo must leave no voice behind");
 }
