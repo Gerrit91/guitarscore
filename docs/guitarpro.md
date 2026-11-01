@@ -127,3 +127,17 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     with fewer measures than the song is an error instead of an index panic; simile marks are
     stored instead of parsed back out of a string (which could panic) and are XML-escaped.
 
+23. Mix table tempo (`src/model/mix_table.rs`, `src/io/mix_table.rs`): `MixTableItem::value`
+    is a `u16` instead of a `u8`. The GP3-5 reader clamped tempo changes to 255 BPM, so
+    faster tempos were lost on reading and saving. Regression test
+    `tempo_changes_above_255_bpm_survive_gp5`.
+24. Repeat counts in GPIF (`src/io/gpif_import.rs`, `src/io/gpif_export.rs`): GPIF's
+    `count` is the number of plays (2 for a plain repeat), while the model, like GP3-5 after
+    reading, stores the number of repeats. Both directions passed the number through, so GP7
+    repeats played once too often and converting between GP5 and GP7 shifted the count.
+    Regression test `repeat_counts_convert_between_repeats_and_plays`.
+25. GP7 MIDI program (`src/io/gpif.rs`, `src/io/gpif_import.rs`): GP7 names a track's
+    program in `<Sounds><Sound><MIDI><Program>`, not in `<GeneralMidi>` as GP6 does; the
+    reader now falls back to the first sound's program. Before, every GP7 track got the
+    default instrument. Covered by `gscore-play`'s comparison with Guitar Pro's MIDI export
+    (`notes_and_programs_match_guitar_pros_midi_export`).

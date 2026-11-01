@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+gscore-play = { path = "../gscore-play" }
+# MIDI output to any port (ALSA sequencer on Linux, CoreMIDI, WinMM).
+midir = "0.11"
+
+[dev-dependencies]
+gscore-model = { path = "../gscore-model", features = ["test-support"] }
 
 [lints]
 workspace = true

@@ -102,6 +102,28 @@ pub fn one_beat_with_raw_notes(notes: &[(i8, i16)]) -> Result<Song, ModelError> 
     Song::from_inner(inner)
 }
 
+/// A 4/4 guitar song of `count` measures with repeat signs: each mark is
+/// `(measure, repeat start, repeat end with this many repeats or -1, alternative endings
+/// bit set)`. Several marks for one measure combine.
+pub fn song_with_repeats(
+    count: usize,
+    marks: &[(usize, bool, i8, u8)],
+) -> Result<Song, ModelError> {
+    let song = song(&[GUITAR_6], count)?;
+    let mut inner = song.inner().clone();
+    for &(measure, start, end, endings) in marks {
+        let header = inner.measure_headers.get_mut(measure).ok_or_else(|| {
+            ModelError::Invalid(format!("no measure {measure} for a repeat mark"))
+        })?;
+        header.repeat_open |= start;
+        if end >= 0 {
+            header.repeat_close = end;
+        }
+        header.repeat_alternative |= endings;
+    }
+    Song::from_inner(inner)
+}
+
 /// Four quarter-note rests.
 fn quarter_rests() -> Vec<Beat> {
     (0..4)

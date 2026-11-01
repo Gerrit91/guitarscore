@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+gscore-model = { path = "../gscore-model" }
+
+[dev-dependencies]
+# Sequencing the owner's test files and songs built without fixture files.
+gscore-io = { path = "../gscore-io" }
+gscore-model = { path = "../gscore-model", features = ["test-support"] }
 
 [lints]
 workspace = true

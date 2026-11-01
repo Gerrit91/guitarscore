@@ -13,6 +13,7 @@ mod gui;
 mod info;
 mod input;
 mod legend;
+mod play;
 mod render;
 mod report;
 mod roundtrip;
@@ -68,6 +69,42 @@ enum Command {
         /// Maximum line length before wrapping to the next system
         #[arg(long, default_value_t = 80)]
         width: usize,
+    },
+    /// Write a song as a MIDI file (.mid)
+    ///
+    /// Plays the song through the sequencer and writes a Standard MIDI File: one track per
+    /// song track with its instrument, volume and pan, tempo changes, and repeats played
+    /// out. Ties are held, dead notes are short, harmonics sound at their harmonic pitch.
+    /// Bends, slides and other effects are not played yet.
+    Midi {
+        /// The Guitar Pro file to read
+        file: PathBuf,
+        /// The MIDI file to write
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Only these tracks (1-based; repeat for several)
+        #[arg(long = "track", value_name = "N")]
+        tracks: Vec<usize>,
+    },
+    /// List the MIDI output ports `play` can use
+    Ports,
+    /// Play a song to a MIDI output port
+    ///
+    /// Sends the song to a MIDI port, such as a software synthesizer (FluidSynth) or a
+    /// hardware synth, and returns when it has finished. Without --port, the first port
+    /// that is not "Midi Through" is used; `gscore-cli ports` lists them.
+    Play {
+        /// The Guitar Pro file to read
+        file: PathBuf,
+        /// The output port: part of its name, as `ports` lists it
+        #[arg(long)]
+        port: Option<String>,
+        /// Only these tracks (1-based; repeat for several)
+        #[arg(long = "track", value_name = "N")]
+        tracks: Vec<usize>,
+        /// Speed factor: 0.5 is half speed, 2 double speed
+        #[arg(long, default_value_t = 1.0)]
+        speed: f32,
     },
     /// Start the desktop application
     ///
@@ -252,6 +289,18 @@ where
         } => edit::run(&file, &output, &commands, script.as_deref(), allow_losses),
         Command::Commands => Ok(commands::run()),
         Command::Gui { file } => gui::run(file.as_deref()),
+        Command::Midi {
+            file,
+            output,
+            tracks,
+        } => play::export(&file, &output, &tracks),
+        Command::Ports => play::ports(),
+        Command::Play {
+            file,
+            port,
+            tracks,
+            speed,
+        } => play::play(&file, port.as_deref(), &tracks, speed),
         Command::Legend => Ok(legend::run()),
         Command::RoundtripCheck { file, to } => roundtrip::run(&file, to),
     }

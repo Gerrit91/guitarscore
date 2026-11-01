@@ -26,6 +26,7 @@ mod error;
 mod instrument;
 pub mod interop;
 mod issues;
+mod playback;
 mod position;
 mod song;
 #[cfg(feature = "test-support")]
@@ -46,6 +47,7 @@ pub use effects::{Bend, BendKind, Harmonic, HarmonicKind, SlapKind, SlideKind, S
 pub use error::ModelError;
 pub use instrument::InstrumentKind;
 pub use issues::{Issue, IssueKind};
+pub use playback::{Repeat, TrackSound};
 pub use position::{
     BeatIndex, BeatPosition, Fret, MeasureIndex, Pitch, StringNumber, TrackIndex, VoiceIndex,
 };
