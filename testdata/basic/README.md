@@ -14,9 +14,9 @@ are filled in (notes: "Used for testing", instructions empty).
 | `.gp` | Guitar Pro 7+ | import tests (`crates/gscore-io/tests/test_testdata.rs`), `info` reference |
 | `.gpx` | Guitar Pro 6 | same |
 | `.gp5` | Guitar Pro 5 (Guitar Pro drops the notes and the instrument name) | same |
-| `.txt` | Guitar Pro's ASCII tab export | reference for a future `gscore-cli dump` |
-| `.mid` | Guitar Pro's MIDI export | reference for playback / `.mid` export (M7) |
-| `.pdf`, `.png`, `user_screenshots/` | how Guitar Pro renders it | visual reference for layout (M3) |
+| `.txt` | Guitar Pro's ASCII tab export | reference for `gscore-cli dump` (M2) |
+| `.mid` | Guitar Pro's MIDI export | reference for playback / `.mid` export (M8) |
+| `.pdf`, `.png`, `user_screenshots/` | how Guitar Pro renders it | visual reference for layout (M5) |
 
 The expected `gscore-cli info` output is in `crates/gscore-cli/tests/golden/`, not here, so
 this directory only holds files made with Guitar Pro.

@@ -1,6 +1,6 @@
 # Known Gaps
 
-Ranked known shortfalls, most important first. Updated 2026-11-01 (M1).
+Ranked known shortfalls, most important first. Updated 2026-11-01 (M2).
 
 1. **`gscore-gp` is not held to the workspace rules yet.** About 10k lines derived from
    guitarpro still use `unwrap`, indexing and `as` casts; a crate-level `allow` exempts them.
@@ -10,20 +10,20 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M1).
    wasm.
 2. **Instrument data and tuning labels are read but not written.** GP7 `<InstrumentSet>`
    (type, name) and the tuning `<Label>` are read into the track, but the GPIF exporter
-   writes neither. Must be handled before saving (M6).
+   writes neither. Must be handled before saving (M3).
    Drum and piano notes are still mapped onto tab strings (several drum notes on string 1,
    negative piano frets); reported as issues, kept unchanged.
 3. **GP6 instrument not read.** GP6 stores only an instrument id (`<Instrument
    ref="s-gtr6"/>`), no type or name; such tracks count as string instruments unless they
    are percussion. (The GP6 tuning order, unverified before, is now covered by the GPX
    test file.)
-4. **The model is read-only.** No edit methods yet; they arrive with the command layer (M5).
+4. **The model is read-only.** No edit methods yet; they arrive with the command layer (M4).
    Only the initial tempo is exposed; tempo changes, repeats, effects and lyrics are kept in
    the file but have no accessors yet.
-5. **Saving is not implemented** (returns an "unsupported" error). M6.
-6. **No recovery journal or autosave yet** (crash reports exist since M0). M5.
+5. **Saving is not implemented.** M3.
+6. **No recovery journal or autosave yet** (crash reports exist since M0). M7.
 7. **Little test data.** One song (`testdata/basic/steel_guitar_dadgad`) as GP7, GPX and
    GP5, with import and `info` reference tests and truncation/byte-flip robustness. No
    GP3/GP4 files, no effects, multiple tracks or voices yet, and no real fuzzer
-   (cargo-fuzz). M2.
+   (cargo-fuzz; deferred to "Later" by the owner).
 8. Layout, playback, editing, session and app crates are placeholders.

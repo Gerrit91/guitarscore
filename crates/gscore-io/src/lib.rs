@@ -1,5 +1,5 @@
 //! The safe entry point for Guitar Pro files: bytes in, `gscore_model::Song` out (writing
-//! follows in milestone M6).
+//! follows in milestone M3).
 //!
 //! This crate never touches the file system (that is `gscore-session`'s job) so it also
 //! builds for wasm. The format is detected from the content, not the file name, and input

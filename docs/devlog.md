@@ -213,3 +213,12 @@ playback need them.
   in the repo root (never compiled), and the stale `crates/gscore-cli/README.md`.
   `docs/development.md` shows the current layers.
 - Tests: 77 (the export stub's test went with it).
+
+## 2026-11-01 — Milestones reordered
+
+Owner decision: headless editing and saving before the UI. New order: M2 import + `info`,
+`dump`, `roundtrip-check` (current); M3 save; M4 headless editing (command registry,
+`gscore-cli commands` / `edit -c ... --script ...`); M5 layout; M6 read-only app view; M7
+interactive editing in the app (cursor, keymap, recovery journal); M8 MIDI playback; M9
+internal synth. `cargo-fuzz` deferred to "Later". Milestone references in crate docs,
+gaps, parity, testdata README and CLAUDE.md updated.

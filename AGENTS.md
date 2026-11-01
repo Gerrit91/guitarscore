@@ -212,16 +212,21 @@ Strictly in this order; each stage plugs in behind the `Player` trait:
 
 ## 9. Milestones (one at a time; stop and summarize after each)
 
+Headless editing and saving come before the UI (owner decision, 2026-11-01): the core
+functionality is built and tested through the CLI first, and the UI later drives the same
+command layer.
+
 - **M0:** workspace, toolchain pin, `[workspace.lints]`, `clippy.toml`, `xtask layers` (including the wasm check on the core crates), the commands in section 6, an empty devlog.
 - **M1:** `gscore-model` wrapper with tests.
-- **M2:** `gscore-io` import via `gscore-gp` (with `catch_unwind` containment), `gscore-cli` `info` and `dump`, fuzz and corrupt-file tests. (The decision gate on using the crate's model directly and on vendoring it was settled early; see section 5, decision 1.)
-- **M3:** `gscore-layout` headless layout for one track's tab staff, SVG golden tests, SMuFL font loading and metadata, comparison against MuseScore output.
-- **M4:** `gscore-app` read-only egui view drawing the `DrawOp`s, with light and dark theme, plus the offscreen snapshot example.
-- **M5:** cursor, keyboard entry, undo/redo driven by the keymap file (tested on QWERTY, QWERTZ, and AZERTY layouts), the command registry with `panic_hunt`, **and `gscore-session` with the recovery journal and crash recovery**.
-- **M6:** save to GP with safe-save and round-trip verification.
-- **M7:** MIDI output playback and `.mid` export.
-- **M8:** internal synth playback.
-- **Later:** standard notation, more techniques, multi-track mixer, GP3/4/5 writing, JSON control channel, sound libraries.
+- **M2:** `gscore-io` import via `gscore-gp` (with `catch_unwind` containment), `gscore-cli` `info`, `dump` (ASCII tab) and `roundtrip-check`, corrupt-file and damaged-input tests. (The decision gate on using the crate's model directly and on vendoring it was settled early; see section 5, decision 1. Fuzzing with `cargo-fuzz` is deferred to "Later".)
+- **M3:** save to GP with safe-save (temporary file and atomic rename, `.bak`, re-read and compare) and round-trip verification, warnings before saving to an older format, `gscore-cli convert`.
+- **M4:** headless editing: checked editing methods on the model, the command registry in `gscore-edit` (id, label, `enabled`, parameters, `apply`, `undo`; transactional) with the shared apply-then-undo test helper, `panic_hunt` and property tests, and the CLI on top of it: `gscore-cli commands` (lists command ids and parameters) and `gscore-cli edit <in> -o <out>` with `-c "<command> key=value ..."` or `--script <file>` (positions 1-based). Script files double as regression tests.
+- **M5:** `gscore-layout` headless layout for one track's tab staff, SVG golden tests, SMuFL font loading and metadata, comparison against MuseScore output.
+- **M6:** `gscore-app` read-only egui view drawing the `DrawOp`s, with light and dark theme, plus the offscreen snapshot example.
+- **M7:** interactive editing in the app: cursor, keyboard entry and undo/redo through the M4 commands, driven by the keymap file (tested on QWERTY, QWERTZ, and AZERTY layouts), **and `gscore-session` with the recovery journal and crash recovery**.
+- **M8:** MIDI output playback and `.mid` export.
+- **M9:** internal synth playback.
+- **Later:** fuzzing with `cargo-fuzz`, standard notation, more techniques, multi-track mixer, GP3/4/5 writing, JSON control channel, sound libraries.
 
 ## 10. Dependency rules
 

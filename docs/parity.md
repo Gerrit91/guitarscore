@@ -24,9 +24,10 @@ This document tracks which Guitar Pro features are implemented in GuitarScore.
 
 ## Future Milestones
 
-- Implement basic tablature editing (M5)
-- Add playback with MIDI support (M7)
-- Add internal synth support (M8)
+- Save Guitar Pro files (M3)
+- Implement basic tablature editing, headless via the CLI (M4), then in the app (M7)
+- Add playback with MIDI support (M8)
+- Add internal synth support (M9)
 - Add standard notation rendering
 - Support all GP file formats
 

@@ -2,4 +2,4 @@
 //! holds UI state, draws layout output, and sends every action through `gscore-edit`
 //! commands.
 //!
-//! Not implemented yet (milestone M4).
+//! Not implemented yet (milestone M6; interactive editing in M7).
