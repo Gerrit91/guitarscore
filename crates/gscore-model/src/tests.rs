@@ -130,6 +130,22 @@ fn note_values_parse_print_and_keep_their_length() {
 }
 
 #[test]
+fn note_values_survive_the_guitar_pro_representation() {
+    for text in [
+        "1/1", "1/4", "1/8.", "1/16..", "1/8*3:2", "1/16*7:4", "1/128",
+    ] {
+        let value: NoteValue = text.parse().unwrap();
+        assert_eq!(NoteValue::from_gp(&value.to_gp()).unwrap(), value, "{text}");
+    }
+    let both_dots = GpDuration {
+        dotted: true,
+        double_dotted: true,
+        ..GpDuration::default()
+    };
+    assert!(NoteValue::from_gp(&both_dots).is_err());
+}
+
+#[test]
 fn invalid_note_values_are_errors() {
     for text in [
         "",

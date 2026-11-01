@@ -7,7 +7,7 @@
 
 use gscore_gp::{BeatStatus, NoteType};
 
-use crate::duration::{Duration, TimeSignature};
+use crate::duration::{Duration, NoteValue, TimeSignature};
 use crate::error::ModelError;
 use crate::instrument::{self, InstrumentKind};
 use crate::position::{BeatIndex, Fret, MeasureIndex, Pitch, StringNumber, TrackIndex, VoiceIndex};
@@ -111,7 +111,7 @@ impl<'a> TrackView<'a> {
     }
 
     /// All measures, in order.
-    pub fn measures(&self) -> impl ExactSizeIterator<Item = MeasureView<'a>> {
+    pub fn measures(&self) -> impl ExactSizeIterator<Item = MeasureView<'a>> + use<'a> {
         self.inner
             .measures
             .iter()
@@ -151,7 +151,7 @@ impl<'a> MeasureView<'a> {
     }
 
     /// All voices, in order.
-    pub fn voices(&self) -> impl ExactSizeIterator<Item = VoiceView<'a>> {
+    pub fn voices(&self) -> impl ExactSizeIterator<Item = VoiceView<'a>> + use<'a> {
         self.inner
             .voices
             .iter()
@@ -186,7 +186,7 @@ impl<'a> VoiceView<'a> {
     }
 
     /// All beats, in order.
-    pub fn beats(&self) -> impl ExactSizeIterator<Item = BeatView<'a>> {
+    pub fn beats(&self) -> impl ExactSizeIterator<Item = BeatView<'a>> + use<'a> {
         self.inner
             .beats
             .iter()
@@ -252,6 +252,11 @@ impl<'a> BeatView<'a> {
         Duration::from_gp(&self.inner.duration)
     }
 
+    /// How the beat's length is written: note value, dots and tuplet.
+    pub fn note_value(&self) -> Result<NoteValue, ModelError> {
+        NoteValue::from_gp(&self.inner.duration)
+    }
+
     /// Whether this is a normal beat, a rest, or a placeholder.
     pub fn kind(&self) -> BeatKind {
         match self.inner.status {
@@ -262,7 +267,7 @@ impl<'a> BeatView<'a> {
     }
 
     /// The notes of this beat (at most one per string).
-    pub fn notes(&self) -> impl ExactSizeIterator<Item = NoteView<'a>> {
+    pub fn notes(&self) -> impl ExactSizeIterator<Item = NoteView<'a>> + use<'a> {
         self.inner.notes.iter().map(NoteView::new)
     }
 }

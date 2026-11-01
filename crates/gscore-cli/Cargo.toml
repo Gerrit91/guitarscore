@@ -12,6 +12,7 @@ gscore-model = { path = "../gscore-model" }
 gscore-io = { path = "../gscore-io" }
 gscore-edit = { path = "../gscore-edit" }
 gscore-session = { path = "../gscore-session" }
+gscore-layout = { path = "../gscore-layout" }
 clap = { version = "4.6.7", features = ["derive"] }
 
 [lints]

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="64.15mm" viewBox="0 0 120 36.66">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="8" y="11.45" font-family="Noto Sans" font-size="1.5" fill="#404040">Tuning: F# standard (F# B E A D G B E)</text>
+<text x="9.46" y="14.16" font-family="Noto Sans" font-size="1.7" font-weight="bold" fill="#404040">= 120</text>
+<text x="8" y="14.16" font-family="Bravura" font-size="3.2" fill="#404040" data-glyph="metNoteQuarterUp">&#xECA5;</text>
+<line x1="8" y1="18.16" x2="56.22" y2="18.16" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="19.66" x2="56.22" y2="19.66" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="21.16" x2="56.22" y2="21.16" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="22.66" x2="56.22" y2="22.66" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="24.16" x2="56.22" y2="24.16" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="25.66" x2="56.22" y2="25.66" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="27.16" x2="56.22" y2="27.16" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="28.66" x2="56.22" y2="28.66" stroke="#707070" stroke-width="0.13"/>
+<line x1="8.08" y1="18.16" x2="8.08" y2="28.66" stroke="#303030" stroke-width="0.16"/>
+<text x="8.6" y="23.45" font-family="Bravura" font-size="5.56" fill="#101010" data-glyph="6stringTabClef">&#xE06D;</text>
+<text x="11.87" y="17.36" font-family="Noto Sans" font-size="1.1" fill="#404040">1</text>
+<text x="12.67" y="21.31" font-family="Bravura" font-size="8.4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
+<text x="12.67" y="25.51" font-family="Bravura" font-size="8.4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
+<rect x="18.14" y="27.92" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="18.72" y="29.2" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="18.14" y="26.42" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="18.72" y="27.7" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<rect x="22.21" y="17.42" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="23.22" y="18.7" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">24</text>
+<rect x="26.71" y="21.92" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="27.72" y="23.2" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">10</text>
+<text x="31.68" y="23.41" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restQuarter">&#xE4E5;</text>
+<line x1="36.64" y1="18.16" x2="36.64" y2="28.66" stroke="#303030" stroke-width="0.16"/>
+<text x="36.72" y="17.36" font-family="Noto Sans" font-size="1.1" fill="#404040">2</text>
+<text x="37.68" y="23.41" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restQuarter">&#xE4E5;</text>
+<text x="42.18" y="23.41" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restQuarter">&#xE4E5;</text>
+<text x="46.68" y="23.41" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restQuarter">&#xE4E5;</text>
+<rect x="51.14" y="24.92" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="51.72" y="26.2" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">3</text>
+<line x1="55.24" y1="18.16" x2="55.24" y2="28.66" stroke="#303030" stroke-width="0.16"/>
+<line x1="55.97" y1="18.16" x2="55.97" y2="28.66" stroke="#303030" stroke-width="0.5"/>
+</svg>
