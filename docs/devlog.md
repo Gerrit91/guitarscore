@@ -256,3 +256,18 @@ gaps, parity, testdata README and CLAUDE.md updated.
 
 M2 (import, `info`, `dump`, `roundtrip-check`, corrupt-file and damaged-input tests) is
 complete.
+
+## 2026-11-01 — M3: writer fixes (first step)
+
+Test-first with `roundtrip-check` and the formerly ignored tests:
+- GP3-5 writer: lyric lines (panic), 64-entry MIDI channel table generated for songs from
+  GP6/GP7 (panic or unreadable file; drums on channel 10), equalizer value counts (shifted
+  the rest of the file).
+- GPIF writer: placeholder-only voices stay empty; `<InstrumentSet>` and the tuning label
+  are written (drum tracks from GP3-5 as `drumKit`).
+- GPX container: files too large for the block table are refused instead of corrupted.
+- Results on the 26 band files: GP7 -> GP7 all clean (was 0); -> GPX 25 clean, 1 too large;
+  -> GP5 still failing (deferred, docs/gaps.md #2). Test file: all formats and the
+  conversions between GP7, GPX and GP5 clean, except the expected loss of the instrument
+  name in GP7 -> GP5.
+- Tests: no ignored tests left.

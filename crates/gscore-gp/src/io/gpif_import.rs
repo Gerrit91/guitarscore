@@ -1008,6 +1008,32 @@ mod tuning_tests {
     }
 
     #[test]
+    fn instrument_and_tuning_label_survive_writing() {
+        let mut song = Song::default();
+        song.read_gpif(&gpif_with_staff_tuning("38 45 50 55 57 62"));
+        let mut drums = song.tracks[0].clone();
+        song.tracks[0].instrument_type = Some("steelGuitar".to_owned());
+        song.tracks[0].instrument_name = Some("Steel Guitar".to_owned());
+        song.tracks[0].tuning_label = Some("My DADGAD".to_owned());
+        // A drum track as GP3-5 store it: percussion flag, no instrument type.
+        drums.percussion_track = true;
+        drums.instrument_type = None;
+        drums.instrument_name = None;
+        song.tracks.push(drums);
+
+        let bytes = song.write_gp().expect("write");
+        let mut reread = Song::default();
+        reread.read_gp(&bytes).expect("reread");
+        let guitar = &reread.tracks[0];
+        assert_eq!(guitar.instrument_type.as_deref(), Some("steelGuitar"));
+        assert_eq!(guitar.instrument_name.as_deref(), Some("Steel Guitar"));
+        assert_eq!(guitar.tuning_label.as_deref(), Some("My DADGAD"));
+        let drums = &reread.tracks[1];
+        assert!(drums.percussion_track);
+        assert_eq!(drums.instrument_type.as_deref(), Some("drumKit"));
+    }
+
+    #[test]
     fn staff_tuning_is_read_with_string_1_highest() {
         // GPIF lists pitches from the lowest string up.
         let mut song = Song::default();

@@ -120,9 +120,19 @@ pub fn compress_bcfz(data: &[u8]) -> Vec<u8> {
 ///   sector 0: blank (header)
 ///   sector 1: file directory entry for `filename`
 ///   sectors 2+: file data
-pub fn pack_bcfs(filename: &str, file_data: &[u8]) -> Vec<u8> {
+///
+/// GuitarScore fix: the block index table must fit into the directory sector (at most
+/// [`MAX_BCFS_BLOCKS`] blocks, about 4 MB); larger files are refused. Writing the extra
+/// indices overwrote the start of the file data and produced an unreadable file.
+pub fn pack_bcfs(filename: &str, file_data: &[u8]) -> GpResult<Vec<u8>> {
     let file_size = file_data.len();
     let num_data_sectors = file_size.div_ceil(SECTOR_SIZE);
+    if num_data_sectors > MAX_BCFS_BLOCKS {
+        return Err(crate::io::GpError::FormatError(format!(
+            "{filename} is {file_size} bytes; a GPX container holds at most {} bytes",
+            MAX_BCFS_BLOCKS * SECTOR_SIZE
+        )));
+    }
     let total_sectors = 2 + num_data_sectors;
     let disk_size = total_sectors * SECTOR_SIZE;
 
@@ -159,14 +169,18 @@ pub fn pack_bcfs(filename: &str, file_data: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(4 + disk_size);
     out.extend_from_slice(BCFS_MAGIC);
     out.extend(disk);
-    out
+    Ok(out)
 }
+
+/// Block indices that fit into one BCFS directory sector (after the entry's 0x94-byte
+/// header).
+const MAX_BCFS_BLOCKS: usize = (SECTOR_SIZE - 0x94) / 4;
 
 /// Serialize a `Song` to GP6 (.gpx) bytes.
 pub fn write_gpx_bytes(song: &crate::io::Song) -> GpResult<Vec<u8>> {
     use crate::io::gpif_export::SongGpifExportOps;
     let xml = song.write_gpif_xml();
-    let bcfs = pack_bcfs("score.gpif", xml.as_bytes());
+    let bcfs = pack_bcfs("score.gpif", xml.as_bytes())?;
     Ok(compress_bcfz(&bcfs))
 }
 
@@ -524,9 +538,20 @@ mod limit_tests {
     }
 
     #[test]
+    fn files_too_large_for_one_directory_sector_are_refused() {
+        let fits = vec![b' '; MAX_BCFS_BLOCKS * SECTOR_SIZE];
+        let packed = pack_bcfs("score.gpif", &fits).unwrap();
+        let files = parse_bcfs(&packed[..]).unwrap();
+        assert_eq!(files[0].data.len(), fits.len());
+
+        let too_large = vec![b' '; MAX_BCFS_BLOCKS * SECTOR_SIZE + 1];
+        assert!(pack_bcfs("score.gpif", &too_large).is_err());
+    }
+
+    #[test]
     fn uncompressed_bcfs_is_accepted() {
         // A BCFS container without score.gpif: must fail with "not found", not "magic".
-        let disk = pack_bcfs("other.xml", b"<x/>");
+        let disk = pack_bcfs("other.xml", b"<x/>").unwrap();
         let err = read_gpx(&disk).unwrap_err().to_string();
         assert!(err.contains("score.gpif not found"), "{err}");
     }

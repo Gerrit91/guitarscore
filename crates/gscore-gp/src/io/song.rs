@@ -5,6 +5,9 @@
 
 use crate::io::*;
 
+/// GP3-5 files store 64 MIDI channels: 4 ports of 16.
+const MIDI_CHANNEL_COUNT: usize = 64;
+
 /// Parse a GPIF `<GPVersion>` string like `"8.1.3"` into a `(major, minor,
 /// patch)` tuple. Falls back to `(7, 0, 0)` for unparseable values (the `.gp`
 /// container format starts at GP7).
@@ -202,7 +205,61 @@ impl Song {
     }
 
     /// Write data to a Vec<u8>, you are free to use the encoded data to write it in a file or in a database or do something else.
+    ///
+    /// GuitarScore fix: GP3-5 files need a table of 64 MIDI channels, which songs read from
+    /// GP6/GP7 do not have (writing used to panic, or would have produced an unreadable
+    /// file). Such songs are written from a copy with a generated table.
     pub fn write(&self, version: (u8, u8, u8), clipboard: Option<bool>) -> GpResult<Vec<u8>> {
+        if self.channels.len() >= MIDI_CHANNEL_COUNT {
+            return self.write_with_channel_table(version, clipboard);
+        }
+        let mut song = self.clone();
+        song.generate_channel_table();
+        song.write_with_channel_table(version, clipboard)
+    }
+
+    /// GuitarScore addition: replaces the channel table with 64 channels (4 ports of 16)
+    /// and assigns one channel per track, skipping channel 10 (index 9), which drum tracks
+    /// get. Instruments come from the GP6/GP7 MIDI program where known.
+    pub(crate) fn generate_channel_table(&mut self) {
+        self.channels = (0..MIDI_CHANNEL_COUNT)
+            .map(|i| {
+                let channel = (i % 16) as u8;
+                MidiChannel {
+                    channel,
+                    effect_channel: channel,
+                    ..MidiChannel::default()
+                }
+            })
+            .collect();
+        let mut next = 0usize;
+        for track in &mut self.tracks {
+            let index = if track.percussion_track {
+                DEFAULT_PERCUSSION_CHANNEL as usize
+            } else {
+                if next % 16 == DEFAULT_PERCUSSION_CHANNEL as usize {
+                    next += 1;
+                }
+                let index = next.min(MIDI_CHANNEL_COUNT - 1);
+                next += 1;
+                index
+            };
+            track.channel_index = index;
+            if let Some(channel) = self.channels.get_mut(index) {
+                if track.percussion_track {
+                    channel.instrument = 0;
+                } else if let Some(program) = track.midi_program_gpif {
+                    channel.instrument = program;
+                }
+            }
+        }
+    }
+
+    fn write_with_channel_table(
+        &self,
+        version: (u8, u8, u8),
+        clipboard: Option<bool>,
+    ) -> GpResult<Vec<u8>> {
         let mut data: Vec<u8> = Vec::with_capacity(8388608); //capacity of 8MB, should be sufficient
         write_version(&mut data, version);
         if clipboard.is_some_and(|c| c) && version.0 >= 4 {

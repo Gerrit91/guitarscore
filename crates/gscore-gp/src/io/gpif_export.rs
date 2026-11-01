@@ -456,6 +456,23 @@ impl WriteGpifInGpifStringOrder for Song {
             let g = (track.color >> 8) & 0xFF;
             let b = track.color & 0xFF;
             xml.push_str(&format!("<Color>{r} {g} {b}</Color>"));
+            // GuitarScore addition: the instrument, as read by the importer. Drum tracks
+            // from GP3-5 (no instrument type) are written as a drum kit.
+            let instrument_type = track
+                .instrument_type
+                .as_deref()
+                .or(track.percussion_track.then_some("drumKit"));
+            if let Some(kind) = instrument_type {
+                let name = track
+                    .instrument_name
+                    .as_deref()
+                    .unwrap_or(if kind == "drumKit" { "Drums" } else { kind });
+                xml.push_str(&format!(
+                    "<InstrumentSet><Name>{}</Name><Type>{}</Type></InstrumentSet>",
+                    escape_xml(name),
+                    escape_xml(kind)
+                ));
+            }
             xml.push_str("<Properties>");
             // GuitarScore: only write a tuning the file had (see `Track::has_tuning`).
             if track.has_tuning {
@@ -467,8 +484,14 @@ impl WriteGpifInGpifStringOrder for Song {
                     .rev()
                     .map(|(_, p)| p.to_string())
                     .collect();
+                // GuitarScore addition: the tuning's name, if the file gave one.
+                let label = track
+                    .tuning_label
+                    .as_deref()
+                    .map(|l| format!("<Label>{}</Label>", escape_xml(l)))
+                    .unwrap_or_default();
                 xml.push_str(&format!(
-                    "<Property name=\"Tuning\"><Pitches>{}</Pitches></Property>",
+                    "<Property name=\"Tuning\"><Pitches>{}</Pitches>{label}</Property>",
                     pitches.join(" ")
                 ));
             }
@@ -527,7 +550,9 @@ impl WriteGpifInGpifStringOrder for Song {
                 let mut voice_ids: Vec<String> = Vec::new();
 
                 for voice in &measure.voices {
-                    if voice.beats.is_empty() {
+                    // GuitarScore fix: a voice holding only placeholder beats (as GP3-5 store
+                    // unused voices) is empty; writing the placeholders made them real beats.
+                    if voice.beats.iter().all(|b| b.status == BeatStatus::Empty) {
                         voice_ids.push("-1".to_string());
                         continue;
                     }
@@ -536,7 +561,7 @@ impl WriteGpifInGpifStringOrder for Song {
                     next_voice_id += 1;
                     let mut beat_ids: Vec<i32> = Vec::new();
 
-                    for beat in &voice.beats {
+                    for beat in voice.beats.iter().filter(|b| b.status != BeatStatus::Empty) {
                         let beat_id = next_beat_id;
                         next_beat_id += 1;
                         let rhythm_id = next_rhythm_id;

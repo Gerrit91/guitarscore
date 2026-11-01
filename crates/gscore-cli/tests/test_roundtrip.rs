@@ -18,8 +18,9 @@ fn roundtrip(relative: &str, extra: &[&str]) -> Result<String, gscore_cli::CliEr
 }
 
 #[test]
-fn gpx_and_gp5_round_trip_without_differences() {
+fn every_format_round_trips_without_differences() {
     for file in [
+        "basic/steel_guitar_dadgad.gp",
         "basic/steel_guitar_dadgad.gpx",
         "basic/steel_guitar_dadgad.gp5",
     ] {
@@ -29,42 +30,30 @@ fn gpx_and_gp5_round_trip_without_differences() {
 }
 
 #[test]
-#[ignore = "known gap: the GP7/GPX writer drops the instrument (docs/gaps.md #2, M3)"]
-fn gp7_round_trips_without_differences() {
-    let out = roundtrip("basic/steel_guitar_dadgad.gp", &[]).unwrap_or_else(|e| panic!("{e}"));
-    assert!(out.starts_with("Round trip OK"), "{out}");
+fn conversions_keep_the_compared_content() {
+    for (file, to) in [
+        ("basic/steel_guitar_dadgad.gp5", "gp"),
+        ("basic/steel_guitar_dadgad.gp5", "gpx"),
+        ("basic/steel_guitar_dadgad.gpx", "gp5"),
+        ("basic/steel_guitar_dadgad.gpx", "gp"),
+        ("basic/steel_guitar_dadgad.gp", "gpx"),
+    ] {
+        let out = roundtrip(file, &["--to", to]).unwrap_or_else(|e| panic!("{file} -> {to}: {e}"));
+        assert!(out.starts_with("Round trip OK"), "{file} -> {to}: {out}");
+    }
 }
 
 #[test]
-fn differences_are_reported_as_failure() {
-    // Today GP7 -> GP7 loses the instrument name; this checks the report itself.
-    let err = roundtrip("basic/steel_guitar_dadgad.gp", &[]).unwrap_err();
+fn losses_are_reported_as_failure() {
+    // GP5 has no field for the instrument name, so GP7 -> GP5 loses it.
+    let err = roundtrip("basic/steel_guitar_dadgad.gp", &["--to", "gp5"]).unwrap_err();
     assert_eq!(err.exit_code(), 1);
     let text = err.to_string();
-    assert!(text.contains("difference(s)"), "{text}");
-    assert!(text.contains("track 1: instrument name"), "{text}");
-}
-
-#[test]
-#[ignore = "known gap: the GP5 writer panics on songs read from GP6/GP7 (lyrics), M3"]
-fn gpif_formats_convert_to_gp5() {
-    for file in [
-        "basic/steel_guitar_dadgad.gp",
-        "basic/steel_guitar_dadgad.gpx",
-    ] {
-        let out = roundtrip(file, &["--to", "gp5"]).unwrap_or_else(|e| panic!("{file}: {e}"));
-        assert!(out.starts_with("Round trip OK"), "{file}: {out}");
-    }
-}
-
-#[test]
-#[ignore = "known gap: GP5 -> GP6/GP7 turns an empty second voice into a beat, M3"]
-fn gp5_converts_to_gpif_formats() {
-    for to in ["gp", "gpx"] {
-        let out = roundtrip("basic/steel_guitar_dadgad.gp5", &["--to", to])
-            .unwrap_or_else(|e| panic!("-> {to}: {e}"));
-        assert!(out.starts_with("Round trip OK"), "-> {to}: {out}");
-    }
+    assert!(text.contains("1 difference(s)"), "{text}");
+    assert!(
+        text.contains(r#"track 1: instrument name Some("Steel Guitar") became None"#),
+        "{text}"
+    );
 }
 
 /// Whatever the writers get wrong, every combination ends in `Ok` or `Err`; a panic in a

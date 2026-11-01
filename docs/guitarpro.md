@@ -82,3 +82,16 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
 13. Removed the modules GuitarScore does not use (about 21k lines): `analysis/`,
     `convert/`, `model/{optimized,musicxml,mnx,mscz}/`, `io/mscz/`, and their re-exports in
     `lib.rs`. (Change 5's edit to `convert/legacy/mod.rs` went with them.)
+14. GP3-5 writer (`src/io/lyric.rs`, `src/io/song.rs`, `src/io/rse.rs`): always writes the 5
+    lyric lines (indexing panicked for songs read from GP6/GP7); generates the 64-entry
+    MIDI channel table when a song has none (one channel per track, drums on channel 10;
+    panicked or produced an unreadable file before); writes exactly 11 master and 4 track
+    equalizer values, as the reader expects (a default song held 10 and shifted the rest
+    of the file).
+15. GPIF writer (`src/io/gpif_export.rs`): voices holding only placeholder beats are
+    written as empty and placeholder beats are skipped (GP5 -> GP6/GP7 used to turn them
+    into real beats); writes `<InstrumentSet>` (name, type; drum tracks without a type as
+    `drumKit`) and the tuning `<Label>`.
+16. `src/io/gpx.rs` (`pack_bcfs`): refuses files whose block index table does not fit into
+    the directory sector (about 4 MB) instead of overwriting the file data with it.
+

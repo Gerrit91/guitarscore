@@ -23,7 +23,7 @@ pub trait SongRseOps {
         instrument: &mut RseInstrument,
     ) -> GpResult<()>;
     fn write_rse_master_effect(&self, data: &mut Vec<u8>);
-    fn write_equalizer(&self, data: &mut Vec<u8>, equalizer: &RseEqualizer);
+    fn write_equalizer(&self, data: &mut Vec<u8>, equalizer: &RseEqualizer, knobs: u8);
     fn pack_volume_value(&self, value: f32) -> i8;
     fn write_master_reverb(&self, data: &mut Vec<u8>);
     fn write_track_rse(&self, data: &mut Vec<u8>, rse: &TrackRse, version: &(u8, u8, u8));
@@ -132,11 +132,15 @@ impl SongRseOps for Song {
             },
         );
         write_i32(data, 0); //reverb?
-        self.write_equalizer(data, &self.master_effect.equalizer);
+        self.write_equalizer(data, &self.master_effect.equalizer, 11);
     }
-    fn write_equalizer(&self, data: &mut Vec<u8>, equalizer: &RseEqualizer) {
-        for i in 0..equalizer.knobs.len() {
-            write_signed_byte(data, self.pack_volume_value(equalizer.knobs[i]));
+    /// GuitarScore fix: writes exactly `knobs` values, as many as the reader reads (missing
+    /// ones as 0). Writing however many the song held shifted everything after it when the
+    /// song did not come from a GP5 file (the default master equalizer has 10, not 11).
+    fn write_equalizer(&self, data: &mut Vec<u8>, equalizer: &RseEqualizer, knobs: u8) {
+        for i in 0..usize::from(knobs) {
+            let value = equalizer.knobs.get(i).copied().unwrap_or(0.0);
+            write_signed_byte(data, self.pack_volume_value(value));
         }
     }
     fn pack_volume_value(&self, value: f32) -> i8 {
@@ -154,7 +158,7 @@ impl SongRseOps for Song {
         write_placeholder_default(data, 12);
         self.write_rse_instrument(data, &rse.instrument, version);
         if version > &(5, 0, 0) {
-            self.write_equalizer(data, &rse.equalizer);
+            self.write_equalizer(data, &rse.equalizer, 4);
             self.write_rse_instrument_effect(data, &rse.instrument);
         }
     }
