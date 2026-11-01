@@ -61,3 +61,6 @@ Each change should be offered upstream.
 12. `src/io/gpx.rs` (`read_le_i32`) and `src/model/legacy/headers/io.rs` (directions):
     index panics on truncated GPX containers and out-of-range GP5 direction measure numbers,
     found by the truncation/mutation test in `crates/gscore-io/tests/test_testdata.rs`.
+13. Removed the modules GuitarScore does not use (about 21k lines): `analysis/`,
+    `convert/`, `model/{optimized,musicxml,mnx,mscz}/`, `io/mscz/`, and their re-exports in
+    `lib.rs`. (Change 5's edit to `convert/legacy/mod.rs` went with them.)
