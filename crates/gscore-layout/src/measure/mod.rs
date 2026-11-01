@@ -22,7 +22,7 @@ use crate::ornaments::{self, ColumnMarks, Fret, NoteMarks};
 /// Space before and after a time signature.
 const TIME_SIG_PAD: (f32, f32) = (0.8, 0.6);
 /// How much of the staff height a time signature covers.
-const TIME_SIG_HEIGHT_RATIO: f32 = 0.8;
+const TIME_SIG_HEIGHT_RATIO: f32 = 0.7;
 /// Smallest space between the start of a measure and its first beat.
 const MIN_LEAD: f32 = 1.5;
 /// Gap between a rest and its first dot.
@@ -256,7 +256,10 @@ impl Item {
             Item::Rest { glyph, dots } => {
                 let font = &ctx.fonts.music;
                 let dots = f32::from(*dots) * (font.advance(Glyph::AugmentationDot) + DOT_GAP);
-                font.advance(*glyph) / 2.0 + dots
+                // The drawn width: some rests (64th, 128th) are wider than their advance.
+                let bbox = font.bbox(*glyph);
+                let drawn = (bbox.x_max - bbox.x_min).max(font.advance(*glyph));
+                drawn / 2.0 + dots
             }
         }
     }

@@ -40,13 +40,15 @@ impl MeasureLayout {
             cursor += column.space * stretch;
         }
         let right = cursor;
+        // Where each column's space ends: the next column, or the end of the measure.
+        let span_end = |index: usize| xs.get(index.saturating_add(1)).copied().unwrap_or(right);
         for (index, column) in self.columns.iter().enumerate() {
             let at = xs.get(index).copied().unwrap_or(right);
             for item in &column.items {
                 match item {
                     Item::Fret(fret) => {
                         fret.draw(at, top, ctx, ops);
-                        fret.draw_above(at, top, ctx, ops);
+                        fret.draw_above(at, span_end(index), top, ctx, ops);
                     }
                     Item::Rest { .. } => item.draw(at, top, ctx, ops),
                 }
@@ -58,10 +60,10 @@ impl MeasureLayout {
                 continue;
             };
             if let Some(whammy) = column.marks.whammy {
-                ornaments::draw_whammy(at, top, whammy, ctx, ops);
+                ornaments::draw_whammy(at, span_end(index), top, whammy, ctx, ops);
             }
             if let Some(vibrato) = column.marks.vibrato {
-                ornaments::draw_vibrato(at, top, vibrato, ctx, ops);
+                ornaments::draw_vibrato(at, span_end(index), top, vibrato, ops);
             }
         }
         self.draw_legato(&xs, top, ops);

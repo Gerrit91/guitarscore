@@ -89,14 +89,16 @@ impl NoteMarks {
     fn extra_width(&self) -> f32 {
         let left = self.slides_in_from_above() || self.slides_in_from_below();
         let right = self.slides_out_downwards() || self.slides_out_upwards();
-        let left = if left { SLASH_REACH } else { 0.0 };
-        let right = if right { SLASH_REACH } else { 0.0 };
+        let left = if left { SLASH_REACH + SLASH_GAP } else { 0.0 };
+        let right = if right { SLASH_REACH + SLASH_GAP } else { 0.0 };
         left + right
     }
 }
 
 /// Width of one slash beside a fret number.
 const SLASH_REACH: f32 = 0.45;
+/// Gap between a fret number and its slide slash.
+const SLASH_GAP: f32 = 0.2;
 /// Extra room around a fret number's mask, horizontally and vertically.
 pub(crate) const MASK_PAD: (f32, f32) = (0.15, 0.2);
 
