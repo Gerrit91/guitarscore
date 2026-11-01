@@ -15,27 +15,43 @@ pub fn install_crash_reporting() {
     }
 }
 
-/// Formats a summary of a song (title, tempo, tracks, measures).
+/// Formats a summary of a song: metadata, then each track's tuning and measure count.
 pub fn song_info(song: &Song) -> String {
     let mut out = format!(
-        "Song Information:\n  Title: {}\n  Artist: {}\n  Tempo: {} BPM\n  Number of tracks: {}\n",
-        song.title,
-        song.artist,
-        song.get_tempo(),
+        "Title: {}\nArtist: {}\nTempo: {} BPM\nMeasures: {}\nTracks: {}\n",
+        song.title(),
+        song.artist(),
+        song.tempo(),
+        song.measure_count(),
         song.track_count()
     );
-    for (number, track) in (1_usize..).zip(song.tracks()) {
+    for track in song.tracks() {
+        let tuning = match track.tuning() {
+            Ok(strings) => strings
+                .iter()
+                .map(|s| s.pitch.get().to_string())
+                .collect::<Vec<_>>()
+                .join(" "),
+            Err(e) => format!("<{e}>"),
+        };
         out.push_str(&format!(
-            "  Track {number}: {}\n    Number of measures: {}\n",
-            track.name,
-            track.measures.len()
+            "  {}: {} ({} strings, tuning {tuning}{})\n",
+            track.index(),
+            track.name(),
+            track.string_count(),
+            if track.is_percussion() {
+                ", percussion"
+            } else {
+                ""
+            },
         ));
-        if let Some(first) = track.measures.first() {
-            out.push_str(&format!(
-                "    First measure voices: {}\n",
-                first.voices.len()
-            ));
-        }
+    }
+    let issues = song.issues();
+    if !issues.is_empty() {
+        out.push_str(&format!(
+            "Issues: {} voice(s) do not fill their measure\n",
+            issues.len()
+        ));
     }
     out
 }
@@ -68,5 +84,12 @@ mod tests {
         assert!(run_cli(&args(&["info"])).is_err());
         assert!(run_cli(&args(&["bogus"])).is_err());
         assert!(run_cli(&args(&["info", "/nonexistent/file.gp"])).is_err());
+    }
+
+    #[test]
+    fn info_of_an_empty_song() {
+        let info = song_info(&Song::default());
+        assert!(info.contains("Tracks: 0"), "{info}");
+        assert!(info.contains("Tempo: 120 BPM"), "{info}");
     }
 }

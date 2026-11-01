@@ -55,3 +55,29 @@ M0 done. Open questions for M1, from the end-of-milestone architecture review:
 - Durations are `f32` (`Beat::duration`, `Note::duration`); rational durations are needed
   for exact measure-fill invariants.
 - All model fields are `pub`, so invariants cannot be enforced by the type.
+
+## 2026-11-01 — M1: gscore-model wraps the guitarpro song
+
+Decision (owner): wrap `guitarpro::Song` (the "legacy" model, which every GP format reads
+into) instead of converting to an own model, so saving cannot drop unmapped fields. Vendoring
+`guitarpro` stays a long-term goal.
+
+- `Song { inner: guitarpro::Song }`, private. Read-only views `TrackView`, `MeasureView`,
+  `VoiceView`, `BeatView`, `NoteView`; value types `Duration` (exact reduced fraction of a
+  whole note, dots and tuplets), `TimeSignature`, `StringNumber`, `Fret`, `Pitch`; index
+  types `TrackIndex` ... `BeatIndex`, `BeatPosition`.
+- Invariants checked on creation (`interop::from_guitarpro`): positive tempo, 1..=12 strings
+  numbered 1..=n, MIDI-range pitches and frets, notes only on existing strings and at most one
+  per string, note values powers of two up to 1/128, tuplets 1..=64, valid time signatures,
+  every track has the song's measure count. Errors name the location
+  ("track 1: measure 1: voice 1, beat 1: ...").
+- `Song::issues()`: under- and overfilled voices (placeholder beats count as zero).
+- `cargo xtask layers`: only gscore-model and gscore-io may depend on `guitarpro`; only
+  gscore-io may use `gscore_model::interop`. Both verified by injecting violations.
+- gscore-io no longer converts (the lossy note mapping is gone); `IoError::InvalidSong`.
+  `gscore-cli info` prints tuning per track and the number of issues.
+- Tests: 30 (model 17, xtask 7, io 2, cli 2, session 2). Tested instruments: 4-string
+  bass, 6-, 7- and 8-string guitars; time signatures 4/4, 3/4, 7/8, 2/4 with triplets.
+
+Open: edit methods (M5), more accessors (tempo changes, repeats, effects) as layout and
+playback need them.

@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Wrapped, never exposed: see the crate docs and `cargo xtask layers`.
+guitarpro = { git = "https://github.com/slundi/guitarpro", rev = "b62be7c5e4bedb0c6eb283ac40aa8371adab5c2a" }
 
 [lints]
 workspace = true
-
-[dev-dependencies]

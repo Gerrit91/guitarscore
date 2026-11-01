@@ -32,28 +32,96 @@ pub(crate) fn check_manifests(root: &Path, members: &[String]) -> Vec<String> {
 pub(crate) fn check_wasm_std_usage(root: &Path, crates: &[&str]) -> Vec<String> {
     let mut errors = Vec::new();
     for name in crates {
-        let mut files = Vec::new();
-        if let Err(e) = rust_files(&crate_dir(root, name).join("src"), 0, &mut files) {
-            errors.push(e);
-        }
-        for file in files {
-            let text = match std::fs::read_to_string(&file) {
-                Ok(text) => text,
-                Err(e) => {
-                    errors.push(format!("cannot read {}: {e}", file.display()));
-                    continue;
-                }
-            };
-            for (line_no, item) in forbidden_uses(&text) {
+        scan_sources(root, name, &["src"], &mut errors, |file, text, errors| {
+            for (line_no, item) in forbidden_uses(text) {
                 errors.push(format!(
                     "{}:{line_no}: `{item}` is not allowed in core crate `{name}` \
                      (pass the capability in through a trait; see AGENTS.md \"Portability\")",
                     file.display()
                 ));
             }
+        });
+    }
+    errors
+}
+
+/// Modules only some crates may use: (module path, crates allowed to use it).
+/// The module's own crate is always allowed.
+const RESTRICTED_MODULES: &[(&str, &[&str])] = &[
+    // Conversion to and from `guitarpro` types; everyone else uses the wrapper API.
+    ("gscore_model::interop", &["gscore-model", "gscore-io"]),
+];
+
+/// No crate outside the allow list may mention a restricted module (sources and tests).
+pub(crate) fn check_restricted_modules(root: &Path, members: &[String]) -> Vec<String> {
+    let mut errors = Vec::new();
+    for (module, allowed) in RESTRICTED_MODULES {
+        for member in members {
+            if allowed.contains(&member.as_str()) {
+                continue;
+            }
+            scan_sources(
+                root,
+                member,
+                &["src", "tests", "benches", "examples"],
+                &mut errors,
+                |file, text, errors| {
+                    for line_no in mentions_module(text, module) {
+                        errors.push(format!(
+                            "{}:{line_no}: `{member}` may not use `{module}` (only {})",
+                            file.display(),
+                            allowed.join(", ")
+                        ));
+                    }
+                },
+            );
         }
     }
     errors
+}
+
+/// Calls `check` for every `.rs` file in the given subdirectories of a crate
+/// (missing subdirectories are skipped), collecting read errors into `errors`.
+fn scan_sources(
+    root: &Path,
+    name: &str,
+    subdirs: &[&str],
+    errors: &mut Vec<String>,
+    mut check: impl FnMut(&Path, &str, &mut Vec<String>),
+) {
+    let dir = crate_dir(root, name);
+    let mut files = Vec::new();
+    for sub in subdirs {
+        let sub = dir.join(sub);
+        if sub.is_dir() {
+            if let Err(e) = rust_files(&sub, 0, &mut files) {
+                errors.push(e);
+            }
+        }
+    }
+    for file in files {
+        match std::fs::read_to_string(&file) {
+            Ok(text) => check(&file, &text, errors),
+            Err(e) => errors.push(format!("cannot read {}: {e}", file.display())),
+        }
+    }
+}
+
+/// 1-based numbers of non-comment lines mentioning `module` (`a::b`): either the full path,
+/// or its last segment as a word on a line that also names the first segment
+/// (catches `use a::{b, ..}`).
+fn mentions_module(source: &str, module: &str) -> Vec<usize> {
+    let (first, last) = module.rsplit_once("::").unwrap_or(("", module));
+    source
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| {
+            let code = line.split("//").next().unwrap_or_default();
+            code.contains(module)
+                || (!first.is_empty() && code.contains(first) && contains_word(code, last))
+        })
+        .map(|(idx, _)| idx.saturating_add(1))
+        .collect()
 }
 
 /// Where a workspace member lives: `xtask/` or `crates/<name>/`.
@@ -138,6 +206,15 @@ mod tests {
         ));
         assert!(!has_workspace_lints("[lints]\nworkspace = false\n"));
         assert!(!has_workspace_lints("[package]\nname = \"x\"\n"));
+    }
+
+    #[test]
+    fn finds_restricted_module_mentions() {
+        let src = "use gscore_model::interop::from_guitarpro;\n\
+                   use gscore_model::{interop, Song};\n\
+                   // gscore_model::interop in a comment\n\
+                   let interop = 1;\n";
+        assert_eq!(mentions_module(src, "gscore_model::interop"), [1, 2]);
     }
 
     #[test]

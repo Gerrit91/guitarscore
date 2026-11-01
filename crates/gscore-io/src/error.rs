@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use gscore_model::ModelError;
+
 /// Everything that can go wrong while converting between bytes and a `Song`.
 #[derive(Debug)]
 pub enum IoError {
@@ -13,6 +15,8 @@ pub enum IoError {
     Unsupported(&'static str),
     /// The file parsed, but holds values the model cannot represent.
     ParseError(String),
+    /// The file parsed, but the song breaks the model's invariants.
+    InvalidSong(ModelError),
     /// The song could not be serialized.
     WriteError(String),
 }
@@ -24,9 +28,17 @@ impl fmt::Display for IoError {
             IoError::UnsupportedFormat(msg) => write!(f, "Unsupported format: {msg}"),
             IoError::Unsupported(what) => write!(f, "Not supported yet: {what}"),
             IoError::ParseError(msg) => write!(f, "Parse error: {msg}"),
+            IoError::InvalidSong(err) => write!(f, "{err}"),
             IoError::WriteError(msg) => write!(f, "Write error: {msg}"),
         }
     }
 }
 
-impl std::error::Error for IoError {}
+impl std::error::Error for IoError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            IoError::InvalidSong(err) => Some(err),
+            _ => None,
+        }
+    }
+}

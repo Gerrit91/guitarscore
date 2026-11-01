@@ -3,9 +3,11 @@
 //! Checks, collecting every violation before failing:
 //! 1. every workspace crate is registered in [`LAYERS`];
 //! 2. a crate depends only on workspace crates in strictly lower layers;
-//! 3. restricted third-party crates (GUI, audio devices) are used only where allowed;
-//! 4. every crate opts into `[workspace.lints]`, and the core crates avoid std APIs that
-//!    do not work on wasm (see [`crate::source_scan`]);
+//! 3. restricted third-party crates (GUI, audio devices, `guitarpro`) are used only where
+//!    allowed;
+//! 4. every crate opts into `[workspace.lints]`, the core crates avoid std APIs that do not
+//!    work on wasm, and restricted modules (`gscore_model::interop`) are used only where
+//!    allowed (see [`crate::source_scan`]);
 //! 5. the core crates build for `wasm32-unknown-unknown` (see [`crate::wasm`]).
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -38,10 +40,13 @@ pub(crate) const WASM_CRATES: &[&str] = &[
 /// Workspace members that are tools, not part of the layered application.
 const TOOLS: &[&str] = &["xtask"];
 
-/// Third-party crates that only one workspace crate may depend on directly.
-const RESTRICTED: &[(&str, &[&str])] = &[
-    ("gscore-app", &["egui", "eframe", "winit", "rfd"]),
-    ("gscore-audio", &["cpal", "midir", "rustysynth"]),
+/// Third-party crates that only the listed workspace crates may depend on directly:
+/// (allowed crates, restricted dependencies).
+const RESTRICTED: &[(&[&str], &[&str])] = &[
+    (&["gscore-app"], &["egui", "eframe", "winit", "rfd"]),
+    (&["gscore-audio"], &["cpal", "midir", "rustysynth"]),
+    // Everyone else goes through gscore-model's wrapper (AGENTS.md section 5, decision 1).
+    (&["gscore-model", "gscore-io"], &["guitarpro"]),
 ];
 
 /// GUI crates that no crate below `gscore-app` may reach, even transitively.
@@ -64,6 +69,13 @@ pub(crate) fn run(root: &Path, skip_wasm: bool) -> TaskResult {
     let mut errors = check_graph(&members, &deps);
     errors.extend(source_scan::check_manifests(root, &members));
     errors.extend(source_scan::check_wasm_std_usage(root, WASM_CRATES));
+    // Tools (xtask) mention restricted modules in their own test data; skip them.
+    let app_members: Vec<String> = members
+        .iter()
+        .filter(|m| !TOOLS.contains(&m.as_str()))
+        .cloned()
+        .collect();
+    errors.extend(source_scan::check_restricted_modules(root, &app_members));
     if !errors.is_empty() {
         return Err(format!(
             "layers check found {} problem(s):\n  - {}",
@@ -111,10 +123,11 @@ fn check_graph(members: &[String], deps: &BTreeMap<String, Deps>) -> Vec<String>
                     ));
                 }
             }
-            for (owner, restricted) in RESTRICTED {
-                if restricted.contains(&dep.as_str()) && member != owner {
+            for (allowed, restricted) in RESTRICTED {
+                if restricted.contains(&dep.as_str()) && !allowed.contains(&member.as_str()) {
                     errors.push(format!(
-                        "`{member}` uses `{dep}`, which only `{owner}` may use"
+                        "`{member}` uses `{dep}`, which only {} may use",
+                        allowed.join(", ")
                     ));
                 }
             }
@@ -234,9 +247,13 @@ mod tests {
 
     #[test]
     fn rejects_unregistered_crates_and_restricted_deps() {
-        let (m, d) = graph(&[("gscore-new", &[]), ("gscore-play", &["cpal", "egui"])]);
-        // unregistered; cpal not allowed; egui not allowed directly; egui reached below app
-        assert_eq!(check_graph(&m, &d).len(), 4);
+        let (m, d) = graph(&[
+            ("gscore-new", &[]),
+            ("gscore-play", &["cpal", "egui", "guitarpro"]),
+            ("gscore-io", &["guitarpro"]),
+        ]);
+        // unregistered; cpal, egui and guitarpro not allowed in play; egui reached below app
+        assert_eq!(check_graph(&m, &d).len(), 5);
     }
 
     #[test]

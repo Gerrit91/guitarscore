@@ -20,7 +20,7 @@ mod tests {
 
     #[test]
     fn export_is_reported_as_unsupported() {
-        let song = Song::new(String::new(), String::new(), 120, Vec::new());
+        let song = Song::default();
         assert!(matches!(
             export_guitar_pro_to_bytes(&song),
             Err(IoError::Unsupported(_))

@@ -300,6 +300,9 @@ dependencies = [
 [[package]]
 name = "gscore-model"
 version = "0.1.0"
+dependencies = [
+ "guitarpro",
+]
 
 [[package]]
 name = "gscore-play"
