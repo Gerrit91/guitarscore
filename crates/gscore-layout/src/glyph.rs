@@ -37,7 +37,64 @@ pub enum Glyph {
     Trill,
     /// Three tremolo strokes (`tremolo3`).
     Tremolo3,
+    /// Treble clef (`gClef`).
+    GClef,
+    /// Bass clef (`fClef`).
+    FClef,
+    /// Whole-note head (`noteheadWhole`).
+    NoteheadWhole,
+    /// Half-note head (`noteheadHalf`).
+    NoteheadHalf,
+    /// Filled head of quarter and shorter notes (`noteheadBlack`).
+    NoteheadBlack,
+    /// Cross head of a dead note (`noteheadXBlack`).
+    NoteheadX,
+    /// Sharp (`accidentalSharp`).
+    Sharp,
+    /// Natural (`accidentalNatural`).
+    Natural,
+    /// The flag of an unbeamed eighth or shorter note (`flag8thUp` ... `flag128thDown`).
+    Flag(Flag),
 }
+
+/// A flag: how many beams it stands for (1 for an eighth, up to 5 for a 128th) and
+/// whether the stem points up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Flag {
+    beams: u8,
+    up: bool,
+}
+
+impl Flag {
+    /// The flag of a note with `beams` beams (1-5), on a stem pointing up or down.
+    pub fn new(beams: u8, up: bool) -> Option<Self> {
+        (1..=5).contains(&beams).then_some(Flag { beams, up })
+    }
+
+    /// Position in SMuFL's flag range: eighth up, eighth down, 16th up, ...
+    fn index(self) -> u8 {
+        self.beams
+            .saturating_sub(1)
+            .saturating_mul(2)
+            .saturating_add(u8::from(!self.up))
+    }
+}
+
+/// SMuFL names of the flags, in code point order from `flag8thUp` (U+E240).
+const FLAG_NAMES: [&str; 10] = [
+    "flag8thUp",
+    "flag8thDown",
+    "flag16thUp",
+    "flag16thDown",
+    "flag32ndUp",
+    "flag32ndDown",
+    "flag64thUp",
+    "flag64thDown",
+    "flag128thUp",
+    "flag128thDown",
+];
+/// SMuFL code point of `flag8thUp`; the other flags follow it.
+const FLAG_FIRST: u32 = 0xE240;
 
 /// A decimal digit, 0 to 9.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -62,6 +119,10 @@ impl Glyph {
     /// Every glyph, for tests and font checks.
     pub fn all() -> impl Iterator<Item = Glyph> {
         let digits = (0..=9).filter_map(Digit::new).map(Glyph::TimeSigDigit);
+        let flags = (1..=5)
+            .flat_map(|beams| [true, false].map(|up| Flag::new(beams, up)))
+            .flatten()
+            .map(Glyph::Flag);
         [
             Glyph::TabClef6,
             Glyph::TabClef4,
@@ -77,9 +138,18 @@ impl Glyph {
             Glyph::MetronomeQuarter,
             Glyph::Trill,
             Glyph::Tremolo3,
+            Glyph::GClef,
+            Glyph::FClef,
+            Glyph::NoteheadWhole,
+            Glyph::NoteheadHalf,
+            Glyph::NoteheadBlack,
+            Glyph::NoteheadX,
+            Glyph::Sharp,
+            Glyph::Natural,
         ]
         .into_iter()
         .chain(digits)
+        .chain(flags)
     }
 
     /// The SMuFL glyph name.
@@ -111,6 +181,18 @@ impl Glyph {
             Glyph::MetronomeQuarter => "metNoteQuarterUp",
             Glyph::Trill => "ornamentTrill",
             Glyph::Tremolo3 => "tremolo3",
+            Glyph::GClef => "gClef",
+            Glyph::FClef => "fClef",
+            Glyph::NoteheadWhole => "noteheadWhole",
+            Glyph::NoteheadHalf => "noteheadHalf",
+            Glyph::NoteheadBlack => "noteheadBlack",
+            Glyph::NoteheadX => "noteheadXBlack",
+            Glyph::Sharp => "accidentalSharp",
+            Glyph::Natural => "accidentalNatural",
+            Glyph::Flag(flag) => FLAG_NAMES
+                .get(usize::from(flag.index()))
+                .copied()
+                .unwrap_or("flag8thUp"),
         }
     }
 
@@ -132,6 +214,15 @@ impl Glyph {
             Glyph::MetronomeQuarter => 0xECA5,
             Glyph::Trill => 0xE566,
             Glyph::Tremolo3 => 0xE222,
+            Glyph::GClef => 0xE050,
+            Glyph::FClef => 0xE062,
+            Glyph::NoteheadWhole => 0xE0A2,
+            Glyph::NoteheadHalf => 0xE0A3,
+            Glyph::NoteheadBlack => 0xE0A4,
+            Glyph::NoteheadX => 0xE0A9,
+            Glyph::Sharp => 0xE262,
+            Glyph::Natural => 0xE261,
+            Glyph::Flag(flag) => FLAG_FIRST.saturating_add(u32::from(flag.index())),
         };
         // All codes above are in the Private Use Area, which is valid `char` range.
         char::from_u32(code).unwrap_or(char::REPLACEMENT_CHARACTER)
@@ -181,6 +272,11 @@ mod tests {
             ["timeSig1", "timeSig2"]
         );
         assert_eq!(Glyph::rest(8), Some(Glyph::Rest8th));
+        let flag = |beams, up| Glyph::Flag(Flag::new(beams, up).unwrap());
+        assert_eq!(flag(1, true).name(), "flag8thUp");
+        assert_eq!(flag(2, false).name(), "flag16thDown");
+        assert_eq!(flag(5, false).codepoint(), '\u{E249}');
+        assert_eq!(Flag::new(6, true), None);
         assert_eq!(Glyph::rest(3), None);
         let mut names: Vec<_> = Glyph::all().map(Glyph::name).collect();
         let count = names.len();

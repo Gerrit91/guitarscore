@@ -5,19 +5,19 @@
 //! and document revision once editing needs fast relayout (M8); placing measures into
 //! systems only chooses an x position and a stretch factor.
 
+mod columns;
 mod draw;
 
-use std::collections::BTreeMap;
-
-use gscore_model::{
-    BeatKind, BeatView, Duration, MeasureIndex, MeasureView, NoteKind, TimeSignature,
-};
+use gscore_model::{BeatView, Duration, MeasureIndex, MeasureView, TimeSignature};
 
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point};
 use crate::error::LayoutError;
 use crate::glyph::Glyph;
-use crate::ornaments::{self, ColumnMarks, Fret, NoteMarks};
+use crate::notation::{self, NotationItem};
+use crate::ornaments::{ColumnMarks, Fret};
+
+use columns::{beat_starts, column_items};
 
 /// Space before and after a time signature.
 const TIME_SIG_PAD: (f32, f32) = (0.8, 0.6);
@@ -31,6 +31,14 @@ const DOT_GAP: f32 = 0.3;
 const UNREADABLE: &str = "?";
 /// How far a measure number sits above the staff (to its baseline).
 const MEASURE_NUMBER_RISE: f32 = 0.8;
+
+/// Where a system's staves are: the tab's top line, and the notation staff's top line if
+/// notation is shown.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Tops {
+    pub(crate) tab: f32,
+    pub(crate) notation: Option<f32>,
+}
 
 /// A measure, laid out independently of its position.
 #[derive(Debug, Clone, PartialEq)]
@@ -60,6 +68,10 @@ struct Column {
     items: Vec<Item>,
     /// Effects that belong to the beat rather than to one note.
     marks: ColumnMarks,
+    /// What the notation staff shows here (first voice), if notation is on.
+    notation: Option<NotationItem>,
+    /// The beat this column starts in (beams join notes within one beat).
+    beat: u64,
 }
 
 /// The notes of one column and the effects that belong to its beat.
@@ -67,6 +79,8 @@ struct Column {
 struct ColumnData {
     items: Vec<Item>,
     marks: ColumnMarks,
+    notation: Option<NotationItem>,
+    beat: u64,
 }
 
 /// One thing drawn in a column.
@@ -89,6 +103,7 @@ impl MeasureLayout {
         let signature = measure.time_signature()?;
         let time_signature = show_time_signature.then(|| TimeSigLayout::new(signature, ctx));
         let starts = beat_starts(measure, signature)?;
+        let beat_length = as_f64(beat_length(signature)?);
         let mut columns: Vec<(ColumnData, f32)> = Vec::with_capacity(starts.onsets.len());
         for (onset, beats) in &starts.onsets {
             let next = starts
@@ -97,7 +112,18 @@ impl MeasureLayout {
                 .next()
                 .map_or(starts.end, |(next, _)| *next);
             let length = next.checked_sub(*onset).map_or(0.0, as_f64);
-            columns.push((column_items(beats, ctx)?, ctx.options.spacing.after(length)));
+            let plain: Vec<BeatView<'_>> = beats.iter().map(|&(_, beat)| beat).collect();
+            let mut data = column_items(&plain, ctx)?;
+            if let Some(notation) = &ctx.notation {
+                data.notation = notation::column_item(beats, notation)?;
+            }
+            // A tiny epsilon keeps exact beat starts (computed in floats) in their beat.
+            data.beat = if beat_length > 0.0 {
+                (as_f64(*onset) / beat_length + 1e-9).floor() as u64
+            } else {
+                0
+            };
+            columns.push((data, ctx.options.spacing.after(length)));
         }
         if columns.is_empty() {
             // An empty measure still gets the room its length asks for.
@@ -105,6 +131,8 @@ impl MeasureLayout {
                 ColumnData {
                     items: Vec::new(),
                     marks: ColumnMarks::default(),
+                    notation: None,
+                    beat: 0,
                 },
                 ctx.options.spacing.after(as_f64(starts.end)),
             ));
@@ -115,24 +143,35 @@ impl MeasureLayout {
         let min_gap = ctx.options.spacing.min_gap;
         let barline_padding = ctx.options.spacing.barline_padding.max(0.0);
         let edge_padding = barline_padding.max(min_gap);
-        let half_widths: Vec<f32> = columns
+        notation::assign_accidentals(columns.iter_mut().filter_map(|(d, _)| d.notation.as_mut()));
+        // Room each column needs left and right of its center: the tab's fret numbers are
+        // symmetric, notation is not (accidentals left; dots and flags right).
+        let beamed =
+            notation::beamed_columns(columns.iter().map(|(d, _)| (d.notation.as_ref(), d.beat)));
+        let extents: Vec<(f32, f32)> = columns
             .iter()
-            .map(|(data, _)| half_width(&data.items, ctx))
+            .zip(&beamed)
+            .map(|((data, _), &beamed)| {
+                let tab = half_width(&data.items, ctx);
+                let (left, right) = data.notation.as_ref().map_or((0.0, 0.0), |item| {
+                    notation::extent(item, beamed, &ctx.fonts.music)
+                });
+                (tab.max(left), tab.max(right))
+            })
             .collect();
-        let lead = half_widths
+        let lead = extents
             .first()
-            .map_or(MIN_LEAD, |first| (first + edge_padding).max(MIN_LEAD));
+            .map_or(MIN_LEAD, |(left, _)| (left + edge_padding).max(MIN_LEAD));
         let columns = columns
             .into_iter()
             .enumerate()
             .map(|(i, (data, space))| {
-                let own = half_widths.get(i).copied().unwrap_or_default();
-                let next = half_widths
+                let own = extents.get(i).map_or(0.0, |(_, right)| *right);
+                let next = extents
                     .get(i.saturating_add(1))
-                    .copied()
-                    .unwrap_or_default();
+                    .map_or(0.0, |(left, _)| *left);
                 // The last column ends at the barline and needs the wider edge padding.
-                let padding = if i.saturating_add(1) < half_widths.len() {
+                let padding = if i.saturating_add(1) < extents.len() {
                     min_gap
                 } else {
                     edge_padding
@@ -141,6 +180,8 @@ impl MeasureLayout {
                     space: space.max(own + next + padding),
                     items: data.items,
                     marks: data.marks,
+                    notation: data.notation,
+                    beat: data.beat,
                 }
             })
             .collect();
@@ -193,26 +234,37 @@ impl TimeSigLayout {
     }
 
     fn draw(&self, x: f32, top: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
+        self.draw_at(x, top + ctx.staff.middle(), self.scale, ctx, ops);
+    }
+
+    /// Draws the digits centered on `middle` at `scale` (1 on a five-line staff).
+    pub(super) fn draw_at(
+        &self,
+        x: f32,
+        middle: f32,
+        scale: f32,
+        ctx: &Context<'_>,
+        ops: &mut Vec<DrawOp>,
+    ) {
         let font = &ctx.fonts.music;
         let row_width = |glyphs: &[Glyph]| -> f32 {
-            glyphs.iter().map(|g| font.advance(*g)).sum::<f32>() * self.scale
+            glyphs.iter().map(|g| font.advance(*g)).sum::<f32>() * scale
         };
         let inner = self.width - TIME_SIG_PAD.0 - TIME_SIG_PAD.1;
-        let middle = top + ctx.staff.middle();
         // Time signature digits have their origin at their vertical middle.
         for (glyphs, y) in [
-            (&self.numerator, middle - self.scale),
-            (&self.denominator, middle + self.scale),
+            (&self.numerator, middle - scale),
+            (&self.denominator, middle + scale),
         ] {
             let mut at = x + TIME_SIG_PAD.0 + (inner - row_width(glyphs)) / 2.0;
             for glyph in glyphs {
                 ops.push(DrawOp::Glyph {
                     glyph: *glyph,
                     at: Point::new(at, y),
-                    scale: self.scale,
+                    scale,
                     color: ColorToken::Notation,
                 });
-                at += font.advance(*glyph) * self.scale;
+                at += font.advance(*glyph) * scale;
             }
         }
     }
@@ -289,124 +341,17 @@ fn half_width(items: &[Item], ctx: &Context<'_>) -> f32 {
         .fold(0.0, f32::max)
 }
 
-/// Beats grouped by when they start, across voices, and where the measure ends.
-struct BeatStarts<'a> {
-    onsets: BTreeMap<Duration, Vec<BeatView<'a>>>,
-    /// The time signature's length, or the longest voice if one is overfull.
-    end: Duration,
-}
-
-fn beat_starts<'a>(
-    measure: MeasureView<'a>,
-    signature: TimeSignature,
-) -> Result<BeatStarts<'a>, LayoutError> {
-    let mut onsets: BTreeMap<Duration, Vec<BeatView<'a>>> = BTreeMap::new();
-    let mut end = signature.measure_length();
-    for voice in measure.voices() {
-        let mut at = Duration::new(0, 1)?;
-        for beat in voice.beats() {
-            if beat.kind() == BeatKind::Empty {
-                continue;
-            }
-            onsets.entry(at).or_default().push(beat);
-            at = at.checked_add(beat.duration()?)?;
-        }
-        end = end.max(at);
-    }
-    Ok(BeatStarts { onsets, end })
-}
-
-/// The fret numbers of a column's beats; a rest if no beat has notes.
-fn column_items(beats: &[BeatView<'_>], ctx: &Context<'_>) -> Result<ColumnData, LayoutError> {
-    let mut items = Vec::new();
-    let mut marks = ColumnMarks::default();
-    for beat in beats {
-        if let Some(legato) = beat.legato() {
-            marks.legato_origin = marks.legato_origin || legato.origin;
-            marks.legato_destination = marks.legato_destination || legato.destination;
-        }
-        if marks.whammy.is_none() {
-            marks.whammy = beat.whammy_bar();
-        }
-        marks.add_vibrato(beat.vibrato());
-    }
-    for beat in beats.iter().filter(|b| b.kind() == BeatKind::Normal) {
-        for note in beat.notes() {
-            // A fret the model cannot read (it lists those as issues) is shown as `?`, so
-            // one odd note does not hide the whole track.
-            let fret = || {
-                note.fret()
-                    .map_or_else(|_| UNREADABLE.to_owned(), |f| f.get().to_string())
-            };
-            let fret_value = note.fret().ok().map(|f| f.get());
-            // A tie continuation is not written in tablature: the origin shows the number
-            // and a curve marks the tie. Its column stays so the curve has an endpoint.
-            let (base, tie_destination) = match note.kind() {
-                NoteKind::Normal => (fret(), false),
-                NoteKind::Tie => (String::new(), true),
-                NoteKind::Dead => ("x".to_owned(), false),
-                NoteKind::Rest | NoteKind::Unknown => continue,
-            };
-            // Notes on strings the staff does not have are issues too; there is no line to
-            // draw them on.
-            let Some(line) = note
-                .string()
-                .ok()
-                .map(|s| usize::from(s.get()).saturating_sub(1))
-                .filter(|&line| line < ctx.staff.lines())
-            else {
-                continue;
-            };
-            if tie_destination {
-                items.push(Item::Fret(Fret {
-                    line,
-                    text: String::new(),
-                    width: 0.0,
-                    marks: NoteMarks::new(),
-                    fret: fret_value,
-                    tie_destination: true,
-                }));
-                continue;
-            }
-            let mut note_marks = NoteMarks::new();
-            note_marks.hammer = note.is_hammer();
-            note_marks.bend = note.bend();
-            note_marks.slides = note.slides().collect();
-            note_marks.harmonic = note.harmonic();
-            marks.add_vibrato(note.vibrato());
-            note_marks.accent = note.accent();
-            note_marks.staccato = note.is_staccato();
-            note_marks.trill = note.has_trill();
-            note_marks.tremolo_picking = note.has_tremolo_picking();
-            note_marks.palm_mute = note.is_palm_muted();
-            note_marks.let_ring = note.is_let_ring();
-            let mut text = ornaments::fret_text(&base, &note_marks);
-            if note.is_ghost() {
-                text = format!("({text})");
-            }
-            let width = ctx.fonts.text.width(&text, ctx.options.fret_size);
-            items.push(Item::Fret(Fret {
-                line,
-                text,
-                width,
-                marks: note_marks,
-                fret: fret_value,
-                tie_destination: false,
-            }));
-        }
-    }
-    if items.is_empty()
-        && let Some(rest) = beats.iter().find(|b| b.kind() == BeatKind::Rest)
-    {
-        let value = rest.note_value()?;
-        if let Some(glyph) = Glyph::rest(value.value()) {
-            items.push(Item::Rest {
-                glyph,
-                dots: value.dots(),
-            });
-        }
-    }
-    Ok(ColumnData { items, marks })
+/// The beat notes are beamed within: a dotted quarter in compound meters (6/8, 9/8,
+/// 12/8), a quarter otherwise.
+fn beat_length(signature: TimeSignature) -> Result<Duration, LayoutError> {
+    let compound = signature.denominator() == 8
+        && signature.numerator() > 3
+        && signature.numerator().is_multiple_of(3);
+    Ok(if compound {
+        Duration::new(3, 8)?
+    } else {
+        Duration::new(1, 4)?
+    })
 }
 
 /// A duration in whole notes, as a float for spacing.
