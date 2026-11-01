@@ -179,7 +179,7 @@ const MAX_BCFS_BLOCKS: usize = (SECTOR_SIZE - 0x94) / 4;
 /// Serialize a `Song` to GP6 (.gpx) bytes.
 pub fn write_gpx_bytes(song: &crate::io::Song) -> GpResult<Vec<u8>> {
     use crate::io::gpif_export::SongGpifExportOps;
-    let xml = song.write_gpif_xml();
+    let xml = song.write_gpif_xml()?;
     let bcfs = pack_bcfs("score.gpif", xml.as_bytes())?;
     Ok(compress_bcfz(&bcfs))
 }
@@ -190,7 +190,7 @@ pub fn write_gp_bytes(song: &crate::io::Song) -> GpResult<Vec<u8>> {
     use std::io::Write as IoWrite;
     use zip::write::SimpleFileOptions;
 
-    let xml = song.write_gpif_xml();
+    let xml = song.write_gpif_xml()?;
     let buf = Vec::new();
     let cursor = std::io::Cursor::new(buf);
     let mut zip = zip::ZipWriter::new(cursor);

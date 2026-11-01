@@ -195,17 +195,18 @@ fn build_bend_effect(origin: f64, destination: f64) -> BendEffect {
     bend
 }
 
-/// GuitarScore addition: a whammy-bar shape (values in hundredths of a semitone, offsets in
-/// percent of the beat) as three points: origin, middle and destination. The middle is kept
-/// as stored, so a dip (down and back up, origin = destination) survives; it used to be
-/// averaged away. `None` for a shape that does not move.
-pub(crate) fn build_whammy_effect(
+/// GuitarScore addition: the three points of a GPIF bend or whammy shape (values in
+/// hundredths of a semitone, offsets in percent of the note), in quarter tones and
+/// positions 0-12. The middle is kept as stored, so a bend-and-release or a whammy dip
+/// (origin = destination) survives; it used to be averaged away. `None` for a shape that
+/// does not move from 0.
+fn shape_points(
     origin: f64,
     middle: Option<f64>,
     destination: f64,
     middle_offset: Option<f64>,
     destination_offset: Option<f64>,
-) -> Option<BendEffect> {
+) -> Option<Vec<BendPoint>> {
     let middle = middle.unwrap_or((origin + destination) / 2.0);
     if origin == 0.0 && middle == 0.0 && destination == 0.0 {
         return None;
@@ -215,6 +216,33 @@ pub(crate) fn build_whammy_effect(
         (percent.unwrap_or(default).clamp(0.0, 100.0) * f64::from(BEND_EFFECT_MAX_POSITION) / 100.0)
             .round() as u8
     };
+    let point = |position, value| BendPoint {
+        position,
+        value,
+        vibrato: false,
+    };
+    Some(vec![
+        point(0, value(origin)),
+        point(position(middle_offset, 50.0), value(middle)),
+        point(position(destination_offset, 100.0), value(destination)),
+    ])
+}
+
+/// GuitarScore addition: a whammy-bar effect from its GPIF shape (see [`shape_points`]).
+pub(crate) fn build_whammy_effect(
+    origin: f64,
+    middle: Option<f64>,
+    destination: f64,
+    middle_offset: Option<f64>,
+    destination_offset: Option<f64>,
+) -> Option<BendEffect> {
+    let points = shape_points(
+        origin,
+        middle,
+        destination,
+        middle_offset,
+        destination_offset,
+    )?;
     let mut bend = BendEffect::default();
     bend.kind = if destination == origin {
         BendType::Dip
@@ -223,23 +251,43 @@ pub(crate) fn build_whammy_effect(
     } else {
         BendType::ReleaseUp
     };
-    bend.points = vec![
-        BendPoint {
-            position: 0,
-            value: value(origin),
-            vibrato: false,
-        },
-        BendPoint {
-            position: position(middle_offset, 50.0),
-            value: value(middle),
-            vibrato: false,
-        },
-        BendPoint {
-            position: position(destination_offset, 100.0),
-            value: value(destination),
-            vibrato: false,
-        },
-    ];
+    bend.points = points;
+    Some(bend)
+}
+
+/// GuitarScore addition: a note bend from its GPIF shape (see [`shape_points`]). The kind
+/// follows the shape: up (destination higher), release (lower), bend-and-release (back to
+/// the origin through a higher middle), prebend (held above 0).
+pub(crate) fn build_note_bend(
+    origin: f64,
+    middle: Option<f64>,
+    destination: f64,
+    middle_offset: Option<f64>,
+    destination_offset: Option<f64>,
+) -> Option<BendEffect> {
+    let points = shape_points(
+        origin,
+        middle,
+        destination,
+        middle_offset,
+        destination_offset,
+    )?;
+    let middle = middle.unwrap_or((origin + destination) / 2.0);
+    let mut bend = BendEffect::default();
+    bend.kind = if destination > origin {
+        BendType::Bend
+    } else if destination < origin {
+        BendType::ReleaseUp
+    } else if middle > origin {
+        BendType::BendRelease
+    } else if middle < origin {
+        BendType::PrebendRelease
+    } else {
+        BendType::Prebend
+    };
+    let highest = origin.max(middle).max(destination);
+    bend.value = (highest / GP_BEND_SEMITONE as f64 * 2.0).round() as i16;
+    bend.points = points;
     Some(bend)
 }
 
@@ -786,7 +834,10 @@ fn convert_note(
     };
 
     let mut bend_origin: Option<f64> = None;
+    let mut bend_middle: Option<f64> = None;
     let mut bend_dest: Option<f64> = None;
+    let mut bend_middle_offset: Option<f64> = None;
+    let mut bend_dest_offset: Option<f64> = None;
     let mut harmonic_fret: Option<f64> = None;
 
     for prop in &g_note.properties.properties {
@@ -814,6 +865,10 @@ fn convert_note(
             "BendDestinationValue" => {
                 bend_dest = prop.float;
             }
+            // GuitarScore fix: the middle and the offsets carry bend-and-release shapes.
+            "BendMiddleValue" => bend_middle = prop.float,
+            "BendMiddleOffset1" => bend_middle_offset = prop.float,
+            "BendDestinationOffset" => bend_dest_offset = prop.float,
             "Slide" => {
                 if let Some(flags) = prop.flags {
                     s_note.effect.slides = parse_slide_flags(flags);
@@ -846,10 +901,14 @@ fn convert_note(
     }
 
     // Bend
-    if let (Some(orig), Some(dest)) = (bend_origin, bend_dest)
-        && (orig != 0.0 || dest != 0.0)
-    {
-        s_note.effect.bend = Some(build_bend_effect(orig, dest));
+    if let (Some(orig), Some(dest)) = (bend_origin, bend_dest) {
+        s_note.effect.bend = build_note_bend(
+            orig,
+            bend_middle,
+            dest,
+            bend_middle_offset,
+            bend_dest_offset,
+        );
     }
 
     // Guitar Pro's property order puts HarmonicFret before HarmonicType.
@@ -1256,6 +1315,53 @@ mod effect_tests {
         let song_beat = super::convert_beat(&beat, &HashMap::new(), &HashMap::new(), &mut velocity);
         let tremolo = song_beat.effect.tremolo_bar.expect("whammy imported");
         assert_eq!(tremolo.points.last().map(|point| point.value), Some(-12));
+    }
+
+    /// A bend that goes up and is released again (origin = destination = 0) used to be read
+    /// as no bend at all, because the reader ignored the middle value.
+    #[test]
+    fn bend_and_release_survives_reading_and_writing() {
+        use crate::io::Song;
+        use crate::model::BendType;
+        let bend = super::build_note_bend(0.0, Some(50.0), 0.0, Some(50.0), Some(100.0))
+            .expect("a bend-and-release moves");
+        assert_eq!(bend.kind, BendType::BendRelease);
+        let values: Vec<i8> = bend.points.iter().map(|p| p.value).collect();
+        assert_eq!(values, [0, 2, 0]);
+        assert_eq!(
+            super::build_note_bend(0.0, Some(25.0), 50.0, None, None).map(|b| b.kind),
+            Some(BendType::Bend)
+        );
+
+        let mut song = Song::default();
+        song.tracks = vec![crate::model::Track::default()];
+        song.measure_headers = vec![Default::default()];
+        let mut beat = crate::model::Beat::default();
+        beat.notes.push(crate::model::Note {
+            string: 1,
+            value: 7,
+            kind: crate::model::NoteType::Normal,
+            ..Default::default()
+        });
+        beat.notes[0].effect.bend = Some(bend);
+        song.tracks[0].measures = vec![crate::model::Measure {
+            voices: vec![crate::model::Voice {
+                beats: vec![beat],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }];
+        let bytes = song.write_gp().expect("write");
+        let mut reread = Song::default();
+        reread.read_gp(&bytes).expect("reread");
+        let bend = reread.tracks[0].measures[0].voices[0].beats[0].notes[0]
+            .effect
+            .bend
+            .clone()
+            .expect("the bend is still there");
+        assert_eq!(bend.kind, BendType::BendRelease);
+        let values: Vec<i8> = bend.points.iter().map(|p| p.value).collect();
+        assert_eq!(values, [0, 2, 0]);
     }
 
     /// A dip goes down and comes back (origin = destination = 0); the middle used to be

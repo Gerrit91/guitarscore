@@ -115,4 +115,15 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     Dips (down and back up) used to vanish on save (54 beats in 10 owner files). Whether
     Guitar Pro accepts the written element is not verified. Test
     `effect_tests::whammy_dip_survives_writing`.
+21. Note bends (`src/io/gpif_import.rs`, `src/io/gpif_export.rs`): the reader keeps
+    `BendMiddleValue` and the offsets as a three-point shape (`build_note_bend`, sharing
+    `shape_points` with the whammy bar) and derives the kind from it (bend, release,
+    bend-and-release, prebend); bend-and-release (origin = destination) was read as no bend
+    at all. The writer writes origin, middle (furthest point) and destination with offsets;
+    it used `points[2]` and skipped bends with fewer than three points. Test
+    `effect_tests::bend_and_release_survives_reading_and_writing`.
+22. `src/io/gpif_export.rs` is held to the workspace's no-panic lints: `write_gpif_xml`
+    returns `GpResult`; ids and bar numbers are computed with checked arithmetic; a track
+    with fewer measures than the song is an error instead of an index panic; simile marks are
+    stored instead of parsed back out of a string (which could panic) and are XML-escaped.
 

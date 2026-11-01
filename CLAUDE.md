@@ -46,7 +46,7 @@ crates/
 
 ## Branching Strategy
 
-- `main` branch contains stable code (M2 in progress; see `docs/devlog.md`)
+- `main` branch contains stable code (M3 done, M4 next; see `docs/devlog.md`)
 - Feature branches should be used for implementation
 - Pull requests should include test coverage and validation with:
   - `cargo test --workspace`

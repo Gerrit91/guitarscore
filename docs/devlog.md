@@ -379,3 +379,23 @@ Test-first with `roundtrip-check` and the formerly ignored tests:
 - Model tests for the effect accessors (bends, harmonic nodes, slides, simple note and beat
   effects); docs/guitarpro.md lists the harmonic-fret fix (19).
 - Goldens: only `legend.txt` changed; all dump goldens are byte-identical after the split.
+
+## 2026-11-01 — M3 complete: saving
+
+- Verification: `differences()` compares beat and note effects field by field. That found
+  the GP7 writer dropping whammy dips (10 band files) and, behind it, the reader dropping
+  bend-and-release (214 notes): both ignored the GPIF middle value. Reader and writer now
+  keep origin/middle/destination for bends and whammy (docs/guitarpro.md 20, 21). Complex
+  bends (model kinds, `dump` release notation) are postponed by the owner (gaps #4).
+- `gscore_session::save`: GP7 only; verify in memory, refuse losses unless allowed; temp
+  file + fsync, `.bak` on first overwrite, atomic rename, directory fsync, byte-compare
+  after re-reading from disk. `gscore-cli convert <file> -o <out> [--to] [--allow-losses]`.
+- The GP7 XML writer is under the no-panic lints; `write_gpif_xml` returns `GpResult`;
+  simile marks no longer round-trip through string slicing (docs/guitarpro.md 22).
+- Results: all 26 band files and 9 test files round-trip and `convert` to GP7 with no
+  differences; converted test files show identical `info` (except the format) and `dump`.
+- Tests: 126.
+
+End-of-M3 review: gscore-session now depends on gscore-io/gscore-model (layers 2/1, fine);
+the CLI gained `format_arg` shared by `convert` and `roundtrip-check`. Open risks: whether
+Guitar Pro opens our GP7 output (unverified), and the remaining unlinted `gscore-gp` code.

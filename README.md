@@ -8,14 +8,17 @@ GuitarScore must never crash and never lose your work; that outranks features.
 
 ## Status
 
-Early development. There is no editor window yet; what works today is reading Guitar Pro
-files on the command line:
+Early development. There is no editor window yet; what works today is reading and saving
+Guitar Pro files on the command line:
 
 - **Import:** Guitar Pro 3, 4, 5 (`.gp3`–`.gp5`), 6 (`.gpx`) and 7+ (`.gp`), detected from
   the file content. Malformed files give an error, never a crash.
 - **`gscore-cli info`:** song information, tracks, instruments and tunings (with names such
   as "Drop D" or "DADGAD"), and problems such as unfilled measures.
 - **`gscore-cli dump`:** the tablature as ASCII tab.
+- **`gscore-cli convert`:** saves a file as Guitar Pro 7+ (`.gp`). The song is checked
+  before anything is written, the previous file is kept as `.bak`, and the new file
+  replaces it atomically.
 
 Milestones, progress and known gaps: `AGENTS.md` (section 9), `docs/devlog.md`,
 `docs/gaps.md`.
