@@ -481,7 +481,7 @@ fn differences_name_what_and_where() {
     assert_eq!(text.len(), 2, "{text:?}");
     assert!(text[0].starts_with("song: title"), "{text:?}");
     assert!(
-        text[1].starts_with("track 1, measure 1, voice 1, beat 2: beat"),
+        text[1].starts_with("track 1, measure 1, voice 1, beat 2, string 2: fret"),
         "{text:?}"
     );
 }
@@ -641,4 +641,26 @@ fn beat_effects() {
     assert_eq!(beat.slap(), Some(SlapKind::Popping));
     assert!(beat.has_fade_in());
     assert!(!beat.has_whammy_bar());
+}
+
+#[test]
+fn differences_include_note_and_beat_effects() {
+    let before = from_gp(one_measure(vec![beat(1, &[(2, 15)])])).unwrap();
+    let mut gp = one_measure(vec![beat(1, &[(2, 15)])]);
+    let beat = &mut gp.tracks[0].measures[0].voices[0].beats[0];
+    beat.effect.fade_in = true;
+    beat.notes[0].effect.palm_mute = true;
+    beat.notes[0].effect.bend = Some(bend(gscore_gp::BendType::Bend, &[0, 4]));
+    let after = from_gp(gp).unwrap();
+    let text: Vec<String> = differences(&before, &after)
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(text.len(), 3, "{text:?}");
+    assert!(text[0].ends_with("fade in false became true"), "{text:?}");
+    assert!(
+        text[1].contains("beat 1, string 2: bend None became Some"),
+        "{text:?}"
+    );
+    assert!(text[2].ends_with("palm mute false became true"), "{text:?}");
 }

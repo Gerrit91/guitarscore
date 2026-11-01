@@ -396,8 +396,17 @@ pub struct BeatPropertiesWrapper {
 pub struct Whammy {
     #[serde(rename = "@originValue", default)]
     pub origin_value: f64,
+    /// GuitarScore addition: the turning point of a dip (down and back up).
+    #[serde(rename = "@middleValue", default)]
+    pub middle_value: Option<f64>,
     #[serde(rename = "@destinationValue", default)]
     pub destination_value: f64,
+    /// GuitarScore addition: where the middle and the destination are reached, in percent
+    /// of the beat.
+    #[serde(rename = "@middleOffset1", default)]
+    pub middle_offset: Option<f64>,
+    #[serde(rename = "@destinationOffset", default)]
+    pub destination_offset: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]

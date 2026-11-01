@@ -298,12 +298,28 @@ fn build_beat_xml(
         bxml.push_str("<Fadding>FadeIn</Fadding>");
     }
 
-    // Tremolo bar
+    // Tremolo bar. GuitarScore fix: written as GP7's <Whammy> with origin, middle and
+    // destination (the importer reads it back); the legacy <Tremolo> only held the
+    // destination, so a dip (down and back up) was lost.
     if let Some(trem) = &beat.effect.tremolo_bar
-        && trem.points.len() >= 3
+        && let (Some(first), Some(last)) = (trem.points.first(), trem.points.last())
     {
-        let dest = trem.points[2].value as f64 * GP_BEND_SEMITONE as f64;
-        bxml.push_str(&format!("<Tremolo>{dest}</Tremolo>"));
+        let middle = trem.points.get(trem.points.len() / 2).unwrap_or(first);
+        let value = |p: &BendPoint| f64::from(p.value) * f64::from(GP_BEND_SEMITONE);
+        let offset =
+            |p: &BendPoint| f64::from(p.position) * 100.0 / f64::from(BEND_EFFECT_MAX_POSITION);
+        bxml.push_str(&format!(
+            "<Whammy originValue=\"{:.6}\" middleValue=\"{:.6}\" destinationValue=\"{:.6}\" \
+             originOffset=\"{:.6}\" middleOffset1=\"{:.6}\" middleOffset2=\"{:.6}\" \
+             destinationOffset=\"{:.6}\"/>",
+            value(first),
+            value(middle),
+            value(last),
+            offset(first),
+            offset(middle),
+            offset(middle),
+            offset(last),
+        ));
     }
 
     // Beat properties (Brush, Rasgueado, PickStroke)

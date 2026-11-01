@@ -1,17 +1,19 @@
 //! Comparing two songs: what a save-and-reload cycle (or a conversion) changed.
 //!
 //! Compares what the model exposes: song information, tracks (name, instrument, strings,
-//! tuning), measure time signatures, and every beat (kind, length, notes). Placeholder beats
-//! and empty voices are ignored, because formats differ in how many voice slots they store.
-//! Not compared yet: effects and other data the model has no accessors for.
+//! tuning), measure time signatures, and every beat (kind, length, beat effects) and note
+//! (string, fret, kind, effects). Placeholder beats and empty voices are ignored, because
+//! formats differ in how many voice slots they store. Not compared: data the model has no
+//! accessors for (lyrics, mix tables, grace notes, fingerings, ...).
 
 use std::fmt;
 
 use crate::duration::Duration;
+use crate::effects::{Bend, Harmonic, SlapKind, SlideKind, StrokeDirection};
 use crate::error::ModelError;
 use crate::position::VoiceIndex;
 use crate::song::Song;
-use crate::views::{BeatKind, MeasureView, NoteKind, TrackView, VoiceView};
+use crate::views::{BeatKind, MeasureView, NoteKind, NoteView, TrackView, VoiceView};
 
 /// One difference between two songs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,17 +122,64 @@ fn compare_measure(diff: &mut Diffs, track: &str, a: &MeasureView<'_>, b: &Measu
         let at = format!("{at}, {index}");
         diff.check(&at, "beats", beats_a.len(), beats_b.len());
         for (number, (ba, bb)) in (1_usize..).zip(beats_a.iter().zip(&beats_b)) {
-            diff.check(&format!("{at}, beat {number}"), "beat", ba, bb);
+            compare_beat(diff, &format!("{at}, beat {number}"), ba, bb);
         }
     }
 }
 
-/// What is compared of a beat: kind, length, and notes as (string, fret, kind), by string.
+/// What is compared of a beat: kind, length, beat effects and its notes (by string).
 #[derive(Debug, PartialEq)]
 struct BeatContent {
     kind: BeatKind,
     duration: Result<Duration, ModelError>,
-    notes: Vec<(Option<u8>, Option<u8>, NoteKind)>,
+    pick_stroke: Option<StrokeDirection>,
+    brush_stroke: Option<StrokeDirection>,
+    slap: Option<SlapKind>,
+    fade_in: bool,
+    whammy_bar: bool,
+    notes: Vec<NoteContent>,
+}
+
+/// What is compared of a note: position, kind and every effect the model exposes.
+#[derive(Debug, PartialEq)]
+struct NoteContent {
+    string: Option<u8>,
+    fret: Option<u8>,
+    kind: NoteKind,
+    hammer: bool,
+    bend: Option<Bend>,
+    slides: Vec<SlideKind>,
+    harmonic: Option<Harmonic>,
+    ghost: bool,
+    accent: bool,
+    palm_mute: bool,
+    let_ring: bool,
+    staccato: bool,
+    trill: bool,
+    tremolo_picking: bool,
+    vibrato: bool,
+}
+
+impl NoteContent {
+    fn of(note: &NoteView<'_>) -> Self {
+        NoteContent {
+            string: note.string().ok().map(|s| s.get()),
+            fret: note.fret().ok().map(|f| f.get()),
+            kind: note.kind(),
+            hammer: note.is_hammer(),
+            bend: note.bend(),
+            slides: note.slides().collect(),
+            harmonic: note.harmonic(),
+            ghost: note.is_ghost(),
+            accent: note.is_accented(),
+            palm_mute: note.is_palm_muted(),
+            let_ring: note.is_let_ring(),
+            staccato: note.is_staccato(),
+            trill: note.has_trill(),
+            tremolo_picking: note.has_tremolo_picking(),
+            vibrato: note.has_vibrato(),
+        }
+    }
 }
 
 /// The non-placeholder beats of a voice; a missing voice has none.
@@ -142,22 +191,56 @@ fn beats(voice: Option<VoiceView<'_>>) -> Vec<BeatContent> {
         .beats()
         .filter(|b| b.kind() != BeatKind::Empty)
         .map(|beat| {
-            let mut notes: Vec<_> = beat
-                .notes()
-                .map(|n| {
-                    (
-                        n.string().ok().map(|s| s.get()),
-                        n.fret().ok().map(|f| f.get()),
-                        n.kind(),
-                    )
-                })
-                .collect();
-            notes.sort_by_key(|&(string, _, _)| string);
+            let mut notes: Vec<NoteContent> = beat.notes().map(|n| NoteContent::of(&n)).collect();
+            notes.sort_by_key(|note| note.string);
             BeatContent {
                 kind: beat.kind(),
                 duration: beat.duration(),
+                pick_stroke: beat.pick_stroke(),
+                brush_stroke: beat.brush_stroke(),
+                slap: beat.slap(),
+                fade_in: beat.has_fade_in(),
+                whammy_bar: beat.has_whammy_bar(),
                 notes,
             }
         })
         .collect()
+}
+
+/// Records each field of two beats that differs, then each note's.
+fn compare_beat(diff: &mut Diffs, at: &str, a: &BeatContent, b: &BeatContent) {
+    diff.check(at, "kind", a.kind, b.kind);
+    diff.check(at, "length", &a.duration, &b.duration);
+    diff.check(at, "pick stroke", a.pick_stroke, b.pick_stroke);
+    diff.check(at, "brush stroke", a.brush_stroke, b.brush_stroke);
+    diff.check(at, "slap", a.slap, b.slap);
+    diff.check(at, "fade in", a.fade_in, b.fade_in);
+    diff.check(at, "whammy bar", a.whammy_bar, b.whammy_bar);
+    diff.check(at, "notes", a.notes.len(), b.notes.len());
+    for (na, nb) in a.notes.iter().zip(&b.notes) {
+        let at = match na.string {
+            Some(string) => format!("{at}, string {string}"),
+            None => format!("{at}, note"),
+        };
+        diff.check(&at, "string", na.string, nb.string);
+        diff.check(&at, "fret", na.fret, nb.fret);
+        diff.check(&at, "kind", na.kind, nb.kind);
+        diff.check(&at, "hammer-on/pull-off", na.hammer, nb.hammer);
+        diff.check(&at, "bend", na.bend, nb.bend);
+        diff.check(&at, "slides", &na.slides, &nb.slides);
+        diff.check(&at, "harmonic", na.harmonic, nb.harmonic);
+        diff.check(&at, "ghost note", na.ghost, nb.ghost);
+        diff.check(&at, "accent", na.accent, nb.accent);
+        diff.check(&at, "palm mute", na.palm_mute, nb.palm_mute);
+        diff.check(&at, "let ring", na.let_ring, nb.let_ring);
+        diff.check(&at, "staccato", na.staccato, nb.staccato);
+        diff.check(&at, "trill", na.trill, nb.trill);
+        diff.check(
+            &at,
+            "tremolo picking",
+            na.tremolo_picking,
+            nb.tremolo_picking,
+        );
+        diff.check(&at, "vibrato", na.vibrato, nb.vibrato);
+    }
 }

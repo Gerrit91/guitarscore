@@ -195,6 +195,54 @@ fn build_bend_effect(origin: f64, destination: f64) -> BendEffect {
     bend
 }
 
+/// GuitarScore addition: a whammy-bar shape (values in hundredths of a semitone, offsets in
+/// percent of the beat) as three points: origin, middle and destination. The middle is kept
+/// as stored, so a dip (down and back up, origin = destination) survives; it used to be
+/// averaged away. `None` for a shape that does not move.
+pub(crate) fn build_whammy_effect(
+    origin: f64,
+    middle: Option<f64>,
+    destination: f64,
+    middle_offset: Option<f64>,
+    destination_offset: Option<f64>,
+) -> Option<BendEffect> {
+    let middle = middle.unwrap_or((origin + destination) / 2.0);
+    if origin == 0.0 && middle == 0.0 && destination == 0.0 {
+        return None;
+    }
+    let value = |hundredths: f64| (hundredths / GP_BEND_SEMITONE as f64).round() as i8;
+    let position = |percent: Option<f64>, default: f64| {
+        (percent.unwrap_or(default).clamp(0.0, 100.0) * f64::from(BEND_EFFECT_MAX_POSITION) / 100.0)
+            .round() as u8
+    };
+    let mut bend = BendEffect::default();
+    bend.kind = if destination == origin {
+        BendType::Dip
+    } else if destination < origin {
+        BendType::Dive
+    } else {
+        BendType::ReleaseUp
+    };
+    bend.points = vec![
+        BendPoint {
+            position: 0,
+            value: value(origin),
+            vibrato: false,
+        },
+        BendPoint {
+            position: position(middle_offset, 50.0),
+            value: value(middle),
+            vibrato: false,
+        },
+        BendPoint {
+            position: position(destination_offset, 100.0),
+            value: value(destination),
+            vibrato: false,
+        },
+    ];
+    Some(bend)
+}
+
 /// GuitarScore addition: the user-given tuning name from a property list, if non-empty.
 fn extract_tuning_label(properties: &[Property]) -> Option<String> {
     properties
@@ -639,10 +687,13 @@ fn convert_beat(
     // Whammy bar: GP7 stores the shape in <Whammy>, GP6 (GPX) in the WhammyBar* beat
     // properties below. <Tremolo> is a separate legacy field.
     if let Some(whammy) = &g_beat.whammy {
-        s_beat.effect.tremolo_bar = Some(build_bend_effect(
+        s_beat.effect.tremolo_bar = build_whammy_effect(
             whammy.origin_value,
+            whammy.middle_value,
             whammy.destination_value,
-        ));
+            whammy.middle_offset,
+            whammy.destination_offset,
+        );
     } else if let Some(tremolo_str) = &g_beat.tremolo
         && let Ok(val) = tremolo_str.parse::<f64>()
         && val != 0.0
@@ -652,6 +703,7 @@ fn convert_beat(
 
     // Beat properties
     let mut whammy_origin: Option<f64> = None;
+    let mut whammy_middle: Option<f64> = None;
     let mut whammy_destination: Option<f64> = None;
     if let Some(beat_props) = &g_beat.properties {
         for bp in &beat_props.properties {
@@ -682,6 +734,7 @@ fn convert_beat(
                 // of a semitone; GP7 uses <Whammy> instead. Every beat carries them (0 for
                 // "no whammy"), so only a non-zero shape becomes an effect.
                 "WhammyBarOriginValue" => whammy_origin = bp.float,
+                "WhammyBarMiddleValue" => whammy_middle = bp.float,
                 "WhammyBarDestinationValue" => whammy_destination = bp.float,
                 _ => {}
             }
@@ -689,9 +742,9 @@ fn convert_beat(
     }
     if s_beat.effect.tremolo_bar.is_none()
         && let (Some(origin), Some(destination)) = (whammy_origin, whammy_destination)
-        && (origin != 0.0 || destination != 0.0)
     {
-        s_beat.effect.tremolo_bar = Some(build_bend_effect(origin, destination));
+        s_beat.effect.tremolo_bar =
+            build_whammy_effect(origin, whammy_middle, destination, None, None);
     }
 
     // Notes
@@ -1190,7 +1243,10 @@ mod effect_tests {
             tremolo: None,
             whammy: Some(Whammy {
                 origin_value: 0.0,
+                middle_value: None,
                 destination_value: -300.0,
+                middle_offset: None,
+                destination_offset: None,
             }),
             wah: None,
             free_text: None,
@@ -1200,6 +1256,41 @@ mod effect_tests {
         let song_beat = super::convert_beat(&beat, &HashMap::new(), &HashMap::new(), &mut velocity);
         let tremolo = song_beat.effect.tremolo_bar.expect("whammy imported");
         assert_eq!(tremolo.points.last().map(|point| point.value), Some(-12));
+    }
+
+    /// A dip goes down and comes back (origin = destination = 0); the middle used to be
+    /// averaged to 0 and the writer then dropped the whole effect.
+    #[test]
+    fn whammy_dip_survives_writing() {
+        use crate::io::Song;
+        let dip = super::build_whammy_effect(0.0, Some(-100.0), 0.0, Some(50.0), Some(100.0))
+            .expect("a dip moves");
+        let values: Vec<i8> = dip.points.iter().map(|p| p.value).collect();
+        assert_eq!(values, [0, -4, 0]);
+        assert!(super::build_whammy_effect(0.0, Some(0.0), 0.0, None, None).is_none());
+
+        let mut song = Song::default();
+        song.tracks = vec![crate::model::Track::default()];
+        song.measure_headers = vec![Default::default()];
+        let mut beat = crate::model::Beat::default();
+        beat.effect.tremolo_bar = Some(dip);
+        song.tracks[0].measures = vec![crate::model::Measure {
+            voices: vec![crate::model::Voice {
+                beats: vec![beat],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }];
+        let bytes = song.write_gp().expect("write");
+        let mut reread = Song::default();
+        reread.read_gp(&bytes).expect("reread");
+        let tremolo = reread.tracks[0].measures[0].voices[0].beats[0]
+            .effect
+            .tremolo_bar
+            .clone()
+            .expect("the dip is still there");
+        let values: Vec<i8> = tremolo.points.iter().map(|p| p.value).collect();
+        assert_eq!(values, [0, -4, 0]);
     }
 
     /// GP6 (GPX) writes the same effect as three beat properties, on every beat (0 = none).

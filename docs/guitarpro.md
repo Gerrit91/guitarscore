@@ -108,4 +108,11 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     properties are read, because Guitar Pro writes `HarmonicFret` before `HarmonicType`
     and the fret used to be dropped. Test
     `effect_tests::harmonic_fret_is_read_before_the_harmonic_type`.
+20. Whammy bar (`src/io/gpif.rs`, `src/io/gpif_import.rs`, `src/io/gpif_export.rs`): the
+    reader keeps GP7's `middleValue` and offsets (and GP6's `WhammyBarMiddleValue`) as a
+    three-point shape (`build_whammy_effect`), and the writer writes `<Whammy>` with origin,
+    middle, destination and offsets instead of the legacy `<Tremolo>` destination only.
+    Dips (down and back up) used to vanish on save (54 beats in 10 owner files). Whether
+    Guitar Pro accepts the written element is not verified. Test
+    `effect_tests::whammy_dip_survives_writing`.
 
