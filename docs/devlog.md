@@ -585,3 +585,53 @@ a playhead on the page (after the layout work is merged), mute/solo.
 - Open (docs/gaps.md #9): cross-measure/system ornaments, rhythm under the tab, grace
   notes/fingerings, beat-level pick/brush/slap/fade-in marks, and per-chord ornament
   layout. Note positioning is the owner's next topic.
+
+## 2026-11-01 — Layout polish and standard notation above the tab
+
+- Polish (owner review of the goldens): ornaments above the tab get rows above the
+  measure-number band; bends, vibrato and the whammy line follow their note's space; slides
+  slant with the pitch; slide slashes keep a gap; rests are spaced by their drawn width; the
+  tab time signature is smaller.
+- Standard notation above the tab, as in Guitar Pro (new `notation` module): treble clef
+  (bass clef below F1), written an octave above sounding; notes spelled with sharps and
+  placed by staff position; accidentals per measure (ties keep theirs); noteheads by value
+  (cross for dead notes), seconds side by side, ledger lines; stems from the font's
+  `stemUpSE`/`stemDownNW` anchors, at least to the middle line; flags; beams per beat
+  (dotted quarter in 6/8, 9/8, 12/8) with partial beams; dots; rests; ties; tuplet
+  numbers. With notation, rests and the time signature appear in the notation only and
+  measure numbers sit above it, as in Guitar Pro. `LayoutOptions::notation` turns it off.
+- Spacing now uses each column's left and right extent (accidentals left, dots and flags
+  right; beamed notes need no flag room), so 64th runs stay compact.
+- Font: engraving defaults for stems, beams and ledger lines, and glyph anchors, are read
+  from Bravura's metadata; new glyphs for clefs, noteheads, sharp, natural and the flags.
+- Compared with Guitar Pro's PNGs: DADGAD identical in beams and stem directions; note
+  lengths and ornaments match measure by measure (accidentals in ornaments m6 and m10 as in
+  Guitar Pro). Goldens and app snapshots regenerated (owner review). Tests: 266 (+6).
+
+Open (docs/gaps.md #9): key signatures, second voice, ties across barlines, tuplet groups
+across beats, harmonic diamonds, notation-staff articulations.
+
+## 2026-11-01 — M7: bends and slides on borrowed MIDI channels
+
+- `gscore-play` now plays bends and slides. `MidiEvent::PitchBend` writes a 14-bit bend;
+  a note with a bend or slide borrows a free melodic channel (AGENTS.md section 5, decision
+  10), receives the track's program, volume and pan plus a 12-semitone bend range (RPN 0,0,
+  then RPN null), and is released after a center reset. The rest of the chord keeps its
+  pitch.
+- Bends ramp to their highest point (an eighth note at most) and hold; release bends start
+  at the bent pitch and return. Shift/legato slides go to the next note on the same string;
+  in slides use the previous note when it lies in the slide's direction, otherwise a whole
+  step; out slides move a whole step. Notes that cannot get a channel play without the pitch
+  movement: `Sequence::degraded_pitch_bends` counts them and `gscore-cli midi`/`play` print a
+  warning.
+- `ChannelAllocator::free_channels`/`used_channels`; `MidiEvent::silence` also resets a
+  stale bend (but not volume/pan, so pause/resume keeps its mix). The test support gained
+  `TestNote`/`song_with_notes`/`song_with_notes_on_tracks` so bends, slides and chords can be
+  built without a fixture.
+- Tests: pitch-bend bytes and ramp/release shapes, RPN setup, synthetic bends/slides/chords,
+  graceful degradation with all 15 melodic channels in use, SMF output, and the owner's
+  `ornaments` file: 133 bend events on borrowed channels (Guitar Pro's own MIDI starts its
+  bends at tick 5760 at 480 PPQ, ours at 11520 at 960 PPQ, the same bar). Tests: 281 (+15).
+- Open (docs/gaps.md #11): bend curves are simplified (the model keeps only the highest
+  point), slides clamp to the 12-semitone range, and whammy, vibrato, let ring, palm mute,
+  grace notes and trills are still silent.

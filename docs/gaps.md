@@ -1,6 +1,6 @@
 # Known Gaps
 
-Ranked known shortfalls, most important first. Updated 2026-11-01 (M4 headless editing).
+Ranked known shortfalls, most important first. Updated 2026-11-01 (M7: bends and slides).
 
 1. **`gscore-gp` is not held to the workspace rules yet.** About 10k lines derived from
    guitarpro still use `unwrap`, indexing and `as` casts; a crate-level `allow` exempts them.
@@ -72,24 +72,20 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M4 headless e
    as GP7, GPX and GP5, with import, `info` and `dump` reference tests and
    truncation/byte-flip robustness — still only one track and one voice per song. No
    GP3/GP4 files, and no real fuzzer (cargo-fuzz; deferred to "Later" by the owner).
-9. **Layout is a first version (M5).** `gscore-layout` draws one track's tab staff
-   (header, tab clef, time signatures, fret numbers, rests, barlines, measure numbers,
-   line breaking and justification, and the ornaments the model exposes) on one endless
-   page. Ornaments live: tie curves (the continuation number is hidden as in Guitar Pro's
-   tab), hammer/pull slurs, shift and legato slides, slide-in/out slashes, bends, slight and wide vibrato,
-   ghost notes, natural/artificial/pinch/tapped harmonics, accents and staccato, trills,
-   tremolo picking, palm-mute and let-ring rows, the whammy bar and beat-level legato.
-   Still missing: rhythm notation under the tab, beams, tuplet numbers, repeats and
-   endings, tempo changes, section markers, lyrics, chord diagrams, page breaks, standard
-   notation, multi-track systems, grace notes, fingerings, and the beat-level pick/brush/
-   slap/fade-in marks. Ornaments that connect notes only look within one measure (a slide,
-   hammer or beat-level legato across a barline or system break is not drawn); effects on
-   several notes of one chord can overlap; rhythmic placement (the note's onset within the
-   column) is not yet drawn. Voice, piano and other non-string tracks are drawn as
-   six-line tab; drum tracks are refused. Text widths come from fixed Noto Sans digit
-   metrics (other characters are estimated) until the GUI can shape text; the dead-note
-   `x` sits a little low. No PNG output yet (needs a rasterizer dependency;
-   `rsvg-convert` works for checking). Unreadable frets show as `?`.
+9. **Layout is a first version (M5).** `gscore-layout` draws one track as standard
+   notation above tablature (as Guitar Pro does), on one endless page, with the tab's
+   ornaments, line breaking and justification. Notation: clef (treble, bass for basses),
+   time signatures, noteheads (cross for dead notes), ledger lines, sharps and naturals per
+   measure, stems, flags, beams per beat (partial beams included), dots, rests, ties within
+   a measure and tuplet numbers. Missing in notation: key signatures (notes are spelled with
+   sharps), the second voice, ties across barlines, tuplet groups spanning several beats
+   (each beat's beam gets its own number), grace notes, articulations and ornaments on the
+   notation staff (they stay on the tab), harmonic diamonds (harmonics are written at their
+   sounding pitch). Missing everywhere: repeats and endings, tempo changes, section
+   markers, lyrics, chord diagrams, page breaks, multi-track systems, rhythm under the tab
+   (shown in the notation instead). Ornaments that connect notes only look within one
+   measure. Voice, piano and drum tracks get no notation (no tuning); drum tracks are
+   refused. Text widths are estimated for non-digits; no PNG output (`rsvg-convert` works).
 10. **The app is a read-only viewer (M6, first version).** It opens files in the
    background, shows one track's page (track picker, zoom, light and dark theme) and
    contains panics in layout, drawing and background jobs. Missing: editing, cursor and
@@ -97,13 +93,22 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M4 headless e
    drop, keyboard shortcuts for zoom, a multi-page view. On macOS the file dialog must run
    on the main thread (rfd); it runs on a background thread here, so Open… needs a change
    there. The snapshot test needs a GPU or software Vulkan.
-11. **Playback is MIDI only and plays notes, not techniques (M7, first version).**
-   `gscore-play` sequences notes (all voices, exact timing), ties, dead notes, harmonics,
-   instruments, volume, pan, tempo changes, repeats and alternative endings; `gscore-audio`
-   sends them to a MIDI port. Not played yet: bends and slides (need pitch bend and channel
-   borrowing), vibrato, let ring, palm mute, grace notes, trills, D.C./D.S./coda, swing,
-   mute/solo, GP7 mixer volume and pan (GP7 tracks use defaults). The app shows the playing
-   measure's number, not a playhead on the page. Stopping `gscore-cli play` with Ctrl+C
-   can leave notes hanging in the synth. No internal synth yet (M9). GP7 stores keyboard
-   and vocal notes by pitch, not string and fret; the reader turns them into invalid frets,
-   so those tracks are silent (the owner's corpus: 8 of 59 files leave 18-116 notes out).
+11. **Playback is MIDI only and plays notes, bends and slides, not the other techniques
+   (M7).** `gscore-play` sequences notes (all voices, exact timing), ties, dead notes,
+   harmonics, instruments, volume, pan, tempo changes, repeats, alternative endings, bends
+   and shift/legato/in/out slides; `gscore-audio` sends them to a MIDI port. A note that
+   bends or slides borrows a free channel with the track's program, volume and pan and a
+   12-semitone bend range (RPN 0,0), so the rest of the chord keeps its pitch; when every
+   channel is in use the note plays without the pitch movement and
+   `Sequence::degraded_pitch_bends` counts it.
+   Simplifications: the model stores only a bend's highest point, so a bend that releases
+   again plays as a bend up and hold, and a release bend starts bent and returns to center;
+   slides are pitch bends and are clamped to the 12-semitone range; an "out" slide moves a
+   whole step; a slide to a note farther away is clamped. Not played yet: vibrato, let
+   ring, palm mute, grace notes, trills, whammy bar, D.C./D.S./coda, swing, mute/solo, GP7
+   mixer volume and pan (GP7 tracks use defaults). The app shows the playing measure's
+   number, not a playhead on the page. Pause/resume does not re-trigger notes that were
+   sounding, and stopping `gscore-cli play` with Ctrl+C can leave notes hanging in the
+   synth. No internal synth yet (M9). GP7 stores keyboard and vocal notes by pitch, not
+   string and fret; the reader turns them into invalid frets, so those tracks are silent
+   (the owner's corpus: 8 of 59 files leave 18-116 notes out).

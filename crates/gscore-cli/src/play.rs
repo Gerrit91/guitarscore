@@ -66,6 +66,12 @@ pub(crate) fn export(input: &Path, output: &Path, tracks: &[usize]) -> Result<St
             sequence.skipped_notes
         ));
     }
+    if sequence.degraded_pitch_bends > 0 {
+        out.push_str(&format!(
+            "{} bend(s) or slide(s) left out: every MIDI channel was in use.\n",
+            sequence.degraded_pitch_bends
+        ));
+    }
     Ok(out)
 }
 
@@ -120,5 +126,12 @@ pub(crate) fn play(
     if let Some(error) = player.error() {
         return Err(CliError::Failed(error));
     }
-    Ok(format!("Played {} measure(s).\n", sequence.measures.len()))
+    let mut out = format!("Played {} measure(s).\n", sequence.measures.len());
+    if sequence.degraded_pitch_bends > 0 {
+        out.push_str(&format!(
+            "{} bend(s) or slide(s) left out: every MIDI channel was in use.\n",
+            sequence.degraded_pitch_bends
+        ));
+    }
+    Ok(out)
 }

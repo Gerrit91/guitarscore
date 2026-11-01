@@ -55,6 +55,16 @@ pub(crate) fn layout(song: &Song, track: usize) -> Layout {
     .unwrap()
 }
 
+/// Lays out `track` as tab only, without the notation staff.
+pub(crate) fn layout_tab_only(song: &Song, track: usize) -> Layout {
+    let fonts = Fonts::bundled().unwrap();
+    let options = LayoutOptions {
+        notation: false,
+        ..LayoutOptions::default()
+    };
+    layout_track(song, TrackIndex::new(track), &options, &fonts).unwrap()
+}
+
 /// Sets frets in the first track: (measure, beat, string, fret), all 0-based except the
 /// 1-based string.
 pub(crate) fn with_notes(mut song: Song, notes: &[(usize, usize, u8, u8)]) -> Song {

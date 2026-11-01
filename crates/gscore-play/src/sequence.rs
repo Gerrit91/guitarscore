@@ -1,16 +1,24 @@
 //! Turns a song into a [`Sequence`]: timed MIDI events per track, a tempo map, and where
 //! each played measure lies in time.
+//!
+//! Notes play on their track's channel. A note with a bend or slide borrows a free channel
+//! for its own pitch bend (AGENTS.md section 5, decision 10): the borrowed channel gets the
+//! track's program, volume and pan plus a 12-semitone bend range, and is released after the
+//! note. When every other channel is in use the note plays without its pitch movement and
+//! [`Sequence::degraded_pitch_bends`] counts it.
 
-use std::collections::HashMap;
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap, VecDeque};
 
 use gscore_model::{
-    BeatKind, Duration, MeasureIndex, ModelError, NoteKind, Song, TimeSignature, TrackIndex,
-    TrackSound,
+    BeatKind, BendKind, Duration, MeasureIndex, ModelError, NoteKind, SlideKind, Song,
+    TimeSignature, TrackIndex, TrackSound,
 };
 
 use crate::channels::ChannelAllocator;
-use crate::event::{Channel, MidiEvent, controller};
+use crate::event::{Channel, MidiEvent, PITCH_BEND_CENTER, controller};
 use crate::order::playback_order;
+use crate::pitch::{self, PitchShape};
 use crate::tempo::{PPQ, TempoMap};
 
 /// Ticks in a whole note.
@@ -22,6 +30,14 @@ const DEAD_NOTE_VELOCITY_PERCENT: u16 = 60;
 /// A tied note continues the previous one if that ends within this many ticks of its start
 /// (rounding of tuplets).
 const TIE_TOLERANCE: u64 = 2;
+/// An upward bend reaches its target within a quarter note (or the note's length): Guitar
+/// Pro's own bends take about a beat.
+const BEND_RAMP_TICKS: u64 = PPQ as u64;
+/// A slide into a note reaches its pitch within an eighth note (or the note's length).
+const SLIDE_IN_RAMP_TICKS: u64 = PPQ as u64 / 2;
+/// How far an "into" slide starts from its note when the previous note is unknown: a whole
+/// step.
+const UNKNOWN_SLIDE_IN_SEMITONES: i32 = 2;
 
 /// A track as the sequence plays it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,8 +81,8 @@ pub struct MeasureSpan {
 pub struct Sequence {
     /// The tracks that play.
     pub tracks: Vec<SequenceTrack>,
-    /// All events, sorted by tick; at the same tick, setup comes first, then note-offs,
-    /// then note-ons.
+    /// All events, sorted by tick. At one tick: note-offs, setup, pitch resets, pitch
+    /// movement, then note-ons.
     pub events: Vec<TimedEvent>,
     /// Tempo changes.
     pub tempo: TempoMap,
@@ -77,17 +93,47 @@ pub struct Sequence {
     /// Notes left out because their pitch could not be worked out (invalid string, fret or
     /// a pitch above MIDI's range). The model lists such notes as issues.
     pub skipped_notes: usize,
+    /// Notes whose bend or slide was dropped because every other MIDI channel was in use.
+    /// They still play, on their track's channel, without the pitch movement.
+    pub degraded_pitch_bends: usize,
 }
 
 /// A note while the sequence is built.
 #[derive(Debug, Clone, Copy)]
 struct Sounding {
+    /// The sequence track it belongs to.
     track: usize,
+    /// The track's own channel.
     channel: Channel,
+    /// The channel the note plays on: the track's, or a borrowed one.
+    play_channel: Channel,
     key: u8,
     velocity: u8,
     start: u64,
     end: u64,
+    /// The string, to find the next note of a slide. 0 when the note has no valid string.
+    string: u8,
+    /// The selected slide, if any.
+    slide: Option<SlideMove>,
+    /// The bend in quarter tones and whether it releases, if any.
+    bend: Option<(i16, bool)>,
+    /// The pitch shape, once slide targets and channels are known.
+    shape: Option<PitchShape>,
+}
+
+/// Which slide of a note the sequencer plays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SlideMove {
+    /// To the next note on the same string.
+    To,
+    /// In from a higher note.
+    IntoAbove,
+    /// In from a lower note.
+    IntoBelow,
+    /// Out upwards, to no particular note.
+    OutUp,
+    /// Out downwards, to no particular note.
+    OutDown,
 }
 
 impl Sequence {
@@ -209,14 +255,34 @@ impl Sequence {
                             } else {
                                 (end, note.velocity())
                             };
+                            // Drums have no pitch to bend or slide.
+                            let bend = if sound.percussion {
+                                None
+                            } else {
+                                note.bend()
+                                    .filter(|bend| bend.quarter_tones != 0)
+                                    .map(|bend| {
+                                        (bend.quarter_tones, bend.kind == BendKind::Release)
+                                    })
+                            };
+                            let slides: Vec<SlideKind> = if sound.percussion {
+                                Vec::new()
+                            } else {
+                                note.slides().collect()
+                            };
                             on_string.insert(string, notes.len());
                             notes.push(Sounding {
                                 track: number,
                                 channel,
+                                play_channel: channel,
                                 key: pitch.get(),
                                 velocity,
                                 start,
                                 end,
+                                string,
+                                slide: choose_slide(&slides),
+                                bend,
+                                shape: None,
                             });
                         }
                     }
@@ -224,27 +290,68 @@ impl Sequence {
             }
         }
 
-        for note in notes {
+        let free_channels = channels.free_channels();
+        apply_slide_targets(&mut notes);
+        apply_bends(&mut notes);
+        let degraded_pitch_bends = assign_pitch_channels(&mut notes, free_channels);
+
+        for note in &notes {
+            let borrowed = note.play_channel != note.channel;
+            if borrowed && let Some(track) = seq_tracks.get(note.track) {
+                for event in setup(note.play_channel, track.sound) {
+                    events.push(TimedEvent {
+                        tick: note.start,
+                        track: note.track,
+                        event,
+                    });
+                }
+                for event in pitch::bend_range_setup(note.play_channel) {
+                    events.push(TimedEvent {
+                        tick: note.start,
+                        track: note.track,
+                        event,
+                    });
+                }
+            }
+            if borrowed && let Some(shape) = note.shape {
+                for (tick, event) in shape.events(note.play_channel, note.start) {
+                    events.push(TimedEvent {
+                        tick,
+                        track: note.track,
+                        event,
+                    });
+                }
+            }
             events.push(TimedEvent {
                 tick: note.start,
                 track: note.track,
                 event: MidiEvent::NoteOn {
-                    channel: note.channel,
+                    channel: note.play_channel,
                     key: note.key,
                     velocity: note.velocity,
                 },
             });
+            let end = note.end.max(note.start.saturating_add(1));
             events.push(TimedEvent {
-                tick: note.end.max(note.start.saturating_add(1)),
+                tick: end,
                 track: note.track,
                 event: MidiEvent::NoteOff {
-                    channel: note.channel,
+                    channel: note.play_channel,
                     key: note.key,
                 },
             });
+            if borrowed && note.shape.is_some() {
+                // Reset after the note, so a reused channel starts unbent.
+                events.push(TimedEvent {
+                    tick: end,
+                    track: note.track,
+                    event: MidiEvent::PitchBend {
+                        channel: note.play_channel,
+                        value: PITCH_BEND_CENTER,
+                    },
+                });
+            }
         }
-        // Stable sort: at one tick, setup first, then note-offs (so a repeated note is
-        // released before it starts again), then note-ons.
         events.sort_by_key(|e| (e.tick, rank(&e.event)));
 
         tempo_changes.sort_by_key(|&(tick, _)| tick);
@@ -260,12 +367,14 @@ impl Sequence {
             measures,
             end: tick,
             skipped_notes,
+            degraded_pitch_bends,
         })
     }
 
-    /// The channels this sequence uses.
+    /// The channels this sequence uses, including borrowed ones.
     pub fn channels(&self) -> Vec<Channel> {
         let mut channels: Vec<Channel> = self.tracks.iter().map(|t| t.channel).collect();
+        channels.extend(self.events.iter().map(|event| event.event.channel()));
         channels.sort_unstable();
         channels.dedup();
         channels
@@ -278,7 +387,165 @@ impl Sequence {
     }
 }
 
-/// Program, volume and pan for a track's channel.
+/// Picks the slide to play when a note has several (outgoing, then into, then out).
+fn choose_slide(slides: &[SlideKind]) -> Option<SlideMove> {
+    let outgoing = || {
+        slides.iter().find_map(|kind| match kind {
+            SlideKind::ShiftSlideTo | SlideKind::LegatoSlideTo => Some(SlideMove::To),
+            _ => None,
+        })
+    };
+    let into = || {
+        slides.iter().find_map(|kind| match kind {
+            SlideKind::IntoFromAbove => Some(SlideMove::IntoAbove),
+            SlideKind::IntoFromBelow => Some(SlideMove::IntoBelow),
+            _ => None,
+        })
+    };
+    let out = || {
+        slides.iter().find_map(|kind| match kind {
+            SlideKind::OutUpwards => Some(SlideMove::OutUp),
+            SlideKind::OutDownwards => Some(SlideMove::OutDown),
+            _ => None,
+        })
+    };
+    outgoing().or_else(into).or_else(out)
+}
+
+/// Gives each slide its target pitch: the next note on the same string for an outgoing
+/// slide, the previous note (or a whole step) for an incoming one.
+fn apply_slide_targets(notes: &mut [Sounding]) {
+    let mut groups: HashMap<(usize, u8), Vec<usize>> = HashMap::new();
+    for (index, note) in notes.iter().enumerate() {
+        groups
+            .entry((note.track, note.string))
+            .or_default()
+            .push(index);
+    }
+    for group in groups.values_mut() {
+        group.sort_by_key(|&index| {
+            notes
+                .get(index)
+                .map_or((0, 0), |note| (note.start, note.end))
+        });
+        for position in 0..group.len() {
+            let Some(&index) = group.get(position) else {
+                continue;
+            };
+            let Some(note) = notes.get(index) else {
+                continue;
+            };
+            let Some(slide) = note.slide else {
+                continue;
+            };
+            let length = note.end.saturating_sub(note.start);
+            let previous = position
+                .checked_sub(1)
+                .and_then(|p| group.get(p))
+                .and_then(|&i| notes.get(i));
+            let next = group
+                .get(position.saturating_add(1))
+                .and_then(|&i| notes.get(i))
+                .filter(|next| next.start >= note.end);
+            let shape = match slide {
+                SlideMove::To => next.map(|next| {
+                    PitchShape::slide_to(
+                        i32::from(next.key).saturating_sub(i32::from(note.key)),
+                        length,
+                    )
+                }),
+                SlideMove::IntoAbove | SlideMove::IntoBelow => {
+                    let above = slide == SlideMove::IntoAbove;
+                    let delta = previous
+                        .map(|previous| i32::from(previous.key).saturating_sub(i32::from(note.key)))
+                        // Keep the previous note only if it lies in the slide's direction.
+                        .filter(|delta| if above { *delta > 0 } else { *delta < 0 })
+                        .unwrap_or(if above {
+                            UNKNOWN_SLIDE_IN_SEMITONES
+                        } else {
+                            UNKNOWN_SLIDE_IN_SEMITONES.saturating_neg()
+                        });
+                    Some(PitchShape::slide_in(delta, length, SLIDE_IN_RAMP_TICKS))
+                }
+                SlideMove::OutUp => Some(PitchShape::slide_out(true, length)),
+                SlideMove::OutDown => Some(PitchShape::slide_out(false, length)),
+            };
+            if let Some(shape) = shape
+                && let Some(note) = notes.get_mut(index)
+            {
+                note.shape = Some(shape);
+            }
+        }
+    }
+}
+
+/// Notes without a slide keep their bend, if any.
+fn apply_bends(notes: &mut [Sounding]) {
+    for note in notes {
+        if note.shape.is_some() {
+            continue;
+        }
+        let Some((quarter_tones, release)) = note.bend else {
+            continue;
+        };
+        let length = note.end.saturating_sub(note.start);
+        note.shape = Some(if release {
+            PitchShape::release(quarter_tones, length)
+        } else {
+            PitchShape::up(quarter_tones, length, BEND_RAMP_TICKS)
+        });
+    }
+}
+
+/// Gives every note with a pitch shape a borrowed channel, reusing channels as notes end.
+/// Returns how many notes had to go without one.
+fn assign_pitch_channels(notes: &mut [Sounding], free: Vec<Channel>) -> usize {
+    let mut free: VecDeque<Channel> = free.into();
+    let mut in_use: BinaryHeap<Reverse<(u64, Channel)>> = BinaryHeap::new();
+    let mut order: Vec<usize> = notes
+        .iter()
+        .enumerate()
+        .filter(|(_, note)| note.shape.is_some())
+        .map(|(index, _)| index)
+        .collect();
+    order.sort_by_key(|&index| {
+        notes
+            .get(index)
+            .map_or((0, 0), |note| (note.start, note.end))
+    });
+
+    let mut degraded = 0_usize;
+    for index in order {
+        let Some(note) = notes.get(index) else {
+            continue;
+        };
+        let start = note.start;
+        while let Some(&Reverse((end, channel))) = in_use.peek() {
+            if end <= start {
+                let _ = in_use.pop();
+                if !free.iter().any(|&free| free == channel) {
+                    free.push_back(channel);
+                }
+            } else {
+                break;
+            }
+        }
+        let Some(channel) = free.pop_front() else {
+            degraded = degraded.saturating_add(1);
+            continue;
+        };
+        if let Some(note) = notes.get_mut(index) {
+            note.play_channel = channel;
+            in_use.push(Reverse((
+                note.end.max(note.start.saturating_add(1)),
+                channel,
+            )));
+        }
+    }
+    degraded
+}
+
+/// Program, volume and pan for a channel.
 fn setup(channel: Channel, sound: TrackSound) -> Vec<MidiEvent> {
     let mut events = Vec::with_capacity(3);
     if !sound.percussion {
@@ -300,11 +567,17 @@ fn setup(channel: Channel, sound: TrackSound) -> Vec<MidiEvent> {
     events
 }
 
+/// The order of messages at one tick.
 fn rank(event: &MidiEvent) -> u8 {
     match event {
-        MidiEvent::ProgramChange { .. } | MidiEvent::Control { .. } => 0,
-        MidiEvent::NoteOff { .. } => 1,
-        MidiEvent::NoteOn { .. } => 2,
+        // A reused borrowed channel: release the old note before its channel is set up.
+        MidiEvent::NoteOff { .. } => 0,
+        MidiEvent::ProgramChange { .. } | MidiEvent::Control { .. } => 1,
+        // Reset a bend after the note that used it.
+        MidiEvent::PitchBend { value, .. } if *value == PITCH_BEND_CENTER => 2,
+        // The initial value or a ramp step, before the note starts.
+        MidiEvent::PitchBend { .. } => 3,
+        MidiEvent::NoteOn { .. } => 4,
     }
 }
 

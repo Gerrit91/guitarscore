@@ -9,6 +9,17 @@ use gscore_model::{SlideKind, Whammy};
 
 /// How far a slur between two notes dips or rises.
 const SLUR_CURVE: f32 = 0.9;
+/// How far a slide line rises or falls on each side of the string line.
+const SLIDE_SLANT: f32 = 0.35;
+/// Height above the top line where a beat-level legato slur starts and ends; above the
+/// measure numbers.
+const LEGATO_BASE: f32 = 1.9;
+/// How high a beat-level legato slur arches above its ends.
+const LEGATO_ARCH: f32 = 1.0;
+/// Whammy line heights above the top line: high and low end.
+const WHAMMY_HEIGHTS: (f32, f32) = (3.4, 2.1);
+/// Whammy line: start after the note, stop before the next one, shortest length.
+const WHAMMY_INSET: (f32, f32, f32) = (0.8, 0.8, 1.5);
 /// Baseline of the first under-staff annotation row, below the bottom staff line.
 const ANNOTATION_LANE: f32 = 2.2;
 /// Distance between two under-staff annotation rows.
@@ -39,15 +50,22 @@ pub(crate) fn draw_link(
     }
     let y = top + ctx.staff.line_y(origin.line);
     if let Some(slide) = origin.marks.direct_slide() {
-        match slide {
-            SlideKind::ShiftSlideTo => ops.push(DrawOp::Line {
-                // Off the string line, or the staff line hides it.
-                from: Point::new(from_x, y - 0.3),
-                to: Point::new(to_x, y - 0.3),
-                thickness: LINE_THICKNESS,
-                color: ColorToken::Notation,
-            }),
-            SlideKind::LegatoSlideTo => {
+        // The line slants the way the pitch goes, crossing the string line, as in
+        // Guitar Pro's tablature.
+        let descending = matches!((origin.fret, target.fret), (Some(a), Some(b)) if b < a);
+        let rise = if descending {
+            SLIDE_SLANT
+        } else {
+            -SLIDE_SLANT
+        };
+        ops.push(DrawOp::Line {
+            from: Point::new(from_x, y - rise),
+            to: Point::new(to_x, y + rise),
+            thickness: LINE_THICKNESS,
+            color: ColorToken::Notation,
+        });
+        if slide == SlideKind::LegatoSlideTo {
+            {
                 draw_slur(
                     from_x,
                     y,
@@ -65,7 +83,6 @@ pub(crate) fn draw_link(
                     color: ColorToken::Annotation,
                 });
             }
-            _ => {}
         }
     } else if origin.marks.hammer {
         // A pull-off and a hammer-on are both written as a slur; the direction follows
@@ -126,12 +143,21 @@ pub(crate) fn draw_legato_run(start_x: f32, end_x: f32, top: f32, ops: &mut Vec<
     if end <= start {
         return;
     }
-    draw_slur(start, top - 0.6, end, top - 0.6, -1.4, ops);
+    draw_slur(
+        start,
+        top - LEGATO_BASE,
+        end,
+        top - LEGATO_BASE,
+        -LEGATO_ARCH,
+        ops,
+    );
 }
 
-/// Draws the whammy-bar line of one column.
+/// Draws the whammy-bar line of the column at `x`, within its space up to `span_end`: a
+/// line falling (dive) or rising, an arrow, and the depth in whole steps above the end.
 pub(crate) fn draw_whammy(
     x: f32,
+    span_end: f32,
     top: f32,
     whammy: Whammy,
     ctx: &Context<'_>,
@@ -141,33 +167,33 @@ pub(crate) fn draw_whammy(
         return;
     }
     let down = whammy.quarter_tones < 0;
-    let (start_y, end_y) = if down {
-        (top - 2.1, top - 0.8)
-    } else {
-        (top - 2.1, top - 3.3)
-    };
+    let (high, low) = (top - WHAMMY_HEIGHTS.0, top - WHAMMY_HEIGHTS.1);
+    let (start_y, end_y) = if down { (high, low) } else { (low, high) };
     let right = ctx.options.page_width - ctx.options.margin_x;
-    let end_x = (x + 6.0).min(right);
-    if end_x <= x + 1.0 {
+    let start_x = x + WHAMMY_INSET.0;
+    let end_x = (span_end - WHAMMY_INSET.1)
+        .max(start_x + WHAMMY_INSET.2)
+        .min(right);
+    if end_x <= start_x {
         return;
     }
-    let start = Point::new(x + 0.8, start_y);
     let end = Point::new(end_x, end_y);
     ops.push(DrawOp::Line {
-        from: start,
+        from: Point::new(start_x, start_y),
         to: end,
         thickness: LINE_THICKNESS,
         color: ColorToken::Annotation,
     });
     draw_arrowhead(end, !down, ops);
-    // Guitar Pro labels the dive in whole steps; four quarter tones make one.
+    // Guitar Pro labels the dive in whole steps; four quarter tones make one. The label
+    // sits above the arrow's end, inside the note's space.
     let whole_steps = whammy.quarter_tones.checked_div(4).unwrap_or(0);
     ops.push(DrawOp::Text {
         text: format!("{whole_steps:+}"),
-        at: Point::new(end.x + 0.15, end.y + 0.35),
+        at: Point::new(end.x, high - 0.5),
         size: 0.9,
         font: TextFont::Regular,
-        anchor: TextAnchor::Start,
+        anchor: TextAnchor::End,
         color: ColorToken::Annotation,
     });
 }

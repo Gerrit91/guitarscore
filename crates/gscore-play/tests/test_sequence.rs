@@ -1,5 +1,6 @@
 //! Sequencing the owner's test files, compared with Guitar Pro's own MIDI export of the same
-//! songs (`testdata/basic/*.mid`), plus repeats, ties and the `.mid` writer.
+//! songs (`testdata/basic/*.mid`), plus repeats, ties, bends and slides on borrowed channels,
+//! and the `.mid` writer.
 
 #![allow(
     clippy::panic,
@@ -13,9 +14,9 @@
 
 use std::path::PathBuf;
 
-use gscore_model::testing::{self, GUITAR_6};
-use gscore_model::{Song, TrackIndex};
-use gscore_play::{MidiEvent, PPQ, Sequence, to_smf};
+use gscore_model::testing::{self, GUITAR_6, TestNote};
+use gscore_model::{SlideKind, Song, TrackIndex};
+use gscore_play::{Channel, MidiEvent, PPQ, Sequence, to_smf};
 
 fn testdata(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -148,6 +149,22 @@ fn notes_and_programs_match_guitar_pros_midi_export() {
 }
 
 #[test]
+fn bends_and_slides_in_a_real_song_use_borrowed_channels() {
+    let sequence = Sequence::new(&open("basic/ornaments.gp"), None).unwrap();
+    assert_eq!(sequence.degraded_pitch_bends, 0);
+    let base = sequence.tracks[0].channel;
+    let bends = pitch_bends(&sequence);
+    assert!(bends.len() > 10, "ornaments has bends and slides");
+    assert!(bends.iter().all(|(_, channel, _)| *channel != base));
+    assert!(
+        note_ons(&sequence)
+            .iter()
+            .any(|&(_, channel, _)| channel != base),
+        "the bent and sliding notes move to their own channels"
+    );
+}
+
+#[test]
 fn tied_notes_are_held_and_dead_notes_are_short() {
     // Ornaments, measure 1: a half note tied to a half note; measure 2: a dead note.
     let sequence = Sequence::new(&open("basic/ornaments.gp"), None).unwrap();
@@ -249,4 +266,231 @@ fn songs_without_tracks_or_measures_give_empty_sequences() {
     assert!(to_smf(&empty, "").is_ok());
     let no_measures = Sequence::new(&testing::song(&[GUITAR_6], 0).unwrap(), None).unwrap();
     assert_eq!(no_measures.end, 0);
+}
+
+/// Note starts as `(tick, channel, key)`.
+fn note_ons(sequence: &Sequence) -> Vec<(u64, Channel, u8)> {
+    sequence
+        .events
+        .iter()
+        .filter_map(|event| match event.event {
+            MidiEvent::NoteOn { channel, key, .. } => Some((event.tick, channel, key)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Pitch bends as `(tick, channel, value)`.
+fn pitch_bends(sequence: &Sequence) -> Vec<(u64, Channel, u16)> {
+    sequence
+        .events
+        .iter()
+        .filter_map(|event| match event.event {
+            MidiEvent::PitchBend { channel, value } => Some((event.tick, channel, value)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A whole-step bend (2 semitones) with the 12-semitone range.
+const WHOLE_STEP: u16 = 8192 + 1365;
+
+#[test]
+fn a_bend_borrows_a_channel_and_moves_the_pitch() {
+    let song = testing::song_with_notes(&[(1, &[TestNote::new(6, 3).with_bend(4)])]).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    assert_eq!(sequence.degraded_pitch_bends, 0);
+
+    let base = sequence.tracks[0].channel;
+    let ons = note_ons(&sequence);
+    assert_eq!(ons.len(), 1);
+    let (start, channel, key) = ons[0];
+    assert_eq!((start, key), (0, 43));
+    assert_ne!(channel, base, "the bent note gets its own channel");
+    assert!(sequence.channels().contains(&channel));
+
+    // The borrowed channel gets the track's setup and the bend range.
+    assert!(sequence.events.iter().any(|event| {
+        event.tick == 0
+            && matches!(event.event, MidiEvent::ProgramChange { channel: c, .. } if c == channel)
+    }));
+    assert!(sequence.events.iter().any(|event| {
+        event.tick == 0
+            && matches!(
+                event.event,
+                MidiEvent::Control {
+                    channel: c,
+                    controller: 101,
+                    ..
+                } if c == channel
+            )
+    }));
+
+    let bends = pitch_bends(&sequence);
+    assert!(
+        bends
+            .iter()
+            .any(|(tick, c, value)| { *c == channel && *tick > 0 && *tick < 480 && *value > 8192 })
+    );
+    assert!(
+        bends
+            .iter()
+            .any(|(_, c, value)| *c == channel && *value == WHOLE_STEP),
+        "the bend reaches a whole step"
+    );
+    assert!(
+        bends
+            .iter()
+            .any(|(tick, c, value)| *c == channel && *tick == sequence.end && *value == 8192),
+        "the bend is reset after the note"
+    );
+}
+
+#[test]
+fn a_release_bend_starts_bent_and_returns_to_center() {
+    let song =
+        testing::song_with_notes(&[(1, &[TestNote::new(6, 3).with_release_bend(4)])]).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let base = sequence.tracks[0].channel;
+    let channel = note_ons(&sequence)[0].1;
+    assert_ne!(channel, base);
+
+    let bends = pitch_bends(&sequence);
+    let starts: Vec<u16> = bends
+        .iter()
+        .filter(|(tick, c, _)| *tick == 0 && *c == channel)
+        .map(|(_, _, value)| *value)
+        .collect();
+    assert!(starts.contains(&WHOLE_STEP), "starts bent: {starts:?}");
+    assert!(
+        bends
+            .iter()
+            .any(|(tick, c, value)| { *c == channel && *tick == sequence.end && *value == 8192 })
+    );
+}
+
+#[test]
+fn a_chord_bends_each_note_on_its_own_channel() {
+    let song = testing::song_with_notes(&[(
+        1,
+        &[
+            TestNote::new(6, 3).with_bend(4),
+            TestNote::new(5, 3).with_bend(4),
+        ],
+    )])
+    .unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    assert_eq!(sequence.degraded_pitch_bends, 0);
+    let base = sequence.tracks[0].channel;
+    let channels: Vec<Channel> = note_ons(&sequence).iter().map(|&(_, c, _)| c).collect();
+    assert_eq!(channels.len(), 2);
+    assert_ne!(channels[0], channels[1]);
+    assert!(channels.iter().all(|&channel| channel != base));
+    assert!(sequence.channels().contains(&channels[0]));
+    assert!(sequence.channels().contains(&channels[1]));
+}
+
+#[test]
+fn a_shift_slide_bends_to_the_next_note() {
+    let song = testing::song_with_notes(&[
+        (
+            2,
+            &[TestNote::new(6, 3).with_slides(&[SlideKind::ShiftSlideTo])],
+        ),
+        (2, &[TestNote::new(6, 5)]),
+    ])
+    .unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    assert_eq!(sequence.degraded_pitch_bends, 0);
+    let base = sequence.tracks[0].channel;
+    let ons = note_ons(&sequence);
+    assert_eq!(ons.len(), 2);
+    let (first_tick, slide_channel, first_key) = ons[0];
+    let (second_tick, second_channel, second_key) = ons[1];
+    assert_eq!((first_tick, first_key), (0, 43));
+    assert_eq!((second_tick, second_key), (1920, 45));
+    assert_ne!(slide_channel, base);
+    assert_eq!(second_channel, base, "only the sliding note borrows");
+
+    let bends = pitch_bends(&sequence);
+    assert!(bends.iter().any(|(tick, c, value)| {
+        *c == slide_channel && *tick > 0 && *tick < second_tick && *value == WHOLE_STEP
+    }));
+    assert!(
+        bends.iter().any(|(tick, c, value)| {
+            *c == slide_channel && *tick == second_tick && *value == 8192
+        })
+    );
+}
+
+#[test]
+fn a_slide_in_starts_from_the_previous_pitch() {
+    let song = testing::song_with_notes(&[
+        (2, &[TestNote::new(6, 3)]),
+        (
+            2,
+            &[TestNote::new(6, 5).with_slides(&[SlideKind::IntoFromBelow])],
+        ),
+    ])
+    .unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let base = sequence.tracks[0].channel;
+    let ons = note_ons(&sequence);
+    assert_eq!(ons.len(), 2);
+    let (start, channel, key) = ons[1];
+    assert_eq!((start, key), (1920, 45));
+    assert_ne!(channel, base);
+
+    let bends = pitch_bends(&sequence);
+    let starts: Vec<u16> = bends
+        .iter()
+        .filter(|(tick, c, _)| *tick == start && *c == channel)
+        .map(|(_, _, value)| *value)
+        .collect();
+    assert!(
+        starts.contains(&(8192 - 1365)),
+        "starts a whole step below: {starts:?}"
+    );
+    assert!(bends.iter().any(|(tick, c, value)| {
+        *c == channel && *tick > start && *tick < sequence.end && *value == 8192
+    }));
+}
+
+#[test]
+fn bends_degrade_when_every_channel_is_in_use() {
+    let bent = [TestNote::new(6, 3).with_bend(4)];
+    let song = testing::song_with_notes_on_tracks(15, &[(1, &bent)]).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    assert_eq!(sequence.tracks.len(), 15);
+    assert_eq!(sequence.degraded_pitch_bends, 15);
+    let channels: Vec<Channel> = note_ons(&sequence).iter().map(|&(_, c, _)| c).collect();
+    for (track, channel) in sequence.tracks.iter().zip(channels) {
+        assert_eq!(
+            track.channel, channel,
+            "a degraded note stays on its track channel"
+        );
+    }
+    assert!(pitch_bends(&sequence).is_empty());
+}
+
+#[test]
+fn the_midi_file_contains_pitch_bends_and_the_range_setup() {
+    let song = testing::song_with_notes(&[(1, &[TestNote::new(6, 3).with_bend(4)])]).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let bytes = to_smf(&sequence, "bend").unwrap();
+    let smf = parse_smf(&bytes);
+    let mut bends = 0;
+    let mut range_setup = 0;
+    for track in &smf.tracks {
+        for (_, status, data) in track {
+            if status & 0xF0 == 0xE0 {
+                bends += 1;
+            }
+            if status & 0xF0 == 0xB0 && data.first() == Some(&101) && data.get(1) == Some(&0) {
+                range_setup += 1;
+            }
+        }
+    }
+    assert!(bends > 0, "pitch bends are written");
+    assert!(range_setup > 0, "the borrowed channel gets a bend range");
 }
