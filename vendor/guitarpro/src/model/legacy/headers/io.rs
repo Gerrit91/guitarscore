@@ -109,16 +109,21 @@ impl SongHeaderOps for Song {
             previous = Some(r.0.clone());
             self.measure_headers.push(r.0);
         }
-        for s in &directions.0 {
+        // GuitarScore fix: the measure number comes from the file; an out-of-range number
+        // (or 0, which underflowed) used to panic. It is now a format error.
+        for s in directions.0.iter().chain(&directions.1) {
             if s.1 > &-1 {
-                self.measure_headers[s.1.to_usize_gp("direction measure index")? - 1].direction =
-                    Some(s.0.clone());
-            }
-        }
-        for s in &directions.1 {
-            if s.1 > &-1 {
-                self.measure_headers[s.1.to_usize_gp("direction measure index")? - 1].direction =
-                    Some(s.0.clone());
+                let number = s.1.to_usize_gp("direction measure index")?;
+                let header = number
+                    .checked_sub(1)
+                    .and_then(|index| self.measure_headers.get_mut(index))
+                    .ok_or_else(|| {
+                        crate::error::GpError::FormatError(format!(
+                            "direction points to measure {number}, but there are {} measures",
+                            measure_count
+                        ))
+                    })?;
+                header.direction = Some(s.0.clone());
             }
         }
         Ok(())

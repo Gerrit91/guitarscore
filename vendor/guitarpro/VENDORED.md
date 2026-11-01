@@ -52,3 +52,12 @@ Each change should be offered upstream.
    only matched its equally reversed tunings (change 3). Notes outside the track's strings
    stay unchanged.
 10. `src/io/gpif_import.rs`: regression tests `tuning_tests` for 2–9.
+11. `src/io/gpx.rs`: memory limits for untrusted input (`MAX_UNPACKED_BYTES`, 128 MiB):
+    bounded reads of `score.gpif` and embedded audio from GP7 zips (zip bombs); BCFZ
+    rejects declared sizes above the limit (was: reserved up to 2 GB); BCFS clamps file
+    sizes (a negative size became a huge `usize`). Failed allocations abort the process,
+    which `catch_unwind` cannot contain. `read_gpx` also accepts uncompressed BCFS.
+    Tests in `limit_tests`.
+12. `src/io/gpx.rs` (`read_le_i32`) and `src/model/legacy/headers/io.rs` (directions):
+    index panics on truncated GPX containers and out-of-range GP5 direction measure numbers,
+    found by the truncation/mutation test in `crates/gscore-io/tests/test_testdata.rs`.

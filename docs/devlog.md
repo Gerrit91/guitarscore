@@ -153,3 +153,18 @@ playback need them.
   copies of the test file never panic (also not internally). `info` reference file
   `testdata/basic/steel_guitar_dadgad.info.txt` (regenerate with GSCORE_UPDATE_GOLDEN=1).
 - Tests: 51 own + 166 vendored.
+
+## 2026-11-01 — Test file in all formats; parser hardening
+
+- Owner exported the DADGAD file as GP7, GPX, GP5, ASCII tab, MIDI, PDF. Import tests now
+  run over GP7/GPX/GP5 (same music; GP5 lacks notes, GP5/GPX lack instrument names). This
+  verified the GP6 tuning order. `info` references moved to
+  `crates/gscore-cli/tests/golden/` (one per format); `testdata/` holds only owner files,
+  described in `testdata/basic/README.md`.
+- Robustness test over damaged copies of all three files (4,357 inputs) found caught
+  panics: GPX block table read past the end, GP5 direction pointing to a missing measure.
+  Both fixed in the vendored crate; now zero internal panics.
+- Memory limits in the vendored crate (128 MiB unpacked): GP7 zip entries (zip bombs),
+  BCFZ declared size (up to 2 GB before), BCFS file sizes (negative became huge). Failed
+  allocations abort the process and cannot be caught. `read_gpx` accepts plain BCFS.
+- Tests: 53 own + 170 vendored.

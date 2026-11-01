@@ -1,5 +1,6 @@
-//! `gscore-cli info` output for the owner's test files, compared with reference files next
-//! to them (`testdata/**/<name>.info.txt`).
+//! `gscore-cli info` output for the owner's test files in `testdata/`, compared with
+//! reference files in `tests/golden/` (`<file name>.info.txt`, e.g.
+//! `steel_guitar_dadgad.gp5.info.txt`).
 //!
 //! If the output changes on purpose, regenerate the references with
 //! `GSCORE_UPDATE_GOLDEN=1 cargo test -p gscore-cli --test test_info_golden` and have the
@@ -23,9 +24,15 @@ use gscore_session as _;
 use std::path::PathBuf;
 
 fn check_info(relative: &str) {
-    let testdata = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata");
-    let file = testdata.join(relative);
-    let golden = file.with_extension("info.txt");
+    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let file = crate_dir.join("../../testdata").join(relative);
+    let file_name = file
+        .file_name()
+        .and_then(|n| n.to_str())
+        .expect("test file has a name");
+    let golden = crate_dir
+        .join("tests/golden")
+        .join(format!("{file_name}.info.txt"));
     let output = gscore_cli::run_cli(["info".into(), file.clone().into_os_string()])
         .unwrap_or_else(|e| panic!("info {} failed: {e}", file.display()));
 
@@ -47,6 +54,16 @@ fn check_info(relative: &str) {
 }
 
 #[test]
-fn info_steel_guitar_dadgad() {
+fn info_steel_guitar_dadgad_gp7() {
     check_info("basic/steel_guitar_dadgad.gp");
+}
+
+#[test]
+fn info_steel_guitar_dadgad_gp6() {
+    check_info("basic/steel_guitar_dadgad.gpx");
+}
+
+#[test]
+fn info_steel_guitar_dadgad_gp5() {
+    check_info("basic/steel_guitar_dadgad.gp5");
 }

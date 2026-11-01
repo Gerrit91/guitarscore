@@ -4,6 +4,34 @@ use quick_xml::de::from_str;
 use std::io::Cursor;
 use zip::ZipArchive;
 
+/// GuitarScore addition: the most bytes any container may unpack to (score XML, embedded
+/// audio, decompressed GPX). Real scores are far smaller; the cap stops "zip bombs" and
+/// forged length fields from exhausting memory, which aborts the process (not catchable).
+pub const MAX_UNPACKED_BYTES: usize = 128 * 1024 * 1024;
+
+/// GuitarScore addition: reads at most [`MAX_UNPACKED_BYTES`], failing beyond that.
+fn read_limited(reader: impl std::io::Read, what: &str) -> Result<Vec<u8>, String> {
+    read_limited_to(reader, what, MAX_UNPACKED_BYTES)
+}
+
+fn read_limited_to(
+    reader: impl std::io::Read,
+    what: &str,
+    limit: usize,
+) -> Result<Vec<u8>, String> {
+    use std::io::Read as _;
+    let mut buf = Vec::new();
+    let take = u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1);
+    reader
+        .take(take)
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("Read error in {what}: {e}"))?;
+    if buf.len() > limit {
+        return Err(format!("{what} unpacks to more than {limit} bytes"));
+    }
+    Ok(buf)
+}
+
 // ---------------------------------------------------------------------------
 // GP6 (.gpx) BCFZ writer
 // ---------------------------------------------------------------------------
@@ -176,19 +204,17 @@ pub fn read_gp(data: &[u8]) -> GpResult<Gpif> {
 /// bytes are surfaced so the web server can serve them directly
 /// (`/api/score/:id/audio`) and the CLI can extract them.
 pub fn read_gp_with_audio(data: &[u8]) -> GpResult<(Gpif, Option<Vec<u8>>)> {
-    use std::io::Read as _;
-
     let cursor = Cursor::new(data);
     let mut zip = ZipArchive::new(cursor).map_err(|e| format!("Zip error: {}", e))?;
 
     // Standard path for GP7 files
-    let mut file = zip
+    let file = zip
         .by_name("Content/score.gpif")
         .map_err(|e| format!("Could not find score.gpif: {}", e))?;
 
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)
-        .map_err(|e| format!("Read error: {}", e))?;
+    // GuitarScore fix: bounded read (was `read_to_string` without a limit).
+    let contents = String::from_utf8(read_limited(file, "score.gpif")?)
+        .map_err(|e| format!("UTF-8 error in score.gpif: {e}"))?;
 
     let gpif: Gpif = from_str(&contents).map_err(|e| format!("XML Parse error: {}", e))?;
 
@@ -197,15 +223,15 @@ pub fn read_gp_with_audio(data: &[u8]) -> GpResult<(Gpif, Option<Vec<u8>>)> {
     let mut audio: Option<Vec<u8>> = None;
     if let Ok(mut zip) = ZipArchive::new(Cursor::new(data)) {
         for i in 0..zip.len() {
-            let Ok(mut entry) = zip.by_index(i) else {
+            let Ok(entry) = zip.by_index(i) else {
                 continue;
             };
             let Ok(name) = entry.name().map(|name| name.into_owned()) else {
                 continue;
             };
             if name.starts_with("Content/Assets/") && name.ends_with(".mp3") {
-                let mut buf = Vec::new();
-                if entry.read_to_end(&mut buf).is_ok() {
+                // GuitarScore fix: bounded read (was `read_to_end` without a limit).
+                if let Ok(buf) = read_limited(entry, "embedded audio") {
                     audio = Some(buf);
                 }
                 break;
@@ -291,7 +317,14 @@ fn decompress_bcfz(data: &[u8]) -> Result<Vec<u8>, String> {
         return Err(format!("BCFZ: negative expected length {}", raw_len));
     }
     let expected_len = raw_len as usize;
-    let mut output = Vec::with_capacity(expected_len);
+    // GuitarScore fix: the length comes from the file; refuse absurd values instead of
+    // reserving (or producing, via back-references) up to 2 GB.
+    if expected_len > MAX_UNPACKED_BYTES {
+        return Err(format!(
+            "BCFZ: declared size {expected_len} exceeds the limit of {MAX_UNPACKED_BYTES} bytes"
+        ));
+    }
+    let mut output = Vec::with_capacity(expected_len.min(data.len().saturating_mul(4)));
     let mut bits = BitStream::new(&data[8..]);
 
     while output.len() < expected_len && !bits.is_eof() {
@@ -336,13 +369,15 @@ struct BcfsFile {
 }
 
 /// Read the integer at the given offset (little-endian i32).
+///
+/// GuitarScore fix: returns 0 past the end of `data` (was an index panic on truncated
+/// files). Callers read 0 as "no entry" or "end of block list".
 fn read_le_i32(data: &[u8], offset: usize) -> i32 {
-    i32::from_le_bytes([
-        data[offset],
-        data[offset + 1],
-        data[offset + 2],
-        data[offset + 3],
-    ])
+    offset
+        .checked_add(4)
+        .and_then(|end| data.get(offset..end))
+        .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
+        .map_or(0, i32::from_le_bytes)
 }
 
 /// Parse the BCFS virtual filesystem and extract all files.
@@ -382,7 +417,11 @@ fn parse_bcfs(data: &[u8]) -> Result<Vec<BcfsFile>, String> {
                 .unwrap_or(name_bytes.len());
             let name = String::from_utf8_lossy(&name_bytes[..name_len]).to_string();
 
-            let file_size = read_le_i32(disk, sector_offset + 0x8C) as usize;
+            // GuitarScore fix: a negative size used to become a huge `usize`, and the
+            // capacity was reserved before checking; file data can never exceed the disk.
+            let file_size = usize::try_from(read_le_i32(disk, sector_offset + 0x8C))
+                .unwrap_or(0)
+                .min(disk.len());
 
             // Block index table at +0x94, array of i32, terminated by 0
             let mut file_data = Vec::with_capacity(file_size);
@@ -420,8 +459,15 @@ fn parse_bcfs(data: &[u8]) -> Result<Vec<BcfsFile>, String> {
 
 /// Reads a .gpx (GP6) file which is a BCFZ/BCFS container holding 'score.gpif'.
 pub fn read_gpx(data: &[u8]) -> GpResult<Gpif> {
-    let decompressed = decompress_bcfz(data)?;
-    let files = parse_bcfs(&decompressed)?;
+    // GuitarScore fix: also accept uncompressed BCFS containers.
+    let decompressed;
+    let container = if data.starts_with(BCFS_MAGIC) {
+        data
+    } else {
+        decompressed = decompress_bcfz(data)?;
+        &decompressed
+    };
+    let files = parse_bcfs(container)?;
 
     let score_file = files
         .iter()
@@ -441,4 +487,49 @@ pub fn read_gpx(data: &[u8]) -> GpResult<Gpif> {
         from_str(xml_str).map_err(|e| format!("XML parse error in score.gpif: {}", e))?;
 
     Ok(gpif)
+}
+
+// GuitarScore regression tests for the allocation limits (see VENDORED.md).
+#[cfg(test)]
+mod limit_tests {
+    use super::*;
+
+    #[test]
+    fn bcfz_with_absurd_declared_size_is_rejected() {
+        let mut data = b"BCFZ".to_vec();
+        data.extend_from_slice(&i32::MAX.to_le_bytes());
+        data.extend_from_slice(&[0xFF; 16]);
+        let err = decompress_bcfz(&data).unwrap_err();
+        assert!(err.contains("exceeds the limit"), "{err}");
+    }
+
+    #[test]
+    fn bcfs_with_negative_file_size_does_not_allocate_wildly() {
+        // Magic, then sector 0, then a directory entry with file size -1.
+        let mut disk = vec![0u8; 4 + 2 * SECTOR_SIZE];
+        disk[..4].copy_from_slice(BCFS_MAGIC);
+        let entry = 4 + SECTOR_SIZE;
+        disk[entry..entry + 4].copy_from_slice(&2i32.to_le_bytes());
+        disk[entry + 4..entry + 14].copy_from_slice(b"score.gpif");
+        disk[entry + 0x8C..entry + 0x90].copy_from_slice(&(-1i32).to_le_bytes());
+        let files = parse_bcfs(&disk).expect("parses");
+        assert_eq!(files.len(), 1);
+        assert!(files[0].data.is_empty());
+    }
+
+    #[test]
+    fn limited_reads_stop_at_the_limit() {
+        let data = vec![7u8; 100];
+        assert_eq!(read_limited_to(&data[..], "x", 100).unwrap().len(), 100);
+        let err = read_limited_to(&data[..], "x", 99).unwrap_err();
+        assert!(err.contains("more than 99 bytes"), "{err}");
+    }
+
+    #[test]
+    fn uncompressed_bcfs_is_accepted() {
+        // A BCFS container without score.gpif: must fail with "not found", not "magic".
+        let disk = pack_bcfs("other.xml", b"<x/>");
+        let err = read_gpx(&disk).unwrap_err().to_string();
+        assert!(err.contains("score.gpif not found"), "{err}");
+    }
 }
