@@ -14,7 +14,7 @@
 mod common;
 
 use gscore_layout::{
-    ColorToken, DrawOp, Fonts, Layout, LayoutError, LayoutOptions, Point, layout_track,
+    ColorToken, DrawOp, Fonts, Glyph, Layout, LayoutError, LayoutOptions, Point, layout_track,
 };
 use gscore_model::testing::{self, BASS_4, GUITAR_6, GUITAR_7, GUITAR_8};
 use gscore_model::{BeatKind, NoteKind, Song, TrackIndex};
@@ -27,6 +27,13 @@ fn points(op: &DrawOp) -> Vec<Point> {
             rect.origin,
             Point::new(rect.origin.x + rect.width, rect.origin.y + rect.height),
         ],
+        DrawOp::Curve {
+            from,
+            to,
+            control1,
+            control2,
+            ..
+        } => vec![*from, *to, *control1, *control2],
         DrawOp::Glyph { at, .. } | DrawOp::Text { at, .. } => vec![*at],
     }
 }
@@ -50,7 +57,8 @@ fn assert_on_page(layout: &Layout, what: &str) {
     }
 }
 
-/// The notes layout should show as fret numbers.
+/// The notes layout should show as fret numbers. A tie continuation is not written in
+/// tablature: the origin already carries the note.
 fn shown_notes(song: &Song, track: usize) -> usize {
     let track = song.track(TrackIndex::new(track)).unwrap();
     track
@@ -59,7 +67,7 @@ fn shown_notes(song: &Song, track: usize) -> usize {
         .flat_map(|v| v.beats())
         .filter(|b| b.kind() == BeatKind::Normal)
         .flat_map(|b| b.notes())
-        .filter(|n| matches!(n.kind(), NoteKind::Normal | NoteKind::Tie | NoteKind::Dead))
+        .filter(|n| matches!(n.kind(), NoteKind::Normal | NoteKind::Dead))
         .count()
 }
 
@@ -187,6 +195,7 @@ fn odd_options_do_not_panic() {
                 doubling_ratio: 0.0,
                 min_space: f32::NAN,
                 min_gap: -1.0,
+                barline_padding: f32::NAN,
             },
             ..LayoutOptions::default()
         },
@@ -217,4 +226,97 @@ fn unreadable_notes_show_as_question_marks_instead_of_failing_the_track() {
         })
         .collect();
     assert_eq!(texts, ["?", "5"]);
+}
+
+/// A note never sits right against the barline at either end of a measure.
+#[test]
+fn notes_keep_their_distance_from_barlines() {
+    let song = common::with_notes(testing::song(&[GUITAR_6], 1).unwrap(), &[(0, 0, 1, 0)]);
+    let layout = common::layout(&song, 0);
+    let barlines: Vec<f32> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Line {
+                to,
+                color: ColorToken::Barline,
+                ..
+            } => Some(to.x),
+            _ => None,
+        })
+        .collect();
+    let notes: Vec<f32> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text {
+                at,
+                color: ColorToken::FretNumber,
+                ..
+            } => Some(at.x),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(notes.len(), 1, "one note");
+    assert!(barlines.len() >= 2, "a start and an end line");
+    let padding = LayoutOptions::default().spacing.barline_padding;
+    for note in &notes {
+        for barline in &barlines {
+            assert!(
+                (note - barline).abs() >= padding,
+                "note at {note} is {:.2} from a barline at {barline} (want {padding})",
+                (note - barline).abs()
+            );
+        }
+    }
+}
+
+/// The ornaments file must actually show its effects, not just the note grid.
+#[test]
+fn ornaments_are_drawn_on_the_tab_staff() {
+    let song = common::open("basic/ornaments.gp");
+    let layout = common::layout(&song, 0);
+    assert_on_page(&layout, "ornaments");
+    let texts: Vec<&str> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    for expected in [
+        "(0)",      // ghost note in parentheses
+        "<7>",      // natural harmonic
+        "7 <19>",   // pinch harmonic and its node
+        "P.M.",     // palm-mute row
+        "let ring", // let-ring row
+        "full",     // bend amount
+        "sl.",      // legato slide
+        "H",        // hammer-on
+        "P",        // pull-off
+        "PH",       // pinch harmonic
+        "-3",       // whammy dive
+        ">",        // accent
+        "v",        // heavy accent
+    ] {
+        assert!(texts.contains(&expected), "missing {expected:?}: {texts:?}");
+    }
+    // Only the ghost note is parenthesized; the tie continuation is not written at all.
+    assert_eq!(texts.iter().filter(|text| **text == "(0)").count(), 1);
+    let glyph_count = |wanted: Glyph| {
+        layout
+            .ops
+            .iter()
+            .filter(|op| matches!(op, DrawOp::Glyph { glyph, .. } if *glyph == wanted))
+            .count()
+    };
+    assert_eq!(glyph_count(Glyph::AugmentationDot), 1, "staccato dot");
+    assert!(
+        layout
+            .ops
+            .iter()
+            .any(|op| matches!(op, DrawOp::Curve { .. })),
+        "slurs and bends are curves"
+    );
 }

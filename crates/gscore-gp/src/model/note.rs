@@ -53,6 +53,9 @@ pub struct NoteEffect {
     pub tremolo_picking: Option<TremoloPickingEffect>,
     pub trill: Option<TrillEffect>,
     pub vibrato: bool,
+    /// Wide (as opposed to slight) vibrato. GuitarScore addition: GPIF stores the kind in
+    /// `<Vibrato>`; the legacy flag alone lost the distinction.
+    pub wide_vibrato: bool,
     /// Ornament type from GPIF (GP6/GP7)
     pub ornament: Option<String>,
 }
@@ -76,6 +79,7 @@ impl Default for NoteEffect {
             tremolo_picking: None,
             trill: None,
             vibrato: false,
+            wide_vibrato: false,
             ornament: None,
         }
     }
@@ -107,6 +111,7 @@ impl NoteEffect {
             && self.trill == d.trill
             && self.tremolo_picking == d.tremolo_picking
             && self.vibrato == d.vibrato
+            && self.wide_vibrato == d.wide_vibrato
             && self.slides == d.slides
             && self.hammer == d.hammer
             && self.palm_mute == d.palm_mute

@@ -33,6 +33,10 @@ pub enum Glyph {
     AugmentationDot,
     /// Quarter note with stem up, for tempo marks (`metNoteQuarterUp`).
     MetronomeQuarter,
+    /// The trill ornament (`ornamentTrill`).
+    Trill,
+    /// Three tremolo strokes (`tremolo3`).
+    Tremolo3,
 }
 
 /// A decimal digit, 0 to 9.
@@ -71,6 +75,8 @@ impl Glyph {
             Glyph::Rest128th,
             Glyph::AugmentationDot,
             Glyph::MetronomeQuarter,
+            Glyph::Trill,
+            Glyph::Tremolo3,
         ]
         .into_iter()
         .chain(digits)
@@ -103,6 +109,8 @@ impl Glyph {
             Glyph::Rest128th => "rest128th",
             Glyph::AugmentationDot => "augmentationDot",
             Glyph::MetronomeQuarter => "metNoteQuarterUp",
+            Glyph::Trill => "ornamentTrill",
+            Glyph::Tremolo3 => "tremolo3",
         }
     }
 
@@ -122,6 +130,8 @@ impl Glyph {
             Glyph::Rest128th => 0xE4EA,
             Glyph::AugmentationDot => 0xE1E7,
             Glyph::MetronomeQuarter => 0xECA5,
+            Glyph::Trill => 0xE566,
+            Glyph::Tremolo3 => 0xE222,
         };
         // All codes above are in the Private Use Area, which is valid `char` range.
         char::from_u32(code).unwrap_or(char::REPLACEMENT_CHARACTER)

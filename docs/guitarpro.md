@@ -141,3 +141,21 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     reader now falls back to the first sound's program. Before, every GP7 track got the
     default instrument. Covered by `gscore-play`'s comparison with Guitar Pro's MIDI export
     (`notes_and_programs_match_guitar_pros_midi_export`).
+26. Note vibrato (`src/model/note.rs`, `src/io/gpif_import.rs`, `src/io/gpif_export.rs`):
+    GP6/GP7 name the kind (`<Vibrato>Slight</Vibrato>` or `Wide`). The model used to keep a
+    single `vibrato: bool`, so saving turned a wide vibrato into a slight one. It now carries
+    `wide_vibrato`; the reader sets it from the tag and the writer writes the tag back.
+    GP3-5 have no distinct flag, so a wide vibrato saved to GP5 becomes slight. Test
+    `effect_tests::wide_vibrato_survives_reading_and_writing`.
+27. Beat-level legato (`src/model/beat.rs`, `src/io/gpif.rs`, `src/io/gpif_import.rs`,
+    `src/io/gpif_export.rs`): GP6/GP7 write `<Legato origin="true" destination="false" />`
+    over a run of beats. The tag used to be ignored, so the slur vanished on save; it is now
+    `BeatEffects::legato` and is read and written back. This is not a hammer-on or a slide
+    (those stay note effects). Test `effect_tests::beat_legato_survives_reading_and_writing`.
+28. Beat vibrato (`src/model/beat.rs`, `src/io/gpif.rs`, `src/io/gpif_import.rs`,
+    `src/io/gpif_export.rs`): GP6/GP7 store a beat's own vibrato as the
+    `VibratoWTremBar` beat property with a `<Strength>Slight</Strength>` or `Wide`. The
+    property used to be ignored, so the wavy lines over notes 11 and 13 in `ornaments`
+    disappeared. `BeatEffects::vibrato`/`wide_vibrato` now carry it, and the writer emits
+    the property again. This is separate from a note's own `<Vibrato>` tag. Test
+    `effect_tests::beat_vibrato_survives_reading_and_writing`.

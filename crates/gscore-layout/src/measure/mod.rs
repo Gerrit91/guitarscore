@@ -2,8 +2,10 @@
 //!
 //! A [`MeasureLayout`] depends only on the measure, whether it shows its time signature,
 //! and the settings, never on where it ends up. That makes it the unit to cache per measure
-//! and document revision once editing needs fast relayout (M7); placing measures into
+//! and document revision once editing needs fast relayout (M8); placing measures into
 //! systems only chooses an x position and a stretch factor.
+
+mod draw;
 
 use std::collections::BTreeMap;
 
@@ -12,9 +14,10 @@ use gscore_model::{
 };
 
 use crate::Context;
-use crate::draw::{ColorToken, DrawOp, Point, Rect, TextAnchor, TextFont};
+use crate::draw::{ColorToken, DrawOp, Point};
 use crate::error::LayoutError;
 use crate::glyph::Glyph;
+use crate::ornaments::{self, ColumnMarks, Fret, NoteMarks};
 
 /// Space before and after a time signature.
 const TIME_SIG_PAD: (f32, f32) = (0.8, 0.6);
@@ -24,8 +27,6 @@ const TIME_SIG_HEIGHT_RATIO: f32 = 0.8;
 const MIN_LEAD: f32 = 1.5;
 /// Gap between a rest and its first dot.
 const DOT_GAP: f32 = 0.3;
-/// Extra room around a fret number's mask, horizontally and vertically.
-const MASK_PAD: (f32, f32) = (0.15, 0.2);
 /// Shown instead of a fret number the model cannot read.
 const UNREADABLE: &str = "?";
 /// How far a measure number sits above the staff (to its baseline).
@@ -57,17 +58,22 @@ struct Column {
     /// Natural space from this column to the next one (or to the barline).
     space: f32,
     items: Vec<Item>,
+    /// Effects that belong to the beat rather than to one note.
+    marks: ColumnMarks,
+}
+
+/// The notes of one column and the effects that belong to its beat.
+#[derive(Debug, Clone, PartialEq)]
+struct ColumnData {
+    items: Vec<Item>,
+    marks: ColumnMarks,
 }
 
 /// One thing drawn in a column.
 #[derive(Debug, Clone, PartialEq)]
 enum Item {
-    /// A fret number (or `x`, `(5)`, ...) on a staff line (0 = top).
-    Fret {
-        line: usize,
-        text: String,
-        width: f32,
-    },
+    /// A fret number (or `x`, `x`, ...) on a staff line (0 = top).
+    Fret(Fret),
     /// A rest, centered on the staff.
     Rest { glyph: Glyph, dots: u8 },
 }
@@ -83,7 +89,7 @@ impl MeasureLayout {
         let signature = measure.time_signature()?;
         let time_signature = show_time_signature.then(|| TimeSigLayout::new(signature, ctx));
         let starts = beat_starts(measure, signature)?;
-        let mut columns: Vec<(Vec<Item>, f32)> = Vec::with_capacity(starts.onsets.len());
+        let mut columns: Vec<(ColumnData, f32)> = Vec::with_capacity(starts.onsets.len());
         for (onset, beats) in &starts.onsets {
             let next = starts
                 .onsets
@@ -95,30 +101,46 @@ impl MeasureLayout {
         }
         if columns.is_empty() {
             // An empty measure still gets the room its length asks for.
-            columns.push((Vec::new(), ctx.options.spacing.after(as_f64(starts.end))));
+            columns.push((
+                ColumnData {
+                    items: Vec::new(),
+                    marks: ColumnMarks::default(),
+                },
+                ctx.options.spacing.after(as_f64(starts.end)),
+            ));
         }
 
-        // Keep neighbouring fret numbers apart, whatever the durations say.
+        // Keep neighbouring fret numbers apart, whatever the durations say. A note also
+        // never sits right against a barline: measures keep their own padding at both ends.
         let min_gap = ctx.options.spacing.min_gap;
+        let barline_padding = ctx.options.spacing.barline_padding.max(0.0);
+        let edge_padding = barline_padding.max(min_gap);
         let half_widths: Vec<f32> = columns
             .iter()
-            .map(|(items, _)| half_width(items, ctx))
+            .map(|(data, _)| half_width(&data.items, ctx))
             .collect();
         let lead = half_widths
             .first()
-            .map_or(MIN_LEAD, |first| (first + min_gap).max(MIN_LEAD));
+            .map_or(MIN_LEAD, |first| (first + edge_padding).max(MIN_LEAD));
         let columns = columns
             .into_iter()
             .enumerate()
-            .map(|(i, (items, space))| {
+            .map(|(i, (data, space))| {
                 let own = half_widths.get(i).copied().unwrap_or_default();
                 let next = half_widths
                     .get(i.saturating_add(1))
                     .copied()
                     .unwrap_or_default();
+                // The last column ends at the barline and needs the wider edge padding.
+                let padding = if i.saturating_add(1) < half_widths.len() {
+                    min_gap
+                } else {
+                    edge_padding
+                };
                 Column {
-                    space: space.max(own + next + min_gap),
-                    items,
+                    space: space.max(own + next + padding),
+                    items: data.items,
+                    marks: data.marks,
                 }
             })
             .collect();
@@ -144,38 +166,6 @@ impl MeasureLayout {
     /// The width with the columns stretched by `stretch`.
     pub(crate) fn width(&self, stretch: f32) -> f32 {
         self.fixed_width() + self.stretchable_width() * stretch
-    }
-
-    /// Draws the measure's content (not the staff lines or barline) starting at `x`, with
-    /// the staff's top line at `top`.
-    pub(crate) fn draw(
-        &self,
-        x: f32,
-        top: f32,
-        stretch: f32,
-        ctx: &Context<'_>,
-        ops: &mut Vec<DrawOp>,
-    ) {
-        ops.push(DrawOp::Text {
-            text: self.index.get().saturating_add(1).to_string(),
-            at: Point::new(x, top - MEASURE_NUMBER_RISE),
-            size: ctx.options.measure_number_size,
-            font: TextFont::Regular,
-            anchor: TextAnchor::Start,
-            color: ColorToken::Annotation,
-        });
-        let mut cursor = x;
-        if let Some(time_signature) = &self.time_signature {
-            time_signature.draw(cursor, top, ctx, ops);
-            cursor += time_signature.width;
-        }
-        cursor += self.lead;
-        for column in &self.columns {
-            for item in &column.items {
-                item.draw(cursor, top, ctx, ops);
-            }
-            cursor += column.space * stretch;
-        }
     }
 }
 
@@ -231,31 +221,7 @@ impl TimeSigLayout {
 impl Item {
     fn draw(&self, x: f32, top: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
         match self {
-            Item::Fret { line, text, width } => {
-                let size = ctx.options.fret_size;
-                let line_y = top + ctx.staff.line_y(*line);
-                let cap = ctx.fonts.text.cap_height * size;
-                // Hide the staff line behind the number.
-                ops.push(DrawOp::Rect {
-                    rect: Rect {
-                        origin: Point::new(
-                            x - width / 2.0 - MASK_PAD.0,
-                            line_y - cap / 2.0 - MASK_PAD.1,
-                        ),
-                        width: width + 2.0 * MASK_PAD.0,
-                        height: cap + 2.0 * MASK_PAD.1,
-                    },
-                    color: ColorToken::Paper,
-                });
-                ops.push(DrawOp::Text {
-                    text: text.clone(),
-                    at: Point::new(x, line_y + cap / 2.0),
-                    size,
-                    font: TextFont::Regular,
-                    anchor: TextAnchor::Middle,
-                    color: ColorToken::FretNumber,
-                });
-            }
+            Item::Fret(_) => {}
             Item::Rest { glyph, dots } => {
                 let font = &ctx.fonts.music;
                 let bbox = font.bbox(*glyph);
@@ -286,7 +252,7 @@ impl Item {
     /// Half the item's width, for keeping columns apart.
     fn half_width(&self, ctx: &Context<'_>) -> f32 {
         match self {
-            Item::Fret { width, .. } => width / 2.0,
+            Item::Fret(fret) => fret.half_width(),
             Item::Rest { glyph, dots } => {
                 let font = &ctx.fonts.music;
                 let dots = f32::from(*dots) * (font.advance(Glyph::AugmentationDot) + DOT_GAP);
@@ -348,8 +314,19 @@ fn beat_starts<'a>(
 }
 
 /// The fret numbers of a column's beats; a rest if no beat has notes.
-fn column_items(beats: &[BeatView<'_>], ctx: &Context<'_>) -> Result<Vec<Item>, LayoutError> {
+fn column_items(beats: &[BeatView<'_>], ctx: &Context<'_>) -> Result<ColumnData, LayoutError> {
     let mut items = Vec::new();
+    let mut marks = ColumnMarks::default();
+    for beat in beats {
+        if let Some(legato) = beat.legato() {
+            marks.legato_origin = marks.legato_origin || legato.origin;
+            marks.legato_destination = marks.legato_destination || legato.destination;
+        }
+        if marks.whammy.is_none() {
+            marks.whammy = beat.whammy_bar();
+        }
+        marks.add_vibrato(beat.vibrato());
+    }
     for beat in beats.iter().filter(|b| b.kind() == BeatKind::Normal) {
         for note in beat.notes() {
             // A fret the model cannot read (it lists those as issues) is shown as `?`, so
@@ -358,10 +335,13 @@ fn column_items(beats: &[BeatView<'_>], ctx: &Context<'_>) -> Result<Vec<Item>, 
                 note.fret()
                     .map_or_else(|_| UNREADABLE.to_owned(), |f| f.get().to_string())
             };
-            let text = match note.kind() {
-                NoteKind::Normal => fret(),
-                NoteKind::Tie => format!("({})", fret()),
-                NoteKind::Dead => "x".to_owned(),
+            let fret_value = note.fret().ok().map(|f| f.get());
+            // A tie continuation is not written in tablature: the origin shows the number
+            // and a curve marks the tie. Its column stays so the curve has an endpoint.
+            let (base, tie_destination) = match note.kind() {
+                NoteKind::Normal => (fret(), false),
+                NoteKind::Tie => (String::new(), true),
+                NoteKind::Dead => ("x".to_owned(), false),
                 NoteKind::Rest | NoteKind::Unknown => continue,
             };
             // Notes on strings the staff does not have are issues too; there is no line to
@@ -374,8 +354,42 @@ fn column_items(beats: &[BeatView<'_>], ctx: &Context<'_>) -> Result<Vec<Item>, 
             else {
                 continue;
             };
+            if tie_destination {
+                items.push(Item::Fret(Fret {
+                    line,
+                    text: String::new(),
+                    width: 0.0,
+                    marks: NoteMarks::new(),
+                    fret: fret_value,
+                    tie_destination: true,
+                }));
+                continue;
+            }
+            let mut note_marks = NoteMarks::new();
+            note_marks.hammer = note.is_hammer();
+            note_marks.bend = note.bend();
+            note_marks.slides = note.slides().collect();
+            note_marks.harmonic = note.harmonic();
+            marks.add_vibrato(note.vibrato());
+            note_marks.accent = note.accent();
+            note_marks.staccato = note.is_staccato();
+            note_marks.trill = note.has_trill();
+            note_marks.tremolo_picking = note.has_tremolo_picking();
+            note_marks.palm_mute = note.is_palm_muted();
+            note_marks.let_ring = note.is_let_ring();
+            let mut text = ornaments::fret_text(&base, &note_marks);
+            if note.is_ghost() {
+                text = format!("({text})");
+            }
             let width = ctx.fonts.text.width(&text, ctx.options.fret_size);
-            items.push(Item::Fret { line, text, width });
+            items.push(Item::Fret(Fret {
+                line,
+                text,
+                width,
+                marks: note_marks,
+                fret: fret_value,
+                tie_destination: false,
+            }));
         }
     }
     if items.is_empty()
@@ -389,7 +403,7 @@ fn column_items(beats: &[BeatView<'_>], ctx: &Context<'_>) -> Result<Vec<Item>, 
             });
         }
     }
-    Ok(items)
+    Ok(ColumnData { items, marks })
 }
 
 /// A duration in whole notes, as a float for spacing.

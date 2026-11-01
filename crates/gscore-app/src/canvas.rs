@@ -58,6 +58,31 @@ pub(crate) fn paint(
                     painter.rect_filled(screen, 0.0, color(theme.color(*token)));
                 }
             }
+            DrawOp::Curve {
+                from,
+                to,
+                control1,
+                control2,
+                thickness,
+                color: token,
+            } => {
+                let points = [
+                    to_screen(*from),
+                    to_screen(*control1),
+                    to_screen(*control2),
+                    to_screen(*to),
+                ];
+                let bounds = Rect::from_points(&points);
+                if visible.intersects(bounds) {
+                    let stroke = Stroke::new(thickness * scale, color(theme.color(*token)));
+                    painter.add(egui::epaint::CubicBezierShape::from_points_stroke(
+                        points,
+                        false,
+                        Color32::TRANSPARENT,
+                        stroke,
+                    ));
+                }
+            }
             DrawOp::Glyph {
                 glyph,
                 at,

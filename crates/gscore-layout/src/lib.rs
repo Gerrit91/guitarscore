@@ -21,6 +21,7 @@ mod header;
 mod measure;
 mod metrics;
 mod options;
+mod ornaments;
 mod staff;
 mod svg;
 mod system;

@@ -95,6 +95,21 @@ pub enum DrawOp {
         /// What the rectangle is.
         color: ColorToken,
     },
+    /// A cubic Bézier curve, for slurs, ties and bends.
+    Curve {
+        /// Start point.
+        from: Point,
+        /// End point.
+        to: Point,
+        /// First control point, next to `from`.
+        control1: Point,
+        /// Second control point, next to `to`.
+        control2: Point,
+        /// Line thickness in staff spaces.
+        thickness: f32,
+        /// What the curve is.
+        color: ColorToken,
+    },
     /// A music-font glyph, by SMuFL name. The renderer resolves the code point.
     Glyph {
         /// The glyph.

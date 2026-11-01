@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use crate::io::gpif::*;
 use crate::model::{
-    beat::{Beat as SongBeat, Voice as SongVoice},
+    beat::{Beat as SongBeat, LegatoEffect, Voice as SongVoice},
     effects::*,
     enums::*,
     headers::{Marker, MeasureHeader},
@@ -736,6 +736,14 @@ fn convert_beat(
         s_beat.effect.fade_in = true;
     }
 
+    // Beat-level legato (a slur over a run of notes, not a slide or a hammer-on).
+    if let Some(legato) = &g_beat.legato {
+        s_beat.effect.legato = LegatoEffect {
+            origin: legato.origin == "true",
+            destination: legato.destination == "true",
+        };
+    }
+
     // Wah effect
     if let Some(wah_str) = &g_beat.wah
         && wah_str == "Open"
@@ -788,6 +796,12 @@ fn convert_beat(
                             _ => BeatStrokeDirection::None,
                         };
                     }
+                }
+                // Beat-level vibrato (Guitar Pro writes it as VibratoWTremBar; the note-level
+                // `<Vibrato>` tag is a different field).
+                "VibratoWTremBar" => {
+                    s_beat.effect.vibrato = true;
+                    s_beat.effect.wide_vibrato = bp.strength.as_deref() == Some("Wide");
                 }
                 // GP6 (GPX) stores the whammy bar as three beat properties, in hundredths
                 // of a semitone; GP7 uses <Whammy> instead. Every beat carries them (0 for
@@ -936,9 +950,10 @@ fn convert_note(
         s_note.kind = NoteType::Tie;
     }
 
-    // Vibrato
-    if g_note.vibrato.is_some() {
+    // Vibrato. GPIF names the kind; keep wide so layout can draw its bigger wiggle.
+    if let Some(vibrato) = &g_note.vibrato {
         s_note.effect.vibrato = true;
+        s_note.effect.wide_vibrato = vibrato == "Wide";
     }
 
     // Let Ring
@@ -1227,8 +1242,8 @@ mod effect_tests {
     use std::collections::HashMap;
 
     use crate::io::gpif::{
-        Beat as GpifBeat, BeatPropertiesWrapper, BeatProperty, EnableTag, Note, NoteProperties,
-        Property, Whammy,
+        Beat as GpifBeat, BeatPropertiesWrapper, BeatProperty, EnableTag, LegatoInfo, Note,
+        NoteProperties, Property, Whammy,
     };
 
     fn note_with(property: &str) -> Note {
@@ -1319,6 +1334,7 @@ mod effect_tests {
                 destination_offset: None,
             }),
             wah: None,
+            legato: None,
             free_text: None,
             properties: None,
         };
@@ -1420,6 +1436,7 @@ mod effect_tests {
                 enable: None,
                 float: Some(value),
                 flags: None,
+                strength: None,
             };
             GpifBeat {
                 id: 0,
@@ -1431,6 +1448,7 @@ mod effect_tests {
                 tremolo: None,
                 whammy: None,
                 wah: None,
+                legato: None,
                 free_text: None,
                 properties: Some(BeatPropertiesWrapper {
                     properties: vec![
@@ -1449,5 +1467,167 @@ mod effect_tests {
         let none = whammy_beat(0.0);
         let song_beat = super::convert_beat(&none, &HashMap::new(), &HashMap::new(), &mut velocity);
         assert!(song_beat.effect.tremolo_bar.is_none());
+    }
+
+    /// GPIF names the vibrato kind; the model used to keep only "some vibrato", so a wide
+    /// vibrato came back as slight after a save.
+    #[test]
+    fn wide_vibrato_survives_reading_and_writing() {
+        use crate::io::Song;
+
+        let mut note = note_with("Fret");
+        if let Some(property) = note.properties.properties.first_mut() {
+            property.fret = Some(7);
+        }
+        note.vibrato = Some("Wide".to_owned());
+        let song_note = super::convert_note(&note, 80, false, false);
+        assert!(song_note.effect.vibrato);
+        assert!(song_note.effect.wide_vibrato);
+
+        let mut song = Song::default();
+        song.tracks = vec![crate::model::Track::default()];
+        song.measure_headers = vec![Default::default()];
+        let mut beat = crate::model::Beat::default();
+        beat.notes.push(crate::model::Note {
+            string: 1,
+            value: 7,
+            kind: crate::model::NoteType::Normal,
+            ..Default::default()
+        });
+        beat.notes[0].effect.vibrato = true;
+        beat.notes[0].effect.wide_vibrato = true;
+        song.tracks[0].measures = vec![crate::model::Measure {
+            voices: vec![crate::model::Voice {
+                beats: vec![beat],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }];
+        let bytes = song.write_gp().expect("write");
+        let mut reread = Song::default();
+        reread.read_gp(&bytes).expect("reread");
+        let effect = &reread.tracks[0].measures[0].voices[0].beats[0].notes[0].effect;
+        assert!(effect.vibrato);
+        assert!(effect.wide_vibrato);
+    }
+
+    /// Guitar Pro writes a beat's own vibrato as the `VibratoWTremBar` property; the
+    /// reader used to ignore it, so the wavy line over notes 11 and 13 in `ornaments` was
+    /// missing. The strength (Slight/Wide) must survive a save.
+    #[test]
+    fn beat_vibrato_survives_reading_and_writing() {
+        use crate::io::Song;
+
+        let property = BeatProperty {
+            name: "VibratoWTremBar".to_owned(),
+            direction: None,
+            enable: None,
+            float: None,
+            flags: None,
+            strength: Some("Wide".to_owned()),
+        };
+        let beat = GpifBeat {
+            id: 0,
+            notes: None,
+            rhythm: None,
+            dynamic: None,
+            grace_notes: None,
+            fadding: None,
+            tremolo: None,
+            whammy: None,
+            wah: None,
+            legato: None,
+            free_text: None,
+            properties: Some(BeatPropertiesWrapper {
+                properties: vec![property],
+            }),
+        };
+        let mut velocity = 0;
+        let song_beat = super::convert_beat(&beat, &HashMap::new(), &HashMap::new(), &mut velocity);
+        assert!(song_beat.effect.vibrato);
+        assert!(song_beat.effect.wide_vibrato);
+
+        let mut song = Song::default();
+        song.tracks = vec![crate::model::Track::default()];
+        song.measure_headers = vec![Default::default()];
+        let mut beat = crate::model::Beat::default();
+        beat.effect.vibrato = true;
+        beat.effect.wide_vibrato = true;
+        song.tracks[0].measures = vec![crate::model::Measure {
+            voices: vec![crate::model::Voice {
+                beats: vec![beat],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }];
+        let bytes = song.write_gp().expect("write");
+        let mut reread = Song::default();
+        reread.read_gp(&bytes).expect("reread");
+        let effect = &reread.tracks[0].measures[0].voices[0].beats[0].effect;
+        assert!(effect.vibrato);
+        assert!(effect.wide_vibrato);
+    }
+
+    /// A beat-level legato run is not a slide or a hammer-on; GPIF stores it in
+    /// `<Legato>`, which the reader and writer used to drop.
+    #[test]
+    fn beat_legato_survives_reading_and_writing() {
+        use crate::io::Song;
+        use crate::model::LegatoEffect;
+
+        let beat = GpifBeat {
+            id: 0,
+            notes: None,
+            rhythm: None,
+            dynamic: None,
+            grace_notes: None,
+            fadding: None,
+            tremolo: None,
+            whammy: None,
+            wah: None,
+            legato: Some(LegatoInfo {
+                origin: "true".to_owned(),
+                destination: "false".to_owned(),
+            }),
+            free_text: None,
+            properties: None,
+        };
+        let mut velocity = 0;
+        let song_beat = super::convert_beat(&beat, &HashMap::new(), &HashMap::new(), &mut velocity);
+        assert_eq!(
+            song_beat.effect.legato,
+            LegatoEffect {
+                origin: true,
+                destination: false,
+            }
+        );
+
+        let mut song = Song::default();
+        song.tracks = vec![crate::model::Track::default()];
+        song.measure_headers = vec![Default::default()];
+        let mut beat = crate::model::Beat::default();
+        beat.effect.legato = LegatoEffect {
+            origin: true,
+            destination: true,
+        };
+        song.tracks[0].measures = vec![crate::model::Measure {
+            voices: vec![crate::model::Voice {
+                beats: vec![beat],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }];
+        let bytes = song.write_gp().expect("write");
+        let mut reread = Song::default();
+        reread.read_gp(&bytes).expect("reread");
+        assert_eq!(
+            reread.tracks[0].measures[0].voices[0].beats[0]
+                .effect
+                .legato,
+            LegatoEffect {
+                origin: true,
+                destination: true,
+            }
+        );
     }
 }

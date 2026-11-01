@@ -18,46 +18,61 @@
 <text x="11.22" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">1</text>
 <text x="12.02" y="36.69" font-family="Bravura" font-size="6" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
 <text x="12.02" y="39.69" font-family="Bravura" font-size="6" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
-<rect x="16.36" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="16.94" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="23.09" y="41.2" width="2.06" height="1.47" fill="#ffffff"/>
-<text x="24.12" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">(0)</text>
-<line x1="31.21" y1="34.44" x2="31.21" y2="41.94" stroke="#303030" stroke-width="0.16"/>
-<text x="31.29" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">2</text>
-<rect x="32.25" y="41.2" width="1.09" height="1.47" fill="#ffffff"/>
-<text x="32.79" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">x</text>
-<line x1="42.04" y1="34.44" x2="42.04" y2="41.94" stroke="#303030" stroke-width="0.16"/>
-<text x="42.12" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">3</text>
-<rect x="43.04" y="38.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="43.62" y="39.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="48.56" y="38.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="49.14" y="39.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
-<rect x="54.08" y="38.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="54.66" y="39.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
-<rect x="59.6" y="38.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="60.18" y="39.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<line x1="65.62" y1="34.44" x2="65.62" y2="41.94" stroke="#303030" stroke-width="0.16"/>
-<text x="65.7" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">4</text>
-<rect x="66.19" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="67.2" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
-<line x1="76.45" y1="34.44" x2="76.45" y2="41.94" stroke="#303030" stroke-width="0.16"/>
-<text x="76.53" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">5</text>
-<rect x="77.02" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="78.03" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
-<rect x="81.27" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="82.28" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
-<rect x="85.52" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="86.52" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
-<rect x="89.76" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="90.77" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
-<rect x="94.01" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="95.02" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">17</text>
-<rect x="98.25" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="99.26" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
-<rect x="102.5" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="103.51" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">17</text>
-<rect x="106.75" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="107.75" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
+<rect x="16.64" y="41.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="17.22" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<path d="M 17.85 41.94 C 19.96 42.84 22.06 42.84 24.17 41.94" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<line x1="31.14" y1="34.44" x2="31.14" y2="41.94" stroke="#303030" stroke-width="0.16"/>
+<text x="31.22" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">2</text>
+<rect x="32.42" y="41.2" width="1.09" height="1.47" fill="#ffffff"/>
+<text x="32.96" y="42.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">x</text>
+<line x1="41.98" y1="34.44" x2="41.98" y2="41.94" stroke="#303030" stroke-width="0.16"/>
+<text x="42.06" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">3</text>
+<rect x="43.26" y="38.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="43.84" y="39.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="48.64" y="38.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="49.22" y="39.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<rect x="54.02" y="38.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="54.6" y="39.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<rect x="59.41" y="38.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="59.98" y="39.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<path d="M 44.47 38.94 C 45.84 39.84 47.22 39.84 48.59 38.94" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<text x="46.53" y="38.49" font-family="Noto Sans" font-size="1" text-anchor="middle" fill="#101010">H</text>
+<path d="M 55.23 38.94 C 56.61 39.84 57.98 39.84 59.36 38.94" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<text x="57.29" y="38.49" font-family="Noto Sans" font-size="1" text-anchor="middle" fill="#101010">P</text>
+<line x1="65.29" y1="34.44" x2="65.29" y2="41.94" stroke="#303030" stroke-width="0.16"/>
+<text x="65.37" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">4</text>
+<rect x="66.57" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="67.57" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
+<path d="M 68.58 35.62 C 69.58 35.22 70.17 32.64 71.37 32.24" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<line x1="70.87" y1="33.24" x2="71.37" y2="32.24" stroke="#101010" stroke-width="0.18"/>
+<line x1="71.87" y1="33.24" x2="71.37" y2="32.24" stroke="#101010" stroke-width="0.18"/>
+<text x="71.37" y="31.74" font-family="Noto Sans" font-size="0.9" text-anchor="middle" fill="#404040">full</text>
+<line x1="76.59" y1="34.44" x2="76.59" y2="41.94" stroke="#303030" stroke-width="0.16"/>
+<text x="76.67" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">5</text>
+<rect x="77.87" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="78.88" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
+<rect x="82.01" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="83.02" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
+<rect x="86.15" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="87.16" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
+<rect x="90.29" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="91.3" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
+<rect x="94.43" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="95.44" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">17</text>
+<line x1="94.13" y1="36.48" x2="94.53" y2="35.4" stroke="#101010" stroke-width="0.15"/>
+<rect x="98.57" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="99.58" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
+<line x1="98.27" y1="35.4" x2="98.67" y2="36.48" stroke="#101010" stroke-width="0.15"/>
+<line x1="100.49" y1="36.48" x2="100.89" y2="35.4" stroke="#101010" stroke-width="0.15"/>
+<rect x="102.71" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="103.72" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">17</text>
+<line x1="102.41" y1="35.4" x2="102.81" y2="36.48" stroke="#101010" stroke-width="0.15"/>
+<rect x="106.85" y="35.2" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="107.86" y="36.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
+<line x1="108.77" y1="35.4" x2="109.17" y2="36.48" stroke="#101010" stroke-width="0.15"/>
+<line x1="79.94" y1="35.64" x2="81.96" y2="35.64" stroke="#101010" stroke-width="0.15"/>
+<path d="M 88.22 35.94 C 88.89 35.04 89.57 35.04 90.24 35.94" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<text x="89.23" y="34.74" font-family="Noto Sans" font-size="0.9" text-anchor="middle" fill="#404040">sl.</text>
 <line x1="111.92" y1="34.44" x2="111.92" y2="41.94" stroke="#303030" stroke-width="0.16"/>
 <line x1="8" y1="51.94" x2="112" y2="51.94" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="53.44" x2="112" y2="53.44" stroke="#707070" stroke-width="0.13"/>
@@ -68,86 +83,145 @@
 <line x1="8.08" y1="51.94" x2="8.08" y2="59.44" stroke="#303030" stroke-width="0.16"/>
 <text x="8.6" y="55.72" font-family="Bravura" font-size="3.97" fill="#101010" data-glyph="6stringTabClef">&#xE06D;</text>
 <text x="11.22" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">6</text>
-<rect x="12.14" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="12.72" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">7</text>
-<rect x="16.83" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="17.41" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">9</text>
-<rect x="21.08" y="54.2" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="22.09" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">11</text>
-<rect x="25.77" y="54.2" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="26.77" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">13</text>
-<line x1="31.38" y1="51.94" x2="31.38" y2="59.44" stroke="#303030" stroke-width="0.16"/>
-<text x="31.46" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">7</text>
-<rect x="32.38" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="32.96" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="37.06" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="37.64" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="41.75" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="42.32" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="46.43" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="47.01" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<line x1="51.61" y1="51.94" x2="51.61" y2="59.44" stroke="#303030" stroke-width="0.16"/>
-<text x="51.69" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">8</text>
-<rect x="52.61" y="57.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="53.19" y="58.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="52.61" y="55.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="53.19" y="56.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
-<rect x="52.61" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="53.19" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">4</text>
-<rect x="52.61" y="52.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="53.19" y="53.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">1</text>
-<line x1="61.03" y1="51.94" x2="61.03" y2="59.44" stroke="#303030" stroke-width="0.16"/>
-<text x="61.11" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">9</text>
-<rect x="61.6" y="52.7" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="62.61" y="53.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
-<line x1="70.44" y1="51.94" x2="70.44" y2="59.44" stroke="#303030" stroke-width="0.16"/>
-<text x="70.52" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">10</text>
-<rect x="71.44" y="51.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="72.02" y="52.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
-<rect x="75.05" y="51.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="75.63" y="52.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">3</text>
-<rect x="78.65" y="51.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="79.23" y="52.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">4</text>
-<rect x="82.25" y="51.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="82.83" y="52.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">5</text>
-<rect x="85.85" y="51.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="86.43" y="52.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">4</text>
-<rect x="89.46" y="51.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="90.04" y="52.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">3</text>
-<rect x="93.06" y="51.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="93.64" y="52.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
-<line x1="98.24" y1="51.94" x2="98.24" y2="59.44" stroke="#303030" stroke-width="0.16"/>
-<text x="98.32" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">11</text>
-<rect x="99.24" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="99.82" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">7</text>
-<rect x="105.33" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="105.91" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">7</text>
+<rect x="12.42" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="13" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">7</text>
+<rect x="16.93" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="17.51" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">9</text>
+<rect x="21.01" y="54.2" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="22.02" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">11</text>
+<rect x="25.52" y="54.2" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="26.53" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">13</text>
+<path d="M 11.8 50.34 C 11.94 50.16 12.06 50.16 12.2 50.34" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 12.2 50.34 C 12.34 50.52 12.46 50.52 12.6 50.34" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 12.6 50.34 C 12.74 50.16 12.86 50.16 13 50.34" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 13 50.34 C 13.14 50.52 13.26 50.52 13.4 50.34" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 13.4 50.34 C 13.54 50.16 13.66 50.16 13.8 50.34" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 13.8 50.34 C 13.94 50.52 14.06 50.52 14.2 50.34" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<line x1="16.21" y1="50.76" x2="16.86" y2="49.92" stroke="#101010" stroke-width="0.15"/>
+<line x1="16.86" y1="49.92" x2="17.51" y2="50.76" stroke="#101010" stroke-width="0.15"/>
+<line x1="17.51" y1="50.76" x2="18.16" y2="49.92" stroke="#101010" stroke-width="0.15"/>
+<line x1="18.16" y1="49.92" x2="18.81" y2="50.76" stroke="#101010" stroke-width="0.15"/>
+<path d="M 20.82 50.34 C 20.96 50.16 21.08 50.16 21.22 50.34" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 21.22 50.34 C 21.36 50.52 21.48 50.52 21.62 50.34" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 21.62 50.34 C 21.76 50.16 21.88 50.16 22.02 50.34" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 22.02 50.34 C 22.16 50.52 22.28 50.52 22.42 50.34" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 22.42 50.34 C 22.56 50.16 22.68 50.16 22.82 50.34" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 22.82 50.34 C 22.96 50.52 23.08 50.52 23.22 50.34" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<line x1="25.23" y1="50.76" x2="25.88" y2="49.92" stroke="#101010" stroke-width="0.15"/>
+<line x1="25.88" y1="49.92" x2="26.53" y2="50.76" stroke="#101010" stroke-width="0.15"/>
+<line x1="26.53" y1="50.76" x2="27.18" y2="49.92" stroke="#101010" stroke-width="0.15"/>
+<line x1="27.18" y1="49.92" x2="27.83" y2="50.76" stroke="#101010" stroke-width="0.15"/>
+<line x1="30.96" y1="51.94" x2="30.96" y2="59.44" stroke="#303030" stroke-width="0.16"/>
+<text x="31.04" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">7</text>
+<rect x="32.24" y="54.2" width="2.06" height="1.47" fill="#ffffff"/>
+<text x="33.27" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">(0)</text>
+<rect x="37.2" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="37.78" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<text x="37.78" y="50.94" font-family="Noto Sans" font-size="1.2" text-anchor="middle" fill="#101010">&gt;</text>
+<rect x="41.71" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="42.28" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<text x="42.28" y="50.94" font-family="Noto Sans" font-size="1.4" font-weight="bold" text-anchor="middle" fill="#101010">v</text>
+<rect x="46.21" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="46.79" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<text x="46.59" y="50.94" font-family="Bravura" font-size="4" fill="#101010" data-glyph="augmentationDot">&#xE1E7;</text>
+<line x1="51.22" y1="51.94" x2="51.22" y2="59.44" stroke="#303030" stroke-width="0.16"/>
+<text x="51.3" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">8</text>
+<rect x="52.5" y="57.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="53.08" y="58.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="52.5" y="55.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="53.08" y="56.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<rect x="52.5" y="54.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="53.08" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">4</text>
+<rect x="52.5" y="52.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="53.08" y="53.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">1</text>
+<text x="52.38" y="61.64" font-family="Noto Sans" font-size="1" font-weight="bold" fill="#404040">let ring</text>
+<line x1="57.32" y1="61.29" x2="57.82" y2="61.29" stroke="#404040" stroke-width="0.2"/>
+<line x1="58.12" y1="61.29" x2="58.62" y2="61.29" stroke="#404040" stroke-width="0.2"/>
+<line x1="58.92" y1="61.29" x2="59.42" y2="61.29" stroke="#404040" stroke-width="0.2"/>
+<line x1="59.72" y1="61.29" x2="60.22" y2="61.29" stroke="#404040" stroke-width="0.2"/>
+<line x1="60.52" y1="61.29" x2="60.7" y2="61.29" stroke="#404040" stroke-width="0.2"/>
+<line x1="60.7" y1="60.99" x2="60.7" y2="61.59" stroke="#404040" stroke-width="0.2"/>
+<line x1="60.62" y1="51.94" x2="60.62" y2="59.44" stroke="#303030" stroke-width="0.16"/>
+<text x="60.7" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">9</text>
+<rect x="61.9" y="52.7" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="62.91" y="53.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
+<line x1="63.71" y1="49.84" x2="68.91" y2="51.14" stroke="#404040" stroke-width="0.15"/>
+<line x1="68.41" y1="50.14" x2="68.91" y2="51.14" stroke="#101010" stroke-width="0.18"/>
+<line x1="69.41" y1="50.14" x2="68.91" y2="51.14" stroke="#101010" stroke-width="0.18"/>
+<text x="69.06" y="51.49" font-family="Noto Sans" font-size="0.9" fill="#404040">-3</text>
+<line x1="70.45" y1="51.94" x2="70.45" y2="59.44" stroke="#303030" stroke-width="0.16"/>
+<text x="70.53" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">10</text>
+<rect x="71.73" y="51.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="72.31" y="52.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<rect x="75.2" y="51.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="75.78" y="52.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">3</text>
+<rect x="78.67" y="51.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="79.25" y="52.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">4</text>
+<rect x="82.13" y="51.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="82.71" y="52.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">5</text>
+<rect x="85.6" y="51.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="86.18" y="52.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">4</text>
+<rect x="89.07" y="51.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="89.65" y="52.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">3</text>
+<rect x="92.54" y="51.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="93.12" y="52.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<path d="M 71.71 51.34 C 79.05 49.94 86.38 49.94 93.72 51.34" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<line x1="97.55" y1="51.94" x2="97.55" y2="59.44" stroke="#303030" stroke-width="0.16"/>
+<text x="97.63" y="51.14" font-family="Noto Sans" font-size="1.1" fill="#404040">11</text>
+<rect x="98.83" y="54.2" width="2.9" height="1.47" fill="#ffffff"/>
+<text x="100.28" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">&lt;7&gt;</text>
+<rect x="103.4" y="54.2" width="5.48" height="1.47" fill="#ffffff"/>
+<text x="106.14" y="55.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">7 &lt;19&gt;</text>
+<text x="106.14" y="50.94" font-family="Noto Sans" font-size="1" text-anchor="middle" fill="#101010">PH</text>
 <line x1="111.92" y1="51.94" x2="111.92" y2="59.44" stroke="#303030" stroke-width="0.16"/>
-<line x1="8" y1="69.44" x2="30.72" y2="69.44" stroke="#707070" stroke-width="0.13"/>
-<line x1="8" y1="70.94" x2="30.72" y2="70.94" stroke="#707070" stroke-width="0.13"/>
-<line x1="8" y1="72.44" x2="30.72" y2="72.44" stroke="#707070" stroke-width="0.13"/>
-<line x1="8" y1="73.94" x2="30.72" y2="73.94" stroke="#707070" stroke-width="0.13"/>
-<line x1="8" y1="75.44" x2="30.72" y2="75.44" stroke="#707070" stroke-width="0.13"/>
-<line x1="8" y1="76.94" x2="30.72" y2="76.94" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="69.44" x2="31" y2="69.44" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="70.94" x2="31" y2="70.94" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="72.44" x2="31" y2="72.44" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="73.94" x2="31" y2="73.94" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="75.44" x2="31" y2="75.44" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="76.94" x2="31" y2="76.94" stroke="#707070" stroke-width="0.13"/>
 <line x1="8.08" y1="69.44" x2="8.08" y2="76.94" stroke="#303030" stroke-width="0.16"/>
 <text x="8.6" y="73.22" font-family="Bravura" font-size="3.97" fill="#101010" data-glyph="6stringTabClef">&#xE06D;</text>
 <text x="11.22" y="68.64" font-family="Noto Sans" font-size="1.1" fill="#404040">12</text>
-<rect x="12.14" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="12.72" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
-<rect x="12.14" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="12.72" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="16.64" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="17.22" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
-<rect x="16.64" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="17.22" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="21.14" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="21.72" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
-<rect x="21.14" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="21.72" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="25.64" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="26.22" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
-<rect x="25.64" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="26.22" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<line x1="29.74" y1="69.44" x2="29.74" y2="76.94" stroke="#303030" stroke-width="0.16"/>
-<line x1="30.47" y1="69.44" x2="30.47" y2="76.94" stroke="#303030" stroke-width="0.5"/>
+<rect x="12.42" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="13" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<rect x="12.42" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="13" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="16.92" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="17.5" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<rect x="16.92" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="17.5" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="21.42" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="22" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<rect x="21.42" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="22" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="25.92" y="74.7" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="26.5" y="75.98" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<rect x="25.92" y="76.2" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="26.5" y="77.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<text x="12.3" y="79.14" font-family="Noto Sans" font-size="1" font-weight="bold" fill="#404040">P.M.</text>
+<line x1="14.92" y1="78.79" x2="15.42" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="15.72" y1="78.79" x2="16.22" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="16.52" y1="78.79" x2="17.02" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="17.32" y1="78.79" x2="17.82" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="18.12" y1="78.79" x2="18.62" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="18.92" y1="78.79" x2="19.42" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="19.72" y1="78.79" x2="20.22" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="20.52" y1="78.79" x2="21.02" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="21.32" y1="78.79" x2="21.82" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="22.12" y1="78.79" x2="22.62" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="22.92" y1="78.79" x2="23.42" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="23.72" y1="78.79" x2="24.22" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="24.52" y1="78.79" x2="25.02" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="25.32" y1="78.79" x2="25.82" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="26.12" y1="78.79" x2="26.62" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="26.92" y1="78.79" x2="27.42" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="27.72" y1="78.79" x2="28.22" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="28.52" y1="78.79" x2="29.02" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="29.32" y1="78.79" x2="29.82" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="30.12" y1="78.79" x2="30.62" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="30.92" y1="78.79" x2="31" y2="78.79" stroke="#404040" stroke-width="0.2"/>
+<line x1="31" y1="78.49" x2="31" y2="79.09" stroke="#404040" stroke-width="0.2"/>
+<line x1="30.02" y1="69.44" x2="30.02" y2="76.94" stroke="#303030" stroke-width="0.16"/>
+<line x1="30.75" y1="69.44" x2="30.75" y2="76.94" stroke="#303030" stroke-width="0.5"/>
 </svg>
