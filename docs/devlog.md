@@ -28,7 +28,12 @@ Landed:
 - Tests: 10 (xtask 6, io 2, cli 1, model 1).
 
 Open (M0):
-- wasm check not yet run: the local Rust (Arch package) lacks the `wasm32-unknown-unknown`
-  target. Likely failure: `guitarpro` pulls `zip` 9 with default features, including
-  `zstd-sys` (C code). See `docs/gaps.md`.
 - Panic hook / crash log not set up yet (AGENTS.md "Containment").
+
+## 2026-11-01 — wasm check verified
+
+- Installed `rust-wasm`; `cargo xtask layers` now runs the wasm check of all five core crates
+  and passes. `gscore-io` passes too, contrary to the expected `zstd-sys` failure: clang
+  compiles the C code for wasm. Building it therefore needs clang (present on GitHub's
+  ubuntu-latest runners).
+- Vendoring `guitarpro` stays a long-term goal (docs/gaps.md #1).
