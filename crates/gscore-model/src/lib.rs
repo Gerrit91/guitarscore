@@ -18,6 +18,7 @@
 
 #![warn(clippy::arithmetic_side_effects)]
 
+mod compare;
 mod duration;
 mod error;
 mod instrument;
@@ -34,6 +35,7 @@ mod test_support;
 #[cfg(test)]
 mod tests;
 
+pub use compare::{Difference, differences};
 pub use duration::{Duration, TimeSignature};
 pub use error::ModelError;
 pub use instrument::InstrumentKind;

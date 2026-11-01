@@ -35,3 +35,11 @@ All changes must pass `cargo xtask ci`, which runs:
 - `cargo xtask layers`
 
 Additionally, specific tests apply based on what's modified.
+
+## Developer tools
+
+- `gscore-cli roundtrip-check <file> [--to gp|gpx|gp5|gp4|gp3]` (hidden from `--help`):
+  writes the song, reads it back and lists what changed. Use it whenever reading or
+  writing code changes.
+- `GSCORE_UPDATE_GOLDEN=1 cargo test -p gscore-cli --test test_golden` regenerates the
+  expected `info`/`dump` outputs in `crates/gscore-cli/tests/golden/` (review the diff).

@@ -22,9 +22,14 @@ pub fn install_panic_hook(dir: PathBuf) {
     std::panic::set_hook(Box::new(move |info| {
         let report = format_report(info, &Backtrace::force_capture());
         match write_report(&dir, &report) {
-            Ok(path) => note(&format!("crash report written to {}", path.display())),
+            // Also runs for panics that are caught and contained (for example in the file
+            // reader), so this reports an internal error rather than claiming a crash.
+            Ok(path) => note(&format!(
+                "internal error, report written to {}",
+                path.display()
+            )),
             Err(e) => note(&format!(
-                "could not write crash report to {}: {e}",
+                "internal error, could not write a report to {}: {e}",
                 dir.display()
             )),
         }

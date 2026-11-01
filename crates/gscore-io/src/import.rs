@@ -1,10 +1,9 @@
 //! Import of Guitar Pro bytes into a `Song`.
 
-use std::panic;
-
 use gscore_gp::Song as GpSong;
 use gscore_model::{Song, interop};
 
+use crate::contain::contain;
 use crate::error::IoError;
 use crate::format::{FileFormat, detect_format};
 
@@ -24,8 +23,8 @@ pub struct Imported {
 
 /// Parses Guitar Pro bytes (GP3, GP4, GP5, GPX or GP7+, detected from the content).
 ///
-/// Malformed input yields an error, never a panic: the guitarpro parser runs inside
-/// `catch_unwind`, and songs that break the model's invariants are rejected.
+/// Malformed input yields an error, never a panic: the parser runs inside `catch_unwind`,
+/// and songs that break the model's invariants are rejected.
 pub fn import_guitar_pro_from_bytes(bytes: &[u8]) -> Result<Imported, IoError> {
     if bytes.len() > MAX_INPUT_BYTES {
         return Err(IoError::UnsupportedFormat(format!(
@@ -34,7 +33,7 @@ pub fn import_guitar_pro_from_bytes(bytes: &[u8]) -> Result<Imported, IoError> {
         )));
     }
     let format = detect_format(bytes)?;
-    let parsed = panic::catch_unwind(|| {
+    let gp_song = contain(format, "parser", || {
         let mut gp_song = GpSong::default();
         let result = match format {
             FileFormat::Gp3 => gp_song.read_gp3(bytes),
@@ -44,28 +43,9 @@ pub fn import_guitar_pro_from_bytes(bytes: &[u8]) -> Result<Imported, IoError> {
             FileFormat::Gp => gp_song.read_gp(bytes),
         };
         result.map(|()| gp_song)
-    });
-    let gp_song = match parsed {
-        Ok(Ok(song)) => song,
-        Ok(Err(e)) => return Err(IoError::GuitarProError(format!("{format}: {e:?}"))),
-        Err(payload) => {
-            return Err(IoError::GuitarProError(format!(
-                "{format}: the parser panicked: {}",
-                panic_message(payload.as_ref())
-            )));
-        }
-    };
+    })?;
     let song = interop::from_gp(gp_song).map_err(IoError::InvalidSong)?;
     Ok(Imported { song, format })
-}
-
-/// Best-effort text of a panic payload (`panic!` passes a `&str` or a `String`).
-fn panic_message(payload: &(dyn std::any::Any + Send)) -> &str {
-    payload
-        .downcast_ref::<&str>()
-        .copied()
-        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
-        .unwrap_or("unknown panic payload")
 }
 
 #[cfg(test)]

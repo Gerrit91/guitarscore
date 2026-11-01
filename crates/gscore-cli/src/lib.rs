@@ -7,6 +7,7 @@
 mod dump;
 mod info;
 mod input;
+mod roundtrip;
 
 use std::ffi::OsString;
 use std::fmt;
@@ -56,6 +57,20 @@ enum Command {
         /// Maximum line length before wrapping to the next system
         #[arg(long, default_value_t = 80)]
         width: usize,
+    },
+    /// Write a file, read it back and report what changed (development tool)
+    ///
+    /// Writes the song in its own format (or `--to`), reads the result back and compares
+    /// song information, tracks, tunings, time signatures, beats and notes. Exit code 0 if
+    /// nothing changed, 1 with a list of differences otherwise. Hidden from `--help`: it
+    /// checks GuitarScore itself and is not meant for normal use.
+    #[command(hide = true)]
+    RoundtripCheck {
+        /// The Guitar Pro file to read
+        file: PathBuf,
+        /// Write in this format instead of the file's own
+        #[arg(long, value_enum)]
+        to: Option<roundtrip::FormatArg>,
     },
 }
 
@@ -118,6 +133,7 @@ where
     match cli.command {
         Command::Info { file } => info::run(&file),
         Command::Dump { file, track, width } => dump::run(&file, track, width),
+        Command::RoundtripCheck { file, to } => roundtrip::run(&file, to),
     }
 }
 
@@ -149,6 +165,17 @@ mod tests {
             assert!(out.contains("Usage: gscore-cli info <FILE>"), "{out}");
             assert!(out.contains("detected from the file's content"), "{out}");
         }
+    }
+
+    #[test]
+    fn roundtrip_check_is_hidden_but_works() {
+        let help = run_cli(["--help"]).unwrap();
+        assert!(!help.contains("roundtrip"), "{help}");
+        let own_help = run_cli(["roundtrip-check", "--help"]).unwrap();
+        assert!(
+            own_help.contains("Usage: gscore-cli roundtrip-check"),
+            "{own_help}"
+        );
     }
 
     #[test]

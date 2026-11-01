@@ -236,3 +236,23 @@ gaps, parity, testdata README and CLAUDE.md updated.
   generalized to `tests/test_golden.rs` (`<file>.<command>.txt`).
 - All 26 owner band files dump without errors.
 - Tests: 85. M2 still open: `roundtrip-check`.
+
+## 2026-11-01 — `roundtrip-check`; M2 complete
+
+- `gscore_io::export_to_bytes(song, format)` (GP7, GPX, GP5 5.10, GP4 4.06, GP3 3.00) behind
+  `catch_unwind`; import and export share `contain()`. Bytes only; safe-save is M3.
+- `gscore_model::differences(a, b)`: song information, tracks (name, instrument, strings,
+  tuning, tuning name), time signatures, and every beat (kind, length, notes); placeholder
+  beats and empty voices ignored. M3 will reuse it to verify saved files.
+- `gscore-cli roundtrip-check <file> [--to ...]`, hidden from `--help` (owner's wish);
+  exit 1 with the list of differences.
+- Findings (docs/gaps.md #2): GP7/GPX writer loses instruments and tuning labels (all 26
+  band files differ); GP5 writer panics on every GPIF-sourced song (contained); GP5 ->
+  GPIF adds a beat to the empty second voice; one band file gives unreadable GPX. Test
+  file: GPX -> GPX and GP5 -> GP5 are clean.
+- The panic hook now says "internal error, report written to ..." (it also runs for
+  contained panics, so "crash report" was misleading).
+- Tests: 90 (+3 ignored known gaps).
+
+M2 (import, `info`, `dump`, `roundtrip-check`, corrupt-file and damaged-input tests) is
+complete.

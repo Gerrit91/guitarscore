@@ -449,3 +449,54 @@ fn unknown_fields_survive_wrapping() {
     assert_eq!(inner.copyright, "© owner");
     assert_eq!(inner.tracks[0].color, 0x00ff00);
 }
+
+// --- Comparison ---------------------------------------------------------------------------
+
+#[test]
+fn identical_songs_have_no_differences() {
+    let make = || {
+        from_gp(song(vec![
+            track(
+                "Lead",
+                GUITAR_6,
+                vec![measure((4, 4), vec![vec![beat(1, &[(1, 3)])]])],
+            ),
+            track("Bass", BASS_4, vec![measure((4, 4), vec![vec![rest(1)]])]),
+        ]))
+        .unwrap()
+    };
+    assert_eq!(differences(&make(), &make()), []);
+}
+
+#[test]
+fn differences_name_what_and_where() {
+    let before = from_gp(one_measure(vec![beat(2, &[(1, 3)]), beat(2, &[(2, 5)])])).unwrap();
+    let mut gp = one_measure(vec![beat(2, &[(1, 3)]), beat(2, &[(2, 7)])]);
+    gp.name = "Renamed".to_owned();
+    let after = from_gp(gp).unwrap();
+    let text: Vec<String> = differences(&before, &after)
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(text.len(), 2, "{text:?}");
+    assert!(text[0].starts_with("song: title"), "{text:?}");
+    assert!(
+        text[1].starts_with("track 1, measure 1, voice 1, beat 2: beat"),
+        "{text:?}"
+    );
+}
+
+#[test]
+fn empty_voices_and_placeholders_do_not_count() {
+    let before = from_gp(one_measure(vec![beat(1, &[(1, 0)])])).unwrap();
+    let gp = song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure(
+            (4, 4),
+            vec![vec![beat(1, &[(1, 0)])], vec![empty_beat()], vec![]],
+        )],
+    )]);
+    let after = from_gp(gp).unwrap();
+    assert_eq!(differences(&before, &after), []);
+}
