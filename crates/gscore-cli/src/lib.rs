@@ -7,6 +7,14 @@ use gscore_model::Song;
 
 const USAGE: &str = "Usage: gscore-cli info <file.gp>";
 
+/// Installs the panic hook that writes crash reports to the per-user crash directory.
+/// Call once at the start of `main`.
+pub fn install_crash_reporting() {
+    if let Some(dir) = gscore_session::default_crash_dir() {
+        gscore_session::install_panic_hook(dir);
+    }
+}
+
 /// Formats a summary of a song (title, tempo, tracks, measures).
 pub fn song_info(song: &Song) -> String {
     let mut out = format!(

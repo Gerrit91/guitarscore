@@ -10,6 +10,7 @@ path = "src/main.rs"
 [dependencies]
 gscore-model = { path = "../gscore-model" }
 gscore-io = { path = "../gscore-io" }
+gscore-session = { path = "../gscore-session" }
 
 [lints]
 workspace = true

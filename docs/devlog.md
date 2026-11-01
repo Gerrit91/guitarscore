@@ -37,3 +37,21 @@ Open (M0):
   compiles the C code for wasm. Building it therefore needs clang (present on GitHub's
   ubuntu-latest runners).
 - Vendoring `guitarpro` stays a long-term goal (docs/gaps.md #1).
+
+## 2026-11-01 — Crash reports; M0 complete
+
+- `gscore-session`: `install_panic_hook(dir)` writes one report per panic (version, time,
+  thread, location, message, backtrace) atomically (temp file + rename), then runs the
+  previous hook. `default_crash_dir()`: XDG state dir on Linux, `~/Library/Logs` on macOS,
+  `%LOCALAPPDATA%` on Windows, no extra dependency. Installed by `gscore-cli`; `gscore-app`
+  installs it once it has a `main` (M4).
+- `panic = "unwind"` spelled out in the dev and release profiles.
+- Tests: 12 (+2: hook writes a report from a panicking thread; crash dir path).
+- `cargo xtask ci` green, wasm check included.
+
+M0 done. Open questions for M1, from the end-of-milestone architecture review:
+- `gscore-model` is a separate model, while AGENTS.md's default plan is to wrap the
+  `guitarpro` model directly so saving cannot drop fields. Decide before writing M1.
+- Durations are `f32` (`Beat::duration`, `Note::duration`); rational durations are needed
+  for exact measure-fill invariants.
+- All model fields are `pub`, so invariants cannot be enforced by the type.

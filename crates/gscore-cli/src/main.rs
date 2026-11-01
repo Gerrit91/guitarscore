@@ -6,6 +6,7 @@
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    gscore_cli::install_crash_reporting();
     let args: Vec<String> = std::env::args().skip(1).collect();
     match gscore_cli::run_cli(&args) {
         Ok(output) => {
