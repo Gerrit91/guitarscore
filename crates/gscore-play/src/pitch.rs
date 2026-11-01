@@ -3,18 +3,20 @@
 //!
 //! A note that bends or slides borrows a free MIDI channel (AGENTS.md section 5, decision
 //! 10), so the bend does not move the rest of the chord or track. The borrowed channel gets
-//! a pitch bend range of [`BEND_RANGE_SEMITONES`] through RPN 0,0 before the note starts;
-//! without that, the range would depend on the synthesizer's default.
+//! a pitch bend range through RPN 0,0 before the note starts ([`BEND_RANGE_SEMITONES`], or
+//! wider for a slide that needs it); without that, the range would depend on the
+//! synthesizer's default.
 
 use crate::event::{Channel, MidiEvent, PITCH_BEND_CENTER, controller};
 
 /// Pitch bend range set on a borrowed channel with RPN 0,0, in semitones. Guitar Pro's own
 /// MIDI export sets six semitones, so the same bend sounds the same in both.
 pub(crate) const BEND_RANGE_SEMITONES: u8 = 6;
+/// The widest range a slide may set, in semitones: two octaves, which General MIDI synths
+/// such as FluidSynth accept. Wider slides are clamped.
+const MAX_RANGE_SEMITONES: u8 = 24;
 /// Quarter tones in a semitone.
 const QUARTER_TONES_PER_SEMITONE: i32 = 2;
-/// Largest pitch offset the configured range can represent, in quarter tones (6 semitones).
-const MAX_OFFSET_QUARTER_TONES: i32 = 12;
 /// How far an "out" slide moves when no target note is known: a whole step.
 const OUT_SLIDE_QUARTER_TONES: i32 = 4;
 /// How many messages approximate a pitch ramp.
@@ -79,16 +81,27 @@ impl PitchShape {
         }
     }
 
+    /// The bend range this shape needs, in semitones: [`BEND_RANGE_SEMITONES`], or more for
+    /// a wide slide (at most [`MAX_RANGE_SEMITONES`]).
+    pub(crate) fn range(&self) -> u8 {
+        let widest = self.start.unsigned_abs().max(self.target.unsigned_abs());
+        let semitones = widest.div_ceil(QUARTER_TONES_PER_SEMITONE.unsigned_abs());
+        u8::try_from(semitones)
+            .unwrap_or(MAX_RANGE_SEMITONES)
+            .clamp(BEND_RANGE_SEMITONES, MAX_RANGE_SEMITONES)
+    }
+
     /// The bend messages for this shape, as `(tick, message)`, including the initial value
     /// and the ramp but not the reset after the note.
     pub(crate) fn events(&self, channel: Channel, start_tick: u64) -> Vec<(u64, MidiEvent)> {
+        let range = self.range();
         let mut events =
             Vec::with_capacity(usize::try_from(RAMP_STEPS.saturating_add(1)).unwrap_or(0));
         events.push((
             start_tick,
             MidiEvent::PitchBend {
                 channel,
-                value: pitch_bend_value(self.start),
+                value: pitch_bend_value(self.start, range),
             },
         ));
         if self.ramp == 0 || self.start == self.target {
@@ -112,7 +125,7 @@ impl PitchShape {
                 tick,
                 MidiEvent::PitchBend {
                     channel,
-                    value: pitch_bend_value_i64(value),
+                    value: pitch_bend_value_i64(value, range),
                 },
             ));
         }
@@ -125,14 +138,14 @@ fn ramp_ticks(length: u64, limit: u64) -> u64 {
     length.saturating_sub(1).min(limit)
 }
 
-/// The 14-bit bend value for `quarter_tones`, clamped to the configured range.
-pub(crate) fn pitch_bend_value(quarter_tones: i32) -> u16 {
-    pitch_bend_value_i64(i64::from(quarter_tones))
+/// The 14-bit bend value for `quarter_tones`, clamped to a bend range of `range` semitones.
+pub(crate) fn pitch_bend_value(quarter_tones: i32, range: u8) -> u16 {
+    pitch_bend_value_i64(i64::from(quarter_tones), range)
 }
 
 /// [`pitch_bend_value`] for an intermediate value of a ramp.
-fn pitch_bend_value_i64(quarter_tones: i64) -> u16 {
-    let maximum = i64::from(MAX_OFFSET_QUARTER_TONES);
+fn pitch_bend_value_i64(quarter_tones: i64, range: u8) -> u16 {
+    let maximum = i64::from(range.max(1)).saturating_mul(i64::from(QUARTER_TONES_PER_SEMITONE));
     let offset = quarter_tones.clamp(maximum.saturating_neg(), maximum);
     let value = i64::from(PITCH_BEND_CENTER).saturating_add(
         offset
@@ -143,8 +156,9 @@ fn pitch_bend_value_i64(quarter_tones: i64) -> u16 {
     u16::try_from(value.clamp(0, 0x3FFF)).unwrap_or(PITCH_BEND_CENTER)
 }
 
-/// The RPN messages that set a borrowed channel's pitch bend range, and a center bend.
-pub(crate) fn bend_range_setup(channel: Channel) -> [MidiEvent; 7] {
+/// The RPN messages that set a borrowed channel's pitch bend range to `range` semitones,
+/// and a center bend.
+pub(crate) fn bend_range_setup(channel: Channel, range: u8) -> [MidiEvent; 7] {
     [
         MidiEvent::Control {
             channel,
@@ -159,7 +173,7 @@ pub(crate) fn bend_range_setup(channel: Channel) -> [MidiEvent; 7] {
         MidiEvent::Control {
             channel,
             controller: controller::DATA_ENTRY_MSB,
-            value: BEND_RANGE_SEMITONES,
+            value: range.min(MAX_RANGE_SEMITONES),
         },
         MidiEvent::Control {
             channel,
@@ -194,13 +208,37 @@ mod tests {
 
     #[test]
     fn bend_values_span_the_configured_range() {
-        assert_eq!(pitch_bend_value(0), PITCH_BEND_CENTER);
-        assert_eq!(pitch_bend_value(MAX_OFFSET_QUARTER_TONES), 0x3FFF);
-        assert_eq!(pitch_bend_value(-MAX_OFFSET_QUARTER_TONES), 0);
-        assert_eq!(pitch_bend_value(i32::MAX), 0x3FFF);
-        assert_eq!(pitch_bend_value(i32::MIN), 0);
+        let range = BEND_RANGE_SEMITONES;
+        assert_eq!(pitch_bend_value(0, range), PITCH_BEND_CENTER);
+        assert_eq!(pitch_bend_value(12, range), 0x3FFF);
+        assert_eq!(pitch_bend_value(-12, range), 0);
+        assert_eq!(pitch_bend_value(i32::MAX, range), 0x3FFF);
+        assert_eq!(pitch_bend_value(i32::MIN, range), 0);
         // A whole step (4 quarter tones) is a third of the six-semitone range.
-        assert_eq!(pitch_bend_value(4), 8192 + 2730);
+        assert_eq!(pitch_bend_value(4, range), 8192 + 2730);
+        // ... and a sixth of a twelve-semitone range.
+        assert_eq!(pitch_bend_value(4, 12), 8192 + 1365);
+    }
+
+    #[test]
+    fn wide_slides_widen_the_range_and_bends_keep_six_semitones() {
+        assert_eq!(PitchShape::up(12, 100, 10).range(), BEND_RANGE_SEMITONES);
+        assert_eq!(PitchShape::slide_to(-3, 100).range(), BEND_RANGE_SEMITONES);
+        // Fret 5 to fret 12: seven semitones, reached exactly.
+        let wide = PitchShape::slide_to(7, 100);
+        assert_eq!(wide.range(), 7);
+        let last = wide.events(channel(), 0).last().copied().unwrap();
+        assert_eq!(
+            last.1,
+            MidiEvent::PitchBend {
+                channel: channel(),
+                value: 0x3FFF
+            }
+        );
+        assert_eq!(
+            PitchShape::slide_in(-30, 100, 10).range(),
+            MAX_RANGE_SEMITONES
+        );
     }
 
     #[test]
@@ -222,7 +260,7 @@ mod tests {
             last.1,
             MidiEvent::PitchBend {
                 channel: channel(),
-                value: pitch_bend_value(4)
+                value: pitch_bend_value(4, BEND_RANGE_SEMITONES)
             }
         );
         let values: Vec<u16> = events
@@ -243,7 +281,7 @@ mod tests {
             events[0].1,
             MidiEvent::PitchBend {
                 channel: channel(),
-                value: pitch_bend_value(4)
+                value: pitch_bend_value(4, BEND_RANGE_SEMITONES)
             }
         );
         let last = events.last().unwrap();
@@ -266,7 +304,7 @@ mod tests {
 
     #[test]
     fn the_range_setup_selects_rpn_zero_and_resets_it() {
-        let setup = bend_range_setup(channel());
+        let setup = bend_range_setup(channel(), BEND_RANGE_SEMITONES);
         assert_eq!(setup.len(), 7);
         assert_eq!(
             setup[0],

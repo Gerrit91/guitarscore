@@ -494,3 +494,38 @@ fn the_midi_file_contains_pitch_bends_and_the_range_setup() {
     assert!(bends > 0, "pitch bends are written");
     assert!(range_setup > 0, "the borrowed channel gets a bend range");
 }
+
+#[test]
+fn a_slide_wider_than_the_bend_range_widens_its_channel_range() {
+    // Fret 5 to fret 12 on the low E: seven semitones, beyond the usual six.
+    let song = testing::song_with_notes(&[
+        (
+            2,
+            &[TestNote::new(6, 5).with_slides(&[SlideKind::ShiftSlideTo])],
+        ),
+        (2, &[TestNote::new(6, 12)]),
+    ])
+    .unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let (_, slide_channel, _) = note_ons(&sequence)[0];
+    let range: Vec<u8> = sequence
+        .events
+        .iter()
+        .filter_map(|e| match e.event {
+            MidiEvent::Control {
+                channel,
+                controller: 6,
+                value,
+            } if channel == slide_channel => Some(value),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(range, [7], "RPN 0,0 data entry sets seven semitones");
+    let bends = pitch_bends(&sequence);
+    assert!(
+        bends
+            .iter()
+            .any(|(_, c, value)| *c == slide_channel && *value == 0x3FFF),
+        "the slide reaches the target pitch: {bends:?}"
+    );
+}
