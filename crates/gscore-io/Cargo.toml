@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 gscore-model = { path = "../gscore-model" }
-guitarpro = { git = "https://github.com/slundi/guitarpro", rev = "b62be7c5e4bedb0c6eb283ac40aa8371adab5c2a" }
+guitarpro = { path = "../../vendor/guitarpro" }
 # Add any dependencies needed in this crate here
 
 [lints]

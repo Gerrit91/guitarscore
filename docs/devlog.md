@@ -97,3 +97,16 @@ playback need them.
   from drum and piano tracks mapped onto tab strings. Now all 26 open; 4 have no issues.
 - Found: guitarpro ignores GP7 tunings (see docs/gaps.md #1).
 - Tests: 39.
+
+## 2026-11-01 — guitarpro vendored; GP7 tunings fixed
+
+- `vendor/guitarpro/`: copy of upstream commit `b62be7c` (library only; upstream tests that
+  need unvendored files removed), workspace member with all lints allowed. Provenance and
+  every change in `vendor/guitarpro/VENDORED.md`; row in `THIRD_PARTY.md`. Same dependency
+  versions as before (lockfile only lost the git source).
+- Fixed: GP6/GP7 import ignored the file's tuning (every track E standard) and numbered
+  strings in reverse; export wrote them reversed. Regression tests fail before the fix.
+  Owner's files: 238 tracks went from 1 tuning to 13 distinct ones (4-, 5- and 6-string).
+- `cargo xtask layers`: vendored crates have no layer, are exempt from the workspace-lints
+  check, and must not depend on GuitarScore crates.
+- Tests: 39 own + 161 in the vendored crate.

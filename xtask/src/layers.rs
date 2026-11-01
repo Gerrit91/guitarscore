@@ -40,6 +40,15 @@ pub(crate) const WASM_CRATES: &[&str] = &[
 /// Workspace members that are tools, not part of the layered application.
 const TOOLS: &[&str] = &["xtask"];
 
+/// Vendored third-party crates: (name, directory). They are treated like external
+/// dependencies: no layer, not (yet) held to the workspace lints, and they must not
+/// depend on any GuitarScore crate. See `vendor/*/VENDORED.md`.
+pub(crate) const VENDORED: &[(&str, &str)] = &[("guitarpro", "vendor/guitarpro")];
+
+pub(crate) fn is_vendored(name: &str) -> bool {
+    VENDORED.iter().any(|(vendored, _)| *vendored == name)
+}
+
 /// Third-party crates that only the listed workspace crates may depend on directly:
 /// (allowed crates, restricted dependencies).
 const RESTRICTED: &[(&[&str], &[&str])] = &[
@@ -67,10 +76,15 @@ pub(crate) fn run(root: &Path, skip_wasm: bool) -> TaskResult {
     }
 
     let mut errors = check_graph(&members, &deps);
-    errors.extend(source_scan::check_manifests(root, &members));
+    let own_members: Vec<String> = members
+        .iter()
+        .filter(|m| !is_vendored(m))
+        .cloned()
+        .collect();
+    errors.extend(source_scan::check_manifests(root, &own_members));
     errors.extend(source_scan::check_wasm_std_usage(root, WASM_CRATES));
     // Tools (xtask) mention restricted modules in their own test data; skip them.
-    let app_members: Vec<String> = members
+    let app_members: Vec<String> = own_members
         .iter()
         .filter(|m| !TOOLS.contains(&m.as_str()))
         .cloned()
@@ -100,6 +114,15 @@ fn check_graph(members: &[String], deps: &BTreeMap<String, Deps>) -> Vec<String>
     let mut errors = Vec::new();
     for member in members {
         if TOOLS.contains(&member.as_str()) {
+            continue;
+        }
+        if is_vendored(member) {
+            let own_deps = deps.get(member).into_iter().flat_map(|d| &d.direct);
+            for dep in own_deps.filter(|d| layer_of(d).is_some() || TOOLS.contains(&d.as_str())) {
+                errors.push(format!(
+                    "vendored crate `{member}` depends on workspace crate `{dep}`"
+                ));
+            }
             continue;
         }
         let Some(layer) = layer_of(member) else {
@@ -231,9 +254,16 @@ mod tests {
             ("gscore-model", &[]),
             ("gscore-io", &["gscore-model", "guitarpro"]),
             ("gscore-app", &["gscore-io", "egui"]),
+            ("guitarpro", &["zip", "serde"]),
             ("xtask", &[]),
         ]);
         assert_eq!(check_graph(&m, &d), Vec::<String>::new());
+    }
+
+    #[test]
+    fn vendored_crates_must_not_depend_on_workspace_crates() {
+        let (m, d) = graph(&[("guitarpro", &["zip", "gscore-model", "xtask"])]);
+        assert_eq!(check_graph(&m, &d).len(), 2);
     }
 
     #[test]

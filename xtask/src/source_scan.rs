@@ -5,6 +5,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::layers::VENDORED;
+
 /// Max directory depth when walking a crate's `src/` (guards against symlink loops).
 const MAX_DEPTH: usize = 16;
 
@@ -124,12 +126,14 @@ fn mentions_module(source: &str, module: &str) -> Vec<usize> {
         .collect()
 }
 
-/// Where a workspace member lives: `xtask/` or `crates/<name>/`.
+/// Where a workspace member lives: `xtask/`, a vendored directory, or `crates/<name>/`.
 fn crate_dir(root: &Path, name: &str) -> PathBuf {
     if name == "xtask" {
-        root.join("xtask")
-    } else {
-        root.join("crates").join(name)
+        return root.join("xtask");
+    }
+    match VENDORED.iter().find(|(vendored, _)| *vendored == name) {
+        Some((_, dir)) => root.join(dir),
+        None => root.join("crates").join(name),
     }
 }
 

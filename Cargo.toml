@@ -11,6 +11,7 @@ members = [
     "crates/gscore-cli",
     "crates/gscore-app",
     "xtask",
+    "vendor/guitarpro",
 ]
 
 [workspace.package]
