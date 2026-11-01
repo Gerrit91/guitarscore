@@ -1,10 +1,11 @@
 //! Invariants every [`Song`] satisfies. Checked once, when a song is created.
 //!
-//! Only problems that would make the song unusable for the editor are errors here.
-//! Musical oddities that real files contain are reported by [`crate::issues`] instead.
+//! Only structural problems are errors here: ones that break timing (durations, time
+//! signatures, tempo) or navigation (string and measure counts). Everything that real files
+//! contain, including odd notes, is reported by [`crate::issues`] instead: refusing to open
+//! a user's file is worse than showing a warning.
 
 use crate::error::ModelError;
-use crate::position::StringNumber;
 use crate::song::Song;
 use crate::views::{BeatView, MeasureView, TrackView};
 
@@ -49,45 +50,26 @@ fn check_track(song: &Song, track: &TrackView<'_>) -> Result<(), ModelError> {
         )));
     }
     for measure in track.measures() {
-        check_measure(&measure, count).map_err(|e| locate(e, &measure.index().to_string()))?;
+        check_measure(&measure).map_err(|e| locate(e, &measure.index().to_string()))?;
     }
     Ok(())
 }
 
-fn check_measure(measure: &MeasureView<'_>, string_count: usize) -> Result<(), ModelError> {
+fn check_measure(measure: &MeasureView<'_>) -> Result<(), ModelError> {
     measure.time_signature()?;
     for voice in measure.voices() {
         for beat in voice.beats() {
-            check_beat(&beat, string_count)
+            check_beat(&beat)
                 .map_err(|e| locate(e, &format!("{}, {}", voice.index(), beat.index())))?;
         }
     }
     Ok(())
 }
 
-fn check_beat(beat: &BeatView<'_>, string_count: usize) -> Result<(), ModelError> {
-    beat.duration()?;
-    let mut used = [false; MAX_STRINGS];
-    for note in beat.notes() {
-        note.fret()?;
-        let string = note.string()?;
-        let slot = usize::from(string.get()).saturating_sub(1);
-        if usize::from(string.get()) > string_count {
-            return Err(ModelError::Invalid(format!(
-                "note on {string}, but the track has {string_count} strings"
-            )));
-        }
-        match used.get_mut(slot) {
-            Some(taken) if *taken => return Err(two_notes_on(string)),
-            Some(taken) => *taken = true,
-            None => return Err(two_notes_on(string)),
-        }
-    }
-    Ok(())
-}
-
-fn two_notes_on(string: StringNumber) -> ModelError {
-    ModelError::Invalid(format!("two notes on {string} in one beat"))
+fn check_beat(beat: &BeatView<'_>) -> Result<(), ModelError> {
+    // Note-level problems (unknown string, odd fret, two notes on one string) occur in real
+    // files, e.g. drum and piano tracks mapped onto tab strings, so they are issues instead.
+    beat.duration().map(|_| ())
 }
 
 /// Prefixes the location to an `Invalid` message: "track 2: measure 5: ...".

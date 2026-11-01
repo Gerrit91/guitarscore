@@ -166,31 +166,62 @@ fn empty_song_is_valid() {
 }
 
 #[test]
-fn note_on_missing_string_is_rejected() {
-    let gp = song(vec![track(
-        "Bass",
-        BASS_4,
-        vec![measure((4, 4), vec![vec![beat(1, &[(5, 0)])]])],
-    )]);
+fn invalid_durations_in_a_song_are_rejected_with_location() {
+    let gp = one_measure(vec![beat(4, &[]), beat(3, &[(1, 0)])]);
     let err = from_guitarpro(gp).unwrap_err().to_string();
-    assert!(err.contains("track 1: measure 1: voice 1, beat 1"), "{err}");
-    assert!(err.contains("string 5"), "{err}");
+    assert!(err.contains("track 1: measure 1: voice 1, beat 2"), "{err}");
+    assert!(err.contains("1/3"), "{err}");
+}
+
+/// Note-level problems found in real files (drum and piano tracks mapped onto tab strings)
+/// must not stop a song from opening; they are reported as issues and kept unchanged.
+#[test]
+fn odd_notes_open_and_are_reported_as_issues() {
+    type Notes = &'static [(i8, i16)];
+    type Check = fn(&IssueKind) -> bool;
+    let cases: [(Notes, Check); 6] = [
+        (&[(1, -5)], |k| matches!(k, IssueKind::InvalidNote(_))),
+        (&[(1, 128)], |k| matches!(k, IssueKind::InvalidNote(_))),
+        (&[(0, 3)], |k| matches!(k, IssueKind::InvalidNote(_))),
+        (&[(-2, 3)], |k| matches!(k, IssueKind::InvalidNote(_))),
+        (&[(7, 0)], |k| {
+            matches!(k, IssueKind::NoteOnMissingString { string, string_count: 6 }
+                if string.get() == 7)
+        }),
+        (
+            &[(1, 35), (1, 93), (1, 38)],
+            |k| matches!(k, IssueKind::DuplicateString { string } if string.get() == 1),
+        ),
+    ];
+    for (notes, expected) in cases {
+        let song = from_guitarpro(one_measure(vec![beat(1, notes)])).unwrap();
+        let issues = song.issues();
+        assert_eq!(issues.len(), 1, "{notes:?}: {issues:?}");
+        assert!(expected(&issues[0].kind), "{notes:?}: {issues:?}");
+        assert_eq!(issues[0].beat, Some(BeatIndex::new(0)));
+        // The note itself is kept.
+        let beat = song.beat(BeatPosition {
+            track: TrackIndex::new(0),
+            measure: MeasureIndex::new(0),
+            voice: VoiceIndex::new(0),
+            beat: BeatIndex::new(0),
+        });
+        assert_eq!(beat.unwrap().notes().len(), notes.len());
+    }
 }
 
 #[test]
-fn out_of_range_values_are_rejected() {
-    let bad_beats = [
-        beat(1, &[(1, -1)]),        // negative fret
-        beat(1, &[(1, 128)]),       // fret above MIDI range
-        beat(1, &[(0, 3)]),         // string 0
-        beat(1, &[(-2, 3)]),        // negative string
-        beat(1, &[(2, 3), (2, 5)]), // two notes on one string
-        beat(3, &[(1, 0)]),         // note value 1/3
-    ];
-    for b in bad_beats {
-        let gp = one_measure(vec![b.clone()]);
-        assert!(from_guitarpro(gp).is_err(), "{b:?}");
-    }
+fn issues_display_their_location() {
+    let song = from_guitarpro(one_measure(vec![beat(2, &[(2, 3), (2, 5), (3, -5)])])).unwrap();
+    let text: Vec<String> = song.issues().iter().map(ToString::to_string).collect();
+    assert_eq!(
+        text,
+        [
+            "track 1, measure 1, voice 1: measure not filled (1/2 of 1/1)",
+            "track 1, measure 1, voice 1, beat 1: several notes on string 2",
+            "track 1, measure 1, voice 1, beat 1: fret -5",
+        ]
+    );
 }
 
 #[test]
@@ -264,6 +295,7 @@ fn unfilled_and_overfilled_measures_are_reported() {
             track: TrackIndex::new(0),
             measure: MeasureIndex::new(0),
             voice: VoiceIndex::new(0),
+            beat: None,
             kind: IssueKind::Underfull {
                 expected: d(3, 4),
                 actual: d(1, 2)

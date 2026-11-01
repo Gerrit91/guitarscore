@@ -78,8 +78,9 @@ impl Song {
             .beat(position.beat)
     }
 
-    /// Musical problems that do not prevent editing, such as measures that are not
-    /// completely filled. Empty if there are none.
+    /// Problems that do not prevent opening or editing: measures that are not completely
+    /// filled, notes on strings the track lacks, several notes on one string, odd frets.
+    /// Empty if there are none.
     pub fn issues(&self) -> Vec<Issue> {
         issues::find(self)
     }

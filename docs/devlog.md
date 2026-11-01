@@ -81,3 +81,19 @@ into) instead of converting to an own model, so saving cannot drop unmapped fiel
 
 Open: edit methods (M5), more accessors (tempo changes, repeats, effects) as layout and
 playback need them.
+
+## 2026-11-01 — CLI help, all GP formats, note problems become issues
+
+- `gscore-cli`: `--help`/`-h`/`help`, `help <command>`/`<command> --help`, `--version`;
+  commands come from one table (`COMMANDS`), so new ones appear in the help automatically.
+  Exit codes: 0 ok, 1 command failed, 2 wrong usage. `info` shows the format and lists the
+  first 10 issues.
+- `gscore-io`: format detected from the content (zip = GP7+, BCFZ/BCFS = GPX,
+  "FICHIER GUITAR PRO v3/4/5" = GP3/4/5), not the extension; import returns
+  `Imported { song, format }`; inputs over 64 MiB are refused.
+- Owner's 26 `.gp` files: before, all failed (GP5 parser on zip data); then 21 failed the
+  new validation. Note-level problems (several notes on one string, notes on missing
+  strings, frets outside 0..=127) are now `Song::issues()` instead of load errors: they come
+  from drum and piano tracks mapped onto tab strings. Now all 26 open; 4 have no issues.
+- Found: guitarpro ignores GP7 tunings (see docs/gaps.md #1).
+- Tests: 39.

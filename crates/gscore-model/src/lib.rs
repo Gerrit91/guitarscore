@@ -10,11 +10,11 @@
 //! (enforced by `cargo xtask layers`). Replacing the wrapped model later is therefore a
 //! change inside this crate only.
 //!
-//! A song is validated when it is created ([`interop::from_guitarpro`]): values the
-//! editor cannot handle (a note on a string the track does not have, a duration that is
-//! not a power of two, ...) are rejected with a [`ModelError`]. Musical problems that real
-//! files can have, such as a measure that is not completely filled, are reported by
-//! [`Song::issues`] instead.
+//! A song is validated when it is created ([`interop::from_guitarpro`]): structural
+//! problems that break timing or navigation (a duration that is not a power of two, a
+//! track with a different number of measures, ...) are rejected with a [`ModelError`].
+//! Everything real files contain, such as unfilled measures or notes on strings a track
+//! lacks, is reported by [`Song::issues`] instead, and kept unchanged.
 
 #![warn(clippy::arithmetic_side_effects)]
 
