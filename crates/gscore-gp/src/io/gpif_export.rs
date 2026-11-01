@@ -1,3 +1,15 @@
+// GuitarScore: the GP7 writer is held to the workspace's no-panic rules (unlike most of this
+// crate, see lib.rs): it writes the user's files.
+#![deny(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::unreachable,
+    clippy::indexing_slicing
+)]
+#![warn(clippy::arithmetic_side_effects)]
 // Derived from the `guitarpro` crate by slundi (https://github.com/slundi/guitarpro,
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
@@ -9,12 +21,31 @@ use crate::io::{FORTE, GP_BEND_SEMITONE, MIN_VELOCITY, VELOCITY_INCREMENT};
 
 pub trait SongGpifExportOps {
     /// Serialize this `Song` to a GPIF XML string (GP6 flavour).
-    fn write_gpif_xml(&self) -> String;
+    fn write_gpif_xml(&self) -> GpResult<String>;
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// GuitarScore addition: returns the counter's current id and advances it.
+fn next_id(counter: &mut i32) -> GpResult<i32> {
+    let id = *counter;
+    *counter = counter
+        .checked_add(1)
+        .ok_or_else(|| GpError::FormatError("too many elements to number".to_owned()))?;
+    Ok(id)
+}
+
+/// GuitarScore addition: the id of a track's bar for a measure; bars are numbered track by
+/// track (`track * measure_count + measure`).
+fn bar_id(track: usize, measure_count: usize, measure: usize) -> GpResult<i32> {
+    track
+        .checked_mul(measure_count)
+        .and_then(|first| first.checked_add(measure))
+        .and_then(|id| i32::try_from(id).ok())
+        .ok_or_else(|| GpError::FormatError("too many bars to number".to_owned()))
+}
 
 fn escape_xml(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -36,9 +67,9 @@ fn velocity_to_dynamic(velocity: i16) -> &'static str {
         (MIN_VELOCITY + VELOCITY_INCREMENT * 7, "FFF"),
     ];
     let mut best = "F";
-    let mut best_diff = i16::MAX;
+    let mut best_diff = u16::MAX;
     for (v, name) in &levels {
-        let diff = (velocity - v).abs();
+        let diff = velocity.abs_diff(*v);
         if diff < best_diff {
             best_diff = diff;
             best = name;
@@ -136,17 +167,34 @@ fn build_note_xml(note: &Note, note_id: i32) -> String {
         s.push_str("<Property name=\"PalmMuted\"><Enable /></Property>");
     }
 
+    // GuitarScore fix: write the shape the importer reads: origin (first point), middle
+    // (the point furthest from the origin) and destination (last point), with offsets.
+    // Writing points[2] as the destination skipped bends with fewer points and turned a
+    // bend-and-release into no bend at all.
     if let Some(bend) = &note.effect.bend
-        && bend.points.len() >= 3
+        && let (Some(first), Some(last)) = (bend.points.first(), bend.points.last())
     {
-        let origin = bend.points[0].value as f64 * GP_BEND_SEMITONE as f64;
-        let dest = bend.points[2].value as f64 * GP_BEND_SEMITONE as f64;
-        s.push_str(&format!(
-            "<Property name=\"BendOriginValue\"><Float>{origin}</Float></Property>"
-        ));
-        s.push_str(&format!(
-            "<Property name=\"BendDestinationValue\"><Float>{dest}</Float></Property>"
-        ));
+        let middle = bend
+            .points
+            .iter()
+            .max_by_key(|p| i16::from(p.value).abs_diff(i16::from(first.value)))
+            .unwrap_or(first);
+        let value = |p: &BendPoint| f64::from(p.value) * f64::from(GP_BEND_SEMITONE);
+        let offset =
+            |p: &BendPoint| f64::from(p.position) * 100.0 / f64::from(BEND_EFFECT_MAX_POSITION);
+        for (name, number) in [
+            ("BendOriginValue", value(first)),
+            ("BendMiddleValue", value(middle)),
+            ("BendDestinationValue", value(last)),
+            ("BendOriginOffset", offset(first)),
+            ("BendMiddleOffset1", offset(middle)),
+            ("BendMiddleOffset2", offset(middle)),
+            ("BendDestinationOffset", offset(last)),
+        ] {
+            s.push_str(&format!(
+                "<Property name=\"{name}\"><Float>{number:.6}</Float></Property>"
+            ));
+        }
     }
 
     if !note.effect.slides.is_empty() {
@@ -232,7 +280,7 @@ fn build_beat_xml(
     rhythm_id: i32,
     next_note_id: &mut i32,
     prev_velocity: &mut i16,
-) -> BeatExport {
+) -> GpResult<BeatExport> {
     let mut note_xmls: Vec<String> = Vec::new();
     let mut note_ids: Vec<i32> = Vec::new();
 
@@ -242,8 +290,7 @@ fn build_beat_xml(
     // Build note XMLs
     if beat.status == BeatStatus::Normal {
         for note in &beat.notes {
-            let note_id = *next_note_id;
-            *next_note_id += 1;
+            let note_id = next_id(next_note_id)?;
             note_ids.push(note_id);
             note_xmls.push(build_note_xml(note, note_id));
         }
@@ -260,10 +307,10 @@ fn build_beat_xml(
 
     // Grace notes marker
     if is_grace_beat {
-        let on_beat = beat.notes[0]
-            .effect
-            .grace
-            .as_ref()
+        let on_beat = beat
+            .notes
+            .first()
+            .and_then(|n| n.effect.grace.as_ref())
             .map(|g| g.is_on_beat)
             .unwrap_or(false);
         if on_beat {
@@ -298,12 +345,28 @@ fn build_beat_xml(
         bxml.push_str("<Fadding>FadeIn</Fadding>");
     }
 
-    // Tremolo bar
+    // Tremolo bar. GuitarScore fix: written as GP7's <Whammy> with origin, middle and
+    // destination (the importer reads it back); the legacy <Tremolo> only held the
+    // destination, so a dip (down and back up) was lost.
     if let Some(trem) = &beat.effect.tremolo_bar
-        && trem.points.len() >= 3
+        && let (Some(first), Some(last)) = (trem.points.first(), trem.points.last())
     {
-        let dest = trem.points[2].value as f64 * GP_BEND_SEMITONE as f64;
-        bxml.push_str(&format!("<Tremolo>{dest}</Tremolo>"));
+        let middle = trem.points.get(trem.points.len() / 2).unwrap_or(first);
+        let value = |p: &BendPoint| f64::from(p.value) * f64::from(GP_BEND_SEMITONE);
+        let offset =
+            |p: &BendPoint| f64::from(p.position) * 100.0 / f64::from(BEND_EFFECT_MAX_POSITION);
+        bxml.push_str(&format!(
+            "<Whammy originValue=\"{:.6}\" middleValue=\"{:.6}\" destinationValue=\"{:.6}\" \
+             originOffset=\"{:.6}\" middleOffset1=\"{:.6}\" middleOffset2=\"{:.6}\" \
+             destinationOffset=\"{:.6}\"/>",
+            value(first),
+            value(middle),
+            value(last),
+            offset(first),
+            offset(middle),
+            offset(middle),
+            offset(last),
+        ));
     }
 
     // Beat properties (Brush, Rasgueado, PickStroke)
@@ -363,11 +426,11 @@ fn build_beat_xml(
     }
     rxml.push_str("</Rhythm>");
 
-    BeatExport {
+    Ok(BeatExport {
         beat_xml: bxml,
         rhythm_xml: rxml,
         note_xmls,
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -375,7 +438,7 @@ fn build_beat_xml(
 // ---------------------------------------------------------------------------
 
 impl SongGpifExportOps for Song {
-    fn write_gpif_xml(&self) -> String {
+    fn write_gpif_xml(&self) -> GpResult<String> {
         // GuitarScore fix: GPIF numbers strings from the lowest; convert a copy.
         let mut flipped = self.clone();
         crate::io::gpif_import::flip_note_strings(&mut flipped.tracks);
@@ -385,11 +448,11 @@ impl SongGpifExportOps for Song {
 
 /// The original `write_gpif_xml`; expects note strings already in GPIF order.
 trait WriteGpifInGpifStringOrder {
-    fn write_gpif_xml_in_gpif_string_order(&self) -> String;
+    fn write_gpif_xml_in_gpif_string_order(&self) -> GpResult<String>;
 }
 
 impl WriteGpifInGpifStringOrder for Song {
-    fn write_gpif_xml_in_gpif_string_order(&self) -> String {
+    fn write_gpif_xml_in_gpif_string_order(&self) -> GpResult<String> {
         let mut xml = String::new();
         xml.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?><GPIF>");
 
@@ -507,7 +570,7 @@ impl WriteGpifInGpifStringOrder for Song {
             ));
             xml.push_str(&format!(
                 "<SecondaryChannel>{}</SecondaryChannel>",
-                (track.channel_index + 1).min(15)
+                track.channel_index.saturating_add(1).min(15)
             ));
             xml.push_str("</GeneralMidi>");
             if track.transpose_chromatic != 0 || track.transpose_octave != 0 {
@@ -527,7 +590,8 @@ impl WriteGpifInGpifStringOrder for Song {
         let num_measures = self.measure_headers.len();
 
         // (bar_id, voice_ids_string)
-        let mut bars: Vec<(i32, String)> = Vec::new();
+        // (bar id, voice ids, simile mark)
+        let mut bars: Vec<(i32, String, Option<String>)> = Vec::new();
         let mut voices_xml: Vec<String> = Vec::new();
         let mut beats_xml: Vec<String> = Vec::new();
         let mut notes_xml: Vec<String> = Vec::new();
@@ -539,14 +603,18 @@ impl WriteGpifInGpifStringOrder for Song {
         let mut next_rhythm_id: i32 = 0;
 
         // bar_id = t_idx * num_measures + m_idx
-        for t_idx in 0..self.tracks.len() {
-            let track = &self.tracks[t_idx];
+        for (t_idx, track) in self.tracks.iter().enumerate() {
             // Velocity persists across all measures/voices for a given track
             let mut prev_velocity: i16 = FORTE;
 
             for m_idx in 0..num_measures {
-                let bar_id = (t_idx * num_measures + m_idx) as i32;
-                let measure = &track.measures[m_idx];
+                let bar_id = bar_id(t_idx, num_measures, m_idx)?;
+                let measure = track.measures.get(m_idx).ok_or_else(|| {
+                    GpError::FormatError(format!(
+                        "track {} has fewer measures than the song ({num_measures})",
+                        t_idx.saturating_add(1)
+                    ))
+                })?;
                 let mut voice_ids: Vec<String> = Vec::new();
 
                 for voice in &measure.voices {
@@ -557,15 +625,12 @@ impl WriteGpifInGpifStringOrder for Song {
                         continue;
                     }
 
-                    let voice_id = next_voice_id;
-                    next_voice_id += 1;
+                    let voice_id = next_id(&mut next_voice_id)?;
                     let mut beat_ids: Vec<i32> = Vec::new();
 
                     for beat in voice.beats.iter().filter(|b| b.status != BeatStatus::Empty) {
-                        let beat_id = next_beat_id;
-                        next_beat_id += 1;
-                        let rhythm_id = next_rhythm_id;
-                        next_rhythm_id += 1;
+                        let beat_id = next_id(&mut next_beat_id)?;
+                        let rhythm_id = next_id(&mut next_rhythm_id)?;
                         beat_ids.push(beat_id);
 
                         let export = build_beat_xml(
@@ -574,7 +639,7 @@ impl WriteGpifInGpifStringOrder for Song {
                             rhythm_id,
                             &mut next_note_id,
                             &mut prev_velocity,
-                        );
+                        )?;
                         beats_xml.push(export.beat_xml);
                         rhythms_xml.push(export.rhythm_xml);
                         notes_xml.extend(export.note_xmls);
@@ -589,14 +654,7 @@ impl WriteGpifInGpifStringOrder for Song {
                     voice_ids.push(voice_id.to_string());
                 }
 
-                if let Some(sm) = &measure.simile_mark {
-                    bars.push((
-                        bar_id,
-                        format!("voices=\"{}\" simile=\"{}\"", voice_ids.join(" "), sm),
-                    ));
-                } else {
-                    bars.push((bar_id, voice_ids.join(" ")));
-                }
+                bars.push((bar_id, voice_ids.join(" "), measure.simile_mark.clone()));
             }
         }
 
@@ -617,9 +675,9 @@ impl WriteGpifInGpifStringOrder for Song {
                 "<Key><AccidentalCount>{}</AccidentalCount><Mode>{mode}</Mode></Key>",
                 mh.key_signature.key
             ));
-            let bar_ids: Vec<String> = (0..self.tracks.len())
-                .map(|t| (t * num_measures + m_idx).to_string())
-                .collect();
+            let bar_ids = (0..self.tracks.len())
+                .map(|t| bar_id(t, num_measures, m_idx).map(|id| id.to_string()))
+                .collect::<GpResult<Vec<String>>>()?;
             xml.push_str(&format!("<Bars>{}</Bars>", bar_ids.join(" ")));
 
             if mh.repeat_open || mh.repeat_close > 0 {
@@ -634,7 +692,7 @@ impl WriteGpifInGpifStringOrder for Song {
                 let mut endings: Vec<String> = Vec::new();
                 for i in 0..8u8 {
                     if (mh.repeat_alternative >> i) & 1 != 0 {
-                        endings.push((i + 1).to_string());
+                        endings.push(i.saturating_add(1).to_string());
                     }
                 }
                 xml.push_str(&format!(
@@ -675,37 +733,15 @@ impl WriteGpifInGpifStringOrder for Song {
 
         // Bars
         xml.push_str("<Bars>");
-        for (bar_id, meta) in &bars {
-            // meta is either "voice_ids_string" or "voices=... simile=..." (for simile marks)
-            if meta.starts_with("voices=") {
-                // parse out voices and simile
-                // format: voices="v1 v2" simile="X"
-                if let (Some(vi_start), Some(vi_end), Some(sm_start)) = (
-                    meta.find("voices=\"").map(|p| p + 8),
-                    meta.find("\" simile=\""),
-                    meta.find("simile=\"").map(|p| p + 8),
-                ) {
-                    let voices_str = &meta[vi_start..vi_end];
-                    let simile_end = meta[sm_start..].find('"').map(|p| sm_start + p);
-                    if let Some(se) = simile_end {
-                        let simile_val = &meta[sm_start..se];
-                        xml.push_str(&format!(
-                            "<Bar id=\"{bar_id}\"><Voices>{voices_str}</Voices><SimileMark>{simile_val}</SimileMark></Bar>"
-                        ));
-                    } else {
-                        xml.push_str(&format!(
-                            "<Bar id=\"{bar_id}\"><Voices>{voices_str}</Voices></Bar>"
-                        ));
-                    }
-                } else {
-                    xml.push_str(&format!(
-                        "<Bar id=\"{bar_id}\"><Voices>{meta}</Voices></Bar>"
-                    ));
-                }
-            } else {
-                xml.push_str(&format!(
-                    "<Bar id=\"{bar_id}\"><Voices>{meta}</Voices></Bar>"
-                ));
+        // GuitarScore fix: the simile mark is stored, not parsed back out of a string (the
+        // slicing could panic on a quote in the value), and it is escaped.
+        for (bar_id, voices, simile) in &bars {
+            match simile {
+                Some(simile) => xml.push_str(&format!(
+                    "<Bar id=\"{bar_id}\"><Voices>{voices}</Voices><SimileMark>{}</SimileMark></Bar>",
+                    escape_xml(simile)
+                )),
+                None => xml.push_str(&format!("<Bar id=\"{bar_id}\"><Voices>{voices}</Voices></Bar>")),
             }
         }
         xml.push_str("</Bars>");
@@ -739,6 +775,6 @@ impl WriteGpifInGpifStringOrder for Song {
         xml.push_str("</Rhythms>");
 
         xml.push_str("</GPIF>");
-        xml
+        Ok(xml)
     }
 }

@@ -4,10 +4,10 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (dump effect s
 
 1. **`gscore-gp` is not held to the workspace rules yet.** About 10k lines derived from
    guitarpro still use `unwrap`, indexing and `as` casts; a crate-level `allow` exempts them.
-   Several files exceed 400 lines (`io/gpif_import.rs` 1,040, `io/gpif_export.rs` 720).
-   Bring it under the lints module by module, starting with the parsers of untrusted input.
-   Until then the reader runs behind `catch_unwind` in gscore-io, which does not exist on
-   wasm.
+   The GP7 XML writer (`io/gpif_export.rs`) is the first module under the no-panic lints
+   (M3). Several files exceed 400 lines (`io/gpif_import.rs` ~1,300, `io/gpif_export.rs`
+   ~800). Continue module by module, next with the parsers of untrusted input. Until then
+   the reader runs behind `catch_unwind` in gscore-io, which does not exist on wasm.
 2. **GP3-5 writing is not usable for real songs yet** (`gscore-cli roundtrip-check --to
    gp5` on the 26 band files): 18 write durations GP5 cannot express (read back as an
    invalid note value), 4 produce files that run out of data when read, 3 fail on
@@ -25,7 +25,14 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (dump effect s
    ref="s-gtr6"/>`), no type or name; such tracks count as string instruments unless they
    are percussion. (The GP6 tuning order, unverified before, is now covered by the GPX
    test file.)
-4. **`dump` does not show every effect.** It writes the usual ASCII-tab symbols: ties (`L`
+4. **Complex bends are simplified** (later, with owner test data). The GPIF reader and
+   writer keep the three-point shape (origin, middle, destination), so bend-and-release
+   survives import and saving since M3 (214 notes in the owner's files were dropped
+   before). The model still reports only `Up`/`Release` with the highest point, so `dump`
+   writes a bend-and-release as `15b17` without the release, and the save verification
+   cannot tell the two apart. GP5 bends with more points are written as first, furthest and
+   last point.
+4b. **`dump` does not show every effect.** It writes the usual ASCII-tab symbols: ties (`L`
    on the origin), dead notes (`x`), hammer-ons/pull-offs (`h`/`p`, chosen by the next
    note's pitch), bends (`b`/`r`, followed by the target fret: `15b17`), slides (`/`/`\`,
    direction from the next pitch, else `S`/`s`), vibrato (`~`), natural harmonics (`*`),
@@ -47,7 +54,10 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (dump effect s
 5. **The model is read-only.** No edit methods yet; they arrive with the command layer (M4).
    Only the initial tempo is exposed; tempo changes, repeats, effects and lyrics are kept in
    the file but have no accessors yet.
-6. **Saving to files is not implemented** (only `gscore_io::export_to_bytes`). M3.
+6. **Saving is GP7 only.** `gscore_session::save` and `gscore-cli convert` refuse other
+   formats until their round trips pass (#2). Whether Guitar Pro itself opens our GP7 files
+   is not verified yet (the owner can check). Effects the model has no accessor for (grace
+   notes, fingerings, lyrics, mix tables, ...) are not part of the save verification.
 7. **No recovery journal or autosave yet** (crash reports exist since M0). M7.
 8. **Little test data.** Three songs (`steel_guitar_dadgad`, `note_lengths`, `ornaments`)
    as GP7, GPX and GP5, with import, `info` and `dump` reference tests and

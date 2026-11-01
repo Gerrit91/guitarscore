@@ -2,41 +2,14 @@
 
 use std::path::Path;
 
-use clap::ValueEnum;
 use gscore_io::{FileFormat, export_to_bytes, import_guitar_pro_from_bytes};
 use gscore_model::differences;
 
 use crate::CliError;
+use crate::format_arg::FormatArg;
 
 /// How many differences are listed before summarizing the rest.
 const MAX_LISTED: usize = 20;
-
-/// A format to write, as given on the command line.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub(crate) enum FormatArg {
-    /// Guitar Pro 7+ (.gp)
-    Gp,
-    /// Guitar Pro 6 (.gpx)
-    Gpx,
-    /// Guitar Pro 5 (.gp5)
-    Gp5,
-    /// Guitar Pro 4 (.gp4)
-    Gp4,
-    /// Guitar Pro 3 (.gp3)
-    Gp3,
-}
-
-impl From<FormatArg> for FileFormat {
-    fn from(arg: FormatArg) -> Self {
-        match arg {
-            FormatArg::Gp => FileFormat::Gp,
-            FormatArg::Gpx => FileFormat::Gpx,
-            FormatArg::Gp5 => FileFormat::Gp5,
-            FormatArg::Gp4 => FileFormat::Gp4,
-            FormatArg::Gp3 => FileFormat::Gp3,
-        }
-    }
-}
 
 /// Reads `path`, writes it as `to` (default: its own format), reads that back and lists
 /// what changed. Differences are a failure (exit code 1).

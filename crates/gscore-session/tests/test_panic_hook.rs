@@ -1,6 +1,9 @@
 //! The panic hook writes a crash report file. Runs in its own test binary because the hook is
 //! process-global.
 
+// Integration tests are separate crates and see all of the library's dependencies.
+#![allow(unused_crate_dependencies)]
+
 use std::path::PathBuf;
 
 fn unique_temp_dir() -> PathBuf {

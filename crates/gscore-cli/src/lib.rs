@@ -4,7 +4,9 @@
 //! and its doc comment is its help text. A new subcommand gets a variant, a module, and a
 //! match arm in [`run_cli`].
 
+mod convert;
 mod dump;
+mod format_arg;
 mod info;
 mod input;
 mod legend;
@@ -62,6 +64,27 @@ enum Command {
         #[arg(long, default_value_t = 80)]
         width: usize,
     },
+    /// Save a Guitar Pro file in another (or the same) format
+    ///
+    /// Reads <FILE> and writes it to <OUTPUT> in the format given by --to or by the output's
+    /// extension. Only Guitar Pro 7+ (.gp) can be written for now. The song is checked
+    /// before anything is written: if the format would lose something, the differences are
+    /// listed and nothing is written (unless --allow-losses). An existing output file is kept
+    /// as `<OUTPUT>.bak` the first time it is overwritten, and the new file replaces it
+    /// atomically.
+    Convert {
+        /// The Guitar Pro file to read
+        file: PathBuf,
+        /// The file to write
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Write in this format instead of the one the output's extension names
+        #[arg(long, value_enum)]
+        to: Option<format_arg::FormatArg>,
+        /// Save even if the format cannot keep everything (the losses are listed)
+        #[arg(long)]
+        allow_losses: bool,
+    },
     /// List the symbols `dump` writes in its ASCII tab
     ///
     /// Prints what every marker after a fret or beat means, and what the rows under the
@@ -79,7 +102,7 @@ enum Command {
         file: PathBuf,
         /// Write in this format instead of the file's own
         #[arg(long, value_enum)]
-        to: Option<roundtrip::FormatArg>,
+        to: Option<format_arg::FormatArg>,
     },
 }
 
@@ -142,6 +165,12 @@ where
     match cli.command {
         Command::Info { file } => info::run(&file),
         Command::Dump { file, track, width } => dump::run(&file, track, width),
+        Command::Convert {
+            file,
+            output,
+            to,
+            allow_losses,
+        } => convert::run(&file, &output, to, allow_losses),
         Command::Legend => Ok(legend::run()),
         Command::RoundtripCheck { file, to } => roundtrip::run(&file, to),
     }

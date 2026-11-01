@@ -417,6 +417,10 @@ version = "0.1.0"
 [[package]]
 name = "gscore-session"
 version = "0.1.0"
+dependencies = [
+ "gscore-io",
+ "gscore-model",
+]
 
 [[package]]
 name = "hashbrown"
