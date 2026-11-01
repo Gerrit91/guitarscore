@@ -8,15 +8,14 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
     gscore_cli::install_crash_reporting();
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    match gscore_cli::run_cli(&args) {
+    match gscore_cli::run_cli(std::env::args_os().skip(1)) {
         Ok(output) => {
             // Ignore write errors (e.g. a closed pipe in `gscore-cli info x | head`).
             let _ = std::io::stdout().write_all(output.as_bytes());
             ExitCode::SUCCESS
         }
         Err(err) => {
-            let _ = writeln!(std::io::stderr(), "Error: {err}");
+            let _ = writeln!(std::io::stderr(), "{}", err.to_string().trim_end());
             ExitCode::from(err.exit_code())
         }
     }

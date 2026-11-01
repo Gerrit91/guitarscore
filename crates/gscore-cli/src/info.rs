@@ -11,10 +11,10 @@ use crate::CliError;
 const MAX_LISTED_ISSUES: usize = 10;
 
 /// Reads the file at `path` and returns its summary.
-pub(crate) fn run(path: &str) -> Result<String, CliError> {
-    let bytes = read_capped(Path::new(path))?;
+pub(crate) fn run(path: &Path) -> Result<String, CliError> {
+    let bytes = read_capped(path)?;
     let imported = import_guitar_pro_from_bytes(&bytes)
-        .map_err(|e| CliError::Failed(format!("cannot import {path}: {e}")))?;
+        .map_err(|e| CliError::Failed(format!("cannot import {}: {e}", path.display())))?;
     Ok(summary(&imported))
 }
 

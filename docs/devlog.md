@@ -110,3 +110,11 @@ playback need them.
 - `cargo xtask layers`: vendored crates have no layer, are exempt from the workspace-lints
   check, and must not depend on GuitarScore crates.
 - Tests: 39 own + 161 in the vendored crate.
+
+## 2026-11-01 — gscore-cli on clap
+
+- Owner approved clap 4.6.7 (derive) for `gscore-cli` only. Subcommands are a typed enum
+  whose doc comments are the help; `try_parse_from` keeps parsing testable and never exits
+  the process. Removed the hand-written parser, command table and help module.
+- Gains: typo suggestions, standard `help <command>`, `-h` short / `--help` long help.
+  Exit codes unchanged (0 ok, 1 failed, 2 usage). `Cli::command().debug_assert()` test.

@@ -21,5 +21,6 @@ This file documents all third-party assets used in the GuitarScore project.
 
 | Name | Version | License | Description |
 |------|---------|---------|-------------|
+| clap (with `derive`) | 4.6.7 | MIT OR Apache-2.0 | Argument parsing and help for `gscore-cli` (only that crate) |
 
 > Add new entries when adding third-party assets or dependencies to the project.
