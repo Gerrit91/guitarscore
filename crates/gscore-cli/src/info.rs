@@ -37,8 +37,8 @@ fn summary(imported: &Imported) -> String {
     let mut out = format!(
         "Format: {}\nTitle: {}\nArtist: {}\nTempo: {} BPM\nMeasures: {}\nTracks: {}\n",
         imported.format,
-        song.title(),
-        song.artist(),
+        or_not_set(song.title()),
+        or_not_set(song.artist()),
         song.tempo(),
         song.measure_count(),
         song.track_count()
@@ -81,6 +81,15 @@ fn summary(imported: &Imported) -> String {
     out
 }
 
+/// Shows an empty (or whitespace-only) text field explicitly instead of leaving it blank.
+fn or_not_set(text: &str) -> &str {
+    if text.trim().is_empty() {
+        "(not set)"
+    } else {
+        text
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,5 +104,7 @@ mod tests {
         assert!(out.contains("Format: Guitar Pro 7+ (.gp)"), "{out}");
         assert!(out.contains("Tracks: 0"), "{out}");
         assert!(out.contains("Tempo: 120 BPM"), "{out}");
+        assert!(out.contains("Title: (not set)"), "{out}");
+        assert!(out.contains("Artist: (not set)"), "{out}");
     }
 }
