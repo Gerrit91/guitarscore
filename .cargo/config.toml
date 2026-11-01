@@ -1,3 +1,5 @@
 # Project tasks live in the `xtask` crate; run them as `cargo xtask <task>`.
 [alias]
 xtask = "run --quiet --package xtask --"
+# Build and start the desktop app: `cargo gui [FILE]`.
+gui = "run --quiet --package gscore-app --bin guitarscore --"

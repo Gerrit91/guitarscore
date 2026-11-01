@@ -40,7 +40,8 @@ Guitar Pro reader for wasm also needs `clang`.
 ```bash
 cargo build
 cargo xtask ci   # everything a change must pass: fmt, clippy, tests, layer and wasm checks
-cargo run -p gscore-app --bin guitarscore -- testdata/basic/note_lengths.gp
+cargo gui testdata/basic/note_lengths.gp      # build and start the app (a cargo alias)
+gscore-cli gui testdata/basic/note_lengths.gp # start the built app from the command line
 ```
 
 The app renders with wgpu (Vulkan, Metal or DirectX 12). Its snapshot test needs a GPU or a

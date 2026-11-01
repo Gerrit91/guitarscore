@@ -9,6 +9,7 @@ mod convert;
 mod dump;
 mod edit;
 mod format_arg;
+mod gui;
 mod info;
 mod input;
 mod legend;
@@ -67,6 +68,14 @@ enum Command {
         /// Maximum line length before wrapping to the next system
         #[arg(long, default_value_t = 80)]
         width: usize,
+    },
+    /// Start the desktop application
+    ///
+    /// Starts `guitarscore` (the GUI) as its own process and returns right away. The
+    /// executable is looked for next to gscore-cli, then on PATH. Opens FILE if given.
+    Gui {
+        /// A Guitar Pro file to open
+        file: Option<PathBuf>,
     },
     /// Draw one track's tablature as an SVG image
     ///
@@ -242,6 +251,7 @@ where
             allow_losses,
         } => edit::run(&file, &output, &commands, script.as_deref(), allow_losses),
         Command::Commands => Ok(commands::run()),
+        Command::Gui { file } => gui::run(file.as_deref()),
         Command::Legend => Ok(legend::run()),
         Command::RoundtripCheck { file, to } => roundtrip::run(&file, to),
     }
@@ -321,5 +331,15 @@ mod tests {
         let err = run_cli(["info", "/nonexistent/file.gp"]).unwrap_err();
         assert!(matches!(err, CliError::Failed(_)), "{err:?}");
         assert_eq!(err.exit_code(), 1);
+    }
+
+    #[test]
+    fn gui_refuses_a_missing_file_before_starting_anything() {
+        // Only the failure path is tested: a successful call would open a window.
+        let err = run_cli(["gui", "/nonexistent/file.gp"]).unwrap_err();
+        assert!(
+            matches!(err, CliError::Failed(ref m) if m.contains("does not exist")),
+            "{err:?}"
+        );
     }
 }

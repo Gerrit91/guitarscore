@@ -1,6 +1,6 @@
 //! The open document and everything that keeps the user's work safe on disk: opening files,
 //! crash reports (a panic hook that logs diagnostics to a file), safe saving, and later the
-//! recovery journal and autosave (milestone M7; AGENTS.md "Never lose work").
+//! recovery journal and autosave (milestone M8; AGENTS.md "Never lose work").
 
 mod crash_report;
 mod open;

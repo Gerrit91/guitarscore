@@ -3,7 +3,7 @@
 //! `gscore-layout`, and the draw operations are painted with egui.
 //!
 //! Read-only for now (milestone M6); editing through the `gscore-edit` commands comes with
-//! M7.
+//! M8.
 
 mod app;
 mod canvas;

@@ -50,7 +50,7 @@ The steps:
    `Spacing::quarter`, each doubling multiplies by `doubling_ratio`), but never so little
    that fret numbers collide. A `MeasureLayout` does not depend on its position, so it is
    the unit to cache per measure and document revision when editing needs incremental
-   relayout (M7).
+   relayout (M8).
 3. `system`: greedy line breaking; every line but the last is justified by stretching the
    columns (not the clef, time signatures or leads); the last only if it is at least 75%
    full.

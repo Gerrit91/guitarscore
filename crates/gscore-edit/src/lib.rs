@@ -11,7 +11,7 @@
 //! Positions are 1-based everywhere. `parse_line` turns a line into a [`Command`]; a blank
 //! line or a `#` comment line becomes `None`.
 //!
-//! The keymap (typed characters to command ids) and the cursor belong to milestone M7.
+//! The keymap (typed characters to command ids) and the cursor belong to milestone M8.
 
 #![warn(clippy::arithmetic_side_effects)]
 
