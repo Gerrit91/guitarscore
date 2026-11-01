@@ -11,7 +11,8 @@
 `guitarpro/src/` and `guitarpro/README.md`, plus the repository's `LICENSE` and
 `rustfmt.toml`. Not copied: upstream's `src/tests/` and `src/test_audit.rs` (they need
 test files from upstream's `test/` and `samples/` directories, whose licensing is unclear),
-the CLI, web server, benches and docs. The 17 self-contained inline test modules are kept.
+the CLI, web server, benches and docs. Removed `src/model/optimized/CLAUDE.md`
+(upstream's instructions for AI agents, which would be picked up when working here). The 17 self-contained inline test modules are kept.
 
 `Cargo.toml` is rewritten: same dependencies and versions, `publish = false`, and
 `[lints]` that allow everything, because the code is not yet held to the workspace's
