@@ -229,7 +229,7 @@ fn voice_count(song: &GpSong, at: MeasureIndex) -> usize {
 
 /// Rest lengths that exactly fill `length`, largest first, with dotted values preferred so
 /// a measure needs as few beats as possible.
-pub(super) fn fill_rests(length: Duration) -> Result<Vec<NoteValue>, ModelError> {
+pub(crate) fn fill_rests(length: Duration) -> Result<Vec<NoteValue>, ModelError> {
     let mut remaining = length;
     let mut beats = Vec::new();
     while remaining > Duration::ZERO {

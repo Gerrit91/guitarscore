@@ -8,12 +8,14 @@ GuitarScore must never crash and never lose your work; that outranks features.
 
 ## Status
 
-Early development. The desktop app shows a Guitar Pro file's tablature (read-only); reading,
-saving and editing work on the command line:
+Early development. The desktop app shows a Guitar Pro file's tablature and edits it from
+the keyboard; reading, saving and editing also work on the command line:
 
 - **`guitarscore [FILE]`:** the desktop app. Opens a file (File › Open… or the command
   line) in the background and shows one track's tablature as a page; track picker, zoom,
-  light and dark theme.
+  light and dark theme, MIDI playback. Editing at a cursor (see "Keyboard" below), undo and
+  redo, and saving as Guitar Pro 7 (`.gp`); it asks before closing or opening another file
+  with unsaved changes.
 
 - **Import:** Guitar Pro 3, 4, 5 (`.gp3`–`.gp5`), 6 (`.gpx`) and 7+ (`.gp`), detected from
   the file content. Malformed files give an error, never a crash.
@@ -26,6 +28,19 @@ saving and editing work on the command line:
 - **`gscore-cli edit`:** headless editing with undo/redo: set frets, change beat lengths,
   insert/delete beats and measures, from `-c` commands or a script. `gscore-cli commands`
   lists them. Every successful edit still round-trips through the GP7 writer.
+
+### Keyboard
+
+Click a note or use the arrows to move the cursor. Type a fret number (two digits typed
+quickly make one number, `1` `2` is fret 12); `+` and `-` make the note shorter and longer;
+Insert/Delete add and remove a beat, Ctrl+Insert/Ctrl+Delete a measure; Right at the end
+of a measure adds rests until it is full, then a new measure. Ctrl+Z/Ctrl+Y undo and redo,
+Space plays, Ctrl+S saves.
+
+Keys are bound to the **typed character**, so `+` works on any keyboard layout. The keymap
+is a text file, `~/.config/guitarscore/keymap.txt` on Linux; `gscore-cli keymap` prints the
+built-in one (a file to start from) and every action id, and `gscore-cli keymap --check
+<file>` checks one. A broken keymap file is reported and the built-in keymap is used.
 
 Milestones, progress and known gaps: `AGENTS.md` (section 9), `docs/devlog.md`,
 `docs/gaps.md`.
@@ -133,7 +148,7 @@ A Cargo workspace of small crates. A crate may only depend on crates in lower la
 | 2 | `gscore-play` | Playback sequencing: MIDI events, channel borrowing for bends/slides, `.mid` writer |
 | 3 | `gscore-edit`, `gscore-audio` | Editing commands with undo/redo; MIDI output backend (`midir`) |
 | 4 | `gscore-session` | Crash reports and safe saving; recovery journal and autosave planned |
-| 5 | `gscore-cli`, `gscore-app` | Command-line tool; desktop app (`guitarscore`, read-only so far) |
+| 5 | `gscore-cli`, `gscore-app` | Command-line tool; desktop app (`guitarscore`) |
 
 Test files made with Guitar Pro are in `testdata/` (see `testdata/basic/README.md`).
 `docs/architecture.md` describes the design; `AGENTS.md` holds the rules for contributors,

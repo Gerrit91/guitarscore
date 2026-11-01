@@ -10,7 +10,7 @@
 //! `gscore-edit` only has to keep it in its undo history.
 
 mod beats;
-mod measures;
+pub(crate) mod measures;
 mod notes;
 
 use gscore_gp::{

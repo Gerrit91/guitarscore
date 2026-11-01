@@ -11,19 +11,28 @@
 //! Positions are 1-based everywhere. `parse_line` turns a line into a [`Command`]; a blank
 //! line or a `#` comment line becomes `None`.
 //!
-//! The keymap (typed characters to command ids) and the cursor belong to milestone M8.
+//! Interactive editing (M8) works at a [`Cursor`]: the [`TabEditor`] runs [`Action`]s from
+//! the [`Keymap`] (typed characters and key names to action ids) as commands.
 
 #![warn(clippy::arithmetic_side_effects)]
 
+mod action;
 mod command;
+mod cursor;
 mod editor;
 mod info;
+mod keymap;
 mod parse;
+mod tab_editor;
 
+pub use action::{ACTIONS, Action, ActionId, ActionInfo};
 pub use command::Command;
+pub use cursor::Cursor;
 pub use editor::{DEFAULT_HISTORY_LIMIT, EditError, Editor};
 pub use info::{COMMANDS, CommandInfo, ParamInfo, find_command};
+pub use keymap::{DEFAULT_KEYMAP, Key, KeyCombo, Keymap, KeymapError, Modifiers, NamedKey};
 pub use parse::{ParseError, parse_line};
+pub use tab_editor::{FRET_DIGIT_WINDOW_MS, Outcome, Request, TabEditor};
 
 // The integration tests save edited songs again with `gscore-io`; this marks the
 // test-only dependency for the library test target's unused-dependency check.

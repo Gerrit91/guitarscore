@@ -8,6 +8,8 @@
     clippy::expect_used,
     clippy::indexing_slicing
 )]
+// Integration tests are separate crates and see all of the library's dependencies.
+#![allow(unused_crate_dependencies)]
 
 use std::path::{Path, PathBuf};
 

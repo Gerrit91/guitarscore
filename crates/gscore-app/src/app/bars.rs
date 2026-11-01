@@ -1,0 +1,240 @@
+//! Menus, toolbar (track, zoom, playback), status bar and the notice bar.
+
+use egui::{Align, Layout as UiLayout};
+use gscore_edit::{ActionId, Request};
+
+use super::GuitarScoreApp;
+use crate::state::ThemeChoice;
+
+impl GuitarScoreApp {
+    /// A menu entry for `action`, with its keys from the keymap as the shortcut text.
+    fn action_button(&self, ui: &mut egui::Ui, action: ActionId, enabled: bool) -> bool {
+        let keys: Vec<String> = self
+            .keymap
+            .keys_for(action)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        let button = egui::Button::new(action.label()).shortcut_text(keys.join(", "));
+        ui.add_enabled(enabled, button).clicked()
+    }
+
+    pub(super) fn menu_bar(&mut self, ui: &mut egui::Ui) {
+        egui::MenuBar::new().ui(ui, |ui| {
+            ui.menu_button("File", |ui| {
+                if ui.button("Open…").clicked() {
+                    self.ask_open(ui.ctx());
+                }
+                let has_document = self.document.is_some();
+                if self.action_button(ui, ActionId::Save, has_document) {
+                    self.request(Request::Save, ui.ctx());
+                }
+                if ui
+                    .add_enabled(has_document, egui::Button::new("Save As…"))
+                    .clicked()
+                {
+                    self.save_as(ui.ctx());
+                }
+                ui.separator();
+                if ui.button("Quit").clicked() {
+                    ui.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            });
+            ui.menu_button("Edit", |ui| {
+                let (can_undo, can_redo) = self.document.as_ref().map_or((false, false), |d| {
+                    (d.editor().can_undo(), d.editor().can_redo())
+                });
+                for (action, enabled) in [(ActionId::Undo, can_undo), (ActionId::Redo, can_redo)] {
+                    if self.action_button(ui, action, enabled) {
+                        self.perform_action(gscore_edit::Action::Plain(action), ui.ctx());
+                    }
+                }
+                ui.separator();
+                let has_document = self.document.is_some();
+                for action in [
+                    ActionId::InsertBeat,
+                    ActionId::DeleteBeat,
+                    ActionId::InsertMeasure,
+                    ActionId::DeleteMeasure,
+                    ActionId::ClearNote,
+                    ActionId::DurationShorter,
+                    ActionId::DurationLonger,
+                ] {
+                    if self.action_button(ui, action, has_document) {
+                        self.perform_action(gscore_edit::Action::Plain(action), ui.ctx());
+                    }
+                }
+            });
+            ui.menu_button("View", |ui| {
+                ui.radio_value(&mut self.view.theme, ThemeChoice::Light, "Light theme");
+                ui.radio_value(&mut self.view.theme, ThemeChoice::Dark, "Dark theme");
+                ui.separator();
+                if ui.button("Zoom in").clicked() {
+                    self.view.zoom_in();
+                }
+                if ui.button("Zoom out").clicked() {
+                    self.view.zoom_out();
+                }
+                if ui.button("Actual size").clicked() {
+                    self.view.set_zoom(1.0);
+                }
+            });
+        });
+    }
+
+    pub(super) fn toolbar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            if let Some(document) = &self.document {
+                let song = document.song();
+                let name = |index: usize| {
+                    song.track(gscore_model::TrackIndex::new(index))
+                        .map_or_else(String::new, |t| format!("{}: {}", index + 1, t.name()))
+                };
+                egui::ComboBox::from_label("Track")
+                    .selected_text(name(self.view.track))
+                    .show_ui(ui, |ui| {
+                        for index in 0..song.track_count() {
+                            ui.selectable_value(&mut self.view.track, index, name(index));
+                        }
+                    });
+                ui.separator();
+            }
+            if ui.button("−").on_hover_text("Zoom out").clicked() {
+                self.view.zoom_out();
+            }
+            ui.label(format!("{:.0} %", self.view.zoom() * 100.0));
+            if ui.button("+").on_hover_text("Zoom in").clicked() {
+                self.view.zoom_in();
+            }
+            ui.separator();
+            self.playback_controls(ui);
+            if self.tasks.busy() {
+                ui.spinner();
+            }
+        });
+    }
+
+    /// The playback controls: play/pause, stop, the current measure and the output port.
+    fn playback_controls(&mut self, ui: &mut egui::Ui) {
+        let playing = self.playback.state() == gscore_play::PlayState::Playing;
+        let has_song = self.document.is_some();
+        let label = if playing { "Pause" } else { "Play" };
+        if ui.add_enabled(has_song, egui::Button::new(label)).clicked() {
+            self.play_pause();
+        }
+        if ui
+            .add_enabled(has_song, egui::Button::new("Stop"))
+            .clicked()
+            && let Err(error) = self.playback.stop()
+        {
+            self.notice = Some(error);
+        }
+        if let Some(measure) = self.playback.current_measure() {
+            ui.label(format!("Measure {measure}"));
+        }
+        let shown = self
+            .playback
+            .connected_port()
+            .or(self.playback.port())
+            .unwrap_or("Automatic")
+            .to_owned();
+        let mut chosen: Option<Option<String>> = None;
+        let combo = egui::ComboBox::from_label("MIDI out")
+            .selected_text(shown)
+            .show_ui(ui, |ui| {
+                if ui
+                    .selectable_label(self.playback.port().is_none(), "Automatic")
+                    .clicked()
+                {
+                    chosen = Some(None);
+                }
+                for port in self.playback.ports() {
+                    let selected = self.playback.port() == Some(port.as_str());
+                    if ui.selectable_label(selected, port).clicked() {
+                        chosen = Some(Some(port.clone()));
+                    }
+                }
+            });
+        // List the ports each time the menu opens, so newly started synths show up.
+        if combo.response.clicked()
+            && let Err(error) = self.playback.refresh_ports()
+        {
+            self.notice = Some(error);
+        }
+        if let Some(port) = chosen {
+            self.playback.choose_port(port);
+        }
+        if let Some(error) = self.playback.new_error() {
+            self.notice = Some(error);
+        }
+        if playing {
+            // Keep the measure display moving.
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(100));
+        }
+    }
+
+    pub(super) fn status_bar(&self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| match &self.document {
+            Some(document) => {
+                // The file name only (screenshots stay the same wherever the file is); the
+                // full path on hover.
+                let path = document.path();
+                let name = path.file_name().map_or_else(
+                    || path.display().to_string(),
+                    |n| n.to_string_lossy().into_owned(),
+                );
+                let name = if document.is_dirty() {
+                    format!("{name} (changed)")
+                } else {
+                    name
+                };
+                ui.label(name).on_hover_text(path.display().to_string());
+                if let Some(status) = &self.status {
+                    ui.separator();
+                    ui.label(status);
+                }
+                ui.with_layout(UiLayout::right_to_left(Align::Center), |ui| {
+                    let song = document.song();
+                    ui.label(format!(
+                        "{}, {}",
+                        count(song.measure_count(), "measure"),
+                        count(song.track_count(), "track")
+                    ));
+                    ui.separator();
+                    let cursor = document.editor().cursor();
+                    ui.label(format!(
+                        "Measure {}, beat {}, string {}",
+                        cursor.measure.get() + 1,
+                        cursor.beat.get() + 1,
+                        cursor.string
+                    ));
+                });
+            }
+            None => {
+                ui.label("No file open");
+            }
+        });
+    }
+
+    pub(super) fn notice_bar(&mut self, ui: &mut egui::Ui) {
+        let Some(notice) = self.notice.clone() else {
+            return;
+        };
+        ui.horizontal(|ui| {
+            ui.colored_label(ui.visuals().error_fg_color, notice);
+            if ui.small_button("Dismiss").clicked() {
+                self.notice = None;
+            }
+        });
+    }
+}
+
+/// "1 track", "3 tracks".
+fn count(n: usize, noun: &str) -> String {
+    if n == 1 {
+        format!("1 {noun}")
+    } else {
+        format!("{n} {noun}s")
+    }
+}

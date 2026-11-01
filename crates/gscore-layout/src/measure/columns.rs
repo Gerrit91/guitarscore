@@ -140,5 +140,6 @@ pub(super) fn column_items(
         marks,
         notation: None,
         beat: 0,
+        beats: Vec::new(),
     })
 }

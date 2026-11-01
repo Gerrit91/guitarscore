@@ -23,6 +23,7 @@ mod metrics;
 mod notation;
 mod options;
 mod ornaments;
+mod place;
 mod staff;
 mod svg;
 mod system;
@@ -40,6 +41,7 @@ pub use error::LayoutError;
 pub use glyph::{Digit, Flag, Glyph};
 pub use metrics::{EngravingDefaults, GlyphBox, MusicFont, TextMetrics};
 pub use options::{LayoutOptions, Spacing};
+pub use place::{BeatPlace, Hit, MeasurePlace, Places, SystemPlace};
 pub use svg::to_svg;
 pub use theme::{Rgb, Theme};
 
@@ -79,6 +81,8 @@ pub struct Layout {
     pub height: f32,
     /// What to draw, in painting order.
     pub ops: Vec<DrawOp>,
+    /// Where the systems, measures and beats are (for the cursor and clicks).
+    pub places: Places,
 }
 
 /// What every layout step needs: settings, fonts and the staff's geometry.
@@ -152,6 +156,7 @@ pub fn layout_track(
     let plans = break_systems(&widths, line_width, prefix);
 
     let font = &fonts.music;
+    let mut places = Places::default();
     let mut top = header_end + HEADER_GAP;
     let mut bottom = header_end;
     for plan in &plans {
@@ -161,9 +166,17 @@ pub fn layout_track(
             notation: ctx.notation.map(|_| top),
         };
         let tab_top = tops.tab;
+        let system = places.systems.len();
+        places.systems.push(SystemPlace {
+            top,
+            tab_top,
+            string_spacing: ctx.options.tab_line_spacing,
+            strings: view.string_count(),
+        });
         let mut x = left + prefix;
         let mut content = Vec::new();
         for (offset, measure) in line.iter().enumerate() {
+            places.measures.push(measure.place(x, plan.stretch, system));
             measure.draw(x, tops, plan.stretch, &ctx, &mut content);
             x += measure.width(plan.stretch);
             let is_final =
@@ -200,5 +213,6 @@ pub fn layout_track(
         width: options.page_width,
         height: bottom + options.margin_y,
         ops,
+        places,
     })
 }

@@ -1,5 +1,5 @@
-//! Work that must not block the UI thread (AGENTS.md rule 9): showing the file dialog and
-//! reading and importing a file. Each job runs on its own thread and reports back through a
+//! Work that must not block the UI thread (AGENTS.md rule 9): showing the file dialogs,
+//! reading and importing a file, and saving one. Each job runs on its own thread and reports back through a
 //! channel that the UI polls once per frame.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -7,22 +7,43 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use gscore_model::Song;
+use gscore_session::{FileFormat, SaveError, SaveOptions};
 
 /// A finished background job.
 #[derive(Debug)]
 pub(crate) enum Event {
-    /// The file dialog closed; `None` if it was cancelled.
+    /// The open dialog closed; `None` if it was cancelled.
     Picked(Option<PathBuf>),
+    /// The save dialog closed; `None` if it was cancelled.
+    PickedSave(Option<PathBuf>),
+    /// A save finished or failed.
+    Saved {
+        /// The file.
+        path: PathBuf,
+        /// The editor revision that was saved.
+        revision: u64,
+        /// A message for the status bar, or why nothing was saved.
+        result: Result<String, SaveFailure>,
+    },
     /// A file was read and imported, or failed to.
     Opened {
         /// The file.
         path: PathBuf,
-        /// The song (boxed: it is large and events are moved around), or why it could
-        /// not be opened.
-        result: Result<Box<Song>, String>,
+        /// The song (boxed: it is large and events are moved around) and its format, or
+        /// why it could not be opened.
+        result: Result<(Box<Song>, FileFormat), String>,
     },
     /// A job panicked (the panic hook wrote a crash report); the message says which.
     Failed(String),
+}
+
+/// Why a save did not happen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SaveFailure {
+    /// The format would lose these details; nothing was written. The user may save anyway.
+    Losses(Vec<String>),
+    /// Anything else; nothing was written, or the result could not be confirmed.
+    Other(String),
 }
 
 /// Background jobs and the channel they report through.
@@ -58,7 +79,7 @@ impl Tasks {
     pub(crate) fn open(&mut self, path: PathBuf, ctx: &egui::Context) -> Result<(), String> {
         self.spawn("open", ctx, move || {
             let result = gscore_session::open(&path)
-                .map(|imported| Box::new(imported.song))
+                .map(|imported| (Box::new(imported.song), imported.format))
                 .map_err(|e| e.to_string());
             Event::Opened { path, result }
         })
@@ -72,6 +93,74 @@ impl Tasks {
                 .add_filter("Guitar Pro", EXTENSIONS)
                 .pick_file();
             Event::Picked(picked)
+        })
+    }
+
+    /// Shows the save dialog in the background, suggesting `name`.
+    pub(crate) fn pick_save_file(
+        &mut self,
+        name: String,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        self.spawn("save dialog", ctx, move || {
+            let picked = rfd::FileDialog::new()
+                .set_title("Save as Guitar Pro 7 (.gp)")
+                .add_filter("Guitar Pro 7", &["gp"])
+                .set_file_name(name)
+                .save_file();
+            Event::PickedSave(picked)
+        })
+    }
+
+    /// Saves `song` (editor `revision`) to `path` as `.gp` in the background, with the
+    /// safe-save procedure of `gscore-session`.
+    pub(crate) fn save(
+        &mut self,
+        song: Song,
+        path: PathBuf,
+        revision: u64,
+        allow_losses: bool,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        self.spawn("save", ctx, move || {
+            let options = SaveOptions {
+                format: FileFormat::Gp,
+                allow_losses,
+            };
+            let result = match gscore_session::save(&song, &path, options) {
+                Ok(report) => {
+                    let name = path.file_name().map_or_else(
+                        || path.display().to_string(),
+                        |n| n.to_string_lossy().into_owned(),
+                    );
+                    let mut message = format!("Saved {name}");
+                    if let Some(backup) = &report.backup {
+                        message.push_str(&format!(
+                            " (the original is kept as {})",
+                            backup.file_name().map_or_else(
+                                || backup.display().to_string(),
+                                |n| n.to_string_lossy().into_owned()
+                            )
+                        ));
+                    }
+                    if !report.losses.is_empty() {
+                        message.push_str(&format!(
+                            "; {} detail(s) could not be kept",
+                            report.losses.len()
+                        ));
+                    }
+                    Ok(message)
+                }
+                Err(SaveError::Losses(losses)) => Err(SaveFailure::Losses(
+                    losses.iter().map(ToString::to_string).collect(),
+                )),
+                Err(error) => Err(SaveFailure::Other(error.to_string())),
+            };
+            Event::Saved {
+                path,
+                revision,
+                result,
+            }
         })
     }
 

@@ -8,8 +8,45 @@ use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
 use crate::notation::{self, BeamPlan};
 use crate::ornaments::{self, Fret};
+use crate::place::{BeatPlace, MeasurePlace};
 
 impl MeasureLayout {
+    /// Where each column's center lies when the measure starts at `x` and its columns are
+    /// stretched by `stretch`, and where the measure ends.
+    pub(crate) fn column_positions(&self, x: f32, stretch: f32) -> (Vec<f32>, f32) {
+        let mut cursor = x + self.time_signature.as_ref().map_or(0.0, |t| t.width) + self.lead;
+        let mut xs = Vec::with_capacity(self.columns.len());
+        for column in &self.columns {
+            xs.push(cursor);
+            cursor += column.space * stretch;
+        }
+        (xs, cursor)
+    }
+
+    /// Where the measure's beats are, for the cursor and clicks.
+    pub(crate) fn place(&self, x: f32, stretch: f32, system: usize) -> MeasurePlace {
+        let (xs, right) = self.column_positions(x, stretch);
+        let beats = self
+            .columns
+            .iter()
+            .zip(&xs)
+            .flat_map(|(column, &x)| {
+                column
+                    .beats
+                    .iter()
+                    .map(move |&(voice, beat)| BeatPlace { voice, beat, x })
+            })
+            .collect();
+        MeasurePlace {
+            measure: self.index,
+            system,
+            left: x,
+            right,
+            content: xs.first().copied().unwrap_or(right),
+            beats,
+        }
+    }
+
     /// Draws the measure's content (not the staff lines or barline) starting at `x`, on
     /// the tab staff and, if shown, the notation staff above it.
     pub(crate) fn draw(
@@ -30,26 +67,18 @@ impl MeasureLayout {
             anchor: TextAnchor::Start,
             color: ColorToken::Annotation,
         });
-        let mut cursor = x;
         if let Some(time_signature) = &self.time_signature {
             // With notation, the time signature is written there only, as in Guitar Pro.
             match tops.notation {
                 Some(notation_top) => {
                     let middle = notation_top + notation::staff().middle();
-                    time_signature.draw_at(cursor, middle, 1.0, ctx, ops);
+                    time_signature.draw_at(x, middle, 1.0, ctx, ops);
                 }
-                None => time_signature.draw(cursor, top, ctx, ops),
+                None => time_signature.draw(x, top, ctx, ops),
             }
-            cursor += time_signature.width;
         }
-        cursor += self.lead;
         // Positions first: ornaments connect neighbouring columns.
-        let mut xs = Vec::with_capacity(self.columns.len());
-        for column in &self.columns {
-            xs.push(cursor);
-            cursor += column.space * stretch;
-        }
-        let right = cursor;
+        let (xs, right) = self.column_positions(x, stretch);
         // Where each column's space ends: the next column, or the end of the measure.
         let span_end = |index: usize| xs.get(index.saturating_add(1)).copied().unwrap_or(right);
         for (index, column) in self.columns.iter().enumerate() {
