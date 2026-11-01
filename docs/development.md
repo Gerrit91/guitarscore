@@ -14,8 +14,9 @@ The workspace is layered; a crate may only depend on crates in lower layers
 4. `gscore-session`: open document, crash reports, recovery, autosave
 5. `gscore-cli`, `gscore-app`: command-line tool, desktop application
 
-Only `gscore-gp`, `gscore-model`, `gscore-io`, `gscore-session` and `gscore-cli` contain code
-so far; the other crates are empty until their milestone (AGENTS.md section 9).
+`gscore-gp`, `gscore-model`, `gscore-io`, `gscore-edit`, `gscore-session` and `gscore-cli`
+contain code so far; `gscore-layout`, `gscore-play`, `gscore-audio` and `gscore-app` are
+empty until their milestone (AGENTS.md section 9).
 
 ## Coding Standards
 
@@ -43,3 +44,6 @@ Additionally, specific tests apply based on what's modified.
   writing code changes.
 - `GSCORE_UPDATE_GOLDEN=1 cargo test -p gscore-cli --test test_golden` regenerates the
   expected `info`/`dump` outputs in `crates/gscore-cli/tests/golden/` (review the diff).
+- `gscore-cli commands` lists the editing commands; `gscore-cli edit ... --script <file>`
+  applies a script of them. `crates/gscore-cli/tests/scripts/` holds scripts that are also
+  regression tests (one edits a test file, one undoes everything back to the input).

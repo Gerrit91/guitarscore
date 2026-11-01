@@ -23,7 +23,7 @@ guitarscore/
     gscore-edit/              # L3: cursor, selection, commands, undo/redo, keymap
     gscore-audio/             # L3: output backends (midir, cpal, rustysynth) implementing Player
     gscore-session/           # L4: open document, recovery journal, autosave, safe-save orchestration
-    gscore-cli/               # L5: headless tool (info, dump, render, convert, roundtrip-check)
+    gscore-cli/               # L5: headless tool (info, dump, commands, edit, convert, roundtrip-check)
     gscore-app/               # L5: egui/eframe application shell (thin); produces the `guitarscore` binary
 ```
 

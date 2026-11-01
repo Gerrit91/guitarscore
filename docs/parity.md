@@ -1,36 +1,44 @@
 # Guitar Pro Feature Parity Checklist
 
 This document tracks which Guitar Pro features are implemented in GuitarScore.
+Updated 2026-11-01 (M4: headless editing).
 
 ## Implemented Features
 
 | Feature | Status |
 |--------|--------|
-| Basic tablature support | Missing |
-| Multiple voices per track | Missing |
-| Tempo changes | Missing |
-| Time signature changes | Missing |
-| Lyrics | Missing |
-| Chord diagrams | Missing |
-| Custom fonts and styling | Missing |
+| Read GP3, GP4, GP5, GPX (GP6) and GP7+ files | Live |
+| Save GP7+ files safely (`.bak`, atomic replace, re-read check) | Live |
+| `info`, ASCII-tab `dump`, `roundtrip-check` | Live |
+| Song information, tracks, instruments, tunings, time signatures | Live |
+| Note and beat effects (read, dump, save) | Live |
+| Measure issues (under/overfilled bars, notes on missing strings) | Live |
 
-## In Progress Features
+## In Progress / Partial
 
 | Feature | Status |
 |--------|--------|
-| Keymap configuration | Planning |
-| Playback engine | Planning |
-| Undo/Redo system | Planning |
+| Basic tablature editing | Partial: headless commands (`set_fret`, `set_duration`, insert/delete beat and measure) |
+| Undo/Redo | Partial: in memory in `gscore-edit`; not persisted, no UI yet |
+| Cursor and selection | Planned (M7) |
+| Copy / cut / paste | Planned (M7, with selection) |
+| Multiple voices per track | Partial: read, viewed and edited per voice; no cross-voice editing |
+| Tempo changes | Partial: kept in the file; only the initial tempo is exposed and editable commands do not set them |
+| Time signature changes | Partial: kept and copied to new measures; no command to change one |
+| Lyrics, chord diagrams, fingering | Partial: kept in the file; no accessors or editing |
+| Keymap configuration | Planned (M7) |
 
 ## Future Milestones
 
-- Save Guitar Pro files (M3)
-- Implement basic tablature editing, headless via the CLI (M4), then in the app (M7)
-- Add playback with MIDI support (M8)
-- Add internal synth support (M9)
-- Add standard notation rendering
-- Support all GP file formats
+- Tablature layout with SVG goldens (M5)
+- Read-only egui app (M6)
+- Interactive editing, cursor, keymap and recovery journal (M7)
+- MIDI output and `.mid` export (M8)
+- Internal synth (M9)
+- Standard notation, more techniques, GP3/4/5 writing
 
 ## Testing Policy
 
 All imported/exported files must pass round-trip tests and preserve musical content.
+Every editing command is covered by apply-then-undo, `panic_hunt`, a property test, and a
+save/reload check.

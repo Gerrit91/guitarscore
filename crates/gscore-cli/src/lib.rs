@@ -4,8 +4,10 @@
 //! and its doc comment is its help text. A new subcommand gets a variant, a module, and a
 //! match arm in [`run_cli`].
 
+mod commands;
 mod convert;
 mod dump;
+mod edit;
 mod format_arg;
 mod info;
 mod input;
@@ -85,6 +87,40 @@ enum Command {
         #[arg(long)]
         allow_losses: bool,
     },
+    /// Apply editing commands to a Guitar Pro file
+    ///
+    /// Reads <FILE>, applies the commands, and saves the result with the safe-save procedure
+    /// (only Guitar Pro 7+ files, .gp, can be written for now). Commands are given with -c
+    /// (repeatable) and/or in a script file (--script). Positions are 1-based. Commands from
+    /// -c run in the order given, then the script's lines. If a command fails, nothing is
+    /// written.
+    ///
+    /// Examples:
+    ///   gscore-cli edit song.gp -o out.gp -c "set_fret track=1 measure=3 beat=2 string=6 fret=5"
+    ///   gscore-cli edit song.gp -o out.gp --script edits.txt
+    ///
+    /// `gscore-cli commands` lists every command and its parameters.
+    Edit {
+        /// The Guitar Pro file to read
+        file: PathBuf,
+        /// The file to write
+        #[arg(short, long)]
+        output: PathBuf,
+        /// A command to apply; repeat for several commands
+        #[arg(short = 'c', long = "command", value_name = "COMMAND")]
+        commands: Vec<String>,
+        /// A script file with one command per line (blank lines and # comments are ignored)
+        #[arg(long, value_name = "FILE")]
+        script: Option<PathBuf>,
+        /// Save even if the format cannot keep everything (the losses are listed)
+        #[arg(long)]
+        allow_losses: bool,
+    },
+    /// List the editing commands `gscore-cli edit` accepts
+    ///
+    /// Prints every command id (and alias), what it does, and its parameters: whether they
+    /// are required and their defaults. Positions are 1-based.
+    Commands,
     /// List the symbols `dump` writes in its ASCII tab
     ///
     /// Prints what every marker after a fret or beat means, and what the rows under the
@@ -171,6 +207,14 @@ where
             to,
             allow_losses,
         } => convert::run(&file, &output, to, allow_losses),
+        Command::Edit {
+            file,
+            output,
+            commands,
+            script,
+            allow_losses,
+        } => edit::run(&file, &output, &commands, script.as_deref(), allow_losses),
+        Command::Commands => Ok(commands::run()),
         Command::Legend => Ok(legend::run()),
         Command::RoundtripCheck { file, to } => roundtrip::run(&file, to),
     }

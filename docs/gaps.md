@@ -1,6 +1,6 @@
 # Known Gaps
 
-Ranked known shortfalls, most important first. Updated 2026-11-01 (dump effect symbols).
+Ranked known shortfalls, most important first. Updated 2026-11-01 (M4 headless editing).
 
 1. **`gscore-gp` is not held to the workspace rules yet.** About 10k lines derived from
    guitarpro still use `unwrap`, indexing and `as` casts; a crate-level `allow` exempts them.
@@ -51,9 +51,15 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (dump effect s
    The GP6/GP7 whammy bar is read (`<Whammy>` and GP6's `WhammyBar*` beat properties), so
    the dive bomb in `ornaments` survives; it used to be dropped. GP5 stores no harmonic
    fret, so its pinch harmonics show `[?]`.
-5. **The model is read-only.** No edit methods yet; they arrive with the command layer (M4).
-   Only the initial tempo is exposed; tempo changes, repeats, effects and lyrics are kept in
-   the file but have no accessors yet.
+5. **Editing is headless and narrow (M4).** The model has checked methods to set/clear a
+   note, set a beat length, insert/delete a beat and insert/delete a measure; `gscore-edit`
+   turns them into commands with undo/redo, and `gscore-cli edit` runs them from `-c` or a
+   script. Still missing: copy/cut/paste, cursor and selection (M7); editing tempo, time
+   signatures, effects, chord diagrams and lyrics; lyric/chord/effect accessors. Every model
+   edit clones the whole wrapped song (including embedded audio) to stay transactional; this
+   is correct but must become a per-region copy for large scores. Undo history is in memory
+   only and capped by entry count (10,000), not by bytes (persisting it and a memory cap
+   belong with the recovery journal in M7). Only the initial tempo is exposed.
 6. **Saving is GP7 only.** `gscore_session::save` and `gscore-cli convert` refuse other
    formats until their round trips pass (#2). Whether Guitar Pro itself opens our GP7 files
    is not verified yet (the owner can check). Effects the model has no accessor for (grace
@@ -63,4 +69,5 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (dump effect s
    as GP7, GPX and GP5, with import, `info` and `dump` reference tests and
    truncation/byte-flip robustness — still only one track and one voice per song. No
    GP3/GP4 files, and no real fuzzer (cargo-fuzz; deferred to "Later" by the owner).
-9. Layout, playback, editing and app crates are empty until their milestones.
+9. Layout, playback and app crates are still empty until their milestones; editing is
+   headless only (M4).

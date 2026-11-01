@@ -1,0 +1,16 @@
+# Applies the same edits as edit_basic.gscript, then undoes every one of them.
+# The result must be byte-for-byte the original song (the test compares dumps).
+set_fret track=1 measure=1 beat=1 string=6 fret=7
+set_duration track=1 measure=1 beat=1 duration=1/8
+insert_measure measure=2
+set_fret track=1 measure=2 beat=1 string=1 fret=12
+set_duration track=1 measure=2 beat=1 duration=1/2
+insert_beat track=1 measure=2 voice=1 beat=2 duration=1/4
+insert_beat track=1 measure=2 voice=1 beat=3 duration=1/4
+undo
+undo
+undo
+undo
+undo
+undo
+undo

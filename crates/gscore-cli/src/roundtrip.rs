@@ -30,8 +30,8 @@ pub(crate) fn run(path: &Path, to: Option<FormatArg>) -> Result<String, CliError
     if diffs.is_empty() {
         return Ok(format!(
             "Round trip OK: {route}, no differences.\n\
-             Compared: song information, tracks, tunings, time signatures, beats and notes \
-             (effects are not compared yet).\n"
+             Compared: song information, tracks, tunings, time signatures, beats, notes and \
+             their effects.\n"
         ));
     }
     let mut report = format!(

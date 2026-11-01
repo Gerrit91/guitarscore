@@ -20,6 +20,7 @@
 
 mod compare;
 mod duration;
+mod edit;
 mod effects;
 mod error;
 mod instrument;
@@ -27,6 +28,8 @@ pub mod interop;
 mod issues;
 mod position;
 mod song;
+#[cfg(feature = "test-support")]
+pub mod testing;
 mod tuning;
 mod validate;
 mod views;
@@ -37,7 +40,8 @@ mod test_support;
 mod tests;
 
 pub use compare::{Difference, differences};
-pub use duration::{Duration, TimeSignature};
+pub use duration::{Duration, NoteValue, TimeSignature};
+pub use edit::Change;
 pub use effects::{Bend, BendKind, Harmonic, HarmonicKind, SlapKind, SlideKind, StrokeDirection};
 pub use error::ModelError;
 pub use instrument::InstrumentKind;

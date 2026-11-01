@@ -1,0 +1,9 @@
+# Regression script for `gscore-cli edit` (positions are 1-based).
+# Applied to testdata/basic/steel_guitar_dadgad.gp; expected dump in tests/golden.
+set_fret track=1 measure=1 beat=1 string=6 fret=7
+set_duration track=1 measure=1 beat=1 duration=1/8
+insert_measure measure=2
+set_fret track=1 measure=2 beat=1 string=1 fret=12
+set_duration track=1 measure=2 beat=1 duration=1/2
+insert_beat track=1 measure=2 voice=1 beat=2 duration=1/4
+insert_beat track=1 measure=2 voice=1 beat=3 duration=1/4
