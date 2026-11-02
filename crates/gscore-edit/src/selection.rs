@@ -90,6 +90,8 @@ pub(crate) struct NoteClip {
     string: StringNumber,
     fret: Fret,
     tie: bool,
+    /// A dead (muted, "x") note.
+    dead: bool,
     /// Every effect, set explicitly, so the pasted note matches the copied one.
     effects: Vec<NoteEffect>,
 }
@@ -336,6 +338,7 @@ fn beat_clip(beat: &BeatView<'_>) -> Result<BeatClip, EditError> {
             string: note.string().map_err(EditError::Model)?,
             fret: note.fret().map_err(EditError::Model)?,
             tie: note.kind() == NoteKind::Tie,
+            dead: note.kind() == NoteKind::Dead,
             effects: note_effects(&note),
         });
     }
@@ -434,6 +437,13 @@ fn paste_beats(
                     at: target,
                     string: note.string,
                     effect: effect.clone(),
+                });
+            }
+            if note.dead {
+                commands.push(Command::SetDeadNote {
+                    at: target,
+                    string: note.string,
+                    dead: true,
                 });
             }
             if note.tie {
@@ -543,6 +553,13 @@ fn paste_measures(
                                 at,
                                 string: note.string,
                                 effect: effect.clone(),
+                            });
+                        }
+                        if note.dead {
+                            commands.push(Command::SetDeadNote {
+                                at,
+                                string: note.string,
+                                dead: true,
                             });
                         }
                         if note.tie {
