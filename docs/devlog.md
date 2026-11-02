@@ -819,3 +819,12 @@ across beats, harmonic diamonds, notation-staff articulations.
 - Open (docs/gaps.md #7): view state is not restored; a crash within milliseconds of an
   edit loses that edit; snapshots clone the song on the UI thread; layout panics are
   contained but not injection-tested.
+
+## 2026-11-02 — CI: install ALSA development files
+
+Landed:
+- `.github/workflows/ci.yml`: an "Install system dependencies" step
+  (`apt-get install libasound2-dev pkg-config`) before the Rust steps. `cpal`/`midir` pull in
+  `alsa-sys`, which fails with "system library `alsa` was not found" on a bare Ubuntu runner.
+  `pkg-config` is normally preinstalled but is listed explicitly since the build needs it.
+- Open: nothing.
