@@ -228,8 +228,94 @@ command layer.
 - **M6:** `gscore-app` read-only egui view drawing the `DrawOp`s, with light and dark theme, plus the offscreen snapshot example.
 - **M7:** MIDI output playback and `.mid` export (moved before interactive editing by the owner, 2026-11-01: sound first, for a first usable version).
 - **M8:** interactive editing in the app: cursor, keyboard entry and undo/redo through the M4 commands, driven by the keymap file (tested on QWERTY, QWERTZ, and AZERTY layouts), **and `gscore-session` with the recovery journal and crash recovery**.
-- **M9:** internal synth playback.
-- **Later:** fuzzing with `cargo-fuzz`, standard notation, more techniques, multi-track mixer, GP3/4/5 writing, JSON control channel, sound libraries.
+- **M9:** internal synth playback (`rustysynth` + `cpal`, SoundFont found or chosen; done 2026-11-02).
+
+Planned (owner's list of 2026-11-02, extended). Order: speed and safety first, because every
+UI feature below triggers edits on the whole song; then the window's structure, then the
+panels that fill it.
+
+- **M10: Performance.** Long songs must stay instant to edit.
+  - Per-region edits: copy and validate only the touched measures instead of the whole song
+    (now about 3.6 ms per edit on `DrDr.gp`).
+  - Layout cache per measure (and per system): an edit lays out only what changed and
+    re-breaks lines from there (now about 15 ms for 236 measures).
+  - Performance budgets (section 11 open question): key-to-screen under one frame (16 ms)
+    on a 500-measure, 16-track song in release; opening such a file under 2 s.
+  - A benchmark command (`cargo xtask bench`) on the owner's largest files, run before and
+    after each milestone; results in the devlog.
+  - Undo history capped by memory, not only by entry count.
+- **M11: Recovery.** The recovery journal and autosave deferred from M8 (contribution rule
+  5: recovery before new features): journal of commands, recovery offer after a crash,
+  autosave, persisted undo history.
+- **M12: App shell and styling.** The frame the panels plug into.
+  - Docked panels (bottom, left, right), each shown or hidden from the View menu and a
+    context menu, sizes and visibility remembered between runs.
+  - Progress bar while a song opens (and while a SoundFont loads), cancellable.
+  - Settings window with tabs:
+    - Song: title, artist, album, author, copyright, notes, tempo.
+    - Page layout: music and text fonts, font sizes, staff spacing, page size and margins.
+    - Audio and MIDI (I/O): output (synthesizer, MIDI port, audio device), SoundFont,
+      later inputs (MIDI keyboard or guitar input for note entry).
+    - Editor: keymap file, theme, autosave interval.
+  - Settings stored in `~/.config/guitarscore/` (with `gscore-session`), like the keymap.
+  - General styling: a consistent look (spacing, typography, icons, colors) in light and
+    dark; icons bundled with their licence (`THIRD_PARTY.md`); toolbar tooltips with keys.
+  - Recent files, drag and drop to open, window size and position remembered, zoom keys.
+  - Playback and the cursor (important to the owner): select a note and start playback
+    from it (from the first selected note with a selection; if the measure repeats, from
+    its first pass). During playback the cursor advances beat by beat to the note being
+    played (across repeats and track switches), and the view scrolls with it; pausing or
+    stopping leaves the cursor on the last played note, so play continues from there.
+- **M13: Track and song grid (bottom panel).**
+  - One row per track: track color, instrument symbol, name.
+  - Right-click on a track: add, delete, duplicate, rename, move up/down, edit (opens the
+    track panel). All of these as `gscore-edit` commands with undo.
+  - Volume slider and pan knob per track, plus mute and solo, applied to playback live.
+  - A colored matrix: one column per measure, a filled square where the track has notes;
+    clicking a square moves the cursor to that track and measure.
+  - Measure numbers, section markers and repeats above the matrix; the playing measure
+    highlighted during playback; selecting a range of measures for copy/paste and looping.
+- **M14: Edit palette (left panel).**
+  - Note durations (whole to 64th), dots, triplets and other tuplets, rests, ties; the
+    chosen duration stays selected for the next notes.
+  - A matrix of effects and ornaments (bends, slides, hammer-on/pull-off, vibrato, palm
+    mute, let ring, harmonics, dead and ghost notes, accents, staccato, tapping, whammy,
+    grace notes, trills, tremolo picking, strokes); a click applies it to the selected
+    note(s) or beat(s) and shows its state there.
+  - Needs the model's effect setters and `gscore-edit` commands for every effect (each
+    with apply-then-undo tests), plus bend and whammy editors (curve with points).
+  - Tempo, time signature and key signature changes at the cursor; section markers.
+  - Selection (beats, measures, across tracks) with copy, cut and paste; voice 2 entry.
+- **M15: Track panel (right panel).** Track name, instrument (General MIDI program, drum
+  kit), color, tuning and capo, string count, and sound (SoundFont preset); changes are
+  commands with undo and are heard at once.
+- **M16: Bundled SoundFonts.** Ship ready-to-use General MIDI SoundFonts so nobody has to
+  install a synthesizer.
+  - Choose by licence (MIT, CC0 or similar; flag anything else) and size (a small default
+    in the repo or the release, a larger high-quality one as an optional download).
+  - Licence file next to each and a row in `THIRD_PARTY.md`; `.sf2` only unless `.sf3`
+    support is added.
+  - The app picks the bundled one when none is installed; a quality check by ear for
+    guitars, basses and drums.
+- **M17: Layout polish.** Remaining layout issues and effects.
+  - Whammy bar (dips, dives, curves with values).
+  - Bends drawn properly: bend-and-release, pre-bend, curves with all points and values
+    (needs the full bend shape in the model, docs/gaps.md #4).
+  - Repeats and alternative endings, tempo changes, section markers, key signatures, ties
+    across barlines, the second voice, grace notes, rhythm under the tab, chord diagrams,
+    lyrics.
+  - Pages (page breaks, headers, page numbers), multi-track systems, drum notation.
+  - Print and export to PDF and PNG.
+- **M18: Playback polish.**
+  - Play from a selection and loop it, count-in, metronome, speed slider.
+  - Remaining techniques: vibrato, let ring, palm mute, grace notes, trills, whammy,
+    D.C./D.S./coda, swing.
+  - Export the song as audio (WAV) with the internal synthesizer.
+- **M19: Release.** Packages for Linux (AppImage or Flatpak), Windows and macOS (with the
+  macOS file-dialog fix, docs/gaps.md #10), the name check from section 11, a user guide,
+  a public test-file set.
+- **Later:** fuzzing with `cargo-fuzz`, GP3/4/5 writing, JSON control channel, sound
+  libraries (section 8, stage 3), a fretboard view, MusicXML import and export, a web build.
 
 ## 10. Dependency rules
 

@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use gscore_app::{GuitarScoreApp, ThemeChoice};
+use gscore_app::{GuitarScoreApp, Output, ThemeChoice};
 
 fn testdata(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -160,4 +160,105 @@ fn play_and_stop_drive_the_midi_output() {
         assert!(stopping.elapsed() < Duration::from_secs(5), "did not stop");
         std::thread::sleep(Duration::from_millis(10));
     }
+}
+
+fn temp_dir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("gscore-app-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+/// Steps the app until `done` or `seconds` have passed; false on timeout.
+fn step_until(
+    harness: &mut Harness<'static, GuitarScoreApp>,
+    seconds: u64,
+    done: impl Fn(&GuitarScoreApp) -> bool,
+) -> bool {
+    let started = Instant::now();
+    while !done(harness.state()) {
+        if started.elapsed() > Duration::from_secs(seconds) {
+            return false;
+        }
+        harness.step();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    true
+}
+
+#[test]
+fn outputs_are_chosen_and_labelled() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let playback = harness.state_mut().playback_mut();
+    assert_eq!(*playback.output(), Output::Midi(None));
+    assert_eq!(playback.output_label(), "MIDI (automatic)");
+    assert_eq!(playback.soundfont(), None);
+
+    let soundfont = PathBuf::from("/fonts/Piano.sf2");
+    playback.use_soundfont(soundfont.clone());
+    assert_eq!(*playback.output(), Output::Synth(soundfont.clone()));
+    assert_eq!(playback.output_label(), "Synthesizer (Piano.sf2)");
+    assert_eq!(playback.port(), None);
+
+    // Switching to MIDI keeps the SoundFont on offer.
+    playback.choose_port(Some("FLUID Synth".to_owned()));
+    assert_eq!(playback.output_label(), "MIDI: FLUID Synth");
+    assert_eq!(playback.port(), Some("FLUID Synth"));
+    assert_eq!(playback.soundfont(), Some(soundfont.as_path()));
+    harness.run();
+    harness.get_by_label("Output");
+}
+
+#[test]
+fn a_broken_soundfont_is_reported_and_editing_goes_on() {
+    let dir = temp_dir("broken-sf2");
+    let path = dir.join("broken.sf2");
+    std::fs::write(&path, "not a soundfont").unwrap();
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    harness.get_by_label("Play").click();
+    assert!(
+        step_until(&mut harness, 10, |app| app.notice().is_some()),
+        "the problem is shown"
+    );
+    let notice = harness.state().notice().unwrap().to_owned();
+    assert!(notice.contains("broken.sf2"), "{notice}");
+    assert_eq!(
+        harness.state().playback().state(),
+        gscore_play::PlayState::Stopped
+    );
+}
+
+#[test]
+fn play_and_stop_drive_the_built_in_synthesizer() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("synth");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+
+    harness.get_by_label("Play").click();
+    let started = step_until(&mut harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    });
+    assert!(started, "neither played nor failed");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+    harness.step();
+    harness.get_by_label("Pause");
+    harness.get_by_label("Measure 1");
+    assert_eq!(
+        harness.state().playback().output_label(),
+        "Synthesizer (sine.sf2)"
+    );
+
+    harness.get_by_label("Stop").click();
+    assert!(
+        step_until(&mut harness, 5, |app| app.playback().state()
+            == gscore_play::PlayState::Stopped),
+        "did not stop"
+    );
 }

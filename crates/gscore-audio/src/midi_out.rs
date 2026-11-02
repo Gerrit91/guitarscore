@@ -6,8 +6,10 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use gscore_play::{MidiEvent, PlayError, PlayState, Player, Scheduler, Sequence};
+use gscore_play::{MidiEvent, PlayError, PlayState, Player, Sequence};
 use midir::{MidiOutput, MidiOutputConnection};
+
+use crate::transport::{Command, Sink, Transport};
 
 /// Client name shown to other MIDI programs.
 const CLIENT: &str = "GuitarScore";
@@ -29,18 +31,6 @@ pub fn midi_output_ports() -> Result<Vec<String>, PlayError> {
         .iter()
         .filter_map(|port| output.port_name(port).ok())
         .collect())
-}
-
-/// A command for the playing thread.
-#[derive(Debug)]
-enum Command {
-    Load(Arc<Sequence>),
-    Play,
-    Pause,
-    Stop,
-    Seek(u64),
-    TempoScale(f32),
-    Quit,
 }
 
 /// What the playing thread reports back.
@@ -186,18 +176,17 @@ struct Output {
     error: Option<String>,
 }
 
-impl Output {
-    fn send(&mut self, events: impl IntoIterator<Item = MidiEvent>) {
-        for event in events {
-            if let Err(e) = self.connection.send(&event.bytes()) {
-                self.error = Some(format!("MIDI output failed: {e}"));
-            }
+impl Sink for Output {
+    fn send(&mut self, event: MidiEvent) {
+        if let Err(e) = self.connection.send(&event.bytes()) {
+            self.error = Some(format!("MIDI output failed: {e}"));
         }
     }
 
-    /// Silences the channels `scheduler`'s sequence uses.
-    fn silence(&mut self, scheduler: &Scheduler) {
-        self.send(MidiEvent::silence(scheduler.sequence().channels()));
+    fn silence(&mut self, sequence: &Sequence) {
+        for event in MidiEvent::silence(sequence.channels()) {
+            self.send(event);
+        }
     }
 }
 
@@ -209,95 +198,37 @@ fn run(connection: MidiOutputConnection, commands: &Receiver<Command>, status: &
         connection,
         error: None,
     };
-    let mut scheduler: Option<Scheduler> = None;
-    let mut state = PlayState::Stopped;
+    let mut transport = Transport::default();
 
     loop {
-        let wait = if state == PlayState::Playing {
+        let wait = if transport.state() == PlayState::Playing {
             TICK
         } else {
             IDLE
         };
         match commands.recv_timeout(wait) {
             Ok(Command::Quit) | Err(RecvTimeoutError::Disconnected) => {
-                if let Some(s) = &scheduler {
-                    out.silence(s);
-                }
+                transport.fail(&mut out);
                 break;
             }
-            Ok(Command::Load(sequence)) => {
-                if let Some(s) = &scheduler {
-                    out.silence(s);
-                }
-                scheduler = Some(Scheduler::new(sequence));
-                state = PlayState::Stopped;
-            }
-            Ok(Command::Play) => {
-                if let Some(s) = &mut scheduler
-                    && state != PlayState::Playing
-                {
+            Ok(command) => {
+                if matches!(command, Command::Play) && transport.state() != PlayState::Playing {
                     out.error = None;
-                    if state == PlayState::Stopped || s.finished() {
-                        // From the start: send the setup (programs, volume, pan) first.
-                        let setup = s.seek(0, now());
-                        out.send(setup.iter().map(|e| e.event));
-                    } else {
-                        s.resume(now());
-                    }
-                    state = PlayState::Playing;
                 }
-            }
-            Ok(Command::Pause) => {
-                if let Some(s) = &scheduler
-                    && state == PlayState::Playing
-                {
-                    out.silence(s);
-                    state = PlayState::Paused;
-                }
-            }
-            Ok(Command::Stop) => {
-                if let Some(s) = &mut scheduler {
-                    out.silence(s);
-                    let _ = s.seek(0, now());
-                }
-                state = PlayState::Stopped;
-            }
-            Ok(Command::Seek(tick)) => {
-                if let Some(s) = &mut scheduler {
-                    out.silence(s);
-                    let setup = s.seek(tick, now());
-                    out.send(setup.iter().map(|e| e.event));
-                    if state == PlayState::Stopped {
-                        state = PlayState::Paused;
-                    }
-                }
-            }
-            Ok(Command::TempoScale(scale)) => {
-                if let Some(s) = &mut scheduler {
-                    s.set_tempo_scale(scale, now());
-                }
+                // The old sequence is freed here; this thread may allocate.
+                let _old = transport.handle(command, now(), &mut out);
             }
             Err(RecvTimeoutError::Timeout) => {}
         }
 
-        if state == PlayState::Playing
-            && let Some(s) = &mut scheduler
-        {
-            let due: Vec<MidiEvent> = s.advance(now()).iter().map(|e| e.event).collect();
-            out.send(due);
-            if s.finished() {
-                out.silence(s);
-                state = PlayState::Stopped;
-            }
-            if out.error.is_some() {
-                // A failing device stops playback; the error is reported, editing goes on.
-                out.silence(s);
-                state = PlayState::Stopped;
-            }
+        transport.advance(now(), &mut out);
+        if out.error.is_some() && transport.state() == PlayState::Playing {
+            // A failing device stops playback; the error is reported, editing goes on.
+            transport.fail(&mut out);
         }
         let mut shared = lock(status);
-        shared.position = scheduler.as_ref().map_or(0, Scheduler::position);
-        shared.state = state;
+        shared.position = transport.position();
+        shared.state = transport.state();
         shared.error.clone_from(&out.error);
     }
     lock(status).state = PlayState::Stopped;

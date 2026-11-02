@@ -117,6 +117,8 @@ impl GuitarScoreApp {
                     };
                     self.start_save(path, false, ctx);
                 }
+                Event::PickedSoundFont(Some(path)) => self.playback.use_soundfont(path),
+                Event::PickedSoundFont(None) => {}
                 // Cancelled: whatever was waiting for the save does not happen.
                 Event::PickedSave(None) => self.after_save = None,
                 Event::Saved {
