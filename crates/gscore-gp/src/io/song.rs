@@ -172,11 +172,11 @@ impl Song {
     }
     /// Write this song as a Guitar Pro 6 (.gpx) binary.
     pub fn write_gpx(&self) -> GpResult<Vec<u8>> {
-        crate::io::gpx::write_gpx_bytes(self)
+        gpx::write_gpx_bytes(self)
     }
     /// Write this song as a Guitar Pro 7+ (.gp) binary.
     pub fn write_gp(&self) -> GpResult<Vec<u8>> {
-        crate::io::gpx::write_gp_bytes(self)
+        gpx::write_gp_bytes(self)
     }
     /// Read information (name, artist, ...)
     pub(crate) fn read_info(&mut self, data: &[u8], seek: &mut usize) -> GpResult<()> {

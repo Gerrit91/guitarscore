@@ -5,7 +5,7 @@
 
 use crate::io::*;
 
-pub trait SongMidiOps {
+pub(crate) trait SongMidiOps {
     fn read_midi_channels(&mut self, data: &[u8], seek: &mut usize) -> GpResult<()>;
     fn read_midi_channel(
         &self,

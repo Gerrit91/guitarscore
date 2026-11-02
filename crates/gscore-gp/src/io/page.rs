@@ -5,7 +5,7 @@
 
 use crate::io::*;
 
-pub trait SongPageOps {
+pub(crate) trait SongPageOps {
     fn read_page_setup(&mut self, data: &[u8], seek: &mut usize) -> GpResult<()>;
     fn write_page_setup(&self, data: &mut Vec<u8>) -> GpResult<()>;
 }

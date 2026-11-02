@@ -66,7 +66,7 @@ pub(super) fn read_note(
     }
     if (flags & 0x10) == 0x10 {
         let v = read_signed_byte(data, seek)?;
-        note.velocity = crate::io::unpack_velocity(v.to_i16_gp("velocity")?);
+        note.velocity = unpack_velocity(v.to_i16_gp("velocity")?);
     }
     if (flags & 0x20) == 0x20 {
         let fret = read_signed_byte(data, seek)?;
@@ -115,7 +115,7 @@ pub(super) fn read_note_v5(
     }
     if (flags & 0x10) == 0x10 {
         let v = read_signed_byte(data, seek)?;
-        note.velocity = crate::io::unpack_velocity(v.to_i16_gp("velocity")?);
+        note.velocity = unpack_velocity(v.to_i16_gp("velocity")?);
     }
     if (flags & 0x20) == 0x20 {
         let fret = read_signed_byte(data, seek)?;

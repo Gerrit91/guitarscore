@@ -22,7 +22,7 @@ impl Note {
     }
 }
 
-pub trait SongNoteOps {
+pub(crate) trait SongNoteOps {
     fn read_notes(
         &mut self,
         data: &[u8],

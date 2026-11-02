@@ -35,35 +35,27 @@ pub(crate) fn from_trill_period(period: i8) -> GpResult<u16> {
     }
 }
 
-pub trait SongEffectOps {
+pub(crate) trait SongEffectOps {
     fn read_bend_effect(&self, data: &[u8], seek: &mut usize) -> GpResult<Option<BendEffect>>;
     fn read_grace_effect(&self, data: &[u8], seek: &mut usize) -> GpResult<GraceEffect>;
     fn read_grace_effect_v5(&self, data: &[u8], seek: &mut usize) -> GpResult<GraceEffect>;
     fn read_tremolo_picking(&self, data: &[u8], seek: &mut usize)
     -> GpResult<TremoloPickingEffect>;
     fn read_slides_v5(&self, data: &[u8], seek: &mut usize) -> GpResult<Vec<SlideType>>;
-    fn read_harmonic(
-        &self,
-        data: &[u8],
-        seek: &mut usize,
-        note: &crate::io::Note,
-    ) -> GpResult<HarmonicEffect>;
+    fn read_harmonic(&self, data: &[u8], seek: &mut usize, note: &Note)
+    -> GpResult<HarmonicEffect>;
     fn read_harmonic_v5(&mut self, data: &[u8], seek: &mut usize) -> GpResult<HarmonicEffect>;
     fn read_trill(&self, data: &[u8], seek: &mut usize) -> GpResult<TrillEffect>;
     // write methods
     fn write_bend(&self, data: &mut Vec<u8>, bend: &Option<BendEffect>) -> GpResult<()>;
     fn write_grace(&self, data: &mut Vec<u8>, grace: &Option<GraceEffect>) -> GpResult<()>;
     fn write_grace_v5(&self, data: &mut Vec<u8>, grace: &Option<GraceEffect>) -> GpResult<()>;
-    fn write_harmonic(
-        &self,
-        data: &mut Vec<u8>,
-        note: &crate::io::Note,
-        strings: &[(i8, i8)],
-    ) -> GpResult<()>;
+    fn write_harmonic(&self, data: &mut Vec<u8>, note: &Note, strings: &[(i8, i8)])
+    -> GpResult<()>;
     fn write_harmonic_v5(
         &self,
         data: &mut Vec<u8>,
-        note: &crate::io::Note,
+        note: &Note,
         strings: &[(i8, i8)],
     ) -> GpResult<()>;
     fn write_slides_v5(&self, data: &mut Vec<u8>, slides: &[SlideType]);
@@ -183,7 +175,7 @@ impl SongEffectOps for Song {
         &self,
         data: &[u8],
         seek: &mut usize,
-        note: &crate::io::Note,
+        note: &Note,
     ) -> GpResult<HarmonicEffect> {
         let mut he = HarmonicEffect::default();
         match read_signed_byte(data, seek)? {
@@ -317,7 +309,7 @@ impl SongEffectOps for Song {
     fn write_harmonic(
         &self,
         data: &mut Vec<u8>,
-        note: &crate::io::Note,
+        note: &Note,
         strings: &[(i8, i8)],
     ) -> GpResult<()> {
         if let Some(h) = &note.effect.harmonic {
@@ -343,7 +335,7 @@ impl SongEffectOps for Song {
     fn write_harmonic_v5(
         &self,
         data: &mut Vec<u8>,
-        note: &crate::io::Note,
+        note: &Note,
         strings: &[(i8, i8)],
     ) -> GpResult<()> {
         if let Some(h) = &note.effect.harmonic {

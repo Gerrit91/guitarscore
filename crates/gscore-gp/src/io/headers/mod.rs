@@ -1,27 +1,14 @@
-//! Guitar Pro reading and writing: headers.
+//! Guitar Pro reading and writing: measure headers, markers, repeats, directions and the
+//! clipboard header. Writing is in [`write`].
 
 // Derived from the `guitarpro` crate by slundi (https://github.com/slundi/guitarpro,
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
-use crate::io::*;
+mod write;
+
 use std::collections::HashMap;
 
-impl MeasureHeader {
-    #[allow(dead_code)]
-    pub(crate) fn length(&self) -> GpResult<i64> {
-        Ok(self
-            .time_signature
-            .numerator
-            .to_i64_gp("time_signature.numerator")?
-            * crate::io::DURATION_QUARTER_TIME
-            * 4
-            / self
-                .time_signature
-                .denominator
-                .value
-                .to_i64_gp("time_signature.denominator.value")?)
-    }
-}
+use crate::io::*;
 
 pub(crate) fn read_marker(data: &[u8], seek: &mut usize) -> GpResult<Marker> {
     use crate::io::primitive::*;
@@ -33,7 +20,7 @@ pub(crate) fn read_marker(data: &[u8], seek: &mut usize) -> GpResult<Marker> {
     Ok(marker)
 }
 
-pub trait SongHeaderOps {
+pub(crate) trait SongHeaderOps {
     fn read_clipboard(&mut self, data: &[u8], seek: &mut usize) -> GpResult<Option<Clipboard>>;
     fn read_measure_headers(
         &mut self,
@@ -98,7 +85,6 @@ impl SongHeaderOps for Song {
             c.stop_beat = read_int(data, seek)?;
             c.sub_bar_copy = read_int(data, seek)? != 0;
         }
-        println!("read_clipboard(): {:?}", c);
         Ok(Some(c))
     }
 
@@ -109,7 +95,7 @@ impl SongHeaderOps for Song {
         measure_count: usize,
     ) -> GpResult<()> {
         let mut previous: Option<MeasureHeader> = None;
-        for i in 1..measure_count + 1 {
+        for i in 1..=measure_count {
             let r: (MeasureHeader, u8) = self.read_measure_header(data, seek, i, previous)?;
             previous = Some(r.0.clone());
             self.measure_headers.push(r.0);
@@ -125,7 +111,7 @@ impl SongHeaderOps for Song {
         directions: &(HashMap<DirectionSign, i16>, HashMap<DirectionSign, i16>),
     ) -> GpResult<()> {
         let mut previous: Option<MeasureHeader> = None;
-        for i in 1..measure_count + 1 {
+        for i in 1..=measure_count {
             let r: (MeasureHeader, u8) = self.read_measure_header_v5(data, seek, i, previous)?;
             previous = Some(r.0.clone());
             self.measure_headers.push(r.0);
@@ -139,7 +125,7 @@ impl SongHeaderOps for Song {
                     .checked_sub(1)
                     .and_then(|index| self.measure_headers.get_mut(index))
                     .ok_or_else(|| {
-                        crate::io::error::GpError::FormatError(format!(
+                        GpError::FormatError(format!(
                             "direction points to measure {number}, but there are {} measures",
                             measure_count
                         ))
@@ -224,20 +210,20 @@ impl SongHeaderOps for Song {
         previous: Option<MeasureHeader>,
     ) -> GpResult<(MeasureHeader, u8)> {
         if previous.is_some() {
-            *seek += 1;
+            skip(seek, 1);
         }
         let r = self.read_measure_header(data, seek, number, previous.clone())?;
         let mut mh = r.0;
         let flags = r.1;
         if mh.repeat_close > -1 {
-            mh.repeat_close -= 1;
+            mh.repeat_close = mh.repeat_close.saturating_sub(1);
         }
         // GP5 stores beams whenever the time signature changes at all (either the
         // numerator OR the denominator bit is set), not only when both are set.
         // Matches the Python `guitarpro` reference and TuxGuitar.
         if (flags & 0x03) != 0 {
-            for i in 0..4 {
-                mh.time_signature.beams[i] = read_byte(data, seek)?;
+            for beam in &mut mh.time_signature.beams {
+                *beam = read_byte(data, seek)?;
             }
         } else {
             mh.time_signature.beams = previous
@@ -248,7 +234,7 @@ impl SongHeaderOps for Song {
                 .beams;
         };
         if (flags & 0x10) == 0 {
-            *seek += 1;
+            skip(seek, 1);
         }
         mh.triplet_feel = get_triplet_feel(read_byte(data, seek)?);
         Ok((mh, flags))
@@ -262,14 +248,17 @@ impl SongHeaderOps for Song {
         // still fits `u8`.
         let raw = read_byte(data, seek)?;
         let value = u16::from(raw).min(8);
-        let mut existing_alternative = 0u16;
-        for i in (0..self.measure_headers.len()).rev() {
-            if self.measure_headers[i].repeat_open {
-                break;
-            }
-            existing_alternative |= u16::from(self.measure_headers[i].repeat_alternative);
-        }
-        Ok((((1u16 << value) - 1) ^ existing_alternative) as u8)
+        // The endings of the repeat so far: back to its start.
+        let existing_alternative = self
+            .measure_headers
+            .iter()
+            .rev()
+            .take_while(|header| !header.repeat_open)
+            .fold(0u16, |bits, header| {
+                bits | u16::from(header.repeat_alternative)
+            });
+        let endings = (1u16 << value).saturating_sub(1) ^ existing_alternative;
+        Ok(u8::try_from(endings).unwrap_or(u8::MAX))
     }
 
     fn read_repeat_alternative_v5(&mut self, data: &[u8], seek: &mut usize) -> GpResult<u8> {
@@ -324,182 +313,18 @@ impl SongHeaderOps for Song {
         previous: Option<usize>,
         version: &(u8, u8, u8),
     ) -> GpResult<()> {
-        let mut flags: u8 = 0x00;
-        if let Some(p) = previous {
-            if self.measure_headers[header].time_signature.numerator
-                != self.measure_headers[p].time_signature.numerator
-            {
-                flags |= 0x01;
-            }
-            if self.measure_headers[header]
-                .time_signature
-                .denominator
-                .value
-                != self.measure_headers[p].time_signature.denominator.value
-            {
-                flags |= 0x02;
-            }
-        } else {
-            flags |= 0x01;
-            flags |= 0x02;
-        }
-        if self.measure_headers[header].repeat_open {
-            flags |= 0x04;
-        }
-        if self.measure_headers[header].repeat_close > -1 {
-            flags |= 0x08;
-        }
-        if self.measure_headers[header].repeat_alternative > 0 {
-            flags |= 0x10;
-        }
-        if self.measure_headers[header].marker.is_some() {
-            flags |= 0x20;
-        }
-        if self.measure_headers[header].double_bar {
-            flags |= 0x80;
-        }
-        if version.0 >= 4 {
-            if previous.is_none() {
-                flags |= 0x40;
-            } else if let Some(p) = previous
-                && self.measure_headers[header].key_signature
-                    != self.measure_headers[p].key_signature
-            {
-                flags |= 0x40;
-            }
-        }
-        if version.0 >= 5
-            && let Some(p) = previous
-        {
-            if self.measure_headers[header].time_signature != self.measure_headers[p].time_signature
-            {
-                flags |= 0x03;
-            }
-            write_placeholder_default(data, 1);
-        }
-        write_byte(data, flags);
-        if (flags & 0x01) == 0x01 {
-            write_signed_byte(data, self.measure_headers[header].time_signature.numerator);
-        }
-        if (flags & 0x02) == 0x02 {
-            write_signed_byte(
-                data,
-                self.measure_headers[header]
-                    .time_signature
-                    .denominator
-                    .value
-                    .to_i8_gp("denominator value")?,
-            );
-        }
-        if (flags & 0x08) == 0x08 {
-            write_signed_byte(
-                data,
-                if version.0 < 5 {
-                    self.measure_headers[header].repeat_close
-                } else {
-                    self.measure_headers[header].repeat_close + 1
-                },
-            );
-        }
-        if (flags & 0x10) == 0x10 {
-            if version.0 == 5 {
-                write_byte(data, self.measure_headers[header].repeat_alternative);
-            } else {
-                let ra = self.measure_headers[header].repeat_alternative;
-                let mut first_one = false;
-                let mut out: u8 = 0;
-                for i in 0u8..9 - ra.leading_zeros().to_u8_gp("leading zeros")? {
-                    out = i;
-                    if (ra as u16 & (1u16 << i)) > 0 {
-                        first_one = true;
-                    } else if first_one {
-                        break;
-                    }
-                }
-                write_byte(data, out);
-            }
-        }
-        if (flags & 0x20) == 0x20
-            && let Some(marker) = &self.measure_headers[header].marker
-        {
-            write_int_size_string(data, &marker.title);
-            write_color(data, marker.color);
-        }
-        if version.0 >= 4 && (flags & 0x40) == 0x40 {
-            write_signed_byte(data, self.measure_headers[header].key_signature.key);
-            write_signed_byte(
-                data,
-                i8::from(self.measure_headers[header].key_signature.is_minor),
-            );
-        }
-        if version.0 >= 5 {
-            if (flags & 0x03) != 0 {
-                for i in 0..self.measure_headers[header].time_signature.beams.len() {
-                    write_byte(data, self.measure_headers[header].time_signature.beams[i]);
-                }
-            }
-            if (flags & 0x10) == 0 {
-                write_placeholder_default(data, 1);
-            }
-            write_byte(
-                data,
-                from_triplet_feel(&self.measure_headers[header].triplet_feel),
-            );
-        }
-        Ok(())
+        let current = item(&self.measure_headers, header, "measure header")?;
+        let previous = previous
+            .map(|p| item(&self.measure_headers, p, "measure header"))
+            .transpose()?;
+        write::measure_header(data, current, previous, version)
     }
 
     fn write_clipboard(&self, data: &mut Vec<u8>, version: &(u8, u8, u8)) -> GpResult<()> {
-        if let Some(c) = &self.clipboard {
-            write_i32(data, c.start_measure.to_i32_gp("clipboard start_measure")?);
-            write_i32(data, c.stop_measure.to_i32_gp("clipboard stop_measure")?);
-            write_i32(data, c.start_track.to_i32_gp("clipboard start_track")?);
-            write_i32(data, c.stop_track.to_i32_gp("clipboard stop_track")?);
-            if version.0 == 5 {
-                write_i32(data, c.start_beat.to_i32_gp("clipboard start_beat")?);
-                write_i32(data, c.stop_beat.to_i32_gp("clipboard stop_beat")?);
-                write_i32(data, i32::from(c.sub_bar_copy));
-            }
-        }
-        Ok(())
+        write::clipboard(data, self.clipboard.as_ref(), version)
     }
 
     fn write_directions(&self, data: &mut Vec<u8>) -> GpResult<()> {
-        let mut map: HashMap<DirectionSign, i16> = HashMap::with_capacity(19);
-        for i in 0..self.measure_headers.len() {
-            if let Some(d) = &self.measure_headers[i].direction {
-                map.insert(d.clone(), (i + 1).to_i16_gp("direction measure index")?);
-            }
-        }
-        let order: Vec<DirectionSign> = vec![
-            DirectionSign::Coda,
-            DirectionSign::DoubleCoda,
-            DirectionSign::Segno,
-            DirectionSign::SegnoSegno,
-            DirectionSign::Fine,
-            DirectionSign::DaCapo,
-            DirectionSign::DaCapoAlCoda,
-            DirectionSign::DaCapoAlDoubleCoda,
-            DirectionSign::DaCapoAlFine,
-            DirectionSign::DaSegno,
-            DirectionSign::DaSegnoAlCoda,
-            DirectionSign::DaSegnoAlDoubleCoda,
-            DirectionSign::DaSegnoAlFine,
-            DirectionSign::DaSegnoSegno,
-            DirectionSign::DaSegnoSegnoAlCoda,
-            DirectionSign::DaSegnoSegnoAlDoubleCoda,
-            DirectionSign::DaSegnoSegnoAlFine,
-            DirectionSign::DaCoda,
-            DirectionSign::DaDoubleCoda,
-        ];
-        for d in order {
-            let x = map.get(&d);
-            if let Some(dir) = x {
-                write_i16(data, *dir);
-            } else {
-                write_i16(data, -1);
-            }
-        }
-        Ok(())
+        write::directions(data, &self.measure_headers)
     }
 }

@@ -4,7 +4,7 @@
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-pub struct Gpif {
+pub(crate) struct Gpif {
     /// GP7 uses "GPVersion", GP6 uses "GPRevision"
     #[serde(rename = "GPVersion", default)]
     pub version: Option<String>,
@@ -36,7 +36,7 @@ pub struct Gpif {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct Score {
+pub(crate) struct Score {
     #[serde(default)]
     pub title: String,
     #[serde(default)]
@@ -67,7 +67,7 @@ pub struct Score {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct MasterTrack {
+pub(crate) struct MasterTrack {
     #[serde(rename = "Tracks", default)]
     pub tracks_count: String,
     #[serde(rename = "Automations", default)]
@@ -75,13 +75,13 @@ pub struct MasterTrack {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct AutomationsWrapper {
+pub(crate) struct AutomationsWrapper {
     #[serde(rename = "Automation", default)]
     pub automations: Vec<Automation>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct Automation {
+pub(crate) struct Automation {
     #[serde(rename = "Type", default)]
     pub automation_type: String,
     #[serde(rename = "Value", default)]
@@ -105,7 +105,7 @@ pub struct Automation {
 /// both channels fill independently, so future GP versions that add more
 /// children stay parseable and their data is preserved in `items`.
 #[derive(Debug, Deserialize, Default, Clone)]
-pub struct AutomationValue {
+pub(crate) struct AutomationValue {
     /// Unmatched child elements / bare text, in document order.
     #[serde(rename = "$value", default)]
     pub items: Vec<String>,
@@ -131,13 +131,13 @@ pub struct AutomationValue {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct TracksWrapper {
+pub(crate) struct TracksWrapper {
     #[serde(rename = "Track", default)]
     pub tracks: Vec<Track>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Track {
+pub(crate) struct Track {
     #[serde(rename = "@id", default)]
     pub id: i32,
     #[serde(rename = "Name", default)]
@@ -167,28 +167,28 @@ pub struct Track {
 
 /// GuitarScore addition: `<Sounds>` of a GP7 track.
 #[derive(Debug, Deserialize)]
-pub struct SoundsWrapper {
+pub(crate) struct SoundsWrapper {
     #[serde(rename = "Sound", default)]
     pub sounds: Vec<Sound>,
 }
 
 /// GuitarScore addition: one `<Sound>` of a GP7 track (only the MIDI part).
 #[derive(Debug, Deserialize)]
-pub struct Sound {
+pub(crate) struct Sound {
     #[serde(rename = "MIDI", default)]
     pub midi: Option<SoundMidi>,
 }
 
 /// GuitarScore addition: the `<MIDI>` part of a GP7 `<Sound>`.
 #[derive(Debug, Deserialize)]
-pub struct SoundMidi {
+pub(crate) struct SoundMidi {
     #[serde(rename = "Program", default)]
     pub program: Option<i32>,
 }
 
 /// GuitarScore addition: `<InstrumentSet>` of a GP7 track (only the fields used).
 #[derive(Debug, Deserialize)]
-pub struct InstrumentSet {
+pub(crate) struct InstrumentSet {
     /// Display name, e.g. "Electric Guitar".
     #[serde(rename = "Name", default)]
     pub name: Option<String>,
@@ -198,31 +198,31 @@ pub struct InstrumentSet {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct TrackPropertiesWrapper {
+pub(crate) struct TrackPropertiesWrapper {
     #[serde(rename = "Property", default)]
     pub properties: Vec<Property>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct StavesWrapper {
+pub(crate) struct StavesWrapper {
     #[serde(rename = "Staff", default)]
     pub staves: Vec<Staff>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Staff {
+pub(crate) struct Staff {
     #[serde(rename = "Properties", default)]
     pub properties: Option<StaffPropertiesWrapper>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct StaffPropertiesWrapper {
+pub(crate) struct StaffPropertiesWrapper {
     #[serde(rename = "Property", default)]
     pub properties: Vec<Property>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GeneralMidi {
+pub(crate) struct GeneralMidi {
     #[serde(rename = "Program", default)]
     pub program: Option<i32>,
     #[serde(rename = "Port", default)]
@@ -234,7 +234,7 @@ pub struct GeneralMidi {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Transpose {
+pub(crate) struct Transpose {
     #[serde(rename = "Chromatic", default)]
     pub chromatic: Option<i32>,
     #[serde(rename = "Octave", default)]
@@ -246,13 +246,13 @@ pub struct Transpose {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct MasterBarsWrapper {
+pub(crate) struct MasterBarsWrapper {
     #[serde(rename = "MasterBar", default)]
     pub master_bars: Vec<MasterBar>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct MasterBar {
+pub(crate) struct MasterBar {
     #[serde(rename = "Key", default)]
     pub key: Option<Key>,
     #[serde(rename = "Time", default)]
@@ -276,7 +276,7 @@ pub struct MasterBar {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Key {
+pub(crate) struct Key {
     #[serde(rename = "AccidentalCount", default)]
     pub accidental_count: i32,
     #[serde(rename = "Mode", default)]
@@ -293,7 +293,7 @@ impl Default for Key {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Repeat {
+pub(crate) struct Repeat {
     #[serde(rename = "@start", default)]
     pub start: String,
     #[serde(rename = "@end", default)]
@@ -303,7 +303,7 @@ pub struct Repeat {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Section {
+pub(crate) struct Section {
     #[serde(rename = "Letter", default)]
     pub letter: Option<String>,
     #[serde(rename = "Text", default)]
@@ -311,7 +311,7 @@ pub struct Section {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct DirectionsWrapper {
+pub(crate) struct DirectionsWrapper {
     #[serde(rename = "Target", default)]
     pub target: Option<String>,
     #[serde(rename = "Jump", default)]
@@ -319,13 +319,13 @@ pub struct DirectionsWrapper {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct FermatasWrapper {
+pub(crate) struct FermatasWrapper {
     #[serde(rename = "Fermata", default)]
     pub fermatas: Vec<Fermata>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Fermata {
+pub(crate) struct Fermata {
     #[serde(rename = "Type", default)]
     pub fermata_type: Option<String>,
     #[serde(rename = "Offset", default)]
@@ -337,13 +337,13 @@ pub struct Fermata {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct BarsWrapper {
+pub(crate) struct BarsWrapper {
     #[serde(rename = "Bar", default)]
     pub bars: Vec<Bar>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Bar {
+pub(crate) struct Bar {
     #[serde(rename = "@id", default)]
     pub id: i32,
     #[serde(rename = "Voices", default)]
@@ -359,13 +359,13 @@ pub struct Bar {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct VoicesWrapper {
+pub(crate) struct VoicesWrapper {
     #[serde(rename = "Voice", default)]
     pub voices: Vec<Voice>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Voice {
+pub(crate) struct Voice {
     #[serde(rename = "@id", default)]
     pub id: i32,
     #[serde(rename = "Beats", default)]
@@ -377,13 +377,13 @@ pub struct Voice {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct BeatsWrapper {
+pub(crate) struct BeatsWrapper {
     #[serde(rename = "Beat", default)]
     pub beats: Vec<Beat>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Beat {
+pub(crate) struct Beat {
     #[serde(rename = "@id", default)]
     pub id: i32,
     #[serde(rename = "Notes", default)]
@@ -414,14 +414,14 @@ pub struct Beat {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct BeatPropertiesWrapper {
+pub(crate) struct BeatPropertiesWrapper {
     #[serde(rename = "Property", default)]
     pub properties: Vec<BeatProperty>,
 }
 
 /// The shape of a GP7 whammy-bar effect, in hundredths of a semitone.
 #[derive(Debug, Deserialize)]
-pub struct Whammy {
+pub(crate) struct Whammy {
     #[serde(rename = "@originValue", default)]
     pub origin_value: f64,
     /// GuitarScore addition: the turning point of a dip (down and back up).
@@ -438,7 +438,7 @@ pub struct Whammy {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct BeatProperty {
+pub(crate) struct BeatProperty {
     #[serde(rename = "@name", default)]
     pub name: String,
     #[serde(rename = "Direction", default)]
@@ -455,7 +455,7 @@ pub struct BeatProperty {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct RhythmRef {
+pub(crate) struct RhythmRef {
     #[serde(rename = "@ref", default)]
     pub r#ref: i32,
 }
@@ -465,13 +465,13 @@ pub struct RhythmRef {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct NotesWrapper {
+pub(crate) struct NotesWrapper {
     #[serde(rename = "Note", default)]
     pub notes: Vec<Note>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Note {
+pub(crate) struct Note {
     #[serde(rename = "@id", default)]
     pub id: i32,
     #[serde(rename = "Properties")]
@@ -493,7 +493,7 @@ pub struct Note {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct TieInfo {
+pub(crate) struct TieInfo {
     #[serde(rename = "@origin", default)]
     pub origin: String,
     #[serde(rename = "@destination", default)]
@@ -502,7 +502,7 @@ pub struct TieInfo {
 
 /// The `<Legato>` tag of a beat; both attributes are `"true"` or `"false"`.
 #[derive(Debug, Deserialize)]
-pub struct LegatoInfo {
+pub(crate) struct LegatoInfo {
     #[serde(rename = "@origin", default)]
     pub origin: String,
     #[serde(rename = "@destination", default)]
@@ -511,16 +511,16 @@ pub struct LegatoInfo {
 
 /// An empty self-closing tag used as a presence flag (e.g., `<Enable />`, `<LetRing />`).
 #[derive(Debug, Deserialize)]
-pub struct EnableTag;
+pub(crate) struct EnableTag;
 
 #[derive(Debug, Deserialize)]
-pub struct NoteProperties {
+pub(crate) struct NoteProperties {
     #[serde(rename = "Property", default)]
     pub properties: Vec<Property>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Property {
+pub(crate) struct Property {
     #[serde(rename = "@name", default)]
     pub name: String,
     // Value sub-elements — each property uses at most one of these
@@ -552,7 +552,7 @@ pub struct Property {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Pitch {
+pub(crate) struct Pitch {
     #[serde(rename = "Step", default)]
     pub step: String,
     #[serde(rename = "Octave", default)]
@@ -566,13 +566,13 @@ pub struct Pitch {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct RhythmsWrapper {
+pub(crate) struct RhythmsWrapper {
     #[serde(rename = "Rhythm", default)]
     pub rhythms: Vec<Rhythm>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Rhythm {
+pub(crate) struct Rhythm {
     #[serde(rename = "@id", default)]
     pub id: i32,
     #[serde(rename = "NoteValue", default)]
@@ -584,13 +584,13 @@ pub struct Rhythm {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct AugmentationDot {
+pub(crate) struct AugmentationDot {
     #[serde(rename = "@count", default)]
     pub count: i32,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct PrimaryTuplet {
+pub(crate) struct PrimaryTuplet {
     #[serde(rename = "@num", default)]
     pub num: i32,
     #[serde(rename = "@den", default)]

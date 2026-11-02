@@ -57,6 +57,23 @@ pub(crate) fn low_i8(value: i32) -> i8 {
     i8::from_le_bytes([low])
 }
 
+/// The low byte of `value` (what a truncating cast gives).
+pub(crate) fn low_u8(value: i32) -> u8 {
+    let [low, ..] = value.to_le_bytes();
+    low
+}
+
+/// A byte read as a signed byte (two's complement).
+pub(crate) fn byte_as_i8(value: u8) -> i8 {
+    i8::from_le_bytes([value])
+}
+
+/// A signed byte written as a byte (two's complement).
+pub(crate) fn i8_as_byte(value: i8) -> u8 {
+    let [byte] = value.to_le_bytes();
+    byte
+}
+
 /// Reads a byte.
 pub(crate) fn read_byte(data: &[u8], seek: &mut usize) -> GpResult<u8> {
     Ok(u8::from_le_bytes(take_array(data, seek)?))

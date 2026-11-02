@@ -53,7 +53,7 @@ pub(super) fn write_note_v3(song: &Song, data: &mut Vec<u8>, note: &Note) -> GpR
         );
     }
     if (flags & 0x10) == 0x10 {
-        write_signed_byte(data, crate::io::pack_velocity(note.velocity)?);
+        write_signed_byte(data, pack_velocity(note.velocity)?);
     }
     if (flags & 0x20) == 0x20 {
         if note.kind != NoteType::Rest {
@@ -95,7 +95,7 @@ pub(super) fn write_note_v4(
         );
     }
     if (flags & 0x10) == 0x10 {
-        write_signed_byte(data, crate::io::pack_velocity(note.velocity)?);
+        write_signed_byte(data, pack_velocity(note.velocity)?);
     }
     if (flags & 0x20) == 0x20 {
         if note.kind != NoteType::Rest {
@@ -131,7 +131,7 @@ pub(super) fn write_note_v5(
         write_byte(data, from_note_type(&note.kind));
     }
     if (flags & 0x10) == 0x10 {
-        write_signed_byte(data, crate::io::pack_velocity(note.velocity)?);
+        write_signed_byte(data, pack_velocity(note.velocity)?);
     }
     if (flags & 0x20) == 0x20 {
         if note.kind != NoteType::Tie {

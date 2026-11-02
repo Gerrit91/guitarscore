@@ -16,7 +16,7 @@ use crate::model::{
     track::Track as SongTrack,
 };
 
-pub trait SongGpifOps {
+pub(crate) trait SongGpifOps {
     fn read_gpif(&mut self, gpif: &Gpif);
 }
 

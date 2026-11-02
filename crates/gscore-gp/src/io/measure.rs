@@ -6,7 +6,7 @@
 use crate::io::*;
 use fraction::ToPrimitive;
 
-pub trait SongMeasureOps {
+pub(crate) trait SongMeasureOps {
     fn read_measures(&mut self, data: &[u8], seek: &mut usize) -> GpResult<()>;
     fn read_measure(
         &mut self,

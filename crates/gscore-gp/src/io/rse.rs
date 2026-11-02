@@ -5,7 +5,7 @@
 
 use crate::io::*;
 
-pub trait SongRseOps {
+pub(crate) trait SongRseOps {
     fn read_rse_master_effect(&self, data: &[u8], seek: &mut usize) -> GpResult<RseMasterEffect>;
     fn read_rse_equalizer(
         &self,

@@ -5,7 +5,7 @@
 
 use crate::io::*;
 
-pub trait SongLyricOps {
+pub(crate) trait SongLyricOps {
     fn read_lyrics(&self, data: &[u8], seek: &mut usize) -> GpResult<Lyrics>;
     fn write_lyrics(&self, data: &mut Vec<u8>) -> GpResult<()>;
 }

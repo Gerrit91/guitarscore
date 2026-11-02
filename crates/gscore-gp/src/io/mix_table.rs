@@ -5,7 +5,7 @@
 
 use crate::io::*;
 
-pub trait SongMixTableOps {
+pub(crate) trait SongMixTableOps {
     fn read_mix_table_change(&mut self, data: &[u8], seek: &mut usize) -> GpResult<MixTableChange>;
     fn read_mix_table_change_values(
         &mut self,

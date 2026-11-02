@@ -19,7 +19,7 @@ use crate::io::Song;
 use crate::io::*;
 use crate::io::{FORTE, GP_BEND_SEMITONE, MIN_VELOCITY, VELOCITY_INCREMENT};
 
-pub trait SongGpifExportOps {
+pub(crate) trait SongGpifExportOps {
     /// Serialize this `Song` to a GPIF XML string (GP6 flavour).
     fn write_gpif_xml(&self) -> GpResult<String>;
 }
@@ -465,7 +465,7 @@ impl SongGpifExportOps for Song {
     fn write_gpif_xml(&self) -> GpResult<String> {
         // GuitarScore fix: GPIF numbers strings from the lowest; convert a copy.
         let mut flipped = self.clone();
-        crate::io::gpif_import::flip_note_strings(&mut flipped.tracks);
+        gpif_import::flip_note_strings(&mut flipped.tracks);
         flipped.write_gpif_xml_in_gpif_string_order()
     }
 }
