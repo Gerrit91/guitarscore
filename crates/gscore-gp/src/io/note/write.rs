@@ -14,8 +14,13 @@ pub(super) fn write_notes(
     version: &(u8, u8, u8),
 ) -> GpResult<()> {
     let mut string_flags: u8 = 0;
-    for i in 0..beat.notes.len() {
-        string_flags |= 1 << (7 - beat.notes[i].string);
+    for note in &beat.notes {
+        // GuitarScore fix: strings beyond 7 (an 8-string guitar from GP7) overflowed
+        // the shift; the binary formats cannot store them.
+        string_flags |= string_bit(note.string).ok_or(GpError::InvalidValue {
+            context: "string number (GP3-5 store strings 1 to 7)",
+            value: i64::from(note.string),
+        })?;
     }
     write_byte(data, string_flags);
     let mut notes = beat.notes.clone();
@@ -296,7 +301,7 @@ pub(super) fn write_note_effects(
     }
     if (flags2 & 0x08) == 0x08 {
         if version.0 < 5 {
-            write_signed_byte(data, from_slide_type(&note.effect.slides[0]));
+            write_signed_byte(data, note.effect.slides.first().map_or(0, from_slide_type));
         } else {
             song.write_slides_v5(data, &note.effect.slides);
         }

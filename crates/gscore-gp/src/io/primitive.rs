@@ -84,6 +84,18 @@ pub(crate) fn clamp_count(value: i32, max: i32) -> usize {
     usize::try_from(value.clamp(0, max)).unwrap_or_default()
 }
 
+/// `value` as `i32`, saturating at the ends of the range; NaN gives 0 (what Rust's float
+/// cast does, spelled out).
+pub(crate) fn saturating_i32(value: f32) -> i32 {
+    if value.is_nan() {
+        return 0;
+    }
+    // `f32` to `i32` saturates; clamping first makes that explicit.
+    #[allow(clippy::cast_possible_truncation)]
+    let saturated = value.clamp(i32::MIN as f32, i32::MAX as f32) as i32;
+    saturated
+}
+
 /// The low byte of `value` (what a truncating cast gives).
 pub(crate) fn low_u8(value: i32) -> u8 {
     let [low, ..] = value.to_le_bytes();

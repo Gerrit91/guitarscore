@@ -8,8 +8,13 @@ use fraction::ToPrimitive;
 
 impl Duration {
     pub(crate) fn convert_time(&self, time: u32) -> GpResult<u32> {
-        let result =
-            fraction::Fraction::new(time * self.tuplet_enters as u32, self.tuplet_times as u32);
+        let enters =
+            time.checked_mul(u32::from(self.tuplet_enters))
+                .ok_or(GpError::TypeConversion {
+                    context: "tuplet time",
+                    value: i64::from(time),
+                })?;
+        let result = fraction::Fraction::new(enters, u32::from(self.tuplet_times));
         let denom = *result
             .denom()
             .ok_or_else(|| GpError::FormatError("fraction denom is None".to_string()))?;
@@ -19,7 +24,7 @@ impl Duration {
                 .ok_or_else(|| GpError::FormatError("fraction numer is None".to_string()))?;
             numer.to_u32().ok_or(GpError::TypeConversion {
                 context: "fraction numer to u32",
-                value: numer as i64,
+                value: numer.to_i64().unwrap_or(i64::MAX),
             })
         } else {
             result.trunc().to_u32().ok_or(GpError::TypeConversion {
@@ -29,25 +34,27 @@ impl Duration {
         }
     }
     pub(crate) fn time(&self) -> GpResult<u32> {
-        let mut result =
-            (f64::from(DURATION_QUARTER_TIME as i32) * 4f64 / f64::from(self.value)).trunc();
+        let quarter = f64::from(i32::try_from(DURATION_QUARTER_TIME).unwrap_or(960));
+        let mut result = (quarter * 4f64 / f64::from(self.value)).trunc();
         if self.dotted {
             result += (result / 2f64).trunc();
         }
         let time = result.to_u32().ok_or(GpError::TypeConversion {
             context: "duration time to u32",
-            value: result as i64,
+            value: result.to_i64().unwrap_or(i64::MAX),
         })?;
         self.convert_time(time)
     }
     pub(crate) fn write_duration(&self, data: &mut Vec<u8>, flags: u8) -> GpResult<()> {
-        let value = (16 - self.value.leading_zeros()).to_i8_gp("duration value bits")? - 3; //value = duration.value.bit_length() - 3
+        // The note value's bit length minus 3: whole note -2, half -1, quarter 0, ...
+        let bits = 16_u32.saturating_sub(self.value.leading_zeros());
+        let value = bits.to_i8_gp("duration value bits")?.saturating_sub(3);
         write_signed_byte(data, value);
         if (flags & 0x20) == 0x20 {
             if !self.is_supported() {
                 return Ok(());
             }
-            write_i32(data, self.tuplet_enters as i32); //write iTuplet
+            write_i32(data, i32::from(self.tuplet_enters)); // the tuplet
         }
         Ok(())
     }
@@ -69,7 +76,7 @@ pub(crate) fn read_duration(data: &[u8], seek: &mut usize, flags: u8) -> GpResul
     // Compute in i16 to avoid overflow when `b` is a garbage byte (e.g. 127).
     // Guitar Pro's valid range is `-2..=3`; anything else is treated as whole
     // note as a safe fallback.
-    let shift = i16::from(b) + 2;
+    let shift = i16::from(b).saturating_add(2);
     let val = if (0..16).contains(&shift) {
         1u16 << shift
     } else {

@@ -16,28 +16,17 @@ pub(super) fn read_notes(
     note_effect: NoteEffect,
 ) -> GpResult<()> {
     let flags = read_byte(data, seek)?;
-    for i in 0..song.tracks[track_index].strings.len() {
-        if (flags & 1 << (7 - song.tracks[track_index].strings[i].0)) > 0 {
+    let strings = item(&song.tracks, track_index, "track")?.strings.clone();
+    for string in strings {
+        if string_bit(string.0).is_some_and(|bit| flags & bit > 0) {
             let mut note = Note {
                 effect: note_effect.clone(),
                 ..Default::default()
             };
             if song.version.number < (5, 0, 0) {
-                song.read_note(
-                    data,
-                    seek,
-                    &mut note,
-                    song.tracks[track_index].strings[i],
-                    track_index,
-                )?;
+                song.read_note(data, seek, &mut note, string, track_index)?;
             } else {
-                song.read_note_v5(
-                    data,
-                    seek,
-                    &mut note,
-                    song.tracks[track_index].strings[i],
-                    track_index,
-                )?;
+                song.read_note_v5(data, seek, &mut note, string, track_index)?;
             }
             beat.notes.push(note);
         }
@@ -89,7 +78,7 @@ pub(super) fn read_note(
         }
         if let Some(mut h) = note.effect.harmonic.take() {
             if h.kind == HarmonicType::Tapped {
-                h.fret = Some(note.value.to_i8_gp("note value")? + 12);
+                h.fret = Some(note.value.to_i8_gp("note value")?.saturating_add(12));
             }
             note.effect.harmonic = Some(h);
         }
@@ -211,28 +200,25 @@ pub(super) fn read_note_effects_v4(
     Ok(())
 }
 
+/// The fret of the last note on `string_index` before this one: GP3/4 store tied notes
+/// without a fret. -1 if there is none.
 pub(super) fn get_tied_note_value(song: &Song, string_index: i8, track_index: usize) -> i16 {
-    for m in (0usize..song.tracks[track_index].measures.len()).rev() {
-        for v in (0usize..song.tracks[track_index].measures[m].voices.len()).rev() {
-            for b in 0..song.tracks[track_index].measures[m].voices[v].beats.len() {
-                if song.tracks[track_index].measures[m].voices[v].beats[b].status
-                    != BeatStatus::Empty
-                {
-                    for n in 0..song.tracks[track_index].measures[m].voices[v].beats[b]
-                        .notes
-                        .len()
-                    {
-                        if song.tracks[track_index].measures[m].voices[v].beats[b].notes[n].string
-                            == string_index
-                        {
-                            return song.tracks[track_index].measures[m].voices[v].beats[b].notes
-                                [n]
-                                .value;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    -1
+    let Some(track) = song.tracks.get(track_index) else {
+        return -1;
+    };
+    track
+        .measures
+        .iter()
+        .rev()
+        .flat_map(|measure| measure.voices.iter().rev())
+        .find_map(|voice| {
+            voice
+                .beats
+                .iter()
+                .filter(|beat| beat.status != BeatStatus::Empty)
+                .flat_map(|beat| &beat.notes)
+                .find(|note| note.string == string_index)
+                .map(|note| note.value)
+        })
+        .unwrap_or(-1)
 }
