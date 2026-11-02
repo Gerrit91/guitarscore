@@ -81,12 +81,11 @@ impl Command {
         };
         let id = self.info().id;
         match self {
-            Command::SetFret { at: p, string, fret } => format!(
-                "{id} {} string={} fret={}",
-                at(p),
-                string.get(),
-                fret.get()
-            ),
+            Command::SetFret {
+                at: p,
+                string,
+                fret,
+            } => format!("{id} {} string={} fret={}", at(p), string.get(), fret.get()),
             Command::ClearNote { at: p, string } => {
                 format!("{id} {} string={}", at(p), string.get())
             }

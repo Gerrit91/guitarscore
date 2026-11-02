@@ -156,9 +156,7 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
             at: at(0, 0, 0, 0),
             string,
         },
-        Command::DeleteBeat {
-            at: at(0, 9, 0, 3),
-        },
+        Command::DeleteBeat { at: at(0, 9, 0, 3) },
         Command::InsertMeasure {
             measure: MeasureIndex::new(0),
         },

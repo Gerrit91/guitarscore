@@ -307,7 +307,11 @@ fn random_actions_never_panic_and_undo_restores_the_song() {
                 .replay(parsed)
                 .unwrap_or_else(|err| panic!("{name}: replaying {line}: {err}"));
         }
-        assert_eq!(replayed.take_applied(), applied, "{name}: replay records the same");
+        assert_eq!(
+            replayed.take_applied(),
+            applied,
+            "{name}: replay records the same"
+        );
         assert!(
             gscore_model::differences(e.song(), replayed.song()).is_empty(),
             "{name}: the replay differs"

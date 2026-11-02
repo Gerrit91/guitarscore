@@ -28,7 +28,9 @@ fn main() -> ExitCode {
             // A broken keymap file never stops the app: the built-in keymap is used and
             // the problem shown.
             let loaded = gscore_session::load_user_keymap();
-            let mut app = GuitarScoreApp::with_keymap(&cc.egui_ctx, file, loaded.keymap);
+            // Edits are journaled for crash recovery (AGENTS.md "Never lose work").
+            let recovery = gscore_session::default_recovery_dir();
+            let mut app = GuitarScoreApp::with_options(&cc.egui_ctx, file, loaded.keymap, recovery);
             if let Some(problem) = loaded.problem {
                 app.set_notice(problem);
             }
