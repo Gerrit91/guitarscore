@@ -35,10 +35,10 @@ Updated 2026-11-01 (M7: bends and slides with channel borrowing).
 
 Planned in `AGENTS.md` section 9, in this order: M10 performance (per-region edits,
 layout cache, budgets), M11 recovery journal and autosave, M12 app shell and styling
-(panels, progress bar, settings window), M13 track and song grid, M14 edit palette
-(durations and effects), M15 track panel, M16 bundled SoundFonts, M17 layout polish
-(whammy, bends, repeats, pages, PDF), M18 playback polish (cursor follows playback, loops, techniques,
-WAV export), M19 release packages.
+(panels, progress bar, settings window, play from the selected note, cursor follows
+playback), M13 track and song grid, M14 edit palette (durations and effects), M15 track
+panel, M16 bundled SoundFonts, M17 layout polish (whammy, bends, repeats, pages, PDF), M18
+playback polish (loops, techniques, WAV export), M19 release packages.
 
 ## Testing Policy
 

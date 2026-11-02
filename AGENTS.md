@@ -261,6 +261,11 @@ panels that fill it.
   - General styling: a consistent look (spacing, typography, icons, colors) in light and
     dark; icons bundled with their licence (`THIRD_PARTY.md`); toolbar tooltips with keys.
   - Recent files, drag and drop to open, window size and position remembered, zoom keys.
+  - Playback and the cursor (important to the owner): select a note and start playback
+    from it (from the first selected note with a selection; if the measure repeats, from
+    its first pass). During playback the cursor advances beat by beat to the note being
+    played (across repeats and track switches), and the view scrolls with it; pausing or
+    stopping leaves the cursor on the last played note, so play continues from there.
 - **M13: Track and song grid (bottom panel).**
   - One row per track: track color, instrument symbol, name.
   - Right-click on a track: add, delete, duplicate, rename, move up/down, edit (opens the
@@ -302,10 +307,7 @@ panels that fill it.
   - Pages (page breaks, headers, page numbers), multi-track systems, drum notation.
   - Print and export to PDF and PNG.
 - **M18: Playback polish.**
-  - The cursor follows playback: it advances beat by beat to the note being played
-    (across tracks and repeats), and the view scrolls with it; stopping leaves the cursor
-    there. Play from the cursor or a selection.
-  - Loop a range, count-in, metronome, speed slider.
+  - Play from a selection and loop it, count-in, metronome, speed slider.
   - Remaining techniques: vibrato, let ring, palm mute, grace notes, trills, whammy,
     D.C./D.S./coda, swing.
   - Export the song as audio (WAV) with the internal synthesizer.
