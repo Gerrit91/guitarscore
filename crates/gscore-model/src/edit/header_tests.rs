@@ -188,3 +188,41 @@ fn a_batch_undoes_its_parts_in_reverse() {
     song.revert(&batch).unwrap();
     assert_unchanged(&before, &song);
 }
+
+#[test]
+fn a_second_voice_is_created_for_its_first_beat() {
+    use crate::duration::NoteValue;
+    let mut song = from_gp(test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure((4, 4), vec![vec![beat(4, &[])]])],
+    )]))
+    .unwrap();
+    let quarter = NoteValue::new(4, 0, None).unwrap();
+    let at = BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: VoiceIndex::new(1),
+        beat: BeatIndex::new(0),
+    };
+    let change = song.insert_beat(at, quarter).unwrap();
+    assert_eq!(
+        song.track(TrackIndex::new(0))
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .voices()
+            .len(),
+        2
+    );
+    song.revert(&change).unwrap();
+    assert_eq!(
+        song.track(TrackIndex::new(0))
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .voices()
+            .len(),
+        1
+    );
+}

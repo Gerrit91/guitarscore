@@ -49,6 +49,10 @@ pub enum EditError {
     NothingToRedo,
     /// The action is not implemented yet; nothing changed.
     Unsupported(String),
+    /// Copy, cut or paste needs a selection, and there is none.
+    NothingSelected,
+    /// There is nothing on the clipboard to paste.
+    NothingToPaste,
 }
 
 impl fmt::Display for EditError {
@@ -58,6 +62,8 @@ impl fmt::Display for EditError {
             EditError::NothingToUndo => f.write_str("there is nothing to undo"),
             EditError::NothingToRedo => f.write_str("there is nothing to redo"),
             EditError::Unsupported(what) => f.write_str(what),
+            EditError::NothingSelected => f.write_str("select some beats or measures first"),
+            EditError::NothingToPaste => f.write_str("there is nothing on the clipboard"),
         }
     }
 }
@@ -66,7 +72,11 @@ impl std::error::Error for EditError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             EditError::Model(error) => Some(error),
-            EditError::NothingToUndo | EditError::NothingToRedo | EditError::Unsupported(_) => None,
+            EditError::NothingToUndo
+            | EditError::NothingToRedo
+            | EditError::Unsupported(_)
+            | EditError::NothingSelected
+            | EditError::NothingToPaste => None,
         }
     }
 }

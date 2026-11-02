@@ -13,6 +13,7 @@ use crate::action::{Action, ActionId};
 use crate::command::{Command, Recorded};
 use crate::cursor::Cursor;
 use crate::editor::{EditError, Editor};
+use crate::selection::{Clipboard, Selection};
 
 /// How long after a fret digit a second digit still joins it (`1` then `2` is fret 12).
 pub const FRET_DIGIT_WINDOW_MS: u64 = 500;
@@ -70,6 +71,10 @@ pub struct TabEditor {
     /// The command the last edit ran (or undid or redid), for the app to tell a live mixer
     /// change from an edit that invalidates playback.
     last_command: Option<Command>,
+    /// The selected beats or measures, if any.
+    pub(crate) selection: Option<Selection>,
+    /// What was last copied or cut.
+    pub(crate) clipboard: Clipboard,
     /// What changed the song since [`TabEditor::take_applied`] was last called, in order:
     /// commands (marked when merged into the undo step before), `undo` and `redo`. The
     /// recovery journal records these; replaying them with [`TabEditor::replay`] gives the
@@ -91,6 +96,8 @@ impl TabEditor {
             revision: 0,
             entry_value: default_entry_value(),
             last_command: None,
+            selection: None,
+            clipboard: Clipboard::default(),
             applied: Vec::new(),
         }
     }
@@ -135,6 +142,17 @@ impl TabEditor {
     /// The cursor.
     pub fn cursor(&self) -> Cursor {
         self.cursor
+    }
+
+    /// The note value a new beat gets when there is none at the cursor (the palette's
+    /// chosen length).
+    pub fn set_entry_value(&mut self, value: NoteValue) {
+        self.entry_value = value;
+    }
+
+    /// How many undo steps the history holds.
+    pub fn undo_depth(&self) -> usize {
+        self.editor.undo_depth()
     }
 
     /// Moves the cursor (for example to a clicked note); it is kept inside the song.
@@ -250,9 +268,9 @@ impl TabEditor {
                 let measure = self.cursor.measure;
                 self.execute(Command::DeleteMeasure { measure }, self.cursor, false)
             }
-            ActionId::Copy | ActionId::Cut | ActionId::Paste => Err(EditError::Unsupported(
-                "copy, cut and paste need selections, which are not implemented yet".to_owned(),
-            )),
+            ActionId::Copy => self.copy_selection(),
+            ActionId::Cut => self.cut_selection(),
+            ActionId::Paste => self.paste_clipboard(),
             ActionId::Undo => self.undo(),
             ActionId::Redo => self.redo(),
             ActionId::PlayPause => Ok(Outcome::Request(Request::PlayPause)),
@@ -300,7 +318,7 @@ impl TabEditor {
     }
 
     /// Applies `command`; afterwards the cursor goes to `after` (kept inside the song).
-    fn execute(
+    pub(crate) fn execute(
         &mut self,
         command: Command,
         after: Cursor,

@@ -8,7 +8,10 @@
 mod common;
 
 use common::test_songs;
-use gscore_edit::{Action, ActionId, Cursor, EditError, Outcome, Request, TabEditor};
+use gscore_edit::{
+    Action, ActionId, Command, Cursor, EditError, Outcome, Request, Selection, TabEditor,
+};
+use gscore_model::NoteEffect;
 use gscore_model::testing::{self, GUITAR_6};
 use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, Song, StringNumber, TrackIndex};
 
@@ -198,7 +201,7 @@ fn undo_and_redo_restore_song_and_cursor() {
 }
 
 #[test]
-fn playback_and_saving_are_requests_for_the_app_and_clipboard_is_unsupported() {
+fn playback_and_saving_are_requests_for_the_app() {
     let mut e = editor(1);
     assert_eq!(
         plain(&mut e, ActionId::PlayPause),
@@ -208,9 +211,14 @@ fn playback_and_saving_are_requests_for_the_app_and_clipboard_is_unsupported() {
         plain(&mut e, ActionId::Save),
         Outcome::Request(Request::Save)
     );
+    // Nothing is selected or copied yet.
+    assert!(matches!(
+        e.perform(Action::Plain(ActionId::Copy), 0),
+        Err(EditError::NothingSelected)
+    ));
     assert!(matches!(
         e.perform(Action::Plain(ActionId::Paste), 0),
-        Err(EditError::Unsupported(_))
+        Err(EditError::NothingToPaste)
     ));
 }
 
@@ -345,4 +353,105 @@ fn a_new_beat_at_the_measure_end_is_only_as_long_as_what_still_fits() {
     }
     assert_eq!(plain(&mut e, ActionId::CursorRight), Outcome::Edited);
     assert_eq!((e.cursor().beat.get(), value_at(&e)), (4, 8));
+}
+
+fn at(measure: usize, beat: usize) -> BeatPosition {
+    BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(measure),
+        voice: gscore_model::VoiceIndex::new(0),
+        beat: BeatIndex::new(beat),
+    }
+}
+
+#[test]
+fn a_beat_selection_copies_and_pastes_in_one_undo_step() {
+    let mut e = editor(1);
+    // Two notes on beats 1 and 2.
+    e.perform(Action::Digit(3), 0).unwrap();
+    plain(&mut e, ActionId::CursorRight);
+    e.perform(Action::Digit(5), 0).unwrap();
+    e.set_selection(Some(Selection::Beats {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: gscore_model::VoiceIndex::new(0),
+        anchor: BeatIndex::new(0),
+        focus: BeatIndex::new(1),
+    }));
+    plain(&mut e, ActionId::Copy);
+    let before_paste = e.song().clone();
+    e.set_cursor(Cursor {
+        beat: BeatIndex::new(2),
+        ..e.cursor()
+    });
+    assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
+    assert_eq!(fret_of(e.song(), at(0, 2), 1), Some(3));
+    assert_eq!(fret_of(e.song(), at(0, 3), 1), Some(5));
+    assert_eq!(e.undo_depth(), 3, "one entry for the paste");
+    plain(&mut e, ActionId::Undo);
+    assert!(gscore_model::differences(&before_paste, e.song()).is_empty());
+}
+
+#[test]
+fn a_measure_selection_copies_across_tracks_and_cuts() {
+    let mut e = editor(2);
+    e.perform(Action::Digit(7), 0).unwrap();
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+    }));
+    plain(&mut e, ActionId::Copy);
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(1),
+        focus: MeasureIndex::new(1),
+    }));
+    e.set_cursor(Cursor {
+        measure: MeasureIndex::new(1),
+        beat: BeatIndex::new(0),
+        ..e.cursor()
+    });
+    assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
+    assert_eq!(fret_of(e.song(), at(1, 0), 1), Some(7));
+
+    // Cutting the first measure removes it; the copy is one undo step.
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+    }));
+    assert_eq!(plain(&mut e, ActionId::Cut), Outcome::Edited);
+    assert_eq!(e.song().measure_count(), 1);
+    plain(&mut e, ActionId::Undo);
+    assert_eq!(e.song().measure_count(), 2);
+}
+
+#[test]
+fn a_pasted_note_keeps_its_effects() {
+    let mut e = editor(1);
+    e.perform(Action::Digit(5), 0).unwrap();
+    e.execute_command_merged(
+        Command::SetNoteEffect {
+            at: at(0, 0),
+            string: StringNumber::new(1).unwrap(),
+            effect: NoteEffect::PalmMute(true),
+        },
+        false,
+    )
+    .unwrap();
+    e.set_selection(Some(Selection::Beats {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: gscore_model::VoiceIndex::new(0),
+        anchor: BeatIndex::new(0),
+        focus: BeatIndex::new(0),
+    }));
+    plain(&mut e, ActionId::Copy);
+    e.set_cursor(Cursor {
+        beat: BeatIndex::new(1),
+        ..e.cursor()
+    });
+    plain(&mut e, ActionId::Paste);
+    let pasted = e.song().beat(at(0, 1)).unwrap();
+    let note = pasted.notes().next().unwrap();
+    assert!(note.is_palm_muted(), "the copied effect came along");
+    assert_eq!(note.fret().unwrap().get(), 5);
 }

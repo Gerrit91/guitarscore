@@ -84,6 +84,8 @@ pub struct ViewState {
     pub show_track_grid: bool,
     /// Whether the track panel (the right panel) is shown.
     pub show_track_panel: bool,
+    /// Whether the edit palette (the left panel) is shown.
+    pub show_edit_panel: bool,
     /// The selected range of measures in the song grid, if any.
     pub selection: Option<MeasureSelection>,
 }
@@ -96,6 +98,7 @@ impl Default for ViewState {
             track: 0,
             show_track_grid: true,
             show_track_panel: true,
+            show_edit_panel: true,
             selection: None,
         }
     }

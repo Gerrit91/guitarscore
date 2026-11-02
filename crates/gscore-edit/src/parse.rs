@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use gscore_model::{
-    BeatIndex, BeatPosition, Fret, MAX_STRINGS, MAX_TEMPO, MeasureIndex, NoteValue, Pitch,
-    SongTextField, StringNumber, TrackIndex, VoiceIndex,
+    BeatEffect, BeatIndex, BeatPosition, Fret, MAX_STRINGS, MAX_TEMPO, MeasureIndex, NoteEffect,
+    NoteValue, Pitch, SongTextField, StringNumber, TrackIndex, VoiceIndex,
 };
 
 use crate::command::Command;
@@ -284,6 +284,12 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             let tie = bool_arg(args, "tie")?;
             Ok(Command::SetTie { at, string, tie })
         }
+        "set_dead_note" => {
+            let at = position(args)?;
+            let string = string_arg(args)?;
+            let dead = bool_arg(args, "dead")?;
+            Ok(Command::SetDeadNote { at, string, dead })
+        }
         "set_measure_tempo" => Ok(Command::SetMeasureTempo {
             measure: MeasureIndex::new(required_position(args, "measure")?),
             tempo: tempo_arg(args)?,
@@ -306,6 +312,17 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
         "clear_section" => Ok(Command::ClearSection {
             measure: MeasureIndex::new(required_position(args, "measure")?),
         }),
+        "set_note_effect" => {
+            let at = position(args)?;
+            let string = string_arg(args)?;
+            let effect = note_effect_arg(args)?;
+            Ok(Command::SetNoteEffect { at, string, effect })
+        }
+        "set_beat_effect" => {
+            let at = position(args)?;
+            let effect = beat_effect_arg(args)?;
+            Ok(Command::SetBeatEffect { at, effect })
+        }
         "undo" => Ok(Command::Undo),
         "redo" => Ok(Command::Redo),
         // Every entry in COMMANDS is handled above; a new one must be added here.
@@ -533,6 +550,36 @@ fn denominator_arg(args: &mut Args) -> Result<u16, ParseError> {
         return Err(bad(args.command, "denominator", &text, expected));
     }
     Ok(value)
+}
+
+/// The `effect` and `value` parameters of a note effect.
+fn note_effect_arg(args: &mut Args) -> Result<NoteEffect, ParseError> {
+    let effect = args.required("effect")?;
+    let value = text_arg(args, "value")?;
+    let text = format!("{effect}={value}");
+    crate::effect_text::parse_note_effect(&effect, &value).map_err(|_| {
+        bad(
+            args.command,
+            "value",
+            &text,
+            "a known note effect id and its value",
+        )
+    })
+}
+
+/// The `effect` and `value` parameters of a beat effect.
+fn beat_effect_arg(args: &mut Args) -> Result<BeatEffect, ParseError> {
+    let effect = args.required("effect")?;
+    let value = text_arg(args, "value")?;
+    let text = format!("{effect}={value}");
+    crate::effect_text::parse_beat_effect(&effect, &value).map_err(|_| {
+        bad(
+            args.command,
+            "value",
+            &text,
+            "a known beat effect id and its value",
+        )
+    })
 }
 
 /// The `key` parameter: sharps or flats.

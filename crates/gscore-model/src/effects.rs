@@ -3,8 +3,13 @@
 //!
 //! The types are this crate's own; the accessors extend [`BeatView`] and [`NoteView`].
 
-use gscore_gp::{BeatStrokeDirection, BendType, HarmonicType, SlapEffect, SlideType};
+use gscore_gp::{
+    BeatStrokeDirection, BendEffect as GpBendEffect, BendPoint as GpBendPoint, BendType,
+    Duration as GpDuration, HarmonicEffect as GpHarmonicEffect, HarmonicType, LegatoEffect,
+    SlapEffect, SlideType, TremoloPickingEffect, TrillEffect,
+};
 
+use crate::error::ModelError;
 use crate::views::{BeatView, NoteView};
 
 /// The direction of a pick or brush stroke.
@@ -124,6 +129,461 @@ pub struct Harmonic {
     pub node: Option<u8>,
 }
 
+/// The highest position of a bend or whammy shape: the points run from 0 to 12 over the
+/// note's length, as Guitar Pro stores them.
+pub const BEND_MAX_POSITION: u8 = 12;
+
+/// The largest bend (or whammy) value in quarter tones: 48 is two octaves.
+pub const BEND_MAX_VALUE: i8 = 48;
+
+/// Most points a bend or whammy shape may have.
+pub const MAX_BEND_POINTS: usize = 16;
+
+/// Most slides one note may carry (there is one slide type per entry).
+const MAX_SLIDES: usize = 6;
+
+/// One point of a bend or whammy shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BendPoint {
+    /// Where the point is, as a percentage of the note's length: 0 to 12.
+    pub position: u8,
+    /// How far the string is bent there, in quarter tones: 2 is a half step, 4 a whole
+    /// step; negative means down (a dive).
+    pub value: i8,
+}
+
+/// A note bend's full shape: its kind and every point.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BendShape {
+    /// Whether the bend goes up or releases back down.
+    pub kind: BendKind,
+    /// The points, in order; their positions must increase strictly.
+    pub points: Vec<BendPoint>,
+}
+
+impl BendShape {
+    /// A shape with the given kind and points, checked.
+    pub fn new(kind: BendKind, points: Vec<BendPoint>) -> Result<Self, ModelError> {
+        let shape = BendShape { kind, points };
+        shape.validate()?;
+        Ok(shape)
+    }
+
+    /// A simple bend that starts at 0 and reaches `quarter_tones` at the end.
+    pub fn up(quarter_tones: i16) -> Result<Self, ModelError> {
+        let value = i8::try_from(quarter_tones).map_err(|_| {
+            ModelError::Invalid(format!(
+                "bend {quarter_tones} quarter tones does not fit in a bend point"
+            ))
+        })?;
+        BendShape::new(
+            BendKind::Up,
+            vec![
+                BendPoint {
+                    position: 0,
+                    value: 0,
+                },
+                BendPoint {
+                    position: BEND_MAX_POSITION,
+                    value,
+                },
+            ],
+        )
+    }
+
+    /// Checks that there is at least one point and at most [`MAX_BEND_POINTS`], that every
+    /// position is at most [`BEND_MAX_POSITION`], that every value is within
+    /// ±[`BEND_MAX_VALUE`] quarter tones, and that the positions increase strictly.
+    pub fn validate(&self) -> Result<(), ModelError> {
+        validate_points(&self.points, "bend")
+    }
+}
+
+/// A whammy (tremolo) bar shape: the points only; the direction follows from them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WhammyShape {
+    /// The points, in order; their positions must increase strictly.
+    pub points: Vec<BendPoint>,
+}
+
+impl WhammyShape {
+    /// A shape with the given points, checked.
+    pub fn new(points: Vec<BendPoint>) -> Result<Self, ModelError> {
+        let shape = WhammyShape { points };
+        shape.validate()?;
+        Ok(shape)
+    }
+
+    /// Checks the points like [`BendShape::validate`].
+    pub fn validate(&self) -> Result<(), ModelError> {
+        validate_points(&self.points, "whammy")
+    }
+}
+
+/// Checks the points of a bend or whammy shape; `what` names the effect in errors.
+fn validate_points(points: &[BendPoint], what: &str) -> Result<(), ModelError> {
+    if points.is_empty() {
+        return Err(ModelError::Invalid(format!(
+            "a {what} needs at least one point"
+        )));
+    }
+    if points.len() > MAX_BEND_POINTS {
+        return Err(ModelError::Invalid(format!(
+            "a {what} has {} points (supported: at most {MAX_BEND_POINTS})",
+            points.len()
+        )));
+    }
+    for point in points {
+        if point.position > BEND_MAX_POSITION {
+            return Err(ModelError::Invalid(format!(
+                "{what} position {} is above {BEND_MAX_POSITION}",
+                point.position
+            )));
+        }
+        if point.value < -BEND_MAX_VALUE || point.value > BEND_MAX_VALUE {
+            return Err(ModelError::Invalid(format!(
+                "{what} value {} is outside -{BEND_MAX_VALUE}..={BEND_MAX_VALUE}",
+                point.value
+            )));
+        }
+    }
+    for pair in points.windows(2) {
+        let [a, b] = pair else { continue };
+        if a.position >= b.position {
+            return Err(ModelError::Invalid(format!(
+                "{what} positions {} and {} do not increase strictly",
+                a.position, b.position
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// One effect of a note to set or clear; every other effect stays as it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NoteEffect {
+    /// The note starts a hammer-on or pull-off.
+    Hammer(bool),
+    /// The note's bend and its shape; `None` removes it.
+    Bend(Option<BendShape>),
+    /// Adds (`true`) or removes (`false`) one slide type, keeping the others.
+    Slide(SlideKind, bool),
+    /// The note's harmonic, including its kind and node; `None` removes it.
+    Harmonic(Option<Harmonic>),
+    /// A ghost note.
+    Ghost(bool),
+    /// The accent, normal or heavy; `None` removes it.
+    Accent(Option<AccentKind>),
+    /// A palm mute.
+    PalmMute(bool),
+    /// Let the note ring.
+    LetRing(bool),
+    /// A staccato mark.
+    Staccato(bool),
+    /// A trill.
+    Trill(bool),
+    /// Tremolo picking.
+    TremoloPicking(bool),
+    /// The note's vibrato width; `None` removes it.
+    Vibrato(Option<Vibrato>),
+}
+
+/// One effect of a beat to set or clear; every other effect stays as it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BeatEffect {
+    /// The pick stroke direction; `None` removes it.
+    PickStroke(Option<StrokeDirection>),
+    /// The brush (strum) direction; `None` removes it.
+    BrushStroke(Option<StrokeDirection>),
+    /// Tapping, slap or pop; `None` removes it.
+    Slap(Option<SlapKind>),
+    /// A fade-in.
+    FadeIn(bool),
+    /// The whammy bar shape; `None` removes it.
+    Whammy(Option<WhammyShape>),
+    /// The beat's legato run flags; `None` removes them.
+    Legato(Option<Legato>),
+    /// The beat's own vibrato width; `None` removes it.
+    Vibrato(Option<Vibrato>),
+}
+
+impl NoteEffect {
+    /// Checks the parts that can be out of range (a bend shape) before the effect is
+    /// written.
+    pub fn validate(&self) -> Result<(), ModelError> {
+        match self {
+            NoteEffect::Bend(Some(shape)) => shape.validate(),
+            _ => Ok(()),
+        }
+    }
+
+    /// Applies this effect to `note`, leaving the note's other effects untouched.
+    pub(crate) fn apply(&self, note: &mut gscore_gp::Note) -> Result<(), ModelError> {
+        match self {
+            NoteEffect::Hammer(on) => note.effect.hammer = *on,
+            NoteEffect::Bend(shape) => {
+                note.effect.bend = match shape {
+                    Some(shape) => Some(bend_to_gp(shape)?),
+                    None => None,
+                };
+            }
+            NoteEffect::Slide(kind, on) => toggle_slide(&mut note.effect.slides, *kind, *on)?,
+            NoteEffect::Harmonic(harmonic) => {
+                note.effect.harmonic = match harmonic {
+                    Some(harmonic) => Some(harmonic_to_gp(*harmonic, note.value)?),
+                    None => None,
+                };
+            }
+            NoteEffect::Ghost(on) => note.effect.ghost_note = *on,
+            NoteEffect::Accent(accent) => {
+                note.effect.accentuated_note = accent.is_some();
+                note.effect.heavy_accentuated_note = matches!(accent, Some(AccentKind::Heavy));
+            }
+            NoteEffect::PalmMute(on) => note.effect.palm_mute = *on,
+            NoteEffect::LetRing(on) => note.effect.let_ring = *on,
+            NoteEffect::Staccato(on) => note.effect.staccato = *on,
+            NoteEffect::Trill(on) => {
+                note.effect.trill = if *on {
+                    let fret = i8::try_from(note.value.saturating_add(2)).map_err(|_| {
+                        ModelError::Invalid(format!(
+                            "the trill fret of a note on fret {} does not fit",
+                            note.value
+                        ))
+                    })?;
+                    Some(TrillEffect {
+                        fret,
+                        duration: short_duration(),
+                    })
+                } else {
+                    None
+                };
+            }
+            NoteEffect::TremoloPicking(on) => {
+                note.effect.tremolo_picking = if *on {
+                    Some(TremoloPickingEffect {
+                        duration: short_duration(),
+                    })
+                } else {
+                    None
+                };
+            }
+            NoteEffect::Vibrato(vibrato) => {
+                note.effect.vibrato = vibrato.is_some();
+                note.effect.wide_vibrato = matches!(vibrato, Some(Vibrato::Wide));
+            }
+        }
+        Ok(())
+    }
+}
+
+impl BeatEffect {
+    /// Checks the parts that can be out of range (a whammy shape) before the effect is
+    /// written.
+    pub fn validate(&self) -> Result<(), ModelError> {
+        match self {
+            BeatEffect::Whammy(Some(shape)) => shape.validate(),
+            _ => Ok(()),
+        }
+    }
+
+    /// Applies this effect to `beat`, leaving the beat's other effects untouched.
+    pub(crate) fn apply(&self, beat: &mut gscore_gp::Beat) -> Result<(), ModelError> {
+        let effects = &mut beat.effect;
+        match self {
+            BeatEffect::PickStroke(direction) => {
+                effects.pick_stroke = stroke_to_gp(*direction);
+            }
+            BeatEffect::BrushStroke(direction) => {
+                effects.stroke.direction = stroke_to_gp(*direction);
+            }
+            BeatEffect::Slap(slap) => {
+                effects.slap_effect = match slap {
+                    Some(SlapKind::Tapping) => SlapEffect::Tapping,
+                    Some(SlapKind::Slapping) => SlapEffect::Slapping,
+                    Some(SlapKind::Popping) => SlapEffect::Popping,
+                    None => SlapEffect::None,
+                };
+            }
+            BeatEffect::FadeIn(on) => effects.fade_in = *on,
+            BeatEffect::Whammy(shape) => {
+                effects.tremolo_bar = match shape {
+                    Some(shape) => Some(whammy_to_gp(shape)?),
+                    None => None,
+                };
+            }
+            BeatEffect::Legato(legato) => {
+                effects.legato = match legato {
+                    Some(legato) => LegatoEffect {
+                        origin: legato.origin,
+                        destination: legato.destination,
+                    },
+                    None => LegatoEffect::default(),
+                };
+            }
+            BeatEffect::Vibrato(vibrato) => {
+                effects.vibrato = vibrato.is_some();
+                effects.wide_vibrato = matches!(vibrato, Some(Vibrato::Wide));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The stroke direction as Guitar Pro stores it.
+fn stroke_to_gp(direction: Option<StrokeDirection>) -> BeatStrokeDirection {
+    match direction {
+        Some(StrokeDirection::Up) => BeatStrokeDirection::Up,
+        Some(StrokeDirection::Down) => BeatStrokeDirection::Down,
+        None => BeatStrokeDirection::None,
+    }
+}
+
+/// Adds or removes one slide type, keeping the others, and checks the resulting list.
+fn toggle_slide(slides: &mut Vec<SlideType>, kind: SlideKind, on: bool) -> Result<(), ModelError> {
+    let slide = match kind {
+        SlideKind::IntoFromAbove => SlideType::IntoFromAbove,
+        SlideKind::IntoFromBelow => SlideType::IntoFromBelow,
+        SlideKind::ShiftSlideTo => SlideType::ShiftSlideTo,
+        SlideKind::LegatoSlideTo => SlideType::LegatoSlideTo,
+        SlideKind::OutDownwards => SlideType::OutDownwards,
+        SlideKind::OutUpwards => SlideType::OutUpWards,
+    };
+    if on {
+        if !slides.contains(&slide) {
+            slides.push(slide);
+        }
+    } else {
+        slides.retain(|existing| *existing != slide);
+    }
+    if slides.len() > MAX_SLIDES {
+        return Err(ModelError::Invalid(format!(
+            "a note has {} slides (supported: at most {MAX_SLIDES})",
+            slides.len()
+        )));
+    }
+    Ok(())
+}
+
+/// The bend shape as Guitar Pro stores it. `value` and `max_value` are summary fields the
+/// editors display; they follow the shape's furthest point.
+fn bend_to_gp(shape: &BendShape) -> Result<GpBendEffect, ModelError> {
+    shape.validate()?;
+    let kind = match shape.kind {
+        BendKind::Up => BendType::Bend,
+        BendKind::Release => BendType::ReleaseUp,
+    };
+    let mut bend = GpBendEffect {
+        kind,
+        points: shape
+            .points
+            .iter()
+            .map(|point| GpBendPoint {
+                position: point.position,
+                value: point.value,
+                vibrato: false,
+            })
+            .collect(),
+        ..GpBendEffect::default()
+    };
+    let extreme = extreme_value(&shape.points);
+    bend.value = extreme;
+    bend.max_value = u8::try_from(extreme.unsigned_abs()).map_err(|_| {
+        ModelError::Invalid(format!("bend value {extreme} does not fit its summary"))
+    })?;
+    Ok(bend)
+}
+
+/// The whammy shape as Guitar Pro stores it. Its kind follows the shape: back to where it
+/// started is a dip, lower is a dive, higher is an upward release.
+fn whammy_to_gp(shape: &WhammyShape) -> Result<GpBendEffect, ModelError> {
+    shape.validate()?;
+    let first = shape.points.first().map_or(0, |point| point.value);
+    let last = shape.points.last().map_or(0, |point| point.value);
+    let kind = if last == first {
+        BendType::Dip
+    } else if last < first {
+        BendType::Dive
+    } else {
+        BendType::ReleaseUp
+    };
+    let mut bar = GpBendEffect {
+        kind,
+        points: shape
+            .points
+            .iter()
+            .map(|point| GpBendPoint {
+                position: point.position,
+                value: point.value,
+                vibrato: false,
+            })
+            .collect(),
+        ..GpBendEffect::default()
+    };
+    let extreme = extreme_value(&shape.points);
+    bar.value = extreme;
+    bar.max_value = u8::try_from(extreme.unsigned_abs()).map_err(|_| {
+        ModelError::Invalid(format!("whammy value {extreme} does not fit its summary"))
+    })?;
+    Ok(bar)
+}
+
+/// A stored point as this crate's type; whether it is a valid shape is up to
+/// [`BendShape::validate`] or [`WhammyShape::validate`], so reading does not drop data.
+fn model_point(point: &GpBendPoint) -> BendPoint {
+    BendPoint {
+        position: point.position,
+        value: point.value,
+    }
+}
+
+/// The value of the point furthest from zero, signed (empty shapes have none, but their
+/// validation rejects them first).
+fn extreme_value(points: &[BendPoint]) -> i16 {
+    points
+        .iter()
+        .map(|point| i16::from(point.value))
+        .max_by_key(|value| value.unsigned_abs())
+        .unwrap_or(0)
+}
+
+/// The harmonic as Guitar Pro stores it: the kind plus the node as an offset from the
+/// fretted note.
+fn harmonic_to_gp(harmonic: Harmonic, fret: i16) -> Result<GpHarmonicEffect, ModelError> {
+    let kind = match harmonic.kind {
+        HarmonicKind::Natural => HarmonicType::Natural,
+        HarmonicKind::Artificial => HarmonicType::Artificial,
+        HarmonicKind::Tapped => HarmonicType::Tapped,
+        HarmonicKind::Pinch => HarmonicType::Pinch,
+        HarmonicKind::Semi => HarmonicType::Semi,
+    };
+    let node = harmonic.node.map(i32::from);
+    let offset = match node {
+        Some(node) => {
+            let offset = node
+                .checked_sub(i32::from(fret))
+                .ok_or_else(|| ModelError::Invalid(format!("harmonic node {node} does not fit")))?;
+            Some(i8::try_from(offset).map_err(|_| {
+                ModelError::Invalid(format!("harmonic node {node} is too far from fret {fret}"))
+            })?)
+        }
+        None => None,
+    };
+    Ok(GpHarmonicEffect {
+        kind,
+        fret: offset,
+        ..GpHarmonicEffect::default()
+    })
+}
+
+/// The short note value Guitar Pro stores for a trill's or tremolo picking's speed (a
+/// sixteenth note).
+fn short_duration() -> GpDuration {
+    GpDuration {
+        value: 16,
+        ..GpDuration::default()
+    }
+}
+
 impl BeatView<'_> {
     /// The pick stroke on this beat, if any.
     pub fn pick_stroke(&self) -> Option<StrokeDirection> {
@@ -188,6 +648,15 @@ impl BeatView<'_> {
         Some(Whammy { quarter_tones })
     }
 
+    /// The whammy bar's full shape, if the beat uses it. The stored points are returned as
+    /// they are; [`WhammyShape::validate`] checks them.
+    pub fn whammy_shape(&self) -> Option<WhammyShape> {
+        let bar = self.inner.effect.tremolo_bar.as_ref()?;
+        Some(WhammyShape {
+            points: bar.points.iter().map(model_point).collect(),
+        })
+    }
+
     /// The beat-level legato run this beat is part of, if any.
     pub fn legato(&self) -> Option<Legato> {
         let legato = self.inner.effect.legato;
@@ -231,6 +700,29 @@ impl NoteView<'_> {
         Some(Bend {
             kind,
             quarter_tones,
+        })
+    }
+
+    /// The bend's full shape, if the note has a bend. The stored points are returned as
+    /// they are; [`BendShape::validate`] checks them.
+    pub fn bend_shape(&self) -> Option<BendShape> {
+        let bend = self.inner.effect.bend.as_ref()?;
+        let kind = match bend.kind {
+            BendType::Bend
+            | BendType::BendRelease
+            | BendType::BendReleaseBend
+            | BendType::Prebend
+            | BendType::PrebendRelease => BendKind::Up,
+            BendType::ReleaseUp | BendType::ReleaseDown => BendKind::Release,
+            BendType::None
+            | BendType::Dip
+            | BendType::Dive
+            | BendType::InvertedDip
+            | BendType::Return => return None,
+        };
+        Some(BendShape {
+            kind,
+            points: bend.points.iter().map(model_point).collect(),
         })
     }
 

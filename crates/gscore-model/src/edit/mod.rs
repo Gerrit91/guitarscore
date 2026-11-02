@@ -12,6 +12,7 @@
 
 mod beat_flags;
 mod beats;
+mod effect_edits;
 mod headers;
 pub(crate) mod measures;
 mod notes;
@@ -67,7 +68,8 @@ enum ChangeKind {
     /// create the voice (a measure imported without voices).
     BeatInserted {
         at: BeatPosition,
-        created_voice: bool,
+        /// The voice index created for the beat, if it had to be.
+        created_voice: Option<usize>,
     },
     /// The beat at `at.beat` was removed.
     BeatRemoved { at: BeatPosition, beat: Box<GpBeat> },
@@ -146,6 +148,23 @@ enum ChangeKind {
         at: BeatPosition,
         string: StringNumber,
         previous: gscore_gp::NoteType,
+    },
+    /// A note became (or stopped being) a dead note.
+    NoteDead {
+        at: BeatPosition,
+        string: StringNumber,
+        previous: gscore_gp::NoteType,
+    },
+    /// One effect of a note changed; `previous` is the note's whole effect block.
+    NoteEffect {
+        at: BeatPosition,
+        string: StringNumber,
+        previous: Box<gscore_gp::NoteEffect>,
+    },
+    /// One effect of a beat changed; `previous` is the beat's whole effect block.
+    BeatEffect {
+        at: BeatPosition,
+        previous: Box<gscore_gp::BeatEffects>,
     },
     /// A measure's tempo changed; at measure 1 the song's initial tempo changed too.
     MeasureTempo {
@@ -228,7 +247,9 @@ impl Change {
             ChangeKind::SongText { previous, .. } => previous.len(),
             ChangeKind::SongTempo { .. } => 0,
             ChangeKind::BeatRest { notes, .. } => notes.len().saturating_mul(size_of::<GpNote>()),
-            ChangeKind::NoteTie { .. } => 0,
+            ChangeKind::NoteTie { .. } | ChangeKind::NoteDead { .. } => 0,
+            ChangeKind::NoteEffect { .. } => size_of::<gscore_gp::NoteEffect>(),
+            ChangeKind::BeatEffect { .. } => size_of::<gscore_gp::BeatEffects>(),
             ChangeKind::MeasureTempo { .. } => 0,
             ChangeKind::TimeSignature {
                 previous_measures, ..
@@ -390,8 +411,8 @@ impl Song {
                         return Err(ModelError::Invalid(format!("{at}: no such beat")));
                     }
                     voice.beats.remove(index);
-                    if *created_voice && voice.beats.is_empty() {
-                        measure.voices.clear();
+                    if *created_voice == Some(at.voice.get()) && voice.beats.is_empty() {
+                        measure.voices.truncate(at.voice.get());
                     }
                     Ok(())
                 })
@@ -561,6 +582,11 @@ impl Song {
                 at,
                 string,
                 previous,
+            }
+            | ChangeKind::NoteDead {
+                at,
+                string,
+                previous,
             } => self.edit_measure(at.track, at.measure, |measure| {
                 let beat = beat_in(measure, *at)?;
                 let note = beat
@@ -573,6 +599,28 @@ impl Song {
                 note.kind = previous.clone();
                 Ok(())
             }),
+            ChangeKind::NoteEffect {
+                at,
+                string,
+                previous,
+            } => self.edit_measure(at.track, at.measure, |measure| {
+                let beat = beat_in(measure, *at)?;
+                let note = beat
+                    .notes
+                    .iter_mut()
+                    .find(|note| u8::try_from(note.string).ok() == Some(string.get()))
+                    .ok_or_else(|| {
+                        ModelError::Invalid(format!("{at} has no {string} to restore"))
+                    })?;
+                note.effect = previous.as_ref().clone();
+                Ok(())
+            }),
+            ChangeKind::BeatEffect { at, previous } => {
+                self.edit_measure(at.track, at.measure, |measure| {
+                    beat_in(measure, *at)?.effect = previous.as_ref().clone();
+                    Ok(())
+                })
+            }
             ChangeKind::MeasureTempo {
                 measure,
                 previous,
@@ -697,6 +745,8 @@ fn beat_in(measure: &mut GpMeasure, at: BeatPosition) -> Result<&mut GpBeat, Mod
         .ok_or_else(|| ModelError::Invalid(format!("{at}: the voice has {beats} beat(s)")))
 }
 
+#[cfg(test)]
+mod effect_tests;
 #[cfg(test)]
 mod header_tests;
 #[cfg(test)]

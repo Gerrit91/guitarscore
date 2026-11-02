@@ -1,18 +1,19 @@
 //! The command enum: what an edit is, whether it can run, and how it applies.
 
 use gscore_model::{
-    BeatKind, BeatPosition, BeatView, Change, Fret, MAX_SECTION_TITLE_CHARS, MAX_TEMPO,
-    MeasureIndex, ModelError, NoteValue, Pitch, Song, SongTextField, StringNumber, TimeSignature,
-    TrackColor, TrackIndex,
+    BeatEffect, BeatKind, BeatPosition, BeatView, Change, Fret, MAX_SECTION_TITLE_CHARS, MAX_TEMPO,
+    MeasureIndex, ModelError, NoteEffect, NoteValue, Pitch, Song, SongTextField, StringNumber,
+    TimeSignature, TrackColor, TrackIndex,
 };
 
 use crate::info::{
     BATCH, CLEAR_NOTE, CLEAR_SECTION, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_TRACK,
     DUPLICATE_TRACK, INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO, RENAME_TRACK,
-    SET_BEAT_REST, SET_DURATION, SET_FRET, SET_KEY_SIGNATURE, SET_MEASURE_TEMPO, SET_SECTION,
-    SET_SONG_TEXT, SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_COLOR,
-    SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_SOLO,
-    SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_VOLUME, UNDO,
+    SET_BEAT_EFFECT, SET_BEAT_REST, SET_DEAD_NOTE, SET_DURATION, SET_FRET, SET_KEY_SIGNATURE,
+    SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_SECTION, SET_SONG_TEXT, SET_TEMPO, SET_TIE,
+    SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_COLOR, SET_TRACK_DRUMS, SET_TRACK_MUTE,
+    SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_SOLO, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS,
+    SET_TRACK_VOLUME, UNDO,
 };
 
 /// One edit, with every parameter already checked for syntax and range.
@@ -181,6 +182,15 @@ pub enum Command {
         /// The beat.
         at: BeatPosition,
     },
+    /// Make a note dead (muted) or normal again.
+    SetDeadNote {
+        /// The beat.
+        at: BeatPosition,
+        /// The string.
+        string: StringNumber,
+        /// Whether it is dead.
+        dead: bool,
+    },
     /// Tie a note to the previous one, or remove the tie.
     SetTie {
         /// The beat.
@@ -228,6 +238,22 @@ pub enum Command {
     ClearSection {
         /// The measure.
         measure: MeasureIndex,
+    },
+    /// Set or clear one effect of a note.
+    SetNoteEffect {
+        /// The beat.
+        at: BeatPosition,
+        /// The string.
+        string: StringNumber,
+        /// The effect and its new state.
+        effect: NoteEffect,
+    },
+    /// Set or clear one effect of a whole beat.
+    SetBeatEffect {
+        /// The beat.
+        at: BeatPosition,
+        /// The effect and its new state.
+        effect: BeatEffect,
     },
     /// Several edits applied and undone as one step.
     Batch {
@@ -331,6 +357,13 @@ impl Command {
             Command::SetTie { at: p, string, tie } => {
                 format!("{id} {} string={} tie={tie}", at(p), string.get())
             }
+            Command::SetDeadNote {
+                at: p,
+                string,
+                dead,
+            } => {
+                format!("{id} {} string={} dead={dead}", at(p), string.get())
+            }
             Command::SetMeasureTempo { measure, tempo } => {
                 format!("{id} measure={} tempo={tempo}", one(measure.get()))
             }
@@ -362,6 +395,27 @@ impl Command {
             ),
             Command::ClearSection { measure } => {
                 format!("{id} measure={}", one(measure.get()))
+            }
+            Command::SetNoteEffect {
+                at: p,
+                string,
+                effect,
+            } => {
+                let (effect_id, value) = crate::effect_text::note_effect_text(effect);
+                format!(
+                    "{id} {} string={} effect={effect_id} value={}",
+                    at(p),
+                    string.get(),
+                    crate::parse::encode_text(&value)
+                )
+            }
+            Command::SetBeatEffect { at: p, effect } => {
+                let (effect_id, value) = crate::effect_text::beat_effect_text(effect);
+                format!(
+                    "{id} {} effect={effect_id} value={}",
+                    at(p),
+                    crate::parse::encode_text(&value)
+                )
             }
             Command::Batch { commands } => {
                 let mut line = id.to_owned();
@@ -426,11 +480,14 @@ impl Command {
             Command::SetTempo { .. } => &SET_TEMPO,
             Command::SetBeatRest { .. } => &SET_BEAT_REST,
             Command::SetTie { .. } => &SET_TIE,
+            Command::SetDeadNote { .. } => &SET_DEAD_NOTE,
             Command::SetMeasureTempo { .. } => &SET_MEASURE_TEMPO,
             Command::SetTimeSignature { .. } => &SET_TIME_SIGNATURE,
             Command::SetKeySignature { .. } => &SET_KEY_SIGNATURE,
             Command::SetSection { .. } => &SET_SECTION,
             Command::ClearSection { .. } => &CLEAR_SECTION,
+            Command::SetNoteEffect { .. } => &SET_NOTE_EFFECT,
+            Command::SetBeatEffect { .. } => &SET_BEAT_EFFECT,
             Command::Batch { .. } => &BATCH,
             Command::Undo => &UNDO,
             Command::Redo => &REDO,
@@ -502,7 +559,10 @@ impl Command {
             | Command::SetTrackStringPitch { .. }
             | Command::SetTempo { .. }
             | Command::SetMeasureTempo { .. }
-            | Command::SetTimeSignature { .. } => true,
+            | Command::SetTimeSignature { .. }
+            | Command::SetNoteEffect { .. }
+            | Command::SetBeatEffect { .. }
+            | Command::SetDeadNote { .. } => true,
             Command::Batch { commands } => commands.iter().any(Command::rebuilds_playback),
             _ => false,
         }
@@ -587,12 +647,14 @@ impl Command {
                 let Some(measure) = song.track(at.track).and_then(|t| t.measure(at.measure)) else {
                     return false;
                 };
-                if measure.voices().len() == 0 {
+                let voices = measure.voices().len();
+                if voices == 0 {
                     at.voice.get() == 0 && at.beat.get() == 0
+                } else if let Some(voice) = measure.voice(at.voice) {
+                    at.beat.get() <= voice.beats().len()
                 } else {
-                    measure
-                        .voice(at.voice)
-                        .is_some_and(|voice| at.beat.get() <= voice.beats().len())
+                    // The next voice (2) may be created at its first beat.
+                    at.voice.get() == voices && voices < 2 && at.beat.get() == 0
                 }
             }
             Command::DeleteBeat { at } => song.beat(*at).is_some(),
@@ -641,7 +703,7 @@ impl Command {
             Command::SetSongText { field, text } => field.check(text).is_ok(),
             Command::SetTempo { tempo } => (1..=MAX_TEMPO).contains(tempo),
             Command::SetBeatRest { at } => song.beat(*at).is_some(),
-            Command::SetTie { at, string, .. } => song
+            Command::SetTie { at, string, .. } | Command::SetDeadNote { at, string, .. } => song
                 .beat(*at)
                 .is_some_and(|beat| beat.notes().any(|note| note.string().ok() == Some(*string))),
             Command::SetMeasureTempo { measure, tempo } => {
@@ -663,6 +725,15 @@ impl Command {
                     && title.chars().count() <= MAX_SECTION_TITLE_CHARS
             }
             Command::ClearSection { measure } => measure.get() < song.measure_count(),
+            Command::SetNoteEffect { at, string, effect } => {
+                effect.validate().is_ok()
+                    && song.beat(*at).is_some_and(|beat| {
+                        beat.notes().any(|note| note.string().ok() == Some(*string))
+                    })
+            }
+            Command::SetBeatEffect { at, effect } => {
+                effect.validate().is_ok() && song.beat(*at).is_some()
+            }
             // A batch is enabled when all of its parts apply, one after another.
             Command::Batch { commands } => {
                 let mut edited = song.clone();
@@ -717,6 +788,7 @@ impl Command {
             Command::SetTempo { tempo } => song.set_tempo(*tempo),
             Command::SetBeatRest { at } => song.set_beat_rest(*at),
             Command::SetTie { at, string, tie } => song.set_note_tie(*at, *string, *tie),
+            Command::SetDeadNote { at, string, dead } => song.set_note_dead(*at, *string, *dead),
             Command::SetMeasureTempo { measure, tempo } => song.set_measure_tempo(*measure, *tempo),
             Command::SetTimeSignature {
                 measure,
@@ -736,6 +808,10 @@ impl Command {
             Command::ClearSection { measure } => {
                 song.set_section(*measure, "", TrackColor::DEFAULT)
             }
+            Command::SetNoteEffect { at, string, effect } => {
+                song.set_note_effect(*at, *string, effect.clone())
+            }
+            Command::SetBeatEffect { at, effect } => song.set_beat_effect(*at, effect.clone()),
             Command::Batch { commands } => {
                 let mut changes = Vec::with_capacity(commands.len());
                 for command in commands {

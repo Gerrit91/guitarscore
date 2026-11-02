@@ -20,9 +20,11 @@ mod action;
 mod command;
 mod cursor;
 mod editor;
+mod effect_text;
 mod info;
 mod keymap;
 mod parse;
+mod selection;
 mod tab_editor;
 #[cfg(any(test, feature = "test-support"))]
 pub mod testing;
@@ -34,6 +36,7 @@ pub use editor::{DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_LIMIT, EditError, Editor
 pub use info::{COMMANDS, CommandInfo, ParamInfo, find_command};
 pub use keymap::{DEFAULT_KEYMAP, Key, KeyCombo, Keymap, KeymapError, Modifiers, NamedKey};
 pub use parse::{ParseError, parse_line};
+pub use selection::Selection;
 pub use tab_editor::{FRET_DIGIT_WINDOW_MS, Outcome, Request, TabEditor};
 
 // The integration tests save edited songs again with `gscore-io`; this marks the

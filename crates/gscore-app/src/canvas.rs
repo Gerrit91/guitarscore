@@ -175,6 +175,6 @@ pub(crate) fn paint_cursor(painter: &Painter, column: Rect, string: Rect, theme:
     );
 }
 
-fn color(rgb: Rgb) -> Color32 {
+pub(crate) fn color(rgb: Rgb) -> Color32 {
     Color32::from_rgb(rgb.0, rgb.1, rgb.2)
 }

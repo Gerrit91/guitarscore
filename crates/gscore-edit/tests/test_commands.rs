@@ -16,8 +16,10 @@ use common::{
 };
 use gscore_edit::{Command, EditError, Editor};
 use gscore_model::{
-    BeatKind, Duration, Fret, MeasureIndex, NoteValue, Pitch, SongTextField, StringNumber,
-    TimeSignature, TrackColor, TrackIndex, differences, testing,
+    AccentKind, BeatEffect, BeatKind, BendKind, BendPoint, BendShape, Duration, Fret, Harmonic,
+    HarmonicKind, Legato, MeasureIndex, NoteEffect, NoteValue, Pitch, SlapKind, SlideKind,
+    SongTextField, StringNumber, StrokeDirection, TimeSignature, TrackColor, TrackIndex, Vibrato,
+    WhammyShape, differences, testing,
 };
 
 fn string(number: u8) -> StringNumber {
@@ -611,6 +613,11 @@ fn rests_ties_and_headers_edit_and_undo() {
             string: string(1),
             tie: true,
         },
+        Command::SetDeadNote {
+            at: pos(0, 0, 0),
+            string: string(1),
+            dead: true,
+        },
         Command::SetMeasureTempo {
             measure: MeasureIndex::new(0),
             tempo: 144,
@@ -651,6 +658,79 @@ fn rests_ties_and_headers_edit_and_undo() {
             measure: MeasureIndex::new(0),
         },
     );
+}
+
+#[test]
+fn note_and_beat_effects_edit_and_undo() {
+    let song = testing::one_beat_with_raw_notes(&[(1, 3)]).unwrap();
+    let at = pos(0, 0, 0);
+    let string = string(1);
+    let note_effects = [
+        NoteEffect::Hammer(true),
+        NoteEffect::Ghost(true),
+        NoteEffect::PalmMute(true),
+        NoteEffect::LetRing(true),
+        NoteEffect::Staccato(true),
+        NoteEffect::Trill(true),
+        NoteEffect::TremoloPicking(true),
+        NoteEffect::Accent(Some(AccentKind::Heavy)),
+        NoteEffect::Vibrato(Some(Vibrato::Wide)),
+        NoteEffect::Harmonic(Some(Harmonic {
+            kind: HarmonicKind::Natural,
+            node: None,
+        })),
+        NoteEffect::Slide(SlideKind::ShiftSlideTo, true),
+        NoteEffect::Bend(Some(
+            BendShape::new(
+                BendKind::Up,
+                vec![
+                    BendPoint {
+                        position: 0,
+                        value: 0,
+                    },
+                    BendPoint {
+                        position: 12,
+                        value: 4,
+                    },
+                ],
+            )
+            .unwrap(),
+        )),
+    ];
+    for effect in note_effects {
+        apply_then_undo(&song, &Command::SetNoteEffect { at, string, effect });
+    }
+    let beat_effects = [
+        BeatEffect::PickStroke(Some(StrokeDirection::Down)),
+        BeatEffect::BrushStroke(Some(StrokeDirection::Up)),
+        BeatEffect::Slap(Some(SlapKind::Tapping)),
+        BeatEffect::FadeIn(true),
+        BeatEffect::Vibrato(Some(Vibrato::Slight)),
+        BeatEffect::Legato(Some(Legato {
+            origin: true,
+            destination: true,
+        })),
+        BeatEffect::Whammy(Some(
+            WhammyShape::new(vec![
+                BendPoint {
+                    position: 0,
+                    value: 0,
+                },
+                BendPoint {
+                    position: 6,
+                    value: -4,
+                },
+                BendPoint {
+                    position: 12,
+                    value: 0,
+                },
+            ])
+            .unwrap(),
+        )),
+    ];
+    for effect in beat_effects {
+        apply_then_undo(&song, &Command::SetBeatEffect { at, effect });
+    }
 }
 
 #[test]

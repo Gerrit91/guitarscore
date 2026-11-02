@@ -37,6 +37,8 @@ pub struct Theme {
     pub annotation: Rgb,
     /// The edit cursor (drawn by the app over the page).
     pub cursor: Rgb,
+    /// A selected range of beats (drawn by the app over the page).
+    pub selection: Rgb,
 }
 
 impl Theme {
@@ -51,6 +53,7 @@ impl Theme {
         title: Rgb(0x10, 0x10, 0x10),
         annotation: Rgb(0x40, 0x40, 0x40),
         cursor: Rgb(0x1e, 0x6f, 0xd9),
+        selection: Rgb(0x1e, 0x6f, 0xd9),
     };
 
     /// Light ink on a dark background.
@@ -64,6 +67,7 @@ impl Theme {
         title: Rgb(0xec, 0xee, 0xf0),
         annotation: Rgb(0xb8, 0xbc, 0xc2),
         cursor: Rgb(0x5a, 0xa9, 0xff),
+        selection: Rgb(0x5a, 0xa9, 0xff),
     };
 
     /// Every built-in theme.

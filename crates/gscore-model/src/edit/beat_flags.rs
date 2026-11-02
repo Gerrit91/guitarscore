@@ -32,6 +32,36 @@ impl Song {
         })
     }
 
+    /// Makes the note on `string` a dead (muted, "x") note, or a normal note again.
+    pub fn set_note_dead(
+        &mut self,
+        at: BeatPosition,
+        string: StringNumber,
+        dead: bool,
+    ) -> Result<Change, ModelError> {
+        self.edit_measure(at.track, at.measure, |measure| {
+            let beat = beat_mut(measure, at)?;
+            let note = beat
+                .notes
+                .iter_mut()
+                .find(|note| u8::try_from(note.string).ok() == Some(string.get()))
+                .ok_or_else(|| ModelError::Invalid(format!("{at} has no {string}")))?;
+            let previous = note.kind.clone();
+            note.kind = if dead {
+                NoteType::Dead
+            } else {
+                NoteType::Normal
+            };
+            Ok(Change {
+                kind: ChangeKind::NoteDead {
+                    at,
+                    string,
+                    previous,
+                },
+            })
+        })
+    }
+
     /// Ties the note on `string` to the previous one (or removes the tie). A tie needs the
     /// note to exist; whether it makes musical sense is the user's call.
     pub fn set_note_tie(

@@ -1,7 +1,10 @@
 //! Tests for the command-line parser.
 
 use super::*;
-use gscore_model::BeatIndex;
+use gscore_model::{
+    AccentKind, BeatEffect, BeatIndex, BendKind, BendPoint, BendShape, Harmonic, HarmonicKind,
+    NoteEffect, StrokeDirection, WhammyShape,
+};
 
 fn at(track: usize, measure: usize, voice: usize, beat: usize) -> BeatPosition {
     BeatPosition {
@@ -202,6 +205,14 @@ fn parses_every_command_and_fills_defaults() {
             Command::SetBeatRest { at: at(0, 1, 0, 2) },
         ),
         (
+            "set_dead_note measure=2 beat=3 string=4 dead=yes",
+            Command::SetDeadNote {
+                at: at(0, 1, 0, 2),
+                string: StringNumber::new(4).unwrap(),
+                dead: true,
+            },
+        ),
+        (
             "set_tie measure=2 beat=3 string=4 tie=yes",
             Command::SetTie {
                 at: at(0, 1, 0, 2),
@@ -244,6 +255,29 @@ fn parses_every_command_and_fills_defaults() {
             "clear_section measure=3",
             Command::ClearSection {
                 measure: MeasureIndex::new(2),
+            },
+        ),
+        (
+            "set_note_effect measure=1 beat=1 string=1 effect=hammer value=true",
+            Command::SetNoteEffect {
+                at: at(0, 0, 0, 0),
+                string: StringNumber::new(1).unwrap(),
+                effect: NoteEffect::Hammer(true),
+            },
+        ),
+        (
+            "set_note_effect measure=1 beat=1 string=1 effect=accent value=heavy",
+            Command::SetNoteEffect {
+                at: at(0, 0, 0, 0),
+                string: StringNumber::new(1).unwrap(),
+                effect: NoteEffect::Accent(Some(AccentKind::Heavy)),
+            },
+        ),
+        (
+            "set_beat_effect measure=1 beat=1 effect=pick_stroke value=down",
+            Command::SetBeatEffect {
+                at: at(0, 0, 0, 0),
+                effect: BeatEffect::PickStroke(Some(StrokeDirection::Down)),
             },
         ),
         (
@@ -330,6 +364,18 @@ fn bad_lines_are_errors_with_useful_messages() {
         ("set_key_signature measure=1 key=8 minor=false", "-7 to 7"),
         ("set_section measure=1 title=", "key=value"),
         ("batch %%notACloser", "unknown command"),
+        (
+            "set_note_effect measure=1 beat=1 string=1 effect=bogus value=x",
+            "note effect",
+        ),
+        (
+            "set_note_effect measure=1 beat=1 string=1 effect=bend value=up:13:0",
+            "note effect",
+        ),
+        (
+            "set_beat_effect measure=1 beat=1 effect=whammy value=0:0,0:1",
+            "beat effect",
+        ),
     ];
     for (line, expected) in cases {
         let error = parse_line(line).unwrap_err().to_string();
@@ -415,6 +461,11 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
             string,
             tie: true,
         },
+        Command::SetDeadNote {
+            at: at(0, 2, 0, 3),
+            string,
+            dead: true,
+        },
         Command::SetMeasureTempo {
             measure: MeasureIndex::new(7),
             tempo: 96,
@@ -448,6 +499,58 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
                     }],
                 },
             ],
+        },
+        Command::SetNoteEffect {
+            at: at(0, 1, 0, 1),
+            string,
+            effect: NoteEffect::Bend(Some(
+                BendShape::new(
+                    BendKind::Up,
+                    vec![
+                        BendPoint {
+                            position: 0,
+                            value: 0,
+                        },
+                        BendPoint {
+                            position: 6,
+                            value: 4,
+                        },
+                        BendPoint {
+                            position: 12,
+                            value: 0,
+                        },
+                    ],
+                )
+                .unwrap(),
+            )),
+        },
+        Command::SetNoteEffect {
+            at: at(0, 1, 0, 1),
+            string,
+            effect: NoteEffect::Harmonic(Some(Harmonic {
+                kind: HarmonicKind::Artificial,
+                node: Some(19),
+            })),
+        },
+        Command::SetBeatEffect {
+            at: at(0, 2, 0, 0),
+            effect: BeatEffect::Whammy(Some(
+                WhammyShape::new(vec![
+                    BendPoint {
+                        position: 0,
+                        value: 0,
+                    },
+                    BendPoint {
+                        position: 6,
+                        value: -4,
+                    },
+                    BendPoint {
+                        position: 12,
+                        value: 0,
+                    },
+                ])
+                .unwrap(),
+            )),
         },
     ]);
     // Names a plain command line could not hold: empty, spaces, the comment sign, `=`,

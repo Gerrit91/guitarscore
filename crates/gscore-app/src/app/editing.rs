@@ -118,11 +118,15 @@ impl GuitarScoreApp {
         match performed {
             Ok(Outcome::Edited) => {
                 self.status = None;
+                let layout = document
+                    .editor()
+                    .last_command()
+                    .is_some_and(Command::changes_layout);
                 let effect = document
                     .editor()
                     .last_command()
                     .map_or(EditEffect::Other, EditEffect::of);
-                self.after_edit(effect);
+                self.after_edit(effect, layout);
                 ctx.request_repaint();
             }
             Ok(Outcome::Moved) => ctx.request_repaint(),
@@ -134,11 +138,11 @@ impl GuitarScoreApp {
 
     /// Applies what an edit changed after it was executed: the cursor stays inside the
     /// song, stale per-track layouts go, and playback is updated for the kind of change.
-    fn after_edit(&mut self, effect: EditEffect) {
+    fn after_edit(&mut self, effect: EditEffect, layout_changed: bool) {
         let Some(document) = &mut self.document else {
             return;
         };
-        if matches!(effect, EditEffect::Tracks) {
+        if layout_changed || matches!(effect, EditEffect::Tracks) {
             document.forget_layouts();
         }
         let tracks = document.song().track_count();
@@ -178,9 +182,10 @@ impl GuitarScoreApp {
             return;
         };
         let effect = EditEffect::of(&command);
+        let layout_changed = command.changes_layout();
         let result = document.editor_mut().execute_command_merged(command, merge);
         match result {
-            Ok(_) => self.after_edit(effect),
+            Ok(_) => self.after_edit(effect, layout_changed),
             Err(error) => self.notice = Some(error.to_string()),
         }
     }
@@ -236,10 +241,17 @@ impl GuitarScoreApp {
         if self.playback.state() == PlayState::Playing {
             self.follow_playback();
         }
+        // Pausing then playing resumes at the cursor; a fresh start plays from the
+        // selection's first note when there is a selection.
+        let started = if self.playback.state() == PlayState::Paused {
+            None
+        } else {
+            self.selection_start()
+        };
         let Some(document) = &self.document else {
             return;
         };
-        let from = document.editor().cursor().position();
+        let from = started.unwrap_or_else(|| document.editor().cursor().position());
         if let Err(error) = self.playback.play_pause(document.song(), Some(from)) {
             self.notice = Some(error);
         }

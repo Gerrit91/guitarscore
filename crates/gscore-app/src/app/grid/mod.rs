@@ -93,7 +93,17 @@ impl GuitarScoreApp {
                     }
                 }
                 GridAction::MoveCursor { track, measure } => self.move_cursor_to(track, measure),
-                GridAction::Select(selection) => self.view.selection = Some(selection),
+                GridAction::Select(selection) => {
+                    self.view.selection = Some(selection);
+                    if let Some(document) = &mut self.document {
+                        document.editor_mut().set_selection(Some(
+                            gscore_edit::Selection::Measures {
+                                anchor: gscore_model::MeasureIndex::new(selection.start()),
+                                focus: gscore_model::MeasureIndex::new(selection.end()),
+                            },
+                        ));
+                    }
+                }
                 GridAction::Rename { track } => {
                     let name = rows
                         .get(track)

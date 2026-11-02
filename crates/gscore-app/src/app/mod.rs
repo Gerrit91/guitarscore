@@ -6,6 +6,8 @@
 //! clicks), `editing` (keys and actions), `files` (open, save, unsaved changes).
 
 mod bars;
+mod edit_effects;
+mod edit_palette;
 mod editing;
 mod files;
 mod grid;
@@ -62,6 +64,10 @@ pub struct GuitarScoreApp {
     renaming: Option<RenameTrack>,
     /// The right panel's state: the shown track, and the name being typed.
     track_panel: track_panel::TrackPanelState,
+    /// The left panel's state: the chosen note length and header fields.
+    edit_palette: edit_palette::EditPaletteState,
+    /// Where a drag on the page started, while selecting beats.
+    drag_anchor: Option<Cursor>,
     /// The cursor and revision the view last scrolled to, to scroll only on a change.
     shown_cursor: Option<(Cursor, u64)>,
     /// Where documents' recovery journals go; `None` keeps no journal.
@@ -87,6 +93,7 @@ pub struct GuitarScoreApp {
 struct PanelSizes {
     grid: Option<f32>,
     track_panel: Option<f32>,
+    edit_panel: Option<f32>,
 }
 
 impl GuitarScoreApp {
@@ -131,6 +138,7 @@ impl GuitarScoreApp {
         let panel_sizes = PanelSizes {
             grid: settings.grid_height,
             track_panel: settings.track_panel_width,
+            edit_panel: settings.edit_panel_width,
         };
         let mut app = GuitarScoreApp {
             view,
@@ -150,6 +158,8 @@ impl GuitarScoreApp {
             may_close: false,
             renaming: None,
             track_panel: track_panel::TrackPanelState::default(),
+            edit_palette: edit_palette::EditPaletteState::default(),
+            drag_anchor: None,
             shown_cursor: None,
             recovery_dir,
             recovery_searched: false,
@@ -172,6 +182,7 @@ impl GuitarScoreApp {
         settings.update_from_view(&self.view);
         settings.grid_height = self.panel_sizes.grid;
         settings.track_panel_width = self.panel_sizes.track_panel;
+        settings.edit_panel_width = self.panel_sizes.edit_panel;
         settings.window = self.last_window;
         settings.soundfont_path = self.playback.soundfont().map(std::path::Path::to_path_buf);
         settings.prefer_synth = matches!(self.playback.output(), Output::Synth(_));
@@ -355,6 +366,14 @@ impl eframe::App for GuitarScoreApp {
                 .default_size(self.panel_sizes.track_panel.unwrap_or(240.0))
                 .show(ui, |ui| self.track_panel(ui));
             self.panel_sizes.track_panel = Some(panel.response.rect.width());
+        }
+        if self.view.show_edit_panel && self.document.is_some() {
+            let panel = egui::Panel::left("edit_palette")
+                .resizable(true)
+                .min_size(180.0)
+                .default_size(self.panel_sizes.edit_panel.unwrap_or(220.0))
+                .show(ui, |ui| self.edit_palette(ui));
+            self.panel_sizes.edit_panel = Some(panel.response.rect.width());
         }
         egui::CentralPanel::default().show(ui, |ui| {
             // A bug in drawing must not take the app down: contain it and tell the user.

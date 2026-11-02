@@ -1,7 +1,7 @@
 # Guitar Pro Feature Parity Checklist
 
 This document tracks which Guitar Pro features are implemented in GuitarScore.
-Updated 2026-11-02 (M12: app shell and settings; M15: track panel).
+Updated 2026-11-02 (M14: edit palette and effects; M12: app shell; M15: track panel).
 
 ## Implemented Features
 
@@ -15,6 +15,8 @@ Updated 2026-11-02 (M12: app shell and settings; M15: track panel).
 | Track panel (right panel, M15) | Live: name, instrument kind, General MIDI program (the SoundFont preset), drum kit, color, string count, capo and each string's open pitch, all as commands with undo; sound and tuning changes are heard while playing |
 | App shell and settings (M12) | Live: docked panels with remembered sizes and visibility, settings window (song information, audio/MIDI, editor), JSON settings in the config directory, recent files, drag and drop, window position/size, zoom keys, progress and cancel for opening and SoundFont loading, cursor following playback |
 | Song information editing | Live, undoable: title, subtitle, artist, album, lyricist, composer, copyright, tab author, instructions, notes and the initial tempo (settings window or `set_song_text`/`set_tempo`) |
+| Edit palette (left panel, M14) | Live: note lengths (whole to 64th), dots, tuplets, rests, ties, dead notes, voice 1/2, measure tempo/time/key signatures and section markers, and the effect matrix (bends and whammy with point editors) |
+| Selection and clipboard (M14) | Live: a beat range in one measure/voice or a measure range across tracks; copy, cut and paste as one undo step, carrying notes, durations, ties, effects, time signature, tempo and section |
 | Note and beat effects (read, dump, save) | Live |
 | Measure issues (under/overfilled bars, notes on missing strings) | Live |
 
@@ -22,10 +24,10 @@ Updated 2026-11-02 (M12: app shell and settings; M15: track panel).
 
 | Feature | Status |
 |--------|--------|
-| Basic tablature editing | Partial: in the app at a cursor (frets with two-digit entry, clear note, shorter/longer, insert/delete beat and measure, Right fills the measure and appends measures) and as headless commands (`gscore-cli edit`) |
+| Basic tablature editing | Live: in the app at a cursor (frets with two-digit entry, clear note, shorter/longer, insert/delete beat and measure, Right fills the measure and appends measures, durations/dots/tuplets, rests, ties, dead notes, effects, voice 2) and as headless commands (`gscore-cli edit`) |
 | Undo/Redo | Partial: in memory in `gscore-edit`, in the Edit menu and Ctrl+Z/Ctrl+Y; not persisted |
-| Cursor and selection | Partial: cursor (keys, a click on the page, a click in the song grid); a measure range can be selected in the grid; no beat selection and no selection in the score yet |
-| Copy / cut / paste | Missing (needs selection); the keys report "not implemented yet" |
+| Cursor and selection | Live: cursor (keys, page click, grid click), beat selection by dragging on the page, measure ranges in the grid |
+| Copy / cut / paste | Live for beat and measure selections (M14) |
 | Multiple voices per track | Partial: read, viewed and edited per voice; no cross-voice editing |
 | Tempo changes | Partial: kept in the file; only the initial tempo is exposed and editable commands do not set them |
 | Time signature changes | Partial: kept and copied to new measures; no command to change one |
@@ -37,10 +39,9 @@ Updated 2026-11-02 (M12: app shell and settings; M15: track panel).
 
 ## Future Milestones
 
-Planned in `AGENTS.md` section 9, in this order: M14 edit palette (durations and effects),
-M16 bundled SoundFonts, M17 layout polish (whammy, bends, repeats, pages, PDF), M18
-playback polish (loops, techniques, WAV export), M19 release packages. M11, M12 and M15
-are done.
+Planned in `AGENTS.md` section 9, in this order: M16 bundled SoundFonts, M17 layout
+polish (whammy, bends, repeats, pages, PDF), M18 playback polish (loops, techniques, WAV
+export), M19 release packages. M11, M12, M14 and M15 are done.
 
 ## Testing Policy
 

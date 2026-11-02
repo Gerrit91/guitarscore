@@ -629,6 +629,109 @@ fn ctrl_equals_zooms_and_ctrl_zero_resets() {
 }
 
 #[test]
+fn the_edit_palette_sets_lengths_effects_and_the_measure_header() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.get_by_label("Edit palette");
+
+    // A note length applies to the cursor's beat.
+    harness.get_by_label("1/8").click();
+    harness.run();
+    let value = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        document
+            .song()
+            .beat(document.editor().cursor().position())
+            .unwrap()
+            .note_value()
+            .unwrap()
+            .value()
+    };
+    assert_eq!(value(&harness), 8);
+
+    // Enter a note on the cursor's string, then toggle an effect on it.
+    harness.event_modifiers(egui::Event::Text("4".to_owned()), egui::Modifiers::NONE);
+    harness.run();
+    harness.get_by_label("Palm mute").click_accesskit();
+    harness.run();
+    let palm_muted = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        document
+            .song()
+            .beat(document.editor().cursor().position())
+            .and_then(|beat| beat.notes().next())
+            .is_some_and(|note| note.is_palm_muted())
+    };
+    assert!(palm_muted(&harness));
+    harness.get_by_label("Palm mute").click_accesskit();
+    harness.run();
+    assert!(!palm_muted(&harness));
+
+    harness.get_by_label("Rest").click();
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .beat(
+                harness
+                    .state()
+                    .document()
+                    .unwrap()
+                    .editor()
+                    .cursor()
+                    .position()
+            )
+            .unwrap()
+            .kind(),
+        gscore_model::BeatKind::Rest
+    );
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+    harness.run();
+
+    // The measure tempo (measure 1 is the song's initial tempo too).
+    harness
+        .get_by_label("Measure tempo")
+        .set_value_accesskit(130.0);
+    harness.run();
+    harness.get_by_label("Set tempo").click();
+    harness.run();
+    assert_eq!(harness.state().document().unwrap().song().tempo(), 130);
+
+    // Voice 2.
+    harness.get_by_label("2").click();
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .editor()
+            .cursor()
+            .voice
+            .get(),
+        1
+    );
+}
+
+#[test]
+fn a_measure_selection_is_shared_with_the_editor_for_copy_and_paste() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    // Select the first measure in the grid.
+    let rect = harness.get_by_label("Song grid").rect();
+    let pos = rect.left_top() + egui::vec2(13.0 * 0.0 + 6.0, 26.0 + 12.0);
+    harness.hover_at(pos);
+    harness.drag_at(pos);
+    harness.drop_at(pos);
+    harness.run();
+    assert!(matches!(
+        harness.state().document().unwrap().editor().selection(),
+        Some(gscore_edit::Selection::Measures { .. })
+    ));
+}
+
+#[test]
 fn the_view_menu_and_the_row_menu_show_the_track_panel() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
     harness.get_by_label("SoundFont preset");

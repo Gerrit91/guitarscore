@@ -1036,3 +1036,43 @@ Landed:
   (the importer has no cancellation hook). Clicking during playback does not seek. The
   settings window has no Page layout tab yet (M17). Settings are saved on exit and after
   choices, not after every frame.
+
+## 2026-11-02 — M14: edit palette, selection, effects
+
+Landed:
+- `gscore-model`: rests (`set_beat_rest`), ties (`set_note_tie`), dead notes
+  (`set_note_dead`), a measure's tempo, time signature, key signature and section marker,
+  and a `Change::batch` that undoes several changes in reverse. Time/key signatures change
+  the header and every track's copy; a tempo on measure 1 also sets the song's initial
+  tempo. Header edits touch every measure's layout stamp. Voice 2 can be created by
+  inserting its first beat (`InsertBeat` fills a missing voice up to voice 2).
+  Full effect editing: `BendPoint`/`BendShape`/`WhammyShape` with all points,
+  `NoteEffect` and `BeatEffect` setters on a note or beat, and `bend_shape()`/
+  `whammy_shape()` accessors; each edit stores the previous effect for exact undo. The
+  model tests cover every variant, invalid shapes and one-effect-at-a-time toggling.
+- `gscore-edit`: commands `set_beat_rest`, `set_tie`, `set_dead_note`,
+  `set_measure_tempo`, `set_time_signature`, `set_key_signature`, `set_section`,
+  `clear_section`, `set_note_effect`, `set_beat_effect` and `batch` (an edit made of
+  edits). Effect values have a command-line form (`effect=bend value=up:0:0,6:4,12:0`,
+  `effect=accent value=heavy`), and a batch is a list of percent-encoded command lines,
+  bounded to 32 nesting levels. `Selection` (beats in one measure/voice, or measures
+  across every track) with copy, cut and paste: copying reads beats, durations, ties,
+  notes, all note/beat effects, time signature, tempo and section; pasting generates
+  commands and runs them as one batch, so it is one undo step and one journal line. The
+  Copy/Cut/Paste actions are wired, and `TabEditor::set_entry_value`/`undo_depth` are
+  exposed.
+- App: the left edit palette (durations whole to 64th, dots, tuplets, rest, tie, dead,
+  voice 1/2, measure tempo/time/key/section, and the effects matrix with bend and whammy
+  point editors and a curve preview). Dragging on the page selects a beat range and paints
+  it; grid measure selections are mirrored into the editor for copy/paste; playback can
+  start at the selection's first note. The palette applies one command or one batch per
+  click, so undo works as expected.
+- Tests: 458 (+42): every new model edit and effect, command round trips and adversarial
+  effects, batch undo, voice creation, selection copy/cut/paste (including copied effects),
+  the palette (length, effect, tempo, voice), grid selection sharing, and the regenerated
+  page snapshots with the left panel.
+- Open: grace notes, chord diagrams and lyrics are not editable; measure paste only inside
+  the existing song (insert measures first); a beat selection stays in one measure/voice
+  (measure ranges cover tracks); the bend/whammy editors are point rows with a preview, not
+  freehand dragging; playback still follows a bend's highest point, not its full shape;
+  `dump` and the save comparison still summarize bends. See `docs/gaps.md` #4, #14.

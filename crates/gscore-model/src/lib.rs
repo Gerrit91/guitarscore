@@ -46,8 +46,9 @@ pub use compare::{Difference, differences, settings_differences};
 pub use duration::{Duration, NoteValue, TimeSignature};
 pub use edit::{Change, MAX_SECTION_TITLE_CHARS, MAX_STRINGS, MAX_TRACK_NAME_CHARS, MAX_TRACKS};
 pub use effects::{
-    AccentKind, Bend, BendKind, Harmonic, HarmonicKind, Legato, SlapKind, SlideKind,
-    StrokeDirection, Vibrato, Whammy,
+    AccentKind, BEND_MAX_POSITION, BEND_MAX_VALUE, BeatEffect, Bend, BendKind, BendPoint,
+    BendShape, Harmonic, HarmonicKind, Legato, MAX_BEND_POINTS, NoteEffect, SlapKind, SlideKind,
+    StrokeDirection, Vibrato, Whammy, WhammyShape,
 };
 pub use error::ModelError;
 pub use instrument::{InstrumentKind, program_name};

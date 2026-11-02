@@ -87,10 +87,16 @@ pub(super) fn delete(song: &mut Song, at: BeatPosition) -> Result<Change, ModelE
 fn voice_in_or_create(
     measure: &mut GpMeasure,
     at: BeatPosition,
-) -> Result<(&mut GpVoice, bool), ModelError> {
-    let created = measure.voices.is_empty() && at.voice.get() == 0;
+) -> Result<(&mut GpVoice, Option<usize>), ModelError> {
+    // Voice 1 of an empty measure (GP7 empty bars), or the next voice (2) at its first
+    // beat, may be created; no further voices.
+    let index = at.voice.get();
+    let created = index == measure.voices.len()
+        && at.beat.get() == 0
+        && index < 2
+        && (index == 0 || !measure.voices.is_empty());
     if created {
         measure.voices.push(GpVoice::default());
     }
-    voice_in(measure, at).map(|voice| (voice, created))
+    voice_in(measure, at).map(|voice| (voice, created.then_some(index)))
 }

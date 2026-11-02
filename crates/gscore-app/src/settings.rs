@@ -64,10 +64,14 @@ pub struct Settings {
     pub show_track_grid: bool,
     /// Whether the track panel (right panel) is shown.
     pub show_track_panel: bool,
+    /// Whether the edit palette (left panel) is shown.
+    pub show_edit_panel: bool,
     /// Height of the song grid, as last dragged.
     pub grid_height: Option<f32>,
     /// Width of the track panel, as last dragged.
     pub track_panel_width: Option<f32>,
+    /// Width of the edit palette, as last dragged.
+    pub edit_panel_width: Option<f32>,
     /// The window's last position and size.
     pub window: Option<WindowState>,
     /// Recently opened files, newest first.
@@ -91,8 +95,10 @@ impl Default for Settings {
             zoom: 1.0,
             show_track_grid: true,
             show_track_panel: true,
+            show_edit_panel: true,
             grid_height: None,
             track_panel_width: None,
+            edit_panel_width: None,
             window: None,
             recent_files: Vec::new(),
             keymap_path: None,
@@ -118,6 +124,7 @@ impl Settings {
         self.zoom = view.zoom();
         self.show_track_grid = view.show_track_grid;
         self.show_track_panel = view.show_track_panel;
+        self.show_edit_panel = view.show_edit_panel;
     }
 
     /// Applies the stored theme, zoom and panel visibility to `view`.
@@ -126,6 +133,7 @@ impl Settings {
         view.set_zoom(self.zoom);
         view.show_track_grid = self.show_track_grid;
         view.show_track_panel = self.show_track_panel;
+        view.show_edit_panel = self.show_edit_panel;
     }
 
     /// Puts `path` first in the recent files, without duplicates.
@@ -163,6 +171,11 @@ impl Settings {
             && !(width.is_finite() && width > 0.0)
         {
             self.track_panel_width = None;
+        }
+        if let Some(width) = self.edit_panel_width
+            && !(width.is_finite() && width > 0.0)
+        {
+            self.edit_panel_width = None;
         }
         if self.window.is_some_and(|window| !window.is_valid()) {
             self.window = None;

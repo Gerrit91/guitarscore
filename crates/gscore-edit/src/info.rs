@@ -197,6 +197,13 @@ const TIE: ParamInfo = ParamInfo {
     help: "true to tie the note to the previous one, false to untie it",
 };
 
+const DEAD: ParamInfo = ParamInfo {
+    name: "dead",
+    required: true,
+    default: None,
+    help: "true for a dead (muted, x) note, false for a normal one",
+};
+
 const NUMERATOR: ParamInfo = ParamInfo {
     name: "numerator",
     required: true,
@@ -237,6 +244,20 @@ const SECTION_COLOR: ParamInfo = ParamInfo {
     required: false,
     default: Some("ff0000"),
     help: "Marker color as rrggbb in hexadecimal",
+};
+
+const EFFECT: ParamInfo = ParamInfo {
+    name: "effect",
+    required: true,
+    default: None,
+    help: "Effect id (hammer, bend, slide, harmonic, ghost, accent, palm_mute, ...)",
+};
+
+const EFFECT_VALUE: ParamInfo = ParamInfo {
+    name: "value",
+    required: true,
+    default: None,
+    help: "The effect's state: true/false, an id such as heavy, or a bend shape",
 };
 
 pub(crate) const SET_FRET: CommandInfo = CommandInfo {
@@ -452,6 +473,14 @@ pub(crate) const SET_TIE: CommandInfo = CommandInfo {
     params: &[TRACK, MEASURE, VOICE, BEAT, STRING, TIE],
 };
 
+pub(crate) const SET_DEAD_NOTE: CommandInfo = CommandInfo {
+    id: "set_dead_note",
+    aliases: &[],
+    label: "Make a note dead",
+    help: "Makes a note a dead (muted, x) note, or a normal note again.",
+    params: &[TRACK, MEASURE, VOICE, BEAT, STRING, DEAD],
+};
+
 pub(crate) const SET_MEASURE_TEMPO: CommandInfo = CommandInfo {
     id: "set_measure_tempo",
     aliases: &[],
@@ -490,6 +519,22 @@ pub(crate) const CLEAR_SECTION: CommandInfo = CommandInfo {
     label: "Remove a section marker",
     help: "Removes the section marker at the measure, if there is one.",
     params: &[MEASURE],
+};
+
+pub(crate) const SET_NOTE_EFFECT: CommandInfo = CommandInfo {
+    id: "set_note_effect",
+    aliases: &[],
+    label: "Set a note effect",
+    help: "Sets or clears one effect of a note, leaving its other effects alone.",
+    params: &[TRACK, MEASURE, VOICE, BEAT, STRING, EFFECT, EFFECT_VALUE],
+};
+
+pub(crate) const SET_BEAT_EFFECT: CommandInfo = CommandInfo {
+    id: "set_beat_effect",
+    aliases: &[],
+    label: "Set a beat effect",
+    help: "Sets or clears one effect of a whole beat (stroke, slap, whammy, ...).",
+    params: &[TRACK, MEASURE, VOICE, BEAT, EFFECT, EFFECT_VALUE],
 };
 
 pub(crate) const BATCH: CommandInfo = CommandInfo {
@@ -544,11 +589,14 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_TEMPO,
     SET_BEAT_REST,
     SET_TIE,
+    SET_DEAD_NOTE,
     SET_MEASURE_TEMPO,
     SET_TIME_SIGNATURE,
     SET_KEY_SIGNATURE,
     SET_SECTION,
     CLEAR_SECTION,
+    SET_NOTE_EFFECT,
+    SET_BEAT_EFFECT,
     BATCH,
     UNDO,
     REDO,

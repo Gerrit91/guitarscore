@@ -27,10 +27,11 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
 4. **Complex bends are simplified** (later, with owner test data). The GPIF reader and
    writer keep the three-point shape (origin, middle, destination), so bend-and-release
    survives import and saving since M3 (214 notes in the owner's files were dropped
-   before). The model still reports only `Up`/`Release` with the highest point, so `dump`
-   writes a bend-and-release as `15b17` without the release, and the save verification
-   cannot tell the two apart. GP5 bends with more points are written as first, furthest and
-   last point.
+   before). Since M14 the model exposes the full shape (`bend_shape()`), but `dump`,
+   layout and the save comparison still use `Up`/`Release` and the highest point, so a
+   bend-and-release is written as `15b17` without the release and the save verification
+   cannot tell the two apart. Playback also uses the highest point (see #11). GP5 bends
+   with more points are written as first, furthest and last point.
 4b. **`dump` does not show every effect.** It writes the usual ASCII-tab symbols: ties (`L`
    on the origin), dead notes (`x`), hammer-ons/pull-offs (`h`/`p`, chosen by the next
    note's pitch), bends (`b`/`r`, followed by the target fret: `15b17`), slides (`/`/`\`,
@@ -54,9 +55,11 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
 5. **Editing is headless and narrow (M4).** The model has checked methods to set/clear a
    note, set a beat length, insert/delete a beat and insert/delete a measure; `gscore-edit`
    turns them into commands with undo/redo, and `gscore-cli edit` runs them from `-c` or a
-   script; the app edits at a cursor (#10). Still missing: selection and copy/cut/paste;
-   editing tempo, time
-   signatures, effects, chord diagrams and lyrics; lyric/chord/effect accessors. Edits copy
+   script; the app edits at a cursor (#10). Since M14 there is selection with copy/cut/
+   paste, a left edit palette (durations, ties, rests, tempo, time/key signatures, sections
+   and the effect matrix) and model/command support for every effect except grace notes.
+   Still missing: chord diagrams and lyrics, grace-note editing, and accessors for the
+   data the model does not expose. Edits copy
    and check only the measure they touch (M10), and the app lays out only changed measures
    again; line breaking and drawing still run over the whole track (0.85 ms for 415
    measures in release; `cargo xtask bench`). Undo history is in memory only, capped at
@@ -104,10 +107,11 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    contains panics in layout, drawing and background jobs. Since M12 it also remembers the
    view, window and panels between runs, lists recent files, opens dropped files, zooms with
    `ctrl+=`/`ctrl+-`/`ctrl+0`, has a settings window, and the cursor follows playback and
-   scrolls with it. Missing: selection and copy/cut/paste, entering notes in voice 2,
-   editing effects, time and key signatures, section markers, a duration toolbar, a left
-   edit palette (M14), a multi-page view. Undo back to the saved state still counts as
-   "changed". `clear_note`,
+   scrolls with it. Since M14 it has a left edit palette, beat and measure selection with
+   copy/cut/paste, voice 2 entry, effect editing, tempo/time/key signatures and section
+   markers. Missing: a multi-page view, grace-note editing, chord diagrams and lyrics, and
+   a beat selection that crosses measures or tracks. Undo back to the saved state still
+   counts as "changed". `clear_note`,
    `previous_measure` and `next_measure` have no default key yet (owner's decision; they
    can be bound in the keymap file), and `ctrl+s` for save is a proposal. On Windows, egui
    turns Ctrl+Insert into Copy, so `insert_measure` needs another key there. On macOS the file dialog must run
@@ -121,8 +125,9 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    6-semitone bend range (RPN 0,0; wider for a wide slide, up to 24), so the rest of the
    chord keeps its pitch; when every channel is in use the note plays without the pitch
    movement and `Sequence::degraded_pitch_bends` counts it.
-   Simplifications: the model stores only a bend's highest point, so a bend that releases
-   again plays as a bend up and hold, and a release bend starts bent and returns to center;
+   Simplifications: although M14's model exposes a bend's full points, playback still uses
+   only its highest point, so a bend that releases again plays as a bend up and hold, and a
+   release bend starts bent and returns to center;
    slides are pitch bends (clamped to two octaves); an "out" slide moves a whole step; a
    slide takes precedence over a bend on the same note. Not played yet: vibrato, let ring,
    palm mute, grace notes, trills, whammy bar, D.C./D.S./coda, swing. Mute and solo are
@@ -147,8 +152,8 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    SF2 bank beyond the program is not stored); volume and pan live in the song grid, not
    the panel; the GP7 instrument type/name is displayed but not editable. Shrinking a track
    is refused while notes sit on the strings that would go (no silent data loss). The
-   measure range selected in the grid is shown but does nothing until copy/paste (M14) and
-   looping (M18) use it. The grid rebuilds its note squares once per song revision, and a
+   the measure range selected in the grid is used by copy/cut/paste (M14) and will drive
+   looping (M18). The grid rebuilds its note squares once per song revision, and a
    structural track command empties the per-track layout map; the page itself reuses the
    M10 per-measure layout cache.
 
@@ -157,7 +162,16 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    stored in `settings.json` and restored at startup. Limits: the autosave interval applies
    to documents opened afterwards (an open journal keeps its options); cancelling an open
    during the import itself takes effect when the import ends, because the importer has no
-   cancellation hook (the result is then dropped); the left panel only arrives with M14;
-   the settings window has no Page layout tab (page size, fonts and breaks are M17); there
+   cancellation hook (the result is then dropped); the settings window has no Page layout tab (page size, fonts and breaks are M17); there
    is no settings file versioning yet beyond serde defaults for new fields; on Wayland the
    compositor may ignore a requested window position.
+
+14. **The M14 palette and selection are a first version.** Beat selections stay in one
+   measure and voice; measure selections cover every track (copy/paste carries notes,
+   durations, ties, effects, time signature, tempo and section marker). Pasting measures
+   needs room inside the song (insert empty measures first); pasting beats appends beats at
+   the end of a short voice. Grace notes, chord diagrams and lyrics are not copied or
+   editable (the model has no setters). Bend and whammy shapes are edited as point rows
+   (position 0-12, value in quarter tones) with a preview, not by dragging a curve; the
+   full shape is stored, but playback and `dump` still use the highest point. A batch is one
+   undo step and one usually long journal line (its nested commands are percent-encoded).
