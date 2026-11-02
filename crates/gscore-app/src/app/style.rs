@@ -8,7 +8,7 @@
 
 use egui::{
     Color32, CornerRadius, FontFamily, FontId, Frame, Margin, RichText, Shadow, Stroke, TextStyle,
-    Theme, Vec2, vec2,
+    Theme, vec2,
 };
 
 use crate::fonts::BOLD;
@@ -195,51 +195,6 @@ pub(crate) fn canvas_frame(ctx: &egui::Context) -> Frame {
     Frame::new()
         .fill(tokens.canvas)
         .inner_margin(Margin::same(0))
-}
-
-/// A docked panel's title bar: the title on the left and a close button on the right.
-/// Returns true when the close button was clicked.
-pub(crate) fn panel_title(ui: &mut egui::Ui, title: &str) -> bool {
-    let tokens = tokens(ui);
-    let mut close = false;
-    Frame::new()
-        .inner_margin(Margin {
-            left: 12,
-            right: 6,
-            top: 6,
-            bottom: 6,
-        })
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(title)
-                        .font(FontId::new(13.0, FontFamily::Name(BOLD.into())))
-                        .color(tokens.text),
-                );
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let response = ui
-                        .add(
-                            egui::Button::new(
-                                RichText::new("×").size(15.0).color(tokens.text_weak),
-                            )
-                            .frame(false)
-                            .min_size(Vec2::splat(20.0)),
-                        )
-                        .on_hover_text(format!("Hide {title} (View menu shows it again)"));
-                    ui.ctx().accesskit_node_builder(response.id, |node| {
-                        node.set_label(format!("Close {title}"));
-                    });
-                    close = response.clicked();
-                });
-            });
-        });
-    let rect = ui.max_rect();
-    ui.painter().hline(
-        rect.x_range(),
-        ui.cursor().top(),
-        Stroke::new(1.0, tokens.line),
-    );
-    close
 }
 
 /// A titled section of a panel that can be folded away; its content is indented by the

@@ -12,6 +12,7 @@ mod editing;
 mod files;
 mod grid;
 mod icons;
+mod instrument;
 mod page;
 mod recovery;
 mod settings_window;
@@ -359,12 +360,9 @@ impl eframe::App for GuitarScoreApp {
             let panel = egui::Panel::bottom("track_grid")
                 .resizable(true)
                 .min_size(80.0)
-                .default_size(self.panel_sizes.grid.unwrap_or(150.0))
+                .default_size(self.panel_sizes.grid.unwrap_or(grid::DEFAULT_HEIGHT))
                 .frame(style::panel_frame(&ctx))
                 .show(ui, |ui| {
-                    if style::panel_title(ui, "Tracks") {
-                        self.view.show_track_grid = false;
-                    }
                     egui::Frame::new()
                         .inner_margin(egui::Margin::symmetric(8, 4))
                         .show(ui, |ui| self.track_grid(ui));
@@ -381,9 +379,6 @@ impl eframe::App for GuitarScoreApp {
                 .default_size(self.panel_sizes.track_panel.unwrap_or(260.0))
                 .frame(style::panel_frame(&ctx))
                 .show(ui, |ui| {
-                    if style::panel_title(ui, "Track") {
-                        self.view.show_track_panel = false;
-                    }
                     self.track_panel(ui);
                 });
             self.panel_sizes.track_panel = Some(panel.response.rect.width());
@@ -395,9 +390,6 @@ impl eframe::App for GuitarScoreApp {
                 .default_size(self.panel_sizes.edit_panel.unwrap_or(250.0))
                 .frame(style::panel_frame(&ctx))
                 .show(ui, |ui| {
-                    if style::panel_title(ui, "Palette") {
-                        self.view.show_edit_panel = false;
-                    }
                     self.edit_palette(ui);
                 });
             self.panel_sizes.edit_panel = Some(panel.response.rect.width());

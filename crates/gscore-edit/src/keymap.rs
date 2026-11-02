@@ -64,6 +64,38 @@ ctrl+y = redo
 Space = play_pause
 ctrl+s = save
 
+# Palette: note values, rest and tie, techniques.
+ctrl+1 = note_whole
+ctrl+2 = note_half
+ctrl+3 = note_quarter
+ctrl+4 = note_eighth
+ctrl+5 = note_sixteenth
+ctrl+6 = note_thirty_second
+ctrl+7 = note_sixty_fourth
+. = toggle_dot
+r = make_rest
+l = toggle_tie
+x = toggle_dead_note
+g = toggle_ghost_note
+h = toggle_hammer
+s = toggle_shift_slide
+S = toggle_legato_slide
+b = toggle_bend
+v = toggle_vibrato
+V = toggle_wide_vibrato
+a = toggle_accent
+A = toggle_heavy_accent
+p = toggle_palm_mute
+i = toggle_let_ring
+n = toggle_natural_harmonic
+d = toggle_pick_down
+u = toggle_pick_up
+D = toggle_brush_down
+U = toggle_brush_up
+t = toggle_tapping
+< = toggle_fade_in
+w = toggle_whammy
+
 ctrl+= = zoom_in
 ctrl++ = zoom_in
 ctrl+- = zoom_out

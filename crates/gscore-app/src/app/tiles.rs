@@ -25,6 +25,17 @@ pub(crate) enum Face<'a> {
     Text(&'a str),
     /// A tie: an arc between two noteheads.
     Tie,
+    /// A slur over a short line (a beat-level legato run).
+    Slur,
+    /// A bend: a curve rising to an arrow.
+    Bend,
+    /// A whammy dip: down and back up.
+    Whammy,
+    /// A fade-in hairpin ("<").
+    Hairpin,
+    /// A slide: a line from `from` to `to`, each -1 (low), 0 (the note) or 1 (high), with
+    /// a dot for the note at the end that is 0.
+    Slide { from: i8, to: i8 },
 }
 
 /// One tile. `label` is what screen readers (and tests) call it; `tip` the tooltip.
@@ -97,6 +108,69 @@ fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Color32) {
                 })
                 .collect();
             painter.add(egui::Shape::line(points, Stroke::new(1.6, ink)));
+        }
+        Face::Slur => {
+            let left = rect.left_center() + vec2(6.0, 4.0);
+            let right = rect.right_center() + vec2(-6.0, 4.0);
+            let points: Vec<Pos2> = (0..=12)
+                .map(|step| {
+                    let t = step as f32 / 12.0;
+                    let x = left.x + (right.x - left.x) * t;
+                    let y = left.y - 8.0 * (1.0 - (2.0 * t - 1.0).powi(2));
+                    egui::pos2(x, y)
+                })
+                .collect();
+            painter.add(egui::Shape::line(points, Stroke::new(1.6, ink)));
+        }
+        Face::Bend => {
+            let start = rect.left_bottom() + vec2(7.0, -9.0);
+            let tip = rect.right_top() + vec2(-8.0, 8.0);
+            let points: Vec<Pos2> = (0..=12)
+                .map(|step| {
+                    let t = step as f32 / 12.0;
+                    let x = start.x + (tip.x - start.x) * t;
+                    let y = start.y + (tip.y - start.y) * t.powi(2);
+                    egui::pos2(x, y)
+                })
+                .collect();
+            painter.add(egui::Shape::line(points, Stroke::new(1.6, ink)));
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    tip + vec2(0.0, -4.0),
+                    tip + vec2(-3.5, 2.0),
+                    tip + vec2(3.5, 2.0),
+                ],
+                ink,
+                Stroke::NONE,
+            ));
+        }
+        Face::Whammy => {
+            let y = rect.center().y - 3.0;
+            let points = vec![
+                egui::pos2(rect.left() + 5.0, y),
+                egui::pos2(rect.left() + 10.0, y),
+                egui::pos2(rect.center().x, y + 9.0),
+                egui::pos2(rect.right() - 10.0, y),
+                egui::pos2(rect.right() - 5.0, y),
+            ];
+            painter.add(egui::Shape::line(points, Stroke::new(1.6, ink)));
+        }
+        Face::Hairpin => {
+            let tip = rect.left_center() + vec2(7.0, 0.0);
+            let stroke = Stroke::new(1.5, ink);
+            painter.line_segment([tip, rect.right_center() + vec2(-6.0, -6.0)], stroke);
+            painter.line_segment([tip, rect.right_center() + vec2(-6.0, 6.0)], stroke);
+        }
+        Face::Slide { from, to } => {
+            let y = |level: i8| rect.center().y - 6.0 * f32::from(level);
+            let start = egui::pos2(rect.left() + 6.0, y(from));
+            let end = egui::pos2(rect.right() - 6.0, y(to));
+            painter.line_segment([start, end], Stroke::new(1.6, ink));
+            for (level, at) in [(from, start), (to, end)] {
+                if level == 0 {
+                    painter.circle_filled(at, 2.8, ink);
+                }
+            }
         }
     }
 }

@@ -256,3 +256,26 @@ fn shift_arrows_select_beats_and_end_a_grid_selection() {
     press(&mut harness, Key::ArrowLeft);
     assert_eq!(selection(&harness), None);
 }
+
+#[test]
+fn palette_keys_work_like_the_tiles() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    let note = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let at = document.editor().cursor().position();
+        let beat = document.song().beat(at).unwrap();
+        let palm = beat.notes().next().is_some_and(|n| n.is_palm_muted());
+        (palm, beat.note_value().unwrap().value())
+    };
+    assert!(!note(&harness).0);
+    // "p" is palm mute, as the tile's tooltip says; pressing it again takes it off.
+    type_char(&mut harness, "p", Modifiers::NONE);
+    assert!(note(&harness).0);
+    type_char(&mut harness, "p", Modifiers::NONE);
+    assert!(!note(&harness).0);
+    // Ctrl+4 is the eighth note.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Num4);
+    harness.run();
+    assert_eq!(note(&harness).1, 8);
+}

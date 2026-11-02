@@ -4,7 +4,7 @@
 //! Changes are ordinary commands (or one `batch` command for several beats), so every
 //! palette click is undoable and recorded in the recovery journal.
 
-use gscore_edit::{Command, Cursor, Selection};
+use gscore_edit::{ActionId, Command, Cursor, Selection};
 use gscore_model::{
     BeatIndex, BeatPosition, KeySignature, MeasureIndex, NoteValue, Section, Song, TimeSignature,
     TrackColor, VoiceIndex,
@@ -14,6 +14,7 @@ use super::GuitarScoreApp;
 use super::edit_effects::{BeatState, EffectsState, NoteState};
 use super::style;
 use super::tiles::{self, Face};
+use super::toolbar::key_hint;
 
 /// Note lengths offered, as the `1/value` of a whole note.
 const NOTE_VALUES: [u16; 7] = [1, 2, 4, 8, 16, 32, 64];
@@ -179,16 +180,18 @@ impl GuitarScoreApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 6.0;
+                let keymap = &self.keymap;
+                let hint = |action: ActionId| key_hint(keymap, action);
                 style::section(ui, "note_input", "Note input", |ui| {
-                    note_length(ui, &mut self.edit_palette, &snapshot, &mut commands);
-                    beat_buttons(ui, &mut self.edit_palette, &snapshot, &mut commands);
+                    note_length(ui, &mut self.edit_palette, &snapshot, &hint, &mut commands);
+                    beat_buttons(ui, &mut self.edit_palette, &snapshot, &hint, &mut commands);
                 });
                 style::section(ui, "measure", "Measure", |ui| {
                     header_editors(ui, &mut self.edit_palette, &snapshot, &mut commands);
                 });
                 self.edit_palette
                     .effects
-                    .panel(ui, &snapshot, &mut commands);
+                    .panel(ui, &snapshot, &hint, &mut commands);
             });
         self.apply_commands(commands);
         // New beats past the cursor take the palette's length.
@@ -205,6 +208,72 @@ impl GuitarScoreApp {
             let mut cursor = document.editor().cursor();
             cursor.voice = VoiceIndex::new(voice);
             document.editor_mut().set_cursor(cursor);
+        }
+    }
+
+    /// Runs a palette action from a key, exactly like a click on its tile.
+    pub(super) fn run_palette_action(&mut self, action: ActionId) {
+        let Some(document) = &self.document else {
+            return;
+        };
+        let snapshot = PaletteSnapshot::of(
+            document.song(),
+            document.editor().cursor(),
+            document.editor().selection(),
+        );
+        let state = &mut self.edit_palette;
+        let value = match action {
+            ActionId::NoteWhole => Some(1),
+            ActionId::NoteHalf => Some(2),
+            ActionId::NoteQuarter => Some(4),
+            ActionId::NoteEighth => Some(8),
+            ActionId::NoteSixteenth => Some(16),
+            ActionId::NoteThirtySecond => Some(32),
+            ActionId::NoteSixtyFourth => Some(64),
+            _ => None,
+        };
+        let length = match (value, action) {
+            (Some(value), _) => {
+                state.value = value;
+                true
+            }
+            (None, ActionId::ToggleDot) => {
+                toggle_dots(state, 1);
+                true
+            }
+            (None, ActionId::ToggleDoubleDot) => {
+                toggle_dots(state, 2);
+                true
+            }
+            (None, ActionId::TupletThree) => {
+                toggle_tuplet(state, (3, 2));
+                true
+            }
+            (None, ActionId::TupletFive) => {
+                toggle_tuplet(state, (5, 4));
+                true
+            }
+            (None, ActionId::TupletSeven) => {
+                toggle_tuplet(state, (7, 4));
+                true
+            }
+            _ => false,
+        };
+        let mut commands = Vec::new();
+        if length {
+            apply_duration(state, &snapshot, &mut commands);
+        } else if action == ActionId::MakeRest {
+            commands = rest_commands(&snapshot);
+        } else if action == ActionId::ToggleTie {
+            commands = tie_commands(&snapshot);
+        } else if let Some(item) = super::edit_effects::fx_item(action) {
+            commands = super::edit_effects::fx_commands(item.fx, &snapshot);
+        }
+        self.apply_commands(commands);
+        if let Some(duration) = self.edit_palette.duration()
+            && let Some(document) = &mut self.document
+        {
+            document.editor_mut().set_entry_value(duration);
         }
     }
 
@@ -254,23 +323,20 @@ fn note_length(
     ui: &mut egui::Ui,
     state: &mut EditPaletteState,
     snapshot: &PaletteSnapshot,
+    hint: &dyn Fn(ActionId) -> String,
     commands: &mut Vec<Command>,
 ) {
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = egui::vec2(2.0, 3.0);
         for value in NOTE_VALUES {
             let label = note_value_label(value);
-            let tip = format!("{} note", note_value_name(value));
-            if tiles::tile(
-                ui,
-                note_face(value),
-                state.value == value,
-                true,
-                &label,
-                &tip,
-            )
-            .clicked()
-            {
+            let tip = format!(
+                "{} note{}",
+                note_value_name(value),
+                hint(value_action(value))
+            );
+            let chosen = state.value == value;
+            if tiles::tile(ui, note_face(value), chosen, true, &label, &tip).clicked() {
                 state.value = value;
                 apply_duration(state, snapshot, commands);
             }
@@ -278,13 +344,14 @@ fn note_length(
     });
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = egui::vec2(2.0, 3.0);
-        for (dots, label, tip) in [
+        for (dots, label, tip, action) in [
             (
                 1_u8,
                 "Dot",
-                "Dotted: half as long again (click again: no dot)",
+                "Dotted: half as long again",
+                ActionId::ToggleDot,
             ),
-            (2, "Double dot", "Double dotted (click again: no dot)"),
+            (2, "Double dot", "Double dotted", ActionId::ToggleDoubleDot),
         ] {
             let glyph = if dots == 1 {
                 "\u{E1E7}"
@@ -296,8 +363,9 @@ fn note_length(
                 size: 26.0,
                 baseline: 4.0,
             };
-            if tiles::tile(ui, face, state.dots == dots, true, label, tip).clicked() {
-                state.dots = if state.dots == dots { 0 } else { dots };
+            let tip = format!("{tip}{}", hint(action));
+            if tiles::tile(ui, face, state.dots == dots, true, label, &tip).clicked() {
+                toggle_dots(state, dots);
                 apply_duration(state, snapshot, commands);
             }
         }
@@ -309,14 +377,74 @@ fn note_length(
                 format!("{enters}:{times}")
             };
             let label = format!("{enters}:{times}");
-            let tip = format!("Tuplet: {enters} in the time of {times} (click again: none)");
+            let tip = format!(
+                "Tuplet: {enters} in the time of {times}{}",
+                hint(tuplet_action(enters))
+            );
             let on = state.tuplet == Some((enters, times));
             if tiles::tile(ui, Face::Text(&text), on, true, &label, &tip).clicked() {
-                state.tuplet = if on { None } else { Some((enters, times)) };
+                toggle_tuplet(state, (enters, times));
                 apply_duration(state, snapshot, commands);
             }
         }
     });
+}
+
+/// The palette action of a note value.
+fn value_action(value: u16) -> ActionId {
+    match value {
+        1 => ActionId::NoteWhole,
+        2 => ActionId::NoteHalf,
+        4 => ActionId::NoteQuarter,
+        8 => ActionId::NoteEighth,
+        16 => ActionId::NoteSixteenth,
+        32 => ActionId::NoteThirtySecond,
+        _ => ActionId::NoteSixtyFourth,
+    }
+}
+
+/// The palette action of a tuplet, by how many notes it has.
+fn tuplet_action(enters: u8) -> ActionId {
+    match enters {
+        3 => ActionId::TupletThree,
+        5 => ActionId::TupletFive,
+        _ => ActionId::TupletSeven,
+    }
+}
+
+/// A dot choice is a toggle: choosing the chosen one again removes the dots.
+fn toggle_dots(state: &mut EditPaletteState, dots: u8) {
+    state.dots = if state.dots == dots { 0 } else { dots };
+}
+
+/// A tuplet choice is a toggle too.
+fn toggle_tuplet(state: &mut EditPaletteState, tuplet: (u8, u8)) {
+    state.tuplet = if state.tuplet == Some(tuplet) {
+        None
+    } else {
+        Some(tuplet)
+    };
+}
+
+/// The commands of the rest tile: every selected beat becomes a rest.
+fn rest_commands(snapshot: &PaletteSnapshot) -> Vec<Command> {
+    snapshot
+        .beats
+        .iter()
+        .map(|at| Command::SetBeatRest { at: *at })
+        .collect()
+}
+
+/// The commands of the tie tile: the cursor's note is tied, or untied.
+fn tie_commands(snapshot: &PaletteSnapshot) -> Vec<Command> {
+    match gscore_model::StringNumber::new(snapshot.cursor.string) {
+        Ok(string) if snapshot.note_exists => vec![Command::SetTie {
+            at: snapshot.cursor.position(),
+            string,
+            tie: !snapshot.note_tie,
+        }],
+        _ => Vec::new(),
+    }
 }
 
 /// The tile face of a note value: the note from the music font.
@@ -353,6 +481,7 @@ fn beat_buttons(
     ui: &mut egui::Ui,
     state: &mut EditPaletteState,
     snapshot: &PaletteSnapshot,
+    hint: &dyn Fn(ActionId) -> String,
     commands: &mut Vec<Command>,
 ) {
     ui.horizontal_wrapped(|ui| {
@@ -362,37 +491,27 @@ fn beat_buttons(
             size: 22.0,
             baseline: 1.0,
         };
-        if tiles::tile(
-            ui,
-            rest,
-            false,
-            true,
-            "Rest",
-            "Make the selected beats rests",
-        )
-        .clicked()
-        {
-            for at in &snapshot.beats {
-                commands.push(Command::SetBeatRest { at: *at });
-            }
+        let tip = format!(
+            "Rest: the selected beats become rests{}",
+            hint(ActionId::MakeRest)
+        );
+        if tiles::tile(ui, rest, false, true, "Rest", &tip).clicked() {
+            commands.extend(rest_commands(snapshot));
         }
-        let string = gscore_model::StringNumber::new(snapshot.cursor.string).ok();
+        let tip = format!(
+            "Tie the note to the previous one on its string{}",
+            hint(ActionId::ToggleTie)
+        );
         let tie = tiles::tile(
             ui,
             Face::Tie,
             snapshot.note_tie,
             snapshot.note_exists,
             "Tie",
-            "Tie the note to the previous one on its string",
+            &tip,
         );
-        if tie.clicked()
-            && let Some(string) = string
-        {
-            commands.push(Command::SetTie {
-                at: snapshot.cursor.position(),
-                string,
-                tie: !snapshot.note_tie,
-            });
+        if tie.clicked() {
+            commands.extend(tie_commands(snapshot));
         }
     });
     ui.add_space(2.0);

@@ -1169,3 +1169,41 @@ volume and pan (lined up with the rows' sliders and knobs). Inside a selection t
 box is hidden as well. A click or measure selection in the grid during playback jumps there
 too. Tests: `a_click_in_the_song_grid_while_playing_jumps_there`; snapshots regenerated.
 
+## 2026-11-03 — M16 app design (first pass, with owner feedback)
+
+Owner: the score looks good, the app around it looks amateur; adapt ideas from MuseScore 4
+(not its code or icons). M16 is now "App design"; bundled SoundFonts moved to M19 and the
+release to M20 (`AGENTS.md`).
+
+Landed:
+- Design tokens (`app/style.rs`): one soft-charcoal palette for all chrome (white text and
+  icons), whatever the score theme; the light/dark choice now only changes the page
+  ("Light score"/"Dark score"). The page floats on a canvas with a shadow.
+- The window has no system frame: our own title bar with the menus, the song title
+  centered and minimize/maximize/close (double click maximizes; dragging moves; resize
+  edges replace the frame's).
+- Toolbar in groups: file, edit, zoom; transport with position ("3 / 12") and tempo; the
+  three panel toggles (palette, song grid, track panel); settings. The output picker and
+  the track picker are gone from it (settings window and song grid have them).
+- Panels have no title bars; their content sits in collapsible titled sections.
+- Edit palette: tiles with music-font glyphs (Bravura) or drawn signs for note values,
+  dots, tuplets, rest, tie and every technique; a chosen tile is lit, a second click
+  turns it off. Every tile is an action with a description and its keys in the tooltip;
+  keys run the same code as a click. Defaults: ctrl+1..7 note values, "." dot, r rest,
+  l tie, x dead, g ghost, h hammer, s/S shift/legato slide, b bend, v/V vibrato/wide,
+  a/A accent/heavy, p palm mute, i let ring, n natural harmonic, d/u pick down/up, D/U
+  brush down/up, t tapping, < fade in, w whammy (all rebindable in the keymap file).
+- Track panel: the first line is the track's color, its instrument icon and its name
+  (click to rename in place; Enter renames, Escape cancels); sections Instrument,
+  Appearance and Tuning as property sheets.
+- Song grid: square cells without gaps, rows in line with the track column, the master
+  row as the last line; instrument icons (guitar, bass, drums, keyboard, voice, other;
+  from the drum flag, the General MIDI program, then the GP7 instrument name) replace the
+  "STR"/"DRM" tags; the panel opens tall enough for eight tracks and the master row.
+- Tests: palette keys work like the tiles; the in-place rename (Enter and Escape); the
+  regenerated page snapshots.
+- Open: the bass icon is close to the guitar's; the bend and whammy editors are still
+  point rows; the settings window is not restyled yet; a key table for the new actions
+  is not in `AGENTS.md` (the owner's spec); on Wayland the compositor decides whether an
+  undecorated window can be moved by our title bar (it uses the standard request).
+

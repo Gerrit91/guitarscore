@@ -25,6 +25,9 @@ pub(super) const TRACK_COLUMN: f32 = 330.0;
 pub(super) const ROW_HEIGHT: f32 = 24.0;
 /// Height of the ruler above the matrix (measure numbers, sections, repeats).
 pub(super) const RULER_HEIGHT: f32 = 26.0;
+/// The panel's height when it first opens: the ruler, eight tracks and the master row,
+/// with the panel's margins and room for the horizontal scroll bar.
+pub(crate) const DEFAULT_HEIGHT: f32 = RULER_HEIGHT + 9.0 * ROW_HEIGHT + 30.0;
 /// Width of one measure column: the same as a row, so every cell is a square.
 pub(super) const MEASURE_WIDTH: f32 = ROW_HEIGHT;
 /// Padding inside a matrix square: none, the squares touch.

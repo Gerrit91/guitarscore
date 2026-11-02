@@ -14,17 +14,7 @@ use super::tiles;
 impl GuitarScoreApp {
     /// " (ctrl+z)": the keys bound to `action`, for a tooltip.
     pub(super) fn key_hint(&self, action: ActionId) -> String {
-        let keys: Vec<String> = self
-            .keymap
-            .keys_for(action)
-            .iter()
-            .map(ToString::to_string)
-            .collect();
-        if keys.is_empty() {
-            String::new()
-        } else {
-            format!(" ({})", keys.join(", "))
-        }
+        key_hint(&self.keymap, action)
     }
 
     /// An icon button for an editor action, with its keys in the tooltip.
@@ -97,6 +87,7 @@ impl GuitarScoreApp {
                 if icons::button(ui, Icon::Settings, "Settings", "Settings…").clicked() {
                     self.open_settings_window();
                 }
+                self.panel_toggles(ui);
                 self.transport(ui);
             });
         });
@@ -200,5 +191,55 @@ impl GuitarScoreApp {
         response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &label));
         response.on_hover_text("The measure being played, or the cursor's");
         ui.add_space(4.0);
+    }
+}
+
+impl GuitarScoreApp {
+    /// Show or hide the docked panels: the palette, the song grid and the track panel.
+    fn panel_toggles(&mut self, ui: &mut egui::Ui) {
+        style::toolbar_group(ui, |ui| {
+            // The parent lays out right to left: add them in reverse (right panel first).
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let view = &mut self.view;
+                for (icon, label, tip, shown) in [
+                    (
+                        Icon::PanelRight,
+                        "Show track panel",
+                        "Show or hide the track panel",
+                        &mut view.show_track_panel,
+                    ),
+                    (
+                        Icon::PanelBottom,
+                        "Show song grid",
+                        "Show or hide the tracks and song grid",
+                        &mut view.show_track_grid,
+                    ),
+                    (
+                        Icon::PanelLeft,
+                        "Show palette",
+                        "Show or hide the edit palette",
+                        &mut view.show_edit_panel,
+                    ),
+                ] {
+                    if icons::toggle_button(ui, icon, label, tip, *shown).clicked() {
+                        *shown = !*shown;
+                    }
+                }
+            });
+        });
+    }
+}
+
+/// " (ctrl+z)": the keys `keymap` binds to `action`, for a tooltip; empty if none.
+pub(super) fn key_hint(keymap: &gscore_edit::Keymap, action: ActionId) -> String {
+    let keys: Vec<String> = keymap
+        .keys_for(action)
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    if keys.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", keys.join(", "))
     }
 }

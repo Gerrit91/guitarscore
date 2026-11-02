@@ -515,11 +515,21 @@ fn the_track_panel_edits_the_shown_track() {
     harness.run();
     assert_eq!(first_track(&harness).string_count(), 7);
 
-    // A rename from the panel is one step too.
+    // A rename in place: click the name, type, Enter. One step too.
+    harness.get_by_label("Edit track name").click();
+    harness.run();
     harness.get_by_label("Name field").click();
     harness.get_by_label("Name field").type_text(" Lead");
     harness.run();
-    harness.get_by_label("Rename track").click();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(first_track(&harness).name(), "Steel Guitar Lead");
+    // Escape leaves the name as it was.
+    harness.get_by_label("Edit track name").click();
+    harness.run();
+    harness.get_by_label("Name field").type_text(" X");
+    harness.run();
+    harness.key_press(egui::Key::Escape);
     harness.run();
     assert_eq!(first_track(&harness).name(), "Steel Guitar Lead");
 }
@@ -630,7 +640,6 @@ fn ctrl_equals_zooms_and_ctrl_zero_resets() {
 #[test]
 fn the_edit_palette_sets_lengths_effects_and_the_measure_header() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
-    harness.get_by_label("Palette");
 
     // A note length applies to the cursor's beat.
     harness.get_by_label("1/8").click();

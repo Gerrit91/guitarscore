@@ -62,12 +62,169 @@ pub enum ActionId {
     SelectRight,
     /// Select the cursor's whole beat (every string).
     SelectBeat,
+    /// Palette: Whole note.
+    NoteWhole,
+    /// Palette: Half note.
+    NoteHalf,
+    /// Palette: Quarter note.
+    NoteQuarter,
+    /// Palette: Eighth note.
+    NoteEighth,
+    /// Palette: 16th note.
+    NoteSixteenth,
+    /// Palette: 32nd note.
+    NoteThirtySecond,
+    /// Palette: 64th note.
+    NoteSixtyFourth,
+    /// Palette: Dotted.
+    ToggleDot,
+    /// Palette: Double dotted.
+    ToggleDoubleDot,
+    /// Palette: Triplet.
+    TupletThree,
+    /// Palette: Quintuplet (5:4).
+    TupletFive,
+    /// Palette: Septuplet (7:4).
+    TupletSeven,
+    /// Palette: Rest.
+    MakeRest,
+    /// Palette: Tie.
+    ToggleTie,
+    /// Palette: Dead note.
+    ToggleDeadNote,
+    /// Palette: Ghost note.
+    ToggleGhostNote,
+    /// Palette: Hammer-on / pull-off.
+    ToggleHammer,
+    /// Palette: Shift slide.
+    ToggleShiftSlide,
+    /// Palette: Legato slide.
+    ToggleLegatoSlide,
+    /// Palette: Slide in from below.
+    ToggleSlideInBelow,
+    /// Palette: Slide in from above.
+    ToggleSlideInAbove,
+    /// Palette: Slide out downwards.
+    ToggleSlideOutDown,
+    /// Palette: Slide out upwards.
+    ToggleSlideOutUp,
+    /// Palette: Bend.
+    ToggleBend,
+    /// Palette: Vibrato.
+    ToggleVibrato,
+    /// Palette: Wide vibrato.
+    ToggleWideVibrato,
+    /// Palette: Accent.
+    ToggleAccent,
+    /// Palette: Heavy accent.
+    ToggleHeavyAccent,
+    /// Palette: Staccato.
+    ToggleStaccato,
+    /// Palette: Palm mute.
+    TogglePalmMute,
+    /// Palette: Let ring.
+    ToggleLetRing,
+    /// Palette: Trill.
+    ToggleTrill,
+    /// Palette: Tremolo picking.
+    ToggleTremoloPicking,
+    /// Palette: Natural harmonic.
+    ToggleNaturalHarmonic,
+    /// Palette: Artificial harmonic.
+    ToggleArtificialHarmonic,
+    /// Palette: Tapped harmonic.
+    ToggleTappedHarmonic,
+    /// Palette: Pinch harmonic.
+    TogglePinchHarmonic,
+    /// Palette: Semi harmonic.
+    ToggleSemiHarmonic,
+    /// Palette: Pick downstroke.
+    TogglePickDown,
+    /// Palette: Pick upstroke.
+    TogglePickUp,
+    /// Palette: Brush (strum) down.
+    ToggleBrushDown,
+    /// Palette: Brush (strum) up.
+    ToggleBrushUp,
+    /// Palette: Tapping.
+    ToggleTapping,
+    /// Palette: Slap.
+    ToggleSlapping,
+    /// Palette: Pop.
+    TogglePopping,
+    /// Palette: Fade in.
+    ToggleFadeIn,
+    /// Palette: Whammy bar.
+    ToggleWhammy,
+    /// Palette: Legato (beat slur).
+    ToggleLegato,
+    /// Palette: Beat vibrato.
+    ToggleBeatVibrato,
     /// Zoom in.
     ZoomIn,
     /// Zoom out.
     ZoomOut,
     /// Back to actual size.
     ZoomReset,
+}
+
+impl ActionId {
+    /// True for the edit palette's actions (note values, rests, ties, effects). The app runs
+    /// them like a click on their palette tile; the editor itself does nothing for them.
+    pub fn is_palette(self) -> bool {
+        matches!(
+            self,
+            ActionId::NoteWhole
+                | ActionId::NoteHalf
+                | ActionId::NoteQuarter
+                | ActionId::NoteEighth
+                | ActionId::NoteSixteenth
+                | ActionId::NoteThirtySecond
+                | ActionId::NoteSixtyFourth
+                | ActionId::ToggleDot
+                | ActionId::ToggleDoubleDot
+                | ActionId::TupletThree
+                | ActionId::TupletFive
+                | ActionId::TupletSeven
+                | ActionId::MakeRest
+                | ActionId::ToggleTie
+                | ActionId::ToggleDeadNote
+                | ActionId::ToggleGhostNote
+                | ActionId::ToggleHammer
+                | ActionId::ToggleShiftSlide
+                | ActionId::ToggleLegatoSlide
+                | ActionId::ToggleSlideInBelow
+                | ActionId::ToggleSlideInAbove
+                | ActionId::ToggleSlideOutDown
+                | ActionId::ToggleSlideOutUp
+                | ActionId::ToggleBend
+                | ActionId::ToggleVibrato
+                | ActionId::ToggleWideVibrato
+                | ActionId::ToggleAccent
+                | ActionId::ToggleHeavyAccent
+                | ActionId::ToggleStaccato
+                | ActionId::TogglePalmMute
+                | ActionId::ToggleLetRing
+                | ActionId::ToggleTrill
+                | ActionId::ToggleTremoloPicking
+                | ActionId::ToggleNaturalHarmonic
+                | ActionId::ToggleArtificialHarmonic
+                | ActionId::ToggleTappedHarmonic
+                | ActionId::TogglePinchHarmonic
+                | ActionId::ToggleSemiHarmonic
+                | ActionId::TogglePickDown
+                | ActionId::TogglePickUp
+                | ActionId::ToggleBrushDown
+                | ActionId::ToggleBrushUp
+                | ActionId::ToggleTapping
+                | ActionId::ToggleSlapping
+                | ActionId::TogglePopping
+                | ActionId::ToggleFadeIn
+                | ActionId::ToggleWhammy
+                | ActionId::ToggleLegato
+                | ActionId::ToggleBeatVibrato
+        )
+    }
 }
 
 /// An action id with its text form and a label for menus and help.
@@ -128,6 +285,143 @@ pub const ACTIONS: &[ActionInfo] = &[
         "Extend selection right",
     ),
     info(ActionId::SelectBeat, "select_beat", "Select whole beat"),
+    info(ActionId::NoteWhole, "note_whole", "Whole note"),
+    info(ActionId::NoteHalf, "note_half", "Half note"),
+    info(ActionId::NoteQuarter, "note_quarter", "Quarter note"),
+    info(ActionId::NoteEighth, "note_eighth", "Eighth note"),
+    info(ActionId::NoteSixteenth, "note_sixteenth", "16th note"),
+    info(
+        ActionId::NoteThirtySecond,
+        "note_thirty_second",
+        "32nd note",
+    ),
+    info(ActionId::NoteSixtyFourth, "note_sixty_fourth", "64th note"),
+    info(ActionId::ToggleDot, "toggle_dot", "Dotted"),
+    info(
+        ActionId::ToggleDoubleDot,
+        "toggle_double_dot",
+        "Double dotted",
+    ),
+    info(ActionId::TupletThree, "tuplet_three", "Triplet"),
+    info(ActionId::TupletFive, "tuplet_five", "Quintuplet (5:4)"),
+    info(ActionId::TupletSeven, "tuplet_seven", "Septuplet (7:4)"),
+    info(ActionId::MakeRest, "make_rest", "Rest"),
+    info(ActionId::ToggleTie, "toggle_tie", "Tie"),
+    info(ActionId::ToggleDeadNote, "toggle_dead_note", "Dead note"),
+    info(ActionId::ToggleGhostNote, "toggle_ghost_note", "Ghost note"),
+    info(
+        ActionId::ToggleHammer,
+        "toggle_hammer",
+        "Hammer-on / pull-off",
+    ),
+    info(
+        ActionId::ToggleShiftSlide,
+        "toggle_shift_slide",
+        "Shift slide",
+    ),
+    info(
+        ActionId::ToggleLegatoSlide,
+        "toggle_legato_slide",
+        "Legato slide",
+    ),
+    info(
+        ActionId::ToggleSlideInBelow,
+        "toggle_slide_in_below",
+        "Slide in from below",
+    ),
+    info(
+        ActionId::ToggleSlideInAbove,
+        "toggle_slide_in_above",
+        "Slide in from above",
+    ),
+    info(
+        ActionId::ToggleSlideOutDown,
+        "toggle_slide_out_down",
+        "Slide out downwards",
+    ),
+    info(
+        ActionId::ToggleSlideOutUp,
+        "toggle_slide_out_up",
+        "Slide out upwards",
+    ),
+    info(ActionId::ToggleBend, "toggle_bend", "Bend"),
+    info(ActionId::ToggleVibrato, "toggle_vibrato", "Vibrato"),
+    info(
+        ActionId::ToggleWideVibrato,
+        "toggle_wide_vibrato",
+        "Wide vibrato",
+    ),
+    info(ActionId::ToggleAccent, "toggle_accent", "Accent"),
+    info(
+        ActionId::ToggleHeavyAccent,
+        "toggle_heavy_accent",
+        "Heavy accent",
+    ),
+    info(ActionId::ToggleStaccato, "toggle_staccato", "Staccato"),
+    info(ActionId::TogglePalmMute, "toggle_palm_mute", "Palm mute"),
+    info(ActionId::ToggleLetRing, "toggle_let_ring", "Let ring"),
+    info(ActionId::ToggleTrill, "toggle_trill", "Trill"),
+    info(
+        ActionId::ToggleTremoloPicking,
+        "toggle_tremolo_picking",
+        "Tremolo picking",
+    ),
+    info(
+        ActionId::ToggleNaturalHarmonic,
+        "toggle_natural_harmonic",
+        "Natural harmonic",
+    ),
+    info(
+        ActionId::ToggleArtificialHarmonic,
+        "toggle_artificial_harmonic",
+        "Artificial harmonic",
+    ),
+    info(
+        ActionId::ToggleTappedHarmonic,
+        "toggle_tapped_harmonic",
+        "Tapped harmonic",
+    ),
+    info(
+        ActionId::TogglePinchHarmonic,
+        "toggle_pinch_harmonic",
+        "Pinch harmonic",
+    ),
+    info(
+        ActionId::ToggleSemiHarmonic,
+        "toggle_semi_harmonic",
+        "Semi harmonic",
+    ),
+    info(
+        ActionId::TogglePickDown,
+        "toggle_pick_down",
+        "Pick downstroke",
+    ),
+    info(ActionId::TogglePickUp, "toggle_pick_up", "Pick upstroke"),
+    info(
+        ActionId::ToggleBrushDown,
+        "toggle_brush_down",
+        "Brush (strum) down",
+    ),
+    info(
+        ActionId::ToggleBrushUp,
+        "toggle_brush_up",
+        "Brush (strum) up",
+    ),
+    info(ActionId::ToggleTapping, "toggle_tapping", "Tapping"),
+    info(ActionId::ToggleSlapping, "toggle_slapping", "Slap"),
+    info(ActionId::TogglePopping, "toggle_popping", "Pop"),
+    info(ActionId::ToggleFadeIn, "toggle_fade_in", "Fade in"),
+    info(ActionId::ToggleWhammy, "toggle_whammy", "Whammy bar"),
+    info(
+        ActionId::ToggleLegato,
+        "toggle_legato",
+        "Legato (beat slur)",
+    ),
+    info(
+        ActionId::ToggleBeatVibrato,
+        "toggle_beat_vibrato",
+        "Beat vibrato",
+    ),
     info(ActionId::ZoomIn, "zoom_in", "Zoom in"),
     info(ActionId::ZoomOut, "zoom_out", "Zoom out"),
     info(ActionId::ZoomReset, "zoom_reset", "Actual size"),
@@ -206,6 +500,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 28, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 77, "one entry per ActionId variant");
     }
 }

@@ -148,11 +148,9 @@ fn toggle(ui: &mut egui::Ui, rect: Rect, letter: &str, label: &str, on: bool, ti
 /// The master row: the volume of all tracks and a pan that shifts all of them.
 pub(super) fn master_row(ui: &mut egui::Ui, master: MasterMix, actions: &mut Vec<GridAction>) {
     let (rect, _) = ui.allocate_exact_size(vec2(TRACK_COLUMN, ROW_HEIGHT), Sense::hover());
+    // Widgets in a child limited to the row, like the track rows (see `rows.rs`).
+    let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(rect));
     let visuals = ui.visuals().clone();
-    ui.painter().line_segment(
-        [rect.left_top(), rect.right_top()],
-        egui::Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.4)),
-    );
     ui.painter().text(
         pos2(rect.left() + 6.0, rect.center().y),
         Align2::LEFT_CENTER,
