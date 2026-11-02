@@ -11,6 +11,8 @@ pub(crate) mod primitive;
 
 mod beat;
 mod chord;
+#[cfg(test)]
+mod crash_tests;
 mod effects;
 mod enums;
 mod headers;

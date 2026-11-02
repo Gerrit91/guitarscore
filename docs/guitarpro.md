@@ -159,3 +159,26 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     disappeared. `BeatEffects::vibrato`/`wide_vibrato` now carry it, and the writer emits
     the property again. This is separate from a note's own `<Vibrato>` tag. Test
     `effect_tests::beat_vibrato_survives_reading_and_writing`.
+29. Workspace standards for the whole crate (2026-11-02): the crate-level `allow` of every
+    lint is gone. All code passes the workspace's no-panic lints (no `unwrap`, `expect`,
+    `panic`, indexing or slicing) plus `arithmetic_side_effects` and the lossy-cast lints
+    (`cast_possible_truncation`, `cast_possible_wrap`, `cast_sign_loss`); deliberate
+    truncations go through named helpers in `io/primitive` (`low_i8`, `low_u8`, `low_i16`,
+    `low_u16`, `byte_as_i8`, ...), so the bytes read and written are unchanged. Every file is
+    under 400 lines: `gpif_import`, `gpif_export`, `gpif`, `gpx`, `headers`, `mix_table` and
+    `primitive` became directories. Crashes found and fixed on the way, each with a test
+    that panicked before (`io/crash_tests.rs`, `model::chord`, `io::gpx`):
+    - GP3-5 writing: a track name over 40 bytes or a chord name over 22 bytes underflowed
+      the padding (and non-ASCII names were padded by their UTF-8 length, shifting the
+      file); names are now cut to their field (`write_fixed_string`).
+    - GP5 writing: a repeat count of 127 overflowed (GP5 counts plays); a note on string 8
+      (8-string guitars from GP7) overflowed the string-flag shift and is now refused with
+      an error; a page-setup copyright without a line break was indexed past its end.
+    - `Note::real_value` indexed past the tuning for a string the track lacks.
+    - `PitchClass` display indexed the note tables with 12 (B#) or -1 (Cb).
+    - BCFS: a negative or huge block number overflowed while computing the offset.
+    The library no longer prints (`println!` in the clipboard reader, `eprintln!` warnings
+    in the GPIF importer). GPIF fields that are parsed but not used yet are kept and marked
+    `expect(dead_code)`. Mix-table values above 127 are clamped when writing GP3-5 (the
+    low byte was written before). `gscore-io` still calls the crate behind
+    `catch_unwind`, as a second line of defense.

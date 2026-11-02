@@ -760,3 +760,25 @@ across beats, harmonic diamonds, notation-staff articulations.
   measure only itself; stamps change only for edited measures and move with inserted and
   removed ones; failed edits change neither song nor stamps; the memory cap. Tests: 338
   (+5).
+
+## 2026-11-02 — `gscore-gp` under the workspace standards
+
+- Owner request: apply the project's code rules to the crate copied from guitarpro.
+- Removed the crate-level `allow` of every lint. The crate now passes the workspace lints
+  (no `unwrap`/`expect`/`panic`, no indexing or slicing) plus `arithmetic_side_effects`
+  and the lossy-cast lints, in library and test code; every file is under 400 lines
+  (`gpif_import` 1,633 lines, `gpif_export` 840 and five more split into modules).
+  About 760 findings, fixed file by file. Deliberate truncations (Guitar Pro tolerates
+  junk in metadata fields) go through named helpers, so the bytes read and written stay
+  the same. Details: docs/guitarpro.md change 29.
+- Oracle: `info`, `dump` and round trips to `.gp`, `.gpx` and `.gp5` of all 78 owner and
+  test files, compared after every step; identical except one GP5 round trip that now gets
+  further (a correct track-name field; it then fails on the known 1/256 duration,
+  docs/gaps.md #2).
+- Crashes fixed, each with a test that panicked on the old code: over-long track and
+  chord names in GP3-5 writing, repeat count 127 and 8-string notes in GP5 writing, a
+  copyright without a line break, `Note::real_value` past the tuning, `PitchClass` display
+  of B#/Cb, BCFS block numbers that overflowed. The library no longer prints. A song
+  without tracks now writes to GP3-5 as an empty song (it panicked, contained by
+  `gscore-io`). Opening times unchanged (`cargo xtask bench`). Tests: 346 (+8).
+- Open (docs/gaps.md #1): rustdoc on the inherited public model fields.

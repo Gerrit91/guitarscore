@@ -30,11 +30,14 @@ mod tests {
     use crate::import::import_guitar_pro_from_bytes;
 
     #[test]
-    fn a_song_without_tracks_is_an_error_not_a_panic() {
-        // The GP3-5 writer indexes the first track; this must be contained.
+    fn a_song_without_tracks_writes_and_reads_back_empty() {
+        // The GP3-5 writer used to index the first track and panic (contained here as an
+        // error); it now writes an empty song, as the GP6/GP7 writers do.
         for format in [FileFormat::Gp3, FileFormat::Gp4, FileFormat::Gp5] {
-            let result = export_to_bytes(&Song::default(), format);
-            assert!(result.is_err(), "{format}");
+            let bytes = export_to_bytes(&Song::default(), format).unwrap();
+            let imported = import_guitar_pro_from_bytes(&bytes).unwrap();
+            assert_eq!(imported.format, format);
+            assert_eq!(imported.song.track_count(), 0, "{format}");
         }
     }
 

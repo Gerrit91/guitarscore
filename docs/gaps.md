@@ -2,12 +2,11 @@
 
 Ranked known shortfalls, most important first. Updated 2026-11-01 (M7: bends and slides).
 
-1. **`gscore-gp` is not held to the workspace rules yet.** About 10k lines derived from
-   guitarpro still use `unwrap`, indexing and `as` casts; a crate-level `allow` exempts them.
-   The GP7 XML writer (`io/gpif_export.rs`) is the first module under the no-panic lints
-   (M3). Several files exceed 400 lines (`io/gpif_import.rs` ~1,300, `io/gpif_export.rs`
-   ~800). Continue module by module, next with the parsers of untrusted input. Until then
-   the reader runs behind `catch_unwind` in gscore-io, which does not exist on wasm.
+1. **`gscore-gp` public items are mostly undocumented.** Since 2026-11-02 the crate
+   follows the workspace rules (no-panic lints, checked arithmetic, no lossy casts, files
+   under 400 lines; docs/guitarpro.md change 29). Left: rustdoc on the many public model
+   fields inherited from guitarpro, and dead code (fields parsed but unused are marked).
+   `gscore-io` keeps `catch_unwind` around it as a second line of defense (not on wasm).
 2. **GP3-5 writing is not usable for real songs yet** (`gscore-cli roundtrip-check --to
    gp5` on the 26 band files): 18 write durations GP5 cannot express (read back as an
    invalid note value), 4 produce files that run out of data when read, 3 fail on
