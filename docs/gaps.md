@@ -138,7 +138,8 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    M13 review). Since M12 the cursor follows the beat being played on the shown track (across
    repeats) and the page scrolls with it; pausing or stopping leaves the cursor on the last
    played beat. Clicking a beat on the page during playback continues playback from there
-   (its measure's first pass). Pause/resume does not re-trigger notes that were
+   (its measure's first pass); so does a click or a measure selection in the song grid.
+   Inside a selection the cursor's box and column band are not drawn. Pause/resume does not re-trigger notes that were
    sounding, and stopping `gscore-cli play --port` with Ctrl+C can leave notes hanging in
    the external synth. The built-in synthesizer needs an installed `.sf2` SoundFont (none
    is bundled; `.sf3` is not supported), always uses the default audio device, and the
@@ -149,9 +150,9 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
 12. **The track panel is basic (M15).** The right panel edits a track's name, instrument
    (General MIDI program, drum kit), color (16 presets or any color), shown staves (notes
    and tabs, tabs only, notes only), string count, capo and each string's open note (by
-   name, with semitone steps), through commands with undo; sound changes are live. Its top
-   bar adds a track after the shown one, moves it up or down, and mutes or solos all
-   tracks (one undo step); its bottom row is the master volume and pan. The master volume
+   name, with semitone steps), through commands with undo; sound changes are live. The song grid's
+   header adds a track after the shown one, moves it up or down, and mutes or solos all
+   tracks (one undo step); its last row is the master volume and pan. The master volume
    scales every track (97, Guitar Pro's untouched 0.76, leaves them as they are; a boost
    stops at the MIDI maximum) and the master pan shifts every track's pan; both are
    saved in GP7 files. "Notes only" draws no tablature ornaments (bends, slides, palm mute

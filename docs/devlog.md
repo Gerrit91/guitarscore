@@ -1162,3 +1162,10 @@ Owner feedback, done:
   track panel's top bar has no "delete track" (the grid's row menu has it); dragging on
   the page during playback selects without moving playback.
 
+Corrected the same day (owner): the action bar and the master row belong to the song grid,
+not the track panel. The grid's header cell now holds add, move up/down, and mute/solo all
+(above the rows' own M/S buttons), and a Master row under the last track holds the master
+volume and pan (lined up with the rows' sliders and knobs). Inside a selection the cursor's
+box is hidden as well. A click or measure selection in the grid during playback jumps there
+too. Tests: `a_click_in_the_song_grid_while_playing_jumps_there`; snapshots regenerated.
+

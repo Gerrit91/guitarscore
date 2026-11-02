@@ -2,9 +2,9 @@
 
 use egui::{Align2, Color32, FontId, Rect, Sense, pos2, vec2};
 use gscore_edit::Command;
-use gscore_model::{InstrumentKind, TrackColor, TrackIndex, TrackSound};
+use gscore_model::{InstrumentKind, MasterMix, TrackColor, TrackIndex, TrackSound};
 
-use super::{GridAction, GridView, ROW_HEIGHT, RULER_HEIGHT, TRACK_COLUMN, mixer};
+use super::{GridAction, GridView, ROW_HEIGHT, RULER_HEIGHT, TRACK_COLUMN, bar, mixer};
 use crate::document::Document;
 
 /// What a track row shows; a snapshot taken before drawing so the song is not borrowed
@@ -12,8 +12,8 @@ use crate::document::Document;
 pub(super) struct TrackRow {
     pub(super) name: String,
     pub(super) color: TrackColor,
-    muted: bool,
-    soloed: bool,
+    pub(super) muted: bool,
+    pub(super) soloed: bool,
     /// The three-letter instrument tag shown in the row.
     tag: String,
     /// The instrument's full name, for the row's tooltip.
@@ -49,31 +49,26 @@ fn instrument_tag(kind: InstrumentKind) -> &'static str {
     }
 }
 
-/// The fixed left column: color, instrument, name and mixer for every track.
+/// The fixed left column: the header with track actions, then color, instrument, name and
+/// mixer for every track, then the master row.
 pub(super) fn headers(
     ui: &mut egui::Ui,
     rows: &[TrackRow],
+    master: MasterMix,
     view: GridView,
     actions: &mut Vec<GridAction>,
 ) {
-    let height = RULER_HEIGHT + rows.len() as f32 * ROW_HEIGHT;
+    let height = RULER_HEIGHT + (rows.len() as f32 + 1.0) * ROW_HEIGHT;
     ui.allocate_ui_with_layout(
         vec2(TRACK_COLUMN, height),
         egui::Layout::top_down(egui::Align::Min),
         |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            let (ruler, _) =
-                ui.allocate_exact_size(vec2(TRACK_COLUMN, RULER_HEIGHT), Sense::hover());
-            ui.painter().text(
-                pos2(ruler.left() + 6.0, ruler.center().y),
-                Align2::LEFT_CENTER,
-                "Tracks",
-                FontId::proportional(11.0),
-                ui.visuals().weak_text_color(),
-            );
+            bar::header(ui, rows, view, actions);
             for (index, row) in rows.iter().enumerate() {
                 track_header(ui, index, rows.len(), row, view, actions);
             }
+            bar::master_row(ui, master, actions);
         },
     );
 }

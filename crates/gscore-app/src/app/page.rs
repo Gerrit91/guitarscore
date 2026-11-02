@@ -116,7 +116,8 @@ impl GuitarScoreApp {
             if let (Some(column), Some(string)) = (column, string) {
                 // While playing, the moving column is enough; the string box would only
                 // flicker from note to note.
-                let string = (!playing).then_some(string);
+                // Inside a selection the whole beat is marked, so the box is hidden too.
+                let string = (!playing && !in_selection).then_some(string);
                 // Inside the selection, the cursor's band would make its column darker than
                 // the rest; the selection's one shade covers it already.
                 let column_band = (!in_selection).then_some(column);

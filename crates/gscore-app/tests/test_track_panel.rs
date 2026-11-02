@@ -1,5 +1,6 @@
-//! The track panel: preset colors, the staves choice, note-name tuning, the action bar
-//! (add, move, mute all, solo all) and the master row; and jumping during playback.
+//! The track panel (preset colors, the staves choice, note-name tuning), the song grid's
+//! action bar (add, move, mute all, solo all) and master row, and jumping during playback
+//! from the page or the grid.
 
 #![allow(
     clippy::panic,
@@ -168,11 +169,9 @@ fn the_master_row_sets_the_volume_of_all_tracks() {
     );
 }
 
-#[test]
-fn jumping_while_playing_moves_the_playback_position() {
-    // Plays to ALSA's silent "Midi Through" port; skipped where there is none.
+/// Starts playback to ALSA's silent "Midi Through" port; false (test skipped) without one.
+fn start_playing(harness: &mut Harness<'static, GuitarScoreApp>) -> bool {
     const THROUGH: &str = "Midi Through";
-    let mut harness = app_with("basic/note_lengths.gp");
     let playback = harness.state_mut().playback_mut();
     let port = playback.refresh_ports().ok().and_then(|()| {
         playback
@@ -183,7 +182,7 @@ fn jumping_while_playing_moves_the_playback_position() {
     });
     let Some(port) = port else {
         eprintln!("skipped: no \"{THROUGH}\" MIDI port");
-        return;
+        return false;
     };
     harness.state_mut().playback_mut().choose_port(Some(port));
     harness.get_by_label("Play").click();
@@ -193,26 +192,29 @@ fn jumping_while_playing_moves_the_playback_position() {
         assert!(started.elapsed() < Duration::from_secs(5), "did not start");
         std::thread::sleep(Duration::from_millis(10));
     }
-    let song = song(&harness);
-    let target = gscore_model::BeatPosition {
+    true
+}
+
+/// The first beat of `measure` in track 1.
+fn measure_start(measure: usize) -> gscore_model::BeatPosition {
+    gscore_model::BeatPosition {
         track: TrackIndex::new(0),
-        measure: gscore_model::MeasureIndex::new(song.measure_count() - 1),
+        measure: gscore_model::MeasureIndex::new(measure),
         voice: gscore_model::VoiceIndex::new(0),
         beat: gscore_model::BeatIndex::new(0),
-    };
+    }
+}
+
+/// Waits until playback has reached `at` (the player seeks on its own thread).
+fn wait_for_position(harness: &Harness<'static, GuitarScoreApp>, at: gscore_model::BeatPosition) {
+    let song = song(harness);
     let tick = harness
         .state()
         .playback()
         .sequence()
         .unwrap()
-        .tick_of(&song, target)
+        .tick_of(&song, at)
         .unwrap();
-    harness
-        .state_mut()
-        .playback_mut()
-        .jump_to(&song, target)
-        .unwrap();
-    // The player seeks on its own thread.
     let jumped = Instant::now();
     while harness.state().playback().position() < tick {
         assert!(jumped.elapsed() < Duration::from_secs(5), "did not jump");
@@ -223,5 +225,38 @@ fn jumping_while_playing_moves_the_playback_position() {
         gscore_play::PlayState::Playing,
         "it plays on from there"
     );
+}
+
+#[test]
+fn jumping_while_playing_moves_the_playback_position() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    if !start_playing(&mut harness) {
+        return;
+    }
+    let song = song(&harness);
+    let target = measure_start(song.measure_count() - 1);
+    harness
+        .state_mut()
+        .playback_mut()
+        .jump_to(&song, target)
+        .unwrap();
+    wait_for_position(&harness, target);
+    harness.state_mut().playback_mut().stop().unwrap();
+}
+
+#[test]
+fn a_click_in_the_song_grid_while_playing_jumps_there() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    if !start_playing(&mut harness) {
+        return;
+    }
+    // The third measure, first track: 13 px per measure, a 26 px ruler and 24 px rows.
+    let rect = harness.get_by_label("Song grid").rect();
+    let pos = rect.left_top() + egui::vec2(13.0 * 2.0 + 6.0, 26.0 + 12.0);
+    harness.hover_at(pos);
+    harness.drag_at(pos);
+    harness.drop_at(pos);
+    harness.step();
+    wait_for_position(&harness, measure_start(2));
     harness.state_mut().playback_mut().stop().unwrap();
 }

@@ -1,17 +1,15 @@
-//! The track panel (the right panel): a bar of track actions at the top, the shown track's
-//! name, instrument, sound, color, staves, tuning, capo and string count, and the master
-//! volume and pan at the bottom. Every change is a [`Command`] with undo, and sound changes
+//! The track panel (the right panel): a track's name, instrument, sound, color, staves,
+//! tuning, capo and string count. Every change is a [`Command`] with undo, and sound changes
 //! are heard at once (the sound commands go to the player while it plays).
 
 mod look;
-mod mix;
 mod tuning;
 
 use egui::RichText;
 use gscore_edit::Command;
 use gscore_model::{
-    InstrumentKind, MasterMix, Song, StringTuning, TrackColor, TrackIndex, TrackSound, TrackStaves,
-    TrackView, program_name,
+    InstrumentKind, Song, StringTuning, TrackColor, TrackIndex, TrackSound, TrackStaves, TrackView,
+    program_name,
 };
 
 use super::GuitarScoreApp;
@@ -40,12 +38,6 @@ struct TrackPanel {
     string_count: usize,
     percussion: bool,
     staves: TrackStaves,
-    /// How many tracks the song has.
-    tracks: usize,
-    /// Whether every track is muted, and whether every track is soloed.
-    all_muted: bool,
-    all_soloed: bool,
-    master: MasterMix,
 }
 
 impl TrackPanel {
@@ -62,10 +54,6 @@ impl TrackPanel {
             string_count: track.string_count(),
             percussion: track.is_percussion(),
             staves: track.staves(),
-            tracks: song.track_count(),
-            all_muted: song.tracks().all(|track| track.is_muted()),
-            all_soloed: song.tracks().all(|track| track.is_soloed()),
-            master: song.master_mix(),
         }
     }
 }
@@ -87,13 +75,6 @@ impl GuitarScoreApp {
         }
 
         let mut commands: Vec<(Command, bool)> = Vec::new();
-        let mut actions = mix::BarActions::default();
-        egui::Panel::top("track_panel_bar").show(ui, |ui| {
-            mix::action_bar(ui, index, &snapshot, &mut actions);
-        });
-        egui::Panel::bottom("track_panel_master").show(ui, |ui| {
-            mix::master_row(ui, &snapshot, &mut actions);
-        });
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -108,26 +89,6 @@ impl GuitarScoreApp {
             });
         for (command, merge) in commands {
             self.apply_command(command, merge);
-        }
-        self.apply_bar_actions(actions);
-    }
-
-    /// Runs what the action bar and the master row asked for. A track that was added or
-    /// moved is shown afterwards.
-    fn apply_bar_actions(&mut self, actions: mix::BarActions) {
-        if actions.break_merge
-            && let Some(document) = &mut self.document
-        {
-            document.editor_mut().break_merge();
-        }
-        let Some((command, merge)) = actions.command else {
-            return;
-        };
-        let revision = self.document.as_ref().map(|d| d.editor().revision());
-        self.apply_command(command, merge);
-        let applied = self.document.as_ref().map(|d| d.editor().revision()) != revision;
-        if applied && let Some(track) = actions.show_track {
-            self.view.track = track;
         }
     }
 
