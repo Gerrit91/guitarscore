@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gscore_audio::{MidiOutPlayer, SynthPlayer, find_soundfont, midi_output_ports};
-use gscore_model::{Song, TrackIndex};
+use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, Song, TrackIndex, VoiceIndex};
 use gscore_play::{PlayState, Player, Sequence, to_smf};
 
 use crate::CliError;
@@ -95,28 +95,40 @@ pub(crate) fn ports() -> Result<String, CliError> {
     Ok(out)
 }
 
+/// What `play` was asked for.
+#[derive(Debug)]
+pub(crate) struct Options<'a> {
+    /// A MIDI port (part of its name); `None` for the synthesizer.
+    pub(crate) port: Option<&'a str>,
+    /// The SoundFont; `None` to look for one.
+    pub(crate) soundfont: Option<PathBuf>,
+    /// The measure to start at, 1-based.
+    pub(crate) from: usize,
+    /// The tracks to play, 1-based (all if empty).
+    pub(crate) tracks: &'a [usize],
+    /// The tempo scale.
+    pub(crate) speed: f32,
+}
+
 /// Plays `input` with the internal synth (or to a MIDI port) and returns when it has
 /// finished. `--port` chooses MIDI; otherwise the SoundFont given or found is used, and
 /// without one the first MIDI port.
-pub(crate) fn play(
-    input: &Path,
-    port: Option<&str>,
-    soundfont: Option<PathBuf>,
-    tracks: &[usize],
-    speed: f32,
-) -> Result<String, CliError> {
+pub(crate) fn play(input: &Path, options: &Options<'_>) -> Result<String, CliError> {
     let song = crate::input::read_song(input)?.song;
-    let sequence = Arc::new(sequence(&song, tracks)?);
+    let sequence = Arc::new(sequence(&song, options.tracks)?);
+    let start = start_tick(&song, &sequence, options.from)?;
     let title = if song.title().is_empty() {
         "the song"
     } else {
         song.title()
     };
     let failed = |e: gscore_play::PlayError| CliError::Failed(e.to_string());
+    let port = options.port;
     let soundfont = match port {
         Some(_) => None,
-        None => soundfont.or_else(find_soundfont),
+        None => options.soundfont.clone().or_else(find_soundfont),
     };
+    let speed = options.speed;
     let mut note = String::new();
     match soundfont {
         Some(soundfont) => {
@@ -133,7 +145,7 @@ pub(crate) fn play(
                 soundfont.display(),
                 player.device().unwrap_or_default()
             );
-            run(&mut player, &sequence, speed, SynthPlayer::error)?;
+            run(&mut player, &sequence, start, speed, SynthPlayer::error)?;
             // The last notes ring out before the stream closes.
             std::thread::sleep(RING_OUT);
         }
@@ -145,7 +157,7 @@ pub(crate) fn play(
                     .to_owned();
             }
             eprintln!("Playing {title} on {} ...", player.port());
-            run(&mut player, &sequence, speed, MidiOutPlayer::error)?;
+            run(&mut player, &sequence, start, speed, MidiOutPlayer::error)?;
         }
     }
     let mut out = format!("{note}Played {} measure(s).\n", sequence.measures.len());
@@ -158,16 +170,44 @@ pub(crate) fn play(
     Ok(out)
 }
 
+/// The tick where measure `from` (1-based) is first played.
+fn start_tick(song: &Song, sequence: &Sequence, from: usize) -> Result<u64, CliError> {
+    let measure = from
+        .checked_sub(1)
+        .filter(|&m| m < song.measure_count())
+        .ok_or_else(|| {
+            CliError::Usage(format!(
+                "measure {from} does not exist (the song has {})\n",
+                song.measure_count()
+            ))
+        })?;
+    let at = BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(measure),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(0),
+    };
+    sequence.tick_of(song, at).ok_or_else(|| {
+        CliError::Usage(format!(
+            "measure {from} is never played (it lies behind a repeat ending)\n"
+        ))
+    })
+}
+
 /// Loads and plays `sequence` on `player`, returning when it has finished.
 fn run<P: Player>(
     player: &mut P,
     sequence: &Arc<Sequence>,
+    start: u64,
     speed: f32,
     error: impl Fn(&P) -> Option<String>,
 ) -> Result<(), CliError> {
     let failed = |e: gscore_play::PlayError| CliError::Failed(e.to_string());
     player.load(Arc::clone(sequence)).map_err(failed)?;
     player.set_tempo_scale(speed).map_err(failed)?;
+    if start > 0 {
+        player.seek(start).map_err(failed)?;
+    }
     player.play().map_err(failed)?;
 
     // Wait for the player to start, then for it to finish.

@@ -15,7 +15,9 @@
 use std::path::PathBuf;
 
 use gscore_model::testing::{self, GUITAR_6, TestNote};
-use gscore_model::{SlideKind, Song, TrackIndex};
+use gscore_model::{
+    BeatIndex, BeatPosition, MeasureIndex, SlideKind, Song, TrackIndex, VoiceIndex,
+};
 use gscore_play::{Channel, MidiEvent, PPQ, Sequence, to_smf};
 
 fn testdata(relative: &str) -> PathBuf {
@@ -235,6 +237,40 @@ fn repeats_play_measures_again_in_time() {
     assert_eq!(sequence.end, 19_200);
     assert_eq!(sequence.measure_at(8000).unwrap().measure.get(), 0);
     assert_eq!(sequence.measure_at(u64::MAX).unwrap().measure.get(), 2);
+}
+
+#[test]
+fn beats_map_to_the_tick_of_their_first_pass() {
+    let at = |measure: usize, beat: usize| BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(measure),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(beat),
+    };
+    // Measures 1-2 repeat; every measure holds four quarter rests (960 ticks each).
+    let song = testing::song_with_repeats(3, &[(0, true, -1, 0), (1, false, 1, 0)]).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    assert_eq!(sequence.tick_of(&song, at(0, 0)), Some(0));
+    assert_eq!(sequence.tick_of(&song, at(1, 2)), Some(3840 + 2 * 960));
+    // After the repeat: the second pass is skipped, measure 3 starts at 15360.
+    assert_eq!(sequence.tick_of(&song, at(2, 1)), Some(15_360 + 960));
+    // Past the last beat (a cursor in an empty measure): at most the measure's end.
+    assert_eq!(sequence.tick_of(&song, at(2, 99)), Some(19_200));
+    assert_eq!(sequence.tick_of(&song, at(3, 0)), None, "no such measure");
+
+    // Mixed lengths: an eighth, then a quarter, then the third beat.
+    let song = testing::song_with_notes(&[
+        (8, &[TestNote::new(1, 0)][..]),
+        (4, &[TestNote::new(1, 2)][..]),
+        (4, &[TestNote::new(1, 3)][..]),
+    ])
+    .unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    assert_eq!(sequence.tick_of(&song, at(0, 2)), Some(480 + 960));
+    // A track that does not exist still finds its measure's start.
+    let mut other = at(0, 2);
+    other.track = TrackIndex::new(7);
+    assert_eq!(sequence.tick_of(&song, other), Some(0));
 }
 
 #[test]

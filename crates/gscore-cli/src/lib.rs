@@ -106,6 +106,9 @@ enum Command {
         /// Play with the built-in synthesizer and this SoundFont (.sf2)
         #[arg(long, value_name = "FILE")]
         soundfont: Option<PathBuf>,
+        /// Start at this measure (1-based; its first pass if it repeats)
+        #[arg(long, value_name = "MEASURE", default_value_t = 1)]
+        from: usize,
         /// Only these tracks (1-based; repeat for several)
         #[arg(long = "track", value_name = "N")]
         tracks: Vec<usize>,
@@ -319,9 +322,19 @@ where
             file,
             port,
             soundfont,
+            from,
             tracks,
             speed,
-        } => play::play(&file, port.as_deref(), soundfont, &tracks, speed),
+        } => play::play(
+            &file,
+            &play::Options {
+                port: port.as_deref(),
+                soundfont,
+                from,
+                tracks: &tracks,
+                speed,
+            },
+        ),
         Command::Legend => Ok(legend::run()),
         Command::Keymap { check } => keymap::run(check.as_deref()),
         Command::Gui { file } => gui::run(file.as_deref()),

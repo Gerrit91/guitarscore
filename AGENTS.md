@@ -262,8 +262,8 @@ panels that fill it.
     dark; icons bundled with their licence (`THIRD_PARTY.md`); toolbar tooltips with keys.
   - Recent files, drag and drop to open, window size and position remembered, zoom keys.
   - Playback and the cursor (important to the owner): select a note and start playback
-    from it (from the first selected note with a selection; if the measure repeats, from
-    its first pass). During playback the cursor advances beat by beat to the note being
+    from it (done early, 2026-11-02: Play starts at the cursor's beat, at its measure's
+    first pass; still to do: from the first note of a selection). During playback the cursor advances beat by beat to the note being
     played (across repeats and track switches), and the view scrolls with it; pausing or
     stopping leaves the cursor on the last played note, so play continues from there.
 - **M13: Track and song grid (bottom panel).**

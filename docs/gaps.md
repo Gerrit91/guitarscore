@@ -96,7 +96,7 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M7: bends and
    asks), and asks about unsaved changes before closing or opening another file. It
    contains panics in layout, drawing and background jobs. Missing: selection and
    copy/cut/paste, entering notes in voice 2, editing effects, tempo and time signatures,
-   a duration toolbar, playback from the cursor and a playhead, remembering the view state
+   a duration toolbar, a playhead (playback starts at the cursor), remembering the view state
    and window between runs, recent files, drag and drop, keyboard shortcuts for zoom, a
    multi-page view. Undo back to the saved state still counts as "changed". `clear_note`,
    `previous_measure` and `next_measure` have no default key yet (owner's decision; they

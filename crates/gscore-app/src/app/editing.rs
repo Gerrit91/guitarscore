@@ -71,12 +71,13 @@ impl GuitarScoreApp {
         }
     }
 
-    /// Starts or pauses playback of the open song.
+    /// Starts playback of the open song at the cursor, or pauses it.
     pub fn play_pause(&mut self) {
         let Some(document) = &self.document else {
             return;
         };
-        if let Err(error) = self.playback.play_pause(document.song()) {
+        let from = document.editor().cursor().position();
+        if let Err(error) = self.playback.play_pause(document.song(), Some(from)) {
             self.notice = Some(error);
         }
     }

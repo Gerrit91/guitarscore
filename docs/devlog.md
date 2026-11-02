@@ -711,3 +711,18 @@ across beats, harmonic diamonds, notation-staff articulations.
   app), and end to end on the default audio device (skipped without one). Tests: 328 (+15).
 - Open (docs/gaps.md #11): no bundled SoundFont (licence and size to decide), the default
   device only, the chosen SoundFont is not remembered between runs, no WAV export.
+
+## 2026-11-02 — Playback from the cursor (pulled forward from M12)
+
+- Owner request: select a note and start playback there.
+- `gscore-play`: `Sequence::tick_of(song, BeatPosition)`: the tick where a beat is first
+  played (its measure's first pass plus the beats before it in its voice).
+- App: Play starts at the cursor's beat. After a pause it resumes, unless the cursor moved
+  meanwhile; then it starts at the cursor. After Stop or the end, Play starts at the
+  cursor again. `Playback::position`, `GuitarScoreApp::document_mut`.
+- `gscore-cli play --from MEASURE` (1-based; refused outside the song).
+- Tests: `tick_of` with repeats, mixed lengths and positions past the last beat; the app
+  plays from measure 3, resumes after a pause, starts at measure 1 after the cursor moved
+  and at measure 2 after Stop; `play --from` errors and one measure on the device
+  (skipped without one). Tests: 333 (+5).
+- Still open (M12): from the first note of a selection, and the cursor following playback.

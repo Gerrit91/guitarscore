@@ -69,11 +69,13 @@ General MIDI SoundFont (`.sf2`; `.sf3` files are not supported) and finds one in
 the `GSCORE_SOUNDFONT` variable, `~/.local/share/soundfonts/`, the well-known files in
 `/usr/share/soundfonts/` and `/usr/share/sounds/sf2/`, then any `.sf2` there (Arch:
 `pacman -S soundfont-fluid`). In the app, the toolbar's "Output" menu switches between the
-synthesizer, "Choose SoundFont…" and the MIDI ports.
+synthesizer, "Choose SoundFont…" and the MIDI ports. Play starts at the cursor's note;
+after a pause it resumes, unless the cursor was moved meanwhile.
 
 ```bash
 gscore-cli play testdata/basic/note_lengths.gp                        # built-in synthesizer
 gscore-cli play testdata/basic/note_lengths.gp --soundfont my.sf2    # with this SoundFont
+gscore-cli play testdata/basic/note_lengths.gp --from 5               # from measure 5
 gscore-cli midi testdata/basic/note_lengths.gp -o note_lengths.mid   # export a MIDI file
 ```
 
