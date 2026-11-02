@@ -18,13 +18,9 @@ pub(super) fn tuning(
     snapshot: &TrackPanel,
     commands: &mut Vec<(Command, bool)>,
 ) {
-    ui.separator();
-    ui.horizontal(|ui| {
-        ui.strong("Tuning");
-        if let Some(name) = &snapshot.tuning_name {
-            ui.label(RichText::new(name).weak());
-        }
-    });
+    if let Some(name) = &snapshot.tuning_name {
+        ui.label(RichText::new(name).strong());
+    }
     let track = TrackIndex::new(index);
     let mut strings = snapshot.string_count;
     let mut capo = snapshot.capo;

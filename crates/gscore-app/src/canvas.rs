@@ -31,10 +31,18 @@ pub(crate) fn paint(
     let scale = POINTS_PER_SPACE * zoom;
     let to_screen = |p: Point| origin + Vec2::new(p.x, p.y) * scale;
     let page = Rect::from_min_size(origin, page_size(layout, zoom));
-    painter.rect_filled(page, 0.0, color(theme.paper));
-    // A thin edge, so the page stands out from the window even when both are dark.
-    let edge = Stroke::new(1.0, color(theme.staff).gamma_multiply(0.5));
-    painter.rect_stroke(page, 0.0, edge, egui::StrokeKind::Outside);
+    // The page floats on the canvas: a soft shadow, the paper, and a hairline edge so it
+    // stands out even when paper and canvas are both dark.
+    let shadow = egui::Shadow {
+        offset: [0, 3],
+        blur: 14,
+        spread: 0,
+        color: Color32::from_black_alpha(70),
+    };
+    painter.add(shadow.as_shape(page, 2));
+    painter.rect_filled(page, 2.0, color(theme.paper));
+    let edge = Stroke::new(1.0, Color32::from_black_alpha(28));
+    painter.rect_stroke(page, 2.0, edge, egui::StrokeKind::Outside);
     let visible = visible.expand(CULL_MARGIN);
 
     for op in &layout.ops {

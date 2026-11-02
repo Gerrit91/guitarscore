@@ -98,7 +98,7 @@ fn track_header(
         painter.rect_filled(rect, 0.0, visuals.faint_bg_color);
     }
     if index == view.shown_track {
-        painter.rect_filled(rect, 0.0, visuals.selection.bg_fill.gamma_multiply(0.35));
+        painter.rect_filled(rect, 3.0, visuals.selection.bg_fill.gamma_multiply(0.18));
     }
     // The track's color, then its instrument tag and name.
     let swatch = Rect::from_min_size(

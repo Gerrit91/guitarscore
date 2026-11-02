@@ -13,6 +13,7 @@ use gscore_model::{
 };
 
 use super::GuitarScoreApp;
+use super::style;
 
 /// What the track panel keeps between frames: which track it showed, and the name being
 /// typed (so a rename is one undo step, not one per keystroke).
@@ -78,14 +79,22 @@ impl GuitarScoreApp {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 4.0;
-                ui.heading(format!("Track {}", index.saturating_add(1)));
-                self.name_editor(ui, index, &snapshot, &mut commands);
-                instrument(ui, index, &snapshot, &mut commands);
-                sound(ui, index, &snapshot, &mut commands);
-                look::color(ui, index, &snapshot, &mut commands);
-                look::staves(ui, index, &snapshot, &mut commands);
-                tuning::tuning(ui, index, &snapshot, &mut commands);
+                ui.spacing_mut().item_spacing.y = 6.0;
+                let title = format!("Track {}", index.saturating_add(1));
+                style::section(ui, "track_general", &title, |ui| {
+                    self.name_editor(ui, index, &snapshot, &mut commands);
+                    instrument(ui, index, &snapshot, &mut commands);
+                });
+                style::section(ui, "track_sound", "Sound", |ui| {
+                    sound(ui, index, &snapshot, &mut commands);
+                });
+                style::section(ui, "track_look", "Appearance", |ui| {
+                    look::color(ui, index, &snapshot, &mut commands);
+                    look::staves(ui, index, &snapshot, &mut commands);
+                });
+                style::section(ui, "track_tuning", "Tuning", |ui| {
+                    tuning::tuning(ui, index, &snapshot, &mut commands);
+                });
             });
         for (command, merge) in commands {
             self.apply_command(command, merge);
@@ -137,14 +146,13 @@ fn instrument(
     snapshot: &TrackPanel,
     commands: &mut Vec<(Command, bool)>,
 ) {
-    ui.separator();
     let kind = match snapshot.kind {
         InstrumentKind::Strings => "String instrument (tablature)",
         InstrumentKind::Drums => "Drum kit",
         InstrumentKind::Other => "Other instrument",
     };
     ui.horizontal(|ui| {
-        ui.strong("Instrument");
+        ui.label(RichText::new("Instrument").color(style::tokens(ui).text_weak));
         let label = ui.label(kind);
         if let Some(name) = &snapshot.instrument_name {
             label.on_hover_text(name);
@@ -169,10 +177,9 @@ fn sound(
     snapshot: &TrackPanel,
     commands: &mut Vec<(Command, bool)>,
 ) {
-    ui.separator();
     let mut program = snapshot.sound.map_or(25, |sound| sound.program);
     ui.horizontal(|ui| {
-        ui.strong("Sound");
+        ui.label(RichText::new("Preset").color(style::tokens(ui).text_weak));
         ui.add_enabled_ui(!snapshot.percussion, |ui| {
             let combo = egui::ComboBox::from_id_salt("track_program")
                 .selected_text(format!("{program}: {}", program_name(program)))

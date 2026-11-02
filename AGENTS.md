@@ -290,14 +290,21 @@ panels that fill it.
 - **M15: Track panel (right panel).** Track name, instrument (General MIDI program, drum
   kit), color, tuning and capo, string count, and sound (SoundFont preset); changes are
   commands with undo and are heard at once.
-- **M16: Bundled SoundFonts.** Ship ready-to-use General MIDI SoundFonts so nobody has to
-  install a synthesizer.
-  - Choose by licence (MIT, CC0 or similar; flag anything else) and size (a small default
-    in the repo or the release, a larger high-quality one as an optional download).
-  - Licence file next to each and a row in `THIRD_PARTY.md`; `.sf2` only unless `.sf3`
-    support is added.
-  - The app picks the bundled one when none is installed; a quality check by ear for
-    guitars, basses and drums.
+- **M16: App design.** Make the app around the score look professional (owner,
+  2026-11-02: the score looks good, the app around it looks amateur). Adapt ideas from
+  MuseScore 4's design, not its code or icons (GPL): our own colors, icons and layout.
+  - One set of design tokens for both themes: surfaces in layers (window, panels, raised
+    controls, the canvas behind the page), one accent color, text and separator colors,
+    spacing on a 4-pixel grid, rounding.
+  - The page floats on a canvas with a soft shadow.
+  - Toolbar in groups (file, edit, zoom, transport with position and tempo, output and
+    track); no stray labels; consistent icon buttons with tooltips and keys.
+  - Docked panels with a title bar (and a close button); content in collapsible, titled
+    sections.
+  - Edit palette: note values, dots, rests and techniques as tiles with music-font glyphs
+    or drawn icons instead of text like "1/4" and "no dots".
+  - Track panel and settings as property sheets: aligned label column, grouped sections.
+  - Song grid and status bar restyled to match.
 - **M17: Layout polish.** Remaining layout issues and effects.
   - Whammy bar (dips, dives, curves with values).
   - Bends drawn properly: bend-and-release, pre-bend, curves with all points and values
@@ -312,7 +319,15 @@ panels that fill it.
   - Remaining techniques: vibrato, let ring, palm mute, grace notes, trills, whammy,
     D.C./D.S./coda, swing.
   - Export the song as audio (WAV) with the internal synthesizer.
-- **M19: Release.** Packages for Linux (AppImage or Flatpak), Windows and macOS (with the
+- **M19: Bundled SoundFonts.** Ship ready-to-use General MIDI SoundFonts so nobody has to
+  install a synthesizer.
+  - Choose by licence (MIT, CC0 or similar; flag anything else) and size (a small default
+    in the repo or the release, a larger high-quality one as an optional download).
+  - Licence file next to each and a row in `THIRD_PARTY.md`; `.sf2` only unless `.sf3`
+    support is added.
+  - The app picks the bundled one when none is installed; a quality check by ear for
+    guitars, basses and drums.
+- **M20: Release.** Packages for Linux (AppImage or Flatpak), Windows and macOS (with the
   macOS file-dialog fix, docs/gaps.md #10), the name check from section 11, a user guide,
   a public test-file set.
 - **Later:** fuzzing with `cargo-fuzz`, GP3/4/5 writing, JSON control channel, sound

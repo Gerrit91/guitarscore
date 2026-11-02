@@ -16,6 +16,9 @@ mod page;
 mod recovery;
 mod settings_window;
 mod style;
+mod tiles;
+mod title_bar;
+mod toolbar;
 mod track_panel;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -259,13 +262,9 @@ impl GuitarScoreApp {
     }
 
     fn apply_theme(&mut self, ctx: &egui::Context) {
+        // The chrome stays dark; the score's theme only changes how the page is drawn,
+        // which reads `view.theme` every frame. A change needs one more frame.
         if self.applied_theme != Some(self.view.theme) {
-            // `set_theme` (not `set_visuals`) switches egui's own widgets too; the change
-            // shows on the next frame, so ask for one.
-            ctx.set_theme(match self.view.theme {
-                ThemeChoice::Light => egui::Theme::Light,
-                ThemeChoice::Dark => egui::Theme::Dark,
-            });
             ctx.request_repaint();
             self.applied_theme = Some(self.view.theme);
         }
@@ -322,8 +321,14 @@ impl eframe::App for GuitarScoreApp {
         }
         self.apply_title(&ctx);
 
-        egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
-        egui::Panel::top("toolbar").show(ui, |ui| self.toolbar(ui));
+        egui::Panel::top("title_bar")
+            .frame(style::chrome_frame(&ctx, 0))
+            .exact_size(title_bar::TITLE_BAR_HEIGHT)
+            .resizable(false)
+            .show(ui, |ui| self.title_bar(ui));
+        egui::Panel::top("toolbar")
+            .frame(style::chrome_frame(&ctx, 5))
+            .show(ui, |ui| self.toolbar(ui));
         if let Some(progress) = self.tasks.open_progress().cloned() {
             egui::Panel::top("opening").show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -347,13 +352,23 @@ impl eframe::App for GuitarScoreApp {
             });
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
-        egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
+        egui::Panel::bottom("status")
+            .frame(style::chrome_frame(&ctx, 3))
+            .show(ui, |ui| self.status_bar(ui));
         if self.view.show_track_grid && self.document.is_some() {
             let panel = egui::Panel::bottom("track_grid")
                 .resizable(true)
                 .min_size(80.0)
                 .default_size(self.panel_sizes.grid.unwrap_or(150.0))
-                .show(ui, |ui| self.track_grid(ui));
+                .frame(style::panel_frame(&ctx))
+                .show(ui, |ui| {
+                    if style::panel_title(ui, "Tracks") {
+                        self.view.show_track_grid = false;
+                    }
+                    egui::Frame::new()
+                        .inner_margin(egui::Margin::symmetric(8, 4))
+                        .show(ui, |ui| self.track_grid(ui));
+                });
             self.panel_sizes.grid = Some(panel.response.rect.height());
         }
         if self.notice.is_some() {
@@ -362,28 +377,44 @@ impl eframe::App for GuitarScoreApp {
         if self.view.show_track_panel && self.document.is_some() {
             let panel = egui::Panel::right("track_panel")
                 .resizable(true)
-                .min_size(180.0)
-                .default_size(self.panel_sizes.track_panel.unwrap_or(240.0))
-                .show(ui, |ui| self.track_panel(ui));
+                .min_size(200.0)
+                .default_size(self.panel_sizes.track_panel.unwrap_or(260.0))
+                .frame(style::panel_frame(&ctx))
+                .show(ui, |ui| {
+                    if style::panel_title(ui, "Track") {
+                        self.view.show_track_panel = false;
+                    }
+                    self.track_panel(ui);
+                });
             self.panel_sizes.track_panel = Some(panel.response.rect.width());
         }
         if self.view.show_edit_panel && self.document.is_some() {
             let panel = egui::Panel::left("edit_palette")
                 .resizable(true)
-                .min_size(180.0)
-                .default_size(self.panel_sizes.edit_panel.unwrap_or(220.0))
-                .show(ui, |ui| self.edit_palette(ui));
+                .min_size(200.0)
+                .default_size(self.panel_sizes.edit_panel.unwrap_or(250.0))
+                .frame(style::panel_frame(&ctx))
+                .show(ui, |ui| {
+                    if style::panel_title(ui, "Palette") {
+                        self.view.show_edit_panel = false;
+                    }
+                    self.edit_palette(ui);
+                });
             self.panel_sizes.edit_panel = Some(panel.response.rect.width());
         }
-        egui::CentralPanel::default().show(ui, |ui| {
-            // A bug in drawing must not take the app down: contain it and tell the user.
-            let drawn = catch_unwind(AssertUnwindSafe(|| self.page_view(ui)));
-            if drawn.is_err() {
-                self.notice = Some(
-                    "Drawing the page failed unexpectedly; a crash report was written".to_owned(),
-                );
-            }
-        });
+        egui::CentralPanel::default()
+            .frame(style::canvas_frame(&ctx))
+            .show(ui, |ui| {
+                // A bug in drawing must not take the app down: contain it and tell the user.
+                let drawn = catch_unwind(AssertUnwindSafe(|| self.page_view(ui)));
+                if drawn.is_err() {
+                    self.notice = Some(
+                        "Drawing the page failed unexpectedly; a crash report was written"
+                            .to_owned(),
+                    );
+                }
+            });
+        title_bar::resize_edges(&ctx);
         self.show_dialog(&ctx);
         self.show_rename_window(&ctx);
         self.show_settings_window(&ctx);

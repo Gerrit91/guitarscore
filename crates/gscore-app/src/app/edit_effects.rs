@@ -10,6 +10,7 @@ use gscore_model::{
 };
 
 use super::edit_palette::PaletteSnapshot;
+use super::style;
 
 /// The effects of the note under the cursor.
 #[derive(Debug, Clone)]
@@ -105,13 +106,25 @@ impl EffectsState {
         snapshot: &PaletteSnapshot,
         commands: &mut Vec<Command>,
     ) {
-        ui.strong("Note effects");
+        style::section(ui, "note_effects", "Note effects", |ui| {
+            self.note_effects(ui, snapshot, commands);
+            self.show_bend(ui, snapshot, commands);
+        });
+        style::section(ui, "beat_effects", "Beat effects", |ui| {
+            beat_panel(ui, snapshot, &mut self.whammy, commands);
+            self.show_whammy(ui, snapshot, commands);
+        });
+    }
+
+    /// The note effects of the cursor's note (applied to every selected note).
+    fn note_effects(
+        &mut self,
+        ui: &mut egui::Ui,
+        snapshot: &PaletteSnapshot,
+        commands: &mut Vec<Command>,
+    ) {
         let Some(state) = snapshot.note_state.clone() else {
             ui.label(egui::RichText::new("Put the cursor on a note").weak());
-            ui.separator();
-            beat_panel(ui, snapshot, &mut self.whammy, commands);
-            self.show_bend(ui, snapshot, commands);
-            self.show_whammy(ui, snapshot, commands);
             return;
         };
         if snapshot.note_targets.is_empty() {
@@ -277,10 +290,6 @@ impl EffectsState {
                 apply_note(commands, targets, NoteEffect::Bend(None));
             }
         });
-        ui.separator();
-        beat_panel(ui, snapshot, &mut self.whammy, commands);
-        self.show_bend(ui, snapshot, commands);
-        self.show_whammy(ui, snapshot, commands);
     }
 
     fn show_bend(
@@ -395,7 +404,6 @@ fn beat_panel(
     whammy: &mut Option<WhammyEditor>,
     commands: &mut Vec<Command>,
 ) {
-    ui.strong("Beat effects");
     let state = snapshot.beat_state.clone();
     let beats = &snapshot.beats;
     let current = state.unwrap_or(BeatState {

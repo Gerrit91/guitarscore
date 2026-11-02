@@ -32,6 +32,14 @@ pub(crate) enum Icon {
     MoveUp,
     /// Move down (an arrow pointing down).
     MoveDown,
+    /// Minimize the window (a line at the bottom).
+    WindowMinimize,
+    /// Maximize the window (a square).
+    WindowMaximize,
+    /// Restore the window (two overlapping squares).
+    WindowRestore,
+    /// Close the window (a cross).
+    WindowClose,
 }
 
 /// A square icon button with a tooltip and an accessibility label.
@@ -214,6 +222,49 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                     stroke,
                 );
             }
+        }
+        Icon::WindowMinimize => {
+            let y = center.y + size * 0.1;
+            painter.line_segment(
+                [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
+                Stroke::new(1.0, color),
+            );
+        }
+        Icon::WindowMaximize => {
+            painter.rect_stroke(
+                rect.shrink(0.5),
+                0.0,
+                Stroke::new(1.0, color),
+                egui::StrokeKind::Inside,
+            );
+        }
+        Icon::WindowRestore => {
+            let back = Rect::from_min_max(
+                rect.min + vec2(size * 0.25, 0.0),
+                rect.max - vec2(0.0, size * 0.25),
+            );
+            let front = Rect::from_min_max(
+                rect.min + vec2(0.0, size * 0.25),
+                rect.max - vec2(size * 0.25, 0.0),
+            );
+            painter.rect_stroke(
+                back.shrink(0.5),
+                0.0,
+                Stroke::new(1.0, color),
+                egui::StrokeKind::Inside,
+            );
+            painter.rect_filled(front, 0.0, Color32::TRANSPARENT);
+            painter.rect_stroke(
+                front.shrink(0.5),
+                0.0,
+                Stroke::new(1.0, color),
+                egui::StrokeKind::Inside,
+            );
+        }
+        Icon::WindowClose => {
+            let thin = Stroke::new(1.2, color);
+            painter.line_segment([rect.left_top(), rect.right_bottom()], thin);
+            painter.line_segment([rect.right_top(), rect.left_bottom()], thin);
         }
     }
 }

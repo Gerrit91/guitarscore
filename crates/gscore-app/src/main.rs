@@ -29,7 +29,9 @@ fn main() -> ExitCode {
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("GuitarScore")
         .with_inner_size([1100.0, 800.0])
-        .with_min_inner_size([400.0, 300.0]);
+        .with_min_inner_size([400.0, 300.0])
+        // The app draws its own title bar (song title, window buttons) and no frame.
+        .with_decorations(false);
     if let Some(window) = settings.window {
         viewport = viewport
             .with_inner_size(window.size())

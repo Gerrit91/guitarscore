@@ -25,12 +25,12 @@ pub(super) const TRACK_COLUMN: f32 = 330.0;
 pub(super) const ROW_HEIGHT: f32 = 24.0;
 /// Height of the ruler above the matrix (measure numbers, sections, repeats).
 pub(super) const RULER_HEIGHT: f32 = 26.0;
-/// Width of one measure column.
-pub(super) const MEASURE_WIDTH: f32 = 13.0;
-/// Padding inside a matrix square.
-pub(super) const CELL_PADDING: f32 = 2.5;
-/// Room a section title needs before it is drawn (four measures).
-pub(super) const SECTION_TITLE_MEASURES: f32 = 4.0;
+/// Width of one measure column: the same as a row, so every cell is a square.
+pub(super) const MEASURE_WIDTH: f32 = ROW_HEIGHT;
+/// Padding inside a matrix square: none, the squares touch.
+pub(super) const CELL_PADDING: f32 = 0.0;
+/// Room a section title needs before it is drawn (three measures).
+pub(super) const SECTION_TITLE_MEASURES: f32 = 3.0;
 
 /// What the grid asks the app to do after drawing.
 pub(super) enum GridAction {

@@ -19,18 +19,12 @@ pub(super) fn header(
     actions: &mut Vec<GridAction>,
 ) {
     let (rect, _) = ui.allocate_exact_size(vec2(TRACK_COLUMN, RULER_HEIGHT), Sense::hover());
-    ui.painter().text(
-        pos2(rect.left() + 6.0, rect.center().y),
-        Align2::LEFT_CENTER,
-        "Tracks",
-        FontId::proportional(11.0),
-        ui.visuals().weak_text_color(),
-    );
+    // The panel's title bar already says "Tracks".
     let shown = view.shown_track;
     let after = shown.saturating_add(1);
     let button_at = |slot: f32| {
         Rect::from_min_size(
-            pos2(rect.left() + 50.0 + slot * 27.0, rect.center().y - 11.0),
+            pos2(rect.left() + 2.0 + slot * 27.0, rect.center().y - 11.0),
             vec2(26.0, 22.0),
         )
     };

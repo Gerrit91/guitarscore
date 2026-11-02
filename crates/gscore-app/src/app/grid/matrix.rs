@@ -121,7 +121,7 @@ pub(super) fn matrix(
             let color = rows
                 .get(row)
                 .map_or(visuals.text_color(), |track| color32(track.color));
-            painter.rect_filled(cell, 2.0, color);
+            painter.rect_filled(cell, 0.0, color);
         }
     }
 

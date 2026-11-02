@@ -39,9 +39,9 @@ Updated 2026-11-02 (M14: edit palette and effects; M12: app shell; M15: track pa
 
 ## Future Milestones
 
-Planned in `AGENTS.md` section 9, in this order: M16 bundled SoundFonts, M17 layout
+Planned in `AGENTS.md` section 9, in this order: M16 app design, M17 layout
 polish (whammy, bends, repeats, pages, PDF), M18 playback polish (loops, techniques, WAV
-export), M19 release packages. M11, M12, M14 and M15 are done.
+export), M19 bundled SoundFonts, M20 release packages. M11, M12, M14 and M15 are done.
 
 ## Testing Policy
 

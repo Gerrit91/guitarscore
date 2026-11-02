@@ -228,10 +228,10 @@ impl GuitarScoreApp {
 
     /// The editor tab: theme, keymap file and autosave interval.
     fn editor_tab(&mut self, ui: &mut Ui) {
-        ui.heading("Theme");
+        ui.heading("Score");
         ui.horizontal(|ui| {
-            ui.radio_value(&mut self.view.theme, ThemeChoice::Light, "Light");
-            ui.radio_value(&mut self.view.theme, ThemeChoice::Dark, "Dark");
+            ui.radio_value(&mut self.view.theme, ThemeChoice::Light, "Light page");
+            ui.radio_value(&mut self.view.theme, ThemeChoice::Dark, "Dark page");
         });
 
         ui.separator();
