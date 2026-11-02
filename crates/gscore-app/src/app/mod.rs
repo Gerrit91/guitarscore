@@ -140,7 +140,7 @@ impl GuitarScoreApp {
         settings.apply_to_view(&mut view);
         let last_window = settings.window;
         let panel_sizes = PanelSizes {
-            grid: settings.grid_height,
+            grid: settings.grid_height_chosen,
             track_panel: settings.track_panel_width,
             edit_panel: settings.edit_panel_width,
         };
@@ -184,7 +184,7 @@ impl GuitarScoreApp {
     pub fn settings(&self) -> Settings {
         let mut settings = self.settings.clone();
         settings.update_from_view(&self.view);
-        settings.grid_height = self.panel_sizes.grid;
+        settings.grid_height_chosen = self.panel_sizes.grid;
         settings.track_panel_width = self.panel_sizes.track_panel;
         settings.edit_panel_width = self.panel_sizes.edit_panel;
         settings.window = self.last_window;
@@ -357,17 +357,33 @@ impl eframe::App for GuitarScoreApp {
             .frame(style::chrome_frame(&ctx, 3))
             .show(ui, |ui| self.status_bar(ui));
         if self.view.show_track_grid && self.document.is_some() {
-            let panel = egui::Panel::bottom("track_grid")
+            // Until the user drags it, the grid is just tall enough for its tracks (up to
+            // eight) and the master row, and follows when tracks come and go: a panel id per
+            // fitting height makes egui take the new default. It is never taller than all
+            // of its rows.
+            let tracks = self.document.as_ref().map_or(1, |d| d.song().track_count());
+            let fit = grid::opening_height(tracks);
+            let chosen = self.panel_sizes.grid;
+            let id = match chosen {
+                Some(_) => "track_grid_chosen".to_owned(),
+                None => format!("track_grid_fit_{}", tracks.min(grid::OPEN_ROWS)),
+            };
+            let panel = egui::Panel::bottom(id)
                 .resizable(true)
-                .min_size(80.0)
-                .default_size(self.panel_sizes.grid.unwrap_or(grid::DEFAULT_HEIGHT))
+                .min_size(grid::height_for(0))
+                .max_size(grid::height_for(tracks))
+                .default_size(chosen.unwrap_or(fit))
                 .frame(style::panel_frame(&ctx))
                 .show(ui, |ui| {
                     egui::Frame::new()
                         .inner_margin(egui::Margin::symmetric(8, 4))
                         .show(ui, |ui| self.track_grid(ui));
                 });
-            self.panel_sizes.grid = Some(panel.response.rect.height());
+            let height = panel.response.rect.height();
+            // A height other than the fitting one means the user dragged the edge.
+            if chosen.is_some() || (height - fit).abs() > 1.0 {
+                self.panel_sizes.grid = Some(height);
+            }
         }
         if self.notice.is_some() {
             egui::Panel::top("notice").show(ui, |ui| self.notice_bar(ui));

@@ -279,3 +279,28 @@ fn palette_keys_work_like_the_tiles() {
     harness.run();
     assert_eq!(note(&harness).1, 8);
 }
+
+#[test]
+fn a_second_click_on_a_technique_removes_it_even_off_the_cursor_string() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    // A note on string 1; then the cursor moves to string 2, where the beat has no note.
+    type_char(&mut harness, "5", Modifiers::NONE);
+    press(&mut harness, Key::ArrowDown);
+    let palm_muted = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let at = document.editor().cursor().position();
+        document
+            .song()
+            .beat(at)
+            .unwrap()
+            .notes()
+            .next()
+            .is_some_and(|n| n.is_palm_muted())
+    };
+    harness.get_by_label("Palm mute").click_accesskit();
+    harness.run();
+    assert!(palm_muted(&harness), "the first click applies it");
+    harness.get_by_label("Palm mute").click_accesskit();
+    harness.run();
+    assert!(!palm_muted(&harness), "the second click removes it");
+}

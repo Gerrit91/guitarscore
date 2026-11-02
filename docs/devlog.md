@@ -1207,3 +1207,16 @@ Landed:
   is not in `AGENTS.md` (the owner's spec); on Wayland the compositor decides whether an
   undecorated window can be moved by our title bar (it uses the standard request).
 
+Owner feedback round (same day):
+- Fixed: a second click on a technique tile did not remove it when the cursor's string
+  had no note (the tile's state came from the cursor's note only, while the click acts on
+  every note of the selected beats). A technique now counts as on when every target note
+  (or beat) has it, so the tile is lit and a click takes it off all of them. Test
+  `a_second_click_on_a_technique_removes_it_even_off_the_cursor_string`.
+- Toolbar: file, undo/redo and the panel toggles on the left; the player centered on the
+  bar (its width from the frame before); zoom and the settings on the right.
+- Song grid height: the panel is as tall as its tracks (up to eight) and the master row,
+  follows when tracks are added or removed, and is never taller than all its rows. Once
+  the user drags its edge, that height is kept and saved (new settings key
+  `grid_height_chosen`; the old `grid_height` held any height and is ignored).
+

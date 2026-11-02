@@ -25,9 +25,21 @@ pub(super) const TRACK_COLUMN: f32 = 330.0;
 pub(super) const ROW_HEIGHT: f32 = 24.0;
 /// Height of the ruler above the matrix (measure numbers, sections, repeats).
 pub(super) const RULER_HEIGHT: f32 = 26.0;
-/// The panel's height when it first opens: the ruler, eight tracks and the master row,
-/// with the panel's margins and room for the horizontal scroll bar.
-pub(crate) const DEFAULT_HEIGHT: f32 = RULER_HEIGHT + 9.0 * ROW_HEIGHT + 30.0;
+/// Most track rows the panel shows when it opens; more tracks scroll.
+pub(crate) const OPEN_ROWS: usize = 8;
+/// The panel's margins and the horizontal scroll bar, around the rows.
+const PANEL_EXTRA: f32 = 22.0;
+
+/// The panel's height for `tracks` rows plus the master row.
+pub(crate) fn height_for(tracks: usize) -> f32 {
+    RULER_HEIGHT + (tracks as f32 + 1.0) * ROW_HEIGHT + PANEL_EXTRA
+}
+
+/// The height the panel opens at: all tracks (up to eight) and the master row.
+pub(crate) fn opening_height(tracks: usize) -> f32 {
+    height_for(tracks.min(OPEN_ROWS))
+}
+
 /// Width of one measure column: the same as a row, so every cell is a square.
 pub(super) const MEASURE_WIDTH: f32 = ROW_HEIGHT;
 /// Padding inside a matrix square: none, the squares touch.

@@ -344,7 +344,7 @@ fn no_beat() -> BeatState {
     }
 }
 
-/// Whether `fx` is on at the cursor.
+/// Whether `fx` is on for one note or beat.
 fn is_on(fx: Fx, note: Option<&NoteState>, beat: &BeatState) -> bool {
     let note_on = |test: fn(&NoteState) -> bool| note.is_some_and(test);
     match fx {
@@ -371,12 +371,34 @@ fn is_on(fx: Fx, note: Option<&NoteState>, beat: &BeatState) -> bool {
     }
 }
 
+/// Whether `fx` is on for the selection: every note it applies to (note effects) or every
+/// selected beat (beat effects) has it. Then a click takes it off them all; otherwise a
+/// click puts it on them all. Without targets it is off.
+fn is_on_for_targets(fx: Fx, snapshot: &PaletteSnapshot) -> bool {
+    let none = no_beat();
+    if fx.on_note() {
+        !snapshot.target_states.is_empty()
+            && snapshot
+                .target_states
+                .iter()
+                .all(|note| is_on(fx, Some(note), &none))
+    } else {
+        !snapshot.beat_states.is_empty()
+            && snapshot
+                .beat_states
+                .iter()
+                .all(|beat| is_on(fx, None, beat))
+    }
+}
+
 /// The commands that switch `fx` on the selected notes or beats: on when it is off at the
 /// cursor, off when it is on.
 pub(super) fn fx_commands(fx: Fx, snapshot: &PaletteSnapshot) -> Vec<Command> {
-    let note = snapshot.note_state.as_ref();
-    let beat = snapshot.beat_state.clone().unwrap_or_else(no_beat);
-    let on = is_on(fx, note, &beat);
+    let note = snapshot
+        .note_state
+        .as_ref()
+        .or(snapshot.target_states.first());
+    let on = is_on_for_targets(fx, snapshot);
     let mut commands = Vec::new();
     let targets = &snapshot.note_targets;
     let beats = &snapshot.beats;
@@ -496,7 +518,7 @@ impl EffectsState {
                     };
                     let label = item.action.label();
                     let tip = format!("{label}{}", hint(item.action));
-                    let on = is_on(item.fx, note, &beat);
+                    let on = is_on_for_targets(item.fx, snapshot);
                     if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
                         commands.extend(fx_commands(item.fx, snapshot));
                     }

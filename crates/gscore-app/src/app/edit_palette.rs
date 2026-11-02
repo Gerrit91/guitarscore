@@ -95,6 +95,10 @@ pub(super) struct PaletteSnapshot {
     pub(super) beat_state: Option<BeatState>,
     /// Every note in the selected beats: where it is and which string.
     pub(super) note_targets: Vec<(BeatPosition, gscore_model::StringNumber)>,
+    /// The effects of each of those notes, in the same order.
+    pub(super) target_states: Vec<NoteState>,
+    /// The effects of each selected beat, in the order of `beats`.
+    pub(super) beat_states: Vec<BeatState>,
 }
 
 impl PaletteSnapshot {
@@ -113,11 +117,15 @@ impl PaletteSnapshot {
         let note_state = note.as_ref().map(NoteState::of);
         let beat_state = beat.as_ref().map(BeatState::of);
         let mut note_targets = Vec::new();
+        let mut target_states = Vec::new();
+        let mut beat_states = Vec::new();
         for at in &beats {
             if let Some(beat) = song.beat(*at) {
+                beat_states.push(BeatState::of(&beat));
                 for note in beat.notes() {
                     if let Ok(string) = note.string() {
                         note_targets.push((*at, string));
+                        target_states.push(NoteState::of(&note));
                     }
                 }
             }
@@ -139,6 +147,8 @@ impl PaletteSnapshot {
             note_state,
             beat_state,
             note_targets,
+            target_states,
+            beat_states,
         }
     }
 }
