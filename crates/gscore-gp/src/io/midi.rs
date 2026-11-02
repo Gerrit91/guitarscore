@@ -58,49 +58,53 @@ impl SongMidiOps for Song {
         c.phaser = read_signed_byte(data, seek)?;
         c.tremolo = read_signed_byte(data, seek)?;
         c.set_instrument(instrument);
-        *seek += 2; //Backward compatibility with version 3.0
+        skip(seek, 2); // Backward compatibility with version 3.0
         Ok(c)
     }
 
     /// Read MIDI channel. MIDI channel in Guitar Pro is represented by two integers. First is zero-based number of channel, second is zero-based number of channel used for effects.
     fn read_channel(&mut self, data: &[u8], seek: &mut usize) -> GpResult<usize> {
-        //TODO: fixme for writing
-        let index = read_int(data, seek)? - 1;
-        let effect_channel = read_int(data, seek)? - 1;
-        let channels_len = self.channels.len().to_i32_gp("channels length")?;
-        if 0 <= index && index < channels_len {
-            let idx = index.to_usize_gp("channel index")?;
-            if self.channels[idx].instrument < 0 {
-                self.channels[idx].instrument = 0;
-            }
-            if !self.channels[idx].is_percussion_channel() {
-                // Some legacy files store junk in the second int of the
-                // channel pair (GP2 upgraded to GP3, byte-mis-alignment). Cap
-                // to u8 rather than fail.
-                self.channels[idx].effect_channel = effect_channel.clamp(0, 255) as u8;
-            }
-            return Ok(idx);
+        // The file counts channels from 1.
+        let index = read_int(data, seek)?.saturating_sub(1);
+        let effect_channel = read_int(data, seek)?.saturating_sub(1);
+        let Some(idx) = usize::try_from(index)
+            .ok()
+            .filter(|&i| i < self.channels.len())
+        else {
+            // Malformed file: the index is out of range. Use the first channel, which
+            // always exists when this is called.
+            return Ok(0);
+        };
+        let channel = item_mut(&mut self.channels, idx, "MIDI channel")?;
+        if channel.instrument < 0 {
+            channel.instrument = 0;
         }
-        // Malformed file: raw index is out of range. Clamp to a safe slot so
-        // callers indexing `self.channels[…]` don't panic. `channels` is
-        // always initialised with at least one entry before this is called.
-        Ok(0)
+        if !channel.is_percussion_channel() {
+            // Some legacy files store junk in the second int of the channel pair (GP2
+            // upgraded to GP3, byte misalignment). Clamp to a byte rather than fail.
+            channel.effect_channel = clamp_u8(effect_channel);
+        }
+        Ok(idx)
     }
 
     fn write_midi_channels(&self, data: &mut Vec<u8>) {
-        for i in 0..self.channels.len() {
-            if self.channels[i].is_percussion_channel() && self.channels[i].instrument == 0 {
+        for channel in &self.channels {
+            if channel.is_percussion_channel() && channel.instrument == 0 {
                 write_i32(data, -1);
             } else {
-                write_i32(data, self.channels[i].instrument);
+                write_i32(data, channel.instrument);
             }
-            write_signed_byte(data, self.channels[i].volume);
-            write_signed_byte(data, self.channels[i].balance);
-            write_signed_byte(data, self.channels[i].chorus);
-            write_signed_byte(data, self.channels[i].reverb);
-            write_signed_byte(data, self.channels[i].phaser);
-            write_signed_byte(data, self.channels[i].tremolo);
-            write_placeholder_default(data, 2); //Backward compatibility with version 3.0
+            for value in [
+                channel.volume,
+                channel.balance,
+                channel.chorus,
+                channel.reverb,
+                channel.phaser,
+                channel.tremolo,
+            ] {
+                write_signed_byte(data, value);
+            }
+            write_placeholder_default(data, 2); // Backward compatibility with version 3.0
         }
     }
 }

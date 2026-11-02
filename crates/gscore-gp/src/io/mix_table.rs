@@ -88,7 +88,7 @@ impl SongMixTableOps for Song {
             mtc.rse = self.read_rse_instrument(data, seek)?;
         }
         if self.version.number == (5, 0, 0) {
-            *seek += 1;
+            skip(seek, 1);
         }
         let b = read_signed_byte(data, seek)?;
         if b >= 0 {
@@ -153,25 +153,25 @@ impl SongMixTableOps for Song {
         mtc: &mut MixTableChange,
     ) -> GpResult<()> {
         if let Some(ref mut item) = mtc.volume {
-            item.duration = read_signed_byte(data, seek)?.max(0) as u8;
+            item.duration = non_negative(read_signed_byte(data, seek)?);
         }
         if let Some(ref mut item) = mtc.balance {
-            item.duration = read_signed_byte(data, seek)?.max(0) as u8;
+            item.duration = non_negative(read_signed_byte(data, seek)?);
         }
         if let Some(ref mut item) = mtc.chorus {
-            item.duration = read_signed_byte(data, seek)?.max(0) as u8;
+            item.duration = non_negative(read_signed_byte(data, seek)?);
         }
         if let Some(ref mut item) = mtc.reverb {
-            item.duration = read_signed_byte(data, seek)?.max(0) as u8;
+            item.duration = non_negative(read_signed_byte(data, seek)?);
         }
         if let Some(ref mut item) = mtc.phaser {
-            item.duration = read_signed_byte(data, seek)?.max(0) as u8;
+            item.duration = non_negative(read_signed_byte(data, seek)?);
         }
         if let Some(ref mut item) = mtc.tremolo {
-            item.duration = read_signed_byte(data, seek)?.max(0) as u8;
+            item.duration = non_negative(read_signed_byte(data, seek)?);
         }
         if let Some(ref mut item) = mtc.tempo {
-            item.duration = read_signed_byte(data, seek)?.max(0) as u8;
+            item.duration = non_negative(read_signed_byte(data, seek)?);
             mtc.hide_tempo = false;
             if self.version.number >= (5, 0, 0) {
                 mtc.hide_tempo = read_bool(data, seek)?;
@@ -256,55 +256,33 @@ impl SongMixTableOps for Song {
         mix_table_change: &MixTableChange,
         version: &(u8, u8, u8),
     ) {
-        if let Some(i) = &mix_table_change.instrument {
-            write_signed_byte(data, i.value as i8);
-        } else {
-            write_signed_byte(data, -1);
-        }
+        write_signed_byte(data, value_or_none(mix_table_change.instrument.as_ref()));
         if version.0 >= 5 {
             self.write_rse_instrument(data, &mix_table_change.rse, version);
         }
         if version == &(5, 0, 0) {
             write_placeholder_default(data, 1);
         }
-        if let Some(i) = &mix_table_change.volume {
-            write_signed_byte(data, i.value as i8);
-        } else {
-            write_signed_byte(data, -1);
-        }
-        if let Some(i) = &mix_table_change.balance {
-            write_signed_byte(data, i.value as i8);
-        } else {
-            write_signed_byte(data, -1);
-        }
-        if let Some(i) = &mix_table_change.chorus {
-            write_signed_byte(data, i.value as i8);
-        } else {
-            write_signed_byte(data, -1);
-        }
-        if let Some(i) = &mix_table_change.reverb {
-            write_signed_byte(data, i.value as i8);
-        } else {
-            write_signed_byte(data, -1);
-        }
-        if let Some(i) = &mix_table_change.phaser {
-            write_signed_byte(data, i.value as i8);
-        } else {
-            write_signed_byte(data, -1);
-        }
-        if let Some(i) = &mix_table_change.tremolo {
-            write_signed_byte(data, i.value as i8);
-        } else {
-            write_signed_byte(data, -1);
+        for item in [
+            &mix_table_change.volume,
+            &mix_table_change.balance,
+            &mix_table_change.chorus,
+            &mix_table_change.reverb,
+            &mix_table_change.phaser,
+            &mix_table_change.tremolo,
+        ] {
+            write_signed_byte(data, value_or_none(item.as_ref()));
         }
         if version.0 >= 5 {
             write_int_byte_size_string(data, &mix_table_change.tempo_name);
         }
-        if let Some(t) = &mix_table_change.tempo {
-            write_i32(data, t.value as i32);
-        } else {
-            write_i32(data, -1);
-        }
+        write_i32(
+            data,
+            mix_table_change
+                .tempo
+                .as_ref()
+                .map_or(-1, |t| i32::from(t.value)),
+        );
     }
 
     fn write_mix_table_change_durations(
@@ -313,26 +291,21 @@ impl SongMixTableOps for Song {
         mix_table_change: &MixTableChange,
         version: &(u8, u8, u8),
     ) {
-        if let Some(i) = &mix_table_change.volume {
-            write_signed_byte(data, i.duration as i8);
-        }
-        if let Some(i) = &mix_table_change.balance {
-            write_signed_byte(data, i.duration as i8);
-        }
-        if let Some(i) = &mix_table_change.chorus {
-            write_signed_byte(data, i.duration as i8);
-        }
-        if let Some(i) = &mix_table_change.reverb {
-            write_signed_byte(data, i.duration as i8);
-        }
-        if let Some(i) = &mix_table_change.phaser {
-            write_signed_byte(data, i.duration as i8);
-        }
-        if let Some(i) = &mix_table_change.tremolo {
-            write_signed_byte(data, i.duration as i8);
+        for item in [
+            &mix_table_change.volume,
+            &mix_table_change.balance,
+            &mix_table_change.chorus,
+            &mix_table_change.reverb,
+            &mix_table_change.phaser,
+            &mix_table_change.tremolo,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            write_signed_byte(data, signed(item.duration));
         }
         if let Some(i) = &mix_table_change.tempo {
-            write_signed_byte(data, i.duration as i8);
+            write_signed_byte(data, signed(i.duration));
             if version >= &(5, 0, 0) {
                 write_bool(data, mix_table_change.hide_tempo);
             }
@@ -468,4 +441,19 @@ mod tests {
             .map(|t| t.value);
         assert_eq!(tempo, Some(280));
     }
+}
+
+/// A negative byte (meaning "none") as 0.
+fn non_negative(value: i8) -> u8 {
+    u8::try_from(value).unwrap_or_default()
+}
+
+/// A duration as the signed byte the file stores (at most 127).
+fn signed(value: u8) -> i8 {
+    i8::try_from(value).unwrap_or(i8::MAX)
+}
+
+/// A mix value as the signed byte the file stores: -1 for no change, at most 127.
+fn value_or_none(item: Option<&MixTableItem>) -> i8 {
+    item.map_or(-1, |i| i8::try_from(i.value).unwrap_or(i8::MAX))
 }

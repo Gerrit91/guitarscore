@@ -57,6 +57,23 @@ pub(crate) fn low_i8(value: i32) -> i8 {
     i8::from_le_bytes([low])
 }
 
+/// The low 16 bits of `value` as a signed integer (what a truncating cast gives).
+pub(crate) fn low_i16(value: i32) -> i16 {
+    let [a, b, ..] = value.to_le_bytes();
+    i16::from_le_bytes([a, b])
+}
+
+/// `value` rounded and clamped to `i8`; NaN gives 0.
+pub(crate) fn round_to_i8(value: f32) -> i8 {
+    if value.is_nan() {
+        return 0;
+    }
+    // Clamped to the range first, so the cast cannot truncate.
+    #[allow(clippy::cast_possible_truncation)]
+    let rounded = value.round().clamp(f32::from(i8::MIN), f32::from(i8::MAX)) as i8;
+    rounded
+}
+
 /// The low byte of `value` (what a truncating cast gives).
 pub(crate) fn low_u8(value: i32) -> u8 {
     let [low, ..] = value.to_le_bytes();

@@ -165,8 +165,8 @@ pub(super) fn write_beat_effect_v3(song: &Song, data: &mut Vec<u8>, beat: &Beat)
         flags1 |= 0x02;
     }
     if beat.has_harmonic() {
-        for n in 0..beat.notes.len() {
-            if let Some(h) = &beat.notes[n].effect.harmonic {
+        for note in &beat.notes {
+            if let Some(h) = &note.effect.harmonic {
                 if h.kind == HarmonicType::Natural {
                     flags1 |= 0x04;
                 }

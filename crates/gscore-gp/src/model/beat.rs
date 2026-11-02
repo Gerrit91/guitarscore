@@ -182,20 +182,13 @@ impl Default for Beat {
 }
 
 impl Beat {
+    /// Whether a note of this beat has vibrato.
     pub fn has_vibrato(&self) -> bool {
-        for i in 0..self.notes.len() {
-            if self.notes[i].effect.vibrato {
-                return true;
-            }
-        }
-        false
+        self.notes.iter().any(|note| note.effect.vibrato)
     }
+
+    /// Whether a note of this beat is a harmonic.
     pub fn has_harmonic(&self) -> bool {
-        for i in 0..self.notes.len() {
-            if self.notes[i].effect.is_harmonic() {
-                return true;
-            }
-        }
-        false
+        self.notes.iter().any(|note| note.effect.is_harmonic())
     }
 }
