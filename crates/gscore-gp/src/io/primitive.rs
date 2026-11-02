@@ -96,6 +96,39 @@ pub(crate) fn saturating_i32(value: f32) -> i32 {
     saturated
 }
 
+/// `value` rounded and saturated to `i8` (NaN gives 0), as a float cast does.
+pub(crate) fn round_f64_to_i8(value: f64) -> i8 {
+    i8::try_from(round_f64_to_i32(value).clamp(i32::from(i8::MIN), i32::from(i8::MAX)))
+        .unwrap_or_default()
+}
+
+/// `value` rounded and saturated to `i16` (NaN gives 0), as a float cast does.
+pub(crate) fn round_f64_to_i16(value: f64) -> i16 {
+    clamp_i16(round_f64_to_i32(value))
+}
+
+/// `value` rounded and saturated to `i32` (NaN gives 0), as a float cast does.
+pub(crate) fn round_f64_to_i32(value: f64) -> i32 {
+    truncate_f64_to_i32(value.round())
+}
+
+/// `value` truncated toward zero and saturated to `i32` (NaN gives 0): a float cast.
+pub(crate) fn truncate_f64_to_i32(value: f64) -> i32 {
+    if value.is_nan() {
+        return 0;
+    }
+    // Clamped to the range first, so the cast cannot truncate beyond dropping the fraction.
+    #[allow(clippy::cast_possible_truncation)]
+    let truncated = value.clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32;
+    truncated
+}
+
+/// The low 16 bits of `value` (what a truncating cast gives).
+pub(crate) fn low_u16(value: i32) -> u16 {
+    let [a, b, ..] = value.to_le_bytes();
+    u16::from_le_bytes([a, b])
+}
+
 /// The low byte of `value` (what a truncating cast gives).
 pub(crate) fn low_u8(value: i32) -> u8 {
     let [low, ..] = value.to_le_bytes();

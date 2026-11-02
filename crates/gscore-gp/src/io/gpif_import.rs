@@ -4,6 +4,10 @@
 use std::collections::HashMap;
 
 use crate::io::gpif::*;
+use crate::io::primitive::{
+    clamp_i16, low_i8, low_i16, low_u8, low_u16, round_f64_to_i8, round_f64_to_i16,
+    round_f64_to_i32, truncate_f64_to_i32,
+};
 use crate::model::{
     beat::{Beat as SongBeat, LegatoEffect, Voice as SongVoice},
     effects::*,
@@ -47,13 +51,7 @@ fn note_value_to_duration(s: &str) -> u16 {
         "32nd" => 32,
         "64th" => 64,
         "128th" => 128,
-        _ => {
-            eprintln!(
-                "Warning: unknown GPIF note value '{}', defaulting to Quarter",
-                s
-            );
-            4
-        }
+        _ => 4,
     }
 }
 
@@ -159,8 +157,9 @@ fn parse_direction_sign(s: &str) -> Option<DirectionSign> {
 /// Build bend effect from GPIF origin/destination values (float, in 1/100 semitone).
 fn build_bend_effect(origin: f64, destination: f64) -> BendEffect {
     let mut bend = BendEffect::default();
-    let origin_val = (origin / GP_BEND_SEMITONE as f64).round() as i8;
-    let dest_val = (destination / GP_BEND_SEMITONE as f64).round() as i8;
+    let semitone = f64::from(GP_BEND_SEMITONE);
+    let origin_val = round_f64_to_i8(origin / semitone);
+    let dest_val = round_f64_to_i8(destination / semitone);
 
     if origin == 0.0 && destination > 0.0 {
         bend.kind = BendType::Bend;
@@ -176,7 +175,7 @@ fn build_bend_effect(origin: f64, destination: f64) -> BendEffect {
         }
     }
 
-    bend.value = (destination.max(origin) / GP_BEND_SEMITONE as f64 * 2.0).round() as i16;
+    bend.value = round_f64_to_i16(destination.max(origin) / semitone * 2.0);
     bend.points.push(BendPoint {
         position: 0,
         value: origin_val,
@@ -184,7 +183,10 @@ fn build_bend_effect(origin: f64, destination: f64) -> BendEffect {
     });
     bend.points.push(BendPoint {
         position: 6,
-        value: ((origin_val as i16 + dest_val as i16) / 2) as i8,
+        value: i8::try_from(
+            (i16::from(origin_val).saturating_add(i16::from(dest_val))).wrapping_div(2),
+        )
+        .unwrap_or_default(),
         vibrato: false,
     });
     bend.points.push(BendPoint {
@@ -211,10 +213,12 @@ fn shape_points(
     if origin == 0.0 && middle == 0.0 && destination == 0.0 {
         return None;
     }
-    let value = |hundredths: f64| (hundredths / GP_BEND_SEMITONE as f64).round() as i8;
+    let value = |hundredths: f64| round_f64_to_i8(hundredths / f64::from(GP_BEND_SEMITONE));
     let position = |percent: Option<f64>, default: f64| {
-        (percent.unwrap_or(default).clamp(0.0, 100.0) * f64::from(BEND_EFFECT_MAX_POSITION) / 100.0)
-            .round() as u8
+        let position = percent.unwrap_or(default).clamp(0.0, 100.0)
+            * f64::from(BEND_EFFECT_MAX_POSITION)
+            / 100.0;
+        u8::try_from(round_f64_to_i32(position)).unwrap_or(BEND_EFFECT_MAX_POSITION)
     };
     let point = |position, value| BendPoint {
         position,
@@ -243,16 +247,18 @@ pub(crate) fn build_whammy_effect(
         middle_offset,
         destination_offset,
     )?;
-    let mut bend = BendEffect::default();
-    bend.kind = if destination == origin {
+    let kind = if destination == origin {
         BendType::Dip
     } else if destination < origin {
         BendType::Dive
     } else {
         BendType::ReleaseUp
     };
-    bend.points = points;
-    Some(bend)
+    Some(BendEffect {
+        kind,
+        points,
+        ..BendEffect::default()
+    })
 }
 
 /// GuitarScore addition: a note bend from its GPIF shape (see [`shape_points`]). The kind
@@ -273,8 +279,7 @@ pub(crate) fn build_note_bend(
         destination_offset,
     )?;
     let middle = middle.unwrap_or((origin + destination) / 2.0);
-    let mut bend = BendEffect::default();
-    bend.kind = if destination > origin {
+    let kind = if destination > origin {
         BendType::Bend
     } else if destination < origin {
         BendType::ReleaseUp
@@ -286,9 +291,12 @@ pub(crate) fn build_note_bend(
         BendType::Prebend
     };
     let highest = origin.max(middle).max(destination);
-    bend.value = (highest / GP_BEND_SEMITONE as f64 * 2.0).round() as i16;
-    bend.points = points;
-    Some(bend)
+    Some(BendEffect {
+        kind,
+        value: round_f64_to_i16(highest / f64::from(GP_BEND_SEMITONE) * 2.0),
+        points,
+        ..BendEffect::default()
+    })
 }
 
 /// GuitarScore addition: the user-given tuning name from a property list, if non-empty.
@@ -319,7 +327,7 @@ fn extract_tuning(properties: &[Property]) -> Vec<(i8, i8)> {
                 .iter()
                 .rev()
                 .enumerate()
-                .map(|(i, &pitch)| ((i + 1) as i8, pitch))
+                .map(|(i, &pitch)| (i8::try_from(i.saturating_add(1)).unwrap_or(i8::MAX), pitch))
                 .collect();
         }
     }
@@ -364,16 +372,10 @@ impl SongGpifOps for Song {
                     && auto.bar == 0
                     && let Some(tempo_str) = automation_tempo(auto)
                 {
-                    self.tempo = match tempo_str.parse::<f64>() {
-                        Ok(v) => v as i16,
-                        Err(_) => {
-                            eprintln!(
-                                "Warning: failed to parse tempo '{}', defaulting to 120",
-                                tempo_str
-                            );
-                            120
-                        }
-                    };
+                    // An unreadable tempo counts as 120 BPM.
+                    self.tempo = tempo_str
+                        .parse::<f64>()
+                        .map_or(120, |v| clamp_i16(truncate_f64_to_i32(v)));
                 }
             }
         }
@@ -416,20 +418,22 @@ impl SongGpifOps for Song {
 
         for (mh_idx, mb) in gpif.master_bars.master_bars.iter().enumerate() {
             let mut mh = MeasureHeader {
-                number: (mh_idx + 1) as u16,
+                number: u16::try_from(mh_idx.saturating_add(1)).unwrap_or(u16::MAX),
                 ..Default::default()
             };
 
             // Time signature
-            let time_parts: Vec<&str> = mb.time.split('/').collect();
-            if time_parts.len() == 2 {
-                mh.time_signature.numerator = time_parts[0].parse().unwrap_or(4) as i8;
-                mh.time_signature.denominator.value = time_parts[1].parse().unwrap_or(4) as u16;
+            if let Some((numerator, denominator)) = mb.time.split_once('/')
+                && !denominator.contains('/')
+            {
+                // Values that do not fit are truncated, as before.
+                mh.time_signature.numerator = low_i8(numerator.parse().unwrap_or(4));
+                mh.time_signature.denominator.value = low_u16(denominator.parse().unwrap_or(4));
             }
 
             // Key signature
             if let Some(key) = &mb.key {
-                mh.key_signature.key = key.accidental_count as i8;
+                mh.key_signature.key = low_i8(key.accidental_count);
                 mh.key_signature.is_minor = key.mode == "Minor";
             }
 
@@ -437,10 +441,10 @@ impl SongGpifOps for Song {
             if let Some(automations) = &gpif.master_track.automations {
                 for auto in &automations.automations {
                     if auto.automation_type == "Tempo"
-                        && auto.bar == mh_idx as i32
+                        && usize::try_from(auto.bar).ok() == Some(mh_idx)
                         && let Some(tempo_str) = automation_tempo(auto)
                     {
-                        mh.tempo = tempo_str.parse::<f64>().unwrap_or(0.0) as i32;
+                        mh.tempo = truncate_f64_to_i32(tempo_str.parse::<f64>().unwrap_or(0.0));
                     }
                 }
             }
@@ -463,7 +467,7 @@ impl SongGpifOps for Song {
                         && n > 0
                         && n <= 8
                     {
-                        bitmask |= 1 << (n - 1);
+                        bitmask |= 1_u8 << n.saturating_sub(1);
                     }
                 }
                 mh.repeat_alternative = bitmask;
@@ -508,10 +512,8 @@ impl SongGpifOps for Song {
 
             // Per-track bar IDs
             let bar_ids = parse_ids(&mb.bars);
-            for (t_idx, &bar_id) in bar_ids.iter().enumerate() {
-                if t_idx < num_tracks {
-                    track_bar_ids[t_idx].push(bar_id);
-                }
+            for (ids, &bar_id) in track_bar_ids.iter_mut().zip(&bar_ids) {
+                ids.push(bar_id);
             }
 
             self.measure_headers.push(mh);
@@ -526,7 +528,7 @@ impl SongGpifOps for Song {
             let mut track = SongTrack {
                 name: g_track.name.clone(),
                 short_name: g_track.short_name.clone(),
-                number: (t_idx + 1) as i32,
+                number: i32::try_from(t_idx.saturating_add(1)).unwrap_or(i32::MAX),
                 ..Default::default()
             };
 
@@ -536,8 +538,11 @@ impl SongGpifOps for Song {
                     .split_whitespace()
                     .filter_map(|s| s.parse().ok())
                     .collect();
-                if rgb.len() == 3 {
-                    track.color = rgb[0] * 65536 + rgb[1] * 256 + rgb[2];
+                if let [r, g, b] = rgb[..] {
+                    track.color = r
+                        .wrapping_mul(65536)
+                        .wrapping_add(g.wrapping_mul(256))
+                        .wrapping_add(b);
                 }
             }
 
@@ -574,12 +579,13 @@ impl SongGpifOps for Song {
             // MIDI
             if let Some(gm) = &g_track.general_midi {
                 if let Some(ch) = gm.primary_channel {
-                    track.channel_index = ch as usize;
+                    // A negative channel wraps to a huge index, which writing refuses.
+                    track.channel_index = usize::try_from(ch).unwrap_or(usize::MAX);
                     track.percussion_track = ch == 9;
                 }
                 track.midi_program_gpif = gm.program;
                 if let Some(port) = gm.port {
-                    track.port = port as u8;
+                    track.port = low_u8(port);
                 }
             }
             // GuitarScore: GP7 names the program in the track's first sound instead.
@@ -614,21 +620,21 @@ impl SongGpifOps for Song {
             // Measures
             for m_idx in 0..num_measures {
                 let mut measure = Measure {
-                    number: m_idx + 1,
+                    number: m_idx.saturating_add(1),
                     track_index: t_idx,
                     ..Default::default()
                 };
 
-                if m_idx < self.measure_headers.len() {
-                    measure.time_signature = self.measure_headers[m_idx].time_signature.clone();
-                    measure.key_signature = self.measure_headers[m_idx].key_signature.clone();
+                if let Some(header) = self.measure_headers.get(m_idx) {
+                    measure.time_signature = header.time_signature.clone();
+                    measure.key_signature = header.key_signature.clone();
                 }
 
-                let bar_id = if m_idx < track_bar_ids[t_idx].len() {
-                    track_bar_ids[t_idx][m_idx]
-                } else {
-                    -1
-                };
+                let bar_id = track_bar_ids
+                    .get(t_idx)
+                    .and_then(|ids| ids.get(m_idx))
+                    .copied()
+                    .unwrap_or(-1);
 
                 if let Some(bar) = bars_map.get(&bar_id) {
                     measure.simile_mark = bar.simile_mark.clone();
@@ -680,7 +686,7 @@ pub(crate) fn flip_note_strings(tracks: &mut [SongTrack]) {
                 for beat in &mut voice.beats {
                     for note in &mut beat.notes {
                         if (1..=count).contains(&note.string) {
-                            note.string = count - note.string + 1;
+                            note.string = count.saturating_sub(note.string).saturating_add(1);
                         }
                     }
                 }
@@ -710,8 +716,8 @@ fn convert_beat(
             }
         }
         if let Some(tuplet) = &rhythm.primary_tuplet {
-            s_beat.duration.tuplet_enters = tuplet.num as u8;
-            s_beat.duration.tuplet_times = tuplet.den as u8;
+            s_beat.duration.tuplet_enters = low_u8(tuplet.num);
+            s_beat.duration.tuplet_times = low_u8(tuplet.den);
         }
     }
 
@@ -869,7 +875,7 @@ fn convert_note(
         match prop.name.as_str() {
             "Fret" => {
                 if let Some(f) = prop.fret {
-                    s_note.value = f as i16;
+                    s_note.value = low_i16(f);
                 }
             }
             "String" => {
@@ -878,7 +884,7 @@ fn convert_note(
                     // `Note::string` is 1-based (matches GP3/4/5 binary readers
                     // and the MSCZ / MusicXML converters). Shift on read so
                     // downstream code doesn't need to know the format quirk.
-                    s_note.string = (s as i8).saturating_add(1);
+                    s_note.string = low_i8(s).saturating_add(1);
                 }
             }
             "PalmMuted" if prop.enable.is_some() => {
@@ -940,7 +946,7 @@ fn convert_note(
     if let Some(hfret) = harmonic_fret
         && let Some(ref mut harmonic) = s_note.effect.harmonic
     {
-        harmonic.fret = Some(hfret as i8);
+        harmonic.fret = Some(round_f64_to_i8(hfret.trunc()));
     }
 
     // Tie
@@ -987,7 +993,7 @@ fn convert_note(
     // Trill
     if let Some(trill_fret) = g_note.trill {
         s_note.effect.trill = Some(TrillEffect {
-            fret: trill_fret as i8,
+            fret: low_i8(trill_fret),
             duration: Duration::default(),
         });
     }
@@ -995,7 +1001,7 @@ fn convert_note(
     // Grace note
     if is_grace_beat {
         s_note.effect.grace = Some(GraceEffect {
-            fret: s_note.value as i8,
+            fret: low_i8(i32::from(s_note.value)),
             velocity: s_note.velocity,
             duration: 1,
             is_dead: s_note.kind == NoteType::Dead,
