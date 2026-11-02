@@ -1220,3 +1220,11 @@ Owner feedback round (same day):
   the user drags its edge, that height is kept and saved (new settings key
   `grid_height_chosen`; the old `grid_height` held any height and is ignored).
 
+Player bar check (owner): next to the position, the player shows how full the bar is in
+the cursor's track and voice, in beats of its time signature: "4 / 4" with a green check
+mark when exactly full, "5.5 / 4" in red with a red cross when too long, and "3 / 4"
+muted without an icon while not full yet (at most two decimals, so a triplet gives
+"3.33"). During playback it shows the measure being played. Placeholders count as zero,
+like the measure issues. Tests: `bar_fill` unit tests (full, short, 4.5 and 5.5 over,
+rounding) and the app reporting full and overfull bars to screen readers.
+

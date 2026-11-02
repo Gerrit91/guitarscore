@@ -247,6 +247,17 @@ impl GuitarScoreApp {
         ui.painter().galley(rect.min, galley, tokens.text);
         response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &label));
         response.on_hover_text("The measure being played, or the cursor's");
+        // How full that bar is in the cursor's track and voice.
+        let cursor = document.editor().cursor();
+        if let Some(fill) = bar_fill(
+            song,
+            cursor.track,
+            MeasureIndex::new(measure.saturating_sub(1)),
+            cursor.voice,
+        ) {
+            ui.add_space(10.0);
+            fill_readout(ui, &fill);
+        }
         // The tempo in effect at that measure.
         let index = measure.saturating_sub(1);
         let tempo = (0..=index)
@@ -284,5 +295,206 @@ pub(super) fn key_hint(keymap: &gscore_edit::Keymap, action: ActionId) -> String
         String::new()
     } else {
         format!(" ({})", keys.join(", "))
+    }
+}
+
+/// How full a bar is, against its time signature.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct BarFill {
+    /// The notes' length in beats of the time signature ("5.5"), and the beats in the bar.
+    pub(super) beats: String,
+    pub(super) of: u8,
+    pub(super) state: FillState,
+}
+
+/// Under, exactly at, or over the bar's length.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FillState {
+    Under,
+    Full,
+    Over,
+}
+
+/// How full `measure` is in `track` and `voice`; `None` if there is no such voice or its
+/// lengths cannot be read.
+pub(super) fn bar_fill(
+    song: &gscore_model::Song,
+    track: gscore_model::TrackIndex,
+    measure: MeasureIndex,
+    voice: gscore_model::VoiceIndex,
+) -> Option<BarFill> {
+    let view = song.track(track)?.measure(measure)?;
+    let signature = view.time_signature().ok()?;
+    let total = view.voice(voice)?.total_duration().ok()?;
+    let bar = signature.measure_length();
+    // Compare the fractions exactly: total.n / total.d against bar.n / bar.d.
+    let left = u128::from(total.numerator()) * u128::from(bar.denominator());
+    let right = u128::from(bar.numerator()) * u128::from(total.denominator());
+    let state = match left.cmp(&right) {
+        std::cmp::Ordering::Less => FillState::Under,
+        std::cmp::Ordering::Equal => FillState::Full,
+        std::cmp::Ordering::Greater => FillState::Over,
+    };
+    // In beats of the signature: the length in whole notes times the lower number.
+    let numerator = u128::from(total.numerator()) * u128::from(signature.denominator());
+    let denominator = u128::from(total.denominator()).max(1);
+    Some(BarFill {
+        beats: beats_text(numerator, denominator),
+        of: signature.numerator(),
+        state,
+    })
+}
+
+/// `numerator / denominator` as "4", "5.5" or "3.33" (at most two decimals).
+fn beats_text(numerator: u128, denominator: u128) -> String {
+    let whole = numerator / denominator;
+    let rest = numerator % denominator;
+    if rest == 0 {
+        return whole.to_string();
+    }
+    // Hundredths, rounded half up.
+    let hundredths = (rest * 200 / denominator).div_ceil(2);
+    let (whole, hundredths) = if hundredths >= 100 {
+        (whole + 1, hundredths - 100)
+    } else {
+        (whole, hundredths)
+    };
+    if hundredths == 0 {
+        return whole.to_string();
+    }
+    let text = format!("{whole}.{hundredths:02}");
+    text.trim_end_matches('0').to_owned()
+}
+
+/// "4 / 4" with a green check mark, "5.5 / 4" with a red cross, or "3 / 4" alone.
+fn fill_readout(ui: &mut egui::Ui, fill: &BarFill) {
+    let tokens = style::tokens(ui);
+    let (ink, label) = match fill.state {
+        FillState::Full => (
+            tokens.text,
+            format!("Bar full: {} of {} beats", fill.beats, fill.of),
+        ),
+        FillState::Over => (
+            FILL_RED,
+            format!("Bar too long: {} of {} beats", fill.beats, fill.of),
+        ),
+        FillState::Under => (
+            tokens.text_weak,
+            format!("Bar not full yet: {} of {} beats", fill.beats, fill.of),
+        ),
+    };
+    let text = format!("{} / {}", fill.beats, fill.of);
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text, FontId::proportional(12.0), ink);
+    let icon = 12.0;
+    let gap = 5.0;
+    let size = vec2(galley.size().x + gap + icon, galley.size().y.max(icon));
+    let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
+    let text_top = rect.center().y - galley.size().y / 2.0;
+    ui.painter()
+        .galley(egui::pos2(rect.left(), text_top), galley.clone(), ink);
+    let icon_rect = Rect::from_center_size(
+        egui::pos2(rect.right() - icon / 2.0, rect.center().y),
+        vec2(icon, icon),
+    );
+    match fill.state {
+        FillState::Full => paint_check(ui.painter(), icon_rect, FILL_GREEN),
+        FillState::Over => paint_cross(ui.painter(), icon_rect, FILL_RED),
+        FillState::Under => {}
+    }
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &label));
+    response.on_hover_text(label);
+}
+
+/// The full bar's check mark and the overfull bar's cross.
+const FILL_GREEN: egui::Color32 = egui::Color32::from_rgb(0x3F, 0xB9, 0x50);
+const FILL_RED: egui::Color32 = egui::Color32::from_rgb(0xF2, 0x55, 0x4D);
+
+fn paint_check(painter: &egui::Painter, rect: Rect, ink: egui::Color32) {
+    let stroke = egui::Stroke::new(2.0, ink);
+    let a = egui::pos2(rect.left() + 1.0, rect.center().y + 0.5);
+    let b = egui::pos2(rect.left() + rect.width() * 0.4, rect.bottom() - 1.5);
+    let c = egui::pos2(rect.right() - 0.5, rect.top() + 1.5);
+    painter.add(egui::Shape::line(vec![a, b, c], stroke));
+}
+
+fn paint_cross(painter: &egui::Painter, rect: Rect, ink: egui::Color32) {
+    let stroke = egui::Stroke::new(2.0, ink);
+    let r = rect.shrink(1.5);
+    painter.line_segment([r.left_top(), r.right_bottom()], stroke);
+    painter.line_segment([r.right_top(), r.left_bottom()], stroke);
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use gscore_model::testing::{self, GUITAR_6};
+    use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, NoteValue, TrackIndex, VoiceIndex};
+
+    use super::{FillState, bar_fill, beats_text};
+
+    fn at(beat: usize) -> BeatPosition {
+        BeatPosition {
+            track: TrackIndex::new(0),
+            measure: MeasureIndex::new(0),
+            voice: VoiceIndex::new(0),
+            beat: BeatIndex::new(beat),
+        }
+    }
+
+    fn fill(song: &gscore_model::Song) -> (String, u8, FillState) {
+        let fill = bar_fill(
+            song,
+            TrackIndex::new(0),
+            MeasureIndex::new(0),
+            VoiceIndex::new(0),
+        )
+        .unwrap();
+        (fill.beats, fill.of, fill.state)
+    }
+
+    #[test]
+    fn a_bar_is_full_short_or_too_long() {
+        // Four quarter rests in 4/4.
+        let mut song = testing::song(&[GUITAR_6], 1).unwrap();
+        assert_eq!(fill(&song), ("4".to_owned(), 4, FillState::Full));
+
+        let _deleted = song.delete_beat(at(3)).unwrap();
+        assert_eq!(fill(&song), ("3".to_owned(), 4, FillState::Under));
+
+        let quarter = NoteValue::new(4, 0, None).unwrap();
+        let eighth = NoteValue::new(8, 0, None).unwrap();
+        let _quarter = song.insert_beat(at(3), quarter).unwrap();
+        let _eighth = song.insert_beat(at(4), eighth).unwrap();
+        assert_eq!(fill(&song), ("4.5".to_owned(), 4, FillState::Over));
+
+        let dotted = NoteValue::new(4, 1, None).unwrap();
+        let _longer = song.set_duration(at(4), dotted).unwrap();
+        assert_eq!(fill(&song), ("5.5".to_owned(), 4, FillState::Over));
+    }
+
+    #[test]
+    fn beats_are_written_with_at_most_two_decimals() {
+        assert_eq!(beats_text(4, 1), "4");
+        assert_eq!(beats_text(11, 2), "5.5");
+        assert_eq!(beats_text(10, 3), "3.33");
+        assert_eq!(beats_text(1, 4), "0.25");
+        assert_eq!(beats_text(1999, 1000), "2");
+    }
+
+    #[test]
+    fn there_is_no_fill_for_a_missing_voice() {
+        let song = testing::song(&[GUITAR_6], 1).unwrap();
+        assert_eq!(
+            bar_fill(
+                &song,
+                TrackIndex::new(0),
+                MeasureIndex::new(0),
+                VoiceIndex::new(5)
+            ),
+            None
+        );
     }
 }

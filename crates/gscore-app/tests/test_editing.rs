@@ -304,3 +304,17 @@ fn a_second_click_on_a_technique_removes_it_even_off_the_cursor_string() {
     harness.run();
     assert!(!palm_muted(&harness), "the second click removes it");
 }
+
+#[test]
+fn the_player_tells_whether_the_bar_is_full() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    harness.run();
+    harness.get_by_label("Bar full: 4 of 4 beats");
+    // One more beat makes the bar too long.
+    press(&mut harness, Key::Insert);
+    harness.run();
+    assert!(
+        harness.query_by_label_contains("Bar too long:").is_some(),
+        "the overfull bar is reported"
+    );
+}
