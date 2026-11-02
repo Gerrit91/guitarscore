@@ -40,19 +40,30 @@ impl Song {
         })
     }
 
-    /// Sets the initial tempo, in quarter notes per minute.
+    /// Sets the initial tempo, in quarter notes per minute. When measure 1 carries a tempo
+    /// of its own (GP6 and later files store the initial tempo there), it changes too, so
+    /// playback and the file agree with the new value.
     pub fn set_tempo(&mut self, tempo: u32) -> Result<Change, ModelError> {
         if !(1..=MAX_TEMPO).contains(&tempo) {
             return Err(ModelError::Invalid(format!(
                 "tempo {tempo} (supported: 1 to {MAX_TEMPO} BPM)"
             )));
         }
+        let value = i16::try_from(tempo)
+            .map_err(|_| ModelError::Invalid(format!("tempo {tempo} does not fit")))?;
         self.edit_metadata(|inner| {
             let previous = inner.tempo;
-            inner.tempo = i16::try_from(tempo)
-                .map_err(|_| ModelError::Invalid(format!("tempo {tempo} does not fit")))?;
+            inner.tempo = value;
+            let previous_first = inner
+                .measure_headers
+                .first_mut()
+                .filter(|header| header.tempo > 0)
+                .map(|header| std::mem::replace(&mut header.tempo, i32::from(value)));
             Ok(Change {
-                kind: ChangeKind::SongTempo { previous },
+                kind: ChangeKind::SongTempo {
+                    previous,
+                    previous_first,
+                },
             })
         })
     }

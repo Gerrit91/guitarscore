@@ -169,9 +169,14 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
 14. **The M14 palette and selection are a first version.** Beat selections stay in one
    measure and voice; measure selections cover every track (copy/paste carries notes,
    durations, ties, effects, time signature, tempo and section marker). Pasting measures
-   needs room inside the song (insert empty measures first); pasting beats appends beats at
-   the end of a short voice. Grace notes, chord diagrams and lyrics are not copied or
+   needs room inside the song (insert empty measures first) and replaces both voices of
+   each target measure (creating voice 2 when the copy has one); a pasted measure keeps
+   the target's tempo change when the copied measure had none (there is no command to
+   remove a tempo change). Pasting beats appends beats at the end of a short voice.
+   Placeholder beats (Guitar Pro's fillers in unused voices) are not copied. Grace notes, chord diagrams and lyrics are not copied or
    editable (the model has no setters). Bend and whammy shapes are edited as point rows
    (position 0-12, value in quarter tones) with a preview, not by dragging a curve; the
    full shape is stored, but playback and `dump` still use the highest point. A batch is one
-   undo step and one usually long journal line (its nested commands are percent-encoded).
+   undo step and one usually long journal line (its nested commands are percent-encoded;
+   pasted notes list only the effects they have). If a part of a batch fails, the parts
+   before it are reverted; a failing revert there is ignored (it has not been seen).

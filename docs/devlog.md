@@ -1076,3 +1076,28 @@ Landed:
   (measure ranges cover tracks); the bend/whammy editors are point rows with a preview, not
   freehand dragging; playback still follows a bend's highest point, not its full shape;
   `dump` and the save comparison still summarize bends. See `docs/gaps.md` #4, #14.
+
+## 2026-11-02 — M12/M14 review
+
+Fixed after reviewing M12 and M14:
+- The initial tempo (settings window, `set_tempo`) now also changes measure 1's tempo when
+  it has one. GP6 and later files store the initial tempo there, and playback takes the
+  measure's, so changing the song tempo had no audible effect until the file was saved and
+  opened again. Undo restores both.
+- Undoing a time signature gives every measure a new layout stamp, like the edit does (a
+  cache keyed on stamps could show the undone signature on measure 1; the app was saved by
+  dropping all layouts).
+- Measure paste: tempo, time signature and section are set once per measure instead of
+  once per track; voice 2 is pasted (created when the target lacks it) and target voices
+  the copy lacks are cleared, so a pasted measure matches the copy; placeholder beats are
+  no longer turned into rests; pasted notes carry only the effects they have (shorter
+  journal lines). The paste code moved to `selection/paste.rs`.
+- The edit palette re-reads its tempo, signature, key and section fields after every edit
+  and undo and when another song opens (it read them only when the cursor changed measure,
+  so undo or opening a file left stale values).
+- Tests: model tempo/measure-1 and signature-undo stamps; a measure paste with voice 2 on
+  two tracks; the palette's tempo field following undo/redo.
+- Still open from the review: several files are above the 400-line soft limit
+  (`gscore-model` `effects.rs` 826 and `edit/mod.rs` 773, `gscore-edit` `command.rs` 888,
+  `parse.rs` 698, `info.rs` 662, the app's `edit_effects.rs` 699 and `edit_palette.rs`
+  534); M14 lacks grace-note editing and M12 the Page layout tab (both in `docs/gaps.md`).

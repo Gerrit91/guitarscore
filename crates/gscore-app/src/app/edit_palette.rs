@@ -27,8 +27,10 @@ pub(super) struct EditPaletteState {
     dots: u8,
     /// The chosen tuplet, if any.
     tuplet: Option<(u8, u8)>,
-    /// The measure the header fields below belong to.
-    measure: Option<MeasureIndex>,
+    /// The measure and song revision the header fields below were read at; they are read
+    /// again when either changes (another measure, an edit, an undo), so they never show a
+    /// stale value. A draft typed into them lasts until the next edit.
+    fields_from: Option<(MeasureIndex, u64)>,
     tempo: u32,
     numerator: u8,
     denominator: u16,
@@ -48,7 +50,7 @@ impl Default for EditPaletteState {
             value: 4,
             dots: 0,
             tuplet: None,
-            measure: None,
+            fields_from: None,
             tempo: 120,
             numerator: 4,
             denominator: 4,
@@ -63,6 +65,11 @@ impl Default for EditPaletteState {
 }
 
 impl EditPaletteState {
+    /// Reads the header fields from the song again on the next frame (another document).
+    pub(super) fn forget_fields(&mut self) {
+        self.fields_from = None;
+    }
+
     fn duration(&self) -> Option<NoteValue> {
         NoteValue::new(self.value, self.dots, self.tuplet).ok()
     }
@@ -143,8 +150,9 @@ impl GuitarScoreApp {
         let selection = document.editor().selection();
         let snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
 
-        if self.edit_palette.measure != Some(snapshot.measure) {
-            self.edit_palette.measure = Some(snapshot.measure);
+        let fields_from = (snapshot.measure, document.editor().revision());
+        if self.edit_palette.fields_from != Some(fields_from) {
+            self.edit_palette.fields_from = Some(fields_from);
             self.edit_palette.tempo = snapshot.tempo.unwrap_or(120);
             if let Some(signature) = snapshot.time_signature {
                 self.edit_palette.numerator = signature.numerator();
