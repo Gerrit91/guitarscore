@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use gscore_audio::{MidiOutPlayer, SynthPlayer, midi_output_ports};
-use gscore_model::{BeatPosition, Song, TrackIndex, TrackSound};
+use gscore_model::{
+    BeatIndex, BeatPosition, MeasureIndex, Song, TrackIndex, TrackSound, VoiceIndex,
+};
 use gscore_play::{Channel, MidiEvent, PlayState, Player, Sequence, controller};
 
 /// Where playback goes.
@@ -72,6 +74,12 @@ pub struct Playback {
     /// Where the cursor was when playback paused: playing on from the same place resumes,
     /// from anywhere else starts there.
     paused_at: Option<BeatPosition>,
+    /// Whether the metronome clicks on every beat while playing.
+    metronome: bool,
+    /// Whether one bar of clicks is played before playback starts.
+    count_in: bool,
+    /// While the count-in plays: where the song starts when it ends.
+    count_in_from: Option<Option<BeatPosition>>,
 }
 
 impl Playback {
@@ -112,6 +120,41 @@ impl Playback {
         self.soundfont.as_deref()
     }
 
+    /// Whether the metronome clicks on every beat.
+    pub fn metronome(&self) -> bool {
+        self.metronome
+    }
+
+    /// Whether one bar of clicks is played before playback starts.
+    pub fn count_in(&self) -> bool {
+        self.count_in
+    }
+
+    /// Whether the count-in is playing right now.
+    pub fn count_in_pending(&self) -> bool {
+        self.count_in_from.is_some()
+    }
+
+    /// Turns the metronome on or off. While a sequence is loaded it is rebuilt and swapped
+    /// in where playback is, so the change is heard without a stop.
+    pub fn set_metronome(&mut self, song: &Song, enabled: bool) -> Result<(), String> {
+        if self.metronome == enabled {
+            return Ok(());
+        }
+        self.metronome = enabled;
+        self.rebuild_sequence(song)
+    }
+
+    /// Turns the count-in on or off. Turning it off during the count-in starts the song at
+    /// once instead of waiting for the bar of clicks to finish.
+    pub fn set_count_in(&mut self, song: &Song, enabled: bool) -> Result<(), String> {
+        self.count_in = enabled;
+        if !enabled && let Some(from) = self.count_in_from.take() {
+            return self.start_music(song, from);
+        }
+        Ok(())
+    }
+
     /// Chooses the output; the player reconnects on the next play.
     pub fn choose_output(&mut self, output: Output) {
         if output != self.output {
@@ -121,6 +164,7 @@ impl Playback {
             self.player = None;
             self.sequence = None;
             self.reported = None;
+            self.count_in_from = None;
             self.output = output;
         }
     }
@@ -148,6 +192,7 @@ impl Playback {
             self.player = None;
             self.sequence = None;
             self.reported = None;
+            self.count_in_from = None;
         }
     }
 
@@ -169,13 +214,14 @@ impl Playback {
         }
         self.sequence = None;
         self.paused_at = None;
+        self.count_in_from = None;
     }
 
     /// The song's mix (volume, pan, mute, solo) changed: rebuild the sequence. While it is
     /// playing or paused, the new mix takes over at the same position, so a slider is heard
     /// at once.
     pub fn mix_changed(&mut self, song: &Song) -> Result<(), String> {
-        let sequence = Arc::new(Sequence::new(song, None).map_err(|e| e.to_string())?);
+        let sequence = self.build_sequence(song)?;
         let Some(active) = &mut self.player else {
             // Nothing is connected: the next play builds the sequence again.
             self.sequence = None;
@@ -229,13 +275,41 @@ impl Playback {
             self.player = Some(active);
             self.sequence = None;
         }
+        // A paused count-in resumes where it paused; one that has ended starts the song.
+        if self.count_in_from.is_some() {
+            if self.is_loading() {
+                // The count-in is on its way to the output; it has not started yet.
+                return Ok(());
+            }
+            if self.state() == PlayState::Paused {
+                return self.player_mut()?.play().map_err(|e| e.to_string());
+            }
+            // A stopped count-in that never started has a position of 0 (its commands are
+            // still queued); one that played to the end stays at its last tick.
+            if self.position() == 0 {
+                return Ok(());
+            }
+            let at = self.count_in_from.take().unwrap_or(None);
+            return self.start_music(song, at);
+        }
         let resume =
             self.sequence.is_some() && self.state() == PlayState::Paused && self.paused_at == from;
         self.paused_at = None;
+        // A fresh start with the count-in on: one bar of clicks, then the song.
+        if !resume && self.count_in {
+            let at = from.unwrap_or_else(first_beat);
+            let clicks = gscore_play::count_in(song, at).map_err(|e| e.to_string())?;
+            self.player_mut()?
+                .load(Arc::new(clicks))
+                .map_err(|e| e.to_string())?;
+            self.sequence = None;
+            self.count_in_from = Some(from);
+            return self.player_mut()?.play().map_err(|e| e.to_string());
+        }
         let sequence = match &self.sequence {
             Some(sequence) => Arc::clone(sequence),
             None => {
-                let sequence = Arc::new(Sequence::new(song, None).map_err(|e| e.to_string())?);
+                let sequence = self.build_sequence(song)?;
                 self.player_mut()?
                     .load(Arc::clone(&sequence))
                     .map_err(|e| e.to_string())?;
@@ -246,6 +320,70 @@ impl Playback {
         if !resume && let Some(tick) = from.and_then(|at| sequence.tick_of(song, at)) {
             self.player_mut()?.seek(tick).map_err(|e| e.to_string())?;
         }
+        self.player_mut()?.play().map_err(|e| e.to_string())
+    }
+
+    /// When the count-in has finished, starts the song where it was asked to. Call it every
+    /// frame while [`Playback::count_in_pending`] is set.
+    pub fn poll_count_in(&mut self, song: &Song) -> Result<(), String> {
+        if self.count_in_from.is_none() || self.is_loading() {
+            return Ok(());
+        }
+        if self.error().is_some() {
+            // The output failed; there is nothing to lead into. The error is reported.
+            self.count_in_from = None;
+            return Ok(());
+        }
+        if self.state() == PlayState::Stopped && self.position() > 0 {
+            let from = self.count_in_from.take().unwrap_or(None);
+            return self.start_music(song, from);
+        }
+        Ok(())
+    }
+
+    /// Builds the song's sequence with the current metronome setting.
+    fn build_sequence(&self, song: &Song) -> Result<Arc<Sequence>, String> {
+        Sequence::with_metronome(song, None, self.metronome)
+            .map(Arc::new)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Swaps in a sequence rebuilt with the current settings at the position playback is,
+    /// without stopping or silencing.
+    fn rebuild_sequence(&mut self, song: &Song) -> Result<(), String> {
+        if self.player.is_none() || self.sequence.is_none() {
+            self.sequence = None;
+            return Ok(());
+        }
+        let sequence = self.build_sequence(song)?;
+        let Some(active) = &mut self.player else {
+            return Ok(());
+        };
+        active
+            .player_mut()
+            .replace(Arc::clone(&sequence))
+            .map_err(|e| e.to_string())?;
+        self.sequence = Some(sequence);
+        Ok(())
+    }
+
+    /// Loads (or reuses) the song's sequence and starts it at `from`.
+    fn start_music(&mut self, song: &Song, from: Option<BeatPosition>) -> Result<(), String> {
+        self.paused_at = None;
+        let sequence = match self.sequence.take() {
+            Some(sequence) => sequence,
+            None => {
+                let sequence = self.build_sequence(song)?;
+                self.player_mut()?
+                    .load(Arc::clone(&sequence))
+                    .map_err(|e| e.to_string())?;
+                sequence
+            }
+        };
+        if let Some(tick) = from.and_then(|at| sequence.tick_of(song, at)) {
+            self.player_mut()?.seek(tick).map_err(|e| e.to_string())?;
+        }
+        self.sequence = Some(sequence);
         self.player_mut()?.play().map_err(|e| e.to_string())
     }
 
@@ -269,6 +407,7 @@ impl Playback {
     /// Stops and goes back to the start.
     pub fn stop(&mut self) -> Result<(), String> {
         self.paused_at = None;
+        self.count_in_from = None;
         match &mut self.player {
             Some(active) => active.player_mut().stop().map_err(|e| e.to_string()),
             None => Ok(()),
@@ -320,9 +459,17 @@ impl Playback {
         song: &Song,
         tracks: impl IntoIterator<Item = TrackIndex>,
     ) -> Result<(), String> {
-        let Some(active) = &mut self.player else {
+        if self.player.is_none() {
             // Nothing is connected: the next play builds the sequence again.
             self.sequence = None;
+            return Ok(());
+        }
+        let rebuilt = if self.sequence.is_some() {
+            Some(self.build_sequence(song)?)
+        } else {
+            None
+        };
+        let Some(active) = &mut self.player else {
             return Ok(());
         };
         for track in tracks {
@@ -337,10 +484,9 @@ impl Playback {
                 }
             }
         }
-        if self.sequence.is_none() {
+        let Some(sequence) = rebuilt else {
             return Ok(());
-        }
-        let sequence = Arc::new(Sequence::new(song, None).map_err(|e| e.to_string())?);
+        };
         active
             .player_mut()
             .replace(Arc::clone(&sequence))
@@ -374,6 +520,16 @@ impl Playback {
             .as_mut()
             .map(Active::player_mut)
             .ok_or_else(|| "no output is connected".to_owned())
+    }
+}
+
+/// The first beat of the song, for a count-in without a cursor position.
+fn first_beat() -> BeatPosition {
+    BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(0),
     }
 }
 

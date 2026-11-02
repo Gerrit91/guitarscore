@@ -77,6 +77,10 @@ pub struct Settings {
     pub window: Option<WindowState>,
     /// Recently opened files, newest first.
     pub recent_files: Vec<PathBuf>,
+    /// Reopen the last open file at startup (on by default).
+    pub reopen_last_file: bool,
+    /// The file to reopen at startup.
+    pub last_file: Option<PathBuf>,
     /// The keymap file, if the user chose one.
     pub keymap_path: Option<PathBuf>,
     /// Seconds between recovery snapshots; 0 means only by edit count.
@@ -102,6 +106,8 @@ impl Default for Settings {
             edit_panel_width: None,
             window: None,
             recent_files: Vec::new(),
+            reopen_last_file: true,
+            last_file: None,
             keymap_path: None,
             autosave_seconds: DEFAULT_AUTOSAVE_SECONDS,
             soundfont_path: None,

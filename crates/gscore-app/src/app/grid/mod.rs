@@ -130,8 +130,19 @@ impl GuitarScoreApp {
                             },
                         ));
                     }
-                    // While playing, playback goes to the selection's first measure.
-                    self.jump_playback_to(self.view.track, selection.start());
+                    // While playing, playback goes to the selection's first measure, unless
+                    // that measure is already playing (the selection just follows it).
+                    let playing_measure =
+                        if self.playback.state() == gscore_play::PlayState::Playing {
+                            self.playback
+                                .current_measure()
+                                .map(|measure| measure.saturating_sub(1))
+                        } else {
+                            None
+                        };
+                    if playing_measure != Some(selection.start()) {
+                        self.jump_playback_to(self.view.track, selection.start());
+                    }
                 }
                 GridAction::Rename { track } => {
                     let name = rows
@@ -151,19 +162,33 @@ impl GuitarScoreApp {
         }
     }
 
-    /// Moves the cursor to the first beat of `track`, `measure`.
+    /// Moves the cursor to the first beat of `track`, `measure`. While playing, choosing a
+    /// track (or the measure that is already playing) keeps playback going where it is; only
+    /// a different measure seeks.
     fn move_cursor_to(&mut self, track: usize, measure: usize) {
         let Some(document) = &mut self.document else {
             return;
         };
+        let playing_measure = if self.playback.state() == gscore_play::PlayState::Playing {
+            self.playback
+                .current_measure()
+                .map(|measure| measure.saturating_sub(1))
+        } else {
+            None
+        };
+        let same_measure = playing_measure == Some(measure);
         let mut cursor = document.editor().cursor();
         cursor.track = TrackIndex::new(track);
         cursor.measure = gscore_model::MeasureIndex::new(measure);
-        cursor.voice = gscore_model::VoiceIndex::new(0);
-        cursor.beat = gscore_model::BeatIndex::new(0);
+        if !same_measure {
+            cursor.voice = gscore_model::VoiceIndex::new(0);
+            cursor.beat = gscore_model::BeatIndex::new(0);
+        }
         document.editor_mut().set_cursor(cursor);
         self.view.track = track;
-        self.jump_playback_to(track, measure);
+        if !same_measure {
+            self.jump_playback_to(track, measure);
+        }
     }
 
     /// While playing, continues playback at the first beat of `track`, `measure`.

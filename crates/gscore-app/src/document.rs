@@ -9,6 +9,7 @@ use std::sync::Arc;
 use gscore_edit::TabEditor;
 use gscore_layout::{Fonts, Layout, LayoutCache, LayoutOptions};
 use gscore_model::{MeasureIndex, Repeat, Section, Song, TrackIndex};
+use gscore_play::Timeline;
 use gscore_session::{FileFormat, Journal};
 
 /// One track's layout: the revision and options it shows, and the measure cache that
@@ -45,6 +46,9 @@ pub struct Document {
     layouts: HashMap<usize, TrackLayout>,
     /// The song grid's squares and markers, with the revision they show.
     grid: Option<(u64, Arc<GridData>)>,
+    /// The song's played measures and tempo, with the revision they show, for the time
+    /// readout.
+    timeline: Option<(u64, Option<Arc<Timeline>>)>,
     /// The recovery journal every edit is recorded in (`None` without a recovery
     /// directory, or if it could not be created).
     journal: Option<Journal>,
@@ -94,6 +98,7 @@ impl Document {
             editor,
             layouts: HashMap::new(),
             grid: None,
+            timeline: None,
             journal,
             journal_reported: false,
         }
@@ -242,6 +247,20 @@ impl Document {
         });
         self.grid = Some((revision, Arc::clone(&grid)));
         grid
+    }
+
+    /// The song's played measures and tempo for the current revision, computed once per
+    /// revision; `None` if the song's timing cannot be read.
+    pub fn timeline(&mut self) -> Option<Arc<Timeline>> {
+        let revision = self.editor.revision();
+        if let Some((cached, timeline)) = &self.timeline
+            && *cached == revision
+        {
+            return timeline.clone();
+        }
+        let timeline = Timeline::new(self.editor.song()).ok().map(Arc::new);
+        self.timeline = Some((revision, timeline.clone()));
+        timeline
     }
 
     /// The layout of `track` for the current revision. A panic inside layout is contained

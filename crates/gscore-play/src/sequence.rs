@@ -16,7 +16,6 @@ use gscore_model::{
 
 use crate::channels::ChannelAllocator;
 use crate::event::{Channel, MidiEvent, PITCH_BEND_CENTER, controller};
-use crate::order::playback_order;
 use crate::pitch;
 use crate::sounding::{self, Sounding};
 use crate::tempo::{PPQ, TempoMap};
@@ -99,30 +98,21 @@ impl Sequence {
             .map(|entry| entry.channel)
     }
 
-    /// The sequence of `tracks` of `song` (all tracks if `None`).
+    /// The sequence of `tracks` of `song` (all tracks if `None`), without a metronome.
     pub fn new(song: &Song, tracks: Option<&[TrackIndex]>) -> Result<Self, ModelError> {
-        let order = playback_order(song);
+        Self::with_metronome(song, tracks, false)
+    }
 
+    /// The sequence of `tracks` of `song` (all tracks if `None`). With `metronome`, a click
+    /// track is added on the percussion channel: one click per beat, accented on the first
+    /// beat of every measure.
+    pub fn with_metronome(
+        song: &Song,
+        tracks: Option<&[TrackIndex]>,
+        metronome: bool,
+    ) -> Result<Self, ModelError> {
         // When each played measure starts, by its time signature.
-        let mut measures = Vec::with_capacity(order.len());
-        let mut tick: u64 = 0;
-        let four_four = TimeSignature::new(4, 4)?;
-        for &measure in &order {
-            let signature = song
-                .track(TrackIndex::new(0))
-                .and_then(|t| t.measure(measure))
-                .map(|m| m.time_signature())
-                .transpose()?
-                .unwrap_or(four_four);
-            let end = tick.saturating_add(ticks(signature.measure_length()));
-            measures.push(MeasureSpan {
-                measure,
-                start: tick,
-                end,
-                signature,
-            });
-            tick = end;
-        }
+        let (measures, tick) = crate::timeline::measure_spans(song)?;
 
         let mut tempo_changes: Vec<(u64, u32)> = vec![(0, song.tempo())];
         for span in &measures {
@@ -327,6 +317,11 @@ impl Sequence {
                 });
             }
         }
+        if metronome {
+            for span in &measures {
+                events.extend(crate::click::click_events(*span));
+            }
+        }
         events.sort_by_key(|e| (e.tick, rank(&e.event)));
 
         tempo_changes.sort_by_key(|&(tick, _)| tick);
@@ -344,6 +339,11 @@ impl Sequence {
             skipped_notes,
             degraded_pitch_bends,
         })
+    }
+
+    /// The length of the whole sequence in microseconds.
+    pub fn micros(&self) -> u64 {
+        self.tempo.micros_at(self.end)
     }
 
     /// The channels this sequence uses, including borrowed ones.

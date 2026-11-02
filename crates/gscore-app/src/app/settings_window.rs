@@ -260,6 +260,17 @@ impl GuitarScoreApp {
         });
 
         ui.separator();
+        ui.heading("Startup");
+        ui.checkbox(
+            &mut self.settings.reopen_last_file,
+            "Reopen the last file at startup",
+        );
+        ui.label(
+            RichText::new("If the file is no longer there, GuitarScore starts without a song.")
+                .weak(),
+        );
+
+        ui.separator();
         ui.heading("Autosave");
         ui.horizontal(|ui| {
             ui.label("Recovery snapshot");

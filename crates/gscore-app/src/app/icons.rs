@@ -12,6 +12,10 @@ pub(crate) enum Icon {
     Pause,
     /// Stop square.
     Stop,
+    /// Metronome.
+    Metronome,
+    /// Count-in (a clock-wise arrow with a play sign).
+    CountIn,
     /// Save (a downward arrow into a tray).
     Save,
     /// Open (a folder).
@@ -133,6 +137,71 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 2.0,
                 color,
             );
+        }
+        Icon::Metronome => {
+            let bottom = rect.bottom() - size * 0.08;
+            let top = rect.top() + size * 0.14;
+            let half_bottom = size * 0.34;
+            let half_top = size * 0.18;
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    egui::pos2(center.x - half_bottom, bottom),
+                    egui::pos2(center.x - half_top, top),
+                    egui::pos2(center.x + half_top, top),
+                    egui::pos2(center.x + half_bottom, bottom),
+                ],
+                Color32::TRANSPARENT,
+                stroke,
+            ));
+            painter.line_segment(
+                [
+                    egui::pos2(center.x, bottom - size * 0.04),
+                    egui::pos2(center.x - size * 0.2, top + size * 0.18),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(center.x - size * 0.24, top + size * 0.14),
+                    egui::pos2(center.x - size * 0.12, top + size * 0.26),
+                ],
+                Stroke::new(2.5, color),
+            );
+        }
+        Icon::CountIn => {
+            let radius = size * 0.44;
+            let start = std::f32::consts::FRAC_PI_2;
+            let sweep = std::f32::consts::PI * 1.5;
+            let points: Vec<Pos2> = (0..=18)
+                .map(|step| {
+                    let angle = start + sweep * (step as f32) / 18.0;
+                    center + Vec2::angled(angle) * radius
+                })
+                .collect();
+            painter.add(egui::Shape::line(points, stroke));
+            let angle = start + sweep;
+            let tip = center + Vec2::angled(angle) * radius;
+            let direction = Vec2::angled(angle);
+            let tangent = Vec2::new(-direction.y, direction.x);
+            painter.line_segment(
+                [tip, tip - tangent * (size * 0.2) + direction * (size * 0.1)],
+                stroke,
+            );
+            painter.line_segment(
+                [tip, tip - tangent * (size * 0.2) - direction * (size * 0.1)],
+                stroke,
+            );
+            // A play triangle in the middle.
+            let half = size * 0.13;
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    center + vec2(-half * 0.55, -half),
+                    center + vec2(half, 0.0),
+                    center + vec2(-half * 0.55, half),
+                ],
+                color,
+                Stroke::NONE,
+            ));
         }
         Icon::Save => {
             let arrow = rect.shrink(size * 0.2);

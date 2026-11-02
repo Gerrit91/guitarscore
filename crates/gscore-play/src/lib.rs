@@ -13,6 +13,7 @@
 #![warn(clippy::arithmetic_side_effects)]
 
 mod channels;
+mod click;
 mod event;
 mod order;
 mod pitch;
@@ -21,14 +22,17 @@ mod sequence;
 mod smf;
 mod sounding;
 mod tempo;
+mod timeline;
 
 pub use channels::ChannelAllocator;
+pub use click::count_in;
 pub use event::{Channel, MidiEvent, controller};
 pub use order::playback_order;
 pub use player::{PlayError, PlayState, Player, Scheduler, TEMPO_SCALE_RANGE};
 pub use sequence::{MeasureSpan, Sequence, SequenceTrack, TimedEvent};
 pub use smf::{SmfError, to_smf};
 pub use tempo::{PPQ, TempoMap, micros_per_quarter};
+pub use timeline::{Timeline, tempo_at};
 
 // The integration tests sequence the owner's files with `gscore-io`; this marks the
 // test-only dependency for the library test target's unused-dependency check.

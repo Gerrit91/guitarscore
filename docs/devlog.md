@@ -1228,3 +1228,37 @@ muted without an icon while not full yet (at most two decimals, so a triplet giv
 like the measure issues. Tests: `bar_fill` unit tests (full, short, 4.5 and 5.5 over,
 rounding) and the app reporting full and overfull bars to screen readers.
 
+
+## 2026-11-03 — M18 playback (first slice): time, metronome, count-in, live track switching
+
+Landed:
+- Time readout in the player: "00:00 / 03:45" (elapsed / total. `gscore-play` gained a
+  lightweight `Timeline` (played measures plus the tempo map, no events), cached per
+  revision in `Document`. With a measure selection in the song grid the total is the
+  selected bars and the position is measured from the selection's first measure, clamped
+  to its length; without a selection it is the whole song. Tempo changes on a beat are
+  honoured, as in the sequencer.
+- Metronome and count-in icons in the transport. The metronome adds a click track on the
+  General MIDI percussion channel (high wood block accented on the first beat of each
+  measure, low wood block on the other beats); toggling it while playing swaps the
+  sequence in place, without a stop. The count-in plays one bar of clicks at the start
+  measure's tempo and time signature, waits for it to finish, then starts the song; it is
+  cancelled by Stop and turning the toggle off starts the song at once. Both buttons are
+  plain toggles for now (not saved in the settings).
+- Changing tracks from the song grid during playback no longer interrupts it: clicking a
+  track row (or a cell in the measure that is already playing) only switches the shown
+  track and keeps the beat; only clicking another measure seeks.
+- Reopen the last file at startup (on by default, "Startup" in the Editor settings tab):
+  the open file is remembered in the settings; a file given on the command line wins, and
+  a missing last file simply starts with the blank screen. Recent files, zoom, panels and
+  window state were already remembered.
+- Tests: timeline totals and measure ranges, click generation and count-in length, the
+  time formatter and selection-aware position, reopening the last file (present, missing
+  and disabled), a track switch during synthesizer playback, and a count-in running into
+  the song with the metronome toggled live. Plain `cargo test --workspace`, clippy and
+  `cargo xtask layers` pass.
+- The page snapshots were regenerated for the new transport controls; the owner should
+  review `crates/gscore-app/tests/snapshots/steel_guitar_dadgad_{light,dark}.png`.
+- Open: the metronome uses the SoundFont's/peripheral synth's drum kit (no separate click
+  sound choice); count-in is one bar only; playback does not yet loop a selection; the
+  time readout and transport toggles are not in the keymap.

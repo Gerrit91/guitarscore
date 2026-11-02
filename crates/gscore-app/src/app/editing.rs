@@ -239,6 +239,39 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Starts the song when its count-in bar has finished.
+    pub(super) fn poll_count_in(&mut self) {
+        if !self.playback.count_in_pending() {
+            return;
+        }
+        let Some(document) = &self.document else {
+            return;
+        };
+        if let Err(error) = self.playback.poll_count_in(document.song()) {
+            self.notice = Some(error);
+        }
+    }
+
+    /// Turns the metronome on or off (heard at once while playing).
+    pub fn set_metronome(&mut self, enabled: bool) {
+        let Some(document) = &self.document else {
+            return;
+        };
+        if let Err(error) = self.playback.set_metronome(document.song(), enabled) {
+            self.notice = Some(error);
+        }
+    }
+
+    /// Turns the one-bar count-in on or off.
+    pub fn set_count_in(&mut self, enabled: bool) {
+        let Some(document) = &self.document else {
+            return;
+        };
+        if let Err(error) = self.playback.set_count_in(document.song(), enabled) {
+            self.notice = Some(error);
+        }
+    }
+
     /// Does what the editor asked the app for.
     pub(super) fn request(&mut self, request: Request, ctx: &egui::Context) {
         match request {

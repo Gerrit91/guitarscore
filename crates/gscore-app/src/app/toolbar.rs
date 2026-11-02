@@ -6,11 +6,13 @@
 use egui::{Align, FontFamily, FontId, Layout, Rect, RichText, Sense, UiBuilder, vec2};
 use gscore_edit::{Action, ActionId, Request};
 use gscore_model::MeasureIndex;
+use gscore_play::{Sequence, Timeline};
 
 use super::GuitarScoreApp;
 use super::icons::{self, Icon};
 use super::style;
 use super::tiles;
+use crate::state::MeasureSelection;
 
 /// The player's width before it was first measured.
 const PLAYER_WIDTH: f32 = 220.0;
@@ -179,6 +181,8 @@ impl GuitarScoreApp {
     fn transport(&mut self, ui: &mut egui::Ui) -> f32 {
         let playing = self.playback.state() == gscore_play::PlayState::Playing;
         let has_song = self.document.is_some();
+        let (metronome, count_in) = (self.playback.metronome(), self.playback.count_in());
+        let (mut toggle_metronome, mut toggle_count_in) = (false, false);
         let start = ui.cursor().left();
         style::toolbar_group(ui, |ui| {
             let (icon, label) = if playing {
@@ -200,8 +204,44 @@ impl GuitarScoreApp {
             if stop.clicked() {
                 self.stop_playback();
             }
+            let metronome_clicked = ui
+                .add_enabled_ui(has_song, |ui| {
+                    icons::toggle_button(
+                        ui,
+                        Icon::Metronome,
+                        "Metronome",
+                        "Click on every beat while playing",
+                        metronome,
+                    )
+                })
+                .inner
+                .clicked();
+            if metronome_clicked {
+                toggle_metronome = true;
+            }
+            let count_in_clicked = ui
+                .add_enabled_ui(has_song, |ui| {
+                    icons::toggle_button(
+                        ui,
+                        Icon::CountIn,
+                        "Count-in",
+                        "One bar of clicks before playback starts",
+                        count_in,
+                    )
+                })
+                .inner
+                .clicked();
+            if count_in_clicked {
+                toggle_count_in = true;
+            }
             self.position_readout(ui);
         });
+        if toggle_metronome {
+            self.set_metronome(!metronome);
+        }
+        if toggle_count_in {
+            self.set_count_in(!count_in);
+        }
         if self.playback.is_loading() {
             ui.label("Loading sounds…");
             ui.add(
@@ -226,11 +266,19 @@ impl GuitarScoreApp {
         ui.min_rect().right() - start
     }
 
-    /// "3 / 12" and "♩ = 120": the measure being played (or the cursor's) and its tempo.
-    fn position_readout(&self, ui: &mut egui::Ui) {
-        let Some(document) = &self.document else {
+    /// The time (or the selection's time), the measure being played (or the cursor's), how
+    /// full it is and its tempo.
+    fn position_readout(&mut self, ui: &mut egui::Ui) {
+        let Some(document) = &mut self.document else {
             return;
         };
+        let timeline = document.timeline();
+        let selection = self.view.selection;
+        let position = self.playback.position();
+        let sequence = self.playback.sequence().cloned();
+        let (elapsed, total) = timeline.as_deref().map_or((0, 0), |timeline| {
+            playback_times(timeline, sequence.as_deref(), position, selection)
+        });
         let song = document.song();
         let measure = self
             .playback
@@ -238,6 +286,8 @@ impl GuitarScoreApp {
             .unwrap_or_else(|| document.editor().cursor().measure.get().saturating_add(1));
         let tokens = style::tokens(ui);
         ui.add_space(4.0);
+        time_readout(ui, elapsed, total);
+        ui.add_space(10.0);
         // Painted, not a Label, so screen readers get "Measure 3" rather than "3 / 12".
         let label = format!("Measure {measure}");
         let text = format!("{measure} / {}", song.measure_count());
@@ -282,6 +332,47 @@ impl GuitarScoreApp {
         .on_hover_text("Tempo at this measure");
         ui.add_space(6.0);
     }
+}
+
+/// The position and total length, in microseconds, for the time readout. With a measure
+/// selection the total is the selection's length and the position is measured from its
+/// first measure.
+pub(super) fn playback_times(
+    timeline: &Timeline,
+    sequence: Option<&Sequence>,
+    position: u64,
+    selection: Option<MeasureSelection>,
+) -> (u64, u64) {
+    let (start_tick, end_tick) = selection
+        .and_then(|selection| timeline.measure_range(selection.start(), selection.end()))
+        .unwrap_or((0, timeline.end));
+    let start = timeline.micros_at(start_tick);
+    let total = timeline.micros_at(end_tick).saturating_sub(start);
+    let played = sequence.map_or(0, |sequence| sequence.tempo.micros_at(position));
+    (played.saturating_sub(start).min(total), total)
+}
+
+/// "00:00" (or "103:20" for very long songs) from microseconds.
+pub(super) fn time_text(micros: u64) -> String {
+    let seconds = micros / 1_000_000;
+    let minutes = seconds / 60;
+    let seconds = seconds % 60;
+    format!("{minutes:02}:{seconds:02}")
+}
+
+/// The time position and total, painted (with one accessible label).
+fn time_readout(ui: &mut egui::Ui, elapsed: u64, total: u64) {
+    let tokens = style::tokens(ui);
+    let elapsed_text = time_text(elapsed);
+    let total_text = time_text(total);
+    let text = format!("{elapsed_text} / {total_text}");
+    let label = format!("Time {elapsed_text} of {total_text}");
+    let font = FontId::new(12.0, FontFamily::Name(crate::fonts::BOLD.into()));
+    let galley = ui.painter().layout_no_wrap(text, font, tokens.text_weak);
+    let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::hover());
+    ui.painter().galley(rect.min, galley, tokens.text_weak);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &label));
+    response.on_hover_text("Position and total length; a measure selection sets the total");
 }
 
 /// " (ctrl+z)": the keys `keymap` binds to `action`, for a tooltip; empty if none.
@@ -432,8 +523,10 @@ mod tests {
 
     use gscore_model::testing::{self, GUITAR_6};
     use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, NoteValue, TrackIndex, VoiceIndex};
+    use gscore_play::{PPQ, Sequence, Timeline};
 
-    use super::{FillState, bar_fill, beats_text};
+    use super::{FillState, bar_fill, beats_text, playback_times, time_text};
+    use crate::state::MeasureSelection;
 
     fn at(beat: usize) -> BeatPosition {
         BeatPosition {
@@ -496,5 +589,46 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn times_are_written_as_minutes_and_seconds() {
+        assert_eq!(time_text(0), "00:00");
+        assert_eq!(time_text(9_000_000), "00:09");
+        assert_eq!(time_text(65_000_000), "01:05");
+        assert_eq!(time_text(6_000_000_000), "100:00");
+    }
+
+    #[test]
+    fn a_measure_selection_sets_the_total_and_the_position_origin() {
+        // Four 4/4 bars at 120 BPM: two seconds each.
+        let song = testing::song(&[GUITAR_6], 4).unwrap();
+        let timeline = Timeline::new(&song).unwrap();
+        let sequence = Sequence::new(&song, None).unwrap();
+        let selection = MeasureSelection::new(1).to(2);
+        let bar = u64::from(PPQ).saturating_mul(4);
+
+        let (elapsed, total) = playback_times(&timeline, Some(&sequence), 0, Some(selection));
+        assert_eq!((elapsed, total), (0, 4_000_000));
+
+        // One bar into the selection: two seconds elapsed.
+        let (elapsed, total) = playback_times(
+            &timeline,
+            Some(&sequence),
+            bar.saturating_mul(2),
+            Some(selection),
+        );
+        assert_eq!((elapsed, total), (2_000_000, 4_000_000));
+
+        // After the selection the position is clamped to its length.
+        let (elapsed, total) = playback_times(
+            &timeline,
+            Some(&sequence),
+            bar.saturating_mul(3),
+            Some(selection),
+        );
+        assert_eq!((elapsed, total), (4_000_000, 4_000_000));
+        let (elapsed, total) = playback_times(&timeline, Some(&sequence), bar, None);
+        assert_eq!((elapsed, total), (2_000_000, 8_000_000));
     }
 }

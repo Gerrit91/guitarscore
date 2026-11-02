@@ -136,6 +136,14 @@ impl GuitarScoreApp {
         crate::fonts::install(ctx);
         style::install(ctx);
         settings.sanitize();
+        // Without a file on the command line, reopen the last one (if it is still there).
+        let file = file.or_else(|| {
+            if settings.reopen_last_file {
+                settings.last_file.clone().filter(|path| path.is_file())
+            } else {
+                None
+            }
+        });
         let mut view = ViewState::default();
         settings.apply_to_view(&mut view);
         let last_window = settings.window;
@@ -315,6 +323,8 @@ impl eframe::App for GuitarScoreApp {
         self.apply_theme(&ctx);
         // Keys first, before any widget sees them (a focused button would take Space).
         self.handle_keys(&ctx);
+        // A count-in that has finished starts the song it was counting in.
+        self.poll_count_in();
         // The cursor follows the beat being played; the page scrolls with it.
         self.follow_playback();
         if self.playback.state() == gscore_play::PlayState::Playing {

@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable};
-use gscore_app::{GuitarScoreApp, Output, ThemeChoice};
+use gscore_app::{GuitarScoreApp, Keymap, Output, Settings, ThemeChoice};
 
 fn testdata(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -810,6 +810,20 @@ fn right_click_at(harness: &mut Harness<'static, GuitarScoreApp>, pos: egui::Pos
     harness.run();
 }
 
+/// Clicks at `pos` with the primary button.
+fn left_click_at(harness: &mut Harness<'static, GuitarScoreApp>, pos: egui::Pos2) {
+    harness.hover_at(pos);
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+    }
+    harness.run();
+}
+
 /// Right-clicks the name part of a track row (the controls are on the right).
 fn right_click_track(harness: &mut Harness<'static, GuitarScoreApp>, label: &str) {
     let rect = harness.get_by_label(label).rect();
@@ -840,4 +854,150 @@ fn a_track_row_offers_add_delete_duplicate_and_rename_with_undo() {
     harness.run();
     assert_eq!(harness.state().document().unwrap().song().track_count(), 1);
     assert!(harness.state().notice().is_none());
+}
+
+/// The app built with `settings`, waiting until opening finishes.
+fn app_with_settings(settings: Settings) -> Harness<'static, GuitarScoreApp> {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .build_eframe(|cc| {
+            GuitarScoreApp::with_settings(
+                &cc.egui_ctx,
+                None,
+                Keymap::default(),
+                None,
+                settings,
+                None,
+            )
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness
+}
+
+#[test]
+fn the_last_file_reopens_at_startup() {
+    let settings = Settings {
+        reopen_last_file: true,
+        last_file: Some(testdata("basic/note_lengths.gp")),
+        ..Settings::default()
+    };
+    let harness = app_with_settings(settings);
+    assert_eq!(
+        harness.state().document().unwrap().display_title(),
+        "Note Lengths"
+    );
+}
+
+#[test]
+fn a_missing_last_file_starts_without_a_song() {
+    let settings = Settings {
+        reopen_last_file: true,
+        last_file: Some(testdata("basic/no_such_file.gp")),
+        ..Settings::default()
+    };
+    let harness = app_with_settings(settings);
+    assert!(harness.state().document().is_none());
+    harness.get_by_label("No file open");
+}
+
+#[test]
+fn the_last_file_stays_closed_when_reopening_is_off() {
+    let settings = Settings {
+        reopen_last_file: false,
+        last_file: Some(testdata("basic/note_lengths.gp")),
+        ..Settings::default()
+    };
+    let harness = app_with_settings(settings);
+    assert!(harness.state().document().is_none());
+}
+
+#[test]
+fn the_shown_track_changes_from_the_grid_during_playback() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("grid-track-switch");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    right_click_track(&mut harness, "Track 1: Steel Guitar");
+    harness.get_by_label("Duplicate track").click();
+    harness.run();
+    harness.state_mut().playback_mut().use_soundfont(path);
+
+    harness.get_by_label("Play").click();
+    let started = step_until(&mut harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    });
+    assert!(started, "neither played nor failed");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+
+    // Clicking the second track's row shows it; playback goes on and keeps advancing.
+    let position = harness.state().playback().position();
+    let row = harness.get_by_label("Track 2: Steel Guitar 2").rect();
+    left_click_at(&mut harness, row.left_center() + egui::vec2(60.0, 0.0));
+    assert_eq!(harness.state().view().track, 1);
+    assert_eq!(
+        harness.state().playback().state(),
+        gscore_play::PlayState::Playing,
+        "switching tracks must not stop playback"
+    );
+    assert!(
+        step_until(&mut harness, 2, |app| app.playback().position() > position),
+        "playback stopped advancing after a track switch"
+    );
+    harness.state_mut().playback_mut().stop().unwrap();
+}
+
+#[test]
+fn a_count_in_plays_one_bar_then_the_song_and_the_metronome_stays_live() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("count-in");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    harness.state_mut().set_count_in(true);
+
+    harness.get_by_label("Play").click();
+    let started = step_until(&mut harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    });
+    assert!(started, "neither played nor failed");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+    // The count-in is running: the song has not started yet.
+    assert!(harness.state().playback().count_in_pending());
+
+    // Turning the metronome on while playing swaps the sequence without a stop.
+    harness.state_mut().set_metronome(true);
+    assert_eq!(
+        harness.state().playback().state(),
+        gscore_play::PlayState::Playing,
+        "the metronome must not stop playback"
+    );
+
+    // After the count-in bar the song starts at the beginning, with the metronome on.
+    assert!(
+        step_until(&mut harness, 10, |app| {
+            app.playback().state() == gscore_play::PlayState::Playing
+                && !app.playback().count_in_pending()
+                && app.playback().current_measure().is_some()
+        }),
+        "the count-in did not lead into the song"
+    );
+    assert_eq!(harness.state().playback().current_measure(), Some(1));
+    harness.state_mut().playback_mut().stop().unwrap();
 }

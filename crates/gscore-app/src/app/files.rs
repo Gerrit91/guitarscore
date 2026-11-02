@@ -111,6 +111,7 @@ impl GuitarScoreApp {
                 Event::Opened { path, result } => match result {
                     Ok(opened) => {
                         let recent = path.clone();
+                        self.settings.last_file = Some(recent.clone());
                         let (document, problem) = match opened.journal {
                             Ok(Some(journal)) => (
                                 Document::with_journal(path, *opened.song, opened.format, journal),
@@ -154,6 +155,7 @@ impl GuitarScoreApp {
                     result,
                 } => match result {
                     Ok(message) => {
+                        self.settings.last_file = Some(path.clone());
                         if let Some(document) = &mut self.document {
                             document.mark_saved(path, revision);
                         }
