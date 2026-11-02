@@ -1,6 +1,6 @@
 # Known Gaps
 
-Ranked known shortfalls, most important first. Updated 2026-11-01 (M7: bends and slides).
+Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track and song grid).
 
 1. **`gscore-gp` public items are mostly undocumented.** Since 2026-11-02 the crate
    follows the workspace rules (no-panic lints, checked arithmetic, no lossy casts, files
@@ -111,12 +111,25 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M7: bends and
    again plays as a bend up and hold, and a release bend starts bent and returns to center;
    slides are pitch bends (clamped to two octaves); an "out" slide moves a whole step; a
    slide takes precedence over a bend on the same note. Not played yet: vibrato, let ring,
-   palm mute, grace notes, trills, whammy bar, D.C./D.S./coda, swing, mute/solo, GP7
-   mixer volume and pan (GP7 tracks use defaults). The app shows the playing measure's
-   number, not a playhead on the page. Pause/resume does not re-trigger notes that were
+   palm mute, grace notes, trills, whammy bar, D.C./D.S./coda, swing. Mute and solo are
+   played (M13): a muted track is skipped, and while any track is soloed only soloed
+   tracks play. Mixer changes take effect during playback by rebuilding the sequence at
+   the same tick. GP7 mixer volume and pan still start from the defaults: the GP7 writer
+   does not store the channel table, and the save verification deliberately ignores those
+   values (as it already did for the program), so a volume or pan change is lost when a
+   GP7 file is saved. The app shows the playing measure's number, not a playhead on the
+   page. Pause/resume does not re-trigger notes that were
    sounding, and stopping `gscore-cli play --port` with Ctrl+C can leave notes hanging in
    the external synth. The built-in synthesizer needs an installed `.sf2` SoundFont (none
    is bundled; `.sf3` is not supported), always uses the default audio device, and the
    app does not remember a chosen SoundFont between runs. GP7 stores keyboard and vocal notes by pitch, not
    string and fret; the reader turns them into invalid frets, so those tracks are silent
    (the owner's corpus: 8 of 59 files leave 18-116 notes out).
+
+12. **The track grid has no track panel yet (M15).** Right-click gives add, delete,
+   duplicate, rename, move up/down and the mixer controls; the "edit track" entry the
+   milestone lists opens the M15 track panel, which does not exist yet. The measure range
+   selected in the grid is shown but does nothing until copy/paste (M14) and looping (M18)
+   use it. The grid rebuilds its note squares once per song revision, and a structural
+   track command empties the per-track layout map; the page itself reuses the M10
+   per-measure layout cache.

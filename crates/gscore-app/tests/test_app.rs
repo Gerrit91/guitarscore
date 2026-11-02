@@ -331,3 +331,143 @@ fn playback_starts_at_the_cursor_and_resumes_where_it_paused() {
         && app.playback().state() == gscore_play::PlayState::Playing));
     harness.state_mut().playback_mut().stop().unwrap();
 }
+
+/// The first track of the open document.
+fn first_track<'a>(harness: &'a Harness<'static, GuitarScoreApp>) -> gscore_model::TrackView<'a> {
+    harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .track(gscore_model::TrackIndex::new(0))
+        .unwrap()
+}
+
+#[test]
+fn the_track_grid_mixes_and_undoes_tracks() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    harness.get_by_label("Track 1: Steel Guitar");
+    assert!(!first_track(&harness).is_muted());
+
+    harness.get_by_label("M").click();
+    harness.run();
+    assert!(first_track(&harness).is_muted());
+    harness.get_by_label("M").click();
+    harness.run();
+    assert!(!first_track(&harness).is_muted());
+
+    harness.get_by_label("S").click();
+    harness.run();
+    assert!(first_track(&harness).is_soloed());
+    harness.get_by_label("S").click();
+    harness.run();
+    assert!(!first_track(&harness).is_soloed());
+
+    // The volume slider is reachable by assistive technology and moves the model.
+    let before = harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .track_sound(gscore_model::TrackIndex::new(0))
+        .unwrap()
+        .volume;
+    harness.get_by_label("Volume").decrement_accesskit();
+    harness.run();
+    let after = harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .track_sound(gscore_model::TrackIndex::new(0))
+        .unwrap()
+        .volume;
+    assert!(
+        after < before,
+        "volume did not go down: {before} -> {after}"
+    );
+
+    // A pan knob is exposed too (dragging it is covered by the model tests).
+    harness.get_by_label("Pan");
+
+    // The View menu hides and shows the panel again.
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Track grid").click();
+    harness.run();
+    assert!(harness.query_by_label("Song grid").is_none());
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Track grid").click();
+    harness.run();
+    harness.get_by_label("Song grid");
+}
+
+#[test]
+fn clicking_the_song_grid_moves_the_cursor_and_selects_measures() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let rect = harness.get_by_label("Song grid").rect();
+    // The third measure, first track: 13 px per measure, a 26 px ruler and 24 px rows.
+    let pos = rect.left_top() + egui::vec2(13.0 * 2.0 + 6.0, 26.0 + 12.0);
+    harness.hover_at(pos);
+    harness.drag_at(pos);
+    harness.drop_at(pos);
+    harness.run();
+    let cursor = harness.state().document().unwrap().editor().cursor();
+    assert_eq!(cursor.measure, gscore_model::MeasureIndex::new(2));
+    assert_eq!(cursor.track, gscore_model::TrackIndex::new(0));
+    assert_eq!(
+        harness
+            .state()
+            .view()
+            .selection
+            .map(gscore_app::MeasureSelection::start),
+        Some(2)
+    );
+}
+
+/// Right-clicks at `pos` (kittest's helpers only click the primary button).
+fn right_click_at(harness: &mut Harness<'static, GuitarScoreApp>, pos: egui::Pos2) {
+    harness.hover_at(pos);
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Secondary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+    }
+    harness.run();
+}
+
+/// Right-clicks the name part of a track row (the controls are on the right).
+fn right_click_track(harness: &mut Harness<'static, GuitarScoreApp>, label: &str) {
+    let rect = harness.get_by_label(label).rect();
+    right_click_at(harness, rect.left_center() + egui::vec2(60.0, 0.0));
+}
+
+#[test]
+fn a_track_row_offers_add_delete_duplicate_and_rename_with_undo() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    right_click_track(&mut harness, "Track 1: Steel Guitar");
+    harness.get_by_label("Duplicate track").click();
+    harness.run();
+    assert_eq!(harness.state().document().unwrap().song().track_count(), 2);
+    harness.get_by_label("Track 2: Steel Guitar 2");
+
+    right_click_track(&mut harness, "Track 1: Steel Guitar");
+    harness.get_by_label("Rename…").click();
+    harness.run();
+    harness.get_by_label("Track name").click();
+    harness.get_by_label("Track name").type_text(" 2");
+    harness.run();
+    harness.get_by_label("Rename").click();
+    harness.run();
+    assert_eq!(first_track(&harness).name(), "Steel Guitar 2");
+
+    right_click_track(&mut harness, "Track 1: Steel Guitar 2");
+    harness.get_by_label("Delete track").click();
+    harness.run();
+    assert_eq!(harness.state().document().unwrap().song().track_count(), 1);
+    assert!(harness.state().notice().is_none());
+}

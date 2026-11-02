@@ -72,6 +72,79 @@ fn parses_every_command_and_fills_defaults() {
                 measure: MeasureIndex::new(3),
             },
         ),
+        (
+            "insert_track",
+            Command::InsertTrack {
+                at: TrackIndex::new(0),
+            },
+        ),
+        (
+            "insert_track track=3",
+            Command::InsertTrack {
+                at: TrackIndex::new(2),
+            },
+        ),
+        (
+            "delete_track track=2",
+            Command::DeleteTrack {
+                track: TrackIndex::new(1),
+            },
+        ),
+        (
+            "duplicate_track",
+            Command::DuplicateTrack {
+                track: TrackIndex::new(0),
+            },
+        ),
+        (
+            "move_track from=1 to=3",
+            Command::MoveTrack {
+                from: TrackIndex::new(0),
+                to: TrackIndex::new(2),
+            },
+        ),
+        (
+            "rename_track track=2 name=Lead",
+            Command::RenameTrack {
+                track: TrackIndex::new(1),
+                name: "Lead".to_owned(),
+            },
+        ),
+        (
+            "set_track_color track=2 color=0x00ff00",
+            Command::SetTrackColor {
+                track: TrackIndex::new(1),
+                color: gscore_model::TrackColor::new(0x00FF00),
+            },
+        ),
+        (
+            "set_track_volume track=2 volume=30",
+            Command::SetTrackVolume {
+                track: TrackIndex::new(1),
+                volume: 30,
+            },
+        ),
+        (
+            "set_track_pan pan=64",
+            Command::SetTrackPan {
+                track: TrackIndex::new(0),
+                pan: 64,
+            },
+        ),
+        (
+            "set_track_mute track=2 mute=true",
+            Command::SetTrackMute {
+                track: TrackIndex::new(1),
+                mute: true,
+            },
+        ),
+        (
+            "set_track_solo solo=yes",
+            Command::SetTrackSolo {
+                track: TrackIndex::new(0),
+                solo: true,
+            },
+        ),
         ("undo", Command::Undo),
         ("redo", Command::Redo),
     ];
@@ -121,6 +194,13 @@ fn bad_lines_are_errors_with_useful_messages() {
             "key=value",
         ),
         ("set_fret measure=1 beat=1 string=1 fret=", "key=value"),
+        ("move_track from=1", "missing parameter"),
+        ("rename_track track=1", "missing parameter"),
+        ("set_track_volume volume=128", "0 to 127"),
+        ("set_track_pan pan=abc", "0 to 127"),
+        ("set_track_mute mute=maybe", "true or false"),
+        ("set_track_color color=zzz", "rrggbb"),
+        ("set_track_color color=1000000", "rrggbb"),
     ];
     for (line, expected) in cases {
         let error = parse_line(line).unwrap_err().to_string();

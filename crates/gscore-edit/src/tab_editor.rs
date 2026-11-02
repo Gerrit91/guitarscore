@@ -128,6 +128,12 @@ impl TabEditor {
         self.editor.can_redo()
     }
 
+    /// Runs `command` at the cursor (for example from a panel or menu), keeping undo and
+    /// the cursor. An error leaves the song unchanged.
+    pub fn execute_command(&mut self, command: Command) -> Result<Outcome, EditError> {
+        self.execute(command, self.cursor)
+    }
+
     /// Runs `action` at the cursor. `now_ms` is any monotonic clock in milliseconds; it
     /// decides whether a fret digit joins the one before. An error leaves the song unchanged.
     pub fn perform(&mut self, action: Action, now_ms: u64) -> Result<Outcome, EditError> {
@@ -229,9 +235,14 @@ impl TabEditor {
     /// Applies `command`; afterwards the cursor goes to `after` (kept inside the song).
     fn execute(&mut self, command: Command, after: Cursor) -> Result<Outcome, EditError> {
         let before = self.cursor;
+        let depth = self.editor.undo_depth();
         self.editor.execute(command)?;
         self.revision = self.revision.wrapping_add(1);
-        self.undo_cursors.push(before);
+        // A coalesced mix change (one slider drag) keeps the undo entry it continues, and
+        // with it the cursor from before the drag started.
+        if self.editor.undo_depth() > depth {
+            self.undo_cursors.push(before);
+        }
         self.redo_cursors.clear();
         self.drop_trimmed_cursors();
         self.cursor = after;

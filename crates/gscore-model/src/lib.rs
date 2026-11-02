@@ -29,6 +29,7 @@ mod issues;
 mod playback;
 mod position;
 mod song;
+mod style;
 #[cfg(feature = "test-support")]
 pub mod testing;
 mod tuning;
@@ -40,9 +41,9 @@ mod test_support;
 #[cfg(test)]
 mod tests;
 
-pub use compare::{Difference, differences};
+pub use compare::{Difference, differences, settings_differences};
 pub use duration::{Duration, NoteValue, TimeSignature};
-pub use edit::Change;
+pub use edit::{Change, MAX_TRACK_NAME_CHARS, MAX_TRACKS};
 pub use effects::{
     AccentKind, Bend, BendKind, Harmonic, HarmonicKind, Legato, SlapKind, SlideKind,
     StrokeDirection, Vibrato, Whammy,
@@ -55,6 +56,7 @@ pub use position::{
     BeatIndex, BeatPosition, Fret, MeasureIndex, Pitch, StringNumber, TrackIndex, VoiceIndex,
 };
 pub use song::Song;
+pub use style::{Section, TrackColor};
 pub use views::{
     BeatKind, BeatView, MeasureView, NoteKind, NoteView, StringTuning, TrackView, VoiceView,
 };

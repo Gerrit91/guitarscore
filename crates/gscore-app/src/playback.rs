@@ -161,6 +161,36 @@ impl Playback {
         self.paused_at = None;
     }
 
+    /// The song's mix (volume, pan, mute, solo) changed: rebuild the sequence. While it is
+    /// playing or paused, the new mix takes over at the same position, so a slider is heard
+    /// at once.
+    pub fn mix_changed(&mut self, song: &Song) -> Result<(), String> {
+        let sequence = Arc::new(Sequence::new(song, None).map_err(|e| e.to_string())?);
+        let Some(active) = &mut self.player else {
+            // Nothing is connected: the next play builds the sequence again.
+            self.sequence = None;
+            return Ok(());
+        };
+        let state = active.player().state();
+        let position = active.player().position();
+        active.player_mut().stop().map_err(|e| e.to_string())?;
+        if let Err(error) = active.player_mut().load(Arc::clone(&sequence)) {
+            self.sequence = None;
+            return Err(error.to_string());
+        }
+        self.sequence = Some(sequence);
+        if state != PlayState::Stopped {
+            active
+                .player_mut()
+                .seek(position)
+                .map_err(|e| e.to_string())?;
+        }
+        if state == PlayState::Playing {
+            active.player_mut().play().map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
     /// Plays `song` from where it was paused or stopped, or pauses it if it is playing.
     ///
     /// Playing starts at `from` (the cursor's beat, at its measure's first pass), unless

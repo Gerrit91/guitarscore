@@ -782,3 +782,59 @@ across beats, harmonic diamonds, notation-staff articulations.
   without tracks now writes to GP3-5 as an empty song (it panicked, contained by
   `gscore-io`). Opening times unchanged (`cargo xtask bench`). Tests: 346 (+8).
 - Open (docs/gaps.md #1): rustdoc on the inherited public model fields.
+
+## 2026-11-02 — M13: track and song grid (bottom panel)
+
+- `gscore-model`: track edits with undo, one module (`edit/tracks.rs`):
+  `insert_track` (rest-filled measures matching every header, tuning and instrument from
+  the track before), `delete_track` (never the last one), `duplicate_track` (notes and
+  sound, a unique name), `move_track` (final index), `rename_track`, `set_track_color`,
+  `set_track_volume`, `set_track_pan`, `set_track_mute`, `set_track_solo`. A mixer value
+  on a channel shared by several tracks clones the channel for that track first, so one
+  slider does not move another track; undo restores the channel table too. Structural
+  track edits renew every measure stamp (a measure's layout includes all tracks); rename,
+  color and the mixer values leave stamps alone. Read-only
+  additions: `TrackView::color/is_muted/is_soloed`, `MeasureView::has_notes`,
+  `Song::section/any_soloed`, `TrackColor` and `Section`, and `settings_differences` (what a
+  save may not keep: color, mute, solo, volume, pan; the command tests use it, the save
+  path still compares only the musical content, docs/gaps.md #11).
+- `gscore-play`: muted tracks are skipped, and while any track is soloed only soloed
+  tracks play (an explicitly requested missing track is still an error).
+- `gscore-edit`: ten commands (`insert_track`, `delete_track`, `duplicate_track`,
+  `move_track`, `rename_track`, `set_track_color`, `set_track_volume`, `set_track_pan`,
+  `set_track_mute`, `set_track_solo`), parsed from command lines, in `COMMANDS`, with
+  `changes_tracks`/`changes_mix` for the app; `TabEditor::execute_command` runs one at the
+  cursor. `Editor` merges consecutive volume or pan commands on the same track into one
+  undo step, so dragging a slider is one undo. The shared apply-then-undo helper now
+  compares `settings_differences` too.
+- App (bottom panel, `app/grid/`): a track column (color, three-letter instrument tag,
+  clipped name, M/S buttons, volume slider, pan knob; all keyboard/assistive-technology
+  reachable) and a measure matrix (13 px per measure, measure numbers, section markers
+  with their color, repeat signs with counts, alternative-ending numbers, a colored
+  square where a track has notes, the playing measure and the edit cursor highlighted).
+  Click moves the cursor to that track and measure; drag selects a measure range;
+  Shift-click extends it. Right-click a track: add below, delete, duplicate, rename
+  (window), move up/down. Every action goes through `gscore-edit`. The panel can be
+  hidden from View › Track grid. The grid data (squares, sections, repeats) is cached per
+  editor revision.
+- Playback: `Playback::mix_changed` rebuilds the sequence and, while playing or paused,
+  reloads it at the same tick, so volume, pan, mute and solo are heard at once.
+- Tests: model track edits and undo, shared channels, sections and note squares; both
+  command tests; `panic_hunt` (new commands run through it); parser cases; mute/solo in
+  the sequencer; app tests for mute/solo/volume, a grid click moving the cursor and
+  selecting a measure, and the row menu (duplicate, rename, delete). App snapshots
+  regenerated (the grid is now in the frame; owner review needed). Tests: 365 in the merged tree (19 new; the merged base had 346).
+- Still open (docs/gaps.md #11, #12): GP7 mixer persistence, the M15 track panel, and the
+  selected measure range is not used by copy/paste or looping yet.
+- Merge notes for the other agents:
+  - M10 (merged before this entry was committed): track edits are in
+    `gscore-model/src/edit/tracks.rs`. Adding, deleting, duplicating or moving a track uses
+    the new `Song::edit_tracks`, which renews every measure stamp (a measure's layout
+    includes all tracks); renaming, color and the mixer values use
+    `Song::edit_track_settings` and leave stamps alone. `Document::forget_layouts` empties
+    the per-track layout map after a structural track command so no entry stays under an
+    old track index.
+  - M12: the bottom panel is `app/grid/mod.rs` + `app/grid/matrix.rs`, shown with
+    `Panel::bottom("track_grid")`, toggled by `ViewState::show_track_grid` and shown before
+    the status bar. The M12 panel framework should take this over (visibility and size
+    remembered, View menu) instead of adding a second bottom-panel mechanism.

@@ -110,6 +110,21 @@ impl<'a> TrackView<'a> {
         self.inner.percussion_track
     }
 
+    /// The track's color, as shown in the song grid and other track lists.
+    pub fn color(&self) -> crate::style::TrackColor {
+        crate::style::TrackColor::from_gp(self.inner.color)
+    }
+
+    /// Whether the player should skip this track (Guitar Pro's mute).
+    pub fn is_muted(&self) -> bool {
+        self.inner.mute
+    }
+
+    /// Whether this track is soloed: only soloed tracks play.
+    pub fn is_soloed(&self) -> bool {
+        self.inner.solo
+    }
+
     /// All measures, in order.
     pub fn measures(&self) -> impl ExactSizeIterator<Item = MeasureView<'a>> + use<'a> {
         self.inner
@@ -148,6 +163,16 @@ impl<'a> MeasureView<'a> {
     /// The time signature in effect in this measure.
     pub fn time_signature(&self) -> Result<TimeSignature, ModelError> {
         TimeSignature::from_gp(&self.inner.time_signature)
+    }
+
+    /// Whether this measure holds notes (normal beats with at least one note). Rests and
+    /// placeholders do not count: the song grid fills a square only where there is music.
+    pub fn has_notes(&self) -> bool {
+        self.voices().any(|voice| {
+            voice
+                .beats()
+                .any(|beat| beat.kind() == BeatKind::Normal && beat.notes().next().is_some())
+        })
     }
 
     /// All voices, in order.

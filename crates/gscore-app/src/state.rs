@@ -25,6 +25,49 @@ pub const ZOOM_RANGE: (f32, f32) = (0.25, 4.0);
 /// Factor of one zoom step.
 const ZOOM_STEP: f32 = 1.25;
 
+/// A range of measures selected in the song grid: from `anchor` to `focus`, inclusive and
+/// in either direction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MeasureSelection {
+    /// Where the selection started (the measure that was pressed).
+    pub anchor: usize,
+    /// Where it ends now (the measure the pointer is over).
+    pub focus: usize,
+}
+
+impl MeasureSelection {
+    /// A selection of just `measure`.
+    pub fn new(measure: usize) -> Self {
+        MeasureSelection {
+            anchor: measure,
+            focus: measure,
+        }
+    }
+
+    /// The same selection, extended to `measure`.
+    pub fn to(self, measure: usize) -> Self {
+        MeasureSelection {
+            focus: measure,
+            ..self
+        }
+    }
+
+    /// The first selected measure (0-based).
+    pub fn start(self) -> usize {
+        self.anchor.min(self.focus)
+    }
+
+    /// The last selected measure (0-based, inclusive).
+    pub fn end(self) -> usize {
+        self.anchor.max(self.focus)
+    }
+
+    /// Whether `measure` is selected.
+    pub fn contains(self, measure: usize) -> bool {
+        (self.start()..=self.end()).contains(&measure)
+    }
+}
+
 /// How the open document is shown.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ViewState {
@@ -34,6 +77,10 @@ pub struct ViewState {
     zoom: f32,
     /// The shown track (0-based).
     pub track: usize,
+    /// Whether the track and song grid (the bottom panel) is shown.
+    pub show_track_grid: bool,
+    /// The selected range of measures in the song grid, if any.
+    pub selection: Option<MeasureSelection>,
 }
 
 impl Default for ViewState {
@@ -42,6 +89,8 @@ impl Default for ViewState {
             theme: ThemeChoice::Light,
             zoom: 1.0,
             track: 0,
+            show_track_grid: true,
+            selection: None,
         }
     }
 }
@@ -70,6 +119,14 @@ impl ViewState {
     pub fn zoom_out(&mut self) {
         self.set_zoom(self.zoom / ZOOM_STEP);
     }
+
+    /// Selects `measure`, or extends the selection to it when `extend` is set.
+    pub fn select_measure(&mut self, measure: usize, extend: bool) {
+        self.selection = Some(match (self.selection, extend) {
+            (Some(selection), true) => selection.to(measure),
+            _ => MeasureSelection::new(measure),
+        });
+    }
 }
 
 #[cfg(test)]
@@ -91,6 +148,23 @@ mod tests {
         assert_eq!(view.zoom(), 1.0);
         view.set_zoom(f32::INFINITY);
         assert_eq!(view.zoom(), 1.0);
+    }
+
+    #[test]
+    fn measure_selections_normalize_and_extend() {
+        let selection = MeasureSelection::new(5);
+        assert_eq!((selection.start(), selection.end()), (5, 5));
+        let extended = selection.to(2);
+        assert_eq!((extended.start(), extended.end()), (2, 5));
+        assert!(extended.contains(3));
+        assert!(!extended.contains(6));
+        let mut view = ViewState::default();
+        view.select_measure(4, false);
+        view.select_measure(1, true);
+        assert_eq!(view.selection.map(MeasureSelection::start), Some(1));
+        assert_eq!(view.selection.map(MeasureSelection::end), Some(4));
+        view.select_measure(7, false);
+        assert_eq!(view.selection.map(MeasureSelection::start), Some(7));
     }
 
     #[test]

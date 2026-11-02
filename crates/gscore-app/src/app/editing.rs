@@ -1,7 +1,7 @@
 //! Keys and actions: key presses go through the keymap to the document's editor; what the
 //! editor hands back (play, save) is done here.
 
-use gscore_edit::{Action, Outcome, Request};
+use gscore_edit::{Action, Command, Outcome, Request};
 
 use super::GuitarScoreApp;
 
@@ -47,6 +47,19 @@ impl GuitarScoreApp {
         match document.editor_mut().perform(action, now_ms) {
             Ok(Outcome::Edited) => {
                 self.status = None;
+                if let Some(document) = &mut self.document {
+                    // Measure stamps tell the layout cache what changed; track settings
+                    // that only affect the page header need no invalidation.
+                    let tracks = document.song().track_count();
+                    if self.view.track >= tracks {
+                        self.view.track = tracks.saturating_sub(1);
+                    }
+                    if let Some(selection) = self.view.selection
+                        && selection.start() >= document.song().measure_count()
+                    {
+                        self.view.selection = None;
+                    }
+                }
                 // The song changed: playback rebuilds its sequence on the next play.
                 self.playback.song_changed();
                 ctx.request_repaint();
@@ -54,6 +67,42 @@ impl GuitarScoreApp {
             Ok(Outcome::Moved) => ctx.request_repaint(),
             Ok(Outcome::Nothing) => {}
             Ok(Outcome::Request(request)) => self.request(request, ctx),
+            Err(error) => self.notice = Some(error.to_string()),
+        }
+    }
+
+    /// Applies `command` (from a panel or menu) and updates what depends on the song. Mix
+    /// commands (volume, pan, mute, solo) take effect in playback at once; any other edit
+    /// stops playback and drops the cached layouts.
+    pub(crate) fn apply_command(&mut self, command: Command) {
+        let Some(document) = &mut self.document else {
+            return;
+        };
+        let changes_mix = command.changes_mix();
+        let changes_tracks = command.changes_tracks();
+        let result = document.editor_mut().execute_command(command);
+        match result {
+            Ok(_) => {
+                if changes_tracks {
+                    document.forget_layouts();
+                }
+                if changes_mix {
+                    if let Err(error) = self.playback.mix_changed(document.song()) {
+                        self.notice = Some(error);
+                    }
+                } else {
+                    self.playback.song_changed();
+                }
+                let tracks = document.song().track_count();
+                if self.view.track >= tracks {
+                    self.view.track = tracks.saturating_sub(1);
+                }
+                if let Some(selection) = self.view.selection
+                    && selection.start() >= document.song().measure_count()
+                {
+                    self.view.selection = None;
+                }
+            }
             Err(error) => self.notice = Some(error.to_string()),
         }
     }

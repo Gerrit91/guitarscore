@@ -139,6 +139,14 @@ impl Editor {
             command => {
                 let change = command.apply(&mut self.song)?;
                 self.redo.clear();
+                if let Some(last) = self.undo.back_mut()
+                    && last.command.continues(&command)
+                {
+                    // One slider drag: keep the change from before it, so undo goes back to
+                    // the value the drag started from, and keep only the latest command.
+                    last.command = command;
+                    return Ok(());
+                }
                 self.push_undo(Applied { command, change });
                 Ok(())
             }
