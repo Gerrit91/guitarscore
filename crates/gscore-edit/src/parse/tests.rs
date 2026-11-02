@@ -135,3 +135,60 @@ fn ids_may_be_repeated_in_scripts_with_their_own_errors() {
     assert!(parse_line("set_fret measure=1 beat=1 string=1 fret=1").is_ok());
     assert!(parse_line("not_a_command").is_err());
 }
+
+#[test]
+fn every_command_writes_a_line_that_parses_back_to_it() {
+    let at = |track, measure, voice, beat| BeatPosition {
+        track: TrackIndex::new(track),
+        measure: MeasureIndex::new(measure),
+        voice: VoiceIndex::new(voice),
+        beat: BeatIndex::new(beat),
+    };
+    let string = StringNumber::new(3).unwrap();
+    let durations = ["1/4", "1/8.", "1/16..", "1/8*3:2", "1/1", "1/128.*5:4"];
+    let mut commands = vec![
+        Command::SetFret {
+            at: at(2, 40, 1, 7),
+            string,
+            fret: Fret::new(127).unwrap(),
+        },
+        Command::ClearNote {
+            at: at(0, 0, 0, 0),
+            string,
+        },
+        Command::DeleteBeat {
+            at: at(0, 9, 0, 3),
+        },
+        Command::InsertMeasure {
+            measure: MeasureIndex::new(0),
+        },
+        Command::DeleteMeasure {
+            measure: MeasureIndex::new(499),
+        },
+        Command::Undo,
+        Command::Redo,
+    ];
+    for text in durations {
+        let duration: NoteValue = text.parse().unwrap();
+        commands.push(Command::SetDuration {
+            at: at(0, 1, 0, 2),
+            duration,
+        });
+        commands.push(Command::InsertBeat {
+            at: at(1, 0, 1, 0),
+            duration,
+        });
+    }
+    // Every command id is covered.
+    for info in crate::COMMANDS {
+        assert!(
+            commands.iter().any(|c| c.info().id == info.id),
+            "{} has no round-trip case",
+            info.id
+        );
+    }
+    for command in commands {
+        let line = command.to_line();
+        assert_eq!(parse_line(&line).unwrap(), Some(command), "{line}");
+    }
+}

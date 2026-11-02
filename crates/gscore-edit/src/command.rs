@@ -65,6 +65,67 @@ pub enum Command {
 }
 
 impl Command {
+    /// The command as one line of the command language, which [`crate::parse_line`] reads
+    /// back as the same command (positions 1-based). The recovery journal stores commands
+    /// this way.
+    pub fn to_line(&self) -> String {
+        let one = |index: usize| index.saturating_add(1);
+        let at = |at: &BeatPosition| {
+            format!(
+                "track={} measure={} voice={} beat={}",
+                one(at.track.get()),
+                one(at.measure.get()),
+                one(at.voice.get()),
+                one(at.beat.get())
+            )
+        };
+        let id = self.info().id;
+        match self {
+            Command::SetFret { at: p, string, fret } => format!(
+                "{id} {} string={} fret={}",
+                at(p),
+                string.get(),
+                fret.get()
+            ),
+            Command::ClearNote { at: p, string } => {
+                format!("{id} {} string={}", at(p), string.get())
+            }
+            Command::SetDuration { at: p, duration } | Command::InsertBeat { at: p, duration } => {
+                format!("{id} {} duration={duration}", at(p))
+            }
+            Command::DeleteBeat { at: p } => format!("{id} {}", at(p)),
+            Command::InsertMeasure { measure } | Command::DeleteMeasure { measure } => {
+                format!("{id} measure={}", one(measure.get()))
+            }
+            Command::Undo | Command::Redo => id.to_owned(),
+        }
+    }
+
+    /// The beat the command works on, if it works on one beat.
+    pub fn position(&self) -> Option<BeatPosition> {
+        match self {
+            Command::SetFret { at, .. }
+            | Command::ClearNote { at, .. }
+            | Command::SetDuration { at, .. }
+            | Command::InsertBeat { at, .. }
+            | Command::DeleteBeat { at } => Some(*at),
+            Command::InsertMeasure { .. }
+            | Command::DeleteMeasure { .. }
+            | Command::Undo
+            | Command::Redo => None,
+        }
+    }
+
+    /// The measure a measure command works on.
+    pub fn measure(&self) -> Option<MeasureIndex> {
+        match self {
+            Command::InsertMeasure { measure } | Command::DeleteMeasure { measure } => {
+                Some(*measure)
+            }
+            _ => None,
+        }
+    }
+
     /// This command's metadata.
     pub fn info(&self) -> &'static CommandInfo {
         match self {
