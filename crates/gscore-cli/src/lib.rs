@@ -4,6 +4,7 @@
 //! and its doc comment is its help text. A new subcommand gets a variant, a module, and a
 //! match arm in [`run_cli`].
 
+mod bench;
 mod commands;
 mod convert;
 mod dump;
@@ -190,6 +191,20 @@ enum Command {
     /// Prints every command id (and alias), what it does, and its parameters: whether they
     /// are required and their defaults. Positions are 1-based.
     Commands,
+    /// Time the work behind a keystroke on real files
+    ///
+    /// Opens each file and reports medians of several runs: opening, laying out the
+    /// busiest track, building the playback sequence, editing a note and inserting a
+    /// measure (each with undo), and an edit plus the layout after it as the app does it.
+    /// Build with --release for meaningful numbers (`cargo xtask bench` does).
+    Bench {
+        /// Guitar Pro files to time
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        /// Fail if a budget is missed: edit and layout within 16 ms, opening within 2 s
+        #[arg(long)]
+        check: bool,
+    },
     /// List the symbols `dump` writes in its ASCII tab
     ///
     /// Prints what every marker after a fret or beat means, and what the rows under the
@@ -335,6 +350,7 @@ where
                 speed,
             },
         ),
+        Command::Bench { files, check } => bench::run(&files, check),
         Command::Legend => Ok(legend::run()),
         Command::Keymap { check } => keymap::run(check.as_deref()),
         Command::Gui { file } => gui::run(file.as_deref()),

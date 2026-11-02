@@ -15,6 +15,9 @@ Tasks:
   layers [--skip-wasm]  Check crate layering, restricted dependencies, workspace lints,
                         and that the core crates build for wasm32-unknown-unknown
   ci [--skip-wasm]      Run the full definition-of-done: fmt, clippy, test, layers
+  bench [FILE...]       Time opening, layout and editing in a release build and check the
+                        performance budgets. Files: the arguments, else GSCORE_BENCH_FILES
+                        (separated by ':'), else the files in testdata/basic
   corpus                Run the opt-in corpus tests (not implemented yet)";
 
 /// Error type of every task: a message for the person running it.
@@ -40,6 +43,7 @@ fn run(args: &[String]) -> TaskResult {
     match task {
         "layers" => layers::run(&root, parse_skip_wasm(rest)?),
         "ci" => ci(&root, parse_skip_wasm(rest)?),
+        "bench" => bench(&root, rest),
         "corpus" => Err("`corpus` is not implemented yet (planned for M2)".to_owned()),
         "help" | "--help" | "-h" => {
             println!("{USAGE}");
@@ -87,4 +91,41 @@ fn ci(root: &std::path::Path, skip_wasm: bool) -> TaskResult {
     }
     println!("==> cargo xtask layers");
     layers::run(root, skip_wasm)
+}
+
+/// `gscore-cli bench --check` in a release build on the given files, the files in
+/// `GSCORE_BENCH_FILES`, or the test files.
+fn bench(root: &std::path::Path, files: &[String]) -> TaskResult {
+    let mut files: Vec<String> = files.to_vec();
+    if files.is_empty()
+        && let Some(listed) = std::env::var_os("GSCORE_BENCH_FILES")
+    {
+        files = std::env::split_paths(&listed)
+            .map(|p| p.to_string_lossy().into_owned())
+            .filter(|p| !p.is_empty())
+            .collect();
+    }
+    if files.is_empty() {
+        let dir = root.join("testdata/basic");
+        let entries = std::fs::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        files = entries
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "gp"))
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        files.sort();
+    }
+    let mut args = vec![
+        "run",
+        "--release",
+        "--quiet",
+        "--package",
+        "gscore-cli",
+        "--",
+        "bench",
+        "--check",
+    ];
+    args.extend(files.iter().map(String::as_str));
+    cmd::run_status(&cmd::cargo(), &args, root)
 }

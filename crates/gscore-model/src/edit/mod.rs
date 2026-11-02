@@ -1,9 +1,10 @@
 //! Checked editing methods on [`Song`].
 //!
-//! Every method validates the request and works on a copy of the wrapped song; the copy
-//! replaces the original only when the edit and the invariant check both succeeded
-//! (AGENTS.md rule 8, commands are transactional). A failed edit therefore leaves the song
-//! exactly as it was.
+//! Every method validates the request and is transactional (AGENTS.md rule 8): a failed
+//! edit leaves the song exactly as it was. Note and beat edits work on a copy of the one
+//! measure they touch ([`Song::edit_measure`]); measure insertion and removal check
+//! everything before they change anything ([`Song::edit_structure`]). Neither copies the
+//! whole song, so an edit takes as long in a long song as in a short one.
 //!
 //! Each successful method returns a [`Change`]. Keep it and call [`Song::revert`] to undo
 //! the edit. The change is opaque: its data stays behind the model boundary, and
@@ -15,13 +16,12 @@ mod notes;
 
 use gscore_gp::{
     Beat as GpBeat, BeatStatus, Duration as GpDuration, Measure as GpMeasure,
-    MeasureHeader as GpMeasureHeader, Note as GpNote, Song as GpSong, Track as GpTrack,
-    Voice as GpVoice,
+    MeasureHeader as GpMeasureHeader, Note as GpNote, Voice as GpVoice,
 };
 
 use crate::duration::NoteValue;
 use crate::error::ModelError;
-use crate::position::{BeatPosition, Fret, MeasureIndex, StringNumber, TrackIndex};
+use crate::position::{BeatPosition, Fret, MeasureIndex, StringNumber};
 use crate::song::Song;
 
 /// An applied edit, kept so it can be undone with [`Song::revert`].
@@ -69,6 +69,47 @@ enum ChangeKind {
         header: Box<GpMeasureHeader>,
         measures: Vec<GpMeasure>,
     },
+}
+
+impl Change {
+    /// About how many bytes this change keeps in memory (for an undo history capped by
+    /// memory). An estimate: the sizes of the kept notes, beats and measures, not their
+    /// text or allocator overhead.
+    pub fn size_estimate(&self) -> usize {
+        let base = size_of::<Change>();
+        let extra = match &self.kind {
+            ChangeKind::NoteSet { previous, .. } => {
+                previous.as_ref().map_or(0, |_| size_of::<GpNote>())
+            }
+            ChangeKind::NoteCleared { .. } => size_of::<GpNote>(),
+            ChangeKind::DurationSet { .. }
+            | ChangeKind::BeatInserted { .. }
+            | ChangeKind::MeasureInserted { .. } => 0,
+            ChangeKind::BeatRemoved { beat, .. } => beat_size(beat),
+            ChangeKind::MeasureRemoved { measures, .. } => {
+                size_of::<GpMeasureHeader>().saturating_add(measures.iter().map(measure_size).sum())
+            }
+        };
+        base.saturating_add(extra)
+    }
+}
+
+/// About how many bytes a beat and its notes take.
+fn beat_size(beat: &GpBeat) -> usize {
+    size_of::<GpBeat>().saturating_add(beat.notes.len().saturating_mul(size_of::<GpNote>()))
+}
+
+/// About how many bytes a measure and its beats take.
+fn measure_size(measure: &GpMeasure) -> usize {
+    let beats: usize = measure
+        .voices
+        .iter()
+        .flat_map(|voice| &voice.beats)
+        .map(beat_size)
+        .sum();
+    size_of::<GpMeasure>()
+        .saturating_add(measure.voices.len().saturating_mul(size_of::<GpVoice>()))
+        .saturating_add(beats)
 }
 
 impl Song {
@@ -135,86 +176,73 @@ impl Song {
     /// changes in the reverse order they were applied; anything else is reported as an
     /// error and leaves the song untouched.
     pub fn revert(&mut self, change: &Change) -> Result<(), ModelError> {
-        self.edit_inner(|inner| revert(inner, &change.kind))
+        match &change.kind {
+            ChangeKind::NoteSet {
+                at,
+                string,
+                previous,
+                previous_status,
+            } => self.edit_measure(at.track, at.measure, |measure| {
+                notes::restore(measure, *at, *string, previous.as_deref())?;
+                beat_in(measure, *at)?.status = previous_status.clone();
+                Ok(())
+            }),
+            ChangeKind::NoteCleared {
+                at,
+                string,
+                note,
+                previous_status,
+            } => self.edit_measure(at.track, at.measure, |measure| {
+                notes::restore(measure, *at, *string, Some(note.as_ref()))?;
+                beat_in(measure, *at)?.status = previous_status.clone();
+                Ok(())
+            }),
+            ChangeKind::DurationSet { at, previous } => {
+                self.edit_measure(at.track, at.measure, |measure| {
+                    beat_in(measure, *at)?.duration = previous.clone();
+                    Ok(())
+                })
+            }
+            ChangeKind::BeatInserted { at, created_voice } => {
+                self.edit_measure(at.track, at.measure, |measure| {
+                    let voice = voice_in(measure, *at)?;
+                    let index = at.beat.get();
+                    if index >= voice.beats.len() {
+                        return Err(ModelError::Invalid(format!("{at}: no such beat")));
+                    }
+                    voice.beats.remove(index);
+                    if *created_voice && voice.beats.is_empty() {
+                        measure.voices.clear();
+                    }
+                    Ok(())
+                })
+            }
+            ChangeKind::BeatRemoved { at, beat } => {
+                self.edit_measure(at.track, at.measure, |measure| {
+                    let voice = voice_in(measure, *at)?;
+                    let index = at.beat.get();
+                    if index > voice.beats.len() {
+                        return Err(ModelError::Invalid(format!("{at}: no such beat")));
+                    }
+                    voice.beats.insert(index, beat.as_ref().clone());
+                    Ok(())
+                })
+            }
+            ChangeKind::MeasureInserted { at } => {
+                self.edit_structure(|inner| measures::remove(inner, *at))
+            }
+            ChangeKind::MeasureRemoved {
+                at,
+                header,
+                measures,
+            } => self
+                .edit_structure(|inner| measures::restore(inner, *at, header.as_ref(), measures)),
+        }
     }
 }
 
-/// Applies the inverse of `kind`.
-fn revert(inner: &mut GpSong, kind: &ChangeKind) -> Result<(), ModelError> {
-    match kind {
-        ChangeKind::NoteSet {
-            at,
-            string,
-            previous,
-            previous_status,
-        } => {
-            notes::restore(inner, *at, *string, previous.as_deref())?;
-            beat_mut(inner, *at)?.status = previous_status.clone();
-            Ok(())
-        }
-        ChangeKind::NoteCleared {
-            at,
-            string,
-            note,
-            previous_status,
-        } => {
-            notes::restore(inner, *at, *string, Some(note.as_ref()))?;
-            beat_mut(inner, *at)?.status = previous_status.clone();
-            Ok(())
-        }
-        ChangeKind::DurationSet { at, previous } => {
-            beat_mut(inner, *at)?.duration = previous.clone();
-            Ok(())
-        }
-        ChangeKind::BeatInserted { at, created_voice } => {
-            let voice = voice_mut(inner, *at)?;
-            let index = at.beat.get();
-            if index >= voice.beats.len() {
-                return Err(ModelError::Invalid(format!("{at}: no such beat")));
-            }
-            voice.beats.remove(index);
-            if *created_voice && voice.beats.is_empty() {
-                let measure = track_mut(inner, at.track)?
-                    .measures
-                    .get_mut(at.measure.get())
-                    .ok_or_else(|| ModelError::Invalid(format!("{at}: no such measure")))?;
-                measure.voices.clear();
-            }
-            Ok(())
-        }
-        ChangeKind::BeatRemoved { at, beat } => {
-            let voice = voice_mut(inner, *at)?;
-            let index = at.beat.get();
-            if index > voice.beats.len() {
-                return Err(ModelError::Invalid(format!("{at}: no such beat")));
-            }
-            voice.beats.insert(index, beat.as_ref().clone());
-            Ok(())
-        }
-        ChangeKind::MeasureInserted { at } => measures::remove(inner, *at),
-        ChangeKind::MeasureRemoved {
-            at,
-            header,
-            measures,
-        } => measures::restore(inner, *at, header.as_ref(), measures),
-    }
-}
-
-/// The track at `index`, or an error naming what is missing.
-fn track_mut(song: &mut GpSong, index: TrackIndex) -> Result<&mut GpTrack, ModelError> {
-    let count = song.tracks.len();
-    song.tracks
-        .get_mut(index.get())
-        .ok_or_else(|| ModelError::Invalid(format!("{index}: the song has {count} track(s)")))
-}
-
-/// The voice addressed by `at`, or an error naming what is missing.
-fn voice_mut(song: &mut GpSong, at: BeatPosition) -> Result<&mut GpVoice, ModelError> {
-    let track = track_mut(song, at.track)?;
-    let measure = track
-        .measures
-        .get_mut(at.measure.get())
-        .ok_or_else(|| ModelError::Invalid(format!("{at}: no such measure")))?;
+/// The voice addressed by `at` in its measure, or an error naming what is missing.
+fn voice_in(measure: &mut GpMeasure, at: BeatPosition) -> Result<&mut GpVoice, ModelError> {
     let voices = measure.voices.len();
     measure
         .voices
@@ -222,9 +250,9 @@ fn voice_mut(song: &mut GpSong, at: BeatPosition) -> Result<&mut GpVoice, ModelE
         .ok_or_else(|| ModelError::Invalid(format!("{at}: the measure has {voices} voice(s)")))
 }
 
-/// The beat addressed by `at`, or an error naming what is missing.
-fn beat_mut(song: &mut GpSong, at: BeatPosition) -> Result<&mut GpBeat, ModelError> {
-    let voice = voice_mut(song, at)?;
+/// The beat addressed by `at` in its measure, or an error naming what is missing.
+fn beat_in(measure: &mut GpMeasure, at: BeatPosition) -> Result<&mut GpBeat, ModelError> {
+    let voice = voice_in(measure, at)?;
     let beats = voice.beats.len();
     voice
         .beats

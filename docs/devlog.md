@@ -726,3 +726,37 @@ across beats, harmonic diamonds, notation-staff articulations.
   and at measure 2 after Stop; `play --from` errors and one measure on the device
   (skipped without one). Tests: 333 (+5).
 - Still open (M12): from the first note of a selection, and the cursor following playback.
+
+## 2026-11-02 — M10: performance
+
+- Measured first (`gscore-cli bench`, release, the owner's largest files): an edit and the
+  layout after it took 3.9 ms on `DrDr.gp` (172 measures, 16 tracks; 2.7 ms of it the
+  whole-song copy every edit made) and 3.3 ms on `master.gp` (415 measures). The M8 note of
+  "15 ms" included SVG output in a debug build. In a debug build (`cargo gui` until now)
+  it was 21-31 ms, two frames: the slowdown the owner saw.
+- `gscore-model`: edits are transactional per region. Note and beat edits (and their
+  undo) copy and check only the measure they touch (`Song::edit_measure`); inserting and
+  removing a measure check everything first and then change the song in place
+  (`Song::edit_structure`), building and checking the new measures before inserting them.
+  `Song::measure_stamp`: a number per measure that changes with the measure and is never
+  reused. `Change::size_estimate`.
+- `gscore-layout`: `LayoutCache` keeps each measure's layout by stamp (plus whether it shows
+  its time signature) and lays out only new or changed measures; a moved measure reuses
+  its layout with the new index. Track settings or options start it afresh. The app keeps
+  one per track.
+- `gscore-edit`: the undo history is capped at about 64 MiB as well as 10,000 entries
+  (oldest first; the newest entry always stays).
+- `gscore-cli bench FILE... [--check]` and `cargo xtask bench` (files from the arguments,
+  `GSCORE_BENCH_FILES` or `testdata/basic`): opening, layout, sequencing, a note edit, a
+  measure insert and edit-plus-layout, checked against the budgets now in AGENTS.md
+  section 11 (16 ms key to layout, 2 s to open). `cargo gui` builds in release.
+- After (release): edit-plus-layout 0.32 ms on `DrDr.gp`, 0.85 ms on `master.gp`, 0.59 ms
+  on `war.gp`; a note edit or a measure insert takes 1-9 µs whatever the song's length.
+  Debug build: 2.4 ms and 8.8 ms. What still grows with the song: line breaking and
+  drawing all measures (fine far beyond the budget), opening, and the playback sequence
+  (built on Play: 3.7 ms on `master.gp`).
+- Tests: the cache gives exactly a fresh layout after 40 mixed edits and their undo on
+  three files, with and without notation; one note edit lays out one measure, an inserted
+  measure only itself; stamps change only for edited measures and move with inserted and
+  removed ones; failed edits change neither song nor stamps; the memory cap. Tests: 338
+  (+5).

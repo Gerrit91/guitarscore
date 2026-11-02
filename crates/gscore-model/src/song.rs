@@ -1,8 +1,10 @@
 //! [`Song`]: the document, wrapping the Guitar Pro song data.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use crate::error::ModelError;
 use crate::issues::{self, Issue};
-use crate::position::{BeatPosition, TrackIndex};
+use crate::position::{BeatPosition, MeasureIndex, TrackIndex};
 use crate::validate;
 use crate::views::{BeatView, TrackView};
 
@@ -13,12 +15,23 @@ use crate::views::{BeatView, TrackView};
 #[derive(Debug, Clone, Default)]
 pub struct Song {
     inner: gscore_gp::Song,
+    /// One stamp per measure; see [`Song::measure_stamp`].
+    stamps: Vec<u64>,
+}
+
+/// The source of measure stamps, shared by all songs so a stamp is never reused.
+static NEXT_STAMP: AtomicU64 = AtomicU64::new(1);
+
+/// A stamp no measure had before.
+fn new_stamp() -> u64 {
+    NEXT_STAMP.fetch_add(1, Ordering::Relaxed)
 }
 
 impl Song {
     /// Wraps Guitar Pro song data after checking the invariants.
     pub(crate) fn from_inner(inner: gscore_gp::Song) -> Result<Self, ModelError> {
-        let song = Song { inner };
+        let stamps = inner.measure_headers.iter().map(|_| new_stamp()).collect();
+        let song = Song { inner, stamps };
         validate::check(&song)?;
         Ok(song)
     }
@@ -27,19 +40,64 @@ impl Song {
         &self.inner
     }
 
-    /// Runs `edit` on a copy of the wrapped song and swaps the copy in only when the edit
-    /// and the invariant check both succeeded (AGENTS.md rule 8: commands are
-    /// transactional). A failure leaves this song untouched.
-    pub(crate) fn edit_inner<T>(
+    /// A number that changes whenever measure `measure` may have changed, in any track,
+    /// and is never reused: a layout cache can key a measure's layout on it. Measures that
+    /// move (a measure inserted before them) keep their stamp. 0 for a missing measure.
+    pub fn measure_stamp(&self, measure: MeasureIndex) -> u64 {
+        self.stamps.get(measure.get()).copied().unwrap_or(0)
+    }
+
+    /// Runs `edit` on a copy of one measure of one track, and swaps the copy in only when
+    /// the edit and the measure's invariant check both succeeded (AGENTS.md rule 8:
+    /// commands are transactional). Only that measure is copied and checked, so an edit
+    /// costs the same in a long song as in a short one.
+    pub(crate) fn edit_measure<T>(
         &mut self,
-        edit: impl FnOnce(&mut gscore_gp::Song) -> Result<T, ModelError>,
+        track: TrackIndex,
+        measure: MeasureIndex,
+        edit: impl FnOnce(&mut gscore_gp::Measure) -> Result<T, ModelError>,
     ) -> Result<T, ModelError> {
-        let mut candidate = Song {
-            inner: self.inner.clone(),
-        };
-        let value = edit(&mut candidate.inner)?;
-        validate::check(&candidate)?;
-        *self = candidate;
+        let tracks = self.inner.tracks.len();
+        let slot = self
+            .inner
+            .tracks
+            .get_mut(track.get())
+            .ok_or_else(|| ModelError::Invalid(format!("{track}: the song has {tracks} track(s)")))?
+            .measures
+            .get_mut(measure.get())
+            .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
+        let mut candidate = slot.clone();
+        let value = edit(&mut candidate)?;
+        validate::check_measure_data(measure, &candidate)
+            .map_err(|e| validate::locate(e, &track.to_string()))?;
+        *slot = candidate;
+        if let Some(stamp) = self.stamps.get_mut(measure.get()) {
+            *stamp = new_stamp();
+        }
+        Ok(value)
+    }
+
+    /// Runs `edit` directly on the song data, for edits that insert or remove whole
+    /// measures. `edit` must check everything before it changes anything, so that an error
+    /// leaves the song untouched; it returns the result and how the measures moved, which
+    /// keeps the stamps in step.
+    pub(crate) fn edit_structure<T>(
+        &mut self,
+        edit: impl FnOnce(&mut gscore_gp::Song) -> Result<(T, Moved), ModelError>,
+    ) -> Result<T, ModelError> {
+        let (value, moved) = edit(&mut self.inner)?;
+        match moved {
+            Moved::Inserted(at) => {
+                let at = at.get().min(self.stamps.len());
+                self.stamps.insert(at, new_stamp());
+            }
+            Moved::Removed(at) => {
+                if at.get() < self.stamps.len() {
+                    self.stamps.remove(at.get());
+                }
+            }
+        }
+        debug_assert_eq!(self.stamps.len(), self.inner.measure_headers.len());
         Ok(value)
     }
 
@@ -140,4 +198,13 @@ impl Song {
     pub fn issues(&self) -> Vec<Issue> {
         issues::find(self)
     }
+}
+
+/// How a structural edit moved the measures.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Moved {
+    /// A measure was inserted at this index in every track.
+    Inserted(MeasureIndex),
+    /// The measure at this index was removed from every track.
+    Removed(MeasureIndex),
 }

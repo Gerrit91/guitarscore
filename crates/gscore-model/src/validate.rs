@@ -6,6 +6,7 @@
 //! a user's file is worse than showing a warning.
 
 use crate::error::ModelError;
+use crate::position::MeasureIndex;
 use crate::song::Song;
 use crate::views::{BeatView, MeasureView, TrackView};
 
@@ -72,8 +73,17 @@ fn check_beat(beat: &BeatView<'_>) -> Result<(), ModelError> {
     beat.duration().map(|_| ())
 }
 
+/// Checks one measure's own invariants, for an edit that changed only that measure.
+pub(crate) fn check_measure_data(
+    index: MeasureIndex,
+    measure: &gscore_gp::Measure,
+) -> Result<(), ModelError> {
+    let view = MeasureView::new(index, measure);
+    check_measure(&view).map_err(|e| locate(e, &index.to_string()))
+}
+
 /// Prefixes the location to an `Invalid` message: "track 2: measure 5: ...".
-fn locate(error: ModelError, location: &str) -> ModelError {
+pub(crate) fn locate(error: ModelError, location: &str) -> ModelError {
     match error {
         ModelError::Invalid(msg) => ModelError::Invalid(format!("{location}: {msg}")),
         other => other,

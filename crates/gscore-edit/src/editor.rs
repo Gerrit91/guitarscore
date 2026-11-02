@@ -7,9 +7,13 @@ use gscore_model::{Change, ModelError, Song};
 
 use crate::command::Command;
 
-/// How many edits the default editor can undo. The changes are small (one note, beat or
-/// measure), unlike whole-song snapshots, so this is a generous memory-safe bound.
+/// How many edits the default editor can undo at most.
 pub const DEFAULT_HISTORY_LIMIT: usize = 10_000;
+
+/// How much memory the default editor's undo history may take (an estimate, see
+/// `Change::size_estimate`). Most edits keep a few hundred bytes; deleting a measure of a
+/// many-track song keeps every track's measure, so this bound matters for those.
+pub const DEFAULT_HISTORY_BYTES: usize = 64 * 1024 * 1024;
 
 /// A document being edited, with its undo/redo history.
 #[derive(Debug)]
@@ -19,6 +23,9 @@ pub struct Editor {
     undo: VecDeque<Applied>,
     redo: Vec<Command>,
     history_limit: usize,
+    /// The most the undo history may take, and what it takes now (estimated bytes).
+    history_bytes_limit: usize,
+    history_bytes: usize,
 }
 
 /// One applied command and the change that undoes it.
@@ -80,7 +87,22 @@ impl Editor {
             undo: VecDeque::new(),
             redo: Vec::new(),
             history_limit,
+            history_bytes_limit: DEFAULT_HISTORY_BYTES,
+            history_bytes: 0,
         }
+    }
+
+    /// Caps the undo history at about `bytes` of memory as well: the oldest entries go
+    /// first. The newest entry is always kept, however large.
+    pub fn with_history_bytes(mut self, bytes: usize) -> Self {
+        self.history_bytes_limit = bytes;
+        self.trim_history();
+        self
+    }
+
+    /// About how many bytes the undo history takes.
+    pub fn history_bytes(&self) -> usize {
+        self.history_bytes
     }
 
     /// The song as edited so far.
@@ -117,8 +139,7 @@ impl Editor {
             command => {
                 let change = command.apply(&mut self.song)?;
                 self.redo.clear();
-                self.undo.push_back(Applied { command, change });
-                self.trim_history();
+                self.push_undo(Applied { command, change });
                 Ok(())
             }
         }
@@ -132,6 +153,9 @@ impl Editor {
             self.undo.push_back(applied);
             return Err(EditError::Model(error));
         }
+        self.history_bytes = self
+            .history_bytes
+            .saturating_sub(applied.change.size_estimate());
         self.redo.push(applied.command);
         Ok(())
     }
@@ -141,8 +165,7 @@ impl Editor {
         let command = self.redo.pop().ok_or(EditError::NothingToRedo)?;
         match command.apply(&mut self.song) {
             Ok(change) => {
-                self.undo.push_back(Applied { command, change });
-                self.trim_history();
+                self.push_undo(Applied { command, change });
                 Ok(())
             }
             Err(error) => {
@@ -153,10 +176,28 @@ impl Editor {
         }
     }
 
-    /// Drops the oldest undo entries beyond the limit.
+    fn push_undo(&mut self, applied: Applied) {
+        self.history_bytes = self
+            .history_bytes
+            .saturating_add(applied.change.size_estimate());
+        self.undo.push_back(applied);
+        self.trim_history();
+    }
+
+    /// Drops the oldest undo entries beyond the count limit or the memory limit; the
+    /// newest entry stays even if it alone is over the memory limit.
     fn trim_history(&mut self) {
-        while self.undo.len() > self.history_limit {
-            self.undo.pop_front();
+        while self.undo.len() > self.history_limit
+            || (self.history_bytes > self.history_bytes_limit && self.undo.len() > 1)
+        {
+            match self.undo.pop_front() {
+                Some(dropped) => {
+                    self.history_bytes = self
+                        .history_bytes
+                        .saturating_sub(dropped.change.size_estimate());
+                }
+                None => break,
+            }
         }
     }
 }

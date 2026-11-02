@@ -1,5 +1,6 @@
 # Project tasks live in the `xtask` crate; run them as `cargo xtask <task>`.
 [alias]
 xtask = "run --quiet --package xtask --"
-# Build and start the desktop app: `cargo gui [FILE]`.
-gui = "run --quiet --package gscore-app --bin guitarscore --"
+# Build and start the desktop app: `cargo gui [FILE]`. A release build: a debug build is
+# about ten times slower to edit and play in (see `cargo xtask bench`).
+gui = "run --release --quiet --package gscore-app --bin guitarscore --"
