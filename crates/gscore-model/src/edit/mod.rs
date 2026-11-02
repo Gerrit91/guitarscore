@@ -10,13 +10,16 @@
 //! the edit. The change is opaque: its data stays behind the model boundary, and
 //! `gscore-edit` only has to keep it in its undo history.
 
+mod beat_flags;
 mod beats;
+mod headers;
 pub(crate) mod measures;
 mod notes;
 mod song;
 mod tracks;
 
 pub use crate::validate::MAX_STRINGS;
+pub use headers::MAX_SECTION_TITLE_CHARS;
 pub use tracks::{MAX_TRACK_NAME_CHARS, MAX_TRACKS};
 
 use gscore_gp::{
@@ -132,6 +135,43 @@ enum ChangeKind {
     },
     /// The initial tempo changed.
     SongTempo { previous: i16 },
+    /// A beat was made a rest; its notes are kept to put them back.
+    BeatRest {
+        at: BeatPosition,
+        previous_status: BeatStatus,
+        notes: Vec<GpNote>,
+    },
+    /// A note became (or stopped being) a tie.
+    NoteTie {
+        at: BeatPosition,
+        string: StringNumber,
+        previous: gscore_gp::NoteType,
+    },
+    /// A measure's tempo changed; at measure 1 the song's initial tempo changed too.
+    MeasureTempo {
+        measure: MeasureIndex,
+        previous: i32,
+        previous_initial: Option<i16>,
+    },
+    /// A measure's time signature changed, in the header and every track.
+    TimeSignature {
+        measure: MeasureIndex,
+        previous_header: gscore_gp::TimeSignature,
+        previous_measures: Vec<gscore_gp::TimeSignature>,
+    },
+    /// A measure's key signature changed, in the header and every track.
+    KeySignature {
+        measure: MeasureIndex,
+        previous_header: gscore_gp::KeySignature,
+        previous_measures: Vec<gscore_gp::KeySignature>,
+    },
+    /// A measure's section marker changed.
+    Section {
+        measure: MeasureIndex,
+        previous: Option<gscore_gp::Marker>,
+    },
+    /// Several changes made as one edit, undone in reverse order.
+    Batch { changes: Vec<Change> },
     /// A track's volume or pan changed. `previous_channel` is the channel the track used
     /// before; `added` is the channel appended for it when it had to stop sharing one.
     TrackMix {
@@ -187,6 +227,26 @@ impl Change {
             }
             ChangeKind::SongText { previous, .. } => previous.len(),
             ChangeKind::SongTempo { .. } => 0,
+            ChangeKind::BeatRest { notes, .. } => notes.len().saturating_mul(size_of::<GpNote>()),
+            ChangeKind::NoteTie { .. } => 0,
+            ChangeKind::MeasureTempo { .. } => 0,
+            ChangeKind::TimeSignature {
+                previous_measures, ..
+            } => previous_measures
+                .len()
+                .saturating_mul(size_of::<gscore_gp::TimeSignature>()),
+            ChangeKind::KeySignature {
+                previous_measures, ..
+            } => previous_measures
+                .len()
+                .saturating_mul(size_of::<gscore_gp::KeySignature>()),
+            ChangeKind::Section { previous, .. } => {
+                previous.as_ref().map_or(0, |marker| marker.title.len())
+            }
+            ChangeKind::Batch { changes } => changes
+                .iter()
+                .map(Change::size_estimate)
+                .fold(0_usize, usize::saturating_add),
             ChangeKind::TrackInserted { .. }
             | ChangeKind::TrackMoved { .. }
             | ChangeKind::TrackColor { .. }
@@ -195,6 +255,14 @@ impl Change {
             | ChangeKind::TrackMix { .. } => 0,
         };
         base.saturating_add(extra)
+    }
+
+    /// Combines several changes into one undoable edit (a paste, a palette action that
+    /// touches many beats). Undoing it reverts the parts in reverse order.
+    pub fn batch(changes: Vec<Change>) -> Change {
+        Change {
+            kind: ChangeKind::Batch { changes },
+        }
     }
 }
 
@@ -479,6 +547,95 @@ impl Song {
                 inner.tempo = *previous;
                 Ok(())
             }),
+            ChangeKind::BeatRest {
+                at,
+                previous_status,
+                notes,
+            } => self.edit_measure(at.track, at.measure, |measure| {
+                let beat = beat_in(measure, *at)?;
+                beat.notes.clone_from(notes);
+                beat.status = previous_status.clone();
+                Ok(())
+            }),
+            ChangeKind::NoteTie {
+                at,
+                string,
+                previous,
+            } => self.edit_measure(at.track, at.measure, |measure| {
+                let beat = beat_in(measure, *at)?;
+                let note = beat
+                    .notes
+                    .iter_mut()
+                    .find(|note| u8::try_from(note.string).ok() == Some(string.get()))
+                    .ok_or_else(|| {
+                        ModelError::Invalid(format!("{at} has no {string} to restore"))
+                    })?;
+                note.kind = previous.clone();
+                Ok(())
+            }),
+            ChangeKind::MeasureTempo {
+                measure,
+                previous,
+                previous_initial,
+            } => self.edit_headers(|inner| {
+                let header = inner
+                    .measure_headers
+                    .get_mut(measure.get())
+                    .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
+                header.tempo = *previous;
+                if let Some(initial) = previous_initial {
+                    inner.tempo = *initial;
+                }
+                Ok(())
+            }),
+            ChangeKind::TimeSignature {
+                measure,
+                previous_header,
+                previous_measures,
+            } => self.edit_headers(|inner| {
+                let header = inner
+                    .measure_headers
+                    .get_mut(measure.get())
+                    .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
+                header.time_signature = previous_header.clone();
+                for (track, previous) in inner.tracks.iter_mut().zip(previous_measures) {
+                    if let Some(slot) = track.measures.get_mut(measure.get()) {
+                        slot.time_signature = previous.clone();
+                    }
+                }
+                Ok(())
+            }),
+            ChangeKind::KeySignature {
+                measure,
+                previous_header,
+                previous_measures,
+            } => self.edit_headers(|inner| {
+                let header = inner
+                    .measure_headers
+                    .get_mut(measure.get())
+                    .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
+                header.key_signature = previous_header.clone();
+                for (track, previous) in inner.tracks.iter_mut().zip(previous_measures) {
+                    if let Some(slot) = track.measures.get_mut(measure.get()) {
+                        slot.key_signature = previous.clone();
+                    }
+                }
+                Ok(())
+            }),
+            ChangeKind::Section { measure, previous } => self.edit_headers(|inner| {
+                let header = inner
+                    .measure_headers
+                    .get_mut(measure.get())
+                    .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
+                header.marker.clone_from(previous);
+                Ok(())
+            }),
+            ChangeKind::Batch { changes } => {
+                for change in changes.iter().rev() {
+                    self.revert(change)?;
+                }
+                Ok(())
+            }
             ChangeKind::TrackMix {
                 at,
                 previous_channel,
@@ -540,6 +697,8 @@ fn beat_in(measure: &mut GpMeasure, at: BeatPosition) -> Result<&mut GpBeat, Mod
         .ok_or_else(|| ModelError::Invalid(format!("{at}: the voice has {beats} beat(s)")))
 }
 
+#[cfg(test)]
+mod header_tests;
 #[cfg(test)]
 mod song_tests;
 #[cfg(test)]

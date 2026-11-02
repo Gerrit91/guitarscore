@@ -113,6 +113,23 @@ impl Song {
         edit(&mut self.inner)
     }
 
+    /// Runs `edit` directly on the song's measure headers (tempo, signatures, markers).
+    /// `edit` must check everything first.
+    pub(crate) fn edit_headers<T>(
+        &mut self,
+        edit: impl FnOnce(&mut gscore_gp::Song) -> Result<T, ModelError>,
+    ) -> Result<T, ModelError> {
+        edit(&mut self.inner)
+    }
+
+    /// Gives every measure a new stamp, after an edit that changes all layouts (a time
+    /// signature).
+    pub(crate) fn touch_all_measures(&mut self) {
+        for stamp in &mut self.stamps {
+            *stamp = new_stamp();
+        }
+    }
+
     /// Runs `edit` directly on the song's metadata (text fields, tempo), which changes no
     /// measure and no layout stamp. `edit` must check everything first.
     pub(crate) fn edit_metadata<T>(
@@ -212,6 +229,15 @@ impl Song {
             .tracks
             .get(index.get())
             .map(|t| TrackView::new(index, t))
+    }
+
+    /// The key signature in effect at `measure`, or `None` if there is no such measure.
+    pub fn key_signature(&self, measure: MeasureIndex) -> Option<crate::style::KeySignature> {
+        let header = self.inner.measure_headers.get(measure.get())?;
+        Some(crate::style::KeySignature {
+            key: header.key_signature.key,
+            minor: header.key_signature.is_minor,
+        })
     }
 
     /// The section marker at the start of `measure`, or `None` if there is none. Markers

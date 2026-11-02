@@ -13,7 +13,7 @@ use crate::effects::{
     AccentKind, Bend, Harmonic, Legato, SlapKind, SlideKind, StrokeDirection, Vibrato, Whammy,
 };
 use crate::error::ModelError;
-use crate::position::VoiceIndex;
+use crate::position::{MeasureIndex, VoiceIndex};
 use crate::song::Song;
 use crate::views::{BeatKind, MeasureView, NoteKind, NoteView, TrackView, VoiceView};
 
@@ -67,6 +67,35 @@ pub fn differences(before: &Song, after: &Song) -> Vec<Difference> {
     diff.check(song, "tracks", before.track_count(), after.track_count());
     for (a, b) in before.tracks().zip(after.tracks()) {
         compare_track(&mut diff, &a, &b);
+    }
+    // Song-wide measure headers: tempo changes, signatures, markers and repeats.
+    let measures = before.measure_count().max(after.measure_count());
+    for index in 0..measures {
+        let measure = MeasureIndex::new(index);
+        let at = format!("measure {}", index.saturating_add(1));
+        diff.check(
+            &at,
+            "section",
+            before.section(measure),
+            after.section(measure),
+        );
+        // Measure 1's tempo is the song's initial tempo, compared above; a redundant
+        // header value there is not a difference.
+        if index > 0 {
+            diff.check(
+                &at,
+                "tempo change",
+                before.tempo_change(measure),
+                after.tempo_change(measure),
+            );
+        }
+        diff.check(
+            &at,
+            "key signature",
+            before.key_signature(measure),
+            after.key_signature(measure),
+        );
+        diff.check(&at, "repeat", before.repeat(measure), after.repeat(measure));
     }
     diff.0
 }

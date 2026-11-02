@@ -44,7 +44,7 @@ mod tests;
 
 pub use compare::{Difference, differences, settings_differences};
 pub use duration::{Duration, NoteValue, TimeSignature};
-pub use edit::{Change, MAX_STRINGS, MAX_TRACK_NAME_CHARS, MAX_TRACKS};
+pub use edit::{Change, MAX_SECTION_TITLE_CHARS, MAX_STRINGS, MAX_TRACK_NAME_CHARS, MAX_TRACKS};
 pub use effects::{
     AccentKind, Bend, BendKind, Harmonic, HarmonicKind, Legato, SlapKind, SlideKind,
     StrokeDirection, Vibrato, Whammy,
@@ -60,7 +60,7 @@ pub use position::{
     BeatIndex, BeatPosition, Fret, MeasureIndex, Pitch, StringNumber, TrackIndex, VoiceIndex,
 };
 pub use song::Song;
-pub use style::{Section, TrackColor};
+pub use style::{KeySignature, Section, TrackColor};
 pub use views::{
     BeatKind, BeatView, MeasureView, NoteKind, NoteView, StringTuning, TrackView, VoiceView,
 };

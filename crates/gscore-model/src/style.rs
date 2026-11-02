@@ -35,6 +35,15 @@ impl TrackColor {
     }
 }
 
+/// A measure's key signature: how many sharps or flats, and whether it is minor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeySignature {
+    /// Sharps (positive) or flats (negative), -7 to 7.
+    pub key: i8,
+    /// Whether the key is minor.
+    pub minor: bool,
+}
+
 /// A section marker: a named point in the song (Guitar Pro's "section" marker).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Section {

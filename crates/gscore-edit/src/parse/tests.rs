@@ -197,6 +197,61 @@ fn parses_every_command_and_fills_defaults() {
             },
         ),
         ("set_tempo tempo=140", Command::SetTempo { tempo: 140 }),
+        (
+            "set_beat_rest measure=2 beat=3",
+            Command::SetBeatRest { at: at(0, 1, 0, 2) },
+        ),
+        (
+            "set_tie measure=2 beat=3 string=4 tie=yes",
+            Command::SetTie {
+                at: at(0, 1, 0, 2),
+                string: StringNumber::new(4).unwrap(),
+                tie: true,
+            },
+        ),
+        (
+            "set_measure_tempo measure=3 tempo=90",
+            Command::SetMeasureTempo {
+                measure: MeasureIndex::new(2),
+                tempo: 90,
+            },
+        ),
+        (
+            "set_time_signature measure=3 numerator=6 denominator=8",
+            Command::SetTimeSignature {
+                measure: MeasureIndex::new(2),
+                numerator: 6,
+                denominator: 8,
+            },
+        ),
+        (
+            "set_key_signature measure=3 key=-2 minor=false",
+            Command::SetKeySignature {
+                measure: MeasureIndex::new(2),
+                key: -2,
+                minor: false,
+            },
+        ),
+        (
+            "set_section measure=3 title=Intro",
+            Command::SetSection {
+                measure: MeasureIndex::new(2),
+                title: "Intro".to_owned(),
+                color: gscore_model::TrackColor::DEFAULT,
+            },
+        ),
+        (
+            "clear_section measure=3",
+            Command::ClearSection {
+                measure: MeasureIndex::new(2),
+            },
+        ),
+        (
+            "batch",
+            Command::Batch {
+                commands: Vec::new(),
+            },
+        ),
         ("undo", Command::Undo),
         ("redo", Command::Redo),
     ];
@@ -264,6 +319,17 @@ fn bad_lines_are_errors_with_useful_messages() {
         ("set_tempo tempo=0", "1 to 1000"),
         ("set_tempo tempo=1001", "1 to 1000"),
         ("set_tempo tempo=fast", "1 to 1000"),
+        (
+            "set_time_signature measure=1 numerator=0 denominator=4",
+            "1 to 64",
+        ),
+        (
+            "set_time_signature measure=1 numerator=4 denominator=5",
+            "note value",
+        ),
+        ("set_key_signature measure=1 key=8 minor=false", "-7 to 7"),
+        ("set_section measure=1 title=", "key=value"),
+        ("batch %%notACloser", "unknown command"),
     ];
     for (line, expected) in cases {
         let error = parse_line(line).unwrap_err().to_string();
@@ -343,6 +409,46 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
             text: "A title with spaces, # and\nnew lines – Ü".to_owned(),
         },
         Command::SetTempo { tempo: 140 },
+        Command::SetBeatRest { at: at(0, 1, 0, 2) },
+        Command::SetTie {
+            at: at(0, 2, 0, 3),
+            string,
+            tie: true,
+        },
+        Command::SetMeasureTempo {
+            measure: MeasureIndex::new(7),
+            tempo: 96,
+        },
+        Command::SetTimeSignature {
+            measure: MeasureIndex::new(2),
+            numerator: 7,
+            denominator: 8,
+        },
+        Command::SetKeySignature {
+            measure: MeasureIndex::new(3),
+            key: -3,
+            minor: true,
+        },
+        Command::SetSection {
+            measure: MeasureIndex::new(1),
+            title: "Chorus – loud #2".to_owned(),
+            color: gscore_model::TrackColor::new(0x00_11_22),
+        },
+        Command::ClearSection {
+            measure: MeasureIndex::new(4),
+        },
+        Command::Batch {
+            commands: vec![
+                Command::SetBeatRest { at: at(0, 0, 0, 0) },
+                Command::SetTempo { tempo: 100 },
+                Command::Batch {
+                    commands: vec![Command::SetMeasureTempo {
+                        measure: MeasureIndex::new(0),
+                        tempo: 110,
+                    }],
+                },
+            ],
+        },
     ]);
     // Names a plain command line could not hold: empty, spaces, the comment sign, `=`,
     // `%`, line breaks, non-ASCII, and what looks like the encoding's own marker.

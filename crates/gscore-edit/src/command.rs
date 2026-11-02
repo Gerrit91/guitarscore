@@ -1,16 +1,18 @@
 //! The command enum: what an edit is, whether it can run, and how it applies.
 
 use gscore_model::{
-    BeatKind, BeatPosition, BeatView, Change, Fret, MAX_TEMPO, MeasureIndex, ModelError, NoteValue,
-    Pitch, Song, SongTextField, StringNumber, TrackColor, TrackIndex,
+    BeatKind, BeatPosition, BeatView, Change, Fret, MAX_SECTION_TITLE_CHARS, MAX_TEMPO,
+    MeasureIndex, ModelError, NoteValue, Pitch, Song, SongTextField, StringNumber, TimeSignature,
+    TrackColor, TrackIndex,
 };
 
 use crate::info::{
-    CLEAR_NOTE, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_TRACK, DUPLICATE_TRACK,
-    INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO, RENAME_TRACK, SET_DURATION,
-    SET_FRET, SET_SONG_TEXT, SET_TEMPO, SET_TRACK_CAPO, SET_TRACK_COLOR, SET_TRACK_DRUMS,
-    SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_SOLO, SET_TRACK_STRING_PITCH,
-    SET_TRACK_STRINGS, SET_TRACK_VOLUME, UNDO,
+    BATCH, CLEAR_NOTE, CLEAR_SECTION, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_TRACK,
+    DUPLICATE_TRACK, INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO, RENAME_TRACK,
+    SET_BEAT_REST, SET_DURATION, SET_FRET, SET_KEY_SIGNATURE, SET_MEASURE_TEMPO, SET_SECTION,
+    SET_SONG_TEXT, SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_COLOR,
+    SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_SOLO,
+    SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_VOLUME, UNDO,
 };
 
 /// One edit, with every parameter already checked for syntax and range.
@@ -174,6 +176,64 @@ pub enum Command {
         /// Quarter notes per minute.
         tempo: u32,
     },
+    /// Remove a beat's notes, leaving a rest.
+    SetBeatRest {
+        /// The beat.
+        at: BeatPosition,
+    },
+    /// Tie a note to the previous one, or remove the tie.
+    SetTie {
+        /// The beat.
+        at: BeatPosition,
+        /// The string.
+        string: StringNumber,
+        /// Whether it is tied.
+        tie: bool,
+    },
+    /// Set the tempo a measure starts at.
+    SetMeasureTempo {
+        /// The measure.
+        measure: MeasureIndex,
+        /// Quarter notes per minute.
+        tempo: u32,
+    },
+    /// Set a measure's time signature.
+    SetTimeSignature {
+        /// The measure.
+        measure: MeasureIndex,
+        /// Beats per measure.
+        numerator: u8,
+        /// Note value of one beat.
+        denominator: u16,
+    },
+    /// Set a measure's key signature.
+    SetKeySignature {
+        /// The measure.
+        measure: MeasureIndex,
+        /// Sharps (positive) or flats (negative), -7 to 7.
+        key: i8,
+        /// Whether the key is minor.
+        minor: bool,
+    },
+    /// Set (or replace) a measure's section marker.
+    SetSection {
+        /// The measure.
+        measure: MeasureIndex,
+        /// The section's title.
+        title: String,
+        /// The marker's color.
+        color: TrackColor,
+    },
+    /// Remove a measure's section marker.
+    ClearSection {
+        /// The measure.
+        measure: MeasureIndex,
+    },
+    /// Several edits applied and undone as one step.
+    Batch {
+        /// The edits, in order (no `undo`/`redo`).
+        commands: Vec<Command>,
+    },
     /// Undo the last edit (handled by [`crate::Editor`]).
     Undo,
     /// Redo the last undone edit (handled by [`crate::Editor`]).
@@ -267,6 +327,50 @@ impl Command {
                 )
             }
             Command::SetTempo { tempo } => format!("{id} tempo={tempo}"),
+            Command::SetBeatRest { at: p } => format!("{id} {}", at(p)),
+            Command::SetTie { at: p, string, tie } => {
+                format!("{id} {} string={} tie={tie}", at(p), string.get())
+            }
+            Command::SetMeasureTempo { measure, tempo } => {
+                format!("{id} measure={} tempo={tempo}", one(measure.get()))
+            }
+            Command::SetTimeSignature {
+                measure,
+                numerator,
+                denominator,
+            } => format!(
+                "{id} measure={} numerator={numerator} denominator={denominator}",
+                one(measure.get())
+            ),
+            Command::SetKeySignature {
+                measure,
+                key,
+                minor,
+            } => format!(
+                "{id} measure={} key={key} minor={minor}",
+                one(measure.get())
+            ),
+            Command::SetSection {
+                measure,
+                title,
+                color,
+            } => format!(
+                "{id} measure={} title={} color={:06x}",
+                one(measure.get()),
+                crate::parse::encode_text(title),
+                color.rgb()
+            ),
+            Command::ClearSection { measure } => {
+                format!("{id} measure={}", one(measure.get()))
+            }
+            Command::Batch { commands } => {
+                let mut line = id.to_owned();
+                for command in commands {
+                    line.push(' ');
+                    line.push_str(&crate::parse::encode_text(&command.to_line()));
+                }
+                line
+            }
             Command::Undo | Command::Redo => id.to_owned(),
         }
     }
@@ -320,6 +424,14 @@ impl Command {
             Command::SetTrackStringPitch { .. } => &SET_TRACK_STRING_PITCH,
             Command::SetSongText { .. } => &SET_SONG_TEXT,
             Command::SetTempo { .. } => &SET_TEMPO,
+            Command::SetBeatRest { .. } => &SET_BEAT_REST,
+            Command::SetTie { .. } => &SET_TIE,
+            Command::SetMeasureTempo { .. } => &SET_MEASURE_TEMPO,
+            Command::SetTimeSignature { .. } => &SET_TIME_SIGNATURE,
+            Command::SetKeySignature { .. } => &SET_KEY_SIGNATURE,
+            Command::SetSection { .. } => &SET_SECTION,
+            Command::ClearSection { .. } => &CLEAR_SECTION,
+            Command::Batch { .. } => &BATCH,
             Command::Undo => &UNDO,
             Command::Redo => &REDO,
         }
@@ -343,13 +455,27 @@ impl Command {
     /// True for commands that add, remove, duplicate or move tracks, so every track index
     /// (and every per-track cache keyed by one) may change.
     pub fn changes_tracks(&self) -> bool {
-        matches!(
-            self,
+        match self {
             Command::InsertTrack { .. }
-                | Command::DeleteTrack { .. }
-                | Command::DuplicateTrack { .. }
-                | Command::MoveTrack { .. }
-        )
+            | Command::DeleteTrack { .. }
+            | Command::DuplicateTrack { .. }
+            | Command::MoveTrack { .. } => true,
+            Command::Batch { commands } => commands.iter().any(Command::changes_tracks),
+            _ => false,
+        }
+    }
+
+    /// True for commands that may change how every measure is laid out (time and key
+    /// signatures, section markers). The app then drops the layout cache.
+    pub fn changes_layout(&self) -> bool {
+        match self {
+            Command::SetTimeSignature { .. }
+            | Command::SetKeySignature { .. }
+            | Command::SetSection { .. }
+            | Command::ClearSection { .. } => true,
+            Command::Batch { commands } => commands.iter().any(Command::changes_layout),
+            _ => false,
+        }
     }
 
     /// True for commands that change a track's sound (volume, pan, program). Playback sends
@@ -367,27 +493,34 @@ impl Command {
     /// what pitch they sound (mute, solo, drum kit, capo, string count, tuning). Playback
     /// must rebuild the sequence for these, and can do it without stopping.
     pub fn rebuilds_playback(&self) -> bool {
-        matches!(
-            self,
+        match self {
             Command::SetTrackMute { .. }
-                | Command::SetTrackSolo { .. }
-                | Command::SetTrackDrums { .. }
-                | Command::SetTrackCapo { .. }
-                | Command::SetTrackStrings { .. }
-                | Command::SetTrackStringPitch { .. }
-                | Command::SetTempo { .. }
-        )
+            | Command::SetTrackSolo { .. }
+            | Command::SetTrackDrums { .. }
+            | Command::SetTrackCapo { .. }
+            | Command::SetTrackStrings { .. }
+            | Command::SetTrackStringPitch { .. }
+            | Command::SetTempo { .. }
+            | Command::SetMeasureTempo { .. }
+            | Command::SetTimeSignature { .. } => true,
+            Command::Batch { commands } => commands.iter().any(Command::rebuilds_playback),
+            _ => false,
+        }
     }
 
     /// True for commands that change only how the song or a track is named or shown:
     /// playback goes on.
     pub fn changes_display_only(&self) -> bool {
-        matches!(
-            self,
+        match self {
             Command::RenameTrack { .. }
-                | Command::SetTrackColor { .. }
-                | Command::SetSongText { .. }
-        )
+            | Command::SetTrackColor { .. }
+            | Command::SetSongText { .. }
+            | Command::SetSection { .. }
+            | Command::ClearSection { .. }
+            | Command::SetKeySignature { .. } => true,
+            Command::Batch { commands } => commands.iter().all(Command::changes_display_only),
+            _ => false,
+        }
     }
 
     /// The track a sound command changes.
@@ -396,6 +529,18 @@ impl Command {
             Command::SetTrackVolume { track, .. }
             | Command::SetTrackPan { track, .. }
             | Command::SetTrackProgram { track, .. } => Some(*track),
+            // Only a batch of nothing but sound changes on one track can be sent live.
+            Command::Batch { commands } => {
+                let mut track = None;
+                for command in commands {
+                    let candidate = command.mix_track()?;
+                    if track.is_some_and(|track| track != candidate) {
+                        return None;
+                    }
+                    track = Some(candidate);
+                }
+                track
+            }
             _ => None,
         }
     }
@@ -495,6 +640,38 @@ impl Command {
                 .is_some_and(|view| usize::from(string.get()) <= view.string_count()),
             Command::SetSongText { field, text } => field.check(text).is_ok(),
             Command::SetTempo { tempo } => (1..=MAX_TEMPO).contains(tempo),
+            Command::SetBeatRest { at } => song.beat(*at).is_some(),
+            Command::SetTie { at, string, .. } => song
+                .beat(*at)
+                .is_some_and(|beat| beat.notes().any(|note| note.string().ok() == Some(*string))),
+            Command::SetMeasureTempo { measure, tempo } => {
+                measure.get() < song.measure_count() && (1..=MAX_TEMPO).contains(tempo)
+            }
+            Command::SetTimeSignature {
+                measure,
+                numerator,
+                denominator,
+            } => {
+                measure.get() < song.measure_count()
+                    && TimeSignature::new(*numerator, *denominator).is_ok()
+            }
+            Command::SetKeySignature { measure, key, .. } => {
+                measure.get() < song.measure_count() && (-7..=7).contains(key)
+            }
+            Command::SetSection { measure, title, .. } => {
+                measure.get() < song.measure_count()
+                    && title.chars().count() <= MAX_SECTION_TITLE_CHARS
+            }
+            Command::ClearSection { measure } => measure.get() < song.measure_count(),
+            // A batch is enabled when all of its parts apply, one after another.
+            Command::Batch { commands } => {
+                let mut edited = song.clone();
+                commands.iter().all(|command| {
+                    !command.is_history()
+                        && command.enabled(&edited)
+                        && command.apply(&mut edited).is_ok()
+                })
+            }
             // The editor decides; the history stack is not part of the song.
             Command::Undo | Command::Redo => true,
         }
@@ -538,6 +715,43 @@ impl Command {
             } => song.set_track_string_pitch(*track, *string, *pitch),
             Command::SetSongText { field, text } => song.set_text(*field, text),
             Command::SetTempo { tempo } => song.set_tempo(*tempo),
+            Command::SetBeatRest { at } => song.set_beat_rest(*at),
+            Command::SetTie { at, string, tie } => song.set_note_tie(*at, *string, *tie),
+            Command::SetMeasureTempo { measure, tempo } => song.set_measure_tempo(*measure, *tempo),
+            Command::SetTimeSignature {
+                measure,
+                numerator,
+                denominator,
+            } => song.set_time_signature(*measure, *numerator, *denominator),
+            Command::SetKeySignature {
+                measure,
+                key,
+                minor,
+            } => song.set_key_signature(*measure, *key, *minor),
+            Command::SetSection {
+                measure,
+                title,
+                color,
+            } => song.set_section(*measure, title, *color),
+            Command::ClearSection { measure } => {
+                song.set_section(*measure, "", TrackColor::DEFAULT)
+            }
+            Command::Batch { commands } => {
+                let mut changes = Vec::with_capacity(commands.len());
+                for command in commands {
+                    match command.apply(song) {
+                        Ok(change) => changes.push(change),
+                        Err(error) => {
+                            // Undo the parts already applied, newest first.
+                            for change in changes.iter().rev() {
+                                let _ = song.revert(change);
+                            }
+                            return Err(error);
+                        }
+                    }
+                }
+                Ok(Change::batch(changes))
+            }
             Command::Undo | Command::Redo => Err(ModelError::Invalid(
                 "undo and redo are handled by the editor".to_owned(),
             )),

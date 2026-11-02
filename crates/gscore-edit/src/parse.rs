@@ -100,6 +100,19 @@ impl std::error::Error for ParseError {}
 
 /// Parses one command line. `Ok(None)` means a blank or comment line.
 pub fn parse_line(line: &str) -> Result<Option<Command>, ParseError> {
+    parse_line_depth(line, 0)
+}
+
+/// Most nested `batch` commands accepted (a hostile script must not overflow the stack).
+const MAX_BATCH_DEPTH: usize = 32;
+
+fn parse_line_depth(line: &str, depth: usize) -> Result<Option<Command>, ParseError> {
+    if depth > MAX_BATCH_DEPTH {
+        return Err(ParseError::Syntax {
+            command: "batch".to_owned(),
+            token: "batches nested too deeply".to_owned(),
+        });
+    }
     // A comment starts at a `#` that begins a word; a `#` inside a value (the sharp of
     // `C#4`) stays. The `#` itself may start the line.
     let line = line
@@ -118,6 +131,22 @@ pub fn parse_line(line: &str) -> Result<Option<Command>, ParseError> {
         return Ok(None);
     };
     let info = info::find_command(id).ok_or_else(|| ParseError::UnknownCommand(id.to_owned()))?;
+
+    // A batch is a list of encoded command lines, not `key=value` pairs.
+    if info.id == "batch" {
+        let mut commands = Vec::new();
+        for word in words {
+            let text = decode_text_value(info.id, "command", word)?;
+            let command = parse_line_depth(&text, depth.saturating_add(1))?.ok_or_else(|| {
+                ParseError::Syntax {
+                    command: info.id.to_owned(),
+                    token: "an empty command".to_owned(),
+                }
+            })?;
+            commands.push(command);
+        }
+        return Ok(Some(Command::Batch { commands }));
+    }
 
     let mut args = Args::new(info.id);
     for word in words {
@@ -245,6 +274,37 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
         }),
         "set_tempo" => Ok(Command::SetTempo {
             tempo: tempo_arg(args)?,
+        }),
+        "set_beat_rest" => Ok(Command::SetBeatRest {
+            at: position(args)?,
+        }),
+        "set_tie" => {
+            let at = position(args)?;
+            let string = string_arg(args)?;
+            let tie = bool_arg(args, "tie")?;
+            Ok(Command::SetTie { at, string, tie })
+        }
+        "set_measure_tempo" => Ok(Command::SetMeasureTempo {
+            measure: MeasureIndex::new(required_position(args, "measure")?),
+            tempo: tempo_arg(args)?,
+        }),
+        "set_time_signature" => Ok(Command::SetTimeSignature {
+            measure: MeasureIndex::new(required_position(args, "measure")?),
+            numerator: numerator_arg(args)?,
+            denominator: denominator_arg(args)?,
+        }),
+        "set_key_signature" => Ok(Command::SetKeySignature {
+            measure: MeasureIndex::new(required_position(args, "measure")?),
+            key: key_arg(args)?,
+            minor: bool_arg(args, "minor")?,
+        }),
+        "set_section" => Ok(Command::SetSection {
+            measure: MeasureIndex::new(required_position(args, "measure")?),
+            title: text_arg(args, "title")?,
+            color: optional_color_arg(args)?,
+        }),
+        "clear_section" => Ok(Command::ClearSection {
+            measure: MeasureIndex::new(required_position(args, "measure")?),
         }),
         "undo" => Ok(Command::Undo),
         "redo" => Ok(Command::Redo),
@@ -416,8 +476,18 @@ pub(crate) fn encode_text(text: &str) -> String {
 /// A text parameter: as written, or decoded if it was written by [`encode_text`].
 fn text_arg(args: &mut Args, name: &'static str) -> Result<String, ParseError> {
     let text = args.required(name)?;
+    decode_text_value(args.command, name, &text)
+}
+
+/// A command-line word as text: as written, or decoded if it was written by
+/// [`encode_text`].
+fn decode_text_value(
+    command: &'static str,
+    name: &'static str,
+    text: &str,
+) -> Result<String, ParseError> {
     let Some(encoded) = text.strip_prefix(ENCODED) else {
-        return Ok(text);
+        return Ok(text.to_owned());
     };
     let expected = "text written by GuitarScore (%XX escapes)";
     let mut bytes = Vec::with_capacity(encoded.len());
@@ -428,7 +498,7 @@ fn text_arg(args: &mut Args, name: &'static str) -> Result<String, ParseError> {
                 .get(..2)
                 .and_then(|hex| std::str::from_utf8(hex).ok())
                 .and_then(|hex| u8::from_str_radix(hex, 16).ok())
-                .ok_or_else(|| bad(args.command, name, &text, expected))?;
+                .ok_or_else(|| bad(command, name, text, expected))?;
             bytes.push(digits);
             rest = after.get(2..).unwrap_or_default();
         } else {
@@ -436,7 +506,46 @@ fn text_arg(args: &mut Args, name: &'static str) -> Result<String, ParseError> {
             rest = after;
         }
     }
-    String::from_utf8(bytes).map_err(|_| bad(args.command, name, &text, expected))
+    String::from_utf8(bytes).map_err(|_| bad(command, name, text, expected))
+}
+
+/// The `numerator` parameter: beats per measure.
+fn numerator_arg(args: &mut Args) -> Result<u8, ParseError> {
+    let text = args.required("numerator")?;
+    let expected = "a whole number of beats from 1 to 64";
+    let value: u8 = text
+        .parse()
+        .map_err(|_| bad(args.command, "numerator", &text, expected))?;
+    if !(1..=64).contains(&value) {
+        return Err(bad(args.command, "numerator", &text, expected));
+    }
+    Ok(value)
+}
+
+/// The `denominator` parameter: the note value of one beat.
+fn denominator_arg(args: &mut Args) -> Result<u16, ParseError> {
+    let text = args.required("denominator")?;
+    let expected = "a note value: 1, 2, 4, 8, 16, 32, 64 or 128";
+    let value: u16 = text
+        .parse()
+        .map_err(|_| bad(args.command, "denominator", &text, expected))?;
+    if value > 128 || !value.is_power_of_two() {
+        return Err(bad(args.command, "denominator", &text, expected));
+    }
+    Ok(value)
+}
+
+/// The `key` parameter: sharps or flats.
+fn key_arg(args: &mut Args) -> Result<i8, ParseError> {
+    let text = args.required("key")?;
+    let expected = "a whole number from -7 to 7";
+    let value: i8 = text
+        .parse()
+        .map_err(|_| bad(args.command, "key", &text, expected))?;
+    if !(-7..=7).contains(&value) {
+        return Err(bad(args.command, "key", &text, expected));
+    }
+    Ok(value)
 }
 
 /// A 0-127 parameter (volume, pan).
@@ -455,15 +564,32 @@ fn midi_value_arg(args: &mut Args, name: &'static str) -> Result<u8, ParseError>
 /// A `rrggbb` color, optionally written as `0xrrggbb`.
 fn color_arg(args: &mut Args) -> Result<gscore_model::TrackColor, ParseError> {
     let text = args.required("color")?;
+    parse_color(args.command, "color", &text)
+}
+
+/// A section color, or the default when the parameter is omitted.
+fn optional_color_arg(args: &mut Args) -> Result<gscore_model::TrackColor, ParseError> {
+    match args.take("color") {
+        Some(text) => parse_color(args.command, "color", &text),
+        None => Ok(gscore_model::TrackColor::DEFAULT),
+    }
+}
+
+/// A color value as `rrggbb` or `0xrrggbb`.
+fn parse_color(
+    command: &'static str,
+    name: &'static str,
+    text: &str,
+) -> Result<gscore_model::TrackColor, ParseError> {
     let expected = "a color as rrggbb in hexadecimal";
     let hex = text
         .strip_prefix("0x")
         .or_else(|| text.strip_prefix("0X"))
-        .unwrap_or(&text);
+        .unwrap_or(text);
     let rgb = u32::from_str_radix(hex, 16)
         .ok()
         .filter(|rgb| *rgb <= 0x00FF_FFFF)
-        .ok_or_else(|| bad(args.command, "color", &text, expected))?;
+        .ok_or_else(|| bad(command, name, text, expected))?;
     Ok(gscore_model::TrackColor::new(rgb))
 }
 

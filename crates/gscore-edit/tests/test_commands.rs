@@ -602,6 +602,94 @@ fn song_text_and_tempo_edit_and_undo() {
 }
 
 #[test]
+fn rests_ties_and_headers_edit_and_undo() {
+    let song = testing::one_beat_with_raw_notes(&[(1, 3)]).unwrap();
+    let commands = [
+        Command::SetBeatRest { at: pos(0, 0, 0) },
+        Command::SetTie {
+            at: pos(0, 0, 0),
+            string: string(1),
+            tie: true,
+        },
+        Command::SetMeasureTempo {
+            measure: MeasureIndex::new(0),
+            tempo: 144,
+        },
+        Command::SetTimeSignature {
+            measure: MeasureIndex::new(0),
+            numerator: 3,
+            denominator: 4,
+        },
+        Command::SetKeySignature {
+            measure: MeasureIndex::new(0),
+            key: 2,
+            minor: true,
+        },
+        Command::SetSection {
+            measure: MeasureIndex::new(0),
+            title: "Intro".to_owned(),
+            color: TrackColor::DEFAULT,
+        },
+    ];
+    for command in commands {
+        apply_then_undo(&song, &command);
+    }
+
+    // ClearSection needs a marker to remove.
+    let mut editor = Editor::new(song.clone());
+    editor
+        .execute(Command::SetSection {
+            measure: MeasureIndex::new(0),
+            title: "Chorus".to_owned(),
+            color: TrackColor::new(0x00FF00),
+        })
+        .unwrap();
+    let with_section = editor.song().clone();
+    apply_then_undo(
+        &with_section,
+        &Command::ClearSection {
+            measure: MeasureIndex::new(0),
+        },
+    );
+}
+
+#[test]
+fn a_batch_is_one_edit_and_undoes_all_its_parts() {
+    let song = testing::song(&[testing::GUITAR_6], 1).unwrap();
+    let command = Command::Batch {
+        commands: vec![
+            Command::SetFret {
+                at: pos(0, 0, 0),
+                string: string(1),
+                fret: fret(7),
+            },
+            Command::SetMeasureTempo {
+                measure: MeasureIndex::new(0),
+                tempo: 100,
+            },
+            Command::SetSection {
+                measure: MeasureIndex::new(0),
+                title: "Start".to_owned(),
+                color: TrackColor::DEFAULT,
+            },
+        ],
+    };
+    let mut editor = Editor::new(song.clone());
+    editor.execute(command.clone()).unwrap();
+    assert!(
+        editor
+            .song()
+            .beat(pos(0, 0, 0))
+            .unwrap()
+            .notes()
+            .any(|note| note.fret().ok() == Some(fret(7)))
+    );
+    assert_eq!(editor.undo_depth(), 1, "a batch is one undo entry");
+    editor.undo().unwrap();
+    assert!(differences(&song, editor.song()).is_empty());
+}
+
+#[test]
 fn removing_strings_that_hold_notes_is_disabled_and_changes_nothing() {
     // A whole note on string 6, the lowest.
     let song = testing::one_beat_with_raw_notes(&[(6, 3)]).unwrap();

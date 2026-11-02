@@ -187,7 +187,56 @@ const TEMPO: ParamInfo = ParamInfo {
     name: "tempo",
     required: true,
     default: None,
-    help: "Initial tempo in quarter notes per minute, 1 to 1000",
+    help: "Tempo in quarter notes per minute, 1 to 1000",
+};
+
+const TIE: ParamInfo = ParamInfo {
+    name: "tie",
+    required: true,
+    default: None,
+    help: "true to tie the note to the previous one, false to untie it",
+};
+
+const NUMERATOR: ParamInfo = ParamInfo {
+    name: "numerator",
+    required: true,
+    default: None,
+    help: "Beats per measure, 1 to 64",
+};
+
+const DENOMINATOR: ParamInfo = ParamInfo {
+    name: "denominator",
+    required: true,
+    default: None,
+    help: "Note value of one beat: 1, 2, 4, 8, 16, 32, 64 or 128",
+};
+
+const KEY: ParamInfo = ParamInfo {
+    name: "key",
+    required: true,
+    default: None,
+    help: "Number of sharps (positive) or flats (negative), -7 to 7",
+};
+
+const MINOR: ParamInfo = ParamInfo {
+    name: "minor",
+    required: true,
+    default: None,
+    help: "true for a minor key, false for a major one",
+};
+
+const TITLE: ParamInfo = ParamInfo {
+    name: "title",
+    required: true,
+    default: None,
+    help: "Section title (percent-encoded for spaces, as GuitarScore writes it)",
+};
+
+const SECTION_COLOR: ParamInfo = ParamInfo {
+    name: "color",
+    required: false,
+    default: Some("ff0000"),
+    help: "Marker color as rrggbb in hexadecimal",
 };
 
 pub(crate) const SET_FRET: CommandInfo = CommandInfo {
@@ -387,6 +436,70 @@ pub(crate) const SET_TEMPO: CommandInfo = CommandInfo {
     params: &[TEMPO],
 };
 
+pub(crate) const SET_BEAT_REST: CommandInfo = CommandInfo {
+    id: "set_beat_rest",
+    aliases: &["make_rest"],
+    label: "Make the beat a rest",
+    help: "Removes the beat's notes and leaves a rest of the same length.",
+    params: &[TRACK, MEASURE, VOICE, BEAT],
+};
+
+pub(crate) const SET_TIE: CommandInfo = CommandInfo {
+    id: "set_tie",
+    aliases: &[],
+    label: "Tie or untie a note",
+    help: "Ties a note to the previous one on the same string, or removes the tie.",
+    params: &[TRACK, MEASURE, VOICE, BEAT, STRING, TIE],
+};
+
+pub(crate) const SET_MEASURE_TEMPO: CommandInfo = CommandInfo {
+    id: "set_measure_tempo",
+    aliases: &[],
+    label: "Set the tempo at a measure",
+    help: "Sets the tempo the measure starts at (a tempo change).",
+    params: &[MEASURE, TEMPO],
+};
+
+pub(crate) const SET_TIME_SIGNATURE: CommandInfo = CommandInfo {
+    id: "set_time_signature",
+    aliases: &[],
+    label: "Set the time signature",
+    help: "Sets the time signature of a measure, in every track.",
+    params: &[MEASURE, NUMERATOR, DENOMINATOR],
+};
+
+pub(crate) const SET_KEY_SIGNATURE: CommandInfo = CommandInfo {
+    id: "set_key_signature",
+    aliases: &[],
+    label: "Set the key signature",
+    help: "Sets the key signature of a measure, in every track.",
+    params: &[MEASURE, KEY, MINOR],
+};
+
+pub(crate) const SET_SECTION: CommandInfo = CommandInfo {
+    id: "set_section",
+    aliases: &[],
+    label: "Set a section marker",
+    help: "Names a section that starts at the measure.",
+    params: &[MEASURE, TITLE, SECTION_COLOR],
+};
+
+pub(crate) const CLEAR_SECTION: CommandInfo = CommandInfo {
+    id: "clear_section",
+    aliases: &[],
+    label: "Remove a section marker",
+    help: "Removes the section marker at the measure, if there is one.",
+    params: &[MEASURE],
+};
+
+pub(crate) const BATCH: CommandInfo = CommandInfo {
+    id: "batch",
+    aliases: &[],
+    label: "Several edits at once",
+    help: "A group of edits applied and undone as one step (used by the palette and paste).",
+    params: &[],
+};
+
 pub(crate) const UNDO: CommandInfo = CommandInfo {
     id: "undo",
     aliases: &[],
@@ -429,6 +542,14 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_TRACK_STRING_PITCH,
     SET_SONG_TEXT,
     SET_TEMPO,
+    SET_BEAT_REST,
+    SET_TIE,
+    SET_MEASURE_TEMPO,
+    SET_TIME_SIGNATURE,
+    SET_KEY_SIGNATURE,
+    SET_SECTION,
+    CLEAR_SECTION,
+    BATCH,
     UNDO,
     REDO,
 ];
