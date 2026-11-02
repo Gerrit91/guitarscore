@@ -64,15 +64,26 @@ software Vulkan driver such as lavapipe.
 
 ### Sound
 
-GuitarScore plays through MIDI: start a synthesizer and pick it as "MIDI out" in the app's
-toolbar (or `--port` on the command line). With FluidSynth and a General MIDI soundfont
-(Arch: `pacman -S fluidsynth soundfont-fluid`):
+GuitarScore has a built-in synthesizer that plays on the default audio device. It needs a
+General MIDI SoundFont (`.sf2`; `.sf3` files are not supported) and finds one in this order:
+the `GSCORE_SOUNDFONT` variable, `~/.local/share/soundfonts/`, the well-known files in
+`/usr/share/soundfonts/` and `/usr/share/sounds/sf2/`, then any `.sf2` there (Arch:
+`pacman -S soundfont-fluid`). In the app, the toolbar's "Output" menu switches between the
+synthesizer, "Choose SoundFont…" and the MIDI ports.
+
+```bash
+gscore-cli play testdata/basic/note_lengths.gp                        # built-in synthesizer
+gscore-cli play testdata/basic/note_lengths.gp --soundfont my.sf2    # with this SoundFont
+gscore-cli midi testdata/basic/note_lengths.gp -o note_lengths.mid   # export a MIDI file
+```
+
+To use an external synthesizer instead, start it and pick its MIDI port (`--port` on the
+command line). Without any SoundFont, `play` uses the first MIDI port. With FluidSynth:
 
 ```bash
 fluidsynth -a pipewire -m alsa_seq -is /usr/share/soundfonts/FluidR3_GM.sf2
-gscore-cli ports                                   # list MIDI outputs
-gscore-cli play testdata/basic/note_lengths.gp     # play to the first synth found
-gscore-cli midi testdata/basic/note_lengths.gp -o note_lengths.mid   # export a MIDI file
+gscore-cli ports                                          # list MIDI outputs
+gscore-cli play testdata/basic/note_lengths.gp --port FLUID
 ```
 
 Playback covers all tracks, tempo changes, repeats, ties, harmonics, and bends and slides.

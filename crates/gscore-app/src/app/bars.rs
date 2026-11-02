@@ -4,6 +4,7 @@ use egui::{Align, Layout as UiLayout};
 use gscore_edit::{ActionId, Request};
 
 use super::GuitarScoreApp;
+use crate::playback::Output;
 use crate::state::ThemeChoice;
 
 impl GuitarScoreApp {
@@ -132,26 +133,49 @@ impl GuitarScoreApp {
         if let Some(measure) = self.playback.current_measure() {
             ui.label(format!("Measure {measure}"));
         }
-        let shown = self
-            .playback
-            .connected_port()
-            .or(self.playback.port())
-            .unwrap_or("Automatic")
-            .to_owned();
-        let mut chosen: Option<Option<String>> = None;
-        let combo = egui::ComboBox::from_label("MIDI out")
-            .selected_text(shown)
+        let mut chosen: Option<Output> = None;
+        let mut pick_soundfont = false;
+        let combo = egui::ComboBox::from_label("Output")
+            .selected_text(self.playback.output_label())
             .show_ui(ui, |ui| {
+                if let Some(soundfont) = self.playback.soundfont() {
+                    let synth = Output::Synth(soundfont.to_path_buf());
+                    let name = soundfont
+                        .file_name()
+                        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+                    if ui
+                        .selectable_label(
+                            *self.playback.output() == synth,
+                            format!("Synthesizer ({name})"),
+                        )
+                        .on_hover_text(soundfont.display().to_string())
+                        .clicked()
+                    {
+                        chosen = Some(synth);
+                    }
+                }
                 if ui
-                    .selectable_label(self.playback.port().is_none(), "Automatic")
+                    .selectable_label(false, "Choose SoundFont…")
+                    .on_hover_text("Play with the built-in synthesizer and a SoundFont (.sf2)")
                     .clicked()
                 {
-                    chosen = Some(None);
+                    pick_soundfont = true;
+                }
+                ui.separator();
+                let midi = Output::Midi(None);
+                if ui
+                    .selectable_label(*self.playback.output() == midi, "MIDI (automatic)")
+                    .clicked()
+                {
+                    chosen = Some(midi);
                 }
                 for port in self.playback.ports() {
-                    let selected = self.playback.port() == Some(port.as_str());
-                    if ui.selectable_label(selected, port).clicked() {
-                        chosen = Some(Some(port.clone()));
+                    let midi = Output::Midi(Some(port.clone()));
+                    if ui
+                        .selectable_label(*self.playback.output() == midi, format!("MIDI: {port}"))
+                        .clicked()
+                    {
+                        chosen = Some(midi);
                     }
                 }
             });
@@ -161,8 +185,17 @@ impl GuitarScoreApp {
         {
             self.notice = Some(error);
         }
-        if let Some(port) = chosen {
-            self.playback.choose_port(port);
+        if let Some(output) = chosen {
+            self.playback.choose_output(output);
+        }
+        if pick_soundfont && let Err(error) = self.tasks.pick_soundfont(ui.ctx()) {
+            self.notice = Some(error);
+        }
+        if self.playback.is_loading() {
+            ui.spinner();
+            ui.label("Loading sounds…");
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(100));
         }
         if let Some(error) = self.playback.new_error() {
             self.notice = Some(error);

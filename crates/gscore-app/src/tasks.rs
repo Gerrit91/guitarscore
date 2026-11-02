@@ -14,6 +14,8 @@ use gscore_session::{FileFormat, SaveError, SaveOptions};
 pub(crate) enum Event {
     /// The open dialog closed; `None` if it was cancelled.
     Picked(Option<PathBuf>),
+    /// The SoundFont dialog closed; `None` if it was cancelled.
+    PickedSoundFont(Option<PathBuf>),
     /// The save dialog closed; `None` if it was cancelled.
     PickedSave(Option<PathBuf>),
     /// A save finished or failed.
@@ -93,6 +95,17 @@ impl Tasks {
                 .add_filter("Guitar Pro", EXTENSIONS)
                 .pick_file();
             Event::Picked(picked)
+        })
+    }
+
+    /// Shows the dialog choosing a SoundFont for the synthesizer in the background.
+    pub(crate) fn pick_soundfont(&mut self, ctx: &egui::Context) -> Result<(), String> {
+        self.spawn("SoundFont dialog", ctx, || {
+            let picked = rfd::FileDialog::new()
+                .set_title("Choose a SoundFont for the built-in synthesizer")
+                .add_filter("SoundFont 2", &["sf2"])
+                .pick_file();
+            Event::PickedSoundFont(picked)
         })
     }
 

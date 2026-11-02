@@ -32,6 +32,10 @@ fn main() -> ExitCode {
             if let Some(problem) = loaded.problem {
                 app.set_notice(problem);
             }
+            // The built-in synthesizer plays when a SoundFont is installed; otherwise MIDI.
+            if let Some(soundfont) = gscore_audio::find_soundfont() {
+                app.playback_mut().use_soundfont(soundfont);
+            }
             Ok(Box::new(app))
         }),
     );

@@ -116,7 +116,7 @@ impl GuitarScoreApp {
         self.dialog.is_some()
     }
 
-    /// Playback (MIDI output).
+    /// Playback (built-in synthesizer or MIDI output).
     pub fn playback(&self) -> &Playback {
         &self.playback
     }

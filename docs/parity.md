@@ -27,8 +27,8 @@ Updated 2026-11-01 (M7: bends and slides with channel borrowing).
 | Time signature changes | Partial: kept and copied to new measures; no command to change one |
 | Lyrics, chord diagrams, fingering | Partial: kept in the file; no accessors or editing |
 | Keymap configuration | Live: text file of typed characters / key names to action ids, layout independent; `gscore-cli keymap` |
-| Desktop app | Partial (`guitarscore`): open file (dialog or command line), keyboard editing with undo/redo, save/save as `.gp` (with the unsaved-changes question), track picker, zoom, light/dark theme, play/pause/stop to a MIDI port |
-| Playback | Partial: MIDI output and `.mid` export: all tracks with their instruments, volume and pan, tempo changes, repeats and alternative endings, ties, dead notes, harmonics, bends and slides (on borrowed channels, so the rest of the chord keeps its pitch). No vibrato, let ring, palm mute, grace notes, trills, whammy bar, D.C./D.S./coda, swing, mute/solo |
+| Desktop app | Partial (`guitarscore`): open file (dialog or command line), keyboard editing with undo/redo, save/save as `.gp` (with the unsaved-changes question), track picker, zoom, light/dark theme, play/pause/stop with the built-in synthesizer or to a MIDI port |
+| Playback | Partial: built-in SoundFont synthesizer, MIDI output and `.mid` export: all tracks with their instruments, volume and pan, tempo changes, repeats and alternative endings, ties, dead notes, harmonics, bends and slides (on borrowed channels, so the rest of the chord keeps its pitch). No vibrato, let ring, palm mute, grace notes, trills, whammy bar, D.C./D.S./coda, swing, mute/solo |
 | Tablature display | Partial: one track as standard notation above tab, in the app and as SVG (`gscore-cli render`): clef, time signatures, notes with accidentals, stems, flags, beams, dots, rests, ties and tuplet numbers; tab fret numbers with ornaments (slurs, bends, slides, vibrato, harmonics, accents, palm mute, let ring, whammy). No key signatures, second voice in notation, repeats, pages or multi-track systems yet |
 
 ## Future Milestones
@@ -37,7 +37,7 @@ Updated 2026-11-01 (M7: bends and slides with channel borrowing).
 - Read-only egui app: view state persistence, recent files (rest of M6)
 - Playback: remaining techniques (vibrato, let ring, palm mute, grace notes, trills, whammy), playhead on the page, mute/solo (rest of M7)
 - Selection, copy/cut/paste, editing the second voice, recovery journal and autosave (rest of M8)
-- Internal synth (M9)
+- Synthesizer: a bundled SoundFont, choosing the device, remembering the choice (rest of M9)
 - Standard notation, more techniques, GP3/4/5 writing
 
 ## Testing Policy

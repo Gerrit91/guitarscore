@@ -679,3 +679,35 @@ across beats, harmonic diamonds, notation-staff articulations.
 - Open (docs/gaps.md #5, #10): selection and copy/paste, voice 2 entry, effects, playback
   from the cursor, incremental layout and per-region edits, default keys for
   `clear_note`/`previous_measure`/`next_measure`, the recovery journal.
+
+## 2026-11-02 — M9: internal synthesizer
+
+- Crates checked before starting: `rustysynth` 1.3.8 (2026-10-20, MIT, active: releases in
+  October 2026, pure Rust, 16 channels with channel 10 as drums, RPN 0 pitch-bend range
+  supported, `.sf3` refused) and `cpal` 0.18.2 (2026-08-16, Apache-2.0; ALSA on Linux,
+  which PipeWire and PulseAudio serve). No bundled SoundFont yet.
+- `gscore-play`: `Scheduler::jump` and `Scheduler::setup` (seek without allocating, for
+  the audio callback); `PlayError::Device` reads "playback: …" (no longer MIDI only).
+- `gscore-audio`: a shared `Transport` (play/pause/stop/seek/tempo over a `Sink`) now runs
+  both the MIDI thread and the synth, so they behave the same. `SoundBank` (a loaded
+  `.sf2`), `SynthEngine` (renders sequences offline or in a callback; its clock is the
+  frames rendered, so timing is exact to one 64-frame block), `SynthPlayer` (loads the
+  SoundFont and opens the default device on its own thread; the callback takes commands
+  from a bounded channel, never allocates, locks or does I/O, hands replaced sequences
+  back to be freed, catches panics and goes silent), `find_soundfont`
+  (`GSCORE_SOUNDFONT`, `~/.local/share/soundfonts`, well-known Arch/Fedora/Debian files,
+  any `.sf2` in the system folders). Feature `test-support`: a sine-wave SoundFont built
+  in code, so tests need no third-party file.
+- `gscore-cli play`: the built-in synthesizer by default (`--soundfont FILE` or the one
+  found), `--port` for MIDI; without a SoundFont, the first MIDI port as before.
+- App: the toolbar's "MIDI out" became "Output": the synthesizer (with the SoundFont found
+  at start), "Choose SoundFont…" (dialog in the background) and the MIDI ports; "Loading
+  sounds…" while the SoundFont loads; a failed synthesizer is reported and started afresh
+  on the next play. App snapshots regenerated (toolbar text only).
+- Tests: transport commands, SoundFont reading and refusal, note onset within one block
+  and pitch (440/880 Hz), end, pause/resume, stop, seek, tempo scale, interleaving for
+  mono/stereo/5.1 and integer formats with clipping, a model song through the synth,
+  SoundFont discovery order, a broken SoundFont reported without blocking (player and
+  app), and end to end on the default audio device (skipped without one). Tests: 328 (+15).
+- Open (docs/gaps.md #11): no bundled SoundFont (licence and size to decide), the default
+  device only, the chosen SoundFont is not remembered between runs, no WAV export.

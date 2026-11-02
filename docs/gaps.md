@@ -119,7 +119,9 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M7: bends and
    palm mute, grace notes, trills, whammy bar, D.C./D.S./coda, swing, mute/solo, GP7
    mixer volume and pan (GP7 tracks use defaults). The app shows the playing measure's
    number, not a playhead on the page. Pause/resume does not re-trigger notes that were
-   sounding, and stopping `gscore-cli play` with Ctrl+C can leave notes hanging in the
-   synth. No internal synth yet (M9). GP7 stores keyboard and vocal notes by pitch, not
+   sounding, and stopping `gscore-cli play --port` with Ctrl+C can leave notes hanging in
+   the external synth. The built-in synthesizer needs an installed `.sf2` SoundFont (none
+   is bundled; `.sf3` is not supported), always uses the default audio device, and the
+   app does not remember a chosen SoundFont between runs. GP7 stores keyboard and vocal notes by pitch, not
    string and fret; the reader turns them into invalid frets, so those tracks are silent
    (the owner's corpus: 8 of 59 files leave 18-116 notes out).

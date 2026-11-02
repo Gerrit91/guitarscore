@@ -18,7 +18,7 @@ pub enum PlayError {
 impl std::fmt::Display for PlayError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PlayError::Device(e) => write!(f, "MIDI output: {e}"),
+            PlayError::Device(e) => write!(f, "playback: {e}"),
             PlayError::Disconnected => f.write_str("the player stopped unexpectedly"),
         }
     }
@@ -37,7 +37,7 @@ pub enum PlayState {
     Paused,
 }
 
-/// An output that plays sequences (MIDI out now; an internal synth later).
+/// An output that plays sequences (a MIDI port, or the internal synthesizer).
 pub trait Player {
     /// Makes `sequence` the one to play, stopped at its start.
     fn load(&mut self, sequence: Arc<Sequence>) -> Result<(), PlayError>;
@@ -105,20 +105,31 @@ impl Scheduler {
     /// are skipped, except setup (program, volume, pan), which must still reach the synth:
     /// they are returned so the backend sends them.
     pub fn seek(&mut self, tick: u64, elapsed_micros: u64) -> Vec<TimedEvent> {
-        let tick = tick.min(self.sequence.end);
-        self.next = self.sequence.events.partition_point(|e| e.tick < tick);
-        self.anchor(tick, elapsed_micros);
-        if tick == 0 {
+        self.jump(tick, elapsed_micros);
+        if self.position == 0 {
             // From the start, the setup is sent with the other events anyway.
             return Vec::new();
         }
+        self.setup().copied().collect()
+    }
+
+    /// Moves to `tick` like [`Scheduler::seek`], without collecting the setup: for callers
+    /// that must not allocate (an audio callback). Send [`Scheduler::setup`] afterwards
+    /// unless `tick` is 0.
+    pub fn jump(&mut self, tick: u64, elapsed_micros: u64) {
+        let tick = tick.min(self.sequence.end);
+        self.next = self.sequence.events.partition_point(|e| e.tick < tick);
+        self.anchor(tick, elapsed_micros);
+    }
+
+    /// The setup events (program, volume, pan at tick 0), which must reach the synth before
+    /// playing from anywhere but the start.
+    pub fn setup(&self) -> impl Iterator<Item = &TimedEvent> {
         self.sequence
             .events
             .iter()
             .take_while(|e| e.tick == 0)
             .filter(|e| !e.event.is_note())
-            .copied()
-            .collect()
     }
 
     /// Changes the tempo scale (clamped to [`TEMPO_SCALE_RANGE`]) from now on.
@@ -229,8 +240,14 @@ mod tests {
         let first = scheduler.advance(0);
         assert_eq!(first.iter().filter(|e| !e.event.is_note()).count(), 1);
         // Seeking into the piece skips tick 0, so the setup comes from `seek`.
-        let mut later = Scheduler::new(sequence);
+        let mut later = Scheduler::new(Arc::clone(&sequence));
         assert_eq!(later.seek(u64::from(PPQ), 0).len(), 1);
+        // `jump` moves the same way and leaves the setup to the caller.
+        let mut jumped = Scheduler::new(sequence);
+        jumped.jump(u64::from(PPQ), 0);
+        assert_eq!(jumped.position(), later.position());
+        assert_eq!(jumped.setup().count(), 1);
+        assert_eq!(jumped.advance(0).len(), later.advance(0).len());
     }
 
     #[test]

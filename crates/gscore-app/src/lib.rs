@@ -15,7 +15,7 @@ mod tasks;
 pub use app::GuitarScoreApp;
 pub use document::Document;
 pub use gscore_edit::Keymap;
-pub use playback::Playback;
+pub use playback::{Output, Playback};
 pub use state::{ThemeChoice, ViewState, ZOOM_RANGE};
 
 // The snapshot test and example render the app offscreen and save PNGs; this marks the

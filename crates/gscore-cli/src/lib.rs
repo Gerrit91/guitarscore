@@ -89,17 +89,23 @@ enum Command {
     },
     /// List the MIDI output ports `play` can use
     Ports,
-    /// Play a song to a MIDI output port
+    /// Play a song with the built-in synthesizer or to a MIDI output port
     ///
-    /// Sends the song to a MIDI port, such as a software synthesizer (FluidSynth) or a
-    /// hardware synth, and returns when it has finished. Without --port, the first port
-    /// that is not "Midi Through" is used; `gscore-cli ports` lists them.
+    /// Plays the song and returns when it has finished. By default the built-in
+    /// synthesizer plays it on the default audio device, with the SoundFont (.sf2) given by
+    /// --soundfont, the GSCORE_SOUNDFONT variable, or the first one installed in the usual
+    /// places (/usr/share/soundfonts, /usr/share/sounds/sf2, ~/.local/share/soundfonts).
+    /// With --port, or when no SoundFont is found, the song goes to a MIDI port instead,
+    /// such as FluidSynth or a hardware synth; `gscore-cli ports` lists them.
     Play {
         /// The Guitar Pro file to read
         file: PathBuf,
-        /// The output port: part of its name, as `ports` lists it
-        #[arg(long)]
+        /// Play to this MIDI output port (part of its name, as `ports` lists it)
+        #[arg(long, conflicts_with = "soundfont")]
         port: Option<String>,
+        /// Play with the built-in synthesizer and this SoundFont (.sf2)
+        #[arg(long, value_name = "FILE")]
+        soundfont: Option<PathBuf>,
         /// Only these tracks (1-based; repeat for several)
         #[arg(long = "track", value_name = "N")]
         tracks: Vec<usize>,
@@ -312,9 +318,10 @@ where
         Command::Play {
             file,
             port,
+            soundfont,
             tracks,
             speed,
-        } => play::play(&file, port.as_deref(), &tracks, speed),
+        } => play::play(&file, port.as_deref(), soundfont, &tracks, speed),
         Command::Legend => Ok(legend::run()),
         Command::Keymap { check } => keymap::run(check.as_deref()),
         Command::Gui { file } => gui::run(file.as_deref()),
