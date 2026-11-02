@@ -16,8 +16,8 @@ use common::{
 };
 use gscore_edit::{Command, EditError, Editor};
 use gscore_model::{
-    BeatKind, Duration, Fret, MeasureIndex, NoteValue, Pitch, StringNumber, TimeSignature,
-    TrackColor, TrackIndex, differences, testing,
+    BeatKind, Duration, Fret, MeasureIndex, NoteValue, Pitch, SongTextField, StringNumber,
+    TimeSignature, TrackColor, TrackIndex, differences, testing,
 };
 
 fn string(number: u8) -> StringNumber {
@@ -530,6 +530,75 @@ fn every_track_command_edits_and_undoes() {
     ] {
         apply_then_undo(&song, &command);
     }
+}
+
+#[test]
+fn song_text_and_tempo_edit_and_undo() {
+    let song = testing::song(&[testing::GUITAR_6], 1).unwrap();
+    for command in [
+        Command::SetSongText {
+            field: SongTextField::Title,
+            text: "A new title – with ünïcode".to_owned(),
+        },
+        Command::SetSongText {
+            field: SongTextField::Artist,
+            text: "Artist".to_owned(),
+        },
+        Command::SetSongText {
+            field: SongTextField::Copyright,
+            text: "© 2026".to_owned(),
+        },
+        Command::SetSongText {
+            field: SongTextField::Notes,
+            text: "one\ntwo\nthree".to_owned(),
+        },
+        Command::SetTempo { tempo: 140 },
+    ] {
+        apply_then_undo(&song, &command);
+    }
+
+    let mut editor = Editor::new(song);
+    editor
+        .execute(Command::SetSongText {
+            field: SongTextField::Title,
+            text: "Title".to_owned(),
+        })
+        .unwrap();
+    editor
+        .execute(Command::SetSongText {
+            field: SongTextField::Artist,
+            text: "Artist".to_owned(),
+        })
+        .unwrap();
+    editor.execute(Command::SetTempo { tempo: 96 }).unwrap();
+    assert_eq!(editor.undo_depth(), 3, "separate edits are separate steps");
+
+    // One Apply in the settings window (a break, then merge) is one step.
+    editor.break_merge();
+    editor
+        .execute_with_merge(
+            Command::SetSongText {
+                field: SongTextField::Title,
+                text: "Changed".to_owned(),
+            },
+            false,
+        )
+        .unwrap();
+    editor
+        .execute_with_merge(
+            Command::SetSongText {
+                field: SongTextField::Artist,
+                text: "Also changed".to_owned(),
+            },
+            true,
+        )
+        .unwrap();
+    editor
+        .execute_with_merge(Command::SetTempo { tempo: 120 }, true)
+        .unwrap();
+    assert_eq!(editor.undo_depth(), 4, "the Apply batch is one step");
+    assert_eq!(editor.song().info().tempo, 120);
+    assert_roundtrips(editor.song());
 }
 
 #[test]

@@ -159,7 +159,9 @@ impl Editor {
                 crate::testing::maybe_panic();
                 let change = command.apply(&mut self.song)?;
                 self.redo.clear();
-                let merge = merge && !std::mem::take(&mut self.merge_barrier);
+                // The barrier ends a drag even when this command does not ask to merge.
+                let barrier = std::mem::take(&mut self.merge_barrier);
+                let merge = merge && !barrier;
                 if merge
                     && let Some(last) = self.undo.back_mut()
                     && last.command.continues(&command)

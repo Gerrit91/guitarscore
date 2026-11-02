@@ -189,6 +189,14 @@ fn parses_every_command_and_fills_defaults() {
                 pitch: Pitch::parse("60").unwrap(),
             },
         ),
+        (
+            "set_song_text field=title text=Hello",
+            Command::SetSongText {
+                field: SongTextField::Title,
+                text: "Hello".to_owned(),
+            },
+        ),
+        ("set_tempo tempo=140", Command::SetTempo { tempo: 140 }),
         ("undo", Command::Undo),
         ("redo", Command::Redo),
     ];
@@ -251,6 +259,11 @@ fn bad_lines_are_errors_with_useful_messages() {
         ("set_track_strings strings=0", "1 to 12"),
         ("set_track_string_pitch string=1 pitch=H2", "note name"),
         ("set_track_string_pitch string=1 pitch=C-2", "note name"),
+        ("set_song_text field=bogus text=x", "title"),
+        ("set_song_text field=title", "missing parameter"),
+        ("set_tempo tempo=0", "1 to 1000"),
+        ("set_tempo tempo=1001", "1 to 1000"),
+        ("set_tempo tempo=fast", "1 to 1000"),
     ];
     for (line, expected) in cases {
         let error = parse_line(line).unwrap_err().to_string();
@@ -325,6 +338,11 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
             string,
             pitch: Pitch::parse("C#4").unwrap(),
         },
+        Command::SetSongText {
+            field: SongTextField::Title,
+            text: "A title with spaces, # and\nnew lines – Ü".to_owned(),
+        },
+        Command::SetTempo { tempo: 140 },
     ]);
     // Names a plain command line could not hold: empty, spaces, the comment sign, `=`,
     // `%`, line breaks, non-ASCII, and what looks like the encoding's own marker.

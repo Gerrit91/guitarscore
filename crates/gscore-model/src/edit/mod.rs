@@ -13,6 +13,7 @@
 mod beats;
 pub(crate) mod measures;
 mod notes;
+mod song;
 mod tracks;
 
 pub use crate::validate::MAX_STRINGS;
@@ -124,6 +125,13 @@ enum ChangeKind {
         previous_has_tuning: bool,
         previous_label: Option<String>,
     },
+    /// One text field of the song changed.
+    SongText {
+        field: crate::metadata::SongTextField,
+        previous: String,
+    },
+    /// The initial tempo changed.
+    SongTempo { previous: i16 },
     /// A track's volume or pan changed. `previous_channel` is the channel the track used
     /// before; `added` is the channel appended for it when it had to stop sharing one.
     TrackMix {
@@ -177,6 +185,8 @@ impl Change {
             ChangeKind::TrackStringPitch { previous_label, .. } => {
                 previous_label.as_ref().map_or(0, String::len)
             }
+            ChangeKind::SongText { previous, .. } => previous.len(),
+            ChangeKind::SongTempo { .. } => 0,
             ChangeKind::TrackInserted { .. }
             | ChangeKind::TrackMoved { .. }
             | ChangeKind::TrackColor { .. }
@@ -441,6 +451,34 @@ impl Song {
                 track.tuning_label.clone_from(previous_label);
                 Ok(())
             }),
+            ChangeKind::SongText { field, previous } => self.edit_metadata(|inner| {
+                let replace = |slot: &mut String| slot.clone_from(previous);
+                match field {
+                    crate::metadata::SongTextField::Title => replace(&mut inner.name),
+                    crate::metadata::SongTextField::Subtitle => replace(&mut inner.subtitle),
+                    crate::metadata::SongTextField::Artist => replace(&mut inner.artist),
+                    crate::metadata::SongTextField::Album => replace(&mut inner.album),
+                    crate::metadata::SongTextField::Lyricist => replace(&mut inner.words),
+                    crate::metadata::SongTextField::Composer => replace(&mut inner.author),
+                    crate::metadata::SongTextField::Copyright => replace(&mut inner.copyright),
+                    crate::metadata::SongTextField::TabAuthor => replace(&mut inner.writer),
+                    crate::metadata::SongTextField::Instructions => {
+                        replace(&mut inner.instructions);
+                    }
+                    crate::metadata::SongTextField::Notes => {
+                        inner.notice = if previous.is_empty() {
+                            Vec::new()
+                        } else {
+                            previous.split('\n').map(str::to_owned).collect()
+                        };
+                    }
+                }
+                Ok(())
+            }),
+            ChangeKind::SongTempo { previous } => self.edit_metadata(|inner| {
+                inner.tempo = *previous;
+                Ok(())
+            }),
             ChangeKind::TrackMix {
                 at,
                 previous_channel,
@@ -502,6 +540,8 @@ fn beat_in(measure: &mut GpMeasure, at: BeatPosition) -> Result<&mut GpBeat, Mod
         .ok_or_else(|| ModelError::Invalid(format!("{at}: the voice has {beats} beat(s)")))
 }
 
+#[cfg(test)]
+mod song_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

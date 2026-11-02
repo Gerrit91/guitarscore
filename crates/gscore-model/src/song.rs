@@ -113,6 +113,15 @@ impl Song {
         edit(&mut self.inner)
     }
 
+    /// Runs `edit` directly on the song's metadata (text fields, tempo), which changes no
+    /// measure and no layout stamp. `edit` must check everything first.
+    pub(crate) fn edit_metadata<T>(
+        &mut self,
+        edit: impl FnOnce(&mut gscore_gp::Song) -> Result<T, ModelError>,
+    ) -> Result<T, ModelError> {
+        edit(&mut self.inner)
+    }
+
     /// Runs `edit` on the song's tracks for settings that do not change any measure's
     /// layout (name, color, mute, solo, volume, pan). `edit` must check everything first.
     pub(crate) fn edit_track_settings<T>(

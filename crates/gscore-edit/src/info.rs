@@ -168,6 +168,28 @@ const PITCH: ParamInfo = ParamInfo {
     help: "Open-string pitch: a note name (E2, C#4, Bb3) or a MIDI number 0 to 127",
 };
 
+const FIELD: ParamInfo = ParamInfo {
+    name: "field",
+    required: true,
+    default: None,
+    help: "Song field: title, subtitle, artist, album, lyricist, composer, copyright, \
+           tab_author, instructions or notes",
+};
+
+const TEXT: ParamInfo = ParamInfo {
+    name: "text",
+    required: true,
+    default: None,
+    help: "The new text (percent-encoded for spaces and line breaks, as GuitarScore writes it)",
+};
+
+const TEMPO: ParamInfo = ParamInfo {
+    name: "tempo",
+    required: true,
+    default: None,
+    help: "Initial tempo in quarter notes per minute, 1 to 1000",
+};
+
 pub(crate) const SET_FRET: CommandInfo = CommandInfo {
     id: "set_fret",
     aliases: &["enter_fret"],
@@ -349,6 +371,22 @@ pub(crate) const SET_TRACK_STRING_PITCH: CommandInfo = CommandInfo {
     params: &[TRACK, STRING, PITCH],
 };
 
+pub(crate) const SET_SONG_TEXT: CommandInfo = CommandInfo {
+    id: "set_song_text",
+    aliases: &[],
+    label: "Set song information",
+    help: "Sets one text field of the song (title, artist, notes, ...).",
+    params: &[FIELD, TEXT],
+};
+
+pub(crate) const SET_TEMPO: CommandInfo = CommandInfo {
+    id: "set_tempo",
+    aliases: &[],
+    label: "Set the tempo",
+    help: "Sets the initial tempo in quarter notes per minute.",
+    params: &[TEMPO],
+};
+
 pub(crate) const UNDO: CommandInfo = CommandInfo {
     id: "undo",
     aliases: &[],
@@ -389,6 +427,8 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_TRACK_CAPO,
     SET_TRACK_STRINGS,
     SET_TRACK_STRING_PITCH,
+    SET_SONG_TEXT,
+    SET_TEMPO,
     UNDO,
     REDO,
 ];

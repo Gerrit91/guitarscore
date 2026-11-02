@@ -26,6 +26,7 @@ mod error;
 mod instrument;
 pub mod interop;
 mod issues;
+mod metadata;
 mod playback;
 mod position;
 mod song;
@@ -51,6 +52,9 @@ pub use effects::{
 pub use error::ModelError;
 pub use instrument::{InstrumentKind, program_name};
 pub use issues::{Issue, IssueKind};
+pub use metadata::{
+    MAX_SONG_NOTES_CHARS, MAX_SONG_TEXT_CHARS, MAX_TEMPO, SONG_TEXT_FIELDS, SongInfo, SongTextField,
+};
 pub use playback::{Repeat, TrackSound};
 pub use position::{
     BeatIndex, BeatPosition, Fret, MeasureIndex, Pitch, StringNumber, TrackIndex, VoiceIndex,

@@ -1,16 +1,16 @@
 //! The command enum: what an edit is, whether it can run, and how it applies.
 
 use gscore_model::{
-    BeatKind, BeatPosition, BeatView, Change, Fret, MeasureIndex, ModelError, NoteValue, Pitch,
-    Song, StringNumber, TrackColor, TrackIndex,
+    BeatKind, BeatPosition, BeatView, Change, Fret, MAX_TEMPO, MeasureIndex, ModelError, NoteValue,
+    Pitch, Song, SongTextField, StringNumber, TrackColor, TrackIndex,
 };
 
 use crate::info::{
     CLEAR_NOTE, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_TRACK, DUPLICATE_TRACK,
     INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO, RENAME_TRACK, SET_DURATION,
-    SET_FRET, SET_TRACK_CAPO, SET_TRACK_COLOR, SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN,
-    SET_TRACK_PROGRAM, SET_TRACK_SOLO, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_VOLUME,
-    UNDO,
+    SET_FRET, SET_SONG_TEXT, SET_TEMPO, SET_TRACK_CAPO, SET_TRACK_COLOR, SET_TRACK_DRUMS,
+    SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_SOLO, SET_TRACK_STRING_PITCH,
+    SET_TRACK_STRINGS, SET_TRACK_VOLUME, UNDO,
 };
 
 /// One edit, with every parameter already checked for syntax and range.
@@ -162,6 +162,18 @@ pub enum Command {
         /// The open-string pitch.
         pitch: Pitch,
     },
+    /// Set one text field of the song.
+    SetSongText {
+        /// Which field.
+        field: SongTextField,
+        /// The new text.
+        text: String,
+    },
+    /// Set the song's initial tempo.
+    SetTempo {
+        /// Quarter notes per minute.
+        tempo: u32,
+    },
     /// Undo the last edit (handled by [`crate::Editor`]).
     Undo,
     /// Redo the last undone edit (handled by [`crate::Editor`]).
@@ -247,6 +259,14 @@ impl Command {
                 one(track.get()),
                 string.get()
             ),
+            Command::SetSongText { field, text } => {
+                format!(
+                    "{id} field={} text={}",
+                    field.id(),
+                    crate::parse::encode_text(text)
+                )
+            }
+            Command::SetTempo { tempo } => format!("{id} tempo={tempo}"),
             Command::Undo | Command::Redo => id.to_owned(),
         }
     }
@@ -298,6 +318,8 @@ impl Command {
             Command::SetTrackCapo { .. } => &SET_TRACK_CAPO,
             Command::SetTrackStrings { .. } => &SET_TRACK_STRINGS,
             Command::SetTrackStringPitch { .. } => &SET_TRACK_STRING_PITCH,
+            Command::SetSongText { .. } => &SET_SONG_TEXT,
+            Command::SetTempo { .. } => &SET_TEMPO,
             Command::Undo => &UNDO,
             Command::Redo => &REDO,
         }
@@ -353,14 +375,18 @@ impl Command {
                 | Command::SetTrackCapo { .. }
                 | Command::SetTrackStrings { .. }
                 | Command::SetTrackStringPitch { .. }
+                | Command::SetTempo { .. }
         )
     }
 
-    /// True for commands that change only how a track is named or shown: playback goes on.
-    pub fn changes_track_display(&self) -> bool {
+    /// True for commands that change only how the song or a track is named or shown:
+    /// playback goes on.
+    pub fn changes_display_only(&self) -> bool {
         matches!(
             self,
-            Command::RenameTrack { .. } | Command::SetTrackColor { .. }
+            Command::RenameTrack { .. }
+                | Command::SetTrackColor { .. }
+                | Command::SetSongText { .. }
         )
     }
 
@@ -391,6 +417,11 @@ impl Command {
                 Command::SetTrackColor { track: first, .. },
                 Command::SetTrackColor { track: second, .. },
             ) => first == second,
+            // One Apply in the settings window is one undo step for the fields it changed.
+            (
+                Command::SetSongText { .. } | Command::SetTempo { .. },
+                Command::SetSongText { .. } | Command::SetTempo { .. },
+            ) => true,
             _ => false,
         }
     }
@@ -462,6 +493,8 @@ impl Command {
             Command::SetTrackStringPitch { track, string, .. } => song
                 .track(*track)
                 .is_some_and(|view| usize::from(string.get()) <= view.string_count()),
+            Command::SetSongText { field, text } => field.check(text).is_ok(),
+            Command::SetTempo { tempo } => (1..=MAX_TEMPO).contains(tempo),
             // The editor decides; the history stack is not part of the song.
             Command::Undo | Command::Redo => true,
         }
@@ -503,6 +536,8 @@ impl Command {
                 string,
                 pitch,
             } => song.set_track_string_pitch(*track, *string, *pitch),
+            Command::SetSongText { field, text } => song.set_text(*field, text),
+            Command::SetTempo { tempo } => song.set_tempo(*tempo),
             Command::Undo | Command::Redo => Err(ModelError::Invalid(
                 "undo and redo are handled by the editor".to_owned(),
             )),

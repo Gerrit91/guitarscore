@@ -30,7 +30,7 @@ impl EditEffect {
             EditEffect::Sound(track)
         } else if command.rebuilds_playback() {
             EditEffect::Rebuild
-        } else if command.changes_track_display() {
+        } else if command.changes_display_only() {
             EditEffect::Display
         } else if command.changes_tracks() {
             EditEffect::Tracks

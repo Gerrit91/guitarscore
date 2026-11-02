@@ -13,8 +13,8 @@ mod common;
 use common::test_songs;
 use gscore_edit::{Command, Editor};
 use gscore_model::{
-    BeatIndex, BeatPosition, Fret, MeasureIndex, NoteValue, Pitch, Song, StringNumber, TrackIndex,
-    VoiceIndex, differences,
+    BeatIndex, BeatPosition, Fret, MeasureIndex, NoteValue, Pitch, SONG_TEXT_FIELDS, Song,
+    StringNumber, TrackIndex, VoiceIndex, differences,
 };
 
 /// A tiny linear congruential generator (the constants are Knuth's).
@@ -66,7 +66,8 @@ fn random_command(rng: &mut Rng, song: &Song) -> Command {
     let duration = all[rng.below(all.len())];
     let any_track = TrackIndex::new(track);
     let pitch = Pitch::new(u8::try_from(rng.below(128)).unwrap_or(0)).unwrap();
-    match rng.below(12) {
+    let field = SONG_TEXT_FIELDS[rng.below(SONG_TEXT_FIELDS.len())];
+    match rng.below(14) {
         0 => Command::SetFret { at, string, fret },
         1 => Command::ClearNote { at, string },
         2 => Command::SetDuration { at, duration },
@@ -94,10 +95,17 @@ fn random_command(rng: &mut Rng, song: &Song) -> Command {
             track: any_track,
             strings: rng.below(12).saturating_add(1),
         },
-        _ => Command::SetTrackStringPitch {
+        11 => Command::SetTrackStringPitch {
             track: any_track,
             string,
             pitch,
+        },
+        12 => Command::SetSongText {
+            field,
+            text: format!("value {}", rng.below(1000)),
+        },
+        _ => Command::SetTempo {
+            tempo: u32::try_from(rng.below(1000).saturating_add(1)).unwrap_or(120),
         },
     }
 }

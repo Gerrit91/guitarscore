@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use gscore_model::{
-    BeatIndex, BeatPosition, Fret, MAX_STRINGS, MeasureIndex, NoteValue, Pitch, StringNumber,
-    TrackIndex, VoiceIndex,
+    BeatIndex, BeatPosition, Fret, MAX_STRINGS, MAX_TEMPO, MeasureIndex, NoteValue, Pitch,
+    SongTextField, StringNumber, TrackIndex, VoiceIndex,
 };
 
 use crate::command::Command;
@@ -239,6 +239,13 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             string: string_arg(args)?,
             pitch: pitch_arg(args)?,
         }),
+        "set_song_text" => Ok(Command::SetSongText {
+            field: field_arg(args)?,
+            text: text_arg(args, "text")?,
+        }),
+        "set_tempo" => Ok(Command::SetTempo {
+            tempo: tempo_arg(args)?,
+        }),
         "undo" => Ok(Command::Undo),
         "redo" => Ok(Command::Redo),
         // Every entry in COMMANDS is handled above; a new one must be added here.
@@ -329,6 +336,27 @@ fn pitch_arg(args: &mut Args) -> Result<Pitch, ParseError> {
             "a note name such as E2 or C#4, or a MIDI number from 0 to 127",
         )
     })
+}
+
+/// The `field` parameter: which song text field to set.
+fn field_arg(args: &mut Args) -> Result<SongTextField, ParseError> {
+    let text = args.required("field")?;
+    let expected = "title, subtitle, artist, album, lyricist, composer, copyright, \
+                    tab_author, instructions or notes";
+    SongTextField::from_id(&text).ok_or_else(|| bad(args.command, "field", &text, expected))
+}
+
+/// The `tempo` parameter: quarter notes per minute.
+fn tempo_arg(args: &mut Args) -> Result<u32, ParseError> {
+    let text = args.required("tempo")?;
+    let expected = "a tempo from 1 to 1000 BPM";
+    let tempo: u32 = text
+        .parse()
+        .map_err(|_| bad(args.command, "tempo", &text, expected))?;
+    if !(1..=MAX_TEMPO).contains(&tempo) {
+        return Err(bad(args.command, "tempo", &text, expected));
+    }
+    Ok(tempo)
 }
 
 /// The `strings` parameter: how many strings a track has.
