@@ -931,3 +931,20 @@ Landed:
   `alsa-sys`, which fails with "system library `alsa` was not found" on a bare Ubuntu runner.
   `pkg-config` is normally preinstalled but is listed explicitly since the build needs it.
 - Open: nothing.
+
+## 2026-11-02 — M13 final: merge with M11, live mix without stale values
+
+- Merged main (M11): the ten track commands have `Command::to_line`; track names are
+  percent-encoded after `%%`. The journal records `Recorded` entries; a slider change merged
+  into the undo step before is journaled as `merge <command>`, so replay rebuilds the same
+  undo history. `Editor::execute_with_merge` reports whether it merged.
+- Playback: a volume or pan change still goes to the player at once, and the sequence is
+  then rebuilt and swapped in at the current position (`Scheduler::replace`,
+  `Command::Replace`, `Player::replace`): no stop, no silence. Playing from the start,
+  seeking and the borrowed channels of bends and slides now use the new values (before,
+  the sequence's tick-0 setup restored the old mix). `resync_mix` is gone.
+- Tests: track commands and odd names round-trip through text; replace keeps position in
+  the scheduler and plays on without silence in the transport. Tests: 382.
+- Open: an app-level test that checks the rebuilt sequence after a slider change; files
+  over 400 lines (`gpif_import/mod.rs`, `gpif_export/mod.rs`, `model/edit/mod.rs`,
+  `tab_editor.rs`, `sequence.rs`) and a line-count check in `cargo xtask layers`.

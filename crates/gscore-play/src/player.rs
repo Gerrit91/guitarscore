@@ -55,6 +55,9 @@ pub trait Player {
     /// Sends one MIDI message at once, without changing the sequence. Used for live mixer
     /// changes (volume and pan), which must not stop or rebuild playback.
     fn send_event(&mut self, event: MidiEvent) -> Result<(), PlayError>;
+    /// Swaps in a rebuilt `sequence` at the current position without stopping or silencing
+    /// (see [`Scheduler::replace`]); like [`Player::load`] if nothing is loaded.
+    fn replace(&mut self, sequence: Arc<Sequence>) -> Result<(), PlayError>;
     /// The current position in ticks.
     fn position(&self) -> u64;
     /// Playing, paused or stopped.
@@ -134,6 +137,17 @@ impl Scheduler {
             .iter()
             .take_while(|e| e.tick == 0)
             .filter(|e| !e.event.is_note())
+    }
+
+    /// Swaps in `sequence` where this one is, keeping the position, clock and tempo scale:
+    /// for a rebuilt sequence whose events differ only in their values (a mixer change), so
+    /// nothing is sent twice or skipped. If the number of events differs, the next event is
+    /// looked up by tick instead. Returns the sequence it replaced.
+    pub fn replace(&mut self, sequence: Arc<Sequence>) -> Arc<Sequence> {
+        if sequence.events.len() != self.sequence.events.len() {
+            self.next = sequence.events.partition_point(|e| e.tick < self.position);
+        }
+        std::mem::replace(&mut self.sequence, sequence)
     }
 
     /// Changes the tempo scale (clamped to [`TEMPO_SCALE_RANGE`]) from now on.
@@ -252,6 +266,35 @@ mod tests {
         assert_eq!(jumped.position(), later.position());
         assert_eq!(jumped.setup().count(), 1);
         assert_eq!(jumped.advance(0).len(), later.advance(0).len());
+    }
+
+    #[test]
+    fn a_replaced_sequence_continues_where_playback_is() {
+        let mut scheduler = Scheduler::new(quarters());
+        assert_eq!(scheduler.advance(0).len(), 1);
+        assert_eq!(scheduler.advance(600_000).len(), 1);
+        // The same events with other values (a mixer change): nothing is sent again.
+        let mut rebuilt = (*quarters()).clone();
+        for event in &mut rebuilt.events {
+            if let MidiEvent::NoteOn { velocity, .. } = &mut event.event {
+                *velocity = 30;
+            }
+        }
+        let old = scheduler.replace(Arc::new(rebuilt));
+        assert_eq!(old.events.len(), 4);
+        assert_eq!(scheduler.position(), u64::from(PPQ) * 600 / 500);
+        let next = scheduler.advance(1_000_000);
+        assert_eq!(next.len(), 1, "the third note, from the new sequence");
+        assert!(matches!(
+            next[0].event,
+            MidiEvent::NoteOn { velocity: 30, .. }
+        ));
+        // A sequence with other events: the next event is found by tick.
+        let mut shorter = (*quarters()).clone();
+        shorter.events.remove(0);
+        let _ = scheduler.replace(Arc::new(shorter));
+        assert!(!scheduler.advance(1_600_000).is_empty(), "playback goes on");
+        assert!(scheduler.finished() || scheduler.advance(2_000_000).is_empty());
     }
 
     #[test]

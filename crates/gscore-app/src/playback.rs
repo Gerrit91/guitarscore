@@ -235,9 +235,6 @@ impl Playback {
         };
         if !resume && let Some(tick) = from.and_then(|at| sequence.tick_of(song, at)) {
             self.player_mut()?.seek(tick).map_err(|e| e.to_string())?;
-            // Seeking sends the sequence's setup, which holds the values from when the
-            // sequence was built; put the current mixer values back.
-            self.resync_mix(song)?;
         }
         self.player_mut()?.play().map_err(|e| e.to_string())
     }
@@ -274,38 +271,41 @@ impl Playback {
         Some(span.measure.get().saturating_add(1))
     }
 
-    /// Sends a track's current volume and pan to the connected player at once, without
-    /// rebuilding the sequence, so dragging a slider does not cut off sounding notes.
+    /// A track's volume or pan changed. The new values are sent to the player at once, so
+    /// a slider is heard while it moves; then the sequence is rebuilt and swapped in where
+    /// playback is (no stop, no silence), so its setup holds the new values too: playing
+    /// from the start, seeking, and the borrowed channels of bends and slides use them.
     pub fn send_track_mix(&mut self, song: &Song, track: TrackIndex) -> Result<(), String> {
-        let Some(sequence) = &self.sequence else {
-            return Ok(());
-        };
-        let Some(channel) = sequence.channel_of(track) else {
-            return Ok(());
-        };
-        let Some(sound) = song.track_sound(track) else {
-            return Ok(());
-        };
         let Some(active) = &mut self.player else {
+            // Nothing is connected: the next play builds the sequence again.
+            self.sequence = None;
             return Ok(());
         };
-        let player = active.player_mut();
-        for event in mix_events(channel, sound.volume, sound.pan) {
-            player.send_event(event).map_err(|e| e.to_string())?;
+        if let (Some(sequence), Some(sound)) = (&self.sequence, song.track_sound(track))
+            && let Some(channel) = sequence.channel_of(track)
+        {
+            for event in mix_events(channel, sound.volume, sound.pan) {
+                active
+                    .player_mut()
+                    .send_event(event)
+                    .map_err(|e| e.to_string())?;
+            }
         }
+        if self.sequence.is_none() {
+            return Ok(());
+        }
+        let sequence = Arc::new(Sequence::new(song, None).map_err(|e| e.to_string())?);
+        active
+            .player_mut()
+            .replace(Arc::clone(&sequence))
+            .map_err(|e| e.to_string())?;
+        self.sequence = Some(sequence);
         Ok(())
     }
 
-    /// Sends every playing track's current mixer values, after a seek restored the values
-    /// stored in the sequence.
-    fn resync_mix(&mut self, song: &Song) -> Result<(), String> {
-        let tracks: Vec<TrackIndex> = self.sequence.as_ref().map_or_else(Vec::new, |sequence| {
-            sequence.tracks.iter().map(|track| track.track).collect()
-        });
-        for track in tracks {
-            self.send_track_mix(song, track)?;
-        }
-        Ok(())
+    /// The sequence the player has, if one was built.
+    pub fn sequence(&self) -> Option<&Arc<Sequence>> {
+        self.sequence.as_ref()
     }
 
     /// The last output error, if playback stopped because of one.

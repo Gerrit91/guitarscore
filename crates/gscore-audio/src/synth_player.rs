@@ -174,6 +174,10 @@ impl Player for SynthPlayer {
         self.send(Command::Send(event))
     }
 
+    fn replace(&mut self, sequence: Arc<Sequence>) -> Result<(), PlayError> {
+        self.send(Command::Replace(sequence))
+    }
+
     fn position(&self) -> u64 {
         self.shared.position.load(Ordering::Acquire)
     }

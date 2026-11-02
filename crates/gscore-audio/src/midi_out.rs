@@ -149,6 +149,10 @@ impl Player for MidiOutPlayer {
         self.send(Command::Send(event))
     }
 
+    fn replace(&mut self, sequence: Arc<Sequence>) -> Result<(), PlayError> {
+        self.send(Command::Replace(sequence))
+    }
+
     fn position(&self) -> u64 {
         self.status().position
     }
