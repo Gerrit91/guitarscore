@@ -214,3 +214,45 @@ fn the_edit_menu_undoes_and_shows_the_keys() {
     assert_ne!(fret_at_cursor(harness.state(), 1), Some(4));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn shift_arrows_select_beats_and_end_a_grid_selection() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    // A measure selected in the grid first.
+    harness.state_mut().view_mut().select_measure(0, false);
+    harness
+        .state_mut()
+        .document_mut()
+        .unwrap()
+        .editor_mut()
+        .set_selection(Some(gscore_edit::Selection::Measures {
+            anchor: gscore_model::MeasureIndex::new(0),
+            focus: gscore_model::MeasureIndex::new(0),
+        }));
+    harness.run();
+
+    for _ in 0..2 {
+        harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
+        harness.run();
+    }
+    let selection = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        document
+            .editor()
+            .selection()
+            .map(|s| s.positions(document.song()).len())
+    };
+    assert_eq!(
+        selection(&harness),
+        Some(3),
+        "the cursor's beat and two more"
+    );
+    assert!(
+        harness.state().view().selection.is_none(),
+        "the grid no longer shows a measure selection"
+    );
+
+    // A plain arrow ends the selection.
+    press(&mut harness, Key::ArrowLeft);
+    assert_eq!(selection(&harness), None);
+}

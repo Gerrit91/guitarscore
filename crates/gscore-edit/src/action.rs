@@ -56,6 +56,12 @@ pub enum ActionId {
     Stop,
     /// Save the file.
     Save,
+    /// Extend the beat selection one beat to the left (the cursor moves with it).
+    SelectLeft,
+    /// Extend the beat selection one beat to the right (the cursor moves with it).
+    SelectRight,
+    /// Select the cursor's whole beat (every string).
+    SelectBeat,
     /// Zoom in.
     ZoomIn,
     /// Zoom out.
@@ -115,6 +121,13 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::PlayPause, "play_pause", "Play/pause"),
     info(ActionId::Stop, "stop", "Stop"),
     info(ActionId::Save, "save", "Save"),
+    info(ActionId::SelectLeft, "select_left", "Extend selection left"),
+    info(
+        ActionId::SelectRight,
+        "select_right",
+        "Extend selection right",
+    ),
+    info(ActionId::SelectBeat, "select_beat", "Select whole beat"),
     info(ActionId::ZoomIn, "zoom_in", "Zoom in"),
     info(ActionId::ZoomOut, "zoom_out", "Zoom out"),
     info(ActionId::ZoomReset, "zoom_reset", "Actual size"),
@@ -193,6 +206,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 25, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 28, "one entry per ActionId variant");
     }
 }

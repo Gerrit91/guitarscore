@@ -15,6 +15,7 @@ mod beats;
 mod effect_edits;
 mod headers;
 pub(crate) mod measures;
+mod mix;
 mod notes;
 mod song;
 mod tracks;
@@ -193,6 +194,13 @@ enum ChangeKind {
         measure: MeasureIndex,
         previous: Option<gscore_gp::Marker>,
     },
+    /// A track's notation and tab switches changed; `previous` is `(notation, tablature)`.
+    TrackStaves {
+        at: TrackIndex,
+        previous: (bool, bool),
+    },
+    /// The master volume and pan changed (`None`: the song had none).
+    MasterMix { previous: Option<(f32, f32)> },
     /// Several changes made as one edit, undone in reverse order.
     Batch { changes: Vec<Change> },
     /// A track's volume or pan changed. `previous_channel` is the channel the track used
@@ -268,6 +276,7 @@ impl Change {
             ChangeKind::Section { previous, .. } => {
                 previous.as_ref().map_or(0, |marker| marker.title.len())
             }
+            ChangeKind::TrackStaves { .. } | ChangeKind::MasterMix { .. } => 0,
             ChangeKind::Batch { changes } => changes
                 .iter()
                 .map(Change::size_estimate)
@@ -697,6 +706,19 @@ impl Song {
                 header.marker.clone_from(previous);
                 Ok(())
             }),
+            ChangeKind::TrackStaves { at, previous } => {
+                self.edit_track_settings(|inner| {
+                    let track = track_mut(inner, *at)?;
+                    (track.settings.notation, track.settings.tablature) = *previous;
+                    Ok(())
+                })?;
+                self.touch_all_measures();
+                Ok(())
+            }
+            ChangeKind::MasterMix { previous } => self.edit_metadata(|inner| {
+                inner.master_volume_pan = *previous;
+                Ok(())
+            }),
             ChangeKind::Batch { changes } => {
                 for change in changes.iter().rev() {
                     self.revert(change)?;
@@ -768,6 +790,8 @@ fn beat_in(measure: &mut GpMeasure, at: BeatPosition) -> Result<&mut GpBeat, Mod
 mod effect_tests;
 #[cfg(test)]
 mod header_tests;
+#[cfg(test)]
+mod mix_tests;
 #[cfg(test)]
 mod song_tests;
 #[cfg(test)]

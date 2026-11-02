@@ -1101,3 +1101,71 @@ Fixed after reviewing M12 and M14:
   (`gscore-model` `effects.rs` 826 and `edit/mod.rs` 773, `gscore-edit` `command.rs` 888,
   `parse.rs` 698, `info.rs` 662, the app's `edit_effects.rs` 699 and `edit_palette.rs`
   534); M14 lacks grace-note editing and M12 the Page layout tab (both in `docs/gaps.md`).
+
+## 2026-11-02 — Selection UX
+
+Owner feedback on the M14 selection, done:
+- `Selection::Beats` is a range between two `BeatSpot`s (measure and beat) in one track
+  and voice, so it crosses bar lines. `Selection::positions` lists the selected beats
+  (placeholders left out); cut, clear, the palette and the page all use it.
+- New actions `select_left`/`select_right` (Shift+Left/Right: the cursor moves one beat,
+  never adding beats, and the selection follows it from where it started) and
+  `select_beat` (Shift+Up/Down: the cursor's whole beat). Plain cursor moves end the
+  selection. With a selection, `delete_beat` (Delete) and `clear_note` clear every selected
+  note as one undo step and keep the beats; without one they work as before.
+- Copying beats keeps them grouped by measure; pasting puts each group into the next
+  measure from the cursor's (refused, unchanged, when the song is too short).
+- Page: the selection is one solid band per system line (from the first selected column
+  to the last; measure selections cover whole measures) instead of a box per column with
+  gaps. A drag selects across bar and system lines in the voice it started in
+  (`Places::hit_in_voice`), and the cursor follows it. While playing, only the moving
+  column band is drawn, not the box around the string. A selection other than a measure
+  range clears the grid's measure highlight.
+- Tests: keyboard selection across bar lines, whole-beat selection and clearing, a bar-line
+  copy/paste and cut (`test_selection.rs`); the band merging (`page.rs`); Shift+arrows in
+  the app ending a grid selection.
+- Open: the selection is not drawn in the song grid unless it is a measure range; a beat
+  selection cannot span tracks.
+
+## 2026-11-02 — Track panel and playback UX
+
+Owner feedback, done:
+- Clicking a beat on the page while playing continues playback from there
+  (`Playback::jump_to`; the player silences sounding notes when it seeks).
+- Track panel: strings are tuned by note name (a list from C0 to B7 plus semitone − and +
+  buttons; no MIDI numbers shown); 16 preset colors as swatches next to the custom
+  picker; a "Show" choice of notes and tabs, tabs only, or notes only; a top bar to add a
+  track after the shown one, move it up or down, and mute or solo all tracks (one undo
+  step, toggling back when all are already muted or soloed); a master row at the bottom
+  with a volume slider (double-click: 100 %) and a pan knob.
+- With a selection, the selection band is one darker shade everywhere; the cursor's own
+  column band is not drawn inside it (it made one column darker than the rest).
+- Model: `TrackStaves` (`TrackView::staves`, `Song::set_track_staves`, which lays out
+  every measure again) and `MasterMix` (`Song::master_mix`, `set_master_volume`,
+  `set_master_pan`, `played_sound` = a track's sound with the master applied, used by the
+  sequence and the live mixer). Both are compared by `settings_differences`.
+  `MASTER_UNITY` (97) is the neutral master: every GP7 test file stores Guitar Pro's
+  untouched 0.76, so a plain linear reading would have played every file a quarter
+  quieter than before.
+- Commands `set_track_staves`, `set_master_volume`, `set_master_pan` (master drags merge
+  into one undo step; the app sends every track's sound at once).
+- `gscore-gp`: master volume/pan (`I01_VolumeAndPan`) and GP7's `PartConfiguration`
+  (per-track staves) are read and written (`docs/guitarpro.md` 31, 32).
+- Layout: per-track staves; "notes only" draws the notation staff alone (no tab staff,
+  fret numbers or tab ornaments) and puts the cursor rows on it. The default output is
+  unchanged (golden SVGs).
+- Tests: `test_track_panel.rs` (presets, staves, note-name tuning, the bar, the master
+  row, jumping while playing when a MIDI Through port exists), `test_staves.rs`, model
+  `mix_tests`, `part_configuration` and `display_tests` in `gscore-gp`, command and parse
+  cases. The page snapshots were regenerated for the new panel.
+- Open: the master row has no number readout (its tooltip shows the percentage); the
+  track panel's top bar has no "delete track" (the grid's row menu has it); dragging on
+  the page during playback selects without moving playback.
+
+Corrected the same day (owner): the action bar and the master row belong to the song grid,
+not the track panel. The grid's header cell now holds add, move up/down, and mute/solo all
+(above the rows' own M/S buttons), and a Master row under the last track holds the master
+volume and pan (lined up with the rows' sliders and knobs). Inside a selection the cursor's
+box is hidden as well. A click or measure selection in the grid during playback jumps there
+too. Tests: `a_click_in_the_song_grid_while_playing_jumps_there`; snapshots regenerated.
+

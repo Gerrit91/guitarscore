@@ -25,6 +25,8 @@ rfd = "0.17"
 [dev-dependencies]
 # A command that panics on demand, for the panic-injection test.
 gscore-edit = { path = "../gscore-edit", features = ["test-support"] }
+# Small songs built in code, for unit tests of the page.
+gscore-model = { path = "../gscore-model", features = ["test-support"] }
 # A SoundFont built in code, for the synthesizer test.
 gscore-audio = { path = "../gscore-audio", features = ["test-support"] }
 # Drives the UI headlessly and renders it offscreen for snapshots (no window).

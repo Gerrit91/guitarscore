@@ -40,6 +40,8 @@ const MEASURE_NUMBER_RISE: f32 = 0.8;
 pub(crate) struct Tops {
     pub(crate) tab: f32,
     pub(crate) notation: Option<f32>,
+    /// Whether the tab staff is drawn (a track may show notation only).
+    pub(crate) show_tab: bool,
 }
 
 /// A measure, laid out independently of its position.

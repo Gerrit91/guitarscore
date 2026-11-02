@@ -14,8 +14,9 @@ use crate::state::MeasureSelection;
 
 use rows::TrackRow;
 
+mod bar;
 mod matrix;
-mod mixer;
+pub(super) mod mixer;
 mod rows;
 
 /// Width of the fixed track column on the left.
@@ -35,6 +36,8 @@ pub(super) const SECTION_TITLE_MEASURES: f32 = 4.0;
 pub(super) enum GridAction {
     /// Run a track command; `merge` continues the previous undo step (one slider drag).
     Command { command: Command, merge: bool },
+    /// Run a command, then show `track` (a track that was added or moved).
+    CommandShowing { command: Command, track: usize },
     /// A slider drag started or ended: the next command starts a new undo step.
     BreakMerge,
     /// Move the cursor to the first beat of a track and measure.
@@ -67,12 +70,14 @@ impl GuitarScoreApp {
         let grid = document.grid();
         let cursor = document.editor().cursor();
         let rows = rows::track_rows(document);
+        let master = document.song().master_mix();
         let measure_count = document.song().measure_count();
         let playing = self.playback.current_measure().map(|m| m.saturating_sub(1));
         let mut actions = Vec::new();
         draw(
             ui,
             &rows,
+            master,
             &grid,
             GridView {
                 measure_count,
@@ -87,6 +92,13 @@ impl GuitarScoreApp {
         for action in actions {
             match action {
                 GridAction::Command { command, merge } => self.apply_command(command, merge),
+                GridAction::CommandShowing { command, track } => {
+                    let revision = self.document.as_ref().map(|d| d.editor().revision());
+                    self.apply_command(command, false);
+                    if self.document.as_ref().map(|d| d.editor().revision()) != revision {
+                        self.view.track = track;
+                    }
+                }
                 GridAction::BreakMerge => {
                     if let Some(document) = &mut self.document {
                         document.editor_mut().break_merge();
@@ -103,6 +115,8 @@ impl GuitarScoreApp {
                             },
                         ));
                     }
+                    // While playing, playback goes to the selection's first measure.
+                    self.jump_playback_to(self.view.track, selection.start());
                 }
                 GridAction::Rename { track } => {
                     let name = rows
@@ -134,6 +148,23 @@ impl GuitarScoreApp {
         cursor.beat = gscore_model::BeatIndex::new(0);
         document.editor_mut().set_cursor(cursor);
         self.view.track = track;
+        self.jump_playback_to(track, measure);
+    }
+
+    /// While playing, continues playback at the first beat of `track`, `measure`.
+    fn jump_playback_to(&mut self, track: usize, measure: usize) {
+        let Some(document) = &self.document else {
+            return;
+        };
+        let at = gscore_model::BeatPosition {
+            track: TrackIndex::new(track),
+            measure: gscore_model::MeasureIndex::new(measure),
+            voice: gscore_model::VoiceIndex::new(0),
+            beat: gscore_model::BeatIndex::new(0),
+        };
+        if let Err(error) = self.playback.jump_to(document.song(), at) {
+            self.notice = Some(error);
+        }
     }
 
     /// The rename window: a text field and Rename/Cancel.
@@ -197,6 +228,7 @@ pub(super) struct GridView {
 fn draw(
     ui: &mut egui::Ui,
     rows: &[TrackRow],
+    master: gscore_model::MasterMix,
     grid: &GridData,
     view: GridView,
     actions: &mut Vec<GridAction>,
@@ -206,7 +238,7 @@ fn draw(
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             ui.horizontal_top(|ui| {
-                rows::headers(ui, rows, view, actions);
+                rows::headers(ui, rows, master, view, actions);
                 egui::ScrollArea::horizontal()
                     .id_salt("song_grid")
                     .show(ui, |ui| matrix::matrix(ui, rows, grid, view, actions));

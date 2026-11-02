@@ -189,3 +189,17 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     (track first, then staff, clamped to 0-127) and `CapoFret` is written in the track's
     `<Properties>` next to the tuning. GP3-5 already store it as `Track::offset`. Test
     `tuning_tests::capo_fret_is_read_and_written`.
+31. Master volume and pan (`src/model/song.rs`, `src/io/gpif/mod.rs`,
+    `src/io/gpif_import/mod.rs`, `src/io/gpif_export/mod.rs`, 2026-11-02): GP7 stores
+    them as the `I01_VolumeAndPan` master effect (`<MasterTrack><RSE><Master>`, two values
+    0.0-1.0); neither the reader nor the writer handled it. New field
+    `Song::master_volume_pan`, read and written (only when the song has one). Untouched
+    GP7 files store `0.76 0.5`. Tests `display_tests`.
+32. Shown staves (`src/io/gpx/part_configuration.rs`, `src/io/gpx/mod.rs`,
+    `src/io/gpx/write.rs`, `src/io/song.rs`, 2026-11-02): GP7 keeps per track whether
+    standard notation and tablature are shown in the binary `Content/PartConfiguration`
+    (layout in the module docs; it matches alphaTab's reader). It is read into
+    `TrackSettings::notation`/`tablature` (which GP3-5 already had) and written with every
+    `.gp` file; the bytes for a one-track file equal Guitar Pro's. A track showing neither
+    keeps its tablature.
+

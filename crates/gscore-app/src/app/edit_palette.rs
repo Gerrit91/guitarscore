@@ -6,8 +6,8 @@
 
 use gscore_edit::{Command, Cursor, Selection};
 use gscore_model::{
-    BeatIndex, BeatKind, BeatPosition, KeySignature, MeasureIndex, NoteValue, Section, Song,
-    TimeSignature, TrackColor, TrackIndex, VoiceIndex,
+    BeatIndex, BeatPosition, KeySignature, MeasureIndex, NoteValue, Section, Song, TimeSignature,
+    TrackColor, VoiceIndex,
 };
 
 use super::GuitarScoreApp;
@@ -219,46 +219,29 @@ impl GuitarScoreApp {
     }
 
     /// The start of a selection for playback: its first beat with a note, else its first
-    /// beat. `None` without a selection.
+    /// beat (for a measure selection, in the shown track). `None` without a selection.
     pub(super) fn selection_start(&self) -> Option<BeatPosition> {
         let document = self.document.as_ref()?;
         let cursor = document.editor().cursor();
         let song = document.song();
-        match document.editor().selection()? {
-            Selection::Beats {
-                track,
-                measure,
-                voice,
-                anchor,
-                focus,
-            } => {
-                let first = anchor.min(focus).get();
-                let last = anchor.max(focus).get();
-                let mut fallback = None;
-                for index in first..=last {
-                    let at = BeatPosition {
-                        track,
-                        measure,
-                        voice,
-                        beat: BeatIndex::new(index),
-                    };
-                    if song
-                        .beat(at)
-                        .is_some_and(|beat| beat.notes().next().is_some())
-                    {
-                        return Some(at);
-                    }
-                    fallback.get_or_insert(at);
-                }
-                fallback
-            }
-            Selection::Measures { anchor, focus } => Some(BeatPosition {
+        let selection = document.editor().selection()?;
+        if let Selection::Measures { .. } = selection {
+            return Some(BeatPosition {
                 track: cursor.track,
-                measure: anchor.min(focus),
+                measure: selection.first_measure(),
                 voice: VoiceIndex::new(0),
                 beat: BeatIndex::new(0),
-            }),
+            });
         }
+        let positions = selection.positions(song);
+        positions
+            .iter()
+            .copied()
+            .find(|at| {
+                song.beat(*at)
+                    .is_some_and(|beat| beat.notes().next().is_some())
+            })
+            .or_else(|| positions.first().copied())
     }
 }
 
@@ -473,63 +456,14 @@ fn apply_duration(
 
 /// The selected beats: the selection, or the cursor's beat.
 fn selected_beats(song: &Song, cursor: Cursor, selection: Option<Selection>) -> Vec<BeatPosition> {
-    let mut beats = Vec::new();
     match selection {
-        Some(Selection::Beats {
-            track,
-            measure,
-            voice,
-            anchor,
-            focus,
-        }) => {
-            let first = anchor.min(focus).get();
-            let last = anchor.max(focus).get();
-            for index in first..=last {
-                let at = BeatPosition {
-                    track,
-                    measure,
-                    voice,
-                    beat: BeatIndex::new(index),
-                };
-                if song.beat(at).is_some() {
-                    beats.push(at);
-                }
-            }
-        }
-        Some(Selection::Measures { anchor, focus }) => {
-            let first = anchor.min(focus).get();
-            let last = anchor.max(focus).get();
-            for track in 0..song.track_count() {
-                for index in first..=last {
-                    let measure = MeasureIndex::new(index);
-                    let Some(view) = song
-                        .track(TrackIndex::new(track))
-                        .and_then(|t| t.measure(measure))
-                    else {
-                        continue;
-                    };
-                    for (voice_index, voice) in view.voices().enumerate() {
-                        for (beat_index, beat) in voice.beats().enumerate() {
-                            if beat.kind() != BeatKind::Empty {
-                                beats.push(BeatPosition {
-                                    track: TrackIndex::new(track),
-                                    measure,
-                                    voice: VoiceIndex::new(voice_index),
-                                    beat: BeatIndex::new(beat_index),
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        None => {
-            if song.beat(cursor.position()).is_some() {
-                beats.push(cursor.position());
-            }
-        }
+        Some(selection) => selection.positions(song),
+        None => song
+            .beat(cursor.position())
+            .map(|_| cursor.position())
+            .into_iter()
+            .collect(),
     }
-    beats
 }
 
 /// "1", "1/2", ... for a note value.

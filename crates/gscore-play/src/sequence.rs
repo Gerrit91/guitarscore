@@ -153,7 +153,7 @@ impl Sequence {
 
         for track_index in selected {
             let (Some(view), Some(sound)) =
-                (song.track(track_index), song.track_sound(track_index))
+                (song.track(track_index), song.played_sound(track_index))
             else {
                 return Err(ModelError::Invalid(format!(
                     "the song has no {track_index}"

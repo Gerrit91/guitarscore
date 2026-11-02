@@ -5,7 +5,8 @@ use gscore_model::{
     BeatEffect, BeatIndex, BeatPosition, MeasureIndex, NoteEffect, Song, TrackIndex, VoiceIndex,
 };
 
-use super::{BeatClip, MeasureClip};
+use super::BeatSpot;
+use super::clipboard::{BeatClip, MeasureClip};
 use crate::command::Command;
 use crate::editor::EditError;
 
@@ -96,36 +97,59 @@ fn write_beat(at: BeatPosition, clip: &BeatClip, inserted: bool, commands: &mut 
     }
 }
 
-/// Commands that write `beats` at `at`, adding beats at the end when the voice is shorter.
+/// Commands that write copied beats from `at` on, and the spot of the last one written.
+/// The first group goes into the cursor's measure from the cursor's beat, each further group
+/// into the next measure from its first beat (so the copy's bar lines stay where they were).
+/// Existing beats are overwritten; beats past a voice's end are added.
 pub(super) fn paste_beats(
     song: &Song,
     at: BeatPosition,
-    beats: &[BeatClip],
-) -> Result<Vec<Command>, EditError> {
-    let mut existing = song
-        .track(at.track)
-        .and_then(|track| track.measure(at.measure))
-        .and_then(|measure| measure.voice(at.voice))
-        .map_or(0, |voice| voice.beats().len());
-    let mut commands = Vec::new();
-    for (offset, clip) in beats.iter().enumerate() {
-        let index = at.beat.get().saturating_add(offset);
-        let target = BeatPosition {
-            beat: BeatIndex::new(index),
-            ..at
-        };
-        // Only a beat past the voice's end is inserted; an existing beat is overwritten.
-        let inserted = index >= existing;
-        if inserted {
-            commands.push(Command::InsertBeat {
-                at: target,
-                duration: clip.duration,
-            });
-            existing = index.saturating_add(1);
-        }
-        write_beat(target, clip, inserted, &mut commands);
+    groups: &[Vec<BeatClip>],
+) -> Result<(Vec<Command>, BeatSpot), EditError> {
+    let needed = at.measure.get().saturating_add(groups.len());
+    if needed > song.measure_count() {
+        return Err(EditError::Unsupported(format!(
+            "the copied beats need {} measures from here; insert measures first",
+            groups.len()
+        )));
     }
-    Ok(commands)
+    let mut commands = Vec::new();
+    let mut last = BeatSpot {
+        measure: at.measure,
+        beat: at.beat,
+    };
+    for (offset, beats) in groups.iter().enumerate() {
+        let measure = MeasureIndex::new(at.measure.get().saturating_add(offset));
+        let first = if offset == 0 { at.beat.get() } else { 0 };
+        let mut existing = song
+            .track(at.track)
+            .and_then(|track| track.measure(measure))
+            .and_then(|measure| measure.voice(at.voice))
+            .map_or(0, |voice| voice.beats().len());
+        for (index, clip) in beats.iter().enumerate() {
+            let index = first.saturating_add(index);
+            let target = BeatPosition {
+                measure,
+                beat: BeatIndex::new(index),
+                ..at
+            };
+            // Only a beat past the voice's end is inserted; an existing beat is overwritten.
+            let inserted = index >= existing;
+            if inserted {
+                commands.push(Command::InsertBeat {
+                    at: target,
+                    duration: clip.duration,
+                });
+                existing = index.saturating_add(1);
+            }
+            write_beat(target, clip, inserted, &mut commands);
+            last = BeatSpot {
+                measure,
+                beat: target.beat,
+            };
+        }
+    }
+    Ok((commands, last))
 }
 
 /// Most voices a measure can have edits in (voice 1 and 2).

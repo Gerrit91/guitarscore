@@ -3,17 +3,17 @@
 use gscore_model::{
     BeatEffect, BeatKind, BeatPosition, BeatView, Change, Fret, MAX_SECTION_TITLE_CHARS, MAX_TEMPO,
     MeasureIndex, ModelError, NoteEffect, NoteValue, Pitch, Song, SongTextField, StringNumber,
-    TimeSignature, TrackColor, TrackIndex,
+    TimeSignature, TrackColor, TrackIndex, TrackStaves,
 };
 
 use crate::info::{
     BATCH, CLEAR_NOTE, CLEAR_SECTION, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_TRACK,
     DUPLICATE_TRACK, INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO, RENAME_TRACK,
     SET_BEAT_EFFECT, SET_BEAT_REST, SET_DEAD_NOTE, SET_DURATION, SET_FRET, SET_KEY_SIGNATURE,
-    SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_SECTION, SET_SONG_TEXT, SET_TEMPO, SET_TIE,
-    SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_COLOR, SET_TRACK_DRUMS, SET_TRACK_MUTE,
-    SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_SOLO, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS,
-    SET_TRACK_VOLUME, UNDO,
+    SET_MASTER_PAN, SET_MASTER_VOLUME, SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_SECTION,
+    SET_SONG_TEXT, SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_COLOR,
+    SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_SOLO,
+    SET_TRACK_STAVES, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_VOLUME, UNDO,
 };
 
 /// One edit, with every parameter already checked for syntax and range.
@@ -106,6 +106,24 @@ pub enum Command {
         track: TrackIndex,
         /// The volume.
         volume: u8,
+    },
+    /// Choose which staves the track's page shows.
+    SetTrackStaves {
+        /// The track.
+        track: TrackIndex,
+        /// Notation and tab, tab only, or notation only.
+        staves: TrackStaves,
+    },
+    /// Set the master volume (0-127; 97, Guitar Pro's default, plays every track at its own
+    /// volume).
+    SetMasterVolume {
+        /// The volume.
+        volume: u8,
+    },
+    /// Set the master pan (0 left, 64 leaves every track's pan, 127 right).
+    SetMasterPan {
+        /// The pan.
+        pan: u8,
     },
     /// Set the track's pan (0 left, 64 middle, 127 right).
     SetTrackPan {
@@ -318,6 +336,11 @@ impl Command {
             Command::SetTrackPan { track, pan } => {
                 format!("{id} track={} pan={pan}", one(track.get()))
             }
+            Command::SetTrackStaves { track, staves } => {
+                format!("{id} track={} staves={}", one(track.get()), staves.id())
+            }
+            Command::SetMasterVolume { volume } => format!("{id} volume={volume}"),
+            Command::SetMasterPan { pan } => format!("{id} pan={pan}"),
             Command::SetTrackMute { track, mute } => {
                 format!("{id} track={} mute={mute}", one(track.get()))
             }
@@ -469,6 +492,9 @@ impl Command {
             Command::SetTrackColor { .. } => &SET_TRACK_COLOR,
             Command::SetTrackVolume { .. } => &SET_TRACK_VOLUME,
             Command::SetTrackPan { .. } => &SET_TRACK_PAN,
+            Command::SetTrackStaves { .. } => &SET_TRACK_STAVES,
+            Command::SetMasterVolume { .. } => &SET_MASTER_VOLUME,
+            Command::SetMasterPan { .. } => &SET_MASTER_PAN,
             Command::SetTrackMute { .. } => &SET_TRACK_MUTE,
             Command::SetTrackSolo { .. } => &SET_TRACK_SOLO,
             Command::SetTrackProgram { .. } => &SET_TRACK_PROGRAM,
@@ -526,11 +552,24 @@ impl Command {
     /// signatures, section markers). The app then drops the layout cache.
     pub fn changes_layout(&self) -> bool {
         match self {
-            Command::SetTimeSignature { .. }
+            Command::SetTrackStaves { .. }
+            | Command::SetTimeSignature { .. }
             | Command::SetKeySignature { .. }
             | Command::SetSection { .. }
             | Command::ClearSection { .. } => true,
             Command::Batch { commands } => commands.iter().any(Command::changes_layout),
+            _ => false,
+        }
+    }
+
+    /// True for the master volume and pan, which change how every track sounds. Playback
+    /// sends every track's new sound at once, like [`Command::changes_sound`] for one.
+    pub fn changes_master(&self) -> bool {
+        match self {
+            Command::SetMasterVolume { .. } | Command::SetMasterPan { .. } => true,
+            Command::Batch { commands } => {
+                !commands.is_empty() && commands.iter().all(Command::changes_master)
+            }
             _ => false,
         }
     }
@@ -575,6 +614,7 @@ impl Command {
             Command::RenameTrack { .. }
             | Command::SetTrackColor { .. }
             | Command::SetSongText { .. }
+            | Command::SetTrackStaves { .. }
             | Command::SetSection { .. }
             | Command::ClearSection { .. }
             | Command::SetKeySignature { .. } => true,
@@ -622,6 +662,8 @@ impl Command {
                 Command::SetTrackColor { track: first, .. },
                 Command::SetTrackColor { track: second, .. },
             ) => first == second,
+            (Command::SetMasterVolume { .. }, Command::SetMasterVolume { .. })
+            | (Command::SetMasterPan { .. }, Command::SetMasterPan { .. }) => true,
             // One Apply in the settings window is one undo step for the fields it changed.
             (
                 Command::SetSongText { .. } | Command::SetTempo { .. },
@@ -685,9 +727,13 @@ impl Command {
             Command::SetTrackColor { track, .. }
             | Command::SetTrackVolume { track, .. }
             | Command::SetTrackPan { track, .. }
+            | Command::SetTrackStaves { track, .. }
             | Command::SetTrackMute { track, .. }
             | Command::SetTrackSolo { track, .. }
             | Command::SetTrackDrums { track, .. } => track.get() < song.track_count(),
+            Command::SetMasterVolume { volume: value } | Command::SetMasterPan { pan: value } => {
+                *value <= 127
+            }
             Command::SetTrackProgram { track, program } => {
                 *program <= 127 && track.get() < song.track_count()
             }
@@ -773,6 +819,9 @@ impl Command {
             Command::SetTrackColor { track, color } => song.set_track_color(*track, *color),
             Command::SetTrackVolume { track, volume } => song.set_track_volume(*track, *volume),
             Command::SetTrackPan { track, pan } => song.set_track_pan(*track, *pan),
+            Command::SetTrackStaves { track, staves } => song.set_track_staves(*track, *staves),
+            Command::SetMasterVolume { volume } => song.set_master_volume(*volume),
+            Command::SetMasterPan { pan } => song.set_master_pan(*pan),
             Command::SetTrackMute { track, mute } => song.set_track_mute(*track, *mute),
             Command::SetTrackSolo { track, solo } => song.set_track_solo(*track, *solo),
             Command::SetTrackProgram { track, program } => song.set_track_program(*track, *program),

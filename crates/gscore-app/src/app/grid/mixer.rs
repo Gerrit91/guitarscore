@@ -13,15 +13,21 @@ pub(super) fn controls_rect(row: Rect) -> Rect {
 
 /// What a pan knob asks for: a new value (and whether it continues the current drag), and
 /// whether a drag boundary was crossed.
-pub(super) struct PanKnob {
+pub(in crate::app) struct PanKnob {
     /// The new pan, and whether the command continues the current drag.
-    pub change: Option<(u8, bool)>,
+    pub(in crate::app) change: Option<(u8, bool)>,
     /// A drag started or ended: the next command starts a new undo entry.
-    pub boundary: bool,
+    pub(in crate::app) boundary: bool,
 }
 
-/// Draws a pan knob; a double click centers the pan.
-pub(super) fn pan_knob(ui: &mut egui::Ui, rect: Rect, pan: u8, index: usize) -> PanKnob {
+/// Draws a pan knob named `label` for screen readers; a double click centers the pan.
+pub(in crate::app) fn pan_knob(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    pan: u8,
+    index: usize,
+    label: &str,
+) -> PanKnob {
     let response = ui.interact(
         rect,
         ui.scope_id().with(("pan", index)),
@@ -29,7 +35,7 @@ pub(super) fn pan_knob(ui: &mut egui::Ui, rect: Rect, pan: u8, index: usize) -> 
     );
     let boundary = response.drag_started() || response.drag_stopped();
     ui.ctx().accesskit_node_builder(response.id, |node| {
-        node.set_label("Pan");
+        node.set_label(label);
         node.set_role(egui::Role::Slider);
         node.set_min_numeric_value(0.0);
         node.set_max_numeric_value(127.0);

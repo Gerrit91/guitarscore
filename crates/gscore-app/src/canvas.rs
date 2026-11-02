@@ -163,16 +163,25 @@ fn text_at_baseline(
 }
 
 /// Paints the edit cursor: a faint band over the beat's column and a box around the
-/// string, both in the theme's cursor color.
-pub(crate) fn paint_cursor(painter: &Painter, column: Rect, string: Rect, theme: &Theme) {
+/// string, each if given, in the theme's cursor color.
+pub(crate) fn paint_cursor(
+    painter: &Painter,
+    column: Option<Rect>,
+    string: Option<Rect>,
+    theme: &Theme,
+) {
     let ink = color(theme.cursor);
-    painter.rect_filled(column, 2.0, ink.gamma_multiply(0.12));
-    painter.rect_stroke(
-        string,
-        2.0,
-        Stroke::new(1.5, ink),
-        egui::StrokeKind::Outside,
-    );
+    if let Some(column) = column {
+        painter.rect_filled(column, 2.0, ink.gamma_multiply(0.12));
+    }
+    if let Some(string) = string {
+        painter.rect_stroke(
+            string,
+            2.0,
+            Stroke::new(1.5, ink),
+            egui::StrokeKind::Outside,
+        );
+    }
 }
 
 pub(crate) fn color(rgb: Rgb) -> Color32 {

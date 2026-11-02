@@ -131,11 +131,14 @@ fn layout_with(
             "{track} is a drum track; drum notation is not implemented"
         )));
     }
-    let notation = if options.notation {
+    let staves = view.staves();
+    let notation = if options.notation && staves.notation() {
         Notation::for_track(view)?
     } else {
         None
     };
+    // A track without notation (none possible, or switched off) always shows its tab.
+    let show_tab = staves.tablature() || notation.is_none();
     let ctx = Context {
         options,
         fonts,
@@ -186,14 +189,27 @@ fn layout_with(
         let tops = Tops {
             tab: top + tab_offset,
             notation: ctx.notation.map(|_| top),
+            show_tab,
         };
         let tab_top = tops.tab;
         let system = places.systems.len();
-        places.systems.push(SystemPlace {
-            top,
-            tab_top,
-            string_spacing: ctx.options.tab_line_spacing,
-            strings: view.string_count(),
+        places.systems.push(if show_tab {
+            SystemPlace {
+                top,
+                tab_top,
+                string_spacing: ctx.options.tab_line_spacing,
+                strings: view.string_count(),
+            }
+        } else {
+            // Notation only: the cursor's string rows are spread over the notation staff.
+            let strings = view.string_count();
+            let gaps = strings.saturating_sub(1).max(1) as f32;
+            SystemPlace {
+                top,
+                tab_top: top,
+                string_spacing: notation_staff.height() / gaps,
+                strings,
+            }
         });
         let mut x = left + prefix;
         let mut content = Vec::new();
@@ -203,23 +219,32 @@ fn layout_with(
             x += measure.width(plan.stretch);
             let is_final =
                 plan.measures.start.saturating_add(offset).saturating_add(1) == measures.len();
-            ctx.staff
-                .draw_barline(x, tab_top, is_final, font, &mut content);
+            if show_tab {
+                ctx.staff
+                    .draw_barline(x, tab_top, is_final, font, &mut content);
+            }
             if let Some(notation_top) = tops.notation {
                 notation_staff.draw_barline(x, notation_top, is_final, font, &mut content);
             }
         }
         // Staff lines first, so masks and fret numbers paint over them.
-        ctx.staff.draw_lines(tab_top, left, x, font, &mut ops);
-        ctx.staff.draw_clef(left, tab_top, font, &mut ops);
+        if show_tab {
+            ctx.staff.draw_lines(tab_top, left, x, font, &mut ops);
+            ctx.staff.draw_clef(left, tab_top, font, &mut ops);
+        }
         if let (Some(notation), Some(notation_top)) = (ctx.notation, tops.notation) {
             notation_staff.draw_lines(notation_top, left, x, font, &mut ops);
             notation::draw_staff_start(left, notation_top, notation.clef, &mut ops);
             // One line joins the staves of a system at its start.
             let thin = font.engraving().thin_barline_thickness;
+            let end = if show_tab {
+                tab_top + ctx.staff.height()
+            } else {
+                notation_top + notation_staff.height()
+            };
             ops.push(DrawOp::Line {
                 from: Point::new(left + thin / 2.0, notation_top),
-                to: Point::new(left + thin / 2.0, tab_top + ctx.staff.height()),
+                to: Point::new(left + thin / 2.0, end),
                 thickness: thin,
                 color: ColorToken::Barline,
             });
@@ -227,7 +252,10 @@ fn layout_with(
             ctx.staff.draw_start_line(left, tab_top, font, &mut ops);
         }
         ops.append(&mut content);
-        bottom = tab_top + ctx.staff.height();
+        bottom = match tops.notation {
+            Some(notation_top) if !show_tab => notation_top + notation_staff.height(),
+            _ => tab_top + ctx.staff.height(),
+        };
         top = bottom + options.system_gap + HEADER_GAP;
     }
 

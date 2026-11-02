@@ -18,6 +18,8 @@ enum EditEffect {
     Rebuild,
     /// The name or color changed: playback goes on untouched.
     Display,
+    /// The master volume or pan changed: every track's sound goes to the player.
+    Master,
     /// Tracks were added, removed, duplicated or moved: per-track layouts are stale.
     Tracks,
     /// Anything else: measure stamps invalidate the layouts; playback stops.
@@ -27,7 +29,9 @@ enum EditEffect {
 impl EditEffect {
     /// The effect of `command`.
     fn of(command: &Command) -> Self {
-        if let Some(track) = command.mix_track() {
+        if command.changes_master() {
+            EditEffect::Master
+        } else if let Some(track) = command.mix_track() {
             EditEffect::Sound(track)
         } else if command.rebuilds_playback() {
             EditEffect::Rebuild
@@ -158,6 +162,7 @@ impl GuitarScoreApp {
             // Volume, pan and program go straight to the player, so sounding notes are not
             // cut off.
             EditEffect::Sound(track) => self.playback.send_track_sound(document.song(), track),
+            EditEffect::Master => self.playback.send_all_sounds(document.song()),
             // Mute, solo, the drum kit and the tuning change what plays: rebuild the
             // sequence and play on at the same position.
             EditEffect::Rebuild => self.playback.mix_changed(document.song()),

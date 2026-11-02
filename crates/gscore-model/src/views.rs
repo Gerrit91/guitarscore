@@ -105,6 +105,14 @@ impl<'a> TrackView<'a> {
             .collect()
     }
 
+    /// Which staves the track's page shows.
+    pub fn staves(&self) -> crate::style::TrackStaves {
+        crate::style::TrackStaves::from_flags(
+            self.inner.settings.notation,
+            self.inner.settings.tablature,
+        )
+    }
+
     /// True for drum tracks, whose "frets" are MIDI drum notes.
     pub fn is_percussion(&self) -> bool {
         self.inner.percussion_track

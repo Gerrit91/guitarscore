@@ -1006,3 +1006,56 @@ fn two_separate_slider_drags_are_two_undo_steps() {
     editor.undo().unwrap();
     assert_eq!(volume(&editor), before, "undo ends the first drag");
 }
+
+#[test]
+fn a_master_drag_is_one_undo_step_and_scales_what_plays() {
+    let song = testing::song(&[testing::GUITAR_6, testing::GUITAR_6], 1).unwrap();
+    let own = song.track_sound(TrackIndex::new(1)).unwrap();
+    let mut editor = Editor::new(song);
+    for volume in [120, 100, 64] {
+        editor
+            .execute_with_merge(Command::SetMasterVolume { volume }, true)
+            .unwrap();
+    }
+    assert_eq!(editor.undo_depth(), 1, "one drag is one undo step");
+    let played = editor.song().played_sound(TrackIndex::new(1)).unwrap();
+    assert_eq!(
+        u16::from(played.volume),
+        u16::from(own.volume) * 64 / u16::from(gscore_model::MASTER_UNITY)
+    );
+    assert_eq!(
+        editor.song().track_sound(TrackIndex::new(1)).unwrap(),
+        own,
+        "the track's own volume stays"
+    );
+    editor.execute(Command::SetMasterPan { pan: 74 }).unwrap();
+    assert_eq!(editor.undo_depth(), 2, "pan is a step of its own");
+    editor.undo().unwrap();
+    editor.undo().unwrap();
+    assert_eq!(
+        editor.song().master_mix(),
+        gscore_model::MasterMix::default()
+    );
+}
+
+#[test]
+fn choosing_staves_is_undoable() {
+    let song = testing::song(&[testing::GUITAR_6], 1).unwrap();
+    let mut editor = Editor::new(song);
+    let track = TrackIndex::new(0);
+    editor
+        .execute(Command::SetTrackStaves {
+            track,
+            staves: gscore_model::TrackStaves::NotationOnly,
+        })
+        .unwrap();
+    assert_eq!(
+        editor.song().track(track).unwrap().staves(),
+        gscore_model::TrackStaves::NotationOnly
+    );
+    editor.undo().unwrap();
+    assert_eq!(
+        editor.song().track(track).unwrap().staves(),
+        gscore_model::TrackStaves::NotationAndTab
+    );
+}

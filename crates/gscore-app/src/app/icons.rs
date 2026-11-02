@@ -26,6 +26,12 @@ pub(crate) enum Icon {
     ZoomOut,
     /// Settings (a gear).
     Settings,
+    /// Add (a plus).
+    Add,
+    /// Move up (an arrow pointing up).
+    MoveUp,
+    /// Move down (an arrow pointing down).
+    MoveDown,
 }
 
 /// A square icon button with a tooltip and an accessibility label.
@@ -183,6 +189,28 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                         center + direction * (size * 0.34),
                         center + direction * (size * 0.48),
                     ],
+                    stroke,
+                );
+            }
+        }
+        Icon::Add => {
+            let half = size * 0.42;
+            painter.line_segment([center - vec2(half, 0.0), center + vec2(half, 0.0)], stroke);
+            painter.line_segment([center - vec2(0.0, half), center + vec2(0.0, half)], stroke);
+        }
+        Icon::MoveUp | Icon::MoveDown => {
+            // Drawn pointing up, mirrored for down.
+            let sign = if matches!(icon, Icon::MoveUp) {
+                1.0
+            } else {
+                -1.0
+            };
+            let half = size * 0.45;
+            let tip = center - vec2(0.0, half * sign);
+            painter.line_segment([tip, center + vec2(0.0, half * sign)], stroke);
+            for side in [-1.0, 1.0] {
+                painter.line_segment(
+                    [tip, tip + vec2(side * half * 0.7, half * 0.7 * sign)],
                     stroke,
                 );
             }

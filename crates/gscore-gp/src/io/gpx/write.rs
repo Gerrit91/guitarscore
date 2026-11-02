@@ -178,6 +178,11 @@ pub(crate) fn write_gp_bytes(song: &crate::io::Song) -> GpResult<Vec<u8>> {
         .map_err(|e| format!("Zip write error: {e}"))?;
     zip.write_all(xml.as_bytes())
         .map_err(|e| format!("Zip data write error: {e}"))?;
+    // GuitarScore addition: which staves each track shows.
+    zip.start_file(super::part_configuration::PART_CONFIGURATION, options)
+        .map_err(|e| format!("Zip write error: {e}"))?;
+    zip.write_all(&super::part_configuration::write(&song.tracks))
+        .map_err(|e| format!("Zip data write error: {e}"))?;
     let cursor = zip.finish().map_err(|e| format!("Zip finish error: {e}"))?;
     Ok(cursor.into_inner())
 }
