@@ -19,6 +19,7 @@ use crate::model::{
     headers::{Marker, MeasureHeader},
     key_signature::*,
     measure::Measure,
+    midi::MidiChannel,
     note::Note as SongNote,
     song::*,
     track::Track as SongTrack,
@@ -298,6 +299,28 @@ impl SongGpifOps for Song {
                     track.port = low_u8(port);
                 }
             }
+            // GP7: the MIDI port and channels live in `<MidiConnection>`; GP6 uses
+            // `<GeneralMidi>`.
+            if g_track.general_midi.is_none()
+                && let Some(connection) = &g_track.midi_connection
+            {
+                if let Some(ch) = connection.primary_channel {
+                    // A negative channel wraps to a huge index, which writing refuses.
+                    track.channel_index = usize::try_from(ch).unwrap_or(usize::MAX);
+                    track.percussion_track = ch == 9;
+                }
+                if let Some(port) = connection.port {
+                    track.port = low_u8(port);
+                }
+            }
+
+            // GP7: whether the track is soloed or muted.
+            if let Some(state) = g_track.playback_state.as_deref() {
+                let state = state.trim();
+                track.solo = state == "Solo";
+                track.mute = state == "Mute";
+            }
+
             // GuitarScore: GP7 names the program in the track's first sound instead.
             if track.midi_program_gpif.is_none() {
                 track.midi_program_gpif = g_track
@@ -323,6 +346,16 @@ impl SongGpifOps for Song {
                 track.transpose_chromatic = tr.chromatic.unwrap_or(0);
                 track.transpose_octave = tr.octave.unwrap_or(0);
             }
+
+            // GP7: the mixer volume and pan are parameters of the RSE channel strip.
+            let (volume, pan) = g_track
+                .rse
+                .as_ref()
+                .and_then(|rse| rse.channel_strip.as_ref())
+                .and_then(|strip| strip.parameters.as_deref())
+                .map(mixer_from_parameters)
+                .unwrap_or((None, None));
+            apply_track_mix(&mut self.channels, track.channel_index, volume, pan);
 
             // Current dynamic (persists across beats)
             let mut current_velocity: i16 = FORTE;
@@ -382,5 +415,56 @@ impl SongGpifOps for Song {
         // GuitarScore fix: GPIF numbers strings from the lowest; the legacy model's string 1
         // is the highest (as its tuning list is, see `extract_tuning`).
         flip_note_strings(&mut self.tracks);
+    }
+}
+
+/// The mixer values in an RSE `<ChannelStrip><Parameters>` list: `(volume, pan)` as MIDI
+/// values. Index 11 is the balance and index 12 the volume, each 0.0 to 1.0 (checked
+/// against Guitar Pro 7 files and alphaTab's GPIF importer).
+fn mixer_from_parameters(text: &str) -> (Option<i8>, Option<i8>) {
+    let mut volume = None;
+    let mut pan = None;
+    for (index, part) in text.split_whitespace().enumerate() {
+        if index != 11 && index != 12 {
+            continue;
+        }
+        let Some(value) = part.parse::<f64>().ok().filter(|v| v.is_finite()) else {
+            continue;
+        };
+        let midi = round_f64_to_i8(value.clamp(0.0, 1.0) * 127.0).clamp(0, 127);
+        if index == 11 {
+            pan = Some(midi);
+        } else {
+            volume = Some(midi);
+        }
+    }
+    (volume, pan)
+}
+
+/// Most MIDI channels a GPIF track may name; a corrupt index is ignored instead of
+/// allocating a huge channel table.
+const MAX_MIX_CHANNELS: usize = 64;
+
+/// Puts the track's GP7 mixer values into the channel it plays on, creating the channel
+/// entry when the file has none (GP7 files do not store a channel table).
+fn apply_track_mix(
+    channels: &mut Vec<MidiChannel>,
+    index: usize,
+    volume: Option<i8>,
+    pan: Option<i8>,
+) {
+    if index >= MAX_MIX_CHANNELS {
+        return;
+    }
+    while channels.len() <= index {
+        channels.push(MidiChannel::default());
+    }
+    if let Some(channel) = channels.get_mut(index) {
+        if let Some(volume) = volume {
+            channel.volume = volume;
+        }
+        if let Some(pan) = pan {
+            channel.balance = pan;
+        }
     }
 }

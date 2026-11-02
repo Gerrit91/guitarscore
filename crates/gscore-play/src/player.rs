@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use crate::event::MidiEvent;
 use crate::sequence::{Sequence, TimedEvent};
 
 /// Why playback failed.
@@ -51,6 +52,9 @@ pub trait Player {
     fn seek(&mut self, tick: u64) -> Result<(), PlayError>;
     /// Plays faster (above 1) or slower (below 1) than written.
     fn set_tempo_scale(&mut self, scale: f32) -> Result<(), PlayError>;
+    /// Sends one MIDI message at once, without changing the sequence. Used for live mixer
+    /// changes (volume and pan), which must not stop or rebuild playback.
+    fn send_event(&mut self, event: MidiEvent) -> Result<(), PlayError>;
     /// The current position in ticks.
     fn position(&self) -> u64;
     /// Playing, paused or stopped.

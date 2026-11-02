@@ -18,6 +18,8 @@ pub(crate) enum Command {
     Stop,
     Seek(u64),
     TempoScale(f32),
+    /// Sends one MIDI message at once (a live mixer change).
+    Send(MidiEvent),
     /// Ends the backend (the transport itself ignores it).
     Quit,
 }
@@ -100,6 +102,9 @@ impl Transport {
                     s.jump(0, now);
                 }
                 self.state = PlayState::Stopped;
+            }
+            Command::Send(event) => {
+                out.send(event);
             }
             Command::Seek(tick) => {
                 self.silence(out);
@@ -249,6 +254,22 @@ mod tests {
         assert!(t.handle(Command::Load(sequence()), 0, &mut out).is_some());
         assert_eq!(t.position(), 0);
         assert!(out.silenced >= 4);
+    }
+
+    #[test]
+    fn a_live_mix_event_reaches_the_output_without_touching_the_sequence() {
+        let mut out = Recorder::default();
+        let mut t = Transport::default();
+        let channel = Channel::new(3).unwrap();
+        let event = MidiEvent::Control {
+            channel,
+            controller: gscore_play::controller::VOLUME,
+            value: 90,
+        };
+        assert!(t.handle(Command::Send(event), 0, &mut out).is_none());
+        assert_eq!(out.events, [event]);
+        assert_eq!(t.state(), PlayState::Stopped);
+        assert_eq!(t.position(), 0);
     }
 
     #[test]

@@ -255,6 +255,49 @@ fn play_and_stop_drive_the_built_in_synthesizer() {
         "Synthesizer (sine.sf2)"
     );
 
+    // A mixer slider goes straight to the player: playback keeps running and keeps
+    // advancing instead of being stopped and rebuilt.
+    let track = gscore_model::TrackIndex::new(0);
+    let volume = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .track_sound(track)
+            .unwrap()
+            .volume
+    };
+    let before = volume(&harness);
+    let position = harness.state().playback().position();
+    harness.get_by_label("Volume").decrement_accesskit();
+    harness.run();
+    assert_eq!(harness.state().notice(), None);
+    assert_eq!(
+        harness.state().playback().state(),
+        gscore_play::PlayState::Playing,
+        "a mixer change must not stop playback"
+    );
+    assert!(
+        step_until(&mut harness, 2, |app| app.playback().position() > position),
+        "playback stopped advancing after a mixer change"
+    );
+    assert!(volume(&harness) < before);
+
+    // Undo of a mixer change is live too (through the menu, because the slider may hold
+    // the keyboard focus).
+    harness.get_by_label("Edit").click();
+    harness.step();
+    harness.step();
+    harness.get_by_label_contains("Undo").click();
+    harness.run();
+    assert_eq!(
+        harness.state().playback().state(),
+        gscore_play::PlayState::Playing,
+        "undoing a mixer change must not stop playback"
+    );
+    assert_eq!(volume(&harness), before);
+
     harness.get_by_label("Stop").click();
     assert!(
         step_until(&mut harness, 5, |app| app.playback().state()

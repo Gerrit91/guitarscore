@@ -102,18 +102,15 @@ impl Song {
     }
 
     /// Runs `edit` on the song's tracks, for edits that add, remove, duplicate or move a
-    /// track. A measure's layout includes every track, so all measure stamps are renewed.
-    /// `edit` must check everything before it changes anything, so an error leaves the song
-    /// untouched.
+    /// track. Measure stamps stay as they are: a layout is per track, and the track index
+    /// is part of the layout cache's key, so moving or renumbering tracks clears the
+    /// affected cache entries by itself. `edit` must check everything before it changes
+    /// anything, so an error leaves the song untouched.
     pub(crate) fn edit_tracks<T>(
         &mut self,
         edit: impl FnOnce(&mut gscore_gp::Song) -> Result<T, ModelError>,
     ) -> Result<T, ModelError> {
-        let value = edit(&mut self.inner)?;
-        for stamp in &mut self.stamps {
-            *stamp = new_stamp();
-        }
-        Ok(value)
+        edit(&mut self.inner)
     }
 
     /// Runs `edit` on the song's tracks for settings that do not change any measure's

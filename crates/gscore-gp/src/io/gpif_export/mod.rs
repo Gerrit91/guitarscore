@@ -151,10 +151,19 @@ impl WriteGpifInGpifStringOrder for Song {
                 ));
             }
             xml.push_str("</Properties>");
+            // The track's sound: GP7 reads the program from `GeneralMidi` here and the
+            // mixer from the RSE channel strip; GP3-5 keep both in the song's channel
+            // table, so fall back to the channel (a save from those formats would
+            // otherwise silently reset the program, volume and pan).
+            let channel = self.channels.get(track.channel_index);
+            let program = track
+                .midi_program_gpif
+                .or_else(|| channel.map(|channel| channel.instrument))
+                .map_or(25, |program| program.clamp(0, 127));
+            let volume = midi_value(channel.map(|channel| channel.volume), 104);
+            let pan = midi_value(channel.map(|channel| channel.balance), 64);
             xml.push_str("<GeneralMidi>");
-            if let Some(prog) = track.midi_program_gpif {
-                xml.push_str(&format!("<Program>{prog}</Program>"));
-            }
+            xml.push_str(&format!("<Program>{program}</Program>"));
             xml.push_str(&format!("<Port>{}</Port>", track.port));
             xml.push_str(&format!(
                 "<PrimaryChannel>{}</PrimaryChannel>",
@@ -174,6 +183,26 @@ impl WriteGpifInGpifStringOrder for Song {
                 xml.push_str(&format!("<Octave>{}</Octave>", track.transpose_octave));
                 xml.push_str("</Transpose>");
             }
+            // GuitarScore addition: the track's mixer and playback state in the places
+            // Guitar Pro 7 reads them (volume and pan are RSE channel-strip parameters).
+            xml.push_str(&format!(
+                "<RSE><ChannelStrip version=\"E56\"><Parameters>{}</Parameters></ChannelStrip></RSE>",
+                rse_parameters(volume, pan)
+            ));
+            xml.push_str(&format!(
+                "<MidiConnection><Port>{}</Port><PrimaryChannel>{}</PrimaryChannel><SecondaryChannel>{}</SecondaryChannel><ForeOneChannelPerString>false</ForeOneChannelPerString></MidiConnection>",
+                track.port,
+                track.channel_index,
+                track.channel_index.saturating_add(1).min(15)
+            ));
+            let state = if track.solo {
+                "Solo"
+            } else if track.mute {
+                "Mute"
+            } else {
+                "Default"
+            };
+            xml.push_str(&format!("<PlaybackState>{state}</PlaybackState>"));
             xml.push_str("</Track>");
         }
         xml.push_str("</Tracks>");
@@ -370,4 +399,27 @@ impl WriteGpifInGpifStringOrder for Song {
         xml.push_str("</GPIF>");
         Ok(xml)
     }
+}
+
+/// A MIDI value from the channel table, or `default` when the track has no channel.
+fn midi_value(value: Option<i8>, default: u8) -> u8 {
+    value
+        .and_then(|value| u8::try_from(value).ok())
+        .map_or(default, |value| value.min(127))
+}
+
+/// The 16 RSE channel-strip parameters, with index 11 (pan) and 12 (volume) from the
+/// track's mixer; the rest use Guitar Pro's defaults.
+fn rse_parameters(volume: u8, pan: u8) -> String {
+    let mut parts = Vec::with_capacity(16);
+    for index in 0..16 {
+        let value = match index {
+            9 => "0".to_owned(),
+            11 => format!("{:.3}", f64::from(pan.min(127)) / 127.0),
+            12 => format!("{:.3}", f64::from(volume.min(127)) / 127.0),
+            _ => "0.5".to_owned(),
+        };
+        parts.push(value);
+    }
+    parts.join(" ")
 }

@@ -599,3 +599,20 @@ fn muted_tracks_do_not_play_and_solo_silences_the_rest() {
     let _ = song.set_track_mute(TrackIndex::new(2), true).unwrap();
     assert!(Sequence::new(&song, None).unwrap().tracks.is_empty());
 }
+
+#[test]
+fn a_sequence_reports_the_channel_each_track_plays_on() {
+    let notes = [TestNote::new(6, 5)];
+    let mut song = testing::song_with_notes_on_tracks(2, &[(4, &notes)]).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    for entry in &sequence.tracks {
+        assert_eq!(sequence.channel_of(entry.track), Some(entry.channel));
+        assert_eq!(entry.channel, sequence.tracks[entry.track.get()].channel);
+    }
+    assert_eq!(sequence.channel_of(TrackIndex::new(9)), None);
+
+    let _ = song.set_track_mute(TrackIndex::new(0), true).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    assert_eq!(sequence.channel_of(TrackIndex::new(0)), None);
+    assert!(sequence.channel_of(TrackIndex::new(1)).is_some());
+}

@@ -183,16 +183,32 @@ impl Command {
         )
     }
 
-    /// True for commands that only change the mix (volume, pan, mute, solo), which playback
-    /// applies without stopping.
-    pub fn changes_mix(&self) -> bool {
+    /// True for commands that change a track's volume or pan. Playback applies these live,
+    /// without rebuilding the sequence.
+    pub fn changes_sound(&self) -> bool {
         matches!(
             self,
-            Command::SetTrackVolume { .. }
-                | Command::SetTrackPan { .. }
-                | Command::SetTrackMute { .. }
-                | Command::SetTrackSolo { .. }
+            Command::SetTrackVolume { .. } | Command::SetTrackPan { .. }
         )
+    }
+
+    /// True for commands that change which tracks are audible (mute, solo). Playback must
+    /// rebuild the sequence for these.
+    pub fn changes_audibility(&self) -> bool {
+        matches!(
+            self,
+            Command::SetTrackMute { .. } | Command::SetTrackSolo { .. }
+        )
+    }
+
+    /// The track a volume or pan command changes.
+    pub fn mix_track(&self) -> Option<TrackIndex> {
+        match self {
+            Command::SetTrackVolume { track, .. } | Command::SetTrackPan { track, .. } => {
+                Some(*track)
+            }
+            _ => None,
+        }
     }
 
     /// Whether `self` continues `previous` in the undo history: consecutive volume or pan

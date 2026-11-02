@@ -515,17 +515,26 @@ fn track_names(song: &Song) -> Vec<String> {
     song.tracks().map(|track| track.name().to_owned()).collect()
 }
 
-/// Two tracks with one measure each, the first with a note.
+/// Two tracks with one measure each, the first with a note. Both use channel 0 of a real
+/// 64-channel table (as a GP3-5 file has), at a volume and pan away from the defaults.
 fn two_tracks() -> Song {
-    from_gp(test_song(vec![
+    let mut gp = test_song(vec![
         track(
             "Lead",
             GUITAR_6,
             vec![measure((4, 4), vec![vec![beat(4, &[(1, 5)])]])],
         ),
         track("Bass", BASS_4, vec![measure((4, 4), vec![vec![rest(4)]])]),
-    ]))
-    .unwrap()
+    ]);
+    gp.channels = (0..64)
+        .map(|index| gscore_gp::MidiChannel {
+            channel: u8::try_from(index % 16).unwrap_or(0),
+            volume: 90,
+            balance: 30,
+            ..gscore_gp::MidiChannel::default()
+        })
+        .collect();
+    from_gp(gp).unwrap()
 }
 
 #[test]
@@ -657,6 +666,7 @@ fn a_shared_channel_is_cloned_so_only_one_track_changes() {
         song.track_sound(TrackIndex::new(1)).unwrap().volume
     );
     let before = both_sound(&song);
+    assert_eq!((before.0.volume, before.0.pan), (90, 30));
     let change = song.set_track_volume(TrackIndex::new(0), 20).unwrap();
     let after = both_sound(&song);
     assert_eq!(after.0.volume, 20);
@@ -674,6 +684,15 @@ fn a_shared_channel_is_cloned_so_only_one_track_changes() {
     song.revert(&change_pan).unwrap();
     song.revert(&change).unwrap();
     assert_eq!(both_sound(&song), before);
+    // The track is back on the shared channel, not on the copy that undo removed.
+    let after = song.track_sound(TrackIndex::new(0)).unwrap();
+    assert_eq!((after.volume, after.pan), (90, 30));
+
+    // A later change still works and can be undone.
+    let change = song.set_track_volume(TrackIndex::new(0), 100).unwrap();
+    assert_eq!(song.track_sound(TrackIndex::new(0)).unwrap().volume, 100);
+    song.revert(&change).unwrap();
+    assert_eq!(song.track_sound(TrackIndex::new(0)).unwrap().volume, 90);
 }
 
 #[test]
@@ -728,7 +747,7 @@ fn settings_differences_name_what_a_save_may_not_keep() {
     assert!(
         found
             .iter()
-            .any(|difference| difference.detail.contains("sound"))
+            .any(|difference| difference.detail.contains("volume"))
     );
     assert!(
         differences(&before, &after).is_empty(),
@@ -737,28 +756,23 @@ fn settings_differences_name_what_a_save_may_not_keep() {
 }
 
 #[test]
-fn track_layout_changes_renew_every_measure_stamp_but_settings_do_not() {
+fn track_edits_keep_measure_stamps_and_leave_the_layout_cache_to_the_track_key() {
     let mut song = three_measures();
     let before = stamps(&song);
 
-    // A rename changes the track, not any measure's layout.
+    // Renaming changes the track, not any measure.
     let renamed = song.rename_track(TrackIndex::new(0), "Lead").unwrap();
     assert_eq!(stamps(&song), before, "a rename keeps the layout cache");
 
-    // Moving a track changes every measure (a measure's layout includes all tracks).
+    // Moving a track changes its index, which is part of the app's per-track layout key;
+    // the measures themselves did not change.
     let moved = song
         .move_track(TrackIndex::new(1), TrackIndex::new(0))
         .unwrap();
-    let after = stamps(&song);
-    assert!(
-        after.iter().zip(&before).all(|(new, old)| new != old),
-        "every measure stamp must change: {before:?} -> {after:?}"
-    );
+    assert_eq!(stamps(&song), before, "a move does not relayout measures");
 
-    // Undo also renews the stamps rather than bringing an old number back.
     song.revert(&moved).unwrap();
-    let undone = stamps(&song);
-    assert!(undone.iter().zip(&after).all(|(new, old)| new != old));
     song.revert(&renamed).unwrap();
     assert_eq!(song.track(TrackIndex::new(0)).unwrap().name(), "Guitar");
+    assert_eq!(stamps(&song), before);
 }

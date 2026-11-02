@@ -90,6 +90,15 @@ pub struct Sequence {
 }
 
 impl Sequence {
+    /// The channel `track` plays on in this sequence, or `None` if it does not play (it is
+    /// muted, not soloed, or not part of the song).
+    pub fn channel_of(&self, track: TrackIndex) -> Option<Channel> {
+        self.tracks
+            .iter()
+            .find(|entry| entry.track == track)
+            .map(|entry| entry.channel)
+    }
+
     /// The sequence of `tracks` of `song` (all tracks if `None`).
     pub fn new(song: &Song, tracks: Option<&[TrackIndex]>) -> Result<Self, ModelError> {
         let order = playback_order(song);

@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use gscore_audio::{MidiOutPlayer, SynthPlayer, midi_output_ports};
-use gscore_model::{BeatPosition, Song};
-use gscore_play::{PlayState, Player, Sequence};
+use gscore_model::{BeatPosition, Song, TrackIndex};
+use gscore_play::{Channel, MidiEvent, PlayState, Player, Sequence, controller};
 
 /// Where playback goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -235,6 +235,9 @@ impl Playback {
         };
         if !resume && let Some(tick) = from.and_then(|at| sequence.tick_of(song, at)) {
             self.player_mut()?.seek(tick).map_err(|e| e.to_string())?;
+            // Seeking sends the sequence's setup, which holds the values from when the
+            // sequence was built; put the current mixer values back.
+            self.resync_mix(song)?;
         }
         self.player_mut()?.play().map_err(|e| e.to_string())
     }
@@ -271,6 +274,40 @@ impl Playback {
         Some(span.measure.get().saturating_add(1))
     }
 
+    /// Sends a track's current volume and pan to the connected player at once, without
+    /// rebuilding the sequence, so dragging a slider does not cut off sounding notes.
+    pub fn send_track_mix(&mut self, song: &Song, track: TrackIndex) -> Result<(), String> {
+        let Some(sequence) = &self.sequence else {
+            return Ok(());
+        };
+        let Some(channel) = sequence.channel_of(track) else {
+            return Ok(());
+        };
+        let Some(sound) = song.track_sound(track) else {
+            return Ok(());
+        };
+        let Some(active) = &mut self.player else {
+            return Ok(());
+        };
+        let player = active.player_mut();
+        for event in mix_events(channel, sound.volume, sound.pan) {
+            player.send_event(event).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// Sends every playing track's current mixer values, after a seek restored the values
+    /// stored in the sequence.
+    fn resync_mix(&mut self, song: &Song) -> Result<(), String> {
+        let tracks: Vec<TrackIndex> = self.sequence.as_ref().map_or_else(Vec::new, |sequence| {
+            sequence.tracks.iter().map(|track| track.track).collect()
+        });
+        for track in tracks {
+            self.send_track_mix(song, track)?;
+        }
+        Ok(())
+    }
+
     /// The last output error, if playback stopped because of one.
     pub fn error(&self) -> Option<String> {
         self.player.as_ref().and_then(Active::error)
@@ -292,6 +329,22 @@ impl Playback {
             .map(Active::player_mut)
             .ok_or_else(|| "no output is connected".to_owned())
     }
+}
+
+/// The MIDI messages that set a channel's volume and pan.
+fn mix_events(channel: Channel, volume: u8, pan: u8) -> [MidiEvent; 2] {
+    [
+        MidiEvent::Control {
+            channel,
+            controller: controller::VOLUME,
+            value: volume.min(127),
+        },
+        MidiEvent::Control {
+            channel,
+            controller: controller::PAN,
+            value: pan.min(127),
+        },
+    ]
 }
 
 /// The file name of `path`, or the whole path if it has none.

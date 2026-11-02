@@ -165,6 +165,15 @@ pub(crate) struct Track {
     pub staves: Option<StavesWrapper>,
     #[serde(rename = "GeneralMidi", default)]
     pub general_midi: Option<GeneralMidi>,
+    /// GP7: the MIDI port and channels of the track (GP6 uses `GeneralMidi`).
+    #[serde(rename = "MidiConnection", default)]
+    pub midi_connection: Option<MidiConnection>,
+    /// GP7: whether the track is playing normally, soloed or muted.
+    #[serde(rename = "PlaybackState", default)]
+    pub playback_state: Option<String>,
+    /// GP7: the track's RSE channel strip, which stores the mixer volume and pan.
+    #[serde(rename = "RSE", default)]
+    pub rse: Option<TrackRse>,
     #[serde(rename = "Transpose", default)]
     pub transpose: Option<Transpose>,
     /// GuitarScore addition: the instrument (GP7), e.g. type `electricGuitar`, `drumKit`.
@@ -243,6 +252,32 @@ pub(crate) struct GeneralMidi {
     #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
     #[serde(rename = "SecondaryChannel", default)]
     pub secondary_channel: Option<i32>,
+}
+
+/// GP7's `<MidiConnection>`: where a track sends its MIDI.
+#[derive(Debug, Deserialize)]
+pub(crate) struct MidiConnection {
+    #[serde(rename = "Port", default)]
+    pub port: Option<i32>,
+    #[serde(rename = "PrimaryChannel", default)]
+    pub primary_channel: Option<i32>,
+    #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
+    #[serde(rename = "SecondaryChannel", default)]
+    pub secondary_channel: Option<i32>,
+}
+
+/// GP7's `<RSE>` block of a track.
+#[derive(Debug, Deserialize)]
+pub(crate) struct TrackRse {
+    #[serde(rename = "ChannelStrip", default)]
+    pub channel_strip: Option<ChannelStrip>,
+}
+
+/// The RSE channel strip; its `<Parameters>` hold the track's mixer state.
+#[derive(Debug, Deserialize)]
+pub(crate) struct ChannelStrip {
+    #[serde(rename = "Parameters", default)]
+    pub parameters: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

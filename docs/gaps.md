@@ -113,12 +113,10 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    slide takes precedence over a bend on the same note. Not played yet: vibrato, let ring,
    palm mute, grace notes, trills, whammy bar, D.C./D.S./coda, swing. Mute and solo are
    played (M13): a muted track is skipped, and while any track is soloed only soloed
-   tracks play. Mixer changes take effect during playback by rebuilding the sequence at
-   the same tick. GP7 mixer volume and pan still start from the defaults: the GP7 writer
-   does not store the channel table, and the save verification deliberately ignores those
-   values (as it already did for the program), so a volume or pan change is lost when a
-   GP7 file is saved. The app shows the playing measure's number, not a playhead on the
-   page. Pause/resume does not re-trigger notes that were
+   tracks play. Volume and pan changes go straight to the player as MIDI CC messages while
+   it plays; mute and solo rebuild the sequence at the same tick. Track volume, pan, mute
+   and solo are saved in GP7 files (RSE channel-strip parameters and `<PlaybackState>`,
+   M13 review). The app shows the playing measure's number, not a playhead on the page. Pause/resume does not re-trigger notes that were
    sounding, and stopping `gscore-cli play --port` with Ctrl+C can leave notes hanging in
    the external synth. The built-in synthesizer needs an installed `.sf2` SoundFont (none
    is bundled; `.sf3` is not supported), always uses the default audio device, and the

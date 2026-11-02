@@ -11,13 +11,23 @@ pub(super) fn controls_rect(row: Rect) -> Rect {
     )
 }
 
-/// Draws a pan knob; returns the new value while it is dragged, or on a double click.
-pub(super) fn pan_knob(ui: &mut egui::Ui, rect: Rect, pan: u8, index: usize) -> Option<u8> {
+/// What a pan knob asks for: a new value (and whether it continues the current drag), and
+/// whether a drag boundary was crossed.
+pub(super) struct PanKnob {
+    /// The new pan, and whether the command continues the current drag.
+    pub change: Option<(u8, bool)>,
+    /// A drag started or ended: the next command starts a new undo entry.
+    pub boundary: bool,
+}
+
+/// Draws a pan knob; a double click centers the pan.
+pub(super) fn pan_knob(ui: &mut egui::Ui, rect: Rect, pan: u8, index: usize) -> PanKnob {
     let response = ui.interact(
         rect,
         ui.scope_id().with(("pan", index)),
         Sense::click_and_drag(),
     );
+    let boundary = response.drag_started() || response.drag_stopped();
     ui.ctx().accesskit_node_builder(response.id, |node| {
         node.set_label("Pan");
         node.set_role(egui::Role::Slider);
@@ -29,7 +39,10 @@ pub(super) fn pan_knob(ui: &mut egui::Ui, rect: Rect, pan: u8, index: usize) -> 
         .clone()
         .on_hover_text(format!("Pan {} — drag left or right", pan_label(pan)));
     if response.double_clicked() {
-        return Some(64);
+        return PanKnob {
+            change: Some((64, false)),
+            boundary: true,
+        };
     }
     let mut changed = None;
     if response.dragged() {
@@ -39,7 +52,7 @@ pub(super) fn pan_knob(ui: &mut egui::Ui, rect: Rect, pan: u8, index: usize) -> 
         if let Ok(value) = u8::try_from(value)
             && value != pan
         {
-            changed = Some(value);
+            changed = Some((value, !response.drag_started()));
         }
     }
     let center = rect.center();
@@ -54,7 +67,10 @@ pub(super) fn pan_knob(ui: &mut egui::Ui, rect: Rect, pan: u8, index: usize) -> 
     let tip = center + Vec2::angled(angle - std::f32::consts::FRAC_PI_2) * (radius - 2.0);
     ui.painter()
         .line_segment([center, tip], Stroke::new(1.5, visuals.selection.bg_fill));
-    changed
+    PanKnob {
+        change: changed,
+        boundary,
+    }
 }
 
 /// "C" (center), "L40" or "R30".

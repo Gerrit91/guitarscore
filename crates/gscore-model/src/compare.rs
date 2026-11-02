@@ -263,11 +263,26 @@ pub fn settings_differences(before: &Song, after: &Song) -> Vec<Difference> {
         diff.check(&at, "color", a.color(), b.color());
         diff.check(&at, "mute", a.is_muted(), b.is_muted());
         diff.check(&at, "solo", a.is_soloed(), b.is_soloed());
+        let sound = |song: &Song, track| song.track_sound(track);
+        let old = sound(before, a.index());
+        let new = sound(after, b.index());
         diff.check(
             &at,
-            "sound",
-            before.track_sound(a.index()),
-            after.track_sound(b.index()),
+            "instrument program",
+            old.map(|sound| sound.program),
+            new.map(|sound| sound.program),
+        );
+        diff.check(
+            &at,
+            "volume",
+            old.map(|sound| sound.volume),
+            new.map(|sound| sound.volume),
+        );
+        diff.check(
+            &at,
+            "pan",
+            old.map(|sound| sound.pan),
+            new.map(|sound| sound.pan),
         );
     }
     diff.0

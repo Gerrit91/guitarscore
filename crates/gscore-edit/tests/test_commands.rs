@@ -598,10 +598,13 @@ fn dragging_a_volume_slider_is_one_undo_step() {
     let mut editor = Editor::new(song);
     for volume in [100, 80, 60, 40] {
         editor
-            .execute(Command::SetTrackVolume {
-                track: TrackIndex::new(0),
-                volume,
-            })
+            .execute_with_merge(
+                Command::SetTrackVolume {
+                    track: TrackIndex::new(0),
+                    volume,
+                },
+                true,
+            )
             .unwrap();
     }
     assert_eq!(editor.undo_depth(), 1, "one drag is one undo step");
@@ -620,4 +623,64 @@ fn dragging_a_volume_slider_is_one_undo_step() {
             .map(|sound| sound.volume),
         before
     );
+}
+
+#[test]
+fn two_separate_slider_drags_are_two_undo_steps() {
+    let song = testing::song(&[testing::GUITAR_6], 1).unwrap();
+    let before = song
+        .track_sound(TrackIndex::new(0))
+        .map(|sound| sound.volume);
+    let mut editor = Editor::new(song);
+    let volume = |editor: &Editor| {
+        editor
+            .song()
+            .track_sound(TrackIndex::new(0))
+            .map(|sound| sound.volume)
+    };
+    // First drag: start a new entry, then merge within the drag.
+    editor
+        .execute_with_merge(
+            Command::SetTrackVolume {
+                track: TrackIndex::new(0),
+                volume: 100,
+            },
+            false,
+        )
+        .unwrap();
+    editor
+        .execute_with_merge(
+            Command::SetTrackVolume {
+                track: TrackIndex::new(0),
+                volume: 80,
+            },
+            true,
+        )
+        .unwrap();
+    // The button is released (a merge barrier) and the next press is a second drag; the
+    // commands during it ask to merge, but the barrier keeps it a separate undo step.
+    editor.break_merge();
+    editor
+        .execute_with_merge(
+            Command::SetTrackVolume {
+                track: TrackIndex::new(0),
+                volume: 60,
+            },
+            true,
+        )
+        .unwrap();
+    editor
+        .execute_with_merge(
+            Command::SetTrackVolume {
+                track: TrackIndex::new(0),
+                volume: 40,
+            },
+            true,
+        )
+        .unwrap();
+    assert_eq!(editor.undo_depth(), 2, "two drags are two undo steps");
+    editor.undo().unwrap();
+    assert_eq!(volume(&editor), Some(80), "undo ends the second drag");
+    editor.undo().unwrap();
+    assert_eq!(volume(&editor), before, "undo ends the first drag");
 }

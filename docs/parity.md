@@ -8,7 +8,7 @@ Updated 2026-11-02 (M13: track and song grid).
 | Feature | Status |
 |--------|--------|
 | Read GP3, GP4, GP5, GPX (GP6) and GP7+ files | Live |
-| Save GP7+ files safely (`.bak`, atomic replace, re-read check) | Live |
+| Save GP7+ files safely (`.bak`, atomic replace, re-read check) | Live; track color, mixer volume/pan, mute and solo are kept, and anything else the format cannot keep is reported before writing |
 | `info`, ASCII-tab `dump`, `roundtrip-check` | Live |
 | Song information, tracks, instruments, tunings, time signatures | Live |
 | Track and song grid (bottom panel) | Partial: one row per track with color, instrument, name, mute/solo, volume slider and pan knob; a measure matrix with note squares, measure numbers, section markers, repeats and alternative endings, the playing measure highlighted, and a click/drag selection of measures. Add/delete/duplicate/rename/move tracks by right-click, all undoable |

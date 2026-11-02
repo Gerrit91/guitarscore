@@ -2,8 +2,37 @@
 //! editor hands back (play, save) is done here.
 
 use gscore_edit::{Action, Command, Outcome, Request};
+use gscore_model::TrackIndex;
 
 use super::GuitarScoreApp;
+
+/// What an edit changes that the app must react to.
+#[derive(Debug, Clone, Copy)]
+enum EditEffect {
+    /// A track's volume or pan: send it to the player without rebuilding.
+    Sound(TrackIndex),
+    /// Mute or solo: the sequence must be rebuilt.
+    Audibility,
+    /// Tracks were added, removed, duplicated or moved: per-track layouts are stale.
+    Tracks,
+    /// Anything else: measure stamps invalidate the layouts; playback stops.
+    Other,
+}
+
+impl EditEffect {
+    /// The effect of `command`.
+    fn of(command: &Command) -> Self {
+        if let Some(track) = command.mix_track() {
+            EditEffect::Sound(track)
+        } else if command.changes_audibility() {
+            EditEffect::Audibility
+        } else if command.changes_tracks() {
+            EditEffect::Tracks
+        } else {
+            EditEffect::Other
+        }
+    }
+}
 
 impl GuitarScoreApp {
     /// Runs the actions of this frame's key presses. Keys go to the score only when no
@@ -47,21 +76,11 @@ impl GuitarScoreApp {
         match document.editor_mut().perform(action, now_ms) {
             Ok(Outcome::Edited) => {
                 self.status = None;
-                if let Some(document) = &mut self.document {
-                    // Measure stamps tell the layout cache what changed; track settings
-                    // that only affect the page header need no invalidation.
-                    let tracks = document.song().track_count();
-                    if self.view.track >= tracks {
-                        self.view.track = tracks.saturating_sub(1);
-                    }
-                    if let Some(selection) = self.view.selection
-                        && selection.start() >= document.song().measure_count()
-                    {
-                        self.view.selection = None;
-                    }
-                }
-                // The song changed: playback rebuilds its sequence on the next play.
-                self.playback.song_changed();
+                let effect = document
+                    .editor()
+                    .last_command()
+                    .map_or(EditEffect::Other, EditEffect::of);
+                self.after_edit(effect);
                 ctx.request_repaint();
             }
             Ok(Outcome::Moved) => ctx.request_repaint(),
@@ -71,38 +90,51 @@ impl GuitarScoreApp {
         }
     }
 
-    /// Applies `command` (from a panel or menu) and updates what depends on the song. Mix
-    /// commands (volume, pan, mute, solo) take effect in playback at once; any other edit
-    /// stops playback and drops the cached layouts.
-    pub(crate) fn apply_command(&mut self, command: Command) {
+    /// Applies what an edit changed after it was executed: the cursor stays inside the
+    /// song, stale per-track layouts go, and playback is updated for the kind of change.
+    fn after_edit(&mut self, effect: EditEffect) {
         let Some(document) = &mut self.document else {
             return;
         };
-        let changes_mix = command.changes_mix();
-        let changes_tracks = command.changes_tracks();
-        let result = document.editor_mut().execute_command(command);
-        match result {
-            Ok(_) => {
-                if changes_tracks {
-                    document.forget_layouts();
-                }
-                if changes_mix {
-                    if let Err(error) = self.playback.mix_changed(document.song()) {
-                        self.notice = Some(error);
-                    }
-                } else {
-                    self.playback.song_changed();
-                }
-                let tracks = document.song().track_count();
-                if self.view.track >= tracks {
-                    self.view.track = tracks.saturating_sub(1);
-                }
-                if let Some(selection) = self.view.selection
-                    && selection.start() >= document.song().measure_count()
-                {
-                    self.view.selection = None;
-                }
+        if matches!(effect, EditEffect::Tracks) {
+            document.forget_layouts();
+        }
+        let tracks = document.song().track_count();
+        if self.view.track >= tracks {
+            self.view.track = tracks.saturating_sub(1);
+        }
+        if let Some(selection) = self.view.selection
+            && selection.start() >= document.song().measure_count()
+        {
+            self.view.selection = None;
+        }
+        let updated = match effect {
+            // Volume and pan go straight to the player, so sounding notes are not cut off.
+            EditEffect::Sound(track) => self.playback.send_track_mix(document.song(), track),
+            // Mute and solo change which tracks play: rebuild the sequence.
+            EditEffect::Audibility => self.playback.mix_changed(document.song()),
+            // Anything else changes notes: stop and rebuild on the next play.
+            EditEffect::Tracks | EditEffect::Other => {
+                self.playback.song_changed();
+                Ok(())
             }
+        };
+        if let Err(error) = updated {
+            self.notice = Some(error);
+        }
+    }
+
+    /// Applies `command` (from a panel or menu). `merge` continues the previous undo entry
+    /// (one slider drag). Mixer changes take effect in playback at once; other edits stop
+    /// playback and invalidate the layouts.
+    pub(crate) fn apply_command(&mut self, command: Command, merge: bool) {
+        let Some(document) = &mut self.document else {
+            return;
+        };
+        let effect = EditEffect::of(&command);
+        let result = document.editor_mut().execute_command_merged(command, merge);
+        match result {
+            Ok(_) => self.after_edit(effect),
             Err(error) => self.notice = Some(error.to_string()),
         }
     }

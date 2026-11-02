@@ -7,9 +7,10 @@ use egui::{Align2, Color32, FontId, Rect, Response, Sense, Stroke, pos2, vec2};
 use crate::document::GridData;
 use crate::state::MeasureSelection;
 
+use super::rows::{TrackRow, color32};
 use super::{
     CELL_PADDING, GridAction, GridView, MEASURE_WIDTH, ROW_HEIGHT, RULER_HEIGHT,
-    SECTION_TITLE_MEASURES, TrackRow, color32,
+    SECTION_TITLE_MEASURES,
 };
 
 /// The measure matrix: ruler with numbers, sections and repeats, then one row per track.
@@ -33,9 +34,21 @@ pub(super) fn matrix(
     let visuals = ui.visuals().clone();
     painter.rect_filled(rect, 0.0, visuals.extreme_bg_color);
 
+    // Paint only the measures and rows the scroll area shows.
+    let clip = ui.clip_rect().intersect(rect);
+    let rows_top = rect.top() + RULER_HEIGHT;
+    let first_row = ((clip.top() - rows_top) / ROW_HEIGHT).floor().max(0.0) as usize;
+    let last_row = (((clip.bottom() - rows_top) / ROW_HEIGHT).ceil() as usize).min(rows.len());
+    let first_measure = ((clip.left() - rect.left()) / MEASURE_WIDTH)
+        .floor()
+        .max(0.0) as usize;
+    let last_measure =
+        (((clip.right() - rect.left()) / MEASURE_WIDTH).ceil() as usize).min(view.measure_count);
+
     // The playing measure and the selection, behind the squares.
     if let Some(playing) = view.playing
-        && playing < view.measure_count
+        && playing >= first_measure
+        && playing < last_measure
     {
         let column = measure_rect(rect, playing);
         painter.rect_filled(
@@ -44,16 +57,22 @@ pub(super) fn matrix(
             Color32::from_rgb(255, 200, 40).gamma_multiply(0.25),
         );
     }
-    if let Some(selection) = view.selection {
-        for measure in selection.start()..=selection.end().min(view.measure_count.saturating_sub(1))
-        {
+    if let Some(selection) = view.selection
+        && last_measure > first_measure
+    {
+        let start = selection.start().max(first_measure);
+        let end = selection.end().min(last_measure.saturating_sub(1));
+        for measure in start..=end {
             let column = measure_rect(rect, measure);
             painter.rect_filled(column, 0.0, visuals.selection.bg_fill.gamma_multiply(0.30));
         }
     }
 
     // Row stripes and squares.
-    for (row, cells) in grid.cells.iter().enumerate().take(rows.len()) {
+    for row in first_row..last_row {
+        let Some(cells) = grid.cells.get(row) else {
+            continue;
+        };
         let row_rect = Rect::from_min_max(
             pos2(
                 rect.left(),
@@ -85,8 +104,8 @@ pub(super) fn matrix(
                 egui::StrokeKind::Inside,
             );
         }
-        for (measure_index, has_notes) in cells.iter().enumerate() {
-            if !*has_notes {
+        for measure_index in first_measure..last_measure {
+            if !cells.get(measure_index).copied().unwrap_or(false) {
                 continue;
             }
             let cell = Rect::from_min_size(
@@ -108,7 +127,7 @@ pub(super) fn matrix(
 
     // Grid lines and measure numbers.
     let number_font = FontId::monospace(9.0);
-    for measure in 0..view.measure_count {
+    for measure in first_measure..last_measure {
         let x = rect.left() + measure as f32 * MEASURE_WIDTH;
         let strong = measure % 4 == 0 || grid.sections.get(measure).is_some_and(Option::is_some);
         let color = if strong {
@@ -137,7 +156,7 @@ pub(super) fn matrix(
     }
 
     // Sections, repeats and alternative endings in the ruler.
-    for measure in 0..view.measure_count {
+    for measure in first_measure..last_measure {
         let x = rect.left() + measure as f32 * MEASURE_WIDTH;
         if let Some(Some(section)) = grid.sections.get(measure) {
             let color = color32(section.color);
