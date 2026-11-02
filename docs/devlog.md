@@ -923,14 +923,18 @@ across beats, harmonic diamonds, notation-staff articulations.
   edit loses that edit; snapshots clone the song on the UI thread; layout panics are
   contained but not injection-tested.
 
-## 2026-11-02 — CI: install ALSA development files
+## 2026-11-02 — CI: install system dependencies (ALSA, software Vulkan)
 
 Landed:
 - `.github/workflows/ci.yml`: an "Install system dependencies" step
-  (`apt-get install libasound2-dev pkg-config`) before the Rust steps. `cpal`/`midir` pull in
-  `alsa-sys`, which fails with "system library `alsa` was not found" on a bare Ubuntu runner.
-  `pkg-config` is normally preinstalled but is listed explicitly since the build needs it.
-- Open: nothing.
+  (`apt-get install libasound2-dev pkg-config libvulkan1 mesa-vulkan-drivers`) before the Rust
+  steps. `cpal`/`midir` pull in `alsa-sys`, which fails with "system library `alsa` was not
+  found" on a bare Ubuntu runner. The snapshot test in `gscore-app` renders through wgpu, and a
+  runner without a GPU has no adapter ("Failed to create render state … No adapter found");
+  lavapipe (`mesa-vulkan-drivers`) is a CPU Vulkan adapter, which `egui_kittest` prefers.
+- README: the Linux build note now names the Vulkan driver needed for headless snapshot tests.
+- Open: the committed snapshots were generated on the owner's GPU; if lavapipe's output differs
+  beyond kittest's default threshold (0.6, 0 failed pixels), regenerate them on the CI renderer.
 
 ## 2026-11-02 — M13 final: merge with M11, live mix without stale values
 

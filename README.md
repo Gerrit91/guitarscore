@@ -95,7 +95,9 @@ Bends and slides use a borrowed MIDI channel per note, so a bend does not move t
 the chord. Remaining technique limits are in `docs/gaps.md` (#11).
 
 On Linux, building needs the ALSA development files (`alsa-lib` on Arch, `libasound2-dev` on
-Debian/Ubuntu).
+Debian/Ubuntu). The offscreen snapshot test in `gscore-app` renders through wgpu, so a headless
+machine also needs a Vulkan adapter; without a GPU, Mesa's lavapipe does it (`mesa-vulkan-drivers`
+on Debian/Ubuntu, `vulkan-swrast` on Arch, plus `libvulkan1`/`vulkan-icd-loader`).
 
 ## Command line
 

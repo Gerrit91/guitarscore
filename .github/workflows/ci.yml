@@ -15,10 +15,15 @@ jobs:
     # cpal and midir link against the system ALSA library on Linux (alsa-sys);
     # without the development files the build fails with "system library `alsa`
     # was not found". See README, "On Linux, building needs the ALSA development files".
+    #
+    # The runner has no GPU, and the snapshot test in gscore-app renders through wgpu
+    # (egui_kittest), which then aborts with "No adapter found". Mesa's lavapipe
+    # (`mesa-vulkan-drivers`) is a CPU Vulkan adapter that egui_kittest prefers.
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config
+        sudo apt-get install -y --no-install-recommends \
+          libasound2-dev pkg-config libvulkan1 mesa-vulkan-drivers
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@master
