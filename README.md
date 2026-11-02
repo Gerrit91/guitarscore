@@ -15,7 +15,9 @@ the keyboard; reading, saving and editing also work on the command line:
   line) in the background and shows one track's tablature as a page; track picker, zoom,
   light and dark theme, MIDI playback. Editing at a cursor (see "Keyboard" below), undo and
   redo, and saving as Guitar Pro 7 (`.gp`); it asks before closing or opening another file
-  with unsaved changes.
+  with unsaved changes. Every edit is journaled in a recovery folder
+  (`~/.local/state/guitarscore/recovery` on Linux), never in your file: after a crash, the
+  next start offers to restore the document with its edits and undo history.
 
 - **Import:** Guitar Pro 3, 4, 5 (`.gp3`–`.gp5`), 6 (`.gpx`) and 7+ (`.gp`), detected from
   the file content. Malformed files give an error, never a crash.
@@ -160,7 +162,7 @@ A Cargo workspace of small crates. A crate may only depend on crates in lower la
 | 2 | `gscore-layout` | Tablature layout: draw operations, SVG output, light and dark theme |
 | 2 | `gscore-play` | Playback sequencing: MIDI events, channel borrowing for bends/slides, `.mid` writer |
 | 3 | `gscore-edit`, `gscore-audio` | Editing commands with undo/redo; MIDI output backend (`midir`) |
-| 4 | `gscore-session` | Crash reports and safe saving; recovery journal and autosave planned |
+| 4 | `gscore-session` | Crash reports, safe saving, recovery journal and crash recovery |
 | 5 | `gscore-cli`, `gscore-app` | Command-line tool; desktop app (`guitarscore`) |
 
 Test files made with Guitar Pro are in `testdata/` (see `testdata/basic/README.md`).

@@ -67,6 +67,10 @@ pub struct TabEditor {
     revision: u64,
     /// The note value new beats get when there is no beat to take it from.
     entry_value: NoteValue,
+    /// What changed the song since [`TabEditor::take_applied`] was last called, in order:
+    /// commands, `undo` and `redo`. The recovery journal records these; replaying them
+    /// with [`TabEditor::replay`] gives the same song and the same undo history.
+    applied: Vec<Command>,
 }
 
 impl TabEditor {
@@ -82,6 +86,37 @@ impl TabEditor {
             redo_cursors: Vec::new(),
             revision: 0,
             entry_value: default_entry_value(),
+            applied: Vec::new(),
+        }
+    }
+
+    /// Takes the commands applied since the last call (see [`TabEditor::replay`]).
+    pub fn take_applied(&mut self) -> Vec<Command> {
+        std::mem::take(&mut self.applied)
+    }
+
+    /// Applies one recorded command again (from the recovery journal): `undo`, `redo`, or
+    /// an edit, with the cursor at the edit. It is recorded again, like any edit.
+    pub fn replay(&mut self, command: Command) -> Result<Outcome, EditError> {
+        self.pending = None;
+        match command {
+            Command::Undo => self.undo(),
+            Command::Redo => self.redo(),
+            command => {
+                let mut cursor = self.cursor;
+                if let Some(at) = command.position() {
+                    cursor.track = at.track;
+                    cursor.measure = at.measure;
+                    cursor.voice = at.voice;
+                    cursor.beat = at.beat;
+                } else if let Some(measure) = command.measure() {
+                    cursor.measure = measure;
+                    cursor.beat = BeatIndex::new(0);
+                }
+                cursor.clamp(self.editor.song());
+                self.cursor = cursor;
+                self.execute(command, cursor)
+            }
         }
     }
 
@@ -195,6 +230,7 @@ impl TabEditor {
     /// Undoes the last edit and puts the cursor where it happened.
     pub fn undo(&mut self) -> Result<Outcome, EditError> {
         self.editor.undo()?;
+        self.applied.push(Command::Undo);
         self.revision = self.revision.wrapping_add(1);
         if let Some(cursor) = self.undo_cursors.pop() {
             self.redo_cursors.push(cursor);
@@ -207,6 +243,7 @@ impl TabEditor {
     /// Redoes the last undone edit and puts the cursor where it happened.
     pub fn redo(&mut self) -> Result<Outcome, EditError> {
         self.editor.redo()?;
+        self.applied.push(Command::Redo);
         self.revision = self.revision.wrapping_add(1);
         if let Some(cursor) = self.redo_cursors.pop() {
             self.undo_cursors.push(cursor);
@@ -229,7 +266,8 @@ impl TabEditor {
     /// Applies `command`; afterwards the cursor goes to `after` (kept inside the song).
     fn execute(&mut self, command: Command, after: Cursor) -> Result<Outcome, EditError> {
         let before = self.cursor;
-        self.editor.execute(command)?;
+        self.editor.execute(command.clone())?;
+        self.applied.push(command);
         self.revision = self.revision.wrapping_add(1);
         self.undo_cursors.push(before);
         self.redo_cursors.clear();

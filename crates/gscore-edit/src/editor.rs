@@ -137,6 +137,8 @@ impl Editor {
             Command::Undo => self.undo(),
             Command::Redo => self.redo(),
             command => {
+                #[cfg(any(test, feature = "test-support"))]
+                crate::testing::maybe_panic();
                 let change = command.apply(&mut self.song)?;
                 self.redo.clear();
                 self.push_undo(Applied { command, change });

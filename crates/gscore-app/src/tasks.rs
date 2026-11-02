@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use gscore_model::Song;
-use gscore_session::{FileFormat, SaveError, SaveOptions};
+use gscore_session::{FileFormat, FoundSession, Journal, Recovered, SaveError, SaveOptions};
 
 /// A finished background job.
 #[derive(Debug)]
@@ -31,12 +31,41 @@ pub(crate) enum Event {
     Opened {
         /// The file.
         path: PathBuf,
-        /// The song (boxed: it is large and events are moved around) and its format, or
-        /// why it could not be opened.
-        result: Result<(Box<Song>, FileFormat), String>,
+        /// The song (boxed: it is large and events are moved around), its format and its
+        /// recovery journal, or why it could not be opened.
+        result: Result<Opened, String>,
+    },
+    /// Documents a crash left behind, found at startup.
+    FoundRecoverable(Vec<FoundSession>),
+    /// A document was recovered (into a new journal), or could not be.
+    Recovered {
+        /// The recovery folder it came from (removed once recovered).
+        session: Box<FoundSession>,
+        /// The recovered document's parts, or why it failed.
+        result: Result<Box<RecoveredDocument>, String>,
     },
     /// A job panicked (the panic hook wrote a crash report); the message says which.
     Failed(String),
+}
+
+/// An opened file.
+#[derive(Debug)]
+pub(crate) struct Opened {
+    /// The song.
+    pub(crate) song: Box<Song>,
+    /// Its format.
+    pub(crate) format: FileFormat,
+    /// Its recovery journal, or why there is none (`Ok(None)`: no recovery directory).
+    pub(crate) journal: Result<Option<Journal>, String>,
+}
+
+/// A recovered document, with the new journal it is recorded in.
+#[derive(Debug)]
+pub(crate) struct RecoveredDocument {
+    /// The replayed editor and what came with it.
+    pub(crate) recovered: Recovered,
+    /// The new journal (already holding the replayed edits), or why there is none.
+    pub(crate) journal: Result<Journal, String>,
 }
 
 /// Why a save did not happen.
@@ -78,12 +107,79 @@ impl Tasks {
     }
 
     /// Reads and imports `path` in the background.
-    pub(crate) fn open(&mut self, path: PathBuf, ctx: &egui::Context) -> Result<(), String> {
+    /// With `recovery`, the document's edits are journaled in that directory.
+    pub(crate) fn open(
+        &mut self,
+        path: PathBuf,
+        recovery: Option<PathBuf>,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
         self.spawn("open", ctx, move || {
-            let result = gscore_session::open(&path)
-                .map(|imported| (Box::new(imported.song), imported.format))
+            let result = gscore_session::open_with_bytes(&path)
+                .map(|(imported, bytes)| Opened {
+                    song: Box::new(imported.song),
+                    format: imported.format,
+                    journal: recovery
+                        .map(|root| Journal::start(&root, Some(&path), &bytes))
+                        .transpose(),
+                })
                 .map_err(|e| e.to_string());
             Event::Opened { path, result }
+        })
+    }
+
+    /// Looks for documents a crash left behind in `recovery`.
+    pub(crate) fn find_recoverable(
+        &mut self,
+        recovery: PathBuf,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        self.spawn("recovery search", ctx, move || {
+            Event::FoundRecoverable(gscore_session::find_sessions(&recovery))
+        })
+    }
+
+    /// Recovers `session` into a new journal in `recovery`, then removes the old folder.
+    pub(crate) fn recover(
+        &mut self,
+        session: FoundSession,
+        recovery: PathBuf,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        self.spawn("recovery", ctx, move || {
+            let result = gscore_session::recover(&session).map(|mut recovered| {
+                // The replayed edits start the new journal, so a second crash loses
+                // nothing either; only then does the old folder go.
+                let journal =
+                    Journal::start(&recovery, recovered.source.as_deref(), &recovered.base)
+                        .map(|mut journal| {
+                            let applied = recovered.editor.take_applied();
+                            journal.record(&applied, recovered.editor.song());
+                            (journal, applied.len())
+                        })
+                        .and_then(|(journal, count)| {
+                            // Wait (on this background thread) until the new journal has every
+                            // edit on disk before the old copy goes.
+                            let started = std::time::Instant::now();
+                            while journal.written() < count && journal.error().is_none() {
+                                if started.elapsed() > std::time::Duration::from_secs(10) {
+                                    return Err(
+                                        "the new recovery journal is not written".to_owned()
+                                    );
+                                }
+                                std::thread::sleep(std::time::Duration::from_millis(5));
+                            }
+                            journal.error().map_or(Ok(journal), Err)
+                        });
+                if journal.is_ok() {
+                    let _ = gscore_session::discard(&session);
+                }
+                Box::new(RecoveredDocument { recovered, journal })
+            });
+            Event::Recovered {
+                session: Box::new(session),
+                result,
+            }
         })
     }
 

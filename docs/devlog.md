@@ -782,3 +782,40 @@ across beats, harmonic diamonds, notation-staff articulations.
   without tracks now writes to GP3-5 as an empty song (it panicked, contained by
   `gscore-io`). Opening times unchanged (`cargo xtask bench`). Tests: 346 (+8).
 - Open (docs/gaps.md #1): rustdoc on the inherited public model fields.
+
+## 2026-11-02 — M11: recovery journal and crash recovery
+
+- `gscore-edit`: `Command::to_line` (the exact inverse of `parse_line`; exhaustive, so new
+  commands must add themselves), `Command::position`/`measure`. `TabEditor` records what
+  changes the song (commands, `undo`, `redo`; `take_applied`) and `replay`s it, which
+  rebuilds the song and the same undo history. Feature `test-support`:
+  `testing::panic_next_command` makes the next command panic (panic-injection test).
+- `gscore-session`: `Journal` keeps one recovery folder per open document (`lock`,
+  `meta` with the source path, `base` = the file's bytes as opened, `journal` with one
+  checksummed line per entry, `snapshot.gp` + `snapshot` every 200 entries or 60 s,
+  written to temporary files and renamed). A writer thread does all file work and syncs
+  each batch; recording never blocks (a full queue buffers). `written()` counts entries on
+  disk. A lock held while open tells a crash (lock released) from another running window.
+  `find_sessions` lists crashed documents with edits since their last save (removing
+  folders with nothing to recover), `recover` replays the journal on the base (or on the
+  snapshot if that recovers more, for example with a damaged base) and stops at a damaged
+  line, `discard` removes a folder. `open_with_bytes`, `default_recovery_dir`
+  (`~/.local/state/guitarscore/recovery` on Linux).
+- App: `GuitarScoreApp::with_options(.., recovery_dir)` (`main` passes the default);
+  opening starts the document's journal in the background; every frame hands the edits to
+  it; a save marks it (only if nothing changed while saving); closing a document or the
+  app normally removes its folder. At the start, crashed documents are offered one by one
+  (Restore, Discard, Later); a restored one opens unsaved, with its undo history, under a
+  new journal that already holds the replayed edits before the old folder goes. A panic in
+  a command is caught: nothing changes (the model edits a copy), a recovery snapshot is
+  written, a notice says so, and editing goes on.
+- Tests: commands round-trip through text; random keyboard sessions replay to the same
+  song and undo history; journal lines with damage; recovery with its undo history,
+  saved/closed sessions, a damaged journal end and a lost base (snapshot fallback); a test
+  process killed with SIGKILL mid-edit is recovered up to everything it reported on disk
+  (`written()`); in the app, restore with undo, Later and Discard, a normal exit, and an
+  injected command panic. The process and app recovery tests passed 8 runs in a row.
+  Tests: 357 (+11).
+- Open (docs/gaps.md #7): view state is not restored; a crash within milliseconds of an
+  edit loses that edit; snapshots clone the song on the UI thread; layout panics are
+  contained but not injection-tested.

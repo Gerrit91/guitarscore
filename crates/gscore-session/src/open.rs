@@ -64,6 +64,12 @@ impl std::error::Error for OpenError {
 /// are refused before reading, and the read itself is capped, so a file that grows in the
 /// meantime cannot make this allocate without bound.
 pub fn open(path: &Path) -> Result<Imported, OpenError> {
+    open_with_bytes(path).map(|(imported, _)| imported)
+}
+
+/// [`open`], also returning the file's bytes (the recovery journal keeps them as the base
+/// its commands apply to).
+pub fn open_with_bytes(path: &Path) -> Result<(Imported, Vec<u8>), OpenError> {
     let read_error = |source| OpenError::Read {
         path: path.to_path_buf(),
         source,
@@ -86,8 +92,9 @@ pub fn open(path: &Path) -> Result<Imported, OpenError> {
     if read > limit {
         return Err(too_large(read));
     }
-    import_guitar_pro_from_bytes(&bytes).map_err(|error| OpenError::Import {
+    let imported = import_guitar_pro_from_bytes(&bytes).map_err(|error| OpenError::Import {
         path: path.to_path_buf(),
         error,
-    })
+    })?;
+    Ok((imported, bytes))
 }

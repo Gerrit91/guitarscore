@@ -247,7 +247,7 @@ panels that fill it.
   - Undo history capped by memory, not only by entry count.
 - **M11: Recovery.** The recovery journal and autosave deferred from M8 (contribution rule
   5: recovery before new features): journal of commands, recovery offer after a crash,
-  autosave, persisted undo history.
+  autosave, persisted undo history. (Done 2026-11-02, see the devlog.)
 - **M12: App shell and styling.** The frame the panels plug into.
   - Docked panels (bottom, left, right), each shown or hidden from the View menu and a
     context menu, sizes and visibility remembered between runs.

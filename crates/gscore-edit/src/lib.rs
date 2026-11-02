@@ -24,6 +24,8 @@ mod info;
 mod keymap;
 mod parse;
 mod tab_editor;
+#[cfg(any(test, feature = "test-support"))]
+pub mod testing;
 
 pub use action::{ACTIONS, Action, ActionId, ActionInfo};
 pub use command::Command;
