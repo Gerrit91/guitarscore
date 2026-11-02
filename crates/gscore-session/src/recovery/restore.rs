@@ -4,7 +4,7 @@ use std::fs::{File, TryLockError};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use gscore_edit::{TabEditor, parse_line};
+use gscore_edit::{Recorded, TabEditor};
 use gscore_io::{FileFormat, detect_format, import_guitar_pro_from_bytes};
 use gscore_model::TrackIndex;
 
@@ -229,10 +229,10 @@ fn replay(bytes: &[u8], commands: &[&String]) -> Result<(TabEditor, usize), Stri
     let mut editor = TabEditor::new(song, TrackIndex::new(0));
     let mut replayed = 0_usize;
     for line in commands {
-        let Ok(Some(command)) = parse_line(line) else {
+        let Ok(Some(entry)) = Recorded::parse(line) else {
             break;
         };
-        if editor.replay(command).is_err() {
+        if editor.replay(entry).is_err() {
             break;
         }
         replayed = replayed.saturating_add(1);

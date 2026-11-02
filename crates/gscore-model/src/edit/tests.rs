@@ -509,3 +509,270 @@ fn inserted_and_removed_measures_move_the_stamps_with_them() {
     assert_eq!(stamps(&song), undone);
     assert_unchanged(&before, &song);
 }
+
+/// The names of all tracks, in order.
+fn track_names(song: &Song) -> Vec<String> {
+    song.tracks().map(|track| track.name().to_owned()).collect()
+}
+
+/// Two tracks with one measure each, the first with a note. Both use channel 0 of a real
+/// 64-channel table (as a GP3-5 file has), at a volume and pan away from the defaults.
+fn two_tracks() -> Song {
+    let mut gp = test_song(vec![
+        track(
+            "Lead",
+            GUITAR_6,
+            vec![measure((4, 4), vec![vec![beat(4, &[(1, 5)])]])],
+        ),
+        track("Bass", BASS_4, vec![measure((4, 4), vec![vec![rest(4)]])]),
+    ]);
+    gp.channels = (0..64)
+        .map(|index| gscore_gp::MidiChannel {
+            channel: u8::try_from(index % 16).unwrap_or(0),
+            volume: 90,
+            balance: 30,
+            ..gscore_gp::MidiChannel::default()
+        })
+        .collect();
+    from_gp(gp).unwrap()
+}
+
+#[test]
+fn inserting_a_track_fills_its_measures_with_rests_and_undo_restores_the_song() {
+    let mut song = two_tracks();
+    let before = song.clone();
+    let change = song.insert_track(TrackIndex::new(1)).unwrap();
+    assert_eq!(song.track_count(), 3);
+    assert_eq!(track_names(&song)[1], "Track");
+    let new = song.track(TrackIndex::new(1)).unwrap();
+    assert_eq!(new.string_count(), 6, "the neighbour lends its tuning");
+    assert_eq!(new.measures().len(), song.measure_count());
+    let measure = new.measure(MeasureIndex::new(0)).unwrap();
+    assert!(!measure.has_notes());
+    assert_eq!(
+        measure.voices().next().unwrap().beats().count(),
+        1,
+        "one rest fills the measure"
+    );
+    assert_eq!(
+        new.measure(MeasureIndex::new(0)).unwrap().index(),
+        MeasureIndex::new(0)
+    );
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+    assert_eq!(song.track_count(), 2);
+}
+
+#[test]
+fn deleting_and_duplicating_tracks_undo_exactly() {
+    let mut song = two_tracks();
+    let before = song.clone();
+
+    let change = song.duplicate_track(TrackIndex::new(0)).unwrap();
+    assert_eq!(track_names(&song), ["Lead", &track_names(&song)[1], "Bass"]);
+    assert_eq!(song.track_count(), 3);
+    assert!(
+        song.track(TrackIndex::new(1))
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .has_notes(),
+        "the copy keeps the notes"
+    );
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+
+    let change = song.delete_track(TrackIndex::new(0)).unwrap();
+    assert_eq!(track_names(&song), ["Bass"]);
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+
+    let change = song.delete_track(TrackIndex::new(1)).unwrap();
+    assert_eq!(track_names(&song), ["Lead"]);
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+}
+
+#[test]
+fn moving_a_track_changes_the_order_and_undo_puts_it_back() {
+    let mut song = two_tracks();
+    let before = song.clone();
+    let change = song
+        .move_track(TrackIndex::new(0), TrackIndex::new(1))
+        .unwrap();
+    assert_eq!(track_names(&song), ["Bass", "Lead"]);
+    assert_eq!(
+        song.track(TrackIndex::new(1))
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .index(),
+        MeasureIndex::new(0)
+    );
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+    // A move onto the same index is refused.
+    assert!(
+        song.move_track(TrackIndex::new(0), TrackIndex::new(0))
+            .is_err()
+    );
+}
+
+#[test]
+fn renaming_a_track_undoes_and_rejects_unbounded_names() {
+    let mut song = two_tracks();
+    let change = song.rename_track(TrackIndex::new(0), "Rhythm").unwrap();
+    assert_eq!(song.track(TrackIndex::new(0)).unwrap().name(), "Rhythm");
+    song.revert(&change).unwrap();
+    assert_eq!(song.track(TrackIndex::new(0)).unwrap().name(), "Lead");
+    let long = "x".repeat(300);
+    assert!(song.rename_track(TrackIndex::new(0), &long).is_err());
+    assert!(song.rename_track(TrackIndex::new(9), "Nobody").is_err());
+}
+
+#[test]
+fn mute_solo_and_color_undo() {
+    let mut song = two_tracks();
+    let track = TrackIndex::new(0);
+    let changes = [
+        song.set_track_mute(track, true).unwrap(),
+        song.set_track_solo(track, true).unwrap(),
+        song.set_track_color(track, TrackColor::new(0x123456))
+            .unwrap(),
+    ];
+    assert!(song.track(track).unwrap().is_muted());
+    assert!(song.track(track).unwrap().is_soloed());
+    assert_eq!(song.track(track).unwrap().color().rgb(), 0x123456);
+    assert!(song.any_soloed());
+    for change in changes.iter().rev() {
+        song.revert(change).unwrap();
+    }
+    assert!(!song.track(track).unwrap().is_muted());
+    assert!(!song.track(track).unwrap().is_soloed());
+    assert_eq!(song.track(track).unwrap().color(), TrackColor::DEFAULT);
+    assert!(!song.any_soloed());
+}
+
+#[test]
+fn a_shared_channel_is_cloned_so_only_one_track_changes() {
+    let mut song = two_tracks();
+    // Both tracks use channel 0.
+    let both_sound = |song: &Song| {
+        let sound = |track| song.track_sound(TrackIndex::new(track)).unwrap();
+        (sound(0), sound(1))
+    };
+    assert_eq!(
+        song.track_sound(TrackIndex::new(0)).unwrap().volume,
+        song.track_sound(TrackIndex::new(1)).unwrap().volume
+    );
+    let before = both_sound(&song);
+    assert_eq!((before.0.volume, before.0.pan), (90, 30));
+    let change = song.set_track_volume(TrackIndex::new(0), 20).unwrap();
+    let after = both_sound(&song);
+    assert_eq!(after.0.volume, 20);
+    assert_eq!(
+        after.1.volume, before.1.volume,
+        "the other track keeps its volume"
+    );
+
+    let change_pan = song.set_track_pan(TrackIndex::new(0), 127).unwrap();
+    assert_eq!(song.track_sound(TrackIndex::new(0)).unwrap().pan, 127);
+    assert_eq!(
+        song.track_sound(TrackIndex::new(1)).unwrap().pan,
+        before.1.pan
+    );
+    song.revert(&change_pan).unwrap();
+    song.revert(&change).unwrap();
+    assert_eq!(both_sound(&song), before);
+    // The track is back on the shared channel, not on the copy that undo removed.
+    let after = song.track_sound(TrackIndex::new(0)).unwrap();
+    assert_eq!((after.volume, after.pan), (90, 30));
+
+    // A later change still works and can be undone.
+    let change = song.set_track_volume(TrackIndex::new(0), 100).unwrap();
+    assert_eq!(song.track_sound(TrackIndex::new(0)).unwrap().volume, 100);
+    song.revert(&change).unwrap();
+    assert_eq!(song.track_sound(TrackIndex::new(0)).unwrap().volume, 90);
+}
+
+#[test]
+fn sections_and_note_squares_come_from_the_song() {
+    let mut gp = test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![
+            measure((4, 4), vec![vec![beat(4, &[(1, 5)])]]),
+            measure((4, 4), vec![vec![rest(4)]]),
+        ],
+    )]);
+    gp.measure_headers[0].marker = Some(gscore_gp::Marker {
+        title: "Intro".to_owned(),
+        color: 0x00FF00,
+    });
+    let song = from_gp(gp).unwrap();
+    assert!(
+        song.track(TrackIndex::new(0))
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .has_notes()
+    );
+    assert!(
+        !song
+            .track(TrackIndex::new(0))
+            .unwrap()
+            .measure(MeasureIndex::new(1))
+            .unwrap()
+            .has_notes()
+    );
+    let section = song.section(MeasureIndex::new(0)).unwrap();
+    assert_eq!(section.title, "Intro");
+    assert_eq!(section.color.rgb(), 0x00FF00);
+    assert!(song.section(MeasureIndex::new(1)).is_none());
+}
+
+#[test]
+fn settings_differences_name_what_a_save_may_not_keep() {
+    let before = two_tracks();
+    let mut after = before.clone();
+    let _ = after.set_track_mute(TrackIndex::new(0), true).unwrap();
+    let _ = after.set_track_volume(TrackIndex::new(1), 20).unwrap();
+    let found = settings_differences(&before, &after);
+    assert_eq!(found.len(), 2, "{found:?}");
+    assert!(
+        found
+            .iter()
+            .any(|difference| difference.detail.contains("mute"))
+    );
+    assert!(
+        found
+            .iter()
+            .any(|difference| difference.detail.contains("volume"))
+    );
+    assert!(
+        differences(&before, &after).is_empty(),
+        "the notes did not change"
+    );
+}
+
+#[test]
+fn track_edits_keep_measure_stamps_and_leave_the_layout_cache_to_the_track_key() {
+    let mut song = three_measures();
+    let before = stamps(&song);
+
+    // Renaming changes the track, not any measure.
+    let renamed = song.rename_track(TrackIndex::new(0), "Lead").unwrap();
+    assert_eq!(stamps(&song), before, "a rename keeps the layout cache");
+
+    // Moving a track changes its index, which is part of the app's per-track layout key;
+    // the measures themselves did not change.
+    let moved = song
+        .move_track(TrackIndex::new(1), TrackIndex::new(0))
+        .unwrap();
+    assert_eq!(stamps(&song), before, "a move does not relayout measures");
+
+    song.revert(&moved).unwrap();
+    song.revert(&renamed).unwrap();
+    assert_eq!(song.track(TrackIndex::new(0)).unwrap().name(), "Guitar");
+    assert_eq!(stamps(&song), before);
+}

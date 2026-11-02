@@ -8,8 +8,9 @@
 //! - `meta`: the file the document came from (`source=<path>`), replaced atomically.
 //! - `base`: the file's bytes as opened; the journal's commands apply to them.
 //! - `journal`: one entry per line, `<checksum> <entry>`, appended as the user edits: a
-//!   command in the command language ([`gscore_edit::Command::to_line`], including `undo`
-//!   and `redo`), or `!saved` after a save. A line whose checksum does not match (a write
+//!   command in the command language ([`gscore_edit::Recorded::to_line`], including
+//!   `undo` and `redo`, and `merge` before a slider change that continued the undo step
+//!   before it), or `!saved` after a save. A line whose checksum does not match (a write
 //!   cut short by a crash) ends the journal.
 //! - `snapshot.gp` and `snapshot`: the song every [`SNAPSHOT_EVERY`] entries (or
 //!   [`SNAPSHOT_INTERVAL`]), as Guitar Pro 7, and how many journal entries it includes;

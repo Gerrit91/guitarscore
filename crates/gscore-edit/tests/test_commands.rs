@@ -15,8 +15,8 @@ use common::{
 };
 use gscore_edit::{Command, EditError, Editor};
 use gscore_model::{
-    BeatKind, Duration, Fret, MeasureIndex, NoteValue, StringNumber, TimeSignature, differences,
-    testing,
+    BeatKind, Duration, Fret, MeasureIndex, NoteValue, StringNumber, TimeSignature, TrackColor,
+    TrackIndex, differences, testing,
 };
 
 fn string(number: u8) -> StringNumber {
@@ -137,7 +137,7 @@ fn insert_measure_adds_a_bar_to_every_track_and_delete_removes_it() {
     }
     let added = editor
         .song()
-        .track(gscore_model::TrackIndex::new(0))
+        .track(TrackIndex::new(0))
         .unwrap()
         .measure(MeasureIndex::new(1))
         .unwrap();
@@ -462,4 +462,225 @@ fn applying_everything_and_undoing_everything_restores_the_song() {
     for (_, song) in test_songs() {
         apply_all_then_undo_all(&song, &commands);
     }
+}
+
+#[test]
+fn every_track_command_edits_and_undoes() {
+    let song = testing::song(&[testing::GUITAR_6, testing::BASS_4], 2).unwrap();
+    for command in [
+        Command::InsertTrack {
+            at: TrackIndex::new(1),
+        },
+        Command::DeleteTrack {
+            track: TrackIndex::new(0),
+        },
+        Command::DuplicateTrack {
+            track: TrackIndex::new(0),
+        },
+        Command::MoveTrack {
+            from: TrackIndex::new(0),
+            to: TrackIndex::new(1),
+        },
+        Command::RenameTrack {
+            track: TrackIndex::new(0),
+            name: "Renamed".to_owned(),
+        },
+        Command::SetTrackColor {
+            track: TrackIndex::new(0),
+            color: TrackColor::new(0x00FF00),
+        },
+        Command::SetTrackVolume {
+            track: TrackIndex::new(0),
+            volume: 30,
+        },
+        Command::SetTrackPan {
+            track: TrackIndex::new(0),
+            pan: 20,
+        },
+        Command::SetTrackMute {
+            track: TrackIndex::new(0),
+            mute: true,
+        },
+        Command::SetTrackSolo {
+            track: TrackIndex::new(1),
+            solo: true,
+        },
+    ] {
+        apply_then_undo(&song, &command);
+    }
+}
+
+#[test]
+fn adding_a_track_keeps_the_song_consistent() {
+    let song = testing::song(&[testing::GUITAR_6], 3).unwrap();
+    let mut editor = Editor::new(song);
+    editor
+        .execute(Command::InsertTrack {
+            at: TrackIndex::new(1),
+        })
+        .unwrap();
+    assert_eq!(editor.song().track_count(), 2);
+    let inserted = editor.song().track(TrackIndex::new(1)).unwrap();
+    assert_eq!(inserted.measures().len(), 3);
+    assert!(
+        inserted
+            .measures()
+            .all(|measure| !measure.has_notes() && measure.time_signature().is_ok())
+    );
+    assert!(editor.song().issues().is_empty());
+
+    editor
+        .execute(Command::DuplicateTrack {
+            track: TrackIndex::new(1),
+        })
+        .unwrap();
+    let names: Vec<String> = editor
+        .song()
+        .tracks()
+        .map(|track| track.name().to_owned())
+        .collect();
+    assert_eq!(names.len(), 3);
+    assert_ne!(names[1], names[2], "the copy gets its own name");
+
+    // Moving the last track to the front keeps every measure addressable.
+    let last = editor.song().track_count().saturating_sub(1);
+    editor
+        .execute(Command::MoveTrack {
+            from: TrackIndex::new(last),
+            to: TrackIndex::new(0),
+        })
+        .unwrap();
+    assert!(editor.song().issues().is_empty());
+    assert_eq!(
+        editor.song().track(TrackIndex::new(0)).unwrap().index(),
+        TrackIndex::new(0)
+    );
+}
+
+#[test]
+fn track_commands_report_impossible_requests() {
+    let song = testing::song(&[testing::GUITAR_6], 1).unwrap();
+    let mut editor = Editor::new(song);
+    for command in [
+        Command::DeleteTrack {
+            track: TrackIndex::new(0),
+        },
+        Command::MoveTrack {
+            from: TrackIndex::new(0),
+            to: TrackIndex::new(1),
+        },
+        Command::RenameTrack {
+            track: TrackIndex::new(5),
+            name: "Nobody".to_owned(),
+        },
+        Command::SetTrackVolume {
+            track: TrackIndex::new(5),
+            volume: 20,
+        },
+    ] {
+        let result = editor.execute(command.clone());
+        assert!(result.is_err(), "{} should fail", command.id());
+        assert_eq!(
+            editor.song().track_count(),
+            1,
+            "{} must not change the song",
+            command.id()
+        );
+    }
+}
+
+#[test]
+fn dragging_a_volume_slider_is_one_undo_step() {
+    let song = testing::song(&[testing::GUITAR_6], 1).unwrap();
+    let before = song
+        .track_sound(TrackIndex::new(0))
+        .map(|sound| sound.volume);
+    let mut editor = Editor::new(song);
+    for volume in [100, 80, 60, 40] {
+        editor
+            .execute_with_merge(
+                Command::SetTrackVolume {
+                    track: TrackIndex::new(0),
+                    volume,
+                },
+                true,
+            )
+            .unwrap();
+    }
+    assert_eq!(editor.undo_depth(), 1, "one drag is one undo step");
+    assert_eq!(
+        editor
+            .song()
+            .track_sound(TrackIndex::new(0))
+            .map(|sound| sound.volume),
+        Some(40)
+    );
+    editor.undo().unwrap();
+    assert_eq!(
+        editor
+            .song()
+            .track_sound(TrackIndex::new(0))
+            .map(|sound| sound.volume),
+        before
+    );
+}
+
+#[test]
+fn two_separate_slider_drags_are_two_undo_steps() {
+    let song = testing::song(&[testing::GUITAR_6], 1).unwrap();
+    let before = song
+        .track_sound(TrackIndex::new(0))
+        .map(|sound| sound.volume);
+    let mut editor = Editor::new(song);
+    let volume = |editor: &Editor| {
+        editor
+            .song()
+            .track_sound(TrackIndex::new(0))
+            .map(|sound| sound.volume)
+    };
+    // First drag: start a new entry, then merge within the drag.
+    editor
+        .execute_with_merge(
+            Command::SetTrackVolume {
+                track: TrackIndex::new(0),
+                volume: 100,
+            },
+            false,
+        )
+        .unwrap();
+    editor
+        .execute_with_merge(
+            Command::SetTrackVolume {
+                track: TrackIndex::new(0),
+                volume: 80,
+            },
+            true,
+        )
+        .unwrap();
+    // The button is released (a merge barrier) and the next press is a second drag; the
+    // commands during it ask to merge, but the barrier keeps it a separate undo step.
+    editor.break_merge();
+    editor
+        .execute_with_merge(
+            Command::SetTrackVolume {
+                track: TrackIndex::new(0),
+                volume: 60,
+            },
+            true,
+        )
+        .unwrap();
+    editor
+        .execute_with_merge(
+            Command::SetTrackVolume {
+                track: TrackIndex::new(0),
+                volume: 40,
+            },
+            true,
+        )
+        .unwrap();
+    assert_eq!(editor.undo_depth(), 2, "two drags are two undo steps");
+    editor.undo().unwrap();
+    assert_eq!(volume(&editor), Some(80), "undo ends the second drag");
+    editor.undo().unwrap();
+    assert_eq!(volume(&editor), before, "undo ends the first drag");
 }

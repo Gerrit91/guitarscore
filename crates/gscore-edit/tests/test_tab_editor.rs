@@ -300,9 +300,9 @@ fn random_actions_never_panic_and_undo_restores_the_song() {
         let applied = e.take_applied();
         assert!(e.take_applied().is_empty(), "taking empties the record");
         let mut replayed = TabEditor::new(song.clone(), TrackIndex::new(0));
-        for command in &applied {
-            let line = command.to_line();
-            let parsed = gscore_edit::parse_line(&line).unwrap().unwrap();
+        for entry in &applied {
+            let line = entry.to_line();
+            let parsed = gscore_edit::Recorded::parse(&line).unwrap().unwrap();
             replayed
                 .replay(parsed)
                 .unwrap_or_else(|err| panic!("{name}: replaying {line}: {err}"));

@@ -14,7 +14,7 @@ use gscore_edit::{Command, Editor};
 use gscore_io::{FileFormat, export_to_bytes, import_guitar_pro_from_bytes};
 use gscore_model::{
     BeatIndex, BeatPosition, MeasureIndex, NoteValue, Song, TrackIndex, VoiceIndex, differences,
-    testing,
+    settings_differences, testing,
 };
 
 /// A position in the first track.
@@ -37,6 +37,12 @@ pub(crate) fn note(value: u16) -> NoteValue {
     NoteValue::new(value, 0, None).unwrap()
 }
 
+/// Whether `after` equals `before` in everything the command tests compare: the musical
+/// content, plus the track settings that a save may not keep (color, mute, solo, sound).
+fn same_state(before: &Song, after: &Song) -> bool {
+    differences(before, after).is_empty() && settings_differences(before, after).is_empty()
+}
+
 /// Applies `command` to `song`, checks that it changed something, undoes it, and checks that
 /// the song is exactly as it was. The one helper every command test uses (AGENTS.md M4).
 pub(crate) fn apply_then_undo(song: &Song, command: &Command) {
@@ -46,7 +52,7 @@ pub(crate) fn apply_then_undo(song: &Song, command: &Command) {
         .execute(command.clone())
         .unwrap_or_else(|error| panic!("{} on {:?}: {error}", command.id(), song.title()));
     assert!(
-        !differences(&before, editor.song()).is_empty(),
+        !same_state(&before, editor.song()),
         "{} changed nothing",
         command.id()
     );
@@ -54,7 +60,7 @@ pub(crate) fn apply_then_undo(song: &Song, command: &Command) {
         .undo()
         .unwrap_or_else(|error| panic!("undo {}: {error}", command.id()));
     assert!(
-        differences(&before, editor.song()).is_empty(),
+        same_state(&before, editor.song()),
         "undo of {} did not restore the song: {:?}",
         command.id(),
         differences(&before, editor.song())
@@ -72,7 +78,7 @@ pub(crate) fn apply_all_then_undo_all(song: &Song, commands: &[Command]) {
         editor.undo().unwrap();
     }
     assert!(
-        differences(song, editor.song()).is_empty(),
+        same_state(song, editor.song()),
         "undoing everything did not restore the song: {:?}",
         differences(song, editor.song())
     );

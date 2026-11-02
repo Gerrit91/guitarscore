@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use gscore_audio::{MidiOutPlayer, SynthPlayer, midi_output_ports};
-use gscore_model::{BeatPosition, Song};
-use gscore_play::{PlayState, Player, Sequence};
+use gscore_model::{BeatPosition, Song, TrackIndex};
+use gscore_play::{Channel, MidiEvent, PlayState, Player, Sequence, controller};
 
 /// Where playback goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -161,6 +161,36 @@ impl Playback {
         self.paused_at = None;
     }
 
+    /// The song's mix (volume, pan, mute, solo) changed: rebuild the sequence. While it is
+    /// playing or paused, the new mix takes over at the same position, so a slider is heard
+    /// at once.
+    pub fn mix_changed(&mut self, song: &Song) -> Result<(), String> {
+        let sequence = Arc::new(Sequence::new(song, None).map_err(|e| e.to_string())?);
+        let Some(active) = &mut self.player else {
+            // Nothing is connected: the next play builds the sequence again.
+            self.sequence = None;
+            return Ok(());
+        };
+        let state = active.player().state();
+        let position = active.player().position();
+        active.player_mut().stop().map_err(|e| e.to_string())?;
+        if let Err(error) = active.player_mut().load(Arc::clone(&sequence)) {
+            self.sequence = None;
+            return Err(error.to_string());
+        }
+        self.sequence = Some(sequence);
+        if state != PlayState::Stopped {
+            active
+                .player_mut()
+                .seek(position)
+                .map_err(|e| e.to_string())?;
+        }
+        if state == PlayState::Playing {
+            active.player_mut().play().map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
     /// Plays `song` from where it was paused or stopped, or pauses it if it is playing.
     ///
     /// Playing starts at `from` (the cursor's beat, at its measure's first pass), unless
@@ -241,6 +271,43 @@ impl Playback {
         Some(span.measure.get().saturating_add(1))
     }
 
+    /// A track's volume or pan changed. The new values are sent to the player at once, so
+    /// a slider is heard while it moves; then the sequence is rebuilt and swapped in where
+    /// playback is (no stop, no silence), so its setup holds the new values too: playing
+    /// from the start, seeking, and the borrowed channels of bends and slides use them.
+    pub fn send_track_mix(&mut self, song: &Song, track: TrackIndex) -> Result<(), String> {
+        let Some(active) = &mut self.player else {
+            // Nothing is connected: the next play builds the sequence again.
+            self.sequence = None;
+            return Ok(());
+        };
+        if let (Some(sequence), Some(sound)) = (&self.sequence, song.track_sound(track))
+            && let Some(channel) = sequence.channel_of(track)
+        {
+            for event in mix_events(channel, sound.volume, sound.pan) {
+                active
+                    .player_mut()
+                    .send_event(event)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        if self.sequence.is_none() {
+            return Ok(());
+        }
+        let sequence = Arc::new(Sequence::new(song, None).map_err(|e| e.to_string())?);
+        active
+            .player_mut()
+            .replace(Arc::clone(&sequence))
+            .map_err(|e| e.to_string())?;
+        self.sequence = Some(sequence);
+        Ok(())
+    }
+
+    /// The sequence the player has, if one was built.
+    pub fn sequence(&self) -> Option<&Arc<Sequence>> {
+        self.sequence.as_ref()
+    }
+
     /// The last output error, if playback stopped because of one.
     pub fn error(&self) -> Option<String> {
         self.player.as_ref().and_then(Active::error)
@@ -262,6 +329,22 @@ impl Playback {
             .map(Active::player_mut)
             .ok_or_else(|| "no output is connected".to_owned())
     }
+}
+
+/// The MIDI messages that set a channel's volume and pan.
+fn mix_events(channel: Channel, volume: u8, pan: u8) -> [MidiEvent; 2] {
+    [
+        MidiEvent::Control {
+            channel,
+            controller: controller::VOLUME,
+            value: volume.min(127),
+        },
+        MidiEvent::Control {
+            channel,
+            controller: controller::PAN,
+            value: pan.min(127),
+        },
+    ]
 }
 
 /// The file name of `path`, or the whole path if it has none.

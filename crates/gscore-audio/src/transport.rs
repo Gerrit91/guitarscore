@@ -18,6 +18,10 @@ pub(crate) enum Command {
     Stop,
     Seek(u64),
     TempoScale(f32),
+    /// Sends one MIDI message at once (a live mixer change).
+    Send(MidiEvent),
+    /// Swaps in a rebuilt sequence where playback is (a mixer change), without stopping.
+    Replace(Arc<Sequence>),
     /// Ends the backend (the transport itself ignores it).
     Quit,
 }
@@ -101,6 +105,13 @@ impl Transport {
                 }
                 self.state = PlayState::Stopped;
             }
+            Command::Send(event) => {
+                out.send(event);
+            }
+            Command::Replace(sequence) => match &mut self.scheduler {
+                Some(s) => return Some(s.replace(sequence)),
+                None => self.scheduler = Some(Scheduler::new(sequence)),
+            },
             Command::Seek(tick) => {
                 self.silence(out);
                 if let Some(s) = &mut self.scheduler {
@@ -249,6 +260,50 @@ mod tests {
         assert!(t.handle(Command::Load(sequence()), 0, &mut out).is_some());
         assert_eq!(t.position(), 0);
         assert!(out.silenced >= 4);
+    }
+
+    #[test]
+    fn a_live_mix_event_reaches_the_output_without_touching_the_sequence() {
+        let mut out = Recorder::default();
+        let mut t = Transport::default();
+        let channel = Channel::new(3).unwrap();
+        let event = MidiEvent::Control {
+            channel,
+            controller: gscore_play::controller::VOLUME,
+            value: 90,
+        };
+        assert!(t.handle(Command::Send(event), 0, &mut out).is_none());
+        assert_eq!(out.events, [event]);
+        assert_eq!(t.state(), PlayState::Stopped);
+        assert_eq!(t.position(), 0);
+    }
+
+    #[test]
+    fn a_replaced_sequence_plays_on_without_silence() {
+        let mut out = Recorder::default();
+        let mut t = Transport::default();
+        // Without a sequence, a replacement is a load.
+        assert!(
+            t.handle(Command::Replace(sequence()), 0, &mut out)
+                .is_none()
+        );
+        let _ = t.handle(Command::Play, 0, &mut out);
+        t.advance(600_000, &mut out);
+        let (sent, silenced, position) = (out.events.len(), out.silenced, t.position());
+        let old = t.handle(Command::Replace(sequence()), 600_000, &mut out);
+        assert!(
+            old.is_some(),
+            "the old sequence comes back to be freed elsewhere"
+        );
+        assert_eq!(t.state(), PlayState::Playing);
+        assert_eq!(t.position(), position);
+        assert_eq!(
+            (out.events.len(), out.silenced),
+            (sent, silenced),
+            "nothing stopped"
+        );
+        t.advance(1_100_000, &mut out);
+        assert_eq!(out.events.len(), sent + 1, "the next note, once");
     }
 
     #[test]

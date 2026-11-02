@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use gscore_edit::Command;
+use gscore_edit::Recorded;
 use gscore_io::{FileFormat, export_to_bytes};
 use gscore_model::Song;
 
@@ -145,12 +145,12 @@ impl Journal {
 
     /// Records `commands` (as [`gscore_edit::TabEditor::take_applied`] returns them); `song`
     /// is the song after them, for the periodic snapshot.
-    pub fn record(&mut self, commands: &[Command], song: &Song) {
+    pub fn record(&mut self, commands: &[Recorded], song: &Song) {
         if commands.is_empty() {
             return;
         }
-        for command in commands {
-            self.pending.push_str(&journal_line(&command.to_line()));
+        for entry in commands {
+            self.pending.push_str(&journal_line(&entry.to_line()));
         }
         self.entries = self.entries.saturating_add(commands.len());
         self.flush();

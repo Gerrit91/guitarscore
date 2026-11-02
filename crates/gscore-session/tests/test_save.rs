@@ -14,7 +14,7 @@
 use std::path::{Path, PathBuf};
 
 use gscore_io::{FileFormat, import_guitar_pro_from_bytes};
-use gscore_model::{Song, differences};
+use gscore_model::{Song, TrackColor, TrackIndex, differences, settings_differences};
 use gscore_session::{SaveError, SaveOptions, backup_path, save};
 
 /// A fresh, empty directory for one test.
@@ -72,7 +72,13 @@ fn saved_file_reads_back_as_the_same_song() {
         let target = dir.join("out.gp");
         let report = save(&original, &target, gp7()).unwrap();
         assert!(report.losses.is_empty(), "{file}");
-        assert_eq!(differences(&original, &read_song(&target)), [], "{file}");
+        let reread = read_song(&target);
+        assert_eq!(differences(&original, &reread), [], "{file}");
+        assert_eq!(
+            settings_differences(&original, &reread),
+            [],
+            "{file}: track settings did not survive"
+        );
     }
     std::fs::remove_dir_all(dir).unwrap();
 }
@@ -140,5 +146,43 @@ fn a_failed_save_leaves_no_files_and_the_original_untouched() {
 
     // A path without a file name is an error, not a panic.
     assert!(save(&Song::default(), Path::new("/"), gp7()).is_err());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn mixer_and_track_settings_survive_a_save() {
+    let dir = temp_dir("mixer");
+    let mut original = song("basic/steel_guitar_dadgad.gp");
+    let track = TrackIndex::new(0);
+    let _ = original.set_track_volume(track, 90).unwrap();
+    let _ = original.set_track_pan(track, 20).unwrap();
+    let _ = original.set_track_mute(track, true).unwrap();
+    let _ = original
+        .set_track_color(track, TrackColor::new(0x123456))
+        .unwrap();
+
+    let target = dir.join("mixer.gp");
+    let report = save(&original, &target, gp7()).unwrap();
+    assert!(report.losses.is_empty(), "{:?}", report.losses);
+    let reread = read_song(&target);
+    assert!(settings_differences(&original, &reread).is_empty());
+    let sound = reread.track_sound(track).unwrap();
+    assert_eq!((sound.volume, sound.pan), (90, 20));
+    let track = reread.track(track).unwrap();
+    assert!(track.is_muted());
+    assert!(!track.is_soloed());
+    assert_eq!(track.color(), TrackColor::new(0x123456));
+
+    // Solo is a separate playback state; it survives as well.
+    let mut original = reread;
+    let _ = original.set_track_mute(TrackIndex::new(0), false).unwrap();
+    let _ = original.set_track_solo(TrackIndex::new(0), true).unwrap();
+    let report = save(&original, &target, gp7()).unwrap();
+    assert!(report.losses.is_empty(), "{:?}", report.losses);
+    let reread = read_song(&target);
+    let track = reread.track(TrackIndex::new(0)).unwrap();
+    assert!(track.is_soloed());
+    assert!(!track.is_muted());
+
     std::fs::remove_dir_all(dir).unwrap();
 }

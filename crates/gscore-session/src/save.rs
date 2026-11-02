@@ -20,7 +20,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use gscore_io::{FileFormat, IoError, export_to_bytes, import_guitar_pro_from_bytes};
-use gscore_model::{Difference, Song, differences};
+use gscore_model::{Difference, Song, differences, settings_differences};
 
 /// Formats that can be saved. Others are refused until their round trips pass (see
 /// `docs/gaps.md`).
@@ -126,7 +126,10 @@ pub fn save(song: &Song, path: &Path, options: SaveOptions) -> Result<SaveReport
     }
     let bytes = export_to_bytes(song, options.format).map_err(SaveError::Export)?;
     let reread = import_guitar_pro_from_bytes(&bytes).map_err(SaveError::Reread)?;
-    let losses = differences(song, &reread.song);
+    let mut losses = differences(song, &reread.song);
+    // Color, mute, solo, volume, pan and the program are not part of the musical
+    // comparison; the format must keep them too, or the user is told before writing.
+    losses.extend(settings_differences(song, &reread.song));
     if !losses.is_empty() && !options.allow_losses {
         return Err(SaveError::Losses(losses));
     }

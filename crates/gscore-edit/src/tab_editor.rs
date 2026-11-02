@@ -10,7 +10,7 @@ use gscore_model::{
 };
 
 use crate::action::{Action, ActionId};
-use crate::command::Command;
+use crate::command::{Command, Recorded};
 use crate::cursor::Cursor;
 use crate::editor::{EditError, Editor};
 
@@ -67,10 +67,14 @@ pub struct TabEditor {
     revision: u64,
     /// The note value new beats get when there is no beat to take it from.
     entry_value: NoteValue,
+    /// The command the last edit ran (or undid or redid), for the app to tell a live mixer
+    /// change from an edit that invalidates playback.
+    last_command: Option<Command>,
     /// What changed the song since [`TabEditor::take_applied`] was last called, in order:
-    /// commands, `undo` and `redo`. The recovery journal records these; replaying them
-    /// with [`TabEditor::replay`] gives the same song and the same undo history.
-    applied: Vec<Command>,
+    /// commands (marked when merged into the undo step before), `undo` and `redo`. The
+    /// recovery journal records these; replaying them with [`TabEditor::replay`] gives the
+    /// same song and the same undo history.
+    applied: Vec<Recorded>,
 }
 
 impl TabEditor {
@@ -86,18 +90,21 @@ impl TabEditor {
             redo_cursors: Vec::new(),
             revision: 0,
             entry_value: default_entry_value(),
+            last_command: None,
             applied: Vec::new(),
         }
     }
 
     /// Takes the commands applied since the last call (see [`TabEditor::replay`]).
-    pub fn take_applied(&mut self) -> Vec<Command> {
+    pub fn take_applied(&mut self) -> Vec<Recorded> {
         std::mem::take(&mut self.applied)
     }
 
     /// Applies one recorded command again (from the recovery journal): `undo`, `redo`, or
-    /// an edit, with the cursor at the edit. It is recorded again, like any edit.
-    pub fn replay(&mut self, command: Command) -> Result<Outcome, EditError> {
+    /// an edit, with the cursor at the edit, merged into the undo step before it if it was
+    /// then. It is recorded again, like any edit.
+    pub fn replay(&mut self, entry: impl Into<Recorded>) -> Result<Outcome, EditError> {
+        let Recorded { command, merged } = entry.into();
         self.pending = None;
         match command {
             Command::Undo => self.undo(),
@@ -115,7 +122,7 @@ impl TabEditor {
                 }
                 cursor.clamp(self.editor.song());
                 self.cursor = cursor;
-                self.execute(command, cursor)
+                self.execute(command, cursor, merged)
             }
         }
     }
@@ -153,6 +160,11 @@ impl TabEditor {
         self.revision
     }
 
+    /// The command the last edit ran (or the command undone or redone), if any.
+    pub fn last_command(&self) -> Option<&Command> {
+        self.last_command.as_ref()
+    }
+
     /// Whether there is an edit to undo.
     pub fn can_undo(&self) -> bool {
         self.editor.can_undo()
@@ -163,11 +175,33 @@ impl TabEditor {
         self.editor.can_redo()
     }
 
+    /// Marks the end of a slider drag: the next command starts a new undo entry.
+    pub fn break_merge(&mut self) {
+        self.editor.break_merge();
+    }
+
+    /// Runs `command` at the cursor (for example from a panel or menu), keeping undo and
+    /// the cursor. An error leaves the song unchanged.
+    pub fn execute_command(&mut self, command: Command) -> Result<Outcome, EditError> {
+        self.execute_command_merged(command, false)
+    }
+
+    /// Like [`TabEditor::execute_command`]; with `merge`, a volume or pan change continues
+    /// the previous undo entry (callers pass `true` only within one slider drag).
+    pub fn execute_command_merged(
+        &mut self,
+        command: Command,
+        merge: bool,
+    ) -> Result<Outcome, EditError> {
+        self.execute(command, self.cursor, merge)
+    }
+
     /// Runs `action` at the cursor. `now_ms` is any monotonic clock in milliseconds; it
     /// decides whether a fret digit joins the one before. An error leaves the song unchanged.
     pub fn perform(&mut self, action: Action, now_ms: u64) -> Result<Outcome, EditError> {
         // Anything but another digit ends a fret number.
         let pending = self.pending.take();
+        self.last_command = None;
         let id = match action {
             Action::Digit(digit) => return self.enter_digit(digit, now_ms, pending),
             Action::Plain(id) => id,
@@ -191,18 +225,18 @@ impl TabEditor {
             ActionId::ClearNote => {
                 let string = self.string()?;
                 let at = self.cursor.position();
-                self.execute(Command::ClearNote { at, string }, self.cursor)
+                self.execute(Command::ClearNote { at, string }, self.cursor, false)
             }
             ActionId::DurationShorter => self.change_duration(true),
             ActionId::DurationLonger => self.change_duration(false),
             ActionId::InsertBeat => {
                 let duration = self.current_value();
                 let at = self.cursor.position();
-                self.execute(Command::InsertBeat { at, duration }, self.cursor)
+                self.execute(Command::InsertBeat { at, duration }, self.cursor, false)
             }
             ActionId::DeleteBeat => {
                 let at = self.cursor.position();
-                self.execute(Command::DeleteBeat { at }, self.cursor)
+                self.execute(Command::DeleteBeat { at }, self.cursor, false)
             }
             ActionId::InsertMeasure => {
                 let measure = self.cursor.measure;
@@ -210,11 +244,11 @@ impl TabEditor {
                     beat: BeatIndex::new(0),
                     ..self.cursor
                 };
-                self.execute(Command::InsertMeasure { measure }, after)
+                self.execute(Command::InsertMeasure { measure }, after, false)
             }
             ActionId::DeleteMeasure => {
                 let measure = self.cursor.measure;
-                self.execute(Command::DeleteMeasure { measure }, self.cursor)
+                self.execute(Command::DeleteMeasure { measure }, self.cursor, false)
             }
             ActionId::Copy | ActionId::Cut | ActionId::Paste => Err(EditError::Unsupported(
                 "copy, cut and paste need selections, which are not implemented yet".to_owned(),
@@ -229,8 +263,8 @@ impl TabEditor {
 
     /// Undoes the last edit and puts the cursor where it happened.
     pub fn undo(&mut self) -> Result<Outcome, EditError> {
-        self.editor.undo()?;
-        self.applied.push(Command::Undo);
+        self.last_command = self.editor.undo()?;
+        self.applied.push(Command::Undo.into());
         self.revision = self.revision.wrapping_add(1);
         if let Some(cursor) = self.undo_cursors.pop() {
             self.redo_cursors.push(cursor);
@@ -242,8 +276,8 @@ impl TabEditor {
 
     /// Redoes the last undone edit and puts the cursor where it happened.
     pub fn redo(&mut self) -> Result<Outcome, EditError> {
-        self.editor.redo()?;
-        self.applied.push(Command::Redo);
+        self.last_command = self.editor.redo()?;
+        self.applied.push(Command::Redo.into());
         self.revision = self.revision.wrapping_add(1);
         if let Some(cursor) = self.redo_cursors.pop() {
             self.undo_cursors.push(cursor);
@@ -264,12 +298,25 @@ impl TabEditor {
     }
 
     /// Applies `command`; afterwards the cursor goes to `after` (kept inside the song).
-    fn execute(&mut self, command: Command, after: Cursor) -> Result<Outcome, EditError> {
+    fn execute(
+        &mut self,
+        command: Command,
+        after: Cursor,
+        merge: bool,
+    ) -> Result<Outcome, EditError> {
         let before = self.cursor;
-        self.editor.execute(command.clone())?;
-        self.applied.push(command);
+        let merged = self.editor.execute_with_merge(command.clone(), merge)?;
+        self.applied.push(Recorded {
+            command: command.clone(),
+            merged,
+        });
+        self.last_command = Some(command);
         self.revision = self.revision.wrapping_add(1);
-        self.undo_cursors.push(before);
+        // A coalesced mix change (one slider drag) keeps the undo entry it continues, and
+        // with it the cursor from before the drag started.
+        if !merged {
+            self.undo_cursors.push(before);
+        }
         self.redo_cursors.clear();
         self.drop_trimmed_cursors();
         self.cursor = after;
@@ -302,15 +349,15 @@ impl TabEditor {
         {
             let fret = Fret::new(value)?;
             self.undo()?;
-            return self.execute(Command::SetFret { at, string, fret }, self.cursor);
+            return self.execute(Command::SetFret { at, string, fret }, self.cursor, false);
         }
         let fret = Fret::new(digit)?;
         if self.editor.song().beat(at).is_none() && self.cursor.beat.get() == 0 {
             // A measure without beats (an empty GP7 bar): the note's beat comes first.
             let duration = self.entry_value;
-            self.execute(Command::InsertBeat { at, duration }, self.cursor)?;
+            self.execute(Command::InsertBeat { at, duration }, self.cursor, false)?;
         }
-        let outcome = self.execute(Command::SetFret { at, string, fret }, self.cursor)?;
+        let outcome = self.execute(Command::SetFret { at, string, fret }, self.cursor, false)?;
         self.pending = Some(PendingDigit {
             cursor: self.cursor,
             value: digit,
@@ -349,7 +396,7 @@ impl TabEditor {
                 beat: BeatIndex::new(beats),
                 ..self.cursor
             };
-            return self.execute(Command::InsertBeat { at, duration }, after);
+            return self.execute(Command::InsertBeat { at, duration }, after, false);
         }
         if self.cursor.in_last_measure(song) {
             let measure = MeasureIndex::new(song.measure_count());
@@ -358,7 +405,7 @@ impl TabEditor {
                 beat: BeatIndex::new(0),
                 ..self.cursor
             };
-            return self.execute(Command::InsertMeasure { measure }, after);
+            return self.execute(Command::InsertMeasure { measure }, after, false);
         }
         self.cursor.right(song);
         Ok(Outcome::Moved)
@@ -414,7 +461,7 @@ impl TabEditor {
         else {
             return Ok(Outcome::Nothing);
         };
-        let outcome = self.execute(Command::SetDuration { at, duration }, self.cursor)?;
+        let outcome = self.execute(Command::SetDuration { at, duration }, self.cursor, false)?;
         self.entry_value = duration;
         Ok(outcome)
     }

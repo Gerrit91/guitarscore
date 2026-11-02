@@ -72,6 +72,79 @@ fn parses_every_command_and_fills_defaults() {
                 measure: MeasureIndex::new(3),
             },
         ),
+        (
+            "insert_track",
+            Command::InsertTrack {
+                at: TrackIndex::new(0),
+            },
+        ),
+        (
+            "insert_track track=3",
+            Command::InsertTrack {
+                at: TrackIndex::new(2),
+            },
+        ),
+        (
+            "delete_track track=2",
+            Command::DeleteTrack {
+                track: TrackIndex::new(1),
+            },
+        ),
+        (
+            "duplicate_track",
+            Command::DuplicateTrack {
+                track: TrackIndex::new(0),
+            },
+        ),
+        (
+            "move_track from=1 to=3",
+            Command::MoveTrack {
+                from: TrackIndex::new(0),
+                to: TrackIndex::new(2),
+            },
+        ),
+        (
+            "rename_track track=2 name=Lead",
+            Command::RenameTrack {
+                track: TrackIndex::new(1),
+                name: "Lead".to_owned(),
+            },
+        ),
+        (
+            "set_track_color track=2 color=0x00ff00",
+            Command::SetTrackColor {
+                track: TrackIndex::new(1),
+                color: gscore_model::TrackColor::new(0x00FF00),
+            },
+        ),
+        (
+            "set_track_volume track=2 volume=30",
+            Command::SetTrackVolume {
+                track: TrackIndex::new(1),
+                volume: 30,
+            },
+        ),
+        (
+            "set_track_pan pan=64",
+            Command::SetTrackPan {
+                track: TrackIndex::new(0),
+                pan: 64,
+            },
+        ),
+        (
+            "set_track_mute track=2 mute=true",
+            Command::SetTrackMute {
+                track: TrackIndex::new(1),
+                mute: true,
+            },
+        ),
+        (
+            "set_track_solo solo=yes",
+            Command::SetTrackSolo {
+                track: TrackIndex::new(0),
+                solo: true,
+            },
+        ),
         ("undo", Command::Undo),
         ("redo", Command::Redo),
     ];
@@ -121,6 +194,13 @@ fn bad_lines_are_errors_with_useful_messages() {
             "key=value",
         ),
         ("set_fret measure=1 beat=1 string=1 fret=", "key=value"),
+        ("move_track from=1", "missing parameter"),
+        ("rename_track track=1", "missing parameter"),
+        ("set_track_volume volume=128", "0 to 127"),
+        ("set_track_pan pan=abc", "0 to 127"),
+        ("set_track_mute mute=maybe", "true or false"),
+        ("set_track_color color=zzz", "rrggbb"),
+        ("set_track_color color=1000000", "rrggbb"),
     ];
     for (line, expected) in cases {
         let error = parse_line(line).unwrap_err().to_string();
@@ -166,6 +246,41 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
         Command::Undo,
         Command::Redo,
     ];
+    let track = TrackIndex::new(2);
+    commands.extend([
+        Command::InsertTrack { at: track },
+        Command::DeleteTrack { track },
+        Command::DuplicateTrack { track },
+        Command::MoveTrack {
+            from: TrackIndex::new(0),
+            to: TrackIndex::new(5),
+        },
+        Command::SetTrackColor {
+            track,
+            color: gscore_model::TrackColor::new(0x00_0a_bc),
+        },
+        Command::SetTrackVolume { track, volume: 127 },
+        Command::SetTrackPan { track, pan: 0 },
+        Command::SetTrackMute { track, mute: true },
+        Command::SetTrackSolo { track, solo: false },
+    ]);
+    // Names a plain command line could not hold: empty, spaces, the comment sign, `=`,
+    // `%`, line breaks, non-ASCII, and what looks like the encoding's own marker.
+    for name in [
+        "",
+        "Lead guitar #2",
+        "a=b c",
+        "100% fuzz",
+        "two\nlines\ttab",
+        "Gitarre – Ü 🎸",
+        "%%41",
+        "plain",
+    ] {
+        commands.push(Command::RenameTrack {
+            track,
+            name: name.to_owned(),
+        });
+    }
     for text in durations {
         let duration: NoteValue = text.parse().unwrap();
         commands.push(Command::SetDuration {
@@ -187,6 +302,32 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
     }
     for command in commands {
         let line = command.to_line();
-        assert_eq!(parse_line(&line).unwrap(), Some(command), "{line}");
+        assert!(!line.contains('\n'), "one line: {line}");
+        assert_eq!(parse_line(&line).unwrap(), Some(command.clone()), "{line}");
+        // A recorded entry keeps whether it was merged into the step before.
+        for merged in [false, true] {
+            let entry = crate::Recorded {
+                command: command.clone(),
+                merged,
+            };
+            assert_eq!(
+                crate::Recorded::parse(&entry.to_line()).unwrap(),
+                Some(entry),
+                "{line}"
+            );
+        }
     }
+    // Hand-written names stay as written; a broken escape is an error, not a guess.
+    assert_eq!(
+        parse_line("rename_track name=Bass%20VI").unwrap(),
+        Some(Command::RenameTrack {
+            track: TrackIndex::new(0),
+            name: "Bass%20VI".to_owned()
+        })
+    );
+    assert!(
+        parse_line("rename_track name=%%%4").is_err(),
+        "an incomplete escape"
+    );
+    assert!(parse_line("rename_track name=%%%FF").is_err(), "not UTF-8");
 }

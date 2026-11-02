@@ -13,10 +13,10 @@ mod state;
 mod tasks;
 
 pub use app::GuitarScoreApp;
-pub use document::Document;
+pub use document::{Document, GridData};
 pub use gscore_edit::Keymap;
 pub use playback::{Output, Playback};
-pub use state::{ThemeChoice, ViewState, ZOOM_RANGE};
+pub use state::{MeasureSelection, ThemeChoice, ViewState, ZOOM_RANGE};
 
 // The snapshot test and example render the app offscreen and save PNGs; this marks the
 // test-only dependencies for the library test target's unused-dependency check.

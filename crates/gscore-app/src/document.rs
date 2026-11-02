@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use gscore_edit::TabEditor;
 use gscore_layout::{Fonts, Layout, LayoutCache, LayoutOptions};
-use gscore_model::{Song, TrackIndex};
+use gscore_model::{MeasureIndex, Repeat, Section, Song, TrackIndex};
 use gscore_session::{FileFormat, Journal};
 
 /// One track's layout: the revision and options it shows, and the measure cache that
@@ -17,6 +17,18 @@ use gscore_session::{FileFormat, Journal};
 struct TrackLayout {
     shown: Option<(u64, LayoutOptions, Result<Arc<Layout>, String>)>,
     cache: LayoutCache,
+}
+
+/// What the song grid shows: which measures have notes (one row per track), and the
+/// section markers and repeats above the measure columns.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GridData {
+    /// One row per track, one `true` per measure that holds notes.
+    pub cells: Vec<Vec<bool>>,
+    /// The section marker at each measure, if any.
+    pub sections: Vec<Option<Section>>,
+    /// The repeat signs at each measure.
+    pub repeats: Vec<Repeat>,
 }
 
 /// A song open in the app.
@@ -31,6 +43,8 @@ pub struct Document {
     /// Layouts by track. An edit makes them stale; the shown track is laid out again on
     /// the next frame, reusing every measure that did not change.
     layouts: HashMap<usize, TrackLayout>,
+    /// The song grid's squares and markers, with the revision they show.
+    grid: Option<(u64, Arc<GridData>)>,
     /// The recovery journal every edit is recorded in (`None` without a recovery
     /// directory, or if it could not be created).
     journal: Option<Journal>,
@@ -79,6 +93,7 @@ impl Document {
             saved_revision: editor.revision(),
             editor,
             layouts: HashMap::new(),
+            grid: None,
             journal,
             journal_reported: false,
         }
@@ -186,6 +201,47 @@ impl Document {
         } else {
             self.song().title().to_owned()
         }
+    }
+
+    /// Drops the cached track layouts. Call after an edit that changes the score or the
+    /// track order (the layout cache is keyed by track index).
+    pub fn forget_layouts(&mut self) {
+        self.layouts.clear();
+    }
+
+    /// What the song grid shows for the current revision, computed once per revision.
+    pub fn grid(&mut self) -> Arc<GridData> {
+        let revision = self.editor.revision();
+        if let Some((cached, grid)) = &self.grid
+            && *cached == revision
+        {
+            return Arc::clone(grid);
+        }
+        let song = self.editor.song();
+        let measures = song.measure_count();
+        let cells = song
+            .tracks()
+            .map(|track| {
+                (0..measures)
+                    .map(|index| {
+                        track
+                            .measure(MeasureIndex::new(index))
+                            .is_some_and(|measure| measure.has_notes())
+                    })
+                    .collect()
+            })
+            .collect();
+        let grid = Arc::new(GridData {
+            cells,
+            sections: (0..measures)
+                .map(|index| song.section(MeasureIndex::new(index)))
+                .collect(),
+            repeats: (0..measures)
+                .map(|index| song.repeat(MeasureIndex::new(index)).unwrap_or_default())
+                .collect(),
+        });
+        self.grid = Some((revision, Arc::clone(&grid)));
+        grid
     }
 
     /// The layout of `track` for the current revision. A panic inside layout is contained

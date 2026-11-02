@@ -2,12 +2,14 @@
 
 use gscore_model::{
     BeatKind, BeatPosition, BeatView, Change, Fret, MeasureIndex, ModelError, NoteValue, Song,
-    StringNumber,
+    StringNumber, TrackColor, TrackIndex,
 };
 
 use crate::info::{
-    CLEAR_NOTE, CommandInfo, DELETE_BEAT, DELETE_MEASURE, INSERT_BEAT, INSERT_MEASURE, REDO,
-    SET_DURATION, SET_FRET, UNDO,
+    CLEAR_NOTE, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_TRACK, DUPLICATE_TRACK,
+    INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO, RENAME_TRACK, SET_DURATION,
+    SET_FRET, SET_TRACK_COLOR, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_SOLO, SET_TRACK_VOLUME,
+    UNDO,
 };
 
 /// One edit, with every parameter already checked for syntax and range.
@@ -58,6 +60,70 @@ pub enum Command {
         /// The measure.
         measure: MeasureIndex,
     },
+    /// Insert a new, rest-filled track before `at` (one past the last track appends).
+    InsertTrack {
+        /// Where to insert.
+        at: TrackIndex,
+    },
+    /// Remove the track at `track`.
+    DeleteTrack {
+        /// The track.
+        track: TrackIndex,
+    },
+    /// Copy the track at `track` and insert the copy after it.
+    DuplicateTrack {
+        /// The track.
+        track: TrackIndex,
+    },
+    /// Move the track at `from` to index `to` in the resulting order.
+    MoveTrack {
+        /// The track to move.
+        from: TrackIndex,
+        /// Where it ends up.
+        to: TrackIndex,
+    },
+    /// Rename the track at `track`.
+    RenameTrack {
+        /// The track.
+        track: TrackIndex,
+        /// The new name.
+        name: String,
+    },
+    /// Set the track's color.
+    SetTrackColor {
+        /// The track.
+        track: TrackIndex,
+        /// The new color.
+        color: TrackColor,
+    },
+    /// Set the track's volume (0-127).
+    SetTrackVolume {
+        /// The track.
+        track: TrackIndex,
+        /// The volume.
+        volume: u8,
+    },
+    /// Set the track's pan (0 left, 64 middle, 127 right).
+    SetTrackPan {
+        /// The track.
+        track: TrackIndex,
+        /// The pan.
+        pan: u8,
+    },
+    /// Mute or unmute the track.
+    SetTrackMute {
+        /// The track.
+        track: TrackIndex,
+        /// Whether it is muted.
+        mute: bool,
+    },
+    /// Solo or unsolo the track.
+    SetTrackSolo {
+        /// The track.
+        track: TrackIndex,
+        /// Whether it is soloed.
+        solo: bool,
+    },
     /// Undo the last edit (handled by [`crate::Editor`]).
     Undo,
     /// Redo the last undone edit (handled by [`crate::Editor`]).
@@ -96,6 +162,32 @@ impl Command {
             Command::InsertMeasure { measure } | Command::DeleteMeasure { measure } => {
                 format!("{id} measure={}", one(measure.get()))
             }
+            Command::InsertTrack { at: track }
+            | Command::DeleteTrack { track }
+            | Command::DuplicateTrack { track } => format!("{id} track={}", one(track.get())),
+            Command::MoveTrack { from, to } => {
+                format!("{id} from={} to={}", one(from.get()), one(to.get()))
+            }
+            Command::RenameTrack { track, name } => format!(
+                "{id} track={} name={}",
+                one(track.get()),
+                crate::parse::encode_text(name)
+            ),
+            Command::SetTrackColor { track, color } => {
+                format!("{id} track={} color={:06x}", one(track.get()), color.rgb())
+            }
+            Command::SetTrackVolume { track, volume } => {
+                format!("{id} track={} volume={volume}", one(track.get()))
+            }
+            Command::SetTrackPan { track, pan } => {
+                format!("{id} track={} pan={pan}", one(track.get()))
+            }
+            Command::SetTrackMute { track, mute } => {
+                format!("{id} track={} mute={mute}", one(track.get()))
+            }
+            Command::SetTrackSolo { track, solo } => {
+                format!("{id} track={} solo={solo}", one(track.get()))
+            }
             Command::Undo | Command::Redo => id.to_owned(),
         }
     }
@@ -108,10 +200,7 @@ impl Command {
             | Command::SetDuration { at, .. }
             | Command::InsertBeat { at, .. }
             | Command::DeleteBeat { at } => Some(*at),
-            Command::InsertMeasure { .. }
-            | Command::DeleteMeasure { .. }
-            | Command::Undo
-            | Command::Redo => None,
+            _ => None,
         }
     }
 
@@ -135,6 +224,16 @@ impl Command {
             Command::DeleteBeat { .. } => &DELETE_BEAT,
             Command::InsertMeasure { .. } => &INSERT_MEASURE,
             Command::DeleteMeasure { .. } => &DELETE_MEASURE,
+            Command::InsertTrack { .. } => &INSERT_TRACK,
+            Command::DeleteTrack { .. } => &DELETE_TRACK,
+            Command::DuplicateTrack { .. } => &DUPLICATE_TRACK,
+            Command::MoveTrack { .. } => &MOVE_TRACK,
+            Command::RenameTrack { .. } => &RENAME_TRACK,
+            Command::SetTrackColor { .. } => &SET_TRACK_COLOR,
+            Command::SetTrackVolume { .. } => &SET_TRACK_VOLUME,
+            Command::SetTrackPan { .. } => &SET_TRACK_PAN,
+            Command::SetTrackMute { .. } => &SET_TRACK_MUTE,
+            Command::SetTrackSolo { .. } => &SET_TRACK_SOLO,
             Command::Undo => &UNDO,
             Command::Redo => &REDO,
         }
@@ -153,6 +252,62 @@ impl Command {
     /// True for `undo` and `redo`, which the editor handles instead of the model.
     pub fn is_history(&self) -> bool {
         matches!(self, Command::Undo | Command::Redo)
+    }
+
+    /// True for commands that add, remove, duplicate or move tracks, so every track index
+    /// (and every per-track cache keyed by one) may change.
+    pub fn changes_tracks(&self) -> bool {
+        matches!(
+            self,
+            Command::InsertTrack { .. }
+                | Command::DeleteTrack { .. }
+                | Command::DuplicateTrack { .. }
+                | Command::MoveTrack { .. }
+        )
+    }
+
+    /// True for commands that change a track's volume or pan. Playback applies these live,
+    /// without rebuilding the sequence.
+    pub fn changes_sound(&self) -> bool {
+        matches!(
+            self,
+            Command::SetTrackVolume { .. } | Command::SetTrackPan { .. }
+        )
+    }
+
+    /// True for commands that change which tracks are audible (mute, solo). Playback must
+    /// rebuild the sequence for these.
+    pub fn changes_audibility(&self) -> bool {
+        matches!(
+            self,
+            Command::SetTrackMute { .. } | Command::SetTrackSolo { .. }
+        )
+    }
+
+    /// The track a volume or pan command changes.
+    pub fn mix_track(&self) -> Option<TrackIndex> {
+        match self {
+            Command::SetTrackVolume { track, .. } | Command::SetTrackPan { track, .. } => {
+                Some(*track)
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether `self` continues `previous` in the undo history: consecutive volume or pan
+    /// changes on the same track (one slider drag) become a single undo step.
+    pub fn continues(&self, previous: &Command) -> bool {
+        match (previous, self) {
+            (
+                Command::SetTrackVolume { track: first, .. },
+                Command::SetTrackVolume { track: second, .. },
+            )
+            | (
+                Command::SetTrackPan { track: first, .. },
+                Command::SetTrackPan { track: second, .. },
+            ) => first == second,
+            _ => false,
+        }
     }
 
     /// Whether the command can run on `song` right now. A command that is not enabled fails
@@ -188,6 +343,27 @@ impl Command {
                     && song.measure_count() > 1
                     && measure.get() < song.measure_count()
             }
+            Command::InsertTrack { at } => {
+                song.track_count() < gscore_model::MAX_TRACKS && at.get() <= song.track_count()
+            }
+            Command::DeleteTrack { track } => {
+                song.track_count() > 1 && track.get() < song.track_count()
+            }
+            Command::DuplicateTrack { track } => {
+                song.track_count() < gscore_model::MAX_TRACKS && track.get() < song.track_count()
+            }
+            Command::MoveTrack { from, to } => {
+                from.get() < song.track_count() && to.get() < song.track_count() && from != to
+            }
+            Command::RenameTrack { track, name } => {
+                track.get() < song.track_count()
+                    && name.chars().count() <= gscore_model::MAX_TRACK_NAME_CHARS
+            }
+            Command::SetTrackColor { track, .. }
+            | Command::SetTrackVolume { track, .. }
+            | Command::SetTrackPan { track, .. }
+            | Command::SetTrackMute { track, .. }
+            | Command::SetTrackSolo { track, .. } => track.get() < song.track_count(),
             // The editor decides; the history stack is not part of the song.
             Command::Undo | Command::Redo => true,
         }
@@ -210,6 +386,16 @@ impl Command {
             Command::DeleteBeat { at } => song.delete_beat(*at),
             Command::InsertMeasure { measure } => song.insert_measure(*measure),
             Command::DeleteMeasure { measure } => song.delete_measure(*measure),
+            Command::InsertTrack { at } => song.insert_track(*at),
+            Command::DeleteTrack { track } => song.delete_track(*track),
+            Command::DuplicateTrack { track } => song.duplicate_track(*track),
+            Command::MoveTrack { from, to } => song.move_track(*from, *to),
+            Command::RenameTrack { track, name } => song.rename_track(*track, name),
+            Command::SetTrackColor { track, color } => song.set_track_color(*track, *color),
+            Command::SetTrackVolume { track, volume } => song.set_track_volume(*track, *volume),
+            Command::SetTrackPan { track, pan } => song.set_track_pan(*track, *pan),
+            Command::SetTrackMute { track, mute } => song.set_track_mute(*track, *mute),
+            Command::SetTrackSolo { track, solo } => song.set_track_solo(*track, *solo),
             Command::Undo | Command::Redo => Err(ModelError::Invalid(
                 "undo and redo are handled by the editor".to_owned(),
             )),
@@ -225,4 +411,46 @@ fn note_target(song: &Song, at: BeatPosition, string: StringNumber) -> Option<Be
         return None;
     }
     song.beat(at)
+}
+
+/// One entry of what changed a song, as the recovery journal records it: a command, and
+/// whether it was merged into the undo step before it (the next part of a slider drag).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Recorded {
+    /// The command (including `undo` and `redo`).
+    pub command: Command,
+    /// Whether it continued the undo step before it instead of starting its own.
+    pub merged: bool,
+}
+
+/// What a merged entry's line starts with.
+const MERGED: &str = "merge ";
+
+impl Recorded {
+    /// The entry as one line: the command's line, after `merge ` if it was merged.
+    pub fn to_line(&self) -> String {
+        if self.merged {
+            format!("{MERGED}{}", self.command.to_line())
+        } else {
+            self.command.to_line()
+        }
+    }
+
+    /// Reads a line written by [`Recorded::to_line`]. `Ok(None)` for a blank line.
+    pub fn parse(line: &str) -> Result<Option<Recorded>, crate::ParseError> {
+        let (merged, line) = match line.strip_prefix(MERGED) {
+            Some(rest) => (true, rest),
+            None => (false, line),
+        };
+        Ok(crate::parse_line(line)?.map(|command| Recorded { command, merged }))
+    }
+}
+
+impl From<Command> for Recorded {
+    fn from(command: Command) -> Self {
+        Recorded {
+            command,
+            merged: false,
+        }
+    }
 }

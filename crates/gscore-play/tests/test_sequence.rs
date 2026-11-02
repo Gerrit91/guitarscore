@@ -565,3 +565,54 @@ fn a_slide_wider_than_the_bend_range_widens_its_channel_range() {
         "the slide reaches the target pitch: {bends:?}"
     );
 }
+
+#[test]
+fn muted_tracks_do_not_play_and_solo_silences_the_rest() {
+    let notes = [TestNote::new(6, 5)];
+    let mut song = testing::song_with_notes_on_tracks(3, &[(4, &notes)]).unwrap();
+    let tracks = |sequence: &Sequence| -> Vec<TrackIndex> {
+        sequence.tracks.iter().map(|track| track.track).collect()
+    };
+
+    assert_eq!(
+        tracks(&Sequence::new(&song, None).unwrap()),
+        [TrackIndex::new(0), TrackIndex::new(1), TrackIndex::new(2)]
+    );
+    let _ = song.set_track_mute(TrackIndex::new(1), true).unwrap();
+    assert_eq!(
+        tracks(&Sequence::new(&song, None).unwrap()),
+        [TrackIndex::new(0), TrackIndex::new(2)]
+    );
+
+    let _ = song.set_track_solo(TrackIndex::new(2), true).unwrap();
+    let soloed = Sequence::new(&song, None).unwrap();
+    assert_eq!(tracks(&soloed), [TrackIndex::new(2)]);
+    assert!(
+        soloed
+            .events
+            .iter()
+            .all(|event| !matches!(event.event, MidiEvent::NoteOn { .. }) || event.track == 0),
+        "no note comes from a silenced track"
+    );
+
+    // A soloed but muted track stays silent.
+    let _ = song.set_track_mute(TrackIndex::new(2), true).unwrap();
+    assert!(Sequence::new(&song, None).unwrap().tracks.is_empty());
+}
+
+#[test]
+fn a_sequence_reports_the_channel_each_track_plays_on() {
+    let notes = [TestNote::new(6, 5)];
+    let mut song = testing::song_with_notes_on_tracks(2, &[(4, &notes)]).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    for entry in &sequence.tracks {
+        assert_eq!(sequence.channel_of(entry.track), Some(entry.channel));
+        assert_eq!(entry.channel, sequence.tracks[entry.track.get()].channel);
+    }
+    assert_eq!(sequence.channel_of(TrackIndex::new(9)), None);
+
+    let _ = song.set_track_mute(TrackIndex::new(0), true).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    assert_eq!(sequence.channel_of(TrackIndex::new(0)), None);
+    assert!(sequence.channel_of(TrackIndex::new(1)).is_some());
+}

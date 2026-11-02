@@ -168,6 +168,43 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
         "delete_measure" => Ok(Command::DeleteMeasure {
             measure: MeasureIndex::new(required_position(args, "measure")?),
         }),
+        "insert_track" => Ok(Command::InsertTrack {
+            at: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+        }),
+        "delete_track" => Ok(Command::DeleteTrack {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+        }),
+        "duplicate_track" => Ok(Command::DuplicateTrack {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+        }),
+        "move_track" => Ok(Command::MoveTrack {
+            from: TrackIndex::new(required_position(args, "from")?),
+            to: TrackIndex::new(required_position(args, "to")?),
+        }),
+        "rename_track" => Ok(Command::RenameTrack {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            name: text_arg(args, "name")?,
+        }),
+        "set_track_color" => Ok(Command::SetTrackColor {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            color: color_arg(args)?,
+        }),
+        "set_track_volume" => Ok(Command::SetTrackVolume {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            volume: midi_value_arg(args, "volume")?,
+        }),
+        "set_track_pan" => Ok(Command::SetTrackPan {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            pan: midi_value_arg(args, "pan")?,
+        }),
+        "set_track_mute" => Ok(Command::SetTrackMute {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            mute: bool_arg(args, "mute")?,
+        }),
+        "set_track_solo" => Ok(Command::SetTrackSolo {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            solo: bool_arg(args, "solo")?,
+        }),
         "undo" => Ok(Command::Undo),
         "redo" => Ok(Command::Redo),
         // Every entry in COMMANDS is handled above; a new one must be added here.
@@ -258,6 +295,88 @@ fn duration_arg(args: &mut Args) -> Result<NoteValue, ParseError> {
             "a note length such as 1/4, 1/8. or 1/16.. (optionally *3:2)",
         )
     })
+}
+
+/// A `true`/`false` parameter.
+fn bool_arg(args: &mut Args, name: &'static str) -> Result<bool, ParseError> {
+    let text = args.required(name)?;
+    match text.as_str() {
+        "true" | "yes" | "1" => Ok(true),
+        "false" | "no" | "0" => Ok(false),
+        _ => Err(bad(args.command, name, &text, "true or false")),
+    }
+}
+
+/// What starts a text written by [`encode_text`]. Percent-encoding never produces two
+/// `%` in a row, so such a value is never mistaken for a plain one.
+const ENCODED: &str = "%%";
+
+/// `text` as one command-line word that [`text_arg`] reads back exactly: `%%`, then every
+/// byte other than ASCII letters, digits, `-`, `_`, `.` and `~` as `%XX`. Never empty.
+pub(crate) fn encode_text(text: &str) -> String {
+    let mut out = String::from(ENCODED);
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            out.push(char::from(byte));
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+/// A text parameter: as written, or decoded if it was written by [`encode_text`].
+fn text_arg(args: &mut Args, name: &'static str) -> Result<String, ParseError> {
+    let text = args.required(name)?;
+    let Some(encoded) = text.strip_prefix(ENCODED) else {
+        return Ok(text);
+    };
+    let expected = "text written by GuitarScore (%XX escapes)";
+    let mut bytes = Vec::with_capacity(encoded.len());
+    let mut rest = encoded.as_bytes();
+    while let Some((&byte, after)) = rest.split_first() {
+        if byte == b'%' {
+            let digits = after
+                .get(..2)
+                .and_then(|hex| std::str::from_utf8(hex).ok())
+                .and_then(|hex| u8::from_str_radix(hex, 16).ok())
+                .ok_or_else(|| bad(args.command, name, &text, expected))?;
+            bytes.push(digits);
+            rest = after.get(2..).unwrap_or_default();
+        } else {
+            bytes.push(byte);
+            rest = after;
+        }
+    }
+    String::from_utf8(bytes).map_err(|_| bad(args.command, name, &text, expected))
+}
+
+/// A 0-127 parameter (volume, pan).
+fn midi_value_arg(args: &mut Args, name: &'static str) -> Result<u8, ParseError> {
+    let text = args.required(name)?;
+    let expected = "a whole number from 0 to 127";
+    let value: u8 = text
+        .parse()
+        .map_err(|_| bad(args.command, name, &text, expected))?;
+    if value > 127 {
+        return Err(bad(args.command, name, &text, expected));
+    }
+    Ok(value)
+}
+
+/// A `rrggbb` color, optionally written as `0xrrggbb`.
+fn color_arg(args: &mut Args) -> Result<gscore_model::TrackColor, ParseError> {
+    let text = args.required("color")?;
+    let expected = "a color as rrggbb in hexadecimal";
+    let hex = text
+        .strip_prefix("0x")
+        .or_else(|| text.strip_prefix("0X"))
+        .unwrap_or(&text);
+    let rgb = u32::from_str_radix(hex, 16)
+        .ok()
+        .filter(|rgb| *rgb <= 0x00FF_FFFF)
+        .ok_or_else(|| bad(args.command, "color", &text, expected))?;
+    Ok(gscore_model::TrackColor::new(rgb))
 }
 
 /// A bad-value error for `command`.

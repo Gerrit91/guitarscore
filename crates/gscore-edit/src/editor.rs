@@ -26,6 +26,9 @@ pub struct Editor {
     /// The most the undo history may take, and what it takes now (estimated bytes).
     history_bytes_limit: usize,
     history_bytes: usize,
+    /// Set by [`Editor::break_merge`]: the next command starts a new undo entry even if it
+    /// would otherwise continue the previous one.
+    merge_barrier: bool,
 }
 
 /// One applied command and the change that undoes it.
@@ -89,6 +92,7 @@ impl Editor {
             history_limit,
             history_bytes_limit: DEFAULT_HISTORY_BYTES,
             history_bytes: 0,
+            merge_barrier: false,
         }
     }
 
@@ -130,25 +134,50 @@ impl Editor {
         self.undo.len()
     }
 
+    /// Marks the end of a slider drag: the next command starts a new undo entry, even if it
+    /// changes the same volume or pan again.
+    pub fn break_merge(&mut self) {
+        self.merge_barrier = true;
+    }
+
     /// Applies `command`, or handles `undo`/`redo`. A failed command changes nothing and is
     /// not added to the history.
     pub fn execute(&mut self, command: Command) -> Result<(), EditError> {
+        self.execute_with_merge(command, false).map(|_| ())
+    }
+
+    /// Like [`Editor::execute`]; with `merge`, a volume or pan command continues the one
+    /// before it as one undo step (a slider drag sends many changes). Callers pass `merge`
+    /// only while the same drag is in progress, so separate drags stay separate steps.
+    /// Returns whether the command was merged into the step before.
+    pub fn execute_with_merge(&mut self, command: Command, merge: bool) -> Result<bool, EditError> {
         match command {
-            Command::Undo => self.undo(),
-            Command::Redo => self.redo(),
+            Command::Undo => self.undo().map(|_| false),
+            Command::Redo => self.redo().map(|_| false),
             command => {
                 #[cfg(any(test, feature = "test-support"))]
                 crate::testing::maybe_panic();
                 let change = command.apply(&mut self.song)?;
                 self.redo.clear();
+                let merge = merge && !std::mem::take(&mut self.merge_barrier);
+                if merge
+                    && let Some(last) = self.undo.back_mut()
+                    && last.command.continues(&command)
+                {
+                    // One slider drag: keep the change from before it, so undo goes back to
+                    // the value the drag started from, and keep only the latest command.
+                    last.command = command;
+                    return Ok(true);
+                }
                 self.push_undo(Applied { command, change });
-                Ok(())
+                Ok(false)
             }
         }
     }
 
-    /// Undoes the last applied edit. The edit can be redone afterwards.
-    pub fn undo(&mut self) -> Result<(), EditError> {
+    /// Undoes the last applied edit and returns its command. The edit can be redone
+    /// afterwards.
+    pub fn undo(&mut self) -> Result<Option<Command>, EditError> {
         let applied = self.undo.pop_back().ok_or(EditError::NothingToUndo)?;
         if let Err(error) = applied.command.undo(&mut self.song, &applied.change) {
             // Keep the entry: the song was not changed, so the history is still consistent.
@@ -158,17 +187,22 @@ impl Editor {
         self.history_bytes = self
             .history_bytes
             .saturating_sub(applied.change.size_estimate());
-        self.redo.push(applied.command);
-        Ok(())
+        let command = applied.command;
+        self.redo.push(command.clone());
+        Ok(Some(command))
     }
 
-    /// Re-applies the last undone edit. A new edit clears the redo stack.
-    pub fn redo(&mut self) -> Result<(), EditError> {
+    /// Re-applies the last undone edit and returns its command. A new edit clears the redo
+    /// stack.
+    pub fn redo(&mut self) -> Result<Option<Command>, EditError> {
         let command = self.redo.pop().ok_or(EditError::NothingToRedo)?;
         match command.apply(&mut self.song) {
             Ok(change) => {
-                self.push_undo(Applied { command, change });
-                Ok(())
+                self.push_undo(Applied {
+                    command: command.clone(),
+                    change,
+                });
+                Ok(Some(command))
             }
             Err(error) => {
                 // Put it back: the song is unchanged, so it can still be redone.

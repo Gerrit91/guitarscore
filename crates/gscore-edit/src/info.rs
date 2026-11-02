@@ -77,6 +77,62 @@ const DURATION: ParamInfo = ParamInfo {
     help: "Note length: 1/4, 1/8., 1/16.., optionally *3:2 for a tuplet",
 };
 
+const NAME: ParamInfo = ParamInfo {
+    name: "name",
+    required: true,
+    default: None,
+    help: "Text without spaces (the command line has no quoting)",
+};
+
+const FROM: ParamInfo = ParamInfo {
+    name: "from",
+    required: true,
+    default: None,
+    help: "Track to move, 1-based",
+};
+
+const TO: ParamInfo = ParamInfo {
+    name: "to",
+    required: true,
+    default: None,
+    help: "Where it ends up, 1-based",
+};
+
+const VOLUME: ParamInfo = ParamInfo {
+    name: "volume",
+    required: true,
+    default: None,
+    help: "Volume, 0 to 127",
+};
+
+const PAN: ParamInfo = ParamInfo {
+    name: "pan",
+    required: true,
+    default: None,
+    help: "Pan, 0 (left) to 127 (right), 64 is the middle",
+};
+
+const MUTE: ParamInfo = ParamInfo {
+    name: "mute",
+    required: true,
+    default: None,
+    help: "true or false",
+};
+
+const SOLO: ParamInfo = ParamInfo {
+    name: "solo",
+    required: true,
+    default: None,
+    help: "true or false",
+};
+
+const COLOR: ParamInfo = ParamInfo {
+    name: "color",
+    required: true,
+    default: None,
+    help: "Color as rrggbb in hexadecimal",
+};
+
 pub(crate) const SET_FRET: CommandInfo = CommandInfo {
     id: "set_fret",
     aliases: &["enter_fret"],
@@ -136,6 +192,87 @@ pub(crate) const DELETE_MEASURE: CommandInfo = CommandInfo {
     params: &[MEASURE],
 };
 
+pub(crate) const INSERT_TRACK: CommandInfo = CommandInfo {
+    id: "insert_track",
+    aliases: &[],
+    label: "Insert a track",
+    help: "Inserts a new, rest-filled track before the given one; one past the last track \
+           appends.",
+    params: &[TRACK],
+};
+
+pub(crate) const DELETE_TRACK: CommandInfo = CommandInfo {
+    id: "delete_track",
+    aliases: &[],
+    label: "Delete a track",
+    help: "Removes a track. The last remaining track cannot be deleted.",
+    params: &[TRACK],
+};
+
+pub(crate) const DUPLICATE_TRACK: CommandInfo = CommandInfo {
+    id: "duplicate_track",
+    aliases: &[],
+    label: "Duplicate a track",
+    help: "Copies a track (notes, tuning, color and sound) directly after it.",
+    params: &[TRACK],
+};
+
+pub(crate) const MOVE_TRACK: CommandInfo = CommandInfo {
+    id: "move_track",
+    aliases: &[],
+    label: "Move a track",
+    help: "Moves a track to another position; `to` is its final 1-based position.",
+    params: &[FROM, TO],
+};
+
+pub(crate) const RENAME_TRACK: CommandInfo = CommandInfo {
+    id: "rename_track",
+    aliases: &[],
+    label: "Rename a track",
+    help: "Gives a track a new name. The command line cannot pass spaces.",
+    params: &[TRACK, NAME],
+};
+
+pub(crate) const SET_TRACK_COLOR: CommandInfo = CommandInfo {
+    id: "set_track_color",
+    aliases: &[],
+    label: "Set the track color",
+    help: "Sets the color a track is shown in, as 24-bit rrggbb.",
+    params: &[TRACK, COLOR],
+};
+
+pub(crate) const SET_TRACK_VOLUME: CommandInfo = CommandInfo {
+    id: "set_track_volume",
+    aliases: &[],
+    label: "Set the track volume",
+    help: "Sets a track's volume; other tracks keep theirs even if they shared a channel.",
+    params: &[TRACK, VOLUME],
+};
+
+pub(crate) const SET_TRACK_PAN: CommandInfo = CommandInfo {
+    id: "set_track_pan",
+    aliases: &[],
+    label: "Set the track pan",
+    help: "Sets a track's pan: 0 is left, 64 the middle and 127 right.",
+    params: &[TRACK, PAN],
+};
+
+pub(crate) const SET_TRACK_MUTE: CommandInfo = CommandInfo {
+    id: "set_track_mute",
+    aliases: &[],
+    label: "Mute or unmute a track",
+    help: "A muted track does not play.",
+    params: &[TRACK, MUTE],
+};
+
+pub(crate) const SET_TRACK_SOLO: CommandInfo = CommandInfo {
+    id: "set_track_solo",
+    aliases: &[],
+    label: "Solo or unsolo a track",
+    help: "While any track is soloed, only soloed tracks play.",
+    params: &[TRACK, SOLO],
+};
+
 pub(crate) const UNDO: CommandInfo = CommandInfo {
     id: "undo",
     aliases: &[],
@@ -161,6 +298,16 @@ pub const COMMANDS: &[CommandInfo] = &[
     DELETE_BEAT,
     INSERT_MEASURE,
     DELETE_MEASURE,
+    INSERT_TRACK,
+    DELETE_TRACK,
+    DUPLICATE_TRACK,
+    MOVE_TRACK,
+    RENAME_TRACK,
+    SET_TRACK_COLOR,
+    SET_TRACK_VOLUME,
+    SET_TRACK_PAN,
+    SET_TRACK_MUTE,
+    SET_TRACK_SOLO,
     UNDO,
     REDO,
 ];

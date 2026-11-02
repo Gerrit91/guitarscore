@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig};
-use gscore_play::{PlayError, PlayState, Player, Sequence};
+use gscore_play::{MidiEvent, PlayError, PlayState, Player, Sequence};
 
 use crate::synth::{SoundBank, SynthEngine};
 use crate::transport::Command;
@@ -168,6 +168,14 @@ impl Player for SynthPlayer {
 
     fn set_tempo_scale(&mut self, scale: f32) -> Result<(), PlayError> {
         self.send(Command::TempoScale(scale))
+    }
+
+    fn send_event(&mut self, event: MidiEvent) -> Result<(), PlayError> {
+        self.send(Command::Send(event))
+    }
+
+    fn replace(&mut self, sequence: Arc<Sequence>) -> Result<(), PlayError> {
+        self.send(Command::Replace(sequence))
     }
 
     fn position(&self) -> u64 {

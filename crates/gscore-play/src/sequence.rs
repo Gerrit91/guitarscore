@@ -90,6 +90,15 @@ pub struct Sequence {
 }
 
 impl Sequence {
+    /// The channel `track` plays on in this sequence, or `None` if it does not play (it is
+    /// muted, not soloed, or not part of the song).
+    pub fn channel_of(&self, track: TrackIndex) -> Option<Channel> {
+        self.tracks
+            .iter()
+            .find(|entry| entry.track == track)
+            .map(|entry| entry.channel)
+    }
+
     /// The sequence of `tracks` of `song` (all tracks if `None`).
     pub fn new(song: &Song, tracks: Option<&[TrackIndex]>) -> Result<Self, ModelError> {
         let order = playback_order(song);
@@ -126,6 +135,16 @@ impl Sequence {
             Some(tracks) => tracks.to_vec(),
             None => (0..song.track_count()).map(TrackIndex::new).collect(),
         };
+        // Muted tracks do not play; with any soloed track, only soloed tracks play.
+        let soloed = song.any_soloed();
+        let selected: Vec<TrackIndex> = selected
+            .into_iter()
+            .filter(|&track| match song.track(track) {
+                // A track that does not exist is reported by the loop below.
+                None => true,
+                Some(view) => !view.is_muted() && (!soloed || view.is_soloed()),
+            })
+            .collect();
         let mut channels = ChannelAllocator::default();
         let mut seq_tracks = Vec::with_capacity(selected.len());
         let mut events = Vec::new();

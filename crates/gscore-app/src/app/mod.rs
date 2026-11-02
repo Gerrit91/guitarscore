@@ -8,6 +8,7 @@
 mod bars;
 mod editing;
 mod files;
+mod grid;
 mod page;
 mod recovery;
 
@@ -25,6 +26,7 @@ use crate::state::{ThemeChoice, ViewState};
 use crate::tasks::Tasks;
 
 pub(crate) use files::Then;
+use grid::RenameTrack;
 
 /// The GuitarScore application.
 #[derive(Debug)]
@@ -51,6 +53,8 @@ pub struct GuitarScoreApp {
     after_save: Option<Then>,
     /// Unsaved changes were dealt with: the window may close.
     may_close: bool,
+    /// The track being renamed, while the rename window is open.
+    renaming: Option<RenameTrack>,
     /// The cursor and revision the view last scrolled to, to scroll only on a change.
     shown_cursor: Option<(Cursor, u64)>,
     /// Where documents' recovery journals go; `None` keeps no journal.
@@ -98,6 +102,7 @@ impl GuitarScoreApp {
             dialog: None,
             after_save: None,
             may_close: false,
+            renaming: None,
             shown_cursor: None,
             recovery_dir,
             recovery_searched: false,
@@ -206,6 +211,13 @@ impl eframe::App for GuitarScoreApp {
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
         egui::Panel::top("toolbar").show(ui, |ui| self.toolbar(ui));
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
+        if self.view.show_track_grid && self.document.is_some() {
+            egui::Panel::bottom("track_grid")
+                .resizable(true)
+                .min_size(80.0)
+                .default_size(150.0)
+                .show(ui, |ui| self.track_grid(ui));
+        }
         if self.notice.is_some() {
             egui::Panel::top("notice").show(ui, |ui| self.notice_bar(ui));
         }
@@ -219,6 +231,7 @@ impl eframe::App for GuitarScoreApp {
             }
         });
         self.show_dialog(&ctx);
+        self.show_rename_window(&ctx);
         // Every edit of this frame goes to the recovery journal.
         if let Some(document) = &mut self.document
             && let Some(error) = document.record_changes()

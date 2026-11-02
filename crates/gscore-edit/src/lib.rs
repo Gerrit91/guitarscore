@@ -28,7 +28,7 @@ mod tab_editor;
 pub mod testing;
 
 pub use action::{ACTIONS, Action, ActionId, ActionInfo};
-pub use command::Command;
+pub use command::{Command, Recorded};
 pub use cursor::Cursor;
 pub use editor::{DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_LIMIT, EditError, Editor};
 pub use info::{COMMANDS, CommandInfo, ParamInfo, find_command};

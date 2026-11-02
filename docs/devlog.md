@@ -783,6 +783,109 @@ across beats, harmonic diamonds, notation-staff articulations.
   `gscore-io`). Opening times unchanged (`cargo xtask bench`). Tests: 346 (+8).
 - Open (docs/gaps.md #1): rustdoc on the inherited public model fields.
 
+## 2026-11-02 — M13: track and song grid (bottom panel)
+
+- `gscore-model`: track edits with undo, one module (`edit/tracks.rs`):
+  `insert_track` (rest-filled measures matching every header, tuning and instrument from
+  the track before), `delete_track` (never the last one), `duplicate_track` (notes and
+  sound, a unique name), `move_track` (final index), `rename_track`, `set_track_color`,
+  `set_track_volume`, `set_track_pan`, `set_track_mute`, `set_track_solo`. A mixer value
+  on a channel shared by several tracks clones the channel for that track first, so one
+  slider does not move another track; undo restores the channel table too. Track edits
+  leave measure stamps alone: a layout is per track, and the app's per-track cache is keyed
+  by track index, so moving or renumbering clears the affected entry. Read-only
+  additions: `TrackView::color/is_muted/is_soloed`, `MeasureView::has_notes`,
+  `Song::section/any_soloed`, `TrackColor` and `Section`, and `settings_differences` (what a
+  save may not keep: color, mute, solo, volume, pan; the command tests use it, the save
+  path still compares only the musical content, docs/gaps.md #11).
+- `gscore-play`: muted tracks are skipped, and while any track is soloed only soloed
+  tracks play (an explicitly requested missing track is still an error).
+- `gscore-edit`: ten commands (`insert_track`, `delete_track`, `duplicate_track`,
+  `move_track`, `rename_track`, `set_track_color`, `set_track_volume`, `set_track_pan`,
+  `set_track_mute`, `set_track_solo`), parsed from command lines, in `COMMANDS`, with
+  `changes_tracks`/`changes_mix` for the app; `TabEditor::execute_command` runs one at the
+  cursor. `Editor` merges consecutive volume or pan commands on the same track into one
+  undo step, so dragging a slider is one undo. The shared apply-then-undo helper now
+  compares `settings_differences` too.
+- App (bottom panel, `app/grid/`): a track column (color, three-letter instrument tag,
+  clipped name, M/S buttons, volume slider, pan knob; all keyboard/assistive-technology
+  reachable) and a measure matrix (13 px per measure, measure numbers, section markers
+  with their color, repeat signs with counts, alternative-ending numbers, a colored
+  square where a track has notes, the playing measure and the edit cursor highlighted).
+  Click moves the cursor to that track and measure; drag selects a measure range;
+  Shift-click extends it. Right-click a track: add below, delete, duplicate, rename
+  (window), move up/down. Every action goes through `gscore-edit`. The panel can be
+  hidden from View › Track grid. The grid data (squares, sections, repeats) is cached per
+  editor revision.
+- Playback: `Playback::mix_changed` rebuilds the sequence and, while playing or paused,
+  reloads it at the same tick, so volume, pan, mute and solo are heard at once.
+- Tests: model track edits and undo, shared channels, sections and note squares; both
+  command tests; `panic_hunt` (new commands run through it); parser cases; mute/solo in
+  the sequencer; app tests for mute/solo/volume, a grid click moving the cursor and
+  selecting a measure, and the row menu (duplicate, rename, delete). App snapshots
+  regenerated (the grid is now in the frame; owner review needed). Tests: 365 in the merged tree (19 new; the merged base had 346).
+- Still open (docs/gaps.md #11, #12): GP7 mixer persistence, the M15 track panel, and the
+  selected measure range is not used by copy/paste or looping yet.
+- Merge notes for the other agents:
+  - M10 (merged before this entry was committed): track edits are in
+    `gscore-model/src/edit/tracks.rs`. Adding, deleting, duplicating or moving a track uses
+    the new `Song::edit_tracks`, which renews every measure stamp (a measure's layout
+    includes all tracks); renaming, color and the mixer values use
+    `Song::edit_track_settings` and leave stamps alone. `Document::forget_layouts` empties
+    the per-track layout map after a structural track command so no entry stays under an
+    old track index.
+  - M12: the bottom panel is `app/grid/mod.rs` + `app/grid/matrix.rs`, shown with
+    `Panel::bottom("track_grid")`, toggled by `ViewState::show_track_grid` and shown before
+    the status bar. The M12 panel framework should take this over (visibility and size
+    remembered, View menu) instead of adding a second bottom-panel mechanism.
+
+## 2026-11-02 — M13 review fixes
+
+- **Mixer settings survive a save.** The GP7 writer now stores what the GPIF format
+  actually uses: `<PlaybackState>Solo|Mute|Default</PlaybackState>` for mute and solo,
+  the RSE channel-strip `<Parameters>` (index 11 is the balance, index 12 the volume, as
+  alphaTab's GPIF importer reads them) for volume and pan, and `<MidiConnection>` for the
+  track's port and channels. The program is written from `midi_program_gpif` or, for
+  songs from GP3-5, from the channel table. The reader reads all of these (preferring
+  `<GeneralMidi>` for channels, as GP6 does), fills the channel table for GP7 files, and
+  maps the RSE floats back to 0-127. `gscore-session` now counts
+  `settings_differences` (color, mute, solo, program, volume, pan) as save losses, so
+  anything a format cannot keep asks first instead of disappearing. Test: change volume,
+  pan, mute, color and then solo on `steel_guitar_dadgad.gp`, save, reopen and compare
+  every value; the existing three-file save test compares settings too.
+- **Undo of a mixer change no longer breaks the channel.** When a shared channel was
+  cloned for one track, the undo data recorded the clone as the previous channel and then
+  removed it, leaving the track on a missing index. It now records the channel the track
+  came from. The test uses a real 64-channel table (volume 90, pan 30) so the old bug is
+  caught (it fell back to 104).
+- **Live volume and pan.** `Player::send_event` sends one MIDI message through both
+  backends (`gscore-audio`'s transport handles `Command::Send`), and
+  `Playback::send_track_mix` sends CC 7/10 to the track's channel from the playing
+  sequence. A slider no longer rebuilds the sequence or stops the player, so sounding
+  notes continue; seeking re-sends the current mixer values because the sequence's setup
+  holds the values from when it was built. Mute and solo still rebuild (they change which
+  tracks play). The synth app test moves the volume slider while playing, checks that the
+  position keeps advancing, and undoes it through the Edit menu without stopping.
+- **Undo is live too.** `TabEditor::last_command` (set by edits, undo and redo) and
+  `EditEffect` in the app choose between a direct mixer message, a sequence rebuild
+  (mute/solo) and a full stop; Ctrl+Z of a volume change no longer stops playback.
+- **Undo merging only within one drag.** `Editor::execute_with_merge` merges a volume or
+  pan change only when the caller says the drag is still in progress; the grid passes that
+  for a slider's `dragged` frames and not for a press or click, so two separate drags are
+  two undo steps.
+- **Stamp noise gone:** track edits no longer renew every measure stamp. A layout is per
+  track, and the app's per-track layout map is keyed by track index (and dropped for
+  structural track commands and their undo/redo), so only the affected track is laid out
+  again. The model test checks that a rename and a move leave the stamps unchanged.
+- **The grid paints only what is visible:** the measure and row ranges come from the
+  scroll area's clip rect, so a long song no longer repaints every measure each frame.
+- **Splits:** `gscore-model/src/edit/tracks/` (`mod.rs` 367 lines, `new_track.rs` 86) and
+  `gscore-app/src/app/grid/` (`mod.rs` 193, `rows.rs` 298, `matrix.rs` 314, `mixer.rs`
+  73); every file is under 400 lines.
+- Tests: 369 (+4; save settings round trip, live transport message, sequence channel
+  lookup and separate slider drags) plus the extended synth app test.
+- Still open: the track panel (M15), and using the selected measure range (M14/M18).
+
 ## 2026-11-02 — M11: recovery journal and crash recovery
 
 - `gscore-edit`: `Command::to_line` (the exact inverse of `parse_line`; exhaustive, so new
@@ -828,3 +931,20 @@ Landed:
   `alsa-sys`, which fails with "system library `alsa` was not found" on a bare Ubuntu runner.
   `pkg-config` is normally preinstalled but is listed explicitly since the build needs it.
 - Open: nothing.
+
+## 2026-11-02 — M13 final: merge with M11, live mix without stale values
+
+- Merged main (M11): the ten track commands have `Command::to_line`; track names are
+  percent-encoded after `%%`. The journal records `Recorded` entries; a slider change merged
+  into the undo step before is journaled as `merge <command>`, so replay rebuilds the same
+  undo history. `Editor::execute_with_merge` reports whether it merged.
+- Playback: a volume or pan change still goes to the player at once, and the sequence is
+  then rebuilt and swapped in at the current position (`Scheduler::replace`,
+  `Command::Replace`, `Player::replace`): no stop, no silence. Playing from the start,
+  seeking and the borrowed channels of bends and slides now use the new values (before,
+  the sequence's tick-0 setup restored the old mix). `resync_mix` is gone.
+- Tests: track commands and odd names round-trip through text; replace keeps position in
+  the scheduler and plays on without silence in the transport. Tests: 382.
+- Open: an app-level test that checks the rebuilt sequence after a slider change; files
+  over 400 lines (`gpif_import/mod.rs`, `gpif_export/mod.rs`, `model/edit/mod.rs`,
+  `tab_editor.rs`, `sequence.rs`) and a line-count check in `cargo xtask layers`.

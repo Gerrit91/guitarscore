@@ -101,6 +101,27 @@ impl Song {
         Ok(value)
     }
 
+    /// Runs `edit` on the song's tracks, for edits that add, remove, duplicate or move a
+    /// track. Measure stamps stay as they are: a layout is per track, and the track index
+    /// is part of the layout cache's key, so moving or renumbering tracks clears the
+    /// affected cache entries by itself. `edit` must check everything before it changes
+    /// anything, so an error leaves the song untouched.
+    pub(crate) fn edit_tracks<T>(
+        &mut self,
+        edit: impl FnOnce(&mut gscore_gp::Song) -> Result<T, ModelError>,
+    ) -> Result<T, ModelError> {
+        edit(&mut self.inner)
+    }
+
+    /// Runs `edit` on the song's tracks for settings that do not change any measure's
+    /// layout (name, color, mute, solo, volume, pan). `edit` must check everything first.
+    pub(crate) fn edit_track_settings<T>(
+        &mut self,
+        edit: impl FnOnce(&mut gscore_gp::Song) -> Result<T, ModelError>,
+    ) -> Result<T, ModelError> {
+        edit(&mut self.inner)
+    }
+
     /// The title (may be empty, may be any Unicode text).
     pub fn title(&self) -> &str {
         &self.inner.name
@@ -182,6 +203,26 @@ impl Song {
             .tracks
             .get(index.get())
             .map(|t| TrackView::new(index, t))
+    }
+
+    /// The section marker at the start of `measure`, or `None` if there is none. Markers
+    /// are stored with the measure headers, so every track shares them.
+    pub fn section(&self, measure: MeasureIndex) -> Option<crate::style::Section> {
+        let marker = self
+            .inner
+            .measure_headers
+            .get(measure.get())?
+            .marker
+            .as_ref()?;
+        Some(crate::style::Section {
+            title: marker.title.clone(),
+            color: crate::style::TrackColor::from_gp(marker.color),
+        })
+    }
+
+    /// Whether any track is soloed. Then only the soloed tracks play.
+    pub fn any_soloed(&self) -> bool {
+        self.inner.tracks.iter().any(|track| track.solo)
     }
 
     /// The beat at `position`, or `None` if any part of it is out of range.

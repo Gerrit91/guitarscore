@@ -13,16 +13,21 @@
 mod beats;
 pub(crate) mod measures;
 mod notes;
+mod tracks;
+
+pub use tracks::{MAX_TRACK_NAME_CHARS, MAX_TRACKS};
 
 use gscore_gp::{
     Beat as GpBeat, BeatStatus, Duration as GpDuration, Measure as GpMeasure,
-    MeasureHeader as GpMeasureHeader, Note as GpNote, Voice as GpVoice,
+    MeasureHeader as GpMeasureHeader, MidiChannel as GpMidiChannel, Note as GpNote, Song as GpSong,
+    Track as GpTrack, Voice as GpVoice,
 };
 
 use crate::duration::NoteValue;
 use crate::error::ModelError;
-use crate::position::{BeatPosition, Fret, MeasureIndex, StringNumber};
+use crate::position::{BeatPosition, Fret, MeasureIndex, StringNumber, TrackIndex};
 use crate::song::Song;
+use tracks::MixFlag;
 
 /// An applied edit, kept so it can be undone with [`Song::revert`].
 #[must_use = "keep the change to undo the edit"]
@@ -69,6 +74,36 @@ enum ChangeKind {
         header: Box<GpMeasureHeader>,
         measures: Vec<GpMeasure>,
     },
+    /// A track was inserted at `at`; `channel` is the MIDI channel appended for it.
+    TrackInserted {
+        at: TrackIndex,
+        channel: Option<usize>,
+    },
+    /// The track at `at` was removed.
+    TrackRemoved { at: TrackIndex, track: Box<GpTrack> },
+    /// The track at `from` moved to `to`.
+    TrackMoved { from: TrackIndex, to: TrackIndex },
+    /// A track's name changed.
+    TrackRenamed { at: TrackIndex, previous: String },
+    /// A track's color changed.
+    TrackColor { at: TrackIndex, previous: i32 },
+    /// A track's mute or solo flag changed.
+    TrackFlag {
+        at: TrackIndex,
+        flag: MixFlag,
+        previous: bool,
+    },
+    /// A track's volume or pan changed. `previous_channel` is the channel the track used
+    /// before; `added` is the channel appended for it when it had to stop sharing one.
+    TrackMix {
+        at: TrackIndex,
+        previous_channel: usize,
+        previous: GpMidiChannel,
+        added: Option<usize>,
+        /// How many channels the song had before; undo trims any channel (and padding)
+        /// this edit appended.
+        previous_channel_count: usize,
+    },
 }
 
 impl Change {
@@ -89,6 +124,13 @@ impl Change {
             ChangeKind::MeasureRemoved { measures, .. } => {
                 size_of::<GpMeasureHeader>().saturating_add(measures.iter().map(measure_size).sum())
             }
+            ChangeKind::TrackRenamed { previous, .. } => previous.len(),
+            ChangeKind::TrackRemoved { track, .. } => track_size(track),
+            ChangeKind::TrackInserted { .. }
+            | ChangeKind::TrackMoved { .. }
+            | ChangeKind::TrackColor { .. }
+            | ChangeKind::TrackFlag { .. }
+            | ChangeKind::TrackMix { .. } => 0,
         };
         base.saturating_add(extra)
     }
@@ -97,6 +139,13 @@ impl Change {
 /// About how many bytes a beat and its notes take.
 fn beat_size(beat: &GpBeat) -> usize {
     size_of::<GpBeat>().saturating_add(beat.notes.len().saturating_mul(size_of::<GpNote>()))
+}
+
+/// About how many bytes a track, its name and its measures take.
+fn track_size(track: &GpTrack) -> usize {
+    size_of::<GpTrack>()
+        .saturating_add(track.name.len())
+        .saturating_add(track.measures.iter().map(measure_size).sum())
 }
 
 /// About how many bytes a measure and its beats take.
@@ -237,8 +286,97 @@ impl Song {
                 measures,
             } => self
                 .edit_structure(|inner| measures::restore(inner, *at, header.as_ref(), measures)),
+            ChangeKind::TrackInserted { at, channel } => self.edit_tracks(|inner| {
+                if at.get() >= inner.tracks.len() {
+                    return Err(ModelError::Invalid(format!(
+                        "{at}: no such track to remove"
+                    )));
+                }
+                inner.tracks.remove(at.get());
+                if let Some(channel) = channel
+                    && channel.saturating_add(1) == inner.channels.len()
+                {
+                    inner.channels.pop();
+                }
+                tracks::renumber(inner)
+            }),
+            ChangeKind::TrackRemoved { at, track } => self.edit_tracks(|inner| {
+                if at.get() > inner.tracks.len() {
+                    return Err(ModelError::Invalid(format!(
+                        "{at}: the song has {} track(s)",
+                        inner.tracks.len()
+                    )));
+                }
+                inner.tracks.insert(at.get(), track.as_ref().clone());
+                tracks::renumber(inner)
+            }),
+            ChangeKind::TrackMoved { from, to } => self.edit_tracks(|inner| {
+                let count = inner.tracks.len();
+                if from.get() >= count || to.get() >= count {
+                    return Err(ModelError::Invalid(
+                        "the undo data does not match the song's tracks".to_owned(),
+                    ));
+                }
+                let track = inner.tracks.remove(to.get());
+                inner.tracks.insert(from.get(), track);
+                tracks::renumber(inner)
+            }),
+            ChangeKind::TrackRenamed { at, previous } => self.edit_track_settings(|inner| {
+                track_mut(inner, *at)?.name = previous.clone();
+                Ok(())
+            }),
+            ChangeKind::TrackColor { at, previous } => self.edit_track_settings(|inner| {
+                track_mut(inner, *at)?.color = *previous;
+                Ok(())
+            }),
+            ChangeKind::TrackFlag { at, flag, previous } => self.edit_track_settings(|inner| {
+                let track = track_mut(inner, *at)?;
+                match flag {
+                    MixFlag::Mute => track.mute = *previous,
+                    MixFlag::Solo => track.solo = *previous,
+                }
+                Ok(())
+            }),
+            ChangeKind::TrackMix {
+                at,
+                previous_channel,
+                previous,
+                added,
+                previous_channel_count,
+            } => self.edit_track_settings(|inner| {
+                track_mut(inner, *at)?.channel_index = *previous_channel;
+                match added {
+                    Some(added) if added.saturating_add(1) == inner.channels.len() => {
+                        // The appended channel (and any padding) is the tail: trim it.
+                        inner
+                            .channels
+                            .truncate((*previous_channel_count).min(inner.channels.len()));
+                    }
+                    Some(added) => {
+                        // A later edit appended behind this channel; leave it in place but
+                        // restore its contents so the channel table is unchanged.
+                        if let Some(channel) = inner.channels.get_mut(*added) {
+                            *channel = *previous;
+                        }
+                    }
+                    None => {
+                        if let Some(channel) = inner.channels.get_mut(*previous_channel) {
+                            *channel = *previous;
+                        }
+                    }
+                }
+                Ok(())
+            }),
         }
     }
+}
+
+/// The track at `index`, or an error naming what is missing.
+fn track_mut(song: &mut GpSong, index: TrackIndex) -> Result<&mut GpTrack, ModelError> {
+    let count = song.tracks.len();
+    song.tracks
+        .get_mut(index.get())
+        .ok_or_else(|| ModelError::Invalid(format!("{index}: the song has {count} track(s)")))
 }
 
 /// The voice addressed by `at` in its measure, or an error naming what is missing.
