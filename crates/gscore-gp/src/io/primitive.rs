@@ -74,6 +74,16 @@ pub(crate) fn round_to_i8(value: f32) -> i8 {
     rounded
 }
 
+/// `value` clamped to `i16`.
+pub(crate) fn clamp_i16(value: i32) -> i16 {
+    i16::try_from(value.clamp(i32::from(i16::MIN), i32::from(i16::MAX))).unwrap_or_default()
+}
+
+/// A count from the file, clamped to `0..=max` so a corrupt one cannot allocate wildly.
+pub(crate) fn clamp_count(value: i32, max: i32) -> usize {
+    usize::try_from(value.clamp(0, max)).unwrap_or_default()
+}
+
 /// The low byte of `value` (what a truncating cast gives).
 pub(crate) fn low_u8(value: i32) -> u8 {
     let [low, ..] = value.to_le_bytes();
