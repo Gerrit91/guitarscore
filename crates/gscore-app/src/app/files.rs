@@ -45,7 +45,11 @@ impl GuitarScoreApp {
             self.dialog = Some(Dialog::Unsaved(Then::Open(path)));
             return;
         }
-        if let Err(error) = self.tasks.open(path, self.recovery_dir.clone(), ctx) {
+        let options = self.settings.recovery_options();
+        if let Err(error) = self
+            .tasks
+            .open(path, self.recovery_dir.clone(), options, ctx)
+        {
             self.notice = Some(error);
         }
     }
@@ -106,6 +110,7 @@ impl GuitarScoreApp {
                 Event::Picked(None) => {}
                 Event::Opened { path, result } => match result {
                     Ok(opened) => {
+                        let recent = path.clone();
                         let (document, problem) = match opened.journal {
                             Ok(Some(journal)) => (
                                 Document::with_journal(path, *opened.song, opened.format, journal),
@@ -122,6 +127,8 @@ impl GuitarScoreApp {
                         self.replace_document(document);
                         self.notice = problem;
                         self.status = None;
+                        self.settings.add_recent(recent);
+                        self.save_settings();
                     }
                     Err(error) => self.notice = Some(error),
                 },
@@ -137,6 +144,8 @@ impl GuitarScoreApp {
                 }
                 Event::PickedSoundFont(Some(path)) => self.playback.use_soundfont(path),
                 Event::PickedSoundFont(None) => {}
+                Event::PickedKeymap(Some(path)) => self.load_keymap_from(path),
+                Event::PickedKeymap(None) => {}
                 // Cancelled: whatever was waiting for the save does not happen.
                 Event::PickedSave(None) => self.after_save = None,
                 Event::Saved {
@@ -197,7 +206,11 @@ impl GuitarScoreApp {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
             Then::Open(path) => {
-                if let Err(error) = self.tasks.open(path, self.recovery_dir.clone(), ctx) {
+                let options = self.settings.recovery_options();
+                if let Err(error) = self
+                    .tasks
+                    .open(path, self.recovery_dir.clone(), options, ctx)
+                {
                     self.notice = Some(error);
                 }
             }

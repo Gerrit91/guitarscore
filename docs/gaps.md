@@ -70,9 +70,11 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
 7. **Recovery covers the editor's commands (M11).** Every edit, undo and redo is journaled
    (checksummed lines, periodic snapshots, written on a thread of its own) and replayed
    after a crash, with the undo history. Edits are on disk within milliseconds; a crash in
-   that window loses the last edit. Not journaled: view state (track, zoom, cursor),
-   playback settings, and edits that do not go through `gscore-edit` (none yet; M13's
-   track commands must add themselves to `Command::to_line`, which the compiler enforces).
+   that window loses the last edit. Not journaled: the cursor and shown track, and the
+   playback position; the view, window, panel, recent-file, keymap and audio settings are
+   saved separately in `settings.json` (M12). Edits that do not go through `gscore-edit`
+   would not be journaled (none; every command adds itself to `Command::to_line`, which the
+   compiler enforces).
    A snapshot clones the song on the UI thread (about 2.5 ms on `DrDr.gp`, every 200 edits
    or 60 s). SIGTERM and system shutdown rely on the journal, not on a final snapshot.
    Only commands are wrapped in `catch_unwind` and panic-tested; layout and drawing are
@@ -99,11 +101,13 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    background, shows one track's page, edits voice 1 from the keyboard (keymap file) or
    menus with undo/redo, saves as `.gp` (Save As for files in other formats; a lossy save
    asks), and asks about unsaved changes before closing or opening another file. It
-   contains panics in layout, drawing and background jobs. Missing: selection and
-   copy/cut/paste, entering notes in voice 2, editing effects, tempo and time signatures,
-   a duration toolbar, a playhead (playback starts at the cursor), remembering the view state
-   and window between runs, recent files, drag and drop, keyboard shortcuts for zoom, a
-   multi-page view. Undo back to the saved state still counts as "changed". `clear_note`,
+   contains panics in layout, drawing and background jobs. Since M12 it also remembers the
+   view, window and panels between runs, lists recent files, opens dropped files, zooms with
+   `ctrl+=`/`ctrl+-`/`ctrl+0`, has a settings window, and the cursor follows playback and
+   scrolls with it. Missing: selection and copy/cut/paste, entering notes in voice 2,
+   editing effects, time and key signatures, section markers, a duration toolbar, a left
+   edit palette (M14), a multi-page view. Undo back to the saved state still counts as
+   "changed". `clear_note`,
    `previous_measure` and `next_measure` have no default key yet (owner's decision; they
    can be bound in the keymap file), and `ctrl+s` for save is a proposal. On Windows, egui
    turns Ctrl+Insert into Copy, so `insert_measure` needs another key there. On macOS the file dialog must run
@@ -126,11 +130,13 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    tracks play. Volume and pan changes go straight to the player as MIDI CC messages while
    it plays; mute and solo rebuild the sequence at the same tick. Track volume, pan, mute
    and solo are saved in GP7 files (RSE channel-strip parameters and `<PlaybackState>`,
-   M13 review). The app shows the playing measure's number, not a playhead on the page. Pause/resume does not re-trigger notes that were
+   M13 review). Since M12 the cursor follows the beat being played on the shown track (across
+   repeats) and the page scrolls with it; pausing or stopping leaves the cursor on the last
+   played beat. Clicking during playback does not seek. Pause/resume does not re-trigger notes that were
    sounding, and stopping `gscore-cli play --port` with Ctrl+C can leave notes hanging in
    the external synth. The built-in synthesizer needs an installed `.sf2` SoundFont (none
    is bundled; `.sf3` is not supported), always uses the default audio device, and the
-   app does not remember a chosen SoundFont between runs. GP7 stores keyboard and vocal notes by pitch, not
+   app remembers the chosen SoundFont and output in `settings.json`. GP7 stores keyboard and vocal notes by pitch, not
    string and fret; the reader turns them into invalid frets, so those tracks are silent
    (the owner's corpus: 8 of 59 files leave 18-116 notes out).
 
@@ -145,3 +151,13 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    looping (M18) use it. The grid rebuilds its note squares once per song revision, and a
    structural track command empties the per-track layout map; the page itself reuses the
    M10 per-measure layout cache.
+
+13. **Settings and the app shell (M12).** Theme, zoom, panel visibility and sizes, the
+   window rectangle, recent files, keymap path, autosave interval and audio output are
+   stored in `settings.json` and restored at startup. Limits: the autosave interval applies
+   to documents opened afterwards (an open journal keeps its options); cancelling an open
+   during the import itself takes effect when the import ends, because the importer has no
+   cancellation hook (the result is then dropped); the left panel only arrives with M14;
+   the settings window has no Page layout tab (page size, fonts and breaks are M17); there
+   is no settings file versioning yet beyond serde defaults for new fields; on Wayland the
+   compositor may ignore a requested window position.

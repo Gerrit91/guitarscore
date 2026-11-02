@@ -274,6 +274,30 @@ fn beats_map_to_the_tick_of_their_first_pass() {
 }
 
 #[test]
+fn a_tick_maps_back_to_the_beat_playing_there() {
+    let at = |measure: usize, beat: usize| BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(measure),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(beat),
+    };
+    // Measures 1-2 repeat; every measure holds four quarter rests (960 ticks each).
+    let song = testing::song_with_repeats(3, &[(0, true, -1, 0), (1, false, 1, 0)]).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    // The repeat: measure 1 plays at 0 and again at 7680.
+    assert_eq!(sequence.beat_at(&song, at(0, 0), 0), Some(at(0, 0)));
+    assert_eq!(sequence.beat_at(&song, at(0, 0), 959), Some(at(0, 0)));
+    assert_eq!(sequence.beat_at(&song, at(0, 0), 960), Some(at(0, 1)));
+    assert_eq!(sequence.beat_at(&song, at(0, 0), 7680), Some(at(0, 0)));
+    // Past the last beat: the last beat of the last measure.
+    assert_eq!(sequence.beat_at(&song, at(0, 0), u64::MAX), Some(at(2, 3)));
+    // A track that does not exist has no beats; another voice has none either.
+    let mut missing = at(0, 0);
+    missing.track = TrackIndex::new(7);
+    assert_eq!(sequence.beat_at(&song, missing, 0), None);
+}
+
+#[test]
 fn tracks_get_their_own_channels_and_drums_channel_ten() {
     let song = testing::song(&[GUITAR_6, GUITAR_6, GUITAR_6], 1).unwrap();
     let sequence = Sequence::new(&song, None).unwrap();

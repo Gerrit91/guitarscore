@@ -30,6 +30,8 @@ pub enum OpenError {
         /// What the importer reported.
         error: IoError,
     },
+    /// The user cancelled the open while the file was being read (or right after).
+    Cancelled,
 }
 
 impl fmt::Display for OpenError {
@@ -46,6 +48,7 @@ impl fmt::Display for OpenError {
             OpenError::Import { path, error } => {
                 write!(f, "cannot import {}: {error}", path.display())
             }
+            OpenError::Cancelled => f.write_str("opening was cancelled"),
         }
     }
 }
@@ -55,7 +58,7 @@ impl std::error::Error for OpenError {
         match self {
             OpenError::Read { source, .. } => Some(source),
             OpenError::Import { error, .. } => Some(error),
-            OpenError::TooLarge { .. } => None,
+            OpenError::TooLarge { .. } | OpenError::Cancelled => None,
         }
     }
 }
@@ -70,6 +73,24 @@ pub fn open(path: &Path) -> Result<Imported, OpenError> {
 /// [`open`], also returning the file's bytes (the recovery journal keeps them as the base
 /// its commands apply to).
 pub fn open_with_bytes(path: &Path) -> Result<(Imported, Vec<u8>), OpenError> {
+    open_with_progress(path, |_, _| {}, || false)
+}
+
+/// Bytes read at a time while reporting progress.
+const READ_CHUNK: usize = 64 * 1024;
+
+/// [`open_with_bytes`], reporting how many bytes of `total` have been read (the import
+/// itself cannot report progress) and checking `cancelled` between chunks, before and after
+/// the import. A cancelled open leaves the file untouched.
+pub fn open_with_progress<P, C>(
+    path: &Path,
+    mut progress: P,
+    cancelled: C,
+) -> Result<(Imported, Vec<u8>), OpenError>
+where
+    P: FnMut(u64, u64),
+    C: Fn() -> bool,
+{
     let read_error = |source| OpenError::Read {
         path: path.to_path_buf(),
         source,
@@ -83,18 +104,38 @@ pub fn open_with_bytes(path: &Path) -> Result<(Imported, Vec<u8>), OpenError> {
     if size > limit {
         return Err(too_large(size));
     }
-    let file = std::fs::File::open(path).map_err(read_error)?;
-    let mut bytes = Vec::new();
-    file.take(limit.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .map_err(read_error)?;
-    let read = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
-    if read > limit {
-        return Err(too_large(read));
+    if cancelled() {
+        return Err(OpenError::Cancelled);
+    }
+    let mut file = std::fs::File::open(path).map_err(read_error)?;
+    let capacity = usize::try_from(size.min(limit)).unwrap_or(0);
+    let mut bytes: Vec<u8> = Vec::with_capacity(capacity);
+    let mut chunk = [0_u8; READ_CHUNK];
+    loop {
+        if cancelled() {
+            return Err(OpenError::Cancelled);
+        }
+        let read = file.read(&mut chunk).map_err(read_error)?;
+        if read == 0 {
+            break;
+        }
+        bytes.extend_from_slice(chunk.get(..read).unwrap_or_default());
+        let done = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+        if done > limit {
+            return Err(too_large(done));
+        }
+        progress(done, size);
+    }
+    progress(size, size);
+    if cancelled() {
+        return Err(OpenError::Cancelled);
     }
     let imported = import_guitar_pro_from_bytes(&bytes).map_err(|error| OpenError::Import {
         path: path.to_path_buf(),
         error,
     })?;
+    if cancelled() {
+        return Err(OpenError::Cancelled);
+    }
     Ok((imported, bytes))
 }

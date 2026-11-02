@@ -5,13 +5,19 @@
 use std::path::{Path, PathBuf};
 
 use gscore_edit::Keymap;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 /// Application directory name inside the platform's config directory.
 const APP_DIR: &str = "guitarscore";
 /// The keymap's file name in the config directory.
 pub const KEYMAP_FILE: &str = "keymap.txt";
+/// The application settings' file name.
+pub const SETTINGS_FILE: &str = "settings.json";
 /// Keymap files larger than this are refused (a keymap is a few hundred bytes).
 const MAX_KEYMAP_BYTES: u64 = 256 * 1024;
+/// Settings files larger than this are refused.
+const MAX_SETTINGS_BYTES: u64 = 1024 * 1024;
 
 /// The per-user settings directory, or `None` if the environment does not say where the
 /// home directory is.
@@ -103,4 +109,88 @@ pub fn load_user_keymap() -> LoadedKeymap {
             problem: None,
         },
     }
+}
+
+/// The settings file in the user's config directory, if there is one.
+pub fn default_settings_path() -> Option<PathBuf> {
+    default_config_dir().map(|dir| dir.join(SETTINGS_FILE))
+}
+
+/// A JSON settings file that was read, with the default value if it could not be used.
+#[derive(Debug, Clone)]
+pub struct LoadedJson<T> {
+    /// The file's value, or `T::default()`.
+    pub value: T,
+    /// The file that was read, if it exists.
+    pub path: Option<PathBuf>,
+    /// Why the file was not used, for the user.
+    pub problem: Option<String>,
+}
+
+/// Reads a JSON settings file. A missing file means the defaults without a problem; an
+/// unreadable, oversized or invalid one also means the defaults, with the problem described.
+/// A broken settings file never stops the app.
+pub fn load_json<T: DeserializeOwned + Default>(path: &Path) -> LoadedJson<T> {
+    let fallback = |problem: String| LoadedJson {
+        value: T::default(),
+        path: Some(path.to_path_buf()),
+        problem: Some(problem),
+    };
+    let size = match std::fs::metadata(path) {
+        Ok(metadata) => metadata.len(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return LoadedJson {
+                value: T::default(),
+                path: None,
+                problem: None,
+            };
+        }
+        Err(error) => return fallback(format!("cannot read {}: {error}", path.display())),
+    };
+    if size > MAX_SETTINGS_BYTES {
+        return fallback(format!(
+            "{} is too large for a settings file ({size} bytes)",
+            path.display()
+        ));
+    }
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) => return fallback(format!("cannot read {}: {error}", path.display())),
+    };
+    match serde_json::from_slice(&bytes) {
+        Ok(value) => LoadedJson {
+            value,
+            path: Some(path.to_path_buf()),
+            problem: None,
+        },
+        Err(error) => fallback(format!(
+            "{} is not a valid settings file, using the defaults: {error}",
+            path.display()
+        )),
+    }
+}
+
+/// Writes a JSON settings file through a temporary file and a rename, creating the folder.
+/// The file is either the old one or the new one, never half written.
+pub fn save_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
+    let write = || -> std::io::Result<()> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let text = serde_json::to_vec_pretty(value)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let temporary = path.with_extension("json.tmp");
+        let mut file = std::fs::File::create(&temporary)?;
+        use std::io::Write as _;
+        file.write_all(&text)?;
+        file.sync_all()?;
+        drop(file);
+        // Windows cannot rename over an existing file; removing first is fine for settings.
+        if std::fs::rename(&temporary, path).is_err() {
+            let _ = std::fs::remove_file(path);
+            std::fs::rename(&temporary, path)?;
+        }
+        Ok(())
+    };
+    write().map_err(|e| format!("cannot write {}: {e}", path.display()))
 }

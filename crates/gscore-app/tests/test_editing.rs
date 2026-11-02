@@ -209,7 +209,7 @@ fn the_edit_menu_undoes_and_shows_the_keys() {
     harness.run();
     // The entry's label includes its keys from the keymap.
     harness.get_by_label_contains("ctrl+z");
-    harness.get_by_label_contains("Undo").click();
+    harness.get_by_label_contains("Undo ctrl+z").click();
     harness.run();
     assert_ne!(fret_at_cursor(harness.state(), 1), Some(4));
     std::fs::remove_dir_all(&dir).unwrap();

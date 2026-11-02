@@ -18,6 +18,7 @@ gscore-audio = { path = "../gscore-audio" }
 # features off; window backends for Linux (Wayland, X11) and accessibility are named.
 eframe = { version = "0.37", default-features = false, features = ["wgpu", "accesskit", "wayland", "x11", "default_fonts"] }
 egui = "0.37"
+serde = { version = "1.0.228", features = ["derive"] }
 # Native file dialogs (XDG desktop portal on Linux, no GTK).
 rfd = "0.17"
 
@@ -30,6 +31,7 @@ gscore-audio = { path = "../gscore-audio", features = ["test-support"] }
 egui_kittest = { version = "0.37", features = ["wgpu", "snapshot", "eframe"] }
 # Saving the snapshot example's image as PNG (the version egui_kittest already uses).
 image = { version = "0.25", default-features = false, features = ["png"] }
+serde_json = "1.0.149"
 
 [lints]
 workspace = true

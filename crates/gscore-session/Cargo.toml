@@ -7,6 +7,8 @@ edition = "2024"
 gscore-io = { path = "../gscore-io" }
 gscore-model = { path = "../gscore-model" }
 gscore-edit = { path = "../gscore-edit" }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
 
 [lints]
 workspace = true

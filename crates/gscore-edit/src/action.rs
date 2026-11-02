@@ -56,6 +56,12 @@ pub enum ActionId {
     Stop,
     /// Save the file.
     Save,
+    /// Zoom in.
+    ZoomIn,
+    /// Zoom out.
+    ZoomOut,
+    /// Back to actual size.
+    ZoomReset,
 }
 
 /// An action id with its text form and a label for menus and help.
@@ -109,6 +115,9 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::PlayPause, "play_pause", "Play/pause"),
     info(ActionId::Stop, "stop", "Stop"),
     info(ActionId::Save, "save", "Save"),
+    info(ActionId::ZoomIn, "zoom_in", "Zoom in"),
+    info(ActionId::ZoomOut, "zoom_out", "Zoom out"),
+    info(ActionId::ZoomReset, "zoom_reset", "Actual size"),
 ];
 
 const fn info(action: ActionId, id: &'static str, label: &'static str) -> ActionInfo {
@@ -184,6 +193,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 22, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 25, "one entry per ActionId variant");
     }
 }

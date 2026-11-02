@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use gscore_edit::Recorded;
 use gscore_io::{FileFormat, export_to_bytes};
@@ -23,6 +23,24 @@ const QUEUE: usize = 256;
 
 /// Distinguishes folders created in the same second by the same process.
 static NEXT_FOLDER: AtomicU64 = AtomicU64::new(0);
+
+/// How often the journal writes a full snapshot next to the command lines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RecoveryOptions {
+    /// After this many entries.
+    pub snapshot_every: usize,
+    /// Or after this much time; `Duration::ZERO` disables the time check.
+    pub snapshot_interval: Duration,
+}
+
+impl Default for RecoveryOptions {
+    fn default() -> Self {
+        RecoveryOptions {
+            snapshot_every: SNAPSHOT_EVERY,
+            snapshot_interval: SNAPSHOT_INTERVAL,
+        }
+    }
+}
 
 /// Work for the writer thread.
 enum Job {
@@ -54,6 +72,7 @@ pub struct Journal {
     entries: usize,
     snapshot_entries: usize,
     last_snapshot: Instant,
+    options: RecoveryOptions,
 }
 
 /// `Job` is not `Debug` (it holds a song); this wrapper keeps the channel type printable.
@@ -70,6 +89,17 @@ impl Journal {
     /// new one) whose bytes as opened are `base`, and locks it. This writes files: call it
     /// off the UI thread (for example where the file is opened).
     pub fn start(root: &Path, source: Option<&Path>, base: &[u8]) -> Result<Self, String> {
+        Journal::start_with_options(root, source, base, RecoveryOptions::default())
+    }
+
+    /// [`Journal::start`] with the interval at which full snapshots are written (the
+    /// settings window's autosave interval).
+    pub fn start_with_options(
+        root: &Path,
+        source: Option<&Path>,
+        base: &[u8],
+        options: RecoveryOptions,
+    ) -> Result<Self, String> {
         let failed = |what: &str, e: std::io::Error| format!("recovery journal: {what}: {e}");
         let seconds = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -120,6 +150,7 @@ impl Journal {
             entries: 0,
             snapshot_entries: 0,
             last_snapshot: Instant::now(),
+            options,
         })
     }
 
@@ -155,7 +186,10 @@ impl Journal {
         self.entries = self.entries.saturating_add(commands.len());
         self.flush();
         let since = self.entries.saturating_sub(self.snapshot_entries);
-        if since >= SNAPSHOT_EVERY || self.last_snapshot.elapsed() >= SNAPSHOT_INTERVAL {
+        let every = self.options.snapshot_every.max(1);
+        let time_due = !self.options.snapshot_interval.is_zero()
+            && self.last_snapshot.elapsed() >= self.options.snapshot_interval;
+        if since >= every || time_due {
             self.snapshot(song);
         }
     }

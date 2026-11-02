@@ -9,6 +9,7 @@ mod document;
 mod fonts;
 mod keys;
 mod playback;
+mod settings;
 mod state;
 mod tasks;
 
@@ -16,6 +17,7 @@ pub use app::GuitarScoreApp;
 pub use document::{Document, GridData};
 pub use gscore_edit::Keymap;
 pub use playback::{Output, Playback};
+pub use settings::{DEFAULT_AUTOSAVE_SECONDS, MAX_RECENT_FILES, Settings, WindowState};
 pub use state::{MeasureSelection, ThemeChoice, ViewState, ZOOM_RANGE};
 
 // The snapshot test and example render the app offscreen and save PNGs; this marks the

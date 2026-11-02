@@ -28,7 +28,7 @@ mod restore;
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub use journal::Journal;
+pub use journal::{Journal, RecoveryOptions};
 pub use restore::{FoundSession, Recovered, discard, find_sessions, recover};
 
 /// A snapshot is written after this many journal entries ...

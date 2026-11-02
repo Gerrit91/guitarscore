@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use gscore_io::MAX_INPUT_BYTES;
-use gscore_session::{OpenError, open};
+use gscore_session::{OpenError, open, open_with_progress};
 
 fn testdata(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -26,6 +26,22 @@ fn temp_dir(name: &str) -> PathBuf {
 fn a_test_file_opens() {
     let imported = open(&testdata("basic/steel_guitar_dadgad.gp")).unwrap();
     assert_eq!(imported.song.title(), "Steel Guitar DADGAD");
+}
+
+#[test]
+fn opening_reports_read_progress_and_can_be_cancelled() {
+    let path = testdata("basic/steel_guitar_dadgad.gp");
+    let total = std::fs::metadata(&path).unwrap().len();
+    let mut calls = Vec::new();
+    let (imported, bytes) =
+        open_with_progress(&path, |done, size| calls.push((done, size)), || false).unwrap();
+    assert_eq!(u64::try_from(bytes.len()).unwrap(), total);
+    assert!(calls.iter().all(|(_, size)| *size == total));
+    assert_eq!(calls.last(), Some(&(total, total)));
+    assert_eq!(imported.song.title(), "Steel Guitar DADGAD");
+
+    let error = open_with_progress(&path, |_, _| {}, || true).unwrap_err();
+    assert!(matches!(error, OpenError::Cancelled), "{error}");
 }
 
 #[test]

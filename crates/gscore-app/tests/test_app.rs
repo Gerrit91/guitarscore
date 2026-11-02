@@ -86,7 +86,7 @@ fn the_view_menu_switches_the_theme_and_the_toolbar_zooms() {
     harness.run();
     assert_eq!(harness.state().view().theme, ThemeChoice::Dark);
 
-    harness.get_by_label("+").click();
+    harness.get_by_label("Zoom in").click();
     harness.run();
     assert!((harness.state().view().zoom() - 1.25).abs() < 1e-4);
     harness.get_by_label("125 %");
@@ -289,7 +289,7 @@ fn play_and_stop_drive_the_built_in_synthesizer() {
     harness.get_by_label("Edit").click();
     harness.step();
     harness.step();
-    harness.get_by_label_contains("Undo").click();
+    harness.get_by_label_contains("Undo ctrl+z").click();
     harness.run();
     assert_eq!(
         harness.state().playback().state(),
@@ -523,6 +523,109 @@ fn the_track_panel_edits_the_shown_track() {
     harness.get_by_label("Rename track").click();
     harness.run();
     assert_eq!(first_track(&harness).name(), "Steel Guitar Lead");
+}
+
+/// Runs frames until background jobs are done.
+fn settle(harness: &mut Harness<'static, GuitarScoreApp>) {
+    let started = Instant::now();
+    harness.run();
+    while harness.state().is_busy() {
+        assert!(started.elapsed() < Duration::from_secs(30), "timed out");
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+}
+
+#[test]
+fn the_settings_window_edits_song_information_and_undoes_it() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.get_by_label("Edit").click();
+    harness.run();
+    harness.get_by_label("Settings…").click();
+    harness.run();
+    harness.get_by_label("Done");
+
+    harness.get_by_label("Title field").click();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Title field").type_text("New Title");
+    harness.run();
+    harness.get_by_label("Apply").click();
+    harness.run();
+    assert_eq!(
+        harness.state().document().unwrap().song().title(),
+        "New Title"
+    );
+
+    harness.get_by_label("Done").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+    harness.run();
+    assert_eq!(
+        harness.state().document().unwrap().song().title(),
+        "Note Lengths"
+    );
+}
+
+#[test]
+fn recent_files_are_remembered_and_open_from_the_file_menu() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    assert!(
+        harness
+            .state()
+            .settings()
+            .recent_files
+            .iter()
+            .any(|path| path.ends_with("steel_guitar_dadgad.gp"))
+    );
+    // Open another file, then come back to the first through File > Open Recent.
+    let ctx = harness.ctx.clone();
+    harness
+        .state_mut()
+        .open(testdata("basic/note_lengths.gp"), &ctx);
+    settle(&mut harness);
+    assert_eq!(
+        harness.state().document().unwrap().display_title(),
+        "Note Lengths"
+    );
+    assert!(
+        harness
+            .state()
+            .settings()
+            .recent_files
+            .first()
+            .is_some_and(|path| path.ends_with("note_lengths.gp"))
+    );
+
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Open Recent").click();
+    harness.run();
+    harness.get_by_label("steel_guitar_dadgad.gp").click();
+    settle(&mut harness);
+    assert_eq!(
+        harness.state().document().unwrap().display_title(),
+        "Steel Guitar DADGAD"
+    );
+    assert!(
+        harness
+            .state()
+            .settings()
+            .recent_files
+            .first()
+            .is_some_and(|path| path.ends_with("steel_guitar_dadgad.gp"))
+    );
+}
+
+#[test]
+fn ctrl_equals_zooms_and_ctrl_zero_resets() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Equals);
+    harness.run();
+    assert!((harness.state().view().zoom() - 1.25).abs() < 1e-4);
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num0);
+    harness.run();
+    assert!((harness.state().view().zoom() - 1.0).abs() < 1e-4);
 }
 
 #[test]

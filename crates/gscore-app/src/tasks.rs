@@ -4,10 +4,14 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use gscore_model::Song;
-use gscore_session::{FileFormat, FoundSession, Journal, Recovered, SaveError, SaveOptions};
+use gscore_session::{
+    FileFormat, FoundSession, Journal, Recovered, RecoveryOptions, SaveError, SaveOptions,
+};
 
 /// A finished background job.
 #[derive(Debug)]
@@ -16,6 +20,8 @@ pub(crate) enum Event {
     Picked(Option<PathBuf>),
     /// The SoundFont dialog closed; `None` if it was cancelled.
     PickedSoundFont(Option<PathBuf>),
+    /// The keymap dialog closed; `None` if it was cancelled.
+    PickedKeymap(Option<PathBuf>),
     /// The save dialog closed; `None` if it was cancelled.
     PickedSave(Option<PathBuf>),
     /// A save finished or failed.
@@ -77,6 +83,46 @@ pub(crate) enum SaveFailure {
     Other(String),
 }
 
+/// How far an open has got, shared with its worker thread.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct OpenProgress {
+    total: Arc<AtomicU64>,
+    done: Arc<AtomicU64>,
+    cancel: Arc<AtomicBool>,
+}
+
+impl OpenProgress {
+    fn set(&self, done: u64, total: u64) {
+        self.total.store(total, Ordering::Relaxed);
+        self.done.store(done, Ordering::Relaxed);
+    }
+
+    /// The share of the file read, if its size is known.
+    pub(crate) fn fraction(&self) -> Option<f32> {
+        let total = self.total.load(Ordering::Relaxed);
+        if total == 0 {
+            return None;
+        }
+        let done = self.done.load(Ordering::Relaxed).min(total);
+        Some(done as f32 / total as f32)
+    }
+
+    /// All bytes are read: the importer is working now (which cannot report progress).
+    pub(crate) fn importing(&self) -> bool {
+        let total = self.total.load(Ordering::Relaxed);
+        total > 0 && self.done.load(Ordering::Relaxed) >= total
+    }
+
+    /// Asks the worker to stop at its next chance.
+    pub(crate) fn cancel(&self) {
+        self.cancel.store(true, Ordering::Relaxed);
+    }
+
+    fn cancelled(&self) -> bool {
+        self.cancel.load(Ordering::Relaxed)
+    }
+}
+
 /// Background jobs and the channel they report through.
 #[derive(Debug)]
 pub(crate) struct Tasks {
@@ -84,6 +130,10 @@ pub(crate) struct Tasks {
     receiver: Receiver<Event>,
     /// Jobs started and not reported yet.
     running: usize,
+    /// The open that is running, for its progress bar.
+    open: Option<OpenProgress>,
+    /// The user cancelled the running open; its result is dropped.
+    open_cancelled: bool,
 }
 
 impl Default for Tasks {
@@ -93,6 +143,8 @@ impl Default for Tasks {
             sender,
             receiver,
             running: 0,
+            open: None,
+            open_cancelled: false,
         }
     }
 }
@@ -112,20 +164,46 @@ impl Tasks {
         &mut self,
         path: PathBuf,
         recovery: Option<PathBuf>,
+        options: RecoveryOptions,
         ctx: &egui::Context,
     ) -> Result<(), String> {
-        self.spawn("open", ctx, move || {
-            let result = gscore_session::open_with_bytes(&path)
-                .map(|(imported, bytes)| Opened {
-                    song: Box::new(imported.song),
-                    format: imported.format,
-                    journal: recovery
-                        .map(|root| Journal::start(&root, Some(&path), &bytes))
-                        .transpose(),
-                })
-                .map_err(|e| e.to_string());
+        let progress = OpenProgress::default();
+        self.open = Some(progress.clone());
+        self.open_cancelled = false;
+        let spawned = self.spawn("open", ctx, move || {
+            let shared = progress.clone();
+            let result = gscore_session::open_with_progress(
+                &path,
+                |done, total| shared.set(done, total),
+                || shared.cancelled(),
+            )
+            .map(|(imported, bytes)| Opened {
+                song: Box::new(imported.song),
+                format: imported.format,
+                journal: recovery
+                    .map(|root| Journal::start_with_options(&root, Some(&path), &bytes, options))
+                    .transpose(),
+            })
+            .map_err(|e| e.to_string());
             Event::Opened { path, result }
-        })
+        });
+        if spawned.is_err() {
+            self.open = None;
+        }
+        spawned
+    }
+
+    /// The open that is running, for its progress bar.
+    pub(crate) fn open_progress(&self) -> Option<&OpenProgress> {
+        self.open.as_ref()
+    }
+
+    /// Cancels the running open: its result will be dropped when it finishes.
+    pub(crate) fn cancel_open(&mut self) {
+        if let Some(progress) = &self.open {
+            progress.cancel();
+            self.open_cancelled = true;
+        }
     }
 
     /// Looks for documents a crash left behind in `recovery`.
@@ -144,33 +222,36 @@ impl Tasks {
         &mut self,
         session: FoundSession,
         recovery: PathBuf,
+        options: RecoveryOptions,
         ctx: &egui::Context,
     ) -> Result<(), String> {
         self.spawn("recovery", ctx, move || {
             let result = gscore_session::recover(&session).map(|mut recovered| {
                 // The replayed edits start the new journal, so a second crash loses
                 // nothing either; only then does the old folder go.
-                let journal =
-                    Journal::start(&recovery, recovered.source.as_deref(), &recovered.base)
-                        .map(|mut journal| {
-                            let applied = recovered.editor.take_applied();
-                            journal.record(&applied, recovered.editor.song());
-                            (journal, applied.len())
-                        })
-                        .and_then(|(journal, count)| {
-                            // Wait (on this background thread) until the new journal has every
-                            // edit on disk before the old copy goes.
-                            let started = std::time::Instant::now();
-                            while journal.written() < count && journal.error().is_none() {
-                                if started.elapsed() > std::time::Duration::from_secs(10) {
-                                    return Err(
-                                        "the new recovery journal is not written".to_owned()
-                                    );
-                                }
-                                std::thread::sleep(std::time::Duration::from_millis(5));
-                            }
-                            journal.error().map_or(Ok(journal), Err)
-                        });
+                let journal = Journal::start_with_options(
+                    &recovery,
+                    recovered.source.as_deref(),
+                    &recovered.base,
+                    options,
+                )
+                .map(|mut journal| {
+                    let applied = recovered.editor.take_applied();
+                    journal.record(&applied, recovered.editor.song());
+                    (journal, applied.len())
+                })
+                .and_then(|(journal, count)| {
+                    // Wait (on this background thread) until the new journal has every
+                    // edit on disk before the old copy goes.
+                    let started = std::time::Instant::now();
+                    while journal.written() < count && journal.error().is_none() {
+                        if started.elapsed() > std::time::Duration::from_secs(10) {
+                            return Err("the new recovery journal is not written".to_owned());
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                    journal.error().map_or(Ok(journal), Err)
+                });
                 if journal.is_ok() {
                     let _ = gscore_session::discard(&session);
                 }
@@ -202,6 +283,17 @@ impl Tasks {
                 .add_filter("SoundFont 2", &["sf2"])
                 .pick_file();
             Event::PickedSoundFont(picked)
+        })
+    }
+
+    /// Shows the dialog choosing a keymap file in the background.
+    pub(crate) fn pick_keymap(&mut self, ctx: &egui::Context) -> Result<(), String> {
+        self.spawn("keymap dialog", ctx, || {
+            let picked = rfd::FileDialog::new()
+                .set_title("Choose a keymap file")
+                .add_filter("Keymap", &["txt"])
+                .pick_file();
+            Event::PickedKeymap(picked)
         })
     }
 
@@ -273,13 +365,24 @@ impl Tasks {
         })
     }
 
-    /// The events of jobs that finished since the last call.
+    /// The events of jobs that finished since the last call. A cancelled open's result is
+    /// dropped here.
     pub(crate) fn poll(&mut self) -> Vec<Event> {
         let mut events = Vec::new();
         // Empty or disconnected both mean: nothing more for now.
         while let Ok(event) = self.receiver.try_recv() {
             self.running = self.running.saturating_sub(1);
             events.push(event);
+        }
+        let opened = events
+            .iter()
+            .any(|event| matches!(event, Event::Opened { .. }));
+        if opened {
+            self.open = None;
+            if self.open_cancelled {
+                self.open_cancelled = false;
+                events.retain(|event| !matches!(event, Event::Opened { .. }));
+            }
         }
         events
     }

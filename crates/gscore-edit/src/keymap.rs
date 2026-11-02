@@ -59,6 +59,11 @@ ctrl+y = redo
 
 Space = play_pause
 ctrl+s = save
+
+ctrl+= = zoom_in
+ctrl++ = zoom_in
+ctrl+- = zoom_out
+ctrl+0 = zoom_reset
 ";
 
 /// A key that types nothing, bound by name.
@@ -182,7 +187,12 @@ impl KeyCombo {
     pub fn new(key: Key, modifiers: Modifiers) -> Self {
         match key {
             Key::Char(c) if modifiers.ctrl || modifiers.alt => KeyCombo {
-                modifiers,
+                // Shift only chose a symbol (`+` needs it on QWERTY); for letters it is a
+                // real modifier (ctrl+Z), even though case is folded.
+                modifiers: Modifiers {
+                    shift: modifiers.shift && c.is_alphanumeric(),
+                    ..modifiers
+                },
                 key: Key::Char(c.to_lowercase().next().unwrap_or(c)),
             },
             Key::Char(_) => KeyCombo {

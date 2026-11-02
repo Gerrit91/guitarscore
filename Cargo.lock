@@ -1737,6 +1737,8 @@ dependencies = [
  "gscore-session",
  "image",
  "rfd",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1825,6 +1827,8 @@ dependencies = [
  "gscore-edit",
  "gscore-io",
  "gscore-model",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

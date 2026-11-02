@@ -81,6 +81,11 @@ impl GuitarScoreApp {
                     ui.scroll_to_rect(column, None);
                 }
             }
+            response.context_menu(|ui| {
+                ui.label("Panels");
+                ui.checkbox(&mut self.view.show_track_grid, "Track grid");
+                ui.checkbox(&mut self.view.show_track_panel, "Track panel");
+            });
             if response.clicked()
                 && let Some(pos) = response.interact_pointer_pos()
             {

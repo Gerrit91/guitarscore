@@ -1,8 +1,11 @@
 //! The view state: plain data that says how the document is shown (theme, zoom, track).
 //! Kept separate from the widgets so it can be saved, restored and tested.
 
+use serde::{Deserialize, Serialize};
+
 /// Which color theme the app uses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ThemeChoice {
     /// Dark ink on white paper.
     Light,

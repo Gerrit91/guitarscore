@@ -141,6 +141,16 @@ impl Playback {
         matches!(&self.player, Some(Active::Synth(p)) if p.is_loading())
     }
 
+    /// Stops waiting for a SoundFont that is loading: the player is dropped and the next
+    /// play starts it again.
+    pub fn cancel_loading(&mut self) {
+        if self.is_loading() {
+            self.player = None;
+            self.sequence = None;
+            self.reported = None;
+        }
+    }
+
     /// A short description of the chosen output, for the toolbar.
     pub fn output_label(&self) -> String {
         match &self.output {

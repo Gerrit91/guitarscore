@@ -47,7 +47,8 @@ impl GuitarScoreApp {
         let Some(dir) = self.recovery_dir.clone() else {
             return;
         };
-        if let Err(error) = self.tasks.recover(session, dir, ctx) {
+        let options = self.settings.recovery_options();
+        if let Err(error) = self.tasks.recover(session, dir, options, ctx) {
             self.notice = Some(error);
         }
     }

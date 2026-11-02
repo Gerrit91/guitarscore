@@ -3,8 +3,9 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use gscore_edit::{Action, Command, Outcome, Request};
+use gscore_edit::{Action, ActionId, Command, Cursor, Outcome, Request};
 use gscore_model::TrackIndex;
+use gscore_play::PlayState;
 
 use super::GuitarScoreApp;
 
@@ -47,6 +48,7 @@ impl GuitarScoreApp {
     pub(super) fn handle_keys(&mut self, ctx: &egui::Context) {
         if self.document.is_none()
             || self.dialog.is_some()
+            || self.settings_window.is_some()
             || ctx.egui_wants_keyboard_input()
             || egui::Popup::is_any_open(ctx)
         {
@@ -73,6 +75,27 @@ impl GuitarScoreApp {
 
     /// Runs `action` at the cursor (from a key or a menu).
     pub(crate) fn perform_action(&mut self, action: Action, ctx: &egui::Context) {
+        // View actions do not touch the song, so they work without an open document.
+        if let Action::Plain(id) = action {
+            match id {
+                ActionId::ZoomIn => {
+                    self.view.zoom_in();
+                    ctx.request_repaint();
+                    return;
+                }
+                ActionId::ZoomOut => {
+                    self.view.zoom_out();
+                    ctx.request_repaint();
+                    return;
+                }
+                ActionId::ZoomReset => {
+                    self.view.set_zoom(1.0);
+                    ctx.request_repaint();
+                    return;
+                }
+                _ => {}
+            }
+        }
         let Some(document) = &mut self.document else {
             return;
         };
@@ -162,21 +185,57 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Moves the cursor to the beat being played, so the page shows it and scrolls along.
+    /// The shown track is followed; repeats and track switches come from the sequence.
+    pub(super) fn follow_playback(&mut self) {
+        if self.playback.state() != PlayState::Playing {
+            return;
+        }
+        // The sequence is an `Arc`: clone it so the document can be borrowed mutably.
+        let Some(sequence) = self.playback.sequence().cloned() else {
+            return;
+        };
+        let Some(document) = &mut self.document else {
+            return;
+        };
+        let cursor = document.editor().cursor();
+        let tick = self.playback.position();
+        let Some(at) = sequence.beat_at(document.song(), cursor.position(), tick) else {
+            return;
+        };
+        if at != cursor.position() {
+            document.editor_mut().set_cursor(Cursor {
+                measure: at.measure,
+                voice: at.voice,
+                beat: at.beat,
+                ..cursor
+            });
+        }
+    }
+
+    /// Stops playback, leaving the cursor on the last played beat.
+    pub(super) fn stop_playback(&mut self) {
+        self.follow_playback();
+        if let Err(error) = self.playback.stop() {
+            self.notice = Some(error);
+        }
+    }
+
     /// Does what the editor asked the app for.
     pub(super) fn request(&mut self, request: Request, ctx: &egui::Context) {
         match request {
             Request::PlayPause => self.play_pause(),
-            Request::Stop => {
-                if let Err(error) = self.playback.stop() {
-                    self.notice = Some(error);
-                }
-            }
+            Request::Stop => self.stop_playback(),
             Request::Save => self.save_song(ctx),
         }
     }
 
-    /// Starts playback of the open song at the cursor, or pauses it.
+    /// Starts playback of the open song at the cursor, or pauses it. Pausing leaves the
+    /// cursor on the last played beat.
     pub fn play_pause(&mut self) {
+        if self.playback.state() == PlayState::Playing {
+            self.follow_playback();
+        }
         let Some(document) = &self.document else {
             return;
         };

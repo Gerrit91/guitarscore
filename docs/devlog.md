@@ -991,3 +991,48 @@ Landed:
 - Open: the program picker lists all 128 names without a search field; the "SoundFont
   preset" is the General MIDI program (a per-track SF2 bank beyond it is not stored); the
   panel has no volume/pan (the song grid does); the instrument type/name cannot be edited.
+
+## 2026-11-02 — M12: app shell, settings, playback follow
+
+Landed:
+- `gscore-session`: `settings.json` in the platform config directory (XDG, macOS
+  Application Support, Windows APPDATA), read and written with `serde_json` (1 MiB cap,
+  temporary file and rename, a broken file falls back to the defaults with a problem for
+  the user). `Journal::start_with_options`/`RecoveryOptions` set the snapshot interval and
+  entry count (zero seconds: snapshots only by edit count). `open_with_progress` reads in
+  64 KiB chunks, reports bytes read and checks a cancel flag between chunks and after the
+  import (`OpenError::Cancelled`).
+- `gscore-model`: `SongInfo`/`SongTextField`, `Song::set_text` and `set_tempo` with limits
+  (4096 characters per field, 64 KiB of notes, 1-1000 BPM) and exact undo.
+- `gscore-edit`: `set_song_text` and `set_tempo` commands (fields by id, text
+  percent-encoded, `to_line` round trips). One Apply in the settings window is one undo
+  step: the app breaks the merge before the batch and the batch commands continue each
+  other. `break_merge` now consumes its barrier even when the next command does not ask to
+  merge (found by the batch test). `changes_display_only` covers the song text and
+  `rebuilds_playback` the tempo.
+- `gscore-play`: `Sequence::beat_at` (the inverse of `tick_of`) maps a played tick back to
+  a beat of a track and voice, repeats included.
+- App: a settings window with Song, Audio and MIDI, and Editor tabs. The Song tab edits a
+  `SongInfo` draft and applies the changed fields as commands (undoable); Audio offers the
+  synthesizer/SoundFont and MIDI ports; Editor offers the theme, a keymap file (choose or
+  reload, with the problem shown) and the autosave interval. Settings persist the theme,
+  zoom, panel visibility and sizes, window rectangle, recent files, keymap path, autosave
+  interval and audio output, and are restored at startup (the window size and position go
+  to `eframe`); they are saved on exit and after changes. File > Open Recent, drag and
+  drop to open, and `ctrl+=`/`ctrl++`/`ctrl+-`/`ctrl+0` zoom actions. Opening shows a
+  progress bar (read share, then "Importing…") with Cancel (the result is dropped); a
+  loading SoundFont shows an animated bar with Cancel. The cursor now follows the beat
+  being played on the shown track (repeats included), the page scrolls with it, and
+  pausing or stopping leaves it on the last played beat. Spacing, rounding and text sizes
+  are set once for both themes; the toolbar uses our own painter-drawn icons with key
+  hints (no third-party icon assets).
+- Tests: 416 (+21): settings JSON round trip, missing/broken/oversized files; journal
+  snapshot options; open progress and cancellation; song text/tempo commands and their
+  merging; the settings window editing the title with undo; recent files; zoom keys;
+  settings restoring the view; the sequence's tick-to-beat mapping; snapshots regenerated
+  for the new toolbar and style.
+- Open: the left panel is M14's edit palette. The autosave interval applies to documents
+  opened afterwards. A Cancel during the import itself is honoured when the import ends
+  (the importer has no cancellation hook). Clicking during playback does not seek. The
+  settings window has no Page layout tab yet (M17). Settings are saved on exit and after
+  choices, not after every frame.

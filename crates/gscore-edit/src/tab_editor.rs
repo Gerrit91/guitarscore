@@ -258,6 +258,8 @@ impl TabEditor {
             ActionId::PlayPause => Ok(Outcome::Request(Request::PlayPause)),
             ActionId::Stop => Ok(Outcome::Request(Request::Stop)),
             ActionId::Save => Ok(Outcome::Request(Request::Save)),
+            // View actions: the app handles them before the editor, which has no view.
+            ActionId::ZoomIn | ActionId::ZoomOut | ActionId::ZoomReset => Ok(Outcome::Nothing),
         }
     }
 

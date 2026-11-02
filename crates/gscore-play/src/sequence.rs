@@ -10,8 +10,8 @@
 use std::collections::HashMap;
 
 use gscore_model::{
-    BeatKind, BeatPosition, BendKind, Duration, MeasureIndex, ModelError, NoteKind, SlideKind,
-    Song, TimeSignature, TrackIndex, TrackSound,
+    BeatIndex, BeatKind, BeatPosition, BendKind, Duration, MeasureIndex, ModelError, NoteKind,
+    SlideKind, Song, TimeSignature, TrackIndex, TrackSound,
 };
 
 use crate::channels::ChannelAllocator;
@@ -382,6 +382,44 @@ impl Sequence {
     pub fn measure_at(&self, tick: u64) -> Option<MeasureSpan> {
         let after = self.measures.partition_point(|m| m.start <= tick);
         self.measures.get(after.saturating_sub(1)).copied()
+    }
+
+    /// The beat of `at.track` in `at.voice` that is playing at `tick`, for the cursor to
+    /// follow playback. Repeats are handled because [`Self::measure_at`] knows the played
+    /// order. A tick before the first beat is beat 0; one past the voice's last beat is the
+    /// last beat (or beat 0 in a voice with no beats). `None` if `at.track` does not exist.
+    pub fn beat_at(&self, song: &Song, at: BeatPosition, tick: u64) -> Option<BeatPosition> {
+        let span = self.measure_at(tick)?;
+        let voice = song
+            .track(at.track)?
+            .measure(span.measure)?
+            .voice(at.voice)?;
+        let mut onset = Duration::new(0, 1).ok()?;
+        let mut last = 0_usize;
+        for (index, beat) in voice.beats().enumerate() {
+            if beat.kind() == BeatKind::Empty {
+                continue;
+            }
+            last = index;
+            let length = beat.duration().ok()?;
+            let start = span.start.saturating_add(ticks(onset));
+            let end = start.saturating_add(ticks(length));
+            if tick < end {
+                return Some(BeatPosition {
+                    track: at.track,
+                    measure: span.measure,
+                    voice: at.voice,
+                    beat: BeatIndex::new(index),
+                });
+            }
+            onset = onset.checked_add(length).ok()?;
+        }
+        Some(BeatPosition {
+            track: at.track,
+            measure: span.measure,
+            voice: at.voice,
+            beat: BeatIndex::new(last),
+        })
     }
 }
 

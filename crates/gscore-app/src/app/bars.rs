@@ -4,6 +4,7 @@ use egui::{Align, Layout as UiLayout};
 use gscore_edit::{ActionId, Request};
 
 use super::GuitarScoreApp;
+use super::icons::{self, Icon};
 use crate::playback::Output;
 use crate::state::ThemeChoice;
 
@@ -25,6 +26,45 @@ impl GuitarScoreApp {
             ui.menu_button("File", |ui| {
                 if ui.button("Open…").clicked() {
                     self.ask_open(ui.ctx());
+                }
+                let mut chosen = None;
+                let mut clear = false;
+                ui.menu_button("Open Recent", |ui| {
+                    if self.settings.recent_files.is_empty() {
+                        ui.label("No recent files");
+                    }
+                    for path in &self.settings.recent_files {
+                        let name = path.file_name().map_or_else(
+                            || path.display().to_string(),
+                            |name| name.to_string_lossy().into_owned(),
+                        );
+                        if ui
+                            .button(name)
+                            .on_hover_text(path.display().to_string())
+                            .clicked()
+                        {
+                            chosen = Some(path.clone());
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    if ui
+                        .add_enabled(
+                            !self.settings.recent_files.is_empty(),
+                            egui::Button::new("Clear recent files"),
+                        )
+                        .clicked()
+                    {
+                        clear = true;
+                        ui.close();
+                    }
+                });
+                if clear {
+                    self.settings.recent_files.clear();
+                    self.save_settings();
+                }
+                if let Some(path) = chosen {
+                    self.open(path, ui.ctx());
                 }
                 let has_document = self.document.is_some();
                 if self.action_button(ui, ActionId::Save, has_document) {
@@ -65,6 +105,11 @@ impl GuitarScoreApp {
                         self.perform_action(gscore_edit::Action::Plain(action), ui.ctx());
                     }
                 }
+                ui.separator();
+                if ui.button("Settings…").clicked() {
+                    self.open_settings_window();
+                    ui.close();
+                }
             });
             ui.menu_button("View", |ui| {
                 ui.checkbox(&mut self.view.show_track_grid, "Track grid");
@@ -86,8 +131,94 @@ impl GuitarScoreApp {
         });
     }
 
+    /// The keys bound to `action`, as a tooltip suffix: " (ctrl+s)".
+    fn key_hint(&self, action: ActionId) -> String {
+        let keys: Vec<String> = self
+            .keymap
+            .keys_for(action)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        if keys.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", keys.join(", "))
+        }
+    }
+
     pub(super) fn toolbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
+            if icons::button(ui, Icon::Open, "Open", "Open a Guitar Pro file…").clicked() {
+                self.ask_open(ui.ctx());
+            }
+            if icons::button(
+                ui,
+                Icon::Save,
+                "Save",
+                &format!("Save the file{}", self.key_hint(ActionId::Save)),
+            )
+            .clicked()
+            {
+                self.request(Request::Save, ui.ctx());
+            }
+            ui.separator();
+            let (can_undo, can_redo) = self.document.as_ref().map_or((false, false), |d| {
+                (d.editor().can_undo(), d.editor().can_redo())
+            });
+            let undo = ui
+                .add_enabled_ui(can_undo, |ui| {
+                    icons::button(
+                        ui,
+                        Icon::Undo,
+                        "Undo",
+                        &format!("Undo{}", self.key_hint(ActionId::Undo)),
+                    )
+                })
+                .inner;
+            if undo.clicked() {
+                self.perform_action(gscore_edit::Action::Plain(ActionId::Undo), ui.ctx());
+            }
+            let redo = ui
+                .add_enabled_ui(can_redo, |ui| {
+                    icons::button(
+                        ui,
+                        Icon::Redo,
+                        "Redo",
+                        &format!("Redo{}", self.key_hint(ActionId::Redo)),
+                    )
+                })
+                .inner;
+            if redo.clicked() {
+                self.perform_action(gscore_edit::Action::Plain(ActionId::Redo), ui.ctx());
+            }
+            ui.separator();
+            if icons::button(
+                ui,
+                Icon::ZoomOut,
+                "Zoom out",
+                &format!("Zoom out{}", self.key_hint(ActionId::ZoomOut)),
+            )
+            .clicked()
+            {
+                self.view.zoom_out();
+            }
+            ui.label(format!("{:.0} %", self.view.zoom() * 100.0));
+            if icons::button(
+                ui,
+                Icon::ZoomIn,
+                "Zoom in",
+                &format!("Zoom in{}", self.key_hint(ActionId::ZoomIn)),
+            )
+            .clicked()
+            {
+                self.view.zoom_in();
+            }
+            ui.separator();
+            self.playback_controls(ui);
+            ui.separator();
+            if icons::button(ui, Icon::Settings, "Settings", "Settings…").clicked() {
+                self.open_settings_window();
+            }
             if let Some(document) = &self.document {
                 let song = document.song();
                 let name = |index: usize| {
@@ -101,17 +232,7 @@ impl GuitarScoreApp {
                             ui.selectable_value(&mut self.view.track, index, name(index));
                         }
                     });
-                ui.separator();
             }
-            if ui.button("−").on_hover_text("Zoom out").clicked() {
-                self.view.zoom_out();
-            }
-            ui.label(format!("{:.0} %", self.view.zoom() * 100.0));
-            if ui.button("+").on_hover_text("Zoom in").clicked() {
-                self.view.zoom_in();
-            }
-            ui.separator();
-            self.playback_controls(ui);
             if self.tasks.busy() {
                 ui.spinner();
             }
@@ -122,16 +243,36 @@ impl GuitarScoreApp {
     fn playback_controls(&mut self, ui: &mut egui::Ui) {
         let playing = self.playback.state() == gscore_play::PlayState::Playing;
         let has_song = self.document.is_some();
-        let label = if playing { "Pause" } else { "Play" };
-        if ui.add_enabled(has_song, egui::Button::new(label)).clicked() {
+        let (icon, label) = if playing {
+            (Icon::Pause, "Pause")
+        } else {
+            (Icon::Play, "Play")
+        };
+        let play = ui
+            .add_enabled_ui(has_song, |ui| {
+                icons::button(
+                    ui,
+                    icon,
+                    label,
+                    &format!("{label}{}", self.key_hint(ActionId::PlayPause)),
+                )
+            })
+            .inner;
+        if play.clicked() {
             self.play_pause();
         }
-        if ui
-            .add_enabled(has_song, egui::Button::new("Stop"))
-            .clicked()
-            && let Err(error) = self.playback.stop()
-        {
-            self.notice = Some(error);
+        let stop = ui
+            .add_enabled_ui(has_song, |ui| {
+                icons::button(
+                    ui,
+                    Icon::Stop,
+                    "Stop",
+                    &format!("Stop{}", self.key_hint(ActionId::Stop)),
+                )
+            })
+            .inner;
+        if stop.clicked() {
+            self.stop_playback();
         }
         if let Some(measure) = self.playback.current_measure() {
             ui.label(format!("Measure {measure}"));
@@ -195,8 +336,15 @@ impl GuitarScoreApp {
             self.notice = Some(error);
         }
         if self.playback.is_loading() {
-            ui.spinner();
+            ui.add(
+                egui::ProgressBar::new(0.0)
+                    .animate(true)
+                    .desired_width(100.0),
+            );
             ui.label("Loading sounds…");
+            if ui.button("Cancel").clicked() {
+                self.playback.cancel_loading();
+            }
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
