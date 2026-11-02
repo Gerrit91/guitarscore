@@ -296,6 +296,56 @@ impl TabEditor {
             ActionId::Save => Ok(Outcome::Request(Request::Save)),
             // View actions: the app handles them before the editor, which has no view.
             ActionId::ZoomIn | ActionId::ZoomOut | ActionId::ZoomReset => Ok(Outcome::Nothing),
+            // Palette actions: the app runs them like a click on the palette tile.
+            ActionId::NoteWhole
+            | ActionId::NoteHalf
+            | ActionId::NoteQuarter
+            | ActionId::NoteEighth
+            | ActionId::NoteSixteenth
+            | ActionId::NoteThirtySecond
+            | ActionId::NoteSixtyFourth
+            | ActionId::ToggleDot
+            | ActionId::ToggleDoubleDot
+            | ActionId::TupletThree
+            | ActionId::TupletFive
+            | ActionId::TupletSeven
+            | ActionId::MakeRest
+            | ActionId::ToggleTie
+            | ActionId::ToggleDeadNote
+            | ActionId::ToggleGhostNote
+            | ActionId::ToggleHammer
+            | ActionId::ToggleShiftSlide
+            | ActionId::ToggleLegatoSlide
+            | ActionId::ToggleSlideInBelow
+            | ActionId::ToggleSlideInAbove
+            | ActionId::ToggleSlideOutDown
+            | ActionId::ToggleSlideOutUp
+            | ActionId::ToggleBend
+            | ActionId::ToggleVibrato
+            | ActionId::ToggleWideVibrato
+            | ActionId::ToggleAccent
+            | ActionId::ToggleHeavyAccent
+            | ActionId::ToggleStaccato
+            | ActionId::TogglePalmMute
+            | ActionId::ToggleLetRing
+            | ActionId::ToggleTrill
+            | ActionId::ToggleTremoloPicking
+            | ActionId::ToggleNaturalHarmonic
+            | ActionId::ToggleArtificialHarmonic
+            | ActionId::ToggleTappedHarmonic
+            | ActionId::TogglePinchHarmonic
+            | ActionId::ToggleSemiHarmonic
+            | ActionId::TogglePickDown
+            | ActionId::TogglePickUp
+            | ActionId::ToggleBrushDown
+            | ActionId::ToggleBrushUp
+            | ActionId::ToggleTapping
+            | ActionId::ToggleSlapping
+            | ActionId::TogglePopping
+            | ActionId::ToggleFadeIn
+            | ActionId::ToggleWhammy
+            | ActionId::ToggleLegato
+            | ActionId::ToggleBeatVibrato => Ok(Outcome::Nothing),
         }
     }
 

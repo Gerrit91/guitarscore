@@ -32,6 +32,20 @@ pub(crate) enum Icon {
     MoveUp,
     /// Move down (an arrow pointing down).
     MoveDown,
+    /// Minimize the window (a line at the bottom).
+    WindowMinimize,
+    /// Maximize the window (a square).
+    WindowMaximize,
+    /// Restore the window (two overlapping squares).
+    WindowRestore,
+    /// Close the window (a cross).
+    WindowClose,
+    /// The left panel (a frame with its left part filled).
+    PanelLeft,
+    /// The bottom panel.
+    PanelBottom,
+    /// The right panel.
+    PanelRight,
 }
 
 /// A square icon button with a tooltip and an accessibility label.
@@ -44,6 +58,36 @@ pub(crate) fn button(ui: &mut egui::Ui, icon: Icon, label: &str, tip: &str) -> R
     });
     let visuals = ui.style().interact(&response);
     if response.hovered() || response.has_focus() {
+        ui.painter().rect_filled(rect, 4.0, visuals.weak_bg_fill);
+    }
+    paint(
+        ui.painter(),
+        rect.shrink(6.0),
+        visuals.fg_stroke.color,
+        icon,
+    );
+    response.on_hover_text(tip)
+}
+
+/// An icon button that shows whether something is on (a panel shown): highlighted while on.
+pub(crate) fn toggle_button(
+    ui: &mut egui::Ui,
+    icon: Icon,
+    label: &str,
+    tip: &str,
+    on: bool,
+) -> Response {
+    let size = vec2(26.0, 22.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, label));
+    let visuals = ui.style().interact(&response);
+    if on {
+        ui.painter().rect_filled(
+            rect,
+            4.0,
+            ui.visuals().selection.bg_fill.gamma_multiply(0.35),
+        );
+    } else if response.hovered() {
         ui.painter().rect_filled(rect, 4.0, visuals.weak_bg_fill);
     }
     paint(
@@ -214,6 +258,73 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                     stroke,
                 );
             }
+        }
+        Icon::WindowMinimize => {
+            let y = center.y + size * 0.1;
+            painter.line_segment(
+                [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
+                Stroke::new(1.0, color),
+            );
+        }
+        Icon::WindowMaximize => {
+            painter.rect_stroke(
+                rect.shrink(0.5),
+                0.0,
+                Stroke::new(1.0, color),
+                egui::StrokeKind::Inside,
+            );
+        }
+        Icon::WindowRestore => {
+            let back = Rect::from_min_max(
+                rect.min + vec2(size * 0.25, 0.0),
+                rect.max - vec2(0.0, size * 0.25),
+            );
+            let front = Rect::from_min_max(
+                rect.min + vec2(0.0, size * 0.25),
+                rect.max - vec2(size * 0.25, 0.0),
+            );
+            painter.rect_stroke(
+                back.shrink(0.5),
+                0.0,
+                Stroke::new(1.0, color),
+                egui::StrokeKind::Inside,
+            );
+            painter.rect_filled(front, 0.0, Color32::TRANSPARENT);
+            painter.rect_stroke(
+                front.shrink(0.5),
+                0.0,
+                Stroke::new(1.0, color),
+                egui::StrokeKind::Inside,
+            );
+        }
+        Icon::WindowClose => {
+            let thin = Stroke::new(1.2, color);
+            painter.line_segment([rect.left_top(), rect.right_bottom()], thin);
+            painter.line_segment([rect.right_top(), rect.left_bottom()], thin);
+        }
+        Icon::PanelLeft | Icon::PanelBottom | Icon::PanelRight => {
+            let frame = Rect::from_center_size(center, vec2(size, size * 0.8));
+            painter.rect_stroke(
+                frame,
+                1.5,
+                Stroke::new(1.2, color),
+                egui::StrokeKind::Inside,
+            );
+            let part = match icon {
+                Icon::PanelLeft => Rect::from_min_max(
+                    frame.min,
+                    egui::pos2(frame.left() + frame.width() * 0.32, frame.bottom()),
+                ),
+                Icon::PanelRight => Rect::from_min_max(
+                    egui::pos2(frame.right() - frame.width() * 0.32, frame.top()),
+                    frame.max,
+                ),
+                _ => Rect::from_min_max(
+                    egui::pos2(frame.left(), frame.bottom() - frame.height() * 0.38),
+                    frame.max,
+                ),
+            };
+            painter.rect_filled(part, 1.5, color);
         }
     }
 }

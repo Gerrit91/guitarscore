@@ -19,18 +19,12 @@ pub(super) fn header(
     actions: &mut Vec<GridAction>,
 ) {
     let (rect, _) = ui.allocate_exact_size(vec2(TRACK_COLUMN, RULER_HEIGHT), Sense::hover());
-    ui.painter().text(
-        pos2(rect.left() + 6.0, rect.center().y),
-        Align2::LEFT_CENTER,
-        "Tracks",
-        FontId::proportional(11.0),
-        ui.visuals().weak_text_color(),
-    );
+    // The panel's title bar already says "Tracks".
     let shown = view.shown_track;
     let after = shown.saturating_add(1);
     let button_at = |slot: f32| {
         Rect::from_min_size(
-            pos2(rect.left() + 50.0 + slot * 27.0, rect.center().y - 11.0),
+            pos2(rect.left() + 2.0 + slot * 27.0, rect.center().y - 11.0),
             vec2(26.0, 22.0),
         )
     };
@@ -154,11 +148,9 @@ fn toggle(ui: &mut egui::Ui, rect: Rect, letter: &str, label: &str, on: bool, ti
 /// The master row: the volume of all tracks and a pan that shifts all of them.
 pub(super) fn master_row(ui: &mut egui::Ui, master: MasterMix, actions: &mut Vec<GridAction>) {
     let (rect, _) = ui.allocate_exact_size(vec2(TRACK_COLUMN, ROW_HEIGHT), Sense::hover());
+    // Widgets in a child limited to the row, like the track rows (see `rows.rs`).
+    let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(rect));
     let visuals = ui.visuals().clone();
-    ui.painter().line_segment(
-        [rect.left_top(), rect.right_top()],
-        egui::Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.4)),
-    );
     ui.painter().text(
         pos2(rect.left() + 6.0, rect.center().y),
         Align2::LEFT_CENTER,

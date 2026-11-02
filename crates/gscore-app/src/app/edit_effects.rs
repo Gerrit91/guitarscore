@@ -3,13 +3,15 @@
 //! click to every note or beat in the selection as commands.
 
 use egui::{Color32, Stroke, pos2, vec2};
-use gscore_edit::Command;
+use gscore_edit::{ActionId, Command};
 use gscore_model::{
     AccentKind, BeatEffect, BeatView, BendKind, BendPoint, BendShape, Harmonic, HarmonicKind,
     Legato, NoteEffect, NoteView, SlapKind, SlideKind, StrokeDirection, Vibrato, WhammyShape,
 };
 
 use super::edit_palette::PaletteSnapshot;
+use super::style;
+use super::tiles::{self, Face};
 
 /// The effects of the note under the cursor.
 #[derive(Debug, Clone)]
@@ -97,190 +99,483 @@ struct WhammyEditor {
     error: Option<String>,
 }
 
+/// What an effect tile (or its key) does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Fx {
+    Dead,
+    Ghost,
+    Hammer,
+    PalmMute,
+    LetRing,
+    Staccato,
+    Trill,
+    Tremolo,
+    Slide(SlideKind),
+    Bend,
+    Vibrato(Vibrato),
+    Accent(AccentKind),
+    Harmonic(HarmonicKind),
+    Pick(StrokeDirection),
+    Brush(StrokeDirection),
+    Slap(SlapKind),
+    FadeIn,
+    Whammy,
+    Legato,
+    BeatVibrato(Vibrato),
+}
+
+impl Fx {
+    /// Whether the effect belongs to a note (else to a beat).
+    fn on_note(self) -> bool {
+        !matches!(
+            self,
+            Fx::Pick(_)
+                | Fx::Brush(_)
+                | Fx::Slap(_)
+                | Fx::FadeIn
+                | Fx::Whammy
+                | Fx::Legato
+                | Fx::BeatVibrato(_)
+        )
+    }
+}
+
+/// One effect tile: its action (for the key and the description), face and effect.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct FxItem {
+    pub(super) action: ActionId,
+    pub(super) face: Face<'static>,
+    pub(super) fx: Fx,
+}
+
+const fn glyph(text: &'static str, size: f32, baseline: f32) -> Face<'static> {
+    Face::Glyph {
+        text,
+        size,
+        baseline,
+    }
+}
+
+const fn item(action: ActionId, face: Face<'static>, fx: Fx) -> FxItem {
+    FxItem { action, face, fx }
+}
+
+/// Note techniques, in palette order (SMuFL glyphs where the font has one).
+const NOTE_ITEMS: &[FxItem] = &[
+    item(
+        ActionId::ToggleDeadNote,
+        glyph("\u{E0A9}", 34.0, 0.0),
+        Fx::Dead,
+    ),
+    item(
+        ActionId::ToggleGhostNote,
+        glyph("\u{E0CE}", 40.0, 0.0),
+        Fx::Ghost,
+    ),
+    item(ActionId::ToggleHammer, Face::Text("H"), Fx::Hammer),
+    item(
+        ActionId::ToggleAccent,
+        glyph("\u{E4A0}", 44.0, 4.0),
+        Fx::Accent(AccentKind::Normal),
+    ),
+    item(
+        ActionId::ToggleHeavyAccent,
+        glyph("\u{E4AC}", 40.0, 5.0),
+        Fx::Accent(AccentKind::Heavy),
+    ),
+    item(
+        ActionId::ToggleStaccato,
+        glyph("\u{E4A2}", 60.0, 3.0),
+        Fx::Staccato,
+    ),
+    item(ActionId::TogglePalmMute, Face::Text("P.M."), Fx::PalmMute),
+    item(ActionId::ToggleLetRing, Face::Text("L.R."), Fx::LetRing),
+    item(
+        ActionId::ToggleVibrato,
+        glyph("\u{EAB2}\u{EAB2}\u{EAB2}", 30.0, 3.0),
+        Fx::Vibrato(Vibrato::Slight),
+    ),
+    item(
+        ActionId::ToggleWideVibrato,
+        glyph("\u{EAB3}\u{EAB3}", 28.0, 4.0),
+        Fx::Vibrato(Vibrato::Wide),
+    ),
+    item(
+        ActionId::ToggleTrill,
+        glyph("\u{E566}", 30.0, 5.0),
+        Fx::Trill,
+    ),
+    item(
+        ActionId::ToggleTremoloPicking,
+        glyph("\u{E222}", 28.0, 4.0),
+        Fx::Tremolo,
+    ),
+];
+
+/// Slides.
+const SLIDE_ITEMS: &[FxItem] = &[
+    item(
+        ActionId::ToggleShiftSlide,
+        Face::Slide { from: 0, to: 1 },
+        Fx::Slide(SlideKind::ShiftSlideTo),
+    ),
+    item(
+        ActionId::ToggleLegatoSlide,
+        Face::Slide { from: 0, to: -1 },
+        Fx::Slide(SlideKind::LegatoSlideTo),
+    ),
+    item(
+        ActionId::ToggleSlideInBelow,
+        Face::Slide { from: -1, to: 0 },
+        Fx::Slide(SlideKind::IntoFromBelow),
+    ),
+    item(
+        ActionId::ToggleSlideInAbove,
+        Face::Slide { from: 1, to: 0 },
+        Fx::Slide(SlideKind::IntoFromAbove),
+    ),
+    item(
+        ActionId::ToggleSlideOutDown,
+        Face::Slide { from: 0, to: -1 },
+        Fx::Slide(SlideKind::OutDownwards),
+    ),
+    item(
+        ActionId::ToggleSlideOutUp,
+        Face::Slide { from: 0, to: 1 },
+        Fx::Slide(SlideKind::OutUpwards),
+    ),
+];
+
+/// The bend and the harmonics.
+const PITCH_ITEMS: &[FxItem] = &[
+    item(ActionId::ToggleBend, Face::Bend, Fx::Bend),
+    item(
+        ActionId::ToggleNaturalHarmonic,
+        glyph("\u{E0DD}", 42.0, 0.0),
+        Fx::Harmonic(HarmonicKind::Natural),
+    ),
+    item(
+        ActionId::ToggleArtificialHarmonic,
+        Face::Text("A.H."),
+        Fx::Harmonic(HarmonicKind::Artificial),
+    ),
+    item(
+        ActionId::ToggleTappedHarmonic,
+        Face::Text("T.H."),
+        Fx::Harmonic(HarmonicKind::Tapped),
+    ),
+    item(
+        ActionId::TogglePinchHarmonic,
+        Face::Text("P.H."),
+        Fx::Harmonic(HarmonicKind::Pinch),
+    ),
+    item(
+        ActionId::ToggleSemiHarmonic,
+        Face::Text("S.H."),
+        Fx::Harmonic(HarmonicKind::Semi),
+    ),
+];
+
+/// Beat techniques.
+const BEAT_ITEMS: &[FxItem] = &[
+    item(
+        ActionId::TogglePickDown,
+        glyph("\u{E610}", 34.0, 4.0),
+        Fx::Pick(StrokeDirection::Down),
+    ),
+    item(
+        ActionId::TogglePickUp,
+        glyph("\u{E612}", 34.0, 7.0),
+        Fx::Pick(StrokeDirection::Up),
+    ),
+    item(
+        ActionId::ToggleBrushDown,
+        glyph("\u{E635}", 15.0, 10.0),
+        Fx::Brush(StrokeDirection::Down),
+    ),
+    item(
+        ActionId::ToggleBrushUp,
+        glyph("\u{E634}", 15.0, 10.0),
+        Fx::Brush(StrokeDirection::Up),
+    ),
+    item(
+        ActionId::ToggleTapping,
+        Face::Text("T"),
+        Fx::Slap(SlapKind::Tapping),
+    ),
+    item(
+        ActionId::ToggleSlapping,
+        Face::Text("S"),
+        Fx::Slap(SlapKind::Slapping),
+    ),
+    item(
+        ActionId::TogglePopping,
+        Face::Text("P"),
+        Fx::Slap(SlapKind::Popping),
+    ),
+    item(ActionId::ToggleFadeIn, Face::Hairpin, Fx::FadeIn),
+    item(ActionId::ToggleWhammy, Face::Whammy, Fx::Whammy),
+    item(ActionId::ToggleLegato, Face::Slur, Fx::Legato),
+    item(
+        ActionId::ToggleBeatVibrato,
+        glyph("\u{EAB2}\u{EAB2}\u{EAB2}", 30.0, 3.0),
+        Fx::BeatVibrato(Vibrato::Slight),
+    ),
+];
+
+/// The effect item bound to `action`, for a key press.
+pub(super) fn fx_item(action: ActionId) -> Option<&'static FxItem> {
+    [NOTE_ITEMS, SLIDE_ITEMS, PITCH_ITEMS, BEAT_ITEMS]
+        .into_iter()
+        .flatten()
+        .find(|item| item.action == action)
+}
+
+/// The beat state when the cursor is on no beat.
+fn no_beat() -> BeatState {
+    BeatState {
+        pick: None,
+        brush: None,
+        slap: None,
+        fade_in: false,
+        whammy: None,
+        legato: None,
+        vibrato: None,
+    }
+}
+
+/// Whether `fx` is on for one note or beat.
+fn is_on(fx: Fx, note: Option<&NoteState>, beat: &BeatState) -> bool {
+    let note_on = |test: fn(&NoteState) -> bool| note.is_some_and(test);
+    match fx {
+        Fx::Dead => note_on(|n| n.dead),
+        Fx::Ghost => note_on(|n| n.ghost),
+        Fx::Hammer => note_on(|n| n.hammer),
+        Fx::PalmMute => note_on(|n| n.palm_mute),
+        Fx::LetRing => note_on(|n| n.let_ring),
+        Fx::Staccato => note_on(|n| n.staccato),
+        Fx::Trill => note_on(|n| n.trill),
+        Fx::Tremolo => note_on(|n| n.tremolo_picking),
+        Fx::Bend => note_on(|n| n.bend.is_some()),
+        Fx::Slide(kind) => note.is_some_and(|n| n.slides.contains(&kind)),
+        Fx::Vibrato(kind) => note.is_some_and(|n| n.vibrato == Some(kind)),
+        Fx::Accent(kind) => note.is_some_and(|n| n.accent == Some(kind)),
+        Fx::Harmonic(kind) => note.is_some_and(|n| n.harmonic.is_some_and(|h| h.kind == kind)),
+        Fx::Pick(direction) => beat.pick == Some(direction),
+        Fx::Brush(direction) => beat.brush == Some(direction),
+        Fx::Slap(kind) => beat.slap == Some(kind),
+        Fx::FadeIn => beat.fade_in,
+        Fx::Whammy => beat.whammy.is_some(),
+        Fx::Legato => beat.legato.is_some(),
+        Fx::BeatVibrato(kind) => beat.vibrato == Some(kind),
+    }
+}
+
+/// Whether `fx` is on for the selection: every note it applies to (note effects) or every
+/// selected beat (beat effects) has it. Then a click takes it off them all; otherwise a
+/// click puts it on them all. Without targets it is off.
+fn is_on_for_targets(fx: Fx, snapshot: &PaletteSnapshot) -> bool {
+    let none = no_beat();
+    if fx.on_note() {
+        !snapshot.target_states.is_empty()
+            && snapshot
+                .target_states
+                .iter()
+                .all(|note| is_on(fx, Some(note), &none))
+    } else {
+        !snapshot.beat_states.is_empty()
+            && snapshot
+                .beat_states
+                .iter()
+                .all(|beat| is_on(fx, None, beat))
+    }
+}
+
+/// The commands that switch `fx` on the selected notes or beats: on when it is off at the
+/// cursor, off when it is on.
+pub(super) fn fx_commands(fx: Fx, snapshot: &PaletteSnapshot) -> Vec<Command> {
+    let note = snapshot
+        .note_state
+        .as_ref()
+        .or(snapshot.target_states.first());
+    let on = is_on_for_targets(fx, snapshot);
+    let mut commands = Vec::new();
+    let targets = &snapshot.note_targets;
+    let beats = &snapshot.beats;
+    let note_effect = match fx {
+        Fx::Dead => {
+            for (at, string) in targets {
+                commands.push(Command::SetDeadNote {
+                    at: *at,
+                    string: *string,
+                    dead: !on,
+                });
+            }
+            return commands;
+        }
+        Fx::Ghost => Some(NoteEffect::Ghost(!on)),
+        Fx::Hammer => Some(NoteEffect::Hammer(!on)),
+        Fx::PalmMute => Some(NoteEffect::PalmMute(!on)),
+        Fx::LetRing => Some(NoteEffect::LetRing(!on)),
+        Fx::Staccato => Some(NoteEffect::Staccato(!on)),
+        Fx::Trill => Some(NoteEffect::Trill(!on)),
+        Fx::Tremolo => Some(NoteEffect::TremoloPicking(!on)),
+        Fx::Slide(kind) => Some(NoteEffect::Slide(kind, !on)),
+        Fx::Bend => Some(NoteEffect::Bend(if on {
+            None
+        } else {
+            BendShape::new(BendKind::Up, default_bend()).ok()
+        })),
+        Fx::Vibrato(kind) => Some(NoteEffect::Vibrato((!on).then_some(kind))),
+        Fx::Accent(kind) => Some(NoteEffect::Accent((!on).then_some(kind))),
+        Fx::Harmonic(kind) => Some(NoteEffect::Harmonic((!on).then(|| Harmonic {
+            kind,
+            node: note.and_then(|n| n.harmonic.and_then(|h| h.node)),
+        }))),
+        _ => None,
+    };
+    if let Some(effect) = note_effect {
+        apply_note(&mut commands, targets, effect);
+        return commands;
+    }
+    match fx {
+        Fx::Legato => {
+            // A run: the first beat starts it, the last ends it, the ones between do both.
+            let last = beats.len().saturating_sub(1);
+            for (index, at) in beats.iter().enumerate() {
+                let legato = (!on).then_some(Legato {
+                    origin: index < last || beats.len() == 1,
+                    destination: index > 0,
+                });
+                commands.push(Command::SetBeatEffect {
+                    at: *at,
+                    effect: BeatEffect::Legato(legato),
+                });
+            }
+        }
+        Fx::Pick(direction) => {
+            apply_beat(
+                &mut commands,
+                beats,
+                BeatEffect::PickStroke((!on).then_some(direction)),
+            );
+        }
+        Fx::Brush(direction) => {
+            apply_beat(
+                &mut commands,
+                beats,
+                BeatEffect::BrushStroke((!on).then_some(direction)),
+            );
+        }
+        Fx::Slap(kind) => apply_beat(
+            &mut commands,
+            beats,
+            BeatEffect::Slap((!on).then_some(kind)),
+        ),
+        Fx::FadeIn => apply_beat(&mut commands, beats, BeatEffect::FadeIn(!on)),
+        Fx::Whammy => {
+            let shape = if on {
+                None
+            } else {
+                WhammyShape::new(default_whammy()).ok()
+            };
+            apply_beat(&mut commands, beats, BeatEffect::Whammy(shape));
+        }
+        Fx::BeatVibrato(kind) => {
+            apply_beat(
+                &mut commands,
+                beats,
+                BeatEffect::Vibrato((!on).then_some(kind)),
+            );
+        }
+        _ => {}
+    }
+    commands
+}
+
 impl EffectsState {
-    /// Draws the matrix; clicks turn into commands.
+    /// Draws the effect tiles; clicks turn into commands. `hint` gives an action's keys
+    /// for the tooltips (" (P)").
     pub(super) fn panel(
         &mut self,
         ui: &mut egui::Ui,
         snapshot: &PaletteSnapshot,
+        hint: &dyn Fn(ActionId) -> String,
         commands: &mut Vec<Command>,
     ) {
-        ui.strong("Note effects");
-        let Some(state) = snapshot.note_state.clone() else {
-            ui.label(egui::RichText::new("Put the cursor on a note").weak());
-            ui.separator();
-            beat_panel(ui, snapshot, &mut self.whammy, commands);
-            self.show_bend(ui, snapshot, commands);
-            self.show_whammy(ui, snapshot, commands);
-            return;
+        let note = snapshot.note_state.as_ref();
+        let beat = snapshot.beat_state.clone().unwrap_or_else(no_beat);
+        let has_notes = !snapshot.note_targets.is_empty();
+        let has_beats = !snapshot.beats.is_empty();
+        let row = |ui: &mut egui::Ui, items: &[FxItem], commands: &mut Vec<Command>| {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = vec2(2.0, 3.0);
+                for item in items {
+                    let enabled = if item.fx.on_note() {
+                        has_notes
+                    } else {
+                        has_beats
+                    };
+                    let label = item.action.label();
+                    let tip = format!("{label}{}", hint(item.action));
+                    let on = is_on_for_targets(item.fx, snapshot);
+                    if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
+                        commands.extend(fx_commands(item.fx, snapshot));
+                    }
+                }
+            });
         };
-        if snapshot.note_targets.is_empty() {
-            ui.label(egui::RichText::new("Select some notes first").weak());
-        }
-        let targets = &snapshot.note_targets;
-        ui.horizontal_wrapped(|ui| {
-            toggle(
-                ui,
-                "Hammer",
-                state.hammer,
-                targets,
-                NoteEffect::Hammer,
-                commands,
-            );
-            if ui.selectable_label(state.dead, "Dead").clicked() {
-                for (at, string) in targets {
-                    commands.push(Command::SetDeadNote {
-                        at: *at,
-                        string: *string,
-                        dead: !state.dead,
-                    });
-                }
+        style::section(ui, "note_effects", "Techniques", |ui| {
+            if !has_notes {
+                ui.label(egui::RichText::new("Put the cursor on a note").weak());
             }
-            toggle(
-                ui,
-                "Ghost",
-                state.ghost,
-                targets,
-                NoteEffect::Ghost,
-                commands,
-            );
-            toggle(
-                ui,
-                "Palm mute",
-                state.palm_mute,
-                targets,
-                NoteEffect::PalmMute,
-                commands,
-            );
-            toggle(
-                ui,
-                "Let ring",
-                state.let_ring,
-                targets,
-                NoteEffect::LetRing,
-                commands,
-            );
-            toggle(
-                ui,
-                "Staccato",
-                state.staccato,
-                targets,
-                NoteEffect::Staccato,
-                commands,
-            );
-        });
-        ui.horizontal_wrapped(|ui| {
-            toggle(
-                ui,
-                "Trill",
-                state.trill,
-                targets,
-                NoteEffect::Trill,
-                commands,
-            );
-            toggle(
-                ui,
-                "Tremolo",
-                state.tremolo_picking,
-                targets,
-                NoteEffect::TremoloPicking,
-                commands,
-            );
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Accent");
-            for (label, value) in [
-                ("none", None),
-                ("normal", Some(AccentKind::Normal)),
-                ("heavy", Some(AccentKind::Heavy)),
-            ] {
-                if ui.selectable_label(state.accent == value, label).clicked() {
-                    apply_note(commands, targets, NoteEffect::Accent(value));
-                }
-            }
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Vibrato");
-            for (label, value) in [
-                ("none", None),
-                ("slight", Some(Vibrato::Slight)),
-                ("wide", Some(Vibrato::Wide)),
-            ] {
-                if ui.selectable_label(state.vibrato == value, label).clicked() {
-                    apply_note(commands, targets, NoteEffect::Vibrato(value));
-                }
-            }
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Slides");
-            for (label, kind) in [
-                ("In up", SlideKind::IntoFromAbove),
-                ("In down", SlideKind::IntoFromBelow),
-                ("Shift", SlideKind::ShiftSlideTo),
-                ("Legato", SlideKind::LegatoSlideTo),
-                ("Out down", SlideKind::OutDownwards),
-                ("Out up", SlideKind::OutUpwards),
-            ] {
-                let active = state.slides.contains(&kind);
-                if ui.selectable_label(active, label).clicked() {
-                    apply_note(commands, targets, NoteEffect::Slide(kind, !active));
-                }
-            }
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Harmonic");
-            for (label, kind) in [
-                ("none", None),
-                ("natural", Some(HarmonicKind::Natural)),
-                ("artificial", Some(HarmonicKind::Artificial)),
-                ("tapped", Some(HarmonicKind::Tapped)),
-                ("pinch", Some(HarmonicKind::Pinch)),
-                ("semi", Some(HarmonicKind::Semi)),
-            ] {
-                let active = state.harmonic.as_ref().map(|h| h.kind) == kind;
-                if ui.selectable_label(active, label).clicked() {
-                    apply_note(
-                        commands,
-                        targets,
-                        NoteEffect::Harmonic(kind.map(|kind| Harmonic {
-                            kind,
-                            node: state.harmonic.as_ref().and_then(|h| h.node),
-                        })),
+            row(ui, NOTE_ITEMS, commands);
+            row(ui, SLIDE_ITEMS, commands);
+            row(ui, PITCH_ITEMS, commands);
+            if let Some(state) = note
+                && let Some(bend) = &state.bend
+            {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "Bend {} · {}",
+                            bend_name(bend.kind),
+                            quarter_tones(bend)
+                        ))
+                        .weak(),
                     );
-                }
-            }
-        });
-        ui.horizontal_wrapped(|ui| {
-            match &state.bend {
-                Some(bend) => {
-                    ui.label(format!(
-                        "Bend {} · {}",
-                        bend_name(bend.kind),
-                        quarter_tones(bend)
-                    ));
-                }
-                None => {
-                    ui.label(egui::RichText::new("No bend").weak());
-                }
-            }
-            if ui.button("Bend…").clicked() {
-                self.bend = Some(BendEditor {
-                    kind: state.bend.as_ref().map_or(BendKind::Up, |bend| bend.kind),
-                    points: state
-                        .bend
-                        .as_ref()
-                        .map_or_else(default_bend, |bend| bend.points.clone()),
-                    error: None,
+                    if ui.small_button("Edit…").clicked() {
+                        self.bend = Some(BendEditor {
+                            kind: bend.kind,
+                            points: bend.points.clone(),
+                            error: None,
+                        });
+                    }
                 });
             }
-            if state.bend.is_some() && ui.button("Remove bend").clicked() {
-                apply_note(commands, targets, NoteEffect::Bend(None));
-            }
+            self.show_bend(ui, snapshot, commands);
         });
-        ui.separator();
-        beat_panel(ui, snapshot, &mut self.whammy, commands);
-        self.show_bend(ui, snapshot, commands);
-        self.show_whammy(ui, snapshot, commands);
+        style::section(ui, "beat_effects", "Strokes and beat", |ui| {
+            row(ui, BEAT_ITEMS, commands);
+            if let Some(shape) = &beat.whammy {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "Whammy · {}",
+                            quarter_tones_shape(&shape.points)
+                        ))
+                        .weak(),
+                    );
+                    if ui.small_button("Edit…").clicked() {
+                        self.whammy = Some(WhammyEditor {
+                            points: shape.points.clone(),
+                            error: None,
+                        });
+                    }
+                });
+            }
+            self.show_whammy(ui, snapshot, commands);
+        });
     }
 
     fn show_bend(
@@ -385,168 +680,6 @@ impl EffectsState {
         } else if cancel || !open {
             self.whammy = None;
         }
-    }
-}
-
-/// The beat effects.
-fn beat_panel(
-    ui: &mut egui::Ui,
-    snapshot: &PaletteSnapshot,
-    whammy: &mut Option<WhammyEditor>,
-    commands: &mut Vec<Command>,
-) {
-    ui.strong("Beat effects");
-    let state = snapshot.beat_state.clone();
-    let beats = &snapshot.beats;
-    let current = state.unwrap_or(BeatState {
-        pick: None,
-        brush: None,
-        slap: None,
-        fade_in: false,
-        whammy: None,
-        legato: None,
-        vibrato: None,
-    });
-    ui.horizontal_wrapped(|ui| {
-        ui.label("Pick");
-        for (label, value) in [
-            ("off", None),
-            ("down", Some(StrokeDirection::Down)),
-            ("up", Some(StrokeDirection::Up)),
-        ] {
-            if ui.selectable_label(current.pick == value, label).clicked() {
-                apply_beat(commands, beats, BeatEffect::PickStroke(value));
-            }
-        }
-    });
-    ui.horizontal_wrapped(|ui| {
-        ui.label("Brush");
-        for (label, value) in [
-            ("off", None),
-            ("down", Some(StrokeDirection::Down)),
-            ("up", Some(StrokeDirection::Up)),
-        ] {
-            if ui.selectable_label(current.brush == value, label).clicked() {
-                apply_beat(commands, beats, BeatEffect::BrushStroke(value));
-            }
-        }
-    });
-    ui.horizontal_wrapped(|ui| {
-        ui.label("Slap");
-        for (label, value) in [
-            ("off", None),
-            ("tap", Some(SlapKind::Tapping)),
-            ("slap", Some(SlapKind::Slapping)),
-            ("pop", Some(SlapKind::Popping)),
-        ] {
-            if ui.selectable_label(current.slap == value, label).clicked() {
-                apply_beat(commands, beats, BeatEffect::Slap(value));
-            }
-        }
-    });
-    ui.horizontal_wrapped(|ui| {
-        toggle_beat(
-            ui,
-            "Fade in",
-            current.fade_in,
-            beats,
-            BeatEffect::FadeIn,
-            commands,
-        );
-        ui.label("Legato");
-        for (label, value) in [
-            ("off", None),
-            (
-                "origin",
-                Some(Legato {
-                    origin: true,
-                    destination: false,
-                }),
-            ),
-            (
-                "dest",
-                Some(Legato {
-                    origin: false,
-                    destination: true,
-                }),
-            ),
-            (
-                "both",
-                Some(Legato {
-                    origin: true,
-                    destination: true,
-                }),
-            ),
-        ] {
-            if ui
-                .selectable_label(current.legato == value, label)
-                .clicked()
-            {
-                apply_beat(commands, beats, BeatEffect::Legato(value));
-            }
-        }
-    });
-    ui.horizontal_wrapped(|ui| {
-        ui.label("Vibrato");
-        for (label, value) in [
-            ("off", None),
-            ("slight", Some(Vibrato::Slight)),
-            ("wide", Some(Vibrato::Wide)),
-        ] {
-            if ui
-                .selectable_label(current.vibrato == value, label)
-                .clicked()
-            {
-                apply_beat(commands, beats, BeatEffect::Vibrato(value));
-            }
-        }
-    });
-    ui.horizontal_wrapped(|ui| {
-        if let Some(shape) = &current.whammy {
-            ui.label(format!("Whammy · {}", quarter_tones_shape(&shape.points)));
-        } else {
-            ui.label(egui::RichText::new("No whammy").weak());
-        }
-        if ui.button("Whammy…").clicked() {
-            *whammy = Some(WhammyEditor {
-                points: current
-                    .whammy
-                    .as_ref()
-                    .map_or_else(default_whammy, |shape| shape.points.clone()),
-                error: None,
-            });
-        }
-        if current.whammy.is_some() && ui.button("Remove whammy").clicked() {
-            apply_beat(commands, beats, BeatEffect::Whammy(None));
-        }
-    });
-}
-
-/// A note-effect toggle: clicking sets the opposite of the shown state on every target.
-fn toggle(
-    ui: &mut egui::Ui,
-    label: &str,
-    on: bool,
-    targets: &[(gscore_model::BeatPosition, gscore_model::StringNumber)],
-    variant: fn(bool) -> NoteEffect,
-    commands: &mut Vec<Command>,
-) {
-    if ui.selectable_label(on, label).clicked() {
-        apply_note(commands, targets, variant(!on));
-    }
-}
-
-/// A beat-effect toggle.
-fn toggle_beat(
-    ui: &mut egui::Ui,
-    label: &str,
-    on: bool,
-    beats: &[gscore_model::BeatPosition],
-    variant: fn(bool) -> BeatEffect,
-    commands: &mut Vec<Command>,
-) {
-    if ui.selectable_label(on, label).clicked() {
-        apply_beat(commands, beats, variant(!on));
     }
 }
 

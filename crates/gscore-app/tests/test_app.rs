@@ -82,7 +82,7 @@ fn the_view_menu_switches_the_theme_and_the_toolbar_zooms() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("View").click();
     harness.run();
-    harness.get_by_label("Dark theme").click();
+    harness.get_by_label("Dark score").click();
     harness.run();
     assert_eq!(harness.state().view().theme, ThemeChoice::Dark);
 
@@ -206,7 +206,6 @@ fn outputs_are_chosen_and_labelled() {
     assert_eq!(playback.port(), Some("FLUID Synth"));
     assert_eq!(playback.soundfont(), Some(soundfont.as_path()));
     harness.run();
-    harness.get_by_label("Output");
 }
 
 #[test]
@@ -516,11 +515,21 @@ fn the_track_panel_edits_the_shown_track() {
     harness.run();
     assert_eq!(first_track(&harness).string_count(), 7);
 
-    // A rename from the panel is one step too.
+    // A rename in place: click the name, type, Enter. One step too.
+    harness.get_by_label("Edit track name").click();
+    harness.run();
     harness.get_by_label("Name field").click();
     harness.get_by_label("Name field").type_text(" Lead");
     harness.run();
-    harness.get_by_label("Rename track").click();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(first_track(&harness).name(), "Steel Guitar Lead");
+    // Escape leaves the name as it was.
+    harness.get_by_label("Edit track name").click();
+    harness.run();
+    harness.get_by_label("Name field").type_text(" X");
+    harness.run();
+    harness.key_press(egui::Key::Escape);
     harness.run();
     assert_eq!(first_track(&harness).name(), "Steel Guitar Lead");
 }
@@ -631,7 +640,6 @@ fn ctrl_equals_zooms_and_ctrl_zero_resets() {
 #[test]
 fn the_edit_palette_sets_lengths_effects_and_the_measure_header() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
-    harness.get_by_label("Edit palette");
 
     // A note length applies to the cursor's beat.
     harness.get_by_label("1/8").click();
@@ -716,7 +724,7 @@ fn the_edit_palette_sets_lengths_effects_and_the_measure_header() {
     assert_eq!(shown_tempo(&harness), Some(130.0));
 
     // Voice 2.
-    harness.get_by_label("2").click();
+    harness.get_by_label("Voice 2").click();
     harness.run();
     assert_eq!(
         harness
@@ -736,7 +744,7 @@ fn a_measure_selection_is_shared_with_the_editor_for_copy_and_paste() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     // Select the first measure in the grid.
     let rect = harness.get_by_label("Song grid").rect();
-    let pos = rect.left_top() + egui::vec2(13.0 * 0.0 + 6.0, 26.0 + 12.0);
+    let pos = rect.left_top() + egui::vec2(24.0 * 0.0 + 12.0, 26.0 + 12.0);
     harness.hover_at(pos);
     harness.drag_at(pos);
     harness.drop_at(pos);
@@ -769,8 +777,8 @@ fn the_view_menu_and_the_row_menu_show_the_track_panel() {
 fn clicking_the_song_grid_moves_the_cursor_and_selects_measures() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     let rect = harness.get_by_label("Song grid").rect();
-    // The third measure, first track: 13 px per measure, a 26 px ruler and 24 px rows.
-    let pos = rect.left_top() + egui::vec2(13.0 * 2.0 + 6.0, 26.0 + 12.0);
+    // The third measure, first track: 24 px square cells under a 26 px ruler.
+    let pos = rect.left_top() + egui::vec2(24.0 * 2.0 + 12.0, 26.0 + 12.0);
     harness.hover_at(pos);
     harness.drag_at(pos);
     harness.drop_at(pos);

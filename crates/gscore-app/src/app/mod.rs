@@ -12,10 +12,14 @@ mod editing;
 mod files;
 mod grid;
 mod icons;
+mod instrument;
 mod page;
 mod recovery;
 mod settings_window;
 mod style;
+mod tiles;
+mod title_bar;
+mod toolbar;
 mod track_panel;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -136,7 +140,7 @@ impl GuitarScoreApp {
         settings.apply_to_view(&mut view);
         let last_window = settings.window;
         let panel_sizes = PanelSizes {
-            grid: settings.grid_height,
+            grid: settings.grid_height_chosen,
             track_panel: settings.track_panel_width,
             edit_panel: settings.edit_panel_width,
         };
@@ -180,7 +184,7 @@ impl GuitarScoreApp {
     pub fn settings(&self) -> Settings {
         let mut settings = self.settings.clone();
         settings.update_from_view(&self.view);
-        settings.grid_height = self.panel_sizes.grid;
+        settings.grid_height_chosen = self.panel_sizes.grid;
         settings.track_panel_width = self.panel_sizes.track_panel;
         settings.edit_panel_width = self.panel_sizes.edit_panel;
         settings.window = self.last_window;
@@ -259,13 +263,9 @@ impl GuitarScoreApp {
     }
 
     fn apply_theme(&mut self, ctx: &egui::Context) {
+        // The chrome stays dark; the score's theme only changes how the page is drawn,
+        // which reads `view.theme` every frame. A change needs one more frame.
         if self.applied_theme != Some(self.view.theme) {
-            // `set_theme` (not `set_visuals`) switches egui's own widgets too; the change
-            // shows on the next frame, so ask for one.
-            ctx.set_theme(match self.view.theme {
-                ThemeChoice::Light => egui::Theme::Light,
-                ThemeChoice::Dark => egui::Theme::Dark,
-            });
             ctx.request_repaint();
             self.applied_theme = Some(self.view.theme);
         }
@@ -322,8 +322,14 @@ impl eframe::App for GuitarScoreApp {
         }
         self.apply_title(&ctx);
 
-        egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
-        egui::Panel::top("toolbar").show(ui, |ui| self.toolbar(ui));
+        egui::Panel::top("title_bar")
+            .frame(style::chrome_frame(&ctx, 0))
+            .exact_size(title_bar::TITLE_BAR_HEIGHT)
+            .resizable(false)
+            .show(ui, |ui| self.title_bar(ui));
+        egui::Panel::top("toolbar")
+            .frame(style::chrome_frame(&ctx, 5))
+            .show(ui, |ui| self.toolbar(ui));
         if let Some(progress) = self.tasks.open_progress().cloned() {
             egui::Panel::top("opening").show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -347,14 +353,37 @@ impl eframe::App for GuitarScoreApp {
             });
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
-        egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
+        egui::Panel::bottom("status")
+            .frame(style::chrome_frame(&ctx, 3))
+            .show(ui, |ui| self.status_bar(ui));
         if self.view.show_track_grid && self.document.is_some() {
-            let panel = egui::Panel::bottom("track_grid")
+            // Until the user drags it, the grid is just tall enough for its tracks (up to
+            // eight) and the master row, and follows when tracks come and go: a panel id per
+            // fitting height makes egui take the new default. It is never taller than all
+            // of its rows.
+            let tracks = self.document.as_ref().map_or(1, |d| d.song().track_count());
+            let fit = grid::opening_height(tracks);
+            let chosen = self.panel_sizes.grid;
+            let id = match chosen {
+                Some(_) => "track_grid_chosen".to_owned(),
+                None => format!("track_grid_fit_{}", tracks.min(grid::OPEN_ROWS)),
+            };
+            let panel = egui::Panel::bottom(id)
                 .resizable(true)
-                .min_size(80.0)
-                .default_size(self.panel_sizes.grid.unwrap_or(150.0))
-                .show(ui, |ui| self.track_grid(ui));
-            self.panel_sizes.grid = Some(panel.response.rect.height());
+                .min_size(grid::height_for(0))
+                .max_size(grid::height_for(tracks))
+                .default_size(chosen.unwrap_or(fit))
+                .frame(style::panel_frame(&ctx))
+                .show(ui, |ui| {
+                    egui::Frame::new()
+                        .inner_margin(egui::Margin::symmetric(8, 4))
+                        .show(ui, |ui| self.track_grid(ui));
+                });
+            let height = panel.response.rect.height();
+            // A height other than the fitting one means the user dragged the edge.
+            if chosen.is_some() || (height - fit).abs() > 1.0 {
+                self.panel_sizes.grid = Some(height);
+            }
         }
         if self.notice.is_some() {
             egui::Panel::top("notice").show(ui, |ui| self.notice_bar(ui));
@@ -362,28 +391,38 @@ impl eframe::App for GuitarScoreApp {
         if self.view.show_track_panel && self.document.is_some() {
             let panel = egui::Panel::right("track_panel")
                 .resizable(true)
-                .min_size(180.0)
-                .default_size(self.panel_sizes.track_panel.unwrap_or(240.0))
-                .show(ui, |ui| self.track_panel(ui));
+                .min_size(200.0)
+                .default_size(self.panel_sizes.track_panel.unwrap_or(260.0))
+                .frame(style::panel_frame(&ctx))
+                .show(ui, |ui| {
+                    self.track_panel(ui);
+                });
             self.panel_sizes.track_panel = Some(panel.response.rect.width());
         }
         if self.view.show_edit_panel && self.document.is_some() {
             let panel = egui::Panel::left("edit_palette")
                 .resizable(true)
-                .min_size(180.0)
-                .default_size(self.panel_sizes.edit_panel.unwrap_or(220.0))
-                .show(ui, |ui| self.edit_palette(ui));
+                .min_size(200.0)
+                .default_size(self.panel_sizes.edit_panel.unwrap_or(250.0))
+                .frame(style::panel_frame(&ctx))
+                .show(ui, |ui| {
+                    self.edit_palette(ui);
+                });
             self.panel_sizes.edit_panel = Some(panel.response.rect.width());
         }
-        egui::CentralPanel::default().show(ui, |ui| {
-            // A bug in drawing must not take the app down: contain it and tell the user.
-            let drawn = catch_unwind(AssertUnwindSafe(|| self.page_view(ui)));
-            if drawn.is_err() {
-                self.notice = Some(
-                    "Drawing the page failed unexpectedly; a crash report was written".to_owned(),
-                );
-            }
-        });
+        egui::CentralPanel::default()
+            .frame(style::canvas_frame(&ctx))
+            .show(ui, |ui| {
+                // A bug in drawing must not take the app down: contain it and tell the user.
+                let drawn = catch_unwind(AssertUnwindSafe(|| self.page_view(ui)));
+                if drawn.is_err() {
+                    self.notice = Some(
+                        "Drawing the page failed unexpectedly; a crash report was written"
+                            .to_owned(),
+                    );
+                }
+            });
+        title_bar::resize_edges(&ctx);
         self.show_dialog(&ctx);
         self.show_rename_window(&ctx);
         self.show_settings_window(&ctx);

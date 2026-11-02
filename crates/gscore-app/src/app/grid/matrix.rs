@@ -22,7 +22,9 @@ pub(super) fn matrix(
     actions: &mut Vec<GridAction>,
 ) {
     let width = view.measure_count as f32 * MEASURE_WIDTH;
-    let height = RULER_HEIGHT + rows.len() as f32 * ROW_HEIGHT;
+    // One row more than there are tracks: the master row's line, so the matrix ends where
+    // the track column does.
+    let height = RULER_HEIGHT + (rows.len() as f32 + 1.0) * ROW_HEIGHT;
     let available = ui.available_width();
     let (rect, response) =
         ui.allocate_exact_size(vec2(width.max(available), height), Sense::click_and_drag());
@@ -121,7 +123,7 @@ pub(super) fn matrix(
             let color = rows
                 .get(row)
                 .map_or(visuals.text_color(), |track| color32(track.color));
-            painter.rect_filled(cell, 2.0, color);
+            painter.rect_filled(cell, 0.0, color);
         }
     }
 

@@ -2,9 +2,10 @@
 
 use egui::{Align2, Color32, FontId, Rect, Sense, pos2, vec2};
 use gscore_edit::Command;
-use gscore_model::{InstrumentKind, MasterMix, TrackColor, TrackIndex, TrackSound};
+use gscore_model::{MasterMix, TrackColor, TrackIndex, TrackSound};
 
 use super::{GridAction, GridView, ROW_HEIGHT, RULER_HEIGHT, TRACK_COLUMN, bar, mixer};
+use crate::app::instrument::Instrument;
 use crate::document::Document;
 
 /// What a track row shows; a snapshot taken before drawing so the song is not borrowed
@@ -14,8 +15,8 @@ pub(super) struct TrackRow {
     pub(super) color: TrackColor,
     pub(super) muted: bool,
     pub(super) soloed: bool,
-    /// The three-letter instrument tag shown in the row.
-    tag: String,
+    /// The instrument family, shown as an icon.
+    pub(super) instrument: Instrument,
     /// The instrument's full name, for the row's tooltip.
     description: String,
     sound: Option<TrackSound>,
@@ -31,22 +32,13 @@ pub(super) fn track_rows(document: &Document) -> Vec<TrackRow> {
             color: track.color(),
             muted: track.is_muted(),
             soloed: track.is_soloed(),
-            tag: instrument_tag(track.instrument_kind()).to_owned(),
+            instrument: Instrument::of(&track, document.song().track_sound(track.index())),
             description: track
                 .instrument_name()
                 .map_or_else(|| track.name().to_owned(), str::to_owned),
             sound: document.song().track_sound(track.index()),
         })
         .collect()
-}
-
-/// A three-letter tag for the track column.
-fn instrument_tag(kind: InstrumentKind) -> &'static str {
-    match kind {
-        InstrumentKind::Strings => "STR",
-        InstrumentKind::Drums => "DRM",
-        InstrumentKind::Other => "OTH",
-    }
 }
 
 /// The fixed left column: the header with track actions, then color, instrument, name and
@@ -64,6 +56,10 @@ pub(super) fn headers(
         egui::Layout::top_down(egui::Align::Min),
         |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
+            // Sliders and buttons fit inside a row: at the app's usual 24-pixel control
+            // height a slider would reach below its row and push the next row down, out of
+            // line with the matrix.
+            ui.spacing_mut().interact_size.y = 16.0;
             bar::header(ui, rows, view, actions);
             for (index, row) in rows.iter().enumerate() {
                 track_header(ui, index, rows.len(), row, view, actions);
@@ -83,6 +79,10 @@ fn track_header(
     actions: &mut Vec<GridAction>,
 ) {
     let (rect, _) = ui.allocate_exact_size(vec2(TRACK_COLUMN, ROW_HEIGHT), Sense::hover());
+    // The row's widgets go into a child limited to the row: placing them in the column
+    // itself would move its layout cursor and shift the rows below out of line with the
+    // matrix.
+    let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(rect));
     let response = ui.interact(
         rect,
         ui.scope_id().with(("track_row", index)),
@@ -98,7 +98,7 @@ fn track_header(
         painter.rect_filled(rect, 0.0, visuals.faint_bg_color);
     }
     if index == view.shown_track {
-        painter.rect_filled(rect, 0.0, visuals.selection.bg_fill.gamma_multiply(0.35));
+        painter.rect_filled(rect, 3.0, visuals.selection.bg_fill.gamma_multiply(0.18));
     }
     // The track's color, then its instrument tag and name.
     let swatch = Rect::from_min_size(
@@ -106,14 +106,11 @@ fn track_header(
         vec2(5.0, ROW_HEIGHT - 8.0),
     );
     painter.rect_filled(swatch, 1.0, color32(row.color));
-    let tag_font = FontId::monospace(9.0);
-    painter.text(
-        pos2(swatch.right() + 5.0, rect.center().y),
-        Align2::LEFT_CENTER,
-        &row.tag,
-        tag_font,
-        visuals.weak_text_color(),
+    let icon = Rect::from_center_size(
+        pos2(swatch.right() + 13.0, rect.center().y),
+        vec2(14.0, 14.0),
     );
+    row.instrument.paint(&painter, icon, visuals.text_color());
     let name_rect = Rect::from_min_max(
         pos2(swatch.right() + 28.0, rect.top()),
         pos2(mixer::controls_rect(rect).left() - 4.0, rect.bottom()),

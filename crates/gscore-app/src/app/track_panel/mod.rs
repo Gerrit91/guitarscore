@@ -13,6 +13,8 @@ use gscore_model::{
 };
 
 use super::GuitarScoreApp;
+use super::instrument::Instrument;
+use super::style;
 
 /// What the track panel keeps between frames: which track it showed, and the name being
 /// typed (so a rename is one undo step, not one per keystroke).
@@ -22,6 +24,8 @@ pub(super) struct TrackPanelState {
     track: Option<usize>,
     /// The name in the text field.
     name: String,
+    /// Whether the name is being edited in place.
+    editing: bool,
 }
 
 /// A snapshot of the shown track, taken before drawing so the song is not borrowed while
@@ -38,6 +42,7 @@ struct TrackPanel {
     string_count: usize,
     percussion: bool,
     staves: TrackStaves,
+    instrument: Instrument,
 }
 
 impl TrackPanel {
@@ -54,6 +59,7 @@ impl TrackPanel {
             string_count: track.string_count(),
             percussion: track.is_percussion(),
             staves: track.staves(),
+            instrument: Instrument::of(track, song.track_sound(track.index())),
         }
     }
 }
@@ -72,61 +78,121 @@ impl GuitarScoreApp {
         if self.track_panel.track != Some(index) {
             self.track_panel.track = Some(index);
             self.track_panel.name.clone_from(&snapshot.name);
+            self.track_panel.editing = false;
         }
 
         let mut commands: Vec<(Command, bool)> = Vec::new();
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 4.0;
-                ui.heading(format!("Track {}", index.saturating_add(1)));
-                self.name_editor(ui, index, &snapshot, &mut commands);
-                instrument(ui, index, &snapshot, &mut commands);
-                sound(ui, index, &snapshot, &mut commands);
-                look::color(ui, index, &snapshot, &mut commands);
-                look::staves(ui, index, &snapshot, &mut commands);
-                tuning::tuning(ui, index, &snapshot, &mut commands);
+                ui.spacing_mut().item_spacing.y = 6.0;
+                self.header_row(ui, index, &snapshot, &mut commands);
+                style::section(ui, "track_instrument", "Instrument", |ui| {
+                    instrument(ui, index, &snapshot, &mut commands);
+                    sound(ui, index, &snapshot, &mut commands);
+                });
+                style::section(ui, "track_look", "Appearance", |ui| {
+                    look::color(ui, index, &snapshot, &mut commands);
+                    look::staves(ui, index, &snapshot, &mut commands);
+                });
+                style::section(ui, "track_tuning", "Tuning", |ui| {
+                    tuning::tuning(ui, index, &snapshot, &mut commands);
+                });
             });
         for (command, merge) in commands {
             self.apply_command(command, merge);
         }
     }
 
-    /// The name field and its Rename button.
-    fn name_editor(
+    /// The first line: the track's color, its instrument and its name. A click on the
+    /// name edits it in place; Enter (or clicking elsewhere) renames, Escape cancels.
+    fn header_row(
         &mut self,
         ui: &mut egui::Ui,
         index: usize,
         snapshot: &TrackPanel,
         commands: &mut Vec<(Command, bool)>,
     ) {
-        let mut entered = false;
-        ui.horizontal(|ui| {
-            ui.label("Name");
-            let response = ui.add(
-                egui::TextEdit::singleline(&mut self.track_panel.name)
-                    .hint_text("Track name")
-                    .desired_width(f32::INFINITY),
-            );
-            ui.ctx()
-                .accesskit_node_builder(response.id, |node| node.set_label("Name field"));
-            entered =
-                response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
-        });
-        let changed = self.track_panel.name != snapshot.name && !self.track_panel.name.is_empty();
-        if ui
-            .add_enabled(changed, egui::Button::new("Rename track"))
-            .clicked()
-            || (changed && entered)
-        {
-            commands.push((
-                Command::RenameTrack {
-                    track: TrackIndex::new(index),
-                    name: self.track_panel.name.clone(),
-                },
-                false,
-            ));
-        }
+        let tokens = style::tokens(ui);
+        let state = &mut self.track_panel;
+        egui::Frame::new()
+            .inner_margin(egui::Margin::symmetric(12, 10))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let (swatch, _) =
+                        ui.allocate_exact_size(egui::vec2(6.0, 22.0), egui::Sense::hover());
+                    let (red, green, blue) = snapshot.color.parts();
+                    ui.painter().rect_filled(
+                        swatch,
+                        2.0,
+                        egui::Color32::from_rgb(red, green, blue),
+                    );
+                    let (icon, response) =
+                        ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::hover());
+                    snapshot
+                        .instrument
+                        .paint(ui.painter(), icon.shrink(2.0), tokens.text);
+                    response.on_hover_text(snapshot.instrument.name());
+                    if state.editing {
+                        let response = ui.add(
+                            egui::TextEdit::singleline(&mut state.name)
+                                .hint_text("Track name")
+                                .font(egui::TextStyle::Heading)
+                                .desired_width(f32::INFINITY),
+                        );
+                        ui.ctx().accesskit_node_builder(response.id, |node| {
+                            node.set_label("Name field");
+                        });
+                        if !response.has_focus() && !response.lost_focus() {
+                            response.request_focus();
+                        }
+                        let cancel = ui.input(|input| input.key_pressed(egui::Key::Escape));
+                        if cancel {
+                            state.name.clone_from(&snapshot.name);
+                            state.editing = false;
+                        } else if response.lost_focus() {
+                            state.editing = false;
+                            if state.name != snapshot.name && !state.name.trim().is_empty() {
+                                commands.push((
+                                    Command::RenameTrack {
+                                        track: TrackIndex::new(index),
+                                        name: state.name.trim().to_owned(),
+                                    },
+                                    false,
+                                ));
+                            } else {
+                                state.name.clone_from(&snapshot.name);
+                            }
+                        }
+                    } else {
+                        let response = ui
+                            .add(
+                                egui::Label::new(
+                                    RichText::new(&snapshot.name)
+                                        .text_style(egui::TextStyle::Heading)
+                                        .color(tokens.text),
+                                )
+                                .truncate()
+                                .sense(egui::Sense::click()),
+                            )
+                            .on_hover_text("Click to rename")
+                            .on_hover_cursor(egui::CursorIcon::Text);
+                        response.widget_info(|| {
+                            egui::WidgetInfo::labeled(egui::Role::Button, true, "Edit track name")
+                        });
+                        if response.clicked() {
+                            state.name.clone_from(&snapshot.name);
+                            state.editing = true;
+                        }
+                    }
+                });
+            });
+        let rect = ui.max_rect();
+        ui.painter().hline(
+            rect.x_range(),
+            ui.cursor().top(),
+            egui::Stroke::new(1.0, tokens.line),
+        );
     }
 }
 
@@ -137,14 +203,13 @@ fn instrument(
     snapshot: &TrackPanel,
     commands: &mut Vec<(Command, bool)>,
 ) {
-    ui.separator();
     let kind = match snapshot.kind {
         InstrumentKind::Strings => "String instrument (tablature)",
         InstrumentKind::Drums => "Drum kit",
         InstrumentKind::Other => "Other instrument",
     };
     ui.horizontal(|ui| {
-        ui.strong("Instrument");
+        ui.label(RichText::new("Instrument").color(style::tokens(ui).text_weak));
         let label = ui.label(kind);
         if let Some(name) = &snapshot.instrument_name {
             label.on_hover_text(name);
@@ -169,10 +234,9 @@ fn sound(
     snapshot: &TrackPanel,
     commands: &mut Vec<(Command, bool)>,
 ) {
-    ui.separator();
     let mut program = snapshot.sound.map_or(25, |sound| sound.program);
     ui.horizontal(|ui| {
-        ui.strong("Sound");
+        ui.label(RichText::new("Preset").color(style::tokens(ui).text_weak));
         ui.add_enabled_ui(!snapshot.percussion, |ui| {
             let combo = egui::ComboBox::from_id_salt("track_program")
                 .selected_text(format!("{program}: {}", program_name(program)))

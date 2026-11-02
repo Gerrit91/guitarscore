@@ -79,6 +79,14 @@ impl GuitarScoreApp {
 
     /// Runs `action` at the cursor (from a key or a menu).
     pub(crate) fn perform_action(&mut self, action: Action, ctx: &egui::Context) {
+        // Palette actions run like a click on their tile.
+        if let Action::Plain(id) = action
+            && id.is_palette()
+        {
+            self.run_palette_action(id);
+            ctx.request_repaint();
+            return;
+        }
         // View actions do not touch the song, so they work without an open document.
         if let Action::Plain(id) = action {
             match id {

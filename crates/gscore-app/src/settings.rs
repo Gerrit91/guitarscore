@@ -66,8 +66,9 @@ pub struct Settings {
     pub show_track_panel: bool,
     /// Whether the edit palette (left panel) is shown.
     pub show_edit_panel: bool,
-    /// Height of the song grid, as last dragged.
-    pub grid_height: Option<f32>,
+    /// Height the song grid was dragged to; `None`: it follows the number of tracks. (The
+    /// key is new: the old `grid_height_chosen` held whatever the panel happened to be.)
+    pub grid_height_chosen: Option<f32>,
     /// Width of the track panel, as last dragged.
     pub track_panel_width: Option<f32>,
     /// Width of the edit palette, as last dragged.
@@ -96,7 +97,7 @@ impl Default for Settings {
             show_track_grid: true,
             show_track_panel: true,
             show_edit_panel: true,
-            grid_height: None,
+            grid_height_chosen: None,
             track_panel_width: None,
             edit_panel_width: None,
             window: None,
@@ -162,10 +163,10 @@ impl Settings {
             self.zoom = 1.0;
         }
         self.zoom = self.zoom.clamp(ZOOM_RANGE.0, ZOOM_RANGE.1);
-        if let Some(height) = self.grid_height
+        if let Some(height) = self.grid_height_chosen
             && !(height.is_finite() && height > 0.0)
         {
-            self.grid_height = None;
+            self.grid_height_chosen = None;
         }
         if let Some(width) = self.track_panel_width
             && !(width.is_finite() && width > 0.0)
@@ -224,11 +225,11 @@ mod tests {
         settings.apply_to_view(&mut restored);
         assert_eq!(restored, view);
         settings.zoom = f32::NAN;
-        settings.grid_height = Some(f32::INFINITY);
+        settings.grid_height_chosen = Some(f32::INFINITY);
         settings.autosave_seconds = u64::MAX;
         settings.sanitize();
         assert_eq!(settings.zoom, 1.0);
-        assert_eq!(settings.grid_height, None);
+        assert_eq!(settings.grid_height_chosen, None);
         assert_eq!(settings.autosave_seconds, DEFAULT_AUTOSAVE_SECONDS);
     }
 
@@ -248,7 +249,7 @@ mod tests {
         let mut settings = Settings::default();
         settings.add_recent(PathBuf::from("/tabs/song.gp"));
         settings.keymap_path = Some(PathBuf::from("/keys/keymap.txt"));
-        settings.grid_height = Some(180.0);
+        settings.grid_height_chosen = Some(180.0);
         settings.window = Some(WindowState {
             x: 10.0,
             y: 20.0,

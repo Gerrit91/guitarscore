@@ -250,9 +250,9 @@ fn a_click_in_the_song_grid_while_playing_jumps_there() {
     if !start_playing(&mut harness) {
         return;
     }
-    // The third measure, first track: 13 px per measure, a 26 px ruler and 24 px rows.
+    // The third measure, first track: 24 px square cells under a 26 px ruler.
     let rect = harness.get_by_label("Song grid").rect();
-    let pos = rect.left_top() + egui::vec2(13.0 * 2.0 + 6.0, 26.0 + 12.0);
+    let pos = rect.left_top() + egui::vec2(24.0 * 2.0 + 12.0, 26.0 + 12.0);
     harness.hover_at(pos);
     harness.drag_at(pos);
     harness.drop_at(pos);

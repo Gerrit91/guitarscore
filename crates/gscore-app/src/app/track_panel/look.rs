@@ -6,6 +6,7 @@ use gscore_edit::Command;
 use gscore_model::{TrackColor, TrackIndex, TrackStaves};
 
 use super::TrackPanel;
+use crate::app::style;
 
 /// The preset colors: names (for tooltips and screen readers) and `rrggbb`.
 pub(super) const PRESETS: [(&str, u32); 16] = [
@@ -34,9 +35,8 @@ pub(super) fn color(
     snapshot: &TrackPanel,
     commands: &mut Vec<(Command, bool)>,
 ) {
-    ui.separator();
     let track = TrackIndex::new(index);
-    ui.strong("Color");
+    ui.label(egui::RichText::new("Color").color(style::tokens(ui).text_weak));
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
         for (name, rgb) in PRESETS {
@@ -99,8 +99,8 @@ pub(super) fn staves(
     snapshot: &TrackPanel,
     commands: &mut Vec<(Command, bool)>,
 ) {
-    ui.separator();
-    ui.strong("Show");
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new("Show").color(style::tokens(ui).text_weak));
     // Notation needs a tuning (and is not drawn for drums): without one, tabs only.
     let notation_possible = !snapshot.tuning.is_empty() && !snapshot.percussion;
     ui.horizontal_wrapped(|ui| {
