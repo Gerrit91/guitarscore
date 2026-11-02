@@ -106,8 +106,11 @@ fn a_time_signature_reaches_every_track_and_undoes() {
             .unwrap(),
         TimeSignature::new(3, 4).unwrap()
     );
+    let stamp = song.measure_stamp(MeasureIndex::new(0));
     song.revert(&change).unwrap();
     assert_unchanged(&before, &song);
+    // Undo changes the layout back, so cached layouts must not be reused.
+    assert_ne!(song.measure_stamp(MeasureIndex::new(0)), stamp);
     assert!(song.set_time_signature(MeasureIndex::new(0), 4, 3).is_err());
     assert!(song.set_time_signature(MeasureIndex::new(9), 4, 4).is_err());
 }

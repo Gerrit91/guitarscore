@@ -455,3 +455,76 @@ fn a_pasted_note_keeps_its_effects() {
     assert!(note.is_palm_muted(), "the copied effect came along");
     assert_eq!(note.fret().unwrap().get(), 5);
 }
+
+#[test]
+fn a_measure_paste_carries_voice_two_and_sets_headers_once() {
+    let mut e = TabEditor::new(
+        testing::song(&[GUITAR_6, GUITAR_6], 2).unwrap(),
+        TrackIndex::new(0),
+    );
+    let voice_two = BeatPosition {
+        voice: gscore_model::VoiceIndex::new(1),
+        ..at(0, 0)
+    };
+    let quarter = e.song().beat(at(0, 0)).unwrap().note_value().unwrap();
+    let voices_before = |e: &TabEditor, measure: usize| {
+        e.song()
+            .track(TrackIndex::new(0))
+            .unwrap()
+            .measure(MeasureIndex::new(measure))
+            .unwrap()
+            .voices()
+            .len()
+    };
+    let target_voices = voices_before(&e, 1);
+    // Voice 2 of measure 1 exists only when the test song has it; make it if not.
+    if e.song().beat(voice_two).is_none() {
+        e.execute_command_merged(
+            Command::InsertBeat {
+                at: voice_two,
+                duration: quarter,
+            },
+            false,
+        )
+        .unwrap();
+    }
+    e.execute_command_merged(
+        Command::SetFret {
+            at: voice_two,
+            string: StringNumber::new(2).unwrap(),
+            fret: gscore_model::Fret::new(9).unwrap(),
+        },
+        false,
+    )
+    .unwrap();
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+    }));
+    plain(&mut e, ActionId::Copy);
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(1),
+        focus: MeasureIndex::new(1),
+    }));
+    let before_paste = e.song().clone();
+    assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
+    let pasted = BeatPosition {
+        measure: MeasureIndex::new(1),
+        ..voice_two
+    };
+    assert_eq!(fret_of(e.song(), pasted, 2), Some(9), "voice 2 was pasted");
+    assert!(voices_before(&e, 1) >= target_voices.max(2));
+
+    // Tempo, signature and section are song-wide: one command each, not one per track.
+    let Some(Command::Batch { commands }) = e.last_command() else {
+        panic!("a paste is a batch");
+    };
+    let signatures = commands
+        .iter()
+        .filter(|c| matches!(c, Command::SetTimeSignature { .. }))
+        .count();
+    assert_eq!(signatures, 1);
+
+    plain(&mut e, ActionId::Undo);
+    assert!(gscore_model::differences(&before_paste, e.song()).is_empty());
+}

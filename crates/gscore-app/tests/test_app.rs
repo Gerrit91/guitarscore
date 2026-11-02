@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT as _, Queryable};
 use gscore_app::{GuitarScoreApp, Output, ThemeChoice};
 
 fn testdata(relative: &str) -> PathBuf {
@@ -698,6 +698,22 @@ fn the_edit_palette_sets_lengths_effects_and_the_measure_header() {
     harness.get_by_label("Set tempo").click();
     harness.run();
     assert_eq!(harness.state().document().unwrap().song().tempo(), 130);
+    // Undo puts the field back to the song's tempo, not the value last typed.
+    let shown_tempo = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .get_by_label("Measure tempo")
+            .accesskit_node()
+            .numeric_value()
+    };
+    let original = harness.state().document().unwrap().song().clone();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+    harness.run();
+    let tempo = harness.state().document().unwrap().song().tempo();
+    assert_ne!(tempo, original.tempo());
+    assert_eq!(shown_tempo(&harness), Some(f64::from(tempo)));
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Y);
+    harness.run();
+    assert_eq!(shown_tempo(&harness), Some(130.0));
 
     // Voice 2.
     harness.get_by_label("2").click();

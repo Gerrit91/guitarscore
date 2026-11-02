@@ -3,14 +3,18 @@
 //!
 //! Copying and cutting read the song into plain data. Pasting turns that data back into
 //! ordinary commands and runs them as one [`Command::Batch`], so an edit (and its entry in
-//! the recovery journal) is one line and one undo step. Effects are not copied yet (see
-//! `docs/gaps.md`).
+//! the recovery journal) is one line and one undo step. Placeholder beats (Guitar Pro's
+//! unused-voice fillers, which saving drops) are not copied.
 
 use gscore_model::{
     BeatEffect, BeatIndex, BeatKind, BeatPosition, BeatView, Fret, MeasureIndex, ModelError,
-    NoteEffect, NoteKind, NoteValue, NoteView, Section, SlideKind, Song, StringNumber,
-    TimeSignature, TrackIndex, VoiceIndex,
+    NoteEffect, NoteKind, NoteValue, NoteView, Section, SlideKind, StringNumber, TimeSignature,
+    TrackIndex, VoiceIndex,
 };
+
+mod paste;
+
+use paste::{paste_beats, paste_measures};
 
 use crate::command::Command;
 use crate::cursor::Cursor;
@@ -285,7 +289,12 @@ impl TabEditor {
                 let mut beats = Vec::new();
                 for index in first..=last {
                     let beat = view.beats().nth(index).ok_or(EditError::NothingSelected)?;
-                    beats.push(beat_clip(&beat)?);
+                    if let Some(clip) = beat_clip(&beat)? {
+                        beats.push(clip);
+                    }
+                }
+                if beats.is_empty() {
+                    return Err(EditError::NothingSelected);
                 }
                 Ok(Clipboard::Beats(beats))
             }
@@ -309,7 +318,7 @@ impl TabEditor {
                             .map(|voice| {
                                 voice
                                     .beats()
-                                    .map(|beat| beat_clip(&beat))
+                                    .filter_map(|beat| beat_clip(&beat).transpose())
                                     .collect::<Result<Vec<_>, _>>()
                             })
                             .collect::<Result<Vec<_>, _>>()?;
@@ -329,8 +338,12 @@ impl TabEditor {
     }
 }
 
-/// The copyable content of one beat.
-fn beat_clip(beat: &BeatView<'_>) -> Result<BeatClip, EditError> {
+/// The copyable content of one beat; `None` for a placeholder beat (no length, dropped
+/// when saving), which a paste must not turn into a rest.
+fn beat_clip(beat: &BeatView<'_>) -> Result<Option<BeatClip>, EditError> {
+    if beat.kind() == BeatKind::Empty {
+        return Ok(None);
+    }
     let duration = beat.note_value().map_err(EditError::Model)?;
     let mut notes = Vec::new();
     for note in beat.notes() {
@@ -342,12 +355,12 @@ fn beat_clip(beat: &BeatView<'_>) -> Result<BeatClip, EditError> {
             effects: note_effects(&note),
         });
     }
-    Ok(BeatClip {
+    Ok(Some(BeatClip {
         duration,
-        rest: beat.kind() != BeatKind::Normal,
+        rest: beat.kind() == BeatKind::Rest,
         notes,
         effects: beat_effects(beat),
-    })
+    }))
 }
 
 /// Every slide the model knows, so a paste can clear the ones the source lacks.
@@ -393,195 +406,4 @@ fn beat_effects(beat: &BeatView<'_>) -> Vec<BeatEffect> {
         BeatEffect::Legato(beat.legato()),
         BeatEffect::Vibrato(beat.vibrato()),
     ]
-}
-
-/// Commands that write `beats` at `at`, adding beats at the end when the voice is shorter.
-fn paste_beats(
-    song: &Song,
-    at: BeatPosition,
-    beats: &[BeatClip],
-) -> Result<Vec<Command>, EditError> {
-    let mut existing = song
-        .track(at.track)
-        .and_then(|track| track.measure(at.measure))
-        .and_then(|measure| measure.voice(at.voice))
-        .map_or(0, |voice| voice.beats().len());
-    let mut commands = Vec::new();
-    for (offset, clip) in beats.iter().enumerate() {
-        let index = at.beat.get().saturating_add(offset);
-        let target = BeatPosition {
-            beat: BeatIndex::new(index),
-            ..at
-        };
-        // Only a beat past the voice's end is inserted; an existing beat is overwritten.
-        if index >= existing {
-            commands.push(Command::InsertBeat {
-                at: target,
-                duration: clip.duration,
-            });
-            existing = index.saturating_add(1);
-        }
-        commands.push(Command::SetDuration {
-            at: target,
-            duration: clip.duration,
-        });
-        commands.push(Command::SetBeatRest { at: target });
-        for note in &clip.notes {
-            commands.push(Command::SetFret {
-                at: target,
-                string: note.string,
-                fret: note.fret,
-            });
-            for effect in &note.effects {
-                commands.push(Command::SetNoteEffect {
-                    at: target,
-                    string: note.string,
-                    effect: effect.clone(),
-                });
-            }
-            if note.dead {
-                commands.push(Command::SetDeadNote {
-                    at: target,
-                    string: note.string,
-                    dead: true,
-                });
-            }
-            if note.tie {
-                commands.push(Command::SetTie {
-                    at: target,
-                    string: note.string,
-                    tie: true,
-                });
-            }
-        }
-        for effect in &clip.effects {
-            commands.push(Command::SetBeatEffect {
-                at: target,
-                effect: effect.clone(),
-            });
-        }
-    }
-    Ok(commands)
-}
-
-/// Commands that write the copied measures at `start`, inside the existing measures.
-fn paste_measures(
-    song: &Song,
-    start: MeasureIndex,
-    tracks: &[Vec<MeasureClip>],
-) -> Result<Vec<Command>, EditError> {
-    let count = tracks.first().map_or(0, Vec::len);
-    if count == 0 {
-        return Err(EditError::NothingToPaste);
-    }
-    let end = start.get().saturating_add(count);
-    if end > song.measure_count() {
-        return Err(EditError::Unsupported(
-            "paste measures inside the song; insert empty measures first".to_owned(),
-        ));
-    }
-    let mut commands = Vec::new();
-    for (track_index, measures) in tracks.iter().enumerate() {
-        let Some(track) = song.track(TrackIndex::new(track_index)) else {
-            break;
-        };
-        for (offset, clip) in measures.iter().enumerate() {
-            let measure = MeasureIndex::new(start.get().saturating_add(offset));
-            commands.push(Command::SetTimeSignature {
-                measure,
-                numerator: clip.time_signature.numerator(),
-                denominator: clip.time_signature.denominator(),
-            });
-            if let Some(tempo) = clip.tempo {
-                commands.push(Command::SetMeasureTempo { measure, tempo });
-            }
-            match &clip.section {
-                Some(section) => commands.push(Command::SetSection {
-                    measure,
-                    title: section.title.clone(),
-                    color: section.color,
-                }),
-                None => commands.push(Command::ClearSection { measure }),
-            }
-            let Some(target) = track.measure(measure) else {
-                continue;
-            };
-            let voice_count = target.voices().len();
-            for (voice_index, beats) in clip.voices.iter().enumerate() {
-                if voice_index >= voice_count {
-                    continue;
-                }
-                let voice = VoiceIndex::new(voice_index);
-                let existing = target.voice(voice).map_or(0, |voice| voice.beats().len());
-                // Clear the voice, then write the copied beats.
-                for _ in 0..existing {
-                    commands.push(Command::DeleteBeat {
-                        at: BeatPosition {
-                            track: TrackIndex::new(track_index),
-                            measure,
-                            voice,
-                            beat: BeatIndex::new(0),
-                        },
-                    });
-                }
-                for (index, clip) in beats.iter().enumerate() {
-                    let at = BeatPosition {
-                        track: TrackIndex::new(track_index),
-                        measure,
-                        voice,
-                        beat: BeatIndex::new(index),
-                    };
-                    commands.push(Command::InsertBeat {
-                        at,
-                        duration: clip.duration,
-                    });
-                    commands.push(Command::SetDuration {
-                        at,
-                        duration: clip.duration,
-                    });
-                    if clip.rest {
-                        commands.push(Command::SetBeatRest { at });
-                    }
-                    for note in &clip.notes {
-                        commands.push(Command::SetFret {
-                            at,
-                            string: note.string,
-                            fret: note.fret,
-                        });
-                        for effect in &note.effects {
-                            commands.push(Command::SetNoteEffect {
-                                at,
-                                string: note.string,
-                                effect: effect.clone(),
-                            });
-                        }
-                        if note.dead {
-                            commands.push(Command::SetDeadNote {
-                                at,
-                                string: note.string,
-                                dead: true,
-                            });
-                        }
-                        if note.tie {
-                            commands.push(Command::SetTie {
-                                at,
-                                string: note.string,
-                                tie: true,
-                            });
-                        }
-                    }
-                    for effect in &clip.effects {
-                        commands.push(Command::SetBeatEffect {
-                            at,
-                            effect: effect.clone(),
-                        });
-                    }
-                }
-            }
-        }
-    }
-    if commands.is_empty() {
-        return Err(EditError::NothingToPaste);
-    }
-    Ok(commands)
 }

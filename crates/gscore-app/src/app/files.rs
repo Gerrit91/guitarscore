@@ -191,6 +191,7 @@ impl GuitarScoreApp {
     /// its changes were saved or discarded before getting here).
     pub(super) fn replace_document(&mut self, document: Document) {
         self.playback.song_changed();
+        self.edit_palette.forget_fields();
         if let Some(old) = self.document.replace(document) {
             old.close(false);
         }

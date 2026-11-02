@@ -135,8 +135,12 @@ enum ChangeKind {
         field: crate::metadata::SongTextField,
         previous: String,
     },
-    /// The initial tempo changed.
-    SongTempo { previous: i16 },
+    /// The initial tempo changed; `previous_first` is measure 1's tempo when it had one
+    /// (GP6 and later store the initial tempo there too) and was changed with it.
+    SongTempo {
+        previous: i16,
+        previous_first: Option<i32>,
+    },
     /// A beat was made a rest; its notes are kept to put them back.
     BeatRest {
         at: BeatPosition,
@@ -564,8 +568,16 @@ impl Song {
                 }
                 Ok(())
             }),
-            ChangeKind::SongTempo { previous } => self.edit_metadata(|inner| {
+            ChangeKind::SongTempo {
+                previous,
+                previous_first,
+            } => self.edit_metadata(|inner| {
                 inner.tempo = *previous;
+                if let Some(first) = previous_first
+                    && let Some(header) = inner.measure_headers.first_mut()
+                {
+                    header.tempo = *first;
+                }
                 Ok(())
             }),
             ChangeKind::BeatRest {
@@ -640,19 +652,26 @@ impl Song {
                 measure,
                 previous_header,
                 previous_measures,
-            } => self.edit_headers(|inner| {
-                let header = inner
-                    .measure_headers
-                    .get_mut(measure.get())
-                    .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
-                header.time_signature = previous_header.clone();
-                for (track, previous) in inner.tracks.iter_mut().zip(previous_measures) {
-                    if let Some(slot) = track.measures.get_mut(measure.get()) {
-                        slot.time_signature = previous.clone();
+            } => self
+                .edit_headers(|inner| {
+                    let header = inner
+                        .measure_headers
+                        .get_mut(measure.get())
+                        .ok_or_else(|| {
+                            ModelError::Invalid(format!("{measure}: no such measure"))
+                        })?;
+                    header.time_signature = previous_header.clone();
+                    for (track, previous) in inner.tracks.iter_mut().zip(previous_measures) {
+                        if let Some(slot) = track.measures.get_mut(measure.get()) {
+                            slot.time_signature = previous.clone();
+                        }
                     }
-                }
-                Ok(())
-            }),
+                    Ok(())
+                })
+                .map(|()| {
+                    // Like the edit itself: every measure's layout may depend on the signature.
+                    self.touch_all_measures();
+                }),
             ChangeKind::KeySignature {
                 measure,
                 previous_header,

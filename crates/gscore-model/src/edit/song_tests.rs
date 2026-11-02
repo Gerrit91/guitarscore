@@ -62,6 +62,32 @@ fn the_tempo_changes_and_undo_restores_it() {
 }
 
 #[test]
+fn the_tempo_also_changes_measure_one_when_it_has_its_own() {
+    // GP6 and later store the initial tempo as measure 1's tempo too; playback takes the
+    // measure's, so both must change together.
+    let mut gp = one_measure(vec![]);
+    gp.measure_headers[0].tempo = 120;
+    let mut song = from_gp(gp).unwrap();
+    let first = crate::position::MeasureIndex::new(0);
+    let change = song.set_tempo(90).unwrap();
+    assert_eq!(song.tempo(), 90);
+    assert_eq!(song.tempo_change(first), Some(90));
+    song.revert(&change).unwrap();
+    assert_eq!(song.tempo_change(first), Some(120));
+
+    // Without a tempo of its own, measure 1 keeps none.
+    let mut song = song_with_no_first_tempo();
+    let _change = song.set_tempo(90).unwrap();
+    assert_eq!(song.tempo_change(first), None);
+}
+
+fn song_with_no_first_tempo() -> Song {
+    let mut gp = one_measure(vec![]);
+    gp.measure_headers[0].tempo = 0;
+    from_gp(gp).unwrap()
+}
+
+#[test]
 fn text_that_is_too_long_is_refused_and_changes_nothing() {
     let mut song = song();
     let before = song.clone();
