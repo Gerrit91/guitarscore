@@ -3,8 +3,6 @@
 // Derived from the `guitarpro` crate by slundi (https://github.com/slundi/guitarpro,
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
-use crate::model::*;
-
 pub const DURATION_QUARTER_TIME: i64 = 960;
 
 pub const DURATION_QUARTER: u8 = 4;

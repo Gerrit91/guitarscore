@@ -47,7 +47,6 @@ pub(super) fn write_beat_v3(song: &Song, data: &mut Vec<u8>, beat: &Beat) -> GpR
         song.write_beat_effect_v3(data, beat)?;
     }
     if (flags & 0x10) == 0x10 {
-        use crate::io::SongMixTableOps;
         song.write_mix_table_change(data, &beat.effect.mix_table_change, &(3, 0, 0));
     }
     use crate::io::SongNoteOps;
@@ -102,7 +101,6 @@ pub(super) fn write_beat(
         song.write_beat_effect_v4(data, beat, version)?;
     }
     if (flags & 0x10) == 0x10 {
-        use crate::io::SongMixTableOps;
         song.write_mix_table_change(data, &beat.effect.mix_table_change, version);
     }
     use crate::io::SongNoteOps;
@@ -165,8 +163,8 @@ pub(super) fn write_beat_effect_v3(song: &Song, data: &mut Vec<u8>, beat: &Beat)
         flags1 |= 0x02;
     }
     if beat.has_harmonic() {
-        for n in 0..beat.notes.len() {
-            if let Some(h) = &beat.notes[n].effect.harmonic {
+        for note in &beat.notes {
+            if let Some(h) = &note.effect.harmonic {
                 if h.kind == HarmonicType::Natural {
                     flags1 |= 0x04;
                 }

@@ -4,7 +4,8 @@
 //! This crate never touches the file system (that is `gscore-session`'s job) so it also
 //! builds for wasm. The format is detected from the content, not the file name, and input
 //! size is capped. Every call into the reader and writer in `gscore-gp` runs inside
-//! `std::panic::catch_unwind`, so a parser bug becomes an [`IoError`], not a crash.
+//! `std::panic::catch_unwind`, so a parser bug becomes an [`IoError`], not a crash. (Since
+//! `gscore-gp` follows the no-panic lints, this is the second line of defense.)
 
 #![warn(clippy::arithmetic_side_effects)]
 

@@ -234,7 +234,8 @@ Planned (owner's list of 2026-11-02, extended). Order: speed and safety first, b
 UI feature below triggers edits on the whole song; then the window's structure, then the
 panels that fill it.
 
-- **M10: Performance.** Long songs must stay instant to edit.
+- **M10: Performance.** Long songs must stay instant to edit. (Done 2026-11-02: see the
+  devlog; `cargo xtask bench` checks the budgets.)
   - Per-region edits: copy and validate only the touched measures instead of the whole song
     (now about 3.6 ms per edit on `DrDr.gp`).
   - Layout cache per measure (and per system): an edit lays out only what changed and
@@ -262,8 +263,8 @@ panels that fill it.
     dark; icons bundled with their licence (`THIRD_PARTY.md`); toolbar tooltips with keys.
   - Recent files, drag and drop to open, window size and position remembered, zoom keys.
   - Playback and the cursor (important to the owner): select a note and start playback
-    from it (from the first selected note with a selection; if the measure repeats, from
-    its first pass). During playback the cursor advances beat by beat to the note being
+    from it (done early, 2026-11-02: Play starts at the cursor's beat, at its measure's
+    first pass; still to do: from the first note of a selection). During playback the cursor advances beat by beat to the note being
     played (across repeats and track switches), and the view scrolls with it; pausing or
     stopping leaves the cursor on the last played note, so play continues from there.
 - **M13: Track and song grid (bottom panel).**
@@ -328,5 +329,7 @@ panels that fill it.
 - The repository license is MIT
 - ~~Which SMuFL font(s) to bundle first, and which text font for fret numbers.~~ **Decided (2026-11-01):** Bravura (with its metadata) as the music font, Noto Sans as the text font, both SIL OFL 1.1 in `assets/fonts/`.
 - When (and whether) to ship a browser build. The groundwork rules in section 5 ("Portability") apply from the start either way; the web build itself is a later goal.
-- Performance budgets (latency, large-score layout time).
+- ~~Performance budgets (latency, large-score layout time).~~ **Decided (M10, 2026-11-02):**
+  from a key press to the new layout within 16 ms, opening a file within 2 s, in release
+  builds; `cargo xtask bench` checks them on the owner's files.
 - Name availability checks for GuitarScore (GitHub, crates.io, domain) before the first public release.

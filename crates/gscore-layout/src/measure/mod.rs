@@ -98,6 +98,20 @@ enum Item {
 }
 
 impl MeasureLayout {
+    /// The measure it lays out.
+    pub(crate) fn index(&self) -> MeasureIndex {
+        self.index
+    }
+
+    /// The same layout for the measure now at `index` (it moved when a measure before it
+    /// was inserted or removed).
+    pub(crate) fn moved_to(&self, index: MeasureIndex) -> Self {
+        MeasureLayout {
+            index,
+            ..self.clone()
+        }
+    }
+
     /// Lays out `measure`; `show_time_signature` when it starts the piece or changes the
     /// time signature.
     pub(crate) fn new(

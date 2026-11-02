@@ -711,3 +711,74 @@ across beats, harmonic diamonds, notation-staff articulations.
   app), and end to end on the default audio device (skipped without one). Tests: 328 (+15).
 - Open (docs/gaps.md #11): no bundled SoundFont (licence and size to decide), the default
   device only, the chosen SoundFont is not remembered between runs, no WAV export.
+
+## 2026-11-02 — Playback from the cursor (pulled forward from M12)
+
+- Owner request: select a note and start playback there.
+- `gscore-play`: `Sequence::tick_of(song, BeatPosition)`: the tick where a beat is first
+  played (its measure's first pass plus the beats before it in its voice).
+- App: Play starts at the cursor's beat. After a pause it resumes, unless the cursor moved
+  meanwhile; then it starts at the cursor. After Stop or the end, Play starts at the
+  cursor again. `Playback::position`, `GuitarScoreApp::document_mut`.
+- `gscore-cli play --from MEASURE` (1-based; refused outside the song).
+- Tests: `tick_of` with repeats, mixed lengths and positions past the last beat; the app
+  plays from measure 3, resumes after a pause, starts at measure 1 after the cursor moved
+  and at measure 2 after Stop; `play --from` errors and one measure on the device
+  (skipped without one). Tests: 333 (+5).
+- Still open (M12): from the first note of a selection, and the cursor following playback.
+
+## 2026-11-02 — M10: performance
+
+- Measured first (`gscore-cli bench`, release, the owner's largest files): an edit and the
+  layout after it took 3.9 ms on `DrDr.gp` (172 measures, 16 tracks; 2.7 ms of it the
+  whole-song copy every edit made) and 3.3 ms on `master.gp` (415 measures). The M8 note of
+  "15 ms" included SVG output in a debug build. In a debug build (`cargo gui` until now)
+  it was 21-31 ms, two frames: the slowdown the owner saw.
+- `gscore-model`: edits are transactional per region. Note and beat edits (and their
+  undo) copy and check only the measure they touch (`Song::edit_measure`); inserting and
+  removing a measure check everything first and then change the song in place
+  (`Song::edit_structure`), building and checking the new measures before inserting them.
+  `Song::measure_stamp`: a number per measure that changes with the measure and is never
+  reused. `Change::size_estimate`.
+- `gscore-layout`: `LayoutCache` keeps each measure's layout by stamp (plus whether it shows
+  its time signature) and lays out only new or changed measures; a moved measure reuses
+  its layout with the new index. Track settings or options start it afresh. The app keeps
+  one per track.
+- `gscore-edit`: the undo history is capped at about 64 MiB as well as 10,000 entries
+  (oldest first; the newest entry always stays).
+- `gscore-cli bench FILE... [--check]` and `cargo xtask bench` (files from the arguments,
+  `GSCORE_BENCH_FILES` or `testdata/basic`): opening, layout, sequencing, a note edit, a
+  measure insert and edit-plus-layout, checked against the budgets now in AGENTS.md
+  section 11 (16 ms key to layout, 2 s to open). `cargo gui` builds in release.
+- After (release): edit-plus-layout 0.32 ms on `DrDr.gp`, 0.85 ms on `master.gp`, 0.59 ms
+  on `war.gp`; a note edit or a measure insert takes 1-9 µs whatever the song's length.
+  Debug build: 2.4 ms and 8.8 ms. What still grows with the song: line breaking and
+  drawing all measures (fine far beyond the budget), opening, and the playback sequence
+  (built on Play: 3.7 ms on `master.gp`).
+- Tests: the cache gives exactly a fresh layout after 40 mixed edits and their undo on
+  three files, with and without notation; one note edit lays out one measure, an inserted
+  measure only itself; stamps change only for edited measures and move with inserted and
+  removed ones; failed edits change neither song nor stamps; the memory cap. Tests: 338
+  (+5).
+
+## 2026-11-02 — `gscore-gp` under the workspace standards
+
+- Owner request: apply the project's code rules to the crate copied from guitarpro.
+- Removed the crate-level `allow` of every lint. The crate now passes the workspace lints
+  (no `unwrap`/`expect`/`panic`, no indexing or slicing) plus `arithmetic_side_effects`
+  and the lossy-cast lints, in library and test code; every file is under 400 lines
+  (`gpif_import` 1,633 lines, `gpif_export` 840 and five more split into modules).
+  About 760 findings, fixed file by file. Deliberate truncations (Guitar Pro tolerates
+  junk in metadata fields) go through named helpers, so the bytes read and written stay
+  the same. Details: docs/guitarpro.md change 29.
+- Oracle: `info`, `dump` and round trips to `.gp`, `.gpx` and `.gp5` of all 78 owner and
+  test files, compared after every step; identical except one GP5 round trip that now gets
+  further (a correct track-name field; it then fails on the known 1/256 duration,
+  docs/gaps.md #2).
+- Crashes fixed, each with a test that panicked on the old code: over-long track and
+  chord names in GP3-5 writing, repeat count 127 and 8-string notes in GP5 writing, a
+  copyright without a line break, `Note::real_value` past the tuning, `PitchClass` display
+  of B#/Cb, BCFS block numbers that overflowed. The library no longer prints. A song
+  without tracks now writes to GP3-5 as an empty song (it panicked, contained by
+  `gscore-io`). Opening times unchanged (`cargo xtask bench`). Tests: 346 (+8).
+- Open (docs/gaps.md #1): rustdoc on the inherited public model fields.

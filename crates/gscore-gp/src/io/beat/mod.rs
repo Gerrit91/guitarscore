@@ -7,7 +7,7 @@ mod read;
 mod write;
 use crate::io::*;
 
-pub trait SongBeatOps {
+pub(crate) trait SongBeatOps {
     fn read_beat(
         &mut self,
         data: &[u8],

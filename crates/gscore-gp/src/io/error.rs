@@ -1,3 +1,5 @@
+//! Errors of reading and writing Guitar Pro files, and checked number conversions.
+
 // Derived from the `guitarpro` crate by slundi (https://github.com/slundi/guitarpro,
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
@@ -36,6 +38,10 @@ pub enum GpError {
     #[error("Required state '{field}' not set")]
     MissingState { field: &'static str },
 
+    /// A reference to an item (track, channel, measure, ...) that does not exist
+    #[error("{what} {index} does not exist")]
+    NoSuch { what: &'static str, index: usize },
+
     /// Write operation error
     #[error("Write error: {0}")]
     WriteError(String),
@@ -67,7 +73,7 @@ impl From<String> for GpError {
 
 /// Extension trait for numeric conversions with context-aware errors.
 /// Use this instead of `ToPrimitive::to_*().unwrap()` to get proper error messages.
-pub trait ToPrimitiveGp {
+pub(crate) trait ToPrimitiveGp {
     fn to_u8_gp(&self, ctx: &'static str) -> GpResult<u8>;
     fn to_i8_gp(&self, ctx: &'static str) -> GpResult<i8>;
     fn to_i16_gp(&self, ctx: &'static str) -> GpResult<i16>;
@@ -79,149 +85,61 @@ pub trait ToPrimitiveGp {
     fn to_f64_gp(&self, ctx: &'static str) -> GpResult<f64>;
 }
 
+/// The value an error message shows: the number itself, or the nearest `i64` (`i64::MAX`
+/// for NaN) when it does not fit.
+fn shown<T: ToPrimitive>(value: &T) -> i64 {
+    value
+        .to_i64()
+        .or_else(|| {
+            value
+                .to_f64()
+                .map(|f| if f < 0.0 { i64::MIN } else { i64::MAX })
+        })
+        .unwrap_or(i64::MAX)
+}
+
+/// The conversion, or a [`GpError::TypeConversion`] naming `ctx` and the value.
+fn convert<T: ToPrimitive, U>(value: &T, ctx: &'static str, to: Option<U>) -> GpResult<U> {
+    to.ok_or(GpError::TypeConversion {
+        context: ctx,
+        value: shown(value),
+    })
+}
+
 macro_rules! impl_to_primitive_gp {
     ($($t:ty),*) => {
         $(
             impl ToPrimitiveGp for $t {
                 fn to_u8_gp(&self, ctx: &'static str) -> GpResult<u8> {
-                    self.to_u8().ok_or(GpError::TypeConversion { context: ctx, value: *self as i64 })
+                    convert(self, ctx, self.to_u8())
                 }
                 fn to_i8_gp(&self, ctx: &'static str) -> GpResult<i8> {
-                    self.to_i8().ok_or(GpError::TypeConversion { context: ctx, value: *self as i64 })
+                    convert(self, ctx, self.to_i8())
                 }
                 fn to_i16_gp(&self, ctx: &'static str) -> GpResult<i16> {
-                    self.to_i16().ok_or(GpError::TypeConversion { context: ctx, value: *self as i64 })
+                    convert(self, ctx, self.to_i16())
                 }
                 fn to_u16_gp(&self, ctx: &'static str) -> GpResult<u16> {
-                    self.to_u16().ok_or(GpError::TypeConversion { context: ctx, value: *self as i64 })
+                    convert(self, ctx, self.to_u16())
                 }
                 fn to_i32_gp(&self, ctx: &'static str) -> GpResult<i32> {
-                    self.to_i32().ok_or(GpError::TypeConversion { context: ctx, value: *self as i64 })
+                    convert(self, ctx, self.to_i32())
                 }
                 fn to_i64_gp(&self, ctx: &'static str) -> GpResult<i64> {
-                    self.to_i64().ok_or(GpError::TypeConversion { context: ctx, value: *self as i64 })
+                    convert(self, ctx, self.to_i64())
                 }
                 fn to_usize_gp(&self, ctx: &'static str) -> GpResult<usize> {
-                    self.to_usize().ok_or(GpError::TypeConversion { context: ctx, value: *self as i64 })
+                    convert(self, ctx, self.to_usize())
                 }
                 fn to_f32_gp(&self, ctx: &'static str) -> GpResult<f32> {
-                    self.to_f32().ok_or(GpError::TypeConversion { context: ctx, value: *self as i64 })
+                    convert(self, ctx, self.to_f32())
                 }
                 fn to_f64_gp(&self, ctx: &'static str) -> GpResult<f64> {
-                    self.to_f64().ok_or(GpError::TypeConversion { context: ctx, value: *self as i64 })
+                    convert(self, ctx, self.to_f64())
                 }
             }
         )*
     };
 }
 
-impl_to_primitive_gp!(i8, u8, i16, u16, i32, u32, i64, u64, isize, usize);
-
-// Special implementation for f32 and f64 (can't cast to i64 directly)
-impl ToPrimitiveGp for f32 {
-    fn to_u8_gp(&self, ctx: &'static str) -> GpResult<u8> {
-        self.to_u8().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_i8_gp(&self, ctx: &'static str) -> GpResult<i8> {
-        self.to_i8().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_i16_gp(&self, ctx: &'static str) -> GpResult<i16> {
-        self.to_i16().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_u16_gp(&self, ctx: &'static str) -> GpResult<u16> {
-        self.to_u16().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_i32_gp(&self, ctx: &'static str) -> GpResult<i32> {
-        self.to_i32().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_i64_gp(&self, ctx: &'static str) -> GpResult<i64> {
-        self.to_i64().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_usize_gp(&self, ctx: &'static str) -> GpResult<usize> {
-        self.to_usize().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_f32_gp(&self, _ctx: &'static str) -> GpResult<f32> {
-        Ok(*self)
-    }
-    fn to_f64_gp(&self, ctx: &'static str) -> GpResult<f64> {
-        self.to_f64().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-}
-
-impl ToPrimitiveGp for f64 {
-    fn to_u8_gp(&self, ctx: &'static str) -> GpResult<u8> {
-        self.to_u8().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_i8_gp(&self, ctx: &'static str) -> GpResult<i8> {
-        self.to_i8().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_i16_gp(&self, ctx: &'static str) -> GpResult<i16> {
-        self.to_i16().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_u16_gp(&self, ctx: &'static str) -> GpResult<u16> {
-        self.to_u16().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_i32_gp(&self, ctx: &'static str) -> GpResult<i32> {
-        self.to_i32().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_i64_gp(&self, ctx: &'static str) -> GpResult<i64> {
-        self.to_i64().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_usize_gp(&self, ctx: &'static str) -> GpResult<usize> {
-        self.to_usize().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_f32_gp(&self, ctx: &'static str) -> GpResult<f32> {
-        self.to_f32().ok_or(GpError::TypeConversion {
-            context: ctx,
-            value: *self as i64,
-        })
-    }
-    fn to_f64_gp(&self, _ctx: &'static str) -> GpResult<f64> {
-        Ok(*self)
-    }
-}
+impl_to_primitive_gp!(i8, u8, i16, u16, i32, u32, i64, u64, isize, usize, f32, f64);

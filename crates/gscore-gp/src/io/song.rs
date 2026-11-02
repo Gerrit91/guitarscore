@@ -17,6 +17,10 @@ fn parse_gpif_version(s: &str) -> (u8, u8, u8) {
     (num(0).max(7), num(1), num(2))
 }
 
+/// The most measures or tracks a binary file may declare: a corrupt count is clamped to
+/// this generous ceiling instead of allocating absurd amounts.
+const MAX_COUNT: i32 = 100_000;
+
 impl Song {
     /// Read the song. A song consists of score information, triplet feel, tempo, song key, MIDI channels, measure and track count, measure headers, tracks, measures.
     /// - Version: `byte-size-string` of size 30.
@@ -42,17 +46,16 @@ impl Song {
         // Tempo is written as `int` but semantically fits `i16` (real BPM).
         // Garbage in this slot (e.g. GP2 files loaded via the GP3 reader) is
         // truncated rather than rejected.
-        self.tempo =
-            read_int(data, &mut seek)?.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
+        self.tempo = clamp_i16(read_int(data, &mut seek)?);
         // Key signature is `-7..=7`; garbage values mean the file was written
         // with an unusual editor. Truncate rather than fail.
-        self.key.key = read_int(data, &mut seek)? as i8;
+        self.key.key = low_i8(read_int(data, &mut seek)?);
         self.read_midi_channels(data, &mut seek)?;
         // Guard against negative counts in malformed files. Cap at a very
         // generous ceiling (100k) so we don't try to allocate absurd amounts
         // for a garbage-in-garbage-out header.
-        let measure_count = read_int(data, &mut seek)?.clamp(0, 100_000) as usize;
-        let track_count = read_int(data, &mut seek)?.clamp(0, 100_000) as usize;
+        let measure_count = clamp_count(read_int(data, &mut seek)?, MAX_COUNT);
+        let track_count = clamp_count(read_int(data, &mut seek)?, MAX_COUNT);
         // Read measure headers. The *measures* are written one after another, their number have been specified previously.
         self.read_measure_headers(data, &mut seek, measure_count)?;
         self.current_measure_number = Some(0);
@@ -88,18 +91,17 @@ impl Song {
         // Tempo is written as `int` but semantically fits `i16` (real BPM).
         // Garbage in this slot (e.g. GP2 files loaded via the GP3 reader) is
         // truncated rather than rejected.
-        self.tempo =
-            read_int(data, &mut seek)?.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
+        self.tempo = clamp_i16(read_int(data, &mut seek)?);
         // Key signature is `-7..=7`; garbage values mean the file was written
         // with an unusual editor. Truncate rather than fail.
-        self.key.key = read_int(data, &mut seek)? as i8;
+        self.key.key = low_i8(read_int(data, &mut seek)?);
         read_signed_byte(data, &mut seek)?; //octave
         self.read_midi_channels(data, &mut seek)?;
         // Guard against negative counts in malformed files. Cap at a very
         // generous ceiling (100k) so we don't try to allocate absurd amounts
         // for a garbage-in-garbage-out header.
-        let measure_count = read_int(data, &mut seek)?.clamp(0, 100_000) as usize;
-        let track_count = read_int(data, &mut seek)?.clamp(0, 100_000) as usize;
+        let measure_count = clamp_count(read_int(data, &mut seek)?, MAX_COUNT);
+        let track_count = clamp_count(read_int(data, &mut seek)?, MAX_COUNT);
         // Read measure headers. The *measures* are written one after another, their number have been specified previously.
         self.read_measure_headers(data, &mut seek, measure_count)?;
         self.read_tracks(data, &mut seek, track_count)?;
@@ -118,8 +120,7 @@ impl Song {
         // Tempo is written as `int` but semantically fits `i16` (real BPM).
         // Garbage in this slot (e.g. GP2 files loaded via the GP3 reader) is
         // truncated rather than rejected.
-        self.tempo =
-            read_int(data, &mut seek)?.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
+        self.tempo = clamp_i16(read_int(data, &mut seek)?);
         self.hide_tempo = if self.version.number > (5, 0, 0) {
             read_bool(data, &mut seek)?
         } else {
@@ -133,8 +134,8 @@ impl Song {
         // Guard against negative counts in malformed files. Cap at a very
         // generous ceiling (100k) so we don't try to allocate absurd amounts
         // for a garbage-in-garbage-out header.
-        let measure_count = read_int(data, &mut seek)?.clamp(0, 100_000) as usize;
-        let track_count = read_int(data, &mut seek)?.clamp(0, 100_000) as usize;
+        let measure_count = clamp_count(read_int(data, &mut seek)?, MAX_COUNT);
+        let track_count = clamp_count(read_int(data, &mut seek)?, MAX_COUNT);
         self.read_measure_headers_v5(data, &mut seek, measure_count, &directions)?;
         self.read_tracks_v5(data, &mut seek, track_count)?;
         self.read_measures(data, &mut seek)?;
@@ -172,11 +173,11 @@ impl Song {
     }
     /// Write this song as a Guitar Pro 6 (.gpx) binary.
     pub fn write_gpx(&self) -> GpResult<Vec<u8>> {
-        crate::io::gpx::write_gpx_bytes(self)
+        gpx::write_gpx_bytes(self)
     }
     /// Write this song as a Guitar Pro 7+ (.gp) binary.
     pub fn write_gp(&self) -> GpResult<Vec<u8>> {
-        crate::io::gpx::write_gp_bytes(self)
+        gpx::write_gp_bytes(self)
     }
     /// Read information (name, artist, ...)
     pub(crate) fn read_info(&mut self, data: &[u8], seek: &mut usize) -> GpResult<()> {
@@ -197,7 +198,7 @@ impl Song {
         // Guard against negative / absurd counts in malformed files. Cap to a
         // sensible upper bound so a corrupt count doesn't allocate wildly or
         // panic.
-        let nc = read_int(data, seek)?.clamp(0, 10_000) as usize;
+        let nc = clamp_count(read_int(data, seek)?, 10_000);
         for _ in 0..nc {
             self.notice.push(read_int_byte_size_string(data, seek)?);
         }
@@ -224,7 +225,8 @@ impl Song {
     pub(crate) fn generate_channel_table(&mut self) {
         self.channels = (0..MIDI_CHANNEL_COUNT)
             .map(|i| {
-                let channel = (i % 16) as u8;
+                let channel =
+                    u8::try_from(i.checked_rem(16).unwrap_or_default()).unwrap_or_default();
                 MidiChannel {
                     channel,
                     effect_channel: channel,
@@ -234,14 +236,15 @@ impl Song {
             .collect();
         let mut next = 0usize;
         for track in &mut self.tracks {
+            let percussion = usize::from(DEFAULT_PERCUSSION_CHANNEL);
             let index = if track.percussion_track {
-                DEFAULT_PERCUSSION_CHANNEL as usize
+                percussion
             } else {
-                if next % 16 == DEFAULT_PERCUSSION_CHANNEL as usize {
-                    next += 1;
+                if next.checked_rem(16) == Some(percussion) {
+                    next = next.saturating_add(1);
                 }
-                let index = next.min(MIDI_CHANNEL_COUNT - 1);
-                next += 1;
+                let index = next.min(MIDI_CHANNEL_COUNT.saturating_sub(1));
+                next = next.saturating_add(1);
                 index
             };
             track.channel_index = index;
@@ -288,18 +291,15 @@ impl Song {
         if version.0 >= 4 {
             write_signed_byte(&mut data, 0);
         } //octave
-        self.write_midi_channels(&mut data); //TODO: fixme for writing
-        //return data;
+        self.write_midi_channels(&mut data);
 
         if version.0 == 5 {
             self.write_directions(&mut data)?;
             self.write_master_reverb(&mut data);
         }
 
-        write_i32(
-            &mut data,
-            self.tracks[0].measures.len().to_i32_gp("measures count")?,
-        );
+        let measures = self.tracks.first().map_or(0, |track| track.measures.len());
+        write_i32(&mut data, measures.to_i32_gp("measures count")?);
         write_i32(&mut data, self.tracks.len().to_i32_gp("tracks count")?);
         self.write_measure_headers(&mut data, &version)?;
         self.write_tracks(&mut data, &version)?;
@@ -322,8 +322,8 @@ impl Song {
         write_int_byte_size_string(data, &self.writer);
         write_int_byte_size_string(data, &self.instructions);
         write_i32(data, self.notice.len().to_i32_gp("notice count")?);
-        for i in 0..self.notice.len() {
-            write_int_byte_size_string(data, &self.notice[i]);
+        for notice in &self.notice {
+            write_int_byte_size_string(data, notice);
         }
         Ok(())
     }

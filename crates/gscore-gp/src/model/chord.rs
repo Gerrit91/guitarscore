@@ -57,6 +57,24 @@ pub struct PitchClass {
     pub sharp: bool,
 }
 
+/// The name of pitch class `value` in `table`, counting around the octave (so 12 is C and
+/// -1 is B).
+fn note_name(table: &[&'static str; 12], value: i8) -> &'static str {
+    let index = usize::try_from(value.rem_euclid(12)).unwrap_or_default();
+    table.get(index).copied().unwrap_or_default()
+}
+
+/// Whether a note name is flat (`-1`), sharp (`1`) or natural (`0`).
+fn accidental_of(note: &str) -> i8 {
+    if note.ends_with('b') {
+        -1
+    } else if note.ends_with('#') {
+        1
+    } else {
+        0
+    }
+}
+
 impl PitchClass {
     pub fn from(just: i8, accidental: Option<i8>, sharp: Option<bool>) -> PitchClass {
         let mut p = PitchClass {
@@ -72,66 +90,47 @@ impl PitchClass {
             pitch = p.just;
             accidental2 = a;
         } else {
-            let value = p.just % 12;
-            p.note = if value >= 0 {
-                String::from(SHARP_NOTES[value as usize])
-            } else {
-                String::from(SHARP_NOTES[(12 + value) as usize])
-            };
-            if p.note.ends_with('b') {
-                accidental2 = -1;
+            let value = p.just.wrapping_rem(12);
+            p.note = note_name(&SHARP_NOTES, value).to_owned();
+            accidental2 = accidental_of(&p.note);
+            if accidental2 < 0 {
                 p.sharp = false;
-            } else if p.note.ends_with('#') {
-                accidental2 = 1;
-            } else {
-                accidental2 = 0;
             }
-            pitch = value - accidental2;
+            pitch = value.saturating_sub(accidental2);
         }
-        p.just = pitch % 12;
+        p.just = pitch.wrapping_rem(12);
         p.accidental = accidental2;
-        p.value = p.just + accidental2;
+        p.value = p.just.saturating_add(accidental2);
         if sharp.is_none() {
             p.sharp = p.accidental >= 0;
         }
         p
     }
 
-    #[allow(dead_code)]
     pub fn from_note(note: String) -> PitchClass {
-        let mut p = PitchClass {
+        let accidental = accidental_of(&note);
+        let value = (0i8..12)
+            .find(|&i| note_name(&SHARP_NOTES, i) == note || note_name(&FLAT_NOTES, i) == note)
+            .unwrap_or(-1);
+        let just = value.saturating_sub(accidental).wrapping_rem(12);
+        PitchClass {
             note,
-            just: 0,
-            accidental: 0,
-            value: -1,
-            sharp: true,
-        };
-        if p.note.ends_with('b') {
-            p.accidental = -1;
-            p.sharp = false;
-        } else if p.note.ends_with('#') {
-            p.accidental = 1;
+            just,
+            accidental,
+            value: just.saturating_add(accidental),
+            sharp: accidental >= 0,
         }
-        for i in 0i8..12i8 {
-            if SHARP_NOTES[i as usize] == p.note || FLAT_NOTES[i as usize] == p.note {
-                p.value = i;
-                break;
-            }
-        }
-        let pitch = p.value - p.accidental;
-        p.just = pitch % 12;
-        p.value = p.just + p.accidental;
-        p
     }
 }
 
 impl std::fmt::Display for PitchClass {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        if self.sharp {
-            write!(f, "{}", SHARP_NOTES[self.value as usize])
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let table = if self.sharp {
+            &SHARP_NOTES
         } else {
-            write!(f, "{}", FLAT_NOTES[self.value as usize])
-        }
+            &FLAT_NOTES
+        };
+        f.write_str(note_name(table, self.value))
     }
 }
 
@@ -167,5 +166,13 @@ mod test {
     fn test_pitch_5() {
         let p = PitchClass::from(3, None, Some(true));
         assert_eq!("D#", p.to_string(), "Note should be D#");
+    }
+    #[test]
+    fn pitch_classes_past_the_octave_wrap_around_instead_of_panicking() {
+        // B# (11 + 1) and Cb (0 - 1) used to index past the note tables.
+        assert_eq!(PitchClass::from(11, Some(1), Some(true)).to_string(), "C");
+        assert_eq!(PitchClass::from(0, Some(-1), Some(false)).to_string(), "B");
+        assert_eq!(PitchClass::from(-128, None, None).to_string(), "E");
+        assert_eq!(PitchClass::from_note("H".to_owned()).to_string(), "B");
     }
 }

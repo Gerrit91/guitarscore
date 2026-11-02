@@ -10,7 +10,8 @@ use super::{Change, ChangeKind};
 use crate::duration::{Duration, NoteValue, TimeSignature};
 use crate::error::ModelError;
 use crate::position::MeasureIndex;
-use crate::song::Song;
+use crate::song::{Moved, Song};
+use crate::validate;
 
 /// Most rest beats a new measure may be filled with. Time signatures allow up to 255
 /// whole notes; anything that needs more rests than this is refused instead of allocating
@@ -22,7 +23,7 @@ const MAX_VOICES: usize = 8;
 
 /// Inserts a rest-filled measure before `at` in every track.
 pub(super) fn insert(song: &mut Song, at: MeasureIndex) -> Result<Change, ModelError> {
-    song.edit_inner(|inner| {
+    song.edit_structure(|inner| {
         if inner.tracks.is_empty() {
             return Err(ModelError::Invalid(
                 "cannot insert a measure: the song has no tracks".to_owned(),
@@ -33,6 +34,9 @@ pub(super) fn insert(song: &mut Song, at: MeasureIndex) -> Result<Change, ModelE
             return Err(ModelError::Invalid(format!(
                 "{at}: the song has {count} measure(s)"
             )));
+        }
+        if count >= usize::from(u16::MAX) {
+            return Err(ModelError::Invalid("too many measures".to_owned()));
         }
         for track in &inner.tracks {
             if at.get() > track.measures.len() {
@@ -58,8 +62,9 @@ pub(super) fn insert(song: &mut Song, at: MeasureIndex) -> Result<Change, ModelE
             triplet_feel,
             ..GpMeasureHeader::default()
         };
-        inner.measure_headers.insert(at.get(), header);
-        for (track_index, track) in inner.tracks.iter_mut().enumerate() {
+        // Every new measure is built and checked before anything changes.
+        let mut new_measures = Vec::with_capacity(inner.tracks.len());
+        for track_index in 0..inner.tracks.len() {
             // Voice 1 is filled with rests; further voices stay empty (one placeholder beat,
             // as Guitar Pro stores unused voices), so no rests appear in voice 2.
             let voices = (0..voice_count)
@@ -81,18 +86,24 @@ pub(super) fn insert(song: &mut Song, at: MeasureIndex) -> Result<Change, ModelE
                 voices,
                 ..GpMeasure::default()
             };
+            validate::check_measure_data(at, &measure)?;
+            new_measures.push(measure);
+        }
+        inner.measure_headers.insert(at.get(), header);
+        for (track, measure) in inner.tracks.iter_mut().zip(new_measures) {
             track.measures.insert(at.get(), measure);
         }
-        renumber(inner)?;
-        Ok(Change {
+        renumber(inner);
+        let change = Change {
             kind: ChangeKind::MeasureInserted { at },
-        })
+        };
+        Ok((change, Moved::Inserted(at)))
     })
 }
 
 /// Removes the measure at `at` from every track.
 pub(super) fn delete(song: &mut Song, at: MeasureIndex) -> Result<Change, ModelError> {
-    song.edit_inner(|inner| {
+    song.edit_structure(|inner| {
         let count = inner.measure_headers.len();
         if count <= 1 {
             return Err(ModelError::Invalid(
@@ -118,19 +129,20 @@ pub(super) fn delete(song: &mut Song, at: MeasureIndex) -> Result<Change, ModelE
             .iter_mut()
             .map(|track| track.measures.remove(at.get()))
             .collect();
-        renumber(inner)?;
-        Ok(Change {
+        renumber(inner);
+        let change = Change {
             kind: ChangeKind::MeasureRemoved {
                 at,
                 header: Box::new(header),
                 measures,
             },
-        })
+        };
+        Ok((change, Moved::Removed(at)))
     })
 }
 
 /// Reverts an inserted measure by removing it again.
-pub(super) fn remove(song: &mut GpSong, at: MeasureIndex) -> Result<(), ModelError> {
+pub(super) fn remove(song: &mut GpSong, at: MeasureIndex) -> Result<((), Moved), ModelError> {
     if at.get() >= song.measure_headers.len() {
         return Err(ModelError::Invalid(format!(
             "{at}: the song has {} measure(s)",
@@ -149,7 +161,8 @@ pub(super) fn remove(song: &mut GpSong, at: MeasureIndex) -> Result<(), ModelErr
     for track in &mut song.tracks {
         track.measures.remove(at.get());
     }
-    renumber(song)
+    renumber(song);
+    Ok(((), Moved::Removed(at)))
 }
 
 /// Reverts a removed measure by putting its header and every track's measure back.
@@ -158,7 +171,7 @@ pub(super) fn restore(
     at: MeasureIndex,
     header: &GpMeasureHeader,
     measures: &[GpMeasure],
-) -> Result<(), ModelError> {
+) -> Result<((), Moved), ModelError> {
     if at.get() > song.measure_headers.len() {
         return Err(ModelError::Invalid(format!(
             "{at}: the song has {} measure(s)",
@@ -178,33 +191,33 @@ pub(super) fn restore(
             )));
         }
     }
+    if song.measure_headers.len() >= usize::from(u16::MAX) {
+        return Err(ModelError::Invalid("too many measures".to_owned()));
+    }
+    for measure in measures {
+        validate::check_measure_data(at, measure)?;
+    }
     song.measure_headers.insert(at.get(), header.clone());
     for (track, measure) in song.tracks.iter_mut().zip(measures) {
         track.measures.insert(at.get(), measure.clone());
     }
-    renumber(song)
+    renumber(song);
+    Ok(((), Moved::Inserted(at)))
 }
 
 /// Numbers measures and their track links 1, 2, 3, ... again after an insertion/removal.
-fn renumber(song: &mut GpSong) -> Result<(), ModelError> {
+/// Callers check beforehand that the count fits a measure number (at most `u16::MAX`).
+fn renumber(song: &mut GpSong) {
     for (index, header) in song.measure_headers.iter_mut().enumerate() {
-        let number = index
-            .checked_add(1)
-            .and_then(|n| u16::try_from(n).ok())
-            .ok_or_else(|| ModelError::Invalid("too many measures".to_owned()))?;
-        header.number = number;
+        header.number = u16::try_from(index.saturating_add(1)).unwrap_or(u16::MAX);
     }
     for (track_index, track) in song.tracks.iter_mut().enumerate() {
         for (measure_index, measure) in track.measures.iter_mut().enumerate() {
-            let number = measure_index
-                .checked_add(1)
-                .ok_or_else(|| ModelError::Invalid("too many measures".to_owned()))?;
-            measure.number = number;
+            measure.number = measure_index.saturating_add(1);
             measure.header_index = measure_index;
             measure.track_index = track_index;
         }
     }
-    Ok(())
 }
 
 /// The header whose time/key signature is in effect at `at`: the previous measure, or the

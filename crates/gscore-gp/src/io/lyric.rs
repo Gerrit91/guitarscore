@@ -5,7 +5,7 @@
 
 use crate::io::*;
 
-pub trait SongLyricOps {
+pub(crate) trait SongLyricOps {
     fn read_lyrics(&self, data: &[u8], seek: &mut usize) -> GpResult<Lyrics>;
     fn write_lyrics(&self, data: &mut Vec<u8>) -> GpResult<()>;
 }
@@ -20,11 +20,11 @@ impl SongLyricOps for Song {
         // purely metadata about which track carries the lyric, so accept any
         // int and clamp into u8.
         let mut lyrics = Lyrics {
-            track_choice: read_int(data, seek)? as u8,
+            track_choice: low_u8(read_int(data, seek)?),
             ..Default::default()
         };
         for i in 0..5u8 {
-            let starting_measure = read_int(data, seek)?.max(0) as u16;
+            let starting_measure = u16::try_from(read_int(data, seek)?.max(0)).unwrap_or(u16::MAX);
             lyrics
                 .lines
                 .push((i, starting_measure, read_int_size_string(data, seek)?));

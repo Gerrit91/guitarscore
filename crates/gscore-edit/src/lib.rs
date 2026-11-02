@@ -28,7 +28,7 @@ mod tab_editor;
 pub use action::{ACTIONS, Action, ActionId, ActionInfo};
 pub use command::Command;
 pub use cursor::Cursor;
-pub use editor::{DEFAULT_HISTORY_LIMIT, EditError, Editor};
+pub use editor::{DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_LIMIT, EditError, Editor};
 pub use info::{COMMANDS, CommandInfo, ParamInfo, find_command};
 pub use keymap::{DEFAULT_KEYMAP, Key, KeyCombo, Keymap, KeymapError, Modifiers, NamedKey};
 pub use parse::{ParseError, parse_line};

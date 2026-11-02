@@ -4,7 +4,7 @@
 //! The pipeline for one track ([`layout_track`]):
 //! 1. [`header`]: title block, credits, tuning and tempo.
 //! 2. [`measure`]: every measure on its own, as columns of beats with natural spacing.
-//!    This is the unit to cache once editing needs incremental relayout.
+//!    This is the unit [`LayoutCache`] keeps between edits.
 //! 3. [`system`]: measures broken into lines and justified to the page width.
 //! 4. Drawing: staff lines, clef, barlines and the measures' content, as [`DrawOp`]s.
 //!
@@ -14,6 +14,7 @@
 
 #![warn(clippy::arithmetic_side_effects)]
 
+mod cache;
 mod draw;
 mod error;
 mod glyph;
@@ -29,13 +30,16 @@ mod svg;
 mod system;
 mod theme;
 
-use gscore_model::{Song, TrackIndex};
+use std::sync::Arc;
+
+use gscore_model::{MeasureView, Song, TrackIndex};
 
 // The golden tests open the owner's files with `gscore-io`; this marks the test-only
 // dependency for the library test target's unused-dependency check.
 #[cfg(test)]
 use gscore_io as _;
 
+pub use cache::LayoutCache;
 pub use draw::{ColorToken, DrawOp, Point, Rect, TextAnchor, TextFont};
 pub use error::LayoutError;
 pub use glyph::{Digit, Flag, Glyph};
@@ -103,6 +107,24 @@ pub fn layout_track(
     options: &LayoutOptions,
     fonts: &Fonts,
 ) -> Result<Layout, LayoutError> {
+    layout_with(song, track, options, fonts, &mut |measure, show, ctx| {
+        MeasureLayout::new(measure, show, ctx).map(Arc::new)
+    })
+}
+
+/// Lays out one measure: the measure, whether it shows its time signature, the context.
+type MeasureSource<'s> =
+    dyn FnMut(MeasureView<'_>, bool, &Context<'_>) -> Result<Arc<MeasureLayout>, LayoutError> + 's;
+
+/// [`layout_track`] with the measures' layouts coming from `measure_layout` (a cache, or a
+/// fresh layout).
+fn layout_with(
+    song: &Song,
+    track: TrackIndex,
+    options: &LayoutOptions,
+    fonts: &Fonts,
+    measure_layout: &mut MeasureSource<'_>,
+) -> Result<Layout, LayoutError> {
     let view = song.track(track).ok_or(LayoutError::NoSuchTrack(track))?;
     if view.is_percussion() {
         return Err(LayoutError::Unsupported(format!(
@@ -129,7 +151,7 @@ pub fn layout_track(
     for measure in view.measures() {
         let signature = measure.time_signature()?;
         let show = previous_signature != Some(signature);
-        measures.push(MeasureLayout::new(measure, show, &ctx)?);
+        measures.push(measure_layout(measure, show, &ctx)?);
         previous_signature = Some(signature);
     }
 
@@ -160,7 +182,7 @@ pub fn layout_track(
     let mut top = header_end + HEADER_GAP;
     let mut bottom = header_end;
     for plan in &plans {
-        let line: &[MeasureLayout] = measures.get(plan.measures.clone()).unwrap_or_default();
+        let line: &[Arc<MeasureLayout>] = measures.get(plan.measures.clone()).unwrap_or_default();
         let tops = Tops {
             tab: top + tab_offset,
             notation: ctx.notation.map(|_| top),

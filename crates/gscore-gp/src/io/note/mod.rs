@@ -8,21 +8,33 @@ mod write;
 use crate::io::*;
 
 impl Note {
+    /// The sounding pitch: the fret plus the string's tuning (`strings` are the track's
+    /// `(number, pitch)` pairs).
     pub(crate) fn real_value(&self, strings: &[(i8, i8)]) -> GpResult<i8> {
         use crate::io::error::ToPrimitiveGp;
-        if self.string > 0 {
-            let value = self.value.to_i8_gp("note value")?;
-            let string_idx = self.string.to_usize_gp("string index")? - 1;
-            return Ok(value + strings[string_idx].1);
-        }
-        Err(GpError::InvalidValue {
-            context: "note real_value (string must be > 0)",
-            value: self.string as i64,
-        })
+        let index = usize::try_from(self.string)
+            .ok()
+            .and_then(|string| string.checked_sub(1))
+            .ok_or(GpError::InvalidValue {
+                context: "note real_value (string must be > 0)",
+                value: i64::from(self.string),
+            })?;
+        let value = self.value.to_i8_gp("note value")?;
+        let tuning = item(strings, index, "string")?.1;
+        Ok(value.saturating_add(tuning))
     }
 }
 
-pub trait SongNoteOps {
+/// The bit of `string` (1 to 7) in a beat's string flags; `None` for a string the binary
+/// formats cannot store.
+pub(crate) fn string_bit(string: i8) -> Option<u8> {
+    let shift = 7_i8
+        .checked_sub(string)
+        .filter(|_| (1..=7).contains(&string))?;
+    1_u8.checked_shl(u32::try_from(shift).ok()?)
+}
+
+pub(crate) trait SongNoteOps {
     fn read_notes(
         &mut self,
         data: &[u8],

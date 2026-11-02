@@ -410,3 +410,102 @@ fn undoing_an_insert_into_a_measure_without_voices_removes_the_created_voice() {
     song.revert(&change).unwrap();
     assert_eq!(measure(&song), 0, "undo must leave no voice behind");
 }
+
+/// A two-track, three-measure song: quarter rests in every measure.
+fn three_measures() -> Song {
+    let measures = || {
+        (0..3)
+            .map(|_| measure((4, 4), vec![vec![rest(4), rest(4), rest(4), rest(4)]]))
+            .collect()
+    };
+    from_gp(test_song(vec![
+        track("Guitar", GUITAR_6, measures()),
+        track("Bass", BASS_4, measures()),
+    ]))
+    .unwrap()
+}
+
+fn stamps(song: &Song) -> Vec<u64> {
+    (0..song.measure_count())
+        .map(|m| song.measure_stamp(MeasureIndex::new(m)))
+        .collect()
+}
+
+#[test]
+fn measure_stamps_change_only_for_the_edited_measure() {
+    let mut song = three_measures();
+    let first = stamps(&song);
+    assert!(first.iter().all(|&s| s != 0));
+    assert_eq!(
+        song.measure_stamp(MeasureIndex::new(3)),
+        0,
+        "no such measure"
+    );
+    let mut unique = first.clone();
+    unique.dedup();
+    assert_eq!(unique.len(), 3, "stamps differ: {first:?}");
+
+    // A note in measure 2 of the bass: only measure 2's stamp changes.
+    let at = BeatPosition {
+        track: TrackIndex::new(1),
+        measure: MeasureIndex::new(1),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(2),
+    };
+    let change = song.set_note(at, string(4), fret(3)).unwrap();
+    let edited = stamps(&song);
+    assert_eq!((edited[0], edited[2]), (first[0], first[2]));
+    assert_ne!(edited[1], first[1]);
+    // Undo is another change: a new stamp, never an old one again.
+    song.revert(&change).unwrap();
+    let undone = stamps(&song);
+    assert!(undone[1] != first[1] && undone[1] != edited[1]);
+
+    // A failed edit changes neither the song nor its stamps.
+    let before = song.clone();
+    let mut missing = at;
+    missing.beat = BeatIndex::new(9);
+    assert!(song.set_note(missing, string(1), fret(1)).is_err());
+    assert!(
+        song.set_note(at, string(5), fret(1)).is_err(),
+        "a bass has 4 strings"
+    );
+    assert!(song.delete_beat(missing).is_err());
+    assert_eq!(stamps(&song), undone);
+    assert_unchanged(&before, &song);
+}
+
+#[test]
+fn inserted_and_removed_measures_move_the_stamps_with_them() {
+    let mut song = three_measures();
+    let first = stamps(&song);
+    let inserted = song.insert_measure(MeasureIndex::new(1)).unwrap();
+    let after_insert = stamps(&song);
+    assert_eq!(after_insert.len(), 4);
+    assert_eq!(after_insert[0], first[0]);
+    assert_eq!(
+        &after_insert[2..],
+        &first[1..],
+        "later measures keep their stamps"
+    );
+    assert!(
+        !first.contains(&after_insert[1]),
+        "the new measure has a new stamp"
+    );
+
+    let removed = song.delete_measure(MeasureIndex::new(0)).unwrap();
+    assert_eq!(stamps(&song), after_insert[1..].to_vec());
+    // Undoing both brings the measures (and fresh stamps for re-inserted ones) back.
+    song.revert(&removed).unwrap();
+    song.revert(&inserted).unwrap();
+    let undone = stamps(&song);
+    assert_eq!(undone.len(), 3);
+    assert_eq!(&undone[1..], &first[1..]);
+
+    // Failed structural edits change nothing.
+    let before = song.clone();
+    assert!(song.insert_measure(MeasureIndex::new(9)).is_err());
+    assert!(song.delete_measure(MeasureIndex::new(3)).is_err());
+    assert_eq!(stamps(&song), undone);
+    assert_unchanged(&before, &song);
+}

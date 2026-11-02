@@ -1,258 +1,22 @@
+//! The GPIF XML from master bars (measure headers) down to notes and rhythms.
+
 // Derived from the `guitarpro` crate by slundi (https://github.com/slundi/guitarpro,
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
 use serde::Deserialize;
-
-#[derive(Debug, Deserialize)]
-pub struct Gpif {
-    /// GP7 uses "GPVersion", GP6 uses "GPRevision"
-    #[serde(rename = "GPVersion", default)]
-    pub version: Option<String>,
-    #[serde(rename = "GPRevision", default)]
-    pub revision: Option<String>,
-    #[serde(rename = "Score")]
-    pub score: Score,
-    #[serde(rename = "MasterTrack")]
-    pub master_track: MasterTrack,
-    #[serde(rename = "Tracks")]
-    pub tracks: TracksWrapper,
-    #[serde(rename = "MasterBars")]
-    pub master_bars: MasterBarsWrapper,
-    #[serde(rename = "Bars")]
-    pub bars: BarsWrapper,
-    #[serde(rename = "Voices")]
-    pub voices: VoicesWrapper,
-    #[serde(rename = "Beats")]
-    pub beats: BeatsWrapper,
-    #[serde(rename = "Notes")]
-    pub notes: NotesWrapper,
-    #[serde(rename = "Rhythms")]
-    pub rhythms: RhythmsWrapper,
-}
-
-// ---------------------------------------------------------------------------
-// Score metadata
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-pub struct Score {
-    #[serde(default)]
-    pub title: String,
-    #[serde(default)]
-    pub sub_title: String,
-    #[serde(default)]
-    pub artist: String,
-    #[serde(default)]
-    pub album: String,
-    #[serde(rename = "Words", default)]
-    pub words: String,
-    #[serde(rename = "Music", default)]
-    pub music: String,
-    /// GuitarScore addition: used instead of Words and Music when both are the same person.
-    #[serde(default)]
-    pub words_and_music: String,
-    #[serde(default)]
-    pub copyright: String,
-    #[serde(default)]
-    pub tabber: String,
-    #[serde(default)]
-    pub instructions: String,
-    #[serde(default)]
-    pub notices: String,
-}
-
-// ---------------------------------------------------------------------------
-// MasterTrack (tempo automations)
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Deserialize)]
-pub struct MasterTrack {
-    #[serde(rename = "Tracks", default)]
-    pub tracks_count: String,
-    #[serde(rename = "Automations", default)]
-    pub automations: Option<AutomationsWrapper>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AutomationsWrapper {
-    #[serde(rename = "Automation", default)]
-    pub automations: Vec<Automation>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct Automation {
-    #[serde(rename = "Type", default)]
-    pub automation_type: String,
-    #[serde(rename = "Value", default)]
-    pub value: Option<AutomationValue>,
-    #[serde(rename = "Bar", default)]
-    pub bar: i32,
-    // GP7 stores this as a fractional position within the bar in `[0.0, 1.0)`
-    // (e.g. `0.75`), not an integer tick offset.
-    #[serde(rename = "Position", default)]
-    pub position: f32,
-}
-
-/// `<Value>` content of an automation. Most automation types (Tempo, …) use
-/// plain text (`<Value>125 2</Value>`); **GP8** `SyncPoint` automations use a
-/// structured element instead:
-///   `<Value><BarIndex>0</BarIndex><BarOccurrence>0</BarOccurrence>…</Value>`
-///
-/// quick-xml maps named child elements onto matching fields (consuming the
-/// element), while any *unmatched* element or bare text lands in `items`
-/// (the `$value` catch-all). Verified experimentally with quick-xml 0.41:
-/// both channels fill independently, so future GP versions that add more
-/// children stay parseable and their data is preserved in `items`.
-#[derive(Debug, Deserialize, Default, Clone)]
-pub struct AutomationValue {
-    /// Unmatched child elements / bare text, in document order.
-    #[serde(rename = "$value", default)]
-    pub items: Vec<String>,
-    /// SyncPoint: the master bar this anchor belongs to.
-    #[serde(rename = "BarIndex", default)]
-    pub bar_index: Option<i32>,
-    /// SyncPoint: which repeat occurrence of the bar (0 = first pass).
-    #[serde(rename = "BarOccurrence", default)]
-    pub bar_occurrence: Option<i32>,
-    /// SyncPoint: tempo the *score* uses at this anchor (after this point).
-    #[serde(rename = "ModifiedTempo", default)]
-    pub modified_tempo: Option<f64>,
-    /// SyncPoint: original song tempo.
-    #[serde(rename = "OriginalTempo", default)]
-    pub original_tempo: Option<f64>,
-    /// SyncPoint: absolute audio-frame offset into the backing track.
-    #[serde(rename = "FrameOffset", default)]
-    pub frame_offset: Option<i64>,
-}
-
-// ---------------------------------------------------------------------------
-// Tracks
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Deserialize)]
-pub struct TracksWrapper {
-    #[serde(rename = "Track", default)]
-    pub tracks: Vec<Track>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Track {
-    #[serde(rename = "@id", default)]
-    pub id: i32,
-    #[serde(rename = "Name", default)]
-    pub name: String,
-    #[serde(rename = "ShortName", default)]
-    pub short_name: String,
-    #[serde(rename = "Color", default)]
-    pub color: Option<String>,
-    /// GP6: track-level properties (Tuning, DiagramCollection, etc.)
-    #[serde(rename = "Properties", default)]
-    pub properties: Option<TrackPropertiesWrapper>,
-    /// GP7: staves with per-staff properties
-    #[serde(rename = "Staves", default)]
-    pub staves: Option<StavesWrapper>,
-    #[serde(rename = "GeneralMidi", default)]
-    pub general_midi: Option<GeneralMidi>,
-    #[serde(rename = "Transpose", default)]
-    pub transpose: Option<Transpose>,
-    /// GuitarScore addition: the instrument (GP7), e.g. type `electricGuitar`, `drumKit`.
-    #[serde(rename = "InstrumentSet", default)]
-    pub instrument_set: Option<InstrumentSet>,
-    /// GuitarScore addition: the track's sounds (GP7). GP7 names the MIDI program here
-    /// instead of in `<GeneralMidi>`.
-    #[serde(rename = "Sounds", default)]
-    pub sounds: Option<SoundsWrapper>,
-}
-
-/// GuitarScore addition: `<Sounds>` of a GP7 track.
-#[derive(Debug, Deserialize)]
-pub struct SoundsWrapper {
-    #[serde(rename = "Sound", default)]
-    pub sounds: Vec<Sound>,
-}
-
-/// GuitarScore addition: one `<Sound>` of a GP7 track (only the MIDI part).
-#[derive(Debug, Deserialize)]
-pub struct Sound {
-    #[serde(rename = "MIDI", default)]
-    pub midi: Option<SoundMidi>,
-}
-
-/// GuitarScore addition: the `<MIDI>` part of a GP7 `<Sound>`.
-#[derive(Debug, Deserialize)]
-pub struct SoundMidi {
-    #[serde(rename = "Program", default)]
-    pub program: Option<i32>,
-}
-
-/// GuitarScore addition: `<InstrumentSet>` of a GP7 track (only the fields used).
-#[derive(Debug, Deserialize)]
-pub struct InstrumentSet {
-    /// Display name, e.g. "Electric Guitar".
-    #[serde(rename = "Name", default)]
-    pub name: Option<String>,
-    /// Type id, e.g. `electricGuitar`, `electricBass`, `drumKit`, `voice`.
-    #[serde(rename = "Type", default)]
-    pub kind: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct TrackPropertiesWrapper {
-    #[serde(rename = "Property", default)]
-    pub properties: Vec<Property>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct StavesWrapper {
-    #[serde(rename = "Staff", default)]
-    pub staves: Vec<Staff>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Staff {
-    #[serde(rename = "Properties", default)]
-    pub properties: Option<StaffPropertiesWrapper>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct StaffPropertiesWrapper {
-    #[serde(rename = "Property", default)]
-    pub properties: Vec<Property>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct GeneralMidi {
-    #[serde(rename = "Program", default)]
-    pub program: Option<i32>,
-    #[serde(rename = "Port", default)]
-    pub port: Option<i32>,
-    #[serde(rename = "PrimaryChannel", default)]
-    pub primary_channel: Option<i32>,
-    #[serde(rename = "SecondaryChannel", default)]
-    pub secondary_channel: Option<i32>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Transpose {
-    #[serde(rename = "Chromatic", default)]
-    pub chromatic: Option<i32>,
-    #[serde(rename = "Octave", default)]
-    pub octave: Option<i32>,
-}
 
 // ---------------------------------------------------------------------------
 // MasterBars (measure headers)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct MasterBarsWrapper {
+pub(crate) struct MasterBarsWrapper {
     #[serde(rename = "MasterBar", default)]
     pub master_bars: Vec<MasterBar>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct MasterBar {
+pub(crate) struct MasterBar {
     #[serde(rename = "Key", default)]
     pub key: Option<Key>,
     #[serde(rename = "Time", default)]
@@ -276,7 +40,7 @@ pub struct MasterBar {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Key {
+pub(crate) struct Key {
     #[serde(rename = "AccidentalCount", default)]
     pub accidental_count: i32,
     #[serde(rename = "Mode", default)]
@@ -293,7 +57,7 @@ impl Default for Key {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Repeat {
+pub(crate) struct Repeat {
     #[serde(rename = "@start", default)]
     pub start: String,
     #[serde(rename = "@end", default)]
@@ -303,7 +67,7 @@ pub struct Repeat {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Section {
+pub(crate) struct Section {
     #[serde(rename = "Letter", default)]
     pub letter: Option<String>,
     #[serde(rename = "Text", default)]
@@ -311,7 +75,7 @@ pub struct Section {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct DirectionsWrapper {
+pub(crate) struct DirectionsWrapper {
     #[serde(rename = "Target", default)]
     pub target: Option<String>,
     #[serde(rename = "Jump", default)]
@@ -319,13 +83,13 @@ pub struct DirectionsWrapper {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct FermatasWrapper {
+pub(crate) struct FermatasWrapper {
     #[serde(rename = "Fermata", default)]
     pub fermatas: Vec<Fermata>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Fermata {
+pub(crate) struct Fermata {
     #[serde(rename = "Type", default)]
     pub fermata_type: Option<String>,
     #[serde(rename = "Offset", default)]
@@ -337,17 +101,18 @@ pub struct Fermata {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct BarsWrapper {
+pub(crate) struct BarsWrapper {
     #[serde(rename = "Bar", default)]
     pub bars: Vec<Bar>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Bar {
+pub(crate) struct Bar {
     #[serde(rename = "@id", default)]
     pub id: i32,
     #[serde(rename = "Voices", default)]
     pub voices: String,
+    #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
     #[serde(rename = "Clef", default)]
     pub clef: Option<String>,
     #[serde(rename = "SimileMark", default)]
@@ -359,13 +124,13 @@ pub struct Bar {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct VoicesWrapper {
+pub(crate) struct VoicesWrapper {
     #[serde(rename = "Voice", default)]
     pub voices: Vec<Voice>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Voice {
+pub(crate) struct Voice {
     #[serde(rename = "@id", default)]
     pub id: i32,
     #[serde(rename = "Beats", default)]
@@ -377,13 +142,13 @@ pub struct Voice {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct BeatsWrapper {
+pub(crate) struct BeatsWrapper {
     #[serde(rename = "Beat", default)]
     pub beats: Vec<Beat>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Beat {
+pub(crate) struct Beat {
     #[serde(rename = "@id", default)]
     pub id: i32,
     #[serde(rename = "Notes", default)]
@@ -414,14 +179,14 @@ pub struct Beat {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct BeatPropertiesWrapper {
+pub(crate) struct BeatPropertiesWrapper {
     #[serde(rename = "Property", default)]
     pub properties: Vec<BeatProperty>,
 }
 
 /// The shape of a GP7 whammy-bar effect, in hundredths of a semitone.
 #[derive(Debug, Deserialize)]
-pub struct Whammy {
+pub(crate) struct Whammy {
     #[serde(rename = "@originValue", default)]
     pub origin_value: f64,
     /// GuitarScore addition: the turning point of a dip (down and back up).
@@ -438,15 +203,17 @@ pub struct Whammy {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct BeatProperty {
+pub(crate) struct BeatProperty {
     #[serde(rename = "@name", default)]
     pub name: String,
     #[serde(rename = "Direction", default)]
     pub direction: Option<String>,
+    #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
     #[serde(rename = "Enable", default)]
     pub enable: Option<EnableTag>,
     #[serde(rename = "Float", default)]
     pub float: Option<f64>,
+    #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
     #[serde(rename = "Flags", default)]
     pub flags: Option<i32>,
     /// Strength of `VibratoWTremBar` ("Slight" or "Wide").
@@ -455,7 +222,7 @@ pub struct BeatProperty {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct RhythmRef {
+pub(crate) struct RhythmRef {
     #[serde(rename = "@ref", default)]
     pub r#ref: i32,
 }
@@ -465,13 +232,13 @@ pub struct RhythmRef {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct NotesWrapper {
+pub(crate) struct NotesWrapper {
     #[serde(rename = "Note", default)]
     pub notes: Vec<Note>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Note {
+pub(crate) struct Note {
     #[serde(rename = "@id", default)]
     pub id: i32,
     #[serde(rename = "Properties")]
@@ -493,7 +260,8 @@ pub struct Note {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct TieInfo {
+pub(crate) struct TieInfo {
+    #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
     #[serde(rename = "@origin", default)]
     pub origin: String,
     #[serde(rename = "@destination", default)]
@@ -502,7 +270,7 @@ pub struct TieInfo {
 
 /// The `<Legato>` tag of a beat; both attributes are `"true"` or `"false"`.
 #[derive(Debug, Deserialize)]
-pub struct LegatoInfo {
+pub(crate) struct LegatoInfo {
     #[serde(rename = "@origin", default)]
     pub origin: String,
     #[serde(rename = "@destination", default)]
@@ -511,16 +279,16 @@ pub struct LegatoInfo {
 
 /// An empty self-closing tag used as a presence flag (e.g., `<Enable />`, `<LetRing />`).
 #[derive(Debug, Deserialize)]
-pub struct EnableTag;
+pub(crate) struct EnableTag;
 
 #[derive(Debug, Deserialize)]
-pub struct NoteProperties {
+pub(crate) struct NoteProperties {
     #[serde(rename = "Property", default)]
     pub properties: Vec<Property>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Property {
+pub(crate) struct Property {
     #[serde(rename = "@name", default)]
     pub name: String,
     // Value sub-elements — each property uses at most one of these
@@ -528,8 +296,10 @@ pub struct Property {
     pub fret: Option<i32>,
     #[serde(rename = "String", default)]
     pub string: Option<i32>,
+    #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
     #[serde(rename = "Pitch", default)]
     pub pitch: Option<Pitch>,
+    #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
     #[serde(rename = "Number", default)]
     pub number: Option<i32>,
     #[serde(rename = "Enable", default)]
@@ -547,12 +317,17 @@ pub struct Property {
     /// GuitarScore addition: user-given name of a tuning (empty for presets).
     #[serde(rename = "Label", default)]
     pub label: Option<String>,
+    #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
     #[serde(rename = "Direction", default)]
     pub direction: Option<String>,
 }
 
+#[expect(
+    dead_code,
+    reason = "keyboard and vocal notes are stored by pitch; not read yet"
+)]
 #[derive(Debug, Deserialize)]
-pub struct Pitch {
+pub(crate) struct Pitch {
     #[serde(rename = "Step", default)]
     pub step: String,
     #[serde(rename = "Octave", default)]
@@ -566,13 +341,13 @@ pub struct Pitch {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct RhythmsWrapper {
+pub(crate) struct RhythmsWrapper {
     #[serde(rename = "Rhythm", default)]
     pub rhythms: Vec<Rhythm>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Rhythm {
+pub(crate) struct Rhythm {
     #[serde(rename = "@id", default)]
     pub id: i32,
     #[serde(rename = "NoteValue", default)]
@@ -584,13 +359,13 @@ pub struct Rhythm {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct AugmentationDot {
+pub(crate) struct AugmentationDot {
     #[serde(rename = "@count", default)]
     pub count: i32,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct PrimaryTuplet {
+pub(crate) struct PrimaryTuplet {
     #[serde(rename = "@num", default)]
     pub num: i32,
     #[serde(rename = "@den", default)]

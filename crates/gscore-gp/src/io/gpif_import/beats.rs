@@ -1,0 +1,185 @@
+//! Converting GPIF beats, and the string order shared by import and export.
+
+// Derived from the `guitarpro` crate by slundi (https://github.com/slundi/guitarpro,
+// MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
+
+use std::collections::HashMap;
+
+use super::*;
+
+/// GuitarScore addition: converts note string numbers between GPIF order (1 = lowest) and
+/// legacy order (1 = highest). Its own inverse, so import and export use the same function.
+/// Notes outside the track's strings (e.g. mapped piano notes) are left unchanged.
+pub(crate) fn flip_note_strings(tracks: &mut [SongTrack]) {
+    for track in tracks {
+        let count = i8::try_from(track.strings.len()).unwrap_or(i8::MAX);
+        for measure in &mut track.measures {
+            for voice in &mut measure.voices {
+                for beat in &mut voice.beats {
+                    for note in &mut beat.notes {
+                        if (1..=count).contains(&note.string) {
+                            note.string = count.saturating_sub(note.string).saturating_add(1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub(super) fn convert_beat(
+    g_beat: &Beat,
+    rhythms_map: &HashMap<i32, &Rhythm>,
+    notes_map: &HashMap<i32, &Note>,
+    current_velocity: &mut i16,
+) -> SongBeat {
+    let mut s_beat = SongBeat::default();
+
+    // Duration from Rhythm
+    if let Some(rhythm_ref) = &g_beat.rhythm
+        && let Some(rhythm) = rhythms_map.get(&rhythm_ref.r#ref)
+    {
+        s_beat.duration.value = note_value_to_duration(&rhythm.note_value);
+        if let Some(dot) = &rhythm.augmentation_dot {
+            match dot.count {
+                1 => s_beat.duration.dotted = true,
+                2 => s_beat.duration.double_dotted = true,
+                _ => {}
+            }
+        }
+        if let Some(tuplet) = &rhythm.primary_tuplet {
+            s_beat.duration.tuplet_enters = low_u8(tuplet.num);
+            s_beat.duration.tuplet_times = low_u8(tuplet.den);
+        }
+    }
+
+    // Dynamic
+    if let Some(dyn_str) = &g_beat.dynamic {
+        *current_velocity = dynamic_to_velocity(dyn_str);
+    }
+
+    // Grace notes
+    let is_grace_beat = g_beat.grace_notes.is_some();
+    let grace_on_beat = g_beat.grace_notes.as_deref() == Some("OnBeat");
+
+    // Text
+    if let Some(text) = &g_beat.free_text {
+        s_beat.text = text.clone();
+    }
+
+    // Fade in
+    if let Some(fadding) = &g_beat.fadding
+        && fadding == "FadeIn"
+    {
+        s_beat.effect.fade_in = true;
+    }
+
+    // Beat-level legato (a slur over a run of notes, not a slide or a hammer-on).
+    if let Some(legato) = &g_beat.legato {
+        s_beat.effect.legato = LegatoEffect {
+            origin: legato.origin == "true",
+            destination: legato.destination == "true",
+        };
+    }
+
+    // Wah effect
+    if let Some(wah_str) = &g_beat.wah
+        && wah_str == "Open"
+    {
+        s_beat.effect.slap_effect = SlapEffect::None; // placeholder, wah is stored at mix table level in GP5
+    }
+
+    // Whammy bar: GP7 stores the shape in <Whammy>, GP6 (GPX) in the WhammyBar* beat
+    // properties below. <Tremolo> is a separate legacy field.
+    if let Some(whammy) = &g_beat.whammy {
+        s_beat.effect.tremolo_bar = build_whammy_effect(
+            whammy.origin_value,
+            whammy.middle_value,
+            whammy.destination_value,
+            whammy.middle_offset,
+            whammy.destination_offset,
+        );
+    } else if let Some(tremolo_str) = &g_beat.tremolo
+        && let Ok(val) = tremolo_str.parse::<f64>()
+        && val != 0.0
+    {
+        s_beat.effect.tremolo_bar = Some(build_bend_effect(0.0, val));
+    }
+
+    // Beat properties
+    let mut whammy_origin: Option<f64> = None;
+    let mut whammy_middle: Option<f64> = None;
+    let mut whammy_destination: Option<f64> = None;
+    if let Some(beat_props) = &g_beat.properties {
+        for bp in &beat_props.properties {
+            match bp.name.as_str() {
+                "Brush" => {
+                    if let Some(dir) = &bp.direction {
+                        s_beat.effect.stroke.direction = match dir.as_str() {
+                            "Down" => BeatStrokeDirection::Down,
+                            "Up" => BeatStrokeDirection::Up,
+                            _ => BeatStrokeDirection::None,
+                        };
+                        s_beat.effect.stroke.value = DURATION_EIGHTH as u16;
+                    }
+                }
+                "Rasgueado" => {
+                    s_beat.effect.has_rasgueado = true;
+                }
+                "PickStroke" => {
+                    if let Some(dir) = &bp.direction {
+                        s_beat.effect.pick_stroke = match dir.as_str() {
+                            "Down" => BeatStrokeDirection::Down,
+                            "Up" => BeatStrokeDirection::Up,
+                            _ => BeatStrokeDirection::None,
+                        };
+                    }
+                }
+                // Beat-level vibrato (Guitar Pro writes it as VibratoWTremBar; the note-level
+                // `<Vibrato>` tag is a different field).
+                "VibratoWTremBar" => {
+                    s_beat.effect.vibrato = true;
+                    s_beat.effect.wide_vibrato = bp.strength.as_deref() == Some("Wide");
+                }
+                // GP6 (GPX) stores the whammy bar as three beat properties, in hundredths
+                // of a semitone; GP7 uses <Whammy> instead. Every beat carries them (0 for
+                // "no whammy"), so only a non-zero shape becomes an effect.
+                "WhammyBarOriginValue" => whammy_origin = bp.float,
+                "WhammyBarMiddleValue" => whammy_middle = bp.float,
+                "WhammyBarDestinationValue" => whammy_destination = bp.float,
+                _ => {}
+            }
+        }
+    }
+    if s_beat.effect.tremolo_bar.is_none()
+        && let (Some(origin), Some(destination)) = (whammy_origin, whammy_destination)
+    {
+        s_beat.effect.tremolo_bar =
+            build_whammy_effect(origin, whammy_middle, destination, None, None);
+    }
+
+    // Notes
+    match &g_beat.notes {
+        Some(notes_str) => {
+            let note_ids = parse_ids(notes_str);
+            s_beat.status = if note_ids.is_empty() {
+                BeatStatus::Rest
+            } else {
+                BeatStatus::Normal
+            };
+
+            for &nid in &note_ids {
+                if let Some(g_note) = notes_map.get(&nid) {
+                    let s_note =
+                        convert_note(g_note, *current_velocity, is_grace_beat, grace_on_beat);
+                    s_beat.notes.push(s_note);
+                }
+            }
+        }
+        None => {
+            s_beat.status = BeatStatus::Rest;
+        }
+    }
+
+    s_beat
+}

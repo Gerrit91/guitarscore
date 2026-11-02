@@ -3,8 +3,6 @@
 // Derived from the `guitarpro` crate by slundi (https://github.com/slundi/guitarpro,
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
-use crate::model::*;
-
 /// Struct to keep lyrics
 /// On guitar pro files (gp4 or later), you can have 5 lines of lyrics.
 /// It is store on a BTreeMap:

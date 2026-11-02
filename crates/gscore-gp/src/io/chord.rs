@@ -5,7 +5,7 @@
 
 use crate::io::*;
 
-pub trait SongChordOps {
+pub(crate) trait SongChordOps {
     fn read_chord(&self, data: &[u8], seek: &mut usize, string_count: u8) -> GpResult<Chord>;
     fn read_old_format_chord(
         &self,
@@ -25,11 +25,41 @@ pub trait SongChordOps {
         seek: &mut usize,
         chord: &mut Chord,
     ) -> GpResult<()>;
-    fn write_chord(&self, data: &mut Vec<u8>, beat: &crate::io::Beat);
+    fn write_chord(&self, data: &mut Vec<u8>, beat: &Beat);
     fn write_new_format_chord(&self, data: &mut Vec<u8>, chord: &Chord);
     fn write_old_format_chord(&self, data: &mut Vec<u8>, chord: &Chord);
-    fn write_chord_v4(&self, data: &mut Vec<u8>, beat: &crate::io::Beat);
+    fn write_chord_v4(&self, data: &mut Vec<u8>, beat: &Beat);
 }
+
+/// How GP3 and GP4 store a new-format chord differently.
+#[derive(Clone, Copy)]
+struct Layout {
+    /// Fret slots, one per string.
+    strings: usize,
+    /// Barre slots.
+    barres: usize,
+    /// GP4 adds fingerings and the "show" flag.
+    fingerings: bool,
+}
+
+const GP3: Layout = Layout {
+    strings: 6,
+    barres: 2,
+    fingerings: false,
+};
+
+const GP4: Layout = Layout {
+    strings: 7,
+    barres: 5,
+    fingerings: true,
+};
+
+/// Fingering slots in a GP4 chord.
+const FINGERINGS: usize = 7;
+/// Omission slots in a chord.
+const OMISSIONS: usize = 7;
+/// The size of a chord's name field.
+const NAME_FIELD: u8 = 22;
 
 impl SongChordOps for Song {
     fn read_chord(&self, data: &[u8], seek: &mut usize, string_count: u8) -> GpResult<Chord> {
@@ -61,11 +91,10 @@ impl SongChordOps for Song {
         chord: &mut Chord,
     ) -> GpResult<()> {
         chord.name = read_int_byte_size_string(data, seek)?;
-        chord.first_fret = Some(read_int(data, seek)? as u8);
-        if chord.first_fret.is_some() {
-            for _ in 0u8..6u8 {
-                chord.strings.push(read_int(data, seek)? as i8);
-            }
+        // Ints that do not fit are truncated, as Guitar Pro does with this metadata.
+        chord.first_fret = Some(low_u8(read_int(data, seek)?));
+        for _ in 0..6 {
+            chord.strings.push(low_i8(read_int(data, seek)?));
         }
         Ok(())
     }
@@ -76,66 +105,13 @@ impl SongChordOps for Song {
         seek: &mut usize,
         chord: &mut Chord,
     ) -> GpResult<()> {
-        // GP3 uses the same "0x01"-marked chord layout as GP4 for the fields
-        // that share names (root, kind, extension, fifth, ninth, eleventh,
-        // barre_*), stored as single bytes — NOT as 4-byte ints. Only bass,
-        // tonality, first_fret and per-string frets are ints. This matches
-        // FILE-STRUCTURE-CHORD-DIAGRAMS.md and how TuxGuitar/Perlence's GP4
-        // reader consumes GP3 clipboards. GP3-vs-GP4 delta: 6 strings (not 7),
-        // 2 barres (not 5), and no trailing fingerings / show byte.
-        chord.sharp = Some(read_bool(data, seek)?);
-        *seek += 3;
-        chord.root = Some(PitchClass::from(
-            read_byte(data, seek)? as i8,
-            None,
-            chord.sharp,
-        ));
-        chord.kind = Some(get_chord_type(read_byte(data, seek)?));
-        chord.extension = Some(get_chord_extension(read_byte(data, seek)?));
-        // Some real-world GP3 exports pack these `int` fields with values that
-        // don't fit `i8`/`u8` (unused-slot sentinels, editor-specific junk in
-        // padding bytes). Truncate rather than fail — the chord diagram is only
-        // display metadata, and Guitar Pro itself tolerates the noise.
-        chord.bass = Some(PitchClass::from(
-            read_int(data, seek)? as i8,
-            None,
-            chord.sharp,
-        ));
-        chord.tonality = Some(get_chord_alteration(read_int(data, seek)? as u8)?);
-        chord.add = Some(read_bool(data, seek)?);
-        chord.name = read_byte_size_string(data, seek, 22)?;
-        chord.fifth = Some(get_chord_alteration(read_byte(data, seek)?)?);
-        chord.ninth = Some(get_chord_alteration(read_byte(data, seek)?)?);
-        chord.eleventh = Some(get_chord_alteration(read_byte(data, seek)?)?);
-        chord.first_fret = Some(read_int(data, seek)? as u8);
-        for _ in 0u8..6u8 {
-            chord.strings.push(read_int(data, seek)? as i8);
-        }
-        let barre_count = read_byte(data, seek)?.to_usize_gp("chord barre count")?;
-        let mut barre_frets: Vec<u8> = Vec::with_capacity(2);
-        let mut barre_starts: Vec<u8> = Vec::with_capacity(2);
-        let mut barre_ends: Vec<u8> = Vec::with_capacity(2);
-        for _ in 0u8..2u8 {
-            barre_frets.push(read_byte(data, seek)?);
-        }
-        for _ in 0u8..2u8 {
-            barre_starts.push(read_byte(data, seek)?);
-        }
-        for _ in 0u8..2u8 {
-            barre_ends.push(read_byte(data, seek)?);
-        }
-        for i in 0..barre_count.min(2) {
-            chord.barres.push(Barre {
-                fret: barre_frets[i] as i8,
-                start: barre_starts[i] as i8,
-                end: barre_ends[i] as i8,
-            });
-        }
-        for _ in 0u8..7u8 {
-            chord.omissions.push(read_bool(data, seek)?);
-        }
-        *seek += 1;
-        Ok(())
+        // GP3 uses the same "0x01"-marked chord layout as GP4 for the fields that share
+        // names (root, kind, extension, fifth, ninth, eleventh, barre_*), stored as single
+        // bytes — NOT as 4-byte ints. Only bass, tonality, first_fret and per-string frets
+        // are ints. This matches FILE-STRUCTURE-CHORD-DIAGRAMS.md and how TuxGuitar/
+        // Perlence's GP4 reader consumes GP3 clipboards. GP3-vs-GP4 delta: 6 strings (not
+        // 7), 2 barres (not 5), and no trailing fingerings / show byte.
+        read_new_format(data, seek, chord, GP3)
     }
 
     fn read_new_format_chord_v4(
@@ -144,61 +120,10 @@ impl SongChordOps for Song {
         seek: &mut usize,
         chord: &mut Chord,
     ) -> GpResult<()> {
-        chord.sharp = Some(read_bool(data, seek)?);
-        *seek += 3;
-        chord.root = Some(PitchClass::from(
-            read_byte(data, seek)? as i8,
-            None,
-            chord.sharp,
-        ));
-        chord.kind = Some(get_chord_type(read_byte(data, seek)?));
-        chord.extension = Some(get_chord_extension(read_byte(data, seek)?));
-        let i = read_int(data, seek)?;
-        chord.bass = Some(PitchClass::from(i as i8, None, chord.sharp));
-        chord.tonality = Some(get_chord_alteration(read_int(data, seek)? as u8)?);
-        chord.add = Some(read_bool(data, seek)?);
-        chord.name = read_byte_size_string(data, seek, 22)?;
-        chord.fifth = Some(get_chord_alteration(read_byte(data, seek)?)?);
-        chord.ninth = Some(get_chord_alteration(read_byte(data, seek)?)?);
-        chord.eleventh = Some(get_chord_alteration(read_byte(data, seek)?)?);
-        chord.first_fret = Some(read_int(data, seek)? as u8);
-        for _ in 0u8..7u8 {
-            chord.strings.push(read_int(data, seek)? as i8);
-        }
-        let barre_count = read_byte(data, seek)?.to_usize_gp("chord barre count")?;
-        let mut barre_frets: Vec<u8> = Vec::with_capacity(5);
-        let mut barre_starts: Vec<u8> = Vec::with_capacity(5);
-        let mut barre_ends: Vec<u8> = Vec::with_capacity(5);
-        for _ in 0u8..5u8 {
-            barre_frets.push(read_byte(data, seek)?);
-        }
-        for _ in 0u8..5u8 {
-            barre_starts.push(read_byte(data, seek)?);
-        }
-        for _ in 0u8..5u8 {
-            barre_ends.push(read_byte(data, seek)?);
-        }
-        for i in 0..barre_count.min(5) {
-            chord.barres.push(Barre {
-                fret: barre_frets[i] as i8,
-                start: barre_starts[i] as i8,
-                end: barre_ends[i] as i8,
-            });
-        }
-        for _ in 0u8..7u8 {
-            chord.omissions.push(read_bool(data, seek)?);
-        }
-        *seek += 1;
-        for _ in 0u8..7u8 {
-            chord
-                .fingerings
-                .push(get_fingering(read_signed_byte(data, seek)?));
-        }
-        chord.show = Some(read_bool(data, seek)?);
-        Ok(())
+        read_new_format(data, seek, chord, GP4)
     }
 
-    fn write_chord(&self, data: &mut Vec<u8>, beat: &crate::io::Beat) {
+    fn write_chord(&self, data: &mut Vec<u8>, beat: &Beat) {
         if let Some(c) = &beat.effect.chord {
             write_bool(data, c.new_format == Some(true));
             if c.new_format == Some(true) {
@@ -210,211 +135,140 @@ impl SongChordOps for Song {
     }
 
     fn write_new_format_chord(&self, data: &mut Vec<u8>, chord: &Chord) {
-        // Symmetric with `read_new_format_chord_v3` (GP3): most fields are bytes,
-        // only bass/tonality/first_fret/strings are 4-byte ints.
-        write_bool(data, chord.sharp == Some(true));
-        write_placeholder_default(data, 3);
-        write_byte(
-            data,
-            chord.root.as_ref().map(|r| r.value as u8).unwrap_or(0),
-        );
-        write_byte(data, chord.kind.as_ref().map(from_chord_type).unwrap_or(0));
-        write_byte(
-            data,
-            chord
-                .extension
-                .as_ref()
-                .map(from_chord_extension)
-                .unwrap_or(0),
-        );
-        if let Some(b) = &chord.bass {
-            write_i32(data, b.value as i32);
-        } else {
-            write_i32(data, 0);
-        }
-        if let Some(t) = &chord.tonality {
-            write_i32(data, from_chord_alteration(t) as i32);
-        } else {
-            write_i32(data, 0);
-        }
-        write_bool(data, chord.add == Some(true));
-        write_byte_size_string(data, &chord.name);
-        write_placeholder_default(data, 22 - chord.name.len());
-        write_byte(
-            data,
-            chord.fifth.as_ref().map(from_chord_alteration).unwrap_or(0),
-        );
-        write_byte(
-            data,
-            chord.ninth.as_ref().map(from_chord_alteration).unwrap_or(0),
-        );
-        write_byte(
-            data,
-            chord
-                .eleventh
-                .as_ref()
-                .map(from_chord_alteration)
-                .unwrap_or(0),
-        );
-        if let Some(ff) = chord.first_fret {
-            write_i32(data, ff as i32);
-        } else {
-            write_i32(data, 0);
-        }
-        for i in 0..6 {
-            if i < chord.strings.len() {
-                write_i32(data, chord.strings[i] as i32);
-            } else {
-                write_i32(data, -1);
-            }
-        }
-        let mut barres: Vec<Barre> = Vec::with_capacity(2);
-        for i in 0..2usize {
-            if i < chord.barres.len() {
-                barres.push(chord.barres[i].clone());
-            } else {
-                break;
-            }
-        }
-        write_byte(data, barres.len() as u8);
-        while barres.len() < 2 {
-            barres.push(Barre {
-                fret: 0,
-                start: 0,
-                end: 0,
-            });
-        }
-        for b in barres.iter().take(2) {
-            write_byte(data, b.fret as u8);
-        }
-        for b in barres.iter().take(2) {
-            write_byte(data, b.start as u8);
-        }
-        for b in barres.iter().take(2) {
-            write_byte(data, b.end as u8);
-        }
-        for i in 0..7usize {
-            if i < chord.omissions.len() {
-                write_bool(data, chord.omissions[i]);
-            } else {
-                write_bool(data, true);
-            }
-        }
-        write_placeholder_default(data, 1);
+        // Symmetric with `read_new_format_chord_v3` (GP3).
+        write_new_format(data, chord, GP3);
     }
 
     fn write_old_format_chord(&self, data: &mut Vec<u8>, chord: &Chord) {
         write_int_byte_size_string(data, &chord.name);
-        if let Some(ff) = chord.first_fret {
-            write_i32(data, ff as i32);
-        } else {
-            write_i32(data, 0);
-        }
-        for i in 0..6 {
-            if i < chord.strings.len() {
-                write_i32(data, chord.strings[i] as i32);
-            } else {
-                write_i32(data, -1);
-            }
-        }
+        write_i32(data, chord.first_fret.map_or(0, i32::from));
+        write_frets(data, chord, 6);
     }
 
-    fn write_chord_v4(&self, data: &mut Vec<u8>, beat: &crate::io::Beat) {
+    fn write_chord_v4(&self, data: &mut Vec<u8>, beat: &Beat) {
         if let Some(c) = &beat.effect.chord {
             write_signed_byte(data, 1);
-            write_bool(data, c.sharp == Some(true));
-            write_placeholder_default(data, 3);
-            if let Some(r) = &c.root {
-                write_byte(data, r.value as u8);
-            } else {
-                write_byte(data, 0);
-            }
-            if let Some(t) = &c.kind {
-                write_byte(data, from_chord_type(t));
-            } else {
-                write_byte(data, 0);
-            }
-            if let Some(e) = &c.extension {
-                write_byte(data, from_chord_extension(e));
-            } else {
-                write_byte(data, 0);
-            }
-            if let Some(b) = &c.bass {
-                write_i32(data, b.value as i32);
-            } else {
-                write_i32(data, 0);
-            }
-            if let Some(t) = &c.tonality {
-                write_i32(data, from_chord_alteration(t) as i32);
-            } else {
-                write_i32(data, 0);
-            }
-            write_bool(data, c.add == Some(true));
-            let name_bytes = c.name.len().min(22);
-            write_byte_size_string(data, &c.name);
-            write_placeholder_default(data, 22 - name_bytes);
-            if let Some(f) = &c.fifth {
-                write_byte(data, from_chord_alteration(f));
-            } else {
-                write_byte(data, 0);
-            }
-            if let Some(n) = &c.ninth {
-                write_byte(data, from_chord_alteration(n));
-            } else {
-                write_byte(data, 0);
-            }
-            if let Some(e) = &c.eleventh {
-                write_byte(data, from_chord_alteration(e));
-            } else {
-                write_byte(data, 0);
-            }
-            if let Some(ff) = c.first_fret {
-                write_i32(data, ff as i32);
-            } else {
-                write_i32(data, 0);
-            }
-            for i in 0..7 {
-                if i < c.strings.len() {
-                    write_i32(data, c.strings[i] as i32);
-                } else {
-                    write_i32(data, -1);
-                }
-            }
-            let barre_count = c.barres.len().min(5);
-            write_byte(data, barre_count as u8);
-            let mut barres = c.barres.clone();
-            while barres.len() < 5 {
-                barres.push(Barre {
-                    fret: 0,
-                    start: 0,
-                    end: 0,
-                });
-            }
-            for b in barres.iter().take(5) {
-                write_byte(data, b.fret as u8);
-            }
-            for b in barres.iter().take(5) {
-                write_byte(data, b.start as u8);
-            }
-            for b in barres.iter().take(5) {
-                write_byte(data, b.end as u8);
-            }
-            for i in 0..7usize {
-                if i < c.omissions.len() {
-                    write_bool(data, c.omissions[i]);
-                } else {
-                    write_bool(data, true);
-                }
-            }
-            write_placeholder_default(data, 1);
-            for i in 0..7 {
-                if i < c.fingerings.len() {
-                    write_signed_byte(data, from_fingering(&c.fingerings[i]));
-                } else {
-                    write_signed_byte(data, -2);
-                }
-            }
-            write_bool(data, c.show == Some(true));
+            write_new_format(data, c, GP4);
         }
+    }
+}
+
+/// Reads a new-format chord after its format flag. Most fields are bytes; bass, tonality,
+/// first fret and the frets are ints, truncated if they do not fit (some real-world GP3
+/// exports put unused-slot sentinels and padding junk there; the diagram is only display
+/// metadata, and Guitar Pro itself tolerates the noise).
+fn read_new_format(
+    data: &[u8],
+    seek: &mut usize,
+    chord: &mut Chord,
+    layout: Layout,
+) -> GpResult<()> {
+    chord.sharp = Some(read_bool(data, seek)?);
+    skip(seek, 3);
+    chord.root = Some(PitchClass::from(
+        byte_as_i8(read_byte(data, seek)?),
+        None,
+        chord.sharp,
+    ));
+    chord.kind = Some(get_chord_type(read_byte(data, seek)?));
+    chord.extension = Some(get_chord_extension(read_byte(data, seek)?));
+    chord.bass = Some(PitchClass::from(
+        low_i8(read_int(data, seek)?),
+        None,
+        chord.sharp,
+    ));
+    chord.tonality = Some(get_chord_alteration(low_u8(read_int(data, seek)?))?);
+    chord.add = Some(read_bool(data, seek)?);
+    chord.name = read_byte_size_string(data, seek, usize::from(NAME_FIELD))?;
+    chord.fifth = Some(get_chord_alteration(read_byte(data, seek)?)?);
+    chord.ninth = Some(get_chord_alteration(read_byte(data, seek)?)?);
+    chord.eleventh = Some(get_chord_alteration(read_byte(data, seek)?)?);
+    chord.first_fret = Some(low_u8(read_int(data, seek)?));
+    for _ in 0..layout.strings {
+        chord.strings.push(low_i8(read_int(data, seek)?));
+    }
+    let barre_count = usize::from(read_byte(data, seek)?);
+    let mut fields = [Vec::new(), Vec::new(), Vec::new()];
+    for field in &mut fields {
+        for _ in 0..layout.barres {
+            field.push(byte_as_i8(read_byte(data, seek)?));
+        }
+    }
+    let [frets, starts, ends] = fields;
+    chord.barres.extend(
+        frets
+            .into_iter()
+            .zip(starts)
+            .zip(ends)
+            .take(barre_count.min(layout.barres))
+            .map(|((fret, start), end)| Barre { fret, start, end }),
+    );
+    for _ in 0..OMISSIONS {
+        chord.omissions.push(read_bool(data, seek)?);
+    }
+    skip(seek, 1);
+    if layout.fingerings {
+        for _ in 0..FINGERINGS {
+            chord
+                .fingerings
+                .push(get_fingering(read_signed_byte(data, seek)?));
+        }
+        chord.show = Some(read_bool(data, seek)?);
+    }
+    Ok(())
+}
+
+/// Writes a new-format chord after its format flag, as [`read_new_format`] reads it.
+fn write_new_format(data: &mut Vec<u8>, chord: &Chord, layout: Layout) {
+    write_bool(data, chord.sharp == Some(true));
+    write_placeholder_default(data, 3);
+    write_byte(data, chord.root.as_ref().map_or(0, |r| i8_as_byte(r.value)));
+    write_byte(data, chord.kind.as_ref().map_or(0, from_chord_type));
+    write_byte(
+        data,
+        chord.extension.as_ref().map_or(0, from_chord_extension),
+    );
+    write_i32(data, chord.bass.as_ref().map_or(0, |b| i32::from(b.value)));
+    write_i32(
+        data,
+        chord
+            .tonality
+            .as_ref()
+            .map_or(0, |t| i32::from(from_chord_alteration(t))),
+    );
+    write_bool(data, chord.add == Some(true));
+    write_fixed_string(data, &chord.name, NAME_FIELD);
+    for alteration in [&chord.fifth, &chord.ninth, &chord.eleventh] {
+        write_byte(data, alteration.as_ref().map_or(0, from_chord_alteration));
+    }
+    write_i32(data, chord.first_fret.map_or(0, i32::from));
+    write_frets(data, chord, layout.strings);
+    let count = chord.barres.len().min(layout.barres);
+    write_byte(data, u8::try_from(count).unwrap_or_default());
+    let barre = |i: usize| chord.barres.get(i).filter(|_| i < count);
+    for field in [|b: &Barre| b.fret, |b: &Barre| b.start, |b: &Barre| b.end] {
+        for i in 0..layout.barres {
+            write_byte(data, barre(i).map_or(0, |b| i8_as_byte(field(b))));
+        }
+    }
+    for i in 0..OMISSIONS {
+        write_bool(data, chord.omissions.get(i).copied().unwrap_or(true));
+    }
+    write_placeholder_default(data, 1);
+    if layout.fingerings {
+        for i in 0..FINGERINGS {
+            write_signed_byte(data, chord.fingerings.get(i).map_or(-2, from_fingering));
+        }
+        write_bool(data, chord.show == Some(true));
+    }
+}
+
+/// Writes `slots` frets, -1 for strings the chord does not have.
+fn write_frets(data: &mut Vec<u8>, chord: &Chord, slots: usize) {
+    for i in 0..slots {
+        write_i32(
+            data,
+            chord.strings.get(i).map_or(-1, |&fret| i32::from(fret)),
+        );
     }
 }

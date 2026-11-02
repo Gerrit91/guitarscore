@@ -2,7 +2,7 @@
 //! import/export, GPX (BCFZ/BCFS) and GP7 (zip) containers, byte primitives and errors.
 //! The public entry points are methods on [`crate::Song`] (see `song.rs`).
 
-pub mod error;
+pub(crate) mod error;
 pub(crate) mod gpif;
 pub(crate) mod gpif_export;
 pub(crate) mod gpif_import;
@@ -11,6 +11,8 @@ pub(crate) mod primitive;
 
 mod beat;
 mod chord;
+#[cfg(test)]
+mod crash_tests;
 mod effects;
 mod enums;
 mod headers;
@@ -32,7 +34,6 @@ pub(crate) use self::chord::*;
 pub(crate) use self::effects::*;
 pub(crate) use self::enums::*;
 pub(crate) use self::error::*;
-pub(crate) use self::gpif_export::SongGpifExportOps;
 pub(crate) use self::gpif_import::SongGpifOps;
 pub(crate) use self::headers::*;
 pub(crate) use self::key_signature::*;
@@ -44,5 +45,18 @@ pub(crate) use self::note::*;
 pub(crate) use self::page::*;
 pub(crate) use self::primitive::*;
 pub(crate) use self::rse::*;
-pub(crate) use self::song::*;
 pub(crate) use self::track::*;
+
+/// The item at `index`, or [`GpError::NoSuch`] naming `what`.
+pub(crate) fn item<'a, T>(items: &'a [T], index: usize, what: &'static str) -> GpResult<&'a T> {
+    items.get(index).ok_or(GpError::NoSuch { what, index })
+}
+
+/// The item at `index` to change, or [`GpError::NoSuch`] naming `what`.
+pub(crate) fn item_mut<'a, T>(
+    items: &'a mut [T],
+    index: usize,
+    what: &'static str,
+) -> GpResult<&'a mut T> {
+    items.get_mut(index).ok_or(GpError::NoSuch { what, index })
+}

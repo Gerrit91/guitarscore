@@ -212,8 +212,18 @@ impl TabEditor {
             self.undo_cursors.push(cursor);
             self.cursor = cursor;
         }
+        self.drop_trimmed_cursors();
         self.cursor.clamp(self.editor.song());
         Ok(Outcome::Edited)
+    }
+
+    /// The editor drops its oldest entries beyond its limits; drop their cursors too.
+    fn drop_trimmed_cursors(&mut self) {
+        let excess = self
+            .undo_cursors
+            .len()
+            .saturating_sub(self.editor.undo_depth());
+        self.undo_cursors.drain(..excess);
     }
 
     /// Applies `command`; afterwards the cursor goes to `after` (kept inside the song).
@@ -223,12 +233,7 @@ impl TabEditor {
         self.revision = self.revision.wrapping_add(1);
         self.undo_cursors.push(before);
         self.redo_cursors.clear();
-        // The editor drops its oldest entries beyond its limit; drop their cursors too.
-        let excess = self
-            .undo_cursors
-            .len()
-            .saturating_sub(self.editor.undo_depth());
-        self.undo_cursors.drain(..excess);
+        self.drop_trimmed_cursors();
         self.cursor = after;
         self.cursor.clamp(self.editor.song());
         Ok(Outcome::Edited)

@@ -10,8 +10,8 @@
 use std::collections::HashMap;
 
 use gscore_model::{
-    BeatKind, BendKind, Duration, MeasureIndex, ModelError, NoteKind, SlideKind, Song,
-    TimeSignature, TrackIndex, TrackSound,
+    BeatKind, BeatPosition, BendKind, Duration, MeasureIndex, ModelError, NoteKind, SlideKind,
+    Song, TimeSignature, TrackIndex, TrackSound,
 };
 
 use crate::channels::ChannelAllocator;
@@ -334,6 +334,29 @@ impl Sequence {
         channels.sort_unstable();
         channels.dedup();
         channels
+    }
+
+    /// The tick where the beat at `at` of `song` (the song this sequence was made from)
+    /// is first played: its measure's first pass, plus the beats before it in its voice.
+    /// A position past the voice's last beat (the cursor in an empty measure) is the
+    /// measure's start. `None` if the measure is never played (or does not exist).
+    pub fn tick_of(&self, song: &Song, at: BeatPosition) -> Option<u64> {
+        let span = self.measures.iter().find(|s| s.measure == at.measure)?;
+        let beats = song
+            .track(at.track)
+            .and_then(|t| t.measure(at.measure))
+            .and_then(|m| m.voice(at.voice));
+        let mut onset = Duration::new(0, 1).ok()?;
+        for beat in beats.iter().flat_map(|v| v.beats().take(at.beat.get())) {
+            if beat.kind() == BeatKind::Empty {
+                continue;
+            }
+            // A broken length counts as nothing: the start is still close.
+            if let Some(next) = beat.duration().ok().and_then(|d| onset.checked_add(d).ok()) {
+                onset = next;
+            }
+        }
+        Some(span.start.saturating_add(ticks(onset)).min(span.end))
     }
 
     /// The played measure at `tick` (the last one at or after the end).

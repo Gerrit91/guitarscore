@@ -36,13 +36,19 @@ All changes must pass `cargo xtask ci`, which runs:
 
 Additionally, specific tests apply based on what's modified.
 
+Changes to the model, editing, layout or the app's frame loop also run `cargo xtask bench`
+(release build) on large files, before and after; it fails when a budget is missed: from a
+key press to the new layout within 16 ms, opening within 2 s. Point it at the owner's files
+with `GSCORE_BENCH_FILES=a.gp:b.gp` (they are not in the repository) and note the numbers
+in the devlog.
+
 ## Developer tools
 
 - `gscore-cli gui [FILE]` starts the desktop application (from the directory of the
   `gscore-cli` executable, so `target/<profile>/guitarscore` after a workspace build, or
   from `PATH`) and waits for it to exit. Build both with
-  `cargo build -p gscore-cli -p gscore-app`; `cargo run -p gscore-app -- <FILE>` still
-  works too.
+  `cargo build -p gscore-cli -p gscore-app`; `cargo gui <FILE>` builds and starts a
+  release build.
 - `gscore-cli roundtrip-check <file> [--to gp|gpx|gp5|gp4|gp3]` (hidden from `--help`):
   writes the song, reads it back and lists what changed. Use it whenever reading or
   writing code changes.

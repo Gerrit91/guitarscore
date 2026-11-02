@@ -262,3 +262,72 @@ fn play_and_stop_drive_the_built_in_synthesizer() {
         "did not stop"
     );
 }
+
+/// Moves the cursor of the open document to `measure` (0-based), beat 1.
+fn cursor_to_measure(harness: &mut Harness<'static, GuitarScoreApp>, measure: usize) {
+    let document = harness.state_mut().document_mut().unwrap();
+    let mut cursor = document.editor().cursor();
+    cursor.measure = gscore_model::MeasureIndex::new(measure);
+    cursor.beat = gscore_model::BeatIndex::new(0);
+    document.editor_mut().set_cursor(cursor);
+}
+
+#[test]
+fn playback_starts_at_the_cursor_and_resumes_where_it_paused() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("from-cursor");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    let playing = |app: &GuitarScoreApp| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    };
+
+    // Play from measure 3.
+    cursor_to_measure(&mut harness, 2);
+    harness.state_mut().play_pause();
+    assert!(step_until(&mut harness, 10, playing), "did not start");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+    assert_eq!(harness.state().playback().current_measure(), Some(3));
+
+    // Pause and play again without moving the cursor: it resumes where it paused (not
+    // at the start of measure 3).
+    std::thread::sleep(Duration::from_millis(200));
+    harness.state_mut().play_pause();
+    assert!(step_until(&mut harness, 5, |app| app.playback().state()
+        == gscore_play::PlayState::Paused));
+    let paused = harness.state().playback().position();
+    harness.state_mut().play_pause();
+    assert!(step_until(&mut harness, 5, playing));
+    assert!(harness.state().playback().position() >= paused);
+    assert_eq!(harness.state().playback().current_measure(), Some(3));
+
+    // Pause, move the cursor to measure 1: playing starts there.
+    harness.state_mut().play_pause();
+    assert!(step_until(&mut harness, 5, |app| app.playback().state()
+        == gscore_play::PlayState::Paused));
+    cursor_to_measure(&mut harness, 0);
+    harness.state_mut().play_pause();
+    assert!(step_until(&mut harness, 5, |app| app
+        .playback()
+        .current_measure()
+        == Some(1)
+        && app.playback().state() == gscore_play::PlayState::Playing));
+
+    // Stop, cursor to measure 2: Play starts at measure 2, not at the beginning.
+    harness.state_mut().playback_mut().stop().unwrap();
+    assert!(step_until(&mut harness, 5, |app| app.playback().state()
+        == gscore_play::PlayState::Stopped));
+    cursor_to_measure(&mut harness, 1);
+    harness.state_mut().play_pause();
+    assert!(step_until(&mut harness, 5, |app| app
+        .playback()
+        .current_measure()
+        == Some(2)
+        && app.playback().state() == gscore_play::PlayState::Playing));
+    harness.state_mut().playback_mut().stop().unwrap();
+}

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use gscore_audio::{MidiOutPlayer, SynthPlayer, midi_output_ports};
-use gscore_model::Song;
+use gscore_model::{BeatPosition, Song};
 use gscore_play::{PlayState, Player, Sequence};
 
 /// Where playback goes.
@@ -69,6 +69,9 @@ pub struct Playback {
     sequence: Option<Arc<Sequence>>,
     /// The output error last reported to the user, so it is reported once.
     reported: Option<String>,
+    /// Where the cursor was when playback paused: playing on from the same place resumes,
+    /// from anywhere else starts there.
+    paused_at: Option<BeatPosition>,
 }
 
 impl Playback {
@@ -155,11 +158,17 @@ impl Playback {
             let _ = active.player_mut().stop();
         }
         self.sequence = None;
+        self.paused_at = None;
     }
 
     /// Plays `song` from where it was paused or stopped, or pauses it if it is playing.
-    pub fn play_pause(&mut self, song: &Song) -> Result<(), String> {
+    ///
+    /// Playing starts at `from` (the cursor's beat, at its measure's first pass), unless
+    /// playback is paused and the cursor has not moved since: then it resumes. Without
+    /// `from` it resumes, or starts at the beginning.
+    pub fn play_pause(&mut self, song: &Song, from: Option<BeatPosition>) -> Result<(), String> {
         if self.state() == PlayState::Playing {
+            self.paused_at = from;
             return self.player_mut()?.pause().map_err(|e| e.to_string());
         }
         // A synthesizer that failed (SoundFont, device) is started afresh: the problem
@@ -180,18 +189,29 @@ impl Playback {
             self.player = Some(active);
             self.sequence = None;
         }
-        if self.sequence.is_none() {
-            let sequence = Arc::new(Sequence::new(song, None).map_err(|e| e.to_string())?);
-            self.player_mut()?
-                .load(Arc::clone(&sequence))
-                .map_err(|e| e.to_string())?;
-            self.sequence = Some(sequence);
+        let resume =
+            self.sequence.is_some() && self.state() == PlayState::Paused && self.paused_at == from;
+        self.paused_at = None;
+        let sequence = match &self.sequence {
+            Some(sequence) => Arc::clone(sequence),
+            None => {
+                let sequence = Arc::new(Sequence::new(song, None).map_err(|e| e.to_string())?);
+                self.player_mut()?
+                    .load(Arc::clone(&sequence))
+                    .map_err(|e| e.to_string())?;
+                self.sequence = Some(Arc::clone(&sequence));
+                sequence
+            }
+        };
+        if !resume && let Some(tick) = from.and_then(|at| sequence.tick_of(song, at)) {
+            self.player_mut()?.seek(tick).map_err(|e| e.to_string())?;
         }
         self.player_mut()?.play().map_err(|e| e.to_string())
     }
 
     /// Stops and goes back to the start.
     pub fn stop(&mut self) -> Result<(), String> {
+        self.paused_at = None;
         match &mut self.player {
             Some(active) => active.player_mut().stop().map_err(|e| e.to_string()),
             None => Ok(()),
@@ -203,6 +223,11 @@ impl Playback {
         self.player
             .as_ref()
             .map_or(PlayState::Stopped, |a| a.player().state())
+    }
+
+    /// The position in ticks (0 without a player).
+    pub fn position(&self) -> u64 {
+        self.player.as_ref().map_or(0, |a| a.player().position())
     }
 
     /// The measure being played (1-based), while playing or paused.

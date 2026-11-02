@@ -232,6 +232,48 @@ fn the_history_limit_drops_the_oldest_edits() {
 }
 
 #[test]
+fn the_history_is_capped_by_memory_and_keeps_the_newest_edit() {
+    let song = testing::song(&[testing::GUITAR_6, testing::GUITAR_6], 4).unwrap();
+    let mut editor = Editor::new(song);
+    assert_eq!(editor.history_bytes(), 0);
+    let note = Command::SetFret {
+        at: pos(0, 0, 0),
+        string: string(1),
+        fret: fret(5),
+    };
+    editor.execute(note).unwrap();
+    let small = editor.history_bytes();
+    assert!(small > 0);
+    // Deleting a measure keeps both tracks' measures: a larger entry.
+    editor
+        .execute(Command::DeleteMeasure {
+            measure: MeasureIndex::new(3),
+        })
+        .unwrap();
+    let both = editor.history_bytes();
+    assert!(both > 2 * small, "{both} vs {small}");
+    // Undo gives the memory back; redo takes it again.
+    editor.undo().unwrap();
+    assert_eq!(editor.history_bytes(), small);
+    editor.redo().unwrap();
+    assert_eq!(editor.history_bytes(), both);
+
+    // Room for about one entry: the oldest go, the newest stays even when it is too big.
+    let mut editor = editor.with_history_bytes(both - small);
+    assert_eq!(editor.undo_depth(), 1);
+    editor
+        .execute(Command::DeleteMeasure {
+            measure: MeasureIndex::new(2),
+        })
+        .unwrap();
+    assert_eq!(editor.undo_depth(), 1);
+    let mut tiny = editor.with_history_bytes(1);
+    assert_eq!(tiny.undo_depth(), 1, "the newest entry stays");
+    tiny.undo().unwrap();
+    assert_eq!(tiny.history_bytes(), 0);
+}
+
+#[test]
 fn enabled_matches_whether_the_command_applies() {
     let commands = [
         Command::SetFret {

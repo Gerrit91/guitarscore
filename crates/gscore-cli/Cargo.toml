@@ -17,5 +17,9 @@ gscore-play = { path = "../gscore-play" }
 gscore-audio = { path = "../gscore-audio" }
 clap = { version = "4.6.7", features = ["derive"] }
 
+[dev-dependencies]
+# A SoundFont built in code, for the playback test.
+gscore-audio = { path = "../gscore-audio", features = ["test-support"] }
+
 [lints]
 workspace = true

@@ -3,8 +3,6 @@
 // Derived from the `guitarpro` crate by slundi (https://github.com/slundi/guitarpro,
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
-use crate::model::*;
-
 #[repr(u8)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BeatStatus {

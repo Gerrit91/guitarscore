@@ -7,12 +7,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use gscore_edit::TabEditor;
-use gscore_layout::{Fonts, Layout, LayoutOptions, layout_track};
+use gscore_layout::{Fonts, Layout, LayoutCache, LayoutOptions};
 use gscore_model::{Song, TrackIndex};
 use gscore_session::FileFormat;
 
-/// A layout and the song revision it was made from.
-type CachedLayout = (u64, Result<Arc<Layout>, String>);
+/// One track's layout: the revision and options it shows, and the measure cache that
+/// makes the next layout after an edit cheap.
+#[derive(Debug, Default)]
+struct TrackLayout {
+    shown: Option<(u64, LayoutOptions, Result<Arc<Layout>, String>)>,
+    cache: LayoutCache,
+}
 
 /// A song open in the app.
 #[derive(Debug)]
@@ -23,10 +28,9 @@ pub struct Document {
     editor: TabEditor,
     /// The editor revision last saved (or opened).
     saved_revision: u64,
-    /// Layouts by track, each with the revision it shows. An edit makes them stale; the
-    /// shown track is laid out again on the next frame (about 15 ms for 236 measures in a
-    /// release build; per-measure caching is still open, docs/gaps.md).
-    layouts: HashMap<usize, CachedLayout>,
+    /// Layouts by track. An edit makes them stale; the shown track is laid out again on
+    /// the next frame, reusing every measure that did not change.
+    layouts: HashMap<usize, TrackLayout>,
 }
 
 impl Document {
@@ -100,23 +104,28 @@ impl Document {
         fonts: &Fonts,
     ) -> Result<Arc<Layout>, String> {
         let revision = self.editor.revision();
-        if let Some((cached, layout)) = self.layouts.get(&track)
-            && *cached == revision
+        let entry = self.layouts.entry(track).or_default();
+        if let Some((shown, shown_options, layout)) = &entry.shown
+            && *shown == revision
+            && shown_options == options
         {
             return layout.clone();
         }
         let song = self.editor.song();
+        let cache = &mut entry.cache;
         let laid_out = catch_unwind(AssertUnwindSafe(|| {
-            layout_track(song, TrackIndex::new(track), options, fonts)
+            cache.layout(song, TrackIndex::new(track), options, fonts)
         }));
         let layout = match laid_out {
             Ok(Ok(layout)) => Ok(Arc::new(layout)),
             Ok(Err(error)) => Err(error.to_string()),
             Err(_) => {
+                // The cache may be half updated: start it afresh.
+                entry.cache = LayoutCache::default();
                 Err("drawing this track failed unexpectedly; a crash report was written".to_owned())
             }
         };
-        self.layouts.insert(track, (revision, layout.clone()));
+        entry.shown = Some((revision, options.clone(), layout.clone()));
         layout
     }
 }

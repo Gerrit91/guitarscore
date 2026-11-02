@@ -6,7 +6,7 @@
 use crate::io::*;
 use fraction::ToPrimitive;
 
-pub trait SongMeasureOps {
+pub(crate) trait SongMeasureOps {
     fn read_measures(&mut self, data: &[u8], seek: &mut usize) -> GpResult<()>;
     fn read_measure(
         &mut self,
@@ -78,7 +78,7 @@ impl SongMeasureOps for Song {
                 } else {
                     self.read_measure_v5(data, seek, &mut m, t)?;
                 }
-                self.tracks[t].measures.push(m);
+                item_mut(&mut self.tracks, t, "track")?.measures.push(m);
             }
         }
         self.current_track = None;
@@ -113,7 +113,7 @@ impl SongMeasureOps for Song {
     ) -> GpResult<()> {
         let mut start = measure.start;
         for number in 0..MAX_VOICES {
-            self.current_voice_number = Some(number + 1);
+            self.current_voice_number = Some(number.saturating_add(1));
             let mut voice = Voice::default();
             self.read_voice(data, seek, &mut voice, &mut start, track_index)?;
             measure.voices.push(voice);
@@ -135,7 +135,8 @@ impl SongMeasureOps for Song {
         start: &mut i64,
         track_index: usize,
     ) -> GpResult<()> {
-        if *seek + 4 > data.len() {
+        // Too little data left for the beat count: no beats.
+        if seek.saturating_add(4) > data.len() {
             return Ok(());
         }
         let beats = read_int(data, seek)?.to_usize().unwrap_or(0);
@@ -144,15 +145,16 @@ impl SongMeasureOps for Song {
             return Ok(());
         }
         for i in 0..beats {
-            if *seek + 5 > data.len() {
+            if seek.saturating_add(5) > data.len() {
                 break;
             }
-            self.current_beat_number = Some(i + 1);
-            *start += if self.version.number < (5, 0, 0) {
+            self.current_beat_number = Some(i.saturating_add(1));
+            let length = if self.version.number < (5, 0, 0) {
                 self.read_beat(data, seek, voice, *start, track_index)?
             } else {
                 self.read_beat_v5(data, seek, voice, &mut *start, track_index)?
             };
+            *start = start.saturating_add(length);
         }
         self.current_beat_number = None;
         Ok(())
@@ -173,17 +175,19 @@ impl SongMeasureOps for Song {
         measure: usize,
         version: &(u8, u8, u8),
     ) -> GpResult<()> {
+        let the_measure = item(
+            &item(&self.tracks, track, "track")?.measures,
+            measure,
+            "measure",
+        )?;
         if version.0 < 5 {
             self.write_voice(data, track, measure, 0, version)?;
         } else {
-            for v in 0..self.tracks[track].measures[measure].voices.len() {
+            for v in 0..the_measure.voices.len() {
                 self.write_voice(data, track, measure, v, version)?;
-            } //self.current_voice_number = Some(v+1);
+            }
             if version.0 == 5 {
-                write_byte(
-                    data,
-                    from_line_break(&self.tracks[track].measures[measure].line_break),
-                );
+                write_byte(data, from_line_break(&the_measure.line_break));
             }
         }
         Ok(())
@@ -196,29 +200,19 @@ impl SongMeasureOps for Song {
         voice: usize,
         version: &(u8, u8, u8),
     ) -> GpResult<()> {
-        write_i32(
-            data,
-            self.tracks[track].measures[measure].voices[voice]
-                .beats
-                .len()
-                .to_i32_gp("beats count")?,
-        );
-        for b in 0..self.tracks[track].measures[measure].voices[voice]
-            .beats
-            .len()
-        {
+        let the_track = item(&self.tracks, track, "track")?;
+        let beats = &item(
+            &item(&the_track.measures, measure, "measure")?.voices,
+            voice,
+            "voice",
+        )?
+        .beats;
+        write_i32(data, beats.len().to_i32_gp("beats count")?);
+        for beat in beats {
             if version.0 == 3 {
-                self.write_beat_v3(
-                    data,
-                    &self.tracks[track].measures[measure].voices[voice].beats[b],
-                )?;
+                self.write_beat_v3(data, beat)?;
             } else {
-                self.write_beat(
-                    data,
-                    &self.tracks[track].measures[measure].voices[voice].beats[b],
-                    &self.tracks[track].strings,
-                    version,
-                )?;
+                self.write_beat(data, beat, &the_track.strings, version)?;
             }
         }
         Ok(())

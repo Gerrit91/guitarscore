@@ -136,7 +136,7 @@ pub struct MeasureView<'a> {
 }
 
 impl<'a> MeasureView<'a> {
-    fn new(index: MeasureIndex, inner: &'a gscore_gp::Measure) -> Self {
+    pub(crate) fn new(index: MeasureIndex, inner: &'a gscore_gp::Measure) -> Self {
         MeasureView { index, inner }
     }
 

@@ -2,12 +2,11 @@
 
 Ranked known shortfalls, most important first. Updated 2026-11-01 (M7: bends and slides).
 
-1. **`gscore-gp` is not held to the workspace rules yet.** About 10k lines derived from
-   guitarpro still use `unwrap`, indexing and `as` casts; a crate-level `allow` exempts them.
-   The GP7 XML writer (`io/gpif_export.rs`) is the first module under the no-panic lints
-   (M3). Several files exceed 400 lines (`io/gpif_import.rs` ~1,300, `io/gpif_export.rs`
-   ~800). Continue module by module, next with the parsers of untrusted input. Until then
-   the reader runs behind `catch_unwind` in gscore-io, which does not exist on wasm.
+1. **`gscore-gp` public items are mostly undocumented.** Since 2026-11-02 the crate
+   follows the workspace rules (no-panic lints, checked arithmetic, no lossy casts, files
+   under 400 lines; docs/guitarpro.md change 29). Left: rustdoc on the many public model
+   fields inherited from guitarpro, and dead code (fields parsed but unused are marked).
+   `gscore-io` keeps `catch_unwind` around it as a second line of defense (not on wasm).
 2. **GP3-5 writing is not usable for real songs yet** (`gscore-cli roundtrip-check --to
    gp5` on the 26 band files): 18 write durations GP5 cannot express (read back as an
    invalid note value), 4 produce files that run out of data when read, 3 fail on
@@ -57,16 +56,12 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M7: bends and
    turns them into commands with undo/redo, and `gscore-cli edit` runs them from `-c` or a
    script; the app edits at a cursor (#10). Still missing: selection and copy/cut/paste;
    editing tempo, time
-   signatures, effects, chord diagrams and lyrics; lyric/chord/effect accessors. Every model
-   edit clones the whole wrapped song (including embedded audio) to stay transactional; this
-   is correct but must become a per-region copy for large scores: a single-note edit takes
-   about 3.6 ms in release on `DrDr.gp` (172 measures x 16 tracks), mostly the clone plus
-   validating the whole song; it should copy and validate only the touched region. In the
-   app the shown track is also laid out again after every edit (about 15 ms for 236
-   measures in release, more in debug builds), so key-to-screen latency on big scores is
-   over one frame until both are incremental. Undo history is in memory
-   only and capped by entry count (10,000), not by bytes (persisting it and a memory cap
-   belong with the recovery journal in M8). Only the initial tempo is exposed.
+   signatures, effects, chord diagrams and lyrics; lyric/chord/effect accessors. Edits copy
+   and check only the measure they touch (M10), and the app lays out only changed measures
+   again; line breaking and drawing still run over the whole track (0.85 ms for 415
+   measures in release; `cargo xtask bench`). Undo history is in memory only, capped at
+   10,000 entries and about 64 MiB (persisting it belongs with the recovery journal, M11).
+   Only the initial tempo is exposed.
 6. **Saving is GP7 only.** `gscore_session::save` and `gscore-cli convert` refuse other
    formats until their round trips pass (#2). Whether Guitar Pro itself opens our GP7 files
    is not verified yet (the owner can check). Effects the model has no accessor for (grace
@@ -96,7 +91,7 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M7: bends and
    asks), and asks about unsaved changes before closing or opening another file. It
    contains panics in layout, drawing and background jobs. Missing: selection and
    copy/cut/paste, entering notes in voice 2, editing effects, tempo and time signatures,
-   a duration toolbar, playback from the cursor and a playhead, remembering the view state
+   a duration toolbar, a playhead (playback starts at the cursor), remembering the view state
    and window between runs, recent files, drag and drop, keyboard shortcuts for zoom, a
    multi-page view. Undo back to the saved state still counts as "changed". `clear_note`,
    `previous_measure` and `next_measure` have no default key yet (owner's decision; they

@@ -5,7 +5,7 @@
 
 use crate::io::*;
 
-pub trait SongPageOps {
+pub(crate) trait SongPageOps {
     fn read_page_setup(&mut self, data: &[u8], seek: &mut usize) -> GpResult<()>;
     fn write_page_setup(&self, data: &mut Vec<u8>) -> GpResult<()>;
 }
@@ -86,7 +86,10 @@ impl SongPageOps for Song {
                 .to_i32_gp("score size proportion")?,
         );
 
-        write_i16(data, self.page_setup.header_and_footer as i16);
+        write_i16(
+            data,
+            i16::from_le_bytes(self.page_setup.header_and_footer.to_le_bytes()),
+        );
         write_int_size_string(data, &self.page_setup.title);
         write_int_size_string(data, &self.page_setup.subtitle);
         write_int_size_string(data, &self.page_setup.artist);
@@ -94,9 +97,10 @@ impl SongPageOps for Song {
         write_int_size_string(data, &self.page_setup.words);
         write_int_size_string(data, &self.page_setup.music);
         write_int_size_string(data, &self.page_setup.word_and_music);
-        let c: Vec<&str> = self.page_setup.copyright.split('\n').collect();
-        write_int_size_string(data, c[0]);
-        write_int_size_string(data, c[1]);
+        // Two lines; GuitarScore fix: a copyright without a line break used to panic.
+        let mut lines = self.page_setup.copyright.split('\n');
+        write_int_size_string(data, lines.next().unwrap_or_default());
+        write_int_size_string(data, lines.next().unwrap_or_default());
         write_int_size_string(data, &self.page_setup.page_number);
         Ok(())
     }

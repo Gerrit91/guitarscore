@@ -3,8 +3,6 @@
 // Derived from the `guitarpro` crate by slundi (https://github.com/slundi/guitarpro,
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
-use crate::model::*;
-
 /// A mix table item describes a mix parameter, e.g. volume or reverb
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MixTableItem {

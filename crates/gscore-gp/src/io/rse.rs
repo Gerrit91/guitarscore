@@ -5,7 +5,7 @@
 
 use crate::io::*;
 
-pub trait SongRseOps {
+pub(crate) trait SongRseOps {
     fn read_rse_master_effect(&self, data: &[u8], seek: &mut usize) -> GpResult<RseMasterEffect>;
     fn read_rse_equalizer(
         &self,
@@ -77,8 +77,7 @@ impl SongRseOps for Song {
     /// - RSE instrument effect. See `read_rse_instrument_effect()`.
     fn read_track_rse(&mut self, data: &[u8], seek: &mut usize, track: &mut Track) -> GpResult<()> {
         track.rse.humanize = read_byte(data, seek)?;
-        *seek += 12; //read_int(data, seek); read_int(data, seek); read_int(data, seek);  //??? 4 bytes*3 //*seek += 12;
-        *seek += 12; //???
+        skip(seek, 24); // unknown: six ints
         track.rse.instrument = self.read_rse_instrument(data, seek)?;
         if self.version.number > (5, 0, 0) {
             track.rse.equalizer = self.read_rse_equalizer(data, seek, 4)?;
@@ -100,7 +99,7 @@ impl SongRseOps for Song {
         instrument.sound_bank = read_int(data, seek)?;
         if self.version.number == (5, 0, 0) {
             instrument.effect_number = i32::from(read_short(data, seek)?);
-            *seek += 1;
+            skip(seek, 1);
         } else {
             instrument.effect_number = read_int(data, seek)?;
         }
@@ -128,7 +127,7 @@ impl SongRseOps for Song {
             if self.master_effect.volume == 0.0 {
                 100
             } else {
-                self.master_effect.volume.ceil() as i32
+                saturating_i32(self.master_effect.volume.ceil())
             },
         );
         write_i32(data, 0); //reverb?
@@ -144,10 +143,10 @@ impl SongRseOps for Song {
         }
     }
     fn pack_volume_value(&self, value: f32) -> i8 {
-        (-value * 10f32).round() as i8 //int(-round(value, 1) * 10)
+        round_to_i8(-value * 10f32)
     }
     fn write_master_reverb(&self, data: &mut Vec<u8>) {
-        write_i32(data, self.master_effect.reverb as i32);
+        write_i32(data, saturating_i32(self.master_effect.reverb));
     }
 
     fn write_track_rse(&self, data: &mut Vec<u8>, rse: &TrackRse, version: &(u8, u8, u8)) {
@@ -172,7 +171,7 @@ impl SongRseOps for Song {
         write_i32(data, instrument.unknown);
         write_i32(data, instrument.sound_bank);
         if version == &(5, 0, 0) {
-            write_i16(data, instrument.effect_number as i16);
+            write_i16(data, low_i16(instrument.effect_number));
             write_placeholder_default(data, 1);
         } else {
             write_i32(data, instrument.effect_number);

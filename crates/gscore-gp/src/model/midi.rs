@@ -3,8 +3,6 @@
 // Derived from the `guitarpro` crate by slundi (https://github.com/slundi/guitarpro,
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
-use crate::model::*;
-
 //MIDI channels
 
 pub const CHANNEL_DEFAULT_NAMES: [&str; 128] = [

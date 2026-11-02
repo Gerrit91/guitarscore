@@ -101,6 +101,11 @@ impl GuitarScoreApp {
         self.document.as_ref()
     }
 
+    /// The open document, to change it (its editor and cursor).
+    pub fn document_mut(&mut self) -> Option<&mut Document> {
+        self.document.as_mut()
+    }
+
     /// The current message for the user, if any.
     pub fn notice(&self) -> Option<&str> {
         self.notice.as_deref()

@@ -15,70 +15,57 @@ pub(super) fn read_beat(
     track_index: usize,
 ) -> GpResult<i64> {
     let flags = read_byte(data, seek)?;
-    let mut b = 0;
-    let mut new_beat = true;
-    if song.version.number < (5, 0, 0) {
-        for i in (0usize..voice.beats.len()).rev() {
-            if voice.beats[i].start == Some(start) {
-                b = i;
-                new_beat = false;
-                break;
-            }
+    // GP3/4 put the beats of a voice that start together into one beat.
+    let existing = if song.version.number < (5, 0, 0) {
+        voice
+            .beats
+            .iter()
+            .rposition(|beat| beat.start == Some(start))
+    } else {
+        None
+    };
+    let index = match existing {
+        Some(index) => index,
+        None => {
+            voice.beats.push(Beat {
+                start: Some(start),
+                ..Default::default()
+            });
+            voice.beats.len().saturating_sub(1)
         }
-    }
-    if new_beat {
-        voice.beats.push(Beat {
-            start: Some(start),
-            ..Default::default()
-        });
-        b = voice.beats.len() - 1;
-    }
+    };
+    let beat = item_mut(&mut voice.beats, index, "beat")?;
 
     if (flags & 0x40) == 0x40 {
-        voice.beats[b].status = get_beat_status(read_byte(data, seek)?);
+        beat.status = get_beat_status(read_byte(data, seek)?);
     }
     let duration = read_duration(data, seek, flags)?;
     let mut note_effect = NoteEffect::default();
     if (flags & 0x02) == 0x02 {
         use crate::io::SongChordOps;
-        voice.beats[b].effect.chord = Some(
-            song.read_chord(
-                data,
-                seek,
-                song.tracks[track_index]
-                    .strings
-                    .len()
-                    .to_u8_gp("string count")?,
-            )?,
-        );
+        let strings = item(&song.tracks, track_index, "track")?.strings.len();
+        beat.effect.chord = Some(song.read_chord(data, seek, strings.to_u8_gp("string count")?)?);
     }
     if (flags & 0x04) == 0x04 {
-        voice.beats[b].text = read_int_byte_size_string(data, seek)?;
+        beat.text = read_int_byte_size_string(data, seek)?;
     }
     if (flags & 0x08) == 0x08 {
-        let chord = voice.beats[b].effect.chord.clone();
+        let chord = beat.effect.chord.clone();
         if song.version.number.0 == 3 {
-            voice.beats[b].effect = song.read_beat_effects_v3(data, seek, &mut note_effect)?;
+            beat.effect = song.read_beat_effects_v3(data, seek, &mut note_effect)?;
         } else {
-            voice.beats[b].effect = song.read_beat_effects_v4(data, seek)?;
+            beat.effect = song.read_beat_effects_v4(data, seek)?;
         }
-        voice.beats[b].effect.chord = chord;
+        beat.effect.chord = chord;
     }
     if (flags & 0x10) == 0x10 {
         use crate::io::SongMixTableOps;
         let mtc = song.read_mix_table_change(data, seek)?;
-        voice.beats[b].effect.mix_table_change = Some(mtc);
+        beat.effect.mix_table_change = Some(mtc);
     }
     use crate::io::SongNoteOps;
-    song.read_notes(
-        data,
-        seek,
-        track_index,
-        &mut voice.beats[b],
-        &duration,
-        note_effect,
-    )?;
-    Ok(if voice.beats[b].status == BeatStatus::Empty {
+    song.read_notes(data, seek, track_index, beat, &duration, note_effect)?;
+    Ok(if beat.status == BeatStatus::Empty {
         0
     } else {
         duration.time()?.to_i64_gp("beat duration time")?
@@ -94,40 +81,42 @@ pub(super) fn read_beat_v5(
     track_index: usize,
 ) -> GpResult<i64> {
     let duration = read_beat(song, data, seek, voice, *start, track_index)?;
-    let b = voice.beats.len() - 1;
+    let beat = voice
+        .beats
+        .last_mut()
+        .ok_or(GpError::MissingState { field: "beat" })?;
 
     let flags2 = read_short(data, seek)?;
-    if (flags2 & 0x0010) == 0x0010 {
-        voice.beats[b].octave = Octave::Ottava;
-    }
-    if (flags2 & 0x0020) == 0x0020 {
-        voice.beats[b].octave = Octave::OttavaBassa;
-    }
-    if (flags2 & 0x0040) == 0x0040 {
-        voice.beats[b].octave = Octave::Quindicesima;
-    }
-    if (flags2 & 0x0100) == 0x0100 {
-        voice.beats[b].octave = Octave::QuindicesimaBassa;
+    for (bit, octave) in [
+        (0x0010, Octave::Ottava),
+        (0x0020, Octave::OttavaBassa),
+        (0x0040, Octave::Quindicesima),
+        (0x0100, Octave::QuindicesimaBassa),
+    ] {
+        if (flags2 & bit) == bit {
+            beat.octave = octave;
+        }
     }
 
-    voice.beats[b].display.break_beam = (flags2 & 0x0001) == 0x0001;
-    voice.beats[b].display.force_beam = (flags2 & 0x0004) == 0x0004;
-    voice.beats[b].display.force_bracket = (flags2 & 0x2000) == 0x2000;
-    voice.beats[b].display.break_secondary_tuplet = (flags2 & 0x1000) == 0x1000;
+    let display = &mut beat.display;
+    display.break_beam = (flags2 & 0x0001) == 0x0001;
+    display.force_beam = (flags2 & 0x0004) == 0x0004;
+    display.force_bracket = (flags2 & 0x2000) == 0x2000;
+    display.break_secondary_tuplet = (flags2 & 0x1000) == 0x1000;
     if (flags2 & 0x0002) == 0x0002 {
-        voice.beats[b].display.beam_direction = VoiceDirection::Down;
+        display.beam_direction = VoiceDirection::Down;
     }
     if (flags2 & 0x0008) == 0x0008 {
-        voice.beats[b].display.beam_direction = VoiceDirection::Up;
+        display.beam_direction = VoiceDirection::Up;
     }
     if (flags2 & 0x0200) == 0x0200 {
-        voice.beats[b].display.tuplet_bracket = TupletBracket::Start;
+        display.tuplet_bracket = TupletBracket::Start;
     }
     if (flags2 & 0x0400) == 0x0400 {
-        voice.beats[b].display.tuplet_bracket = TupletBracket::End;
+        display.tuplet_bracket = TupletBracket::End;
     }
     if (flags2 & 0x0800) == 0x0800 {
-        voice.beats[b].display.break_secondary = read_byte(data, seek)?;
+        display.break_secondary = read_byte(data, seek)?;
     }
 
     Ok(duration)
@@ -179,10 +168,9 @@ pub(super) fn read_beat_effects_v4(
     be.fade_in = (flags1 & 0x10) == 0x10;
     if (flags1 & 0x20) == 0x20 {
         let v = read_signed_byte(data, seek)?;
-        be.slap_effect = if v < 0 {
-            SlapEffect::None
-        } else {
-            get_slap_effect(v as u8)?
+        be.slap_effect = match u8::try_from(v) {
+            Ok(v) => get_slap_effect(v)?,
+            Err(_) => SlapEffect::None,
         };
     }
     if (flags2 & 0x04) == 0x04 {
@@ -240,7 +228,7 @@ pub(super) fn read_tremolo_bar(
     };
     // Tremolo bar value is display-only; some editors write junk in the field
     // when the effect is unused. Truncate to `i16` instead of erroring.
-    be.value = read_int(data, seek)? as i16;
+    be.value = low_i16(read_int(data, seek)?);
     be.points.push(BendPoint {
         position: 0,
         value: 0,
@@ -248,9 +236,7 @@ pub(super) fn read_tremolo_bar(
     });
     // Derived from `be.value`, which we now accept as-is; clamp to `i8` here
     // so a garbage tremolo value does not fail the whole load.
-    let midpoint_value = (-f32::from(be.value) / GP_BEND_SEMITONE)
-        .round()
-        .clamp(i8::MIN as f32, i8::MAX as f32) as i8;
+    let midpoint_value = round_to_i8(-f32::from(be.value) / GP_BEND_SEMITONE);
     be.points.push(BendPoint {
         position: BEND_EFFECT_MAX_POSITION / 2,
         value: midpoint_value,
