@@ -10,6 +10,10 @@ use gscore_play::PlayState;
 use super::GuitarScoreApp;
 use crate::canvas::{self, POINTS_PER_SPACE};
 
+/// How strongly the selection color is laid over the page: the shade the cursor's band and
+/// the selection made together, used for the whole selection.
+const SELECTION_ALPHA: f32 = 0.32;
+
 /// Space around the page inside the view, in points.
 const PAGE_MARGIN: f32 = 24.0;
 
@@ -52,6 +56,14 @@ impl GuitarScoreApp {
         let mut clicked: Option<Point> = None;
         let mut drag_to: Option<Cursor> = None;
         let playing = self.playback.state() == PlayState::Playing;
+        let in_selection = document.editor().selection().is_some_and(|selection| {
+            selection
+                .positions(document.song())
+                .contains(&cursor.position())
+                || matches!(selection, Selection::Measures { .. })
+                    && (selection.first_measure()..=selection.last_measure())
+                        .contains(&cursor.measure)
+        });
         // The grid shows a measure selection; any other selection (or none) ends it there.
         if !matches!(
             document.editor().selection(),
@@ -83,7 +95,7 @@ impl GuitarScoreApp {
                     painter.rect_filled(
                         rect,
                         2.0,
-                        canvas::color(theme.selection).gamma_multiply(0.22),
+                        canvas::color(theme.selection).gamma_multiply(SELECTION_ALPHA),
                     );
                 }
             }
@@ -105,7 +117,10 @@ impl GuitarScoreApp {
                 // While playing, the moving column is enough; the string box would only
                 // flicker from note to note.
                 let string = (!playing).then_some(string);
-                canvas::paint_cursor(&painter, column, string, theme);
+                // Inside the selection, the cursor's band would make its column darker than
+                // the rest; the selection's one shade covers it already.
+                let column_band = (!in_selection).then_some(column);
+                canvas::paint_cursor(&painter, column_band, string, theme);
                 if scroll_to_cursor {
                     ui.scroll_to_rect(column, None);
                 }
@@ -186,6 +201,11 @@ impl GuitarScoreApp {
                 string: hit.string,
                 ..cursor
             });
+            // While playing, a click moves playback there too.
+            let at = document.editor().cursor().position();
+            if let Err(error) = self.playback.jump_to(document.song(), at) {
+                self.notice = Some(error);
+            }
         }
     }
 }

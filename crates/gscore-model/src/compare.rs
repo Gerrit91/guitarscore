@@ -284,13 +284,20 @@ fn compare_beat(diff: &mut Diffs, at: &str, a: &BeatContent, b: &BeatContent) {
 }
 
 /// Settings that a save-and-reload may lose even when the musical content is kept: track
-/// color, mute, solo, volume and pan. The Guitar Pro 7 writer does not store all of them,
+/// color, mute, solo, volume, pan and shown staves, and the master mix. The Guitar Pro 7 writer does not store all of them,
 /// so the save path reports these before it writes (`docs/gaps.md`).
 pub fn settings_differences(before: &Song, after: &Song) -> Vec<Difference> {
     let mut diff = Diffs(Vec::new());
+    diff.check(
+        "song",
+        "master mix",
+        before.master_mix(),
+        after.master_mix(),
+    );
     for (a, b) in before.tracks().zip(after.tracks()) {
         let at = a.index().to_string();
         diff.check(&at, "color", a.color(), b.color());
+        diff.check(&at, "staves", a.staves(), b.staves());
         diff.check(&at, "mute", a.is_muted(), b.is_muted());
         diff.check(&at, "solo", a.is_soloed(), b.is_soloed());
         let sound = |song: &Song, track| song.track_sound(track);

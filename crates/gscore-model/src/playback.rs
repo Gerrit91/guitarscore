@@ -25,6 +25,70 @@ pub struct TrackSound {
     pub percussion: bool,
 }
 
+/// The master volume at which every track plays at its own volume: Guitar Pro's default
+/// master fader position (0.76, as GP7 files store it untouched). Lower values turn all
+/// tracks down, higher ones up (each track at most to the MIDI maximum).
+pub const MASTER_UNITY: u8 = 97;
+
+/// The master mix: a volume for all tracks together and a pan that shifts all of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MasterMix {
+    /// 0-127; [`MASTER_UNITY`] plays every track at its own volume.
+    pub volume: u8,
+    /// 0 (left) to 127 (right); 64 leaves every track's pan as it is.
+    pub pan: u8,
+}
+
+impl Default for MasterMix {
+    fn default() -> Self {
+        MasterMix {
+            volume: MASTER_UNITY,
+            pan: 64,
+        }
+    }
+}
+
+impl MasterMix {
+    /// How `sound` is played with this master mix: its volume scaled, its pan shifted.
+    pub fn apply(self, sound: TrackSound) -> TrackSound {
+        // Both factors are at most 127, so neither can overflow; saturating keeps clippy's
+        // proof simple.
+        let volume = u16::from(sound.volume)
+            .saturating_mul(u16::from(self.volume))
+            .checked_div(u16::from(MASTER_UNITY))
+            .unwrap_or(0)
+            .min(127);
+        let pan = i16::from(sound.pan)
+            .saturating_add(i16::from(self.pan))
+            .saturating_sub(64)
+            .clamp(0, 127);
+        TrackSound {
+            volume: u8::try_from(volume).unwrap_or(127),
+            pan: u8::try_from(pan).unwrap_or(64),
+            ..sound
+        }
+    }
+}
+
+/// A 0.0-1.0 fader position as a 0-127 value (the middle, 0.5, is 64).
+pub(crate) fn unit_to_midi(value: f32) -> u8 {
+    if (value - 0.5).abs() < f32::EPSILON {
+        return 64;
+    }
+    // Clamped to 0..=127 first, so the conversion cannot fail.
+    let midi = (value.clamp(0.0, 1.0) * 127.0).round();
+    (0..=127_u8).find(|&v| f32::from(v) >= midi).unwrap_or(127)
+}
+
+/// A 0-127 value as a 0.0-1.0 fader position (64 is exactly the middle).
+pub(crate) fn midi_to_unit(value: u8) -> f32 {
+    if value == 64 {
+        0.5
+    } else {
+        f32::from(value.min(127)) / 127.0
+    }
+}
+
 /// Repeat signs and alternative endings of a measure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Repeat {
@@ -59,6 +123,22 @@ impl Song {
             pan: channel.map_or(64, |c| midi_value(i64::from(c.balance))),
             percussion: inner.percussion_track,
         })
+    }
+
+    /// The master mix; songs without one have the neutral [`MasterMix::default`].
+    pub fn master_mix(&self) -> MasterMix {
+        self.inner()
+            .master_volume_pan
+            .map_or_else(MasterMix::default, |(volume, pan)| MasterMix {
+                volume: unit_to_midi(volume),
+                pan: unit_to_midi(pan),
+            })
+    }
+
+    /// How the track is played: its [`Song::track_sound`] with the master mix applied.
+    pub fn played_sound(&self, track: TrackIndex) -> Option<TrackSound> {
+        let master = self.master_mix();
+        self.track_sound(track).map(|sound| master.apply(sound))
     }
 
     /// The repeat signs at `measure` (the same for every track), or `None` if there is no

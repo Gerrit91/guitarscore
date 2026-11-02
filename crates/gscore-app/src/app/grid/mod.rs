@@ -15,7 +15,7 @@ use crate::state::MeasureSelection;
 use rows::TrackRow;
 
 mod matrix;
-mod mixer;
+pub(super) mod mixer;
 mod rows;
 
 /// Width of the fixed track column on the left.

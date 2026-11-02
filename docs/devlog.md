@@ -1126,3 +1126,39 @@ Owner feedback on the M14 selection, done:
   the app ending a grid selection.
 - Open: the selection is not drawn in the song grid unless it is a measure range; a beat
   selection cannot span tracks.
+
+## 2026-11-02 — Track panel and playback UX
+
+Owner feedback, done:
+- Clicking a beat on the page while playing continues playback from there
+  (`Playback::jump_to`; the player silences sounding notes when it seeks).
+- Track panel: strings are tuned by note name (a list from C0 to B7 plus semitone − and +
+  buttons; no MIDI numbers shown); 16 preset colors as swatches next to the custom
+  picker; a "Show" choice of notes and tabs, tabs only, or notes only; a top bar to add a
+  track after the shown one, move it up or down, and mute or solo all tracks (one undo
+  step, toggling back when all are already muted or soloed); a master row at the bottom
+  with a volume slider (double-click: 100 %) and a pan knob.
+- With a selection, the selection band is one darker shade everywhere; the cursor's own
+  column band is not drawn inside it (it made one column darker than the rest).
+- Model: `TrackStaves` (`TrackView::staves`, `Song::set_track_staves`, which lays out
+  every measure again) and `MasterMix` (`Song::master_mix`, `set_master_volume`,
+  `set_master_pan`, `played_sound` = a track's sound with the master applied, used by the
+  sequence and the live mixer). Both are compared by `settings_differences`.
+  `MASTER_UNITY` (97) is the neutral master: every GP7 test file stores Guitar Pro's
+  untouched 0.76, so a plain linear reading would have played every file a quarter
+  quieter than before.
+- Commands `set_track_staves`, `set_master_volume`, `set_master_pan` (master drags merge
+  into one undo step; the app sends every track's sound at once).
+- `gscore-gp`: master volume/pan (`I01_VolumeAndPan`) and GP7's `PartConfiguration`
+  (per-track staves) are read and written (`docs/guitarpro.md` 31, 32).
+- Layout: per-track staves; "notes only" draws the notation staff alone (no tab staff,
+  fret numbers or tab ornaments) and puts the cursor rows on it. The default output is
+  unchanged (golden SVGs).
+- Tests: `test_track_panel.rs` (presets, staves, note-name tuning, the bar, the master
+  row, jumping while playing when a MIDI Through port exists), `test_staves.rs`, model
+  `mix_tests`, `part_configuration` and `display_tests` in `gscore-gp`, command and parse
+  cases. The page snapshots were regenerated for the new panel.
+- Open: the master row has no number readout (its tooltip shows the percentage); the
+  track panel's top bar has no "delete track" (the grid's row menu has it); dragging on
+  the page during playback selects without moving playback.
+

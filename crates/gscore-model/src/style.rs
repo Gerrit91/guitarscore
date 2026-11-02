@@ -53,6 +53,80 @@ pub struct Section {
     pub color: TrackColor,
 }
 
+/// Which staves a track's page shows (Guitar Pro's per-track notation and tab switches).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum TrackStaves {
+    /// Standard notation above the tablature.
+    #[default]
+    NotationAndTab,
+    /// Only the tablature.
+    TabOnly,
+    /// Only standard notation.
+    NotationOnly,
+}
+
+impl TrackStaves {
+    /// Every choice, in menu order.
+    pub const ALL: [TrackStaves; 3] = [
+        TrackStaves::NotationAndTab,
+        TrackStaves::TabOnly,
+        TrackStaves::NotationOnly,
+    ];
+
+    /// The choice for Guitar Pro's two switches; a track showing neither shows its tab.
+    pub fn from_flags(notation: bool, tablature: bool) -> Self {
+        match (notation, tablature) {
+            (true, true) => TrackStaves::NotationAndTab,
+            (true, false) => TrackStaves::NotationOnly,
+            (false, _) => TrackStaves::TabOnly,
+        }
+    }
+
+    /// Guitar Pro's switches: `(notation, tablature)`.
+    pub fn flags(self) -> (bool, bool) {
+        match self {
+            TrackStaves::NotationAndTab => (true, true),
+            TrackStaves::TabOnly => (false, true),
+            TrackStaves::NotationOnly => (true, false),
+        }
+    }
+
+    /// Whether standard notation is shown.
+    pub fn notation(self) -> bool {
+        self.flags().0
+    }
+
+    /// Whether the tablature is shown.
+    pub fn tablature(self) -> bool {
+        self.flags().1
+    }
+
+    /// The id the command language uses.
+    pub fn id(self) -> &'static str {
+        match self {
+            TrackStaves::NotationAndTab => "both",
+            TrackStaves::TabOnly => "tab",
+            TrackStaves::NotationOnly => "notation",
+        }
+    }
+
+    /// The choice named by `id` (see [`TrackStaves::id`]).
+    pub fn from_id(id: &str) -> Option<Self> {
+        TrackStaves::ALL
+            .into_iter()
+            .find(|staves| staves.id() == id)
+    }
+
+    /// A label for menus.
+    pub fn label(self) -> &'static str {
+        match self {
+            TrackStaves::NotationAndTab => "Notes and tabs",
+            TrackStaves::TabOnly => "Tabs only",
+            TrackStaves::NotationOnly => "Notes only",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,5 +138,16 @@ mod tests {
         assert_eq!(red.parts(), (0xFF, 0, 0));
         assert_eq!(TrackColor::from_gp(-1).rgb(), 0xFFFFFF);
         assert_eq!(TrackColor::from_gp(0x123456).parts(), (0x12, 0x34, 0x56));
+    }
+
+    #[test]
+    fn staves_map_to_guitar_pros_switches_and_ids() {
+        for staves in TrackStaves::ALL {
+            let (notation, tablature) = staves.flags();
+            assert_eq!(TrackStaves::from_flags(notation, tablature), staves);
+            assert_eq!(TrackStaves::from_id(staves.id()), Some(staves));
+        }
+        assert_eq!(TrackStaves::from_flags(false, false), TrackStaves::TabOnly);
+        assert_eq!(TrackStaves::from_id("both "), None);
     }
 }

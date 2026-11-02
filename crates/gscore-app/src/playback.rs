@@ -249,6 +249,23 @@ impl Playback {
         self.player_mut()?.play().map_err(|e| e.to_string())
     }
 
+    /// While playing, continues from `at` (a beat the user clicked), at its measure's first
+    /// pass, without stopping. Paused or stopped, nothing happens here: the next play
+    /// starts at the cursor anyway.
+    pub fn jump_to(&mut self, song: &Song, at: BeatPosition) -> Result<(), String> {
+        if self.state() != PlayState::Playing {
+            return Ok(());
+        }
+        let Some(tick) = self
+            .sequence
+            .as_ref()
+            .and_then(|sequence| sequence.tick_of(song, at))
+        else {
+            return Ok(());
+        };
+        self.player_mut()?.seek(tick).map_err(|e| e.to_string())
+    }
+
     /// Stops and goes back to the start.
     pub fn stop(&mut self) -> Result<(), String> {
         self.paused_at = None;
@@ -287,19 +304,37 @@ impl Playback {
     /// values too: playing from the start, seeking, and the borrowed channels of bends and
     /// slides use them.
     pub fn send_track_sound(&mut self, song: &Song, track: TrackIndex) -> Result<(), String> {
+        self.send_sounds(song, [track])
+    }
+
+    /// The master volume or pan changed: every track's sound is sent, as
+    /// [`Playback::send_track_sound`] does for one.
+    pub fn send_all_sounds(&mut self, song: &Song) -> Result<(), String> {
+        self.send_sounds(song, (0..song.track_count()).map(TrackIndex::new))
+    }
+
+    /// Sends the played sound (with the master mix) of `tracks`, then swaps in a rebuilt
+    /// sequence.
+    fn send_sounds(
+        &mut self,
+        song: &Song,
+        tracks: impl IntoIterator<Item = TrackIndex>,
+    ) -> Result<(), String> {
         let Some(active) = &mut self.player else {
             // Nothing is connected: the next play builds the sequence again.
             self.sequence = None;
             return Ok(());
         };
-        if let (Some(sequence), Some(sound)) = (&self.sequence, song.track_sound(track))
-            && let Some(channel) = sequence.channel_of(track)
-        {
-            for event in sound_events(channel, sound) {
-                active
-                    .player_mut()
-                    .send_event(event)
-                    .map_err(|e| e.to_string())?;
+        for track in tracks {
+            if let (Some(sequence), Some(sound)) = (&self.sequence, song.played_sound(track))
+                && let Some(channel) = sequence.channel_of(track)
+            {
+                for event in sound_events(channel, sound) {
+                    active
+                        .player_mut()
+                        .send_event(event)
+                        .map_err(|e| e.to_string())?;
+                }
             }
         }
         if self.sequence.is_none() {

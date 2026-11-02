@@ -31,6 +31,8 @@ pub(crate) trait SongGpifOps {
 
 mod beats;
 #[cfg(test)]
+mod display_tests;
+#[cfg(test)]
 mod effect_tests;
 mod helpers;
 mod notes;
@@ -90,6 +92,21 @@ impl SongGpifOps for Song {
                 }
             }
         }
+
+        // 2a. GuitarScore addition: the master volume and pan (`I01_VolumeAndPan`).
+        self.master_volume_pan = gpif
+            .master_track
+            .rse
+            .as_ref()
+            .and_then(|rse| rse.master.as_ref())
+            .and_then(|master| {
+                master
+                    .effects
+                    .iter()
+                    .find(|effect| effect.id == MASTER_VOLUME_PAN)
+            })
+            .and_then(|effect| effect.parameters.as_deref())
+            .and_then(master_volume_pan);
 
         // 2b. SyncPoint anchors (GP8 audio sync): musical position → audio
         // frame offset into the embedded backing track.
@@ -426,6 +443,20 @@ impl SongGpifOps for Song {
         // is the highest (as its tuning list is, see `extract_tuning`).
         flip_note_strings(&mut self.tracks);
     }
+}
+
+/// The id of the master effect that holds the master volume and pan.
+pub(crate) const MASTER_VOLUME_PAN: &str = "I01_VolumeAndPan";
+
+/// The master volume and pan from `I01_VolumeAndPan`'s parameters (`volume pan`, each 0.0
+/// to 1.0), or `None` if they are not two finite numbers.
+fn master_volume_pan(text: &str) -> Option<(f32, f32)> {
+    let mut values = text
+        .split_whitespace()
+        .map(|part| part.parse::<f32>().ok().filter(|v| v.is_finite()));
+    let volume = values.next()??;
+    let pan = values.next()??;
+    Some((volume.clamp(0.0, 1.0), pan.clamp(0.0, 1.0)))
 }
 
 /// The mixer values in an RSE `<ChannelStrip><Parameters>` list: `(volume, pan)` as MIDI

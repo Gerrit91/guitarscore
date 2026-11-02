@@ -56,6 +56,9 @@ pub struct Song {
 
     pub triplet_feel: TripletFeel,
     pub master_effect: RseMasterEffect,
+    /// GuitarScore addition: GP7's master volume and pan (the `I01_VolumeAndPan` master
+    /// effect), each 0.0 to 1.0 (pan 0.5 is the middle); `None` if the file had none.
+    pub master_volume_pan: Option<(f32, f32)>,
 
     pub page_setup: PageSetup,
 
@@ -108,6 +111,7 @@ impl Default for Song {
             page_setup: PageSetup::default(),
 
             master_effect: RseMasterEffect::default(),
+            master_volume_pan: None,
         }
     }
 }

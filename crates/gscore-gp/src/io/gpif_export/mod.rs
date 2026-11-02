@@ -96,6 +96,15 @@ impl WriteGpifInGpifStringOrder for Song {
             }
         }
         xml.push_str("</Automations>");
+        // GuitarScore addition: the master volume and pan.
+        if let Some((volume, pan)) = self.master_volume_pan {
+            xml.push_str(&format!(
+                "<RSE><Master><Effect id=\"{}\"><Parameters>{} {}</Parameters></Effect></Master></RSE>",
+                gpif_import::MASTER_VOLUME_PAN,
+                volume.clamp(0.0, 1.0),
+                pan.clamp(0.0, 1.0)
+            ));
+        }
         xml.push_str("</MasterTrack>");
 
         // Tracks

@@ -137,7 +137,8 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    and solo are saved in GP7 files (RSE channel-strip parameters and `<PlaybackState>`,
    M13 review). Since M12 the cursor follows the beat being played on the shown track (across
    repeats) and the page scrolls with it; pausing or stopping leaves the cursor on the last
-   played beat. Clicking during playback does not seek. Pause/resume does not re-trigger notes that were
+   played beat. Clicking a beat on the page during playback continues playback from there
+   (its measure's first pass). Pause/resume does not re-trigger notes that were
    sounding, and stopping `gscore-cli play --port` with Ctrl+C can leave notes hanging in
    the external synth. The built-in synthesizer needs an installed `.sf2` SoundFont (none
    is bundled; `.sf3` is not supported), always uses the default audio device, and the
@@ -146,11 +147,19 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    (the owner's corpus: 8 of 59 files leave 18-116 notes out).
 
 12. **The track panel is basic (M15).** The right panel edits a track's name, instrument
-   (General MIDI program, drum kit), color, string count, capo and each string's open
-   pitch, through commands with undo; sound changes are live. Limits: the 128-program list
+   (General MIDI program, drum kit), color (16 presets or any color), shown staves (notes
+   and tabs, tabs only, notes only), string count, capo and each string's open note (by
+   name, with semitone steps), through commands with undo; sound changes are live. Its top
+   bar adds a track after the shown one, moves it up or down, and mutes or solos all
+   tracks (one undo step); its bottom row is the master volume and pan. The master volume
+   scales every track (97, Guitar Pro's untouched 0.76, leaves them as they are; a boost
+   stops at the MIDI maximum) and the master pan shifts every track's pan; both are
+   saved in GP7 files. "Notes only" draws no tablature ornaments (bends, slides, palm mute
+   and the like live on the tab staff), and the cursor's string rows are spread over the
+   notation staff. Limits: the 128-program list
    has no search field; the "SoundFont preset" is the General MIDI program (a per-track
-   SF2 bank beyond the program is not stored); volume and pan live in the song grid, not
-   the panel; the GP7 instrument type/name is displayed but not editable. Shrinking a track
+   SF2 bank beyond the program is not stored); per-track volume and pan live in the song
+   grid, not the panel; the GP7 instrument type/name is displayed but not editable. Shrinking a track
    is refused while notes sit on the strings that would go (no silent data loss). The
    the measure range selected in the grid is used by copy/cut/paste (M14) and will drive
    looping (M18). The grid rebuilds its note squares once per song revision, and a

@@ -376,6 +376,38 @@ pub(crate) const SET_TRACK_VOLUME: CommandInfo = CommandInfo {
     params: &[TRACK, VOLUME],
 };
 
+const STAVES: ParamInfo = ParamInfo {
+    name: "staves",
+    required: true,
+    default: None,
+    help: "both (notation and tab), tab or notation",
+};
+
+pub(crate) const SET_TRACK_STAVES: CommandInfo = CommandInfo {
+    id: "set_track_staves",
+    aliases: &[],
+    label: "Choose the shown staves",
+    help: "Shows standard notation and tablature, only the tablature, or only notation.",
+    params: &[TRACK, STAVES],
+};
+
+pub(crate) const SET_MASTER_VOLUME: CommandInfo = CommandInfo {
+    id: "set_master_volume",
+    aliases: &[],
+    label: "Set the master volume",
+    help: "Scales every track's volume: 97 (Guitar Pro's default) plays each at its own \
+           volume, lower is quieter, higher louder, 0 is silent.",
+    params: &[VOLUME],
+};
+
+pub(crate) const SET_MASTER_PAN: CommandInfo = CommandInfo {
+    id: "set_master_pan",
+    aliases: &[],
+    label: "Set the master pan",
+    help: "Shifts every track's pan: 64 leaves them, lower moves all left, higher right.",
+    params: &[PAN],
+};
+
 pub(crate) const SET_TRACK_PAN: CommandInfo = CommandInfo {
     id: "set_track_pan",
     aliases: &[],
@@ -578,6 +610,9 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_TRACK_COLOR,
     SET_TRACK_VOLUME,
     SET_TRACK_PAN,
+    SET_TRACK_STAVES,
+    SET_MASTER_VOLUME,
+    SET_MASTER_PAN,
     SET_TRACK_MUTE,
     SET_TRACK_SOLO,
     SET_TRACK_PROGRAM,

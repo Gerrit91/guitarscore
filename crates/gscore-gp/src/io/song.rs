@@ -161,6 +161,12 @@ impl Song {
             },
         };
         self.read_gpif(&gpif);
+        // GuitarScore addition: which staves each track shows.
+        if let Some(flags) = gpx::read_gp_track_flags(data) {
+            for (track, flags) in self.tracks.iter_mut().zip(flags) {
+                gpx::part_configuration::apply_flags(track, flags);
+            }
+        }
         Ok(())
     }
     /// Read Guitar Pro 6 file (.gpx)

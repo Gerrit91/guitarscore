@@ -121,6 +121,18 @@ fn parses_every_command_and_fills_defaults() {
             },
         ),
         (
+            "set_track_staves track=2 staves=tab",
+            Command::SetTrackStaves {
+                track: TrackIndex::new(1),
+                staves: TrackStaves::TabOnly,
+            },
+        ),
+        (
+            "set_master_volume volume=64",
+            Command::SetMasterVolume { volume: 64 },
+        ),
+        ("set_master_pan pan=0", Command::SetMasterPan { pan: 0 }),
+        (
             "set_track_volume track=2 volume=30",
             Command::SetTrackVolume {
                 track: TrackIndex::new(1),
@@ -339,6 +351,10 @@ fn bad_lines_are_errors_with_useful_messages() {
         ("rename_track track=1", "missing parameter"),
         ("set_track_volume volume=128", "0 to 127"),
         ("set_track_pan pan=abc", "0 to 127"),
+        ("set_track_staves staves=slash", "both, tab or notation"),
+        ("set_track_staves", "missing parameter"),
+        ("set_master_volume volume=128", "0 to 127"),
+        ("set_master_pan", "missing parameter"),
         ("set_track_mute mute=maybe", "true or false"),
         ("set_track_color color=zzz", "rrggbb"),
         ("set_track_color color=1000000", "rrggbb"),
@@ -436,6 +452,12 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
         },
         Command::SetTrackVolume { track, volume: 127 },
         Command::SetTrackPan { track, pan: 0 },
+        Command::SetTrackStaves {
+            track,
+            staves: TrackStaves::NotationOnly,
+        },
+        Command::SetMasterVolume { volume: 90 },
+        Command::SetMasterPan { pan: 127 },
         Command::SetTrackMute { track, mute: true },
         Command::SetTrackSolo { track, solo: false },
         Command::SetTrackProgram {

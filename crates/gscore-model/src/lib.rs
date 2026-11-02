@@ -56,12 +56,12 @@ pub use issues::{Issue, IssueKind};
 pub use metadata::{
     MAX_SONG_NOTES_CHARS, MAX_SONG_TEXT_CHARS, MAX_TEMPO, SONG_TEXT_FIELDS, SongInfo, SongTextField,
 };
-pub use playback::{Repeat, TrackSound};
+pub use playback::{MASTER_UNITY, MasterMix, Repeat, TrackSound};
 pub use position::{
     BeatIndex, BeatPosition, Fret, MeasureIndex, Pitch, StringNumber, TrackIndex, VoiceIndex,
 };
 pub use song::Song;
-pub use style::{KeySignature, Section, TrackColor};
+pub use style::{KeySignature, Section, TrackColor, TrackStaves};
 pub use views::{
     BeatKind, BeatView, MeasureView, NoteKind, NoteView, StringTuning, TrackView, VoiceView,
 };

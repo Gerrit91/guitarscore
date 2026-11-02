@@ -81,6 +81,32 @@ pub(crate) struct MasterTrack {
     pub tracks_count: String,
     #[serde(rename = "Automations", default)]
     pub automations: Option<AutomationsWrapper>,
+    /// GuitarScore addition: the master effects, which hold the master volume and pan.
+    #[serde(rename = "RSE", default)]
+    pub rse: Option<MasterRse>,
+}
+
+/// The master track's `<RSE>` block.
+#[derive(Debug, Deserialize)]
+pub(crate) struct MasterRse {
+    #[serde(rename = "Master", default)]
+    pub master: Option<MasterEffects>,
+}
+
+/// `<Master>`: the master effect chain.
+#[derive(Debug, Deserialize)]
+pub(crate) struct MasterEffects {
+    #[serde(rename = "Effect", default)]
+    pub effects: Vec<MasterEffect>,
+}
+
+/// One master effect: its id and its parameter list.
+#[derive(Debug, Deserialize)]
+pub(crate) struct MasterEffect {
+    #[serde(rename = "@id", default)]
+    pub id: String,
+    #[serde(rename = "Parameters", default)]
+    pub parameters: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

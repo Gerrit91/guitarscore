@@ -48,7 +48,7 @@ impl MeasureLayout {
     }
 
     /// Draws the measure's content (not the staff lines or barline) starting at `x`, on
-    /// the tab staff and, if shown, the notation staff above it.
+    /// the notation staff and the tab staff below it, each if shown.
     pub(crate) fn draw(
         &self,
         x: f32,
@@ -81,15 +81,17 @@ impl MeasureLayout {
         let (xs, right) = self.column_positions(x, stretch);
         // Where each column's space ends: the next column, or the end of the measure.
         let span_end = |index: usize| xs.get(index.saturating_add(1)).copied().unwrap_or(right);
-        for (index, column) in self.columns.iter().enumerate() {
-            let at = xs.get(index).copied().unwrap_or(right);
-            for item in &column.items {
-                match item {
-                    Item::Fret(fret) => {
-                        fret.draw(at, top, ctx, ops);
-                        fret.draw_above(at, span_end(index), top, ctx, ops);
+        if tops.show_tab {
+            for (index, column) in self.columns.iter().enumerate() {
+                let at = xs.get(index).copied().unwrap_or(right);
+                for item in &column.items {
+                    match item {
+                        Item::Fret(fret) => {
+                            fret.draw(at, top, ctx, ops);
+                            fret.draw_above(at, span_end(index), top, ctx, ops);
+                        }
+                        Item::Rest { .. } => item.draw(at, top, ctx, ops),
                     }
-                    Item::Rest { .. } => item.draw(at, top, ctx, ops),
                 }
             }
         }
@@ -107,6 +109,10 @@ impl MeasureLayout {
                 })
                 .collect();
             notation::draw_measure(&placed, notation_top, ctx, ops);
+        }
+        // Everything below belongs to the tab staff.
+        if !tops.show_tab {
+            return;
         }
         self.draw_links(&xs, top, ctx, ops);
         for (index, column) in self.columns.iter().enumerate() {

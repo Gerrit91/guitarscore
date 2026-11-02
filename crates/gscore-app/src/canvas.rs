@@ -162,11 +162,18 @@ fn text_at_baseline(
     painter.galley(Pos2::new(x, at.y - baseline), galley, ink);
 }
 
-/// Paints the edit cursor: a faint band over the beat's column and, if given, a box around
-/// the string, both in the theme's cursor color.
-pub(crate) fn paint_cursor(painter: &Painter, column: Rect, string: Option<Rect>, theme: &Theme) {
+/// Paints the edit cursor: a faint band over the beat's column and a box around the
+/// string, each if given, in the theme's cursor color.
+pub(crate) fn paint_cursor(
+    painter: &Painter,
+    column: Option<Rect>,
+    string: Option<Rect>,
+    theme: &Theme,
+) {
     let ink = color(theme.cursor);
-    painter.rect_filled(column, 2.0, ink.gamma_multiply(0.12));
+    if let Some(column) = column {
+        painter.rect_filled(column, 2.0, ink.gamma_multiply(0.12));
+    }
     if let Some(string) = string {
         painter.rect_stroke(
             string,

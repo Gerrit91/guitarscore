@@ -5,6 +5,7 @@
 // Derived from the `guitarpro` crate by slundi (https://github.com/slundi/guitarpro,
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
+pub(crate) mod part_configuration;
 mod write;
 
 use std::io::Cursor;
@@ -54,6 +55,15 @@ fn read_limited_to(
         return Err(format!("{what} unpacks to more than {limit} bytes"));
     }
     Ok(buf)
+}
+
+/// GuitarScore addition: the per-track display flags in `Content/PartConfiguration`, if the
+/// archive has a readable one.
+pub(crate) fn read_gp_track_flags(data: &[u8]) -> Option<Vec<u8>> {
+    let mut zip = ZipArchive::new(Cursor::new(data)).ok()?;
+    let file = zip.by_name(part_configuration::PART_CONFIGURATION).ok()?;
+    let bytes = read_limited(file, "PartConfiguration").ok()?;
+    part_configuration::read_track_flags(&bytes)
 }
 
 /// Reads a .gp (GP7+) file, returning the parsed GPIF plus any embedded

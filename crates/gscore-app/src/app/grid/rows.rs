@@ -204,7 +204,7 @@ fn track_header(
         pos2(controls.left() + 148.0, rect.center().y),
         vec2(16.0, 16.0),
     );
-    let knob = mixer::pan_knob(ui, pan_rect, pan_value, index);
+    let knob = mixer::pan_knob(ui, pan_rect, pan_value, index, "Pan");
     if knob.boundary {
         actions.push(GridAction::BreakMerge);
     }
