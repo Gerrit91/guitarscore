@@ -12,6 +12,7 @@ mod format_arg;
 mod gui;
 mod info;
 mod input;
+mod keymap;
 mod legend;
 mod play;
 mod render;
@@ -185,6 +186,17 @@ enum Command {
     /// Prints what every marker after a fret or beat means, and what the rows under the
     /// staff (`PM`, `LR`) mark.
     Legend,
+    /// Show the app's key bindings, or check a keymap file
+    ///
+    /// Without options: where the app reads its keymap file, every action id with its
+    /// keys, and the built-in keymap, which is a valid keymap file to start from. A binding
+    /// names the typed character (`+`, `5`), not the key's position, so it works on any
+    /// keyboard layout.
+    Keymap {
+        /// Check this keymap file and list its problems
+        #[arg(long)]
+        check: Option<PathBuf>,
+    },
     /// Start the desktop application
     ///
     /// Runs the `guitarscore` application, opening <FILE> if one is given, and waits until
@@ -304,6 +316,7 @@ where
             speed,
         } => play::play(&file, port.as_deref(), &tracks, speed),
         Command::Legend => Ok(legend::run()),
+        Command::Keymap { check } => keymap::run(check.as_deref()),
         Command::Gui { file } => gui::run(file.as_deref()),
         Command::RoundtripCheck { file, to } => roundtrip::run(&file, to),
     }

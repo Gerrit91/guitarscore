@@ -1681,6 +1681,7 @@ dependencies = [
  "egui",
  "egui_kittest",
  "gscore-audio",
+ "gscore-edit",
  "gscore-layout",
  "gscore-model",
  "gscore-play",
@@ -1769,6 +1770,7 @@ dependencies = [
 name = "gscore-session"
 version = "0.1.0"
 dependencies = [
+ "gscore-edit",
  "gscore-io",
  "gscore-model",
 ]

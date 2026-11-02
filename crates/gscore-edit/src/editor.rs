@@ -37,6 +37,8 @@ pub enum EditError {
     NothingToUndo,
     /// There is nothing left to redo.
     NothingToRedo,
+    /// The action is not implemented yet; nothing changed.
+    Unsupported(String),
 }
 
 impl fmt::Display for EditError {
@@ -45,6 +47,7 @@ impl fmt::Display for EditError {
             EditError::Model(error) => write!(f, "{error}"),
             EditError::NothingToUndo => f.write_str("there is nothing to undo"),
             EditError::NothingToRedo => f.write_str("there is nothing to redo"),
+            EditError::Unsupported(what) => f.write_str(what),
         }
     }
 }
@@ -53,7 +56,7 @@ impl std::error::Error for EditError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             EditError::Model(error) => Some(error),
-            EditError::NothingToUndo | EditError::NothingToRedo => None,
+            EditError::NothingToUndo | EditError::NothingToRedo | EditError::Unsupported(_) => None,
         }
     }
 }

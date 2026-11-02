@@ -35,6 +35,8 @@ pub struct Theme {
     pub title: Rgb,
     /// Measure numbers, tuning, tempo.
     pub annotation: Rgb,
+    /// The edit cursor (drawn by the app over the page).
+    pub cursor: Rgb,
 }
 
 impl Theme {
@@ -48,6 +50,7 @@ impl Theme {
         notation: Rgb(0x10, 0x10, 0x10),
         title: Rgb(0x10, 0x10, 0x10),
         annotation: Rgb(0x40, 0x40, 0x40),
+        cursor: Rgb(0x1e, 0x6f, 0xd9),
     };
 
     /// Light ink on a dark background.
@@ -60,6 +63,7 @@ impl Theme {
         notation: Rgb(0xec, 0xee, 0xf0),
         title: Rgb(0xec, 0xee, 0xf0),
         annotation: Rgb(0xb8, 0xbc, 0xc2),
+        cursor: Rgb(0x5a, 0xa9, 0xff),
     };
 
     /// Every built-in theme.
@@ -80,6 +84,7 @@ impl Theme {
             ColorToken::Notation => self.notation,
             ColorToken::Title => self.title,
             ColorToken::Annotation => self.annotation,
+            ColorToken::Cursor => self.cursor,
         }
     }
 }

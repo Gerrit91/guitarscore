@@ -639,3 +639,43 @@ across beats, harmonic diamonds, notation-staff articulations.
 - Review fix: slides wider than six semitones (fret 5 to 12, say) stopped short. The range
   is sent per borrowed note anyway, so such a slide now sets a wider range (up to 24
   semitones); bends keep Guitar Pro's six. Tests: 284 (+2).
+
+## 2026-11-01 — M8: interactive editing in the app (without the recovery journal)
+
+- Owner decision: M8 now covers the cursor, keyboard entry, keymap and undo/redo in the
+  app; the recovery journal and crash recovery are deferred.
+- `gscore-edit`: `Cursor`, `ActionId`/`Action` (22 actions; ids are the keymap's),
+  `Keymap` (text file `<key> = <action>`, typed characters and key names with modifiers,
+  every problem reported with its line), `TabEditor` (actions to commands at the cursor;
+  undo/redo put the cursor back where the edit happened; two fret digits within 500 ms make
+  one fret and one undo step; Right at the end of an unfilled measure adds a rest as long as
+  the current beat or what still fits, at the end of the last full measure a new measure;
+  a digit in a measure without beats inserts its beat first). Copy/cut/paste answer
+  "not implemented yet" (no selection).
+- `gscore-model`: `NoteValue::filling` (the measure-filling rests, now public).
+- `gscore-layout`: `Layout::places` (systems, measures, beat columns) with `cursor_rect`,
+  `column_rect` and `hit`; `ColorToken::Cursor` and a cursor color in both themes. Goldens
+  unchanged.
+- `gscore-session`: `load_user_keymap`/`load_keymap` (`~/.config/guitarscore/keymap.txt`,
+  capped, falls back to the built-in keymap and says why); re-exports `FileFormat`.
+- `gscore-cli keymap [--check FILE]`: the actions with their keys and the built-in keymap,
+  or a check of a keymap file.
+- App: keys go to the editor before any widget sees them (not while a menu, dialog or text
+  field has the keyboard); cursor box and beat column in the cursor color, scrolled into
+  view; click to place the cursor; Edit menu with the keys from the keymap; File › Save
+  (in place for `.gp`, otherwise Save As) and Save As… in the background with the
+  safe-save procedure; a lossy save asks; closing the window or opening a file with
+  unsaved changes asks (Save / Discard / Cancel); "(changed)" in the status bar and "•" in
+  the title; the cursor position in the status bar; playback rebuilds after an edit.
+- Layout after an edit: the whole shown track is laid out again (war.gp, 236 measures:
+  about 15 ms in release including SVG output); per-measure caching is still open.
+- Tests: cursor moves, fret entry and the digit window, durations, measure filling and
+  appending, undo/redo cursors, random actions on synthetic songs and the three owner files
+  (undoing everything restores the song), keymap parsing and QWERTY/QWERTZ/AZERTY
+  characters, egui event translation and IME, places and hits, keymap file loading, and the
+  app driven by key events (typing, Shift+digit, `+` with and without Shift, Ctrl+Z, Ctrl+S
+  saving in place with a backup, the unsaved-changes question, the Edit menu). App
+  snapshots regenerated: they now show the cursor. Tests: 313 (+29).
+- Open (docs/gaps.md #5, #10): selection and copy/paste, voice 2 entry, effects, playback
+  from the cursor, incremental layout and per-region edits, default keys for
+  `clear_note`/`previous_measure`/`next_measure`, the recovery journal.

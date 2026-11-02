@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 gscore-model = { path = "../gscore-model" }
+gscore-edit = { path = "../gscore-edit" }
 gscore-layout = { path = "../gscore-layout" }
 gscore-session = { path = "../gscore-session" }
 gscore-play = { path = "../gscore-play" }

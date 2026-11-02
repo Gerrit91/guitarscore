@@ -8,7 +8,9 @@
 mod columns;
 mod draw;
 
-use gscore_model::{BeatView, Duration, MeasureIndex, MeasureView, TimeSignature};
+use gscore_model::{
+    BeatIndex, BeatView, Duration, MeasureIndex, MeasureView, TimeSignature, VoiceIndex,
+};
 
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point};
@@ -72,6 +74,8 @@ struct Column {
     notation: Option<NotationItem>,
     /// The beat this column starts in (beams join notes within one beat).
     beat: u64,
+    /// The model beats that start here, as `(voice, beat)`.
+    beats: Vec<(VoiceIndex, BeatIndex)>,
 }
 
 /// The notes of one column and the effects that belong to its beat.
@@ -81,6 +85,7 @@ struct ColumnData {
     marks: ColumnMarks,
     notation: Option<NotationItem>,
     beat: u64,
+    beats: Vec<(VoiceIndex, BeatIndex)>,
 }
 
 /// One thing drawn in a column.
@@ -123,6 +128,10 @@ impl MeasureLayout {
             } else {
                 0
             };
+            data.beats = beats
+                .iter()
+                .map(|&(voice, beat)| (VoiceIndex::new(voice), beat.index()))
+                .collect();
             columns.push((data, ctx.options.spacing.after(length)));
         }
         if columns.is_empty() {
@@ -133,6 +142,7 @@ impl MeasureLayout {
                     marks: ColumnMarks::default(),
                     notation: None,
                     beat: 0,
+                    beats: Vec::new(),
                 },
                 ctx.options.spacing.after(as_f64(starts.end)),
             ));
@@ -182,6 +192,7 @@ impl MeasureLayout {
                     marks: data.marks,
                     notation: data.notation,
                     beat: data.beat,
+                    beats: data.beats,
                 }
             })
             .collect();

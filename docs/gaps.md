@@ -55,12 +55,16 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M7: bends and
 5. **Editing is headless and narrow (M4).** The model has checked methods to set/clear a
    note, set a beat length, insert/delete a beat and insert/delete a measure; `gscore-edit`
    turns them into commands with undo/redo, and `gscore-cli edit` runs them from `-c` or a
-   script. Still missing: copy/cut/paste, cursor and selection (M8); editing tempo, time
+   script; the app edits at a cursor (#10). Still missing: selection and copy/cut/paste;
+   editing tempo, time
    signatures, effects, chord diagrams and lyrics; lyric/chord/effect accessors. Every model
    edit clones the whole wrapped song (including embedded audio) to stay transactional; this
    is correct but must become a per-region copy for large scores: a single-note edit takes
    about 3.6 ms in release on `DrDr.gp` (172 measures x 16 tracks), mostly the clone plus
-   validating the whole song; M8 should copy and validate only the touched region. Undo history is in memory
+   validating the whole song; it should copy and validate only the touched region. In the
+   app the shown track is also laid out again after every edit (about 15 ms for 236
+   measures in release, more in debug builds), so key-to-screen latency on big scores is
+   over one frame until both are incremental. Undo history is in memory
    only and capped by entry count (10,000), not by bytes (persisting it and a memory cap
    belong with the recovery journal in M8). Only the initial tempo is exposed.
 6. **Saving is GP7 only.** `gscore_session::save` and `gscore-cli convert` refuse other
@@ -86,11 +90,18 @@ Ranked known shortfalls, most important first. Updated 2026-11-01 (M7: bends and
    (shown in the notation instead). Ornaments that connect notes only look within one
    measure. Voice, piano and drum tracks get no notation (no tuning); drum tracks are
    refused. Text widths are estimated for non-digits; no PNG output (`rsvg-convert` works).
-10. **The app is a read-only viewer (M6, first version).** It opens files in the
-   background, shows one track's page (track picker, zoom, light and dark theme) and
-   contains panics in layout, drawing and background jobs. Missing: editing, cursor and
-   keymap (M8), remembering the view state and window between runs, recent files, drag and
-   drop, keyboard shortcuts for zoom, a multi-page view. On macOS the file dialog must run
+10. **The app edits one voice at a cursor (M8, first version).** It opens files in the
+   background, shows one track's page, edits voice 1 from the keyboard (keymap file) or
+   menus with undo/redo, saves as `.gp` (Save As for files in other formats; a lossy save
+   asks), and asks about unsaved changes before closing or opening another file. It
+   contains panics in layout, drawing and background jobs. Missing: selection and
+   copy/cut/paste, entering notes in voice 2, editing effects, tempo and time signatures,
+   a duration toolbar, playback from the cursor and a playhead, remembering the view state
+   and window between runs, recent files, drag and drop, keyboard shortcuts for zoom, a
+   multi-page view. Undo back to the saved state still counts as "changed". `clear_note`,
+   `previous_measure` and `next_measure` have no default key yet (owner's decision; they
+   can be bound in the keymap file), and `ctrl+s` for save is a proposal. On Windows, egui
+   turns Ctrl+Insert into Copy, so `insert_measure` needs another key there. On macOS the file dialog must run
    on the main thread (rfd); it runs on a background thread here, so Open… needs a change
    there. The snapshot test needs a GPU or software Vulkan.
 11. **Playback is MIDI only and plays notes, bends and slides, not the other techniques

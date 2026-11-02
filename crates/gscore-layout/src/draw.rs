@@ -52,6 +52,8 @@ pub enum ColorToken {
     Title,
     /// Small annotations: measure numbers, tuning, tempo.
     Annotation,
+    /// The edit cursor.
+    Cursor,
 }
 
 /// Which text font a [`DrawOp::Text`] uses.

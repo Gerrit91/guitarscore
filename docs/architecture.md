@@ -53,8 +53,8 @@ sharing the tab's columns so a note and its fret number line up.
    start time; each column gets space by the length until the next column (a quarter gets
    `Spacing::quarter`, each doubling multiplies by `doubling_ratio`), but never so little
    that fret numbers collide. A `MeasureLayout` does not depend on its position, so it is
-   the unit to cache per measure and document revision when editing needs incremental
-   relayout (M8).
+   the unit to cache per measure and document revision for incremental relayout (still
+   open: the app lays out the whole track again after an edit).
 3. `system`: greedy line breaking; every line but the last is justified by stretching the
    columns (not the clef, time signatures or leads); the last only if it is at least 75%
    full.
@@ -62,21 +62,48 @@ sharing the tab's columns so a note and its fret number line up.
    staff line does not run through them) and barlines.
 
 `svg::to_svg` writes the operations as SVG for golden tests and `gscore-cli render`; the
-app paints the same operations with egui.
+app paints the same operations with egui. Besides the operations, a `Layout` carries
+`Places`: where each system, measure and beat column is. The app draws the cursor and
+turns clicks into beats and strings with it, without looking into the draw operations.
+
+## Interactive editing (`gscore-edit`)
+
+The M4 command layer (`Command`, `Editor` with undo/redo) is driven from the keyboard by:
+
+- `Cursor`: track, measure, voice, beat and string; plain data, moves only read the song,
+  `clamp` pulls it back into a song that changed.
+- `ActionId`/`Action`: what a key asks for at the cursor (`cursor_left`, `enter_fret`,
+  `duration_shorter`, `undo`, `play_pause`, ...); the ids are the keymap's.
+- `Keymap`: typed characters and key names (with modifiers) to action ids, parsed from a
+  text file; `DEFAULT_KEYMAP` is the built-in file. Characters ignore Shift unless Ctrl or
+  Alt is held, so a binding works on every layout.
+- `TabEditor`: owns the `Editor` and the cursor, turns actions into commands, remembers
+  the cursor of each edit for undo/redo, and joins two quick fret digits into one undo step.
+  Time comes in as milliseconds from the caller (no clock in core crates). Playback and
+  saving come back as `Outcome::Request` for the app.
 
 ## The app (`gscore-app`)
 
 A thin eframe/egui shell (wgpu renderer) that holds state and delegates:
 
 - `state`: `ViewState` (theme, zoom, track): plain data, no widgets, unit-tested.
-- `tasks`: the file dialog and opening files run on background threads and report through
-  a channel polled once per frame (AGENTS.md rule 9); a panicking job still reports back.
-- `document`: the song plus its layouts, cached per track; layout runs inside
-  `catch_unwind`.
+- `tasks`: the file dialogs, opening and saving run on background threads and report
+  through a channel polled once per frame (AGENTS.md rule 9); a panicking job still reports
+  back.
+- `document`: the `TabEditor`, the saved revision (for "changed") and the layouts, cached
+  per track and editor revision; layout runs inside `catch_unwind`.
+- `keys`: egui's key and text events to keymap combos (characters from text events, named
+  keys and Ctrl combinations from key events, clipboard events back to Ctrl+C/X/V, nothing
+  while an input method composes).
 - `canvas`: paints `DrawOp`s (staff spaces times zoom), culling what is off screen; text
   and glyphs are placed by their baseline as layout specifies.
 - `fonts`: Noto Sans (also the UI font), Noto Sans Bold and Bravura, compiled in.
-- `app`: menus, toolbar, page view, status bar, notices; drawing the page is wrapped in
+- `app`: `bars` (menus, toolbar, status bar, notices), `page` (page view, cursor, clicks),
+  `editing` (keys to actions, before any widget sees them), `files` (open, save, the
+  unsaved-changes and lossy-save questions); drawing the page is wrapped in
   `catch_unwind` so a bug shows a notice instead of closing the window.
+
+The keymap file is found and read by `gscore_session::load_user_keymap` (config
+directory, size cap, fallback to the built-in keymap with the problem described).
 
 Opening a file (`gscore_session::open`: capped read, then import) is shared with the CLI.

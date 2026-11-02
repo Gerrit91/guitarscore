@@ -201,6 +201,9 @@ This is the heart of the project. List the actions you do constantly in Guitar P
 | `copy` / `cut` / `paste` | on selection (beats or bars) | ctrl+c, ctrl+x, ctrl+v | |
 | `undo` / `redo` | there history should not be limited and ideally persisted | ctrl+z / ctrl+y | |
 | `play_pause` / `stop` | Starts / stops the playback | space | |
+| `clear_note` | remove the note on the cursor's string | | added in M8, unbound |
+| `previous_measure` / `next_measure` | cursor to the first beat of the previous/next bar | | added in M8, unbound |
+| `save` | save the file | ctrl+s (proposed) | added in M8; the key is a proposal |
 
 ## 8. Sound plan
 

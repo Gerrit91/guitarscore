@@ -203,6 +203,12 @@ impl NoteValue {
         self.tuplet
     }
 
+    /// Note values (no tuplets) that exactly fill `length`, largest first, preferring
+    /// dotted values so as few beats as possible are needed: what a measure is filled with.
+    pub fn filling(length: Duration) -> Result<Vec<NoteValue>, ModelError> {
+        crate::edit::measures::fill_rests(length)
+    }
+
     /// This note value's exact length.
     pub fn duration(self) -> Result<Duration, ModelError> {
         Duration::from_gp(&self.to_gp())

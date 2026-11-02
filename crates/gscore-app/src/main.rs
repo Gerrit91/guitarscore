@@ -24,7 +24,16 @@ fn main() -> ExitCode {
     let started = eframe::run_native(
         "GuitarScore",
         options,
-        Box::new(move |cc| Ok(Box::new(GuitarScoreApp::new(&cc.egui_ctx, file)))),
+        Box::new(move |cc| {
+            // A broken keymap file never stops the app: the built-in keymap is used and
+            // the problem shown.
+            let loaded = gscore_session::load_user_keymap();
+            let mut app = GuitarScoreApp::with_keymap(&cc.egui_ctx, file, loaded.keymap);
+            if let Some(problem) = loaded.problem {
+                app.set_notice(problem);
+            }
+            Ok(Box::new(app))
+        }),
     );
     match started {
         Ok(()) => ExitCode::SUCCESS,
