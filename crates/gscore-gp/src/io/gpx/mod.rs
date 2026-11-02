@@ -353,7 +353,7 @@ mod limit_tests {
 
     #[test]
     fn limited_reads_stop_at_the_limit() {
-        let data = vec![7u8; 100];
+        let data = [7u8; 100];
         assert_eq!(read_limited_to(&data[..], "x", 100).unwrap().len(), 100);
         let err = read_limited_to(&data[..], "x", 99).unwrap_err();
         assert!(err.contains("more than 99 bytes"), "{err}");
