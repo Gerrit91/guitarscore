@@ -46,3 +46,17 @@ pub(crate) use self::primitive::*;
 pub(crate) use self::rse::*;
 pub(crate) use self::song::*;
 pub(crate) use self::track::*;
+
+/// The item at `index`, or [`GpError::NoSuch`] naming `what`.
+pub(crate) fn item<'a, T>(items: &'a [T], index: usize, what: &'static str) -> GpResult<&'a T> {
+    items.get(index).ok_or(GpError::NoSuch { what, index })
+}
+
+/// The item at `index` to change, or [`GpError::NoSuch`] naming `what`.
+pub(crate) fn item_mut<'a, T>(
+    items: &'a mut [T],
+    index: usize,
+    what: &'static str,
+) -> GpResult<&'a mut T> {
+    items.get_mut(index).ok_or(GpError::NoSuch { what, index })
+}

@@ -1,154 +1,131 @@
+//! Reading and writing the binary formats' primitives: integers, strings, colors.
+
 // Derived from the `guitarpro` crate by slundi (https://github.com/slundi/guitarpro,
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
 use crate::io::error::{GpError, GpResult, ToPrimitiveGp};
 use encoding_rs::*;
 
-//reading functions
+// Reading: every read takes its bytes through `take`, which checks the bounds, so no read
+// can index past the data or overflow the position.
 
-/// Read a byte and increase the cursor position by 1
-/// * `data` - array of bytes
-/// * `seek` - start position to read
-/// * returns the read byte as u8
+/// The next `count` bytes at `seek`, moving `seek` past them.
+fn take<'a>(data: &'a [u8], seek: &mut usize, count: usize) -> GpResult<&'a [u8]> {
+    let eof = GpError::UnexpectedEof {
+        offset: *seek,
+        needed: count,
+    };
+    let end = seek.checked_add(count).ok_or_else(|| eof_clone(&eof))?;
+    let bytes = data.get(*seek..end).ok_or(eof)?;
+    *seek = end;
+    Ok(bytes)
+}
+
+/// The same end-of-data error again (`GpError` is not `Clone`: it holds an I/O error).
+fn eof_clone(error: &GpError) -> GpError {
+    match error {
+        GpError::UnexpectedEof { offset, needed } => GpError::UnexpectedEof {
+            offset: *offset,
+            needed: *needed,
+        },
+        _ => GpError::FormatError(error.to_string()),
+    }
+}
+
+/// The next `N` bytes as an array.
+fn take_array<const N: usize>(data: &[u8], seek: &mut usize) -> GpResult<[u8; N]> {
+    let bytes = take(data, seek, N)?;
+    let mut array = [0_u8; N];
+    array.copy_from_slice(bytes);
+    Ok(array)
+}
+
+/// Skips `count` bytes without checking them (as Guitar Pro skips blank bytes); a later
+/// read past the end fails.
+pub(crate) fn skip(seek: &mut usize, count: usize) {
+    *seek = seek.saturating_add(count);
+}
+
+/// `value` clamped to 0..=255.
+pub(crate) fn clamp_u8(value: i32) -> u8 {
+    u8::try_from(value.clamp(0, 255)).unwrap_or_default()
+}
+
+/// The low byte of `value` as a signed byte (what a truncating cast gives).
+pub(crate) fn low_i8(value: i32) -> i8 {
+    let [low, ..] = value.to_le_bytes();
+    i8::from_le_bytes([low])
+}
+
+/// Reads a byte.
 pub(crate) fn read_byte(data: &[u8], seek: &mut usize) -> GpResult<u8> {
-    if *seek >= data.len() {
-        return Err(GpError::UnexpectedEof {
-            offset: *seek,
-            needed: 1,
-        });
-    }
-    let b = data[*seek];
-    *seek += 1;
-    Ok(b)
+    Ok(u8::from_le_bytes(take_array(data, seek)?))
 }
 
-/// Read a signed byte and increase the cursor position by 1
-/// * `data` - array of bytes
-/// * `seek` - start position to read
-/// * returns the read byte as i8
+/// Reads a signed byte.
 pub(crate) fn read_signed_byte(data: &[u8], seek: &mut usize) -> GpResult<i8> {
-    if *seek >= data.len() {
-        return Err(GpError::UnexpectedEof {
-            offset: *seek,
-            needed: 1,
-        });
-    }
-    let b = data[*seek] as i8;
-    *seek += 1;
-    Ok(b)
+    Ok(i8::from_le_bytes(take_array(data, seek)?))
 }
 
-/// Read a boolean and increase the cursor position by 1
-/// * `data` - array of bytes
-/// * `seek` - start position to read
-/// * returns boolean value
+/// Reads a boolean (any non-zero byte is true).
 pub(crate) fn read_bool(data: &[u8], seek: &mut usize) -> GpResult<bool> {
-    if *seek >= data.len() {
-        return Err(GpError::UnexpectedEof {
-            offset: *seek,
-            needed: 1,
-        });
-    }
-    let b = data[*seek];
-    *seek += 1;
-    Ok(b != 0)
+    Ok(read_byte(data, seek)? != 0)
 }
 
-/// Read a short and increase the cursor position by 2 (2 little-endian bytes)
-/// * `data` - array of bytes
-/// * `seek` - start position to read
-/// * returns the short value
+/// Reads a little-endian 16-bit integer.
 pub(crate) fn read_short(data: &[u8], seek: &mut usize) -> GpResult<i16> {
-    if *seek + 2 > data.len() {
-        return Err(GpError::UnexpectedEof {
-            offset: *seek,
-            needed: 2,
-        });
-    }
-    let n = i16::from_le_bytes([data[*seek], data[*seek + 1]]);
-    *seek += 2;
-    Ok(n)
+    Ok(i16::from_le_bytes(take_array(data, seek)?))
 }
 
-/// Read an integer and increase the cursor position by 4 (4 little-endian bytes)
-/// * `data` - array of bytes
-/// * `seek` - start position to read
-/// * returns the integer value
+/// Reads a little-endian 32-bit integer.
 pub(crate) fn read_int(data: &[u8], seek: &mut usize) -> GpResult<i32> {
-    if *seek + 4 > data.len() {
-        return Err(GpError::UnexpectedEof {
-            offset: *seek,
-            needed: 4,
-        });
-    }
-    let n = i32::from_le_bytes([
-        data[*seek],
-        data[*seek + 1],
-        data[*seek + 2],
-        data[*seek + 3],
-    ]);
-    *seek += 4;
-    Ok(n)
+    Ok(i32::from_le_bytes(take_array(data, seek)?))
 }
 
-/// Read a double and increase the cursor position by 8 (8 little-endian bytes)
-/// * `data` - array of bytes
-/// * `seek` - start position to read
-/// * returns the float value
+/// Reads a little-endian 64-bit float.
 pub(crate) fn read_double(data: &[u8], seek: &mut usize) -> GpResult<f64> {
-    if *seek + 8 > data.len() {
-        return Err(GpError::UnexpectedEof {
-            offset: *seek,
-            needed: 8,
-        });
-    }
-    let n = f64::from_le_bytes([
-        data[*seek],
-        data[*seek + 1],
-        data[*seek + 2],
-        data[*seek + 3],
-        data[*seek + 4],
-        data[*seek + 5],
-        data[*seek + 6],
-        data[*seek + 7],
-    ]);
-    *seek += 8;
-    Ok(n)
+    Ok(f64::from_le_bytes(take_array(data, seek)?))
 }
 
-/// Read length of the string stored in 1 integer and followed by character bytes.
+/// Reads a string whose length is stored in a 32-bit integer before it.
 pub(crate) fn read_int_size_string(data: &[u8], seek: &mut usize) -> GpResult<String> {
     let size = read_int(data, seek)?.to_usize_gp("string size")?;
     read_string(data, seek, size, None)
 }
 
-/// Read length of the string increased by 1 and stored in 1 integer followed by length of the string in 1 byte and finally followed by character bytes.
+/// Reads a string stored as a 32-bit integer (its length plus one), a byte (its length)
+/// and the characters. A length beyond the data gives an empty string.
 pub(crate) fn read_int_byte_size_string(data: &[u8], seek: &mut usize) -> GpResult<String> {
     let val = read_int(data, seek)?;
     if val <= 0 {
         return Ok(String::new());
     }
-    let s = (val - 1).to_usize_gp("int_byte_size_string length")?;
-    if *seek + 1 + s > data.len() {
+    let s = val
+        .checked_sub(1)
+        .unwrap_or_default()
+        .to_usize_gp("int_byte_size_string length")?;
+    let fits = seek
+        .checked_add(1)
+        .and_then(|after| after.checked_add(s))
+        .is_some_and(|end| end <= data.len());
+    if !fits {
         return Ok(String::new());
-    } // Safety check
+    }
     read_byte_size_string(data, seek, s)
 }
 
-/// Read length of the string stored in 1 byte and followed by character bytes.
-/// * `size`: string length that we should attempt to read.
+/// Reads a string whose length is stored in a byte before it, in a field of `size` bytes.
 pub(crate) fn read_byte_size_string(
     data: &[u8],
     seek: &mut usize,
     size: usize,
 ) -> GpResult<String> {
-    let length = read_byte(data, seek)?.to_usize_gp("byte string length")?;
+    let length = usize::from(read_byte(data, seek)?);
     read_string(data, seek, size, Some(length))
 }
 
-/// Read a string
-/// * `size`:   real string length
-/// * `length`: optional provided length (in case of blank chars after the string)
+/// Reads `length` characters (default: `size`) from a field of `size` bytes, as Windows-1252
+/// or, if that fails, UTF-8. The position moves past the whole field.
 fn read_string(
     data: &[u8],
     seek: &mut usize,
@@ -156,27 +133,22 @@ fn read_string(
     length: Option<usize>,
 ) -> GpResult<String> {
     let length = length.unwrap_or(size);
-    if *seek + length > data.len() {
-        return Err(GpError::UnexpectedEof {
-            offset: *seek,
-            needed: length,
-        });
-    }
-    let (cow, _encoding_used, had_errors) = WINDOWS_1252.decode(&data[*seek..*seek + length]);
-    if had_errors {
-        match std::str::from_utf8(&data[*seek..*seek + length]) {
-            Ok(s) => {
-                *seek += size;
-                return Ok(s.to_string());
-            }
-            Err(_) => return Err(GpError::StringDecode { offset: *seek }),
-        }
-    }
-    *seek += size;
-    Ok(cow.to_string())
+    let start = *seek;
+    let bytes = take(data, &mut start.clone(), length)?;
+    let (cow, _encoding_used, had_errors) = WINDOWS_1252.decode(bytes);
+    let text = if had_errors {
+        std::str::from_utf8(bytes)
+            .map_err(|_| GpError::StringDecode { offset: start })?
+            .to_owned()
+    } else {
+        cow.into_owned()
+    };
+    *seek = start.saturating_add(size);
+    Ok(text)
 }
 
-pub const VERSIONS: [((u8, u8, u8), bool, &str); 10] = [
+/// The version strings: version number, whether it is a clipboard file, and the text.
+pub(crate) const VERSIONS: [((u8, u8, u8), bool, &str); 10] = [
     ((3, 0, 0), false, "FICHIER GUITAR PRO v3.00"),
     ((4, 0, 0), false, "FICHIER GUITAR PRO v4.00"),
     ((4, 0, 6), false, "FICHIER GUITAR PRO v4.06"),
@@ -212,18 +184,18 @@ pub(crate) fn read_version_string(data: &[u8], seek: &mut usize) -> GpResult<cra
 
 /// Read a color. Colors are used by `Marker` and `Track`. They consist of 3 consecutive bytes and one blank byte.
 pub(crate) fn read_color(data: &[u8], seek: &mut usize) -> GpResult<i32> {
-    let r = read_byte(data, seek)?.to_i32_gp("color red")?;
-    let g = read_byte(data, seek)?.to_i32_gp("color green")?;
-    let b = read_byte(data, seek)?.to_i32_gp("color blue")?;
-    *seek += 1;
-    Ok(r * 65536 + g * 256 + b)
+    let r = read_byte(data, seek)?;
+    let g = read_byte(data, seek)?;
+    let b = read_byte(data, seek)?;
+    // The blank byte is skipped without a check, as Guitar Pro reads it.
+    *seek = seek.saturating_add(1);
+    Ok(i32::from_be_bytes([0, r, g, b]))
 }
 
-//writing functions
+// Writing.
+
 fn write_placeholder(data: &mut Vec<u8>, count: usize, byte: u8) {
-    for _ in 0..count {
-        data.push(byte);
-    }
+    data.extend(std::iter::repeat_n(byte, count));
 }
 
 pub(crate) fn write_placeholder_default(data: &mut Vec<u8>, count: usize) {
@@ -248,10 +220,7 @@ pub(crate) fn write_f64(data: &mut Vec<u8>, value: f64) {
     data.extend(value.to_le_bytes());
 }
 pub(crate) fn write_color(data: &mut Vec<u8>, value: i32) {
-    // These conversions are safe because we mask to 8-bit values
-    let r: u8 = ((value & 0xff0000) >> 16) as u8;
-    let g: u8 = ((value & 0x00ff00) >> 8) as u8;
-    let b: u8 = (value & 0x0000ff) as u8;
+    let [_, r, g, b] = value.to_be_bytes();
     write_byte(data, r);
     write_byte(data, g);
     write_byte(data, b);
@@ -262,33 +231,51 @@ pub(crate) fn encode_windows1252(value: &str) -> std::borrow::Cow<'_, [u8]> {
     encoded
 }
 
+/// Writes a string as a length byte and at most 255 bytes.
 pub(crate) fn write_byte_size_string(data: &mut Vec<u8>, value: &str) {
     let encoded = encode_windows1252(value);
-    let count = encoded.len().min(255) as u8;
+    let count = u8::try_from(encoded.len()).unwrap_or(u8::MAX);
     write_byte(data, count);
-    data.extend(encoded.iter().take(count as usize));
+    data.extend(encoded.iter().take(usize::from(count)));
 }
+
+/// Writes a string as a length byte and a field of `size` bytes: cut to fit, padded with
+/// zeros (the binary formats' fixed-size names).
+pub(crate) fn write_fixed_string(data: &mut Vec<u8>, value: &str, size: u8) {
+    let encoded = encode_windows1252(value);
+    let count = u8::try_from(encoded.len()).unwrap_or(u8::MAX).min(size);
+    write_byte(data, count);
+    data.extend(encoded.iter().take(usize::from(count)));
+    write_placeholder_default(data, usize::from(size.saturating_sub(count)));
+}
+
+/// Writes a string as a 32-bit length and the bytes (cut at `i32::MAX` bytes).
 pub(crate) fn write_int_size_string(data: &mut Vec<u8>, value: &str) {
     let encoded = encode_windows1252(value);
-    write_i32(data, encoded.len() as i32);
-    data.extend(encoded.iter());
+    let count = i32::try_from(encoded.len()).unwrap_or(i32::MAX);
+    write_i32(data, count);
+    data.extend(
+        encoded
+            .iter()
+            .take(usize::try_from(count).unwrap_or_default()),
+    );
 }
 
+/// Writes a string as a 32-bit integer (length plus one), a length byte and at most 255
+/// bytes.
 pub(crate) fn write_int_byte_size_string(data: &mut Vec<u8>, value: &str) {
     let encoded = encode_windows1252(value);
-    let count = encoded.len().min(255);
-    write_i32(data, count as i32 + 1);
-    write_byte(data, count as u8);
-    data.extend(encoded.iter().take(count));
+    let count = u8::try_from(encoded.len()).unwrap_or(u8::MAX);
+    write_i32(data, i32::from(count).saturating_add(1));
+    write_byte(data, count);
+    data.extend(encoded.iter().take(usize::from(count)));
 }
 
+/// Writes the version string of `version`, padded to 30 bytes.
 pub(crate) fn write_version(data: &mut Vec<u8>, version: (u8, u8, u8)) {
-    for v in VERSIONS {
-        if version == v.0 {
-            write_byte_size_string(data, v.2);
-            write_placeholder_default(data, 30 - v.2.len());
-            break;
-        }
+    if let Some((_, _, text)) = VERSIONS.iter().find(|v| v.0 == version) {
+        write_byte_size_string(data, text);
+        write_placeholder_default(data, 30_usize.saturating_sub(text.len()));
     }
 }
 

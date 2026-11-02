@@ -12,18 +12,13 @@
 //! Derived from the `guitarpro` crate by slundi (<https://github.com/slundi/guitarpro>,
 //! MIT, see `LICENSE-guitarpro`). Origin and changes: `docs/guitarpro.md`.
 
-// This code is not yet held to the workspace's no-panic rules (it can still panic on
-// malformed input, which is why gscore-io calls it behind `catch_unwind`). Tightening it
-// module by module is tracked in docs/gaps.md.
-#![allow(
-    clippy::all,
-    clippy::pedantic,
-    clippy::restriction,
-    dead_code,
-    missing_debug_implementations,
-    unreachable_pub,
-    unused_imports,
-    unused_qualifications
+// Parsing untrusted input: arithmetic must not overflow and integer casts must not
+// silently truncate, wrap or lose the sign (on top of the workspace's no-panic lints).
+#![warn(
+    clippy::arithmetic_side_effects,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss
 )]
 
 mod io;
