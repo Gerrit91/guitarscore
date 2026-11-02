@@ -7,6 +7,8 @@
 
 use std::path::PathBuf;
 
+use gscore_session::FoundSession;
+
 use super::GuitarScoreApp;
 use crate::document::Document;
 use crate::tasks::{Event, SaveFailure};
@@ -21,6 +23,8 @@ pub(crate) enum Then {
     Close,
     /// Open this file.
     Open(PathBuf),
+    /// Restore this crashed document.
+    Restore(Box<FoundSession>),
 }
 
 /// A question for the user.
@@ -30,6 +34,8 @@ pub(super) enum Dialog {
     Unsaved(Then),
     /// Saving to `path` would lose `details`; save anyway?
     Losses { path: PathBuf, details: Vec<String> },
+    /// A document was not closed normally; restore it?
+    Recover(Box<FoundSession>),
 }
 
 impl GuitarScoreApp {
@@ -39,7 +45,7 @@ impl GuitarScoreApp {
             self.dialog = Some(Dialog::Unsaved(Then::Open(path)));
             return;
         }
-        if let Err(error) = self.tasks.open(path, ctx) {
+        if let Err(error) = self.tasks.open(path, self.recovery_dir.clone(), ctx) {
             self.notice = Some(error);
         }
     }
@@ -99,16 +105,28 @@ impl GuitarScoreApp {
                 Event::Picked(Some(path)) => self.open(path, ctx),
                 Event::Picked(None) => {}
                 Event::Opened { path, result } => match result {
-                    Ok((song, format)) => {
-                        self.playback.song_changed();
-                        self.document = Some(Document::new(path, *song, format));
-                        self.view.track = 0;
-                        self.notice = None;
+                    Ok(opened) => {
+                        let (document, problem) = match opened.journal {
+                            Ok(Some(journal)) => (
+                                Document::with_journal(path, *opened.song, opened.format, journal),
+                                None,
+                            ),
+                            Ok(None) => (Document::new(path, *opened.song, opened.format), None),
+                            Err(error) => (
+                                Document::new(path, *opened.song, opened.format),
+                                Some(format!(
+                                    "{error}. Edits are not protected against a crash; save often."
+                                )),
+                            ),
+                        };
+                        self.replace_document(document);
+                        self.notice = problem;
                         self.status = None;
-                        self.shown_cursor = None;
                     }
                     Err(error) => self.notice = Some(error),
                 },
+                Event::FoundRecoverable(sessions) => self.found_recoverable(sessions),
+                Event::Recovered { session, result } => self.recovered(&session, result),
                 Event::PickedSave(Some(path)) => {
                     let path = if path.extension().is_some_and(|e| e == "gp") {
                         path
@@ -160,18 +178,30 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Makes `document` the open one; the old one is closed (its recovery folder goes:
+    /// its changes were saved or discarded before getting here).
+    pub(super) fn replace_document(&mut self, document: Document) {
+        self.playback.song_changed();
+        if let Some(old) = self.document.replace(document) {
+            old.close(false);
+        }
+        self.view.track = 0;
+        self.shown_cursor = None;
+    }
+
     /// Goes on with what waited for unsaved changes to be dealt with.
-    fn go_on(&mut self, then: Then, ctx: &egui::Context) {
+    pub(super) fn go_on(&mut self, then: Then, ctx: &egui::Context) {
         match then {
             Then::Close => {
                 self.may_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
             Then::Open(path) => {
-                if let Err(error) = self.tasks.open(path, ctx) {
+                if let Err(error) = self.tasks.open(path, self.recovery_dir.clone(), ctx) {
                     self.notice = Some(error);
                 }
             }
+            Then::Restore(session) => self.start_recovery(*session, ctx),
         }
     }
 
@@ -186,6 +216,7 @@ impl GuitarScoreApp {
             match dialog {
                 Dialog::Unsaved(then) => self.unsaved_dialog(ui, then),
                 Dialog::Losses { path, details } => self.losses_dialog(ui, path, &details),
+                Dialog::Recover(session) => self.recover_dialog(ui, *session),
             }
         });
     }

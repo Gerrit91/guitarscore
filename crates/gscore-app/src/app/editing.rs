@@ -1,6 +1,8 @@
 //! Keys and actions: key presses go through the keymap to the document's editor; what the
 //! editor hands back (play, save) is done here.
 
+use std::panic::{AssertUnwindSafe, catch_unwind};
+
 use gscore_edit::{Action, Command, Outcome, Request};
 use gscore_model::TrackIndex;
 
@@ -73,7 +75,20 @@ impl GuitarScoreApp {
         // egui's input time, in milliseconds since the app started: enough to tell
         // whether a second fret digit follows quickly.
         let now_ms = ctx.input(|i| (i.time.max(0.0) * 1000.0) as u64);
-        match document.editor_mut().perform(action, now_ms) {
+        // A bug in a command must not take the app down (AGENTS.md "Containment"): the
+        // model edits a copy, so a panic leaves the song as it was. Keep a snapshot anyway.
+        let editor = document.editor_mut();
+        let performed = catch_unwind(AssertUnwindSafe(|| editor.perform(action, now_ms)));
+        let Ok(performed) = performed else {
+            document.snapshot();
+            self.notice = Some(
+                "The edit failed unexpectedly and was not applied. A crash report and a \
+                 recovery snapshot were written."
+                    .to_owned(),
+            );
+            return;
+        };
+        match performed {
             Ok(Outcome::Edited) => {
                 self.status = None;
                 let effect = document

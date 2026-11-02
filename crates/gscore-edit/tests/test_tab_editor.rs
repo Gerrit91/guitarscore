@@ -294,6 +294,37 @@ fn random_actions_never_panic_and_undo_restores_the_song() {
             assert!(c.measure.get() < e.song().measure_count().max(1), "{name}");
             assert!(c.string >= 1, "{name}");
         }
+
+        // The recorded commands, written as text and read back (as the recovery journal
+        // does), rebuild the same song and the same undo history on a fresh editor.
+        let applied = e.take_applied();
+        assert!(e.take_applied().is_empty(), "taking empties the record");
+        let mut replayed = TabEditor::new(song.clone(), TrackIndex::new(0));
+        for entry in &applied {
+            let line = entry.to_line();
+            let parsed = gscore_edit::Recorded::parse(&line).unwrap().unwrap();
+            replayed
+                .replay(parsed)
+                .unwrap_or_else(|err| panic!("{name}: replaying {line}: {err}"));
+        }
+        assert_eq!(
+            replayed.take_applied(),
+            applied,
+            "{name}: replay records the same"
+        );
+        assert!(
+            gscore_model::differences(e.song(), replayed.song()).is_empty(),
+            "{name}: the replay differs"
+        );
+        while replayed.can_undo() {
+            e.undo().unwrap();
+            replayed.undo().unwrap();
+            assert!(
+                gscore_model::differences(e.song(), replayed.song()).is_empty(),
+                "{name}: the undo histories differ"
+            );
+        }
+        assert!(!e.can_undo(), "{name}: the replayed history is as deep");
         while e.can_undo() {
             e.undo().unwrap_or_else(|err| panic!("{name}: undo: {err}"));
         }

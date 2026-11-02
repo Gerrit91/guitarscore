@@ -11,7 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    
+
+    # cpal and midir link against the system ALSA library on Linux (alsa-sys);
+    # without the development files the build fails with "system library `alsa`
+    # was not found". See README, "On Linux, building needs the ALSA development files".
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config
+
     - name: Install Rust
       uses: dtolnay/rust-toolchain@master
       with:

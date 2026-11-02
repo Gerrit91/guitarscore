@@ -215,3 +215,119 @@ fn ids_may_be_repeated_in_scripts_with_their_own_errors() {
     assert!(parse_line("set_fret measure=1 beat=1 string=1 fret=1").is_ok());
     assert!(parse_line("not_a_command").is_err());
 }
+
+#[test]
+fn every_command_writes_a_line_that_parses_back_to_it() {
+    let at = |track, measure, voice, beat| BeatPosition {
+        track: TrackIndex::new(track),
+        measure: MeasureIndex::new(measure),
+        voice: VoiceIndex::new(voice),
+        beat: BeatIndex::new(beat),
+    };
+    let string = StringNumber::new(3).unwrap();
+    let durations = ["1/4", "1/8.", "1/16..", "1/8*3:2", "1/1", "1/128.*5:4"];
+    let mut commands = vec![
+        Command::SetFret {
+            at: at(2, 40, 1, 7),
+            string,
+            fret: Fret::new(127).unwrap(),
+        },
+        Command::ClearNote {
+            at: at(0, 0, 0, 0),
+            string,
+        },
+        Command::DeleteBeat { at: at(0, 9, 0, 3) },
+        Command::InsertMeasure {
+            measure: MeasureIndex::new(0),
+        },
+        Command::DeleteMeasure {
+            measure: MeasureIndex::new(499),
+        },
+        Command::Undo,
+        Command::Redo,
+    ];
+    let track = TrackIndex::new(2);
+    commands.extend([
+        Command::InsertTrack { at: track },
+        Command::DeleteTrack { track },
+        Command::DuplicateTrack { track },
+        Command::MoveTrack {
+            from: TrackIndex::new(0),
+            to: TrackIndex::new(5),
+        },
+        Command::SetTrackColor {
+            track,
+            color: gscore_model::TrackColor::new(0x00_0a_bc),
+        },
+        Command::SetTrackVolume { track, volume: 127 },
+        Command::SetTrackPan { track, pan: 0 },
+        Command::SetTrackMute { track, mute: true },
+        Command::SetTrackSolo { track, solo: false },
+    ]);
+    // Names a plain command line could not hold: empty, spaces, the comment sign, `=`,
+    // `%`, line breaks, non-ASCII, and what looks like the encoding's own marker.
+    for name in [
+        "",
+        "Lead guitar #2",
+        "a=b c",
+        "100% fuzz",
+        "two\nlines\ttab",
+        "Gitarre – Ü 🎸",
+        "%%41",
+        "plain",
+    ] {
+        commands.push(Command::RenameTrack {
+            track,
+            name: name.to_owned(),
+        });
+    }
+    for text in durations {
+        let duration: NoteValue = text.parse().unwrap();
+        commands.push(Command::SetDuration {
+            at: at(0, 1, 0, 2),
+            duration,
+        });
+        commands.push(Command::InsertBeat {
+            at: at(1, 0, 1, 0),
+            duration,
+        });
+    }
+    // Every command id is covered.
+    for info in crate::COMMANDS {
+        assert!(
+            commands.iter().any(|c| c.info().id == info.id),
+            "{} has no round-trip case",
+            info.id
+        );
+    }
+    for command in commands {
+        let line = command.to_line();
+        assert!(!line.contains('\n'), "one line: {line}");
+        assert_eq!(parse_line(&line).unwrap(), Some(command.clone()), "{line}");
+        // A recorded entry keeps whether it was merged into the step before.
+        for merged in [false, true] {
+            let entry = crate::Recorded {
+                command: command.clone(),
+                merged,
+            };
+            assert_eq!(
+                crate::Recorded::parse(&entry.to_line()).unwrap(),
+                Some(entry),
+                "{line}"
+            );
+        }
+    }
+    // Hand-written names stay as written; a broken escape is an error, not a guess.
+    assert_eq!(
+        parse_line("rename_track name=Bass%20VI").unwrap(),
+        Some(Command::RenameTrack {
+            track: TrackIndex::new(0),
+            name: "Bass%20VI".to_owned()
+        })
+    );
+    assert!(
+        parse_line("rename_track name=%%%4").is_err(),
+        "an incomplete escape"
+    );
+    assert!(parse_line("rename_track name=%%%FF").is_err(), "not UTF-8");
+}

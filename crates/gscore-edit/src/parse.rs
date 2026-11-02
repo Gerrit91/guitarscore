@@ -183,7 +183,7 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
         }),
         "rename_track" => Ok(Command::RenameTrack {
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
-            name: args.required("name")?,
+            name: text_arg(args, "name")?,
         }),
         "set_track_color" => Ok(Command::SetTrackColor {
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
@@ -305,6 +305,50 @@ fn bool_arg(args: &mut Args, name: &'static str) -> Result<bool, ParseError> {
         "false" | "no" | "0" => Ok(false),
         _ => Err(bad(args.command, name, &text, "true or false")),
     }
+}
+
+/// What starts a text written by [`encode_text`]. Percent-encoding never produces two
+/// `%` in a row, so such a value is never mistaken for a plain one.
+const ENCODED: &str = "%%";
+
+/// `text` as one command-line word that [`text_arg`] reads back exactly: `%%`, then every
+/// byte other than ASCII letters, digits, `-`, `_`, `.` and `~` as `%XX`. Never empty.
+pub(crate) fn encode_text(text: &str) -> String {
+    let mut out = String::from(ENCODED);
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            out.push(char::from(byte));
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+/// A text parameter: as written, or decoded if it was written by [`encode_text`].
+fn text_arg(args: &mut Args, name: &'static str) -> Result<String, ParseError> {
+    let text = args.required(name)?;
+    let Some(encoded) = text.strip_prefix(ENCODED) else {
+        return Ok(text);
+    };
+    let expected = "text written by GuitarScore (%XX escapes)";
+    let mut bytes = Vec::with_capacity(encoded.len());
+    let mut rest = encoded.as_bytes();
+    while let Some((&byte, after)) = rest.split_first() {
+        if byte == b'%' {
+            let digits = after
+                .get(..2)
+                .and_then(|hex| std::str::from_utf8(hex).ok())
+                .and_then(|hex| u8::from_str_radix(hex, 16).ok())
+                .ok_or_else(|| bad(args.command, name, &text, expected))?;
+            bytes.push(digits);
+            rest = after.get(2..).unwrap_or_default();
+        } else {
+            bytes.push(byte);
+            rest = after;
+        }
+    }
+    String::from_utf8(bytes).map_err(|_| bad(args.command, name, &text, expected))
 }
 
 /// A 0-127 parameter (volume, pan).

@@ -131,6 +131,89 @@ pub enum Command {
 }
 
 impl Command {
+    /// The command as one line of the command language, which [`crate::parse_line`] reads
+    /// back as the same command (positions 1-based). The recovery journal stores commands
+    /// this way.
+    pub fn to_line(&self) -> String {
+        let one = |index: usize| index.saturating_add(1);
+        let at = |at: &BeatPosition| {
+            format!(
+                "track={} measure={} voice={} beat={}",
+                one(at.track.get()),
+                one(at.measure.get()),
+                one(at.voice.get()),
+                one(at.beat.get())
+            )
+        };
+        let id = self.info().id;
+        match self {
+            Command::SetFret {
+                at: p,
+                string,
+                fret,
+            } => format!("{id} {} string={} fret={}", at(p), string.get(), fret.get()),
+            Command::ClearNote { at: p, string } => {
+                format!("{id} {} string={}", at(p), string.get())
+            }
+            Command::SetDuration { at: p, duration } | Command::InsertBeat { at: p, duration } => {
+                format!("{id} {} duration={duration}", at(p))
+            }
+            Command::DeleteBeat { at: p } => format!("{id} {}", at(p)),
+            Command::InsertMeasure { measure } | Command::DeleteMeasure { measure } => {
+                format!("{id} measure={}", one(measure.get()))
+            }
+            Command::InsertTrack { at: track }
+            | Command::DeleteTrack { track }
+            | Command::DuplicateTrack { track } => format!("{id} track={}", one(track.get())),
+            Command::MoveTrack { from, to } => {
+                format!("{id} from={} to={}", one(from.get()), one(to.get()))
+            }
+            Command::RenameTrack { track, name } => format!(
+                "{id} track={} name={}",
+                one(track.get()),
+                crate::parse::encode_text(name)
+            ),
+            Command::SetTrackColor { track, color } => {
+                format!("{id} track={} color={:06x}", one(track.get()), color.rgb())
+            }
+            Command::SetTrackVolume { track, volume } => {
+                format!("{id} track={} volume={volume}", one(track.get()))
+            }
+            Command::SetTrackPan { track, pan } => {
+                format!("{id} track={} pan={pan}", one(track.get()))
+            }
+            Command::SetTrackMute { track, mute } => {
+                format!("{id} track={} mute={mute}", one(track.get()))
+            }
+            Command::SetTrackSolo { track, solo } => {
+                format!("{id} track={} solo={solo}", one(track.get()))
+            }
+            Command::Undo | Command::Redo => id.to_owned(),
+        }
+    }
+
+    /// The beat the command works on, if it works on one beat.
+    pub fn position(&self) -> Option<BeatPosition> {
+        match self {
+            Command::SetFret { at, .. }
+            | Command::ClearNote { at, .. }
+            | Command::SetDuration { at, .. }
+            | Command::InsertBeat { at, .. }
+            | Command::DeleteBeat { at } => Some(*at),
+            _ => None,
+        }
+    }
+
+    /// The measure a measure command works on.
+    pub fn measure(&self) -> Option<MeasureIndex> {
+        match self {
+            Command::InsertMeasure { measure } | Command::DeleteMeasure { measure } => {
+                Some(*measure)
+            }
+            _ => None,
+        }
+    }
+
     /// This command's metadata.
     pub fn info(&self) -> &'static CommandInfo {
         match self {
@@ -328,4 +411,46 @@ fn note_target(song: &Song, at: BeatPosition, string: StringNumber) -> Option<Be
         return None;
     }
     song.beat(at)
+}
+
+/// One entry of what changed a song, as the recovery journal records it: a command, and
+/// whether it was merged into the undo step before it (the next part of a slider drag).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Recorded {
+    /// The command (including `undo` and `redo`).
+    pub command: Command,
+    /// Whether it continued the undo step before it instead of starting its own.
+    pub merged: bool,
+}
+
+/// What a merged entry's line starts with.
+const MERGED: &str = "merge ";
+
+impl Recorded {
+    /// The entry as one line: the command's line, after `merge ` if it was merged.
+    pub fn to_line(&self) -> String {
+        if self.merged {
+            format!("{MERGED}{}", self.command.to_line())
+        } else {
+            self.command.to_line()
+        }
+    }
+
+    /// Reads a line written by [`Recorded::to_line`]. `Ok(None)` for a blank line.
+    pub fn parse(line: &str) -> Result<Option<Recorded>, crate::ParseError> {
+        let (merged, line) = match line.strip_prefix(MERGED) {
+            Some(rest) => (true, rest),
+            None => (false, line),
+        };
+        Ok(crate::parse_line(line)?.map(|command| Recorded { command, merged }))
+    }
+}
+
+impl From<Command> for Recorded {
+    fn from(command: Command) -> Self {
+        Recorded {
+            command,
+            merged: false,
+        }
+    }
 }

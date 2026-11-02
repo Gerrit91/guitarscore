@@ -1,5 +1,5 @@
 //! The open document: the song being edited (through a [`TabEditor`]), where it came from,
-//! whether it has unsaved changes, and its layouts.
+//! whether it has unsaved changes, its layouts, and its recovery journal.
 
 use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -9,7 +9,7 @@ use std::sync::Arc;
 use gscore_edit::TabEditor;
 use gscore_layout::{Fonts, Layout, LayoutCache, LayoutOptions};
 use gscore_model::{MeasureIndex, Repeat, Section, Song, TrackIndex};
-use gscore_session::FileFormat;
+use gscore_session::{FileFormat, Journal};
 
 /// One track's layout: the revision and options it shows, and the measure cache that
 /// makes the next layout after an edit cheap.
@@ -45,18 +45,103 @@ pub struct Document {
     layouts: HashMap<usize, TrackLayout>,
     /// The song grid's squares and markers, with the revision they show.
     grid: Option<(u64, Arc<GridData>)>,
+    /// The recovery journal every edit is recorded in (`None` without a recovery
+    /// directory, or if it could not be created).
+    journal: Option<Journal>,
+    /// The journal's error, once reported.
+    journal_reported: bool,
 }
 
 impl Document {
     /// A document for `song`, read from `path` in `format`.
     pub fn new(path: PathBuf, song: Song, format: FileFormat) -> Self {
+        Document::with_editor(path, TabEditor::new(song, TrackIndex::new(0)), format, None)
+    }
+
+    /// A document whose edits are recorded in `journal`.
+    pub fn with_journal(path: PathBuf, song: Song, format: FileFormat, journal: Journal) -> Self {
+        Document::with_editor(
+            path,
+            TabEditor::new(song, TrackIndex::new(0)),
+            format,
+            Some(journal),
+        )
+    }
+
+    /// A recovered document: `editor` holds the replayed edits (not saved yet).
+    pub fn recovered(
+        path: PathBuf,
+        editor: TabEditor,
+        format: FileFormat,
+        journal: Option<Journal>,
+    ) -> Self {
+        let mut document = Document::with_editor(path, editor, format, journal);
+        // Nothing of it is saved: no revision ever matches.
+        document.saved_revision = u64::MAX;
+        document
+    }
+
+    fn with_editor(
+        path: PathBuf,
+        editor: TabEditor,
+        format: FileFormat,
+        journal: Option<Journal>,
+    ) -> Self {
         Document {
             path,
             format,
-            editor: TabEditor::new(song, TrackIndex::new(0)),
-            saved_revision: 0,
+            saved_revision: editor.revision(),
+            editor,
             layouts: HashMap::new(),
             grid: None,
+            journal,
+            journal_reported: false,
+        }
+    }
+
+    /// Hands the edits since the last call to the recovery journal (the writing happens
+    /// in the background). Returns the journal's error the first time there is one.
+    pub fn record_changes(&mut self) -> Option<String> {
+        let applied = self.editor.take_applied();
+        let journal = self.journal.as_mut()?;
+        journal.record(&applied, self.editor.song());
+        if self.journal_reported {
+            return None;
+        }
+        let error = journal.error()?;
+        self.journal_reported = true;
+        Some(format!(
+            "{error}. Edits are not protected against a crash; save often."
+        ))
+    }
+
+    /// Writes a recovery snapshot of the song now (after a contained panic).
+    pub fn snapshot(&mut self) {
+        let _ = self.record_changes();
+        if let Some(journal) = &mut self.journal {
+            journal.snapshot(self.editor.song());
+        }
+    }
+
+    /// Whether edits are recorded for crash recovery.
+    pub fn is_journaled(&self) -> bool {
+        self.journal.is_some()
+    }
+
+    /// The document is closed normally (saved, or its changes discarded): its recovery
+    /// folder goes. The journal finishes on a thread of its own, unless `wait` (at exit).
+    pub fn close(mut self, wait: bool) {
+        let _ = self.record_changes();
+        if let Some(journal) = self.journal.take() {
+            if wait {
+                journal.close();
+            } else {
+                // The thread only exists to keep file work off the UI thread; if it cannot
+                // start, the folder stays and is cleaned up on the next start.
+                let _ = std::thread::Builder::new()
+                    .name("gscore-journal-close".to_owned())
+                    .spawn(move || journal.close());
+            }
         }
     }
 
@@ -91,8 +176,16 @@ impl Document {
         self.format == FileFormat::Gp
     }
 
-    /// Records that `revision` of the song was saved to `path` (as `.gp`).
+    /// Records that `revision` of the song was saved to `path` (as `.gp`). The journal
+    /// learns of it only if nothing changed while saving: later edits are not saved yet
+    /// and must stay recoverable.
     pub fn mark_saved(&mut self, path: PathBuf, revision: u64) {
+        let _ = self.record_changes();
+        if revision == self.editor.revision()
+            && let Some(journal) = &mut self.journal
+        {
+            journal.saved(&path);
+        }
         self.path = path;
         self.format = FileFormat::Gp;
         self.saved_revision = revision;

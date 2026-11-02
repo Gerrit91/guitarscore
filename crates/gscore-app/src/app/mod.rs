@@ -10,12 +10,14 @@ mod editing;
 mod files;
 mod grid;
 mod page;
+mod recovery;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 
 use gscore_edit::{Cursor, Keymap};
 use gscore_layout::{Fonts, LayoutOptions};
+use gscore_session::FoundSession;
 
 use crate::document::Document;
 use crate::keys::KeyReader;
@@ -55,6 +57,12 @@ pub struct GuitarScoreApp {
     renaming: Option<RenameTrack>,
     /// The cursor and revision the view last scrolled to, to scroll only on a change.
     shown_cursor: Option<(Cursor, u64)>,
+    /// Where documents' recovery journals go; `None` keeps no journal.
+    recovery_dir: Option<PathBuf>,
+    /// Whether the recovery directory was searched for crashed documents yet.
+    recovery_searched: bool,
+    /// Crashed documents still to ask about.
+    recoverable: Vec<FoundSession>,
 }
 
 impl GuitarScoreApp {
@@ -65,6 +73,18 @@ impl GuitarScoreApp {
 
     /// A new app using `keymap`; opens `file` in the background if given.
     pub fn with_keymap(ctx: &egui::Context, file: Option<PathBuf>, keymap: Keymap) -> Self {
+        GuitarScoreApp::with_options(ctx, file, keymap, None)
+    }
+
+    /// A new app using `keymap`, journaling edits in `recovery_dir` (and offering, at the
+    /// start, to recover what a crash left there); opens `file` in the background if
+    /// given.
+    pub fn with_options(
+        ctx: &egui::Context,
+        file: Option<PathBuf>,
+        keymap: Keymap,
+        recovery_dir: Option<PathBuf>,
+    ) -> Self {
         crate::fonts::install(ctx);
         let mut app = GuitarScoreApp {
             view: ViewState::default(),
@@ -84,6 +104,9 @@ impl GuitarScoreApp {
             may_close: false,
             renaming: None,
             shown_cursor: None,
+            recovery_dir,
+            recovery_searched: false,
+            recoverable: Vec::new(),
         };
         if let Some(path) = file {
             app.open(path, ctx);
@@ -178,6 +201,7 @@ impl eframe::App for GuitarScoreApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.handle_events(&ctx);
+        self.search_recoverable(&ctx);
         self.handle_close_request(&ctx);
         self.apply_theme(&ctx);
         // Keys first, before any widget sees them (a focused button would take Space).
@@ -208,5 +232,18 @@ impl eframe::App for GuitarScoreApp {
         });
         self.show_dialog(&ctx);
         self.show_rename_window(&ctx);
+        // Every edit of this frame goes to the recovery journal.
+        if let Some(document) = &mut self.document
+            && let Some(error) = document.record_changes()
+        {
+            self.notice = Some(error);
+        }
+    }
+
+    fn on_exit(&mut self) {
+        // A normal exit (unsaved changes were asked about): the recovery folder goes.
+        if let Some(document) = self.document.take() {
+            document.close(true);
+        }
     }
 }

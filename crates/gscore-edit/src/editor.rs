@@ -143,17 +143,20 @@ impl Editor {
     /// Applies `command`, or handles `undo`/`redo`. A failed command changes nothing and is
     /// not added to the history.
     pub fn execute(&mut self, command: Command) -> Result<(), EditError> {
-        self.execute_with_merge(command, false)
+        self.execute_with_merge(command, false).map(|_| ())
     }
 
     /// Like [`Editor::execute`]; with `merge`, a volume or pan command continues the one
     /// before it as one undo step (a slider drag sends many changes). Callers pass `merge`
     /// only while the same drag is in progress, so separate drags stay separate steps.
-    pub fn execute_with_merge(&mut self, command: Command, merge: bool) -> Result<(), EditError> {
+    /// Returns whether the command was merged into the step before.
+    pub fn execute_with_merge(&mut self, command: Command, merge: bool) -> Result<bool, EditError> {
         match command {
-            Command::Undo => self.undo().map(|_| ()),
-            Command::Redo => self.redo().map(|_| ()),
+            Command::Undo => self.undo().map(|_| false),
+            Command::Redo => self.redo().map(|_| false),
             command => {
+                #[cfg(any(test, feature = "test-support"))]
+                crate::testing::maybe_panic();
                 let change = command.apply(&mut self.song)?;
                 self.redo.clear();
                 let merge = merge && !std::mem::take(&mut self.merge_barrier);
@@ -164,10 +167,10 @@ impl Editor {
                     // One slider drag: keep the change from before it, so undo goes back to
                     // the value the drag started from, and keep only the latest command.
                     last.command = command;
-                    return Ok(());
+                    return Ok(true);
                 }
                 self.push_undo(Applied { command, change });
-                Ok(())
+                Ok(false)
             }
         }
     }

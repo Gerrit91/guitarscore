@@ -60,13 +60,23 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    and check only the measure they touch (M10), and the app lays out only changed measures
    again; line breaking and drawing still run over the whole track (0.85 ms for 415
    measures in release; `cargo xtask bench`). Undo history is in memory only, capped at
-   10,000 entries and about 64 MiB (persisting it belongs with the recovery journal, M11).
+   10,000 entries and about 64 MiB; the recovery journal restores it after a crash (M11),
+   but a normal close does not keep it.
    Only the initial tempo is exposed.
 6. **Saving is GP7 only.** `gscore_session::save` and `gscore-cli convert` refuse other
    formats until their round trips pass (#2). Whether Guitar Pro itself opens our GP7 files
    is not verified yet (the owner can check). Effects the model has no accessor for (grace
    notes, fingerings, lyrics, mix tables, ...) are not part of the save verification.
-7. **No recovery journal or autosave yet** (crash reports exist since M0). M8.
+7. **Recovery covers the editor's commands (M11).** Every edit, undo and redo is journaled
+   (checksummed lines, periodic snapshots, written on a thread of its own) and replayed
+   after a crash, with the undo history. Edits are on disk within milliseconds; a crash in
+   that window loses the last edit. Not journaled: view state (track, zoom, cursor),
+   playback settings, and edits that do not go through `gscore-edit` (none yet; M13's
+   track commands must add themselves to `Command::to_line`, which the compiler enforces).
+   A snapshot clones the song on the UI thread (about 2.5 ms on `DrDr.gp`, every 200 edits
+   or 60 s). SIGTERM and system shutdown rely on the journal, not on a final snapshot.
+   Only commands are wrapped in `catch_unwind` and panic-tested; layout and drawing are
+   contained since M6, without an injection test.
 8. **Little test data.** Three songs (`steel_guitar_dadgad`, `note_lengths`, `ornaments`)
    as GP7, GPX and GP5, with import, `info` and `dump` reference tests and
    truncation/byte-flip robustness — still only one track and one voice per song. No
