@@ -43,13 +43,13 @@ mod tests;
 
 pub use compare::{Difference, differences, settings_differences};
 pub use duration::{Duration, NoteValue, TimeSignature};
-pub use edit::{Change, MAX_TRACK_NAME_CHARS, MAX_TRACKS};
+pub use edit::{Change, MAX_STRINGS, MAX_TRACK_NAME_CHARS, MAX_TRACKS};
 pub use effects::{
     AccentKind, Bend, BendKind, Harmonic, HarmonicKind, Legato, SlapKind, SlideKind,
     StrokeDirection, Vibrato, Whammy,
 };
 pub use error::ModelError;
-pub use instrument::InstrumentKind;
+pub use instrument::{InstrumentKind, program_name};
 pub use issues::{Issue, IssueKind};
 pub use playback::{Repeat, TrackSound};
 pub use position::{

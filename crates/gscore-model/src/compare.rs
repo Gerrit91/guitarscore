@@ -97,6 +97,7 @@ fn compare_track(diff: &mut Diffs, a: &TrackView<'_>, b: &TrackView<'_>) {
     );
     diff.check(&at, "strings", a.string_count(), b.string_count());
     diff.check(&at, "tuning", a.tuning().ok(), b.tuning().ok());
+    diff.check(&at, "capo", a.capo().ok(), b.capo().ok());
     diff.check(
         &at,
         "tuning name",

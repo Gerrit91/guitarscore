@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use gscore_audio::{MidiOutPlayer, SynthPlayer, midi_output_ports};
-use gscore_model::{BeatPosition, Song, TrackIndex};
+use gscore_model::{BeatPosition, Song, TrackIndex, TrackSound};
 use gscore_play::{Channel, MidiEvent, PlayState, Player, Sequence, controller};
 
 /// Where playback goes.
@@ -271,11 +271,12 @@ impl Playback {
         Some(span.measure.get().saturating_add(1))
     }
 
-    /// A track's volume or pan changed. The new values are sent to the player at once, so
-    /// a slider is heard while it moves; then the sequence is rebuilt and swapped in where
-    /// playback is (no stop, no silence), so its setup holds the new values too: playing
-    /// from the start, seeking, and the borrowed channels of bends and slides use them.
-    pub fn send_track_mix(&mut self, song: &Song, track: TrackIndex) -> Result<(), String> {
+    /// A track's volume, pan or program changed. The new values are sent to the player at
+    /// once, so a slider or preset is heard while it changes; then the sequence is rebuilt
+    /// and swapped in where playback is (no stop, no silence), so its setup holds the new
+    /// values too: playing from the start, seeking, and the borrowed channels of bends and
+    /// slides use them.
+    pub fn send_track_sound(&mut self, song: &Song, track: TrackIndex) -> Result<(), String> {
         let Some(active) = &mut self.player else {
             // Nothing is connected: the next play builds the sequence again.
             self.sequence = None;
@@ -284,7 +285,7 @@ impl Playback {
         if let (Some(sequence), Some(sound)) = (&self.sequence, song.track_sound(track))
             && let Some(channel) = sequence.channel_of(track)
         {
-            for event in mix_events(channel, sound.volume, sound.pan) {
+            for event in sound_events(channel, sound) {
                 active
                     .player_mut()
                     .send_event(event)
@@ -331,20 +332,26 @@ impl Playback {
     }
 }
 
-/// The MIDI messages that set a channel's volume and pan.
-fn mix_events(channel: Channel, volume: u8, pan: u8) -> [MidiEvent; 2] {
-    [
-        MidiEvent::Control {
+/// The MIDI messages that set a channel's program, volume and pan.
+fn sound_events(channel: Channel, sound: TrackSound) -> Vec<MidiEvent> {
+    let mut events = Vec::with_capacity(3);
+    if !sound.percussion {
+        events.push(MidiEvent::ProgramChange {
             channel,
-            controller: controller::VOLUME,
-            value: volume.min(127),
-        },
-        MidiEvent::Control {
-            channel,
-            controller: controller::PAN,
-            value: pan.min(127),
-        },
-    ]
+            program: sound.program,
+        });
+    }
+    events.push(MidiEvent::Control {
+        channel,
+        controller: controller::VOLUME,
+        value: sound.volume.min(127),
+    });
+    events.push(MidiEvent::Control {
+        channel,
+        controller: controller::PAN,
+        value: sound.pan.min(127),
+    });
+    events
 }
 
 /// The file name of `path`, or the whole path if it has none.

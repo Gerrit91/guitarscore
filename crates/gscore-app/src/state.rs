@@ -79,6 +79,8 @@ pub struct ViewState {
     pub track: usize,
     /// Whether the track and song grid (the bottom panel) is shown.
     pub show_track_grid: bool,
+    /// Whether the track panel (the right panel) is shown.
+    pub show_track_panel: bool,
     /// The selected range of measures in the song grid, if any.
     pub selection: Option<MeasureSelection>,
 }
@@ -90,6 +92,7 @@ impl Default for ViewState {
             zoom: 1.0,
             track: 0,
             show_track_grid: true,
+            show_track_panel: true,
             selection: None,
         }
     }

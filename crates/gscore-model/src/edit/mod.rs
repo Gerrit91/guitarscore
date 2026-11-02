@@ -15,6 +15,7 @@ pub(crate) mod measures;
 mod notes;
 mod tracks;
 
+pub use crate::validate::MAX_STRINGS;
 pub use tracks::{MAX_TRACK_NAME_CHARS, MAX_TRACKS};
 
 use gscore_gp::{
@@ -93,6 +94,36 @@ enum ChangeKind {
         flag: MixFlag,
         previous: bool,
     },
+    /// A track's General MIDI program changed.
+    TrackProgram {
+        at: TrackIndex,
+        previous: Option<i32>,
+    },
+    /// A track became (or stopped being) a drum kit, which also changes its GP7
+    /// instrument type and name.
+    TrackDrums {
+        at: TrackIndex,
+        previous: bool,
+        previous_type: Option<String>,
+        previous_name: Option<String>,
+    },
+    /// A track's capo fret changed.
+    TrackCapo { at: TrackIndex, previous: i32 },
+    /// A track's string count and tuning changed.
+    TrackStrings {
+        at: TrackIndex,
+        previous: Vec<(i8, i8)>,
+        previous_has_tuning: bool,
+        previous_label: Option<String>,
+    },
+    /// One string's open pitch changed.
+    TrackStringPitch {
+        at: TrackIndex,
+        string: StringNumber,
+        previous: i8,
+        previous_has_tuning: bool,
+        previous_label: Option<String>,
+    },
     /// A track's volume or pan changed. `previous_channel` is the channel the track used
     /// before; `added` is the channel appended for it when it had to stop sharing one.
     TrackMix {
@@ -126,10 +157,31 @@ impl Change {
             }
             ChangeKind::TrackRenamed { previous, .. } => previous.len(),
             ChangeKind::TrackRemoved { track, .. } => track_size(track),
+            ChangeKind::TrackProgram { previous, .. } => previous.map_or(0, |_| size_of::<i32>()),
+            ChangeKind::TrackDrums {
+                previous_type,
+                previous_name,
+                ..
+            } => previous_type
+                .as_ref()
+                .map_or(0, String::len)
+                .saturating_add(previous_name.as_ref().map_or(0, String::len)),
+            ChangeKind::TrackStrings {
+                previous,
+                previous_label,
+                ..
+            } => previous
+                .len()
+                .saturating_mul(size_of::<(i8, i8)>())
+                .saturating_add(previous_label.as_ref().map_or(0, String::len)),
+            ChangeKind::TrackStringPitch { previous_label, .. } => {
+                previous_label.as_ref().map_or(0, String::len)
+            }
             ChangeKind::TrackInserted { .. }
             | ChangeKind::TrackMoved { .. }
             | ChangeKind::TrackColor { .. }
             | ChangeKind::TrackFlag { .. }
+            | ChangeKind::TrackCapo { .. }
             | ChangeKind::TrackMix { .. } => 0,
         };
         base.saturating_add(extra)
@@ -337,6 +389,58 @@ impl Song {
                 }
                 Ok(())
             }),
+            ChangeKind::TrackProgram { at, previous } => self.edit_track_settings(|inner| {
+                track_mut(inner, *at)?.midi_program_gpif = *previous;
+                Ok(())
+            }),
+            ChangeKind::TrackDrums {
+                at,
+                previous,
+                previous_type,
+                previous_name,
+            } => self.edit_track_settings(|inner| {
+                let track = track_mut(inner, *at)?;
+                track.percussion_track = *previous;
+                track.instrument_type.clone_from(previous_type);
+                track.instrument_name.clone_from(previous_name);
+                Ok(())
+            }),
+            ChangeKind::TrackCapo { at, previous } => self.edit_track_settings(|inner| {
+                track_mut(inner, *at)?.offset = *previous;
+                Ok(())
+            }),
+            ChangeKind::TrackStrings {
+                at,
+                previous,
+                previous_has_tuning,
+                previous_label,
+            } => self.edit_track_settings(|inner| {
+                let track = track_mut(inner, *at)?;
+                track.strings.clone_from(previous);
+                track.has_tuning = *previous_has_tuning;
+                track.tuning_label.clone_from(previous_label);
+                Ok(())
+            }),
+            ChangeKind::TrackStringPitch {
+                at,
+                string,
+                previous,
+                previous_has_tuning,
+                previous_label,
+            } => self.edit_track_settings(|inner| {
+                let track = track_mut(inner, *at)?;
+                let entry = track
+                    .strings
+                    .iter_mut()
+                    .find(|(number, _)| u8::try_from(*number).ok() == Some(string.get()))
+                    .ok_or_else(|| {
+                        ModelError::Invalid(format!("{at} has no {string} to restore"))
+                    })?;
+                entry.1 = *previous;
+                track.has_tuning = *previous_has_tuning;
+                track.tuning_label.clone_from(previous_label);
+                Ok(())
+            }),
             ChangeKind::TrackMix {
                 at,
                 previous_channel,
@@ -400,3 +504,5 @@ fn beat_in(measure: &mut GpMeasure, at: BeatPosition) -> Result<&mut GpBeat, Mod
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod track_tests;

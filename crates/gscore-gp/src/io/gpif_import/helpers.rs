@@ -281,6 +281,16 @@ pub(crate) fn build_note_bend(
     })
 }
 
+/// GuitarScore addition: the capo fret from a property list (`CapoFret`), if present.
+/// Hostile values are clamped to the MIDI range instead of becoming an unplayable capo.
+pub(super) fn extract_capo(properties: &[Property]) -> Option<i32> {
+    properties
+        .iter()
+        .find(|p| p.name == "CapoFret")
+        .and_then(|p| p.fret)
+        .map(|capo| capo.clamp(0, 127))
+}
+
 /// GuitarScore addition: the user-given tuning name from a property list, if non-empty.
 pub(super) fn extract_tuning_label(properties: &[Property]) -> Option<String> {
     properties

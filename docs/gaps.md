@@ -134,10 +134,14 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    string and fret; the reader turns them into invalid frets, so those tracks are silent
    (the owner's corpus: 8 of 59 files leave 18-116 notes out).
 
-12. **The track grid has no track panel yet (M15).** Right-click gives add, delete,
-   duplicate, rename, move up/down and the mixer controls; the "edit track" entry the
-   milestone lists opens the M15 track panel, which does not exist yet. The measure range
-   selected in the grid is shown but does nothing until copy/paste (M14) and looping (M18)
-   use it. The grid rebuilds its note squares once per song revision, and a structural
-   track command empties the per-track layout map; the page itself reuses the M10
-   per-measure layout cache.
+12. **The track panel is basic (M15).** The right panel edits a track's name, instrument
+   (General MIDI program, drum kit), color, string count, capo and each string's open
+   pitch, through commands with undo; sound changes are live. Limits: the 128-program list
+   has no search field; the "SoundFont preset" is the General MIDI program (a per-track
+   SF2 bank beyond the program is not stored); volume and pan live in the song grid, not
+   the panel; the GP7 instrument type/name is displayed but not editable. Shrinking a track
+   is refused while notes sit on the strings that would go (no silent data loss). The
+   measure range selected in the grid is shown but does nothing until copy/paste (M14) and
+   looping (M18) use it. The grid rebuilds its note squares once per song revision, and a
+   structural track command empties the per-track layout map; the page itself reuses the
+   M10 per-measure layout cache.

@@ -11,12 +11,13 @@
 mod common;
 
 use common::{
-    apply_all_then_undo_all, apply_then_undo, assert_roundtrips, note, pos, quarter, test_songs,
+    apply_all_then_undo_all, apply_then_undo, assert_roundtrips, assert_roundtrips_with_settings,
+    note, pos, quarter, test_songs,
 };
 use gscore_edit::{Command, EditError, Editor};
 use gscore_model::{
-    BeatKind, Duration, Fret, MeasureIndex, NoteValue, StringNumber, TimeSignature, TrackColor,
-    TrackIndex, differences, testing,
+    BeatKind, Duration, Fret, MeasureIndex, NoteValue, Pitch, StringNumber, TimeSignature,
+    TrackColor, TrackIndex, differences, testing,
 };
 
 fn string(number: u8) -> StringNumber {
@@ -505,9 +506,93 @@ fn every_track_command_edits_and_undoes() {
             track: TrackIndex::new(1),
             solo: true,
         },
+        Command::SetTrackProgram {
+            track: TrackIndex::new(1),
+            program: 40,
+        },
+        Command::SetTrackDrums {
+            track: TrackIndex::new(0),
+            drums: true,
+        },
+        Command::SetTrackCapo {
+            track: TrackIndex::new(0),
+            capo: 2,
+        },
+        Command::SetTrackStrings {
+            track: TrackIndex::new(0),
+            strings: 7,
+        },
+        Command::SetTrackStringPitch {
+            track: TrackIndex::new(0),
+            string: string(6),
+            pitch: Pitch::new(38).unwrap(),
+        },
     ] {
         apply_then_undo(&song, &command);
     }
+}
+
+#[test]
+fn removing_strings_that_hold_notes_is_disabled_and_changes_nothing() {
+    // A whole note on string 6, the lowest.
+    let song = testing::one_beat_with_raw_notes(&[(6, 3)]).unwrap();
+    let command = Command::SetTrackStrings {
+        track: TrackIndex::new(0),
+        strings: 5,
+    };
+    assert!(!command.enabled(&song));
+    let mut edited = song.clone();
+    assert!(command.apply(&mut edited).is_err());
+    assert!(differences(&song, &edited).is_empty());
+
+    // With the note cleared, the same command works and undoes.
+    let mut editor = Editor::new(song.clone());
+    editor
+        .execute(Command::ClearNote {
+            at: pos(0, 0, 0),
+            string: string(6),
+        })
+        .unwrap();
+    let cleared = editor.song().clone();
+    apply_then_undo(&cleared, &command);
+}
+
+#[test]
+fn the_new_track_settings_survive_a_save_and_reload() {
+    let mut editor = Editor::new(testing::song(&[testing::GUITAR_6], 2).unwrap());
+    for command in [
+        Command::SetTrackProgram {
+            track: TrackIndex::new(0),
+            program: 29,
+        },
+        Command::SetTrackCapo {
+            track: TrackIndex::new(0),
+            capo: 3,
+        },
+        Command::SetTrackStrings {
+            track: TrackIndex::new(0),
+            strings: 7,
+        },
+        Command::SetTrackStringPitch {
+            track: TrackIndex::new(0),
+            string: string(7),
+            pitch: Pitch::new(38).unwrap(),
+        },
+    ] {
+        editor.execute(command).unwrap();
+    }
+    assert_roundtrips_with_settings(editor.song());
+    let track = editor.song().track(TrackIndex::new(0)).unwrap();
+    assert_eq!(track.string_count(), 7);
+    assert_eq!(track.capo().unwrap(), 3);
+    assert_eq!(
+        editor
+            .song()
+            .track_sound(TrackIndex::new(0))
+            .unwrap()
+            .program,
+        29
+    );
 }
 
 #[test]

@@ -446,6 +446,103 @@ fn the_track_grid_mixes_and_undoes_tracks() {
     harness.get_by_label("Song grid");
 }
 
+/// The sound of the first track.
+fn first_sound(harness: &Harness<'static, GuitarScoreApp>) -> gscore_model::TrackSound {
+    harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .track_sound(gscore_model::TrackIndex::new(0))
+        .unwrap()
+}
+
+#[test]
+fn the_track_panel_edits_the_shown_track() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    // The panel is open by default and shows the first track.
+    harness.get_by_label("SoundFont preset");
+
+    // The SoundFont preset (the General MIDI program) changes and is undoable.
+    let before = first_sound(&harness).program;
+    harness.get_by_label("SoundFont preset").click();
+    harness.run();
+    assert!(
+        harness.query_by_label("24: Nylon Str Guitar").is_some(),
+        "the preset list did not open"
+    );
+    harness
+        .get_by_label("24: Nylon Str Guitar")
+        .click_accesskit();
+    harness.run();
+    assert_eq!(first_sound(&harness).program, 24);
+    assert_ne!(before, 24);
+    // Close the preset list first: keys go to the score only when no popup is open.
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+    harness.run();
+    assert_eq!(first_sound(&harness).program, before);
+
+    // The drum-kit flag (the label text and the checkbox share the name; click the box).
+    harness
+        .get_all_by_role_and_label(egui::Role::CheckBox, "Drum kit")
+        .next()
+        .unwrap()
+        .click();
+    harness.run();
+    assert!(first_track(&harness).is_percussion());
+    harness
+        .get_all_by_role_and_label(egui::Role::CheckBox, "Drum kit")
+        .next()
+        .unwrap()
+        .click();
+    harness.run();
+    assert!(!first_track(&harness).is_percussion());
+
+    // The capo and the string count (the label text and the spin button share a name).
+    harness
+        .get_all_by_role_and_label(egui::Role::SpinButton, "Capo")
+        .next()
+        .unwrap()
+        .increment_accesskit();
+    harness.run();
+    assert_eq!(first_track(&harness).capo().unwrap(), 1);
+    harness
+        .get_all_by_role_and_label(egui::Role::SpinButton, "Strings")
+        .next()
+        .unwrap()
+        .increment_accesskit();
+    harness.run();
+    assert_eq!(first_track(&harness).string_count(), 7);
+
+    // A rename from the panel is one step too.
+    harness.get_by_label("Name field").click();
+    harness.get_by_label("Name field").type_text(" Lead");
+    harness.run();
+    harness.get_by_label("Rename track").click();
+    harness.run();
+    assert_eq!(first_track(&harness).name(), "Steel Guitar Lead");
+}
+
+#[test]
+fn the_view_menu_and_the_row_menu_show_the_track_panel() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    harness.get_by_label("SoundFont preset");
+
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Track panel").click();
+    harness.run();
+    assert!(harness.query_by_label("SoundFont preset").is_none());
+
+    // The row's "Edit track…" opens it again.
+    right_click_track(&mut harness, "Track 1: Steel Guitar");
+    harness.get_by_label("Edit track…").click();
+    harness.run();
+    harness.get_by_label("SoundFont preset");
+}
+
 #[test]
 fn clicking_the_song_grid_moves_the_cursor_and_selects_measures() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));

@@ -182,3 +182,10 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     `expect(dead_code)`. Mix-table values above 127 are clamped when writing GP3-5 (the
     low byte was written before). `gscore-io` still calls the crate behind
     `catch_unwind`, as a second line of defense.
+30. Capo (`src/io/gpif_import/helpers.rs`, `src/io/gpif_import/mod.rs`,
+    `src/io/gpif_export/mod.rs`, 2026-11-02): GP6 stores the capo as a `CapoFret` property
+    on the track and GP7 on its staff; the importer ignored both, so every GP6/GP7 track
+    came in without its capo, and the writer did not write it either. Both are read now
+    (track first, then staff, clamped to 0-127) and `CapoFret` is written in the track's
+    `<Properties>` next to the tuning. GP3-5 already store it as `Track::offset`. Test
+    `tuning_tests::capo_fret_is_read_and_written`.

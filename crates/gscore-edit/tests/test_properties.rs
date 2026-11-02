@@ -13,7 +13,7 @@ mod common;
 use common::test_songs;
 use gscore_edit::{Command, Editor};
 use gscore_model::{
-    BeatIndex, BeatPosition, Fret, MeasureIndex, NoteValue, Song, StringNumber, TrackIndex,
+    BeatIndex, BeatPosition, Fret, MeasureIndex, NoteValue, Pitch, Song, StringNumber, TrackIndex,
     VoiceIndex, differences,
 };
 
@@ -64,7 +64,9 @@ fn random_command(rng: &mut Rng, song: &Song) -> Command {
         .unwrap_or_else(|_| Fret::new(0).unwrap());
     let all = durations();
     let duration = all[rng.below(all.len())];
-    match rng.below(7) {
+    let any_track = TrackIndex::new(track);
+    let pitch = Pitch::new(u8::try_from(rng.below(128)).unwrap_or(0)).unwrap();
+    match rng.below(12) {
         0 => Command::SetFret { at, string, fret },
         1 => Command::ClearNote { at, string },
         2 => Command::SetDuration { at, duration },
@@ -73,8 +75,29 @@ fn random_command(rng: &mut Rng, song: &Song) -> Command {
         5 => Command::InsertMeasure {
             measure: MeasureIndex::new(measure),
         },
-        _ => Command::DeleteMeasure {
+        6 => Command::DeleteMeasure {
             measure: MeasureIndex::new(measure),
+        },
+        7 => Command::SetTrackProgram {
+            track: any_track,
+            program: u8::try_from(rng.below(128)).unwrap_or(0),
+        },
+        8 => Command::SetTrackDrums {
+            track: any_track,
+            drums: rng.below(2) == 1,
+        },
+        9 => Command::SetTrackCapo {
+            track: any_track,
+            capo: u8::try_from(rng.below(12)).unwrap_or(0),
+        },
+        10 => Command::SetTrackStrings {
+            track: any_track,
+            strings: rng.below(12).saturating_add(1),
+        },
+        _ => Command::SetTrackStringPitch {
+            track: any_track,
+            string,
+            pitch,
         },
     }
 }

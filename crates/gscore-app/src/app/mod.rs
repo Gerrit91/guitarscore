@@ -11,6 +11,7 @@ mod files;
 mod grid;
 mod page;
 mod recovery;
+mod track_panel;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
@@ -55,6 +56,8 @@ pub struct GuitarScoreApp {
     may_close: bool,
     /// The track being renamed, while the rename window is open.
     renaming: Option<RenameTrack>,
+    /// The right panel's state: the shown track, and the name being typed.
+    track_panel: track_panel::TrackPanelState,
     /// The cursor and revision the view last scrolled to, to scroll only on a change.
     shown_cursor: Option<(Cursor, u64)>,
     /// Where documents' recovery journals go; `None` keeps no journal.
@@ -103,6 +106,7 @@ impl GuitarScoreApp {
             after_save: None,
             may_close: false,
             renaming: None,
+            track_panel: track_panel::TrackPanelState::default(),
             shown_cursor: None,
             recovery_dir,
             recovery_searched: false,
@@ -220,6 +224,13 @@ impl eframe::App for GuitarScoreApp {
         }
         if self.notice.is_some() {
             egui::Panel::top("notice").show(ui, |ui| self.notice_bar(ui));
+        }
+        if self.view.show_track_panel && self.document.is_some() {
+            egui::Panel::right("track_panel")
+                .resizable(true)
+                .min_size(180.0)
+                .default_size(240.0)
+                .show(ui, |ui| self.track_panel(ui));
         }
         egui::CentralPanel::default().show(ui, |ui| {
             // A bug in drawing must not take the app down: contain it and tell the user.

@@ -22,6 +22,7 @@ struct TrackKey {
     options: LayoutOptions,
     strings: usize,
     tuning: Option<Vec<StringTuning>>,
+    capo: Option<u8>,
 }
 
 /// Measure layouts kept between calls, for one track at a time (a different track or
@@ -52,6 +53,7 @@ impl LayoutCache {
             options: options.clone(),
             strings: view.string_count(),
             tuning: view.tuning().ok().flatten(),
+            capo: view.capo().ok(),
         };
         if self.key.as_ref() != Some(&key) {
             self.measures.clear();

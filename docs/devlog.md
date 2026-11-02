@@ -952,3 +952,42 @@ Landed:
 - Open: an app-level test that checks the rebuilt sequence after a slider change; files
   over 400 lines (`gpif_import/mod.rs`, `gpif_export/mod.rs`, `model/edit/mod.rs`,
   `tab_editor.rs`, `sequence.rs`) and a line-count check in `cargo xtask layers`.
+
+## 2026-11-02 — M15: the track panel
+
+Landed:
+- `gscore-model`: `Song::set_track_program`, `set_track_drums`, `set_track_capo`,
+  `set_track_strings` (with `check_track_strings`, the same check commands use for
+  `enabled`), `set_track_string_pitch`. Each is transactional and returns a `Change` that
+  restores the old program, drum flag and instrument type/name, capo, string list, tuning
+  label and the string's old pitch. Shrinking a track is refused while notes sit on the
+  strings that would go; growing it adds lower strings in fourths (6 -> 7 gives the
+  usual B standard). An explicit tuning clears the file's tuning name. `Pitch::parse`
+  reads note names (`E2`, `C#4`, `Bb3`) or MIDI numbers; `program_name` gives the 128
+  General MIDI names. `differences` now compares the capo.
+- `gscore-gp`: GP6/GP7 `CapoFret` is read (track properties, else staff properties) and
+  written (`docs/guitarpro.md` change 26). A GP7 file's capo used to be dropped on import.
+- `gscore-edit`: `set_track_program`, `set_track_drums`, `set_track_capo`,
+  `set_track_strings`, `set_track_string_pitch`, each with metadata, parsing, `to_line`
+  (so the recovery journal replays them) and an `enabled` that matches `apply`. A comment
+  now starts at a `#` that begins a word, so `pitch=C#4` keeps its sharp. New
+  `rebuilds_playback` (mute, solo, drum kit, capo, strings, tuning) and
+  `changes_track_display` (name, color) tell the app what playback must do. Consecutive
+  color changes on one track merge into one undo step, like a slider drag.
+- `gscore-app`: the right track panel (shown by default; View -> Track panel; a track
+  row's "Edit track…" opens it): name, instrument kind, General MIDI program (the
+  SoundFont preset the built-in synth plays), drum kit, color, string count, capo and each
+  string's open pitch. Changes go through the commands above. A program change is sent to
+  the player at once and the sequence is swapped in at the current position; mute, solo,
+  the drum kit, capo and tuning rebuild in place, so they are heard without a stop; a
+  rename or color change leaves playback alone. `gscore-layout` keys the measure cache on
+  the capo too.
+- Tests: 395 (+13): model edits and their undo/refusals, pitch parsing, capo reading and
+  writing, command round trips through text, the new commands in `every_track_command`
+  and in the random property sequences, shrink refusal, save/reload of the new settings,
+  and the panel driven through its accessibility tree (program, drums, capo, string count,
+  rename, View toggle, row menu). The two page snapshots were regenerated because the
+  panel is now visible.
+- Open: the program picker lists all 128 names without a search field; the "SoundFont
+  preset" is the General MIDI program (a per-track SF2 bank beyond it is not stored); the
+  panel has no volume/pan (the song grid does); the instrument type/name cannot be edited.

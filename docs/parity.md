@@ -1,7 +1,7 @@
 # Guitar Pro Feature Parity Checklist
 
 This document tracks which Guitar Pro features are implemented in GuitarScore.
-Updated 2026-11-02 (M13: track and song grid).
+Updated 2026-11-02 (M15: track panel).
 
 ## Implemented Features
 
@@ -12,6 +12,7 @@ Updated 2026-11-02 (M13: track and song grid).
 | `info`, ASCII-tab `dump`, `roundtrip-check` | Live |
 | Song information, tracks, instruments, tunings, time signatures | Live |
 | Track and song grid (bottom panel) | Partial: one row per track with color, instrument, name, mute/solo, volume slider and pan knob; a measure matrix with note squares, measure numbers, section markers, repeats and alternative endings, the playing measure highlighted, and a click/drag selection of measures. Add/delete/duplicate/rename/move tracks by right-click, all undoable |
+| Track panel (right panel, M15) | Live: name, instrument kind, General MIDI program (the SoundFont preset), drum kit, color, string count, capo and each string's open pitch, all as commands with undo; sound and tuning changes are heard while playing |
 | Note and beat effects (read, dump, save) | Live |
 | Measure issues (under/overfilled bars, notes on missing strings) | Live |
 
@@ -28,7 +29,7 @@ Updated 2026-11-02 (M13: track and song grid).
 | Time signature changes | Partial: kept and copied to new measures; no command to change one |
 | Lyrics, chord diagrams, fingering | Partial: kept in the file; no accessors or editing |
 | Keymap configuration | Live: text file of typed characters / key names to action ids, layout independent; `gscore-cli keymap` |
-| Desktop app | Partial (`guitarscore`): open file (dialog or command line), keyboard editing with undo/redo, save/save as `.gp` (with the unsaved-changes question), track picker, zoom, light/dark theme, play/pause/stop with the built-in synthesizer or to a MIDI port, and the track and song grid with live mixing |
+| Desktop app | Partial (`guitarscore`): open file (dialog or command line), keyboard editing with undo/redo, save/save as `.gp` (with the unsaved-changes question), track picker, zoom, light/dark theme, play/pause/stop with the built-in synthesizer or to a MIDI port, and the track and song grid with live mixing, plus the track panel |
 | Playback | Partial: built-in SoundFont synthesizer, MIDI output and `.mid` export: all tracks with their instruments, volume and pan, tempo changes, repeats and alternative endings, ties, dead notes, harmonics, bends and slides (on borrowed channels, so the rest of the chord keeps its pitch), mute and solo. No vibrato, let ring, palm mute, grace notes, trills, whammy bar, D.C./D.S./coda, swing |
 | Tablature display | Partial: one track as standard notation above tab, in the app and as SVG (`gscore-cli render`): clef, time signatures, notes with accidentals, stems, flags, beams, dots, rests, ties and tuplet numbers; tab fret numbers with ornaments (slurs, bends, slides, vibrato, harmonics, accents, palm mute, let ring, whammy). No key signatures, second voice in notation, repeats, pages or multi-track systems yet |
 
@@ -37,9 +38,9 @@ Updated 2026-11-02 (M13: track and song grid).
 Planned in `AGENTS.md` section 9, in this order: M11 recovery journal and autosave, M12
 app shell and styling
 (panels, progress bar, settings window, play from the selected note, cursor follows
-playback), M14 edit palette (durations and effects), M15 track
-panel, M16 bundled SoundFonts, M17 layout polish (whammy, bends, repeats, pages, PDF), M18
-playback polish (loops, techniques, WAV export), M19 release packages.
+playback), M14 edit palette (durations and effects), M16 bundled SoundFonts, M17 layout
+polish (whammy, bends, repeats, pages, PDF), M18 playback polish (loops, techniques, WAV
+export), M19 release packages.
 
 ## Testing Policy
 

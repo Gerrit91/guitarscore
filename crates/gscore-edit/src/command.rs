@@ -1,14 +1,15 @@
 //! The command enum: what an edit is, whether it can run, and how it applies.
 
 use gscore_model::{
-    BeatKind, BeatPosition, BeatView, Change, Fret, MeasureIndex, ModelError, NoteValue, Song,
-    StringNumber, TrackColor, TrackIndex,
+    BeatKind, BeatPosition, BeatView, Change, Fret, MeasureIndex, ModelError, NoteValue, Pitch,
+    Song, StringNumber, TrackColor, TrackIndex,
 };
 
 use crate::info::{
     CLEAR_NOTE, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_TRACK, DUPLICATE_TRACK,
     INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO, RENAME_TRACK, SET_DURATION,
-    SET_FRET, SET_TRACK_COLOR, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_SOLO, SET_TRACK_VOLUME,
+    SET_FRET, SET_TRACK_CAPO, SET_TRACK_COLOR, SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN,
+    SET_TRACK_PROGRAM, SET_TRACK_SOLO, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_VOLUME,
     UNDO,
 };
 
@@ -124,6 +125,43 @@ pub enum Command {
         /// Whether it is soloed.
         solo: bool,
     },
+    /// Set the track's General MIDI program (the SoundFont preset it plays).
+    SetTrackProgram {
+        /// The track.
+        track: TrackIndex,
+        /// The program, 0 to 127.
+        program: u8,
+    },
+    /// Make the track a drum kit, or an ordinary instrument again.
+    SetTrackDrums {
+        /// The track.
+        track: TrackIndex,
+        /// Whether the track is a drum kit.
+        drums: bool,
+    },
+    /// Set the track's capo fret (0 for none).
+    SetTrackCapo {
+        /// The track.
+        track: TrackIndex,
+        /// The capo fret.
+        capo: u8,
+    },
+    /// Change how many strings the track has.
+    SetTrackStrings {
+        /// The track.
+        track: TrackIndex,
+        /// The number of strings.
+        strings: usize,
+    },
+    /// Set one string's open pitch.
+    SetTrackStringPitch {
+        /// The track.
+        track: TrackIndex,
+        /// The string (1 = highest).
+        string: StringNumber,
+        /// The open-string pitch.
+        pitch: Pitch,
+    },
     /// Undo the last edit (handled by [`crate::Editor`]).
     Undo,
     /// Redo the last undone edit (handled by [`crate::Editor`]).
@@ -188,6 +226,27 @@ impl Command {
             Command::SetTrackSolo { track, solo } => {
                 format!("{id} track={} solo={solo}", one(track.get()))
             }
+            Command::SetTrackProgram { track, program } => {
+                format!("{id} track={} program={program}", one(track.get()))
+            }
+            Command::SetTrackDrums { track, drums } => {
+                format!("{id} track={} drums={drums}", one(track.get()))
+            }
+            Command::SetTrackCapo { track, capo } => {
+                format!("{id} track={} capo={capo}", one(track.get()))
+            }
+            Command::SetTrackStrings { track, strings } => {
+                format!("{id} track={} strings={strings}", one(track.get()))
+            }
+            Command::SetTrackStringPitch {
+                track,
+                string,
+                pitch,
+            } => format!(
+                "{id} track={} string={} pitch={pitch}",
+                one(track.get()),
+                string.get()
+            ),
             Command::Undo | Command::Redo => id.to_owned(),
         }
     }
@@ -234,6 +293,11 @@ impl Command {
             Command::SetTrackPan { .. } => &SET_TRACK_PAN,
             Command::SetTrackMute { .. } => &SET_TRACK_MUTE,
             Command::SetTrackSolo { .. } => &SET_TRACK_SOLO,
+            Command::SetTrackProgram { .. } => &SET_TRACK_PROGRAM,
+            Command::SetTrackDrums { .. } => &SET_TRACK_DRUMS,
+            Command::SetTrackCapo { .. } => &SET_TRACK_CAPO,
+            Command::SetTrackStrings { .. } => &SET_TRACK_STRINGS,
+            Command::SetTrackStringPitch { .. } => &SET_TRACK_STRING_PITCH,
             Command::Undo => &UNDO,
             Command::Redo => &REDO,
         }
@@ -266,36 +330,53 @@ impl Command {
         )
     }
 
-    /// True for commands that change a track's volume or pan. Playback applies these live,
-    /// without rebuilding the sequence.
+    /// True for commands that change a track's sound (volume, pan, program). Playback sends
+    /// these to the player at once, without rebuilding the sequence.
     pub fn changes_sound(&self) -> bool {
         matches!(
             self,
-            Command::SetTrackVolume { .. } | Command::SetTrackPan { .. }
+            Command::SetTrackVolume { .. }
+                | Command::SetTrackPan { .. }
+                | Command::SetTrackProgram { .. }
         )
     }
 
-    /// True for commands that change which tracks are audible (mute, solo). Playback must
-    /// rebuild the sequence for these.
-    pub fn changes_audibility(&self) -> bool {
+    /// True for commands that change which notes play, how they are mapped to a channel or
+    /// what pitch they sound (mute, solo, drum kit, capo, string count, tuning). Playback
+    /// must rebuild the sequence for these, and can do it without stopping.
+    pub fn rebuilds_playback(&self) -> bool {
         matches!(
             self,
-            Command::SetTrackMute { .. } | Command::SetTrackSolo { .. }
+            Command::SetTrackMute { .. }
+                | Command::SetTrackSolo { .. }
+                | Command::SetTrackDrums { .. }
+                | Command::SetTrackCapo { .. }
+                | Command::SetTrackStrings { .. }
+                | Command::SetTrackStringPitch { .. }
         )
     }
 
-    /// The track a volume or pan command changes.
+    /// True for commands that change only how a track is named or shown: playback goes on.
+    pub fn changes_track_display(&self) -> bool {
+        matches!(
+            self,
+            Command::RenameTrack { .. } | Command::SetTrackColor { .. }
+        )
+    }
+
+    /// The track a sound command changes.
     pub fn mix_track(&self) -> Option<TrackIndex> {
         match self {
-            Command::SetTrackVolume { track, .. } | Command::SetTrackPan { track, .. } => {
-                Some(*track)
-            }
+            Command::SetTrackVolume { track, .. }
+            | Command::SetTrackPan { track, .. }
+            | Command::SetTrackProgram { track, .. } => Some(*track),
             _ => None,
         }
     }
 
-    /// Whether `self` continues `previous` in the undo history: consecutive volume or pan
-    /// changes on the same track (one slider drag) become a single undo step.
+    /// Whether `self` continues `previous` in the undo history: consecutive volume, pan or
+    /// color changes on the same track (one slider or color-picker drag) become a single
+    /// undo step.
     pub fn continues(&self, previous: &Command) -> bool {
         match (previous, self) {
             (
@@ -305,6 +386,10 @@ impl Command {
             | (
                 Command::SetTrackPan { track: first, .. },
                 Command::SetTrackPan { track: second, .. },
+            )
+            | (
+                Command::SetTrackColor { track: first, .. },
+                Command::SetTrackColor { track: second, .. },
             ) => first == second,
             _ => false,
         }
@@ -363,7 +448,20 @@ impl Command {
             | Command::SetTrackVolume { track, .. }
             | Command::SetTrackPan { track, .. }
             | Command::SetTrackMute { track, .. }
-            | Command::SetTrackSolo { track, .. } => track.get() < song.track_count(),
+            | Command::SetTrackSolo { track, .. }
+            | Command::SetTrackDrums { track, .. } => track.get() < song.track_count(),
+            Command::SetTrackProgram { track, program } => {
+                *program <= 127 && track.get() < song.track_count()
+            }
+            Command::SetTrackCapo { track, capo } => {
+                *capo <= 127 && track.get() < song.track_count()
+            }
+            Command::SetTrackStrings { track, strings } => {
+                song.check_track_strings(*track, *strings).is_ok()
+            }
+            Command::SetTrackStringPitch { track, string, .. } => song
+                .track(*track)
+                .is_some_and(|view| usize::from(string.get()) <= view.string_count()),
             // The editor decides; the history stack is not part of the song.
             Command::Undo | Command::Redo => true,
         }
@@ -396,6 +494,15 @@ impl Command {
             Command::SetTrackPan { track, pan } => song.set_track_pan(*track, *pan),
             Command::SetTrackMute { track, mute } => song.set_track_mute(*track, *mute),
             Command::SetTrackSolo { track, solo } => song.set_track_solo(*track, *solo),
+            Command::SetTrackProgram { track, program } => song.set_track_program(*track, *program),
+            Command::SetTrackDrums { track, drums } => song.set_track_drums(*track, *drums),
+            Command::SetTrackCapo { track, capo } => song.set_track_capo(*track, *capo),
+            Command::SetTrackStrings { track, strings } => song.set_track_strings(*track, *strings),
+            Command::SetTrackStringPitch {
+                track,
+                string,
+                pitch,
+            } => song.set_track_string_pitch(*track, *string, *pitch),
             Command::Undo | Command::Redo => Err(ModelError::Invalid(
                 "undo and redo are handled by the editor".to_owned(),
             )),

@@ -261,22 +261,32 @@ impl SongGpifOps for Song {
             // GuitarScore fix: `..Default::default()` above fills `strings` with E standard,
             // so the emptiness checks below never fired and the file's tuning was ignored.
             track.strings = Vec::new();
+            let mut capo = None;
             if let Some(props) = &g_track.properties {
                 track.strings = extract_tuning(&props.properties);
                 track.tuning_label = extract_tuning_label(&props.properties);
+                capo = extract_capo(&props.properties);
             }
-            if track.strings.is_empty()
+            if (track.strings.is_empty() || capo.is_none())
                 && let Some(staves) = &g_track.staves
             {
                 for staff in &staves.staves {
                     if let Some(props) = &staff.properties {
-                        track.strings = extract_tuning(&props.properties);
-                        track.tuning_label = extract_tuning_label(&props.properties);
-                        if !track.strings.is_empty() {
+                        if track.strings.is_empty() {
+                            track.strings = extract_tuning(&props.properties);
+                            track.tuning_label = extract_tuning_label(&props.properties);
+                        }
+                        if capo.is_none() {
+                            capo = extract_capo(&props.properties);
+                        }
+                        if !track.strings.is_empty() && capo.is_some() {
                             break;
                         }
                     }
                 }
+            }
+            if let Some(capo) = capo {
+                track.offset = capo;
             }
             if track.strings.is_empty() {
                 // GuitarScore: keep placeholder strings (the code base indexes them), but

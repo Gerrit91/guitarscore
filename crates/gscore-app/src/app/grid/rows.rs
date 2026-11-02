@@ -229,6 +229,11 @@ fn track_header(
         });
     }
     response.context_menu(|ui| {
+        if ui.button("Edit track…").clicked() {
+            actions.push(GridAction::ShowTrack { track: index });
+            ui.close();
+        }
+        ui.separator();
         if ui.button("Add track below").clicked() {
             actions.push(GridAction::Command {
                 command: Command::InsertTrack {

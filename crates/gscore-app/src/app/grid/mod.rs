@@ -43,6 +43,8 @@ pub(super) enum GridAction {
     Select(MeasureSelection),
     /// Open the rename window for a track.
     Rename { track: usize },
+    /// Show a track in the track panel.
+    ShowTrack { track: usize },
 }
 
 /// The rename window's state.
@@ -101,6 +103,10 @@ impl GuitarScoreApp {
                         name,
                         focused: false,
                     });
+                }
+                GridAction::ShowTrack { track } => {
+                    self.view.track = track;
+                    self.view.show_track_panel = true;
                 }
             }
         }

@@ -129,6 +129,11 @@ impl WriteGpifInGpifStringOrder for Song {
                 ));
             }
             xml.push_str("<Properties>");
+            // GuitarScore addition: the capo fret (GP6/GP7 store it as a staff property).
+            xml.push_str(&format!(
+                "<Property name=\"CapoFret\"><Fret>{}</Fret></Property>",
+                track.offset.clamp(0, 127)
+            ));
             // GuitarScore: only write a tuning the file had (see `Track::has_tuning`).
             if track.has_tuning {
                 // GuitarScore fix: GPIF lists pitches from the lowest string up; `strings`

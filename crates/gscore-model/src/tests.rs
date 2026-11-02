@@ -188,6 +188,27 @@ fn checked_add_reports_overflow() {
 // --- Pitch ------------------------------------------------------------------------------
 
 #[test]
+fn pitches_parse_from_note_names_or_midi_numbers() {
+    for (text, midi) in [
+        ("E2", 40),
+        ("e2", 40),
+        ("C#4", 61),
+        ("Db4", 61),
+        ("Bb3", 58),
+        ("A-1", 9),
+        ("C-1", 0),
+        ("G9", 127),
+        ("40", 40),
+        ("0", 0),
+    ] {
+        assert_eq!(Pitch::parse(text).unwrap().get(), midi, "{text}");
+    }
+    for text in ["", "H2", "E", "C#", "C-2", "G#9", "128", "abc"] {
+        assert!(Pitch::parse(text).is_err(), "{text}");
+    }
+}
+
+#[test]
 fn pitches_display_as_note_names() {
     let cases = [
         (0, "C-1"),

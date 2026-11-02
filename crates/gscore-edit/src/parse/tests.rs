@@ -145,6 +145,50 @@ fn parses_every_command_and_fills_defaults() {
                 solo: true,
             },
         ),
+        (
+            "set_track_program track=2 program=29",
+            Command::SetTrackProgram {
+                track: TrackIndex::new(1),
+                program: 29,
+            },
+        ),
+        (
+            "set_track_drums drums=true",
+            Command::SetTrackDrums {
+                track: TrackIndex::new(0),
+                drums: true,
+            },
+        ),
+        (
+            "set_track_capo track=2 capo=3",
+            Command::SetTrackCapo {
+                track: TrackIndex::new(1),
+                capo: 3,
+            },
+        ),
+        (
+            "set_track_strings track=2 strings=7",
+            Command::SetTrackStrings {
+                track: TrackIndex::new(1),
+                strings: 7,
+            },
+        ),
+        (
+            "set_track_string_pitch track=2 string=6 pitch=E2",
+            Command::SetTrackStringPitch {
+                track: TrackIndex::new(1),
+                string: StringNumber::new(6).unwrap(),
+                pitch: Pitch::parse("E2").unwrap(),
+            },
+        ),
+        (
+            "set_track_string_pitch string=1 pitch=60",
+            Command::SetTrackStringPitch {
+                track: TrackIndex::new(0),
+                string: StringNumber::new(1).unwrap(),
+                pitch: Pitch::parse("60").unwrap(),
+            },
+        ),
         ("undo", Command::Undo),
         ("redo", Command::Redo),
     ];
@@ -201,6 +245,12 @@ fn bad_lines_are_errors_with_useful_messages() {
         ("set_track_mute mute=maybe", "true or false"),
         ("set_track_color color=zzz", "rrggbb"),
         ("set_track_color color=1000000", "rrggbb"),
+        ("set_track_program program=128", "0 to 127"),
+        ("set_track_capo capo=-1", "0 to 127"),
+        ("set_track_strings strings=13", "1 to 12"),
+        ("set_track_strings strings=0", "1 to 12"),
+        ("set_track_string_pitch string=1 pitch=H2", "note name"),
+        ("set_track_string_pitch string=1 pitch=C-2", "note name"),
     ];
     for (line, expected) in cases {
         let error = parse_line(line).unwrap_err().to_string();
@@ -263,6 +313,18 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
         Command::SetTrackPan { track, pan: 0 },
         Command::SetTrackMute { track, mute: true },
         Command::SetTrackSolo { track, solo: false },
+        Command::SetTrackProgram {
+            track,
+            program: 127,
+        },
+        Command::SetTrackDrums { track, drums: true },
+        Command::SetTrackCapo { track, capo: 5 },
+        Command::SetTrackStrings { track, strings: 8 },
+        Command::SetTrackStringPitch {
+            track,
+            string,
+            pitch: Pitch::parse("C#4").unwrap(),
+        },
     ]);
     // Names a plain command line could not hold: empty, spaces, the comment sign, `=`,
     // `%`, line breaks, non-ASCII, and what looks like the encoding's own marker.

@@ -167,6 +167,51 @@ impl Pitch {
             .and_then(Pitch::new)
     }
 
+    /// Parses a note name in scientific pitch notation (`E2`, `C#4`, `Bb3`) or a plain
+    /// MIDI number (`40`). Case does not matter.
+    pub fn parse(text: &str) -> Result<Self, ModelError> {
+        let text = text.trim();
+        // A plain number is a MIDI pitch, checked against the same range as a name.
+        if let Ok(number) = text.parse::<u8>() {
+            return Pitch::new(number);
+        }
+        let mut chars = text.chars();
+        let letter = chars.next().unwrap_or('?').to_ascii_uppercase();
+        let semitone = match letter {
+            'C' => 0_i16,
+            'D' => 2,
+            'E' => 4,
+            'F' => 5,
+            'G' => 7,
+            'A' => 9,
+            'B' => 11,
+            _ => {
+                return Err(ModelError::Invalid(format!(
+                    "\"{text}\" is not a note name such as E2 or C#4"
+                )));
+            }
+        };
+        let rest = chars.as_str();
+        let (accidental, rest) = match rest.get(0..1) {
+            Some("#") => (1_i16, rest.get(1..).unwrap_or_default()),
+            Some("b") => (-1_i16, rest.get(1..).unwrap_or_default()),
+            _ => (0_i16, rest),
+        };
+        let octave: i32 = rest.parse().map_err(|_| {
+            ModelError::Invalid(format!("\"{text}\" has no octave such as the 2 in E2"))
+        })?;
+        // MIDI 0 is C-1, so a note's number is (octave + 1) * 12 + semitone.
+        let midi = octave
+            .saturating_add(1)
+            .saturating_mul(12)
+            .saturating_add(i32::from(semitone))
+            .saturating_add(i32::from(accidental));
+        let midi = u8::try_from(midi)
+            .map_err(|_| ModelError::Invalid(format!("\"{text}\" is outside MIDI's range")))?;
+        Pitch::new(midi)
+            .map_err(|_| ModelError::Invalid(format!("\"{text}\" is outside MIDI's range")))
+    }
+
     /// The note name without octave, spelled with sharps: `C`, `C#`, ..., `B`.
     pub fn note_name(self) -> &'static str {
         // `% 12` is always a valid index; the fallback is never used.

@@ -11,10 +11,12 @@ use super::GuitarScoreApp;
 /// What an edit changes that the app must react to.
 #[derive(Debug, Clone, Copy)]
 enum EditEffect {
-    /// A track's volume or pan: send it to the player without rebuilding.
+    /// A track's volume, pan or program: send it to the player without rebuilding.
     Sound(TrackIndex),
-    /// Mute or solo: the sequence must be rebuilt.
-    Audibility,
+    /// Mute, solo, the drum kit or the tuning: the sequence must be rebuilt, in place.
+    Rebuild,
+    /// The name or color changed: playback goes on untouched.
+    Display,
     /// Tracks were added, removed, duplicated or moved: per-track layouts are stale.
     Tracks,
     /// Anything else: measure stamps invalidate the layouts; playback stops.
@@ -26,8 +28,10 @@ impl EditEffect {
     fn of(command: &Command) -> Self {
         if let Some(track) = command.mix_track() {
             EditEffect::Sound(track)
-        } else if command.changes_audibility() {
-            EditEffect::Audibility
+        } else if command.rebuilds_playback() {
+            EditEffect::Rebuild
+        } else if command.changes_track_display() {
+            EditEffect::Display
         } else if command.changes_tracks() {
             EditEffect::Tracks
         } else {
@@ -124,11 +128,15 @@ impl GuitarScoreApp {
             self.view.selection = None;
         }
         let updated = match effect {
-            // Volume and pan go straight to the player, so sounding notes are not cut off.
-            EditEffect::Sound(track) => self.playback.send_track_mix(document.song(), track),
-            // Mute and solo change which tracks play: rebuild the sequence.
-            EditEffect::Audibility => self.playback.mix_changed(document.song()),
-            // Anything else changes notes: stop and rebuild on the next play.
+            // Volume, pan and program go straight to the player, so sounding notes are not
+            // cut off.
+            EditEffect::Sound(track) => self.playback.send_track_sound(document.song(), track),
+            // Mute, solo, the drum kit and the tuning change what plays: rebuild the
+            // sequence and play on at the same position.
+            EditEffect::Rebuild => self.playback.mix_changed(document.song()),
+            // The name or color is not heard.
+            EditEffect::Display => Ok(()),
+            // Anything else changes the score: stop and rebuild on the next play.
             EditEffect::Tracks | EditEffect::Other => {
                 self.playback.song_changed();
                 Ok(())

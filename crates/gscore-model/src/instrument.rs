@@ -15,6 +15,15 @@ pub enum InstrumentKind {
 /// (`electricGuitar`, `acousticBass`, `banjo`, ...).
 const STRING_INSTRUMENTS: &[&str] = &["guitar", "bass", "banjo", "ukulele", "mandolin"];
 
+/// The standard General MIDI name of a program (0 is Acoustic Grand Piano, 25 Steel
+/// String Guitar), as shown to the user. Values above 127 have no name.
+pub fn program_name(program: u8) -> &'static str {
+    gscore_gp::CHANNEL_DEFAULT_NAMES
+        .get(usize::from(program))
+        .copied()
+        .unwrap_or("Unknown")
+}
+
 /// Classifies a track from its GP7 instrument type id (if the format stores one) and its
 /// percussion flag.
 pub(crate) fn classify(instrument_type: Option<&str>, percussion: bool) -> InstrumentKind {

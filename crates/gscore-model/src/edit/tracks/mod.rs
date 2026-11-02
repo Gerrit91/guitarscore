@@ -18,6 +18,8 @@ use crate::song::Song;
 use crate::style::TrackColor;
 
 mod new_track;
+mod sound;
+mod tuning;
 
 use new_track::{append_channel, fresh_track, unique_name};
 

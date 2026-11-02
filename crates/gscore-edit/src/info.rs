@@ -133,6 +133,41 @@ const COLOR: ParamInfo = ParamInfo {
     help: "Color as rrggbb in hexadecimal",
 };
 
+const PROGRAM: ParamInfo = ParamInfo {
+    name: "program",
+    required: true,
+    default: None,
+    help: "General MIDI program, 0 to 127",
+};
+
+const DRUMS: ParamInfo = ParamInfo {
+    name: "drums",
+    required: true,
+    default: None,
+    help: "true for a drum kit, false for a pitched instrument",
+};
+
+const CAPO: ParamInfo = ParamInfo {
+    name: "capo",
+    required: true,
+    default: None,
+    help: "Capo fret, 0 (none) to 127",
+};
+
+const STRINGS: ParamInfo = ParamInfo {
+    name: "strings",
+    required: true,
+    default: None,
+    help: "Number of strings, 1 to 12",
+};
+
+const PITCH: ParamInfo = ParamInfo {
+    name: "pitch",
+    required: true,
+    default: None,
+    help: "Open-string pitch: a note name (E2, C#4, Bb3) or a MIDI number 0 to 127",
+};
+
 pub(crate) const SET_FRET: CommandInfo = CommandInfo {
     id: "set_fret",
     aliases: &["enter_fret"],
@@ -273,6 +308,47 @@ pub(crate) const SET_TRACK_SOLO: CommandInfo = CommandInfo {
     params: &[TRACK, SOLO],
 };
 
+pub(crate) const SET_TRACK_PROGRAM: CommandInfo = CommandInfo {
+    id: "set_track_program",
+    aliases: &[],
+    label: "Set the track sound",
+    help: "Sets the General MIDI program (the SoundFont preset) a track plays with.",
+    params: &[TRACK, PROGRAM],
+};
+
+pub(crate) const SET_TRACK_DRUMS: CommandInfo = CommandInfo {
+    id: "set_track_drums",
+    aliases: &[],
+    label: "Make a track a drum kit",
+    help: "A drum kit's notes are General MIDI drum sounds on the percussion channel.",
+    params: &[TRACK, DRUMS],
+};
+
+pub(crate) const SET_TRACK_CAPO: CommandInfo = CommandInfo {
+    id: "set_track_capo",
+    aliases: &[],
+    label: "Set the track capo",
+    help: "Sets the capo fret: 0 means no capo.",
+    params: &[TRACK, CAPO],
+};
+
+pub(crate) const SET_TRACK_STRINGS: CommandInfo = CommandInfo {
+    id: "set_track_strings",
+    aliases: &[],
+    label: "Set the string count",
+    help: "Changes how many strings a track has. Removing strings that still hold notes \
+           is refused; added strings are tuned in fourths below the lowest.",
+    params: &[TRACK, STRINGS],
+};
+
+pub(crate) const SET_TRACK_STRING_PITCH: CommandInfo = CommandInfo {
+    id: "set_track_string_pitch",
+    aliases: &[],
+    label: "Tune one string",
+    help: "Sets the open pitch of one string, as a note name (E2, C#4) or a MIDI number.",
+    params: &[TRACK, STRING, PITCH],
+};
+
 pub(crate) const UNDO: CommandInfo = CommandInfo {
     id: "undo",
     aliases: &[],
@@ -308,6 +384,11 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_TRACK_PAN,
     SET_TRACK_MUTE,
     SET_TRACK_SOLO,
+    SET_TRACK_PROGRAM,
+    SET_TRACK_DRUMS,
+    SET_TRACK_CAPO,
+    SET_TRACK_STRINGS,
+    SET_TRACK_STRING_PITCH,
     UNDO,
     REDO,
 ];

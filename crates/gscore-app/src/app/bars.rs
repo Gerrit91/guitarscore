@@ -68,6 +68,7 @@ impl GuitarScoreApp {
             });
             ui.menu_button("View", |ui| {
                 ui.checkbox(&mut self.view.show_track_grid, "Track grid");
+                ui.checkbox(&mut self.view.show_track_panel, "Track panel");
                 ui.separator();
                 ui.radio_value(&mut self.view.theme, ThemeChoice::Light, "Light theme");
                 ui.radio_value(&mut self.view.theme, ThemeChoice::Dark, "Dark theme");

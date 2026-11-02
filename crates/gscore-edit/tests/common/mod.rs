@@ -84,12 +84,32 @@ pub(crate) fn apply_all_then_undo_all(song: &Song, commands: &[Command]) {
     );
 }
 
+/// Writes the song as GP7 and reads it back.
+pub(crate) fn reloaded(song: &Song) -> Song {
+    let bytes = export_to_bytes(song, FileFormat::Gp).expect("write as GP7");
+    import_guitar_pro_from_bytes(&bytes)
+        .expect("read back the written GP7")
+        .song
+}
+
 /// Writes the song as GP7, reads it back and checks that nothing the model compares changed.
 pub(crate) fn assert_roundtrips(song: &Song) {
-    let bytes = export_to_bytes(song, FileFormat::Gp).expect("write as GP7");
-    let reread = import_guitar_pro_from_bytes(&bytes).expect("read back the written GP7");
-    let diffs = differences(song, &reread.song);
+    let reread = reloaded(song);
+    let diffs = differences(song, &reread);
     assert!(diffs.is_empty(), "round trip changed the song: {diffs:?}");
+}
+
+/// Like [`assert_roundtrips`], and checks the settings a save might lose (color, mute,
+/// solo, instrument program, volume and pan) too.
+pub(crate) fn assert_roundtrips_with_settings(song: &Song) {
+    let reread = reloaded(song);
+    let diffs = differences(song, &reread);
+    assert!(diffs.is_empty(), "round trip changed the song: {diffs:?}");
+    let settings = settings_differences(song, &reread);
+    assert!(
+        settings.is_empty(),
+        "round trip changed track settings: {settings:?}"
+    );
 }
 
 /// Songs of several shapes: empty, one measure, several measures, bass, 7- and 8-string

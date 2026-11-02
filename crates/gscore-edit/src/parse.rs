@@ -1,14 +1,16 @@
 //! Parsing command lines: `id key=value key=value ...` with 1-based positions.
 //!
 //! The same parser serves `gscore-cli edit -c "..."` and script files, so scripts written for
-//! one are exactly the regression tests for the other. Blank lines and `#`-comment lines are
-//! ignored; there is no quoting, because no value contains a space.
+//! one are exactly the regression tests for the other. Blank lines and comments are ignored;
+//! a comment starts at a `#` that begins a word (so a note name such as `C#4` keeps its
+//! sharp). There is no quoting, because no value contains a space.
 
 use std::collections::BTreeMap;
 use std::fmt;
 
 use gscore_model::{
-    BeatIndex, BeatPosition, Fret, MeasureIndex, NoteValue, StringNumber, TrackIndex, VoiceIndex,
+    BeatIndex, BeatPosition, Fret, MAX_STRINGS, MeasureIndex, NoteValue, Pitch, StringNumber,
+    TrackIndex, VoiceIndex,
 };
 
 use crate::command::Command;
@@ -98,8 +100,19 @@ impl std::error::Error for ParseError {}
 
 /// Parses one command line. `Ok(None)` means a blank or comment line.
 pub fn parse_line(line: &str) -> Result<Option<Command>, ParseError> {
-    // A comment starts at the first `#`; values never contain one.
-    let line = line.split('#').next().unwrap_or_default();
+    // A comment starts at a `#` that begins a word; a `#` inside a value (the sharp of
+    // `C#4`) stays. The `#` itself may start the line.
+    let line = line
+        .char_indices()
+        .find(|&(index, ch)| {
+            ch == '#'
+                && (index == 0
+                    || line
+                        .get(..index)
+                        .is_some_and(|before| before.ends_with(char::is_whitespace)))
+        })
+        .and_then(|(index, _)| line.get(..index))
+        .unwrap_or(line);
     let mut words = line.split_whitespace();
     let Some(id) = words.next() else {
         return Ok(None);
@@ -205,6 +218,27 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
             solo: bool_arg(args, "solo")?,
         }),
+        "set_track_program" => Ok(Command::SetTrackProgram {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            program: midi_value_arg(args, "program")?,
+        }),
+        "set_track_drums" => Ok(Command::SetTrackDrums {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            drums: bool_arg(args, "drums")?,
+        }),
+        "set_track_capo" => Ok(Command::SetTrackCapo {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            capo: midi_value_arg(args, "capo")?,
+        }),
+        "set_track_strings" => Ok(Command::SetTrackStrings {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            strings: string_count_arg(args)?,
+        }),
+        "set_track_string_pitch" => Ok(Command::SetTrackStringPitch {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            string: string_arg(args)?,
+            pitch: pitch_arg(args)?,
+        }),
         "undo" => Ok(Command::Undo),
         "redo" => Ok(Command::Redo),
         // Every entry in COMMANDS is handled above; a new one must be added here.
@@ -282,6 +316,32 @@ fn fret_arg(args: &mut Args) -> Result<Fret, ParseError> {
         .parse()
         .map_err(|_| bad(args.command, "fret", &text, "a fret from 0 to 127"))?;
     Fret::new(value).map_err(|_| bad(args.command, "fret", &text, "a fret from 0 to 127"))
+}
+
+/// The `pitch` parameter: a note name such as `E2`, or a MIDI number.
+fn pitch_arg(args: &mut Args) -> Result<Pitch, ParseError> {
+    let text = args.required("pitch")?;
+    Pitch::parse(&text).map_err(|_| {
+        bad(
+            args.command,
+            "pitch",
+            &text,
+            "a note name such as E2 or C#4, or a MIDI number from 0 to 127",
+        )
+    })
+}
+
+/// The `strings` parameter: how many strings a track has.
+fn string_count_arg(args: &mut Args) -> Result<usize, ParseError> {
+    let text = args.required("strings")?;
+    let expected = "a whole number of strings from 1 to 12";
+    let value: usize = text
+        .parse()
+        .map_err(|_| bad(args.command, "strings", &text, expected))?;
+    if !(1..=MAX_STRINGS).contains(&value) {
+        return Err(bad(args.command, "strings", &text, expected));
+    }
+    Ok(value)
 }
 
 /// The `duration` parameter.

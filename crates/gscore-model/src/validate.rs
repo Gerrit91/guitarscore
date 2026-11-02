@@ -11,7 +11,7 @@ use crate::song::Song;
 use crate::views::{BeatView, MeasureView, TrackView};
 
 /// Most strings a track may have (Guitar Pro allows up to 7, newer versions 8; leave room).
-pub(crate) const MAX_STRINGS: usize = 12;
+pub const MAX_STRINGS: usize = 12;
 
 /// Checks all invariants, returning the first violation with its location.
 pub(crate) fn check(song: &Song) -> Result<(), ModelError> {

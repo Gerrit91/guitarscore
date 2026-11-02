@@ -187,6 +187,38 @@ fn instrument_and_tuning_label_survive_writing() {
 }
 
 #[test]
+fn capo_fret_is_read_and_written() {
+    // GP7 stores the capo as a staff property; GP6 keeps it on the track.
+    let xml = "<GPIF><Score></Score><MasterTrack></MasterTrack><Tracks><Track id=\"0\">\
+               <Name>G</Name><Staves><Staff><Properties>\
+               <Property name=\"CapoFret\"><Fret>3</Fret></Property>\
+               <Property name=\"Tuning\"><Pitches>40 45 50 55 59 64</Pitches></Property>\
+               </Properties></Staff></Staves></Track></Tracks><MasterBars></MasterBars>\
+               <Bars></Bars><Voices></Voices><Beats></Beats><Notes></Notes>\
+               <Rhythms></Rhythms></GPIF>";
+    let mut song = Song::default();
+    song.read_gpif(&quick_xml::de::from_str(xml).expect("test GPIF parses"));
+    assert_eq!(song.tracks[0].offset, 3);
+
+    let bytes = song.write_gp().expect("write");
+    let gpif = crate::io::gpx::read_gp_with_audio(&bytes)
+        .expect("read written file")
+        .0;
+    let capo = gpif.tracks.tracks[0].properties.as_ref().and_then(|props| {
+        props
+            .properties
+            .iter()
+            .find(|p| p.name == "CapoFret")
+            .and_then(|p| p.fret)
+    });
+    assert_eq!(capo, Some(3));
+
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("reread");
+    assert_eq!(reread.tracks[0].offset, 3);
+}
+
+#[test]
 fn staff_tuning_is_read_with_string_1_highest() {
     // GPIF lists pitches from the lowest string up.
     let mut song = Song::default();
