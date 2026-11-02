@@ -16,7 +16,7 @@ Updated 2026-11-02 (M14: edit palette and effects; M12: app shell; M15: track pa
 | App shell and settings (M12) | Live: docked panels with remembered sizes and visibility, settings window (song information, audio/MIDI, editor), JSON settings in the config directory, recent files, drag and drop, window position/size, zoom keys, progress and cancel for opening and SoundFont loading, cursor following playback |
 | Song information editing | Live, undoable: title, subtitle, artist, album, lyricist, composer, copyright, tab author, instructions, notes and the initial tempo (settings window or `set_song_text`/`set_tempo`) |
 | Edit palette (left panel, M14) | Live: note lengths (whole to 64th), dots, tuplets, rests, ties, dead notes, voice 1/2, measure tempo/time/key signatures and section markers, and the effect matrix (bends and whammy with point editors) |
-| Selection and clipboard (M14) | Live: a beat range in one measure/voice or a measure range across tracks; copy, cut and paste as one undo step, carrying notes, durations, ties, effects, time signature, tempo and section |
+| Selection and clipboard (M14) | Live: a beat range in one track/voice (across bar lines; Shift+arrows, dragging, Shift+Up/Down for the whole beat) or a measure range across tracks; Delete clears the selected notes; copy, cut and paste as one undo step, carrying notes, durations, ties, effects, time signature, tempo and section |
 | Note and beat effects (read, dump, save) | Live |
 | Measure issues (under/overfilled bars, notes on missing strings) | Live |
 
@@ -26,7 +26,7 @@ Updated 2026-11-02 (M14: edit palette and effects; M12: app shell; M15: track pa
 |--------|--------|
 | Basic tablature editing | Live: in the app at a cursor (frets with two-digit entry, clear note, shorter/longer, insert/delete beat and measure, Right fills the measure and appends measures, durations/dots/tuplets, rests, ties, dead notes, effects, voice 2) and as headless commands (`gscore-cli edit`) |
 | Undo/Redo | Partial: in memory in `gscore-edit`, in the Edit menu and Ctrl+Z/Ctrl+Y; not persisted |
-| Cursor and selection | Live: cursor (keys, page click, grid click), beat selection by dragging on the page, measure ranges in the grid |
+| Cursor and selection | Live: cursor (keys, page click, grid click), beat selection by Shift+arrows or dragging on the page (across bar lines), measure ranges in the grid |
 | Copy / cut / paste | Live for beat and measure selections (M14) |
 | Multiple voices per track | Partial: read, viewed and edited per voice; no cross-voice editing |
 | Tempo changes | Partial: kept in the file; only the initial tempo is exposed and editable commands do not set them |

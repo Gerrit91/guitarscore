@@ -149,9 +149,32 @@ impl Places {
         })
     }
 
+    /// The whole measure from its start to its barline, from the top staff to the tab's
+    /// bottom line (the same height as [`Places::column_rect`]).
+    pub fn measure_rect(&self, measure: MeasureIndex) -> Option<Rect> {
+        let place = self.measure(measure)?;
+        let system = self.systems.get(place.system)?;
+        let top = system.top - 1.0;
+        Some(Rect {
+            origin: Point::new(place.left, top),
+            width: place.right - place.left,
+            height: system.tab_bottom() + 1.0 - top,
+        })
+    }
+
     /// The beat and string nearest to `point`, if it is on a system: the nearest column of
     /// the measure under it, and the nearest string.
     pub fn hit(&self, point: Point) -> Option<Hit> {
+        self.hit_where(point, None)
+    }
+
+    /// Like [`Places::hit`], but only beats of `voice` count (a drag that selects beats of
+    /// one voice); a measure without beats in that voice gives its beat 0.
+    pub fn hit_in_voice(&self, point: Point, voice: VoiceIndex) -> Option<Hit> {
+        self.hit_where(point, Some(voice))
+    }
+
+    fn hit_where(&self, point: Point, only: Option<VoiceIndex>) -> Option<Hit> {
         let (index, system) = self.systems.iter().enumerate().find(|(_, s)| {
             point.y >= s.top - HIT_MARGIN && point.y <= s.tab_bottom() + HIT_MARGIN
         })?;
@@ -159,16 +182,19 @@ impl Places {
             .measures
             .iter()
             .find(|m| m.system == index && point.x >= m.left && point.x < m.right)?;
-        let nearest = place.beats.iter().min_by(|a, b| {
-            (a.x - point.x)
-                .abs()
-                .total_cmp(&(b.x - point.x).abs())
-                // Prefer the first voice where columns coincide.
-                .then(a.voice.cmp(&b.voice))
-        });
-        let (voice, beat) = nearest.map_or((VoiceIndex::new(0), BeatIndex::new(0)), |b| {
-            (b.voice, b.beat)
-        });
+        let nearest = place
+            .beats
+            .iter()
+            .filter(|b| only.is_none_or(|voice| b.voice == voice))
+            .min_by(|a, b| {
+                (a.x - point.x)
+                    .abs()
+                    .total_cmp(&(b.x - point.x).abs())
+                    // Prefer the first voice where columns coincide.
+                    .then(a.voice.cmp(&b.voice))
+            });
+        let none = (only.unwrap_or(VoiceIndex::new(0)), BeatIndex::new(0));
+        let (voice, beat) = nearest.map_or(none, |b| (b.voice, b.beat));
         let strings = system.strings.max(1);
         let line = if system.string_spacing > 0.0 {
             ((point.y - system.tab_top) / system.string_spacing).round()

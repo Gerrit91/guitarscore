@@ -31,6 +31,10 @@ Left = cursor_left
 Right = cursor_right
 Up = cursor_up_string
 Down = cursor_down_string
+shift+Left = select_left
+shift+Right = select_right
+shift+Up = select_beat
+shift+Down = select_beat
 
 0 = enter_fret
 1 = enter_fret

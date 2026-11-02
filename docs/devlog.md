@@ -1101,3 +1101,28 @@ Fixed after reviewing M12 and M14:
   (`gscore-model` `effects.rs` 826 and `edit/mod.rs` 773, `gscore-edit` `command.rs` 888,
   `parse.rs` 698, `info.rs` 662, the app's `edit_effects.rs` 699 and `edit_palette.rs`
   534); M14 lacks grace-note editing and M12 the Page layout tab (both in `docs/gaps.md`).
+
+## 2026-11-02 — Selection UX
+
+Owner feedback on the M14 selection, done:
+- `Selection::Beats` is a range between two `BeatSpot`s (measure and beat) in one track
+  and voice, so it crosses bar lines. `Selection::positions` lists the selected beats
+  (placeholders left out); cut, clear, the palette and the page all use it.
+- New actions `select_left`/`select_right` (Shift+Left/Right: the cursor moves one beat,
+  never adding beats, and the selection follows it from where it started) and
+  `select_beat` (Shift+Up/Down: the cursor's whole beat). Plain cursor moves end the
+  selection. With a selection, `delete_beat` (Delete) and `clear_note` clear every selected
+  note as one undo step and keep the beats; without one they work as before.
+- Copying beats keeps them grouped by measure; pasting puts each group into the next
+  measure from the cursor's (refused, unchanged, when the song is too short).
+- Page: the selection is one solid band per system line (from the first selected column
+  to the last; measure selections cover whole measures) instead of a box per column with
+  gaps. A drag selects across bar and system lines in the voice it started in
+  (`Places::hit_in_voice`), and the cursor follows it. While playing, only the moving
+  column band is drawn, not the box around the string. A selection other than a measure
+  range clears the grid's measure highlight.
+- Tests: keyboard selection across bar lines, whole-beat selection and clearing, a bar-line
+  copy/paste and cut (`test_selection.rs`); the band merging (`page.rs`); Shift+arrows in
+  the app ending a grid selection.
+- Open: the selection is not drawn in the song grid unless it is a measure range; a beat
+  selection cannot span tracks.

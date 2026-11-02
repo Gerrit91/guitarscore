@@ -110,7 +110,7 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    scrolls with it. Since M14 it has a left edit palette, beat and measure selection with
    copy/cut/paste, voice 2 entry, effect editing, tempo/time/key signatures and section
    markers. Missing: a multi-page view, grace-note editing, chord diagrams and lyrics, and
-   a beat selection that crosses measures or tracks. Undo back to the saved state still
+   a beat selection that crosses tracks. Undo back to the saved state still
    counts as "changed". `clear_note`,
    `previous_measure` and `next_measure` have no default key yet (owner's decision; they
    can be bound in the keymap file), and `ctrl+s` for save is a proposal. On Windows, egui
@@ -167,7 +167,12 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    compositor may ignore a requested window position.
 
 14. **The M14 palette and selection are a first version.** Beat selections stay in one
-   measure and voice; measure selections cover every track (copy/paste carries notes,
+   track and voice but may cross bar and system lines (Shift+Left/Right, or dragging on
+   the page); Shift+Up/Down selects the cursor's whole beat, and Delete (or `clear_note`)
+   with a selection clears every note in it, keeping the beats. A beat selection is pasted
+   bar by bar: the part from each copied measure goes into the next measure from the
+   cursor's, so a paste near the end of the song needs measures inserted first. Measure
+   selections cover every track (copy/paste carries notes,
    durations, ties, effects, time signature, tempo and section marker). Pasting measures
    needs room inside the song (insert empty measures first) and replaces both voices of
    each target measure (creating voice 2 when the copy has one); a pasted measure keeps

@@ -9,7 +9,7 @@ mod common;
 
 use common::test_songs;
 use gscore_edit::{
-    Action, ActionId, Command, Cursor, EditError, Outcome, Request, Selection, TabEditor,
+    Action, ActionId, BeatSpot, Command, Cursor, EditError, Outcome, Request, Selection, TabEditor,
 };
 use gscore_model::NoteEffect;
 use gscore_model::testing::{self, GUITAR_6};
@@ -355,6 +355,13 @@ fn a_new_beat_at_the_measure_end_is_only_as_long_as_what_still_fits() {
     assert_eq!((e.cursor().beat.get(), value_at(&e)), (4, 8));
 }
 
+fn spot(measure: usize, beat: usize) -> BeatSpot {
+    BeatSpot {
+        measure: MeasureIndex::new(measure),
+        beat: BeatIndex::new(beat),
+    }
+}
+
 fn at(measure: usize, beat: usize) -> BeatPosition {
     BeatPosition {
         track: TrackIndex::new(0),
@@ -373,10 +380,9 @@ fn a_beat_selection_copies_and_pastes_in_one_undo_step() {
     e.perform(Action::Digit(5), 0).unwrap();
     e.set_selection(Some(Selection::Beats {
         track: TrackIndex::new(0),
-        measure: MeasureIndex::new(0),
         voice: gscore_model::VoiceIndex::new(0),
-        anchor: BeatIndex::new(0),
-        focus: BeatIndex::new(1),
+        anchor: spot(0, 0),
+        focus: spot(0, 1),
     }));
     plain(&mut e, ActionId::Copy);
     let before_paste = e.song().clone();
@@ -439,10 +445,9 @@ fn a_pasted_note_keeps_its_effects() {
     .unwrap();
     e.set_selection(Some(Selection::Beats {
         track: TrackIndex::new(0),
-        measure: MeasureIndex::new(0),
         voice: gscore_model::VoiceIndex::new(0),
-        anchor: BeatIndex::new(0),
-        focus: BeatIndex::new(0),
+        anchor: spot(0, 0),
+        focus: spot(0, 0),
     }));
     plain(&mut e, ActionId::Copy);
     e.set_cursor(Cursor {

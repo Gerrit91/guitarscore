@@ -123,6 +123,22 @@ mod tests {
         assert_eq!(find_app_in([]), None);
     }
 
+    /// [`launch`] for a script the test just wrote. While another test thread forks, its
+    /// child briefly holds the script's write handle and exec fails with "Text file busy"
+    /// (ETXTBSY); that clears as soon as the child execs, so try again.
+    #[cfg(unix)]
+    fn launch_script(script: &Path, file: Option<&Path>) -> Result<(), CliError> {
+        for _ in 0..100 {
+            match launch(script, file) {
+                Err(error) if error.to_string().contains("os error 26") => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                result => return result,
+            }
+        }
+        launch(script, file)
+    }
+
     #[cfg(unix)]
     #[test]
     fn launch_waits_and_passes_the_file_through() {
@@ -140,7 +156,7 @@ mod tests {
         let song = dir.join("song.gp");
         std::fs::write(&song, b"score").unwrap();
 
-        launch(&script, Some(&song)).unwrap();
+        launch_script(&script, Some(&song)).unwrap();
         assert_eq!(
             std::fs::read_to_string(&args_file).unwrap(),
             song.display().to_string(),
@@ -159,7 +175,7 @@ mod tests {
         std::fs::write(&script, "#!/bin/sh\nexit 3\n").unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-        let err = launch(&script, None).unwrap_err();
+        let err = launch_script(&script, None).unwrap_err();
         assert!(err.to_string().contains('3'), "{err}");
         let _ = std::fs::remove_dir_all(dir);
     }

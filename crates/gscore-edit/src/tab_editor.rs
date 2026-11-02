@@ -57,8 +57,8 @@ struct PendingDigit {
 /// A song being edited at a cursor, with undo and redo.
 #[derive(Debug)]
 pub struct TabEditor {
-    editor: Editor,
-    cursor: Cursor,
+    pub(crate) editor: Editor,
+    pub(crate) cursor: Cursor,
     pending: Option<PendingDigit>,
     /// Where the cursor was before each undoable edit, parallel to the editor's history.
     undo_cursors: Vec<Cursor>,
@@ -225,8 +225,19 @@ impl TabEditor {
             Action::Plain(id) => id,
         };
         let song = self.editor.song();
+        // A plain cursor move ends the selection.
+        let cursor_move = matches!(
+            id,
+            ActionId::CursorLeft
+                | ActionId::CursorRight
+                | ActionId::CursorUpString
+                | ActionId::CursorDownString
+                | ActionId::PreviousMeasure
+                | ActionId::NextMeasure
+        );
+        let deselected = cursor_move && self.selection.take().is_some();
         let moved = |moved: bool| {
-            if moved {
+            if moved || deselected {
                 Outcome::Moved
             } else {
                 Outcome::Nothing
@@ -239,7 +250,14 @@ impl TabEditor {
             ActionId::CursorDownString => Ok(moved(self.cursor.down(song))),
             ActionId::PreviousMeasure => Ok(moved(self.cursor.to_measure(song, false))),
             ActionId::NextMeasure => Ok(moved(self.cursor.to_measure(song, true))),
+            ActionId::SelectLeft => Ok(self.extend_selection(false)),
+            ActionId::SelectRight => Ok(self.extend_selection(true)),
+            ActionId::SelectBeat => Ok(self.select_beat()),
             ActionId::EnterFret => Ok(Outcome::Nothing),
+            // With a selection, Delete and clear clear every selected note at once.
+            ActionId::ClearNote | ActionId::DeleteBeat if let Some(selection) = self.selection => {
+                self.clear_selection(selection)
+            }
             ActionId::ClearNote => {
                 let string = self.string()?;
                 let at = self.cursor.position();

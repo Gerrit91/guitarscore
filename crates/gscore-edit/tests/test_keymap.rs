@@ -94,8 +94,15 @@ fn qwerty_qwertz_and_azerty_reach_the_same_actions() {
         ..ctrl()
     };
     assert_eq!(press(Key::Char('z'), ctrl_shift), None);
-    // Named keys keep Shift.
-    assert_eq!(press(Key::Named(NamedKey::Left), shift()), None);
+    // Named keys keep Shift: Shift+Left extends the selection instead of moving.
+    assert_eq!(
+        press(Key::Named(NamedKey::Left), shift()),
+        Some(Action::Plain(ActionId::SelectLeft))
+    );
+    assert_eq!(
+        press(Key::Named(NamedKey::Left), Modifiers::default()),
+        Some(Action::Plain(ActionId::CursorLeft))
+    );
 }
 
 #[test]
