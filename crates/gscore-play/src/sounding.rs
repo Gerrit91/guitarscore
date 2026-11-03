@@ -14,6 +14,9 @@ use crate::tempo::PPQ;
 /// An upward bend reaches its target within a quarter note (or the note's length): Guitar
 /// Pro's own bends take about a beat.
 pub(super) const BEND_RAMP_TICKS: u64 = PPQ as u64;
+/// How long a borrowed channel stays reserved after its note ends, for the release that
+/// still sounds (and would follow the next note's bend): a quarter note.
+const RELEASE_TICKS: u64 = PPQ as u64;
 /// A slide into a note reaches its pitch within an eighth note (or the note's length).
 pub(super) const SLIDE_IN_RAMP_TICKS: u64 = PPQ as u64 / 2;
 /// How far an "into" slide starts from its note when the previous note is unknown: a whole
@@ -240,8 +243,13 @@ pub(super) fn assign_pitch_channels(notes: &mut [Sounding], free: Vec<Channel>) 
         };
         if let Some(note) = notes.get_mut(index) {
             note.play_channel = channel;
+            // A bent note's release rings on after its end: the channel stays its own
+            // until that has faded (a damped note is cut at once).
+            let release = if note.damp { 0 } else { RELEASE_TICKS };
             in_use.push(Reverse((
-                note.end.max(note.start.saturating_add(1)),
+                note.end
+                    .max(note.start.saturating_add(1))
+                    .saturating_add(release),
                 channel,
             )));
         }

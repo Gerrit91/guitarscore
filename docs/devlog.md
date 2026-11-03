@@ -1975,3 +1975,17 @@ lifeless):
   quiet about it. `Playback::preview_beat` returns `Heard`; `Playback::output_state` for
   tests.
 
+## 2026-11-03 — A bend no longer drops at its end
+
+- Owner: the default full-step bend fell back at the very end, which the graph does not
+  show. Cause: a pitch reset right after the note-off pulled the still-ringing release
+  back down; a heard beat also ended at the note-off, where the player centers every bend.
+  Now no reset follows a note (a borrowed channel is set again when next borrowed), a
+  borrowed channel stays reserved for a quarter note after its note for the release, and
+  an excerpt runs on a whole note for the release, then fades its bent channels and
+  silences them. Rendered with FluidR3: 225 Hz up to 248 Hz, held through the release,
+  then quiet.
+- Found on the way: a channel an excerpt borrowed can be a track's own channel in the
+  song's sequence, and a damped note left its expression at 0. Every track setup now
+  sends full expression. Test `a_bent_note_keeps_its_pitch_through_its_release`.
+

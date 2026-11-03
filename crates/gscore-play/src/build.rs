@@ -12,7 +12,7 @@ use gscore_model::{
 use crate::channels::ChannelAllocator;
 use crate::curve::Curve;
 use crate::effects;
-use crate::event::{MidiEvent, PITCH_BEND_CENTER, controller};
+use crate::event::{MidiEvent, controller};
 use crate::pitch;
 use crate::sequence::{MeasureSpan, SequenceTrack, TimedEvent, sound_events, ticks};
 use crate::sounding::{self, Sounding};
@@ -220,7 +220,7 @@ pub(crate) fn collect(
 }
 
 /// The MIDI events of `notes`: a borrowed channel's setup and pitch movement, the note-on
-/// and note-off, and the pitch reset after it.
+/// and note-off (and the cut of a damped note).
 pub(crate) fn emit(notes: &[Sounding], tracks: &[SequenceTrack], events: &mut Vec<TimedEvent>) {
     for note in notes {
         let borrowed = note.play_channel != note.channel;
@@ -235,16 +235,6 @@ pub(crate) fn emit(notes: &[Sounding], tracks: &[SequenceTrack], events: &mut Ve
             let range = note
                 .shape
                 .map_or(pitch::BEND_RANGE_SEMITONES, |shape| shape.range());
-            // A damped note before may have left the expression at zero.
-            events.push(TimedEvent {
-                tick: note.start,
-                track: note.track,
-                event: MidiEvent::Control {
-                    channel: note.play_channel,
-                    controller: controller::EXPRESSION,
-                    value: 127,
-                },
-            });
             for event in pitch::bend_range_setup(note.play_channel, range) {
                 events.push(TimedEvent {
                     tick: note.start,
@@ -292,16 +282,8 @@ pub(crate) fn emit(notes: &[Sounding], tracks: &[SequenceTrack], events: &mut Ve
                 },
             });
         }
-        if borrowed && note.shape.is_some() {
-            // Reset after the note, so a reused channel starts unbent.
-            events.push(TimedEvent {
-                tick: end,
-                track: note.track,
-                event: MidiEvent::PitchBend {
-                    channel: note.play_channel,
-                    value: PITCH_BEND_CENTER,
-                },
-            });
-        }
+        // No pitch reset at the note's end: its release still sounds and would be pulled
+        // back. The channel is set again when it is next borrowed (see
+        // `sounding::assign_pitch_channels`, which waits for the release first).
     }
 }

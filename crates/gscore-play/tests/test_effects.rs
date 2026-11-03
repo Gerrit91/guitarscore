@@ -312,3 +312,42 @@ fn an_excerpt_of_a_tied_beat_strikes_its_notes() {
             .any(|&(tick, key, _)| tick == 0 && key == 43)
     );
 }
+
+#[test]
+fn a_bent_note_keeps_its_pitch_through_its_release() {
+    // A bend up a whole step, held: nothing may pull its release back down.
+    let mut song = two_beats();
+    let shape = BendShape::new(BendKind::Up, points(&[(0, 0), (6, 4), (12, 4)])).unwrap();
+    let _ = song
+        .set_note_effect(at(0), string(6), NoteEffect::Bend(Some(shape)))
+        .unwrap();
+    let excerpt = Sequence::beat_excerpt(&song, at(0)).unwrap().unwrap();
+    let off = note_offs(&excerpt)[0].0;
+    let bent = borrowed_bends(&excerpt);
+    assert!(
+        bent.iter().all(|&(tick, _)| tick < off),
+        "no bend after the note-off"
+    );
+    assert!(bent.last().unwrap().1 > 8192 + 2500, "it ends bent");
+    // The excerpt runs on for the release, then fades its bent channel and silences it.
+    assert!(excerpt.end > off);
+    let channel = sequence_channels_bent(&excerpt);
+    let fade = excerpt.events.iter().any(|event| {
+        matches!(event.event, MidiEvent::Control { channel: c, controller: controller::EXPRESSION, value: 0 } if c == channel)
+            && event.tick < excerpt.end
+    });
+    assert!(fade);
+}
+
+/// The channel the excerpt bends on.
+fn sequence_channels_bent(sequence: &Sequence) -> gscore_play::Channel {
+    let base = sequence.tracks[0].channel;
+    sequence
+        .events
+        .iter()
+        .find_map(|event| match event.event {
+            MidiEvent::PitchBend { channel, .. } if channel != base => Some(channel),
+            _ => None,
+        })
+        .unwrap()
+}

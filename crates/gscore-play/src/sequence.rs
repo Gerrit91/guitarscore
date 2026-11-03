@@ -233,9 +233,9 @@ impl Sequence {
 }
 
 /// The messages that give `channel` a track's sound: program (not for drums), volume, pan,
-/// reverb and chorus send. Used for a sequence's setup and to change a sound while playing.
+/// reverb and chorus send, and full expression (a damped note may have left it at 0). Used for a sequence's setup and to change a sound while playing.
 pub fn sound_events(channel: Channel, sound: TrackSound) -> Vec<MidiEvent> {
-    let mut events = Vec::with_capacity(5);
+    let mut events = Vec::with_capacity(6);
     if !sound.percussion {
         events.push(MidiEvent::ProgramChange {
             channel,
@@ -247,6 +247,7 @@ pub fn sound_events(channel: Channel, sound: TrackSound) -> Vec<MidiEvent> {
         (controller::PAN, sound.pan),
         (controller::REVERB, sound.reverb),
         (controller::CHORUS, sound.chorus),
+        (controller::EXPRESSION, 127),
     ] {
         events.push(MidiEvent::Control {
             channel,
