@@ -2095,3 +2095,31 @@ lifeless):
 - Note: `cargo xtask ci` runs in the directory baked into the xtask binary
   (`CARGO_MANIFEST_DIR`); a binary built in another worktree tests that worktree. Touch
   `xtask/src/main.rs` if the failure paths point elsewhere.
+
+## 2026-11-03 — Section titles out of their frames and with box glyphs
+
+- Root cause: Guitar Pro (GP6/GP7/GPX) writes a section's text as
+  `<Text>\n<![CDATA[Chorus]]>\n</Text>`; the GPIF reader kept the newlines. The score's text
+  layout then had an empty first line, so the title was painted one line below its frame,
+  and the section dialog showed the line breaks as boxes before and after the name. The
+  reader (`src/io/gpif_import/mod.rs`) now trims section text and letter and falls back to
+  the letter when the text is blank. Tests: `gscore-gp`'s `section_tests`; the owner's
+  `Ballad.gp` renders clean titles (checked with `gscore-cli render`).
+
+## 2026-11-03 — A calmer default section color, track colors in the section dialog
+
+- The default section color was Guitar Pro's pure red (`0xFF0000`), which jars in the song
+  grid's dark ruler. GP6/GP7 files store no marker color, so the value is ours to choose:
+  `gscore-gp`'s `Marker::DEFAULT_COLOR` is now a light grey (`0xB0B0B0`), and
+  `gscore-model`'s `Section::DEFAULT_COLOR` points at it, so the importer, the app and the
+  CLI (`set_section` without `color`) agree. GP3-5 files keep their stored color. The grey
+  is a palette entry ("Light grey", next to "Grey"), so the dialog outlines it.
+- The section dialog no longer has a bare color button: it offers the same preset swatches
+  as the track panel's Appearance section, plus the custom picker. The swatch grid moved to
+  `app/swatches.rs`; the track panel and the new-track dialog use it too (the new-track
+  dialog had its own copy).
+- `TrackColor::from_parts` replaces three copies of the `r*0x10000 + g*0x100 + b` formula.
+  Tests: `gscore-model`'s `colors_assemble_from_their_parts`, `gscore-gp`'s `section_tests`
+  (marker color); the section dialog and the grid were checked with the offscreen snapshot.
+  The seven `gscore-app` snapshots were regenerated: the only change is the added "Light
+  grey" swatch in the track panel (the dialogs' background).

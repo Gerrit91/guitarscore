@@ -6,7 +6,9 @@
 
 use egui::{Align, Layout, Margin, RichText, vec2};
 use gscore_edit::Command;
-use gscore_model::{Feel, Fermata, MeasureIndex, Repeat, SystemBreak, TrackColor, TrackIndex};
+use gscore_model::{
+    Feel, Fermata, MeasureIndex, Repeat, Section, SystemBreak, TrackColor, TrackIndex,
+};
 
 use super::edit_palette::PaletteSnapshot;
 use super::edit_staff_dialogs::{body, title, width};
@@ -52,7 +54,7 @@ pub(super) struct StaffState {
     pub(super) key: i8,
     pub(super) minor: bool,
     pub(super) section_title: String,
-    pub(super) section_color: [u8; 3],
+    pub(super) section_color: TrackColor,
     pub(super) repeat_start: bool,
     pub(super) repeat_end: bool,
     pub(super) repeat_count: u8,
@@ -82,7 +84,7 @@ impl Default for StaffState {
             key: 0,
             minor: false,
             section_title: String::new(),
-            section_color: [255, 0, 0],
+            section_color: Section::DEFAULT_COLOR,
             repeat_start: false,
             repeat_end: false,
             repeat_count: 1,
@@ -136,10 +138,10 @@ impl StaffState {
             .section
             .as_ref()
             .map_or_else(String::new, |section| section.title.clone());
-        self.section_color = snapshot.section.as_ref().map_or([255, 0, 0], |section| {
-            let (red, green, blue) = section.color.parts();
-            [red, green, blue]
-        });
+        self.section_color = snapshot
+            .section
+            .as_ref()
+            .map_or(Section::DEFAULT_COLOR, |section| section.color);
         self.repeat_start = snapshot.repeat.start;
         self.repeat_end = snapshot.repeat.end_repeats.is_some();
         self.repeat_count = snapshot.repeat.end_repeats.unwrap_or(1).max(1);
@@ -258,13 +260,10 @@ impl StaffState {
                         measure: target.measure,
                     }
                 } else {
-                    let [red, green, blue] = self.section_color;
-                    let rgb =
-                        u32::from(red) * 0x1_0000 + u32::from(green) * 0x100 + u32::from(blue);
                     Command::SetSection {
                         measure: target.measure,
                         title: title.to_owned(),
-                        color: TrackColor::new(rgb),
+                        color: self.section_color,
                     }
                 }
             }

@@ -10,13 +10,18 @@ impl TrackColor {
     pub const DEFAULT: TrackColor = TrackColor(0x00FF_0000);
 
     /// A color from the low 24 bits of `rgb`; higher bits are ignored.
-    pub fn new(rgb: u32) -> Self {
+    pub const fn new(rgb: u32) -> Self {
         TrackColor(rgb & 0x00FF_FFFF)
+    }
+
+    /// A color from its red, green and blue parts.
+    pub const fn from_parts(red: u8, green: u8, blue: u8) -> Self {
+        TrackColor::new(((red as u32) << 16) | ((green as u32) << 8) | blue as u32)
     }
 
     /// A color from the stored value. Guitar Pro stores it as an `i32`, but only the low
     /// 24 bits are the color.
-    pub fn from_gp(value: i32) -> Self {
+    pub const fn from_gp(value: i32) -> Self {
         TrackColor::new(value as u32)
     }
 
@@ -51,6 +56,12 @@ pub struct Section {
     pub title: String,
     /// The color the marker is shown in.
     pub color: TrackColor,
+}
+
+impl Section {
+    /// The color a section gets when the file stores none (GP6/GP7 have no marker color):
+    /// a light grey, called "Light grey" in the palette the editor offers for tracks too.
+    pub const DEFAULT_COLOR: TrackColor = TrackColor::from_gp(gscore_gp::Marker::DEFAULT_COLOR);
 }
 
 /// Which staves a track's page shows (Guitar Pro's per-track notation and tab switches).
@@ -138,6 +149,15 @@ mod tests {
         assert_eq!(red.parts(), (0xFF, 0, 0));
         assert_eq!(TrackColor::from_gp(-1).rgb(), 0xFFFFFF);
         assert_eq!(TrackColor::from_gp(0x123456).parts(), (0x12, 0x34, 0x56));
+    }
+
+    #[test]
+    fn colors_assemble_from_their_parts() {
+        assert_eq!(TrackColor::from_parts(0x12, 0x34, 0x56).rgb(), 0x123456);
+        assert_eq!(
+            TrackColor::from_parts(0xFF, 0xFF, 0xFF).parts(),
+            (0xFF, 0xFF, 0xFF)
+        );
     }
 
     #[test]

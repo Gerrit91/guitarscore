@@ -3,7 +3,7 @@
 //! the section marker with a preview, and the alternative endings.
 
 use egui::{RichText, vec2};
-use gscore_model::{MAX_SECTION_TITLE_CHARS, MAX_TEMPO};
+use gscore_model::{MAX_SECTION_TITLE_CHARS, MAX_TEMPO, TrackColor};
 
 use super::circle_of_fifths;
 use super::edit_staff::StaffState;
@@ -11,6 +11,7 @@ use super::edit_staff_dialogs::hint;
 use super::metronome;
 use super::staff_widgets::stepper;
 use super::style;
+use super::swatches;
 use super::tile_faces::music_glyph;
 
 /// The tempo: the metronome, the value as "♩ = 120", its name, presets and tap tempo.
@@ -232,19 +233,33 @@ pub(super) fn key(ui: &mut egui::Ui, state: &mut StaffState) {
 
 /// The section marker: its title, color and a preview of the framed mark.
 pub(super) fn section(ui: &mut egui::Ui, state: &mut StaffState) {
+    ui.label(RichText::new("Title").color(style::tokens(ui).text_weak));
+    let response = ui.add(
+        egui::TextEdit::singleline(&mut state.section_title)
+            .hint_text("Section title")
+            .desired_width(f32::INFINITY),
+    );
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label("Section title");
+    });
+    ui.add_space(6.0);
+    ui.label(RichText::new("Color").color(style::tokens(ui).text_weak));
+    if let Some(color) = swatches::presets(ui, state.section_color) {
+        state.section_color = color;
+    }
+    // Any other color, like the track panel's.
+    let (red, green, blue) = state.section_color.parts();
+    let mut rgb = [red, green, blue];
     ui.horizontal(|ui| {
-        let response = ui.color_edit_button_srgb(&mut state.section_color);
+        ui.label("Custom");
+        let response = ui.color_edit_button_srgb(&mut rgb);
         ui.ctx().accesskit_node_builder(response.id, |node| {
             node.set_label("Section color");
         });
-        let response = ui.add(
-            egui::TextEdit::singleline(&mut state.section_title)
-                .hint_text("Section title")
-                .desired_width(220.0),
-        );
-        ui.ctx().accesskit_node_builder(response.id, |node| {
-            node.set_label("Section title");
-        });
+        if response.changed() {
+            let [red, green, blue] = rgb;
+            state.section_color = TrackColor::from_parts(red, green, blue);
+        }
     });
     if state.section_title.chars().count() > MAX_SECTION_TITLE_CHARS {
         state.error = Some(format!(
@@ -254,7 +269,7 @@ pub(super) fn section(ui: &mut egui::Ui, state: &mut StaffState) {
     let title = state.section_title.trim();
     if !title.is_empty() {
         ui.add_space(8.0);
-        let [red, green, blue] = state.section_color;
+        let (red, green, blue) = state.section_color.parts();
         let color = egui::Color32::from_rgb(red, green, blue);
         egui::Frame::new()
             .stroke(egui::Stroke::new(1.5, color))

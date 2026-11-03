@@ -90,11 +90,17 @@ pub struct Marker {
     pub color: i32,
 }
 
+impl Marker {
+    /// The color a marker gets when the file has none: GP6/GP7 store no marker color. A
+    /// light grey stays calm on the app's dark song grid, unlike Guitar Pro's red.
+    pub const DEFAULT_COLOR: i32 = 0x00_B0_B0_B0;
+}
+
 impl Default for Marker {
     fn default() -> Self {
         Marker {
             title: "Section".to_owned(),
-            color: 0xff0000,
+            color: Self::DEFAULT_COLOR,
         }
     }
 }

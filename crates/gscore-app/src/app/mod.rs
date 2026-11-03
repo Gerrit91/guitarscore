@@ -34,6 +34,7 @@ mod shortcuts;
 mod staff_pickers;
 mod staff_widgets;
 mod style;
+mod swatches;
 mod tab;
 mod tab_bar;
 mod tile_faces;

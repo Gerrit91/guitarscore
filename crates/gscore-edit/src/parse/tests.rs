@@ -306,7 +306,7 @@ fn parses_every_command_and_fills_defaults() {
             Command::SetSection {
                 measure: MeasureIndex::new(2),
                 title: "Intro".to_owned(),
-                color: gscore_model::TrackColor::DEFAULT,
+                color: gscore_model::Section::DEFAULT_COLOR,
             },
         ),
         (

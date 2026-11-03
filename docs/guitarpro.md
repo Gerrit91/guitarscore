@@ -211,4 +211,17 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     a song-wide eighth-note swing (which was also written for a sixteenth feel); other
     feels save as straight and the save check reports it. Test
     `feels_round_trip_through_gpif`.
+34. Section titles (`src/io/gpif_import/mod.rs`, 2026-11-03): Guitar Pro writes a section's
+    text as a CDATA block on its own lines (`<Text>\n<![CDATA[Chorus]]>\n</Text>`). The
+    reader kept those newlines, so every marker title read from a GP6/GP7 file began and
+    ended with a line break: the score drew the text below its frame (the first line of the
+    galley is empty) and the section dialog showed the line breaks as boxes. Titles are now
+    trimmed, an empty text falls back to the section letter, and only a marker with neither
+    keeps the `Section` placeholder. Tests in `section_tests`.
+35. Default section color (`src/model/headers.rs`, `src/io/gpif_import/mod.rs`,
+    2026-11-03): GP6/GP7 files store no marker color, so the reader gave every section
+    Guitar Pro's aggressive red (`0xFF0000`). It is now `Marker::DEFAULT_COLOR`, a light
+    grey (`0xB0B0B0`) that the editor also offers as "Light grey" in its color palette;
+    GP3-5 files keep the color stored in them. `gscore-model`'s `Section::DEFAULT_COLOR`
+    uses the same value.
 
