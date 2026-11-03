@@ -134,6 +134,8 @@ pub(crate) struct Tasks {
     running: usize,
     /// The open that is running, for its progress bar.
     open: Option<OpenProgress>,
+    /// The path of the file being opened, if one is (so it is not opened twice).
+    open_path: Option<PathBuf>,
     /// The user cancelled the running open; its result is dropped.
     open_cancelled: bool,
 }
@@ -146,6 +148,7 @@ impl Default for Tasks {
             receiver,
             running: 0,
             open: None,
+            open_path: None,
             open_cancelled: false,
         }
     }
@@ -171,6 +174,7 @@ impl Tasks {
     ) -> Result<(), String> {
         let progress = OpenProgress::default();
         self.open = Some(progress.clone());
+        self.open_path = Some(path.clone());
         self.open_cancelled = false;
         let spawned = self.spawn("open", ctx, move || {
             let shared = progress.clone();
@@ -191,6 +195,7 @@ impl Tasks {
         });
         if spawned.is_err() {
             self.open = None;
+            self.open_path = None;
         }
         spawned
     }
@@ -198,6 +203,11 @@ impl Tasks {
     /// The open that is running, for its progress bar.
     pub(crate) fn open_progress(&self) -> Option<&OpenProgress> {
         self.open.as_ref()
+    }
+
+    /// The path of the file being opened, if one is.
+    pub(crate) fn opening_path(&self) -> Option<&std::path::Path> {
+        self.open_path.as_deref()
     }
 
     /// Cancels the running open: its result will be dropped when it finishes.
@@ -402,6 +412,7 @@ impl Tasks {
             .any(|event| matches!(event, Event::Opened { .. }));
         if opened {
             self.open = None;
+            self.open_path = None;
             if self.open_cancelled {
                 self.open_cancelled = false;
                 events.retain(|event| !matches!(event, Event::Opened { .. }));

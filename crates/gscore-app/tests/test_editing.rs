@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use egui::{Event, Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use gscore_app::GuitarScoreApp;
+use gscore_app::{GuitarScoreApp, MeasureSelection};
 use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, StringNumber, TrackIndex, VoiceIndex};
 
 fn testdata(relative: &str) -> PathBuf {
@@ -180,38 +180,30 @@ fn a_note_that_cannot_be_heard_does_not_interrupt_editing() {
 }
 
 #[test]
-fn opening_another_file_with_unsaved_changes_asks_first() {
-    let (dir, file) = scratch_copy("note_lengths.gp", "unsaved");
+fn opening_another_file_opens_it_in_a_new_tab() {
+    let (dir, file) = scratch_copy("note_lengths.gp", "tabs");
     let mut harness = app_with(&file);
+    assert_eq!(harness.state().tab_count(), 1);
     type_char(&mut harness, "3", Modifiers::NONE);
+
+    // Opening another file does not ask about unsaved changes: it opens in a new tab and
+    // leaves the first one (with its unsaved edit) untouched.
     let ctx = harness.ctx.clone();
     harness
         .state_mut()
         .open(testdata("basic/steel_guitar_dadgad.gp"), &ctx);
-    harness.run();
-    assert!(harness.state().has_dialog());
-    harness.get_by_label("Close Unsaved changes");
-    // Keys do not edit while the question is open.
-    type_char(&mut harness, "5", Modifiers::NONE);
-    assert_eq!(fret_at_cursor(harness.state(), 1), Some(3));
-
-    harness.get_by_label("Cancel").click();
-    harness.run();
-    assert!(!harness.state().has_dialog());
-    assert_eq!(
-        harness.state().document().unwrap().display_title(),
-        "Note Lengths"
-    );
-
-    harness
-        .state_mut()
-        .open(testdata("basic/steel_guitar_dadgad.gp"), &ctx);
-    harness.run();
-    harness.get_by_label("Discard changes").click();
     settle(&mut harness);
+    assert!(!harness.state().has_dialog());
+    assert_eq!(harness.state().tab_count(), 2);
     assert_eq!(
         harness.state().document().unwrap().display_title(),
         "Steel Guitar DADGAD"
+    );
+    // The first tab still holds its unsaved change.
+    assert!(harness.state().tab_document(0).unwrap().is_dirty());
+    assert_eq!(
+        harness.state().tab_document(0).unwrap().display_title(),
+        "Note Lengths"
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
@@ -235,7 +227,9 @@ fn the_edit_menu_undoes_and_shows_the_keys() {
 fn shift_arrows_select_beats_and_end_a_grid_selection() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
     // A measure selected in the grid first.
-    harness.state_mut().view_mut().select_measure(0, false);
+    harness
+        .state_mut()
+        .set_selection(Some(MeasureSelection::new(0)));
     harness
         .state_mut()
         .document_mut()
@@ -264,7 +258,7 @@ fn shift_arrows_select_beats_and_end_a_grid_selection() {
         "the cursor's beat and two more"
     );
     assert!(
-        harness.state().view().selection.is_none(),
+        harness.state().selection().is_none(),
         "the grid no longer shows a measure selection"
     );
 
@@ -779,10 +773,10 @@ fn the_score_and_the_menu_bar_edit_bars_and_tracks() {
 
     menu(&mut harness, &["Track", "Duplicate track"]);
     assert_eq!(counts(&harness), (measures, tracks + 1), "a track is added");
-    assert_eq!(harness.state().view().track, 1, "the copy is shown");
+    assert_eq!(harness.state().shown_track(), 1, "the copy is shown");
     menu(&mut harness, &["Track", "Move up"]);
     assert_eq!(
-        harness.state().view().track,
+        harness.state().shown_track(),
         0,
         "the moved track stays shown"
     );

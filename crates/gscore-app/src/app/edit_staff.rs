@@ -111,11 +111,6 @@ impl StaffState {
         self.open.is_some()
     }
 
-    /// Closes the open dialog without a change.
-    pub(super) fn close(&mut self) {
-        self.open = None;
-    }
-
     /// Takes the drafts from `snapshot` and opens `dialog` on the cursor's bar.
     fn open_dialog(&mut self, dialog: Dialog, snapshot: &PaletteSnapshot) {
         self.open = Some(Target {

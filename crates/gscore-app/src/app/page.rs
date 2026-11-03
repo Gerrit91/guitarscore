@@ -1,7 +1,9 @@
 //! The page view: the laid-out track, the edit cursor over it, scrolling to the cursor when
 //! it moves, and clicks that move the cursor.
 
-use egui::{Rect, ScrollArea, Sense, Vec2};
+use std::path::PathBuf;
+
+use egui::{Align, Layout, Rect, RichText, ScrollArea, Sense, Vec2};
 use gscore_edit::{BeatSpot, Cursor, Selection};
 use gscore_layout::{Places, Point};
 use gscore_model::{MeasureIndex, Song, TrackIndex};
@@ -30,7 +32,7 @@ fn cursor_scroll(
     visible: Rect,
     playing: bool,
     headroom: f32,
-) -> Option<(Rect, Option<egui::Align>)> {
+) -> Option<(Rect, Option<Align>)> {
     if !playing {
         return Some((column, None));
     }
@@ -41,12 +43,16 @@ fn cursor_scroll(
         egui::pos2(column.left(), column.top() - headroom),
         column.max,
     );
-    Some((line, Some(egui::Align::TOP)))
+    Some((line, Some(Align::TOP)))
 }
 
 impl GuitarScoreApp {
     /// The page, scrollable, centered horizontally.
     pub(super) fn page_view(&mut self, ui: &mut egui::Ui) {
+        if self.tabs.get(self.active).is_none() {
+            self.empty_workspace(ui);
+            return;
+        }
         let fonts = match &self.fonts {
             Ok(fonts) => fonts,
             Err(error) => {
@@ -54,20 +60,12 @@ impl GuitarScoreApp {
                 return;
             }
         };
-        let Some(document) = &mut self.document else {
-            ui.centered_and_justified(|ui| {
-                ui.label(if self.tasks.busy() {
-                    "Opening…"
-                } else {
-                    "Open a Guitar Pro file with File › Open…"
-                });
-            });
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let document = &mut tab.document;
         // The track picker changes the view; the cursor follows it.
-        document
-            .editor_mut()
-            .set_track(TrackIndex::new(self.view.track));
+        document.editor_mut().set_track(TrackIndex::new(tab.track));
         // The song's page setup shapes both views, so lines break the same in each.
         let options = self
             .options
@@ -78,10 +76,10 @@ impl GuitarScoreApp {
         } else {
             options
         };
-        let layout = match document.layout(self.view.track, &options, fonts) {
+        let layout = match document.layout(tab.track, &options, fonts) {
             Ok(layout) => layout,
             Err(error) => {
-                self.page_info = None;
+                tab.page_info = None;
                 ui.label(error);
                 return;
             }
@@ -89,7 +87,7 @@ impl GuitarScoreApp {
         let cursor = document.editor().cursor();
         let revision = document.editor().revision();
         // The cursor's page, for the status bar.
-        self.page_info = self.view.page_view.then(|| {
+        tab.page_info = self.view.page_view.then(|| {
             let y = layout
                 .places
                 .column_rect(cursor.measure, cursor.voice, cursor.beat)
@@ -121,9 +119,9 @@ impl GuitarScoreApp {
             document.editor().selection(),
             Some(Selection::Measures { .. })
         ) {
-            self.view.selection = None;
+            tab.selection = None;
         }
-        let scroll_to_cursor = self.shown_cursor != Some((cursor, revision));
+        let scroll_to_cursor = tab.shown_cursor != Some((cursor, revision));
         let page_view = self.view.page_view;
         ScrollArea::both().auto_shrink(false).show(ui, |ui| {
             let available = ui.available_width();
@@ -227,7 +225,7 @@ impl GuitarScoreApp {
                 });
                 if !selected {
                     document.editor_mut().set_selection(None);
-                    self.view.selection = None;
+                    tab.selection = None;
                     document.editor_mut().set_cursor(target);
                 }
             }
@@ -248,11 +246,11 @@ impl GuitarScoreApp {
                     string: hit.string,
                     ..cursor
                 };
-                self.drag_anchor = Some(anchor);
+                tab.drag_anchor = Some(anchor);
                 drag_to = Some(anchor);
             }
             if response.dragged()
-                && let Some(anchor) = self.drag_anchor
+                && let Some(anchor) = tab.drag_anchor
                 && let Some(pos) = response.interact_pointer_pos()
                 && let Some(hit) = layout.places.hit_in_voice(to_layout(pos), anchor.voice)
             {
@@ -263,7 +261,7 @@ impl GuitarScoreApp {
                     ..anchor
                 });
             }
-            if let (Some(anchor), Some(focus)) = (self.drag_anchor, drag_to) {
+            if let (Some(anchor), Some(focus)) = (tab.drag_anchor, drag_to) {
                 document.editor_mut().set_selection(Some(Selection::Beats {
                     track: anchor.track,
                     voice: anchor.voice,
@@ -273,19 +271,19 @@ impl GuitarScoreApp {
                 document.editor_mut().set_cursor(focus);
             }
             if response.drag_stopped() {
-                self.drag_anchor = None;
+                tab.drag_anchor = None;
             }
             if response.clicked() {
-                self.drag_anchor = None;
+                tab.drag_anchor = None;
                 // A click clears a selection and moves the cursor.
                 document.editor_mut().set_selection(None);
-                self.view.selection = None;
+                tab.selection = None;
                 if let Some(pos) = response.interact_pointer_pos() {
                     clicked = Some(to_layout(pos));
                 }
             }
         });
-        self.shown_cursor = Some((cursor, revision));
+        tab.shown_cursor = Some((cursor, revision));
         if let Some(point) = clicked
             && let Some(hit) = layout.places.hit(point)
         {
@@ -304,6 +302,72 @@ impl GuitarScoreApp {
         }
         let ctx = ui.ctx().clone();
         self.run_menu_choices(choices, &ctx);
+    }
+
+    /// What the page shows with no song open: how to open one, and the most recently edited
+    /// files as links.
+    fn empty_workspace(&mut self, ui: &mut egui::Ui) {
+        if self.tasks.busy() {
+            ui.centered_and_justified(|ui| {
+                ui.add(egui::Spinner::new().size(18.0));
+                ui.label("Opening…");
+            });
+            return;
+        }
+        let mut open: Option<PathBuf> = None;
+        let recent = &self.settings.recent_files;
+        ui.vertical_centered(|ui| {
+            ui.add_space((ui.available_height() * 0.18).max(16.0));
+            ui.heading("Open a song");
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new("File › Open… opens a Guitar Pro file; you can also drop one here.")
+                    .weak(),
+            );
+            if recent.is_empty() {
+                return;
+            }
+            ui.add_space(22.0);
+            ui.label(RichText::new("Recent files").strong());
+            ui.add_space(6.0);
+            let width = ui.available_width().min(480.0);
+            ui.allocate_ui_with_layout(
+                egui::vec2(width, 0.0),
+                Layout::top_down(Align::Min),
+                |ui| {
+                    for path in recent.iter().take(8) {
+                        let name = path.file_name().map_or_else(
+                            || path.display().to_string(),
+                            |n| n.to_string_lossy().into_owned(),
+                        );
+                        let folder = path
+                            .parent()
+                            .and_then(|parent| parent.file_name())
+                            .map(|name| name.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        ui.horizontal(|ui| {
+                            if ui
+                                .link(name)
+                                .on_hover_text(path.display().to_string())
+                                .clicked()
+                            {
+                                open = Some(path.clone());
+                            }
+                            if !folder.is_empty() {
+                                ui.add(
+                                    egui::Label::new(RichText::new(folder).weak().small())
+                                        .truncate(),
+                                );
+                            }
+                        });
+                    }
+                },
+            );
+        });
+        if let Some(path) = open {
+            let ctx = ui.ctx().clone();
+            self.open(path, &ctx);
+        }
     }
 }
 

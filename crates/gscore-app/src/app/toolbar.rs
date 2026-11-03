@@ -52,9 +52,6 @@ impl GuitarScoreApp {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 self.file_and_edit(ui);
                 self.panel_toggles(ui);
-                if self.tasks.busy() {
-                    ui.spinner();
-                }
             },
         );
         let left_end = left.response.rect.right();
@@ -119,7 +116,7 @@ impl GuitarScoreApp {
                 self.request(Request::Save, ui.ctx());
             }
         });
-        let (can_undo, can_redo) = self.document.as_ref().map_or((false, false), |d| {
+        let (can_undo, can_redo) = self.document().map_or((false, false), |d| {
             (d.editor().can_undo(), d.editor().can_redo())
         });
         style::toolbar_group(ui, |ui| {
@@ -196,10 +193,14 @@ impl GuitarScoreApp {
     /// there. Returns the width it took, for centering it next frame.
     fn transport(&mut self, ui: &mut egui::Ui) -> f32 {
         let playing = self.playback.state() == gscore_play::PlayState::Playing;
-        let has_song = self.document.is_some();
+        let has_song = self.document().is_some();
         let (metronome, count_in) = (self.playback.metronome(), self.playback.count_in());
         let looping = self.playback.loop_selection();
-        let can_loop = has_song && self.view.selection.is_some();
+        let can_loop = has_song
+            && self
+                .tabs
+                .get(self.active)
+                .is_some_and(|tab| tab.selection.is_some());
         let (mut toggle_metronome, mut toggle_count_in, mut toggle_loop) = (false, false, false);
         let (mut to_start, mut previous, mut next, mut to_end) = (false, false, false, false);
         let start = ui.cursor().left();
@@ -354,11 +355,12 @@ impl GuitarScoreApp {
     /// The time (or the selection's time), the measure being played (or the cursor's), how
     /// full it is and its tempo.
     fn position_readout(&mut self, ui: &mut egui::Ui) {
-        let Some(document) = &mut self.document else {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let document = &mut tab.document;
         let timeline = document.timeline();
-        let selection = self.view.selection;
+        let selection = tab.selection;
         let state = self.playback.state();
         let song = document.song();
         let cursor = document.editor().cursor();

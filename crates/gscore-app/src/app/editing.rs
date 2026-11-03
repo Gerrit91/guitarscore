@@ -53,12 +53,13 @@ impl GuitarScoreApp {
     /// text field, menu or dialog has the keyboard; a key that runs an action is taken out
     /// of the input, so no widget handles it as well.
     pub(super) fn handle_keys(&mut self, ctx: &egui::Context) {
-        if self.document.is_none()
+        let tab = self.tabs.get(self.active);
+        if tab.is_none()
             || self.dialog.is_some()
             || self.settings_window.is_some()
             || self.shortcuts.is_some()
-            || self.new_track.is_some()
-            || self.edit_palette.staff.is_open()
+            || tab.is_some_and(|tab| tab.new_track.is_some())
+            || tab.is_some_and(|tab| tab.edit_palette.staff.is_open())
             || ctx.egui_wants_keyboard_input()
             || egui::Popup::is_any_open(ctx)
         {
@@ -120,9 +121,10 @@ impl GuitarScoreApp {
                 _ => {}
             }
         }
-        let Some(document) = &mut self.document else {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let document = &mut tab.document;
         // egui's input time, in milliseconds since the app started: enough to tell
         // whether a second fret digit follows quickly.
         let now_ms = ctx.input(|i| (i.time.max(0.0) * 1000.0) as u64);
@@ -190,9 +192,10 @@ impl GuitarScoreApp {
         let Some(at) = commands.iter().find_map(preview_target) else {
             return;
         };
-        let Some(document) = &self.document else {
+        let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
+        let document = &tab.document;
         let mut draft = document.song().clone();
         for command in commands {
             if let Err(error) = command.apply(&mut draft) {
@@ -215,9 +218,10 @@ impl GuitarScoreApp {
         if !self.settings.audition_notes {
             return;
         }
-        let Some(document) = &self.document else {
+        let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
+        let document = &tab.document;
         if let Err(error) = self.playback.preview_beat(document.song(), at) {
             self.notice = Some(error);
         }
@@ -234,9 +238,10 @@ impl GuitarScoreApp {
         if !self.settings.audition_notes {
             return;
         }
-        let Some(document) = &self.document else {
+        let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
+        let document = &tab.document;
         match self.playback.audition(document.song(), at, string) {
             // The note-off is sent from the frame loop.
             Ok(()) => ctx.request_repaint_after(std::time::Duration::from_millis(50)),
@@ -247,20 +252,21 @@ impl GuitarScoreApp {
     /// Applies what an edit changed after it was executed: the cursor stays inside the
     /// song, stale per-track layouts go, and playback is updated for the kind of change.
     fn after_edit(&mut self, effect: EditEffect, layout_changed: bool) {
-        let Some(document) = &mut self.document else {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let document = &mut tab.document;
         if layout_changed || matches!(effect, EditEffect::Tracks) {
             document.forget_layouts();
         }
         let tracks = document.song().track_count();
-        if self.view.track >= tracks {
-            self.view.track = tracks.saturating_sub(1);
+        if tab.track >= tracks {
+            tab.track = tracks.saturating_sub(1);
         }
-        if let Some(selection) = self.view.selection
+        if let Some(selection) = tab.selection
             && selection.start() >= document.song().measure_count()
         {
-            self.view.selection = None;
+            tab.selection = None;
         }
         let updated = match effect {
             // Volume, pan and program go straight to the player, so sounding notes are not
@@ -287,30 +293,31 @@ impl GuitarScoreApp {
     /// Gives every history entry the time it was first seen (when its command was applied)
     /// and forgets entries that are no longer in the undo or redo list.
     pub(super) fn sync_history_stamps(&mut self) {
-        let Some(document) = &self.document else {
-            self.history_stamps.clear();
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
         let now = SystemTime::now();
         let mut live = std::collections::HashSet::new();
-        for id in document
+        for id in tab
+            .document
             .editor()
             .undo_ids()
-            .chain(document.editor().redo_ids())
+            .chain(tab.document.editor().redo_ids())
         {
             live.insert(id);
-            self.history_stamps.entry(id).or_insert(now);
+            tab.history_stamps.entry(id).or_insert(now);
         }
-        self.history_stamps.retain(|id, _| live.contains(id));
+        tab.history_stamps.retain(|id, _| live.contains(id));
     }
 
     /// Applies `command` (from a panel or menu). `merge` continues the previous undo entry
     /// (one slider drag). Mixer changes take effect in playback at once; other edits stop
     /// playback and invalidate the layouts.
     pub(crate) fn apply_command(&mut self, command: Command, merge: bool) {
-        let Some(document) = &mut self.document else {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let document = &mut tab.document;
         let effect = EditEffect::of(&command);
         let layout_changed = command.changes_layout();
         let result = document.editor_mut().execute_command_merged(command, merge);
@@ -330,9 +337,10 @@ impl GuitarScoreApp {
         let Some(sequence) = self.playback.sequence().cloned() else {
             return;
         };
-        let Some(document) = &mut self.document else {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let document = &mut tab.document;
         let cursor = document.editor().cursor();
         let tick = self.playback.position();
         let Some(at) = sequence.beat_at(document.song(), cursor.position(), tick) else {
@@ -361,9 +369,10 @@ impl GuitarScoreApp {
         if !self.playback.count_in_pending() {
             return;
         }
-        let Some(document) = &self.document else {
+        let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
+        let document = &tab.document;
         if let Err(error) = self.playback.poll_count_in(document.song()) {
             self.notice = Some(error);
         }
@@ -374,10 +383,11 @@ impl GuitarScoreApp {
         if !self.playback.loop_selection() {
             return;
         }
-        let Some(document) = &mut self.document else {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
-        let Some(selection) = self.view.selection else {
+        let document = &mut tab.document;
+        let Some(selection) = tab.selection else {
             // Nothing is selected any more: looping has no range.
             self.playback.set_loop_selection(false);
             return;
@@ -401,16 +411,17 @@ impl GuitarScoreApp {
                 self.notice = Some(error);
             }
         }
-        let Some(document) = &mut self.document else {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let document = &mut tab.document;
         let measure_count = document.song().measure_count();
         if measure_count == 0 {
             return;
         }
         let timeline = document.timeline();
         let loop_range = if self.playback.loop_selection() {
-            self.view.selection.and_then(|selection| {
+            tab.selection.and_then(|selection| {
                 timeline
                     .as_deref()
                     .and_then(|timeline| timeline.measure_range(selection.start(), selection.end()))
@@ -456,7 +467,7 @@ impl GuitarScoreApp {
 
     /// Moves to the previous bar (and seeks there while playing or paused).
     pub fn previous_bar(&mut self) {
-        let Some(document) = &self.document else {
+        let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
             return;
         };
         let measure = document.editor().cursor().measure.get().saturating_sub(1);
@@ -465,7 +476,7 @@ impl GuitarScoreApp {
 
     /// Moves to the next bar (and seeks there while playing or paused).
     pub fn next_bar(&mut self) {
-        let Some(document) = &self.document else {
+        let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
             return;
         };
         let measure = document.editor().cursor().measure.get().saturating_add(1);
@@ -479,7 +490,7 @@ impl GuitarScoreApp {
 
     /// Moves to the end of the score (and seeks there while playing or paused).
     pub fn go_to_end(&mut self) {
-        let Some(document) = &self.document else {
+        let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
             return;
         };
         let last = document.song().measure_count().saturating_sub(1);
@@ -493,7 +504,7 @@ impl GuitarScoreApp {
 
     /// Turns the metronome on or off (heard at once while playing).
     pub fn set_metronome(&mut self, enabled: bool) {
-        let Some(document) = &self.document else {
+        let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
             return;
         };
         if let Err(error) = self.playback.set_metronome(document.song(), enabled) {
@@ -503,7 +514,7 @@ impl GuitarScoreApp {
 
     /// Turns the one-bar count-in on or off.
     pub fn set_count_in(&mut self, enabled: bool) {
-        let Some(document) = &self.document else {
+        let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
             return;
         };
         if let Err(error) = self.playback.set_count_in(document.song(), enabled) {
@@ -533,7 +544,7 @@ impl GuitarScoreApp {
         } else {
             self.selection_start()
         };
-        let Some(document) = &self.document else {
+        let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
             return;
         };
         let from = started.unwrap_or_else(|| document.editor().cursor().position());

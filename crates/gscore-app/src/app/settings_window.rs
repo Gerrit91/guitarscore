@@ -126,12 +126,10 @@ impl GuitarScoreApp {
     /// Opens the settings window (or focuses it), reading the song's current fields.
     pub(super) fn open_settings_window(&mut self) {
         let info = self
-            .document
-            .as_ref()
+            .document()
             .map_or_else(SongInfo::default, |document| document.song().info());
         let page = self
-            .document
-            .as_ref()
+            .document()
             .map_or_else(gscore_model::PageSetup::default, |document| {
                 document.song().page_setup()
             });
@@ -143,7 +141,7 @@ impl GuitarScoreApp {
         let Some(mut window) = self.settings_window.take() else {
             return;
         };
-        if let Some(document) = &self.document {
+        if let Some(document) = self.document() {
             let current = document.song().info();
             if current != window.base {
                 if window.draft == window.base {
@@ -160,14 +158,14 @@ impl GuitarScoreApp {
             .pos
             .unwrap_or_else(|| style::centered_window_pos(ctx, SETTINGS_SIZE));
         // The preview is laid out only on the Page layout tab, and only for a valid draft.
-        let preview = match (&self.document, &self.fonts) {
+        let preview = match (self.document(), &self.fonts) {
             (Some(document), Ok(fonts))
                 if window.tab == SettingsTab::Page && window.page.draft.check().is_ok() =>
             {
                 window.preview.layout(
                     document.song(),
                     document.editor().revision(),
-                    self.view.track,
+                    self.shown_track(),
                     window.page.draft,
                     &self.options,
                     fonts,
@@ -209,7 +207,7 @@ impl GuitarScoreApp {
                                 song_tab(ui, &mut window, &mut apply, &mut close);
                             }
                             SettingsTab::Page => {
-                                let has_song = self.document.is_some();
+                                let has_song = self.document().is_some();
                                 page_tab(
                                     ui,
                                     &mut window.page,
@@ -230,8 +228,7 @@ impl GuitarScoreApp {
             return;
         }
         let page_command = self
-            .document
-            .as_ref()
+            .document()
             .and_then(|document| window.page.command(document.song().page_setup()));
         self.settings_window = Some(window);
         if apply {
@@ -247,7 +244,7 @@ impl GuitarScoreApp {
         let Some(window) = &self.settings_window else {
             return;
         };
-        let Some(document) = &self.document else {
+        let Some(document) = self.document() else {
             return;
         };
         let current = document.song().info();
@@ -270,15 +267,16 @@ impl GuitarScoreApp {
             return;
         }
         // One Apply is one undo step, even when several fields changed.
-        if let Some(document) = &mut self.document {
+        if let Some(document) = self.document_mut() {
             document.editor_mut().break_merge();
         }
         for (index, command) in commands.into_iter().enumerate() {
             self.apply_command(command, index != 0);
         }
         // The draft is now what the song says (unless a command failed).
-        if let (Some(window), Some(document)) = (&mut self.settings_window, &self.document) {
-            window.base = document.song().info();
+        let info = self.document().map(|document| document.song().info());
+        if let (Some(window), Some(info)) = (&mut self.settings_window, info) {
+            window.base = info;
         }
     }
 
@@ -460,12 +458,9 @@ impl GuitarScoreApp {
         ui.heading("Startup");
         ui.checkbox(
             &mut self.settings.reopen_last_file,
-            "Reopen the last file at startup",
+            "Reopen the tabs from last time at startup",
         );
-        ui.label(
-            RichText::new("If the file is no longer there, GuitarScore starts without a song.")
-                .weak(),
-        );
+        ui.label(RichText::new("Files that are no longer there are skipped.").weak());
 
         ui.separator();
         ui.heading("Autosave");

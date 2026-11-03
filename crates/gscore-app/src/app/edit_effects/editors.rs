@@ -48,13 +48,6 @@ impl EffectsState {
         self.bend.is_some() || self.whammy.is_some() || self.harmonic.is_some()
     }
 
-    /// Closes the bend and whammy editors without a change.
-    pub(in crate::app) fn close_editors(&mut self) {
-        self.bend = None;
-        self.whammy = None;
-        self.harmonic = None;
-    }
-
     /// Shows the open bend or whammy editor; OK and Remove turn into commands for the
     /// selected notes or beats.
     pub(in crate::app) fn show_editors(
