@@ -72,5 +72,6 @@ pub use position::{
 pub use song::Song;
 pub use style::{KeySignature, Section, TrackColor, TrackStaves};
 pub use views::{
-    BeatKind, BeatView, MeasureView, NoteKind, NoteView, StringTuning, TrackView, VoiceView,
+    BeatKind, BeatView, GraceNote, MeasureView, NoteKind, NoteView, StringTuning, TrackView,
+    VoiceView,
 };

@@ -11,7 +11,9 @@
 mod lines;
 mod notes;
 
-pub(crate) use lines::{draw_legato_run, draw_link, draw_tie, draw_under_staff_run, draw_whammy};
+pub(crate) use lines::{
+    draw_legato_run, draw_link, draw_tie, draw_tie_fragment, draw_under_staff_run, draw_whammy,
+};
 pub(crate) use notes::draw_vibrato;
 
 use gscore_model::{AccentKind, Bend, Harmonic, HarmonicKind, SlideKind, Vibrato, WhammyShape};

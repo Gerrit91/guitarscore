@@ -1,15 +1,12 @@
 //! Beams and ties: what joins the notes of a measure.
 
-use super::draw::{BeamPlan, Stem, chord_at, y_of};
+use super::draw::{BeamPlan, Stem, chord_at, draw_tie_curve, y_of};
 use super::{Chord, NotationItem};
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, Rect, TextAnchor, TextFont};
 
 /// Length of a partial beam (a 16th next to an 8th, ...).
 const STUB_LENGTH: f32 = 1.1;
-/// Tie curves: distance from the notehead and height of the arch.
-const TIE_OFFSET: f32 = 0.6;
-const TIE_ARCH: f32 = 0.5;
 /// Size of a tuplet number.
 const TUPLET_SIZE: f32 = 1.3;
 
@@ -132,7 +129,6 @@ pub(super) fn draw_ties(
             && let Some(origin) = placed.get(j)
         {
             let up = stems.get(i).copied().flatten().is_none_or(|s| s.up);
-            let direction = if up { 1.0 } else { -1.0 };
             for head in chord.heads.iter().filter(|h| h.tied) {
                 if !before.heads.iter().any(|h| h.position == head.position) {
                     continue;
@@ -140,19 +136,8 @@ pub(super) fn draw_ties(
                 let width = font.advance(chord.head_glyph(head));
                 let from_x = origin.x + width / 2.0 + 0.1;
                 let to_x = p.x - width / 2.0 - 0.1;
-                if to_x <= from_x {
-                    continue;
-                }
-                let y = y_of(top, head.position) + direction * TIE_OFFSET;
-                let handle = (to_x - from_x) / 3.0;
-                ops.push(DrawOp::Curve {
-                    from: Point::new(from_x, y),
-                    to: Point::new(to_x, y),
-                    control1: Point::new(from_x + handle, y + direction * TIE_ARCH),
-                    control2: Point::new(to_x - handle, y + direction * TIE_ARCH),
-                    thickness: font.engraving().stem_thickness,
-                    color: ColorToken::Notation,
-                });
+                let y = y_of(top, head.position);
+                draw_tie_curve(from_x, y, to_x, y, up, font.engraving().stem_thickness, ops);
             }
         }
         previous = Some((i, chord));

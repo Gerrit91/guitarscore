@@ -57,7 +57,7 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    turns them into commands with undo/redo, and `gscore-cli edit` runs them from `-c` or a
    script; the app edits at a cursor (#10). Since M14 there is selection with copy/cut/
    paste, a left edit palette (durations, ties, rests, tempo, time/key signatures, sections
-   and the effect matrix) and model/command support for every effect except grace notes.
+   and the effect matrix) and model/command support for every effect except grace notes (they are read and drawn/played, but have no editing commands).
    Still missing: chord diagrams and lyrics, grace-note editing, and accessors for the
    data the model does not expose. Edits copy
    and check only the measure they touch (M10), and the app lays out only changed measures
@@ -94,10 +94,14 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    notes), ledger lines, sharps, flats and naturals per measure (notes the key signature
    alters are spelled with its sharps or flats and need no accidental; other pitch classes
    use sharps), stems, flags, beams per beat (partial beams included), dots, rests, ties
-   within a measure and tuplet numbers. Missing in notation: the second voice, ties across
-   barlines, tuplet groups spanning several beats (each beat's beam gets its own number),
-   grace notes, articulations and ornaments on the notation staff (they stay on the tab),
-   harmonic diamonds (harmonics are written at their sounding pitch). Since 2026-11-03
+   within a measure and across barlines (split into fragments at a line break) and tuplet
+   numbers. Up to four voices are written: with two or more the first points its stems up and
+   the rest down, and a notehead that would sit on the first voice's position moves right.
+   Missing in notation: tuplet groups spanning several beats (each beat's beam gets its own
+   number), articulations and ornaments on the notation staff (they stay on the
+   tab), harmonic diamonds (harmonics are written at their sounding pitch). Grace notes are
+   drawn as small slashed heads before their note (GP6/GP7 grace beats and GP3-5 attached
+   graces) and take no time. Since 2026-11-03
    section names, tempo changes, repeat signs (with "x3" counts), alternative endings and
    dynamics are drawn, and drum tracks get a percussion staff. Missing everywhere:
    D.C./D.S./coda and other directions, hairpins, lyrics, chord diagrams, multi-track
@@ -135,8 +139,9 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    only its highest point, so a bend that releases again plays as a bend up and hold, and a
    release bend starts bent and returns to center;
    slides are pitch bends (clamped to two octaves); an "out" slide moves a whole step; a
-   slide takes precedence over a bend on the same note. Not played yet: vibrato, let ring,
-   palm mute, grace notes, trills, whammy bar, fermatas, D.C./D.S./coda. Swing and dotted
+   slide takes precedence over a bend on the same note. Grace notes are short notes just
+   before their beat (at the beat when it starts the song) and take no time. Not played yet:
+   trills, whammy bar, fermatas, D.C./D.S./coda. Swing and dotted
    feel play as a per-measure time warp. Mute and solo are
    played (M13): a muted track is skipped, and while any track is soloed only soloed
    tracks play. Volume and pan changes go straight to the player as MIDI CC messages while

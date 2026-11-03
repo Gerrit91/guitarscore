@@ -131,8 +131,38 @@ pub(crate) struct BeamPlan<'m> {
 }
 
 /// The y of staff position `position` on a notation staff whose top line is at `top`.
-pub(super) fn y_of(top: f32, position: i32) -> f32 {
+pub(crate) fn y_of(top: f32, position: i32) -> f32 {
     top + 4.0 - position as f32 * 0.5
+}
+
+/// Tie curves: distance from the notehead and height of the arch.
+const TIE_OFFSET: f32 = 0.6;
+const TIE_ARCH: f32 = 0.5;
+
+/// Draws a tie between two noteheads, curving away from the stems (`up` for an up-stem).
+pub(crate) fn draw_tie_curve(
+    from_x: f32,
+    from_y: f32,
+    to_x: f32,
+    to_y: f32,
+    up: bool,
+    thickness: f32,
+    ops: &mut Vec<DrawOp>,
+) {
+    if to_x <= from_x {
+        return;
+    }
+    let direction = if up { 1.0 } else { -1.0 };
+    let handle = (to_x - from_x) / 3.0;
+    let y = |at: f32| at + direction * TIE_OFFSET;
+    ops.push(DrawOp::Curve {
+        from: Point::new(from_x, y(from_y)),
+        to: Point::new(to_x, y(to_y)),
+        control1: Point::new(from_x + handle, y(from_y) + direction * TIE_ARCH),
+        control2: Point::new(to_x - handle, y(to_y) + direction * TIE_ARCH),
+        thickness,
+        color: ColorToken::Notation,
+    });
 }
 
 /// Room from a system start to where a key signature starts: the clef and the gap after it.

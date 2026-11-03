@@ -1,12 +1,15 @@
 //! Standard notation on a five-line staff above the tab, as Guitar Pro shows it: the same
 //! columns as the tab, so a note and its fret number line up.
 //!
-//! This module turns a column's beats into a [`NotationItem`] (a chord or a rest) and
-//! decides accidentals per measure; [`draw`] paints a measure's items (noteheads, ledger
-//! lines, stems, flags, beams, dots, rests, ties, tuplet numbers). Only the first voice is
-//! written; grace notes, articulations and ornaments on the notation staff are not drawn
-//! yet (they live on the tab). Drum tracks get a percussion staff instead: each drum sound
-//! has its own place and notehead ([`drums`]) and stems point up.
+//! This module turns a column's beats into a [`NotationItem`] per voice (a chord or a rest)
+//! and decides accidentals per measure; [`draw`] paints a measure's items (noteheads, ledger
+//! lines, stems, flags, beams, dots, rests, ties, tuplet numbers). All voices are written:
+//! when two share the staff the first points its stems up and the others down, and a voice
+//! whose notehead would sit on the first voice's position moves right. Grace notes are small
+//! heads with a slash before their main note. Articulations and other ornaments on the
+//! notation staff are not drawn yet (they live on the tab). Drum tracks get a percussion
+//! staff instead: each drum sound has its own place and notehead ([`drums`]) and stems point
+//! up.
 
 mod beams;
 mod draw;
@@ -18,8 +21,8 @@ use std::collections::HashMap;
 use gscore_model::{BeatKind, BeatView, NoteKind, TrackView};
 
 pub(crate) use draw::{
-    BeamPlan, KeySigLayout, draw_measure, draw_staff_start, draw_tab_staff_start, key_start_width,
-    prefix_width, tab_prefix_width,
+    BeamPlan, KeySigLayout, draw_measure, draw_staff_start, draw_tab_staff_start, draw_tie_curve,
+    key_start_width, prefix_width, tab_prefix_width, y_of,
 };
 pub(crate) use pitch::{Alter, Clef};
 
@@ -154,18 +157,56 @@ impl Chord {
             .windows(2)
             .any(|pair| matches!(pair, [a, b] if b.position.abs_diff(a.position) == 1))
     }
+
+    /// The stem's direction: the fixed one, or the one the noteheads choose (a chord above
+    /// the middle line points down).
+    pub(crate) fn stem_up(&self) -> bool {
+        self.stem_up.unwrap_or_else(|| {
+            let (sum, count) = self
+                .heads
+                .iter()
+                .fold((0.0_f32, 0.0_f32), |(sum, count), head| {
+                    (sum + head.position as f32, count + 1.0)
+                });
+            let mean = if count > 0.0 {
+                sum / count
+            } else {
+                MIDDLE as f32
+            };
+            mean < MIDDLE as f32
+        })
+    }
 }
 
-/// The notation item of a column: the chord or rest of its first voice, if that voice has
-/// a beat starting here, in the given key. `beats` are `(voice, beat)` pairs.
-pub(crate) fn column_item(
+/// The notation items of a column: one per voice that has a beat starting here, in voice
+/// order. `beats` are `(voice, beat)` pairs.
+pub(crate) fn column_items(
     beats: &[(usize, BeatView<'_>)],
     notation: &Notation<'_>,
     key: i8,
+) -> Result<Vec<Option<NotationItem>>, LayoutError> {
+    let voices = beats
+        .iter()
+        .map(|(voice, _)| voice.saturating_add(1))
+        .max()
+        .unwrap_or(0);
+    let mut items: Vec<Option<NotationItem>> = vec![None; voices];
+    for &(voice, beat) in beats {
+        let item = beat_item(voice, beat, notation, key)?;
+        if let Some(slot) = items.get_mut(voice) {
+            *slot = item;
+        }
+    }
+    Ok(items)
+}
+
+/// The notation item of one voice's beat, if that voice has a beat starting here.
+fn beat_item(
+    voice: usize,
+    beat: BeatView<'_>,
+    notation: &Notation<'_>,
+    key: i8,
 ) -> Result<Option<NotationItem>, LayoutError> {
-    let Some(&(_, beat)) = beats.iter().find(|(voice, _)| *voice == 0) else {
-        return Ok(None);
-    };
     let value = beat.note_value()?;
     match beat.kind() {
         BeatKind::Rest => Ok(Glyph::rest(value.value()).map(|glyph| NotationItem::Rest {
@@ -226,7 +267,14 @@ pub(crate) fn column_item(
                 value: value.value(),
                 dots: value.dots(),
                 tuplet: value.tuplet().map(|(enters, _)| enters),
-                stem_up: (notation.clef == Clef::Percussion).then_some(true),
+                // A second (or further) voice points its stems down, as engravers do.
+                stem_up: if notation.clef == Clef::Percussion {
+                    Some(true)
+                } else if voice > 0 {
+                    Some(false)
+                } else {
+                    None
+                },
             })))
         }
     }

@@ -552,7 +552,7 @@ impl TabEditor {
         self.editor
             .song()
             .beat(self.cursor.position())
-            .filter(|beat| beat.kind() != BeatKind::Empty)
+            .filter(|beat| beat.kind() != BeatKind::Empty && !beat.is_grace())
             .and_then(|beat| beat.note_value().ok())
             .unwrap_or(self.entry_value)
     }
@@ -563,7 +563,7 @@ impl TabEditor {
         let Some(beat) = self.editor.song().beat(at) else {
             return Ok(Outcome::Nothing);
         };
-        if beat.kind() == BeatKind::Empty {
+        if beat.kind() == BeatKind::Empty || beat.is_grace() {
             return Ok(Outcome::Nothing);
         }
         let current = beat.note_value()?;

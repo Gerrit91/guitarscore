@@ -97,7 +97,7 @@ impl Selection {
             };
             for (index, beat) in view.beats().enumerate() {
                 let inside = index >= from && to.is_none_or(|to| index <= to);
-                if inside && beat.kind() != BeatKind::Empty {
+                if inside && beat.kind() != BeatKind::Empty && !beat.is_grace() {
                     positions.push(BeatPosition {
                         track,
                         measure,

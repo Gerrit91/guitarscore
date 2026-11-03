@@ -26,8 +26,7 @@ pub(super) fn build_beat_xml(
     let mut note_xmls: Vec<String> = Vec::new();
     let mut note_ids: Vec<i32> = Vec::new();
 
-    let is_grace_beat =
-        !beat.notes.is_empty() && beat.notes.iter().all(|n| n.effect.grace.is_some());
+    let is_grace_beat = beat.grace;
 
     // Build note XMLs
     if beat.status == BeatStatus::Normal {

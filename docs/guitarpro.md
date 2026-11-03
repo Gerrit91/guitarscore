@@ -225,3 +225,10 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     GP3-5 files keep the color stored in them. `gscore-model`'s `Section::DEFAULT_COLOR`
     uses the same value.
 
+36. Grace-note beats (`src/model/beat.rs`, `src/io/gpif_import/beats.rs`,
+    `src/io/gpif_export/beats.rs`, 2026-11-03): GP6/7 mark a whole beat as grace notes with
+    `<GraceNotes>BeforeBeat</GraceNotes>` or `OnBeat`. The reader kept the beat as an
+    ordinary one, so its (32nd/16th...) length made measures longer than their time
+    signature, and the writer guessed "all notes have a grace effect" to write the marker.
+    `Beat` now has a `grace` flag, set by the reader and used by the writer; the model,
+    layout and playback treat such a beat as taking no time.

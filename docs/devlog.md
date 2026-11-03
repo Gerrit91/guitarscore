@@ -2147,3 +2147,60 @@ lifeless):
   tab-only, drums) and `test_cache`. Rendered `Ballad.gp` (B minor, tab only) and
   `note_lengths.gp` with an E-flat key: the signature appears on each system, and a natural
   is written on the E that the key would flatten.
+
+## 2026-11-03 — Second voice in notation, ties across barlines
+
+- Notation now writes every voice, not only the first. A column holds one item per voice
+  (`Vec<Option<NotationItem>>`), all voices share the measure's accidental state, and each
+  voice is drawn with its own stems, beams and ties. With two or more voices the first
+  points its stems up and the rest down; a notehead of a lower voice that would sit exactly
+  on the first voice's position moves right by 0.6 staff spaces. The layout gives the
+  column the extra room and the second voice is offset only when it collides. Dynamics
+  below the staff still use the lowest head of any voice.
+- Ties across barlines: after a system is placed, adjacent measures draw the tie from the
+  last notehead with the destination's staff position to the tied head in the next
+  measure's first column, on the notation staff and on the tab (where the continuation has
+  no fret number). At a system break the tie becomes a short outgoing fragment at the end
+  of the line and a short incoming one at the start of the next; nothing is drawn across
+  systems. Ties work per voice and the tab matches the note on the same string.
+- Playback already played all voices and held ties across barlines; tests now cover it.
+  The tie bookkeeping (`on_string`) is keyed by (voice, string) instead of string alone, so
+  a tie in one voice can never extend another voice's note on the same string.
+- Files: `notation/{mod,draw,beams,pitch}.rs`, `measure/{mod,draw}.rs`, `lib.rs`,
+  `gscore-play/src/build.rs`. Tests: `crates/gscore-layout/tests/test_voices.rs` (second
+  voice, collision offset, tie across a barline on both staves, fragments at a system
+  break, a tie in the second voice) and three new `gscore-play` tests (cross-barline tie,
+  every voice plays, no cross-voice tie). Rendered a copy of `steel_guitar_dadgad` with
+  voice 2 (stems up/down, both in the tab) and a tied note across a barline (curves on both
+  staves). All app snapshots stay unchanged (the test files have one voice and no
+  cross-barline ties).
+
+## 2026-11-03 — Grace notes
+
+- GP6/GP7 store a grace note as a whole beat marked `<GraceNotes>`; the model kept it as an
+  ordinary beat, so its 32nd/16th length made the measure longer than its time signature
+  and the grace notes were drawn as normal notes. `Beat` now carries a `grace` flag (set by
+  the GPIF reader, used by the writer instead of the "all notes have a grace effect"
+  guess), and `BeatView::is_grace` exposes it.
+- The model counts a grace beat as zero length (`VoiceView::total_duration`), so measures
+  are no longer reported overfull. Layout and playback skip it when advancing time:
+  - Layout draws the grace notes just left of the next beat's main note, as small heads
+    with a stem, flag and the acciaccatura slash on the notation staff, and as small
+    slashed fret numbers on the tab (`measure/mod.rs`, `measure/draw.rs`, with the grace
+    group's width reserved in the column). GP3-5 grace effects attached to a normal note
+    are drawn the same way.
+  - Playback plays each grace note as a 32nd just before its beat (at the beat when it is
+    the first sound of the song, where no time is available), and does not lengthen the
+    song (`gscore-play/src/build.rs`; the beat clock and cursor lookups skip grace beats).
+  - A grace beat at the end of a measure gets a column of its own before the barline.
+- Editing grace notes (creating or removing them) is not implemented yet; they are read,
+  drawn and played. The cursor skips grace beats (and clamping after an edit does too), and
+  the note/duration/copy commands treat them as ornaments, so editing cannot turn one into
+  a normal note by accident.
+- Tests: `crates/gscore-layout/tests/test_graces.rs` (no time, small notation head and tab
+  number, GP5 attached grace) and two `gscore-play` tests (grace beat and attached grace
+  sound with their beat). Checked on the owner's `farewell.gp` (track 8, measure 102: a
+  small slashed `0` before the main `0`) and a synthetic both-staves song (small slashed
+  head before the main note).
+- `Beat` gained a field: the GPIF round trip of `farewell.gp` and `hangar18.gp` keeps its
+  grace beats (`<GraceNotes>` count survives).

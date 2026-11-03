@@ -255,10 +255,10 @@ impl<'a> VoiceView<'a> {
         self.beats().all(|b| b.kind() == BeatKind::Empty)
     }
 
-    /// The summed length of all beats; placeholders count as zero.
+    /// The summed length of all beats; placeholders and grace-note beats count as zero.
     pub fn total_duration(&self) -> Result<Duration, ModelError> {
         self.beats().try_fold(Duration::ZERO, |sum, beat| {
-            if beat.kind() == BeatKind::Empty {
+            if beat.kind() == BeatKind::Empty || beat.is_grace() {
                 Ok(sum)
             } else {
                 sum.checked_add(beat.duration()?)
@@ -314,6 +314,12 @@ impl<'a> BeatView<'a> {
         }
     }
 
+    /// Whether this is a GP6/GP7 grace-note beat: its notes are quick ornaments before the
+    /// next beat and take no time of their own.
+    pub fn is_grace(&self) -> bool {
+        self.inner.grace
+    }
+
     /// The notes of this beat (at most one per string).
     pub fn notes(&self) -> impl ExactSizeIterator<Item = NoteView<'a>> + use<'a> {
         self.inner.notes.iter().map(NoteView::new)
@@ -366,4 +372,28 @@ impl<'a> NoteView<'a> {
             NoteType::Unknown(_) => NoteKind::Unknown,
         }
     }
+
+    /// The grace note attached to this note in GP3-5 files (GP6/GP7 store grace notes in
+    /// beats of their own; see [`BeatView::is_grace`]).
+    pub fn grace(&self) -> Option<GraceNote> {
+        self.inner.effect.grace.as_ref().map(|grace| GraceNote {
+            fret: grace.fret,
+            dead: grace.is_dead,
+            on_beat: grace.is_on_beat,
+            duration: grace.duration,
+        })
+    }
+}
+
+/// A grace note attached to a normal note (GP3-5): a quick ornament on the same string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GraceNote {
+    /// The fret of the grace note on the note's string; negative marks a dead note.
+    pub fret: i8,
+    /// A dead (muted) grace note.
+    pub dead: bool,
+    /// Played on the beat (an appoggiatura) instead of before it.
+    pub on_beat: bool,
+    /// Written value as a power of two (1 whole, 2 half, 4 quarter, 8 eighth, ...).
+    pub duration: u8,
 }

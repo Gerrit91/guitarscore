@@ -164,6 +164,9 @@ pub struct Beat {
     pub octave: Octave,
     pub display: BeatDisplay,
     pub status: BeatStatus,
+    /// A GP6/GP7 grace-note beat (`<GraceNotes>`): its notes are ornaments for the next
+    /// beat and take no time of their own.
+    pub grace: bool,
 }
 
 impl Default for Beat {
@@ -177,6 +180,7 @@ impl Default for Beat {
             octave: Octave::None,
             display: BeatDisplay::default(),
             status: BeatStatus::Normal,
+            grace: false,
         }
     }
 }

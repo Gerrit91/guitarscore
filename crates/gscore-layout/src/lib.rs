@@ -294,6 +294,10 @@ fn layout_with(
     let font = &fonts.music;
     let mut places = Places::default();
     let mut bottom = header_end;
+    // Where each measure was drawn, for the ties that cross barlines.
+    let mut measure_x = vec![0.0_f32; measures.len()];
+    let mut measure_stretch = vec![1.0_f32; measures.len()];
+    let mut measure_tops: Vec<Option<Tops>> = vec![None; measures.len()];
     for (index, plan) in plans.iter().enumerate() {
         let line: &[Arc<MeasureLayout>] = measures.get(plan.measures.clone()).unwrap_or_default();
         let line_marks: &[marks::MeasureMarks] =
@@ -341,6 +345,15 @@ fn layout_with(
             let mut place = measure.place(content_x, plan.stretch, system);
             place.left = left;
             places.measures.push(place);
+            if let Some(slot) = measure_x.get_mut(measure.index().get()) {
+                *slot = content_x;
+            }
+            if let Some(slot) = measure_stretch.get_mut(measure.index().get()) {
+                *slot = plan.stretch;
+            }
+            if let Some(slot) = measure_tops.get_mut(measure.index().get()) {
+                *slot = Some(tops);
+            }
             measure.draw(content_x, tops, plan.stretch, &ctx, &mut content);
             x = content_x + measure.width(plan.stretch) + after;
             marks::draw(
@@ -446,6 +459,48 @@ fn layout_with(
             Some(notation_top) if !show_tab => notation_top + notation_staff.height(),
             _ => tab_top + ctx.staff.height(),
         };
+    }
+
+    // Ties that continue a note across a barline, after the measures are placed so both
+    // noteheads are known.
+    for index in 0..measures.len().saturating_sub(1) {
+        let (Some(origin), Some(target)) =
+            (measures.get(index), measures.get(index.saturating_add(1)))
+        else {
+            continue;
+        };
+        let (Some(&origin_x), Some(&target_x)) =
+            (measure_x.get(index), measure_x.get(index.saturating_add(1)))
+        else {
+            continue;
+        };
+        let (Some(Some(origin_tops)), Some(Some(target_tops))) = (
+            measure_tops.get(index).copied(),
+            measure_tops.get(index.saturating_add(1)).copied(),
+        ) else {
+            continue;
+        };
+        let same_system = places.measures.get(index).map(|place| place.system)
+            == places
+                .measures
+                .get(index.saturating_add(1))
+                .map(|place| place.system);
+        measure::draw_barline_ties(
+            origin,
+            origin_x,
+            measure_stretch.get(index).copied().unwrap_or(1.0),
+            origin_tops,
+            target,
+            target_x,
+            measure_stretch
+                .get(index.saturating_add(1))
+                .copied()
+                .unwrap_or(1.0),
+            target_tops,
+            same_system,
+            &ctx,
+            &mut ops,
+        );
     }
 
     let (pages, height) = if placement.pages.is_empty() {

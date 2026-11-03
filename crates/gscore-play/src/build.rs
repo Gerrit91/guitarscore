@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use gscore_model::{
-    BeatKind, BendKind, Duration, ModelError, NoteKind, SlideKind, Song, TrackIndex,
+    BeatKind, BendKind, Duration, Fret, ModelError, NoteKind, SlideKind, Song, TrackIndex,
 };
 
 use crate::channels::ChannelAllocator;
@@ -28,6 +28,10 @@ const DEAD_NOTE_VELOCITY_PERCENT: u16 = 60;
 /// A tied note continues the previous one if that ends within this many ticks of its start
 /// (rounding of tuplets).
 const TIE_TOLERANCE: u64 = 2;
+/// How long one grace note sounds: a 32nd note.
+fn grace_ticks() -> u64 {
+    u64::from(PPQ) / 8
+}
 
 /// What [`collect`] gathers.
 pub(crate) struct Collected {
@@ -86,8 +90,10 @@ pub(crate) fn collect(
             });
         }
 
-        // The note currently sounding on each string, to extend it on a tie.
-        let mut on_string: HashMap<u8, usize> = HashMap::new();
+        // The note currently sounding on each (voice, string), to extend it on a tie.
+        // Voices are independent: a tie in one must not extend a note of another on the
+        // same string.
+        let mut on_string: HashMap<(usize, u8), usize> = HashMap::new();
         for span in measures {
             let Some(measure) = view.measure(span.measure) else {
                 continue;
@@ -95,9 +101,16 @@ pub(crate) fn collect(
             let feel = song.feel(span.measure).unwrap_or_default();
             let measure_ticks = span.end.saturating_sub(span.start);
             for voice in measure.voices() {
+                let voice_index = voice.index().get();
                 let mut onset = Duration::new(0, 1)?;
+                // Grace beats do not take time; their notes play just before the next beat.
+                let mut pending_graces: Vec<gscore_model::BeatView<'_>> = Vec::new();
                 for beat in voice.beats() {
                     if beat.kind() == BeatKind::Empty {
+                        continue;
+                    }
+                    if beat.is_grace() {
+                        pending_graces.push(beat);
                         continue;
                     }
                     let length = beat.duration()?;
@@ -117,15 +130,98 @@ pub(crate) fn collect(
                         tempo_changes.push((start, bpm));
                     }
                     if beat.kind() != BeatKind::Normal {
+                        pending_graces.clear();
                         continue;
                     }
                     let first_note = notes.len();
+                    // Grace notes before this beat: a GP6/GP7 grace beat, a GP3-5 grace
+                    // attached to a note, or both. They are short and end at the beat.
+                    let mut graces: Vec<(u8, u8, u8, bool)> = Vec::new();
+                    for grace_beat in pending_graces.drain(..) {
+                        for note in grace_beat.notes() {
+                            match (view.sounding_pitch(&note), note.string()) {
+                                (Ok(pitch), Ok(string)) => graces.push((
+                                    pitch.get(),
+                                    note.velocity(),
+                                    string.get(),
+                                    note.kind() == NoteKind::Dead,
+                                )),
+                                _ => skipped_notes = skipped_notes.saturating_add(1),
+                            }
+                        }
+                    }
+                    for note in beat.notes() {
+                        let Some(grace) = note.grace() else {
+                            continue;
+                        };
+                        let string = note.string().ok();
+                        let pitch = string
+                            .and_then(|string| {
+                                u8::try_from(grace.fret)
+                                    .ok()
+                                    .and_then(|fret| Fret::new(fret).ok())
+                                    .and_then(|fret| view.pitch_at(string, fret).ok())
+                            })
+                            .or_else(|| view.sounding_pitch(&note).ok());
+                        if let Some(pitch) = pitch {
+                            graces.push((
+                                pitch.get(),
+                                note.velocity(),
+                                string.map(|string| string.get()).unwrap_or(0),
+                                grace.dead || grace.fret < 0,
+                            ));
+                        } else {
+                            skipped_notes = skipped_notes.saturating_add(1);
+                        }
+                    }
+                    let count = graces.len();
+                    let ticks = grace_ticks();
+                    for (index, (pitch, velocity, string, dead)) in graces.into_iter().enumerate() {
+                        let before = u64::try_from(count.saturating_sub(index))
+                            .unwrap_or(u64::MAX)
+                            .saturating_mul(ticks);
+                        // Before the beat, or at it when the beat starts the song and
+                        // there is no time to spare.
+                        let (grace_start, grace_end) = if start > before {
+                            let start_at = start.saturating_sub(before);
+                            (start_at, start_at.saturating_add(ticks).min(start))
+                        } else {
+                            (start, start.saturating_add(ticks))
+                        };
+                        let grace_end = grace_end.max(grace_start.saturating_add(1));
+                        let velocity = if dead {
+                            u16::from(velocity) * DEAD_NOTE_VELOCITY_PERCENT / 100
+                        } else {
+                            u16::from(velocity)
+                        };
+                        let velocity = u8::try_from(velocity).unwrap_or(1).max(1);
+                        notes.push(Sounding {
+                            track: number,
+                            channel,
+                            play_channel: channel,
+                            key: pitch,
+                            velocity,
+                            start: grace_start,
+                            end: grace_end,
+                            string,
+                            slide: None,
+                            bend: None,
+                            shape: None,
+                            vibrato: None,
+                            let_ring: false,
+                            tremolo: false,
+                            onset: grace_start,
+                            damp: false,
+                            bend_curve: None,
+                            whammy: None,
+                        });
+                    }
                     for note in beat.notes() {
                         let kind = note.kind();
                         let string = note.string().map(|s| s.get()).unwrap_or(0);
                         if kind == NoteKind::Tie && fresh_at != Some(start) {
                             let tied = on_string
-                                .get(&string)
+                                .get(&(voice_index, string))
                                 .and_then(|&i| notes.get_mut(i))
                                 .filter(|n| n.end.abs_diff(start) <= TIE_TOLERANCE);
                             if let Some(previous) = tied {
@@ -186,7 +282,7 @@ pub(crate) fn collect(
                             }),
                         };
                         effects::shape_note(&mut sounding, &note);
-                        on_string.insert(string, notes.len());
+                        on_string.insert((voice_index, string), notes.len());
                         notes.push(sounding);
                     }
                     if let Some(direction) = beat.brush_stroke()
