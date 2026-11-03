@@ -607,6 +607,31 @@ fn the_harmonic_tile_sets_an_artificial_harmonic_with_its_touch_point() {
 }
 
 #[test]
+fn notes_go_into_the_third_and_fourth_voice() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    for (label, voice) in [("Voice 3", 2), ("Voice 4", 3)] {
+        harness.get_by_label(label).scroll_to_me();
+        harness.run();
+        harness.get_by_label(label).click();
+        harness.run();
+        let cursor = harness.state().document().unwrap().editor().cursor();
+        assert_eq!(cursor.voice.get(), voice);
+        type_char(&mut harness, "7", Modifiers::NONE);
+        harness.run();
+        let document = harness.state().document().unwrap();
+        let cursor = document.editor().cursor();
+        let beat = document
+            .song()
+            .beat(cursor.position())
+            .expect("the voice's beat");
+        assert!(beat.notes().any(|note| note.fret().unwrap().get() == 7));
+        assert_eq!(harness.state().notice(), None);
+    }
+    // The page still lays out with four voices.
+    assert!(harness.render().is_ok());
+}
+
+#[test]
 fn the_bend_tile_opens_the_editor_on_a_full_step_bend() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
     type_char(&mut harness, "5", Modifiers::NONE);

@@ -608,18 +608,27 @@ fn beat_buttons(
         }
     });
     ui.add_space(2.0);
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Voice").color(style::tokens(ui).text_weak));
-        let chosen = snapshot.cursor.voice.get();
-        if let Some(voice) = tiles::segments(
-            ui,
-            &[("1", "Voice 1"), ("2", "Voice 2")],
-            chosen,
-            "Enter notes in this voice",
-        ) {
-            state.pending_voice = Some(voice);
-        }
-    });
+    let chosen = snapshot.cursor.voice.get();
+    if let Some(voice) = tiles::segments_with_tips(
+        ui,
+        &[
+            ("1", "Voice 1", "First voice"),
+            ("2", "Voice 2", "Second voice"),
+            (
+                "3",
+                "Voice 3",
+                "Third voice (kept in GP7 files; GP3-5 keep two voices)",
+            ),
+            (
+                "4",
+                "Voice 4",
+                "Fourth voice (kept in GP7 files; GP3-5 keep two voices)",
+            ),
+        ],
+        chosen,
+    ) {
+        state.pending_voice = Some(voice);
+    }
 }
 
 /// Commands that set the chosen length on every selected beat.

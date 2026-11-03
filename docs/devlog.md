@@ -1950,3 +1950,15 @@ lifeless):
   `a_whammy_dive_bends_every_note_of_the_beat`, the harmonic tile test, and Listen in the
   bend editor plays a bend without an undo step.
 
+## 2026-11-03 — Four voices
+
+- Owner: up to four voices, four buttons without the "Voice" label, tooltips "First
+  voice" ... The palette shows 1-4 (tooltips name the voice; 3 and 4 note that GP3-5 keep
+  two). The model creates a voice the measure lacks (up to the 4th, with empty voices
+  before it) at its first beat, and undo removes all it created; paste handles four
+  voices. GP7 files already read and write four voices; GP3-5 keep two (the save check
+  reports more).
+- Tests: `a_fourth_voice_is_created_with_the_ones_before_it_and_undone`,
+  `notes_go_into_the_third_and_fourth_voice`.
+- Open: standard notation draws only the first voice (voices 2-4 show in the tab and play).
+

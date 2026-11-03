@@ -96,3 +96,48 @@ pub(crate) fn segments(
         });
     clicked
 }
+
+/// Like [`segments`], with a tooltip of its own for each item: `(text, label, tip)`.
+pub(crate) fn segments_with_tips(
+    ui: &mut egui::Ui,
+    items: &[(&str, &str, &str)],
+    chosen: usize,
+) -> Option<usize> {
+    let tokens = style::tokens(ui);
+    let mut clicked = None;
+    egui::Frame::new()
+        .fill(tokens.control)
+        .corner_radius(5)
+        .inner_margin(2)
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            ui.horizontal(|ui| {
+                for (index, (text, label, tip)) in items.iter().enumerate() {
+                    let on = index == chosen;
+                    let (rect, response) = ui.allocate_exact_size(vec2(36.0, 22.0), Sense::click());
+                    response.widget_info(|| {
+                        egui::WidgetInfo::selected(egui::Role::Button, true, on, *label)
+                    });
+                    let fill = if on {
+                        tokens.accent
+                    } else if response.hovered() {
+                        tokens.control_hover
+                    } else {
+                        Color32::TRANSPARENT
+                    };
+                    ui.painter().rect_filled(rect, 4.0, fill);
+                    ui.painter().text(
+                        rect.center(),
+                        Align2::CENTER_CENTER,
+                        *text,
+                        FontId::proportional(12.0),
+                        if on { tokens.on_accent } else { tokens.text },
+                    );
+                    if response.on_hover_text(*tip).clicked() {
+                        clicked = Some(index);
+                    }
+                }
+            });
+        });
+    clicked
+}

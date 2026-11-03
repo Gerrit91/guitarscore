@@ -68,7 +68,8 @@ enum ChangeKind {
         at: BeatPosition,
         previous: GpDuration,
     },
-    /// A rest beat was inserted before `at.beat`; `created_voice` if the insertion had to
+    /// A rest beat was inserted before `at.beat`; `created_voice` (the first voice created)
+    /// if the insertion had to
     /// create the voice (a measure imported without voices).
     BeatInserted {
         at: BeatPosition,
@@ -481,8 +482,10 @@ impl Song {
                         return Err(ModelError::Invalid(format!("{at}: no such beat")));
                     }
                     voice.beats.remove(index);
-                    if *created_voice == Some(at.voice.get()) && voice.beats.is_empty() {
-                        measure.voices.truncate(at.voice.get());
+                    if let Some(first) = *created_voice
+                        && voice.beats.is_empty()
+                    {
+                        measure.voices.truncate(first);
                     }
                     Ok(())
                 })

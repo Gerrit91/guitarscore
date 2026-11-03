@@ -84,19 +84,23 @@ pub(super) fn delete(song: &mut Song, at: BeatPosition) -> Result<Change, ModelE
 /// The voice at `at`, creating voice 1 of a measure that has no voices (GP7 empty bars
 /// import that way), so a beat can be inserted into it. Also returns whether it created the
 /// voice, so undo can remove it again.
+/// Most voices a measure gets from editing (Guitar Pro 7 has four; GP3-5 keep two).
+pub(super) const MAX_VOICES: usize = 4;
+
 fn voice_in_or_create(
     measure: &mut GpMeasure,
     at: BeatPosition,
 ) -> Result<(&mut GpVoice, Option<usize>), ModelError> {
-    // Voice 1 of an empty measure (GP7 empty bars), or the next voice (2) at its first
-    // beat, may be created; no further voices.
+    // A voice the measure does not have yet (up to the 4th, as Guitar Pro 7 has) is
+    // created at its first beat, with empty voices before it if needed. The first created
+    // index is returned, so undo can remove them all again.
     let index = at.voice.get();
-    let created = index == measure.voices.len()
-        && at.beat.get() == 0
-        && index < 2
-        && (index == 0 || !measure.voices.is_empty());
+    let first = measure.voices.len();
+    let created = index >= first && at.beat.get() == 0 && index < MAX_VOICES;
     if created {
-        measure.voices.push(GpVoice::default());
+        measure
+            .voices
+            .resize_with(index.saturating_add(1), GpVoice::default);
     }
-    voice_in(measure, at).map(|voice| (voice, created.then_some(index)))
+    voice_in(measure, at).map(|voice| (voice, created.then_some(first)))
 }
