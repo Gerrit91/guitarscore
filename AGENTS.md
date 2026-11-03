@@ -212,6 +212,7 @@ Strictly in this order; each stage plugs in behind the `Player` trait:
 1. **MIDI output** (`midir`): send events to any MIDI port, so the user can route to an external synth (for example FluidSynth). Plus `.mid` export. This is the first playback milestone.
 2. **Internal synth:** `cpal` for audio output plus `rustysynth` (pure-Rust SoundFont synthesizer) for sound without external setup. Verify the current state of both crates before starting.
 3. **Real sound libraries** (only if stages 1 and 2 go well): SFZ-based sampled instruments with technique-to-articulation mapping, possibly plugin hosting (CLAP, LV2) in a separate process, which also isolates plugin crashes. Write a design note first.
+4. **Physically modelled guitars** (owner, 2026-11-03; chosen over stage 3 as the way to RSE-like sound): a pure-Rust string model (digital waveguide) that plays every technique, with body, pickup, amp and cabinet stages. The SoundFont synth stays for drums, other instruments and as the fallback. Design note: `docs/guitar-modelling.md`; milestone M22.
 
 ## 9. Milestones (one at a time; stop and summarize after each)
 
@@ -368,6 +369,10 @@ panels that fill it.
   - Play from a selection and loop it, count-in, metronome, speed slider.
   - Remaining techniques: vibrato, let ring, palm mute, grace notes, trills, whammy,
     D.C./D.S./coda, swing.
+  - A playback sequence that keeps the string, fret and techniques per note (instead of
+    plain MIDI events), with the MIDI events derived from it; the base for M22.
+  - One MIDI channel per string, so bends, slides and vibrato on one string do not bend
+    the others; palm mutes and dead notes on GM 28 (Muted Guitar), harmonics on GM 31.
   - Export the song as audio (WAV) with the internal synthesizer.
 - **M19: Bundled SoundFonts.** Ship ready-to-use General MIDI SoundFonts so nobody has to
   install a synthesizer.
@@ -380,6 +385,27 @@ panels that fill it.
 - **M20: Release.** Packages for Linux (AppImage or Flatpak), Windows and macOS (with the
   macOS file-dialog fix, docs/gaps.md #10), the name check from section 11, a user guide,
   a public test-file set.
+- **M22: Modelled guitar sound** (owner, 2026-11-03: without playback comparable to
+  Guitar Pro's RSE nobody will use the program for composing; reference for "good enough"
+  is AAS Strum, which is fully modelled). Design note: `docs/guitar-modelling.md`.
+  - Builds on the M18 playback sequence with strings and techniques.
+  - String engine behind the `Player` trait: digital waveguide per string with exact
+    tuning, loss filter and dispersion; bends, slides, vibrato, hammer-ons, pull-offs,
+    palm mute, dead notes, harmonics, let ring and strokes played by the model itself.
+    Bass guitar on the same engine.
+  - Electric guitar: pickup position, amp and cabinet impulse response.
+  - Acoustic guitar: commuted synthesis body, string coupling, two vibration directions,
+    pick attack; then noises and strum feel.
+  - Per track: engine (SoundFont or modelled) and model, as commands with undo; drums and
+    other instruments stay on the SoundFont synth.
+  - Pure Rust, wasm-clean, `render` never allocates or blocks; impulse responses with
+    licenses in `THIRD_PARTY.md`. Faust only for prototypes, its library licenses checked
+    before any generated code is committed.
+  - Tests: deterministic rendering, pitch within a few cents, decay and bend targets, no
+    NaN, clipping or allocation in `render`, `panic_hunt` over parameters; a real-time
+    budget for a 16-track song in `cargo xtask bench`.
+  - **Done when:** the owner judges electric, acoustic and bass playback comparable to
+    RSE for composing, on reference passages covering every technique.
 - **Later:** fuzzing with `cargo-fuzz`, GP3/4/5 writing, JSON control channel, sound
   libraries (section 8, stage 3), a fretboard view, MusicXML import and export, a web build.
 
