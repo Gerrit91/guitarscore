@@ -75,9 +75,8 @@
 <text x="65.7" y="33.64" font-family="Noto Sans" font-size="1.1" fill="#404040">4</text>
 <rect x="66.9" y="47.2" width="2.02" height="1.47" fill="#ffffff"/>
 <text x="67.91" y="48.48" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
-<path d="M 68.92 47.62 C 72.88 47.62 76.12 45.44 76.12 44.24" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<line x1="75.62" y1="45.24" x2="76.12" y2="44.24" stroke="#101010" stroke-width="0.18"/>
-<line x1="76.62" y1="45.24" x2="76.12" y2="44.24" stroke="#101010" stroke-width="0.18"/>
+<path d="M 68.92 47.62 C 72.89 47.62 76.12 46.51 76.12 45.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<polygon points="76.12,44.24 76.54,45.14 75.7,45.14" fill="#101010"/>
 <text x="76.12" y="43.74" font-family="Noto Sans" font-size="0.9" text-anchor="middle" fill="#404040">full</text>
 <line x1="66.67" y1="33.44" x2="69.15" y2="33.44" stroke="#707070" stroke-width="0.16"/>
 <line x1="66.67" y1="32.44" x2="69.15" y2="32.44" stroke="#707070" stroke-width="0.16"/>
@@ -266,9 +265,8 @@
 <line x1="69.72" y1="62.94" x2="72.21" y2="62.94" stroke="#707070" stroke-width="0.16"/>
 <line x1="69.72" y1="61.94" x2="72.21" y2="61.94" stroke="#707070" stroke-width="0.16"/>
 <text x="70.12" y="61.44" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadWhole">&#xE0A2;</text>
-<line x1="71.76" y1="72.54" x2="78.95" y2="73.84" stroke="#404040" stroke-width="0.15"/>
-<line x1="78.45" y1="72.84" x2="78.95" y2="73.84" stroke="#101010" stroke-width="0.18"/>
-<line x1="79.45" y1="72.84" x2="78.95" y2="73.84" stroke="#101010" stroke-width="0.18"/>
+<line x1="71.76" y1="72.54" x2="74.16" y2="73.19" stroke="#404040" stroke-width="0.15"/>
+<line x1="74.16" y1="73.19" x2="78.95" y2="73.84" stroke="#404040" stroke-width="0.15"/>
 <text x="78.95" y="72.04" font-family="Noto Sans" font-size="0.9" text-anchor="end" fill="#404040">-3</text>
 <line x1="79.67" y1="75.94" x2="79.67" y2="83.44" stroke="#303030" stroke-width="0.16"/>
 <line x1="79.67" y1="63.94" x2="79.67" y2="67.94" stroke="#303030" stroke-width="0.16"/>

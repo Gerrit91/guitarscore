@@ -66,6 +66,19 @@ pub(crate) fn paint(
                     painter.rect_filled(screen, 0.0, color(theme.color(*token)));
                 }
             }
+            DrawOp::Polygon {
+                points,
+                color: token,
+            } => {
+                let points: Vec<Pos2> = points.iter().map(|p| to_screen(*p)).collect();
+                if visible.intersects(Rect::from_points(&points)) {
+                    painter.add(egui::Shape::convex_polygon(
+                        points,
+                        color(theme.color(*token)),
+                        Stroke::NONE,
+                    ));
+                }
+            }
             DrawOp::Curve {
                 from,
                 to,

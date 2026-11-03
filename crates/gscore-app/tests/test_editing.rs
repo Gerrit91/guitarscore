@@ -407,3 +407,163 @@ fn an_entered_fret_is_heard_and_undo_is_not() {
     assert_eq!(fret_at_cursor(harness.state(), string), Some(3));
     std::fs::remove_dir_all(dir).ok();
 }
+
+#[test]
+fn the_bend_tile_opens_the_editor_on_a_full_step_bend() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    let bend = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let at = document.editor().cursor().position();
+        let beat = document.song().beat(at).unwrap();
+        beat.notes()
+            .next()
+            .and_then(|n| n.bend_shape())
+            .map(|shape| {
+                shape
+                    .points
+                    .iter()
+                    .map(|p| (p.position, p.value))
+                    .collect::<Vec<_>>()
+            })
+    };
+    let click = |harness: &mut Harness<'static, GuitarScoreApp>, label: &str| {
+        harness.get_by_label(label).click_accesskit();
+        harness.run();
+    };
+
+    // The tile opens the editor; nothing changes until OK, and Cancel changes nothing.
+    click(&mut harness, "Bend");
+    harness.get_by_label("Bend editor");
+    assert_eq!(bend(&harness), None, "opening adds no bend yet");
+    click(&mut harness, "Cancel");
+    assert!(harness.query_by_label("Bend editor").is_none());
+    assert_eq!(bend(&harness), None, "Cancel adds no bend");
+
+    // By default it is a full-step bend.
+    click(&mut harness, "Bend");
+    click(&mut harness, "OK");
+    assert_eq!(bend(&harness), Some(vec![(0, 0), (6, 4), (12, 4)]));
+    assert!(
+        harness.query_by_label("Bend editor").is_none(),
+        "OK closes the editor"
+    );
+
+    // Opened again, it shows the note's bend; a preset replaces it.
+    click(&mut harness, "Bend");
+    click(&mut harness, "Preset Pre-Bend");
+    click(&mut harness, "OK");
+    assert_eq!(bend(&harness), Some(vec![(0, 4), (12, 4)]));
+
+    click(&mut harness, "Bend");
+    click(&mut harness, "Remove");
+    assert_eq!(bend(&harness), None, "Remove takes the bend off");
+}
+
+#[test]
+fn the_whammy_tile_opens_the_editor_on_a_dip() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    let whammy = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let at = document.editor().cursor().position();
+        document
+            .song()
+            .beat(at)
+            .unwrap()
+            .whammy_shape()
+            .map(|shape| {
+                shape
+                    .points
+                    .iter()
+                    .map(|p| (p.position, p.value))
+                    .collect::<Vec<_>>()
+            })
+    };
+    let click = |harness: &mut Harness<'static, GuitarScoreApp>, label: &str| {
+        harness.get_by_label(label).click_accesskit();
+        harness.run();
+    };
+
+    click(&mut harness, "Whammy bar");
+    harness.get_by_label("Whammy bar editor");
+    click(&mut harness, "Cancel");
+    assert_eq!(whammy(&harness), None, "Cancel adds no whammy");
+
+    // By default it is a dip of two steps.
+    click(&mut harness, "Whammy bar");
+    click(&mut harness, "OK");
+    assert_eq!(whammy(&harness), Some(vec![(0, 0), (6, -8), (12, 0)]));
+
+    click(&mut harness, "Whammy bar");
+    click(&mut harness, "Preset Release down");
+    click(&mut harness, "OK");
+    assert_eq!(whammy(&harness), Some(vec![(0, 8), (12, 0)]));
+
+    click(&mut harness, "Whammy bar");
+    click(&mut harness, "Remove");
+    assert_eq!(whammy(&harness), None, "Remove takes the whammy off");
+}
+
+#[test]
+fn the_score_and_the_menu_bar_edit_bars_and_tracks() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    let counts = |harness: &Harness<'static, GuitarScoreApp>| {
+        let song = harness.state().document().unwrap().song();
+        (song.measure_count(), song.track_count())
+    };
+    let (measures, tracks) = counts(&harness);
+    let menu = |harness: &mut Harness<'static, GuitarScoreApp>, path: &[&str]| {
+        // Near the top of the page: the middle of the (tall) page can be scrolled away.
+        let page = harness.get_by_label("Score page").rect();
+        let at = egui::pos2(page.center().x, page.top() + 120.0);
+        harness.event(Event::PointerMoved(at));
+        for pressed in [true, false] {
+            harness.event(Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Secondary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            });
+        }
+        harness.run();
+        // Entries with keys carry them in their name ("Delete bar ctrl+Delete"). The menu
+        // bar has buttons of the same names; the open popup's come last.
+        for label in path {
+            harness
+                .query_all_by_label(label)
+                .last()
+                .unwrap_or_else(|| harness.get_by_label_contains(label))
+                .click_accesskit();
+            harness.run();
+        }
+    };
+
+    menu(&mut harness, &["Bar", "Insert bar after"]);
+    assert_eq!(counts(&harness), (measures + 1, tracks), "a bar is added");
+    menu(&mut harness, &["Bar", "Delete bar"]);
+    assert_eq!(counts(&harness), (measures, tracks), "and deleted again");
+
+    menu(&mut harness, &["Track", "Duplicate track"]);
+    assert_eq!(counts(&harness), (measures, tracks + 1), "a track is added");
+    assert_eq!(harness.state().view().track, 1, "the copy is shown");
+    menu(&mut harness, &["Track", "Move up"]);
+    assert_eq!(
+        harness.state().view().track,
+        0,
+        "the moved track stays shown"
+    );
+    menu(&mut harness, &["Track", "Delete track"]);
+    assert_eq!(counts(&harness), (measures, tracks));
+
+    // The menu bar has the same menus.
+    harness.get_all_by_label("Bar").next().unwrap().click();
+    harness.run();
+    harness.get_by_label("Insert bar after").click_accesskit();
+    harness.run();
+    assert_eq!(
+        counts(&harness),
+        (measures + 1, tracks),
+        "the menu bar adds a bar"
+    );
+}

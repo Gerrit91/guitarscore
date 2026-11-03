@@ -320,7 +320,10 @@ impl TabEditor {
             ActionId::Stop => Ok(Outcome::Request(Request::Stop)),
             ActionId::Save => Ok(Outcome::Request(Request::Save)),
             // View actions: the app handles them before the editor, which has no view.
-            ActionId::ZoomIn | ActionId::ZoomOut | ActionId::ZoomReset => Ok(Outcome::Nothing),
+            ActionId::ZoomIn
+            | ActionId::ZoomOut
+            | ActionId::ZoomReset
+            | ActionId::ToggleFullscreen => Ok(Outcome::Nothing),
             // Palette actions: the app runs them like a click on the palette tile.
             ActionId::NoteWhole
             | ActionId::NoteHalf

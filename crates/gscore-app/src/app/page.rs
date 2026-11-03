@@ -8,6 +8,7 @@ use gscore_model::{MeasureIndex, Song, TrackIndex};
 use gscore_play::PlayState;
 
 use super::GuitarScoreApp;
+use super::page_menu::{self, MenuChoice};
 use crate::canvas::{self, POINTS_PER_SPACE};
 
 /// How strongly the selection color is laid over the page: the shade the cursor's band and
@@ -55,6 +56,7 @@ impl GuitarScoreApp {
         let theme = self.view.theme.palette();
         let mut clicked: Option<Point> = None;
         let mut drag_to: Option<Cursor> = None;
+        let mut choices: Vec<MenuChoice> = Vec::new();
         let playing = self.playback.state() == PlayState::Playing;
         let in_selection = document.editor().selection().is_some_and(|selection| {
             selection
@@ -80,6 +82,8 @@ impl GuitarScoreApp {
                 page.y + 2.0 * PAGE_MARGIN,
             );
             let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+            ui.ctx()
+                .accesskit_node_builder(response.id, |node| node.set_label("Score page"));
             let origin = egui::pos2(rect.center().x - page.x / 2.0, rect.top() + PAGE_MARGIN);
             let painter = ui.painter_at(rect);
             canvas::paint(&painter, origin, &layout, theme, zoom, ui.clip_rect());
@@ -126,15 +130,40 @@ impl GuitarScoreApp {
                     ui.scroll_to_rect(column, None);
                 }
             }
-            response.context_menu(|ui| {
-                ui.label("Panels");
-                ui.checkbox(&mut self.view.show_track_grid, "Track grid");
-                ui.checkbox(&mut self.view.show_track_panel, "Track panel");
-                ui.checkbox(&mut self.view.show_edit_panel, "Edit palette");
-            });
             let hit = response.interact_pointer_pos().and_then(|pos| {
                 let at = (pos - origin) / scale;
                 layout.places.hit(Point::new(at.x, at.y))
+            });
+            // A right-click acts on what it hits: the cursor goes there first, unless the
+            // click is inside the selection (then the menu acts on the selection).
+            if response.secondary_clicked()
+                && let Some(hit) = hit
+            {
+                let target = Cursor {
+                    measure: hit.measure,
+                    voice: hit.voice,
+                    beat: hit.beat,
+                    string: hit.string,
+                    ..cursor
+                };
+                let selected = document.editor().selection().is_some_and(|selection| {
+                    selection
+                        .positions(document.song())
+                        .contains(&target.position())
+                        || matches!(selection, Selection::Measures { .. })
+                            && (selection.first_measure()..=selection.last_measure())
+                                .contains(&target.measure)
+                });
+                if !selected {
+                    document.editor_mut().set_selection(None);
+                    self.view.selection = None;
+                    document.editor_mut().set_cursor(target);
+                }
+            }
+            response.context_menu(|ui| {
+                page_menu::with_target(document, |target| {
+                    page_menu::show(ui, target, &self.keymap, &mut self.view, &mut choices);
+                });
             });
             // A drag selects beats of the voice it started in, across bar lines and system
             // lines; the cursor follows the drag so the keyboard can go on from there.
@@ -208,6 +237,8 @@ impl GuitarScoreApp {
                 self.notice = Some(error);
             }
         }
+        let ctx = ui.ctx().clone();
+        self.run_menu_choices(choices, &ctx);
     }
 }
 

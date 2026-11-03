@@ -66,6 +66,18 @@ fn write_op(out: &mut String, op: &DrawOp, theme: &Theme) {
             num(rect.height),
             theme.color(*color)
         ),
+        DrawOp::Polygon { points, color } => {
+            let corners: Vec<String> = points
+                .iter()
+                .map(|point| format!("{},{}", num(point.x), num(point.y)))
+                .collect();
+            writeln!(
+                out,
+                "<polygon points=\"{}\" fill=\"{}\"/>",
+                corners.join(" "),
+                theme.color(*color)
+            )
+        }
         DrawOp::Curve {
             from,
             to,

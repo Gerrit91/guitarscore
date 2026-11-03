@@ -50,6 +50,10 @@ fn the_built_in_keymap_parses_and_has_the_owners_keys() {
     assert_eq!(bound("ctrl+y"), Some(Action::Plain(ActionId::Redo)));
     assert_eq!(bound("Space"), Some(Action::Plain(ActionId::PlayPause)));
     assert_eq!(
+        bound("F11"),
+        Some(Action::Plain(ActionId::ToggleFullscreen))
+    );
+    assert_eq!(
         keymap.keys_for(ActionId::Undo),
         [KeyCombo::parse("ctrl+z").unwrap()]
     );

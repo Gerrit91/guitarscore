@@ -1,11 +1,10 @@
 //! Ornaments that connect notes or run along the staff: slurs, slides, legato runs, the
 //! whammy line, and the palm-mute / let-ring rows below the staff.
 
-use super::notes::draw_arrowhead;
 use super::{Fret, LINE_THICKNESS};
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
-use gscore_model::{SlideKind, Whammy};
+use gscore_model::{BEND_MAX_POSITION, BendPoint, SlideKind, WhammyShape};
 
 /// How far a slur between two notes dips or rises.
 const SLUR_CURVE: f32 = 0.9;
@@ -153,22 +152,24 @@ pub(crate) fn draw_legato_run(start_x: f32, end_x: f32, top: f32, ops: &mut Vec<
     );
 }
 
-/// Draws the whammy-bar line of the column at `x`, within its space up to `span_end`: a
-/// line falling (dive) or rising, an arrow, and the depth in whole steps above the end.
+/// Draws the whammy-bar line of the column at `x`, within its space up to `span_end`, as
+/// Guitar Pro does: a line that follows the shape over the beat (a dip goes down and back
+/// up), with the depth in whole steps written above each turning point.
 pub(crate) fn draw_whammy(
     x: f32,
     span_end: f32,
     top: f32,
-    whammy: Whammy,
+    whammy: &WhammyShape,
     ctx: &Context<'_>,
     ops: &mut Vec<DrawOp>,
 ) {
-    if whammy.quarter_tones == 0 {
+    let points = &whammy.points;
+    let values = || points.iter().map(|p| f32::from(p.value));
+    let down = values().fold(0.0_f32, |deepest, value| deepest.max(-value));
+    let up = values().fold(0.0_f32, |highest, value| highest.max(value));
+    if down + up <= 0.0 {
         return;
     }
-    let down = whammy.quarter_tones < 0;
-    let (high, low) = (top - WHAMMY_HEIGHTS.0, top - WHAMMY_HEIGHTS.1);
-    let (start_y, end_y) = if down { (high, low) } else { (low, high) };
     let right = ctx.options.page_width - ctx.options.margin_x;
     let start_x = x + WHAMMY_INSET.0;
     let end_x = (span_end - WHAMMY_INSET.1)
@@ -177,25 +178,98 @@ pub(crate) fn draw_whammy(
     if end_x <= start_x {
         return;
     }
-    let end = Point::new(end_x, end_y);
-    ops.push(DrawOp::Line {
-        from: Point::new(start_x, start_y),
-        to: end,
-        thickness: LINE_THICKNESS,
-        color: ColorToken::Annotation,
-    });
-    draw_arrowhead(end, !down, ops);
-    // Guitar Pro labels the dive in whole steps; four quarter tones make one. The label
-    // sits above the arrow's end, inside the note's space.
-    let whole_steps = whammy.quarter_tones.checked_div(4).unwrap_or(0);
-    ops.push(DrawOp::Text {
-        text: format!("{whole_steps:+}"),
-        at: Point::new(end.x, high - 0.5),
-        size: 0.9,
-        font: TextFont::Regular,
-        anchor: TextAnchor::End,
-        color: ColorToken::Annotation,
-    });
+    // The deepest point sits at the band's low end, the highest at its high end.
+    let (high, low) = (top - WHAMMY_HEIGHTS.0, top - WHAMMY_HEIGHTS.1);
+    let per_quarter = (low - high) / (down + up);
+    let at = |position: u8, value: i8| {
+        Point::new(
+            start_x + (end_x - start_x) * f32::from(position) / f32::from(BEND_MAX_POSITION),
+            low - (f32::from(value) + down) * per_quarter,
+        )
+    };
+    let mut corners: Vec<Point> = points.iter().map(|p| at(p.position, p.value)).collect();
+    // Held level before the first point and after the last.
+    if let Some(first) = corners.first().copied()
+        && first.x > start_x
+    {
+        corners.insert(0, Point::new(start_x, first.y));
+    }
+    if let Some(last) = corners.last().copied()
+        && last.x < end_x
+    {
+        corners.push(Point::new(end_x, last.y));
+    }
+    for pair in corners.windows(2) {
+        let [from, to] = pair else { continue };
+        ops.push(DrawOp::Line {
+            from: *from,
+            to: *to,
+            thickness: LINE_THICKNESS,
+            color: ColorToken::Annotation,
+        });
+    }
+    for (index, point) in points.iter().enumerate() {
+        if !is_turning_point(points, index) {
+            continue;
+        }
+        // Labels at the ends of the line stay inside it, clear of the neighbours' labels.
+        let anchor = match point.position {
+            0 => TextAnchor::Start,
+            BEND_MAX_POSITION => TextAnchor::End,
+            _ => TextAnchor::Middle,
+        };
+        ops.push(DrawOp::Text {
+            text: whammy_label(point.value),
+            at: Point::new(at(point.position, point.value).x, high - 0.5),
+            size: 0.9,
+            font: TextFont::Regular,
+            anchor,
+            color: ColorToken::Annotation,
+        });
+    }
+}
+
+/// Whether point `index` of a whammy shape gets a label: it is away from 0 and the bar
+/// stops there or turns (the first point of a level stretch; the start when it is held).
+fn is_turning_point(points: &[BendPoint], index: usize) -> bool {
+    let value = |i: usize| points.get(i).map(|p| p.value);
+    let Some(here) = value(index) else {
+        return false;
+    };
+    if here == 0 {
+        return false;
+    }
+    let before = index.checked_sub(1).and_then(value);
+    if before == Some(here) {
+        return false;
+    }
+    let incoming = before.map(|before| here.cmp(&before));
+    // The next point that differs, so a held level counts as a stop.
+    let outgoing = points
+        .iter()
+        .skip(index.saturating_add(1))
+        .map(|p| p.value)
+        .find(|next| *next != here)
+        .map(|next| next.cmp(&here));
+    incoming.is_none() || outgoing != incoming
+}
+
+/// A whammy depth in whole steps, as Guitar Pro writes it: -1, -1/2, +1 1/2.
+pub(crate) fn whammy_label(quarter_tones: i8) -> String {
+    let sign = if quarter_tones < 0 { "-" } else { "+" };
+    let quarters = quarter_tones.unsigned_abs();
+    let whole = quarters / 4;
+    let fraction = match quarters % 4 {
+        1 => "1/4",
+        2 => "1/2",
+        3 => "3/4",
+        _ => "",
+    };
+    match (whole, fraction) {
+        (whole, "") => format!("{sign}{whole}"),
+        (0, fraction) => format!("{sign}{fraction}"),
+        (whole, fraction) => format!("{sign}{whole} {fraction}"),
+    }
 }
 
 /// Draws a `P.M.` or `let ring` row below the staff from `start_x` to `end_x`. `lane` is
@@ -259,4 +333,43 @@ fn draw_slur(from_x: f32, from_y: f32, to_x: f32, to_y: f32, curve: f32, ops: &m
         thickness: LINE_THICKNESS,
         color: ColorToken::Notation,
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn labelled(values: &[(u8, i8)]) -> Vec<String> {
+        let points: Vec<BendPoint> = values
+            .iter()
+            .map(|&(position, value)| BendPoint { position, value })
+            .collect();
+        (0..points.len())
+            .filter(|&index| is_turning_point(&points, index))
+            .filter_map(|index| points.get(index))
+            .map(|point| whammy_label(point.value))
+            .collect()
+    }
+
+    #[test]
+    fn whammy_depths_are_written_in_whole_steps() {
+        let labels: Vec<_> = [-8, -4, -2, -6, 4, 6, -1].map(whammy_label).into();
+        assert_eq!(
+            labels,
+            ["-2", "-1", "-1/2", "-1 1/2", "+1", "+1 1/2", "-1/4"]
+        );
+    }
+
+    #[test]
+    fn only_turning_points_away_from_zero_are_labelled() {
+        // A dip is labelled at its bottom, a dive at its end, a release at its start.
+        assert_eq!(labelled(&[(0, 0), (6, -8), (12, 0)]), ["-2"]);
+        assert_eq!(labelled(&[(0, 0), (12, -8)]), ["-2"]);
+        assert_eq!(labelled(&[(0, -8), (12, 0)]), ["-2"]);
+        // A held level is labelled once; a point on the way down is not labelled.
+        assert_eq!(labelled(&[(0, 0), (4, -8), (8, -8), (12, 0)]), ["-2"]);
+        assert_eq!(labelled(&[(0, 0), (6, -4), (12, -8)]), ["-2"]);
+        // Down, then up past zero: both extremes.
+        assert_eq!(labelled(&[(0, 0), (4, -4), (8, 4), (12, 0)]), ["-1", "+1"]);
+    }
 }

@@ -2,7 +2,7 @@
 //! whammy shape editors. It shows the state of the note under the cursor and applies a
 //! click to every note or beat in the selection as commands.
 
-use egui::{Color32, Stroke, pos2, vec2};
+use egui::vec2;
 use gscore_edit::{ActionId, Command};
 use gscore_model::{
     AccentKind, BeatEffect, BeatView, BendKind, BendPoint, BendShape, Harmonic, HarmonicKind,
@@ -10,8 +10,10 @@ use gscore_model::{
 };
 
 use super::edit_palette::PaletteSnapshot;
+use super::shape_editor::{Outcome, ShapeEditor, ShapeTarget};
 use super::style;
 use super::tiles::{self, Face};
+use crate::settings::{Settings, ShapePreset};
 
 /// The effects of the note under the cursor.
 #[derive(Debug, Clone)]
@@ -80,23 +82,8 @@ impl BeatState {
 /// The effects matrix and the shape editors.
 #[derive(Debug, Default)]
 pub(super) struct EffectsState {
-    bend: Option<BendEditor>,
-    whammy: Option<WhammyEditor>,
-}
-
-/// A bend being edited.
-#[derive(Debug)]
-struct BendEditor {
-    kind: BendKind,
-    points: Vec<BendPoint>,
-    error: Option<String>,
-}
-
-/// A whammy shape being edited.
-#[derive(Debug)]
-struct WhammyEditor {
-    points: Vec<BendPoint>,
-    error: Option<String>,
+    bend: Option<ShapeEditor>,
+    whammy: Option<ShapeEditor>,
 }
 
 /// What an effect tile (or its key) does.
@@ -246,9 +233,10 @@ const SLIDE_ITEMS: &[FxItem] = &[
     ),
 ];
 
-/// The bend and the harmonics.
+/// The bend, the whammy bar (a beat effect, but its neighbour) and the harmonics.
 const PITCH_ITEMS: &[FxItem] = &[
     item(ActionId::ToggleBend, Face::Bend, Fx::Bend),
+    item(ActionId::ToggleWhammy, Face::Whammy, Fx::Whammy),
     item(
         ActionId::ToggleNaturalHarmonic,
         glyph("\u{E0DD}", 42.0, 0.0),
@@ -314,7 +302,6 @@ const BEAT_ITEMS: &[FxItem] = &[
         Fx::Slap(SlapKind::Popping),
     ),
     item(ActionId::ToggleFadeIn, Face::Hairpin, Fx::FadeIn),
-    item(ActionId::ToggleWhammy, Face::Whammy, Fx::Whammy),
     item(ActionId::ToggleLegato, Face::Slur, Fx::Legato),
     item(
         ActionId::ToggleBeatVibrato,
@@ -329,6 +316,12 @@ pub(super) fn fx_item(action: ActionId) -> Option<&'static FxItem> {
         .into_iter()
         .flatten()
         .find(|item| item.action == action)
+}
+
+/// Whether the effect bound to `action` is on for the selected notes or beats, as its
+/// palette tile shows it; `None` for an action without a tile.
+pub(super) fn action_is_on(action: ActionId, snapshot: &PaletteSnapshot) -> Option<bool> {
+    fx_item(action).map(|item| is_on_for_targets(item.fx, snapshot))
 }
 
 /// The beat state when the cursor is on no beat.
@@ -494,8 +487,64 @@ pub(super) fn fx_commands(fx: Fx, snapshot: &PaletteSnapshot) -> Vec<Command> {
 }
 
 impl EffectsState {
-    /// Draws the effect tiles; clicks turn into commands. `hint` gives an action's keys
-    /// for the tooltips (" (P)").
+    /// Opens the bend editor on the cursor note's bend, or on a full-step bend when the
+    /// note has none. Nothing changes until OK.
+    pub(super) fn open_bend(&mut self, snapshot: &PaletteSnapshot) {
+        if snapshot.note_targets.is_empty() {
+            return;
+        }
+        let bend = snapshot
+            .note_state
+            .as_ref()
+            .or(snapshot.target_states.first())
+            .and_then(|note| note.bend.clone());
+        self.bend = Some(match bend {
+            Some(bend) => ShapeEditor::new(ShapeTarget::Bend, bend.kind, bend.points),
+            None => ShapeEditor::new(ShapeTarget::Bend, BendKind::Up, default_bend()),
+        });
+    }
+
+    /// Opens the whammy bar editor on the cursor beat's shape, or on a dip when the beat
+    /// has none. Nothing changes until OK.
+    pub(super) fn open_whammy(&mut self, snapshot: &PaletteSnapshot) {
+        if snapshot.beats.is_empty() {
+            return;
+        }
+        let shape = snapshot
+            .beat_state
+            .as_ref()
+            .or(snapshot.beat_states.first())
+            .and_then(|beat| beat.whammy.clone());
+        let points = shape.map_or_else(default_whammy, |shape| shape.points);
+        self.whammy = Some(ShapeEditor::new(ShapeTarget::Whammy, BendKind::Up, points));
+    }
+
+    /// Whether the bend or whammy editor is open.
+    pub(super) fn is_editing(&self) -> bool {
+        self.bend.is_some() || self.whammy.is_some()
+    }
+
+    /// Closes the bend and whammy editors without a change.
+    pub(super) fn close_editors(&mut self) {
+        self.bend = None;
+        self.whammy = None;
+    }
+
+    /// Shows the open bend or whammy editor; OK and Remove turn into commands for the
+    /// selected notes or beats.
+    pub(super) fn show_editors(
+        &mut self,
+        ctx: &egui::Context,
+        snapshot: &PaletteSnapshot,
+        settings: &mut Settings,
+        commands: &mut Vec<Command>,
+    ) {
+        self.show_bend(ctx, snapshot, &mut settings.bend_presets, commands);
+        self.show_whammy(ctx, snapshot, &mut settings.whammy_presets, commands);
+    }
+
+    /// Draws the effect tiles; clicks turn into commands (the bend tile opens the bend
+    /// editor). `hint` gives an action's keys for the tooltips (" (P)").
     pub(super) fn panel(
         &mut self,
         ui: &mut egui::Ui,
@@ -507,7 +556,9 @@ impl EffectsState {
         let beat = snapshot.beat_state.clone().unwrap_or_else(no_beat);
         let has_notes = !snapshot.note_targets.is_empty();
         let has_beats = !snapshot.beats.is_empty();
-        let row = |ui: &mut egui::Ui, items: &[FxItem], commands: &mut Vec<Command>| {
+        // The bend and whammy tiles open their editors.
+        let mut open = None;
+        let mut row = |ui: &mut egui::Ui, items: &[FxItem], commands: &mut Vec<Command>| {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = vec2(2.0, 3.0);
                 for item in items {
@@ -520,7 +571,11 @@ impl EffectsState {
                     let tip = format!("{label}{}", hint(item.action));
                     let on = is_on_for_targets(item.fx, snapshot);
                     if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
-                        commands.extend(fx_commands(item.fx, snapshot));
+                        if matches!(item.fx, Fx::Bend | Fx::Whammy) {
+                            open = Some(item.fx);
+                        } else {
+                            commands.extend(fx_commands(item.fx, snapshot));
+                        }
                     }
                 }
             });
@@ -535,151 +590,86 @@ impl EffectsState {
             if let Some(state) = note
                 && let Some(bend) = &state.bend
             {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "Bend {} · {}",
-                            bend_name(bend.kind),
-                            quarter_tones(bend)
-                        ))
-                        .weak(),
-                    );
-                    if ui.small_button("Edit…").clicked() {
-                        self.bend = Some(BendEditor {
-                            kind: bend.kind,
-                            points: bend.points.clone(),
-                            error: None,
-                        });
-                    }
-                });
+                ui.label(
+                    egui::RichText::new(format!(
+                        "Bend {} · {}",
+                        bend_name(bend.kind),
+                        quarter_tones(bend)
+                    ))
+                    .weak(),
+                );
             }
-            self.show_bend(ui, snapshot, commands);
+            if let Some(shape) = &beat.whammy {
+                ui.label(
+                    egui::RichText::new(format!("Whammy · {}", quarter_tones_shape(&shape.points)))
+                        .weak(),
+                );
+            }
         });
         style::section(ui, "beat_effects", "Strokes and beat", |ui| {
             row(ui, BEAT_ITEMS, commands);
-            if let Some(shape) = &beat.whammy {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "Whammy · {}",
-                            quarter_tones_shape(&shape.points)
-                        ))
-                        .weak(),
-                    );
-                    if ui.small_button("Edit…").clicked() {
-                        self.whammy = Some(WhammyEditor {
-                            points: shape.points.clone(),
-                            error: None,
-                        });
-                    }
-                });
-            }
-            self.show_whammy(ui, snapshot, commands);
         });
+        match open {
+            Some(Fx::Bend) => self.open_bend(snapshot),
+            Some(Fx::Whammy) => self.open_whammy(snapshot),
+            _ => {}
+        }
     }
 
     fn show_bend(
         &mut self,
-        ui: &mut egui::Ui,
+        ctx: &egui::Context,
         snapshot: &PaletteSnapshot,
+        presets: &mut Vec<ShapePreset>,
         commands: &mut Vec<Command>,
     ) {
         let Some(editor) = &mut self.bend else {
             return;
         };
-        let mut open = true;
-        let mut apply = false;
-        let mut cancel = false;
-        egui::Window::new("Bend shape")
-            .collapsible(false)
-            .resizable(false)
-            .open(&mut open)
-            .show(ui.ctx(), |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Kind");
-                    ui.selectable_value(&mut editor.kind, BendKind::Up, "up");
-                    ui.selectable_value(&mut editor.kind, BendKind::Release, "release");
-                });
-                points_editor(ui, &mut editor.points, &mut editor.error);
-                preview(ui, &editor.points);
-                if let Some(error) = &editor.error {
-                    ui.colored_label(ui.visuals().error_fg_color, error);
+        let effect = match editor.show(ctx, presets) {
+            Outcome::Open => return,
+            Outcome::Cancel => None,
+            Outcome::Remove => Some(NoteEffect::Bend(None)),
+            Outcome::Apply => match BendShape::new(editor.kind, editor.points.clone()) {
+                Ok(shape) => Some(NoteEffect::Bend(Some(shape))),
+                Err(error) => {
+                    editor.error = Some(error.to_string());
+                    return;
                 }
-                ui.horizontal(|ui| {
-                    if ui.button("Apply").clicked() {
-                        apply = true;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        cancel = true;
-                    }
-                });
-            });
-        if apply {
-            match BendShape::new(editor.kind, editor.points.clone()) {
-                Ok(shape) => {
-                    for (at, string) in &snapshot.note_targets {
-                        commands.push(Command::SetNoteEffect {
-                            at: *at,
-                            string: *string,
-                            effect: NoteEffect::Bend(Some(shape.clone())),
-                        });
-                    }
-                    self.bend = None;
-                }
-                Err(error) => editor.error = Some(error.to_string()),
-            }
-        } else if cancel || !open {
-            self.bend = None;
+            },
+        };
+        if let Some(effect) = effect {
+            apply_note(commands, &snapshot.note_targets, effect);
         }
+        self.bend = None;
     }
 
     fn show_whammy(
         &mut self,
-        ui: &mut egui::Ui,
+        ctx: &egui::Context,
         snapshot: &PaletteSnapshot,
+        presets: &mut Vec<ShapePreset>,
         commands: &mut Vec<Command>,
     ) {
         let Some(editor) = &mut self.whammy else {
             return;
         };
-        let mut open = true;
-        let mut apply = false;
-        let mut cancel = false;
-        egui::Window::new("Whammy shape")
-            .collapsible(false)
-            .resizable(false)
-            .open(&mut open)
-            .show(ui.ctx(), |ui| {
-                points_editor(ui, &mut editor.points, &mut editor.error);
-                preview(ui, &editor.points);
-                if let Some(error) = &editor.error {
-                    ui.colored_label(ui.visuals().error_fg_color, error);
+        let effect = match editor.show(ctx, presets) {
+            Outcome::Open => return,
+            Outcome::Cancel => None,
+            Outcome::Remove => Some(BeatEffect::Whammy(None)),
+            Outcome::Apply => match WhammyShape::new(editor.points.clone()) {
+                Ok(shape) => Some(BeatEffect::Whammy(Some(shape))),
+                Err(error) => {
+                    editor.error = Some(error.to_string());
+                    return;
                 }
-                ui.horizontal(|ui| {
-                    if ui.button("Apply").clicked() {
-                        apply = true;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        cancel = true;
-                    }
-                });
-            });
-        if apply {
-            match WhammyShape::new(editor.points.clone()) {
-                Ok(shape) => {
-                    for at in &snapshot.beats {
-                        commands.push(Command::SetBeatEffect {
-                            at: *at,
-                            effect: BeatEffect::Whammy(Some(shape.clone())),
-                        });
-                    }
-                    self.whammy = None;
-                }
-                Err(error) => editor.error = Some(error.to_string()),
-            }
-        } else if cancel || !open {
-            self.whammy = None;
+            },
+        };
+        if let Some(effect) = effect {
+            apply_beat(commands, &snapshot.beats, effect);
         }
+        self.whammy = None;
     }
 }
 
@@ -712,74 +702,17 @@ fn apply_beat(
     }
 }
 
-/// Edits a list of shape points in place (position 0-12, value in quarter tones).
-fn points_editor(ui: &mut egui::Ui, points: &mut Vec<BendPoint>, error: &mut Option<String>) {
-    let mut remove = None;
-    for (index, point) in points.iter_mut().enumerate() {
-        ui.horizontal(|ui| {
-            ui.label("at");
-            ui.add(egui::DragValue::new(&mut point.position).range(0..=12));
-            ui.label("value");
-            ui.add(egui::DragValue::new(&mut point.value).range(-48..=48));
-            if ui.small_button("x").clicked() {
-                remove = Some(index);
-            }
-        });
-    }
-    if let Some(index) = remove
-        && points.len() > 1
-    {
-        points.remove(index);
-        *error = None;
-    }
-    if ui.button("Add point").clicked() {
-        let position = points
-            .last()
-            .map_or(6, |point| point.position.saturating_add(1).min(12));
-        points.push(BendPoint { position, value: 0 });
-        *error = None;
-    }
-}
-
-/// A small line preview of a shape.
-fn preview(ui: &mut egui::Ui, points: &[BendPoint]) {
-    let (rect, _) = ui.allocate_exact_size(vec2(220.0, 60.0), egui::Sense::hover());
-    let painter = ui.painter();
-    painter.rect_filled(rect, 3.0, ui.visuals().faint_bg_color);
-    let to_screen = |point: &BendPoint| {
-        pos2(
-            rect.left() + rect.width() * f32::from(point.position) / 12.0,
-            rect.center().y - f32::from(point.value) * rect.height() / 96.0,
-        )
-    };
-    painter.line_segment(
-        [
-            pos2(rect.left(), rect.center().y),
-            pos2(rect.right(), rect.center().y),
-        ],
-        Stroke::new(0.5, ui.visuals().weak_text_color()),
-    );
-    let screen: Vec<_> = points.iter().map(to_screen).collect();
-    if let Some(first) = screen.first() {
-        let mut last = *first;
-        for point in screen.iter().skip(1) {
-            painter.line_segment(
-                [last, *point],
-                Stroke::new(1.5, ui.visuals().selection.bg_fill),
-            );
-            last = *point;
-        }
-        for point in screen {
-            painter.circle_filled(point, 2.5, Color32::from_rgb(0x1e, 0x6f, 0xd9));
-        }
-    }
-}
-
+/// A full-step bend, like the editor's "Bend" preset: up to 4 quarter tones by the middle
+/// of the note, then held.
 fn default_bend() -> Vec<BendPoint> {
     vec![
         BendPoint {
             position: 0,
             value: 0,
+        },
+        BendPoint {
+            position: 6,
+            value: 4,
         },
         BendPoint {
             position: 12,
@@ -788,6 +721,7 @@ fn default_bend() -> Vec<BendPoint> {
     ]
 }
 
+/// A dip of two steps, like the editor's "Dip" preset.
 fn default_whammy() -> Vec<BendPoint> {
     vec![
         BendPoint {
@@ -796,7 +730,7 @@ fn default_whammy() -> Vec<BendPoint> {
         },
         BendPoint {
             position: 6,
-            value: -4,
+            value: -8,
         },
         BendPoint {
             position: 12,

@@ -17,8 +17,10 @@ mod icons;
 mod instrument;
 mod new_track;
 mod page;
+mod page_menu;
 mod recovery;
 mod settings_window;
+mod shape_editor;
 mod shortcuts;
 mod style;
 mod tiles;
@@ -332,15 +334,11 @@ impl GuitarScoreApp {
 impl eframe::App for GuitarScoreApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        if let Some(rect) = ctx.input(|input| input.viewport().outer_rect) {
-            let maximized = ctx.input(|input| input.viewport().maximized.unwrap_or(false));
-            self.last_window = Some(WindowState {
-                x: rect.min.x,
-                y: rect.min.y,
-                width: rect.width(),
-                height: rect.height(),
-                maximized,
-            });
+        // Wayland never tells the position; the size and the mode are kept regardless.
+        if let Some(window) =
+            ctx.input(|input| WindowState::of_viewport(input.viewport(), self.last_window))
+        {
+            self.last_window = Some(window);
         }
         self.handle_events(&ctx);
         // A file dropped on the window opens like File > Open (asking about unsaved work).
@@ -513,6 +511,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_shortcuts(&ctx);
         self.show_history(&ctx);
         self.show_new_track_dialog(&ctx);
+        self.show_shape_editors(&ctx);
         // Every edit of this frame goes to the recovery journal.
         if let Some(document) = &mut self.document
             && let Some(error) = document.record_changes()
@@ -557,11 +556,12 @@ mod tests {
         let ctx = egui::Context::default();
         let settings = Settings {
             window: Some(WindowState {
-                x: f32::NAN,
-                y: 0.0,
+                x: Some(f32::NAN),
+                y: Some(0.0),
                 width: -10.0,
                 height: 0.0,
                 maximized: false,
+                fullscreen: false,
             }),
             ..Settings::default()
         };

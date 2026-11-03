@@ -19,26 +19,31 @@ const MAX_KEYS_PER_ACTION: usize = 32;
 /// Default interval between recovery snapshots, in seconds.
 pub const DEFAULT_AUTOSAVE_SECONDS: u64 = 60;
 
-/// The window's position and size, so it opens where it was closed.
+/// The window's size, position and mode, so it opens the way it was closed.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct WindowState {
-    /// Left edge in screen points.
-    pub x: f32,
-    /// Top edge in screen points.
-    pub y: f32,
-    /// Inner width.
+    /// Left edge in screen points; `None` where the system does not tell (Wayland).
+    #[serde(default)]
+    pub x: Option<f32>,
+    /// Top edge in screen points; `None` where the system does not tell (Wayland).
+    #[serde(default)]
+    pub y: Option<f32>,
+    /// Inner width (when not maximized or fullscreen).
     pub width: f32,
-    /// Inner height.
+    /// Inner height (when not maximized or fullscreen).
     pub height: f32,
     /// Whether it was maximized.
     pub maximized: bool,
+    /// Whether it was fullscreen.
+    #[serde(default)]
+    pub fullscreen: bool,
 }
 
 impl WindowState {
-    /// Whether the values make sense (finite, positive size, finite position).
+    /// Whether the values make sense (finite, positive size, finite position if any).
     pub fn is_valid(self) -> bool {
-        self.x.is_finite()
-            && self.y.is_finite()
+        self.x.is_none_or(f32::is_finite)
+            && self.y.is_none_or(f32::is_finite)
             && self.width.is_finite()
             && self.height.is_finite()
             && self.width > 0.0
@@ -50,9 +55,39 @@ impl WindowState {
         [self.width, self.height]
     }
 
-    /// The position as egui takes it.
-    pub fn position(self) -> [f32; 2] {
-        [self.x, self.y]
+    /// The position as egui takes it, if known.
+    pub fn position(self) -> Option<[f32; 2]> {
+        Some([self.x?, self.y?])
+    }
+
+    /// The state to remember for a window as egui describes it, or `None` before its size
+    /// is known. While it is maximized or fullscreen, the normal size and place from
+    /// `previous` are kept, so leaving that mode after a restart gives them back.
+    pub fn of_viewport(
+        info: &egui::ViewportInfo,
+        previous: Option<WindowState>,
+    ) -> Option<WindowState> {
+        let inner = info.inner_rect?;
+        let maximized = info.maximized.unwrap_or(false);
+        let fullscreen = info.fullscreen.unwrap_or(false);
+        if (maximized || fullscreen)
+            && let Some(previous) = previous
+        {
+            return Some(WindowState {
+                maximized,
+                fullscreen,
+                ..previous
+            });
+        }
+        let state = WindowState {
+            x: info.outer_rect.map(|rect| rect.min.x),
+            y: info.outer_rect.map(|rect| rect.min.y),
+            width: inner.width(),
+            height: inner.height(),
+            maximized,
+            fullscreen,
+        };
+        state.is_valid().then_some(state)
     }
 }
 
@@ -66,6 +101,41 @@ pub struct ShortcutSetting {
     /// Its key combinations as written (`ctrl+z`, `Left`, `+`, ...); empty when the action
     /// has no shortcut any more.
     pub keys: Vec<String>,
+}
+
+/// Most bend (or whammy) presets kept, and the longest preset name.
+pub const MAX_SHAPE_PRESETS: usize = 64;
+const MAX_PRESET_NAME: usize = 64;
+
+/// A bend or whammy shape the user saved as a preset in the shape editor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShapePreset {
+    /// The name shown in the preset list.
+    pub name: String,
+    /// Whether the bend is a release (bend presets only).
+    #[serde(default)]
+    pub release: bool,
+    /// The points as (position 0 to 12, value in quarter tones).
+    pub points: Vec<(u8, i8)>,
+}
+
+impl ShapePreset {
+    /// The points as the model takes them.
+    pub fn bend_points(&self) -> Vec<gscore_model::BendPoint> {
+        self.points
+            .iter()
+            .map(|&(position, value)| gscore_model::BendPoint { position, value })
+            .collect()
+    }
+
+    /// Whether the name and the points are usable (a broken settings file can hold
+    /// anything).
+    fn is_valid(&self) -> bool {
+        let name = self.name.trim();
+        !name.is_empty()
+            && name.chars().count() <= MAX_PRESET_NAME
+            && gscore_model::WhammyShape::new(self.bend_points()).is_ok()
+    }
 }
 
 /// Everything the app remembers between runs.
@@ -116,6 +186,10 @@ pub struct Settings {
     pub prefer_synth: bool,
     /// The MIDI port chosen, if any.
     pub midi_port: Option<String>,
+    /// Bend shapes saved as presets in the bend editor.
+    pub bend_presets: Vec<ShapePreset>,
+    /// Whammy shapes saved as presets in the whammy editor.
+    pub whammy_presets: Vec<ShapePreset>,
 }
 
 impl Default for Settings {
@@ -142,6 +216,8 @@ impl Default for Settings {
             soundfont_path: None,
             prefer_synth: true,
             midi_port: None,
+            bend_presets: Vec::new(),
+            whammy_presets: Vec::new(),
         }
     }
 }
@@ -277,6 +353,10 @@ impl Settings {
             stored.keys.truncate(MAX_KEYS_PER_ACTION);
             stored.keys.retain(|key| !key.is_empty() && key.len() <= 64);
         }
+        for presets in [&mut self.bend_presets, &mut self.whammy_presets] {
+            presets.retain(ShapePreset::is_valid);
+            presets.truncate(MAX_SHAPE_PRESETS);
+        }
     }
 }
 
@@ -371,6 +451,72 @@ mod tests {
         assert!(settings.recovery_options().snapshot_interval.is_zero());
     }
 
+    fn viewport(
+        inner: Option<(f32, f32)>,
+        outer_at: Option<(f32, f32)>,
+        maximized: bool,
+        fullscreen: bool,
+    ) -> egui::ViewportInfo {
+        let size = inner.unwrap_or((0.0, 0.0));
+        egui::ViewportInfo {
+            inner_rect: inner
+                .map(|(w, h)| egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(w, h))),
+            outer_rect: outer_at.map(|(x, y)| {
+                egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(size.0, size.1))
+            }),
+            maximized: Some(maximized),
+            fullscreen: Some(fullscreen),
+            ..egui::ViewportInfo::default()
+        }
+    }
+
+    #[test]
+    fn the_window_mode_is_remembered_without_a_position() {
+        // Wayland: a size but no position. The window is still remembered.
+        let normal =
+            WindowState::of_viewport(&viewport(Some((900.0, 700.0)), None, false, false), None)
+                .expect("remembered");
+        assert_eq!(normal.position(), None);
+        assert_eq!(normal.size(), [900.0, 700.0]);
+        // Maximized, then fullscreen: the normal size stays for when the mode is left.
+        let maximized = WindowState::of_viewport(
+            &viewport(Some((1920.0, 1080.0)), None, true, false),
+            Some(normal),
+        )
+        .expect("remembered");
+        assert!(maximized.maximized);
+        assert_eq!(maximized.size(), [900.0, 700.0]);
+        let fullscreen = WindowState::of_viewport(
+            &viewport(Some((1920.0, 1080.0)), None, false, true),
+            Some(maximized),
+        )
+        .expect("remembered");
+        assert!(fullscreen.fullscreen && !fullscreen.maximized);
+        assert_eq!(fullscreen.size(), [900.0, 700.0]);
+        // Where the system tells the position (X11, Windows), it is kept.
+        let placed = WindowState::of_viewport(
+            &viewport(Some((800.0, 600.0)), Some((40.0, 30.0)), false, false),
+            Some(fullscreen),
+        )
+        .expect("remembered");
+        assert_eq!(placed.position(), Some([40.0, 30.0]));
+        assert!(!placed.fullscreen);
+        // No size yet: nothing to remember.
+        assert_eq!(
+            WindowState::of_viewport(&viewport(None, None, false, false), None),
+            None
+        );
+    }
+
+    #[test]
+    fn window_settings_from_before_fullscreen_still_load() {
+        let old = r#"{"window":{"x":10.0,"y":20.0,"width":900.0,"height":700.0,"maximized":true}}"#;
+        let settings: Settings = serde_json::from_str(old).expect("deserialize");
+        let window = settings.window.expect("window");
+        assert_eq!(window.position(), Some([10.0, 20.0]));
+        assert!(window.maximized && !window.fullscreen);
+    }
+
     #[test]
     fn a_json_round_trip_keeps_every_field() {
         let mut settings = Settings::default();
@@ -382,11 +528,12 @@ mod tests {
         }];
         settings.grid_height_chosen = Some(180.0);
         settings.window = Some(WindowState {
-            x: 10.0,
-            y: 20.0,
+            x: Some(10.0),
+            y: Some(20.0),
             width: 900.0,
             height: 700.0,
             maximized: false,
+            fullscreen: true,
         });
         let text = serde_json::to_string(&settings).expect("serialize");
         let back: Settings = serde_json::from_str(&text).expect("deserialize");

@@ -27,6 +27,11 @@ const MAX_WIGGLES: f32 = 200.0;
 const BEND_END_GAP: f32 = 0.8;
 /// Shortest bend, from the number to the arrow.
 const BEND_MIN: f32 = 1.5;
+/// How far a cubic Bézier's control points reach for a quarter ellipse (4/3·(√2−1)).
+const QUARTER_ELLIPSE: f32 = 0.552_284_8;
+/// An arrowhead's length (tip to base) and half its base width.
+const ARROW_LENGTH: f32 = 0.9;
+const ARROW_HALF_WIDTH: f32 = 0.42;
 
 impl Fret {
     /// Draws the number (with its mask and inline slide slashes).
@@ -249,12 +254,14 @@ fn draw_bend(
         return;
     }
     let end = Point::new(end_x, if up { top - 2.2 } else { line_y + 2.2 });
-    let direction = if up { -1.0 } else { 1.0 };
+    // A quarter ellipse: it leaves the number level and enters the arrowhead's base
+    // straight up (or down), at a right angle to the base.
+    let base = arrow_base(end, up);
     ops.push(DrawOp::Curve {
         from: start,
-        to: end,
-        control1: Point::new(start.x + (end.x - start.x) * 0.55, start.y),
-        control2: Point::new(end.x, end.y - direction * 1.2),
+        to: base,
+        control1: Point::new(start.x + (base.x - start.x) * QUARTER_ELLIPSE, start.y),
+        control2: Point::new(base.x, base.y + (start.y - base.y) * QUARTER_ELLIPSE),
         thickness: LINE_THICKNESS,
         color: ColorToken::Notation,
     });
@@ -312,23 +319,23 @@ fn draw_glyph_centered(
     });
 }
 
-/// Draws an open arrowhead with its tip at `tip`. Vector strokes, so it is visible
-/// wherever the SVG is opened, even without the music font.
-pub(super) fn draw_arrowhead(tip: Point, pointing_up: bool, ops: &mut Vec<DrawOp>) {
-    const LENGTH: f32 = 1.0;
-    const HALF_WIDTH: f32 = 0.5;
-    const THICKNESS: f32 = 0.18;
-    let base_y = if pointing_up {
-        tip.y + LENGTH
-    } else {
-        tip.y - LENGTH
-    };
-    for x in [tip.x - HALF_WIDTH, tip.x + HALF_WIDTH] {
-        ops.push(DrawOp::Line {
-            from: Point::new(x, base_y),
-            to: tip,
-            thickness: THICKNESS,
-            color: ColorToken::Notation,
-        });
-    }
+/// The middle of the base of an arrowhead with its tip at `tip`: where the line into it
+/// ends.
+fn arrow_base(tip: Point, pointing_up: bool) -> Point {
+    let direction = if pointing_up { 1.0 } else { -1.0 };
+    Point::new(tip.x, tip.y + direction * ARROW_LENGTH)
+}
+
+/// Draws a solid arrowhead with its tip at `tip`. Vector shapes, so it is visible wherever
+/// the SVG is opened, even without the music font.
+fn draw_arrowhead(tip: Point, pointing_up: bool, ops: &mut Vec<DrawOp>) {
+    let base = arrow_base(tip, pointing_up);
+    ops.push(DrawOp::Polygon {
+        points: vec![
+            tip,
+            Point::new(base.x + ARROW_HALF_WIDTH, base.y),
+            Point::new(base.x - ARROW_HALF_WIDTH, base.y),
+        ],
+        color: ColorToken::Notation,
+    });
 }

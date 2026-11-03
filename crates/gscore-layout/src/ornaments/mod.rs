@@ -4,7 +4,7 @@
 //! keeps their meaning with the usual tab conventions: curved slurs for hammer-ons and
 //! legato slides, a slanted line for a shift slide, slashes at the fret for slides in and
 //! out, wiggles above the staff for vibrato, angle brackets for harmonics, and `P.M.` /
-//! `let ring` rows below the staff. Bend and whammy arrows rise above the staff.
+//! `let ring` rows below the staff. Bend arrows and the whammy-bar line rise above the staff.
 //!
 //! This module holds what a note remembers about its ornaments; [`draw`] paints it.
 
@@ -14,7 +14,7 @@ mod notes;
 pub(crate) use lines::{draw_legato_run, draw_link, draw_tie, draw_under_staff_run, draw_whammy};
 pub(crate) use notes::draw_vibrato;
 
-use gscore_model::{AccentKind, Bend, Harmonic, HarmonicKind, SlideKind, Vibrato, Whammy};
+use gscore_model::{AccentKind, Bend, Harmonic, HarmonicKind, SlideKind, Vibrato, WhammyShape};
 
 /// Thickness of slurs, slides and arrows.
 const LINE_THICKNESS: f32 = 0.15;
@@ -138,7 +138,7 @@ pub(crate) struct ColumnMarks {
     /// This column continues a beat-level legato run.
     pub(crate) legato_destination: bool,
     /// The whammy-bar shape on this column.
-    pub(crate) whammy: Option<Whammy>,
+    pub(crate) whammy: Option<WhammyShape>,
     /// The widest vibrato of the beat or its notes; drawn once per column.
     pub(crate) vibrato: Option<Vibrato>,
 }

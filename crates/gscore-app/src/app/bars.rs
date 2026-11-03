@@ -4,6 +4,7 @@ use egui::{Align, Layout as UiLayout};
 use gscore_edit::{ActionId, Request};
 
 use super::GuitarScoreApp;
+use super::page_menu::{self, Section};
 use crate::state::ThemeChoice;
 
 impl GuitarScoreApp {
@@ -20,6 +21,7 @@ impl GuitarScoreApp {
     }
 
     pub(super) fn menu_bar(&mut self, ui: &mut egui::Ui) {
+        let mut choices = Vec::new();
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
                 if ui.button("New").clicked() {
@@ -98,6 +100,13 @@ impl GuitarScoreApp {
                     }
                 }
                 ui.separator();
+                let has_document = self.document.is_some();
+                for action in [ActionId::Cut, ActionId::Copy, ActionId::Paste] {
+                    if self.action_button(ui, action, has_document) {
+                        self.perform_action(gscore_edit::Action::Plain(action), ui.ctx());
+                    }
+                }
+                ui.separator();
                 if ui.button("History…").clicked() {
                     self.open_history();
                     ui.close();
@@ -135,8 +144,34 @@ impl GuitarScoreApp {
                 if ui.button("Actual size").clicked() {
                     self.view.set_zoom(1.0);
                 }
+                ui.separator();
+                if self.action_button(ui, ActionId::ToggleFullscreen, true) {
+                    self.perform_action(
+                        gscore_edit::Action::Plain(ActionId::ToggleFullscreen),
+                        ui.ctx(),
+                    );
+                    ui.close();
+                }
             });
+            // Guitar Pro's order: the track, its bars, their notes.
+            for (title, section) in [
+                ("Track", Section::Track),
+                ("Bar", Section::Bar),
+                ("Note", Section::Note),
+            ] {
+                ui.add_enabled_ui(self.document.is_some(), |ui| {
+                    ui.menu_button(title, |ui| {
+                        if let Some(document) = &self.document {
+                            page_menu::with_target(document, |target| {
+                                page_menu::section(ui, section, target, &self.keymap, &mut choices);
+                            });
+                        }
+                    });
+                });
+            }
         });
+        let ctx = ui.ctx().clone();
+        self.run_menu_choices(choices, &ctx);
     }
 
     /// The keys bound to `action`, as a tooltip suffix: " (ctrl+s)".

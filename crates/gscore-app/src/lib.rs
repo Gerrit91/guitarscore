@@ -18,7 +18,8 @@ pub use document::{Document, GridData};
 pub use gscore_edit::Keymap;
 pub use playback::{Output, Playback};
 pub use settings::{
-    DEFAULT_AUTOSAVE_SECONDS, MAX_RECENT_FILES, Settings, ShortcutSetting, WindowState,
+    DEFAULT_AUTOSAVE_SECONDS, MAX_RECENT_FILES, MAX_SHAPE_PRESETS, Settings, ShapePreset,
+    ShortcutSetting, WindowState,
 };
 pub use state::{MeasureSelection, ThemeChoice, ViewState, ZOOM_RANGE};
 

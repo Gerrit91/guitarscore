@@ -108,6 +108,12 @@ impl GuitarScoreApp {
                     ctx.request_repaint();
                     return;
                 }
+                ActionId::ToggleFullscreen => {
+                    let fullscreen =
+                        ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!fullscreen));
+                    return;
+                }
                 _ => {}
             }
         }
