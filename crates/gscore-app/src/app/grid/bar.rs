@@ -119,13 +119,11 @@ pub(super) fn master_row(
         FontId::proportional(12.0),
         visuals.strong_text_color(),
     );
-    // Mute and solo all tracks live here, next to the master fader, not in the header.
-    let at =
-        |dx: f32| Rect::from_center_size(pos2(rect.left() + dx, rect.center().y), vec2(18.0, 18.0));
+    // Mute and solo all tracks live here, in the same column as the tracks' own buttons.
     let mute = !all_muted;
     if toggle(
         ui,
-        at(70.0),
+        mixer::mute_rect(rect),
         "M",
         "Mute all",
         all_muted,
@@ -150,7 +148,7 @@ pub(super) fn master_row(
     let solo = !all_soloed;
     if toggle(
         ui,
-        at(92.0),
+        mixer::solo_rect(rect),
         "S",
         "Solo all",
         all_soloed,

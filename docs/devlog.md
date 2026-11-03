@@ -1455,3 +1455,10 @@ of `(v / 127)²`, and the master multiplies every track's volume by `master / 97
   channel gain `(v / 127)²` of the played volume, and the master shows the loudest track.
 - Tests: dB mapping both ways for tracks and master, fader taper round trip, typing −12 dB
   gives volume 64; page snapshots regenerated for the new readouts.
+
+## 2026-11-03 — Master row: mute/solo in the tracks' column
+
+- The master row placed mute/solo-all at fixed offsets from the left while the track rows
+  place theirs from the right-hand mixer controls, so the two columns only met at one
+  panel width. Both now use `mixer::mute_rect`/`solo_rect`. Test
+  `the_master_rows_mute_and_solo_line_up_with_the_tracks`; snapshots regenerated.

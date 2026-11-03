@@ -11,6 +11,23 @@ pub(super) fn controls_rect(row: Rect) -> Rect {
     )
 }
 
+/// The mute button's slot in a row (track rows and the master row share it, so the
+/// buttons form one column).
+pub(super) fn mute_rect(row: Rect) -> Rect {
+    Rect::from_center_size(
+        pos2(controls_rect(row).left() + 10.0, row.center().y),
+        Vec2::splat(18.0),
+    )
+}
+
+/// The solo button's slot in a row, right of [`mute_rect`].
+pub(super) fn solo_rect(row: Rect) -> Rect {
+    Rect::from_center_size(
+        pos2(controls_rect(row).left() + 32.0, row.center().y),
+        Vec2::splat(18.0),
+    )
+}
+
 /// The volume slider's slot in a row.
 pub(super) fn volume_rect(row: Rect) -> Rect {
     let controls = controls_rect(row);

@@ -163,15 +163,8 @@ fn track_header(
     );
 
     // Mute and solo, on the right of the name.
-    let controls = mixer::controls_rect(rect);
-    let mute = Rect::from_center_size(
-        pos2(controls.left() + 10.0, rect.center().y),
-        vec2(18.0, 18.0),
-    );
-    let solo = Rect::from_center_size(
-        pos2(controls.left() + 32.0, rect.center().y),
-        vec2(18.0, 18.0),
-    );
+    let mute = mixer::mute_rect(rect);
+    let solo = mixer::solo_rect(rect);
     if ui
         .put(mute, egui::Button::new("M").selected(row.muted).small())
         .on_hover_text("Mute this track")

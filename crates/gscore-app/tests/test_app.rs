@@ -1346,3 +1346,25 @@ fn the_grid_switches_to_a_mixer_view() {
     harness.get_by_label("Output activity Steel Guitar");
     harness.get_by_label("Output activity master");
 }
+
+#[test]
+fn the_master_rows_mute_and_solo_line_up_with_the_tracks() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    harness.run();
+    let track_mute = harness.get_by_label("M").rect();
+    let track_solo = harness.get_by_label("S").rect();
+    let all_mute = harness.get_by_label("Mute all").rect();
+    let all_solo = harness.get_by_label("Solo all").rect();
+    assert!(
+        (track_mute.center().x - all_mute.center().x).abs() < 0.5,
+        "{track_mute:?} {all_mute:?}"
+    );
+    assert!(
+        (track_solo.center().x - all_solo.center().x).abs() < 0.5,
+        "{track_solo:?} {all_solo:?}"
+    );
+    assert!(
+        all_mute.top() > track_mute.bottom(),
+        "the master row is below"
+    );
+}
