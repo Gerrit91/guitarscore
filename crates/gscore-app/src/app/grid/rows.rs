@@ -89,9 +89,9 @@ pub(super) fn headers(
                 let level = levels.get(index).copied().unwrap_or(0.0);
                 track_header(ui, index, rows.len(), row, view, level, actions);
             }
-            let master_level = levels.iter().copied().fold(0.0_f32, f32::max)
-                * f32::from(master.volume)
-                / f32::from(gscore_model::MASTER_UNITY);
+            // The track levels already include the master (the sequence plays the mixed
+            // volumes), so the loudest track is the master's level.
+            let master_level = levels.iter().copied().fold(0.0_f32, f32::max);
             let all_muted = !rows.is_empty() && rows.iter().all(|row| row.muted);
             let all_soloed = !rows.is_empty() && rows.iter().all(|row| row.soloed);
             bar::master_row(
@@ -214,10 +214,17 @@ fn track_header(
     );
     ui.ctx()
         .accesskit_node_builder(volume_response.id, |node| node.set_label("Volume"));
-    volume_response
-        .clone()
-        .on_hover_text(format!("Volume {volume} — {}", mixer::db_text(volume)));
-    mixer::paint_db(ui, rect, volume, volume_response.dragged());
+    volume_response.clone().on_hover_text(format!(
+        "Volume {volume} — {}",
+        mixer::db_text(volume, mixer::TRACK_UNITY)
+    ));
+    mixer::paint_db(
+        ui,
+        rect,
+        volume,
+        mixer::TRACK_UNITY,
+        volume_response.dragged(),
+    );
     if volume_response.drag_started() || volume_response.drag_stopped() {
         actions.push(GridAction::BreakMerge);
     }

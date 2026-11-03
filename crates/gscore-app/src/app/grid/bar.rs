@@ -183,9 +183,9 @@ pub(super) fn master_row(
     );
     ui.ctx()
         .accesskit_node_builder(slider.id, |node| node.set_label("Master volume"));
-    let percent = u32::from(volume) * 100 / u32::from(MASTER_UNITY);
     let slider = slider.on_hover_text(format!(
-        "Volume of all tracks: {percent}% (double-click: 100%)"
+        "Volume of all tracks: {} (double-click: 0 dB)",
+        mixer::db_text(volume, MASTER_UNITY)
     ));
     if slider.double_clicked() {
         volume = MASTER_UNITY;
@@ -200,7 +200,7 @@ pub(super) fn master_row(
             merge,
         });
     }
-    mixer::paint_db(ui, rect, volume, slider.dragged());
+    mixer::paint_db(ui, rect, volume, MASTER_UNITY, slider.dragged());
     let pan_rect = mixer::pan_rect(rect);
     let knob = mixer::pan_knob(ui, pan_rect, master.pan, usize::MAX, "Master pan");
     if knob.boundary {

@@ -533,7 +533,8 @@ impl Playback {
     }
 
     /// An approximate output level of `track` (0.0 to 1.0) for the mixer meter: recent
-    /// note velocities scaled by the track's volume and decaying over a quarter note. This
+    /// note velocities scaled by the channel gain of the track's played volume (master
+    /// included) and decaying over a quarter note. This
     /// is note activity, not measured audio, so it also works with MIDI output.
     pub fn track_level(&self, track: TrackIndex) -> f32 {
         if self.state() != PlayState::Playing {
@@ -566,7 +567,10 @@ impl Playback {
                 peak = peak.max(strength);
             }
         }
-        peak * f32::from(entry.sound.volume) / 127.0
+        // The synthesizer's channel gain is (volume / 127)²; the sequence's volumes already
+        // include the master.
+        let gain = f32::from(entry.sound.volume) / 127.0;
+        peak * gain * gain
     }
 
     /// A track's volume, pan or program changed. The new values are sent to the player at

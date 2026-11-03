@@ -1335,7 +1335,8 @@ fn the_grid_switches_to_a_mixer_view() {
             .track_sound(gscore_model::TrackIndex::new(0))
             .unwrap()
             .volume,
-        8
+        64,
+        "-12 dB is (64/127)² of the amplitude"
     );
 
     harness.get_by_label("Grid view").click();

@@ -1435,3 +1435,23 @@ Bugs fixed:
   SoundFont was configured, so the list was not sorted (test extended).
 - Keys reached the score while the new-track popup was open and its name field had lost
   focus (Escape/Enter or a shortcut could edit the song behind the popup).
+
+## 2026-11-03 — Fader numbers that match what is heard
+
+The previous mapping (0 dB at MIDI volume 32, +12 dB at 127) was not what playback does.
+rustysynth, like the General MIDI recommendation, plays channel volume `v` at an amplitude
+of `(v / 127)²`, and the master multiplies every track's volume by `master / 97`.
+
+- Track gain is now `40·log10(v / 127)`: 127 is 0 dB (the top), 64 is −11.9 dB, 32 is
+  −23.9 dB. Master gain is `40·log10(master / 97)`: 0 dB at the default, +4.7 dB at the
+  top (until a track hits the MIDI maximum). The grid rows, the master row (which used the
+  track mapping before), the strips' readouts, tooltips and typed dB values all use it;
+  typing accepts `−` and a trailing `dB`, `-inf` is silence, and values above the top clamp.
+- Fader travel is `(v / 127)^(2/3)`, i.e. `10^(dB / 60)` below the top: −6 dB at 79%,
+  −12 dB at 63%, −24 dB at 40%, −60 dB at 10%. The gain scale is computed per fader (the
+  master's 0 dB sits below its top) and thins out labels that would overlap.
+- The meters used the volume linearly, and the master meter applied the master a second
+  time (the sequence already plays the mixed volumes). The level estimate now uses the
+  channel gain `(v / 127)²` of the played volume, and the master shows the loudest track.
+- Tests: dB mapping both ways for tracks and master, fader taper round trip, typing −12 dB
+  gives volume 64; page snapshots regenerated for the new readouts.

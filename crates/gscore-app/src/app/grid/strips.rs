@@ -5,7 +5,7 @@ use egui::{Align2, Color32, FontId, Rect, RichText, Sense, Stroke, UiBuilder, po
 use gscore_edit::Command;
 use gscore_model::{MASTER_UNITY, MasterMix, TrackIndex};
 
-use super::mixer::{self, FLOOR_DB, UNITY_VOLUME, db_value, volume_from_db};
+use super::mixer::{self, FLOOR_DB, TRACK_UNITY, db_value, volume_from_db};
 use super::rows::TrackRow;
 use super::{GridAction, ROW_HEIGHT};
 use crate::app::instrument::Instrument;
@@ -16,11 +16,15 @@ const STRIP_WIDTH: f32 = 124.0;
 const TOP_HEIGHT: f32 = 30.0;
 /// Height of the fixed block under the fader (dB, mute/solo, name, preset, color).
 const BOTTOM_HEIGHT: f32 = 80.0;
-/// The decibel marks beside the fader (gain) and the meter. The fader uses a logarithmic
-/// taper (0 dB is about 37% below the top), so the gain labels are not equally spaced.
+/// The gain marks beside a fader, in dB. The fader's travel is logarithmic (see
+/// [`fader_fraction`]), so they are not equally spaced; marks above a fader's top (a track
+/// tops out at 0 dB, the master at +4.7 dB) are left out, and labels that would overlap
+/// the one above are skipped.
 const GAIN_MARKS: [f32; 12] = [
-    12.0, 6.0, 0.0, -6.0, -12.0, -18.0, -24.0, -30.0, -36.0, -42.0, -48.0, -54.0,
+    6.0, 3.0, 0.0, -3.0, -6.0, -12.0, -18.0, -24.0, -30.0, -36.0, -48.0, -60.0,
 ];
+/// Least vertical distance between two gain labels, in points.
+const LABEL_GAP: f32 = 14.0;
 const METER_MARKS: [f32; 11] = [
     0.0, -6.0, -12.0, -18.0, -24.0, -30.0, -36.0, -42.0, -48.0, -54.0, -60.0,
 ];
@@ -115,6 +119,7 @@ fn track_strip(
         row.volume,
         row.pan,
         level,
+        TRACK_UNITY,
         &format!("Volume {}", row.name),
         |volume, merge| {
             actions.push(GridAction::Command {
@@ -136,6 +141,7 @@ fn track_strip(
         state,
         index,
         row.volume,
+        TRACK_UNITY,
         &format!("Level {}", row.name),
         |volume| {
             actions.push(GridAction::Command {
@@ -185,14 +191,16 @@ fn master_strip(
     let (top, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
     knobs(&mut strip, top, usize::MAX, master.pan, "Master", actions);
-    let scaled = level * f32::from(master.volume) / f32::from(MASTER_UNITY);
+    // The track levels already include the master volume (the sequence plays the mixed
+    // volumes), so the loudest track is what the master puts out.
     fader(
         &mut strip,
         fader_area,
         usize::MAX,
         master.volume,
         master.pan,
-        scaled,
+        level,
+        MASTER_UNITY,
         "Master volume",
         |volume, merge| {
             actions.push(GridAction::Command {
@@ -211,6 +219,7 @@ fn master_strip(
         state,
         usize::MAX,
         master.volume,
+        MASTER_UNITY,
         "Master level",
         |volume| {
             actions.push(GridAction::Command {
@@ -321,6 +330,7 @@ fn fader(
     value: u8,
     pan: u8,
     level: f32,
+    unity: u8,
     label: &str,
     mut on_change: impl FnMut(u8, bool),
 ) {
@@ -350,7 +360,10 @@ fn fader(
         node.set_max_numeric_value(127.0);
         node.set_numeric_value(f64::from(value));
     });
-    let response = response.on_hover_text(format!("{label}: {value} ({})", mixer::db_text(value)));
+    let response = response.on_hover_text(format!(
+        "{label}: {} (volume {value})",
+        mixer::db_text(value, unity)
+    ));
     if response.clicked() {
         response.request_focus();
     }
@@ -423,7 +436,7 @@ fn fader(
         ],
         Stroke::new(1.0, Color32::from_rgb(0x30, 0x30, 0x30)),
     );
-    paint_gain_scale(ui, gain_scale, area);
+    paint_gain_scale(ui, gain_scale, area, unity);
     paint_meter_scale(ui, meter_scale, area);
     paint_meter(ui, meter, level, pan);
     let meter_response = ui.interact(meter, ui.scope_id().with(("meter", index)), Sense::hover());
@@ -469,21 +482,42 @@ fn paint_meter(ui: &egui::Ui, rect: Rect, level: f32, pan: u8) {
     paint_segment(ui, right, meter_fraction(right_level));
 }
 
-/// The gain scale left of the fader (+12 to -54 dB, then silence).
-fn paint_gain_scale(ui: &egui::Ui, rect: Rect, area: Rect) {
+/// The gain scale left of the fader: where each mark's gain sits on the fader's travel
+/// (for the fader whose 0 dB is volume `unity`), then −∞ at the bottom.
+fn paint_gain_scale(ui: &egui::Ui, rect: Rect, area: Rect, unity: u8) {
     let visuals = ui.visuals();
     let weak = visuals.weak_text_color();
     let font = FontId::monospace(8.0);
+    let top = db_value(127, unity);
+    let mut placed: Vec<(f32, f32)> = Vec::with_capacity(GAIN_MARKS.len());
     for db in GAIN_MARKS {
-        let y = area.bottom() - area.height() * gain_fraction(db);
+        if db > top + 0.05 {
+            continue;
+        }
+        let y = area.bottom() - area.height() * gain_fraction(db, unity);
+        placed.push((db, y));
+    }
+    // Bottom up, so the quiet end (where the marks crowd) is thinned, not the top; the −∞
+    // label at the bottom counts as the first one.
+    let mut last_label = area.bottom() - 4.0;
+    for &(db, y) in placed.iter().rev() {
         ui.painter().line_segment(
             [pos2(rect.right() - 4.0, y), pos2(rect.right(), y)],
             Stroke::new(1.0, weak.gamma_multiply(0.6)),
         );
+        if last_label - y < LABEL_GAP {
+            continue;
+        }
+        last_label = y;
+        let text = if db > 0.05 {
+            format!("+{db:.0}")
+        } else {
+            format!("{db:.0}")
+        };
         ui.painter().text(
             pos2(rect.right() - 6.0, y),
             Align2::RIGHT_CENTER,
-            format!("{db:.0}"),
+            text,
             font.clone(),
             weak,
         );
@@ -526,12 +560,14 @@ fn paint_meter_scale(ui: &egui::Ui, rect: Rect, area: Rect) {
 }
 
 /// The editable decibel readout; click it to type a level.
+#[allow(clippy::too_many_arguments)]
 fn db_field(
     ui: &mut egui::Ui,
     rect: Rect,
     state: &mut MixerState,
     target: usize,
     volume: u8,
+    unity: u8,
     label: &str,
     mut on_change: impl FnMut(u8),
 ) {
@@ -558,17 +594,19 @@ fn db_field(
             state.editing_db = None;
         } else if enter || response.lost_focus() {
             let text = edit.text.trim().replace(',', ".");
-            let db = if text.is_empty() || text.eq_ignore_ascii_case("-inf") || text.contains('∞')
-            {
-                Some(-60.0)
+            // A typed minus sign may be the Unicode one the readout shows; "dB" is optional.
+            let text = text
+                .replace('−', "-")
+                .trim_end_matches(|c: char| c.is_ascii_alphabetic() || c.is_whitespace())
+                .to_owned();
+            let db = if text.is_empty() || text.contains("inf") || text.contains('∞') {
+                Some(f32::NEG_INFINITY)
             } else {
-                text.parse::<f32>()
-                    .ok()
-                    .filter(|db| db.is_finite())
-                    .map(|db| db.clamp(FLOOR_DB, 12.0))
+                text.parse::<f32>().ok().filter(|db| db.is_finite())
             };
             if let Some(db) = db {
-                let new = volume_from_db(db);
+                // Above the fader's top is the top; very quiet is silence.
+                let new = volume_from_db(db, unity);
                 if new != volume {
                     on_change(new);
                 }
@@ -577,7 +615,7 @@ fn db_field(
         }
         return;
     }
-    let text = mixer::db_text(volume);
+    let text = mixer::db_text(volume, unity);
     let response = ui.put(
         rect,
         egui::Button::new(RichText::new(text).size(9.0)).frame(false),
@@ -591,9 +629,9 @@ fn db_field(
         state.editing_db = Some(DbEdit {
             target,
             text: if volume == 0 {
-                "-60".to_owned()
+                "-inf".to_owned()
             } else {
-                format!("{:.1}", db_value(volume))
+                format!("{:.1}", db_value(volume, unity))
             },
             focused: false,
         });
@@ -763,24 +801,28 @@ fn labels(
     ui.painter().rect_filled(color_rect, 1.0, color);
 }
 
-/// The fader travel for a MIDI volume: a logarithmic taper, 0 at silence and 1 at +12 dB.
+/// The fader travel for a volume, 0 (silence) to 1 (volume 127): `(v / 127)^(2/3)`. As the
+/// gain is `40·log10(v / 127)` dB, the travel is `10^(dB / 60)` below the top: −6 dB sits
+/// at 79%, −12 dB at 63%, −24 dB at 40% and −60 dB at 10%, so the loud end gets the most
+/// room, as on a mixing desk.
 fn fader_fraction(volume: u8) -> f32 {
-    (f32::from(volume) / 127.0).cbrt().clamp(0.0, 1.0)
+    (f32::from(volume) / 127.0).powf(2.0 / 3.0).clamp(0.0, 1.0)
 }
 
-/// The MIDI volume at a fader position (0 = silence, 1 = +12 dB).
+/// The volume at a fader position (the inverse of [`fader_fraction`]).
 fn volume_at_fraction(fraction: f32) -> u8 {
-    let volume = 127.0 * fraction.clamp(0.0, 1.0).powi(3);
+    let volume = 127.0 * fraction.clamp(0.0, 1.0).powf(1.5);
     volume.round().clamp(0.0, 127.0) as u8
 }
 
-/// Where a gain `db` sits on the fader's logarithmic taper.
-fn gain_fraction(db: f32) -> f32 {
-    if !db.is_finite() || db <= FLOOR_DB {
+/// Where a gain `db` sits on the travel of the fader whose 0 dB is volume `unity`.
+fn gain_fraction(db: f32, unity: u8) -> f32 {
+    if !db.is_finite() {
         return 0.0;
     }
-    let volume = UNITY_VOLUME * 10.0_f32.powf(db / 20.0);
-    (volume / 127.0).cbrt().clamp(0.0, 1.0)
+    // The exact (unrounded) volume, so the marks sit where the gain really is.
+    let volume = f32::from(unity) * 10.0_f32.powf(db / 40.0);
+    (volume / 127.0).powf(2.0 / 3.0).clamp(0.0, 1.0)
 }
 
 /// Where a meter level `db` sits on the dBFS scale (linear in decibels).
@@ -798,16 +840,23 @@ fn meter_fraction(level: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
+    use gscore_model::MASTER_UNITY;
 
-    use super::{db_value, volume_from_db};
+    use super::{TRACK_UNITY, fader_fraction, gain_fraction, volume_at_fraction};
 
     #[test]
-    fn decibels_map_to_midi_volume_with_headroom() {
-        assert_eq!(volume_from_db(-60.0), 0);
-        assert_eq!(volume_from_db(0.0), 32);
-        assert_eq!(volume_from_db(12.0), 127);
-        assert!(db_value(32).abs() < 0.1);
-        assert!((db_value(127) - 12.0).abs() < 0.1);
+    fn the_fader_travel_is_logarithmic_with_room_at_the_loud_end() {
+        assert!((fader_fraction(127) - 1.0).abs() < 1e-6);
+        assert!(fader_fraction(0).abs() < 1e-6);
+        assert!((gain_fraction(0.0, TRACK_UNITY) - 1.0).abs() < 1e-4);
+        assert!((gain_fraction(-12.0, TRACK_UNITY) - 0.631).abs() < 0.01);
+        assert!((gain_fraction(-60.0, TRACK_UNITY) - 0.1).abs() < 0.01);
+        // The master's 0 dB (its default) sits below the top: it has headroom.
+        let unity = gain_fraction(0.0, MASTER_UNITY);
+        assert!((unity - fader_fraction(MASTER_UNITY)).abs() < 1e-4);
+        assert!(unity < 0.9, "{unity}");
+        for volume in 0..=127_u8 {
+            assert_eq!(volume_at_fraction(fader_fraction(volume)), volume);
+        }
     }
 }

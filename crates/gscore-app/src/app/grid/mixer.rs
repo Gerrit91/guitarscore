@@ -63,43 +63,52 @@ pub(super) fn paint_activity(ui: &egui::Ui, rect: Rect, level: f32) {
         .rect_filled(filled, 1.0, Color32::from_rgb(0x43, 0xA0, 0x47));
 }
 
-/// The volume at 0 dB; the fader top (+12 dB) reaches MIDI volume 127.
-pub(super) const UNITY_VOLUME: f32 = 32.0;
-/// The bottom of the fader/meter scale.
+/// The MIDI volume at which a track plays at full level (0 dB).
+pub(super) const TRACK_UNITY: u8 = 127;
+/// The bottom of the meter scale, in dBFS.
 pub(super) const FLOOR_DB: f32 = -60.0;
 
-/// The gain in dB at a MIDI volume: 0 dB at [`UNITY_VOLUME`], +12 dB at 127.
-pub(super) fn db_value(volume: u8) -> f32 {
-    if volume == 0 {
+/// The gain in dB of a volume, where `unity` plays at 0 dB: [`TRACK_UNITY`] for a track,
+/// [`gscore_model::MASTER_UNITY`] for the master.
+///
+/// The synthesizer (like the General MIDI recommendation) turns channel volume `v` into an
+/// amplitude of `(v / 127)²`, so the gain is `40·log10(v / 127)`: 127 is 0 dB, 64 about
+/// −12 dB, 32 about −24 dB. The master multiplies every track's volume by
+/// `master / MASTER_UNITY`, which is `40·log10(master / MASTER_UNITY)` dB on top (+4.7 dB at
+/// 127, until a track reaches the MIDI maximum).
+pub(super) fn db_value(volume: u8, unity: u8) -> f32 {
+    if volume == 0 || unity == 0 {
         return f32::NEG_INFINITY;
     }
-    20.0 * (f32::from(volume) / UNITY_VOLUME).log10()
+    40.0 * (f32::from(volume) / f32::from(unity)).log10()
 }
 
-/// The MIDI volume for a gain in dB (clamped to 0..127).
-pub(super) fn volume_from_db(db: f32) -> u8 {
-    if !db.is_finite() || db <= FLOOR_DB {
+/// The volume for a gain in dB (see [`db_value`]), rounded and clamped to 0..=127.
+pub(super) fn volume_from_db(db: f32, unity: u8) -> u8 {
+    if db.is_nan() || db == f32::NEG_INFINITY {
         return 0;
     }
-    let volume = UNITY_VOLUME * 10.0_f32.powf(db / 20.0);
+    let volume = f32::from(unity) * 10.0_f32.powf(db.min(40.0) / 40.0);
     volume.round().clamp(0.0, 127.0) as u8
 }
 
-/// The volume as a signed decibel string ("+12.0 dB", "0.0 dB", "−∞ dB").
-pub(super) fn db_text(volume: u8) -> String {
-    if volume == 0 {
+/// The gain as text: "0.0 dB", "−12.0 dB", "+4.7 dB", "−∞ dB".
+pub(super) fn db_text(volume: u8, unity: u8) -> String {
+    let db = db_value(volume, unity);
+    if !db.is_finite() {
         return "−∞ dB".to_owned();
     }
-    let db = db_value(volume);
     if db > 0.05 {
         format!("+{db:.1} dB")
+    } else if db > -0.05 {
+        "0.0 dB".to_owned()
     } else {
-        format!("{db:.1} dB")
+        format!("−{:.1} dB", -db)
     }
 }
 
-/// Paints the volume in decibels beside its slider; highlighted while the slider is dragged.
-pub(super) fn paint_db(ui: &egui::Ui, row: Rect, volume: u8, active: bool) {
+/// Paints the gain in decibels beside its slider; highlighted while the slider is dragged.
+pub(super) fn paint_db(ui: &egui::Ui, row: Rect, volume: u8, unity: u8, active: bool) {
     let rect = db_rect(row);
     let visuals = ui.visuals();
     if active {
@@ -114,7 +123,7 @@ pub(super) fn paint_db(ui: &egui::Ui, row: Rect, volume: u8, active: bool) {
     ui.painter().text(
         rect.right_center(),
         Align2::RIGHT_CENTER,
-        db_text(volume),
+        db_text(volume, unity),
         FontId::proportional(10.0),
         color,
     );
@@ -199,13 +208,40 @@ fn pan_label(pan: u8) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::db_text;
+    use gscore_model::MASTER_UNITY;
+
+    use super::{TRACK_UNITY, db_text, db_value, volume_from_db};
 
     #[test]
-    fn volumes_are_shown_in_decibels_with_headroom() {
-        assert_eq!(db_text(0), "−∞ dB");
-        assert_eq!(db_text(32), "0.0 dB");
-        assert_eq!(db_text(64), "+6.0 dB");
-        assert_eq!(db_text(127), "+12.0 dB");
+    fn track_volumes_are_shown_as_the_synthesizer_plays_them() {
+        assert_eq!(db_text(0, TRACK_UNITY), "−∞ dB");
+        assert_eq!(db_text(127, TRACK_UNITY), "0.0 dB");
+        // (64/127)² of the amplitude: about −11.9 dB.
+        assert_eq!(db_text(64, TRACK_UNITY), "−11.9 dB");
+        assert_eq!(db_text(32, TRACK_UNITY), "−23.9 dB");
+    }
+
+    #[test]
+    fn the_master_is_unity_at_its_default_and_has_headroom() {
+        assert_eq!(db_text(MASTER_UNITY, MASTER_UNITY), "0.0 dB");
+        assert_eq!(db_text(127, MASTER_UNITY), "+4.7 dB");
+        assert!(db_text(48, MASTER_UNITY).starts_with('−'));
+    }
+
+    #[test]
+    fn decibels_map_back_to_volumes() {
+        assert_eq!(volume_from_db(0.0, TRACK_UNITY), 127);
+        assert_eq!(volume_from_db(-12.0, TRACK_UNITY), 64);
+        assert_eq!(volume_from_db(-24.0, TRACK_UNITY), 32);
+        assert_eq!(volume_from_db(6.0, TRACK_UNITY), 127, "clamped");
+        assert_eq!(volume_from_db(f32::NEG_INFINITY, TRACK_UNITY), 0);
+        assert_eq!(volume_from_db(-200.0, TRACK_UNITY), 0);
+        assert_eq!(volume_from_db(0.0, MASTER_UNITY), MASTER_UNITY);
+        for volume in 1..=127_u8 {
+            assert_eq!(
+                volume_from_db(db_value(volume, TRACK_UNITY), TRACK_UNITY),
+                volume
+            );
+        }
     }
 }
