@@ -141,13 +141,43 @@ impl GuitarScoreApp {
                     .editor()
                     .last_command()
                     .map_or(EditEffect::Other, EditEffect::of);
+                // A fret typed in is heard (not an undo, redo or paste that sets one).
+                let entered = match (action, document.editor().last_command()) {
+                    (Action::Digit(_), Some(Command::SetFret { at, string, .. })) => {
+                        Some((*at, *string))
+                    }
+                    _ => None,
+                };
                 self.after_edit(effect, layout);
+                if let Some((at, string)) = entered {
+                    self.audition(at, string, ctx);
+                }
                 ctx.request_repaint();
             }
             Ok(Outcome::Moved) => ctx.request_repaint(),
             Ok(Outcome::Nothing) => {}
             Ok(Outcome::Request(request)) => self.request(request, ctx),
             Err(error) => self.notice = Some(error.to_string()),
+        }
+    }
+
+    /// Sounds a note that was just entered, if the setting is on.
+    fn audition(
+        &mut self,
+        at: BeatPosition,
+        string: gscore_model::StringNumber,
+        ctx: &egui::Context,
+    ) {
+        if !self.settings.audition_notes {
+            return;
+        }
+        let Some(document) = &self.document else {
+            return;
+        };
+        match self.playback.audition(document.song(), at, string) {
+            // The note-off is sent from the frame loop.
+            Ok(()) => ctx.request_repaint_after(std::time::Duration::from_millis(50)),
+            Err(error) => self.notice = Some(error),
         }
     }
 

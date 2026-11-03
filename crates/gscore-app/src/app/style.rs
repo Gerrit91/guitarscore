@@ -254,6 +254,10 @@ pub(crate) fn window_title_bar(
         ui.scope_id().with("window_close"),
         egui::Sense::click(),
     );
+    ui.ctx().accesskit_node_builder(close.id, |node| {
+        node.set_label(format!("Close {title}"));
+        node.set_role(egui::Role::Button);
+    });
     if close.hovered() {
         painter.rect_filled(
             close_rect,

@@ -4,10 +4,27 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use gscore_audio::{MidiOutPlayer, SynthPlayer, midi_output_ports};
-use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, Song, TrackIndex, VoiceIndex};
-use gscore_play::{MidiEvent, PPQ, PlayState, Player, Sequence, sound_events};
+use gscore_model::{
+    BeatIndex, BeatPosition, MeasureIndex, NoteKind, Song, StringNumber, TrackIndex, VoiceIndex,
+};
+use gscore_play::{Channel, MidiEvent, PPQ, PlayState, Player, Sequence, sound_events};
+
+/// How long an entered note sounds.
+const AUDITION_LENGTH: Duration = Duration::from_millis(450);
+/// The channel entered notes sound on (drums use the percussion channel). Playback is
+/// stopped while a note is auditioned, and playing sends every channel's setup first.
+const AUDITION_CHANNEL: u8 = 15;
+
+/// A note sounding because it was just entered.
+#[derive(Debug, Clone, Copy)]
+struct Audition {
+    channel: Channel,
+    key: u8,
+    until: Instant,
+}
 
 /// Where playback goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,6 +101,8 @@ pub struct Playback {
     count_in_sequence: Option<Arc<Sequence>>,
     /// Whether playback loops the selected measures.
     loop_selection: bool,
+    /// The entered note that is sounding, until its note-off is due.
+    audition: Option<Audition>,
 }
 
 impl Playback {
@@ -157,6 +176,119 @@ impl Playback {
             return self.start_music(song, from);
         }
         Ok(())
+    }
+
+    /// Connects the output if nothing is connected yet (the synthesizer then loads its
+    /// SoundFont in the background).
+    fn connect(&mut self) -> Result<(), String> {
+        if self.player.is_none() {
+            let active = match &self.output {
+                Output::Synth(path) => {
+                    Active::Synth(SynthPlayer::start(path).map_err(|e| e.to_string())?)
+                }
+                Output::Midi(port) => Active::Midi(
+                    MidiOutPlayer::connect(port.as_deref()).map_err(|e| e.to_string())?,
+                ),
+            };
+            self.player = Some(active);
+            self.sequence = None;
+        }
+        Ok(())
+    }
+
+    /// Sounds the note on `string` of the beat at `at`, as just entered: briefly, with the
+    /// track's sound, on its own channel. Nothing happens while the song plays, is paused
+    /// or counts in (the music is not interrupted), for a muted track, or while the
+    /// synthesizer is still loading (a note queued behind the SoundFont would sound late);
+    /// the first entered note starts the output, so the next ones are heard.
+    pub fn audition(
+        &mut self,
+        song: &Song,
+        at: BeatPosition,
+        string: StringNumber,
+    ) -> Result<(), String> {
+        if self.state() != PlayState::Stopped || self.count_in_pending() {
+            return Ok(());
+        }
+        let Some(track) = song.track(at.track) else {
+            return Ok(());
+        };
+        if track.is_muted() {
+            return Ok(());
+        }
+        let note = track
+            .measure(at.measure)
+            .and_then(|measure| measure.voice(at.voice))
+            .and_then(|voice| voice.beat(at.beat))
+            .and_then(|beat| beat.notes().find(|note| note.string().ok() == Some(string)));
+        let Some(note) =
+            note.filter(|note| matches!(note.kind(), NoteKind::Normal | NoteKind::Dead))
+        else {
+            return Ok(());
+        };
+        let (Ok(pitch), Some(sound)) = (track.sounding_pitch(&note), song.played_sound(at.track))
+        else {
+            return Ok(());
+        };
+        let velocity = note.velocity();
+        self.connect()?;
+        if self.is_loading() || self.error().is_some() {
+            return Ok(());
+        }
+        self.end_audition();
+        let channel = if sound.percussion {
+            Channel::PERCUSSION
+        } else {
+            Channel::new(AUDITION_CHANNEL).unwrap_or(Channel::PERCUSSION)
+        };
+        let player = self.player_mut()?;
+        for event in sound_events(channel, sound) {
+            player.send_event(event).map_err(|e| e.to_string())?;
+        }
+        player
+            .send_event(MidiEvent::NoteOn {
+                channel,
+                key: pitch.get(),
+                velocity,
+            })
+            .map_err(|e| e.to_string())?;
+        self.audition = Some(Audition {
+            channel,
+            key: pitch.get(),
+            until: Instant::now() + AUDITION_LENGTH,
+        });
+        Ok(())
+    }
+
+    /// The key of the entered note that is sounding, if one is.
+    pub fn auditioning(&self) -> Option<u8> {
+        self.audition.map(|audition| audition.key)
+    }
+
+    /// Ends an auditioned note whose time is up. Returns how long the sounding one still
+    /// has, so the UI can wake up for it.
+    pub fn poll_audition(&mut self) -> Option<Duration> {
+        let audition = self.audition?;
+        let left = audition.until.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            self.end_audition();
+            return None;
+        }
+        Some(left)
+    }
+
+    /// Stops the auditioned note now, if one sounds.
+    fn end_audition(&mut self) {
+        let Some(audition) = self.audition.take() else {
+            return;
+        };
+        if let Some(active) = &mut self.player {
+            // A failed note-off only means the output is gone; nothing is left sounding.
+            let _ = active.player_mut().send_event(MidiEvent::NoteOff {
+                channel: audition.channel,
+                key: audition.key,
+            });
+        }
     }
 
     /// Whether playback loops the selected measures.
@@ -324,18 +456,8 @@ impl Playback {
             self.player = None;
             self.reported = None;
         }
-        if self.player.is_none() {
-            let active = match &self.output {
-                Output::Synth(path) => {
-                    Active::Synth(SynthPlayer::start(path).map_err(|e| e.to_string())?)
-                }
-                Output::Midi(port) => Active::Midi(
-                    MidiOutPlayer::connect(port.as_deref()).map_err(|e| e.to_string())?,
-                ),
-            };
-            self.player = Some(active);
-            self.sequence = None;
-        }
+        self.end_audition();
+        self.connect()?;
         // A paused count-in resumes where it paused; one that has ended starts the song.
         if self.count_in_from.is_some() {
             if self.is_loading() {

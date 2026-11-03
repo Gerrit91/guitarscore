@@ -1546,3 +1546,19 @@ rustysynth has reverb and chorus built in and reads the per-channel sends (MIDI 
   songs, exactly as Guitar Pro stores and plays them.
 - Test fix: `a_pitch_bend_reaches_the_port` stopped reading as soon as the player stopped,
   so a bend still queued in the MIDI port was missed under load; it now drains for 0.5 s.
+
+## 2026-11-03 — Entered notes are heard
+
+- Typing a fret plays that note at once with the track's sound (program, volume, pan,
+  reverb, chorus, master mix; drums on the percussion channel), for 450 ms, at the note's
+  sounding pitch (tuning, capo, harmonics) and velocity. It uses its own channel (15), and
+  only while playback is stopped (entering a note stops playback anyway), so the song is
+  never disturbed. Muted tracks stay silent.
+- Only typed frets sound: undo, redo and paste that set frets do not.
+- The first entered note starts the output if nothing is connected. While the
+  synthesizer is still loading its SoundFont that one note is skipped rather than queued
+  (it would sound late, cut short by its own note-off); the next ones are heard.
+- Settings → Editor → "Play notes as they are entered" (on by default, remembered).
+- Window title bars' close button now has an accessible label ("Close Settings", ...).
+- Test `an_entered_fret_is_heard_and_undo_is_not` (real synthesizer with the test sine
+  SoundFont; skipped without an audio device): pitch, note-off, silent undo, setting off.

@@ -361,6 +361,10 @@ impl eframe::App for GuitarScoreApp {
         self.poll_count_in();
         // Keep a loop of the selected measures going.
         self.poll_loop();
+        // An entered note stops after a moment.
+        if let Some(left) = self.playback.poll_audition() {
+            ctx.request_repaint_after(left);
+        }
         // The cursor follows the beat being played; the page scrolls with it.
         self.follow_playback();
         if self.playback.state() == gscore_play::PlayState::Playing {

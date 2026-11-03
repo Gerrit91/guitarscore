@@ -106,6 +106,8 @@ pub struct Settings {
     /// The actions whose shortcuts were changed in the shortcut editor (relative to the
     /// built-in keymap), applied over the built-in keymap or a keymap file.
     pub shortcut_overrides: Vec<ShortcutSetting>,
+    /// Whether a fret typed into the score is played back at once.
+    pub audition_notes: bool,
     /// Seconds between recovery snapshots; 0 means only by edit count.
     pub autosave_seconds: u64,
     /// The SoundFont chosen for the built-in synthesizer, if any.
@@ -135,6 +137,7 @@ impl Default for Settings {
             last_file: None,
             keymap_path: None,
             shortcut_overrides: Vec::new(),
+            audition_notes: true,
             autosave_seconds: DEFAULT_AUTOSAVE_SECONDS,
             soundfont_path: None,
             prefer_synth: true,

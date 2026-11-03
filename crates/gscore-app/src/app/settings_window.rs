@@ -381,6 +381,14 @@ impl GuitarScoreApp {
             ui.radio_value(&mut self.view.theme, ThemeChoice::Light, "Light page");
             ui.radio_value(&mut self.view.theme, ThemeChoice::Dark, "Dark page");
         });
+        ui.checkbox(
+            &mut self.settings.audition_notes,
+            "Play notes as they are entered",
+        )
+        .on_hover_text(
+            "A fret typed into the score sounds briefly with the track's instrument (not \
+             while the song plays)",
+        );
 
         ui.separator();
         ui.heading("Shortcuts");
