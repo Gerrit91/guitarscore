@@ -1962,3 +1962,16 @@ lifeless):
   `notes_go_into_the_third_and_fourth_voice`.
 - Open: standard notation draws only the first voice (voices 2-4 show in the tab and play).
 
+## 2026-11-03 — Listen on tied beats and while paused
+
+- Owner: Listen (bend, harmonic) was silent. Reproduced with the owner's song, FluidR3
+  and the built-in synth: after playing and pausing, the cursor sat on a beat of tied
+  notes; the excerpt took them as the continuation of the chord before and had nothing to
+  strike. An excerpt now strikes the tied notes at its beat anew (in the song a tie still
+  continues the note). Test `an_excerpt_of_a_tied_beat_strikes_its_notes`.
+- A paused song no longer blocks hearing a beat (Play then starts at the cursor); a
+  playing song or count-in still does. Listen says in the status bar when it cannot play
+  and why (song playing, no note, output problem, SoundFont loading); palette clicks stay
+  quiet about it. `Playback::preview_beat` returns `Heard`; `Playback::output_state` for
+  tests.
+

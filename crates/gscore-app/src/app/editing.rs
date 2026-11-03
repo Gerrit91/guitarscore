@@ -8,6 +8,8 @@ use gscore_edit::{Action, ActionId, Command, Cursor, Outcome, Request};
 use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, TrackIndex, VoiceIndex};
 use gscore_play::PlayState;
 
+use crate::playback::Heard;
+
 use super::GuitarScoreApp;
 
 /// What an edit changes that the app must react to.
@@ -198,8 +200,12 @@ impl GuitarScoreApp {
                 return;
             }
         }
-        if let Err(error) = self.playback.preview_beat(&draft, at) {
-            self.notice = Some(error);
+        // Asked for: say so when it cannot be heard.
+        match self.playback.preview_beat(&draft, at) {
+            Ok(Heard::Playing) => self.status = None,
+            Ok(Heard::Waiting) => self.status = Some("Loading the SoundFont…".to_owned()),
+            Ok(Heard::Skipped(why)) => self.status = Some(format!("Cannot listen: {why}.")),
+            Err(error) => self.notice = Some(error),
         }
     }
 
@@ -215,6 +221,7 @@ impl GuitarScoreApp {
         if let Err(error) = self.playback.preview_beat(document.song(), at) {
             self.notice = Some(error);
         }
+        // A beat heard on a click is a convenience: skipping it needs no message.
     }
 
     /// Sounds a note that was just entered, if the setting is on.

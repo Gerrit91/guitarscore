@@ -10,28 +10,45 @@ use gscore_play::{PlayState, Sequence};
 
 use super::Playback;
 
+/// What became of a beat to be heard.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Heard {
+    /// It plays.
+    Playing,
+    /// It plays once the SoundFont has loaded.
+    Waiting,
+    /// It cannot be played, and why.
+    Skipped(String),
+}
+
 impl Playback {
-    /// Plays the beat at `at` alone, with its effects. Nothing happens while the song
-    /// plays, is paused or counts in, for a beat with no sounding note, or while the
-    /// output is unavailable or still loading (like auditioning an entered note).
-    pub fn preview_beat(&mut self, song: &Song, at: BeatPosition) -> Result<(), String> {
+    /// Plays the beat at `at` alone, with its effects. A paused song gives way (Play then
+    /// starts again at the cursor); a playing song or count-in is not interrupted. A beat
+    /// with no sounding note, or an output that cannot start, is skipped.
+    pub fn preview_beat(&mut self, song: &Song, at: BeatPosition) -> Result<Heard, String> {
         let previewing = self.preview.is_some();
-        if (!previewing && self.state() != PlayState::Stopped) || self.count_in_pending() {
-            return Ok(());
+        if (!previewing && self.state() == PlayState::Playing) || self.count_in_pending() {
+            return Ok(Heard::Skipped("the song is playing".to_owned()));
         }
         let Some(excerpt) = Sequence::beat_excerpt(song, at).map_err(|e| e.to_string())? else {
-            return Ok(());
+            return Ok(Heard::Skipped(
+                "the beat has no note to play (or its track is muted)".to_owned(),
+            ));
         };
-        if self.connect().is_err() || self.error().is_some() {
-            return Ok(());
+        if let Err(error) = self.connect() {
+            return Ok(Heard::Skipped(error));
+        }
+        if let Some(error) = self.error() {
+            return Ok(Heard::Skipped(error));
         }
         if self.is_loading() {
             // The first click starts the synthesizer: play the beat once it is ready.
             self.pending_preview = Some(Arc::new(excerpt));
-            return Ok(());
+            return Ok(Heard::Waiting);
         }
         self.pending_preview = None;
-        self.play_excerpt(Arc::new(excerpt))
+        self.play_excerpt(Arc::new(excerpt))?;
+        Ok(Heard::Playing)
     }
 
     /// Loads and plays `excerpt` in place of the song.
@@ -60,7 +77,7 @@ impl Playback {
         if self.is_loading() {
             return Ok(true);
         }
-        let ready = self.state() == PlayState::Stopped && !self.count_in_pending();
+        let ready = self.state() != PlayState::Playing && !self.count_in_pending();
         if let Some(excerpt) = self.pending_preview.take()
             && ready
             && self.error().is_none()
@@ -73,6 +90,15 @@ impl Playback {
     /// The beat excerpt last played, if any (for tests and diagnostics).
     pub fn preview_sequence(&self) -> Option<&Arc<Sequence>> {
         self.preview_sequence.as_ref()
+    }
+
+    /// The output's own state and position (an excerpt playing shows here), for tests.
+    pub fn output_state(&self) -> (PlayState, u64) {
+        self.player
+            .as_ref()
+            .map_or((PlayState::Stopped, 0), |active| {
+                (active.player().state(), active.player().position())
+            })
     }
 
     /// Whether a beat excerpt is loaded (playing or finished).

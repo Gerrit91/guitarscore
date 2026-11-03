@@ -16,7 +16,7 @@ mod tasks;
 pub use app::GuitarScoreApp;
 pub use document::{Document, GridData};
 pub use gscore_edit::Keymap;
-pub use playback::{Output, Playback};
+pub use playback::{Heard, Output, Playback};
 pub use settings::{
     DEFAULT_AUTOSAVE_SECONDS, MAX_RECENT_FILES, MAX_SHAPE_PRESETS, Settings, ShapePreset,
     ShortcutSetting, WindowState,

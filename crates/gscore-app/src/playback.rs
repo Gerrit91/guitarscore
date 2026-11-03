@@ -12,6 +12,8 @@ use gscore_model::{
 };
 mod preview;
 
+pub use preview::Heard;
+
 use gscore_play::{Channel, MidiEvent, PPQ, PlayState, Player, Sequence, sound_events};
 
 /// How long an entered note sounds.

@@ -47,12 +47,14 @@ pub(crate) struct Collected {
 
 /// Gathers the notes of `selected` over the played `measures`. With `keep`, only the notes
 /// it accepts stay (an excerpt); they still get the effects worked out from their
-/// neighbours (slides, let ring) first.
+/// neighbours (slides, let ring) first. A tied note starting at `fresh_at` is struck
+/// anew instead of continuing the note before (an excerpt of a tied beat must sound).
 pub(crate) fn collect(
     song: &Song,
     selected: &[TrackIndex],
     measures: &[MeasureSpan],
     keep: Option<&dyn Fn(&Sounding) -> bool>,
+    fresh_at: Option<u64>,
 ) -> Result<Collected, ModelError> {
     let mut channels = ChannelAllocator::default();
     let mut tracks = Vec::with_capacity(selected.len());
@@ -121,7 +123,7 @@ pub(crate) fn collect(
                     for note in beat.notes() {
                         let kind = note.kind();
                         let string = note.string().map(|s| s.get()).unwrap_or(0);
-                        if kind == NoteKind::Tie {
+                        if kind == NoteKind::Tie && fresh_at != Some(start) {
                             let tied = on_string
                                 .get(&string)
                                 .and_then(|&i| notes.get_mut(i))

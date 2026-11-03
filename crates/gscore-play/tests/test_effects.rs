@@ -290,3 +290,25 @@ fn a_whammy_dive_bends_every_note_of_the_beat() {
     assert_eq!(dived.len(), 2, "both notes dive");
     assert_eq!(sequence.degraded_pitch_bends, 0);
 }
+
+#[test]
+fn an_excerpt_of_a_tied_beat_strikes_its_notes() {
+    // A half note tied into the next: the second beat alone still sounds.
+    let mut song = two_beats();
+    let _ = song
+        .set_note(at(1), string(6), gscore_model::Fret::new(3).unwrap())
+        .unwrap();
+    let _ = song.set_note_tie(at(1), string(6), true).unwrap();
+    let full = note_ons(&Sequence::new(&song, None).unwrap());
+    assert_eq!(
+        full.iter().filter(|&&(_, key, _)| key == 43).count(),
+        1,
+        "in the song the tie continues the note"
+    );
+    let excerpt = Sequence::beat_excerpt(&song, at(1)).unwrap().unwrap();
+    assert!(
+        note_ons(&excerpt)
+            .iter()
+            .any(|&(tick, key, _)| tick == 0 && key == 43)
+    );
+}

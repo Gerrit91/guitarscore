@@ -506,6 +506,16 @@ fn an_effect_chosen_in_the_palette_plays_its_beat_and_play_still_plays_the_song(
         app.playback().state() == gscore_play::PlayState::Playing
     });
     assert!(playing, "the song did not start after the excerpt");
+    // A paused song gives way to a heard beat.
+    harness.step();
+    harness.get_by_label("Pause").click();
+    harness.step();
+    harness.get_by_label("Vibrato").click();
+    harness.run();
+    assert!(
+        harness.state().playback().previewing(),
+        "heard while paused"
+    );
     harness.get_by_label("Stop").click();
     harness.step();
     assert!(!harness.state().playback().previewing());

@@ -125,7 +125,7 @@ impl Sequence {
                 Some(view) => !view.is_muted() && (!soloed || view.is_soloed()),
             })
             .collect();
-        let collected = build::collect(song, &selected, &measures, None)?;
+        let collected = build::collect(song, &selected, &measures, None, None)?;
         let mut events = collected.setup;
         build::emit(&collected.notes, &collected.tracks, &mut events);
         tempo_changes.extend(collected.tempo_changes);

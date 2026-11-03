@@ -29,7 +29,7 @@ impl Sequence {
         };
         // The beat's notes at the first pass of its measure (later passes repeat them).
         let keep = |note: &crate::sounding::Sounding| note.onset == start;
-        let collected = build::collect(song, &[at.track], &measures, Some(&keep))?;
+        let collected = build::collect(song, &[at.track], &measures, Some(&keep), Some(start))?;
         if collected.notes.is_empty() {
             return Ok(None);
         }
