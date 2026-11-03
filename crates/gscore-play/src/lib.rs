@@ -29,7 +29,7 @@ pub use click::count_in;
 pub use event::{Channel, MidiEvent, controller};
 pub use order::playback_order;
 pub use player::{PlayError, PlayState, Player, Scheduler, TEMPO_SCALE_RANGE};
-pub use sequence::{MeasureSpan, Sequence, SequenceTrack, TimedEvent};
+pub use sequence::{MeasureSpan, Sequence, SequenceTrack, TimedEvent, sound_events};
 pub use smf::{SmfError, to_smf};
 pub use tempo::{PPQ, TempoMap, micros_per_quarter};
 pub use timeline::{Timeline, tempo_at};

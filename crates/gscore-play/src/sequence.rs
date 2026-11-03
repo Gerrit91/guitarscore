@@ -157,7 +157,7 @@ impl Sequence {
                 channel,
                 sound,
             });
-            for event in setup(channel, sound) {
+            for event in sound_events(channel, sound) {
                 events.push(TimedEvent {
                     tick: 0,
                     track: number,
@@ -260,7 +260,7 @@ impl Sequence {
         for note in &notes {
             let borrowed = note.play_channel != note.channel;
             if borrowed && let Some(track) = seq_tracks.get(note.track) {
-                for event in setup(note.play_channel, track.sound) {
+                for event in sound_events(note.play_channel, track.sound) {
                     events.push(TimedEvent {
                         tick: note.start,
                         track: note.track,
@@ -408,25 +408,28 @@ impl Sequence {
     }
 }
 
-/// Program, volume and pan for a channel.
-fn setup(channel: Channel, sound: TrackSound) -> Vec<MidiEvent> {
-    let mut events = Vec::with_capacity(3);
+/// The messages that give `channel` a track's sound: program (not for drums), volume, pan,
+/// reverb and chorus send. Used for a sequence's setup and to change a sound while playing.
+pub fn sound_events(channel: Channel, sound: TrackSound) -> Vec<MidiEvent> {
+    let mut events = Vec::with_capacity(5);
     if !sound.percussion {
         events.push(MidiEvent::ProgramChange {
             channel,
             program: sound.program,
         });
     }
-    events.push(MidiEvent::Control {
-        channel,
-        controller: controller::VOLUME,
-        value: sound.volume,
-    });
-    events.push(MidiEvent::Control {
-        channel,
-        controller: controller::PAN,
-        value: sound.pan,
-    });
+    for (controller, value) in [
+        (controller::VOLUME, sound.volume),
+        (controller::PAN, sound.pan),
+        (controller::REVERB, sound.reverb),
+        (controller::CHORUS, sound.chorus),
+    ] {
+        events.push(MidiEvent::Control {
+            channel,
+            controller,
+            value: value.min(127),
+        });
+    }
     events
 }
 

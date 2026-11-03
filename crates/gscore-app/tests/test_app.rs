@@ -1415,3 +1415,42 @@ fn while_stopped_the_clock_shows_where_play_starts() {
     harness.get_by_label_contains("Time 00:04 of 00:18");
     harness.get_by_label("Measure 3");
 }
+
+#[test]
+fn the_mixer_sets_reverb_and_chorus_with_one_undo_per_drag() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    let sends = |harness: &Harness<'static, GuitarScoreApp>| {
+        let sound = first_sound(harness);
+        (sound.reverb, sound.chorus)
+    };
+    assert_eq!(sends(&harness), (0, 0));
+    // The master has a pan but no sends.
+    harness.get_by_label("Pan Master");
+    assert!(harness.query_by_label("Reverb Master").is_none());
+
+    // Dragging right turns the send up (half a step per point), as one undo step.
+    let depth = harness.state().document().unwrap().editor().undo_depth();
+    let start = harness.get_by_label("Reverb Steel Guitar").rect().center();
+    harness.hover_at(start);
+    harness.drag_at(start);
+    harness.run();
+    for step in 1..=4 {
+        harness.hover_at(start + egui::vec2(10.0 * step as f32, 0.0));
+        harness.run();
+    }
+    harness.drop_at(start + egui::vec2(40.0, 0.0));
+    harness.run();
+    let (reverb, chorus) = sends(&harness);
+    assert!(reverb >= 15, "reverb {reverb}");
+    assert_eq!(chorus, 0);
+    let editor = harness.state().document().unwrap().editor();
+    assert_eq!(editor.undo_depth(), depth + 1, "one drag, one undo step");
+
+    harness.get_by_label("Chorus Steel Guitar");
+
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+    harness.run();
+    assert_eq!(sends(&harness), (0, 0));
+}

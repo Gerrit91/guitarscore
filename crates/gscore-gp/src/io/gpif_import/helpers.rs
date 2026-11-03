@@ -291,6 +291,25 @@ pub(super) fn extract_capo(properties: &[Property]) -> Option<i32> {
         .map(|capo| capo.clamp(0, 127))
 }
 
+/// GuitarScore addition: the channel's reverb and chorus sends (`GuitarScoreReverb`,
+/// `GuitarScoreChorus`, MIDI values 0-127), if the file stores them. GP7 has no per-track
+/// send, so only GuitarScore writes them; hostile values are clamped.
+pub(super) fn extract_sends(properties: &[Property]) -> (Option<i8>, Option<i8>) {
+    let send = |name: &str| {
+        properties
+            .iter()
+            .find(|p| p.name == name)
+            .and_then(|p| p.number)
+            .and_then(|value| i8::try_from(value.clamp(0, 127)).ok())
+    };
+    (send(REVERB_PROPERTY), send(CHORUS_PROPERTY))
+}
+
+/// The track property holding the reverb send (a GuitarScore addition).
+pub(crate) const REVERB_PROPERTY: &str = "GuitarScoreReverb";
+/// The track property holding the chorus send (a GuitarScore addition).
+pub(crate) const CHORUS_PROPERTY: &str = "GuitarScoreChorus";
+
 /// GuitarScore addition: the user-given tuning name from a property list, if non-empty.
 pub(super) fn extract_tuning_label(properties: &[Property]) -> Option<String> {
     properties

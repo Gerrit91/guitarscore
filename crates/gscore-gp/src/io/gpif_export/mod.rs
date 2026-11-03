@@ -138,6 +138,24 @@ impl WriteGpifInGpifStringOrder for Song {
                 ));
             }
             xml.push_str("<Properties>");
+            // GuitarScore addition: the channel's reverb and chorus sends. GP7 has no
+            // per-track send (its reverb is an RSE effect), so they are written as named
+            // properties, and only when set, so untouched songs are written as before.
+            let sends = self
+                .channels
+                .get(track.channel_index)
+                .map_or((0, 0), |channel| (channel.reverb, channel.chorus));
+            for (name, value) in [
+                (gpif_import::REVERB_PROPERTY, sends.0),
+                (gpif_import::CHORUS_PROPERTY, sends.1),
+            ] {
+                if value > 0 {
+                    xml.push_str(&format!(
+                        "<Property name=\"{name}\"><Number>{}</Number></Property>",
+                        value.clamp(0, 127)
+                    ));
+                }
+            }
             // GuitarScore addition: the capo fret (GP6/GP7 store it as a staff property).
             xml.push_str(&format!(
                 "<Property name=\"CapoFret\"><Fret>{}</Fret></Property>",

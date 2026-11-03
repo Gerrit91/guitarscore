@@ -156,6 +156,8 @@ fn mixer_and_track_settings_survive_a_save() {
     let track = TrackIndex::new(0);
     let _ = original.set_track_volume(track, 90).unwrap();
     let _ = original.set_track_pan(track, 20).unwrap();
+    let _ = original.set_track_reverb(track, 55).unwrap();
+    let _ = original.set_track_chorus(track, 17).unwrap();
     let _ = original.set_track_mute(track, true).unwrap();
     let _ = original
         .set_track_color(track, TrackColor::new(0x123456))
@@ -168,6 +170,7 @@ fn mixer_and_track_settings_survive_a_save() {
     assert!(settings_differences(&original, &reread).is_empty());
     let sound = reread.track_sound(track).unwrap();
     assert_eq!((sound.volume, sound.pan), (90, 20));
+    assert_eq!((sound.reverb, sound.chorus), (55, 17));
     let track = reread.track(track).unwrap();
     assert!(track.is_muted());
     assert!(!track.is_soloed());

@@ -83,6 +83,8 @@ fn the_master_scales_volumes_and_shifts_pans() {
         program: 25,
         volume: 100,
         pan: 100,
+        reverb: 40,
+        chorus: 0,
         percussion: false,
     };
     assert_eq!(

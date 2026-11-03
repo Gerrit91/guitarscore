@@ -1521,3 +1521,28 @@ changes on bars and beats, exact microsecond integration). Fixed:
 Cost per frame: the timeline is cached per revision; the readout does an Arc clone, two or
 three `micros_at` walks over the tempo points, one `measure_range` scan of the played
 measures and a binary search for the tempo, all negligible next to drawing.
+
+## 2026-11-03 — Reverb and chorus sends per track
+
+rustysynth has reverb and chorus built in and reads the per-channel sends (MIDI controllers
+91 and 93); GP3-5 files keep both per channel. Only our side was missing.
+
+- Model: `TrackSound::reverb/chorus` from the track's channel, `Song::set_track_reverb` and
+  `set_track_chorus` (on the track's own channel, like volume and pan, so undo restores the
+  shared channel). The save comparison checks both, so a format that drops them is reported.
+- Commands `set_track_reverb` / `set_track_chorus` (parse, round trip, panic hunt, edit and
+  undo tests); consecutive changes on one track merge into one undo step, like pan.
+- Playback: `gscore_play::sound_events` is now the one builder of a channel's setup
+  (program, volume, pan, reverb, chorus) for the sequence and for live changes in the app,
+  which had its own copy. A knob is heard while it turns.
+- GP7 has no per-track send (its reverb is an RSE effect), so the values are written as the
+  track properties `GuitarScoreReverb` / `GuitarScoreChorus` (`<Number>`), only when
+  non-zero: an untouched song is written exactly as before. Round-trip test in `gscore-gp`;
+  `gscore-session`'s save test checks no loss is reported.
+- Mixer strips: Pan, Reverb and Chorus knobs with captions (sends fill an arc up to their
+  value; double-click sets 0). The master strip keeps only its pan.
+- Sound change to note: every channel used to play with rustysynth's default reverb send of
+  40, because no send was ever set. Now the file's value is sent, which is 0 (dry) for most
+  songs, exactly as Guitar Pro stores and plays them.
+- Test fix: `a_pitch_bend_reaches_the_port` stopped reading as soon as the player stopped,
+  so a bend still queued in the MIDI port was missed under load; it now drains for 0.5 s.

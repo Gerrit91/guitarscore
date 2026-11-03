@@ -12,8 +12,11 @@ use crate::app::instrument::Instrument;
 
 /// One strip's width.
 const STRIP_WIDTH: f32 = 124.0;
-/// Height of the pan/reverb row at the top of a strip.
-const TOP_HEIGHT: f32 = 30.0;
+/// Height of the knob row at the top of a strip (pan, reverb, chorus and their labels).
+const TOP_HEIGHT: f32 = 40.0;
+/// A knob's diameter, and the distance between knob centres.
+const KNOB_SIZE: f32 = 20.0;
+const KNOB_SPACING: f32 = 32.0;
 /// Height of the fixed block under the fader (dB, mute/solo, name, preset, color).
 const BOTTOM_HEIGHT: f32 = 80.0;
 /// The gain marks beside a fader, in dB. The fader's travel is logarithmic (see
@@ -111,7 +114,15 @@ fn track_strip(
     let inner = rect.shrink2(vec2(8.0, 6.0));
     let (top, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
-    knobs(&mut strip, top, index, row.pan, &row.name, actions);
+    knobs(
+        &mut strip,
+        top,
+        index,
+        row.pan,
+        Some((row.reverb, row.chorus)),
+        &row.name,
+        actions,
+    );
     fader(
         &mut strip,
         fader_area,
@@ -190,7 +201,15 @@ fn master_strip(
     let inner = rect.shrink2(vec2(8.0, 6.0));
     let (top, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
-    knobs(&mut strip, top, usize::MAX, master.pan, "Master", actions);
+    knobs(
+        &mut strip,
+        top,
+        usize::MAX,
+        master.pan,
+        None,
+        "Master",
+        actions,
+    );
     // The track levels already include the master volume (the sequence plays the mixed
     // volumes), so the loudest track is what the master puts out.
     fader(
@@ -264,17 +283,40 @@ fn layout(inner: Rect) -> (Rect, Rect, Rect) {
     (top, fader, bottom)
 }
 
+/// The knob row: pan, and for a track its reverb and chorus sends (the master has only its
+/// pan). Each knob has a small caption underneath.
 fn knobs(
     ui: &mut egui::Ui,
     area: Rect,
     index: usize,
     pan: u8,
+    sends: Option<(u8, u8)>,
     name: &str,
     actions: &mut Vec<GridAction>,
 ) {
-    let start = area.center().x - 25.0;
-    let pan_rect = Rect::from_min_size(pos2(start, area.center().y - 10.0), vec2(20.0, 20.0));
+    let knob_y = area.top() + KNOB_SIZE / 2.0 + 2.0;
+    let at = |dx: f32| {
+        Rect::from_center_size(
+            pos2(area.center().x + dx, knob_y),
+            vec2(KNOB_SIZE, KNOB_SIZE),
+        )
+    };
+    let caption = |ui: &egui::Ui, rect: Rect, text: &str| {
+        ui.painter().text(
+            pos2(rect.center().x, rect.bottom() + 2.0),
+            Align2::CENTER_TOP,
+            text,
+            FontId::proportional(8.0),
+            ui.visuals().weak_text_color(),
+        );
+    };
+    let pan_rect = if sends.is_some() {
+        at(-KNOB_SPACING)
+    } else {
+        at(0.0)
+    };
     let knob = mixer::pan_knob(ui, pan_rect, pan, index, &format!("Pan {name}"));
+    caption(ui, pan_rect, "Pan");
     if knob.boundary {
         actions.push(GridAction::BreakMerge);
     }
@@ -294,32 +336,50 @@ fn knobs(
             });
         }
     }
-    // Reverb is not applied by the current playback engine: draw it greyed out.
-    let reverb = Rect::from_min_size(
-        pos2(pan_rect.right() + 10.0, area.center().y - 10.0),
-        vec2(20.0, 20.0),
-    );
-    let response = ui.interact(
+    let Some((reverb, chorus)) = sends else {
+        return;
+    };
+    let track = TrackIndex::new(index);
+    let reverb_rect = at(0.0);
+    let knob = mixer::send_knob(
+        ui,
+        reverb_rect,
         reverb,
-        ui.scope_id().with(("reverb", index)),
-        Sense::hover(),
+        ("reverb", index),
+        &format!("Reverb {name}"),
+        "Reverb send",
+        0,
     );
-    let visuals = ui.visuals();
-    ui.painter()
-        .circle_filled(reverb.center(), 9.0, visuals.faint_bg_color);
-    ui.painter().circle_stroke(
-        reverb.center(),
-        9.0,
-        Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.5)),
+    caption(ui, reverb_rect, "Reverb");
+    if knob.boundary {
+        actions.push(GridAction::BreakMerge);
+    }
+    if let Some((reverb, merge)) = knob.change {
+        actions.push(GridAction::Command {
+            command: Command::SetTrackReverb { track, reverb },
+            merge,
+        });
+    }
+    let chorus_rect = at(KNOB_SPACING);
+    let knob = mixer::send_knob(
+        ui,
+        chorus_rect,
+        chorus,
+        ("chorus", index),
+        &format!("Chorus {name}"),
+        "Chorus send",
+        0,
     );
-    ui.painter().text(
-        reverb.center(),
-        Align2::CENTER_CENTER,
-        "R",
-        FontId::proportional(9.0),
-        visuals.weak_text_color().gamma_multiply(0.7),
-    );
-    response.on_hover_text("Reverb is not applied by playback yet");
+    caption(ui, chorus_rect, "Chorus");
+    if knob.boundary {
+        actions.push(GridAction::BreakMerge);
+    }
+    if let Some((chorus, merge)) = knob.change {
+        actions.push(GridAction::Command {
+            command: Command::SetTrackChorus { track, chorus },
+            merge,
+        });
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

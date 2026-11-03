@@ -696,6 +696,22 @@ fn a_shared_channel_is_cloned_so_only_one_track_changes() {
 }
 
 #[test]
+fn reverb_and_chorus_sends_change_one_track_and_undo() {
+    let mut song = two_tracks();
+    let sound = |song: &Song, track| song.track_sound(TrackIndex::new(track)).unwrap();
+    let before = (sound(&song, 0), sound(&song, 1));
+    let reverb = song.set_track_reverb(TrackIndex::new(0), 90).unwrap();
+    let chorus = song.set_track_chorus(TrackIndex::new(0), 200).unwrap();
+    assert_eq!(sound(&song, 0).reverb, 90);
+    assert_eq!(sound(&song, 0).chorus, 127, "clamped to the MIDI range");
+    assert_eq!(sound(&song, 1), before.1, "the shared channel was copied");
+    song.revert(&chorus).unwrap();
+    song.revert(&reverb).unwrap();
+    assert_eq!((sound(&song, 0), sound(&song, 1)), before);
+    assert!(song.set_track_reverb(TrackIndex::new(9), 10).is_err());
+}
+
+#[test]
 fn sections_and_note_squares_come_from_the_song() {
     let mut gp = test_song(vec![track(
         "Guitar",

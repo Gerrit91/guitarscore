@@ -30,6 +30,10 @@ pub mod controller {
     pub const DATA_ENTRY_MSB: u8 = 6;
     /// Pan.
     pub const PAN: u8 = 10;
+    /// Reverb send (effects 1 depth).
+    pub const REVERB: u8 = 91;
+    /// Chorus send (effects 3 depth).
+    pub const CHORUS: u8 = 93;
     /// Data entry, least significant byte (for RPN values).
     pub const DATA_ENTRY_LSB: u8 = 38;
     /// Registered parameter number, least significant byte.

@@ -252,6 +252,14 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
             pan: midi_value_arg(args, "pan")?,
         }),
+        "set_track_reverb" => Ok(Command::SetTrackReverb {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            reverb: midi_value_arg(args, "reverb")?,
+        }),
+        "set_track_chorus" => Ok(Command::SetTrackChorus {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            chorus: midi_value_arg(args, "chorus")?,
+        }),
         "set_track_mute" => Ok(Command::SetTrackMute {
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
             mute: bool_arg(args, "mute")?,

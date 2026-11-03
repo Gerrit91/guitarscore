@@ -6,10 +6,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use gscore_audio::{MidiOutPlayer, SynthPlayer, midi_output_ports};
-use gscore_model::{
-    BeatIndex, BeatPosition, MeasureIndex, Song, TrackIndex, TrackSound, VoiceIndex,
-};
-use gscore_play::{Channel, MidiEvent, PPQ, PlayState, Player, Sequence, controller};
+use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, Song, TrackIndex, VoiceIndex};
+use gscore_play::{MidiEvent, PPQ, PlayState, Player, Sequence, sound_events};
 
 /// Where playback goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -673,28 +671,6 @@ fn first_beat() -> BeatPosition {
         voice: VoiceIndex::new(0),
         beat: BeatIndex::new(0),
     }
-}
-
-/// The MIDI messages that set a channel's program, volume and pan.
-fn sound_events(channel: Channel, sound: TrackSound) -> Vec<MidiEvent> {
-    let mut events = Vec::with_capacity(3);
-    if !sound.percussion {
-        events.push(MidiEvent::ProgramChange {
-            channel,
-            program: sound.program,
-        });
-    }
-    events.push(MidiEvent::Control {
-        channel,
-        controller: controller::VOLUME,
-        value: sound.volume.min(127),
-    });
-    events.push(MidiEvent::Control {
-        channel,
-        controller: controller::PAN,
-        value: sound.pan.min(127),
-    });
-    events
 }
 
 /// The file name of `path`, or the whole path if it has none.

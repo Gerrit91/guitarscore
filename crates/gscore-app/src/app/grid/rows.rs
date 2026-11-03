@@ -22,6 +22,9 @@ pub(super) struct TrackRow {
     /// The track's volume and pan, for the mixer strips.
     pub(super) volume: u8,
     pub(super) pan: u8,
+    /// The reverb and chorus sends, for the mixer strips.
+    pub(super) reverb: u8,
+    pub(super) chorus: u8,
     /// The instrument's full name, for the row's tooltip.
     description: String,
     sound: Option<TrackSound>,
@@ -56,6 +59,14 @@ pub(super) fn track_rows(document: &Document) -> Vec<TrackRow> {
                 .song()
                 .track_sound(track.index())
                 .map_or(64, |sound| sound.pan),
+            reverb: document
+                .song()
+                .track_sound(track.index())
+                .map_or(0, |sound| sound.reverb),
+            chorus: document
+                .song()
+                .track_sound(track.index())
+                .map_or(0, |sound| sound.chorus),
             description: track
                 .instrument_name()
                 .map_or_else(|| track.name().to_owned(), str::to_owned),

@@ -11,9 +11,10 @@ use crate::info::{
     DUPLICATE_TRACK, INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO, RENAME_TRACK,
     SET_BEAT_EFFECT, SET_BEAT_REST, SET_DEAD_NOTE, SET_DURATION, SET_FRET, SET_KEY_SIGNATURE,
     SET_MASTER_PAN, SET_MASTER_VOLUME, SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_SECTION,
-    SET_SONG_TEXT, SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_COLOR,
-    SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_SOLO,
-    SET_TRACK_STAVES, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_VOLUME, UNDO,
+    SET_SONG_TEXT, SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_CHORUS,
+    SET_TRACK_COLOR, SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM,
+    SET_TRACK_REVERB, SET_TRACK_SOLO, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS,
+    SET_TRACK_VOLUME, UNDO,
 };
 
 /// One edit, with every parameter already checked for syntax and range.
@@ -131,6 +132,20 @@ pub enum Command {
         track: TrackIndex,
         /// The pan.
         pan: u8,
+    },
+    /// Set the track's reverb send (0-127).
+    SetTrackReverb {
+        /// The track.
+        track: TrackIndex,
+        /// The send.
+        reverb: u8,
+    },
+    /// Set the track's chorus send (0-127).
+    SetTrackChorus {
+        /// The track.
+        track: TrackIndex,
+        /// The send.
+        chorus: u8,
     },
     /// Mute or unmute the track.
     SetTrackMute {
@@ -336,6 +351,12 @@ impl Command {
             Command::SetTrackPan { track, pan } => {
                 format!("{id} track={} pan={pan}", one(track.get()))
             }
+            Command::SetTrackReverb { track, reverb } => {
+                format!("{id} track={} reverb={reverb}", one(track.get()))
+            }
+            Command::SetTrackChorus { track, chorus } => {
+                format!("{id} track={} chorus={chorus}", one(track.get()))
+            }
             Command::SetTrackStaves { track, staves } => {
                 format!("{id} track={} staves={}", one(track.get()), staves.id())
             }
@@ -492,6 +513,8 @@ impl Command {
             Command::SetTrackColor { .. } => &SET_TRACK_COLOR,
             Command::SetTrackVolume { .. } => &SET_TRACK_VOLUME,
             Command::SetTrackPan { .. } => &SET_TRACK_PAN,
+            Command::SetTrackReverb { .. } => &SET_TRACK_REVERB,
+            Command::SetTrackChorus { .. } => &SET_TRACK_CHORUS,
             Command::SetTrackStaves { .. } => &SET_TRACK_STAVES,
             Command::SetMasterVolume { .. } => &SET_MASTER_VOLUME,
             Command::SetMasterPan { .. } => &SET_MASTER_PAN,
@@ -603,13 +626,16 @@ impl Command {
         }
     }
 
-    /// True for commands that change a track's sound (volume, pan, program). Playback sends
-    /// these to the player at once, without rebuilding the sequence.
+    /// True for commands that change a track's sound (volume, pan, reverb, chorus,
+    /// program). Playback sends these to the player at once, without rebuilding the
+    /// sequence.
     pub fn changes_sound(&self) -> bool {
         matches!(
             self,
             Command::SetTrackVolume { .. }
                 | Command::SetTrackPan { .. }
+                | Command::SetTrackReverb { .. }
+                | Command::SetTrackChorus { .. }
                 | Command::SetTrackProgram { .. }
         )
     }
@@ -657,6 +683,8 @@ impl Command {
         match self {
             Command::SetTrackVolume { track, .. }
             | Command::SetTrackPan { track, .. }
+            | Command::SetTrackReverb { track, .. }
+            | Command::SetTrackChorus { track, .. }
             | Command::SetTrackProgram { track, .. } => Some(*track),
             // Only a batch of nothing but sound changes on one track can be sent live.
             Command::Batch { commands } => {
@@ -686,6 +714,14 @@ impl Command {
             | (
                 Command::SetTrackPan { track: first, .. },
                 Command::SetTrackPan { track: second, .. },
+            )
+            | (
+                Command::SetTrackReverb { track: first, .. },
+                Command::SetTrackReverb { track: second, .. },
+            )
+            | (
+                Command::SetTrackChorus { track: first, .. },
+                Command::SetTrackChorus { track: second, .. },
             )
             | (
                 Command::SetTrackColor { track: first, .. },
@@ -756,6 +792,8 @@ impl Command {
             Command::SetTrackColor { track, .. }
             | Command::SetTrackVolume { track, .. }
             | Command::SetTrackPan { track, .. }
+            | Command::SetTrackReverb { track, .. }
+            | Command::SetTrackChorus { track, .. }
             | Command::SetTrackStaves { track, .. }
             | Command::SetTrackMute { track, .. }
             | Command::SetTrackSolo { track, .. }
@@ -848,6 +886,8 @@ impl Command {
             Command::SetTrackColor { track, color } => song.set_track_color(*track, *color),
             Command::SetTrackVolume { track, volume } => song.set_track_volume(*track, *volume),
             Command::SetTrackPan { track, pan } => song.set_track_pan(*track, *pan),
+            Command::SetTrackReverb { track, reverb } => song.set_track_reverb(*track, *reverb),
+            Command::SetTrackChorus { track, chorus } => song.set_track_chorus(*track, *chorus),
             Command::SetTrackStaves { track, staves } => song.set_track_staves(*track, *staves),
             Command::SetMasterVolume { volume } => song.set_master_volume(*volume),
             Command::SetMasterPan { pan } => song.set_master_pan(*pan),

@@ -112,6 +112,20 @@ const PAN: ParamInfo = ParamInfo {
     help: "Pan, 0 (left) to 127 (right), 64 is the middle",
 };
 
+const REVERB: ParamInfo = ParamInfo {
+    name: "reverb",
+    required: true,
+    default: None,
+    help: "Reverb send, 0 (dry) to 127",
+};
+
+const CHORUS: ParamInfo = ParamInfo {
+    name: "chorus",
+    required: true,
+    default: None,
+    help: "Chorus send, 0 (none) to 127",
+};
+
 const MUTE: ParamInfo = ParamInfo {
     name: "mute",
     required: true,
@@ -416,6 +430,22 @@ pub(crate) const SET_TRACK_PAN: CommandInfo = CommandInfo {
     params: &[TRACK, PAN],
 };
 
+pub(crate) const SET_TRACK_REVERB: CommandInfo = CommandInfo {
+    id: "set_track_reverb",
+    aliases: &[],
+    label: "Set the track reverb",
+    help: "Sets how much of a track goes to the synthesizer's reverb (MIDI controller 91).",
+    params: &[TRACK, REVERB],
+};
+
+pub(crate) const SET_TRACK_CHORUS: CommandInfo = CommandInfo {
+    id: "set_track_chorus",
+    aliases: &[],
+    label: "Set the track chorus",
+    help: "Sets how much of a track goes to the synthesizer's chorus (MIDI controller 93).",
+    params: &[TRACK, CHORUS],
+};
+
 pub(crate) const SET_TRACK_MUTE: CommandInfo = CommandInfo {
     id: "set_track_mute",
     aliases: &[],
@@ -610,6 +640,8 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_TRACK_COLOR,
     SET_TRACK_VOLUME,
     SET_TRACK_PAN,
+    SET_TRACK_REVERB,
+    SET_TRACK_CHORUS,
     SET_TRACK_STAVES,
     SET_MASTER_VOLUME,
     SET_MASTER_PAN,

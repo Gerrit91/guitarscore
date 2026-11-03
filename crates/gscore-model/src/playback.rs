@@ -21,6 +21,10 @@ pub struct TrackSound {
     pub volume: u8,
     /// Pan, 0 (left) to 127 (right); 64 is the middle.
     pub pan: u8,
+    /// Reverb send, 0-127 (MIDI controller 91).
+    pub reverb: u8,
+    /// Chorus send, 0-127 (MIDI controller 93).
+    pub chorus: u8,
     /// Drums: notes are General MIDI drum sounds on the percussion channel.
     pub percussion: bool,
 }
@@ -121,6 +125,8 @@ impl Song {
             program,
             volume: channel.map_or(104, |c| midi_value(i64::from(c.volume))),
             pan: channel.map_or(64, |c| midi_value(i64::from(c.balance))),
+            reverb: channel.map_or(0, |c| midi_value(i64::from(c.reverb))),
+            chorus: channel.map_or(0, |c| midi_value(i64::from(c.chorus))),
             percussion: inner.percussion_track,
         })
     }

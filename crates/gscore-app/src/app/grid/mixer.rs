@@ -163,25 +163,51 @@ pub(in crate::app) fn pan_knob(
     index: usize,
     label: &str,
 ) -> PanKnob {
-    let response = ui.interact(
-        rect,
-        ui.scope_id().with(("pan", index)),
-        Sense::click_and_drag(),
-    );
+    let hover = format!("Pan {} — drag left or right", pan_label(pan));
+    knob(ui, rect, pan, ("pan", index), label, &hover, 64, false)
+}
+
+/// Draws a reverb or chorus send knob (0 dry to 127), filled up to its value; a double
+/// click sets it to `reset`.
+pub(in crate::app) fn send_knob(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    value: u8,
+    id: (&'static str, usize),
+    label: &str,
+    what: &str,
+    reset: u8,
+) -> PanKnob {
+    let hover = format!("{what} {value} of 127 — drag left or right (double-click: {reset})");
+    knob(ui, rect, value, id, label, &hover, reset, true)
+}
+
+/// A round knob over 0-127, dragged sideways. `fill` paints an arc from the minimum up to
+/// the value (for amounts); without it only the pointer shows (for pan).
+#[allow(clippy::too_many_arguments)]
+fn knob(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    value: u8,
+    id: (&'static str, usize),
+    label: &str,
+    hover: &str,
+    reset: u8,
+    fill: bool,
+) -> PanKnob {
+    let response = ui.interact(rect, ui.scope_id().with(id), Sense::click_and_drag());
     let boundary = response.drag_started() || response.drag_stopped();
     ui.ctx().accesskit_node_builder(response.id, |node| {
         node.set_label(label);
         node.set_role(egui::Role::Slider);
         node.set_min_numeric_value(0.0);
         node.set_max_numeric_value(127.0);
-        node.set_numeric_value(f64::from(pan));
+        node.set_numeric_value(f64::from(value));
     });
-    response
-        .clone()
-        .on_hover_text(format!("Pan {} — drag left or right", pan_label(pan)));
+    response.clone().on_hover_text(hover);
     if response.double_clicked() {
         return PanKnob {
-            change: Some((64, false)),
+            change: (value != reset).then_some((reset, false)),
             boundary: true,
         };
     }
@@ -189,11 +215,11 @@ pub(in crate::app) fn pan_knob(
     if response.dragged() {
         let delta = ui.input(|input| input.pointer.delta().x);
         let step = (delta / 2.0).round() as i32;
-        let value = i32::from(pan).saturating_add(step).clamp(0, 127);
-        if let Ok(value) = u8::try_from(value)
-            && value != pan
+        let new = i32::from(value).saturating_add(step).clamp(0, 127);
+        if let Ok(new) = u8::try_from(new)
+            && new != value
         {
-            changed = Some((value, !response.drag_started()));
+            changed = Some((new, !response.drag_started()));
         }
     }
     let center = rect.center();
@@ -203,9 +229,29 @@ pub(in crate::app) fn pan_knob(
         .circle_filled(center, radius, visuals.faint_bg_color);
     ui.painter()
         .circle_stroke(center, radius, Stroke::new(1.0, visuals.weak_text_color()));
-    // -135 degrees (left) to +135 degrees (right), with 64 pointing up.
-    let angle = (f32::from(pan) / 127.0).mul_add(270.0, -135.0).to_radians();
-    let tip = center + Vec2::angled(angle - std::f32::consts::FRAC_PI_2) * (radius - 2.0);
+    // -135 degrees (minimum) to +135 degrees (maximum), with 64 pointing up.
+    let to_angle = |value: u8| {
+        (f32::from(value) / 127.0)
+            .mul_add(270.0, -135.0)
+            .to_radians()
+            - std::f32::consts::FRAC_PI_2
+    };
+    let angle = to_angle(value);
+    if fill && value > 0 {
+        let start = to_angle(0);
+        let steps = 16;
+        let points: Vec<egui::Pos2> = (0..=steps)
+            .map(|step| {
+                let at = start + (angle - start) * (step as f32) / (steps as f32);
+                center + Vec2::angled(at) * (radius - 1.0)
+            })
+            .collect();
+        ui.painter().add(egui::Shape::line(
+            points,
+            Stroke::new(2.0, visuals.selection.bg_fill),
+        ));
+    }
+    let tip = center + Vec2::angled(angle) * (radius - 2.0);
     ui.painter()
         .line_segment([center, tip], Stroke::new(1.5, visuals.selection.bg_fill));
     PanKnob {
