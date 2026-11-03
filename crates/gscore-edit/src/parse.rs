@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use gscore_model::{
-    BeatEffect, BeatIndex, BeatPosition, Fret, MAX_STRINGS, MAX_TEMPO, MeasureIndex, NoteEffect,
-    NoteValue, Pitch, SongTextField, StringNumber, TrackIndex, TrackStaves, VoiceIndex,
+    BeatEffect, BeatIndex, BeatPosition, Dynamic, Fret, MAX_STRINGS, MAX_TEMPO, MeasureIndex,
+    NoteEffect, NoteValue, Pitch, SongTextField, StringNumber, TrackIndex, TrackStaves, VoiceIndex,
 };
 
 use crate::command::Command;
@@ -311,6 +311,10 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             let dead = bool_arg(args, "dead")?;
             Ok(Command::SetDeadNote { at, string, dead })
         }
+        "set_dynamic" => Ok(Command::SetDynamic {
+            at: position(args)?,
+            dynamic: dynamic_arg(args)?,
+        }),
         "set_measure_tempo" => Ok(Command::SetMeasureTempo {
             measure: MeasureIndex::new(required_position(args, "measure")?),
             tempo: tempo_arg(args)?,
@@ -442,6 +446,19 @@ fn field_arg(args: &mut Args) -> Result<SongTextField, ParseError> {
     let expected = "title, subtitle, artist, album, lyricist, composer, copyright, \
                     tab_author, instructions or notes";
     SongTextField::from_id(&text).ok_or_else(|| bad(args.command, "field", &text, expected))
+}
+
+/// The `dynamic` parameter: a mark from `ppp` to `fff`.
+fn dynamic_arg(args: &mut Args) -> Result<Dynamic, ParseError> {
+    let text = args.required("dynamic")?;
+    Dynamic::from_id(&text).ok_or_else(|| {
+        bad(
+            args.command,
+            "dynamic",
+            &text,
+            "ppp, pp, p, mp, mf, f, ff or fff",
+        )
+    })
 }
 
 /// The `tempo` parameter: quarter notes per minute.

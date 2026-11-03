@@ -2,8 +2,8 @@
 
 use super::*;
 use gscore_model::{
-    AccentKind, BeatEffect, BeatIndex, BendKind, BendPoint, BendShape, Harmonic, HarmonicKind,
-    NoteEffect, StrokeDirection, WhammyShape,
+    AccentKind, BeatEffect, BeatIndex, BendKind, BendPoint, BendShape, Dynamic, Harmonic,
+    HarmonicKind, NoteEffect, StrokeDirection, WhammyShape,
 };
 
 fn at(track: usize, measure: usize, voice: usize, beat: usize) -> BeatPosition {
@@ -229,6 +229,13 @@ fn parses_every_command_and_fills_defaults() {
         (
             "set_beat_rest measure=2 beat=3",
             Command::SetBeatRest { at: at(0, 1, 0, 2) },
+        ),
+        (
+            "set_dynamic measure=2 beat=3 dynamic=mp",
+            Command::SetDynamic {
+                at: at(0, 1, 0, 2),
+                dynamic: Dynamic::Mp,
+            },
         ),
         (
             "set_dead_note measure=2 beat=3 string=4 dead=yes",
@@ -505,6 +512,10 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
             at: at(0, 2, 0, 3),
             string,
             dead: true,
+        },
+        Command::SetDynamic {
+            at: at(0, 2, 0, 3),
+            dynamic: Dynamic::Fff,
         },
         Command::SetMeasureTempo {
             measure: MeasureIndex::new(7),

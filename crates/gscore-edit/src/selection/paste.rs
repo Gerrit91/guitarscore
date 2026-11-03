@@ -84,6 +84,12 @@ fn write_beat(at: BeatPosition, clip: &BeatClip, inserted: bool, commands: &mut 
             });
         }
     }
+    // Pasted notes start with the dynamic in effect where they land; give them the copy's.
+    if let Some(dynamic) = clip.dynamic
+        && !clip.notes.is_empty()
+    {
+        commands.push(Command::SetDynamic { at, dynamic });
+    }
     // An overwritten beat keeps its own effects unless every one is set.
     for effect in clip
         .effects

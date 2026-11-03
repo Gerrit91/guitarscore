@@ -1,0 +1,165 @@
+//! Marks besides the notes: section names, tempo changes, repeat signs, alternative
+//! endings and dynamics.
+
+#![allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
+#![allow(unused_crate_dependencies)]
+
+use gscore_layout::{
+    ColorToken, DrawOp, Fonts, Glyph, Layout, LayoutCache, LayoutOptions, TextFont, layout_track,
+};
+use gscore_model::{
+    BeatIndex, BeatPosition, Dynamic, Fret, MeasureIndex, Song, StringNumber, TrackColor,
+    TrackIndex, VoiceIndex, testing,
+};
+
+fn at(measure: usize, beat: usize) -> BeatPosition {
+    BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(measure),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(beat),
+    }
+}
+
+fn layout(song: &Song) -> Layout {
+    let fonts = Fonts::bundled().unwrap();
+    layout_track(song, TrackIndex::new(0), &LayoutOptions::default(), &fonts).unwrap()
+}
+
+fn texts(layout: &Layout) -> Vec<(String, TextFont, f32, f32)> {
+    layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text { text, font, at, .. } => Some((text.clone(), *font, at.x, at.y)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn glyph_count(layout: &Layout, glyph: Glyph) -> usize {
+    layout
+        .ops
+        .iter()
+        .filter(|op| matches!(op, DrawOp::Glyph { glyph: g, .. } if *g == glyph))
+        .count()
+}
+
+fn note(song: &mut Song, measure: usize, beat: usize) {
+    let _ = song
+        .set_note(
+            at(measure, beat),
+            StringNumber::new(1).unwrap(),
+            Fret::new(3).unwrap(),
+        )
+        .unwrap();
+}
+
+#[test]
+fn section_names_and_tempo_changes_are_written_above_their_measure() {
+    let mut song = testing::song(&[testing::GUITAR_6], 3).unwrap();
+    let _ = song
+        .set_section(MeasureIndex::new(1), "Chorus", TrackColor::DEFAULT)
+        .unwrap();
+    let _ = song.set_measure_tempo(MeasureIndex::new(2), 90).unwrap();
+    let plain = layout(&testing::song(&[testing::GUITAR_6], 3).unwrap());
+    let marked = layout(&song);
+    let texts = texts(&marked);
+    let section = texts
+        .iter()
+        .find(|t| t.0 == "Chorus")
+        .expect("the section name");
+    assert_eq!(section.1, TextFont::Bold);
+    let tempo = texts
+        .iter()
+        .find(|t| t.0 == "= 90")
+        .expect("the tempo change");
+    let measure = |n: usize| marked.places.measures[n].left;
+    assert!(section.2 >= measure(1) && section.2 < measure(2));
+    assert!(tempo.2 >= measure(2));
+    // The header's tempo is the only other one; tempo rows sit above the staff.
+    assert_eq!(texts.iter().filter(|t| t.0.starts_with("= ")).count(), 2);
+    let top = marked.places.systems[0].top;
+    assert!(section.3 < tempo.3 && tempo.3 < top);
+    // The rows make room: the staff moves down by them.
+    assert!(top > plain.places.systems[0].top);
+}
+
+#[test]
+fn an_unchanged_tempo_is_not_written_again() {
+    let mut song = testing::song(&[testing::GUITAR_6], 2).unwrap();
+    let tempo = song.tempo();
+    let _ = song.set_measure_tempo(MeasureIndex::new(1), tempo).unwrap();
+    let count = texts(&layout(&song))
+        .iter()
+        .filter(|t| t.0.starts_with("= "))
+        .count();
+    assert_eq!(count, 1, "only the header's tempo");
+}
+
+#[test]
+fn dynamics_are_written_where_they_change() {
+    let mut song = testing::song(&[testing::GUITAR_6], 2).unwrap();
+    for (measure, beat) in [(0, 0), (0, 1), (1, 0), (1, 2)] {
+        note(&mut song, measure, beat);
+    }
+    // New notes are mezzo-forte, which is not written.
+    assert_eq!(glyph_count(&layout(&song), Glyph::Dynamic(Dynamic::Mf)), 0);
+    let _ = song.set_dynamic(at(0, 1), Dynamic::P).unwrap();
+    // Measure 2's notes were entered at mezzo-forte: back to mf after the p.
+    let laid_out = layout(&song);
+    assert_eq!(glyph_count(&laid_out, Glyph::Dynamic(Dynamic::P)), 1);
+    assert_eq!(glyph_count(&laid_out, Glyph::Dynamic(Dynamic::Mf)), 1);
+    // The cache gives the same page, also after the next edit.
+    let fonts = Fonts::bundled().unwrap();
+    let options = LayoutOptions::default();
+    let mut cache = LayoutCache::default();
+    let _ = cache
+        .layout(&song, TrackIndex::new(0), &options, &fonts)
+        .unwrap();
+    let _ = song.set_dynamic(at(1, 0), Dynamic::P).unwrap();
+    let cached = cache
+        .layout(&song, TrackIndex::new(0), &options, &fonts)
+        .unwrap();
+    assert_eq!(cached, layout(&song));
+    // The p now lasts into measure 2; its last note (still mf) gets the mf.
+    assert_eq!(glyph_count(&cached, Glyph::Dynamic(Dynamic::P)), 1);
+    assert_eq!(glyph_count(&cached, Glyph::Dynamic(Dynamic::Mf)), 1);
+}
+
+#[test]
+fn repeats_and_endings_are_drawn() {
+    // ||: 1 | 2 | 3 (ending 1) :|| 4 (ending 2) | 5, the section played three times.
+    let song = testing::song_with_repeats(
+        5,
+        &[(0, true, -1, 0), (2, false, 2, 0b01), (3, false, -1, 0b10)],
+    )
+    .unwrap();
+    let laid_out = layout(&song);
+    // Notation and tab each get two dots at the start and two at the end.
+    assert_eq!(glyph_count(&laid_out, Glyph::RepeatDot), 8);
+    let texts = texts(&laid_out);
+    for label in ["1.", "2.", "x3"] {
+        assert!(texts.iter().any(|t| t.0 == label), "{label} in {texts:?}");
+    }
+    // Repeat signs take room of their own.
+    let plain = layout(&testing::song(&[testing::GUITAR_6], 5).unwrap());
+    let width = |l: &Layout, n: usize| l.places.measures[n].right - l.places.measures[n].left;
+    assert!(width(&laid_out, 0) > width(&plain, 0));
+    assert!(laid_out.places.measures[0].content > laid_out.places.measures[0].left);
+    // Thick barlines: one per staff for the start, one per staff for the end, plus the
+    // final barline's.
+    let thick = laid_out
+        .ops
+        .iter()
+        .filter(|op| {
+            matches!(op, DrawOp::Line { thickness, color: ColorToken::Barline, .. }
+                if (*thickness - 0.5).abs() < 1e-4)
+        })
+        .count();
+    assert_eq!(thick, 6);
+}

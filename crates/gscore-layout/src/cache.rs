@@ -23,6 +23,8 @@ struct TrackKey {
     strings: usize,
     tuning: Option<Vec<StringTuning>>,
     capo: Option<u8>,
+    /// Drum kits are written on a percussion staff.
+    percussion: bool,
 }
 
 /// Measure layouts kept between calls, for one track at a time (a different track or
@@ -54,6 +56,7 @@ impl LayoutCache {
             strings: view.string_count(),
             tuning: view.tuning().ok().flatten(),
             capo: view.capo().ok(),
+            percussion: view.is_percussion(),
         };
         if self.key.as_ref() != Some(&key) {
             self.measures.clear();

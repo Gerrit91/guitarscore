@@ -16,10 +16,10 @@ use common::{
 };
 use gscore_edit::{Command, EditError, Editor};
 use gscore_model::{
-    AccentKind, BeatEffect, BeatKind, BendKind, BendPoint, BendShape, Duration, Fret, Harmonic,
-    HarmonicKind, Legato, MeasureIndex, NoteEffect, NoteValue, Pitch, SlapKind, SlideKind,
-    SongTextField, StringNumber, StrokeDirection, TimeSignature, TrackColor, TrackIndex, Vibrato,
-    WhammyShape, differences, testing,
+    AccentKind, BeatEffect, BeatKind, BendKind, BendPoint, BendShape, Duration, Dynamic, Fret,
+    Harmonic, HarmonicKind, Legato, MeasureIndex, NoteEffect, NoteValue, Pitch, SlapKind,
+    SlideKind, SongTextField, StringNumber, StrokeDirection, TimeSignature, TrackColor, TrackIndex,
+    Vibrato, WhammyShape, differences, testing,
 };
 
 fn string(number: u8) -> StringNumber {
@@ -625,6 +625,10 @@ fn rests_ties_and_headers_edit_and_undo() {
             at: pos(0, 0, 0),
             string: string(1),
             dead: true,
+        },
+        Command::SetDynamic {
+            at: pos(0, 0, 0),
+            dynamic: Dynamic::Pp,
         },
         Command::SetMeasureTempo {
             measure: MeasureIndex::new(0),

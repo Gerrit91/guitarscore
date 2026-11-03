@@ -143,3 +143,26 @@ pub(super) fn column_items(
         beats: Vec::new(),
     })
 }
+
+/// The beat notes are beamed within: a dotted quarter in compound meters (6/8, 9/8,
+/// 12/8), a quarter otherwise.
+pub(super) fn beat_length(signature: TimeSignature) -> Result<Duration, LayoutError> {
+    let compound = signature.denominator() == 8
+        && signature.numerator() > 3
+        && signature.numerator().is_multiple_of(3);
+    Ok(if compound {
+        Duration::new(3, 8)?
+    } else {
+        Duration::new(1, 4)?
+    })
+}
+
+/// A duration in whole notes, as a float for spacing.
+pub(super) fn as_f64(duration: Duration) -> f64 {
+    let denominator = duration.denominator() as f64;
+    if denominator > 0.0 {
+        duration.numerator() as f64 / denominator
+    } else {
+        0.0
+    }
+}

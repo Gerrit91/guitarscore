@@ -117,12 +117,12 @@ enum Command {
         #[arg(long, default_value_t = 1.0)]
         speed: f32,
     },
-    /// Draw one track's tablature as an SVG image
+    /// Draw one track's score as an SVG image
     ///
-    /// Lays out the tab staff of one track (title, tuning, tempo, then the measures broken
-    /// into lines on an A4-wide page) and writes it as SVG. The image uses the Bravura and
-    /// Noto Sans fonts by name (bundled in assets/fonts/); install them to view it
-    /// correctly. Drum tracks are not supported yet.
+    /// Lays out one track (title, tuning, tempo, then the measures broken into lines on an
+    /// A4-wide page: standard notation and tab as the track shows them, a percussion staff
+    /// for drums) and writes it as SVG. The image uses the Bravura and Noto Sans fonts by
+    /// name (bundled in assets/fonts/); install them to view it correctly.
     Render {
         /// The Guitar Pro file to read
         file: PathBuf,

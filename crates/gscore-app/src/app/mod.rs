@@ -6,6 +6,7 @@
 //! clicks), `editing` (keys and actions), `files` (open, save, unsaved changes).
 
 mod bars;
+mod edit_dynamics;
 mod edit_effects;
 mod edit_palette;
 mod editing;

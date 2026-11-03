@@ -26,10 +26,12 @@ pub(super) fn set(
     }
     let gp_string = i8::try_from(string.get())
         .map_err(|_| ModelError::Invalid(format!("{at}: {string} is out of range")))?;
+    // A new note is as loud as the music around it: the dynamic in effect there.
+    let velocity = song.dynamic_at(at).raw_velocity();
     song.edit_measure(at.track, at.measure, |measure| {
         let beat = beat_in(measure, at)?;
         let previous_status = beat.status.clone();
-        let previous = replace_or_add(beat, gp_string, fret).map(Box::new);
+        let previous = replace_or_add(beat, gp_string, fret, velocity).map(Box::new);
         beat.status = BeatStatus::Normal;
         Ok(Change {
             kind: ChangeKind::NoteSet {
@@ -102,8 +104,9 @@ pub(super) fn restore(
     }
 }
 
-/// Replaces the note on `gp_string`, or adds a normal note; returns the previous note.
-fn replace_or_add(beat: &mut GpBeat, gp_string: i8, fret: Fret) -> Option<GpNote> {
+/// Replaces the note on `gp_string`, or adds a normal note played at `velocity`; returns
+/// the previous note. A replaced note keeps its own velocity and effects.
+fn replace_or_add(beat: &mut GpBeat, gp_string: i8, fret: Fret, velocity: i16) -> Option<GpNote> {
     let value = i16::from(fret.get());
     match find(beat, gp_string).and_then(|index| beat.notes.get_mut(index)) {
         Some(note) => {
@@ -117,6 +120,7 @@ fn replace_or_add(beat: &mut GpBeat, gp_string: i8, fret: Fret) -> Option<GpNote
                 string: gp_string,
                 value,
                 kind: NoteType::Normal,
+                velocity,
                 ..GpNote::default()
             });
             None

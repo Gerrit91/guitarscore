@@ -12,6 +12,7 @@
 
 mod beat_flags;
 mod beats;
+mod dynamics;
 mod effect_edits;
 mod headers;
 pub(crate) mod measures;
@@ -154,6 +155,11 @@ enum ChangeKind {
         string: StringNumber,
         previous: gscore_gp::NoteType,
     },
+    /// A beat's dynamic changed; `previous` holds its notes' velocities, in note order.
+    BeatDynamic {
+        at: BeatPosition,
+        previous: Vec<i16>,
+    },
     /// A note became (or stopped being) a dead note.
     NoteDead {
         at: BeatPosition,
@@ -260,6 +266,9 @@ impl Change {
             ChangeKind::SongTempo { .. } => 0,
             ChangeKind::BeatRest { notes, .. } => notes.len().saturating_mul(size_of::<GpNote>()),
             ChangeKind::NoteTie { .. } | ChangeKind::NoteDead { .. } => 0,
+            ChangeKind::BeatDynamic { previous, .. } => {
+                previous.len().saturating_mul(size_of::<i16>())
+            }
             ChangeKind::NoteEffect { .. } => size_of::<gscore_gp::NoteEffect>(),
             ChangeKind::BeatEffect { .. } => size_of::<gscore_gp::BeatEffects>(),
             ChangeKind::MeasureTempo { .. } => 0,
@@ -599,6 +608,11 @@ impl Song {
                 beat.status = previous_status.clone();
                 Ok(())
             }),
+            ChangeKind::BeatDynamic { at, previous } => {
+                self.edit_measure(at.track, at.measure, |measure| {
+                    dynamics::restore(measure, *at, previous)
+                })
+            }
             ChangeKind::NoteTie {
                 at,
                 string,
@@ -786,6 +800,8 @@ fn beat_in(measure: &mut GpMeasure, at: BeatPosition) -> Result<&mut GpBeat, Mod
         .ok_or_else(|| ModelError::Invalid(format!("{at}: the voice has {beats} beat(s)")))
 }
 
+#[cfg(test)]
+mod dynamic_tests;
 #[cfg(test)]
 mod effect_tests;
 #[cfg(test)]

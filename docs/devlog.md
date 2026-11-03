@@ -1562,3 +1562,49 @@ rustysynth has reverb and chorus built in and reads the per-channel sends (MIDI 
 - Window title bars' close button now has an accessible label ("Close Settings", ...).
 - Test `an_entered_fret_is_heard_and_undo_is_not` (real synthesizer with the test sine
   SoundFont; skipped without an audio device): pitch, note-off, silent undo, setting off.
+
+## 2026-11-03 — Drum notation, dynamics, and marks in the score
+
+Owner's request: drum notation, dynamics in the edit palette and the score, section names
+(and the like) directly in the score.
+
+- **Drum notation** (`gscore-layout/src/notation/drums.rs`): drum tracks were refused by
+  layout. They are now written on a five-line percussion staff with the percussion clef,
+  always (whatever the notation/tab switches say; a tab staff cannot show drum sounds).
+  Each General MIDI drum sound has its usual place and notehead: bass drums in the bottom
+  spaces, snare in the third space, toms rising from the floor tom to above the staff,
+  closed/open hi-hat (cross/circled cross) and cymbals above, pedal hi-hat below; unknown
+  sounds get a diamond on the middle line so they stay visible. Stems point up, no
+  accidentals. Entry is unchanged: the "fret" is the MIDI note number. The layout cache
+  keys on the drum flag, so toggling "Drum kit" lays the track out again. New glyphs:
+  `unpitchedPercussionClef1`, `noteheadCircleX`, `noteheadDiamondBlack`,
+  `noteheadTriangleUpBlack`, `repeatDot`, `dynamicPPP` ... `dynamicFFF`.
+- **Dynamics**: model `Dynamic` (ppp to fff, Guitar Pro's velocities 15 ... 127),
+  `BeatView::dynamic`, `NoteView::dynamic`, `Song::dynamic_at` (the beat's own, else the
+  last earlier beat with notes in that voice, across barlines) and `Song::set_dynamic`
+  (every note of the beat; undo restores each velocity). New notes take the dynamic in
+  effect instead of always forte, as in Guitar Pro. The default is mezzo-forte: GP7 files
+  store MF on every beat and Guitar Pro neither prints it nor starts new notes elsewhere.
+  Command `set_dynamic` (parse, round trip, apply/undo, panic hunt); it rebuilds playback.
+  Copy/paste carries a beat's dynamic. The save comparison now checks note dynamics.
+  Palette: a "Dynamics" section with eight glyph tiles (the selected beats' mark
+  highlighted) and the dynamic in effect at the cursor.
+- **Marks in the score** (`gscore-layout/src/marks.rs`), decided in one pass over the
+  track so measure layouts stay cacheable: framed bold section names, tempo changes
+  (measure tempos and GP3-5 beat tempos, only where the tempo actually changes), repeat
+  signs (thick-thin lines with dots on both staves, extra room so notes keep their
+  distance), "x3" over an end repeat played more than twice, alternative-ending brackets
+  ("1.", "2." with hooks), and dynamics under the notation staff (clear of low notes and
+  the tab) or under the tab and its P.M./let ring rows. Rows above a system (endings,
+  tempo, section) are only added where a system needs them, and push it down.
+- Tests: drum map, drum layout (clef, heads, stems up, no fret numbers, cache), marks
+  (sections, tempo, unchanged tempo not repeated, dynamics where they change incl. cache,
+  repeats and endings), model dynamics, command and paste. Goldens unchanged (the test
+  files are all mf). App snapshots updated: the palette's new Dynamics section (owner to
+  review).
+- Caught by `panic_hunt` before it shipped: `dynamic_at` walked back from the requested
+  measure, so `set_fret measure=18446744073709551615` would loop practically forever. It
+  now answers at once for positions outside the song (regression assertion in
+  `new_notes_take_the_dynamic_in_effect`).
+- Open: drum tab, custom drum maps and a feet voice; hairpins; D.C./D.S./coda; a
+  dynamics key binding; the `fff` tile wraps to a second row at the default panel width.

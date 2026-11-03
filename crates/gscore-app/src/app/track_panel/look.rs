@@ -101,8 +101,13 @@ pub(super) fn staves(
 ) {
     ui.add_space(4.0);
     ui.label(egui::RichText::new("Show").color(style::tokens(ui).text_weak));
-    // Notation needs a tuning (and is not drawn for drums): without one, tabs only.
-    let notation_possible = !snapshot.tuning.is_empty() && !snapshot.percussion;
+    // A drum kit is always written on a percussion staff; there is nothing to choose.
+    if snapshot.percussion {
+        ui.label(egui::RichText::new("Percussion staff").color(style::tokens(ui).text_weak));
+        return;
+    }
+    // Notation needs a tuning: without one, tabs only.
+    let notation_possible = !snapshot.tuning.is_empty();
     ui.horizontal_wrapped(|ui| {
         for staves in TrackStaves::ALL {
             let enabled = notation_possible || staves == TrackStaves::TabOnly;

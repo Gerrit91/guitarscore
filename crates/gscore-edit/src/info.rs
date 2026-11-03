@@ -211,6 +211,13 @@ const TIE: ParamInfo = ParamInfo {
     help: "true to tie the note to the previous one, false to untie it",
 };
 
+const DYNAMIC: ParamInfo = ParamInfo {
+    name: "dynamic",
+    required: true,
+    default: None,
+    help: "ppp, pp, p, mp, mf, f, ff or fff",
+};
+
 const DEAD: ParamInfo = ParamInfo {
     name: "dead",
     required: true,
@@ -543,6 +550,14 @@ pub(crate) const SET_DEAD_NOTE: CommandInfo = CommandInfo {
     params: &[TRACK, MEASURE, VOICE, BEAT, STRING, DEAD],
 };
 
+pub(crate) const SET_DYNAMIC: CommandInfo = CommandInfo {
+    id: "set_dynamic",
+    aliases: &[],
+    label: "Set the dynamic",
+    help: "Sets how loud a beat's notes are played (ppp to fff); later notes keep theirs.",
+    params: &[TRACK, MEASURE, VOICE, BEAT, DYNAMIC],
+};
+
 pub(crate) const SET_MEASURE_TEMPO: CommandInfo = CommandInfo {
     id: "set_measure_tempo",
     aliases: &[],
@@ -657,6 +672,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_BEAT_REST,
     SET_TIE,
     SET_DEAD_NOTE,
+    SET_DYNAMIC,
     SET_MEASURE_TEMPO,
     SET_TIME_SIGNATURE,
     SET_KEY_SIGNATURE,
