@@ -7,6 +7,7 @@
 //! wider for a slide that needs it); without that, the range would depend on the
 //! synthesizer's default.
 
+use crate::curve::Curve;
 use crate::event::{Channel, MidiEvent, PITCH_BEND_CENTER, controller};
 
 /// Pitch bend range set on a borrowed channel with RPN 0,0, in semitones. Guitar Pro's own
@@ -31,6 +32,11 @@ pub(crate) struct PitchShape {
     ramp: u64,
     /// A vibrato on top of the movement, if any.
     vibrato: Option<Wave>,
+    /// The note's bend curve and its beat's whammy curve, added on top, and the note's
+    /// length they are spread over (ticks).
+    bend: Option<Curve>,
+    whammy: Option<Curve>,
+    length: u64,
 }
 
 /// A vibrato: how far the pitch swings either way (cents), how long one swing takes and
@@ -44,6 +50,8 @@ pub(crate) struct Wave {
 
 /// Messages per vibrato period.
 const WAVE_STEPS: u64 = 12;
+/// Messages over a note for a bend or whammy curve.
+const CURVE_STEPS: u64 = 48;
 
 impl PitchShape {
     /// A bend up to `quarter_tones` that reaches its target within `ramp_limit` ticks.
@@ -53,6 +61,9 @@ impl PitchShape {
             target: i32::from(quarter_tones),
             ramp: ramp_ticks(length, ramp_limit),
             vibrato: None,
+            bend: None,
+            whammy: None,
+            length: 0,
         }
     }
 
@@ -63,6 +74,9 @@ impl PitchShape {
             target: 0,
             ramp: ramp_ticks(length, length),
             vibrato: None,
+            bend: None,
+            whammy: None,
+            length: 0,
         }
     }
 
@@ -73,6 +87,9 @@ impl PitchShape {
             target: delta_semitones.saturating_mul(QUARTER_TONES_PER_SEMITONE),
             ramp: ramp_ticks(length, length),
             vibrato: None,
+            bend: None,
+            whammy: None,
+            length: 0,
         }
     }
 
@@ -83,6 +100,9 @@ impl PitchShape {
             target: 0,
             ramp: ramp_ticks(length, ramp_limit),
             vibrato: None,
+            bend: None,
+            whammy: None,
+            length: 0,
         }
     }
 
@@ -97,6 +117,9 @@ impl PitchShape {
             },
             ramp: ramp_ticks(length, length),
             vibrato: None,
+            bend: None,
+            whammy: None,
+            length: 0,
         }
     }
 
@@ -107,7 +130,26 @@ impl PitchShape {
             target: 0,
             ramp: 0,
             vibrato: None,
+            bend: None,
+            whammy: None,
+            length: 0,
         }
+    }
+
+    /// This shape with the note's bend `curve` and its beat's `whammy` curve on top, over
+    /// `length` ticks.
+    pub(crate) fn with_curves(self, bend: Option<Curve>, whammy: Option<Curve>, length: u64) -> Self {
+        PitchShape {
+            bend: bend.or(self.bend),
+            whammy: whammy.or(self.whammy),
+            length,
+            ..self
+        }
+    }
+
+    /// Whether the shape has no ramp of its own (it only carries curves or a vibrato).
+    pub(crate) fn is_steady(&self) -> bool {
+        self.start == 0 && self.target == 0
     }
 
     /// This shape with `wave` on top.
@@ -121,7 +163,16 @@ impl PitchShape {
     /// The bend range this shape needs, in semitones: [`BEND_RANGE_SEMITONES`], or more for
     /// a wide slide (at most [`MAX_RANGE_SEMITONES`]).
     pub(crate) fn range(&self) -> u8 {
-        let widest = self.start.unsigned_abs().max(self.target.unsigned_abs());
+        let curves = [self.bend, self.whammy]
+            .iter()
+            .flatten()
+            .map(Curve::reach)
+            .fold(0_u32, u32::saturating_add);
+        let widest = self
+            .start
+            .unsigned_abs()
+            .max(self.target.unsigned_abs())
+            .saturating_add(curves);
         let semitones = widest.div_ceil(QUARTER_TONES_PER_SEMITONE.unsigned_abs());
         u8::try_from(semitones)
             .unwrap_or(MAX_RANGE_SEMITONES)
@@ -132,8 +183,8 @@ impl PitchShape {
     /// and the ramp but not the reset after the note.
     pub(crate) fn events(&self, channel: Channel, start_tick: u64) -> Vec<(u64, MidiEvent)> {
         let range = self.range();
-        if let Some(wave) = self.vibrato {
-            return self.wave_events(wave, channel, start_tick, range);
+        if self.vibrato.is_some() || self.bend.is_some() || self.whammy.is_some() {
+            return self.sampled_events(channel, start_tick, range);
         }
         let mut events =
             Vec::with_capacity(usize::try_from(RAMP_STEPS.saturating_add(1)).unwrap_or(0));
@@ -174,34 +225,41 @@ impl PitchShape {
 }
 
 impl PitchShape {
-    /// The movement sampled through the note with the vibrato added: the bend or slide
-    /// (in cents) plus a sine of the wave's depth.
-    fn wave_events(
-        &self,
-        wave: Wave,
-        channel: Channel,
-        start_tick: u64,
-        range: u8,
-    ) -> Vec<(u64, MidiEvent)> {
-        let step = (wave.period / WAVE_STEPS).max(1);
+    /// The movement sampled through the note: the bend or slide ramp, the bend and whammy
+    /// curves (in cents), and a sine of the vibrato's depth.
+    fn sampled_events(&self, channel: Channel, start_tick: u64, range: u8) -> Vec<(u64, MidiEvent)> {
+        let length = self.vibrato.map_or(self.length, |wave| wave.length).max(1);
+        let step = match self.vibrato {
+            Some(wave) => (wave.period / WAVE_STEPS).max(1),
+            None => (length / CURVE_STEPS).max(1),
+        };
         let cents_per_quarter_tone = 50.0_f64;
         let mut events = Vec::new();
         let mut offset = 0_u64;
-        while offset < wave.length.max(1) {
+        while offset < length {
             let progress = if self.ramp == 0 {
                 1.0
             } else {
                 (offset as f64 / self.ramp as f64).min(1.0)
             };
-            let base =
-                f64::from(self.start) + (f64::from(self.target) - f64::from(self.start)) * progress;
-            let phase = offset as f64 / wave.period.max(1) as f64 * std::f64::consts::TAU;
-            let cents = base * cents_per_quarter_tone + f64::from(wave.depth_cents) * phase.sin();
+            let share = offset as f64 / length as f64;
+            let curves: f64 = [self.bend, self.whammy]
+                .iter()
+                .flatten()
+                .map(|curve| curve.at(share))
+                .sum();
+            let base = f64::from(self.start)
+                + (f64::from(self.target) - f64::from(self.start)) * progress
+                + curves;
+            let wobble = self.vibrato.map_or(0.0, |wave| {
+                let phase = offset as f64 / wave.period.max(1) as f64 * std::f64::consts::TAU;
+                f64::from(wave.depth_cents) * phase.sin()
+            });
             events.push((
                 start_tick.saturating_add(offset),
                 MidiEvent::PitchBend {
                     channel,
-                    value: pitch_bend_cents(cents, range),
+                    value: pitch_bend_cents(base * cents_per_quarter_tone + wobble, range),
                 },
             ));
             offset = offset.saturating_add(step);
@@ -215,8 +273,9 @@ fn pitch_bend_cents(cents: f64, range: u8) -> u16 {
     let maximum = f64::from(range.max(1)) * 100.0;
     let offset = cents.clamp(-maximum, maximum);
     let value = f64::from(PITCH_BEND_CENTER) * (1.0 + offset / maximum);
-    // A centered bend must stay exactly centered; the top value is one less than double.
-    (value.round() as i64).clamp(0, 0x3FFF) as u16
+    // Truncated toward the center, as the whole-quarter-tone values are.
+    let offset_value = (value - f64::from(PITCH_BEND_CENTER)).trunc();
+    ((f64::from(PITCH_BEND_CENTER) + offset_value) as i64).clamp(0, 0x3FFF) as u16
 }
 
 /// How many ticks a ramp lasts: at most `limit`, and one tick before the note ends.

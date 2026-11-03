@@ -6,6 +6,7 @@ use std::collections::{BinaryHeap, HashMap, VecDeque};
 
 use gscore_model::{SlideKind, Vibrato};
 
+use crate::curve::Curve;
 use crate::event::Channel;
 use crate::pitch::PitchShape;
 use crate::tempo::PPQ;
@@ -52,6 +53,9 @@ pub(super) struct Sounding {
     /// with the SoundFont's release: it plays on a borrowed channel whose expression drops
     /// to zero then.
     pub(super) damp: bool,
+    /// The bend's drawn curve, and the beat's whammy curve, if any.
+    pub(super) bend_curve: Option<Curve>,
+    pub(super) whammy: Option<Curve>,
 }
 
 /// Which slide of a note the sequencer plays.
@@ -161,9 +165,23 @@ pub(super) fn apply_slide_targets(notes: &mut [Sounding]) {
     }
 }
 
-/// Notes without a slide keep their bend, if any.
+/// Notes without a slide keep their bend, if any (its drawn curve when it has one), and
+/// every note of a beat with the whammy bar follows its curve.
 pub(super) fn apply_bends(notes: &mut [Sounding]) {
     for note in notes {
+        let length = note.end.saturating_sub(note.start);
+        if note.whammy.is_some() {
+            let base = note.shape.unwrap_or_else(PitchShape::steady);
+            note.shape = Some(base.with_curves(None, note.whammy, length));
+        }
+        if note.slide.is_some() && note.shape.is_some_and(|shape| !shape.is_steady()) {
+            continue;
+        }
+        if let Some(curve) = note.bend_curve {
+            let base = note.shape.unwrap_or_else(PitchShape::steady);
+            note.shape = Some(base.with_curves(Some(curve), None, length));
+            continue;
+        }
         if note.shape.is_some() {
             continue;
         }

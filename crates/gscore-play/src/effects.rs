@@ -149,6 +149,11 @@ pub(crate) fn tremolo_picking(notes: Vec<Sounding>) -> Vec<Sounding> {
                     None
                 },
                 bend: if start == note.start { note.bend } else { None },
+                bend_curve: if start == note.start {
+                    note.bend_curve
+                } else {
+                    None
+                },
                 ..note
             });
             start = end;
@@ -204,6 +209,8 @@ mod tests {
             tremolo: false,
             onset: start,
             damp: false,
+            bend_curve: None,
+            whammy: None,
         }
     }
 

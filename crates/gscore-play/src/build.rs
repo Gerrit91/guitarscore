@@ -10,6 +10,7 @@ use gscore_model::{
 };
 
 use crate::channels::ChannelAllocator;
+use crate::curve::Curve;
 use crate::effects;
 use crate::event::{MidiEvent, PITCH_BEND_CENTER, controller};
 use crate::pitch;
@@ -175,6 +176,17 @@ pub(crate) fn collect(
                             tremolo: note.has_tremolo_picking(),
                             onset: start,
                             damp: false,
+                            bend_curve: note
+                                .bend_shape()
+                                .filter(|_| pitched)
+                                .and_then(|shape| {
+                                    Curve::new(
+                                        shape.points.iter().map(|p| (p.position, p.value)),
+                                    )
+                                }),
+                            whammy: beat.whammy_shape().filter(|_| pitched).and_then(|shape| {
+                                Curve::new(shape.points.iter().map(|p| (p.position, p.value)))
+                            }),
                         };
                         effects::shape_note(&mut sounding, &note);
                         on_string.insert(string, notes.len());

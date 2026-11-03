@@ -13,7 +13,7 @@
 
 use gscore_model::testing::{self, TestNote};
 use gscore_model::{
-    AccentKind, BeatEffect, BeatIndex, BeatPosition, MeasureIndex, NoteEffect, Song, StringNumber,
+    AccentKind, BeatEffect, BendKind, BendPoint, BendShape, WhammyShape, BeatIndex, BeatPosition, MeasureIndex, NoteEffect, Song, StringNumber,
     StrokeDirection, TrackIndex, Vibrato, VoiceIndex,
 };
 use gscore_play::{MidiEvent, PPQ, Sequence, controller};
@@ -210,5 +210,75 @@ fn staccato_stops_dead_on_its_own_channel() {
             )
     });
     assert!(cut, "the expression drops to zero at the note's end");
+    assert_eq!(sequence.degraded_pitch_bends, 0);
+}
+
+/// Pitch bends on channels other than the track's, in order.
+fn borrowed_bends(sequence: &Sequence) -> Vec<(u64, u16)> {
+    let base = sequence.tracks[0].channel;
+    sequence
+        .events
+        .iter()
+        .filter_map(|event| match event.event {
+            MidiEvent::PitchBend { channel, value } if channel != base => Some((event.tick, value)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn points(points: &[(u8, i8)]) -> Vec<BendPoint> {
+    points
+        .iter()
+        .map(|&(position, value)| BendPoint { position, value })
+        .collect()
+}
+
+#[test]
+fn a_drawn_bend_is_followed_point_by_point() {
+    // Bend, release, bend again over a half note.
+    let mut song = two_beats();
+    let shape = BendShape::new(BendKind::Up, points(&[(0, 0), (4, 4), (8, 0), (12, 4)])).unwrap();
+    let _ = song
+        .set_note_effect(at(0), string(6), NoteEffect::Bend(Some(shape)))
+        .unwrap();
+    let bends = borrowed_bends(&Sequence::new(&song, None).unwrap());
+    let half = 2 * u64::from(PPQ);
+    let value_near = |share: f64| {
+        let tick = (share * half as f64) as u64;
+        bends
+            .iter()
+            .filter(|(at, _)| *at <= tick)
+            .last()
+            .map(|&(_, value)| value)
+            .unwrap()
+    };
+    let whole_step = 8192 + 2730;
+    assert!(value_near(1.0 / 3.0).abs_diff(whole_step) < 250, "up at a third");
+    assert!(value_near(2.0 / 3.0).abs_diff(8192) < 250, "back down at two thirds");
+    assert!(value_near(0.99).abs_diff(whole_step) < 250, "up again at the end");
+}
+
+#[test]
+fn a_whammy_dive_bends_every_note_of_the_beat() {
+    let mut song = testing::song_with_notes(&[(2, &[TestNote::new(6, 3), TestNote::new(4, 2)])])
+        .unwrap();
+    let dive = WhammyShape::new(points(&[(0, 0), (6, -8), (12, -8)])).unwrap();
+    let _ = song
+        .set_beat_effect(at(0), BeatEffect::Whammy(Some(dive)))
+        .unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let base = sequence.tracks[0].channel;
+    let dived: std::collections::BTreeSet<_> = sequence
+        .events
+        .iter()
+        .filter_map(|event| match event.event {
+            // Two whole steps down, with the six-semitone range: well below center.
+            MidiEvent::PitchBend { channel, value } if channel != base && value < 8192 - 5000 => {
+                Some(channel)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(dived.len(), 2, "both notes dive");
     assert_eq!(sequence.degraded_pitch_bends, 0);
 }
