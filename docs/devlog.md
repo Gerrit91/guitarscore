@@ -1757,3 +1757,13 @@ Owner's request: drum notation, dynamics in the edit palette and the score, sect
   leaves out everything that only places measures on pages (paper, margins, staff size,
   header and footer): changing the page setup re-breaks lines without laying out a single
   measure again, in the preview and in the score.
+
+## 2026-11-03 — Silent audition when no output can be started
+
+- A typed fret no longer reports every output failure. The first entered note still starts
+  the output, but if that fails (CI without ALSA MIDI, a machine with no MIDI port) the
+  note is simply entered silently; only pressing Play reports the problem. Before, each
+  typed note put "playback: MIDI support could not be initialized" in the notice bar,
+  which also failed two editing tests on CI.
+- Test `a_note_that_cannot_be_heard_does_not_interrupt_editing` (bogus MIDI port):
+  the fret is entered and no notice appears.

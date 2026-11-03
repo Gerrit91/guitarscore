@@ -164,6 +164,22 @@ fn ctrl_s_saves_a_gp_file_in_place_with_a_backup() {
 }
 
 #[test]
+fn a_note_that_cannot_be_heard_does_not_interrupt_editing() {
+    let (dir, file) = scratch_copy("note_lengths.gp", "silent");
+    let mut harness = app_with(&file);
+    // No output matches, so the first typed note cannot start it. Auditioning is a
+    // convenience: the note is still entered, without a notice on every keystroke.
+    harness
+        .state_mut()
+        .playback_mut()
+        .choose_port(Some("no such port".to_owned()));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    assert_eq!(harness.state().notice(), None);
+    assert_eq!(fret_at_cursor(harness.state(), 1), Some(5));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn opening_another_file_with_unsaved_changes_asks_first() {
     let (dir, file) = scratch_copy("note_lengths.gp", "unsaved");
     let mut harness = app_with(&file);

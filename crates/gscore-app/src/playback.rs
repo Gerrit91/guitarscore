@@ -231,7 +231,12 @@ impl Playback {
             return Ok(());
         };
         let velocity = note.velocity();
-        self.connect()?;
+        // Auditioning is a convenience: an output that cannot be started (no MIDI port,
+        // no usable device) leaves the note silent instead of raising the same error on
+        // every typed note. Pressing Play reports it.
+        if self.connect().is_err() {
+            return Ok(());
+        }
         if self.is_loading() || self.error().is_some() {
             return Ok(());
         }
