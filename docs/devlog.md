@@ -1998,3 +1998,19 @@ lifeless):
   is retried on the next open. The toolbar's "Loading sounds…" now shows during that load.
 - `Playback::is_connected` reports whether an output is connected (test and diagnostics).
   Test `opening_a_song_starts_loading_the_synthesizer`.
+
+## 2026-11-03 — Release workflow and build version (M20 groundwork)
+
+- New `.github/workflows/release.yml`: on a published GitHub Release it builds `guitarscore`
+  and `gscore-cli` in release mode for Linux (x86_64, tarball), Windows (x86_64, zip) and
+  macOS (universal Apple Silicon + Intel via `lipo`, tarball), and attaches the archives to
+  the release with `softprops/action-gh-release`. Each archive carries the binaries plus
+  `LICENSE`, `README.md`, `THIRD_PARTY.md` and the two OFL font licenses.
+- New `gscore-version` crate (layer 0, dependency-free): its `build.rs` bakes the version in
+  at compile time — the `GSCORE_VERSION` variable when the release workflow sets it to the
+  tag, otherwise `<crate version>-dev+<short git sha>`. `gscore-cli --version` now prints it,
+  and the app shows it (and the build SHA) in a new Help → About GuitarScore window.
+- The binaries are self-contained (fonts compiled in); a SoundFont is still found at run
+  time, not bundled (M19). Nothing is signed/notarized yet, so macOS shows Gatekeeper and
+  Windows SmartScreen — that is a later M20 task, as are AppImage/Flatpak packages.
+- Open: run the workflow once on a real tag and confirm each archive opens on its platform.

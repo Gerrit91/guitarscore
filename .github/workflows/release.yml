@@ -1,0 +1,193 @@
+# Builds release binaries for every supported platform and attaches them to the GitHub
+# Release that triggered this run.
+#
+# Triggered by publishing a release (the "Publish release" button, or `gh release create`).
+# It does NOT run on tags alone: a tag without a published release produces nothing. The
+# archives are named `guitarscore-<tag>-<target>`, and each contains both the `guitarscore`
+# app and the `gscore-cli` command-line tool, plus the license texts.
+#
+# The fonts (Bravura, Noto Sans) are compiled into the binary (see crates/gscore-app/src/
+# fonts.rs), so the binaries are self-contained. A SoundFont is found at run time, not
+# bundled yet (milestone M19 will bundle one).
+#
+# Notes for later:
+# - Nothing is signed or notarized yet. macOS shows a Gatekeeper warning for the unsigned
+#   app; Windows shows SmartScreen. Signing/notarization is its own task (see M20).
+# - Linux ships a plain tarball. An AppImage/Flatpak can replace or join it in M20.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  # Baked into the binaries by `crates/gscore-version/build.rs` (shown in Help > About and
+  # `gscore-cli --version`). For a published release, `github.ref_name` is the tag.
+  GSCORE_VERSION: ${{ github.ref_name }}
+
+jobs:
+  build-linux:
+    name: Build Linux (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # cpal and midir link against ALSA on Linux (alsa-sys); without the development
+      # files the build fails (same as ci.yml).
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"  # keep in sync with rust-toolchain.toml
+
+      - name: Setup cargo cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: release-linux
+
+      - name: Build
+        run: |
+          cargo build --release --package gscore-app --bin guitarscore
+          cargo build --release --package gscore-cli
+
+      - name: Package
+        id: package
+        run: |
+          set -euo pipefail
+          stage="guitarscore-${{ github.ref_name }}-x86_64-unknown-linux-gnu"
+          mkdir -p "$stage/licenses"
+          cp target/release/guitarscore target/release/gscore-cli "$stage/"
+          strip "$stage/guitarscore" "$stage/gscore-cli"
+          cp LICENSE README.md THIRD_PARTY.md "$stage/"
+          cp assets/fonts/bravura/OFL.txt "$stage/licenses/Bravura-OFL.txt"
+          cp assets/fonts/noto-sans/OFL.txt "$stage/licenses/NotoSans-OFL.txt"
+          tar -czf "$stage.tar.gz" "$stage"
+          echo "archive=$stage.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: guitarscore-linux-x86_64
+          path: ${{ steps.package.outputs.archive }}
+
+  build-windows:
+    name: Build Windows (x86_64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # cpal (WASAPI) and midir (WinMM) use Windows' own audio stack: no extra system
+      # dependencies, unlike Linux.
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"  # keep in sync with rust-toolchain.toml
+
+      - name: Setup cargo cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: release-windows
+
+      - name: Build
+        shell: bash
+        run: |
+          cargo build --release --package gscore-app --bin guitarscore
+          cargo build --release --package gscore-cli
+
+      - name: Package
+        id: package
+        shell: pwsh
+        run: |
+          $stage = "guitarscore-${{ github.ref_name }}-x86_64-pc-windows-msvc"
+          New-Item -ItemType Directory -Force -Path "$stage\licenses" | Out-Null
+          Copy-Item target\release\guitarscore.exe, target\release\gscore-cli.exe $stage
+          Copy-Item LICENSE, README.md, THIRD_PARTY.md $stage
+          Copy-Item assets\fonts\bravura\OFL.txt "$stage\licenses\Bravura-OFL.txt"
+          Copy-Item assets\fonts\noto-sans\OFL.txt "$stage\licenses\NotoSans-OFL.txt"
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip"
+          echo "archive=$stage.zip" >> $env:GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: guitarscore-windows-x86_64
+          path: ${{ steps.package.outputs.archive }}
+
+  build-macos:
+    name: Build macOS (universal)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # One archive for both Apple Silicon and Intel, combined with `lipo`. cpal, midir
+      # and wgpu use the system frameworks (CoreAudio, CoreMIDI, Metal), which the macOS
+      # SDK provides for both architectures.
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"  # keep in sync with rust-toolchain.toml
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - name: Setup cargo cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: release-macos
+
+      - name: Build (both architectures)
+        run: |
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --release --target "$target" --package gscore-app --bin guitarscore
+            cargo build --release --target "$target" --package gscore-cli
+          done
+          lipo -create \
+            target/aarch64-apple-darwin/release/guitarscore \
+            target/x86_64-apple-darwin/release/guitarscore \
+            -output target/release/guitarscore
+          lipo -create \
+            target/aarch64-apple-darwin/release/gscore-cli \
+            target/x86_64-apple-darwin/release/gscore-cli \
+            -output target/release/gscore-cli
+
+      - name: Package
+        id: package
+        run: |
+          set -euo pipefail
+          stage="guitarscore-${{ github.ref_name }}-universal-apple-darwin"
+          mkdir -p "$stage/licenses"
+          cp target/release/guitarscore target/release/gscore-cli "$stage/"
+          cp LICENSE README.md THIRD_PARTY.md "$stage/"
+          cp assets/fonts/bravura/OFL.txt "$stage/licenses/Bravura-OFL.txt"
+          cp assets/fonts/noto-sans/OFL.txt "$stage/licenses/NotoSans-OFL.txt"
+          tar -czf "$stage.tar.gz" "$stage"
+          echo "archive=$stage.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: guitarscore-macos-universal
+          path: ${{ steps.package.outputs.archive }}
+
+  release:
+    name: Upload assets to the release
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: guitarscore-*
+          path: dist
+          merge-multiple: true
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
