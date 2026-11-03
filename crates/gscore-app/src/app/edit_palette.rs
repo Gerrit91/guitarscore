@@ -55,11 +55,6 @@ impl Default for EditPaletteState {
 }
 
 impl EditPaletteState {
-    /// Drops drafts that belong to the previous document (another file was opened).
-    pub(super) fn forget_fields(&mut self) {
-        self.staff.close();
-    }
-
     fn duration(&self) -> Option<NoteValue> {
         NoteValue::new(self.value, self.dots, self.tuplet).ok()
     }
@@ -173,9 +168,10 @@ impl PaletteSnapshot {
 impl GuitarScoreApp {
     /// The left panel: the edit palette.
     pub(super) fn edit_palette(&mut self, ui: &mut egui::Ui) {
-        let Some(document) = &self.document else {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let document = &tab.document;
         let cursor = document.editor().cursor();
         let selection = document.editor().selection();
         let snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
@@ -189,48 +185,48 @@ impl GuitarScoreApp {
                 ui.spacing_mut().item_spacing.y = 6.0;
                 let keymap = &self.keymap;
                 let hint = |action: ActionId| key_hint(keymap, action);
-                edit_staff::section(ui, &mut self.edit_palette.staff, &snapshot);
+                edit_staff::section(ui, &mut tab.edit_palette.staff, &snapshot);
                 style::section(ui, "note_input", "Note input", |ui| {
-                    note_length(ui, &mut self.edit_palette, &snapshot, &hint, &mut commands);
-                    beat_buttons(ui, &mut self.edit_palette, &snapshot, &hint, &mut commands);
+                    note_length(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
+                    beat_buttons(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
                 });
                 edit_dynamics::section(ui, &snapshot.dynamics, &mut commands, &mut heard);
-                self.edit_palette
+                tab.edit_palette
                     .effects
                     .panel(ui, &snapshot, &hint, &mut commands);
             });
+        // New beats past the cursor take the palette's length; a voice choice is a cursor
+        // move, which no command expresses. Both are read before the commands run.
+        let duration = tab.edit_palette.duration();
+        let pending_voice = tab.edit_palette.pending_voice.take();
         self.apply_commands(commands);
         if let Some(at) = heard {
             self.preview_beat(at);
         }
-        // New beats past the cursor take the palette's length.
-        if let Some(duration) = self.edit_palette.duration()
-            && let Some(document) = &mut self.document
-        {
-            document.editor_mut().set_entry_value(duration);
-        }
-
-        // A voice choice is a cursor move, which no command expresses.
-        if let Some(voice) = self.edit_palette.pending_voice.take()
-            && let Some(document) = &mut self.document
-        {
-            let mut cursor = document.editor().cursor();
-            cursor.voice = VoiceIndex::new(voice);
-            document.editor_mut().set_cursor(cursor);
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            if let Some(duration) = duration {
+                tab.document.editor_mut().set_entry_value(duration);
+            }
+            if let Some(voice) = pending_voice {
+                let mut cursor = tab.document.editor().cursor();
+                cursor.voice = VoiceIndex::new(voice);
+                tab.document.editor_mut().set_cursor(cursor);
+            }
         }
     }
 
     /// Runs a palette action from a key, exactly like a click on its tile.
     pub(super) fn run_palette_action(&mut self, action: ActionId) {
-        let Some(document) = &self.document else {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let document = &tab.document;
         let snapshot = PaletteSnapshot::of(
             document.song(),
             document.editor().cursor(),
             document.editor().selection(),
         );
-        let state = &mut self.edit_palette;
+        let state = &mut tab.edit_palette;
         let value = match action {
             ActionId::NoteWhole => Some(1),
             ActionId::NoteHalf => Some(2),
@@ -283,24 +279,29 @@ impl GuitarScoreApp {
         } else if let Some(item) = super::edit_effects::fx_item(action) {
             commands = super::edit_effects::fx_commands(item.fx, &snapshot);
         }
+        let duration = state.duration();
         self.apply_commands(commands);
-        if let Some(duration) = self.edit_palette.duration()
-            && let Some(document) = &mut self.document
+        if let Some(duration) = duration
+            && let Some(tab) = self.tabs.get_mut(self.active)
         {
-            document.editor_mut().set_entry_value(duration);
+            tab.document.editor_mut().set_entry_value(duration);
         }
     }
 
     /// The bend or whammy editor, while one is open. It floats over the app, so it shows
     /// even when the palette is hidden or its section folded.
     pub(super) fn show_shape_editors(&mut self, ctx: &egui::Context) {
-        if !self.edit_palette.effects.is_editing() {
+        if !self
+            .tabs
+            .get(self.active)
+            .is_some_and(|tab| tab.edit_palette.effects.is_editing())
+        {
             return;
         }
-        let Some(document) = &self.document else {
-            self.edit_palette.effects.close_editors();
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let document = &tab.document;
         let snapshot = PaletteSnapshot::of(
             document.song(),
             document.editor().cursor(),
@@ -308,7 +309,7 @@ impl GuitarScoreApp {
         );
         let mut commands = Vec::new();
         let mut trial = Vec::new();
-        self.edit_palette.effects.show_editors(
+        tab.edit_palette.effects.show_editors(
             ctx,
             &snapshot,
             document.song(),
@@ -323,15 +324,17 @@ impl GuitarScoreApp {
     /// The staff dialog, while one is open. It floats over the app, so it shows even when
     /// the palette is hidden or its section folded.
     pub(super) fn show_staff_dialogs(&mut self, ctx: &egui::Context) {
-        if !self.edit_palette.staff.is_open() {
-            return;
-        }
-        if self.document.is_none() {
-            self.edit_palette.staff.close();
+        if !self
+            .tabs
+            .get(self.active)
+            .is_some_and(|tab| tab.edit_palette.staff.is_open())
+        {
             return;
         }
         let mut commands = Vec::new();
-        self.edit_palette.staff.show_dialog(ctx, &mut commands);
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.edit_palette.staff.show_dialog(ctx, &mut commands);
+        }
         self.apply_commands(commands);
     }
 
@@ -366,7 +369,7 @@ impl GuitarScoreApp {
     /// The start of a selection for playback: its first beat with a note, else its first
     /// beat (for a measure selection, in the shown track). `None` without a selection.
     pub(super) fn selection_start(&self) -> Option<BeatPosition> {
-        let document = self.document.as_ref()?;
+        let document = self.tabs.get(self.active).map(|tab| &tab.document)?;
         let cursor = document.editor().cursor();
         let song = document.song();
         let selection = document.editor().selection()?;

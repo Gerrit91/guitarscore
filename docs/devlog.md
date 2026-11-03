@@ -1998,3 +1998,100 @@ lifeless):
   is retried on the next open. The toolbar's "Loading sounds…" now shows during that load.
 - `Playback::is_connected` reports whether an output is connected (test and diagnostics).
   Test `opening_a_song_starts_loading_the_synthesizer`.
+
+## 2026-11-03 — Songs open in tabs instead of replacing each other
+
+- Owner: opening a song silently closed the current one; no way to have several songs open.
+  The app now keeps one tab per open document. Opening a file, a new song, or a recovered
+  session opens a new tab (the current one is left untouched); File › New opens a small
+  "New song" dialog (title and tempo, prefilled "New Song" / 120 BPM so it needs no
+  typing), which creates the score in a new tab.
+- A tab shows a dot (•) before its title while it has unsaved changes, and its close
+  button asks Save / Discard changes / Cancel first; closing a clean tab just closes it.
+  Closing the last tab leaves an empty workspace. Closing the window asks about each
+  changed tab in turn before it closes.
+- Under the hood: `GuitarScoreApp` holds `tabs: Vec<Tab>` plus `active`; `Tab` groups a
+  `Document` with the per-document view state (shown track, measure selection, track
+  panel, edit palette, mixer, rename, new-track dialog, history stamps). Theme, zoom,
+  panel visibility and page view stay shared on `ViewState` (owner's choice). Playback
+  follows the active tab (`song_changed` + `preload_synth` on switch). `ViewState` lost
+  its `track`/`selection` fields; tests read them through `shown_track()`/`selection()`.
+- Public API: `tab_count()`, `tab_document(index)`, `active_tab()`, `shown_track()`,
+  `set_shown_track()`, `selection()`, `set_selection()`. Tests
+  `opening_another_file_opens_it_in_a_new_tab`, `the_new_song_dialog_creates_a_one_measure_score_in_a_new_tab`,
+  `closing_a_changed_tab_asks_before_closing_it`. App snapshots regenerated (tab strip).
+- Follow-up (owner): the tab strip now sits below the player bar and between the side
+  panels (created after them, so it spans only the central column). Each tab is a single
+  rounded widget with its close icon inside on the right (hover shows a circle); the
+  accesskit labels are "Tab N: title" and "Close tab N".
+
+## 2026-11-03 — Reopen all the tabs from last time, not just one
+
+- Owner: the app remembered only the last open file; it should remember every tab that was
+  open. The settings now store `open_files` (in tab order) and `active_file`, computed from
+  the live tabs whenever `settings()` is taken (open, save, exit). At startup they are
+  reopened one after another through the single-open task queue, each file skipped if it is
+  gone, and the tab that was active is selected again when the queue drains. A file given on
+  the command line still opens on its own (no restore).
+- `Document` gained a `reopenable` flag: opened files and recovered-with-a-source are
+  reopenable; a brand-new song and a recovered-without-a-file song are not (they are not
+  backed by a real path until saved). `Document::unsaved` builds the former, and
+  `mark_saved` makes a document reopenable.
+- `Settings.last_file` is still written (and read as a fallback) so older settings, or an
+  older build, still reopen something. The Settings label is now "Reopen the tabs from last
+  time at startup". Tests `every_open_tab_is_restored_at_startup`,
+  `a_missing_tab_is_skipped_at_startup`, `closing_and_reopening_remembers_every_open_tab`.
+- Also made the shared test helper `settle` step-based instead of `Harness::run`, which
+  used to trip its step limit while the "Opening…" bar repainted (a latent flake).
+
+## 2026-11-03 — The opening progress lives in the status bar
+
+- Owner: the "Opening…" bar was a top panel, so the whole page jumped when it appeared and
+  disappeared. It now shows inside the always-present bottom status bar (`status_bar` in
+  `bars.rs`): label, a slim progress bar (or a small spinner before the size is known),
+  "Importing…", and a Cancel link, with the active document's counts/page/cursor still on
+  the right. The status bar requests a repaint while it shows progress. Removed the
+  `Panel::top("opening")` block from `mod.rs`; the settled status bar is unchanged, so the
+  app snapshots still match.
+
+## 2026-11-03 — Busy spinner in the status bar, one tab per file, nicer close hover, recent files when empty
+
+- The toolbar's busy spinner moved to the status bar, next to the file name (and next to
+  "No file open"), so a save/dialog/export no longer shifts the toolbar groups. The
+  "Opening…" progress already lives there.
+- Opening a file that is already open now switches to its tab instead of adding a duplicate
+  (`GuitarScoreApp::open` -> `find_open_tab`, comparing canonical paths; an in-flight open
+  of the same path is ignored via `Tasks::opening_path`). Choosing it from Open Recent still
+  moves it to the top of the recent files. Startup restore skips duplicates too.
+- A tab's close icon now gets the same red hover background as the window close button
+  (white X on `style::CLOSE_RED`, shared with `title_bar`), not a circle.
+- The empty workspace (`page.rs::empty_workspace`) suggests the recent files as links (name
+  plus parent folder, full path on hover; clicking opens it), with an "Open a song" heading
+  and a short hint. Tests `the_same_file_is_never_open_in_two_tabs`,
+  `the_empty_workspace_suggests_recent_files`.
+
+## 2026-11-03 — Review of the tabs branch: stable tab ids, window close, one open at a time
+
+- Data loss fixed: when a Save started from the window-close question failed (or its
+  Save-As dialog was cancelled), `closing_window` stayed set, so the *next* close request
+  skipped the unsaved-changes check, closed the window, and `on_exit` deleted the recovery
+  journals. Every way a save ends without success now goes through `abandon_save`, which
+  also calls off the pending window close; a close request while a question or save is up
+  just keeps the window open. Test
+  `a_save_that_fails_while_closing_the_window_asks_again_on_the_next_close` (fails before).
+- Tabs now have a stable `TabId`; `Then::CloseTab` and `saving_tab` hold it instead of an
+  index. Before, closing another tab while a save (or its Save-As dialog) was pending
+  shifted the indices: the save could mark the wrong tab saved, or the follow-up "close"
+  could remove a different, unsaved tab without asking.
+- Only one save runs at a time (its result does not say which tab it was for); a second
+  one says so in the status bar instead of mixing the two up. A dirty tab's close question
+  no longer replaces a question that is already up.
+- Opens form a real queue: a file chosen while another opens waits in `pending_opens`
+  (deduplicated) instead of racing it. The queue advances when the running open ends in
+  any way, including Cancel (before, a cancelled open during startup restore stalled the
+  rest of the restore until some later open finished). A panicking open now reports as
+  that open's failure, so the queue cannot stall on it. Test
+  `a_file_chosen_while_another_opens_waits_its_turn`.
+- Note: `cargo xtask ci` runs in the directory baked into the xtask binary
+  (`CARGO_MANIFEST_DIR`); a binary built in another worktree tests that worktree. Touch
+  `xtask/src/main.rs` if the failure paths point elsewhere.

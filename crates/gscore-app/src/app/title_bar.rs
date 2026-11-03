@@ -17,8 +17,6 @@ pub(super) const TITLE_BAR_HEIGHT: f32 = 34.0;
 const WINDOW_BUTTON: f32 = 44.0;
 /// How close to the window's edge a press starts resizing.
 const RESIZE_MARGIN: f32 = 5.0;
-/// The close button's hover color.
-const CLOSE_RED: Color32 = Color32::from_rgb(0xD9, 0x3A, 0x3A);
 
 impl GuitarScoreApp {
     /// The title bar.
@@ -40,7 +38,7 @@ impl GuitarScoreApp {
 
         // The song's title, centered on the whole bar.
         let tokens = style::tokens(ui);
-        let title = self.document.as_ref().map_or_else(
+        let title = self.document().map_or_else(
             || "GuitarScore".to_owned(),
             |document| {
                 let changed = if document.is_dirty() { " •" } else { "" };
@@ -99,7 +97,7 @@ fn window_button(ui: &mut egui::Ui, icon: Icon, label: &str, close: bool) -> egu
     let hovered = response.hovered();
     if hovered {
         let fill = if close {
-            CLOSE_RED
+            style::CLOSE_RED
         } else {
             tokens.control_hover
         };

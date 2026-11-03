@@ -8,7 +8,7 @@ use gscore_session::FoundSession;
 
 use super::GuitarScoreApp;
 use super::alert::{AlertIcon, Answer, Reply, alert};
-use super::files::{Dialog, Then};
+use super::files::Dialog;
 use crate::document::Document;
 use crate::tasks::RecoveredDocument;
 
@@ -73,7 +73,9 @@ impl GuitarScoreApp {
                         )),
                     ),
                 };
-                // Without a file name, a format other than `.gp` makes Save ask for one.
+                // Without a file name, a format other than `.gp` makes Save ask for one. A
+                // recovered document with a source file can be reopened next time.
+                let reopenable = recovered.source.is_some();
                 let (path, format) = match &recovered.source {
                     Some(path) => (path.clone(), recovered.format),
                     None => (
@@ -88,7 +90,13 @@ impl GuitarScoreApp {
                 if recovered.from_snapshot {
                     status.push_str("; undo starts at the last snapshot");
                 }
-                self.replace_document(Document::recovered(path, recovered.editor, format, journal));
+                self.push_tab(Document::recovered(
+                    path,
+                    recovered.editor,
+                    format,
+                    journal,
+                    reopenable,
+                ));
                 self.status = Some(status);
                 self.notice = problem;
             }
@@ -143,11 +151,7 @@ impl GuitarScoreApp {
         match reply {
             Reply::Answer(2) => {
                 self.dialog = None;
-                if self.document.as_ref().is_some_and(Document::is_dirty) {
-                    self.dialog = Some(Dialog::Unsaved(Then::Restore(Box::new(session))));
-                } else {
-                    self.start_recovery(session, ctx);
-                }
+                self.start_recovery(session, ctx);
             }
             Reply::Answer(0) => {
                 self.dialog = None;

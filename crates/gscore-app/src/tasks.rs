@@ -134,6 +134,8 @@ pub(crate) struct Tasks {
     running: usize,
     /// The open that is running, for its progress bar.
     open: Option<OpenProgress>,
+    /// The path of the file being opened, if one is (so it is not opened twice).
+    open_path: Option<PathBuf>,
     /// The user cancelled the running open; its result is dropped.
     open_cancelled: bool,
 }
@@ -146,6 +148,7 @@ impl Default for Tasks {
             receiver,
             running: 0,
             open: None,
+            open_path: None,
             open_cancelled: false,
         }
     }
@@ -171,26 +174,37 @@ impl Tasks {
     ) -> Result<(), String> {
         let progress = OpenProgress::default();
         self.open = Some(progress.clone());
+        self.open_path = Some(path.clone());
         self.open_cancelled = false;
         let spawned = self.spawn("open", ctx, move || {
             let shared = progress.clone();
-            let result = gscore_session::open_with_progress(
-                &path,
-                |done, total| shared.set(done, total),
-                || shared.cancelled(),
-            )
-            .map(|(imported, bytes)| Opened {
-                song: Box::new(imported.song),
-                format: imported.format,
-                journal: recovery
-                    .map(|root| Journal::start_with_options(&root, Some(&path), &bytes, options))
-                    .transpose(),
-            })
-            .map_err(|e| e.to_string());
+            // A panic still reports as this open's failure, so the open is known to be over
+            // (and the next waiting one can start).
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                gscore_session::open_with_progress(
+                    &path,
+                    |done, total| shared.set(done, total),
+                    || shared.cancelled(),
+                )
+                .map(|(imported, bytes)| Opened {
+                    song: Box::new(imported.song),
+                    format: imported.format,
+                    journal: recovery
+                        .map(|root| {
+                            Journal::start_with_options(&root, Some(&path), &bytes, options)
+                        })
+                        .transpose(),
+                })
+                .map_err(|e| e.to_string())
+            }))
+            .unwrap_or_else(|_| {
+                Err("the open failed unexpectedly; a crash report was written".to_owned())
+            });
             Event::Opened { path, result }
         });
         if spawned.is_err() {
             self.open = None;
+            self.open_path = None;
         }
         spawned
     }
@@ -198,6 +212,11 @@ impl Tasks {
     /// The open that is running, for its progress bar.
     pub(crate) fn open_progress(&self) -> Option<&OpenProgress> {
         self.open.as_ref()
+    }
+
+    /// The path of the file being opened, if one is.
+    pub(crate) fn opening_path(&self) -> Option<&std::path::Path> {
+        self.open_path.as_deref()
     }
 
     /// Cancels the running open: its result will be dropped when it finishes.
@@ -402,6 +421,7 @@ impl Tasks {
             .any(|event| matches!(event, Event::Opened { .. }));
         if opened {
             self.open = None;
+            self.open_path = None;
             if self.open_cancelled {
                 self.open_cancelled = false;
                 events.retain(|event| !matches!(event, Event::Opened { .. }));

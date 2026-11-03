@@ -38,6 +38,9 @@ pub struct Document {
     path: PathBuf,
     /// The format the file is in; only `.gp` files are saved in place.
     format: FileFormat,
+    /// Whether `path` is a real file this tab can be reopened from after a restart (a
+    /// brand-new or recovered-without-a-file song is not).
+    reopenable: bool,
     editor: TabEditor,
     /// The editor revision last saved (or opened).
     saved_revision: u64,
@@ -59,7 +62,25 @@ pub struct Document {
 impl Document {
     /// A document for `song`, read from `path` in `format`.
     pub fn new(path: PathBuf, song: Song, format: FileFormat) -> Self {
-        Document::with_editor(path, TabEditor::new(song, TrackIndex::new(0)), format, None)
+        Document::with_editor(
+            path,
+            TabEditor::new(song, TrackIndex::new(0)),
+            format,
+            None,
+            true,
+        )
+    }
+
+    /// A new, unsaved song: `path` is a placeholder, so Save asks for a real `.gp` file and
+    /// the tab is not reopened at the next start.
+    pub fn unsaved(path: PathBuf, song: Song, format: FileFormat) -> Self {
+        Document::with_editor(
+            path,
+            TabEditor::new(song, TrackIndex::new(0)),
+            format,
+            None,
+            false,
+        )
     }
 
     /// A document whose edits are recorded in `journal`.
@@ -69,17 +90,20 @@ impl Document {
             TabEditor::new(song, TrackIndex::new(0)),
             format,
             Some(journal),
+            true,
         )
     }
 
     /// A recovered document: `editor` holds the replayed edits (not saved yet).
+    /// `reopenable` says whether `path` is a real file to reopen at the next start.
     pub fn recovered(
         path: PathBuf,
         editor: TabEditor,
         format: FileFormat,
         journal: Option<Journal>,
+        reopenable: bool,
     ) -> Self {
-        let mut document = Document::with_editor(path, editor, format, journal);
+        let mut document = Document::with_editor(path, editor, format, journal, reopenable);
         // Nothing of it is saved: no revision ever matches.
         document.saved_revision = u64::MAX;
         document
@@ -90,10 +114,12 @@ impl Document {
         editor: TabEditor,
         format: FileFormat,
         journal: Option<Journal>,
+        reopenable: bool,
     ) -> Self {
         Document {
             path,
             format,
+            reopenable,
             saved_revision: editor.revision(),
             editor,
             layouts: HashMap::new(),
@@ -155,6 +181,12 @@ impl Document {
         &self.path
     }
 
+    /// The file to reopen after a restart, if this tab is backed by a real file (a brand-new
+    /// or recovered-without-a-file song is not).
+    pub fn reopen_path(&self) -> Option<&Path> {
+        self.reopenable.then_some(self.path.as_path())
+    }
+
     /// The song as edited so far.
     pub fn song(&self) -> &Song {
         self.editor.song()
@@ -193,6 +225,8 @@ impl Document {
         }
         self.path = path;
         self.format = FileFormat::Gp;
+        // It is a real file now (a new song saved to disk can be reopened next time).
+        self.reopenable = true;
         self.saved_revision = revision;
     }
 

@@ -42,18 +42,18 @@ impl GuitarScoreApp {
     /// snapshot example).
     pub fn open_new_track(&mut self) {
         let at = self
-            .document
-            .as_ref()
-            .map_or(0, |document| document.song().track_count());
+            .tabs
+            .get(self.active)
+            .map_or(0, |tab| tab.document.song().track_count());
         self.begin_new_track(at);
     }
 
     /// Opens the popup for a track inserted before `at`.
     pub(super) fn begin_new_track(&mut self, at: usize) {
-        let Some(document) = &self.document else {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
-        let song = document.song();
+        let song = tab.document.song();
         let count = song.track_count();
         let at = at.min(count);
         let template = at
@@ -76,7 +76,7 @@ impl GuitarScoreApp {
             number = number.saturating_add(1);
         };
         let color = TrackColor::DEFAULT;
-        self.new_track = Some(NewTrackDialog {
+        tab.new_track = Some(NewTrackDialog {
             at,
             name,
             color,
@@ -88,7 +88,11 @@ impl GuitarScoreApp {
 
     /// The new-track popup, if it is open.
     pub(super) fn show_new_track_dialog(&mut self, ctx: &egui::Context) {
-        let Some(mut dialog) = self.new_track.take() else {
+        let Some(mut dialog) = self
+            .tabs
+            .get_mut(self.active)
+            .and_then(|tab| tab.new_track.take())
+        else {
             return;
         };
         if dialog.pos.is_none() {
@@ -244,10 +248,14 @@ impl GuitarScoreApp {
             return;
         }
         if close {
-            self.new_track = None;
+            if let Some(tab) = self.tabs.get_mut(self.active) {
+                tab.new_track = None;
+            }
             return;
         }
-        self.new_track = Some(dialog);
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.new_track = Some(dialog);
+        }
     }
 
     /// Inserts the track from `dialog` with its name, color and symbol, as one undo step.
@@ -279,11 +287,22 @@ impl GuitarScoreApp {
                 commands.push(Command::SetTrackProgram { track, program });
             }
         }
-        self.new_track = None;
-        let revision = self.document.as_ref().map(|d| d.editor().revision());
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.new_track = None;
+        }
+        let revision = self
+            .tabs
+            .get(self.active)
+            .map(|tab| tab.document.editor().revision());
         self.apply_command(Command::Batch { commands }, false);
-        if self.document.as_ref().map(|d| d.editor().revision()) != revision {
-            self.view.track = dialog.at;
+        if self
+            .tabs
+            .get(self.active)
+            .map(|tab| tab.document.editor().revision())
+            != revision
+            && let Some(tab) = self.tabs.get_mut(self.active)
+        {
+            tab.track = dialog.at;
         }
     }
 }
