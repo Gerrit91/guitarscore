@@ -5,7 +5,7 @@ use egui::{Align2, Color32, FontId, Rect, RichText, Sense, Stroke, UiBuilder, po
 use gscore_edit::Command;
 use gscore_model::{MASTER_UNITY, MasterMix, TrackIndex};
 
-use super::mixer;
+use super::mixer::{self, FLOOR_DB, UNITY_VOLUME, db_value, volume_from_db};
 use super::rows::TrackRow;
 use super::{GridAction, ROW_HEIGHT};
 use crate::app::instrument::Instrument;
@@ -16,16 +16,14 @@ const STRIP_WIDTH: f32 = 124.0;
 const TOP_HEIGHT: f32 = 30.0;
 /// Height of the fixed block under the fader (dB, mute/solo, name, preset, color).
 const BOTTOM_HEIGHT: f32 = 80.0;
-/// The decibel marks beside the fader (gain) and the meter. The fader travels
-/// logarithmically, so these are evenly spaced.
-const GAIN_MARKS: [f32; 10] = [
-    0.0, -6.0, -12.0, -18.0, -24.0, -30.0, -36.0, -42.0, -48.0, -54.0,
+/// The decibel marks beside the fader (gain) and the meter. The fader uses a logarithmic
+/// taper (0 dB is about 37% below the top), so the gain labels are not equally spaced.
+const GAIN_MARKS: [f32; 12] = [
+    12.0, 6.0, 0.0, -6.0, -12.0, -18.0, -24.0, -30.0, -36.0, -42.0, -48.0, -54.0,
 ];
 const METER_MARKS: [f32; 11] = [
     0.0, -6.0, -12.0, -18.0, -24.0, -30.0, -36.0, -42.0, -48.0, -54.0, -60.0,
 ];
-/// The bottom of the fader/meter travel.
-const FLOOR_DB: f32 = -60.0;
 
 /// The dB field being typed into.
 #[derive(Debug)]
@@ -471,13 +469,13 @@ fn paint_meter(ui: &egui::Ui, rect: Rect, level: f32, pan: u8) {
     paint_segment(ui, right, meter_fraction(right_level));
 }
 
-/// The gain scale left of the fader (0 to -54 dB, then silence).
+/// The gain scale left of the fader (+12 to -54 dB, then silence).
 fn paint_gain_scale(ui: &egui::Ui, rect: Rect, area: Rect) {
     let visuals = ui.visuals();
     let weak = visuals.weak_text_color();
     let font = FontId::monospace(8.0);
     for db in GAIN_MARKS {
-        let y = area.bottom() - area.height() * db_fraction(db);
+        let y = area.bottom() - area.height() * gain_fraction(db);
         ui.painter().line_segment(
             [pos2(rect.right() - 4.0, y), pos2(rect.right(), y)],
             Stroke::new(1.0, weak.gamma_multiply(0.6)),
@@ -505,7 +503,7 @@ fn paint_meter_scale(ui: &egui::Ui, rect: Rect, area: Rect) {
     let weak = visuals.weak_text_color();
     let font = FontId::monospace(8.0);
     for db in METER_MARKS {
-        let y = area.bottom() - area.height() * db_fraction(db);
+        let y = area.bottom() - area.height() * meter_db_fraction(db);
         ui.painter().line_segment(
             [pos2(rect.left(), y), pos2(rect.left() + 3.0, y)],
             Stroke::new(1.0, weak.gamma_multiply(0.6)),
@@ -567,7 +565,7 @@ fn db_field(
                 text.parse::<f32>()
                     .ok()
                     .filter(|db| db.is_finite())
-                    .map(|db| db.clamp(-60.0, 0.0))
+                    .map(|db| db.clamp(FLOOR_DB, 12.0))
             };
             if let Some(db) = db {
                 let new = volume_from_db(db);
@@ -765,28 +763,29 @@ fn labels(
     ui.painter().rect_filled(color_rect, 1.0, color);
 }
 
-fn db_value(volume: u8) -> f32 {
-    if volume == 0 {
-        return f32::NEG_INFINITY;
-    }
-    20.0 * (f32::from(volume) / 127.0).log10()
-}
-
-/// Where `db` sits between the floor (-60 dB) and 0 dB.
-fn db_fraction(db: f32) -> f32 {
-    ((db - FLOOR_DB) / -FLOOR_DB).clamp(0.0, 1.0)
-}
-
-/// The fader travel for a MIDI volume: logarithmic, 0 at the floor and 1 at 0 dB.
+/// The fader travel for a MIDI volume: a logarithmic taper, 0 at silence and 1 at +12 dB.
 fn fader_fraction(volume: u8) -> f32 {
-    let db = db_value(volume);
-    if db.is_finite() { db_fraction(db) } else { 0.0 }
+    (f32::from(volume) / 127.0).cbrt().clamp(0.0, 1.0)
 }
 
-/// The MIDI volume at a fader position (0 = floor, 1 = 0 dB).
+/// The MIDI volume at a fader position (0 = silence, 1 = +12 dB).
 fn volume_at_fraction(fraction: f32) -> u8 {
-    let db = FLOOR_DB + fraction.clamp(0.0, 1.0) * -FLOOR_DB;
-    volume_from_db(db)
+    let volume = 127.0 * fraction.clamp(0.0, 1.0).powi(3);
+    volume.round().clamp(0.0, 127.0) as u8
+}
+
+/// Where a gain `db` sits on the fader's logarithmic taper.
+fn gain_fraction(db: f32) -> f32 {
+    if !db.is_finite() || db <= FLOOR_DB {
+        return 0.0;
+    }
+    let volume = UNITY_VOLUME * 10.0_f32.powf(db / 20.0);
+    (volume / 127.0).cbrt().clamp(0.0, 1.0)
+}
+
+/// Where a meter level `db` sits on the dBFS scale (linear in decibels).
+fn meter_db_fraction(db: f32) -> f32 {
+    ((db - FLOOR_DB) / -FLOOR_DB).clamp(0.0, 1.0)
 }
 
 /// The meter fill for a linear 0..1 estimate, in dBFS.
@@ -794,15 +793,7 @@ fn meter_fraction(level: f32) -> f32 {
     if level <= 0.0 {
         return 0.0;
     }
-    db_fraction(20.0 * level.log10())
-}
-
-fn volume_from_db(db: f32) -> u8 {
-    if !db.is_finite() || db <= -60.0 {
-        return 0;
-    }
-    let volume = 127.0 * 10.0_f32.powf(db / 20.0);
-    volume.round().clamp(0.0, 127.0) as u8
+    meter_db_fraction(20.0 * level.log10())
 }
 
 #[cfg(test)]
@@ -812,10 +803,11 @@ mod tests {
     use super::{db_value, volume_from_db};
 
     #[test]
-    fn decibels_map_to_midi_volume() {
-        assert_eq!(volume_from_db(0.0), 127);
-        assert_eq!(volume_from_db(-6.0), 64);
+    fn decibels_map_to_midi_volume_with_headroom() {
         assert_eq!(volume_from_db(-60.0), 0);
-        assert!((db_value(64) + 5.95).abs() < 0.2);
+        assert_eq!(volume_from_db(0.0), 32);
+        assert_eq!(volume_from_db(12.0), 127);
+        assert!(db_value(32).abs() < 0.1);
+        assert!((db_value(127) - 12.0).abs() < 0.1);
     }
 }

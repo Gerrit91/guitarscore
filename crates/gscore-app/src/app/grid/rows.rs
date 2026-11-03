@@ -92,7 +92,17 @@ pub(super) fn headers(
             let master_level = levels.iter().copied().fold(0.0_f32, f32::max)
                 * f32::from(master.volume)
                 / f32::from(gscore_model::MASTER_UNITY);
-            bar::master_row(ui, master, master_level, actions);
+            let all_muted = !rows.is_empty() && rows.iter().all(|row| row.muted);
+            let all_soloed = !rows.is_empty() && rows.iter().all(|row| row.soloed);
+            bar::master_row(
+                ui,
+                master,
+                master_level,
+                rows.len(),
+                all_muted,
+                all_soloed,
+                actions,
+            );
         },
     );
 }

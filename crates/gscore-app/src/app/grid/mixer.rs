@@ -63,13 +63,39 @@ pub(super) fn paint_activity(ui: &egui::Ui, rect: Rect, level: f32) {
         .rect_filled(filled, 1.0, Color32::from_rgb(0x43, 0xA0, 0x47));
 }
 
-/// MIDI volume 0-127 as decibels (0 is silence).
+/// The volume at 0 dB; the fader top (+12 dB) reaches MIDI volume 127.
+pub(super) const UNITY_VOLUME: f32 = 32.0;
+/// The bottom of the fader/meter scale.
+pub(super) const FLOOR_DB: f32 = -60.0;
+
+/// The gain in dB at a MIDI volume: 0 dB at [`UNITY_VOLUME`], +12 dB at 127.
+pub(super) fn db_value(volume: u8) -> f32 {
+    if volume == 0 {
+        return f32::NEG_INFINITY;
+    }
+    20.0 * (f32::from(volume) / UNITY_VOLUME).log10()
+}
+
+/// The MIDI volume for a gain in dB (clamped to 0..127).
+pub(super) fn volume_from_db(db: f32) -> u8 {
+    if !db.is_finite() || db <= FLOOR_DB {
+        return 0;
+    }
+    let volume = UNITY_VOLUME * 10.0_f32.powf(db / 20.0);
+    volume.round().clamp(0.0, 127.0) as u8
+}
+
+/// The volume as a signed decibel string ("+12.0 dB", "0.0 dB", "−∞ dB").
 pub(super) fn db_text(volume: u8) -> String {
     if volume == 0 {
         return "−∞ dB".to_owned();
     }
-    let db = 20.0 * (f32::from(volume) / 127.0).log10();
-    format!("{db:.1} dB")
+    let db = db_value(volume);
+    if db > 0.05 {
+        format!("+{db:.1} dB")
+    } else {
+        format!("{db:.1} dB")
+    }
 }
 
 /// Paints the volume in decibels beside its slider; highlighted while the slider is dragged.
@@ -176,9 +202,10 @@ mod tests {
     use super::db_text;
 
     #[test]
-    fn volumes_are_shown_in_decibels() {
+    fn volumes_are_shown_in_decibels_with_headroom() {
         assert_eq!(db_text(0), "−∞ dB");
-        assert_eq!(db_text(127), "0.0 dB");
-        assert_eq!(db_text(64), "-6.0 dB");
+        assert_eq!(db_text(32), "0.0 dB");
+        assert_eq!(db_text(64), "+6.0 dB");
+        assert_eq!(db_text(127), "+12.0 dB");
     }
 }

@@ -86,61 +86,6 @@ pub(super) fn header(
             }
         });
     });
-
-    // Mute and solo for all tracks live in the master strip of the mixer; in grid view
-    // they stay above the rows' own buttons.
-    if !view.mixer {
-        let row = Rect::from_min_size(rect.min, vec2(TRACK_COLUMN, ROW_HEIGHT));
-        let controls = mixer::controls_rect(row);
-        let at = |dx: f32| {
-            Rect::from_center_size(
-                pos2(controls.left() + dx, rect.center().y),
-                vec2(18.0, 18.0),
-            )
-        };
-        let tracks = rows.len();
-        let all = |make: &dyn Fn(TrackIndex) -> Command| Command::Batch {
-            commands: (0..tracks).map(|t| make(TrackIndex::new(t))).collect(),
-        };
-        let all_muted = !rows.is_empty() && rows.iter().all(|row| row.muted);
-        let mute = !all_muted;
-        if toggle(
-            &mut bar,
-            at(10.0),
-            "M",
-            "Mute all",
-            all_muted,
-            if mute {
-                "Mute all tracks"
-            } else {
-                "Unmute all tracks"
-            },
-        ) {
-            actions.push(GridAction::Command {
-                command: all(&|track| Command::SetTrackMute { track, mute }),
-                merge: false,
-            });
-        }
-        let all_soloed = !rows.is_empty() && rows.iter().all(|row| row.soloed);
-        let solo = !all_soloed;
-        if toggle(
-            &mut bar,
-            at(32.0),
-            "S",
-            "Solo all",
-            all_soloed,
-            if solo {
-                "Solo all tracks"
-            } else {
-                "Unsolo all tracks"
-            },
-        ) {
-            actions.push(GridAction::Command {
-                command: all(&|track| Command::SetTrackSolo { track, solo }),
-                merge: false,
-            });
-        }
-    }
 }
 
 /// A small letter toggle like a row's mute and solo buttons; true when clicked.
@@ -153,11 +98,14 @@ fn toggle(ui: &mut egui::Ui, rect: Rect, letter: &str, label: &str, on: bool, ti
     response.clicked()
 }
 
-/// The master row: the volume of all tracks and a pan that shifts all of them.
+/// The master row: mute/solo-all, and the volume and pan of all tracks together.
 pub(super) fn master_row(
     ui: &mut egui::Ui,
     master: MasterMix,
     level: f32,
+    track_count: usize,
+    all_muted: bool,
+    all_soloed: bool,
     actions: &mut Vec<GridAction>,
 ) {
     let (rect, _) = ui.allocate_exact_size(vec2(TRACK_COLUMN, ROW_HEIGHT), Sense::hover());
@@ -171,6 +119,59 @@ pub(super) fn master_row(
         FontId::proportional(12.0),
         visuals.strong_text_color(),
     );
+    // Mute and solo all tracks live here, next to the master fader, not in the header.
+    let at =
+        |dx: f32| Rect::from_center_size(pos2(rect.left() + dx, rect.center().y), vec2(18.0, 18.0));
+    let mute = !all_muted;
+    if toggle(
+        ui,
+        at(70.0),
+        "M",
+        "Mute all",
+        all_muted,
+        if mute {
+            "Mute all tracks"
+        } else {
+            "Unmute all tracks"
+        },
+    ) {
+        actions.push(GridAction::Command {
+            command: Command::Batch {
+                commands: (0..track_count)
+                    .map(|index| Command::SetTrackMute {
+                        track: TrackIndex::new(index),
+                        mute,
+                    })
+                    .collect(),
+            },
+            merge: false,
+        });
+    }
+    let solo = !all_soloed;
+    if toggle(
+        ui,
+        at(92.0),
+        "S",
+        "Solo all",
+        all_soloed,
+        if solo {
+            "Solo all tracks"
+        } else {
+            "Unsolo all tracks"
+        },
+    ) {
+        actions.push(GridAction::Command {
+            command: Command::Batch {
+                commands: (0..track_count)
+                    .map(|index| Command::SetTrackSolo {
+                        track: TrackIndex::new(index),
+                        solo,
+                    })
+                    .collect(),
+            },
+            merge: false,
+        });
+    }
     let volume_rect = mixer::volume_rect(rect);
     let mut volume = master.volume;
     let slider = ui.put(

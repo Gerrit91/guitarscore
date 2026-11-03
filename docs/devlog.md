@@ -1399,3 +1399,18 @@ Owner follow-up (same day):
 - Grid rows and the master row now show a small green activity bar to the right of the pan
   knob, using the same estimated note-activity level as the mixer meters. Tests cover the
   mixer controls, M/S-all, and the decibel entry.
+
+## 2026-11-03 — Mixer fader taper and +12 dB headroom
+
+- The fader now uses a real logarithmic taper: fader position is the cube root of the MIDI
+  volume, so 0 dB (at MIDI volume 32) sits about a third of the way down and the top is
+  +12 dB. The gain labels are therefore *not* equally spaced; the meter stays on its
+  equal-distance dBFS scale (0 to -60), matching the reference.
+- The fader thumb, gain scale, L/R meter and meter scale all share the same top and bottom;
+  the fader is drawn by hand (rail, white thumb, focus ring), with pointer dragging and
+  keyboard control.
+- The dB readout and grid volume labels now use the same +12 dB headroom mapping
+  (`+12.0 dB` at volume 127, `0.0 dB` at 32, `−∞` at 0). Typing a dB value uses the same
+  mapping; tests cover the new headroom.
+- Mute/solo-all moved out of the grid header into the master row too, so the header is only
+  view/add/move; the master strip in the mixer has the same pair.
