@@ -1501,3 +1501,23 @@ and the arc arrows of Loop and Revert ended in smeared strokes.
   sorting timestamps, and drawn with `show_rows`, so a long history only draws the visible
   rows. The snapshot example's `--history` now makes three edits and undoes one.
 - Tests: column geometry, go to an earlier change, back to the undone one, and the start.
+
+## 2026-11-03 — Player time readout: accuracy and cost
+
+Checked against playback. The total and the playing position were right (repeats, tempo
+changes on bars and beats, exact microsecond integration). Fixed:
+- While stopped the clock said 00:00 while the measure readout showed the cursor's measure
+  and Play starts at the cursor: with the cursor in bar 3 it read "00:00 · 3 / 9". The clock
+  now shows the cursor's beat while stopped (`Timeline::tick_of`, sharing `beat_tick` with
+  `Sequence::tick_of`, so both agree on where a beat lies). Test
+  `while_stopped_the_clock_shows_where_play_starts`.
+- The tempo readout only knew tempo changes on a measure; changes on a beat (which playback
+  honours) were ignored. It is now the timeline's tempo at the shown tick
+  (`TempoMap::bpm_at`, a binary search), which also replaces a per-frame walk back over the
+  measures.
+- Position and total come from the one cached timeline instead of mixing the sequence's
+  tempo map (identical, but no reason for two sources or for cloning the sequence).
+
+Cost per frame: the timeline is cached per revision; the readout does an Arc clone, two or
+three `micros_at` walks over the tempo points, one `measure_range` scan of the played
+measures and a binary search for the tempo, all negligible next to drawing.

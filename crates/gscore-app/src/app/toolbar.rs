@@ -5,8 +5,8 @@
 
 use egui::{Align, FontFamily, FontId, Layout, Rect, RichText, Sense, UiBuilder, vec2};
 use gscore_edit::{Action, ActionId, Request};
-use gscore_model::MeasureIndex;
-use gscore_play::{Sequence, Timeline};
+use gscore_model::{BeatPosition, MeasureIndex};
+use gscore_play::Timeline;
 
 use super::GuitarScoreApp;
 use super::icons::{self, Icon};
@@ -359,18 +359,33 @@ impl GuitarScoreApp {
         };
         let timeline = document.timeline();
         let selection = self.view.selection;
-        let position = self.playback.position();
-        let sequence = self.playback.sequence().cloned();
-        let (elapsed, total) = timeline.as_deref().map_or((0, 0), |timeline| {
-            playback_times(
-                timeline,
-                sequence.as_deref(),
-                position,
-                selection,
-                self.playback.state() == gscore_play::PlayState::Playing,
-            )
-        });
+        let state = self.playback.state();
         let song = document.song();
+        let cursor = document.editor().cursor();
+        // Playing, paused or counting in: where the player is. Stopped: the cursor's beat,
+        // which is where Play starts (the measure readout shows the cursor's measure too).
+        let tick = timeline.as_deref().map(|timeline| {
+            if state != gscore_play::PlayState::Stopped || self.playback.count_in_pending() {
+                self.playback.position()
+            } else {
+                let at = BeatPosition {
+                    track: cursor.track,
+                    measure: cursor.measure,
+                    voice: cursor.voice,
+                    beat: cursor.beat,
+                };
+                timeline.tick_of(song, at).unwrap_or(0)
+            }
+        });
+        let (elapsed, total) = match (timeline.as_deref(), tick) {
+            (Some(timeline), Some(tick)) => playback_times(
+                timeline,
+                tick,
+                selection,
+                state == gscore_play::PlayState::Playing,
+            ),
+            _ => (0, 0),
+        };
         let measure = self
             .playback
             .current_measure()
@@ -389,7 +404,6 @@ impl GuitarScoreApp {
         response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &label));
         response.on_hover_text("The measure being played, or the cursor's");
         // How full that bar is in the cursor's track and voice.
-        let cursor = document.editor().cursor();
         if let Some(fill) = bar_fill(
             song,
             cursor.track,
@@ -399,12 +413,11 @@ impl GuitarScoreApp {
             ui.add_space(10.0);
             fill_readout(ui, &fill);
         }
-        // The tempo in effect at that measure.
-        let index = measure.saturating_sub(1);
-        let tempo = (0..=index)
-            .rev()
-            .find_map(|m| song.tempo_change(MeasureIndex::new(m)))
-            .unwrap_or_else(|| song.tempo());
+        // The tempo in effect there, including changes on a beat (as playback has them).
+        let tempo = match (timeline.as_deref(), tick) {
+            (Some(timeline), Some(tick)) => timeline.bpm_at(tick),
+            _ => song.tempo(),
+        };
         ui.add_space(10.0);
         let (rect, _) = ui.allocate_exact_size(vec2(10.0, 20.0), Sense::hover());
         // A quarter note from the music font (SMuFL `metNoteQuarterUp`).
@@ -420,23 +433,24 @@ impl GuitarScoreApp {
                 .size(12.0)
                 .color(tokens.text_weak),
         )
-        .on_hover_text("Tempo at this measure");
+        .on_hover_text("Tempo at this point");
         ui.add_space(6.0);
     }
 }
 
-/// The position and total length, in microseconds, for the time readout. With a measure
-/// selection the total is the selection's length and the position is measured from its
-/// first measure — but only while playback is inside it. Once playback leaves the selection
-/// the whole song's time is shown, so the clock never freezes at the selection's end.
+/// The position and total length, in microseconds, for the time readout at `tick` (the
+/// player's position, or the cursor's while stopped). Both come from the same timeline (the
+/// sequence's ticks and tempo are the same). With a measure selection the total is the
+/// selection's length and the position is measured from its first measure — but only while
+/// playback is inside it. Once playback leaves the selection the whole song's time is shown,
+/// so the clock never freezes at the selection's end.
 pub(super) fn playback_times(
     timeline: &Timeline,
-    sequence: Option<&Sequence>,
-    position: u64,
+    tick: u64,
     selection: Option<MeasureSelection>,
     playing: bool,
 ) -> (u64, u64) {
-    let played = sequence.map_or(0, |sequence| sequence.tempo.micros_at(position));
+    let played = timeline.micros_at(tick);
     let whole = (played, timeline.micros());
     let Some(selection) = selection else {
         return whole;
@@ -626,7 +640,7 @@ mod tests {
 
     use gscore_model::testing::{self, GUITAR_6};
     use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, NoteValue, TrackIndex, VoiceIndex};
-    use gscore_play::{PPQ, Sequence, Timeline};
+    use gscore_play::{PPQ, Timeline};
 
     use super::{FillState, bar_fill, beats_text, playback_times, time_text};
     use crate::state::MeasureSelection;
@@ -707,48 +721,31 @@ mod tests {
         // Four 4/4 bars at 120 BPM: two seconds each.
         let song = testing::song(&[GUITAR_6], 4).unwrap();
         let timeline = Timeline::new(&song).unwrap();
-        let sequence = Sequence::new(&song, None).unwrap();
         let selection = MeasureSelection::new(1).to(2);
         let bar = u64::from(PPQ).saturating_mul(4);
 
-        let (elapsed, total) =
-            playback_times(&timeline, Some(&sequence), 0, Some(selection), false);
+        let (elapsed, total) = playback_times(&timeline, 0, Some(selection), false);
         assert_eq!((elapsed, total), (0, 4_000_000));
 
         // One bar into the selection: two seconds elapsed.
-        let (elapsed, total) = playback_times(
-            &timeline,
-            Some(&sequence),
-            bar.saturating_mul(2),
-            Some(selection),
-            true,
-        );
+        let (elapsed, total) =
+            playback_times(&timeline, bar.saturating_mul(2), Some(selection), true);
         assert_eq!((elapsed, total), (2_000_000, 4_000_000));
 
         // After the selection the whole song's time takes over instead of freezing at the
         // selection's end.
-        let (elapsed, total) = playback_times(
-            &timeline,
-            Some(&sequence),
-            bar.saturating_mul(3),
-            Some(selection),
-            true,
-        );
+        let (elapsed, total) =
+            playback_times(&timeline, bar.saturating_mul(3), Some(selection), true);
         assert_eq!((elapsed, total), (6_000_000, 8_000_000));
-        let (elapsed, total) = playback_times(
-            &timeline,
-            Some(&sequence),
-            bar.saturating_mul(3),
-            Some(selection),
-            false,
-        );
+        let (elapsed, total) =
+            playback_times(&timeline, bar.saturating_mul(3), Some(selection), false);
         assert_eq!((elapsed, total), (4_000_000, 4_000_000));
 
         // Before the selection, while playing, the whole song is shown too.
-        let (elapsed, total) = playback_times(&timeline, Some(&sequence), 0, Some(selection), true);
+        let (elapsed, total) = playback_times(&timeline, 0, Some(selection), true);
         assert_eq!((elapsed, total), (0, 8_000_000));
 
-        let (elapsed, total) = playback_times(&timeline, Some(&sequence), bar, None, true);
+        let (elapsed, total) = playback_times(&timeline, bar, None, true);
         assert_eq!((elapsed, total), (2_000_000, 8_000_000));
     }
 }

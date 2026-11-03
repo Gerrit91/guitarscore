@@ -360,22 +360,7 @@ impl Sequence {
     /// A position past the voice's last beat (the cursor in an empty measure) is the
     /// measure's start. `None` if the measure is never played (or does not exist).
     pub fn tick_of(&self, song: &Song, at: BeatPosition) -> Option<u64> {
-        let span = self.measures.iter().find(|s| s.measure == at.measure)?;
-        let beats = song
-            .track(at.track)
-            .and_then(|t| t.measure(at.measure))
-            .and_then(|m| m.voice(at.voice));
-        let mut onset = Duration::new(0, 1).ok()?;
-        for beat in beats.iter().flat_map(|v| v.beats().take(at.beat.get())) {
-            if beat.kind() == BeatKind::Empty {
-                continue;
-            }
-            // A broken length counts as nothing: the start is still close.
-            if let Some(next) = beat.duration().ok().and_then(|d| onset.checked_add(d).ok()) {
-                onset = next;
-            }
-        }
-        Some(span.start.saturating_add(ticks(onset)).min(span.end))
+        beat_tick(&self.measures, song, at)
     }
 
     /// The played measure at `tick` (the last one at or after the end).
@@ -468,4 +453,26 @@ pub(crate) fn ticks(duration: Duration) -> u64 {
         .checked_div(denominator)
         .unwrap_or(0);
     u64::try_from(rounded).unwrap_or(u64::MAX)
+}
+
+/// The tick of the beat `at` at the first pass of its measure in `measures`, or `None` if
+/// that measure is never played. Shared by [`Sequence::tick_of`] and
+/// [`crate::Timeline::tick_of`], so the time readout and playback agree on where a beat is.
+pub(crate) fn beat_tick(measures: &[MeasureSpan], song: &Song, at: BeatPosition) -> Option<u64> {
+    let span = measures.iter().find(|s| s.measure == at.measure)?;
+    let beats = song
+        .track(at.track)
+        .and_then(|t| t.measure(at.measure))
+        .and_then(|m| m.voice(at.voice));
+    let mut onset = Duration::new(0, 1).ok()?;
+    for beat in beats.iter().flat_map(|v| v.beats().take(at.beat.get())) {
+        if beat.kind() == BeatKind::Empty {
+            continue;
+        }
+        // A broken length counts as nothing: the start is still close.
+        if let Some(next) = beat.duration().ok().and_then(|d| onset.checked_add(d).ok()) {
+            onset = next;
+        }
+    }
+    Some(span.start.saturating_add(ticks(onset)).min(span.end))
 }

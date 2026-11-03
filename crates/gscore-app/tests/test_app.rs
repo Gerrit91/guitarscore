@@ -1396,3 +1396,22 @@ fn the_player_never_covers_the_toolbar_groups() {
     assert!(history.left() > start.right());
     assert!(settings.left() > history.right());
 }
+
+#[test]
+fn while_stopped_the_clock_shows_where_play_starts() {
+    // Nine 4/4 bars at 120 BPM: two seconds each.
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.run();
+    harness.get_by_label_contains("Time 00:00 of 00:18");
+    let document = harness.state_mut().document_mut().unwrap();
+    let cursor = document.editor().cursor();
+    document.editor_mut().set_cursor(gscore_edit::Cursor {
+        measure: gscore_model::MeasureIndex::new(2),
+        beat: gscore_model::BeatIndex::new(0),
+        ..cursor
+    });
+    harness.run();
+    // The third bar starts four seconds in, and the measure readout agrees.
+    harness.get_by_label_contains("Time 00:04 of 00:18");
+    harness.get_by_label("Measure 3");
+}

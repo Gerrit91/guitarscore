@@ -1,10 +1,12 @@
 //! When each played measure lies in time, and the song's tempo map, without building the
 //! events: for showing the position and the total length in the app.
 
-use gscore_model::{BeatKind, Duration, MeasureIndex, ModelError, Song, TimeSignature, TrackIndex};
+use gscore_model::{
+    BeatKind, BeatPosition, Duration, MeasureIndex, ModelError, Song, TimeSignature, TrackIndex,
+};
 
 use crate::order::playback_order;
-use crate::sequence::{MeasureSpan, ticks};
+use crate::sequence::{MeasureSpan, beat_tick, ticks};
 use crate::tempo::TempoMap;
 
 /// The played measures of `song` and the tick where the piece ends. The same measure can
@@ -96,6 +98,17 @@ impl Timeline {
         self.tempo.micros_at(tick)
     }
 
+    /// The tick of the beat `at` at the first pass of its measure (where playing from that
+    /// beat starts), or `None` if the measure is never played.
+    pub fn tick_of(&self, song: &Song, at: BeatPosition) -> Option<u64> {
+        beat_tick(&self.measures, song, at)
+    }
+
+    /// The tempo in effect at `tick`, in beats per minute, including changes on a beat.
+    pub fn bpm_at(&self, tick: u64) -> u32 {
+        self.tempo.bpm_at(tick)
+    }
+
     /// The first and last tick of the measures `first` to `last` (0-based, inclusive), or
     /// `None` if one of them is never played. Repeats are taken into account: the range
     /// starts at the first pass of `first` and ends at the last pass of `last`.
@@ -168,5 +181,24 @@ mod tests {
         assert_eq!(timeline.measure_micros(1, 2), Some(4_000_000));
         assert_eq!(timeline.measure_micros(2, 1), None);
         assert_eq!(timeline.measure_micros(0, 9), None);
+    }
+
+    #[test]
+    fn a_beat_lies_where_the_sequence_plays_it_and_the_tempo_follows_changes() {
+        let mut song = testing::song(&[GUITAR_6], 4).unwrap();
+        let _change = song.set_tempo(90).unwrap();
+        let timeline = Timeline::new(&song).unwrap();
+        let sequence = crate::Sequence::new(&song, None).unwrap();
+        for measure in 0..4 {
+            let at = BeatPosition {
+                track: TrackIndex::new(0),
+                measure: MeasureIndex::new(measure),
+                voice: gscore_model::VoiceIndex::new(0),
+                beat: gscore_model::BeatIndex::new(0),
+            };
+            assert_eq!(timeline.tick_of(&song, at), sequence.tick_of(&song, at));
+        }
+        assert_eq!(timeline.bpm_at(0), 90);
+        assert_eq!(timeline.bpm_at(timeline.end), 90);
     }
 }
