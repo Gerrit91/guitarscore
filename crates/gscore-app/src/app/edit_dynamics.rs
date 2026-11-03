@@ -72,9 +72,6 @@ pub(super) fn section(
 ) {
     style::section(ui, "dynamics", "Dynamics", |ui| {
         let enabled = !snapshot.targets.is_empty();
-        if !enabled {
-            ui.label(egui::RichText::new("Put the cursor on a note").weak());
-        }
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(2.0, 3.0);
             for dynamic in Dynamic::ALL {
@@ -84,10 +81,13 @@ pub(super) fn section(
                     baseline: 3.0,
                 };
                 let label = format!("{} ({})", dynamic.id(), dynamic.name());
-                let tip = format!(
+                let mut tip = format!(
                     "{label}: how loud the selected notes are played; the notes entered \
                      after them follow"
                 );
+                if !enabled {
+                    tip.push_str("\nPut the cursor on a note first.");
+                }
                 let on = enabled && snapshot.shared == Some(dynamic);
                 if tiles::tile(ui, face, on, enabled, &label, &tip).clicked() {
                     let changes = snapshot.commands(dynamic);

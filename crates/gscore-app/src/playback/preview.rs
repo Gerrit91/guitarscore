@@ -22,19 +22,48 @@ impl Playback {
         let Some(excerpt) = Sequence::beat_excerpt(song, at).map_err(|e| e.to_string())? else {
             return Ok(());
         };
-        if self.connect().is_err() || self.is_loading() || self.error().is_some() {
+        if self.connect().is_err() || self.error().is_some() {
             return Ok(());
         }
+        if self.is_loading() {
+            // The first click starts the synthesizer: play the beat once it is ready.
+            self.pending_preview = Some(at);
+            return Ok(());
+        }
+        self.pending_preview = None;
         self.end_audition();
         let rest = self.preview.unwrap_or_else(|| self.output_position());
         let player = self.player_mut()?;
         player.stop().map_err(|e| e.to_string())?;
-        player.load(Arc::new(excerpt)).map_err(|e| e.to_string())?;
+        let excerpt = Arc::new(excerpt);
+        player
+            .load(Arc::clone(&excerpt))
+            .map_err(|e| e.to_string())?;
         player.play().map_err(|e| e.to_string())?;
+        self.preview_sequence = Some(excerpt);
         // The song's sequence is no longer loaded: the next play loads it again.
         self.sequence = None;
         self.preview = Some(rest);
         Ok(())
+    }
+
+    /// Plays a beat chosen while the SoundFont was loading, once it has loaded. Returns
+    /// whether one is still waiting (so the caller keeps checking).
+    pub fn poll_preview(&mut self, song: &Song) -> Result<bool, String> {
+        let Some(at) = self.pending_preview else {
+            return Ok(false);
+        };
+        if self.is_loading() {
+            return Ok(true);
+        }
+        self.pending_preview = None;
+        self.preview_beat(song, at)?;
+        Ok(false)
+    }
+
+    /// The beat excerpt last played, if any (for tests and diagnostics).
+    pub fn preview_sequence(&self) -> Option<&Arc<Sequence>> {
+        self.preview_sequence.as_ref()
     }
 
     /// Whether a beat excerpt is loaded (playing or finished).
@@ -44,6 +73,7 @@ impl Playback {
 
     /// Stops a beat excerpt, if one is loaded. Returns whether there was one.
     pub(super) fn end_preview(&mut self) -> bool {
+        self.pending_preview = None;
         if self.preview.take().is_none() {
             return false;
         }

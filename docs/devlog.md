@@ -1905,3 +1905,22 @@ lifeless):
   end, so they stop dead; the next note on that channel resets it. Damped notes without a
   free channel only lose the cut (not counted as degraded pitch bends).
 
+## 2026-11-03 — The first click is heard; Play after a heard beat; rests; hints
+
+- **Vibrato and accent "not played"** (owner, with FluidR3_GM): rendering the owner's
+  song and SoundFont offline showed both working (vibrato 215-227 Hz, accent +4 dB). The
+  real cause: the synthesizer starts on first use and FluidR3 takes seconds to load; a
+  palette click meanwhile was dropped, so the second click (which turns the effect off)
+  was the first one heard. A beat chosen while the SoundFont loads now plays once it is
+  ready (`Playback::poll_preview`).
+- **Play right after a heard beat** sometimes paused instead: the player still reported
+  the excerpt as playing. Ending an excerpt now always counts as a fresh start.
+  `Playback::preview_sequence` exposes the excerpt for tests.
+- **Rest tile** (owner: the rest did not take the chosen length): a beat without notes (a
+  rest, such as a new bar's whole rest, or an empty beat) becomes a rest of the palette's
+  length; beats with notes keep theirs; where the cursor has no beat (an empty GP7 bar) a
+  rest of that length is inserted. Test
+  `the_rest_tile_enters_a_rest_of_the_chosen_length_in_an_empty_bar`.
+- The "Put the cursor on a note" lines under Dynamics and Techniques are gone; the greyed
+  tiles say it in their tooltip.
+

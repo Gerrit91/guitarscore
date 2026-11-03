@@ -69,6 +69,8 @@ impl EditPaletteState {
 pub(super) struct PaletteSnapshot {
     pub(super) cursor: Cursor,
     pub(super) beats: Vec<BeatPosition>,
+    /// The selected beats without notes (rests and empty beats).
+    pub(super) silent_beats: Vec<BeatPosition>,
     pub(super) measure: MeasureIndex,
     pub(super) tempo: Option<u32>,
     pub(super) time_signature: Option<gscore_model::TimeSignature>,
@@ -129,9 +131,18 @@ impl PaletteSnapshot {
         }
         let dynamics = DynamicsSnapshot::of(song, &beats, cursor.position());
         let measure_view = track.and_then(|track| track.measure(measure));
+        let silent_beats = beats
+            .iter()
+            .copied()
+            .filter(|at| {
+                song.beat(*at)
+                    .is_some_and(|beat| beat.notes().next().is_none())
+            })
+            .collect();
         PaletteSnapshot {
             cursor,
             beats,
+            silent_beats,
             measure,
             tempo: song
                 .tempo_change(measure)
@@ -261,7 +272,7 @@ impl GuitarScoreApp {
         if length {
             apply_duration(state, &snapshot, &mut commands);
         } else if action == ActionId::MakeRest {
-            commands = rest_commands(&snapshot);
+            commands = rest_commands(state, &snapshot);
         } else if action == ActionId::ToggleTie {
             commands = tie_commands(&snapshot);
         } else if action == ActionId::ToggleBend {
@@ -482,12 +493,31 @@ fn toggle_tuplet(state: &mut EditPaletteState, tuplet: (u8, u8)) {
 }
 
 /// The commands of the rest tile: every selected beat becomes a rest.
-fn rest_commands(snapshot: &PaletteSnapshot) -> Vec<Command> {
-    snapshot
-        .beats
-        .iter()
-        .map(|at| Command::SetBeatRest { at: *at })
-        .collect()
+///
+/// A beat without notes (a rest, such as the whole rest of a new bar, or an empty beat)
+/// becomes a rest of the palette's length; beats with notes keep theirs. Where the cursor
+/// has no beat yet (an empty GP7 bar), a rest of the palette's length is entered.
+fn rest_commands(state: &EditPaletteState, snapshot: &PaletteSnapshot) -> Vec<Command> {
+    let duration = state.duration();
+    if snapshot.beats.is_empty() {
+        return duration
+            .map(|duration| Command::InsertBeat {
+                at: snapshot.cursor.position(),
+                duration,
+            })
+            .into_iter()
+            .collect();
+    }
+    let mut commands = Vec::new();
+    for &at in &snapshot.beats {
+        commands.push(Command::SetBeatRest { at });
+        if snapshot.silent_beats.contains(&at)
+            && let Some(duration) = duration
+        {
+            commands.push(Command::SetDuration { at, duration });
+        }
+    }
+    commands
 }
 
 /// The commands of the tie tile: the cursor's note is tied, or untied.
@@ -547,11 +577,12 @@ fn beat_buttons(
             baseline: 1.0,
         };
         let tip = format!(
-            "Rest: the selected beats become rests{}",
+            "Rest: the selected beats become rests; in an empty bar, a rest of the chosen \
+             length is entered{}",
             hint(ActionId::MakeRest)
         );
         if tiles::tile(ui, rest, false, true, "Rest", &tip).clicked() {
-            commands.extend(rest_commands(snapshot));
+            commands.extend(rest_commands(state, snapshot));
         }
         let tip = format!(
             "Tie the note to the previous one on its string{}",

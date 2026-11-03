@@ -572,7 +572,19 @@ impl EffectsState {
                         has_beats
                     };
                     let label = item.action.label();
-                    let tip = format!("{label}{}", hint(item.action));
+                    let tip = if enabled {
+                        format!("{label}{}", hint(item.action))
+                    } else if item.fx.on_note() {
+                        format!(
+                            "{label}{}\nPut the cursor on a note first.",
+                            hint(item.action)
+                        )
+                    } else {
+                        format!(
+                            "{label}{}\nPut the cursor on a beat first.",
+                            hint(item.action)
+                        )
+                    };
                     let on = is_on_for_targets(item.fx, snapshot);
                     if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
                         if matches!(item.fx, Fx::Bend | Fx::Whammy) {
@@ -585,9 +597,6 @@ impl EffectsState {
             });
         };
         style::section(ui, "note_effects", "Techniques", |ui| {
-            if !has_notes {
-                ui.label(egui::RichText::new("Put the cursor on a note").weak());
-            }
             row(ui, NOTE_ITEMS, commands);
             row(ui, SLIDE_ITEMS, commands);
             row(ui, PITCH_ITEMS, commands);
