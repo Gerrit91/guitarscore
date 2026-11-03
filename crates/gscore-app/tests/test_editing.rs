@@ -425,6 +425,56 @@ fn an_entered_fret_is_heard_and_undo_is_not() {
 }
 
 #[test]
+fn an_effect_chosen_in_the_palette_plays_its_beat_and_play_still_plays_the_song() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = std::env::temp_dir().join(format!("gscore-preview-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let font = dir.join("sine.sf2");
+    std::fs::write(&font, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    harness.state_mut().playback_mut().use_soundfont(font);
+    type_char(&mut harness, "5", Modifiers::NONE);
+    let ready = step_until(&mut harness, Duration::from_secs(10), |app| {
+        !app.playback().is_loading() || app.playback().error().is_some()
+    });
+    assert!(ready, "the synthesizer neither loaded nor failed");
+    if let Some(error) = harness.state().playback().error() {
+        eprintln!("skipped: no usable audio device ({error})");
+        std::fs::remove_dir_all(dir).ok();
+        return;
+    }
+
+    // The vibrato tile sets the effect and plays the beat with it; the song stays stopped.
+    harness.get_by_label("Vibrato").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Vibrato").click();
+    harness.run();
+    assert!(harness.state().playback().previewing());
+    assert_eq!(
+        harness.state().playback().state(),
+        gscore_play::PlayState::Stopped
+    );
+    assert_eq!(harness.state().notice(), None);
+
+    // Play ends the excerpt and plays the song.
+    harness.get_by_label("Play").click();
+    harness.step();
+    assert!(!harness.state().playback().previewing());
+    let playing = step_until(&mut harness, Duration::from_secs(5), |app| {
+        app.playback().state() == gscore_play::PlayState::Playing
+    });
+    assert!(playing, "the song did not start after the excerpt");
+    harness.get_by_label("Stop").click();
+    harness.step();
+
+    // Undo is quiet.
+    type_char(&mut harness, "z", Modifiers::COMMAND);
+    harness.run();
+    assert!(!harness.state().playback().previewing());
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
 fn the_bend_tile_opens_the_editor_on_a_full_step_bend() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
     type_char(&mut harness, "5", Modifiers::NONE);

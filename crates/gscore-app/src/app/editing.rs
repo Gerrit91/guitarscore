@@ -148,16 +148,29 @@ impl GuitarScoreApp {
                     .editor()
                     .last_command()
                     .map_or(EditEffect::Other, EditEffect::of);
-                // A fret typed in is heard (not an undo, redo or paste that sets one).
+                // A fret typed in is heard (not an undo, redo or paste that sets one), and
+                // so is a beat whose effect or dynamic a shortcut changed.
                 let entered = match (action, document.editor().last_command()) {
                     (Action::Digit(_), Some(Command::SetFret { at, string, .. })) => {
                         Some((*at, *string))
                     }
                     _ => None,
                 };
+                // Only a toggle sets an effect this way; undo, redo and paste replay
+                // commands and stay quiet.
+                let heard = match action {
+                    Action::Plain(id)
+                        if !matches!(id, ActionId::Undo | ActionId::Redo | ActionId::Paste) =>
+                    {
+                        document.editor().last_command().and_then(preview_target)
+                    }
+                    _ => None,
+                };
                 self.after_edit(effect, layout);
                 if let Some((at, string)) = entered {
                     self.audition(at, string, ctx);
+                } else if let Some(at) = heard {
+                    self.preview_beat(at);
                 }
                 ctx.request_repaint();
             }
@@ -165,6 +178,20 @@ impl GuitarScoreApp {
             Ok(Outcome::Nothing) => {}
             Ok(Outcome::Request(request)) => self.request(request, ctx),
             Err(error) => self.notice = Some(error.to_string()),
+        }
+    }
+
+    /// Plays the beat at `at` with its effects, if hearing notes is on.
+    /// The player runs on its own thread, so nothing waits for the sound.
+    pub(super) fn preview_beat(&mut self, at: BeatPosition) {
+        if !self.settings.audition_notes {
+            return;
+        }
+        let Some(document) = &self.document else {
+            return;
+        };
+        if let Err(error) = self.playback.preview_beat(document.song(), at) {
+            self.notice = Some(error);
         }
     }
 
@@ -484,5 +511,18 @@ impl GuitarScoreApp {
         if let Err(error) = self.playback.play_pause(document.song(), Some(from)) {
             self.notice = Some(error);
         }
+    }
+}
+
+/// The beat to play after `command`: one whose sound it changed (an effect, a dynamic, a
+/// dead note), or the first such beat of a batch.
+pub(super) fn preview_target(command: &Command) -> Option<BeatPosition> {
+    match command {
+        Command::SetNoteEffect { at, .. }
+        | Command::SetBeatEffect { at, .. }
+        | Command::SetDynamic { at, .. }
+        | Command::SetDeadNote { at, .. } => Some(*at),
+        Command::Batch { commands } => commands.iter().find_map(preview_target),
+        _ => None,
     }
 }

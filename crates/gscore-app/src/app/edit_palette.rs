@@ -314,6 +314,16 @@ impl GuitarScoreApp {
 
     /// Applies one command, or a batch for several beats (one undo step).
     pub(super) fn apply_commands(&mut self, mut commands: Vec<Command>) {
+        let heard = commands.iter().find_map(super::editing::preview_target);
+        self.apply_commands_quietly(&mut commands);
+        // An effect or dynamic chosen in the palette is heard on its beat.
+        if let Some(at) = heard {
+            self.preview_beat(at);
+        }
+    }
+
+    /// Applies the commands without playing anything.
+    fn apply_commands_quietly(&mut self, commands: &mut Vec<Command>) {
         match commands.len() {
             0 => {}
             1 => {
@@ -321,7 +331,12 @@ impl GuitarScoreApp {
                     self.apply_command(command, false);
                 }
             }
-            _ => self.apply_command(Command::Batch { commands }, false),
+            _ => self.apply_command(
+                Command::Batch {
+                    commands: std::mem::take(commands),
+                },
+                false,
+            ),
         }
     }
 

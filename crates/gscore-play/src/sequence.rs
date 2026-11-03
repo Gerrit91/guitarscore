@@ -7,29 +7,18 @@
 //! and is released after the note. When every other channel is in use the note plays
 //! without its pitch movement and [`Sequence::degraded_pitch_bends`] counts it.
 
-use std::collections::HashMap;
-
 use gscore_model::{
-    BeatIndex, BeatKind, BeatPosition, BendKind, Duration, MeasureIndex, ModelError, NoteKind,
-    SlideKind, Song, TimeSignature, TrackIndex, TrackSound,
+    BeatIndex, BeatKind, BeatPosition, Duration, MeasureIndex, ModelError, Song, TimeSignature,
+    TrackIndex, TrackSound,
 };
 
-use crate::channels::ChannelAllocator;
+use crate::build;
 use crate::event::{Channel, MidiEvent, PITCH_BEND_CENTER, controller};
-use crate::pitch;
-use crate::sounding::{self, Sounding};
 use crate::swing;
 use crate::tempo::{PPQ, TempoMap};
 
 /// Ticks in a whole note.
 const WHOLE: u64 = 4 * PPQ as u64;
-/// Dead (muted) notes sound this long at most: a 32nd note.
-const DEAD_NOTE_TICKS: u64 = WHOLE / 32;
-/// Dead notes are played softer, at this share of their velocity (percent).
-const DEAD_NOTE_VELOCITY_PERCENT: u16 = 60;
-/// A tied note continues the previous one if that ends within this many ticks of its start
-/// (rounding of tuplets).
-const TIE_TOLERANCE: u64 = 2;
 /// A track as the sequence plays it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SequenceTrack {
@@ -136,199 +125,10 @@ impl Sequence {
                 Some(view) => !view.is_muted() && (!soloed || view.is_soloed()),
             })
             .collect();
-        let mut channels = ChannelAllocator::default();
-        let mut seq_tracks = Vec::with_capacity(selected.len());
-        let mut events = Vec::new();
-        let mut notes: Vec<Sounding> = Vec::new();
-        let mut skipped_notes = 0_usize;
-
-        for track_index in selected {
-            let (Some(view), Some(sound)) =
-                (song.track(track_index), song.played_sound(track_index))
-            else {
-                return Err(ModelError::Invalid(format!(
-                    "the song has no {track_index}"
-                )));
-            };
-            let channel = channels.allocate(sound.percussion);
-            let number = seq_tracks.len();
-            seq_tracks.push(SequenceTrack {
-                track: track_index,
-                name: view.name().to_owned(),
-                channel,
-                sound,
-            });
-            for event in sound_events(channel, sound) {
-                events.push(TimedEvent {
-                    tick: 0,
-                    track: number,
-                    event,
-                });
-            }
-
-            // The note currently sounding on each string, to extend it on a tie.
-            let mut on_string: HashMap<u8, usize> = HashMap::new();
-            for span in &measures {
-                let Some(measure) = view.measure(span.measure) else {
-                    continue;
-                };
-                let feel = song.feel(span.measure).unwrap_or_default();
-                let measure_ticks = span.end.saturating_sub(span.start);
-                for voice in measure.voices() {
-                    let mut onset = Duration::new(0, 1)?;
-                    for beat in voice.beats() {
-                        if beat.kind() == BeatKind::Empty {
-                            continue;
-                        }
-                        let length = beat.duration()?;
-                        let next = onset.checked_add(length)?;
-                        let start = span.start.saturating_add(swing::swing_offset(
-                            ticks(onset),
-                            measure_ticks,
-                            feel,
-                        ));
-                        let end = span.start.saturating_add(swing::swing_offset(
-                            ticks(next),
-                            measure_ticks,
-                            feel,
-                        ));
-                        onset = next;
-                        if let Some(bpm) = beat.tempo_change() {
-                            tempo_changes.push((start, bpm));
-                        }
-                        if beat.kind() != BeatKind::Normal {
-                            continue;
-                        }
-                        for note in beat.notes() {
-                            let kind = note.kind();
-                            let string = note.string().map(|s| s.get()).unwrap_or(0);
-                            if kind == NoteKind::Tie {
-                                let tied = on_string
-                                    .get(&string)
-                                    .and_then(|&i| notes.get_mut(i))
-                                    .filter(|n| n.end.abs_diff(start) <= TIE_TOLERANCE);
-                                if let Some(previous) = tied {
-                                    previous.end = end;
-                                    continue;
-                                }
-                            }
-                            if !matches!(kind, NoteKind::Normal | NoteKind::Tie | NoteKind::Dead) {
-                                continue;
-                            }
-                            let Ok(pitch) = view.sounding_pitch(&note) else {
-                                skipped_notes = skipped_notes.saturating_add(1);
-                                continue;
-                            };
-                            let (end, velocity) = if kind == NoteKind::Dead {
-                                let soft =
-                                    u16::from(note.velocity()) * DEAD_NOTE_VELOCITY_PERCENT / 100;
-                                (
-                                    end.min(start.saturating_add(DEAD_NOTE_TICKS)),
-                                    u8::try_from(soft).unwrap_or(1).max(1),
-                                )
-                            } else {
-                                (end, note.velocity())
-                            };
-                            // Drums have no pitch to bend or slide.
-                            let bend = if sound.percussion {
-                                None
-                            } else {
-                                note.bend()
-                                    .filter(|bend| bend.quarter_tones != 0)
-                                    .map(|bend| {
-                                        (bend.quarter_tones, bend.kind == BendKind::Release)
-                                    })
-                            };
-                            let slides: Vec<SlideKind> = if sound.percussion {
-                                Vec::new()
-                            } else {
-                                note.slides().collect()
-                            };
-                            on_string.insert(string, notes.len());
-                            notes.push(Sounding {
-                                track: number,
-                                channel,
-                                play_channel: channel,
-                                key: pitch.get(),
-                                velocity,
-                                start,
-                                end,
-                                string,
-                                slide: sounding::choose_slide(&slides),
-                                bend,
-                                shape: None,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        let free_channels = channels.free_channels();
-        sounding::apply_slide_targets(&mut notes);
-        sounding::apply_bends(&mut notes);
-        let degraded_pitch_bends = sounding::assign_pitch_channels(&mut notes, free_channels);
-
-        for note in &notes {
-            let borrowed = note.play_channel != note.channel;
-            if borrowed && let Some(track) = seq_tracks.get(note.track) {
-                for event in sound_events(note.play_channel, track.sound) {
-                    events.push(TimedEvent {
-                        tick: note.start,
-                        track: note.track,
-                        event,
-                    });
-                }
-                let range = note
-                    .shape
-                    .map_or(pitch::BEND_RANGE_SEMITONES, |shape| shape.range());
-                for event in pitch::bend_range_setup(note.play_channel, range) {
-                    events.push(TimedEvent {
-                        tick: note.start,
-                        track: note.track,
-                        event,
-                    });
-                }
-            }
-            if borrowed && let Some(shape) = note.shape {
-                for (tick, event) in shape.events(note.play_channel, note.start) {
-                    events.push(TimedEvent {
-                        tick,
-                        track: note.track,
-                        event,
-                    });
-                }
-            }
-            events.push(TimedEvent {
-                tick: note.start,
-                track: note.track,
-                event: MidiEvent::NoteOn {
-                    channel: note.play_channel,
-                    key: note.key,
-                    velocity: note.velocity,
-                },
-            });
-            let end = note.end.max(note.start.saturating_add(1));
-            events.push(TimedEvent {
-                tick: end,
-                track: note.track,
-                event: MidiEvent::NoteOff {
-                    channel: note.play_channel,
-                    key: note.key,
-                },
-            });
-            if borrowed && note.shape.is_some() {
-                // Reset after the note, so a reused channel starts unbent.
-                events.push(TimedEvent {
-                    tick: end,
-                    track: note.track,
-                    event: MidiEvent::PitchBend {
-                        channel: note.play_channel,
-                        value: PITCH_BEND_CENTER,
-                    },
-                });
-            }
-        }
+        let collected = build::collect(song, &selected, &measures, None)?;
+        let mut events = collected.setup;
+        build::emit(&collected.notes, &collected.tracks, &mut events);
+        tempo_changes.extend(collected.tempo_changes);
         if metronome {
             for span in &measures {
                 events.extend(crate::click::click_events(*span));
@@ -343,13 +143,13 @@ impl Sequence {
         }
 
         Ok(Sequence {
-            tracks: seq_tracks,
+            tracks: collected.tracks,
             events,
             tempo,
             measures,
             end: tick,
-            skipped_notes,
-            degraded_pitch_bends,
+            skipped_notes: collected.skipped_notes,
+            degraded_pitch_bends: collected.degraded_pitch_bends,
         })
     }
 
@@ -458,7 +258,7 @@ pub fn sound_events(channel: Channel, sound: TrackSound) -> Vec<MidiEvent> {
 }
 
 /// The order of messages at one tick.
-fn rank(event: &MidiEvent) -> u8 {
+pub(crate) fn rank(event: &MidiEvent) -> u8 {
     match event {
         // A reused borrowed channel: release the old note before its channel is set up.
         MidiEvent::NoteOff { .. } => 0,

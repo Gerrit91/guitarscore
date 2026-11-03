@@ -1852,6 +1852,30 @@ lifeless):
 - Snapshot example: `--scale S` and `--click LABEL` (repeatable) to render a dialog.
 - Tests: snapshots for the key and tempo dialogs, all app snapshots updated (owner to
   review); unit tests for the circle, tap tempo, tempo names, Scottish timing.
-- Open (owner's idea): clicking an effect or dynamic plays the beat with that effect.
-  Audition today sends one plain note; this needs a one-beat excerpt of the sequence.
+- Owner's idea, done the same day (below): an effect or dynamic chosen plays its beat.
+
+## 2026-11-03 — Signatures and feel hold; effects heard in playback and on a click
+
+- **Time and key signatures and the feel hold up to the next change** (owner: a swing set
+  at a bar must go on for the following bars). Setting one at a bar changes that bar and
+  the following ones that carried the same value, up to the next bar with a value of its
+  own, as one undoable batch (`edit/headers.rs` `reach`, tests in `edit/reach_tests.rs`).
+- **Effects in playback**: vibrato (slight and wide, a pitch wave on a borrowed channel,
+  added to a bend or slide), ghost notes softer, accents and heavy accents louder,
+  staccato half length, palm mute short and a little softer, let ring held to the next
+  note on its string (at most a whole note more), tremolo picking as 32nd notes, brush
+  strokes spread over a 32nd note (down from the low string). The sequence builder was
+  split: `build.rs` collects notes and emits events, `effects.rs` holds the effects.
+- **Hearing an edit** (owner: clicking vibrato should play the note with vibrato):
+  `Sequence::beat_excerpt` is one beat alone with all its effects, from tick 0. The app
+  plays it after a palette effect, dynamic or dead note, and after an effect shortcut
+  (not undo, redo or paste), when "Play notes as they are entered" is on and the song is
+  stopped. The excerpt borrows the player; Play, Stop or a mix change ends it and loads
+  the song again (`playback/preview.rs`).
+- Tests: `test_effects.rs` (vibrato bends both ways on a borrowed channel, ghost and
+  accent velocities, palm mute and let ring lengths, brush spread, the excerpt), unit
+  tests in `effects.rs`, and an app test that the vibrato tile plays its beat and Play
+  then plays the song.
+- Open: trills, the whammy bar, fade-in and grace notes in playback; a palm-muted note
+  keeps the track's sound (no muted-guitar program).
 

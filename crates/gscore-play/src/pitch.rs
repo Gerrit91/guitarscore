@@ -29,7 +29,21 @@ pub(crate) struct PitchShape {
     start: i32,
     target: i32,
     ramp: u64,
+    /// A vibrato on top of the movement, if any.
+    vibrato: Option<Wave>,
 }
+
+/// A vibrato: how far the pitch swings either way (cents), how long one swing takes and
+/// how long the note lasts (ticks).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Wave {
+    pub(crate) depth_cents: u16,
+    pub(crate) period: u64,
+    pub(crate) length: u64,
+}
+
+/// Messages per vibrato period.
+const WAVE_STEPS: u64 = 12;
 
 impl PitchShape {
     /// A bend up to `quarter_tones` that reaches its target within `ramp_limit` ticks.
@@ -38,6 +52,7 @@ impl PitchShape {
             start: 0,
             target: i32::from(quarter_tones),
             ramp: ramp_ticks(length, ramp_limit),
+            vibrato: None,
         }
     }
 
@@ -47,6 +62,7 @@ impl PitchShape {
             start: i32::from(quarter_tones),
             target: 0,
             ramp: ramp_ticks(length, length),
+            vibrato: None,
         }
     }
 
@@ -56,6 +72,7 @@ impl PitchShape {
             start: 0,
             target: delta_semitones.saturating_mul(QUARTER_TONES_PER_SEMITONE),
             ramp: ramp_ticks(length, length),
+            vibrato: None,
         }
     }
 
@@ -65,6 +82,7 @@ impl PitchShape {
             start: delta_semitones.saturating_mul(QUARTER_TONES_PER_SEMITONE),
             target: 0,
             ramp: ramp_ticks(length, ramp_limit),
+            vibrato: None,
         }
     }
 
@@ -78,6 +96,25 @@ impl PitchShape {
                 OUT_SLIDE_QUARTER_TONES.saturating_neg()
             },
             ramp: ramp_ticks(length, length),
+            vibrato: None,
+        }
+    }
+
+    /// No movement: the note's own pitch (a base for a vibrato).
+    pub(crate) fn steady() -> Self {
+        PitchShape {
+            start: 0,
+            target: 0,
+            ramp: 0,
+            vibrato: None,
+        }
+    }
+
+    /// This shape with `wave` on top.
+    pub(crate) fn with_vibrato(self, wave: Wave) -> Self {
+        PitchShape {
+            vibrato: Some(wave),
+            ..self
         }
     }
 
@@ -95,6 +132,9 @@ impl PitchShape {
     /// and the ramp but not the reset after the note.
     pub(crate) fn events(&self, channel: Channel, start_tick: u64) -> Vec<(u64, MidiEvent)> {
         let range = self.range();
+        if let Some(wave) = self.vibrato {
+            return self.wave_events(wave, channel, start_tick, range);
+        }
         let mut events =
             Vec::with_capacity(usize::try_from(RAMP_STEPS.saturating_add(1)).unwrap_or(0));
         events.push((
@@ -131,6 +171,52 @@ impl PitchShape {
         }
         events
     }
+}
+
+impl PitchShape {
+    /// The movement sampled through the note with the vibrato added: the bend or slide
+    /// (in cents) plus a sine of the wave's depth.
+    fn wave_events(
+        &self,
+        wave: Wave,
+        channel: Channel,
+        start_tick: u64,
+        range: u8,
+    ) -> Vec<(u64, MidiEvent)> {
+        let step = (wave.period / WAVE_STEPS).max(1);
+        let cents_per_quarter_tone = 50.0_f64;
+        let mut events = Vec::new();
+        let mut offset = 0_u64;
+        while offset < wave.length.max(1) {
+            let progress = if self.ramp == 0 {
+                1.0
+            } else {
+                (offset as f64 / self.ramp as f64).min(1.0)
+            };
+            let base =
+                f64::from(self.start) + (f64::from(self.target) - f64::from(self.start)) * progress;
+            let phase = offset as f64 / wave.period.max(1) as f64 * std::f64::consts::TAU;
+            let cents = base * cents_per_quarter_tone + f64::from(wave.depth_cents) * phase.sin();
+            events.push((
+                start_tick.saturating_add(offset),
+                MidiEvent::PitchBend {
+                    channel,
+                    value: pitch_bend_cents(cents, range),
+                },
+            ));
+            offset = offset.saturating_add(step);
+        }
+        events
+    }
+}
+
+/// The pitch bend value for `cents` with a range of `range` semitones.
+fn pitch_bend_cents(cents: f64, range: u8) -> u16 {
+    let maximum = f64::from(range.max(1)) * 100.0;
+    let offset = cents.clamp(-maximum, maximum);
+    let value = f64::from(PITCH_BEND_CENTER) * (1.0 + offset / maximum);
+    // A centered bend must stay exactly centered; the top value is one less than double.
+    (value.round() as i64).clamp(0, 0x3FFF) as u16
 }
 
 /// How many ticks a ramp lasts: at most `limit`, and one tick before the note ends.

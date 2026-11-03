@@ -4,7 +4,7 @@
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, VecDeque};
 
-use gscore_model::SlideKind;
+use gscore_model::{SlideKind, Vibrato};
 
 use crate::event::Channel;
 use crate::pitch::PitchShape;
@@ -40,6 +40,14 @@ pub(super) struct Sounding {
     pub(super) bend: Option<(i16, bool)>,
     /// The pitch shape, once slide targets and channels are known.
     pub(super) shape: Option<PitchShape>,
+    /// The note's (or its beat's) vibrato, if any.
+    pub(super) vibrato: Option<Vibrato>,
+    /// Whether the note rings on until the next note on its string.
+    pub(super) let_ring: bool,
+    /// Whether the note is played as fast repeated picks.
+    pub(super) tremolo: bool,
+    /// Where its beat starts (a brush stroke may delay the note itself).
+    pub(super) onset: u64,
 }
 
 /// Which slide of a note the sequencer plays.

@@ -10,6 +10,8 @@ use gscore_audio::{MidiOutPlayer, SynthPlayer, midi_output_ports};
 use gscore_model::{
     BeatIndex, BeatPosition, MeasureIndex, NoteKind, Song, StringNumber, TrackIndex, VoiceIndex,
 };
+mod preview;
+
 use gscore_play::{Channel, MidiEvent, PPQ, PlayState, Player, Sequence, sound_events};
 
 /// How long an entered note sounds.
@@ -103,6 +105,9 @@ pub struct Playback {
     loop_selection: bool,
     /// The entered note that is sounding, until its note-off is due.
     audition: Option<Audition>,
+    /// While a beat excerpt plays (a palette click is heard): the position the song was
+    /// at before, reported meanwhile, as the song itself is stopped.
+    preview: Option<u64>,
 }
 
 impl Playback {
@@ -414,6 +419,9 @@ impl Playback {
     /// playing or paused, the new mix takes over at the same position, so a slider is heard
     /// at once.
     pub fn mix_changed(&mut self, song: &Song) -> Result<(), String> {
+        if self.end_preview() {
+            return Ok(());
+        }
         if self.count_in_pending() {
             // The song has not started yet: keep the waiting sequence in step.
             self.count_in_sequence = Some(self.build_sequence(song)?);
@@ -451,6 +459,7 @@ impl Playback {
     /// playback is paused and the cursor has not moved since: then it resumes. Without
     /// `from` it resumes, or starts at the beginning.
     pub fn play_pause(&mut self, song: &Song, from: Option<BeatPosition>) -> Result<(), String> {
+        let _ = self.end_preview();
         if self.state() == PlayState::Playing {
             self.paused_at = from;
             return self.player_mut()?.pause().map_err(|e| e.to_string());
@@ -619,6 +628,7 @@ impl Playback {
 
     /// Stops and goes back to the start.
     pub fn stop(&mut self) -> Result<(), String> {
+        let _ = self.end_preview();
         self.paused_at = None;
         self.clear_count_in();
         match &mut self.player {
@@ -629,6 +639,10 @@ impl Playback {
 
     /// Playing, paused or stopped.
     pub fn state(&self) -> PlayState {
+        if self.preview.is_some() {
+            // A heard beat is not the song playing.
+            return PlayState::Stopped;
+        }
         self.player
             .as_ref()
             .map_or(PlayState::Stopped, |a| a.player().state())
@@ -636,7 +650,7 @@ impl Playback {
 
     /// The position in the song, in ticks: during the count-in, where the song will start.
     pub fn position(&self) -> u64 {
-        if let Some(tick) = self.count_in_start {
+        if let Some(tick) = self.preview.or(self.count_in_start) {
             return tick;
         }
         self.output_position()
