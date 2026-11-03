@@ -21,14 +21,14 @@ const TEMPO_NOTE_GAP: f32 = 0.4;
 /// How far an ending bracket's hooks reach down.
 const ENDING_HOOK: f32 = 1.2;
 
-/// A quarter note and "= 120" with the note's left edge at `x`.
+/// A quarter note and "= 120" with the note's left edge at `x`; returns its width.
 pub(super) fn draw_tempo(
     x: f32,
     baseline: f32,
     tempo: u32,
     ctx: &Context<'_>,
     ops: &mut Vec<DrawOp>,
-) {
+) -> f32 {
     let note = Glyph::MetronomeQuarter;
     ops.push(DrawOp::Glyph {
         glyph: note,
@@ -37,14 +37,18 @@ pub(super) fn draw_tempo(
         color: ColorToken::Annotation,
     });
     let text_x = x + ctx.fonts.music.advance(note) * TEMPO_NOTE_SCALE + TEMPO_NOTE_GAP;
+    let text = format!("= {tempo}");
+    // Bold runs a little wider than the regular face the metrics are for.
+    let text_width = ctx.fonts.text.width(&text, TEMPO_SIZE) * 1.08;
     ops.push(DrawOp::Text {
-        text: format!("= {tempo}"),
+        text,
         at: Point::new(text_x, baseline),
         size: TEMPO_SIZE,
         font: TextFont::Bold,
         anchor: TextAnchor::Start,
         color: ColorToken::Annotation,
     });
+    text_x + text_width - x
 }
 
 /// A section name in bold, framed, starting at `x`.

@@ -159,7 +159,7 @@ const NOTE_ITEMS: &[FxItem] = &[
         glyph("\u{E0CE}", 40.0, 0.0),
         Fx::Ghost,
     ),
-    item(ActionId::ToggleHammer, Face::Text("H"), Fx::Hammer),
+    item(ActionId::ToggleHammer, Face::Hammer, Fx::Hammer),
     item(
         ActionId::ToggleAccent,
         glyph("\u{E4A0}", 44.0, 4.0),
@@ -176,7 +176,11 @@ const NOTE_ITEMS: &[FxItem] = &[
         Fx::Staccato,
     ),
     item(ActionId::TogglePalmMute, Face::Text("P.M."), Fx::PalmMute),
-    item(ActionId::ToggleLetRing, Face::Text("L.R."), Fx::LetRing),
+    item(
+        ActionId::ToggleLetRing,
+        Face::Word("let\nring"),
+        Fx::LetRing,
+    ),
     item(
         ActionId::ToggleVibrato,
         glyph("\u{EAB2}\u{EAB2}\u{EAB2}", 30.0, 3.0),
@@ -288,17 +292,17 @@ const BEAT_ITEMS: &[FxItem] = &[
     ),
     item(
         ActionId::ToggleTapping,
-        Face::Text("T"),
+        Face::Word("tap"),
         Fx::Slap(SlapKind::Tapping),
     ),
     item(
         ActionId::ToggleSlapping,
-        Face::Text("S"),
+        Face::Word("slap"),
         Fx::Slap(SlapKind::Slapping),
     ),
     item(
         ActionId::TogglePopping,
-        Face::Text("P"),
+        Face::Word("pop"),
         Fx::Slap(SlapKind::Popping),
     ),
     item(ActionId::ToggleFadeIn, Face::Hairpin, Fx::FadeIn),

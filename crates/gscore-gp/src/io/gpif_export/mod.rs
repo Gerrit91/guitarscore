@@ -337,17 +337,7 @@ impl WriteGpifInGpifStringOrder for Song {
         // MasterBars
         xml.push_str("<MasterBars>");
         for (m_idx, mh) in self.measure_headers.iter().enumerate() {
-            // GPIF has no standard triplet-feel field; GuitarScore keeps the feel in an
-            // attribute so GP7/GPX files do not lose it.
-            let feel = mh.gs_feel.as_deref().or(match mh.triplet_feel {
-                TripletFeel::Eighth => Some("eighth"),
-                TripletFeel::Sixteenth => Some("sixteenth"),
-                TripletFeel::None => None,
-            });
-            match feel {
-                Some(feel) => xml.push_str(&format!("<MasterBar gsFeel=\"{feel}\">")),
-                None => xml.push_str("<MasterBar>"),
-            }
+            xml.push_str("<MasterBar>");
             xml.push_str(&format!(
                 "<Time>{}/{}</Time>",
                 mh.time_signature.numerator, mh.time_signature.denominator.value
@@ -404,6 +394,10 @@ impl WriteGpifInGpifStringOrder for Song {
                     ));
                 }
                 xml.push_str("</Fermatas>");
+            }
+            // GuitarScore fix: the measure's feel was not written.
+            if let Some(feel) = mh.triplet_feel.gpif_name() {
+                xml.push_str(&format!("<TripletFeel>{feel}</TripletFeel>"));
             }
             if mh.free_time {
                 xml.push_str("<FreeTime/>");

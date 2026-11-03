@@ -8,8 +8,9 @@
 
 use std::sync::Arc;
 
-use gscore_model::{Dynamic, Fermata, Repeat, Song};
+use gscore_model::{Dynamic, Feel, Fermata, Repeat, Song};
 
+mod feel;
 mod text;
 
 use crate::Context;
@@ -20,6 +21,8 @@ use crate::staff::Staff;
 
 /// Distance from the top staff line up to the baseline of the first row of marks.
 const FIRST_ROW: f32 = 2.6;
+/// Space between a tempo mark and the feel mark after it.
+const FEEL_GAP: f32 = 1.0;
 /// Distance between two rows of marks.
 const ROW_HEIGHT: f32 = 2.4;
 /// Dynamics: at least this far below the notation staff's bottom line, this far below the
@@ -50,6 +53,8 @@ pub(crate) struct MeasureMarks {
     pub(crate) double_bar: bool,
     /// The fermata over the measure's first note, if any.
     pub(crate) fermata: Option<Fermata>,
+    /// The feel, written where it changes (and at the start unless straight).
+    pub(crate) feel: Option<Feel>,
     /// The ending bracket over this measure, if it is an alternative ending.
     pub(crate) ending: Option<Ending>,
 }
@@ -78,8 +83,9 @@ impl MeasureMarks {
         )
     }
 
+    /// Whether the tempo row is needed: a tempo change or a feel mark.
     fn has_tempo(&self) -> bool {
-        self.tempo.is_some() || !self.column_tempos.is_empty()
+        self.tempo.is_some() || !self.column_tempos.is_empty() || self.feel.is_some()
     }
 }
 
@@ -90,6 +96,7 @@ pub(crate) fn plan(song: &Song, measures: &[Arc<MeasureLayout>]) -> Vec<MeasureM
     let mut tempo = song.tempo();
     let mut dynamic = Dynamic::DEFAULT;
     let mut previous_endings = 0;
+    let mut previous_feel = Feel::None;
     measures
         .iter()
         .map(|measure| {
@@ -104,6 +111,11 @@ pub(crate) fn plan(song: &Song, measures: &[Arc<MeasureLayout>]) -> Vec<MeasureM
                 fermata: song.fermata(index),
                 ..MeasureMarks::default()
             };
+            let feel = song.feel(index).unwrap_or_default();
+            if feel != previous_feel {
+                marks.feel = Some(feel);
+                previous_feel = feel;
+            }
             if let Some(change) = song.tempo_change(index)
                 && change != tempo
             {
@@ -241,17 +253,23 @@ pub(crate) fn draw(
         );
     }
     let tempo_y = Rows::baseline(rows.tempo_row(), top);
+    let start = placed.left + 0.3;
+    // The feel mark follows a tempo mark at the measure start.
+    let mut feel_x = start;
     if let Some(tempo) = marks.tempo {
-        text::draw_tempo(placed.left + 0.3, tempo_y, tempo, ctx, ops);
+        feel_x += text::draw_tempo(start, tempo_y, tempo, ctx, ops) + FEEL_GAP;
     }
     for &(column, tempo) in &marks.column_tempos {
         // A beat's change at the measure start is written where a measure's would be.
-        let x = if column == 0 && marks.tempo.is_none() {
-            placed.left + 0.3
+        if column == 0 && marks.tempo.is_none() {
+            feel_x += text::draw_tempo(start, tempo_y, tempo, ctx, ops) + FEEL_GAP;
         } else {
-            xs.get(column).copied().unwrap_or(placed.left) - 0.5
-        };
-        text::draw_tempo(x, tempo_y, tempo, ctx, ops);
+            let x = xs.get(column).copied().unwrap_or(placed.left) - 0.5;
+            text::draw_tempo(x, tempo_y, tempo, ctx, ops);
+        }
+    }
+    if let Some(feel) = marks.feel {
+        feel::draw_feel(feel_x, tempo_y, feel, ctx, ops);
     }
     if let Some(title) = &marks.section {
         text::draw_section(

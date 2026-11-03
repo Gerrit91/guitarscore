@@ -228,10 +228,11 @@ enum ChangeKind {
         measure: MeasureIndex,
         previous: bool,
     },
-    /// A measure's feel changed; `previous` is its triplet feel and `gsFeel` value.
+    /// A measure's feel changed; `previous` is its triplet feel, `previous_initial` the
+    /// song's (set with the first measure's).
     Feel {
         measure: MeasureIndex,
-        previous: (gscore_gp::TripletFeel, Option<String>),
+        previous: gscore_gp::TripletFeel,
         previous_initial: Option<gscore_gp::TripletFeel>,
     },
     /// A measure's fermatas changed; `previous` is the whole list.
@@ -325,8 +326,7 @@ impl Change {
                 previous.as_ref().map_or(0, |marker| marker.title.len())
             }
             ChangeKind::TrackStaves { .. } | ChangeKind::MasterMix { .. } => 0,
-            ChangeKind::Repeat { .. } | ChangeKind::DoubleBar { .. } => 0,
-            ChangeKind::Feel { previous, .. } => previous.1.as_ref().map_or(0, String::len),
+            ChangeKind::Repeat { .. } | ChangeKind::DoubleBar { .. } | ChangeKind::Feel { .. } => 0,
             ChangeKind::Fermata { previous, .. } => previous
                 .iter()
                 .map(|(kind, offset)| kind.len().saturating_add(offset.len()))
@@ -817,7 +817,7 @@ impl Song {
                     .measure_headers
                     .get_mut(measure.get())
                     .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
-                (header.triplet_feel, header.gs_feel) = previous.clone();
+                header.triplet_feel = previous.clone();
                 if let Some(initial) = previous_initial {
                     inner.triplet_feel = initial.clone();
                 }

@@ -395,8 +395,8 @@ fn note_length(
             };
             let face = Face::Glyph {
                 text: glyph,
-                size: 26.0,
-                baseline: 4.0,
+                size: 38.0,
+                baseline: 2.0,
             };
             let tip = format!("{tip}{}", hint(action));
             if tiles::tile(ui, face, state.dots == dots, true, label, &tip).clicked() {
@@ -417,7 +417,7 @@ fn note_length(
                 hint(tuplet_action(enters))
             );
             let on = state.tuplet == Some((enters, times));
-            if tiles::tile(ui, Face::Text(&text), on, true, &label, &tip).clicked() {
+            if tiles::tile(ui, Face::Tuplet(&text), on, true, &label, &tip).clicked() {
                 toggle_tuplet(state, (enters, times));
                 apply_duration(state, snapshot, commands);
             }

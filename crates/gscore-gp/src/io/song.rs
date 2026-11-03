@@ -282,7 +282,8 @@ impl Song {
         }
         self.write_info(&mut data, version)?;
         if version.0 < 5 {
-            write_bool(&mut data, self.triplet_feel != TripletFeel::None);
+            // GuitarScore: GP3/4 know only the eighth-note triplet feel.
+            write_bool(&mut data, self.triplet_feel == TripletFeel::Eighth);
         }
         if version.0 >= 4 {
             self.write_lyrics(&mut data)?;

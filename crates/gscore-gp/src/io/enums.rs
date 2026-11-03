@@ -237,9 +237,14 @@ pub(crate) fn get_triplet_feel(value: u8) -> TripletFeel {
 
 pub(crate) fn from_triplet_feel(value: &TripletFeel) -> u8 {
     match value {
-        TripletFeel::None => 0,
         TripletFeel::Eighth => 1,
         TripletFeel::Sixteenth => 2,
+        // GuitarScore: GP3-5 have no dotted or Scottish feel; the save check reports it.
+        TripletFeel::None
+        | TripletFeel::DottedEighth
+        | TripletFeel::DottedSixteenth
+        | TripletFeel::ScottishEighth
+        | TripletFeel::ScottishSixteenth => 0,
     }
 }
 

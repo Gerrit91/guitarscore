@@ -6,6 +6,7 @@
 //! clicks), `editing` (keys and actions), `files` (open, save, unsaved changes).
 
 mod bars;
+mod circle_of_fifths;
 mod edit_dynamics;
 mod edit_effects;
 mod edit_palette;
@@ -17,6 +18,7 @@ mod grid;
 mod history;
 mod icons;
 mod instrument;
+mod metronome;
 mod new_track;
 mod page;
 mod page_menu;
@@ -25,7 +27,10 @@ mod settings_page;
 mod settings_window;
 mod shape_editor;
 mod shortcuts;
+mod staff_pickers;
+mod staff_widgets;
 mod style;
+mod tile_faces;
 mod tiles;
 mod title_bar;
 mod toolbar;

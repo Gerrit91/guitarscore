@@ -152,14 +152,11 @@ impl SongGpifOps for Song {
                 ..Default::default()
             };
 
-            // GuitarScore's feel attribute (GP7/GPX). GPIF has no standard triplet-feel
-            // field, so a file without the attribute stays straight.
-            mh.gs_feel = mb.gs_feel.clone();
-            mh.triplet_feel = match mb.gs_feel.as_deref() {
-                Some("eighth") => TripletFeel::Eighth,
-                Some("sixteenth") => TripletFeel::Sixteenth,
-                _ => TripletFeel::None,
-            };
+            // GuitarScore fix: the measure's feel (`<TripletFeel>`) was dropped.
+            mh.triplet_feel = mb
+                .triplet_feel
+                .as_deref()
+                .map_or(TripletFeel::None, TripletFeel::from_gpif_name);
             if mh_idx == 0 {
                 self.triplet_feel = mh.triplet_feel.clone();
             }

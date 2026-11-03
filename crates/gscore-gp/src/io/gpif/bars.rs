@@ -17,10 +17,6 @@ pub(crate) struct MasterBarsWrapper {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct MasterBar {
-    /// GuitarScore addition: the measure's feel (`none`, `eighth`, `sixteenth`,
-    /// `dotted_eighth`, `dotted_sixteenth`).
-    #[serde(rename = "@gsFeel", default)]
-    pub gs_feel: Option<String>,
     #[serde(rename = "Key", default)]
     pub key: Option<Key>,
     #[serde(rename = "Time", default)]
@@ -37,6 +33,9 @@ pub(crate) struct MasterBar {
     pub section: Option<Section>,
     #[serde(rename = "Fermatas", default)]
     pub fermatas: Option<FermatasWrapper>,
+    /// GuitarScore fix: the measure's feel (`Triplet8th`, `Dotted16th`, ...) was not read.
+    #[serde(rename = "TripletFeel", default)]
+    pub triplet_feel: Option<String>,
     #[serde(rename = "FreeTime", default)]
     pub free_time: Option<String>,
     #[serde(rename = "Directions", default)]

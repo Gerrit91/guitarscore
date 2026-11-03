@@ -187,6 +187,42 @@ pub enum TripletFeel {
     None,
     Eighth,
     Sixteenth,
+    /// GuitarScore addition (GPIF `Dotted8th`): dotted eighth and sixteenth.
+    DottedEighth,
+    /// GuitarScore addition (GPIF `Dotted16th`).
+    DottedSixteenth,
+    /// GuitarScore addition (GPIF `Scottish8th`): a short sixteenth, then a dotted eighth.
+    ScottishEighth,
+    /// GuitarScore addition (GPIF `Scottish16th`).
+    ScottishSixteenth,
+}
+
+impl TripletFeel {
+    /// The GPIF `<TripletFeel>` value, or `None` for straight.
+    pub(crate) fn gpif_name(&self) -> Option<&'static str> {
+        Some(match self {
+            TripletFeel::None => return None,
+            TripletFeel::Eighth => "Triplet8th",
+            TripletFeel::Sixteenth => "Triplet16th",
+            TripletFeel::DottedEighth => "Dotted8th",
+            TripletFeel::DottedSixteenth => "Dotted16th",
+            TripletFeel::ScottishEighth => "Scottish8th",
+            TripletFeel::ScottishSixteenth => "Scottish16th",
+        })
+    }
+
+    /// The feel a GPIF `<TripletFeel>` value names; unknown values read as straight.
+    pub(crate) fn from_gpif_name(name: &str) -> Self {
+        match name.trim() {
+            "Triplet8th" => TripletFeel::Eighth,
+            "Triplet16th" => TripletFeel::Sixteenth,
+            "Dotted8th" => TripletFeel::DottedEighth,
+            "Dotted16th" => TripletFeel::DottedSixteenth,
+            "Scottish8th" => TripletFeel::ScottishEighth,
+            "Scottish16th" => TripletFeel::ScottishSixteenth,
+            _ => TripletFeel::None,
+        }
+    }
 }
 
 /// An enumeration of available clefs

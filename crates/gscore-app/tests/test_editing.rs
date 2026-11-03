@@ -673,7 +673,7 @@ fn staff_tiles_open_dialogs_for_repeats_barlines_and_breaks() {
     harness.run();
     harness.get_by_label("Swing feel").click();
     harness.run();
-    harness.get_by_label("Eighth-note swing").click();
+    harness.get_by_label("Triplet eighths (swing)").click();
     harness.get_by_label("OK").click();
     harness.run();
     assert_eq!(

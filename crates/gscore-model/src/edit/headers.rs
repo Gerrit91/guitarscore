@@ -113,9 +113,8 @@ impl Song {
     pub fn set_feel(&mut self, measure: MeasureIndex, feel: Feel) -> Result<Change, ModelError> {
         self.edit_headers(|inner| {
             let header = header_mut(inner, measure)?;
-            let previous = (header.triplet_feel.clone(), header.gs_feel.clone());
+            let previous = header.triplet_feel.clone();
             header.triplet_feel = feel.to_gp();
-            header.gs_feel = feel.gs_id().map(str::to_owned);
             let previous_initial = (measure.get() == 0).then(|| {
                 let previous = inner.triplet_feel.clone();
                 inner.triplet_feel = feel.to_gp();
@@ -141,7 +140,7 @@ impl Song {
             let header = header_mut(inner, measure)?;
             let previous = header.fermatas.clone();
             header.fermatas = match fermata {
-                Some(fermata) => vec![(fermata.to_gp().to_owned(), "0".to_owned())],
+                Some(fermata) => vec![(fermata.to_gp().to_owned(), "0/1".to_owned())],
                 None => Vec::new(),
             };
             Ok(Change {

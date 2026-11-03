@@ -1,6 +1,5 @@
 //! Measure marks that Guitar Pro stores in its measure headers: the feel (triplet feel)
-//! and fermatas. Guitar Pro's own field has only straight, eighth-note and sixteenth-note
-//! triplet feel; dotted feels are a GuitarScore addition kept in `gsFeel`.
+//! and fermatas. GP7/GPX keep every feel; GP3-5 only the triplet feels.
 
 use gscore_gp::TripletFeel as GpTripletFeel;
 
@@ -14,20 +13,26 @@ pub enum Feel {
     Eighth,
     /// Sixteenth notes in a triplet feel.
     Sixteenth,
-    /// Dotted-eighth feel (GuitarScore addition; GP7/GPX only).
+    /// Dotted-eighth feel: a dotted eighth and a sixteenth (GP7/GPX only).
     DottedEighth,
-    /// Dotted-sixteenth feel (GuitarScore addition; GP7/GPX only).
+    /// Dotted-sixteenth feel (GP7/GPX only).
     DottedSixteenth,
+    /// Scottish (Scotch snap) eighth feel: a sixteenth, then a dotted eighth (GP7/GPX only).
+    ScottishEighth,
+    /// Scottish sixteenth feel (GP7/GPX only).
+    ScottishSixteenth,
 }
 
 impl Feel {
     /// Every choice, in dialog order.
-    pub const ALL: [Feel; 5] = [
+    pub const ALL: [Feel; 7] = [
         Feel::None,
         Feel::Eighth,
         Feel::Sixteenth,
         Feel::DottedEighth,
         Feel::DottedSixteenth,
+        Feel::ScottishEighth,
+        Feel::ScottishSixteenth,
     ];
 
     /// The id the command language and `gsFeel` use.
@@ -38,6 +43,8 @@ impl Feel {
             Feel::Sixteenth => "sixteenth",
             Feel::DottedEighth => "dotted_eighth",
             Feel::DottedSixteenth => "dotted_sixteenth",
+            Feel::ScottishEighth => "scottish_eighth",
+            Feel::ScottishSixteenth => "scottish_sixteenth",
         }
     }
 
@@ -45,10 +52,12 @@ impl Feel {
     pub fn label(self) -> &'static str {
         match self {
             Feel::None => "Straight",
-            Feel::Eighth => "Eighth-note swing",
-            Feel::Sixteenth => "Sixteenth-note swing",
-            Feel::DottedEighth => "Dotted eighth",
-            Feel::DottedSixteenth => "Dotted sixteenth",
+            Feel::Eighth => "Triplet eighths (swing)",
+            Feel::Sixteenth => "Triplet sixteenths",
+            Feel::DottedEighth => "Dotted eighths",
+            Feel::DottedSixteenth => "Dotted sixteenths",
+            Feel::ScottishEighth => "Scottish eighths",
+            Feel::ScottishSixteenth => "Scottish sixteenths",
         }
     }
 
@@ -57,30 +66,49 @@ impl Feel {
         Feel::ALL.into_iter().find(|feel| feel.id() == id)
     }
 
-    /// The feel a header stores: `gs_feel` wins, then Guitar Pro's triplet feel.
-    pub(crate) fn from_gp(triplet: &GpTripletFeel, gs_feel: Option<&str>) -> Self {
-        if let Some(feel) = gs_feel.and_then(Feel::from_id) {
-            return feel;
-        }
+    /// The feel of a Guitar Pro measure header.
+    pub(crate) fn from_gp(triplet: &GpTripletFeel) -> Self {
         match triplet {
             GpTripletFeel::None => Feel::None,
             GpTripletFeel::Eighth => Feel::Eighth,
             GpTripletFeel::Sixteenth => Feel::Sixteenth,
+            GpTripletFeel::DottedEighth => Feel::DottedEighth,
+            GpTripletFeel::DottedSixteenth => Feel::DottedSixteenth,
+            GpTripletFeel::ScottishEighth => Feel::ScottishEighth,
+            GpTripletFeel::ScottishSixteenth => Feel::ScottishSixteenth,
         }
     }
 
-    /// Guitar Pro's triplet-feel field (dotted feels have none).
+    /// Guitar Pro's triplet-feel field.
     pub(crate) fn to_gp(self) -> GpTripletFeel {
         match self {
+            Feel::None => GpTripletFeel::None,
             Feel::Eighth => GpTripletFeel::Eighth,
             Feel::Sixteenth => GpTripletFeel::Sixteenth,
-            Feel::None | Feel::DottedEighth | Feel::DottedSixteenth => GpTripletFeel::None,
+            Feel::DottedEighth => GpTripletFeel::DottedEighth,
+            Feel::DottedSixteenth => GpTripletFeel::DottedSixteenth,
+            Feel::ScottishEighth => GpTripletFeel::ScottishEighth,
+            Feel::ScottishSixteenth => GpTripletFeel::ScottishSixteenth,
         }
     }
 
-    /// The `gsFeel` value, or `None` for a straight measure.
-    pub(crate) fn gs_id(self) -> Option<&'static str> {
-        (self != Feel::None).then(|| self.id())
+    /// Whether the swung pairs are sixteenths (otherwise eighths).
+    pub fn is_sixteenth(self) -> bool {
+        matches!(
+            self,
+            Feel::Sixteenth | Feel::DottedSixteenth | Feel::ScottishSixteenth
+        )
+    }
+
+    /// The share of a swung pair the first note takes, as `(numerator, denominator)`, or
+    /// `None` for straight: 2/3 for a triplet feel, 3/4 dotted, 1/4 Scottish.
+    pub fn first_share(self) -> Option<(u8, u8)> {
+        match self {
+            Feel::None => None,
+            Feel::Eighth | Feel::Sixteenth => Some((2, 3)),
+            Feel::DottedEighth | Feel::DottedSixteenth => Some((3, 4)),
+            Feel::ScottishEighth | Feel::ScottishSixteenth => Some((1, 4)),
+        }
     }
 }
 

@@ -299,7 +299,7 @@ const FEEL: ParamInfo = ParamInfo {
     name: "feel",
     required: true,
     default: None,
-    help: "none, eighth, sixteenth, dotted_eighth or dotted_sixteenth",
+    help: "none, eighth, sixteenth, dotted_eighth, dotted_sixteenth, scottish_eighth or scottish_sixteenth",
 };
 
 const FERMATA: ParamInfo = ParamInfo {
@@ -738,7 +738,7 @@ pub(crate) const SET_FEEL: CommandInfo = CommandInfo {
     aliases: &["set_triplet_feel"],
     label: "Set the feel",
     help: "Sets how the measure's notes swing: straight, eighth- or sixteenth-note triplet \
-           feel, or a dotted feel (GP7/GPX only).",
+           feel, or a dotted or Scottish feel (GP7/GPX only).",
     params: &[MEASURE, FEEL],
 };
 

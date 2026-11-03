@@ -1814,4 +1814,44 @@ Owner's request: drum notation, dynamics in the edit palette and the score, sect
 - Open: fermata playback, fermatas below the staff, several fermatas per measure, and
   dotted feel in GP3-5.
 
+## 2026-11-03 — Review of the staff editing commit; palette icons and staff dialogs
+
+Review of fa7447c ("Improve staff editing"), found and fixed:
+
+- **GP7 swing was lost on import and export.** The commit claimed GPIF has no triplet-feel
+  field and wrote a private `gsFeel` attribute instead. GPIF has `<TripletFeel>` on
+  `<MasterBar>`; real Guitar Pro files with swing opened straight, and files saved here
+  carried swing only for GuitarScore. `gsFeel` is gone; `TripletFeel` (gscore-gp) and
+  `Feel` gained the dotted and Scottish feels Guitar Pro has (seven in all), with
+  Scottish (short-long, 1:3) timing in playback. GP3/4 wrote "swing" for any feel; now
+  only for eighth-note swing.
+- **The feel was not shown on the score.** The measure where the feel changes now gets
+  Guitar Pro's mark above the staff ("♫ = ⌐3¬♩♪", dotted and Scottish forms, "♫ = ♫" back
+  to straight), after a tempo mark at the same bar. `set_feel` now drops the layout
+  cache. Test `a_feel_is_written_where_it_changes`.
+- The Section tile showed a segno (the D.S. sign); it is now a framed "A" (rehearsal mark).
+- A fermata was written with offset `0`; GPIF offsets are fractions, now `0/1`.
+
+Palette and dialogs (owner: the icons looked cheap next to Guitar Pro's, the dialogs
+lifeless):
+
+- **Tiles**: no fill at rest, only on hover or when chosen, as a printed palette. Faces
+  are Bravura glyphs where the font has the sign (repeat signs, double barline, fermata,
+  time-signature digits, key-signature sharps, the swing triplet, tuplet numbers 3, 5:4,
+  7:4 in the music font's italic digits), engraved filled ties and slurs, and bold or
+  bold-italic lettering for text marks (P.M., let ring, tap/slap/pop, harmonics). Faces
+  moved to `tile_faces.rs`.
+- **Dialogs**: choices are rows with the engraved sign, the name and one line on what it
+  does, chosen with a click (fermata, feel, repeats, barline, break, bars per line). The
+  key signature is a circle of fifths (majors outside, relative minors inside, the key
+  signature engraved in the middle, enharmonic spelling for keys with 5-7 accidentals).
+  The tempo has a one-color metronome that swings at the tempo when clicked, the tempo
+  name, a slider, Italian presets and tap tempo. The time signature shows engraved digits
+  with steppers and presets; the section shows its framed mark in its color; endings are
+  bracket tiles.
+- Snapshot example: `--scale S` and `--click LABEL` (repeatable) to render a dialog.
+- Tests: snapshots for the key and tempo dialogs, all app snapshots updated (owner to
+  review); unit tests for the circle, tap tempo, tempo names, Scottish timing.
+- Open (owner's idea): clicking an effect or dynamic plays the beat with that effect.
+  Audition today sends one plain note; this needs a one-beat excerpt of the sequence.
 

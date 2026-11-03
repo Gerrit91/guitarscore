@@ -1,9 +1,9 @@
 //! Swing timing: maps an unwarped tick offset inside a measure to the tick where it sounds
-//! under a triplet or dotted feel.
+//! under a triplet, dotted or Scottish feel.
 //!
-//! Each pair of the swung note value is split into a long first note and a short second one:
-//! two thirds / one third for a triplet feel, three quarters / one quarter for a dotted
-//! feel. An incomplete final pair is left straight, so the measure's end does not move.
+//! Each pair of the swung note value is split unevenly: two thirds / one third for a
+//! triplet feel, three quarters / one quarter for a dotted feel, one quarter / three
+//! quarters for a Scottish feel. An incomplete final pair is left straight, so the measure's end does not move.
 
 use gscore_model::Feel;
 
@@ -11,13 +11,14 @@ use crate::tempo::PPQ;
 
 /// The pair length in ticks and the share of it the first note takes, as `num/den`.
 fn ratio(feel: Feel) -> Option<(u64, u64, u64)> {
-    Some(match feel {
-        Feel::None => return None,
-        Feel::Eighth => (u64::from(PPQ), 2, 3),
-        Feel::Sixteenth => (u64::from(PPQ.saturating_div(2)), 2, 3),
-        Feel::DottedEighth => (u64::from(PPQ), 3, 4),
-        Feel::DottedSixteenth => (u64::from(PPQ.saturating_div(2)), 3, 4),
-    })
+    let (num, den) = feel.first_share()?;
+    let quarter = u64::from(PPQ);
+    let unit = if feel.is_sixteenth() {
+        quarter / 2
+    } else {
+        quarter
+    };
+    Some((unit, u64::from(num), u64::from(den)))
 }
 
 /// Where `offset` (ticks from the measure start) sounds with `feel`. `measure_ticks` keeps
@@ -105,6 +106,19 @@ mod tests {
         assert_eq!(
             swing_offset(quarter() + quarter() / 2, measure, Feel::DottedEighth),
             quarter() + quarter() * 3 / 4
+        );
+    }
+
+    #[test]
+    fn scottish_eighth_feel_snaps_the_first_note_short() {
+        let measure = quarter() * 4;
+        assert_eq!(
+            swing_offset(quarter() / 2, measure, Feel::ScottishEighth),
+            quarter() / 4
+        );
+        assert_eq!(
+            swing_offset(quarter() * 2, measure, Feel::ScottishEighth),
+            quarter() * 2
         );
     }
 

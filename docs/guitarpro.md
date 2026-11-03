@@ -202,11 +202,13 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     `TrackSettings::notation`/`tablature` (which GP3-5 already had) and written with every
     `.gp` file; the bytes for a one-track file equal Guitar Pro's. A track showing neither
     keeps its tablature.
-33. Measure feel (`src/model/headers.rs`, `src/io/gpif/bars.rs`, `src/io/gpif_import/mod.rs`,
-    `src/io/gpif_export/mod.rs`, 2026-11-03): GPIF has no standard triplet-feel field, so a
-    GP7/GPX file lost the measure feel on save. `MeasureHeader::gs_feel` now holds
-    GuitarScore's own value (`eighth`, `sixteenth`, `dotted_eighth`, `dotted_sixteenth`)
-    and is written as the `gsFeel` attribute of `<MasterBar>`. GP3-5 keep the standard
-    `TripletFeel` field (eighth/sixteenth only), so a dotted feel saved to GP3-5 is lost
-    and the save check reports it. Test `feels_round_trip_through_gpif`.
+33. Measure feel (`src/model/enums.rs`, `src/io/gpif/bars.rs`, `src/io/gpif_import/mod.rs`,
+    `src/io/gpif_export/mod.rs`, `src/io/enums.rs`, `src/io/song.rs`, 2026-11-03): GPIF's
+    `<MasterBar>` has a `<TripletFeel>` element (`Triplet8th`, `Triplet16th`, `Dotted8th`,
+    `Dotted16th`, `Scottish8th`, `Scottish16th`) that was neither read nor written, so a
+    GP7/GPX file lost its swing. `TripletFeel` gained the dotted and Scottish feels and
+    both directions use the element. GP5 headers know only the triplet feels and GP3/4 only
+    a song-wide eighth-note swing (which was also written for a sixteenth feel); other
+    feels save as straight and the save check reports it. Test
+    `feels_round_trip_through_gpif`.
 
