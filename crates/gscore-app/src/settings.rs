@@ -154,6 +154,8 @@ pub struct Settings {
     pub show_track_panel: bool,
     /// Whether the edit palette (left panel) is shown.
     pub show_edit_panel: bool,
+    /// Whether the score is shown on pages (else one endless page).
+    pub page_view: bool,
     /// Height the song grid was dragged to; `None`: it follows the number of tracks. (The
     /// key is new: the old `grid_height_chosen` held whatever the panel happened to be.)
     pub grid_height_chosen: Option<f32>,
@@ -201,6 +203,7 @@ impl Default for Settings {
             grid_mixer: false,
             show_track_panel: true,
             show_edit_panel: true,
+            page_view: true,
             grid_height_chosen: None,
             mixer_height_chosen: None,
             track_panel_width: None,
@@ -238,6 +241,7 @@ impl Settings {
         self.grid_mixer = view.grid_mixer;
         self.show_track_panel = view.show_track_panel;
         self.show_edit_panel = view.show_edit_panel;
+        self.page_view = view.page_view;
     }
 
     /// Applies the stored theme, zoom and panel visibility to `view`.
@@ -248,6 +252,7 @@ impl Settings {
         view.grid_mixer = self.grid_mixer;
         view.show_track_panel = self.show_track_panel;
         view.show_edit_panel = self.show_edit_panel;
+        view.page_view = self.page_view;
     }
 
     /// Puts `path` first in the recent files, without duplicates.

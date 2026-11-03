@@ -88,6 +88,8 @@ pub struct ViewState {
     pub show_track_panel: bool,
     /// Whether the edit palette (the left panel) is shown.
     pub show_edit_panel: bool,
+    /// Whether the score is shown on separate pages (as printed) instead of one endless page.
+    pub page_view: bool,
     /// The selected range of measures in the song grid, if any.
     pub selection: Option<MeasureSelection>,
 }
@@ -102,6 +104,7 @@ impl Default for ViewState {
             grid_mixer: false,
             show_track_panel: true,
             show_edit_panel: true,
+            page_view: true,
             selection: None,
         }
     }

@@ -20,6 +20,31 @@ fn value(text: &str) -> NoteValue {
 }
 
 #[test]
+fn page_commands_take_guitar_pros_defaults_and_aliases() {
+    assert_eq!(
+        parse_line("set_page_setup width=297 height=210").unwrap(),
+        Some(Command::SetPageSetup {
+            setup: PageSetup::default().turned(),
+        })
+    );
+    assert_eq!(
+        parse_line("set_line_break track=2 measure=5 break=line").unwrap(),
+        Some(Command::SetSystemBreak {
+            track: TrackIndex::new(1),
+            measure: MeasureIndex::new(4),
+            kind: SystemBreak::Line,
+        })
+    );
+    assert_eq!(
+        parse_line("set_bars_per_line bars=auto").unwrap(),
+        Some(Command::SetBarsPerSystem {
+            track: TrackIndex::new(0),
+            bars: None,
+        })
+    );
+}
+
+#[test]
 fn parses_every_command_and_fills_defaults() {
     let cases = [
         (
@@ -389,6 +414,18 @@ fn bad_lines_are_errors_with_useful_messages() {
         ("set_track_string_pitch string=1 pitch=C-2", "note name"),
         ("set_song_text field=bogus text=x", "title"),
         ("set_song_text field=title", "missing parameter"),
+        ("set_page_setup width=20", "70 to 1000"),
+        ("set_page_setup scale=500", "50 to 200"),
+        ("set_page_setup left=150 right=150", "40 mm"),
+        ("set_page_setup width=a4", "millimetres"),
+        ("set_page_setup header=perhaps", "true or false"),
+        (
+            "set_system_break measure=3 break=column",
+            "line, page or none",
+        ),
+        ("set_system_break break=line", "missing parameter"),
+        ("set_bars_per_system bars=0", "1 to 32, or auto"),
+        ("set_bars_per_system bars=40", "1 to 32, or auto"),
         ("set_tempo tempo=0", "1 to 1000"),
         ("set_tempo tempo=1001", "1 to 1000"),
         ("set_tempo tempo=fast", "1 to 1000"),
@@ -502,6 +539,32 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
             text: "A title with spaces, # and\nnew lines – Ü".to_owned(),
         },
         Command::SetTempo { tempo: 140 },
+        Command::SetPageSetup {
+            setup: PageSetup {
+                width_mm: 279,
+                height_mm: 216,
+                margins: gscore_model::Margins {
+                    top: 20,
+                    right: 12,
+                    bottom: 18,
+                    left: 11,
+                },
+                scale_percent: 85,
+                page_numbers: false,
+                copyright: true,
+                running_header: true,
+            },
+        },
+        Command::SetSystemBreak {
+            track,
+            measure: MeasureIndex::new(4),
+            kind: SystemBreak::Page,
+        },
+        Command::SetBarsPerSystem {
+            track,
+            bars: Some(4),
+        },
+        Command::SetBarsPerSystem { track, bars: None },
         Command::SetBeatRest { at: at(0, 1, 0, 2) },
         Command::SetTie {
             at: at(0, 2, 0, 3),

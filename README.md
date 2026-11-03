@@ -39,7 +39,13 @@ a preset and save your own.
 
 **Notation and tab together.** Standard notation above the tab (or either alone), drum
 tracks on a percussion staff, dynamics, tempo changes, section names, repeats and
-alternative endings, all laid out as a page in a light or dark theme.
+alternative endings, in a light or dark theme.
+
+**Pages and PDF.** See the score on real pages (side by side when zoomed out) or as one
+endless page. Set the paper, margins and score size, put line and page breaks where you
+want them or limit the bars per line, and export a PDF with the fonts embedded. Guitar Pro
+7 files keep their page setup and line breaks, so they look the way Guitar Pro lays them
+out.
 
 **Right-click anything.** The note, the bar and the track under the mouse each have their
 menu, and the same menus sit in the menu bar: insert and delete bars, add, duplicate,
@@ -58,9 +64,10 @@ line, with the same undoable commands as the app (see [Command line](#command-li
 ## Status
 
 GuitarScore is in **early, active development**. It edits real songs today, but it is not
-a finished Guitar Pro replacement. The score is one track on one endless page: pages,
-multi-track scores, PDF and printing are the next milestone. Some techniques in playback, WAV
-export, drum tab and a few notation details are still missing, and there are no release
+a finished Guitar Pro replacement. The score shows one track at a time: multi-track scores
+are being built now, and printing goes through the PDF export for the moment. Some
+techniques in playback, WAV export, drum tab and a few notation details are still missing,
+and there are no release
 packages yet (build it from source, below; it takes a few minutes). [`docs/parity.md`](docs/parity.md)
 tracks every Guitar Pro feature (live, partial, missing), [`docs/gaps.md`](docs/gaps.md)
 the known shortfalls, and [`docs/devlog.md`](docs/devlog.md) what changed when.
@@ -193,8 +200,10 @@ D |--0-------------------------||
 - **`edit`:** headless editing with undo/redo: set frets, change beat lengths,
   insert/delete beats and measures, from `-c` commands or a script. `gscore-cli commands`
   lists them. Every successful edit still round-trips through the GP7 writer.
-- **`render`:** a track's tablature as SVG (`--track N`, `--theme dark`), using the
-  bundled Bravura and Noto Sans fonts by name; see `docs/development.md` for viewing it.
+- **`render`:** a track's score as SVG (`--track N`, `--theme dark`), using the bundled
+  Bravura and Noto Sans fonts by name (see `docs/development.md` for viewing it), or as a
+  PDF on pages with the song's page setup and the fonts embedded when the output ends in
+  `.pdf`.
 
 ```bash
 cargo run -p gscore-cli -- commands
@@ -203,6 +212,7 @@ cargo run -p gscore-cli -- edit testdata/basic/steel_guitar_dadgad.gp -o edited.
   -c "set_duration measure=1 beat=1 duration=1/8"
 cargo run -p gscore-cli -- edit song.gp -o edited.gp --script edits.txt
 cargo run -p gscore-cli -- render testdata/basic/note_lengths.gp -o note_lengths.svg
+cargo run -p gscore-cli -- render testdata/basic/ornaments.gp -o ornaments.pdf
 ```
 
 A script has one command per line; blank lines and `#` comments are ignored. Positions are

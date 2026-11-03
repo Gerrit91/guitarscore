@@ -18,11 +18,13 @@ mod headers;
 pub(crate) mod measures;
 mod mix;
 mod notes;
+mod page;
 mod song;
 mod tracks;
 
 pub use crate::validate::MAX_STRINGS;
 pub use headers::MAX_SECTION_TITLE_CHARS;
+pub(crate) use page::system_break;
 pub use tracks::{MAX_TRACK_NAME_CHARS, MAX_TRACKS};
 
 use gscore_gp::{
@@ -117,6 +119,21 @@ enum ChangeKind {
     },
     /// A track's capo fret changed.
     TrackCapo { at: TrackIndex, previous: i32 },
+    /// The page setup changed.
+    PageSetup {
+        previous: Box<gscore_gp::page::PageSetup>,
+    },
+    /// A measure's line or page break changed.
+    SystemBreak {
+        track: TrackIndex,
+        measure: MeasureIndex,
+        previous: gscore_gp::LineBreak,
+    },
+    /// A track's bars-per-line limit changed.
+    BarsPerSystem {
+        track: TrackIndex,
+        previous: Option<u8>,
+    },
     /// A track's string count and tuning changed.
     TrackStrings {
         at: TrackIndex,
@@ -295,7 +312,10 @@ impl Change {
             | ChangeKind::TrackColor { .. }
             | ChangeKind::TrackFlag { .. }
             | ChangeKind::TrackCapo { .. }
+            | ChangeKind::SystemBreak { .. }
+            | ChangeKind::BarsPerSystem { .. }
             | ChangeKind::TrackMix { .. } => 0,
+            ChangeKind::PageSetup { .. } => size_of::<gscore_gp::page::PageSetup>(),
         };
         base.saturating_add(extra)
     }
@@ -528,6 +548,26 @@ impl Song {
             }),
             ChangeKind::TrackCapo { at, previous } => self.edit_track_settings(|inner| {
                 track_mut(inner, *at)?.offset = *previous;
+                Ok(())
+            }),
+            ChangeKind::PageSetup { previous } => self.edit_metadata(|inner| {
+                inner.page_setup.clone_from(previous);
+                Ok(())
+            }),
+            ChangeKind::SystemBreak {
+                track,
+                measure,
+                previous,
+            } => self.edit_track_settings(|inner| {
+                track_mut(inner, *track)?
+                    .measures
+                    .get_mut(measure.get())
+                    .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?
+                    .line_break = previous.clone();
+                Ok(())
+            }),
+            ChangeKind::BarsPerSystem { track, previous } => self.edit_track_settings(|inner| {
+                track_mut(inner, *track)?.bars_per_system = *previous;
                 Ok(())
             }),
             ChangeKind::TrackStrings {
@@ -808,6 +848,8 @@ mod effect_tests;
 mod header_tests;
 #[cfg(test)]
 mod mix_tests;
+#[cfg(test)]
+mod page_tests;
 #[cfg(test)]
 mod song_tests;
 #[cfg(test)]

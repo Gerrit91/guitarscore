@@ -37,6 +37,8 @@ mod effect_tests;
 mod helpers;
 mod notes;
 #[cfg(test)]
+mod page_tests;
+#[cfg(test)]
 mod tuning_tests;
 #[cfg(test)]
 mod vibrato_tests;
@@ -440,6 +442,12 @@ impl SongGpifOps for Song {
                 }
                 track.measures.push(measure);
             }
+            track.bars_per_system = g_track.bars_per_system.filter(|bars| *bars > 0);
+            apply_breaks(
+                &mut track.measures,
+                g_track.systems_layout.as_deref(),
+                g_track.page_breaks.as_deref(),
+            );
             self.tracks.push(track);
         }
         // GuitarScore fix: GPIF numbers strings from the lowest; the legacy model's string 1
@@ -526,6 +534,34 @@ fn apply_track_mix(
         }
         if let Some(pan) = pan {
             channel.balance = pan;
+        }
+    }
+}
+
+/// GuitarScore addition: Guitar Pro's systems layout (bars per line, `"4 4 3"`) as a line
+/// break at the first bar of every line after the first, so the page is broken where
+/// Guitar Pro breaks it; and the GuitarScore page breaks. Odd counts (0, unreadable) end
+/// the list; when it runs out before the last bar, the rest is laid out freely.
+fn apply_breaks(measures: &mut [Measure], systems: Option<&str>, pages: Option<&str>) {
+    let mut at = 0_usize;
+    for count in systems.unwrap_or_default().split_whitespace() {
+        let Some(count) = count.parse::<usize>().ok().filter(|count| *count > 0) else {
+            break;
+        };
+        at = at.saturating_add(count);
+        match measures.get_mut(at) {
+            Some(measure) => measure.line_break = LineBreak::Break,
+            None => break,
+        }
+    }
+    for index in pages.unwrap_or_default().split_whitespace() {
+        if let Some(measure) = index
+            .parse::<usize>()
+            .ok()
+            .filter(|index| *index > 0)
+            .and_then(|index| measures.get_mut(index))
+        {
+            measure.line_break = LineBreak::Page;
         }
     }
 }

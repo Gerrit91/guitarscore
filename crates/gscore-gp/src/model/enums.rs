@@ -202,11 +202,14 @@ pub enum MeasureClef {
 
 /// A line break directive: `NONE: no line break`, `BREAK: break line`, `Protect the line from breaking`.
 #[repr(u8)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LineBreak {
     None,
     Break,
     Protect,
+    /// GuitarScore addition: start a new page here. GP3-5 files keep it as a line break;
+    /// GP7 files keep it in a GuitarScore attribute of the track (`gsPageBreaks`).
+    Page,
 }
 
 /// A navigation sign like *Coda* (𝄌: U+1D10C) or *Segno* (𝄋 or 𝄉: U+1D10B or U+1D109).

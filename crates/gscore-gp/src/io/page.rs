@@ -88,7 +88,10 @@ impl SongPageOps for Song {
 
         write_i16(
             data,
-            i16::from_le_bytes(self.page_setup.header_and_footer.to_le_bytes()),
+            // GuitarScore addition: only the GP3-5 flags (not the running header).
+            i16::from_le_bytes(
+                (self.page_setup.header_and_footer & HEADER_FOOTER_ALL).to_le_bytes(),
+            ),
         );
         write_int_size_string(data, &self.page_setup.title);
         write_int_size_string(data, &self.page_setup.subtitle);

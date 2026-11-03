@@ -9,8 +9,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use gscore_model::{
-    BeatEffect, BeatIndex, BeatPosition, Dynamic, Fret, MAX_STRINGS, MAX_TEMPO, MeasureIndex,
-    NoteEffect, NoteValue, Pitch, SongTextField, StringNumber, TrackIndex, TrackStaves, VoiceIndex,
+    BeatEffect, BeatIndex, BeatPosition, Dynamic, Fret, MAX_BARS_PER_SYSTEM, MAX_STRINGS,
+    MAX_TEMPO, MeasureIndex, NoteEffect, NoteValue, PageSetup, Pitch, SongTextField, StringNumber,
+    SystemBreak, TrackIndex, TrackStaves, VoiceIndex,
 };
 
 use crate::command::Command;
@@ -293,6 +294,18 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             field: field_arg(args)?,
             text: text_arg(args, "text")?,
         }),
+        "set_page_setup" => Ok(Command::SetPageSetup {
+            setup: page_setup_arg(args)?,
+        }),
+        "set_system_break" => Ok(Command::SetSystemBreak {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            measure: MeasureIndex::new(required_position(args, "measure")?),
+            kind: system_break_arg(args)?,
+        }),
+        "set_bars_per_system" => Ok(Command::SetBarsPerSystem {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            bars: bars_arg(args)?,
+        }),
         "set_tempo" => Ok(Command::SetTempo {
             tempo: tempo_arg(args)?,
         }),
@@ -498,6 +511,94 @@ fn duration_arg(args: &mut Args) -> Result<NoteValue, ParseError> {
             "a note length such as 1/4, 1/8. or 1/16.. (optionally *3:2)",
         )
     })
+}
+
+/// The id of a line break in the command language.
+pub(crate) fn system_break_id(kind: SystemBreak) -> &'static str {
+    match kind {
+        SystemBreak::None => "none",
+        SystemBreak::Line => "line",
+        SystemBreak::Page => "page",
+    }
+}
+
+/// The `break` parameter.
+fn system_break_arg(args: &mut Args) -> Result<SystemBreak, ParseError> {
+    let text = args.required("break")?;
+    [SystemBreak::None, SystemBreak::Line, SystemBreak::Page]
+        .into_iter()
+        .find(|kind| system_break_id(*kind) == text)
+        .ok_or_else(|| bad(args.command, "break", &text, "line, page or none"))
+}
+
+/// The `bars` parameter: 1 to 32, or `auto`.
+fn bars_arg(args: &mut Args) -> Result<Option<u8>, ParseError> {
+    let text = args.required("bars")?;
+    if text == "auto" {
+        return Ok(None);
+    }
+    let expected = "a whole number from 1 to 32, or auto";
+    let bars: u8 = text
+        .parse()
+        .map_err(|_| bad(args.command, "bars", &text, expected))?;
+    if !(1..=MAX_BARS_PER_SYSTEM).contains(&bars) {
+        return Err(bad(args.command, "bars", &text, expected));
+    }
+    Ok(Some(bars))
+}
+
+/// A whole number parameter, or `default` when it is left out.
+fn number_or(
+    args: &mut Args,
+    name: &'static str,
+    default: u16,
+    expected: &'static str,
+) -> Result<u16, ParseError> {
+    match args.take(name) {
+        Some(text) => text
+            .parse()
+            .map_err(|_| bad(args.command, name, &text, expected)),
+        None => Ok(default),
+    }
+}
+
+/// A `true`/`false` parameter, or `default` when it is left out.
+fn bool_or(args: &mut Args, name: &'static str, default: bool) -> Result<bool, ParseError> {
+    if args.values.contains_key(name) {
+        bool_arg(args, name)
+    } else {
+        Ok(default)
+    }
+}
+
+/// The page setup's parameters; left-out ones take Guitar Pro's A4 defaults.
+fn page_setup_arg(args: &mut Args) -> Result<PageSetup, ParseError> {
+    let d = PageSetup::default();
+    let mm = "a whole number of millimetres";
+    let setup = PageSetup {
+        width_mm: number_or(args, "width", d.width_mm, mm)?,
+        height_mm: number_or(args, "height", d.height_mm, mm)?,
+        margins: gscore_model::Margins {
+            top: number_or(args, "top", d.margins.top, mm)?,
+            right: number_or(args, "right", d.margins.right, mm)?,
+            bottom: number_or(args, "bottom", d.margins.bottom, mm)?,
+            left: number_or(args, "left", d.margins.left, mm)?,
+        },
+        scale_percent: number_or(args, "scale", d.scale_percent, "a whole percentage")?,
+        page_numbers: bool_or(args, "page_numbers", d.page_numbers)?,
+        copyright: bool_or(args, "copyright", d.copyright)?,
+        running_header: bool_or(args, "header", d.running_header)?,
+    };
+    setup.check().map_err(|_| {
+        bad(
+            args.command,
+            "width",
+            &format!("{}x{}", setup.width_mm, setup.height_mm),
+            "a page of 70 to 1000 mm with margins leaving 40 mm for the music, and a scale \
+             of 50 to 200 %",
+        )
+    })?;
+    Ok(setup)
 }
 
 /// A `true`/`false` parameter.

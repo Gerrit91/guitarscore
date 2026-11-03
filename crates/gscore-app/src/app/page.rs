@@ -9,7 +9,7 @@ use gscore_play::PlayState;
 
 use super::GuitarScoreApp;
 use super::page_menu::{self, MenuChoice};
-use crate::canvas::{self, POINTS_PER_SPACE};
+use crate::canvas::{self, Arrangement, POINTS_PER_SPACE};
 
 /// How strongly the selection color is laid over the page: the shade the cursor's band and
 /// the selection made together, used for the whole selection.
@@ -17,6 +17,32 @@ const SELECTION_ALPHA: f32 = 0.32;
 
 /// Space around the page inside the view, in points.
 const PAGE_MARGIN: f32 = 24.0;
+/// Room kept above the playing line when the view turns over during playback, in staff
+/// spaces: the bar numbers, section names and tempo marks above the staff stay in view.
+const TURN_HEADROOM: f32 = 7.0;
+
+/// How the view scrolls to the cursor's column `column` when `visible` is shown. While
+/// playing, nothing moves until the column leaves the view; then the view turns over like
+/// a page: the playing line goes to the top (with `headroom` points above it), so what
+/// follows fills the screen. Otherwise the view scrolls just enough to show the column.
+fn cursor_scroll(
+    column: Rect,
+    visible: Rect,
+    playing: bool,
+    headroom: f32,
+) -> Option<(Rect, Option<egui::Align>)> {
+    if !playing {
+        return Some((column, None));
+    }
+    if visible.contains_rect(column) {
+        return None;
+    }
+    let line = Rect::from_min_max(
+        egui::pos2(column.left(), column.top() - headroom),
+        column.max,
+    );
+    Some((line, Some(egui::Align::TOP)))
+}
 
 impl GuitarScoreApp {
     /// The page, scrollable, centered horizontally.
@@ -42,15 +68,39 @@ impl GuitarScoreApp {
         document
             .editor_mut()
             .set_track(TrackIndex::new(self.view.track));
-        let layout = match document.layout(self.view.track, &self.options, fonts) {
+        // The song's page setup shapes both views, so lines break the same in each.
+        let options = self
+            .options
+            .clone()
+            .with_page_setup(&document.song().page_setup());
+        let options = if self.view.page_view {
+            options.on_pages()
+        } else {
+            options
+        };
+        let layout = match document.layout(self.view.track, &options, fonts) {
             Ok(layout) => layout,
             Err(error) => {
+                self.page_info = None;
                 ui.label(error);
                 return;
             }
         };
         let cursor = document.editor().cursor();
         let revision = document.editor().revision();
+        // The cursor's page, for the status bar.
+        self.page_info = self.view.page_view.then(|| {
+            let y = layout
+                .places
+                .column_rect(cursor.measure, cursor.voice, cursor.beat)
+                .map_or(0.0, |rect| rect.origin.y);
+            let page = layout
+                .pages
+                .iter()
+                .rposition(|page| page.origin.y <= y)
+                .unwrap_or(0);
+            (page.saturating_add(1), layout.pages.len())
+        });
         let zoom = self.view.zoom();
         let scale = POINTS_PER_SPACE * zoom;
         let theme = self.view.theme.palette();
@@ -74,9 +124,16 @@ impl GuitarScoreApp {
             self.view.selection = None;
         }
         let scroll_to_cursor = self.shown_cursor != Some((cursor, revision));
+        let page_view = self.view.page_view;
         ScrollArea::both().auto_shrink(false).show(ui, |ui| {
-            let page = canvas::page_size(&layout, zoom);
             let available = ui.available_width();
+            // Zoomed out, as many pages side by side as fit.
+            let arrangement = if page_view {
+                Arrangement::fitting(&layout, available - 2.0 * PAGE_MARGIN, zoom)
+            } else {
+                Arrangement::new(&layout, 1)
+            };
+            let page = canvas::page_size(&layout, &arrangement, zoom);
             let size = egui::vec2(
                 (page.x + 2.0 * PAGE_MARGIN).max(available),
                 page.y + 2.0 * PAGE_MARGIN,
@@ -86,12 +143,23 @@ impl GuitarScoreApp {
                 .accesskit_node_builder(response.id, |node| node.set_label("Score page"));
             let origin = egui::pos2(rect.center().x - page.x / 2.0, rect.top() + PAGE_MARGIN);
             let painter = ui.painter_at(rect);
-            canvas::paint(&painter, origin, &layout, theme, zoom, ui.clip_rect());
+            canvas::paint(
+                &painter,
+                origin,
+                &layout,
+                &arrangement,
+                theme,
+                zoom,
+                ui.clip_rect(),
+            );
+            // A position on the screen as a point of the layout.
+            let to_layout = |pos: egui::Pos2| arrangement.layout_point((pos - origin) / scale);
             // The selection: one solid band per system line it touches.
             if let Some(selection) = document.editor().selection() {
                 for band in
                     selection_bands(&layout.places, document.song(), selection, cursor.track)
                 {
+                    let band = arrangement.rect(band);
                     let rect = Rect::from_min_size(
                         origin + Vec2::new(band.origin.x, band.origin.y) * scale,
                         Vec2::new(band.width, band.height) * scale,
@@ -105,6 +173,7 @@ impl GuitarScoreApp {
             }
 
             let to_screen = |r: gscore_layout::Rect| {
+                let r = arrangement.rect(r);
                 Rect::from_min_size(
                     origin + Vec2::new(r.origin.x, r.origin.y) * scale,
                     Vec2::new(r.width, r.height) * scale,
@@ -126,14 +195,16 @@ impl GuitarScoreApp {
                 // the rest; the selection's one shade covers it already.
                 let column_band = (!in_selection).then_some(column);
                 canvas::paint_cursor(&painter, column_band, string, theme);
-                if scroll_to_cursor {
-                    ui.scroll_to_rect(column, None);
+                if scroll_to_cursor
+                    && let Some((target, align)) =
+                        cursor_scroll(column, ui.clip_rect(), playing, TURN_HEADROOM * scale)
+                {
+                    ui.scroll_to_rect(target, align);
                 }
             }
-            let hit = response.interact_pointer_pos().and_then(|pos| {
-                let at = (pos - origin) / scale;
-                layout.places.hit(Point::new(at.x, at.y))
-            });
+            let hit = response
+                .interact_pointer_pos()
+                .and_then(|pos| layout.places.hit(to_layout(pos)));
             // A right-click acts on what it hits: the cursor goes there first, unless the
             // click is inside the selection (then the menu acts on the selection).
             if response.secondary_clicked()
@@ -183,19 +254,14 @@ impl GuitarScoreApp {
             if response.dragged()
                 && let Some(anchor) = self.drag_anchor
                 && let Some(pos) = response.interact_pointer_pos()
+                && let Some(hit) = layout.places.hit_in_voice(to_layout(pos), anchor.voice)
             {
-                let at = (pos - origin) / scale;
-                if let Some(hit) = layout
-                    .places
-                    .hit_in_voice(Point::new(at.x, at.y), anchor.voice)
-                {
-                    drag_to = Some(Cursor {
-                        measure: hit.measure,
-                        beat: hit.beat,
-                        string: hit.string,
-                        ..anchor
-                    });
-                }
+                drag_to = Some(Cursor {
+                    measure: hit.measure,
+                    beat: hit.beat,
+                    string: hit.string,
+                    ..anchor
+                });
             }
             if let (Some(anchor), Some(focus)) = (self.drag_anchor, drag_to) {
                 document.editor_mut().set_selection(Some(Selection::Beats {
@@ -215,8 +281,7 @@ impl GuitarScoreApp {
                 document.editor_mut().set_selection(None);
                 self.view.selection = None;
                 if let Some(pos) = response.interact_pointer_pos() {
-                    let at = (pos - origin) / scale;
-                    clicked = Some(Point::new(at.x, at.y));
+                    clicked = Some(to_layout(pos));
                 }
             }
         });
@@ -293,6 +358,31 @@ mod tests {
 
     use gscore_edit::{BeatSpot, Selection};
     use gscore_layout::{BeatPlace, MeasurePlace, Places, SystemPlace};
+
+    use super::cursor_scroll;
+    use egui::Rect;
+
+    #[test]
+    fn playback_turns_the_view_over_instead_of_creeping_a_line_at_a_time() {
+        let visible = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
+        let column = |top: f32| Rect::from_min_size(egui::pos2(100.0, top), egui::vec2(4.0, 80.0));
+        // Editing: always just make the column visible.
+        assert_eq!(
+            cursor_scroll(column(300.0), visible, false, 30.0),
+            Some((column(300.0), None))
+        );
+        // Playing on a visible line: the view stays.
+        assert_eq!(cursor_scroll(column(300.0), visible, true, 30.0), None);
+        // The playing line runs off the bottom: it goes to the top, headroom above it.
+        let (target, align) = cursor_scroll(column(560.0), visible, true, 30.0).unwrap();
+        assert_eq!(align, Some(egui::Align::TOP));
+        assert!((target.top() - 530.0).abs() < 1e-3);
+        assert!((target.bottom() - column(560.0).bottom()).abs() < 1e-3);
+        // A repeat jumps back above the view: the same, that line to the top.
+        let (target, align) = cursor_scroll(column(-400.0), visible, true, 30.0).unwrap();
+        assert!((target.top() + 430.0).abs() < 1e-3);
+        assert_eq!(align, Some(egui::Align::TOP));
+    }
     use gscore_model::testing::{self, GUITAR_6};
     use gscore_model::{BeatIndex, MeasureIndex, TrackIndex, VoiceIndex};
 

@@ -22,6 +22,10 @@ pub(crate) enum Event {
     PickedSoundFont(Option<PathBuf>),
     /// The save dialog closed; `None` if it was cancelled.
     PickedSave(Option<PathBuf>),
+    /// The PDF export dialog closed; `None` if it was cancelled.
+    PickedPdf(Option<PathBuf>),
+    /// A PDF export finished (a message for the status bar) or failed (why).
+    Exported(Result<String, String>),
     /// A save finished or failed.
     Saved {
         /// The file.
@@ -300,6 +304,38 @@ impl Tasks {
         })
     }
 
+    /// Shows the PDF export dialog in the background, suggesting `name`.
+    pub(crate) fn pick_pdf_file(
+        &mut self,
+        name: String,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        self.spawn("export dialog", ctx, move || {
+            let picked = rfd::FileDialog::new()
+                .set_title("Export as PDF")
+                .add_filter("PDF", &["pdf"])
+                .set_file_name(name)
+                .save_file();
+            Event::PickedPdf(picked)
+        })
+    }
+
+    /// Lays out `track` of `song` on pages with `options` and writes it to `path` as PDF,
+    /// in the background. The file is written next to `path` first and then moved there,
+    /// so a failed export never leaves half a file.
+    pub(crate) fn export_pdf(
+        &mut self,
+        song: Song,
+        track: usize,
+        options: gscore_layout::LayoutOptions,
+        path: PathBuf,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        self.spawn("PDF export", ctx, move || {
+            Event::Exported(export_pdf(&song, track, &options, &path))
+        })
+    }
+
     /// Saves `song` (editor `revision`) to `path` as `.gp` in the background, with the
     /// safe-save procedure of `gscore-session`.
     pub(crate) fn save(
@@ -395,5 +431,71 @@ impl Tasks {
             .map_err(|e| format!("cannot start the {name}: {e}"))?;
         self.running = self.running.saturating_add(1);
         Ok(())
+    }
+}
+
+/// The work of [`Tasks::export_pdf`]: the status message, or why it failed.
+fn export_pdf(
+    song: &Song,
+    track: usize,
+    options: &gscore_layout::LayoutOptions,
+    path: &std::path::Path,
+) -> Result<String, String> {
+    let fonts = gscore_layout::Fonts::bundled().map_err(|e| e.to_string())?;
+    let layout =
+        gscore_layout::layout_track(song, gscore_model::TrackIndex::new(track), options, &fonts)
+            .map_err(|e| e.to_string())?;
+    let pdf = gscore_layout::to_pdf(
+        &layout,
+        &gscore_layout::Theme::LIGHT,
+        options.staff_space_mm,
+        &gscore_layout::PdfFonts::bundled(),
+        song.title(),
+    )
+    .map_err(|e| e.to_string())?;
+    let name = path.file_name().map_or_else(
+        || "export.pdf".to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    let temp = path.with_file_name(format!(".{name}.gscore-tmp-{}", std::process::id()));
+    std::fs::write(&temp, &pdf)
+        .and_then(|()| std::fs::rename(&temp, path))
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&temp);
+            format!("cannot write {}: {e}", path.display())
+        })?;
+    let pages = layout.pages.len();
+    Ok(format!(
+        "Exported {name} ({pages} page{})",
+        if pages == 1 { "" } else { "s" }
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pdf_export_writes_pages_or_fails_without_leaving_a_file() {
+        let dir = std::env::temp_dir().join(format!("gscore-pdf-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let song = gscore_model::testing::song(&[gscore_model::testing::GUITAR_6], 80).unwrap();
+        let options = gscore_layout::LayoutOptions::default()
+            .with_page_setup(&song.page_setup())
+            .on_pages();
+        let path = dir.join("song.pdf");
+        let message = export_pdf(&song, 0, &options, &path).unwrap();
+        assert!(message.contains("pages"), "{message}");
+        assert!(std::fs::read(&path).unwrap().starts_with(b"%PDF-"));
+
+        let missing = dir.join("no such folder").join("song.pdf");
+        assert!(export_pdf(&song, 0, &options, &missing).is_err());
+        assert!(
+            export_pdf(&song, 9, &options, &dir.join("other.pdf")).is_err(),
+            "no track 10"
+        );
+        let left: Vec<_> = std::fs::read_dir(&dir).unwrap().collect();
+        assert_eq!(left.len(), 1, "only the exported file, no temporary one");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

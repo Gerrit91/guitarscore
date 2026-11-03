@@ -30,19 +30,34 @@ pub(crate) struct SystemPlan {
     pub(crate) stretch: f32,
 }
 
+/// Where lines must or may break, besides the width.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Breaks<'a> {
+    /// `forced[i]`: measure `i` starts a new line (a line or page break).
+    pub(crate) forced: &'a [bool],
+    /// At most this many measures on a line.
+    pub(crate) max_measures: Option<usize>,
+}
+
 /// Breaks measures into systems of at most `line_width`, each starting with `prefix`
-/// (clef and gaps). A measure wider than a line gets a line of its own. Every system but the
-/// last is stretched to the full width; the last only if it is already mostly full.
+/// (clef and gaps), and before every forced break and after `max_measures`. A measure wider
+/// than a line gets a line of its own. Every system but the last is stretched to the full
+/// width; the last only if it is already mostly full.
 pub(crate) fn break_systems(
     widths: &[MeasureWidth],
     line_width: f32,
     prefix: f32,
+    breaks: Breaks<'_>,
 ) -> Vec<SystemPlan> {
     let mut plans = Vec::new();
     let mut start = 0;
     let mut used = prefix;
     for (index, width) in widths.iter().enumerate() {
-        if index > start && used + width.natural() > line_width {
+        let forced = breaks.forced.get(index).copied().unwrap_or(false);
+        let full = breaks
+            .max_measures
+            .is_some_and(|max| index.saturating_sub(start) >= max.max(1));
+        if index > start && (forced || full || used + width.natural() > line_width) {
             plans.push(start..index);
             start = index;
             used = prefix;
@@ -95,7 +110,7 @@ mod tests {
     #[test]
     fn measures_fill_lines_greedily() {
         let widths = [w(1.0, 9.0); 5];
-        let plans = break_systems(&widths, 40.0, 2.0);
+        let plans = break_systems(&widths, 40.0, 2.0, Breaks::default());
         let ranges: Vec<_> = plans.iter().map(|p| p.measures.clone()).collect();
         assert_eq!(ranges, [0..3, 3..5]);
         // 2 + 3 * 1 fixed and 27 stretchable, stretched to fill 40.
@@ -106,21 +121,65 @@ mod tests {
 
     #[test]
     fn a_mostly_full_last_line_is_justified() {
-        let plans = break_systems(&[w(1.0, 25.0)], 32.0, 2.0);
+        let plans = break_systems(&[w(1.0, 25.0)], 32.0, 2.0, Breaks::default());
         assert!(plans[0].stretch > 1.0);
     }
 
     #[test]
     fn a_measure_wider_than_the_line_gets_its_own_line() {
-        let plans = break_systems(&[w(1.0, 5.0), w(1.0, 100.0), w(1.0, 5.0)], 32.0, 2.0);
+        let plans = break_systems(
+            &[w(1.0, 5.0), w(1.0, 100.0), w(1.0, 5.0)],
+            32.0,
+            2.0,
+            Breaks::default(),
+        );
         let ranges: Vec<_> = plans.iter().map(|p| p.measures.clone()).collect();
         assert_eq!(ranges, [0..1, 1..2, 2..3]);
         assert_eq!(plans[1].stretch, 1.0, "overfull lines are not squeezed");
     }
 
+    fn ranges(plans: &[SystemPlan]) -> Vec<Range<usize>> {
+        plans.iter().map(|p| p.measures.clone()).collect()
+    }
+
+    #[test]
+    fn forced_breaks_and_a_bar_limit_start_new_lines() {
+        let widths = [w(1.0, 4.0); 8];
+        // Room for 6 measures a line by width.
+        let free = break_systems(&widths, 32.0, 2.0, Breaks::default());
+        assert_eq!(ranges(&free), [0..6, 6..8]);
+        let forced = [false, false, true, false, false, false, false, true];
+        let breaks = Breaks {
+            forced: &forced,
+            max_measures: None,
+        };
+        assert_eq!(
+            ranges(&break_systems(&widths, 32.0, 2.0, breaks)),
+            [0..2, 2..7, 7..8]
+        );
+        let limited = Breaks {
+            forced: &forced,
+            max_measures: Some(3),
+        };
+        assert_eq!(
+            ranges(&break_systems(&widths, 32.0, 2.0, limited)),
+            [0..2, 2..5, 5..7, 7..8]
+        );
+        // A break on the first measure changes nothing; a limit of 0 means one a line.
+        let first = [true];
+        let odd = Breaks {
+            forced: &first,
+            max_measures: Some(0),
+        };
+        assert_eq!(
+            ranges(&break_systems(&widths[..3], 32.0, 2.0, odd)),
+            [0..1, 1..2, 2..3]
+        );
+    }
+
     #[test]
     fn nothing_to_break_gives_no_systems() {
-        assert!(break_systems(&[], 32.0, 2.0).is_empty());
+        assert!(break_systems(&[], 32.0, 2.0, Breaks::default()).is_empty());
         assert_eq!(justify(10.0, 0.0), 1.0);
         assert_eq!(justify(f32::NAN, 1.0), 1.0);
     }

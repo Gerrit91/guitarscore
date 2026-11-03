@@ -567,3 +567,104 @@ fn the_score_and_the_menu_bar_edit_bars_and_tracks() {
         "the menu bar adds a bar"
     );
 }
+
+#[test]
+fn the_view_menu_switches_between_pages_and_the_endless_page() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    assert!(harness.state().view().page_view, "pages by default");
+    harness.get_by_label("Page 1 of 1");
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Endless view").click();
+    harness.run();
+    assert!(!harness.state().view().page_view);
+    assert!(harness.query_by_label("Page 1 of 1").is_none());
+    assert!(
+        !harness.state().settings().page_view,
+        "remembered in the settings"
+    );
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Page view").click();
+    harness.run();
+    assert!(harness.state().view().page_view);
+}
+
+#[test]
+fn breaks_bars_per_line_and_the_page_setup_are_edited_from_the_menus() {
+    let mut harness = app_with(&testdata("basic/ornaments.gp"));
+    let song = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness.state().document().unwrap().song().clone()
+    };
+    let track = gscore_model::TrackIndex::new(0);
+    let break_at = |harness: &Harness<'static, GuitarScoreApp>, measure: usize| {
+        song(harness)
+            .track(track)
+            .unwrap()
+            .measures()
+            .nth(measure)
+            .unwrap()
+            .system_break()
+    };
+    // Guitar Pro's three bars a line come in as line breaks.
+    assert_eq!(break_at(&harness, 3), gscore_model::SystemBreak::Line);
+    harness.get_by_label("Page 1 of 1");
+
+    // A page break before bar 7, from the menu bar's Bar menu.
+    {
+        let document = harness.state_mut().document_mut().unwrap();
+        let mut cursor = document.editor().cursor();
+        cursor.measure = gscore_model::MeasureIndex::new(6);
+        cursor.beat = gscore_model::BeatIndex::new(0);
+        document.editor_mut().set_cursor(cursor);
+    }
+    harness.run();
+    let menu = |harness: &mut Harness<'static, GuitarScoreApp>, title: &str, entry: &str| {
+        harness.get_all_by_label(title).next().unwrap().click();
+        harness.run();
+        harness.get_by_label_contains(entry).click_accesskit();
+        harness.run();
+    };
+    menu(&mut harness, "Bar", "Page break before this bar");
+    assert_eq!(break_at(&harness, 6), gscore_model::SystemBreak::Page);
+    harness.get_by_label("Page 2 of 2");
+    // Ticked now: clicking again removes it.
+    menu(&mut harness, "Bar", "Page break before this bar");
+    assert_eq!(break_at(&harness, 6), gscore_model::SystemBreak::None);
+
+    // Two bars a line, from the Track menu.
+    harness.get_all_by_label("Track").next().unwrap().click();
+    harness.run();
+    harness.get_by_label("Bars per line").click_accesskit();
+    harness.run();
+    harness.get_by_label("2").click_accesskit();
+    harness.run();
+    assert_eq!(
+        song(&harness).track(track).unwrap().bars_per_system(),
+        Some(2)
+    );
+
+    // Landscape from the settings window's Page layout tab: one undo step.
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Settings…").click();
+    harness.run();
+    harness.get_by_label("Page layout").click();
+    harness.run();
+    harness.get_by_label("Page preview");
+    harness.get_by_label("Landscape").click();
+    harness.run();
+    harness.get_by_label("Apply").click();
+    harness.run();
+    assert!(song(&harness).page_setup().is_landscape());
+    harness.get_by_label("Close Settings").click();
+    harness.run();
+    harness.get_by_label("Edit").click();
+    harness.run();
+    harness.get_by_label_contains("Undo ctrl+z").click();
+    harness.run();
+    assert!(
+        !song(&harness).page_setup().is_landscape(),
+        "undone in one step"
+    );
+}

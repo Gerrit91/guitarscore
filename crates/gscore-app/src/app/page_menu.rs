@@ -4,7 +4,7 @@
 //! the selection.
 
 use gscore_edit::{ActionId, Command, Keymap};
-use gscore_model::{MeasureIndex, TrackIndex};
+use gscore_model::{MeasureIndex, SystemBreak, TrackIndex};
 
 use super::GuitarScoreApp;
 use super::edit_effects::action_is_on;
@@ -42,7 +42,23 @@ pub(super) struct MenuTarget<'a> {
     /// The cursor's bar and how many there are.
     pub(super) measure: usize,
     pub(super) measures: usize,
+    /// Whether the cursor's bar starts a new line or page.
+    pub(super) system_break: SystemBreak,
+    /// The shown track's bars-per-line limit.
+    pub(super) bars_per_system: Option<u8>,
 }
+
+/// The choices of the Track › Bars per line menu.
+const BARS_PER_LINE: [Option<u8>; 8] = [
+    None,
+    Some(1),
+    Some(2),
+    Some(3),
+    Some(4),
+    Some(5),
+    Some(6),
+    Some(8),
+];
 
 /// Note techniques, toggled like their palette tiles.
 const TECHNIQUES: &[ActionId] = &[
@@ -106,12 +122,18 @@ pub(super) fn with_target<R>(
     let editor = document.editor();
     let at = editor.cursor();
     let snapshot = PaletteSnapshot::of(document.song(), at, editor.selection());
+    let track = document.song().track(at.track);
     show(&MenuTarget {
         snapshot: &snapshot,
         track: at.track.get(),
         tracks: document.song().track_count(),
         measure: at.measure.get(),
         measures: document.song().measure_count(),
+        system_break: track
+            .as_ref()
+            .and_then(|track| track.measures().nth(at.measure.get()))
+            .map_or(SystemBreak::None, |measure| measure.system_break()),
+        bars_per_system: track.and_then(|track| track.bars_per_system()),
     })
 }
 
@@ -200,6 +222,27 @@ impl Menu<'_> {
         }
     }
 
+    /// A ticked (`on`) or plain entry that runs `command`.
+    fn toggle(
+        &mut self,
+        ui: &mut egui::Ui,
+        label: &str,
+        on: bool,
+        enabled: bool,
+        command: Command,
+    ) {
+        if ui
+            .add_enabled(enabled, egui::Button::selectable(on, label))
+            .clicked()
+        {
+            self.choices.push(MenuChoice::Grid(GridAction::Command {
+                command,
+                merge: false,
+            }));
+            ui.close();
+        }
+    }
+
     fn note(&mut self, ui: &mut egui::Ui) {
         let notes = !self.snapshot.note_targets.is_empty();
         let beats = !self.snapshot.beats.is_empty();
@@ -251,6 +294,25 @@ impl Menu<'_> {
             target.measures > 1,
         );
         ui.separator();
+        // A bar starts a new line or page; clicking the ticked one removes the break.
+        for (label, kind) in [
+            ("Line break before this bar", SystemBreak::Line),
+            ("Page break before this bar", SystemBreak::Page),
+        ] {
+            let on = target.system_break == kind;
+            self.toggle(
+                ui,
+                label,
+                on,
+                target.measure > 0,
+                Command::SetSystemBreak {
+                    track: TrackIndex::new(target.track),
+                    measure: MeasureIndex::new(target.measure),
+                    kind: if on { SystemBreak::None } else { kind },
+                },
+            );
+        }
+        ui.separator();
         self.grid(
             ui,
             "Select bar",
@@ -279,6 +341,20 @@ impl Menu<'_> {
                 at: track.saturating_add(1),
             },
         );
+        ui.menu_button("Bars per line", |ui| {
+            for bars in BARS_PER_LINE {
+                let label =
+                    bars.map_or_else(|| "As many as fit".to_owned(), |bars| bars.to_string());
+                self.toggle(
+                    ui,
+                    &label,
+                    target.bars_per_system == bars,
+                    true,
+                    Command::SetBarsPerSystem { track: index, bars },
+                );
+            }
+        });
+        ui.separator();
         self.grid(
             ui,
             "Duplicate track",

@@ -1,9 +1,10 @@
 //! The command enum: what an edit is, whether it can run, and how it applies.
 
 use gscore_model::{
-    BeatEffect, BeatKind, BeatPosition, BeatView, Change, Dynamic, Fret, MAX_SECTION_TITLE_CHARS,
-    MAX_TEMPO, MeasureIndex, ModelError, NoteEffect, NoteValue, Pitch, Song, SongTextField,
-    StringNumber, TimeSignature, TrackColor, TrackIndex, TrackStaves,
+    BeatEffect, BeatKind, BeatPosition, BeatView, Change, Dynamic, Fret, MAX_BARS_PER_SYSTEM,
+    MAX_SECTION_TITLE_CHARS, MAX_TEMPO, MeasureIndex, ModelError, NoteEffect, NoteValue, PageSetup,
+    Pitch, Song, SongTextField, StringNumber, SystemBreak, TimeSignature, TrackColor, TrackIndex,
+    TrackStaves,
 };
 
 use crate::info::{
@@ -16,6 +17,7 @@ use crate::info::{
     SET_TRACK_PROGRAM, SET_TRACK_REVERB, SET_TRACK_SOLO, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH,
     SET_TRACK_STRINGS, SET_TRACK_VOLUME, UNDO,
 };
+use crate::info::{SET_BARS_PER_SYSTEM, SET_PAGE_SETUP, SET_SYSTEM_BREAK};
 
 /// One edit, with every parameter already checked for syntax and range.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -197,6 +199,27 @@ pub enum Command {
         string: StringNumber,
         /// The open-string pitch.
         pitch: Pitch,
+    },
+    /// Set how the song is printed: paper, margins, score size, header and footer.
+    SetPageSetup {
+        /// The new page setup.
+        setup: PageSetup,
+    },
+    /// Make a measure of a track start a new line or page, or remove its break.
+    SetSystemBreak {
+        /// The track.
+        track: TrackIndex,
+        /// The measure (not the first).
+        measure: MeasureIndex,
+        /// The break.
+        kind: SystemBreak,
+    },
+    /// Limit how many bars a line of a track holds (`None`: as many as fit).
+    SetBarsPerSystem {
+        /// The track.
+        track: TrackIndex,
+        /// The limit, 1 to 32.
+        bars: Option<u8>,
     },
     /// Set one text field of the song.
     SetSongText {
@@ -403,6 +426,35 @@ impl Command {
                     crate::parse::encode_text(text)
                 )
             }
+            Command::SetPageSetup { setup } => format!(
+                "{id} width={} height={} top={} right={} bottom={} left={} scale={} \
+                 page_numbers={} copyright={} header={}",
+                setup.width_mm,
+                setup.height_mm,
+                setup.margins.top,
+                setup.margins.right,
+                setup.margins.bottom,
+                setup.margins.left,
+                setup.scale_percent,
+                setup.page_numbers,
+                setup.copyright,
+                setup.running_header
+            ),
+            Command::SetSystemBreak {
+                track,
+                measure,
+                kind,
+            } => format!(
+                "{id} track={} measure={} break={}",
+                one(track.get()),
+                one(measure.get()),
+                crate::parse::system_break_id(*kind)
+            ),
+            Command::SetBarsPerSystem { track, bars } => format!(
+                "{id} track={} bars={}",
+                one(track.get()),
+                bars.map_or_else(|| "auto".to_owned(), |bars| bars.to_string())
+            ),
             Command::SetTempo { tempo } => format!("{id} tempo={tempo}"),
             Command::SetBeatRest { at: p } => format!("{id} {}", at(p)),
             Command::SetTie { at: p, string, tie } => {
@@ -536,6 +588,9 @@ impl Command {
             Command::SetTrackStrings { .. } => &SET_TRACK_STRINGS,
             Command::SetTrackStringPitch { .. } => &SET_TRACK_STRING_PITCH,
             Command::SetSongText { .. } => &SET_SONG_TEXT,
+            Command::SetPageSetup { .. } => &SET_PAGE_SETUP,
+            Command::SetSystemBreak { .. } => &SET_SYSTEM_BREAK,
+            Command::SetBarsPerSystem { .. } => &SET_BARS_PER_SYSTEM,
             Command::SetTempo { .. } => &SET_TEMPO,
             Command::SetBeatRest { .. } => &SET_BEAT_REST,
             Command::SetTie { .. } => &SET_TIE,
@@ -681,6 +736,9 @@ impl Command {
             Command::RenameTrack { .. }
             | Command::SetTrackColor { .. }
             | Command::SetSongText { .. }
+            | Command::SetPageSetup { .. }
+            | Command::SetSystemBreak { .. }
+            | Command::SetBarsPerSystem { .. }
             | Command::SetTrackStaves { .. }
             | Command::SetSection { .. }
             | Command::ClearSection { .. }
@@ -826,6 +884,20 @@ impl Command {
                 .track(*track)
                 .is_some_and(|view| usize::from(string.get()) <= view.string_count()),
             Command::SetSongText { field, text } => field.check(text).is_ok(),
+            Command::SetPageSetup { setup } => setup.check().is_ok(),
+            Command::SetSystemBreak {
+                track,
+                measure,
+                kind,
+            } => {
+                track.get() < song.track_count()
+                    && measure.get() < song.measure_count()
+                    && (measure.get() > 0 || *kind == SystemBreak::None)
+            }
+            Command::SetBarsPerSystem { track, bars } => {
+                track.get() < song.track_count()
+                    && bars.is_none_or(|bars| (1..=MAX_BARS_PER_SYSTEM).contains(&bars))
+            }
             Command::SetTempo { tempo } => (1..=MAX_TEMPO).contains(tempo),
             Command::SetBeatRest { at } => song.beat(*at).is_some(),
             Command::SetDynamic { at, .. } => song
@@ -918,6 +990,13 @@ impl Command {
                 pitch,
             } => song.set_track_string_pitch(*track, *string, *pitch),
             Command::SetSongText { field, text } => song.set_text(*field, text),
+            Command::SetPageSetup { setup } => song.set_page_setup(*setup),
+            Command::SetSystemBreak {
+                track,
+                measure,
+                kind,
+            } => song.set_system_break(*track, *measure, *kind),
+            Command::SetBarsPerSystem { track, bars } => song.set_bars_per_system(*track, *bars),
             Command::SetTempo { tempo } => song.set_tempo(*tempo),
             Command::SetBeatRest { at } => song.set_beat_rest(*at),
             Command::SetTie { at, string, tie } => song.set_note_tie(*at, *string, *tie),

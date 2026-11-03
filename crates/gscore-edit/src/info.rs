@@ -518,6 +518,82 @@ pub(crate) const SET_SONG_TEXT: CommandInfo = CommandInfo {
     params: &[FIELD, TEXT],
 };
 
+const fn page_mm(name: &'static str, default: &'static str, help: &'static str) -> ParamInfo {
+    ParamInfo {
+        name,
+        required: false,
+        default: Some(default),
+        help,
+    }
+}
+
+const PAGE_PARAMS: &[ParamInfo] = &[
+    page_mm(
+        "width",
+        "210",
+        "Paper width in mm, 70 to 1000 (wider than tall is landscape)",
+    ),
+    page_mm("height", "297", "Paper height in mm, 70 to 1000"),
+    page_mm("top", "15", "Top margin in mm, 0 to 200"),
+    page_mm("right", "10", "Right margin in mm, 0 to 200"),
+    page_mm("bottom", "10", "Bottom margin in mm, 0 to 200"),
+    page_mm("left", "10", "Left margin in mm, 0 to 200"),
+    page_mm("scale", "100", "Score size in percent, 50 to 200"),
+    page_mm(
+        "page_numbers",
+        "true",
+        "Page numbers at the bottom: true or false",
+    ),
+    page_mm(
+        "copyright",
+        "true",
+        "The copyright on the first page: true or false",
+    ),
+    page_mm(
+        "header",
+        "false",
+        "Title and artist atop later pages: true or false",
+    ),
+];
+
+pub(crate) const SET_PAGE_SETUP: CommandInfo = CommandInfo {
+    id: "set_page_setup",
+    aliases: &[],
+    label: "Set up the page",
+    help: "Sets the paper size, margins, score size, and what the header and footer show.",
+    params: PAGE_PARAMS,
+};
+
+const BREAK: ParamInfo = ParamInfo {
+    name: "break",
+    required: true,
+    default: None,
+    help: "line (new line), page (new page) or none",
+};
+
+pub(crate) const SET_SYSTEM_BREAK: CommandInfo = CommandInfo {
+    id: "set_system_break",
+    aliases: &["set_line_break"],
+    label: "Set a line break",
+    help: "Starts a new line or page at the measure (not the first), or removes the break.",
+    params: &[TRACK, MEASURE, BREAK],
+};
+
+const BARS: ParamInfo = ParamInfo {
+    name: "bars",
+    required: true,
+    default: None,
+    help: "At most this many bars per line, 1 to 32, or auto",
+};
+
+pub(crate) const SET_BARS_PER_SYSTEM: CommandInfo = CommandInfo {
+    id: "set_bars_per_system",
+    aliases: &["set_bars_per_line"],
+    label: "Set the bars per line",
+    help: "Limits how many bars a line of the track holds; auto fits as many as the width allows.",
+    params: &[TRACK, BARS],
+};
+
 pub(crate) const SET_TEMPO: CommandInfo = CommandInfo {
     id: "set_tempo",
     aliases: &[],
@@ -668,6 +744,9 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_TRACK_STRINGS,
     SET_TRACK_STRING_PITCH,
     SET_SONG_TEXT,
+    SET_PAGE_SETUP,
+    SET_SYSTEM_BREAK,
+    SET_BARS_PER_SYSTEM,
     SET_TEMPO,
     SET_BEAT_REST,
     SET_TIE,

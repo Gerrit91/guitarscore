@@ -120,6 +120,40 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Asks where to export the shown track as PDF.
+    pub(super) fn ask_export_pdf(&mut self, ctx: &egui::Context) {
+        let Some(document) = &self.document else {
+            return;
+        };
+        let stem = document.path().file_stem().map_or_else(
+            || "Untitled".to_owned(),
+            |s| s.to_string_lossy().into_owned(),
+        );
+        if let Err(error) = self.tasks.pick_pdf_file(format!("{stem}.pdf"), ctx) {
+            self.notice = Some(error);
+        }
+    }
+
+    /// Exports the shown track to `path` as PDF in the background, on pages with the
+    /// song's page setup (whatever the view shows).
+    fn start_pdf_export(&mut self, path: PathBuf, ctx: &egui::Context) {
+        let Some(document) = &self.document else {
+            return;
+        };
+        let song = document.song().clone();
+        let options = self
+            .options
+            .clone()
+            .with_page_setup(&song.page_setup())
+            .on_pages();
+        if let Err(error) = self
+            .tasks
+            .export_pdf(song, self.view.track, options, path, ctx)
+        {
+            self.notice = Some(error);
+        }
+    }
+
     /// Saves the current song to `path` in the background.
     fn start_save(&mut self, path: PathBuf, allow_losses: bool, ctx: &egui::Context) {
         let Some(document) = &self.document else {
@@ -178,6 +212,22 @@ impl GuitarScoreApp {
                 Event::PickedSoundFont(None) => {}
                 // Cancelled: whatever was waiting for the save does not happen.
                 Event::PickedSave(None) => self.after_save = None,
+                Event::PickedPdf(Some(path)) => {
+                    let path = if path
+                        .extension()
+                        .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+                    {
+                        path
+                    } else {
+                        path.with_extension("pdf")
+                    };
+                    self.start_pdf_export(path, ctx);
+                }
+                Event::PickedPdf(None) => {}
+                Event::Exported(Ok(message)) => self.status = Some(message),
+                Event::Exported(Err(error)) => {
+                    self.notice = Some(format!("Not exported: {error}"));
+                }
                 Event::Saved {
                     path,
                     revision,

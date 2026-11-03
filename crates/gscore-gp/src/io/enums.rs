@@ -254,7 +254,7 @@ pub(crate) fn get_line_break(value: u8) -> LineBreak {
 pub(crate) fn from_line_break(value: &LineBreak) -> u8 {
     match value {
         LineBreak::None => 0,
-        LineBreak::Break => 1,
+        LineBreak::Break | LineBreak::Page => 1,
         LineBreak::Protect => 2,
     }
 }

@@ -82,11 +82,11 @@ pub(crate) fn draw(
     ops: &mut Vec<DrawOp>,
 ) -> Result<f32, LayoutError> {
     let options = ctx.options;
-    let center = options.page_width / 2.0;
-    let right = options.page_width - options.margin_x;
-    let left = options.margin_x;
+    let left = options.margin_left;
+    let right = options.page_width - options.margin_right;
+    let center = (left + right) / 2.0;
     let mut lines = Lines {
-        y: options.margin_y,
+        y: options.margin_top,
         ops,
     };
 

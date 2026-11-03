@@ -148,7 +148,7 @@ fn long_songs_break_into_lines_that_fit_the_page() {
     let layout = common::layout_tab_only(&song, 0);
     assert_on_page(&layout, "200 measures");
     assert!(systems(&layout, 6) > 10, "{} systems", systems(&layout, 6));
-    let right_margin = LayoutOptions::default().page_width - LayoutOptions::default().margin_x;
+    let right_margin = LayoutOptions::default().page_width - LayoutOptions::default().margin_right;
     for op in &layout.ops {
         if let DrawOp::Line { to, .. } = op {
             assert!(to.x <= right_margin + 1e-3, "{op:?} runs into the margin");
@@ -182,7 +182,8 @@ fn odd_options_do_not_panic() {
         },
         LayoutOptions {
             page_width: 0.0,
-            margin_x: 100.0,
+            margin_left: 100.0,
+            margin_right: 100.0,
             ..LayoutOptions::default()
         },
         LayoutOptions {

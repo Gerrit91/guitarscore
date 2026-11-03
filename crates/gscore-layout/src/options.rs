@@ -7,10 +7,23 @@ pub struct LayoutOptions {
     pub staff_space_mm: f32,
     /// Page width.
     pub page_width: f32,
-    /// Left and right page margin.
-    pub margin_x: f32,
-    /// Top and bottom page margin.
-    pub margin_y: f32,
+    /// Page height for a layout on separate pages; `None` lays the score out on one
+    /// endless page.
+    pub page_height: Option<f32>,
+    /// The paper's height in millimetres, used by [`LayoutOptions::on_pages`]; `None` is
+    /// A4.
+    pub paper_height_mm: Option<f32>,
+    /// Page margins.
+    pub margin_left: f32,
+    pub margin_right: f32,
+    pub margin_top: f32,
+    pub margin_bottom: f32,
+    /// On pages: "Page 2/5" at the bottom right of each page.
+    pub page_numbers: bool,
+    /// On pages: the song's copyright at the bottom of the first page.
+    pub copyright: bool,
+    /// On pages: "title by artist" atop every page after the first.
+    pub running_header: bool,
     /// Distance between two lines of the tab staff.
     pub tab_line_spacing: f32,
     /// Font size of fret numbers.
@@ -46,8 +59,75 @@ pub struct Spacing {
     pub barline_padding: f32,
 }
 
-/// A4 width in millimetres.
+/// A4 width and height in millimetres.
 const A4_WIDTH_MM: f32 = 210.0;
+const A4_HEIGHT_MM: f32 = 297.0;
+/// The staff space at score size 100 %, in millimetres.
+const STAFF_SPACE_MM: f32 = 1.75;
+
+impl LayoutOptions {
+    /// These options with the score on separate pages of the options' paper (A4 unless
+    /// [`LayoutOptions::with_page_setup`] set another).
+    pub fn on_pages(self) -> Self {
+        let height_mm = self.paper_height_mm.unwrap_or(A4_HEIGHT_MM);
+        LayoutOptions {
+            page_height: Some(height_mm / self.staff_space_mm),
+            ..self
+        }
+    }
+
+    /// These options with the song's page setup: paper, margins, score size (a bigger
+    /// score has a bigger staff space, so fewer bars fit), header and footer. Still one
+    /// endless page until [`LayoutOptions::on_pages`].
+    pub fn with_page_setup(self, setup: &gscore_model::PageSetup) -> Self {
+        let space = STAFF_SPACE_MM * f32::from(setup.scale_percent) / 100.0;
+        let space = if space.is_finite() && space > 0.0 {
+            space
+        } else {
+            STAFF_SPACE_MM
+        };
+        let spaces = |mm: u16| f32::from(mm) / space;
+        LayoutOptions {
+            staff_space_mm: space,
+            page_width: spaces(setup.width_mm),
+            paper_height_mm: Some(f32::from(setup.height_mm)),
+            page_height: self.page_height.map(|_| f32::from(setup.height_mm) / space),
+            margin_left: spaces(setup.margins.left),
+            margin_right: spaces(setup.margins.right),
+            margin_top: spaces(setup.margins.top),
+            margin_bottom: spaces(setup.margins.bottom),
+            page_numbers: setup.page_numbers,
+            copyright: setup.copyright,
+            running_header: setup.running_header,
+            ..self
+        }
+    }
+
+    /// These options without what only places measures on pages (paper, margins, staff
+    /// size, header and footer): what one measure's layout depends on, for the cache key.
+    pub(crate) fn for_measures(&self) -> Self {
+        let page = LayoutOptions::default();
+        LayoutOptions {
+            staff_space_mm: page.staff_space_mm,
+            page_width: page.page_width,
+            page_height: None,
+            paper_height_mm: None,
+            margin_left: page.margin_left,
+            margin_right: page.margin_right,
+            margin_top: page.margin_top,
+            margin_bottom: page.margin_bottom,
+            page_numbers: page.page_numbers,
+            copyright: page.copyright,
+            running_header: page.running_header,
+            ..self.clone()
+        }
+    }
+
+    /// The width between the left and right margins.
+    pub fn line_width(&self) -> f32 {
+        self.page_width - self.margin_left - self.margin_right
+    }
+}
 
 impl Default for LayoutOptions {
     fn default() -> Self {
@@ -55,8 +135,15 @@ impl Default for LayoutOptions {
         LayoutOptions {
             staff_space_mm,
             page_width: A4_WIDTH_MM / staff_space_mm,
-            margin_x: 8.0,
-            margin_y: 8.0,
+            page_height: None,
+            paper_height_mm: None,
+            margin_left: 8.0,
+            margin_right: 8.0,
+            margin_top: 8.0,
+            margin_bottom: 8.0,
+            page_numbers: true,
+            copyright: true,
+            running_header: false,
             tab_line_spacing: 1.5,
             fret_size: 1.5,
             measure_number_size: 1.1,

@@ -4,7 +4,7 @@
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
 ///A padding construct
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Padding {
     pub right: u16,
     pub top: u16,
@@ -13,7 +13,7 @@ pub struct Padding {
 }
 
 /// A point construct using integer coordinates
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Point {
     pub x: u16,
     pub y: u16,
@@ -43,6 +43,47 @@ pub const HEADER_FOOTER_PAGE_NUMBER: u16 = 0x100;
 
 pub const HEADER_FOOTER_ALL: u16 = 0x1ff;
 
+/// GuitarScore addition: a header ("title by artist") on every page after the first. Not
+/// part of the GP3-5 flags (masked off when writing them); GP7 keeps it in its style sheet
+/// (`Odd/drawOddHeader`).
+pub const HEADER_FOOTER_RUNNING_HEADER: u16 = 0x200;
+
+/// GuitarScore addition: one value of GP7's style sheet (`Content/BinaryStylesheet`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum StyleValue {
+    Bool(bool),
+    Int(i32),
+    Float(f32),
+    Text(String),
+    /// Red, green, blue, alpha.
+    Color([u8; 4]),
+}
+
+/// GuitarScore addition: GP7's style sheet as named values in file order. Kept so that
+/// saving writes back everything that is not edited; the page setup is read from it.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Stylesheet {
+    pub entries: Vec<(String, StyleValue)>,
+}
+
+impl Stylesheet {
+    /// The value called `name`, if any.
+    pub fn get(&self, name: &str) -> Option<&StyleValue> {
+        self.entries
+            .iter()
+            .find(|(entry, _)| entry == name)
+            .map(|(_, value)| value)
+    }
+
+    /// Sets the value called `name`, adding it at the end if it is new.
+    pub fn set(&mut self, name: &str, value: StyleValue) {
+        match self.entries.iter_mut().find(|(entry, _)| entry == name) {
+            Some((_, old)) => *old = value,
+            None => self.entries.push((name.to_owned(), value)),
+        }
+    }
+}
+
 /// The page setup describes how the document is rendered.
 ///
 /// Page setup contains page size, margins, paddings, and how the title elements are rendered.
@@ -58,7 +99,7 @@ pub const HEADER_FOOTER_ALL: u16 = 0x1ff;
 /// - ``%copyright%``: will be replaced with Song.copyright
 /// - ``%N%``: will be replaced with the current page number (if supported by layout)
 /// - ``%P%``: will be replaced with the number of pages (if supported by layout)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PageSetup {
     pub page_size: Point,
     pub page_margin: Padding,
@@ -99,5 +140,16 @@ impl Default for PageSetup {
             ),
             page_number: String::from("Page %N%/%P%"),
         }
+    }
+}
+
+impl PageSetup {
+    /// GuitarScore addition: whether the page looks the same as `other`'s: size, margins,
+    /// score size and what the header and footer show (not the texts' templates).
+    pub fn same_layout(&self, other: &PageSetup) -> bool {
+        self.page_size == other.page_size
+            && self.page_margin == other.page_margin
+            && (self.score_size_proportion - other.score_size_proportion).abs() < 1e-4
+            && self.header_and_footer == other.header_and_footer
     }
 }

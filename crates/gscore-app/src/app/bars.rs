@@ -80,6 +80,12 @@ impl GuitarScoreApp {
                 {
                     self.save_as(ui.ctx());
                 }
+                if ui
+                    .add_enabled(has_document, egui::Button::new("Export PDF…"))
+                    .clicked()
+                {
+                    self.ask_export_pdf(ui.ctx());
+                }
                 ui.separator();
                 if ui.button("Settings…").clicked() {
                     self.open_settings_window();
@@ -134,6 +140,9 @@ impl GuitarScoreApp {
                 ui.separator();
                 ui.radio_value(&mut self.view.theme, ThemeChoice::Light, "Light score");
                 ui.radio_value(&mut self.view.theme, ThemeChoice::Dark, "Dark score");
+                ui.separator();
+                ui.radio_value(&mut self.view.page_view, true, "Page view");
+                ui.radio_value(&mut self.view.page_view, false, "Endless view");
                 ui.separator();
                 if ui.button("Zoom in").clicked() {
                     self.view.zoom_in();
@@ -203,6 +212,13 @@ impl GuitarScoreApp {
                         count(song.track_count(), "track")
                     ));
                     ui.separator();
+                    // Recorded by the page view; the view may have switched since.
+                    if self.view.page_view
+                        && let Some((page, pages)) = self.page_info
+                    {
+                        ui.label(format!("Page {page} of {pages}"));
+                        ui.separator();
+                    }
                     let cursor = document.editor().cursor();
                     ui.label(format!(
                         "Measure {}, beat {}, string {}",

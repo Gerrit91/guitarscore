@@ -28,6 +28,7 @@ mod instrument;
 pub mod interop;
 mod issues;
 mod metadata;
+mod page;
 mod playback;
 mod position;
 mod song;
@@ -57,6 +58,10 @@ pub use instrument::{InstrumentKind, program_name};
 pub use issues::{Issue, IssueKind};
 pub use metadata::{
     MAX_SONG_NOTES_CHARS, MAX_SONG_TEXT_CHARS, MAX_TEMPO, SONG_TEXT_FIELDS, SongInfo, SongTextField,
+};
+pub use page::{
+    MAX_BARS_PER_SYSTEM, MAX_MARGIN_MM, Margins, PAGE_SIZE_MM, PageSetup, PaperSize, SCALE_RANGE,
+    SystemBreak,
 };
 pub use playback::{MASTER_UNITY, MasterMix, Repeat, TrackSound};
 pub use position::{

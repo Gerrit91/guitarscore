@@ -52,7 +52,9 @@ impl LayoutCache {
         let view = song.track(track).ok_or(LayoutError::NoSuchTrack(track))?;
         let key = TrackKey {
             track,
-            options: options.clone(),
+            // A measure's layout does not depend on the pages: switching between pages and
+            // the endless page, or changing the page setup, keeps the cache.
+            options: options.for_measures(),
             strings: view.string_count(),
             tuning: view.tuning().ok().flatten(),
             capo: view.capo().ok(),

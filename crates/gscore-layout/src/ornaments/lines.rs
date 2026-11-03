@@ -170,7 +170,7 @@ pub(crate) fn draw_whammy(
     if down + up <= 0.0 {
         return;
     }
-    let right = ctx.options.page_width - ctx.options.margin_x;
+    let right = ctx.options.page_width - ctx.options.margin_right;
     let start_x = x + WHAMMY_INSET.0;
     let end_x = (span_end - WHAMMY_INSET.1)
         .max(start_x + WHAMMY_INSET.2)

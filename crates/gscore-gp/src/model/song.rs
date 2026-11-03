@@ -61,6 +61,9 @@ pub struct Song {
     pub master_volume_pan: Option<(f32, f32)>,
 
     pub page_setup: PageSetup,
+    /// GuitarScore addition: GP7's style sheet, kept so saving writes back what is not
+    /// edited (the page setup is read from it and written into it).
+    pub stylesheet: Option<Stylesheet>,
 
     //Used to read the file
     pub current_measure_number: Option<usize>,
@@ -109,6 +112,7 @@ impl Default for Song {
             current_beat_number: None,
 
             page_setup: PageSetup::default(),
+            stylesheet: None,
 
             master_effect: RseMasterEffect::default(),
             master_volume_pan: None,

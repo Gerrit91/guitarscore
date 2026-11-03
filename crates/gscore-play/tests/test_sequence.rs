@@ -291,10 +291,20 @@ fn a_tick_maps_back_to_the_beat_playing_there() {
     assert_eq!(sequence.beat_at(&song, at(0, 0), 7680), Some(at(0, 0)));
     // Past the last beat: the last beat of the last measure.
     assert_eq!(sequence.beat_at(&song, at(0, 0), u64::MAX), Some(at(2, 3)));
-    // A track that does not exist has no beats; another voice has none either.
+    // A track that does not exist has no beats.
     let mut missing = at(0, 0);
     missing.track = TrackIndex::new(7);
     assert_eq!(sequence.beat_at(&song, missing, 0), None);
+    // A measure without the cursor's voice (Guitar Pro stores an empty bar without any)
+    // still takes the cursor: its first beat, so the cursor follows over empty bars.
+    let mut voice = at(0, 0);
+    voice.voice = VoiceIndex::new(3);
+    let mut expected = at(2, 0);
+    expected.voice = VoiceIndex::new(3);
+    assert_eq!(
+        sequence.beat_at(&song, voice, 15_360 + 1000),
+        Some(expected)
+    );
 }
 
 #[test]

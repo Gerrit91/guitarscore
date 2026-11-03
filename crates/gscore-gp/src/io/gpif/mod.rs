@@ -183,6 +183,17 @@ pub(crate) struct Track {
     pub short_name: String,
     #[serde(rename = "Color", default)]
     pub color: Option<String>,
+    /// GuitarScore addition: how many bars each system (line) of the page holds, e.g.
+    /// `"4 4 3"` (GP7; the last count goes on for the rest).
+    #[serde(rename = "SystemsLayout", default)]
+    pub systems_layout: Option<String>,
+    /// GuitarScore addition: the bars at which a new page starts (0-based), a GuitarScore
+    /// attribute (Guitar Pro has no page breaks).
+    #[serde(rename = "@gsPageBreaks", default)]
+    pub page_breaks: Option<String>,
+    /// GuitarScore addition: at most this many bars per line, a GuitarScore attribute.
+    #[serde(rename = "@gsBarsPerSystem", default)]
+    pub bars_per_system: Option<u8>,
     /// GP6: track-level properties (Tuning, DiagramCollection, etc.)
     #[serde(rename = "Properties", default)]
     pub properties: Option<TrackPropertiesWrapper>,

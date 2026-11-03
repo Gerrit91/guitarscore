@@ -167,6 +167,12 @@ impl Song {
                 gpx::part_configuration::apply_flags(track, flags);
             }
         }
+        // GuitarScore addition: the page setup from the style sheet, which is kept for
+        // saving.
+        if let Some(sheet) = gpx::read_gp_stylesheet(data) {
+            gpx::stylesheet::apply_page_setup(&sheet, &mut self.page_setup);
+            self.stylesheet = Some(sheet);
+        }
         Ok(())
     }
     /// Read Guitar Pro 6 file (.gpx)

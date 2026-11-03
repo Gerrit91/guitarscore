@@ -1,6 +1,6 @@
-//! The settings window: the song's information, editor settings and audio I/O. Song
-//! changes go through commands, so they are undoable; the other settings apply at once and
-//! are remembered between runs.
+//! The settings window: the song's information and page layout, editor settings and audio
+//! I/O. Song changes go through commands, so they are undoable; the other settings apply at
+//! once and are remembered between runs.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
@@ -11,6 +11,7 @@ use gscore_edit::Command;
 use gscore_model::{MAX_TEMPO, SONG_TEXT_FIELDS, SongInfo, SongTextField};
 
 use super::GuitarScoreApp;
+use super::settings_page::{PageDraft, PagePreview, page_tab};
 use super::style;
 use crate::playback::Output;
 use crate::state::ThemeChoice;
@@ -26,6 +27,8 @@ pub(super) enum SettingsTab {
     /// Title, artist, notes, tempo, ...
     #[default]
     Song,
+    /// Paper, margins, score size, header and footer.
+    Page,
     /// Theme, shortcuts, startup, autosave.
     Editor,
     /// Output, SoundFont and MIDI ports.
@@ -40,6 +43,10 @@ pub(super) struct SettingsWindow {
     draft: SongInfo,
     /// The document's fields when the draft was last synced, to notice outside edits.
     base: SongInfo,
+    /// The page setup being edited.
+    page: PageDraft,
+    /// Its preview's layout.
+    preview: PagePreview,
     /// Where the window is; `None` until it is centered on its first frame.
     pos: Option<egui::Pos2>,
     /// The SoundFonts found on disk, for the Audio I/O tab.
@@ -47,11 +54,13 @@ pub(super) struct SettingsWindow {
 }
 
 impl SettingsWindow {
-    fn new(info: SongInfo) -> Self {
+    fn new(info: SongInfo, page: gscore_model::PageSetup) -> Self {
         SettingsWindow {
             tab: SettingsTab::default(),
             base: info.clone(),
             draft: info,
+            page: PageDraft::new(page),
+            preview: PagePreview::default(),
             pos: None,
             soundfonts: SoundFontScan::default(),
         }
@@ -120,7 +129,13 @@ impl GuitarScoreApp {
             .document
             .as_ref()
             .map_or_else(SongInfo::default, |document| document.song().info());
-        self.settings_window = Some(SettingsWindow::new(info));
+        let page = self
+            .document
+            .as_ref()
+            .map_or_else(gscore_model::PageSetup::default, |document| {
+                document.song().page_setup()
+            });
+        self.settings_window = Some(SettingsWindow::new(info, page));
     }
 
     /// The settings window, if it is open.
@@ -136,6 +151,7 @@ impl GuitarScoreApp {
                 }
                 window.base = current;
             }
+            window.page.sync(document.song().page_setup());
         }
         if window.pos.is_none() {
             window.pos = Some(style::centered_window_pos(ctx, SETTINGS_SIZE));
@@ -143,8 +159,25 @@ impl GuitarScoreApp {
         let pos = window
             .pos
             .unwrap_or_else(|| style::centered_window_pos(ctx, SETTINGS_SIZE));
+        // The preview is laid out only on the Page layout tab, and only for a valid draft.
+        let preview = match (&self.document, &self.fonts) {
+            (Some(document), Ok(fonts))
+                if window.tab == SettingsTab::Page && window.page.draft.check().is_ok() =>
+            {
+                window.preview.layout(
+                    document.song(),
+                    document.editor().revision(),
+                    self.view.track,
+                    window.page.draft,
+                    &self.options,
+                    fonts,
+                )
+            }
+            _ => None,
+        };
         let mut close = false;
         let mut apply = false;
+        let mut apply_page = false;
         egui::Window::new("Settings")
             .title_bar(false)
             .collapsible(false)
@@ -163,6 +196,7 @@ impl GuitarScoreApp {
                         ui.horizontal(|ui| {
                             for (tab, label) in [
                                 (SettingsTab::Song, "Song"),
+                                (SettingsTab::Page, "Page layout"),
                                 (SettingsTab::Editor, "Editor"),
                                 (SettingsTab::Audio, "Audio I/O"),
                             ] {
@@ -174,6 +208,17 @@ impl GuitarScoreApp {
                             SettingsTab::Song => {
                                 song_tab(ui, &mut window, &mut apply, &mut close);
                             }
+                            SettingsTab::Page => {
+                                let has_song = self.document.is_some();
+                                page_tab(
+                                    ui,
+                                    &mut window.page,
+                                    preview.as_deref(),
+                                    has_song,
+                                    &mut apply_page,
+                                    &mut close,
+                                );
+                            }
                             SettingsTab::Editor => self.editor_tab(ui),
                             SettingsTab::Audio => self.audio_tab(ui, &mut window.soundfonts),
                         }
@@ -184,9 +229,16 @@ impl GuitarScoreApp {
             self.save_settings();
             return;
         }
+        let page_command = self
+            .document
+            .as_ref()
+            .and_then(|document| window.page.command(document.song().page_setup()));
         self.settings_window = Some(window);
         if apply {
             self.apply_song_tab();
+        }
+        if apply_page && let Some(command) = page_command {
+            self.apply_command(command, false);
         }
     }
 

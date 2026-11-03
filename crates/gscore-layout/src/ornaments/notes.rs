@@ -248,7 +248,7 @@ fn draw_bend(
     let cap = ctx.fonts.text.cap_height * size;
     let up = bend.kind == BendKind::Up;
     let start = Point::new(x + fret.width / 2.0 + 0.15, line_y - cap * 0.3);
-    let right = ctx.options.page_width - ctx.options.margin_x;
+    let right = ctx.options.page_width - ctx.options.margin_right;
     let end_x = (span_end - BEND_END_GAP).max(start.x + BEND_MIN).min(right);
     if end_x <= start.x {
         return;

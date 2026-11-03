@@ -8,6 +8,11 @@ gscore-model = { path = "../gscore-model" }
 # Reading the SMuFL font metadata (engraving defaults, glyph boxes and advances).
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+# PDF export (owner's decision, 2026-11-03): the Typst project's PDF writer and font
+# subsetter, both MIT OR Apache-2.0, pure Rust. The subsetter's default feature (variable
+# fonts) pulls in more crates and is not needed for the bundled fonts.
+pdf-writer = "0.15.0"
+subsetter = { version = "0.2.6", default-features = false }
 
 [dev-dependencies]
 # Golden tests lay out the owner's files in testdata/.

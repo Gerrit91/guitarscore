@@ -110,7 +110,23 @@ impl WriteGpifInGpifStringOrder for Song {
         // Tracks
         xml.push_str("<Tracks>");
         for (t_idx, track) in self.tracks.iter().enumerate() {
-            xml.push_str(&format!("<Track id=\"{t_idx}\">"));
+            // GuitarScore addition: page breaks, which Guitar Pro does not have.
+            let page_breaks: Vec<String> = track
+                .measures
+                .iter()
+                .enumerate()
+                .filter(|(index, measure)| *index > 0 && measure.line_break == LineBreak::Page)
+                .map(|(index, _)| index.to_string())
+                .collect();
+            xml.push_str(&format!("<Track id=\"{t_idx}\""));
+            if !page_breaks.is_empty() {
+                xml.push_str(&format!(" gsPageBreaks=\"{}\"", page_breaks.join(" ")));
+            }
+            // GuitarScore addition: the most bars per line.
+            if let Some(bars) = track.bars_per_system {
+                xml.push_str(&format!(" gsBarsPerSystem=\"{bars}\""));
+            }
+            xml.push('>');
             xml.push_str(&format!("<Name>{}</Name>", escape_xml(&track.name)));
             xml.push_str(&format!(
                 "<ShortName>{}</ShortName>",
@@ -120,6 +136,13 @@ impl WriteGpifInGpifStringOrder for Song {
             let g = (track.color >> 8) & 0xFF;
             let b = track.color & 0xFF;
             xml.push_str(&format!("<Color>{r} {g} {b}</Color>"));
+            // GuitarScore addition: line (and page) breaks as Guitar Pro's systems layout,
+            // the bars of each line; without breaks Guitar Pro lays the track out itself.
+            if let Some(systems) = systems_layout(&track.measures) {
+                xml.push_str(&format!(
+                    "<SystemsDefautLayout>4</SystemsDefautLayout><SystemsLayout>{systems}</SystemsLayout>"
+                ));
+            }
             // GuitarScore addition: the instrument, as read by the importer. Drum tracks
             // from GP3-5 (no instrument type) are written as a drum kit.
             let instrument_type = track
@@ -454,4 +477,27 @@ fn rse_parameters(volume: u8, pan: u8) -> String {
         parts.push(value);
     }
     parts.join(" ")
+}
+
+/// GuitarScore addition: the bars of each line between line (or page) breaks, `"4 4 3"`,
+/// or `None` when the track has no breaks.
+fn systems_layout(measures: &[Measure]) -> Option<String> {
+    let starts: Vec<usize> = measures
+        .iter()
+        .enumerate()
+        .filter(|(index, measure)| {
+            *index > 0 && matches!(measure.line_break, LineBreak::Break | LineBreak::Page)
+        })
+        .map(|(index, _)| index)
+        .collect();
+    if starts.is_empty() {
+        return None;
+    }
+    let mut counts = Vec::with_capacity(starts.len().saturating_add(1));
+    let mut from = 0_usize;
+    for start in starts.into_iter().chain(std::iter::once(measures.len())) {
+        counts.push(start.saturating_sub(from).to_string());
+        from = start;
+    }
+    Some(counts.join(" "))
 }

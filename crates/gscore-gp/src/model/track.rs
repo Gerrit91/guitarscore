@@ -80,6 +80,10 @@ pub struct Track {
     /// GuitarScore addition: user-given tuning name from the file (GP6/GP7), if set.
     /// Not written back yet.
     pub tuning_label: Option<String>,
+    /// GuitarScore addition: at most this many bars on one line of the page; `None` lays
+    /// lines out by width alone. GP7 files keep it in a GuitarScore attribute of the track
+    /// (`gsBarsPerSystem`).
+    pub bars_per_system: Option<u8>,
 }
 
 impl Default for Track {
@@ -112,6 +116,7 @@ impl Default for Track {
             instrument_type: None,
             instrument_name: None,
             tuning_label: None,
+            bars_per_system: None,
         }
     }
 }

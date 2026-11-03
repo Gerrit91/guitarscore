@@ -1658,3 +1658,102 @@ Owner's request: drum notation, dynamics in the edit palette and the score, sect
   with Guitar Pro, with their PDFs.
 - Decided by the owner the same day: `pdf-writer` + `subsetter` for PDF, and PDF export
   before native printing. A multi-track test song from Guitar Pro is coming.
+
+## 2026-11-03 — M21, first slice: pages and the page view
+
+- **Layout** (`gscore-layout`): `LayoutOptions::page_height` (`on_pages()` sets A4; `None`
+  keeps the endless page). Pages are stacked top to bottom with `PAGE_GAP` between them; a
+  system that would run into the bottom margin (plus room for the page number and what
+  hangs below the staff) starts the next page, and a page always takes at least one
+  system. `Layout::pages` lists the page rectangles (one for the endless page), which the
+  PDF export will cut by. "Page n/N" at the bottom of each page. The measure cache ignores
+  the page height, so switching views lays out no measure again (tested). Goldens
+  unchanged (they use the endless page).
+- **App:** View › Page view / Endless view (remembered in the settings as `page_view`;
+  pages by default, like Guitar Pro). Each page is its own sheet with a shadow on the
+  canvas; the status bar shows "Page 2 of 5" for the cursor's page. Cursor, clicks,
+  selection and scrolling work unchanged across pages (same coordinate space).
+- Tests: `test_pages.rs` (pages stack with the gap, systems inside their page above the
+  margin, no empty page, page numbers, endless page unchanged, cache kept on switching,
+  odd page heights, a page too small for a system); a UI test for the View menu switch
+  and the setting. App snapshots updated (the page is now a full A4 sheet).
+- Bench (`cargo xtask bench`, release): within budget on the test files (edit and
+  layout 0.023 ms on `ornaments.gp`); the owner's large files were not at hand. Paging adds
+  one comparison per system.
+- Open in M21: page setup from the GP file and a Page layout settings tab, running
+  header and copyright footer, vertical justification, manual system/page breaks and bars
+  per system, pages side by side when zoomed out, PDF export, multi-track systems (waiting
+  for the owner's test song).
+
+## 2026-11-03 — M21: page setup, breaks, header and footer, PDF export, pages side by side
+
+- **Page setup in the file** (`gscore-gp`): GP7 keeps it in `Content/BinaryStylesheet`, a
+  binary list of named values (u32 count; per entry a name, a type byte and the value:
+  bool, i32, f32, text, color). New codec `io/gpx/stylesheet.rs` reads all 591 entries of
+  Guitar Pro's file and writes them back byte for byte; the page size, orientation,
+  margins, scale and the page-number, copyright and running-header switches go into
+  `PageSetup` and back. A file without a style sheet gets one only when its page setup is
+  not the default (only the page keys; not yet tried in Guitar Pro itself, owner to check).
+  GP3-5 keep their own page setup (the running-header bit is masked off).
+- **Line breaks**: GP7's per-track `<SystemsLayout>` (bars per line, "3 3 3 3") becomes a
+  line break at the first bar of each line, and is written back from the breaks, so a
+  Guitar Pro file is broken where Guitar Pro breaks it (the ornaments golden now matches
+  Guitar Pro's PDF line for line). Page breaks (`LineBreak::Page`, a GuitarScore addition)
+  and the bars-per-line limit are GuitarScore attributes on `<Track>`
+  (`gsPageBreaks`, `gsBarsPerSystem`); GP5 keeps page breaks as line breaks.
+- **Model and commands**: `PageSetup` (mm, percent scale; checked: paper 70-1000 mm,
+  margins leave 40 mm, scale 50-200 %; odd file values are moved into range), `PaperSize`,
+  `SystemBreak`; `set_page_setup`, `set_system_break` (alias `set_line_break`),
+  `set_bars_per_system` (alias `set_bars_per_line`), all undoable, journaled, in the CLI,
+  the property test and the panic hunt. The save check compares page setup, breaks and
+  bars per line, so a format that loses them is reported before writing.
+- **Layout**: options from the page setup (`with_page_setup`: paper, four margins, staff
+  space by scale); line breaking honours forced breaks and the bar limit; placement in two
+  passes: systems onto pages (page breaks, footer room, running-header room), then lines
+  spread down every page that ended full (at most 6 spaces more per gap), then drawing.
+  Page number at the bottom right as Guitar Pro does, copyright at the bottom of page 1,
+  "title by artist" atop later pages.
+- **PDF** (`gscore-layout/src/pdf`, `pdf-writer` 0.15 + `subsetter` 0.2 without default
+  features, approved by the owner): one PDF page per layout page, vector drawing from the
+  same `DrawOp`s, Bravura (CFF, CIDFontType0 via FontFile3/OpenType) and Noto Sans
+  (TrueType, CIDFontType2) embedded as subsets with ToUnicode maps, title and producer in
+  the document information. A small OpenType reader (cmap 4/12, hmtx, head, hhea) gives
+  glyphs and advances, so no further dependency was needed. `pdfinfo`/`pdffonts`/
+  `pdftotext` accept the output (A4, fonts embedded and subset, text extracted); the
+  ornaments PDF is 88 KB and matches Guitar Pro's PDF of the file in its line breaks.
+- **App**: Settings › Page layout (paper A4/Letter/A5/A3/custom, orientation, margins,
+  score size, header and footer switches; one undo step; "Guitar Pro defaults"); Bar menu
+  "Line break / Page break before this bar" (ticked when set); Track › Bars per line; File
+  › Export PDF… (background job, written next to the target and moved into place); pages
+  side by side when they fit the view's width (`canvas::Arrangement` maps layout and shown
+  coordinates for painting, the cursor, the selection and clicks). `gscore-cli render`
+  writes PDF for a `.pdf` output.
+- Tests: style sheet codec (round trip, truncation, unknown types, clamping), GP7 page
+  setup and breaks read and saved (`page_tests.rs`), model setters and undo, parse
+  round trips and errors, line breaking with breaks and limits, PDF structure and errors,
+  CLI render, the export job, the arrangement mapping, a UI test for the menus and the
+  Page layout tab. Golden `ornaments.svg` changed (Guitar Pro's line breaks; owner to
+  review); app snapshots updated (the song's margins, page number at the right).
+- Bench: within budget on the test files (edit and layout 0.019 ms on `ornaments.gp`).
+- Open in M21: multi-track systems and editing across staves (waiting for the owner's
+  test song), native printing, PDF of several tracks; the minimal style sheet written for
+  files that had none is untested in Guitar Pro.
+
+## 2026-11-03 — Playback over empty bars, page turns while playing, page setup preview
+
+- **The cursor follows over empty bars** (`Sequence::beat_at`): Guitar Pro stores a bar
+  that was never filled without any voice, and `beat_at` gave up on a measure without the
+  cursor's voice, so the cursor (and the view) stayed on the bar before until notes came
+  again. It now lands on the bar's first beat; the page already had a place for it.
+- **Page turns while playing** (`page.rs`, `cursor_scroll`): the view used to scroll the
+  minimum to keep the playing beat visible, a line at a time. While playing it now stays
+  put until the beat leaves the view and then puts that line at the top (with room for the
+  bar numbers and section names above), so a whole screen of what follows shows; a jump
+  back for a repeat does the same. Editing still scrolls just enough. Tested as a pure
+  function; checked in the app with screenshots during fast playback.
+- **Page setup preview**: Settings › Page layout shows the first page as the draft would
+  print it (and "Page 1 of N"), before Apply; it is laid out again only when the draft, the
+  track or the song changes, with its own layout cache. For it, the measure cache key now
+  leaves out everything that only places measures on pages (paper, margins, staff size,
+  header and footer): changing the page setup re-breaks lines without laying out a single
+  measure again, in the preview and in the score.

@@ -146,14 +146,23 @@ fn only_changed_measures_are_laid_out_again() {
     let _ = cache.layout(&song, track, &options, &fonts).unwrap();
     assert_eq!(cache.laid_out(), 1);
 
-    // Other options or another track start afresh.
+    // A wider page only re-breaks the lines; options that change measures, or another
+    // track, start afresh.
     let mut wider = options.clone();
     wider.page_width += 10.0;
     let _ = cache.layout(&song, track, &wider, &fonts).unwrap();
+    assert_eq!(
+        cache.laid_out(),
+        0,
+        "the page width is not part of a measure"
+    );
+    let mut bigger = wider.clone();
+    bigger.fret_size += 0.2;
+    let _ = cache.layout(&song, track, &bigger, &fonts).unwrap();
     assert_eq!(cache.laid_out(), song.measure_count());
     assert!(
         cache
-            .layout(&song, TrackIndex::new(5), &wider, &fonts)
+            .layout(&song, TrackIndex::new(5), &bigger, &fonts)
             .is_err()
     );
 }

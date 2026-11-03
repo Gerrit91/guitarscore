@@ -43,6 +43,13 @@ impl<'a> TrackView<'a> {
         &self.inner.name
     }
 
+    /// At most this many bars on a line of the page; `None` for as many as fit.
+    pub fn bars_per_system(&self) -> Option<u8> {
+        self.inner
+            .bars_per_system
+            .filter(|bars| (1..=crate::page::MAX_BARS_PER_SYSTEM).contains(bars))
+    }
+
     /// Number of strings (4 for a bass, 6 for a guitar, ...).
     pub fn string_count(&self) -> usize {
         self.inner.strings.len()
@@ -166,6 +173,14 @@ impl<'a> MeasureView<'a> {
     /// This measure's index in the track.
     pub fn index(&self) -> MeasureIndex {
         self.index
+    }
+
+    /// Whether this measure starts a new line or page of its track.
+    pub fn system_break(&self) -> crate::page::SystemBreak {
+        if self.index.get() == 0 {
+            return crate::page::SystemBreak::None;
+        }
+        crate::edit::system_break(&self.inner.line_break)
     }
 
     /// The time signature in effect in this measure.

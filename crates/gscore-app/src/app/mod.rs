@@ -19,6 +19,7 @@ mod new_track;
 mod page;
 mod page_menu;
 mod recovery;
+mod settings_page;
 mod settings_window;
 mod shape_editor;
 mod shortcuts;
@@ -82,6 +83,8 @@ pub struct GuitarScoreApp {
     drag_anchor: Option<Cursor>,
     /// The cursor and revision the view last scrolled to, to scroll only on a change.
     shown_cursor: Option<(Cursor, u64)>,
+    /// In the page view: the cursor's page and the page count (1-based), for the status bar.
+    page_info: Option<(usize, usize)>,
     /// Where documents' recovery journals go; `None` keeps no journal.
     recovery_dir: Option<PathBuf>,
     /// Whether the recovery directory was searched for crashed documents yet.
@@ -193,6 +196,7 @@ impl GuitarScoreApp {
             edit_palette: edit_palette::EditPaletteState::default(),
             drag_anchor: None,
             shown_cursor: None,
+            page_info: None,
             recovery_dir,
             recovery_searched: false,
             recoverable: Vec::new(),

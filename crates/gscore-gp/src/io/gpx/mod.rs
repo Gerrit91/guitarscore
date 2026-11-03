@@ -6,6 +6,7 @@
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
 pub(crate) mod part_configuration;
+pub(crate) mod stylesheet;
 mod write;
 
 use std::io::Cursor;
@@ -64,6 +65,15 @@ pub(crate) fn read_gp_track_flags(data: &[u8]) -> Option<Vec<u8>> {
     let file = zip.by_name(part_configuration::PART_CONFIGURATION).ok()?;
     let bytes = read_limited(file, "PartConfiguration").ok()?;
     part_configuration::read_track_flags(&bytes)
+}
+
+/// GuitarScore addition: the style sheet in `Content/BinaryStylesheet`, if the archive has
+/// a readable one.
+pub(crate) fn read_gp_stylesheet(data: &[u8]) -> Option<crate::model::page::Stylesheet> {
+    let mut zip = ZipArchive::new(Cursor::new(data)).ok()?;
+    let file = zip.by_name(stylesheet::STYLESHEET).ok()?;
+    let bytes = read_limited(file, "BinaryStylesheet").ok()?;
+    stylesheet::read(&bytes)
 }
 
 /// Reads a .gp (GP7+) file, returning the parsed GPIF plus any embedded

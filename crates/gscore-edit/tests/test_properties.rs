@@ -67,7 +67,7 @@ fn random_command(rng: &mut Rng, song: &Song) -> Command {
     let any_track = TrackIndex::new(track);
     let pitch = Pitch::new(u8::try_from(rng.below(128)).unwrap_or(0)).unwrap();
     let field = SONG_TEXT_FIELDS[rng.below(SONG_TEXT_FIELDS.len())];
-    match rng.below(14) {
+    match rng.below(17) {
         0 => Command::SetFret { at, string, fret },
         1 => Command::ClearNote { at, string },
         2 => Command::SetDuration { at, duration },
@@ -103,6 +103,26 @@ fn random_command(rng: &mut Rng, song: &Song) -> Command {
         12 => Command::SetSongText {
             field,
             text: format!("value {}", rng.below(1000)),
+        },
+        13 => Command::SetSystemBreak {
+            track: any_track,
+            measure: MeasureIndex::new(measure),
+            kind: [
+                gscore_model::SystemBreak::None,
+                gscore_model::SystemBreak::Line,
+                gscore_model::SystemBreak::Page,
+            ][rng.below(3)],
+        },
+        14 => Command::SetBarsPerSystem {
+            track: any_track,
+            bars: u8::try_from(rng.below(40)).ok().filter(|bars| *bars > 0),
+        },
+        15 => Command::SetPageSetup {
+            setup: gscore_model::PageSetup {
+                width_mm: u16::try_from(rng.below(1200)).unwrap_or(210),
+                scale_percent: u16::try_from(rng.below(250)).unwrap_or(100),
+                ..gscore_model::PageSetup::default()
+            },
         },
         _ => Command::SetTempo {
             tempo: u32::try_from(rng.below(1000).saturating_add(1)).unwrap_or(120),

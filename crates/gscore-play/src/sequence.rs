@@ -372,13 +372,21 @@ impl Sequence {
     /// The beat of `at.track` in `at.voice` that is playing at `tick`, for the cursor to
     /// follow playback. Repeats are handled because [`Self::measure_at`] knows the played
     /// order. A tick before the first beat is beat 0; one past the voice's last beat is the
-    /// last beat (or beat 0 in a voice with no beats). `None` if `at.track` does not exist.
+    /// last beat (or beat 0 in a voice with no beats, or of a measure without that voice:
+    /// Guitar Pro stores an empty bar without voices, and the cursor must still move onto
+    /// it). `None` if `at.track` does not exist.
     pub fn beat_at(&self, song: &Song, at: BeatPosition, tick: u64) -> Option<BeatPosition> {
         let span = self.measure_at(tick)?;
-        let voice = song
-            .track(at.track)?
-            .measure(span.measure)?
-            .voice(at.voice)?;
+        let measure = song.track(at.track)?.measure(span.measure)?;
+        let first = BeatPosition {
+            track: at.track,
+            measure: span.measure,
+            voice: at.voice,
+            beat: BeatIndex::new(0),
+        };
+        let Some(voice) = measure.voice(at.voice) else {
+            return Some(first);
+        };
         let mut onset = Duration::new(0, 1).ok()?;
         let mut last = 0_usize;
         for (index, beat) in voice.beats().enumerate() {

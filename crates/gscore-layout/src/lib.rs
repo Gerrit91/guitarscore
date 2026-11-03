@@ -10,9 +10,12 @@
 //! 4. [`system`]: measures broken into lines and justified to the page width.
 //! 5. Drawing: staff lines, clef, barlines and the measures' content, as [`DrawOp`]s.
 //!
-//! [`svg::to_svg`] renders the result for golden tests and the command line; the GUI draws
-//! the same operations. One track is laid out at a time (standard notation, tab, or both;
-//! a percussion staff for drums), on one continuous page (no page breaks yet).
+//! [`svg::to_svg`] renders the result for golden tests and the command line, and
+//! [`pdf::to_pdf`] a layout on pages as a PDF with embedded fonts; the GUI draws the same
+//! operations. One track is laid out at a time (standard notation, tab, or both;
+//! a percussion staff for drums), on one endless page or on separate pages
+//! ([`LayoutOptions::page_height`]): pages are stacked from top to bottom with a gap
+//! between them, and a system that does not fit moves to the next page.
 
 #![warn(clippy::arithmetic_side_effects)]
 
@@ -27,6 +30,7 @@ mod metrics;
 mod notation;
 mod options;
 mod ornaments;
+mod pdf;
 mod place;
 mod staff;
 mod svg;
@@ -35,7 +39,7 @@ mod theme;
 
 use std::sync::Arc;
 
-use gscore_model::{MeasureView, Song, TrackIndex};
+use gscore_model::{MeasureView, Song, SystemBreak, TrackIndex};
 
 // The golden tests open the owner's files with `gscore-io`; this marks the test-only
 // dependency for the library test target's unused-dependency check.
@@ -48,6 +52,7 @@ pub use error::LayoutError;
 pub use glyph::{Digit, Flag, Glyph};
 pub use metrics::{EngravingDefaults, GlyphBox, MusicFont, TextMetrics};
 pub use options::{LayoutOptions, Spacing};
+pub use pdf::{PdfFonts, to_pdf};
 pub use place::{BeatPlace, Hit, MeasurePlace, Places, SystemPlace};
 pub use svg::to_svg;
 pub use theme::{Rgb, Theme};
@@ -55,7 +60,7 @@ pub use theme::{Rgb, Theme};
 use measure::{MeasureLayout, Tops};
 use notation::Notation;
 use staff::Staff;
-use system::{MeasureWidth, break_systems};
+use system::{Breaks, MeasureWidth, break_systems};
 
 /// Space between the header and the first system's top line (room for measure numbers).
 const HEADER_GAP: f32 = 4.0;
@@ -64,6 +69,21 @@ const HEADER_GAP: f32 = 4.0;
 const MEASURE_NUMBER_RISE: f32 = 0.8;
 /// Gap between a repeat count and the end repeat's barline.
 const REPEAT_COUNT_GAP: f32 = 0.6;
+/// Gap between two pages, in staff spaces.
+pub const PAGE_GAP: f32 = 6.0;
+/// Room kept free at the bottom of a page (above the bottom margin), so the last system
+/// does not touch the footer.
+const FOOTER_ROOM: f32 = 3.0;
+/// Height of one copyright line at the bottom of the first page.
+const FOOTER_LINE: f32 = 1.4;
+/// Room for the running header below the top margin of pages after the first.
+const RUNNING_HEADER_ROOM: f32 = 2.5;
+/// The most space added between two systems when a page's systems are spread down to its
+/// bottom.
+const MAX_SPREAD: f32 = 6.0;
+/// Room below a system's lowest staff line for what hangs under it (P.M. and let ring rows,
+/// dynamics), counted when deciding whether a system still fits on a page.
+const BELOW_SYSTEM: f32 = 3.0;
 
 /// The fonts layout measures with.
 #[derive(Debug, Clone)]
@@ -89,8 +109,10 @@ impl Fonts {
 pub struct Layout {
     /// Page width in staff spaces.
     pub width: f32,
-    /// Page height in staff spaces.
+    /// Height in staff spaces: of the endless page, or of all pages with the gaps between.
     pub height: f32,
+    /// The pages, from top to bottom (one for the endless page).
+    pub pages: Vec<Rect>,
     /// What to draw, in painting order.
     pub ops: Vec<DrawOp>,
     /// Where the systems, measures and beats are (for the cursor and clicks).
@@ -174,8 +196,8 @@ fn layout_with(
             stretchable: m.stretchable_width(),
         })
         .collect();
-    let left = options.margin_x;
-    let line_width = options.page_width - 2.0 * options.margin_x;
+    let left = options.margin_left;
+    let line_width = options.line_width();
     let prefix = ctx
         .notation
         .map_or(0.0, |n| notation::prefix_width(n.clef, &ctx))
@@ -187,19 +209,57 @@ fn layout_with(
     } else {
         0.0
     };
-    let plans = break_systems(&widths, line_width, prefix);
+    let system_breaks: Vec<SystemBreak> = view.measures().map(|m| m.system_break()).collect();
+    let forced: Vec<bool> = system_breaks
+        .iter()
+        .map(|kind| *kind != SystemBreak::None)
+        .collect();
+    let plans = break_systems(
+        &widths,
+        line_width,
+        prefix,
+        Breaks {
+            forced: &forced,
+            max_measures: view.bars_per_system().map(usize::from),
+        },
+    );
+    // From a system's top line (notation or tab) to its lowest line.
+    let staves_height = if show_tab {
+        tab_offset + ctx.staff.height()
+    } else {
+        notation_staff.height()
+    };
+    let rows: Vec<marks::Rows> = plans
+        .iter()
+        .map(|plan| marks::Rows::of(marks.get(plan.measures.clone()).unwrap_or_default()))
+        .collect();
+    let heights: Vec<f32> = rows
+        .iter()
+        .map(|rows| rows.height() + staves_height)
+        .collect();
+    let page_starts: Vec<bool> = plans
+        .iter()
+        .map(|plan| system_breaks.get(plan.measures.start) == Some(&SystemBreak::Page))
+        .collect();
+    let decor = PageDecor::new(song, options);
+    let placement = place_systems(
+        &heights,
+        &page_starts,
+        header_end + HEADER_GAP,
+        options,
+        &decor,
+    );
 
     let font = &fonts.music;
     let mut places = Places::default();
-    let mut top = header_end + HEADER_GAP;
     let mut bottom = header_end;
-    for plan in &plans {
+    for (index, plan) in plans.iter().enumerate() {
         let line: &[Arc<MeasureLayout>] = measures.get(plan.measures.clone()).unwrap_or_default();
         let line_marks: &[marks::MeasureMarks] =
             marks.get(plan.measures.clone()).unwrap_or_default();
-        let rows = marks::Rows::of(line_marks);
+        let rows = rows.get(index).copied().unwrap_or_default();
         // Section names, tempo marks and endings need room above the system.
-        top += rows.height();
+        let top = placement.tops.get(index).copied().unwrap_or(bottom) + rows.height();
         let tops = Tops {
             tab: top + tab_offset,
             notation: ctx.notation.map(|_| top),
@@ -316,13 +376,233 @@ fn layout_with(
             Some(notation_top) if !show_tab => notation_top + notation_staff.height(),
             _ => tab_top + ctx.staff.height(),
         };
-        top = bottom + options.system_gap + HEADER_GAP;
     }
+
+    let (pages, height) = if placement.pages.is_empty() {
+        let height = bottom + options.margin_bottom;
+        (
+            vec![Rect {
+                origin: Point::new(0.0, 0.0),
+                width: options.page_width,
+                height,
+            }],
+            height,
+        )
+    } else {
+        decor.draw(&placement.pages, options, &mut ops);
+        let height = placement
+            .pages
+            .last()
+            .map_or(0.0, |page| page.origin.y + page.height);
+        (placement.pages, height)
+    };
 
     Ok(Layout {
         width: options.page_width,
-        height: bottom + options.margin_y,
+        height,
+        pages,
         ops,
         places,
     })
+}
+
+/// Where the systems go: the top of each system's block (the rows above its staves come
+/// first), and the pages (none for the endless page).
+struct Placement {
+    tops: Vec<f32>,
+    pages: Vec<Rect>,
+}
+
+/// Puts systems of `heights` (rows above plus staves) one below the other from `first`.
+/// With pages, a system that does not fit (or that starts with a page break) goes to the
+/// next page, and the systems of a page that ended full are spread down to its bottom.
+fn place_systems(
+    heights: &[f32],
+    page_starts: &[bool],
+    first: f32,
+    options: &LayoutOptions,
+    decor: &PageDecor,
+) -> Placement {
+    let step = |height: f32| height + options.system_gap + HEADER_GAP;
+    let page_height = options.page_height.filter(|height| {
+        height.is_finite() && *height > options.margin_top + options.margin_bottom
+    });
+    let Some(page_height) = page_height else {
+        let mut tops = Vec::with_capacity(heights.len());
+        let mut cursor = first;
+        for height in heights {
+            tops.push(cursor);
+            cursor += step(*height);
+        }
+        return Placement {
+            tops,
+            pages: Vec::new(),
+        };
+    };
+
+    let mut tops = Vec::with_capacity(heights.len());
+    let mut pages: Vec<Rect> = Vec::new();
+    // Per page: its systems, and whether it ended because the next one did not fit.
+    let mut page_systems: Vec<(std::ops::Range<usize>, bool)> = Vec::new();
+    let mut page_top = 0.0_f32;
+    let mut page_first = 0_usize;
+    let mut cursor = first;
+    let limit = |page: usize, page_top: f32| {
+        page_top + page_height - options.margin_bottom - decor.footer_room(page)
+    };
+    for (index, height) in heights.iter().enumerate() {
+        let page = pages.len();
+        if index > page_first {
+            let forced = page_starts.get(index).copied().unwrap_or(false);
+            let overflow = cursor + height + BELOW_SYSTEM > limit(page, page_top);
+            if forced || overflow {
+                pages.push(Rect {
+                    origin: Point::new(0.0, page_top),
+                    width: options.page_width,
+                    height: page_height,
+                });
+                page_systems.push((page_first..index, overflow && !forced));
+                page_top += page_height + PAGE_GAP;
+                page_first = index;
+                cursor = page_top
+                    + options.margin_top
+                    + decor.header_room(page.saturating_add(1))
+                    + HEADER_GAP;
+            }
+        }
+        tops.push(cursor);
+        cursor += step(*height);
+    }
+    pages.push(Rect {
+        origin: Point::new(0.0, page_top),
+        width: options.page_width,
+        height: page_height,
+    });
+    page_systems.push((page_first..heights.len(), false));
+
+    // Spread the systems of every full page down to its bottom, but never more than
+    // MAX_SPREAD between two systems (a page of two systems stays readable).
+    for (page, (systems, full)) in page_systems.iter().enumerate() {
+        let count = systems.len();
+        if !*full || count < 2 {
+            continue;
+        }
+        let last = systems.end.saturating_sub(1);
+        let (Some(top), Some(height), Some(rect)) =
+            (tops.get(last), heights.get(last), pages.get(page))
+        else {
+            continue;
+        };
+        let free = limit(page, rect.origin.y) - (top + height + BELOW_SYSTEM);
+        if !(free.is_finite() && free > 0.0) {
+            continue;
+        }
+        let extra = (free / count.saturating_sub(1) as f32).min(MAX_SPREAD);
+        for (offset, index) in systems.clone().enumerate() {
+            if let Some(top) = tops.get_mut(index) {
+                *top += extra * offset as f32;
+            }
+        }
+    }
+    Placement { tops, pages }
+}
+
+/// What the pages carry besides the music: page numbers, the copyright on the first page,
+/// and a running header on the others.
+struct PageDecor {
+    page_numbers: bool,
+    copyright: Vec<String>,
+    header: Option<String>,
+}
+
+impl PageDecor {
+    fn new(song: &Song, options: &LayoutOptions) -> Self {
+        let copyright = if options.copyright {
+            song.copyright()
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_owned)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let header = options
+            .running_header
+            .then(|| match (song.title().trim(), song.artist().trim()) {
+                ("", _) => None,
+                (title, "") => Some(title.to_owned()),
+                (title, artist) => Some(format!("{title} by {artist}")),
+            })
+            .flatten();
+        PageDecor {
+            page_numbers: options.page_numbers,
+            copyright,
+            header,
+        }
+    }
+
+    /// Room kept above page `page`'s bottom margin.
+    fn footer_room(&self, page: usize) -> f32 {
+        let copyright = if page == 0 {
+            self.copyright.len() as f32 * FOOTER_LINE
+        } else {
+            0.0
+        };
+        FOOTER_ROOM + copyright
+    }
+
+    /// Room kept below page `page`'s top margin (the first page has the title block).
+    fn header_room(&self, page: usize) -> f32 {
+        if page > 0 && self.header.is_some() {
+            RUNNING_HEADER_ROOM
+        } else {
+            0.0
+        }
+    }
+
+    /// Page numbers at the bottom right ("Page 2/5", as Guitar Pro), the copyright at the
+    /// bottom of the first page, the running header atop the others.
+    fn draw(&self, pages: &[Rect], options: &LayoutOptions, ops: &mut Vec<DrawOp>) {
+        let count = pages.len();
+        let text = |text: String, at: Point, anchor: TextAnchor| DrawOp::Text {
+            text,
+            at,
+            size: options.measure_number_size,
+            font: TextFont::Regular,
+            anchor,
+            color: ColorToken::Annotation,
+        };
+        let center = (options.margin_left + options.page_width - options.margin_right) / 2.0;
+        for (index, page) in pages.iter().enumerate() {
+            let bottom = page.origin.y + page.height;
+            if self.page_numbers {
+                ops.push(text(
+                    format!("Page {}/{count}", index.saturating_add(1)),
+                    Point::new(
+                        page.origin.x + page.width - options.margin_right,
+                        bottom - options.margin_bottom / 2.0,
+                    ),
+                    TextAnchor::End,
+                ));
+            }
+            if index == 0 {
+                let lines = self.copyright.len();
+                for (line, copyright) in self.copyright.iter().enumerate() {
+                    let up = lines.saturating_sub(line).saturating_sub(1) as f32;
+                    ops.push(text(
+                        copyright.clone(),
+                        Point::new(center, bottom - options.margin_bottom - up * FOOTER_LINE),
+                        TextAnchor::Middle,
+                    ));
+                }
+            } else if let Some(header) = &self.header {
+                ops.push(text(
+                    header.clone(),
+                    Point::new(center, page.origin.y + options.margin_top + 1.0),
+                    TextAnchor::Middle,
+                ));
+            }
+        }
+    }
 }

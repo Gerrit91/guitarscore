@@ -30,5 +30,7 @@ This file documents all third-party assets used in the GuitarScore project.
 | rfd | 0.17.2 | MIT | Native file dialogs; XDG desktop portal on Linux (only `gscore-app`) |
 | egui_kittest (dev) | 0.37.0 | MIT OR Apache-2.0 | Headless UI tests and offscreen snapshots of the app |
 | image (dev, `png`) | 0.25.10 | MIT OR Apache-2.0 | Saving the snapshot example's PNG (already used by egui_kittest) |
+| pdf-writer | 0.15.0 | MIT OR Apache-2.0 | Writing PDF files for the PDF export (Typst project; only `gscore-layout`) |
+| subsetter (without default features) | 0.2.6 | MIT OR Apache-2.0 | Embedding only the used glyphs of the fonts in PDFs (Typst project; only `gscore-layout`) |
 
 > Add new entries when adding third-party assets or dependencies to the project.

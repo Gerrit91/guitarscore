@@ -298,8 +298,28 @@ pub fn settings_differences(before: &Song, after: &Song) -> Vec<Difference> {
         before.master_mix(),
         after.master_mix(),
     );
+    diff.check(
+        "song",
+        "page setup",
+        before.page_setup(),
+        after.page_setup(),
+    );
     for (a, b) in before.tracks().zip(after.tracks()) {
         let at = a.index().to_string();
+        diff.check(
+            &at,
+            "bars per line",
+            a.bars_per_system(),
+            b.bars_per_system(),
+        );
+        for (old, new) in a.measures().zip(b.measures()) {
+            diff.check(
+                &format!("{at}, {}", old.index()),
+                "line break",
+                old.system_break(),
+                new.system_break(),
+            );
+        }
         diff.check(&at, "color", a.color(), b.color());
         diff.check(&at, "staves", a.staves(), b.staves());
         diff.check(&at, "mute", a.is_muted(), b.is_muted());
