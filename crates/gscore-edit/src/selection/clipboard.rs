@@ -2,8 +2,8 @@
 //! into commands (see `paste.rs`) that run as one batch.
 
 use gscore_model::{
-    BeatEffect, BeatKind, BeatView, Fret, MeasureIndex, NoteEffect, NoteKind, NoteValue, NoteView,
-    Section, SlideKind, StringNumber, TimeSignature,
+    BeatEffect, BeatKind, BeatView, Dynamic, Fret, MeasureIndex, NoteEffect, NoteKind, NoteValue,
+    NoteView, Section, SlideKind, StringNumber, TimeSignature,
 };
 
 use super::paste::{paste_beats, paste_measures};
@@ -25,13 +25,15 @@ pub(crate) struct NoteClip {
     pub(super) effects: Vec<NoteEffect>,
 }
 
-/// One copied beat: its length, whether it is a rest, its notes and its beat effects.
+/// One copied beat: its length, whether it is a rest, its notes, its beat effects and
+/// its dynamic.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BeatClip {
     pub(super) duration: NoteValue,
     pub(super) rest: bool,
     pub(super) notes: Vec<NoteClip>,
     pub(super) effects: Vec<BeatEffect>,
+    pub(super) dynamic: Option<Dynamic>,
 }
 
 /// One copied measure across every voice of one track.
@@ -243,6 +245,7 @@ fn beat_clip(beat: &BeatView<'_>) -> Result<Option<BeatClip>, EditError> {
         rest: beat.kind() == BeatKind::Rest,
         notes,
         effects: beat_effects(beat),
+        dynamic: beat.dynamic(),
     }))
 }
 

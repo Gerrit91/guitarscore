@@ -47,6 +47,8 @@ pub(crate) enum Clef {
     Treble,
     /// Bass clef: basses.
     Bass,
+    /// Percussion clef: drum kits, whose notes are placed by [`super::drums`].
+    Percussion,
 }
 
 /// Semitones between the sounding and the written pitch.
@@ -68,7 +70,8 @@ impl Clef {
     /// The diatonic step on the bottom line: E4 in treble, G2 in bass.
     fn bottom_line_step(self) -> i32 {
         match self {
-            Clef::Treble => 4 * 7 + 2,
+            // Drums are not placed by pitch; treble positions are a harmless fallback.
+            Clef::Treble | Clef::Percussion => 4 * 7 + 2,
             Clef::Bass => 2 * 7 + 4,
         }
     }
@@ -79,6 +82,7 @@ impl Clef {
         match self {
             Clef::Treble => (Glyph::GClef, 2),
             Clef::Bass => (Glyph::FClef, 6),
+            Clef::Percussion => (Glyph::PercussionClef, 4),
         }
     }
 

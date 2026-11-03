@@ -5,10 +5,11 @@
 #![allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 #![allow(unused_crate_dependencies)]
 
-use gscore_edit::{Action, ActionId, BeatSpot, Cursor, Outcome, Selection, TabEditor};
+use gscore_edit::{Action, ActionId, BeatSpot, Command, Cursor, Outcome, Selection, TabEditor};
 use gscore_model::testing::{self, GUITAR_6};
 use gscore_model::{
-    BeatIndex, BeatPosition, MeasureIndex, StringNumber, TrackIndex, VoiceIndex, differences,
+    BeatIndex, BeatPosition, Dynamic, MeasureIndex, StringNumber, TrackIndex, VoiceIndex,
+    differences,
 };
 
 fn editor(measures: usize) -> TabEditor {
@@ -193,6 +194,42 @@ fn a_selection_over_a_bar_line_copies_and_pastes_bar_by_bar() {
     go(&mut e, 3, 0);
     assert!(e.perform(Action::Plain(ActionId::Paste), 0).is_err());
     assert!(differences(&before, e.song()).is_empty());
+}
+
+#[test]
+fn pasted_notes_keep_their_dynamic() {
+    let mut e = editor(2);
+    go(&mut e, 0, 0);
+    e.perform(Action::Digit(3), 0).unwrap();
+    e.execute_command(Command::SetDynamic {
+        at: at(0, 0),
+        dynamic: Dynamic::Pp,
+    })
+    .unwrap();
+    // Later notes are entered pianissimo; make the target loud first.
+    go(&mut e, 1, 0);
+    e.perform(Action::Digit(5), 0).unwrap();
+    e.execute_command(Command::SetDynamic {
+        at: at(1, 0),
+        dynamic: Dynamic::Ff,
+    })
+    .unwrap();
+    e.set_selection(Some(Selection::Beats {
+        track: TrackIndex::new(0),
+        voice: VoiceIndex::new(0),
+        anchor: spot(0, 0),
+        focus: spot(0, 0),
+    }));
+    plain(&mut e, ActionId::Copy);
+    go(&mut e, 1, 2);
+    assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
+    let dynamic =
+        |e: &TabEditor, measure, beat| e.song().beat(at(measure, beat)).unwrap().dynamic();
+    assert_eq!(
+        dynamic(&e, 1, 2),
+        Some(Dynamic::Pp),
+        "not the ff in effect there"
+    );
 }
 
 #[test]

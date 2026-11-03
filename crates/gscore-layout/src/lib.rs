@@ -5,12 +5,14 @@
 //! 1. [`header`]: title block, credits, tuning and tempo.
 //! 2. [`measure`]: every measure on its own, as columns of beats with natural spacing.
 //!    This is the unit [`LayoutCache`] keeps between edits.
-//! 3. [`system`]: measures broken into lines and justified to the page width.
-//! 4. Drawing: staff lines, clef, barlines and the measures' content, as [`DrawOp`]s.
+//! 3. [`marks`]: section names, tempo changes, repeats, endings and dynamics, decided in
+//!    order over the track (a tempo or dynamic is written where it changes).
+//! 4. [`system`]: measures broken into lines and justified to the page width.
+//! 5. Drawing: staff lines, clef, barlines and the measures' content, as [`DrawOp`]s.
 //!
 //! [`svg::to_svg`] renders the result for golden tests and the command line; the GUI draws
-//! the same operations. Only the tab staff of one track is laid out so far, on one
-//! continuous page (no page breaks yet).
+//! the same operations. One track is laid out at a time (standard notation, tab, or both;
+//! a percussion staff for drums), on one continuous page (no page breaks yet).
 
 #![warn(clippy::arithmetic_side_effects)]
 
@@ -19,6 +21,7 @@ mod draw;
 mod error;
 mod glyph;
 mod header;
+mod marks;
 mod measure;
 mod metrics;
 mod notation;
@@ -56,6 +59,11 @@ use system::{MeasureWidth, break_systems};
 
 /// Space between the header and the first system's top line (room for measure numbers).
 const HEADER_GAP: f32 = 4.0;
+/// How far a repeat count ("x3") sits above the staff (to its baseline), like measure
+/// numbers.
+const MEASURE_NUMBER_RISE: f32 = 0.8;
+/// Gap between a repeat count and the end repeat's barline.
+const REPEAT_COUNT_GAP: f32 = 0.6;
 
 /// The fonts layout measures with.
 #[derive(Debug, Clone)]
@@ -126,19 +134,17 @@ fn layout_with(
     measure_layout: &mut MeasureSource<'_>,
 ) -> Result<Layout, LayoutError> {
     let view = song.track(track).ok_or(LayoutError::NoSuchTrack(track))?;
-    if view.is_percussion() {
-        return Err(LayoutError::Unsupported(format!(
-            "{track} is a drum track; drum notation is not implemented"
-        )));
-    }
     let staves = view.staves();
-    let notation = if options.notation && staves.notation() {
+    // Drums are always written on a percussion staff: their "frets" are drum sounds, which
+    // a tab staff cannot show.
+    let drums = view.is_percussion();
+    let notation = if drums || (options.notation && staves.notation()) {
         Notation::for_track(view)?
     } else {
         None
     };
     // A track without notation (none possible, or switched off) always shows its tab.
-    let show_tab = staves.tablature() || notation.is_none();
+    let show_tab = !drums && (staves.tablature() || notation.is_none());
     let ctx = Context {
         options,
         fonts,
@@ -158,10 +164,13 @@ fn layout_with(
         previous_signature = Some(signature);
     }
 
+    let marks = marks::plan(song, &measures);
+    let extras: Vec<(f32, f32)> = marks.iter().map(|m| m.extra_width(&ctx)).collect();
     let widths: Vec<MeasureWidth> = measures
         .iter()
-        .map(|m| MeasureWidth {
-            fixed: m.fixed_width(),
+        .zip(&extras)
+        .map(|(m, (before, after))| MeasureWidth {
+            fixed: m.fixed_width() + before + after,
             stretchable: m.stretchable_width(),
         })
         .collect();
@@ -186,6 +195,11 @@ fn layout_with(
     let mut bottom = header_end;
     for plan in &plans {
         let line: &[Arc<MeasureLayout>] = measures.get(plan.measures.clone()).unwrap_or_default();
+        let line_marks: &[marks::MeasureMarks] =
+            marks.get(plan.measures.clone()).unwrap_or_default();
+        let rows = marks::Rows::of(line_marks);
+        // Section names, tempo marks and endings need room above the system.
+        top += rows.height();
         let tops = Tops {
             tab: top + tab_offset,
             notation: ctx.notation.map(|_| top),
@@ -213,18 +227,64 @@ fn layout_with(
         });
         let mut x = left + prefix;
         let mut content = Vec::new();
+        let default_marks = marks::MeasureMarks::default();
         for (offset, measure) in line.iter().enumerate() {
-            places.measures.push(measure.place(x, plan.stretch, system));
-            measure.draw(x, tops, plan.stretch, &ctx, &mut content);
-            x += measure.width(plan.stretch);
+            let measure_marks = line_marks.get(offset).unwrap_or(&default_marks);
+            let (before, after) = measure_marks.extra_width(&ctx);
+            let left = x;
+            let content_x = x + before;
+            let mut place = measure.place(content_x, plan.stretch, system);
+            place.left = left;
+            places.measures.push(place);
+            measure.draw(content_x, tops, plan.stretch, &ctx, &mut content);
+            x = content_x + measure.width(plan.stretch) + after;
+            marks::draw(
+                marks::Placed {
+                    layout: measure,
+                    marks: measure_marks,
+                    left,
+                    right: x,
+                    content: content_x,
+                    stretch: plan.stretch,
+                },
+                rows,
+                tops,
+                &ctx,
+                &mut content,
+            );
             let is_final =
                 plan.measures.start.saturating_add(offset).saturating_add(1) == measures.len();
+            let end_repeat = measure_marks.repeat.end_repeats.is_some();
+            let mut staves: Vec<(&Staff, f32)> = Vec::with_capacity(2);
             if show_tab {
-                ctx.staff
-                    .draw_barline(x, tab_top, is_final, font, &mut content);
+                staves.push((&ctx.staff, tab_top));
             }
             if let Some(notation_top) = tops.notation {
-                notation_staff.draw_barline(x, notation_top, is_final, font, &mut content);
+                staves.push((&notation_staff, notation_top));
+            }
+            for (staff, staff_top) in staves {
+                if measure_marks.repeat.start {
+                    staff.draw_repeat(left, staff_top, true, font, &mut content);
+                }
+                if end_repeat {
+                    staff.draw_repeat(x, staff_top, false, font, &mut content);
+                } else {
+                    staff.draw_barline(x, staff_top, is_final, font, &mut content);
+                }
+            }
+            if let Some(count) = marks::repeat_count(measure_marks) {
+                content.push(DrawOp::Text {
+                    text: count,
+                    // Left of the barline, clear of the next measure's number.
+                    at: Point::new(
+                        x - REPEAT_COUNT_GAP,
+                        tops.notation.unwrap_or(tab_top) - MEASURE_NUMBER_RISE,
+                    ),
+                    size: options.measure_number_size,
+                    font: TextFont::Regular,
+                    anchor: TextAnchor::End,
+                    color: ColorToken::Annotation,
+                });
             }
         }
         // Staff lines first, so masks and fret numbers paint over them.

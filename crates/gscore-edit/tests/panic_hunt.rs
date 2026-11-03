@@ -39,6 +39,7 @@ fn valid_value(name: &str) -> &'static str {
     match name {
         "fret" => "5",
         "duration" => "1/4",
+        "dynamic" => "mf",
         _ => "1",
     }
 }

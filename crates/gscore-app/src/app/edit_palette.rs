@@ -1,5 +1,6 @@
 //! The edit palette (the left panel): note lengths, dots and tuplets, rests and ties, the
-//! voice, the measure's tempo, signatures and section marker, and the effects matrix.
+//! voice, dynamics, the effects matrix, and the measure's tempo, signatures and section
+//! marker.
 //!
 //! Changes are ordinary commands (or one `batch` command for several beats), so every
 //! palette click is undoable and recorded in the recovery journal.
@@ -11,6 +12,7 @@ use gscore_model::{
 };
 
 use super::GuitarScoreApp;
+use super::edit_dynamics::{self, DynamicsSnapshot};
 use super::edit_effects::{BeatState, EffectsState, NoteState};
 use super::style;
 use super::tiles::{self, Face};
@@ -99,6 +101,8 @@ pub(super) struct PaletteSnapshot {
     pub(super) target_states: Vec<NoteState>,
     /// The effects of each selected beat, in the order of `beats`.
     pub(super) beat_states: Vec<BeatState>,
+    /// The selected beats' dynamics and the one in effect at the cursor.
+    pub(super) dynamics: DynamicsSnapshot,
 }
 
 impl PaletteSnapshot {
@@ -130,6 +134,7 @@ impl PaletteSnapshot {
                 }
             }
         }
+        let dynamics = DynamicsSnapshot::of(song, &beats, cursor.position());
         PaletteSnapshot {
             cursor,
             beats,
@@ -149,6 +154,7 @@ impl PaletteSnapshot {
             note_targets,
             target_states,
             beat_states,
+            dynamics,
         }
     }
 }
@@ -196,6 +202,7 @@ impl GuitarScoreApp {
                     note_length(ui, &mut self.edit_palette, &snapshot, &hint, &mut commands);
                     beat_buttons(ui, &mut self.edit_palette, &snapshot, &hint, &mut commands);
                 });
+                edit_dynamics::section(ui, &snapshot.dynamics, &mut commands);
                 self.edit_palette
                     .effects
                     .panel(ui, &snapshot, &hint, &mut commands);

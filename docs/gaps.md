@@ -95,11 +95,12 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    sharps), the second voice, ties across barlines, tuplet groups spanning several beats
    (each beat's beam gets its own number), grace notes, articulations and ornaments on the
    notation staff (they stay on the tab), harmonic diamonds (harmonics are written at their
-   sounding pitch). Missing everywhere: repeats and endings, tempo changes, section
-   markers, lyrics, chord diagrams, page breaks, multi-track systems, rhythm under the tab
+   sounding pitch). Since 2026-11-03 section names, tempo changes, repeat signs (with
+   "x3" counts), alternative endings and dynamics are drawn, and drum tracks get a
+   percussion staff. Missing everywhere: D.C./D.S./coda and other directions, hairpins,
+   lyrics, chord diagrams, page breaks, multi-track systems, rhythm under the tab
    (shown in the notation instead). Ornaments that connect notes only look within one
-   measure. Voice, piano and drum tracks get no notation (no tuning); drum tracks are
-   refused. Text widths are estimated for non-digits; no PNG output (`rsvg-convert` works).
+   measure. Voice and piano tracks get no notation (no tuning). Text widths are estimated for non-digits; no PNG output (`rsvg-convert` works).
 10. **The app edits one voice at a cursor (M8, first version).** It opens files in the
    background, shows one track's page, edits voice 1 from the keyboard (keymap file) or
    menus with undo/redo, saves as `.gp` (Save As for files in other formats; a lossy save

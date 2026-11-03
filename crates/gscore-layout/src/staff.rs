@@ -10,6 +10,9 @@ const CLEF_LEFT_GAP: f32 = 0.6;
 const CLEF_RIGHT_GAP: f32 = 1.0;
 /// How much of the staff height the tab clef covers.
 const CLEF_HEIGHT_RATIO: f32 = 0.8;
+/// Gap between a repeat sign's thin line and its dots (Bravura's
+/// `repeatBarlineDotSeparation`).
+const REPEAT_DOT_SEPARATION: f32 = 0.16;
 
 /// The geometry of a tab staff: one line per string, string 1 at the top.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -98,6 +101,74 @@ impl Staff {
         }
     }
 
+    /// Where the two repeat dots sit: in the spaces on either side of the middle.
+    fn repeat_dot_offsets(&self) -> [f32; 2] {
+        let middle = self.middle();
+        // With an odd number of lines the middle is a line, so the spaces are half a
+        // spacing away; with an even number the middle is a space and the next ones a
+        // whole spacing away.
+        let away = if self.lines % 2 == 1 {
+            self.spacing / 2.0
+        } else {
+            self.spacing
+        };
+        [middle - away, middle + away]
+    }
+
+    /// The width a repeat sign takes (thick and thin line, dots).
+    pub(crate) fn repeat_sign_width(font: &MusicFont) -> f32 {
+        let e = font.engraving();
+        e.thick_barline_thickness
+            + e.thin_thick_barline_separation
+            + e.thin_barline_thickness
+            + REPEAT_DOT_SEPARATION
+            + font.advance(Glyph::RepeatDot)
+    }
+
+    /// A repeat sign: at a start (`start`, thick line at `x`, dots to the right) or an
+    /// end (thick line ending at `x`, dots to the left).
+    pub(crate) fn draw_repeat(
+        &self,
+        x: f32,
+        top: f32,
+        start: bool,
+        font: &MusicFont,
+        ops: &mut Vec<DrawOp>,
+    ) {
+        let e = font.engraving();
+        let (thick, thin, gap) = (
+            e.thick_barline_thickness,
+            e.thin_barline_thickness,
+            e.thin_thick_barline_separation,
+        );
+        let dot = font.advance(Glyph::RepeatDot);
+        // Distances from `x` inwards: thick line center, thin line center, dots' near edge.
+        let thick_center = thick / 2.0;
+        let thin_center = thick + gap + thin / 2.0;
+        let dots = thick + gap + thin + REPEAT_DOT_SEPARATION;
+        let (thick_x, thin_x, dot_x) = if start {
+            (x + thick_center, x + thin_center, x + dots)
+        } else {
+            (x - thick_center, x - thin_center, x - dots - dot)
+        };
+        for (center, thickness) in [(thick_x, thick), (thin_x, thin)] {
+            ops.push(DrawOp::Line {
+                from: Point::new(center, top),
+                to: Point::new(center, top + self.height()),
+                thickness,
+                color: ColorToken::Barline,
+            });
+        }
+        for offset in self.repeat_dot_offsets() {
+            ops.push(DrawOp::Glyph {
+                glyph: Glyph::RepeatDot,
+                at: Point::new(dot_x, top + offset),
+                scale: 1.0,
+                color: ColorToken::Barline,
+            });
+        }
+    }
+
     /// The thin line at the start of a system, its left edge at `x`.
     pub(crate) fn draw_start_line(
         &self,
@@ -159,6 +230,14 @@ mod tests {
         assert_eq!(staff.line_y(5), 7.5);
         assert_eq!(staff.middle(), 3.75);
         assert_eq!(Staff::new(0, 1.5).lines(), 1, "never fewer than one line");
+    }
+
+    #[test]
+    fn repeat_dots_sit_in_the_spaces_around_the_middle() {
+        assert_eq!(Staff::new(5, 1.0).repeat_dot_offsets(), [1.5, 2.5]);
+        assert_eq!(Staff::new(6, 1.5).repeat_dot_offsets(), [2.25, 5.25]);
+        assert_eq!(Staff::new(4, 1.5).repeat_dot_offsets(), [0.75, 3.75]);
+        assert_eq!(Staff::new(7, 1.5).repeat_dot_offsets(), [3.75, 5.25]);
     }
 
     #[test]

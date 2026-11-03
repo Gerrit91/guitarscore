@@ -1,8 +1,8 @@
 # Guitar Pro Feature Parity Checklist
 
 This document tracks which Guitar Pro features are implemented in GuitarScore.
-Updated 2026-11-03 (M18 playback: time, metronome, count-in, navigation, looping;
-app shell: settings, shortcut editor, history, new song, new-track popup and mixer view).
+Updated 2026-11-03 (drum notation, dynamics, section names, tempo changes, repeats and
+endings in the score; before: M18 playback, app shell).
 
 ## Implemented Features
 
@@ -17,7 +17,7 @@ app shell: settings, shortcut editor, history, new song, new-track popup and mix
 | Track panel (right panel, M15) | Live: name, instrument kind, General MIDI program (the SoundFont preset), drum kit, color (presets or any), shown staves (notes and tabs, tabs only, notes only), string count, capo and each string's open note by name, all as commands with undo; sound and tuning changes are heard while playing |
 | App shell and settings (M12) | Live: docked panels with remembered sizes and visibility, a centered settings window with the app's title bar, tabs Song / Editor / Audio I/O (sound font dropdown, MIDI ports), in-app shortcut editor stored in the settings JSON, JSON settings in the config directory, recent files, drag and drop, window position/size, zoom keys, progress and cancel for opening and SoundFont loading, cursor following playback, reopening the last file at startup (on by default, with an Editor setting; a missing file starts blank) |
 | Song information editing | Live, undoable: title, subtitle, artist, album, lyricist, composer, copyright, tab author, instructions, notes and the initial tempo (settings window or `set_song_text`/`set_tempo`) |
-| Edit palette (left panel, M14) | Live: note lengths (whole to 64th), dots, tuplets, rests, ties, dead notes, voice 1/2, measure tempo/time/key signatures and section markers, and the effect matrix (bends and whammy with point editors) |
+| Edit palette (left panel, M14) | Live: note lengths (whole to 64th), dots, tuplets, rests, ties, dead notes, voice 1/2, dynamics (ppp to fff; new notes take the dynamic in effect, copy/paste keeps it), measure tempo/time/key signatures and section markers, and the effect matrix (bends and whammy with point editors) |
 | Selection and clipboard (M14) | Live: a beat range in one track/voice (across bar lines; Shift+arrows, dragging, Shift+Up/Down for the whole beat) or a measure range across tracks; Delete clears the selected notes; copy, cut and paste as one undo step, carrying notes, durations, ties, effects, time signature, tempo and section |
 | Note and beat effects (read, dump, save) | Live |
 | Measure issues (under/overfilled bars, notes on missing strings) | Live |
@@ -31,13 +31,15 @@ app shell: settings, shortcut editor, history, new song, new-track popup and mix
 | Cursor and selection | Live: cursor (keys, page click, grid click), beat selection by Shift+arrows or dragging on the page (across bar lines), measure ranges in the grid |
 | Copy / cut / paste | Live for beat and measure selections (M14) |
 | Multiple voices per track | Partial: read, viewed and edited per voice; no cross-voice editing |
-| Tempo changes | Partial: kept in the file; only the initial tempo is exposed and editable commands do not set them |
+| Tempo changes | Partial: per measure (`set_measure_tempo`, palette) and as read from GP3-5 beats; written in the score where the tempo changes. No gradual tempo changes (accelerando, ritardando) |
+| Dynamics | Live: ppp to fff per beat (`set_dynamic`, palette), played as note velocity, written under the notation (or the tab) where they change; mf, Guitar Pro's default, is not written. No hairpins (crescendo/diminuendo) |
+| Drum notation | Live: drum tracks on a five-line percussion staff (percussion clef, each General MIDI drum sound in its usual place with its notehead: crosses for hi-hat and cymbals, circled crosses for open hi-hat and side stick, ...), stems up; entered as MIDI note numbers on the kit's "strings". No drum tab, no custom drum maps, no second (feet) voice |
 | Time signature changes | Partial: kept and copied to new measures; no command to change one |
 | Lyrics, chord diagrams, fingering | Partial: kept in the file; no accessors or editing |
 | Keymap configuration | Live: a table in Settings → Editor for every action (typed characters / key names, layout independent), key capture with conflict replacement, per-row revert and reset-all, stored in the settings; `gscore-cli keymap` still lists ids |
 | Desktop app | Partial (`guitarscore`): new song, open file (dialog, recent files, drag and drop or command line), keyboard editing with undo/redo and the History window, entered notes heard at once, save/save as `.gp` (with the unsaved-changes question), track picker, zoom keys, light/dark theme, settings window, play/pause/stop/navigation with the built-in synthesizer or to a MIDI port, the cursor following playback, and the track and song grid with live mixing, plus the track panel |
 | Playback | Partial: built-in SoundFont synthesizer, MIDI output and `.mid` export: all tracks with their instruments, volume, pan, reverb and chorus, tempo changes, repeats and alternative endings, ties, dead notes, harmonics, bends and slides (on borrowed channels, so the rest of the chord keeps its pitch), mute and solo; metronome clicks (accented on the first beat of each measure) and a one-bar count-in, both toggled in the player, with the readout already showing where the song will start; rewind/forward one bar, jump to the top/end, and looping of the selected measures; position and total length ("00:00 / 03:45") that follow a measure selection. No vibrato, let ring, palm mute, grace notes, trills, whammy bar, D.C./D.S./coda, swing, or sample-accurate loop boundaries |
-| Tablature display | Partial: one track as standard notation above tab, in the app and as SVG (`gscore-cli render`): clef, time signatures, notes with accidentals, stems, flags, beams, dots, rests, ties and tuplet numbers; tab fret numbers with ornaments (slurs, bends, slides, vibrato, harmonics, accents, palm mute, let ring, whammy). No key signatures, second voice in notation, repeats, pages or multi-track systems yet |
+| Tablature display | Partial: one track as standard notation above tab, in the app and as SVG (`gscore-cli render`): clef, time signatures, notes with accidentals, stems, flags, beams, dots, rests, ties and tuplet numbers; tab fret numbers with ornaments (slurs, bends, slides, vibrato, harmonics, accents, palm mute, let ring, whammy); section names (framed), tempo changes, repeat signs with counts, alternative-ending brackets and dynamics; drum tracks on a percussion staff. No key signatures, second voice in notation, D.C./D.S./coda, pages or multi-track systems yet |
 
 ## Future Milestones
 

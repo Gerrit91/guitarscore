@@ -9,6 +9,7 @@
 use std::fmt;
 
 use crate::duration::Duration;
+use crate::dynamics::Dynamic;
 use crate::effects::{
     AccentKind, Bend, Harmonic, Legato, SlapKind, SlideKind, StrokeDirection, Vibrato, Whammy,
 };
@@ -192,6 +193,7 @@ struct NoteContent {
     trill: bool,
     tremolo_picking: bool,
     vibrato: Option<Vibrato>,
+    dynamic: Dynamic,
 }
 
 impl NoteContent {
@@ -212,6 +214,7 @@ impl NoteContent {
             trill: note.has_trill(),
             tremolo_picking: note.has_tremolo_picking(),
             vibrato: note.vibrato(),
+            dynamic: note.dynamic(),
         }
     }
 }
@@ -280,6 +283,7 @@ fn compare_beat(diff: &mut Diffs, at: &str, a: &BeatContent, b: &BeatContent) {
             nb.tremolo_picking,
         );
         diff.check(&at, "vibrato", na.vibrato, nb.vibrato);
+        diff.check(&at, "dynamic", na.dynamic, nb.dynamic);
     }
 }
 

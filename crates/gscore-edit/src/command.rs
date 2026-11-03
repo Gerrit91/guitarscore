@@ -1,20 +1,20 @@
 //! The command enum: what an edit is, whether it can run, and how it applies.
 
 use gscore_model::{
-    BeatEffect, BeatKind, BeatPosition, BeatView, Change, Fret, MAX_SECTION_TITLE_CHARS, MAX_TEMPO,
-    MeasureIndex, ModelError, NoteEffect, NoteValue, Pitch, Song, SongTextField, StringNumber,
-    TimeSignature, TrackColor, TrackIndex, TrackStaves,
+    BeatEffect, BeatKind, BeatPosition, BeatView, Change, Dynamic, Fret, MAX_SECTION_TITLE_CHARS,
+    MAX_TEMPO, MeasureIndex, ModelError, NoteEffect, NoteValue, Pitch, Song, SongTextField,
+    StringNumber, TimeSignature, TrackColor, TrackIndex, TrackStaves,
 };
 
 use crate::info::{
     BATCH, CLEAR_NOTE, CLEAR_SECTION, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_TRACK,
     DUPLICATE_TRACK, INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO, RENAME_TRACK,
-    SET_BEAT_EFFECT, SET_BEAT_REST, SET_DEAD_NOTE, SET_DURATION, SET_FRET, SET_KEY_SIGNATURE,
-    SET_MASTER_PAN, SET_MASTER_VOLUME, SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_SECTION,
-    SET_SONG_TEXT, SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_CHORUS,
-    SET_TRACK_COLOR, SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM,
-    SET_TRACK_REVERB, SET_TRACK_SOLO, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS,
-    SET_TRACK_VOLUME, UNDO,
+    SET_BEAT_EFFECT, SET_BEAT_REST, SET_DEAD_NOTE, SET_DURATION, SET_DYNAMIC, SET_FRET,
+    SET_KEY_SIGNATURE, SET_MASTER_PAN, SET_MASTER_VOLUME, SET_MEASURE_TEMPO, SET_NOTE_EFFECT,
+    SET_SECTION, SET_SONG_TEXT, SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO,
+    SET_TRACK_CHORUS, SET_TRACK_COLOR, SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN,
+    SET_TRACK_PROGRAM, SET_TRACK_REVERB, SET_TRACK_SOLO, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH,
+    SET_TRACK_STRINGS, SET_TRACK_VOLUME, UNDO,
 };
 
 /// One edit, with every parameter already checked for syntax and range.
@@ -224,6 +224,13 @@ pub enum Command {
         /// Whether it is dead.
         dead: bool,
     },
+    /// Set how loud a beat's notes are played.
+    SetDynamic {
+        /// The beat.
+        at: BeatPosition,
+        /// The dynamic mark.
+        dynamic: Dynamic,
+    },
     /// Tie a note to the previous one, or remove the tie.
     SetTie {
         /// The beat.
@@ -408,6 +415,9 @@ impl Command {
             } => {
                 format!("{id} {} string={} dead={dead}", at(p), string.get())
             }
+            Command::SetDynamic { at: p, dynamic } => {
+                format!("{id} {} dynamic={}", at(p), dynamic.id())
+            }
             Command::SetMeasureTempo { measure, tempo } => {
                 format!("{id} measure={} tempo={tempo}", one(measure.get()))
             }
@@ -530,6 +540,7 @@ impl Command {
             Command::SetBeatRest { .. } => &SET_BEAT_REST,
             Command::SetTie { .. } => &SET_TIE,
             Command::SetDeadNote { .. } => &SET_DEAD_NOTE,
+            Command::SetDynamic { .. } => &SET_DYNAMIC,
             Command::SetMeasureTempo { .. } => &SET_MEASURE_TEMPO,
             Command::SetTimeSignature { .. } => &SET_TIME_SIGNATURE,
             Command::SetKeySignature { .. } => &SET_KEY_SIGNATURE,
@@ -656,7 +667,8 @@ impl Command {
             | Command::SetTimeSignature { .. }
             | Command::SetNoteEffect { .. }
             | Command::SetBeatEffect { .. }
-            | Command::SetDeadNote { .. } => true,
+            | Command::SetDeadNote { .. }
+            | Command::SetDynamic { .. } => true,
             Command::Batch { commands } => commands.iter().any(Command::rebuilds_playback),
             _ => false,
         }
@@ -816,6 +828,9 @@ impl Command {
             Command::SetSongText { field, text } => field.check(text).is_ok(),
             Command::SetTempo { tempo } => (1..=MAX_TEMPO).contains(tempo),
             Command::SetBeatRest { at } => song.beat(*at).is_some(),
+            Command::SetDynamic { at, .. } => song
+                .beat(*at)
+                .is_some_and(|beat| beat.notes().next().is_some()),
             Command::SetTie { at, string, .. } | Command::SetDeadNote { at, string, .. } => song
                 .beat(*at)
                 .is_some_and(|beat| beat.notes().any(|note| note.string().ok() == Some(*string))),
@@ -907,6 +922,7 @@ impl Command {
             Command::SetBeatRest { at } => song.set_beat_rest(*at),
             Command::SetTie { at, string, tie } => song.set_note_tie(*at, *string, *tie),
             Command::SetDeadNote { at, string, dead } => song.set_note_dead(*at, *string, *dead),
+            Command::SetDynamic { at, dynamic } => song.set_dynamic(*at, *dynamic),
             Command::SetMeasureTempo { measure, tempo } => song.set_measure_tempo(*measure, *tempo),
             Command::SetTimeSignature {
                 measure,

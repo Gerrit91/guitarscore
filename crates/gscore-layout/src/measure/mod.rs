@@ -9,7 +9,7 @@ mod columns;
 mod draw;
 
 use gscore_model::{
-    BeatIndex, BeatView, Duration, MeasureIndex, MeasureView, TimeSignature, VoiceIndex,
+    BeatIndex, BeatView, Dynamic, MeasureIndex, MeasureView, TimeSignature, VoiceIndex,
 };
 
 use crate::Context;
@@ -19,7 +19,7 @@ use crate::glyph::Glyph;
 use crate::notation::{self, NotationItem};
 use crate::ornaments::{ColumnMarks, Fret};
 
-use columns::{beat_starts, column_items};
+use columns::{as_f64, beat_length, beat_starts, column_items};
 
 /// Space before and after a time signature.
 const TIME_SIG_PAD: (f32, f32) = (0.8, 0.6);
@@ -78,6 +78,10 @@ struct Column {
     beat: u64,
     /// The model beats that start here, as `(voice, beat)`.
     beats: Vec<(VoiceIndex, BeatIndex)>,
+    /// The dynamic of the first voice's beat (else another voice's), if it has notes.
+    dynamic: Option<Dynamic>,
+    /// A tempo change on one of the beats (GP3-5 store tempo changes on beats).
+    tempo: Option<u32>,
 }
 
 /// The notes of one column and the effects that belong to its beat.
@@ -125,7 +129,8 @@ impl MeasureLayout {
         let time_signature = show_time_signature.then(|| TimeSigLayout::new(signature, ctx));
         let starts = beat_starts(measure, signature)?;
         let beat_length = as_f64(beat_length(signature)?);
-        let mut columns: Vec<(ColumnData, f32)> = Vec::with_capacity(starts.onsets.len());
+        type Pending = (ColumnData, f32, Option<Dynamic>, Option<u32>);
+        let mut columns: Vec<Pending> = Vec::with_capacity(starts.onsets.len());
         for (onset, beats) in &starts.onsets {
             let next = starts
                 .onsets
@@ -148,7 +153,11 @@ impl MeasureLayout {
                 .iter()
                 .map(|&(voice, beat)| (VoiceIndex::new(voice), beat.index()))
                 .collect();
-            columns.push((data, ctx.options.spacing.after(length)));
+            let mut by_voice: Vec<&(usize, BeatView<'_>)> = beats.iter().collect();
+            by_voice.sort_by_key(|(voice, _)| *voice);
+            let dynamic = by_voice.iter().find_map(|(_, beat)| beat.dynamic());
+            let tempo = beats.iter().find_map(|(_, beat)| beat.tempo_change());
+            columns.push((data, ctx.options.spacing.after(length), dynamic, tempo));
         }
         if columns.is_empty() {
             // An empty measure still gets the room its length asks for.
@@ -161,6 +170,8 @@ impl MeasureLayout {
                     beats: Vec::new(),
                 },
                 ctx.options.spacing.after(as_f64(starts.end)),
+                None,
+                None,
             ));
         }
 
@@ -169,15 +180,22 @@ impl MeasureLayout {
         let min_gap = ctx.options.spacing.min_gap;
         let barline_padding = ctx.options.spacing.barline_padding.max(0.0);
         let edge_padding = barline_padding.max(min_gap);
-        notation::assign_accidentals(columns.iter_mut().filter_map(|(d, _)| d.notation.as_mut()));
+        notation::assign_accidentals(
+            columns
+                .iter_mut()
+                .filter_map(|(d, _, _, _)| d.notation.as_mut()),
+        );
         // Room each column needs left and right of its center: the tab's fret numbers are
         // symmetric, notation is not (accidentals left; dots and flags right).
-        let beamed =
-            notation::beamed_columns(columns.iter().map(|(d, _)| (d.notation.as_ref(), d.beat)));
+        let beamed = notation::beamed_columns(
+            columns
+                .iter()
+                .map(|(d, _, _, _)| (d.notation.as_ref(), d.beat)),
+        );
         let extents: Vec<(f32, f32)> = columns
             .iter()
             .zip(&beamed)
-            .map(|((data, _), &beamed)| {
+            .map(|((data, _, _, _), &beamed)| {
                 let tab = half_width(&data.items, ctx);
                 let (left, right) = data.notation.as_ref().map_or((0.0, 0.0), |item| {
                     notation::extent(item, beamed, &ctx.fonts.music)
@@ -191,7 +209,7 @@ impl MeasureLayout {
         let columns = columns
             .into_iter()
             .enumerate()
-            .map(|(i, (data, space))| {
+            .map(|(i, (data, space, dynamic, tempo))| {
                 let own = extents.get(i).map_or(0.0, |(_, right)| *right);
                 let next = extents
                     .get(i.saturating_add(1))
@@ -209,6 +227,8 @@ impl MeasureLayout {
                     notation: data.notation,
                     beat: data.beat,
                     beats: data.beats,
+                    dynamic,
+                    tempo,
                 }
             })
             .collect();
@@ -366,27 +386,4 @@ fn half_width(items: &[Item], ctx: &Context<'_>) -> f32 {
         .iter()
         .map(|item| item.half_width(ctx))
         .fold(0.0, f32::max)
-}
-
-/// The beat notes are beamed within: a dotted quarter in compound meters (6/8, 9/8,
-/// 12/8), a quarter otherwise.
-fn beat_length(signature: TimeSignature) -> Result<Duration, LayoutError> {
-    let compound = signature.denominator() == 8
-        && signature.numerator() > 3
-        && signature.numerator().is_multiple_of(3);
-    Ok(if compound {
-        Duration::new(3, 8)?
-    } else {
-        Duration::new(1, 4)?
-    })
-}
-
-/// A duration in whole notes, as a float for spacing.
-fn as_f64(duration: Duration) -> f64 {
-    let denominator = duration.denominator() as f64;
-    if denominator > 0.0 {
-        duration.numerator() as f64 / denominator
-    } else {
-        0.0
-    }
 }

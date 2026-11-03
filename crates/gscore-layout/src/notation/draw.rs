@@ -76,7 +76,10 @@ pub(crate) fn draw_measure(
             .iter()
             .filter_map(|&i| chord_at(placed, i).map(|c| (i, c)))
             .collect();
-        let up = mean_position(chords.iter().map(|(_, c)| *c)) < MIDDLE as f32;
+        let up = chords
+            .iter()
+            .find_map(|(_, c)| c.stem_up)
+            .unwrap_or_else(|| mean_position(chords.iter().map(|(_, c)| *c)) < MIDDLE as f32);
         let beam_y = chords.iter().map(|(_, c)| free_end(c, up, top)).fold(
             if up { f32::MAX } else { f32::MIN },
             |a, b| {
@@ -102,7 +105,9 @@ pub(crate) fn draw_measure(
             && chord.value >= 2
             && stems.get(i).is_some_and(Option::is_none)
         {
-            let up = mean_position(std::iter::once(chord)) < MIDDLE as f32;
+            let up = chord
+                .stem_up
+                .unwrap_or_else(|| mean_position(std::iter::once(chord)) < MIDDLE as f32);
             let mut stem = stem_for(chord, p.x, up, top, ctx);
             stem.to = free_end(chord, up, top);
             if let Some(slot) = stems.get_mut(i) {

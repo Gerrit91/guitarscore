@@ -20,6 +20,7 @@
 
 mod compare;
 mod duration;
+mod dynamics;
 mod edit;
 mod effects;
 mod error;
@@ -44,6 +45,7 @@ mod tests;
 
 pub use compare::{Difference, differences, settings_differences};
 pub use duration::{Duration, NoteValue, TimeSignature};
+pub use dynamics::Dynamic;
 pub use edit::{Change, MAX_SECTION_TITLE_CHARS, MAX_STRINGS, MAX_TRACK_NAME_CHARS, MAX_TRACKS};
 pub use effects::{
     AccentKind, BEND_MAX_POSITION, BEND_MAX_VALUE, BeatEffect, Bend, BendKind, BendPoint,

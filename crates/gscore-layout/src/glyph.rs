@@ -4,6 +4,8 @@
 //! with [`Glyph::codepoint`]. Names and code points are from the SMuFL specification
 //! (`glyphnames.json`); a test checks that the bundled font's metadata knows every name.
 
+use gscore_model::Dynamic;
+
 /// A music-font glyph.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Glyph {
@@ -49,6 +51,18 @@ pub enum Glyph {
     NoteheadBlack,
     /// Cross head of a dead note (`noteheadXBlack`).
     NoteheadX,
+    /// Circled cross head: open hi-hat, side stick (`noteheadCircleX`).
+    NoteheadCircleX,
+    /// Diamond head: ride bell (`noteheadDiamondBlack`).
+    NoteheadDiamond,
+    /// Triangle head: cowbell, tambourine (`noteheadTriangleUpBlack`).
+    NoteheadTriangle,
+    /// Percussion clef (`unpitchedPercussionClef1`).
+    PercussionClef,
+    /// Repeat dot (`repeatDot`).
+    RepeatDot,
+    /// A dynamic mark, `ppp` to `fff` (`dynamicPPP` ... `dynamicFFF`).
+    Dynamic(Dynamic),
     /// Sharp (`accidentalSharp`).
     Sharp,
     /// Natural (`accidentalNatural`).
@@ -144,12 +158,18 @@ impl Glyph {
             Glyph::NoteheadHalf,
             Glyph::NoteheadBlack,
             Glyph::NoteheadX,
+            Glyph::NoteheadCircleX,
+            Glyph::NoteheadDiamond,
+            Glyph::NoteheadTriangle,
+            Glyph::PercussionClef,
+            Glyph::RepeatDot,
             Glyph::Sharp,
             Glyph::Natural,
         ]
         .into_iter()
         .chain(digits)
         .chain(flags)
+        .chain(Dynamic::ALL.map(Glyph::Dynamic))
     }
 
     /// The SMuFL glyph name.
@@ -187,6 +207,21 @@ impl Glyph {
             Glyph::NoteheadHalf => "noteheadHalf",
             Glyph::NoteheadBlack => "noteheadBlack",
             Glyph::NoteheadX => "noteheadXBlack",
+            Glyph::NoteheadCircleX => "noteheadCircleX",
+            Glyph::NoteheadDiamond => "noteheadDiamondBlack",
+            Glyph::NoteheadTriangle => "noteheadTriangleUpBlack",
+            Glyph::PercussionClef => "unpitchedPercussionClef1",
+            Glyph::RepeatDot => "repeatDot",
+            Glyph::Dynamic(dynamic) => match dynamic {
+                Dynamic::Ppp => "dynamicPPP",
+                Dynamic::Pp => "dynamicPP",
+                Dynamic::P => "dynamicPiano",
+                Dynamic::Mp => "dynamicMP",
+                Dynamic::Mf => "dynamicMF",
+                Dynamic::F => "dynamicForte",
+                Dynamic::Ff => "dynamicFF",
+                Dynamic::Fff => "dynamicFFF",
+            },
             Glyph::Sharp => "accidentalSharp",
             Glyph::Natural => "accidentalNatural",
             Glyph::Flag(flag) => FLAG_NAMES
@@ -220,6 +255,21 @@ impl Glyph {
             Glyph::NoteheadHalf => 0xE0A3,
             Glyph::NoteheadBlack => 0xE0A4,
             Glyph::NoteheadX => 0xE0A9,
+            Glyph::NoteheadCircleX => 0xE0B3,
+            Glyph::NoteheadDiamond => 0xE0DB,
+            Glyph::NoteheadTriangle => 0xE0BE,
+            Glyph::PercussionClef => 0xE069,
+            Glyph::RepeatDot => 0xE044,
+            Glyph::Dynamic(dynamic) => match dynamic {
+                Dynamic::Ppp => 0xE52A,
+                Dynamic::Pp => 0xE52B,
+                Dynamic::P => 0xE520,
+                Dynamic::Mp => 0xE52C,
+                Dynamic::Mf => 0xE52D,
+                Dynamic::F => 0xE522,
+                Dynamic::Ff => 0xE52F,
+                Dynamic::Fff => 0xE530,
+            },
             Glyph::Sharp => 0xE262,
             Glyph::Natural => 0xE261,
             Glyph::Flag(flag) => FLAG_FIRST.saturating_add(u32::from(flag.index())),

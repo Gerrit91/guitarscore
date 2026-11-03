@@ -3,10 +3,12 @@
 //! Kept apart from the column layout in the parent module: this file only positions and
 //! paints, while `measure/mod.rs` decides the widths.
 
+use gscore_model::Dynamic;
+
 use super::{Column, Item, MEASURE_NUMBER_RISE, MeasureLayout, Tops};
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
-use crate::notation::{self, BeamPlan};
+use crate::notation::{self, BeamPlan, NotationItem};
 use crate::ornaments::{self, Fret};
 use crate::place::{BeatPlace, MeasurePlace};
 
@@ -181,6 +183,27 @@ impl MeasureLayout {
             }
             index = end.saturating_add(1);
         }
+    }
+
+    /// Each column's dynamic and tempo change, in order.
+    pub(crate) fn column_marks(&self) -> impl Iterator<Item = (Option<Dynamic>, Option<u32>)> {
+        self.columns.iter().map(|c| (c.dynamic, c.tempo))
+    }
+
+    /// The lowest notehead's staff position in column `index` of the notation staff.
+    pub(crate) fn lowest_head(&self, index: usize) -> Option<i32> {
+        match self.columns.get(index)?.notation.as_ref()? {
+            NotationItem::Chord(chord) => chord.heads.first().map(|head| head.position),
+            NotationItem::Rest { .. } => None,
+        }
+    }
+
+    /// How many rows of marks (palm mute, let ring) this measure has below the tab staff.
+    pub(crate) fn under_staff_lanes(&self) -> usize {
+        [UnderRow::PalmMute, UnderRow::LetRing]
+            .into_iter()
+            .filter(|row| self.columns.iter().any(|column| row.matches(column)))
+            .count()
     }
 
     /// Palm-mute and let-ring rows below the staff.

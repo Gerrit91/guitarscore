@@ -4,10 +4,13 @@
 //! This module turns a column's beats into a [`NotationItem`] (a chord or a rest) and
 //! decides accidentals per measure; [`draw`] paints a measure's items (noteheads, ledger
 //! lines, stems, flags, beams, dots, rests, ties, tuplet numbers). Only the first voice is
-//! written; key signatures, grace notes and articulations are not drawn yet.
+//! written; key signatures, grace notes and articulations are not drawn yet. Drum tracks
+//! get a percussion staff instead: each drum sound has its own place and notehead
+//! ([`drums`]) and stems point up.
 
 mod beams;
 mod draw;
+mod drums;
 mod pitch;
 
 use std::collections::HashMap;
@@ -46,9 +49,16 @@ pub(crate) struct Notation<'a> {
 }
 
 impl<'a> Notation<'a> {
-    /// Notation for `track`, or `None` if it has no tuning to work out pitches from (drums,
-    /// voice and keyboard tracks without strings).
+    /// Notation for `track`: a percussion staff for drum kits, else a pitched staff, or
+    /// `None` if the track has no tuning to work out pitches from (voice and keyboard
+    /// tracks without strings).
     pub(crate) fn for_track(track: TrackView<'a>) -> Result<Option<Self>, LayoutError> {
+        if track.is_percussion() {
+            return Ok(Some(Notation {
+                clef: Clef::Percussion,
+                track,
+            }));
+        }
         let Some(tuning) = track.tuning()? else {
             return Ok(None);
         };
@@ -85,6 +95,8 @@ pub(crate) struct Chord {
     pub(crate) dots: u8,
     /// The tuplet's number of notes (3 for a triplet), if any.
     pub(crate) tuplet: Option<u8>,
+    /// A fixed stem direction (up for drums); `None` decides by the noteheads.
+    pub(crate) stem_up: Option<bool>,
 }
 
 /// One notehead.
@@ -101,11 +113,16 @@ pub(crate) struct Head {
     pub(crate) tied: bool,
     /// A dead note: cross notehead.
     pub(crate) dead: bool,
+    /// A notehead other than the note value's (drum sounds).
+    pub(crate) glyph: Option<Glyph>,
 }
 
 impl Chord {
     /// The notehead glyph for this chord's value.
     pub(crate) fn head_glyph(&self, head: &Head) -> Glyph {
+        if let Some(glyph) = head.glyph {
+            return glyph;
+        }
         if head.dead {
             return Glyph::NoteheadX;
         }
@@ -163,18 +180,38 @@ pub(crate) fn column_item(
                 let Ok(pitch) = notation.track.sounding_pitch(&note) else {
                     continue;
                 };
-                let (spelled, position) = notation.clef.place(pitch.get());
-                if heads.iter().any(|h| h.position == position) {
+                let head = if notation.clef == Clef::Percussion {
+                    // A drum's "pitch" is the sound; it has a place, never an accidental.
+                    let drum = drums::drum_note(pitch.get());
+                    Head {
+                        position: drum.position,
+                        step: drum.position,
+                        sharp: false,
+                        accidental: None,
+                        tied: kind == NoteKind::Tie,
+                        dead: false,
+                        glyph: drum.head.glyph(),
+                    }
+                } else {
+                    let (spelled, position) = notation.clef.place(pitch.get());
+                    Head {
+                        position,
+                        step: spelled.step,
+                        sharp: spelled.sharp,
+                        accidental: None,
+                        tied: kind == NoteKind::Tie,
+                        dead: kind == NoteKind::Dead,
+                        glyph: None,
+                    }
+                };
+                // Two sounds on one place share a head only when they look the same.
+                if heads
+                    .iter()
+                    .any(|h| h.position == head.position && h.glyph == head.glyph)
+                {
                     continue;
                 }
-                heads.push(Head {
-                    position,
-                    step: spelled.step,
-                    sharp: spelled.sharp,
-                    accidental: None,
-                    tied: kind == NoteKind::Tie,
-                    dead: kind == NoteKind::Dead,
-                });
+                heads.push(head);
             }
             if heads.is_empty() {
                 return Ok(None);
@@ -185,6 +222,7 @@ pub(crate) fn column_item(
                 value: value.value(),
                 dots: value.dots(),
                 tuplet: value.tuplet().map(|(enters, _)| enters),
+                stem_up: (notation.clef == Clef::Percussion).then_some(true),
             })))
         }
     }
@@ -285,6 +323,7 @@ mod tests {
             accidental: None,
             tied,
             dead: false,
+            glyph: None,
         }
     }
 
@@ -294,6 +333,7 @@ mod tests {
             value: 4,
             dots: 0,
             tuplet: None,
+            stem_up: None,
         })
     }
 
@@ -345,6 +385,7 @@ mod tests {
             value: 1,
             dots: 0,
             tuplet: None,
+            stem_up: None,
         };
         let h = c.heads[0].clone();
         assert_eq!(c.head_glyph(&h), Glyph::NoteheadWhole);
