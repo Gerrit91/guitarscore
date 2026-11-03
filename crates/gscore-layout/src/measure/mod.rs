@@ -16,7 +16,7 @@ use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point};
 use crate::error::LayoutError;
 use crate::glyph::Glyph;
-use crate::notation::{self, NotationItem};
+use crate::notation::{self, KeySigLayout, NotationItem};
 use crate::ornaments::{ColumnMarks, Fret};
 
 use columns::{as_f64, beat_length, beat_starts, column_items};
@@ -48,8 +48,11 @@ pub(crate) struct Tops {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct MeasureLayout {
     index: MeasureIndex,
+    /// The key signature when it changes here (or starts the score), on the staff that
+    /// carries it.
+    key_signature: Option<KeySigLayout>,
     time_signature: Option<TimeSigLayout>,
-    /// Fixed space from the measure start (after the time signature) to the first column.
+    /// Fixed space from the measure start (after the signature changes) to the first column.
     lead: f32,
     columns: Vec<Column>,
 }
@@ -118,15 +121,37 @@ impl MeasureLayout {
         }
     }
 
-    /// Lays out `measure`; `show_time_signature` when it starts the piece or changes the
-    /// time signature.
+    /// Lays out `measure` in `key`, which `previous` differs from when the key signature
+    /// changes here; `show_time_signature` when it starts the piece or changes the time
+    /// signature.
     pub(crate) fn new(
         measure: MeasureView<'_>,
         show_time_signature: bool,
+        key: i8,
+        previous_key: Option<i8>,
         ctx: &Context<'_>,
     ) -> Result<Self, LayoutError> {
         let signature = measure.time_signature()?;
         let time_signature = show_time_signature.then(|| TimeSigLayout::new(signature, ctx));
+        // The key signature goes on the notation staff; a tab-only score shows it on the
+        // tab staff. Drums have none.
+        let key_signature = if previous_key == Some(key) {
+            None
+        } else {
+            match ctx.notation {
+                Some(notation) if notation.clef != notation::Clef::Percussion => {
+                    KeySigLayout::change(notation.clef, previous_key.unwrap_or(0), key, false, ctx)
+                }
+                Some(_) => None,
+                None => KeySigLayout::change(
+                    notation::Clef::Treble,
+                    previous_key.unwrap_or(0),
+                    key,
+                    true,
+                    ctx,
+                ),
+            }
+        };
         let starts = beat_starts(measure, signature)?;
         let beat_length = as_f64(beat_length(signature)?);
         type Pending = (ColumnData, f32, Option<Dynamic>, Option<u32>);
@@ -141,7 +166,7 @@ impl MeasureLayout {
             let plain: Vec<BeatView<'_>> = beats.iter().map(|&(_, beat)| beat).collect();
             let mut data = column_items(&plain, ctx)?;
             if let Some(notation) = &ctx.notation {
-                data.notation = notation::column_item(beats, notation)?;
+                data.notation = notation::column_item(beats, notation, key)?;
             }
             // A tiny epsilon keeps exact beat starts (computed in floats) in their beat.
             data.beat = if beat_length > 0.0 {
@@ -184,6 +209,7 @@ impl MeasureLayout {
             columns
                 .iter_mut()
                 .filter_map(|(d, _, _, _)| d.notation.as_mut()),
+            key,
         );
         // Room each column needs left and right of its center: the tab's fret numbers are
         // symmetric, notation is not (accidentals left; dots and flags right).
@@ -235,15 +261,23 @@ impl MeasureLayout {
 
         Ok(MeasureLayout {
             index: measure.index(),
+            key_signature,
             time_signature,
             lead,
             columns,
         })
     }
 
-    /// The width that does not stretch: time signature and lead.
+    /// Whether the measure carries a key signature (a change, or the score's first).
+    pub(crate) fn has_key_signature(&self) -> bool {
+        self.key_signature.is_some()
+    }
+
+    /// The width that does not stretch: key and time signature, and the lead.
     pub(crate) fn fixed_width(&self) -> f32 {
-        self.time_signature.as_ref().map_or(0.0, |t| t.width) + self.lead
+        self.key_signature.as_ref().map_or(0.0, |k| k.width)
+            + self.time_signature.as_ref().map_or(0.0, |t| t.width)
+            + self.lead
     }
 
     /// The width that stretches when a system is justified.

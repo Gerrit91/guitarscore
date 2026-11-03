@@ -89,16 +89,19 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
 9. **Layout is a first version (M5).** `gscore-layout` draws one track as standard
    notation above tablature (as Guitar Pro does), on one endless page, with the tab's
    ornaments, line breaking and justification. Notation: clef (treble, bass for basses),
-   time signatures, noteheads (cross for dead notes), ledger lines, sharps and naturals per
-   measure, stems, flags, beams per beat (partial beams included), dots, rests, ties within
-   a measure and tuplet numbers. Missing in notation: key signatures (notes are spelled with
-   sharps), the second voice, ties across barlines, tuplet groups spanning several beats
-   (each beat's beam gets its own number), grace notes, articulations and ornaments on the
-   notation staff (they stay on the tab), harmonic diamonds (harmonics are written at their
-   sounding pitch). Since 2026-11-03 section names, tempo changes, repeat signs (with
-   "x3" counts), alternative endings and dynamics are drawn, and drum tracks get a
-   percussion staff. Missing everywhere: D.C./D.S./coda and other directions, hairpins,
-   lyrics, chord diagrams, multi-track systems and native printing (M21, AGENTS.md
+   key signatures at the start of every system and at changes (naturals cancel the old key;
+   on the tab staff when notation is hidden), time signatures, noteheads (cross for dead
+   notes), ledger lines, sharps, flats and naturals per measure (notes the key signature
+   alters are spelled with its sharps or flats and need no accidental; other pitch classes
+   use sharps), stems, flags, beams per beat (partial beams included), dots, rests, ties
+   within a measure and tuplet numbers. Missing in notation: the second voice, ties across
+   barlines, tuplet groups spanning several beats (each beat's beam gets its own number),
+   grace notes, articulations and ornaments on the notation staff (they stay on the tab),
+   harmonic diamonds (harmonics are written at their sounding pitch). Since 2026-11-03
+   section names, tempo changes, repeat signs (with "x3" counts), alternative endings and
+   dynamics are drawn, and drum tracks get a percussion staff. Missing everywhere:
+   D.C./D.S./coda and other directions, hairpins, lyrics, chord diagrams, multi-track
+   systems and native printing (M21, AGENTS.md
    section 9; pages, page setup, breaks and PDF export are live since 2026-11-03), rhythm
    under the tab
    (shown in the notation instead). Ornaments that connect notes only look within one

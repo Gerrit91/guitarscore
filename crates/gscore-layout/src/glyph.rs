@@ -85,6 +85,8 @@ pub enum Glyph {
     Fermata(Fermata),
     /// Sharp (`accidentalSharp`).
     Sharp,
+    /// Flat (`accidentalFlat`).
+    Flat,
     /// Natural (`accidentalNatural`).
     Natural,
     /// The flag of an unbeamed eighth or shorter note (`flag8thUp` ... `flag128thDown`).
@@ -194,6 +196,7 @@ impl Glyph {
             Glyph::PercussionClef,
             Glyph::RepeatDot,
             Glyph::Sharp,
+            Glyph::Flat,
             Glyph::Natural,
         ]
         .into_iter()
@@ -271,6 +274,7 @@ impl Glyph {
                 Fermata::VeryLong => "fermataVeryLongAbove",
             },
             Glyph::Sharp => "accidentalSharp",
+            Glyph::Flat => "accidentalFlat",
             Glyph::Natural => "accidentalNatural",
             Glyph::Flag(flag) => FLAG_NAMES
                 .get(usize::from(flag.index()))
@@ -336,6 +340,7 @@ impl Glyph {
                 Fermata::VeryLong => 0xE4C8,
             },
             Glyph::Sharp => 0xE262,
+            Glyph::Flat => 0xE260,
             Glyph::Natural => 0xE261,
             Glyph::Flag(flag) => FLAG_FIRST.saturating_add(u32::from(flag.index())),
         };

@@ -117,6 +117,27 @@ fn the_cache_matches_a_fresh_layout_after_every_edit_and_undo() {
 }
 
 #[test]
+fn the_cache_follows_a_key_signature_change() {
+    let fonts = Fonts::bundled().unwrap();
+    let options = LayoutOptions::default();
+    let mut song = common::open("basic/note_lengths.gp");
+    let track = TrackIndex::new(0);
+    let mut cache = LayoutCache::default();
+    let _ = cache.layout(&song, track, &options, &fonts).unwrap();
+
+    let _change = song
+        .set_key_signature(MeasureIndex::new(4), 3, false)
+        .unwrap();
+    let cached = cache.layout(&song, track, &options, &fonts).unwrap();
+    let fresh = layout_track(&song, track, &options, &fonts).unwrap();
+    assert_eq!(cached, fresh, "a key change must not leave stale measures");
+    assert!(
+        cache.laid_out() > 0,
+        "the affected measures are laid out again"
+    );
+}
+
+#[test]
 fn only_changed_measures_are_laid_out_again() {
     let fonts = Fonts::bundled().unwrap();
     let options = LayoutOptions::default();

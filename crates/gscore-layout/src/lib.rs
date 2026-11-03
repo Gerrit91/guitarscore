@@ -137,14 +137,27 @@ pub fn layout_track(
     options: &LayoutOptions,
     fonts: &Fonts,
 ) -> Result<Layout, LayoutError> {
-    layout_with(song, track, options, fonts, &mut |measure, show, ctx| {
-        MeasureLayout::new(measure, show, ctx).map(Arc::new)
-    })
+    layout_with(
+        song,
+        track,
+        options,
+        fonts,
+        &mut |measure, show, key, prev, ctx| {
+            MeasureLayout::new(measure, show, key, prev, ctx).map(Arc::new)
+        },
+    )
 }
 
-/// Lays out one measure: the measure, whether it shows its time signature, the context.
-type MeasureSource<'s> =
-    dyn FnMut(MeasureView<'_>, bool, &Context<'_>) -> Result<Arc<MeasureLayout>, LayoutError> + 's;
+/// Lays out one measure: the measure, whether it shows its time signature, its key, the
+/// key before it, and the context.
+type MeasureSource<'s> = dyn FnMut(
+        MeasureView<'_>,
+        bool,
+        i8,
+        Option<i8>,
+        &Context<'_>,
+    ) -> Result<Arc<MeasureLayout>, LayoutError>
+    + 's;
 
 /// [`layout_track`] with the measures' layouts coming from `measure_layout` (a cache, or a
 /// fresh layout).
@@ -178,12 +191,17 @@ fn layout_with(
     let header_end = header::draw(song, view, &ctx, &mut ops)?;
 
     let mut measures = Vec::with_capacity(view.measures().len());
+    let mut keys: Vec<i8> = Vec::with_capacity(view.measures().len());
     let mut previous_signature = None;
+    let mut previous_key = None;
     for measure in view.measures() {
         let signature = measure.time_signature()?;
         let show = previous_signature != Some(signature);
-        measures.push(measure_layout(measure, show, &ctx)?);
+        let key = song.key_signature(measure.index()).map_or(0, |key| key.key);
+        measures.push(measure_layout(measure, show, key, previous_key, &ctx)?);
+        keys.push(key);
         previous_signature = Some(signature);
+        previous_key = Some(key);
     }
 
     let marks = marks::plan(song, &measures);
@@ -198,10 +216,33 @@ fn layout_with(
         .collect();
     let left = options.margin_left;
     let line_width = options.line_width();
-    let prefix = ctx
-        .notation
-        .map_or(0.0, |n| notation::prefix_width(n.clef, &ctx))
-        .max(ctx.staff.prefix_width(&fonts.music));
+    // Every measure's system start: the clef, and the key signature when the measure does
+    // not draw one of its own (a key change at the measure start).
+    let prefixes: Vec<f32> = measures
+        .iter()
+        .zip(&keys)
+        .map(|(measure, &key)| {
+            let drawn_by_measure = measure.has_key_signature();
+            let notation_prefix = ctx.notation.map_or(0.0, |notation| {
+                if drawn_by_measure {
+                    notation::key_start_width(notation.clef, &ctx)
+                } else {
+                    notation::prefix_width(notation.clef, key, false, &ctx)
+                }
+            });
+            let tab_prefix = if show_tab {
+                if ctx.notation.is_some() {
+                    // With a notation staff, the key signature is written there only.
+                    ctx.staff.prefix_width(&fonts.music)
+                } else {
+                    notation::tab_prefix_width(key, drawn_by_measure, &ctx)
+                }
+            } else {
+                0.0
+            };
+            notation_prefix.max(tab_prefix)
+        })
+        .collect();
     let notation_staff = notation::staff();
     // With notation, the tab sits below the notation staff and the gap between them.
     let tab_offset = if ctx.notation.is_some() {
@@ -217,7 +258,7 @@ fn layout_with(
     let plans = break_systems(
         &widths,
         line_width,
-        prefix,
+        &prefixes,
         Breaks {
             forced: &forced,
             max_measures: view.bars_per_system().map(usize::from),
@@ -285,7 +326,11 @@ fn layout_with(
                 strings,
             }
         });
-        let mut x = left + prefix;
+        let mut x = left
+            + prefixes
+                .get(plan.measures.start)
+                .copied()
+                .unwrap_or_default();
         let mut content = Vec::new();
         let default_marks = marks::MeasureMarks::default();
         for (offset, measure) in line.iter().enumerate() {
@@ -352,13 +397,34 @@ fn layout_with(
             }
         }
         // Staff lines first, so masks and fret numbers paint over them.
+        let first = plan.measures.start;
+        let key = keys.get(first).copied().unwrap_or_default();
+        let key_drawn_by_measure = measures
+            .get(first)
+            .is_some_and(|measure| measure.has_key_signature());
         if show_tab {
             ctx.staff.draw_lines(tab_top, left, x, font, &mut ops);
-            ctx.staff.draw_clef(left, tab_top, font, &mut ops);
+            notation::draw_tab_staff_start(
+                left,
+                tab_top,
+                key,
+                key_drawn_by_measure,
+                ctx.notation.is_none(),
+                &ctx,
+                &mut ops,
+            );
         }
         if let (Some(notation), Some(notation_top)) = (ctx.notation, tops.notation) {
             notation_staff.draw_lines(notation_top, left, x, font, &mut ops);
-            notation::draw_staff_start(left, notation_top, notation.clef, &mut ops);
+            notation::draw_staff_start(
+                left,
+                notation_top,
+                notation.clef,
+                key,
+                key_drawn_by_measure,
+                &ctx,
+                &mut ops,
+            );
             // One line joins the staves of a system at its start.
             let thin = font.engraving().thin_barline_thickness;
             let end = if show_tab {

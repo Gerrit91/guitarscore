@@ -16,7 +16,10 @@ impl MeasureLayout {
     /// Where each column's center lies when the measure starts at `x` and its columns are
     /// stretched by `stretch`, and where the measure ends.
     pub(crate) fn column_positions(&self, x: f32, stretch: f32) -> (Vec<f32>, f32) {
-        let mut cursor = x + self.time_signature.as_ref().map_or(0.0, |t| t.width) + self.lead;
+        let mut cursor = x
+            + self.key_signature.as_ref().map_or(0.0, |k| k.width)
+            + self.time_signature.as_ref().map_or(0.0, |t| t.width)
+            + self.lead;
         let mut xs = Vec::with_capacity(self.columns.len());
         for column in &self.columns {
             xs.push(cursor);
@@ -69,14 +72,19 @@ impl MeasureLayout {
             anchor: TextAnchor::Start,
             color: ColorToken::Annotation,
         });
+        let mut signature_x = x;
+        if let Some(key_signature) = &self.key_signature {
+            key_signature.draw_at(signature_x, tops.notation.unwrap_or(top), ctx, ops);
+            signature_x += key_signature.width;
+        }
         if let Some(time_signature) = &self.time_signature {
-            // With notation, the time signature is written there only, as in Guitar Pro.
+            // With notation, the signature is written there only, as in Guitar Pro.
             match tops.notation {
                 Some(notation_top) => {
                     let middle = notation_top + notation::staff().middle();
-                    time_signature.draw_at(x, middle, 1.0, ctx, ops);
+                    time_signature.draw_at(signature_x, middle, 1.0, ctx, ops);
                 }
-                None => time_signature.draw(x, top, ctx, ops),
+                None => time_signature.draw(signature_x, top, ctx, ops),
             }
         }
         // Positions first: ornaments connect neighbouring columns.

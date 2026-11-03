@@ -33,8 +33,8 @@ struct TrackKey {
 #[derive(Debug, Default)]
 pub struct LayoutCache {
     key: Option<TrackKey>,
-    /// By measure stamp and whether the time signature is shown.
-    measures: HashMap<(u64, bool), Arc<MeasureLayout>>,
+    /// By measure stamp, whether the time signature is shown, the key and the key before.
+    measures: HashMap<(u64, bool, i8, Option<i8>), Arc<MeasureLayout>>,
     /// Measures the last call laid out afresh.
     laid_out: usize,
 }
@@ -67,19 +67,25 @@ impl LayoutCache {
         let mut kept = HashMap::with_capacity(self.measures.len());
         let mut laid_out = 0_usize;
         let old = &self.measures;
-        let layout = layout_with(song, track, options, fonts, &mut |measure, show, ctx| {
-            let key = (song.measure_stamp(measure.index()), show);
-            let layout = match old.get(&key) {
-                Some(cached) if cached.index() == measure.index() => Arc::clone(cached),
-                Some(cached) => Arc::new(cached.moved_to(measure.index())),
-                None => {
-                    laid_out = laid_out.saturating_add(1);
-                    Arc::new(MeasureLayout::new(measure, show, ctx)?)
-                }
-            };
-            kept.insert(key, Arc::clone(&layout));
-            Ok(layout)
-        });
+        let layout = layout_with(
+            song,
+            track,
+            options,
+            fonts,
+            &mut |measure, show, key, previous_key, ctx| {
+                let entry = (song.measure_stamp(measure.index()), show, key, previous_key);
+                let layout = match old.get(&entry) {
+                    Some(cached) if cached.index() == measure.index() => Arc::clone(cached),
+                    Some(cached) => Arc::new(cached.moved_to(measure.index())),
+                    None => {
+                        laid_out = laid_out.saturating_add(1);
+                        Arc::new(MeasureLayout::new(measure, show, key, previous_key, ctx)?)
+                    }
+                };
+                kept.insert(entry, Arc::clone(&layout));
+                Ok(layout)
+            },
+        );
         // Keep only what this layout used: deleted and edited measures go.
         self.measures = kept;
         self.laid_out = laid_out;

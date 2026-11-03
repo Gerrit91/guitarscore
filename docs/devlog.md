@@ -2123,3 +2123,27 @@ lifeless):
   (marker color); the section dialog and the grid were checked with the offscreen snapshot.
   The seven `gscore-app` snapshots were regenerated: the only change is the added "Light
   grey" swatch in the track panel (the dialogs' background).
+
+## 2026-11-03 — Key signatures in the score
+
+- Key signatures were never drawn, and accidentals assumed C major, so every score looked
+  like C major. The layout now reads the key per measure (`Song::key_signature`) and:
+  - draws the sharps/flats after the clef at the start of every system, and at a key change
+    in the middle of a system (with naturals cancelling the accidentals the old key had and
+    the new one does not). The notation staff carries them; a tab-only score shows them on
+    the tab staff, centered on a five-line frame;
+  - spells notes in the key: pitch classes the signature alters use its flats/sharps, other
+    pitch classes keep sharps (as Guitar Pro does for accidentals);
+  - starts each measure's accidental state from the key signature, so an F sharp in G major
+    or a B flat in F major needs no accidental, and a natural cancels the signature's alter.
+- The key (and the key before a change) is part of the per-measure layout cache key, so a
+  key edit or its undo lays out exactly the affected measures again; `test_cache` compares a
+  key change against a fresh layout. Line breaking now takes a system-start width per
+  measure, since the clef is followed by a different number of accidentals on each system.
+- Files: `notation/pitch.rs` (key alters, spelling, key-signature positions per clef),
+  `notation/draw.rs` (`KeySigLayout`, start widths), `measure/*` (the signature and its
+  room), `lib.rs`/`system.rs` (per-system prefixes), `glyph.rs` (`accidentalFlat`). Tests:
+  `crates/gscore-layout/tests/test_keys.rs` (sharp and flat keys, suppression, cancellation,
+  tab-only, drums) and `test_cache`. Rendered `Ballad.gp` (B minor, tab only) and
+  `note_lengths.gp` with an E-flat key: the signature appears on each system, and a natural
+  is written on the E that the key would flatten.
