@@ -97,6 +97,13 @@ pub fn differences(before: &Song, after: &Song) -> Vec<Difference> {
             after.key_signature(measure),
         );
         diff.check(&at, "repeat", before.repeat(measure), after.repeat(measure));
+        diff.check(&at, "feel", before.feel(measure), after.feel(measure));
+        diff.check(
+            &at,
+            "fermata",
+            before.fermata(measure),
+            after.fermata(measure),
+        );
     }
     diff.0
 }

@@ -101,6 +101,28 @@ impl Staff {
         }
     }
 
+    /// A double barline (two thin lines) whose right edge is at `x`.
+    pub(crate) fn draw_double_barline(
+        &self,
+        x: f32,
+        top: f32,
+        font: &MusicFont,
+        ops: &mut Vec<DrawOp>,
+    ) {
+        let engraving = font.engraving();
+        let thin = engraving.thin_barline_thickness;
+        let right = x - thin / 2.0;
+        let left = right - engraving.thin_thick_barline_separation - thin;
+        for center in [left, right] {
+            ops.push(DrawOp::Line {
+                from: Point::new(center, top),
+                to: Point::new(center, top + self.height()),
+                thickness: thin,
+                color: ColorToken::Barline,
+            });
+        }
+    }
+
     /// Where the two repeat dots sit: in the spaces on either side of the middle.
     fn repeat_dot_offsets(&self) -> [f32; 2] {
         let middle = self.middle();

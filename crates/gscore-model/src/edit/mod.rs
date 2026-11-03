@@ -217,6 +217,28 @@ enum ChangeKind {
         measure: MeasureIndex,
         previous: Option<gscore_gp::Marker>,
     },
+    /// A measure's repeat signs and alternative endings changed; `previous` is
+    /// `(repeat_open, repeat_close, repeat_alternative)`.
+    Repeat {
+        measure: MeasureIndex,
+        previous: (bool, i8, u8),
+    },
+    /// Whether a measure ends with a double barline changed.
+    DoubleBar {
+        measure: MeasureIndex,
+        previous: bool,
+    },
+    /// A measure's feel changed; `previous` is its triplet feel and `gsFeel` value.
+    Feel {
+        measure: MeasureIndex,
+        previous: (gscore_gp::TripletFeel, Option<String>),
+        previous_initial: Option<gscore_gp::TripletFeel>,
+    },
+    /// A measure's fermatas changed; `previous` is the whole list.
+    Fermata {
+        measure: MeasureIndex,
+        previous: Vec<(String, String)>,
+    },
     /// A track's notation and tab switches changed; `previous` is `(notation, tablature)`.
     TrackStaves {
         at: TrackIndex,
@@ -303,6 +325,12 @@ impl Change {
                 previous.as_ref().map_or(0, |marker| marker.title.len())
             }
             ChangeKind::TrackStaves { .. } | ChangeKind::MasterMix { .. } => 0,
+            ChangeKind::Repeat { .. } | ChangeKind::DoubleBar { .. } => 0,
+            ChangeKind::Feel { previous, .. } => previous.1.as_ref().map_or(0, String::len),
+            ChangeKind::Fermata { previous, .. } => previous
+                .iter()
+                .map(|(kind, offset)| kind.len().saturating_add(offset.len()))
+                .sum(),
             ChangeKind::Batch { changes } => changes
                 .iter()
                 .map(Change::size_estimate)
@@ -758,6 +786,49 @@ impl Song {
                     .get_mut(measure.get())
                     .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
                 header.marker.clone_from(previous);
+                Ok(())
+            }),
+            ChangeKind::Repeat { measure, previous } => self.edit_headers(|inner| {
+                let header = inner
+                    .measure_headers
+                    .get_mut(measure.get())
+                    .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
+                (
+                    header.repeat_open,
+                    header.repeat_close,
+                    header.repeat_alternative,
+                ) = *previous;
+                Ok(())
+            }),
+            ChangeKind::DoubleBar { measure, previous } => self.edit_headers(|inner| {
+                let header = inner
+                    .measure_headers
+                    .get_mut(measure.get())
+                    .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
+                header.double_bar = *previous;
+                Ok(())
+            }),
+            ChangeKind::Feel {
+                measure,
+                previous,
+                previous_initial,
+            } => self.edit_headers(|inner| {
+                let header = inner
+                    .measure_headers
+                    .get_mut(measure.get())
+                    .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
+                (header.triplet_feel, header.gs_feel) = previous.clone();
+                if let Some(initial) = previous_initial {
+                    inner.triplet_feel = initial.clone();
+                }
+                Ok(())
+            }),
+            ChangeKind::Fermata { measure, previous } => self.edit_headers(|inner| {
+                let header = inner
+                    .measure_headers
+                    .get_mut(measure.get())
+                    .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
+                header.fermatas.clone_from(previous);
                 Ok(())
             }),
             ChangeKind::TrackStaves { at, previous } => {

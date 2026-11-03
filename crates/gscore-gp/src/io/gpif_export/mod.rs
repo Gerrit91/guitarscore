@@ -337,7 +337,17 @@ impl WriteGpifInGpifStringOrder for Song {
         // MasterBars
         xml.push_str("<MasterBars>");
         for (m_idx, mh) in self.measure_headers.iter().enumerate() {
-            xml.push_str("<MasterBar>");
+            // GPIF has no standard triplet-feel field; GuitarScore keeps the feel in an
+            // attribute so GP7/GPX files do not lose it.
+            let feel = mh.gs_feel.as_deref().or(match mh.triplet_feel {
+                TripletFeel::Eighth => Some("eighth"),
+                TripletFeel::Sixteenth => Some("sixteenth"),
+                TripletFeel::None => None,
+            });
+            match feel {
+                Some(feel) => xml.push_str(&format!("<MasterBar gsFeel=\"{feel}\">")),
+                None => xml.push_str("<MasterBar>"),
+            }
             xml.push_str(&format!(
                 "<Time>{}/{}</Time>",
                 mh.time_signature.numerator, mh.time_signature.denominator.value

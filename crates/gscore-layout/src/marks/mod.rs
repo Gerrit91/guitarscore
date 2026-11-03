@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use gscore_model::{Dynamic, Repeat, Song};
+use gscore_model::{Dynamic, Fermata, Repeat, Song};
 
 mod text;
 
@@ -46,6 +46,10 @@ pub(crate) struct MeasureMarks {
     pub(crate) dynamics: Vec<(usize, Dynamic)>,
     /// Repeat signs and alternative endings.
     pub(crate) repeat: Repeat,
+    /// Whether the measure ends with a double barline.
+    pub(crate) double_bar: bool,
+    /// The fermata over the measure's first note, if any.
+    pub(crate) fermata: Option<Fermata>,
     /// The ending bracket over this measure, if it is an alternative ending.
     pub(crate) ending: Option<Ending>,
 }
@@ -96,6 +100,8 @@ pub(crate) fn plan(song: &Song, measures: &[Arc<MeasureLayout>]) -> Vec<MeasureM
                     .map(|section| section.title)
                     .filter(|title| !title.trim().is_empty()),
                 repeat: song.repeat(index).unwrap_or_default(),
+                double_bar: song.double_bar(index).unwrap_or(false),
+                fermata: song.fermata(index),
                 ..MeasureMarks::default()
             };
             if let Some(change) = song.tempo_change(index)
@@ -140,10 +146,11 @@ fn ending_label(endings: u8) -> String {
         .join(", ")
 }
 
-/// Which rows of marks a system has above its top staff, from the staff upwards: ending
-/// brackets, tempo marks, section names.
+/// Which rows of marks a system has above its top staff, from the staff upwards: fermatas,
+/// ending brackets, tempo marks, section names.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct Rows {
+    fermata: bool,
     endings: bool,
     tempo: bool,
     section: bool,
@@ -153,6 +160,7 @@ impl Rows {
     /// The rows the measures of one system need.
     pub(crate) fn of(marks: &[MeasureMarks]) -> Rows {
         Rows {
+            fermata: marks.iter().any(|m| m.fermata.is_some()),
             endings: marks.iter().any(|m| m.ending.is_some()),
             tempo: marks.iter().any(MeasureMarks::has_tempo),
             section: marks.iter().any(|m| m.section.is_some()),
@@ -161,7 +169,7 @@ impl Rows {
 
     /// How much room the rows take above the system.
     pub(crate) fn height(self) -> f32 {
-        let rows = [self.endings, self.tempo, self.section]
+        let rows = [self.fermata, self.endings, self.tempo, self.section]
             .into_iter()
             .filter(|&row| row)
             .count();
@@ -173,12 +181,16 @@ impl Rows {
         top - FIRST_ROW - n as f32 * ROW_HEIGHT
     }
 
+    fn ending_row(self) -> usize {
+        usize::from(self.fermata)
+    }
+
     fn tempo_row(self) -> usize {
-        usize::from(self.endings)
+        self.ending_row().saturating_add(usize::from(self.endings))
     }
 
     fn section_row(self) -> usize {
-        usize::from(self.endings).saturating_add(usize::from(self.tempo))
+        self.tempo_row().saturating_add(usize::from(self.tempo))
     }
 }
 
@@ -208,12 +220,23 @@ pub(crate) fn draw(
     let (xs, _) = placed
         .layout
         .column_positions(placed.content, placed.stretch);
+    if let Some(fermata) = marks.fermata {
+        let x = xs.first().copied().unwrap_or(placed.content);
+        let glyph = Glyph::Fermata(fermata);
+        let bbox = ctx.fonts.music.bbox(glyph);
+        ops.push(DrawOp::Glyph {
+            glyph,
+            at: Point::new(x - (bbox.x_min + bbox.x_max) / 2.0, Rows::baseline(0, top)),
+            scale: 1.0,
+            color: ColorToken::Notation,
+        });
+    }
     if let Some(ending) = &marks.ending {
         text::draw_ending(
             placed.left,
             placed.right,
             ending,
-            Rows::baseline(0, top),
+            Rows::baseline(rows.ending_row(), top),
             ops,
         );
     }
@@ -301,6 +324,7 @@ mod tests {
     #[test]
     fn rows_stack_from_the_staff_up() {
         let rows = Rows {
+            fermata: false,
             endings: true,
             tempo: false,
             section: true,
@@ -309,6 +333,15 @@ mod tests {
         assert_eq!(rows.height(), 2.0 * ROW_HEIGHT);
         assert_eq!(Rows::default().height(), 0.0);
         assert!(Rows::baseline(1, 10.0) < Rows::baseline(0, 10.0));
+        let with_fermata = Rows {
+            fermata: true,
+            ..rows
+        };
+        assert_eq!(
+            (with_fermata.tempo_row(), with_fermata.section_row()),
+            (2, 2)
+        );
+        assert_eq!(with_fermata.height(), 3.0 * ROW_HEIGHT);
     }
 
     #[test]

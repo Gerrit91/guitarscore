@@ -48,6 +48,9 @@ pub struct MeasureHeader {
     pub repeat_alternative: u8,
     pub repeat_close: i8,
     pub triplet_feel: TripletFeel,
+    /// GuitarScore addition: a feel Guitar Pro's triplet-feel field cannot hold (dotted
+    /// feels). GP7 files keep it in `gsFeel`; GP3-5 files lose it.
+    pub gs_feel: Option<String>,
     pub direction: Option<DirectionSign>,
     /// Tonality of the measure
     pub key_signature: KeySignature,
@@ -68,6 +71,7 @@ impl Default for MeasureHeader {
             repeat_alternative: 0,
             repeat_close: -1,
             triplet_feel: TripletFeel::None,
+            gs_feel: None,
             direction: None,
             key_signature: KeySignature::default(),
             double_bar: false,

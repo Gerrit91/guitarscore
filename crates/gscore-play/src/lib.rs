@@ -5,10 +5,11 @@
 //!
 //! Played: notes of all voices with exact timing, ties, dead notes (short and soft), the
 //! tracks' instruments, volume and pan, tempo changes, repeats and alternative endings,
-//! bends and slides (pitch bends on a borrowed channel, so the rest of the chord stays put;
-//! the model stores only the highest point of a bend, so bend curves are simplified).
-//! Not yet: vibrato, let ring, palm mute, grace notes, trills, whammy bar, directions
-//! (D.C., D.S., coda), swing.
+//! swing/triplet and dotted feel, bends and slides (pitch bends on a borrowed channel, so
+//! the rest of the chord stays put; the model stores only the highest point of a bend, so
+//! bend curves are simplified).
+//! Not yet: vibrato, let ring, palm mute, grace notes, trills, whammy bar, fermatas and
+//! directions (D.C., D.S., coda).
 
 #![warn(clippy::arithmetic_side_effects)]
 
@@ -21,6 +22,7 @@ mod player;
 mod sequence;
 mod smf;
 mod sounding;
+mod swing;
 mod tempo;
 mod timeline;
 

@@ -10,10 +10,15 @@ use gscore_gp::{
 use super::{Change, ChangeKind};
 use crate::duration::TimeSignature;
 use crate::error::ModelError;
+use crate::marks::{Feel, Fermata};
 use crate::metadata::MAX_TEMPO;
+use crate::playback::Repeat;
 use crate::position::MeasureIndex;
 use crate::song::Song;
 use crate::style::TrackColor;
+
+/// Most repeats Guitar Pro stores for one section (it counts the first pass separately).
+const MAX_REPEATS: u8 = 127;
 
 /// Longest section title accepted (characters).
 pub const MAX_SECTION_TITLE_CHARS: usize = 256;
@@ -49,6 +54,98 @@ impl Song {
                     previous,
                     previous_initial,
                 },
+            })
+        })
+    }
+
+    /// Sets a measure's repeat signs and alternative endings (the same for every track).
+    /// `end_repeats` is how many times the section is played again: `Some(1)` is a plain
+    /// repeat (two passes).
+    pub fn set_repeat(
+        &mut self,
+        measure: MeasureIndex,
+        repeat: Repeat,
+    ) -> Result<Change, ModelError> {
+        let close = match repeat.end_repeats {
+            Some(repeats) if (1..=MAX_REPEATS).contains(&repeats) => i8::try_from(repeats)
+                .map_err(|_| ModelError::Invalid(format!("{repeats} repeats do not fit")))?,
+            Some(repeats) => {
+                return Err(ModelError::Invalid(format!(
+                    "{repeats} repeats (supported: 1 to {MAX_REPEATS}, or none)"
+                )));
+            }
+            None => -1,
+        };
+        self.edit_headers(|inner| {
+            let header = header_mut(inner, measure)?;
+            let previous = (
+                header.repeat_open,
+                header.repeat_close,
+                header.repeat_alternative,
+            );
+            header.repeat_open = repeat.start;
+            header.repeat_close = close;
+            header.repeat_alternative = repeat.endings;
+            Ok(Change {
+                kind: ChangeKind::Repeat { measure, previous },
+            })
+        })
+    }
+
+    /// Sets whether a measure ends with a double barline (the same for every track).
+    pub fn set_double_bar(
+        &mut self,
+        measure: MeasureIndex,
+        double_bar: bool,
+    ) -> Result<Change, ModelError> {
+        self.edit_headers(|inner| {
+            let header = header_mut(inner, measure)?;
+            let previous = header.double_bar;
+            header.double_bar = double_bar;
+            Ok(Change {
+                kind: ChangeKind::DoubleBar { measure, previous },
+            })
+        })
+    }
+
+    /// Sets a measure's feel (triplet feel), in the header and (at measure 1) the song's
+    /// initial feel.
+    pub fn set_feel(&mut self, measure: MeasureIndex, feel: Feel) -> Result<Change, ModelError> {
+        self.edit_headers(|inner| {
+            let header = header_mut(inner, measure)?;
+            let previous = (header.triplet_feel.clone(), header.gs_feel.clone());
+            header.triplet_feel = feel.to_gp();
+            header.gs_feel = feel.gs_id().map(str::to_owned);
+            let previous_initial = (measure.get() == 0).then(|| {
+                let previous = inner.triplet_feel.clone();
+                inner.triplet_feel = feel.to_gp();
+                previous
+            });
+            Ok(Change {
+                kind: ChangeKind::Feel {
+                    measure,
+                    previous,
+                    previous_initial,
+                },
+            })
+        })
+    }
+
+    /// Sets or clears a measure's fermata (one fermata per measure for now).
+    pub fn set_fermata(
+        &mut self,
+        measure: MeasureIndex,
+        fermata: Option<Fermata>,
+    ) -> Result<Change, ModelError> {
+        self.edit_headers(|inner| {
+            let header = header_mut(inner, measure)?;
+            let previous = header.fermatas.clone();
+            header.fermatas = match fermata {
+                Some(fermata) => vec![(fermata.to_gp().to_owned(), "0".to_owned())],
+                None => Vec::new(),
+            };
+            Ok(Change {
+                kind: ChangeKind::Fermata { measure, previous },
             })
         })
     }

@@ -133,7 +133,8 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    release bend starts bent and returns to center;
    slides are pitch bends (clamped to two octaves); an "out" slide moves a whole step; a
    slide takes precedence over a bend on the same note. Not played yet: vibrato, let ring,
-   palm mute, grace notes, trills, whammy bar, D.C./D.S./coda, swing. Mute and solo are
+   palm mute, grace notes, trills, whammy bar, fermatas, D.C./D.S./coda. Swing and dotted
+   feel play as a per-measure time warp. Mute and solo are
    played (M13): a muted track is skipped, and while any track is soloed only soloed
    tracks play. Volume and pan changes go straight to the player as MIDI CC messages while
    it plays; mute and solo rebuild the sequence at the same tick. Track volume, pan, mute

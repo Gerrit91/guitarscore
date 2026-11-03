@@ -7,13 +7,14 @@
 
 use gscore_edit::{ActionId, Command, Cursor, Selection};
 use gscore_model::{
-    BeatIndex, BeatPosition, KeySignature, MeasureIndex, NoteValue, Section, Song, TimeSignature,
-    TrackColor, VoiceIndex,
+    BeatIndex, BeatPosition, Feel, Fermata, MeasureIndex, NoteValue, Repeat, Song, SystemBreak,
+    VoiceIndex,
 };
 
 use super::GuitarScoreApp;
 use super::edit_dynamics::{self, DynamicsSnapshot};
 use super::edit_effects::{BeatState, EffectsState, NoteState};
+use super::edit_staff::{self, StaffState};
 use super::style;
 use super::tiles::{self, Face};
 use super::toolbar::key_hint;
@@ -32,17 +33,8 @@ pub(super) struct EditPaletteState {
     dots: u8,
     /// The chosen tuplet, if any.
     tuplet: Option<(u8, u8)>,
-    /// The measure and song revision the header fields below were read at; they are read
-    /// again when either changes (another measure, an edit, an undo), so they never show a
-    /// stale value. A draft typed into them lasts until the next edit.
-    fields_from: Option<(MeasureIndex, u64)>,
-    tempo: u32,
-    numerator: u8,
-    denominator: u16,
-    key: i8,
-    minor: bool,
-    section_title: String,
-    section_color: [u8; 3],
+    /// The staff tiles and the dialog one of them opened.
+    pub(super) staff: StaffState,
     /// A voice chosen this frame, for the caller to move the cursor.
     pending_voice: Option<usize>,
     /// The bend and whammy editors and the effects shown.
@@ -55,14 +47,7 @@ impl Default for EditPaletteState {
             value: 4,
             dots: 0,
             tuplet: None,
-            fields_from: None,
-            tempo: 120,
-            numerator: 4,
-            denominator: 4,
-            key: 0,
-            minor: false,
-            section_title: String::new(),
-            section_color: [255, 0, 0],
+            staff: StaffState::default(),
             pending_voice: None,
             effects: EffectsState::default(),
         }
@@ -70,9 +55,9 @@ impl Default for EditPaletteState {
 }
 
 impl EditPaletteState {
-    /// Reads the header fields from the song again on the next frame (another document).
+    /// Drops drafts that belong to the previous document (another file was opened).
     pub(super) fn forget_fields(&mut self) {
-        self.fields_from = None;
+        self.staff.close();
     }
 
     fn duration(&self) -> Option<NoteValue> {
@@ -86,9 +71,17 @@ pub(super) struct PaletteSnapshot {
     pub(super) beats: Vec<BeatPosition>,
     pub(super) measure: MeasureIndex,
     pub(super) tempo: Option<u32>,
-    pub(super) time_signature: Option<TimeSignature>,
-    pub(super) key: Option<KeySignature>,
-    pub(super) section: Option<Section>,
+    pub(super) time_signature: Option<gscore_model::TimeSignature>,
+    pub(super) key: Option<gscore_model::KeySignature>,
+    pub(super) section: Option<gscore_model::Section>,
+    /// The measure's repeat signs, double barline, break and bars-per-line limit.
+    pub(super) repeat: Repeat,
+    pub(super) double_bar: bool,
+    pub(super) system_break: SystemBreak,
+    pub(super) bars_per_system: Option<u8>,
+    /// The measure's feel and fermata.
+    pub(super) feel: Feel,
+    pub(super) fermata: Option<Fermata>,
     /// The note on the cursor's string: whether it exists and whether it is a tie.
     pub(super) note_exists: bool,
     pub(super) note_tie: bool,
@@ -135,6 +128,7 @@ impl PaletteSnapshot {
             }
         }
         let dynamics = DynamicsSnapshot::of(song, &beats, cursor.position());
+        let measure_view = track.and_then(|track| track.measure(measure));
         PaletteSnapshot {
             cursor,
             beats,
@@ -145,6 +139,12 @@ impl PaletteSnapshot {
             time_signature,
             key: song.key_signature(measure),
             section: song.section(measure),
+            repeat: song.repeat(measure).unwrap_or_default(),
+            double_bar: song.double_bar(measure).unwrap_or(false),
+            system_break: measure_view.map_or(SystemBreak::None, |view| view.system_break()),
+            bars_per_system: track.and_then(|track| track.bars_per_system()),
+            feel: song.feel(measure).unwrap_or_default(),
+            fermata: song.fermata(measure),
             note_exists: note.is_some(),
             note_tie: note
                 .as_ref()
@@ -169,28 +169,6 @@ impl GuitarScoreApp {
         let selection = document.editor().selection();
         let snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
 
-        let fields_from = (snapshot.measure, document.editor().revision());
-        if self.edit_palette.fields_from != Some(fields_from) {
-            self.edit_palette.fields_from = Some(fields_from);
-            self.edit_palette.tempo = snapshot.tempo.unwrap_or(120);
-            if let Some(signature) = snapshot.time_signature {
-                self.edit_palette.numerator = signature.numerator();
-                self.edit_palette.denominator = signature.denominator();
-            }
-            if let Some(key) = snapshot.key {
-                self.edit_palette.key = key.key;
-                self.edit_palette.minor = key.minor;
-            }
-            self.edit_palette.section_title = snapshot
-                .section
-                .as_ref()
-                .map_or_else(String::new, |section| section.title.clone());
-            if let Some(section) = &snapshot.section {
-                let (red, green, blue) = section.color.parts();
-                self.edit_palette.section_color = [red, green, blue];
-            }
-        }
-
         let mut commands: Vec<Command> = Vec::new();
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
@@ -198,6 +176,7 @@ impl GuitarScoreApp {
                 ui.spacing_mut().item_spacing.y = 6.0;
                 let keymap = &self.keymap;
                 let hint = |action: ActionId| key_hint(keymap, action);
+                edit_staff::section(ui, &mut self.edit_palette.staff, &snapshot);
                 style::section(ui, "note_input", "Note input", |ui| {
                     note_length(ui, &mut self.edit_palette, &snapshot, &hint, &mut commands);
                     beat_buttons(ui, &mut self.edit_palette, &snapshot, &hint, &mut commands);
@@ -206,10 +185,6 @@ impl GuitarScoreApp {
                 self.edit_palette
                     .effects
                     .panel(ui, &snapshot, &hint, &mut commands);
-                // The measure's headers come last, after the techniques and strokes.
-                style::section(ui, "measure", "Measure", |ui| {
-                    header_editors(ui, &mut self.edit_palette, &snapshot, &mut commands);
-                });
             });
         self.apply_commands(commands);
         // New beats past the cursor take the palette's length.
@@ -319,6 +294,21 @@ impl GuitarScoreApp {
         self.edit_palette
             .effects
             .show_editors(ctx, &snapshot, &mut self.settings, &mut commands);
+        self.apply_commands(commands);
+    }
+
+    /// The staff dialog, while one is open. It floats over the app, so it shows even when
+    /// the palette is hidden or its section folded.
+    pub(super) fn show_staff_dialogs(&mut self, ctx: &egui::Context) {
+        if !self.edit_palette.staff.is_open() {
+            return;
+        }
+        if self.document.is_none() {
+            self.edit_palette.staff.close();
+            return;
+        }
+        let mut commands = Vec::new();
+        self.edit_palette.staff.show_dialog(ctx, &mut commands);
         self.apply_commands(commands);
     }
 
@@ -572,138 +562,6 @@ fn beat_buttons(
             state.pending_voice = Some(voice);
         }
     });
-}
-
-/// Header fields at the cursor's measure: tempo, signatures and section marker, as a
-/// property sheet (labels in one column, values and their Set buttons in the other).
-fn header_editors(
-    ui: &mut egui::Ui,
-    state: &mut EditPaletteState,
-    snapshot: &PaletteSnapshot,
-    commands: &mut Vec<Command>,
-) {
-    let weak = style::tokens(ui).text_weak;
-    let label = |ui: &mut egui::Ui, text: &str| {
-        ui.label(egui::RichText::new(text).color(weak));
-    };
-    egui::Grid::new("measure_properties")
-        .num_columns(2)
-        .spacing([8.0, 6.0])
-        .show(ui, |ui| {
-            label(ui, "Tempo");
-            ui.horizontal(|ui| {
-                let response = ui.add(
-                    egui::DragValue::new(&mut state.tempo)
-                        .range(1..=1000)
-                        .suffix(" BPM"),
-                );
-                ui.ctx()
-                    .accesskit_node_builder(response.id, |node| node.set_label("Measure tempo"));
-                if ui.button("Set tempo").clicked() {
-                    commands.push(Command::SetMeasureTempo {
-                        measure: snapshot.measure,
-                        tempo: state.tempo,
-                    });
-                }
-            });
-            ui.end_row();
-
-            label(ui, "Time");
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                let response = ui.add(egui::DragValue::new(&mut state.numerator).range(1..=64));
-                ui.ctx()
-                    .accesskit_node_builder(response.id, |node| node.set_label("Time numerator"));
-                ui.label("/");
-                let response = ui.add(
-                    egui::DragValue::new(&mut state.denominator)
-                        .range(1..=128)
-                        .speed(1),
-                );
-                ui.ctx().accesskit_node_builder(response.id, |node| {
-                    node.set_label("Time denominator");
-                });
-                ui.add_space(4.0);
-                if ui.button("Set time").clicked() {
-                    commands.push(Command::SetTimeSignature {
-                        measure: snapshot.measure,
-                        numerator: state.numerator,
-                        denominator: state.denominator,
-                    });
-                }
-            });
-            ui.end_row();
-
-            label(ui, "Key");
-            ui.horizontal(|ui| {
-                let response = ui.add(egui::DragValue::new(&mut state.key).range(-7..=7));
-                ui.ctx()
-                    .accesskit_node_builder(response.id, |node| node.set_label("Key signature"));
-                ui.checkbox(&mut state.minor, "minor");
-                if ui.button("Set key").clicked() {
-                    commands.push(Command::SetKeySignature {
-                        measure: snapshot.measure,
-                        key: state.key,
-                        minor: state.minor,
-                    });
-                }
-            });
-            ui.end_row();
-
-            label(ui, "Section");
-            ui.horizontal(|ui| {
-                let response = ui.color_edit_button_srgb(&mut state.section_color);
-                ui.ctx()
-                    .accesskit_node_builder(response.id, |node| node.set_label("Section color"));
-                response.on_hover_text("The color is applied with the title (Enter)");
-                let response = ui.add(
-                    egui::TextEdit::singleline(&mut state.section_title)
-                        .hint_text("Section title, Enter to apply")
-                        .desired_width(110.0),
-                );
-                ui.ctx()
-                    .accesskit_node_builder(response.id, |node| node.set_label("Section title"));
-                let escape =
-                    response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Escape));
-                if escape {
-                    state.section_title = snapshot
-                        .section
-                        .as_ref()
-                        .map_or_else(String::new, |section| section.title.clone());
-                    if let Some(section) = &snapshot.section {
-                        let (red, green, blue) = section.color.parts();
-                        state.section_color = [red, green, blue];
-                    }
-                }
-                let submitted = (response.has_focus() || response.lost_focus())
-                    && ui.input(|input| input.key_pressed(egui::Key::Enter));
-                if submitted {
-                    let [red, green, blue] = state.section_color;
-                    let rgb =
-                        u32::from(red) * 0x1_0000 + u32::from(green) * 0x100 + u32::from(blue);
-                    let old_title = snapshot
-                        .section
-                        .as_ref()
-                        .map_or("", |section| section.title.as_str());
-                    let old_rgb = snapshot.section.as_ref().map(|section| section.color.rgb());
-                    let title = state.section_title.trim();
-                    if title.is_empty() {
-                        if snapshot.section.is_some() {
-                            commands.push(Command::ClearSection {
-                                measure: snapshot.measure,
-                            });
-                        }
-                    } else if title != old_title || old_rgb != Some(rgb) {
-                        commands.push(Command::SetSection {
-                            measure: snapshot.measure,
-                            title: title.to_owned(),
-                            color: TrackColor::new(rgb),
-                        });
-                    }
-                }
-            });
-            ui.end_row();
-        });
 }
 
 /// Commands that set the chosen length on every selected beat.

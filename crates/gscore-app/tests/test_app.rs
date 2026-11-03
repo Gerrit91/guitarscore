@@ -117,6 +117,39 @@ fn the_page_matches_its_snapshot_in_both_themes() {
 }
 
 #[test]
+fn the_staff_dialogs_match_their_snapshots() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .wgpu()
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/steel_guitar_dadgad.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness.get_by_label("Start repeat sign").click();
+    harness.run();
+    harness.snapshot("staff_repeats_dialog");
+    harness.get_by_label("Cancel").click();
+    harness.run();
+    harness.get_by_label("Swing feel").click();
+    harness.run();
+    harness.snapshot("staff_feel_dialog");
+    harness.get_by_label("Cancel").click();
+    harness.run();
+    harness.get_by_label("Fermata").click();
+    harness.run();
+    harness.snapshot("staff_fermata_dialog");
+}
+
+#[test]
 fn play_and_stop_drive_the_midi_output() {
     // Plays to ALSA's silent "Midi Through" port; skipped where there is none.
     const THROUGH: &str = "Midi Through";
@@ -698,22 +731,22 @@ fn the_edit_palette_sets_lengths_effects_and_the_measure_header() {
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
     harness.run();
 
-    // The measure tempo (measure 1 is the song's initial tempo too).
-    harness.get_by_label("Measure tempo").scroll_to_me();
+    // The measure tempo (measure 1 is the song's initial tempo too), in its dialog.
+    harness.get_by_label("Tempo").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Tempo").click();
     harness.run();
     harness
-        .get_by_label("Measure tempo")
+        .get_by_label("Tempo value")
         .set_value_accesskit(130.0);
     harness.run();
-    harness.get_by_label("Set tempo").scroll_to_me();
-    harness.run();
-    harness.get_by_label("Set tempo").click();
+    harness.get_by_label("OK").click();
     harness.run();
     assert_eq!(harness.state().document().unwrap().song().tempo(), 130);
     // Undo puts the field back to the song's tempo, not the value last typed.
     let shown_tempo = |harness: &Harness<'static, GuitarScoreApp>| {
         harness
-            .get_by_label("Measure tempo")
+            .get_by_label("Tempo value")
             .accesskit_node()
             .numeric_value()
     };
@@ -722,10 +755,18 @@ fn the_edit_palette_sets_lengths_effects_and_the_measure_header() {
     harness.run();
     let tempo = harness.state().document().unwrap().song().tempo();
     assert_ne!(tempo, original.tempo());
+    harness.get_by_label("Tempo").click();
+    harness.run();
     assert_eq!(shown_tempo(&harness), Some(f64::from(tempo)));
+    harness.get_by_label("Cancel").click();
+    harness.run();
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Y);
     harness.run();
+    harness.get_by_label("Tempo").click();
+    harness.run();
     assert_eq!(shown_tempo(&harness), Some(130.0));
+    harness.get_by_label("Cancel").click();
+    harness.run();
 
     // Voice 2.
     harness.get_by_label("Voice 2").scroll_to_me();
@@ -1223,8 +1264,9 @@ fn the_history_window_lists_changes_and_undoes_them() {
 #[test]
 fn a_section_title_is_applied_in_place_with_enter() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
-    assert!(harness.query_by_label("Set section").is_none());
-    harness.get_by_label("Section title").scroll_to_me();
+    harness.get_by_label("Section").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Section").click();
     harness.run();
     harness.get_by_label("Section title").click();
     harness.run();

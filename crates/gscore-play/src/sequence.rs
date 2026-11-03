@@ -18,6 +18,7 @@ use crate::channels::ChannelAllocator;
 use crate::event::{Channel, MidiEvent, PITCH_BEND_CENTER, controller};
 use crate::pitch;
 use crate::sounding::{self, Sounding};
+use crate::swing;
 use crate::tempo::{PPQ, TempoMap};
 
 /// Ticks in a whole note.
@@ -171,6 +172,8 @@ impl Sequence {
                 let Some(measure) = view.measure(span.measure) else {
                     continue;
                 };
+                let feel = song.feel(span.measure).unwrap_or_default();
+                let measure_ticks = span.end.saturating_sub(span.start);
                 for voice in measure.voices() {
                     let mut onset = Duration::new(0, 1)?;
                     for beat in voice.beats() {
@@ -178,9 +181,18 @@ impl Sequence {
                             continue;
                         }
                         let length = beat.duration()?;
-                        let start = span.start.saturating_add(ticks(onset));
-                        let end = span.start.saturating_add(ticks(onset.checked_add(length)?));
-                        onset = onset.checked_add(length)?;
+                        let next = onset.checked_add(length)?;
+                        let start = span.start.saturating_add(swing::swing_offset(
+                            ticks(onset),
+                            measure_ticks,
+                            feel,
+                        ));
+                        let end = span.start.saturating_add(swing::swing_offset(
+                            ticks(next),
+                            measure_ticks,
+                            feel,
+                        ));
+                        onset = next;
                         if let Some(bpm) = beat.tempo_change() {
                             tempo_changes.push((start, bpm));
                         }
@@ -387,6 +399,8 @@ impl Sequence {
         let Some(voice) = measure.voice(at.voice) else {
             return Some(first);
         };
+        let feel = song.feel(span.measure).unwrap_or_default();
+        let measure_ticks = span.end.saturating_sub(span.start);
         let mut onset = Duration::new(0, 1).ok()?;
         let mut last = 0_usize;
         for (index, beat) in voice.beats().enumerate() {
@@ -395,8 +409,10 @@ impl Sequence {
             }
             last = index;
             let length = beat.duration().ok()?;
-            let start = span.start.saturating_add(ticks(onset));
-            let end = start.saturating_add(ticks(length));
+            let next = onset.checked_add(length).ok()?;
+            let end =
+                span.start
+                    .saturating_add(swing::swing_offset(ticks(next), measure_ticks, feel));
             if tick < end {
                 return Some(BeatPosition {
                     track: at.track,
@@ -405,7 +421,7 @@ impl Sequence {
                     beat: BeatIndex::new(index),
                 });
             }
-            onset = onset.checked_add(length).ok()?;
+            onset = next;
         }
         Some(BeatPosition {
             track: at.track,
@@ -475,6 +491,8 @@ pub(crate) fn beat_tick(measures: &[MeasureSpan], song: &Song, at: BeatPosition)
         .track(at.track)
         .and_then(|t| t.measure(at.measure))
         .and_then(|m| m.voice(at.voice));
+    let feel = song.feel(at.measure).unwrap_or_default();
+    let measure_ticks = span.end.saturating_sub(span.start);
     let mut onset = Duration::new(0, 1).ok()?;
     for beat in beats.iter().flat_map(|v| v.beats().take(at.beat.get())) {
         if beat.kind() == BeatKind::Empty {
@@ -485,5 +503,9 @@ pub(crate) fn beat_tick(measures: &[MeasureSpan], song: &Song, at: BeatPosition)
             onset = next;
         }
     }
-    Some(span.start.saturating_add(ticks(onset)).min(span.end))
+    Some(
+        span.start
+            .saturating_add(swing::swing_offset(ticks(onset), measure_ticks, feel))
+            .min(span.end),
+    )
 }

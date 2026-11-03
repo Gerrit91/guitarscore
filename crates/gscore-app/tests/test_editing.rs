@@ -607,6 +607,143 @@ fn the_view_menu_switches_between_pages_and_the_endless_page() {
 }
 
 #[test]
+fn staff_tiles_open_dialogs_for_repeats_barlines_and_breaks() {
+    let mut harness = app_with(&testdata("basic/ornaments.gp"));
+    let measure = gscore_model::MeasureIndex::new(1);
+    {
+        let document = harness.state_mut().document_mut().unwrap();
+        let mut cursor = document.editor().cursor();
+        cursor.measure = measure;
+        cursor.beat = gscore_model::BeatIndex::new(0);
+        document.editor_mut().set_cursor(cursor);
+    }
+    harness.run();
+    let song = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness.state().document().unwrap().song().clone()
+    };
+    let before_repeat = song(&harness).repeat(measure).unwrap_or_default();
+    let before_double_bar = song(&harness).double_bar(measure);
+    let before_break = song(&harness)
+        .track(gscore_model::TrackIndex::new(0))
+        .unwrap()
+        .measure(measure)
+        .unwrap()
+        .system_break();
+    let before_feel = song(&harness).feel(measure);
+    let before_fermata = song(&harness).fermata(measure);
+
+    // Start repeat, end repeat and alternative endings have their own tiles.
+    harness.get_by_label("Start repeat sign").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Start repeat sign").click();
+    harness.run();
+    harness.get_by_label("Start repeat at this bar").click();
+    harness.get_by_label("OK").click();
+    harness.run();
+
+    harness.get_by_label("End repeat sign").scroll_to_me();
+    harness.run();
+    harness.get_by_label("End repeat sign").click();
+    harness.run();
+    harness.get_by_label("End the repeat at this bar").click();
+    harness
+        .get_by_label("Repeat count")
+        .set_value_accesskit(2.0);
+    harness.get_by_label("OK").click();
+    harness.run();
+
+    harness.get_by_label("Alternative endings").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Alternative endings").click();
+    harness.run();
+    harness.get_by_label("Ending 1").click();
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(
+        song(&harness).repeat(measure),
+        Some(gscore_model::Repeat {
+            start: true,
+            end_repeats: Some(2),
+            endings: 1,
+        })
+    );
+
+    // Swing and fermata.
+    harness.get_by_label("Swing feel").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Swing feel").click();
+    harness.run();
+    harness.get_by_label("Eighth-note swing").click();
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(
+        song(&harness).feel(measure),
+        Some(gscore_model::Feel::Eighth)
+    );
+
+    harness.get_by_label("Fermata").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Fermata").click();
+    harness.run();
+    harness.get_by_label("Long").click();
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(
+        song(&harness).fermata(measure),
+        Some(gscore_model::Fermata::Long)
+    );
+
+    // A double barline.
+    harness.get_by_label("Barline").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Barline").click();
+    harness.run();
+    harness
+        .get_by_label("End this bar with a double barline")
+        .click();
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(song(&harness).double_bar(measure), Some(true));
+
+    // A page break, from the staff tile.
+    harness.get_by_label("Break").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Break").click();
+    harness.run();
+    harness.get_by_label("Start a new page here").click();
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(
+        song(&harness)
+            .track(gscore_model::TrackIndex::new(0))
+            .unwrap()
+            .measure(measure)
+            .unwrap()
+            .system_break(),
+        gscore_model::SystemBreak::Page
+    );
+
+    // Everything was one command per dialog, so each undo takes one back.
+    for _ in 0..7 {
+        harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+        harness.run();
+    }
+    assert_eq!(song(&harness).repeat(measure), Some(before_repeat));
+    assert_eq!(song(&harness).double_bar(measure), before_double_bar);
+    assert_eq!(song(&harness).feel(measure), before_feel);
+    assert_eq!(song(&harness).fermata(measure), before_fermata);
+    assert_eq!(
+        song(&harness)
+            .track(gscore_model::TrackIndex::new(0))
+            .unwrap()
+            .measure(measure)
+            .unwrap()
+            .system_break(),
+        before_break
+    );
+}
+
+#[test]
 fn breaks_bars_per_line_and_the_page_setup_are_edited_from_the_menus() {
     let mut harness = app_with(&testdata("basic/ornaments.gp"));
     let song = |harness: &Harness<'static, GuitarScoreApp>| {

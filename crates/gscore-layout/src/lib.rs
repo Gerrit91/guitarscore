@@ -328,8 +328,12 @@ fn layout_with(
                 }
                 if end_repeat {
                     staff.draw_repeat(x, staff_top, false, font, &mut content);
+                } else if is_final {
+                    staff.draw_barline(x, staff_top, true, font, &mut content);
+                } else if measure_marks.double_bar {
+                    staff.draw_double_barline(x, staff_top, font, &mut content);
                 } else {
-                    staff.draw_barline(x, staff_top, is_final, font, &mut content);
+                    staff.draw_barline(x, staff_top, false, font, &mut content);
                 }
             }
             if let Some(count) = marks::repeat_count(measure_marks) {

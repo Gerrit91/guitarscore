@@ -40,6 +40,8 @@ fn valid_value(name: &str) -> &'static str {
         "fret" => "5",
         "duration" => "1/4",
         "dynamic" => "mf",
+        "feel" => "eighth",
+        "fermata" => "medium",
         _ => "1",
     }
 }

@@ -170,6 +170,124 @@ fn a_section_marker_is_set_and_removed() {
 }
 
 #[test]
+fn repeat_signs_and_endings_are_set_and_undone() {
+    let mut song = from_gp(test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure((4, 4), vec![]), measure((4, 4), vec![])],
+    )]))
+    .unwrap();
+    let before = song.clone();
+    let repeat = crate::Repeat {
+        start: true,
+        end_repeats: Some(2),
+        endings: 0b10,
+    };
+    let change = song.set_repeat(MeasureIndex::new(1), repeat).unwrap();
+    assert_eq!(song.repeat(MeasureIndex::new(1)), Some(repeat));
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+    assert!(
+        song.set_repeat(
+            MeasureIndex::new(0),
+            crate::Repeat {
+                end_repeats: Some(0),
+                ..crate::Repeat::default()
+            },
+        )
+        .is_err()
+    );
+    assert!(
+        song.set_repeat(MeasureIndex::new(9), crate::Repeat::default())
+            .is_err()
+    );
+}
+
+#[test]
+fn a_double_barline_is_set_and_undone() {
+    let mut song = from_gp(test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure((4, 4), vec![]), measure((4, 4), vec![])],
+    )]))
+    .unwrap();
+    let before = song.clone();
+    let change = song.set_double_bar(MeasureIndex::new(0), true).unwrap();
+    assert_eq!(song.double_bar(MeasureIndex::new(0)), Some(true));
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+    assert!(song.set_double_bar(MeasureIndex::new(9), true).is_err());
+}
+
+#[test]
+fn a_feel_is_set_and_undone() {
+    let mut song = from_gp(test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure((4, 4), vec![]), measure((4, 4), vec![])],
+    )]))
+    .unwrap();
+    let before = song.clone();
+    let change = song
+        .set_feel(MeasureIndex::new(1), crate::Feel::Eighth)
+        .unwrap();
+    assert_eq!(song.feel(MeasureIndex::new(1)), Some(crate::Feel::Eighth));
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+
+    let change = song
+        .set_feel(MeasureIndex::new(0), crate::Feel::DottedEighth)
+        .unwrap();
+    assert_eq!(
+        song.feel(MeasureIndex::new(0)),
+        Some(crate::Feel::DottedEighth)
+    );
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+    assert!(
+        song.set_feel(MeasureIndex::new(9), crate::Feel::None)
+            .is_err()
+    );
+}
+
+#[test]
+fn a_fermata_is_set_and_undone() {
+    let mut song = from_gp(test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure((4, 4), vec![]), measure((4, 4), vec![])],
+    )]))
+    .unwrap();
+    let before = song.clone();
+    let change = song
+        .set_fermata(MeasureIndex::new(1), Some(crate::Fermata::Long))
+        .unwrap();
+    assert_eq!(
+        song.fermata(MeasureIndex::new(1)),
+        Some(crate::Fermata::Long)
+    );
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+
+    let change = song
+        .set_fermata(MeasureIndex::new(0), Some(crate::Fermata::Short))
+        .unwrap();
+    let remove = song.set_fermata(MeasureIndex::new(0), None).unwrap();
+    assert_eq!(song.fermata(MeasureIndex::new(0)), None);
+    song.revert(&remove).unwrap();
+    assert_eq!(
+        song.fermata(MeasureIndex::new(0)),
+        Some(crate::Fermata::Short)
+    );
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+    assert!(
+        song.set_fermata(MeasureIndex::new(9), Some(crate::Fermata::Medium))
+            .is_err()
+    );
+}
+
+#[test]
 fn a_batch_undoes_its_parts_in_reverse() {
     let mut song = from_gp(test_song(vec![track(
         "Guitar",

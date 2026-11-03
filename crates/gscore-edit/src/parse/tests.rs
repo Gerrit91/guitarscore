@@ -316,6 +316,38 @@ fn parses_every_command_and_fills_defaults() {
             },
         ),
         (
+            "set_repeat measure=3 start=true end=2 endings=1",
+            Command::SetRepeat {
+                measure: MeasureIndex::new(2),
+                repeat: Repeat {
+                    start: true,
+                    end_repeats: Some(2),
+                    endings: 1,
+                },
+            },
+        ),
+        (
+            "set_double_bar measure=3 double_bar=true",
+            Command::SetDoubleBar {
+                measure: MeasureIndex::new(2),
+                double_bar: true,
+            },
+        ),
+        (
+            "set_feel measure=3 feel=eighth",
+            Command::SetFeel {
+                measure: MeasureIndex::new(2),
+                feel: Feel::Eighth,
+            },
+        ),
+        (
+            "set_fermata measure=3 fermata=long",
+            Command::SetFermata {
+                measure: MeasureIndex::new(2),
+                fermata: Some(Fermata::Long),
+            },
+        ),
+        (
             "set_note_effect measure=1 beat=1 string=1 effect=hammer value=true",
             Command::SetNoteEffect {
                 at: at(0, 0, 0, 0),
@@ -665,6 +697,26 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
                 ])
                 .unwrap(),
             )),
+        },
+        Command::SetRepeat {
+            measure: MeasureIndex::new(1),
+            repeat: Repeat {
+                start: true,
+                end_repeats: Some(2),
+                endings: 1,
+            },
+        },
+        Command::SetDoubleBar {
+            measure: MeasureIndex::new(1),
+            double_bar: true,
+        },
+        Command::SetFeel {
+            measure: MeasureIndex::new(1),
+            feel: Feel::DottedEighth,
+        },
+        Command::SetFermata {
+            measure: MeasureIndex::new(1),
+            fermata: Some(Fermata::VeryLong),
         },
     ]);
     // Names a plain command line could not hold: empty, spaces, the comment sign, `=`,

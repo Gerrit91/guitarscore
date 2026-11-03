@@ -7,6 +7,7 @@ use gscore_model::{
 
 use crate::order::playback_order;
 use crate::sequence::{MeasureSpan, beat_tick, ticks};
+use crate::swing;
 use crate::tempo::TempoMap;
 
 /// The played measures of `song` and the tick where the piece ends. The same measure can
@@ -56,6 +57,8 @@ impl Timeline {
                 changes.push((span.start, bpm));
             }
             // A tempo change on a beat (as the sequence also honours).
+            let feel = song.feel(span.measure).unwrap_or_default();
+            let measure_ticks = span.end.saturating_sub(span.start);
             for track in song.tracks() {
                 let Some(measure) = track.measure(span.measure) else {
                     continue;
@@ -67,7 +70,11 @@ impl Timeline {
                             continue;
                         }
                         let length = beat.duration()?;
-                        let start = span.start.saturating_add(ticks(onset));
+                        let start = span.start.saturating_add(swing::swing_offset(
+                            ticks(onset),
+                            measure_ticks,
+                            feel,
+                        ));
                         onset = onset.checked_add(length)?;
                         if let Some(bpm) = beat.tempo_change() {
                             changes.push((start, bpm));

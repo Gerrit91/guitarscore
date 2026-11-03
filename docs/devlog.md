@@ -1767,3 +1767,51 @@ Owner's request: drum notation, dynamics in the edit palette and the score, sect
   which also failed two editing tests on CI.
 - Test `a_note_that_cannot_be_heard_does_not_interrupt_editing` (bogus MIDI port):
   the fret is entered and no notice appears.
+
+## 2026-11-03 — Staff section in the edit palette; repeat and double-barline editing
+
+- **Edit palette**: a new Staff section at the very top, with nine icon tiles that open
+  small dialogs: tempo (a note with `=`), time signature (4/4), key signature, section
+  marker, start repeat, end repeat (both open the repeats and endings dialog), double
+  barline, line/page break, and bars per line. The old inline Measure property sheet is
+  gone; tempo, time, key and section moved into the dialogs. The repeat and barline icons
+  are drawn to fit the tile; the note and time-signature icons use their own faces. A tile
+  lights up when the bar has the feature (section, repeat start/end, double bar, break,
+  fixed bars). OK is one command per dialog, so one undo step.
+- **Model and commands**: `Song::set_repeat` and `Song::set_double_bar` (both in the
+  song-wide measure header), `Song::double_bar`, and the commands
+  `set_repeat measure=.. start=.. end=.. endings=..` and
+  `set_double_bar measure=.. double_bar=..` with info, parse round trip, undo, panic hunt
+  and property coverage. `set_repeat` rebuilds playback; both drop the layout cache.
+- **Layout**: `MeasureMarks` carries `double_bar`; a double barline is drawn as two thin
+  lines. A final barline and an end repeat still win over it.
+- Tests: model setters and undo, parser round trip, a UI test for the repeat, barline and
+  break dialogs (and their undo), a new snapshot of the Repeats dialog; the two app
+  snapshots changed for the new panel (owner to review).
+- Open: D.C./D.S./coda, fermatas and free time; per-track double barlines (Guitar Pro's
+  measure headers keep one per score, as repeats do).
+
+## 2026-11-03 — Staff icons: endings, swing feel and fermatas
+
+- **Icons**: the Staff section now has 12 tiles. Tempo is a note with `=`, the time
+  signature is a stacked 4/4, start and end repeat are separate icons, alternative endings
+  have their own bracket icon, and new tiles cover swing feel and fermatas. The repeat
+  dialogs no longer contain the endings: start repeat, end repeat and alternative endings
+  each open their own small dialog.
+- **Feel**: `Feel` (straight, eighth/sixteenth triplet, dotted eighth/sixteenth) per
+  measure, `Song::feel`/`set_feel` and `set_feel`/`set_triplet_feel`. GP3-5 keep the
+  standard eighth/sixteenth triplet feel; GP7/GPX keep all five in the new `gsFeel`
+  attribute on `<MasterBar>`. Playback and `.mid` export swing eighth/sixteenth notes
+  (two-thirds/one-third) or dotted pairs (three-quarters/one-quarter) through a piecewise
+  time warp per measure; an incomplete final pair stays straight so the bar end does not
+  move. The cursor and the time readout use the same warp.
+- **Fermata**: `Fermata` (very short to very long), `Song::fermata`/`set_fermata` and
+  `set_fermata`; one per measure for now. Drawn above the staff (`Glyph::Fermata` and a
+  new marks row). GP7/GPX keep it; GP3-5 do not, and the save check reports it.
+- Tests: model setters and undo, GPIF feel round trip, a layout test for the fermata glyph
+  and row, CLI round trip, the UI test for all new dialogs, snapshots for the feel and
+  fermata dialogs. App snapshots updated.
+- Open: fermata playback, fermatas below the staff, several fermatas per measure, and
+  dotted feel in GP3-5.
+
+

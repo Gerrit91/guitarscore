@@ -202,4 +202,11 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     `TrackSettings::notation`/`tablature` (which GP3-5 already had) and written with every
     `.gp` file; the bytes for a one-track file equal Guitar Pro's. A track showing neither
     keeps its tablature.
+33. Measure feel (`src/model/headers.rs`, `src/io/gpif/bars.rs`, `src/io/gpif_import/mod.rs`,
+    `src/io/gpif_export/mod.rs`, 2026-11-03): GPIF has no standard triplet-feel field, so a
+    GP7/GPX file lost the measure feel on save. `MeasureHeader::gs_feel` now holds
+    GuitarScore's own value (`eighth`, `sixteenth`, `dotted_eighth`, `dotted_sixteenth`)
+    and is written as the `gsFeel` attribute of `<MasterBar>`. GP3-5 keep the standard
+    `TripletFeel` field (eighth/sixteenth only), so a dotted feel saved to GP3-5 is lost
+    and the save check reports it. Test `feels_round_trip_through_gpif`.
 

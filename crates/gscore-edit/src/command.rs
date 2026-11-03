@@ -1,21 +1,21 @@
 //! The command enum: what an edit is, whether it can run, and how it applies.
 
 use gscore_model::{
-    BeatEffect, BeatKind, BeatPosition, BeatView, Change, Dynamic, Fret, MAX_BARS_PER_SYSTEM,
-    MAX_SECTION_TITLE_CHARS, MAX_TEMPO, MeasureIndex, ModelError, NoteEffect, NoteValue, PageSetup,
-    Pitch, Song, SongTextField, StringNumber, SystemBreak, TimeSignature, TrackColor, TrackIndex,
-    TrackStaves,
+    BeatEffect, BeatKind, BeatPosition, BeatView, Change, Dynamic, Feel, Fermata, Fret,
+    MAX_BARS_PER_SYSTEM, MAX_SECTION_TITLE_CHARS, MAX_TEMPO, MeasureIndex, ModelError, NoteEffect,
+    NoteValue, PageSetup, Pitch, Repeat, Song, SongTextField, StringNumber, SystemBreak,
+    TimeSignature, TrackColor, TrackIndex, TrackStaves,
 };
 
 use crate::info::{
     BATCH, CLEAR_NOTE, CLEAR_SECTION, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_TRACK,
     DUPLICATE_TRACK, INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO, RENAME_TRACK,
-    SET_BEAT_EFFECT, SET_BEAT_REST, SET_DEAD_NOTE, SET_DURATION, SET_DYNAMIC, SET_FRET,
-    SET_KEY_SIGNATURE, SET_MASTER_PAN, SET_MASTER_VOLUME, SET_MEASURE_TEMPO, SET_NOTE_EFFECT,
-    SET_SECTION, SET_SONG_TEXT, SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO,
-    SET_TRACK_CHORUS, SET_TRACK_COLOR, SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN,
-    SET_TRACK_PROGRAM, SET_TRACK_REVERB, SET_TRACK_SOLO, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH,
-    SET_TRACK_STRINGS, SET_TRACK_VOLUME, UNDO,
+    SET_BEAT_EFFECT, SET_BEAT_REST, SET_DEAD_NOTE, SET_DOUBLE_BAR, SET_DURATION, SET_DYNAMIC,
+    SET_FEEL, SET_FERMATA, SET_FRET, SET_KEY_SIGNATURE, SET_MASTER_PAN, SET_MASTER_VOLUME,
+    SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_REPEAT, SET_SECTION, SET_SONG_TEXT, SET_TEMPO, SET_TIE,
+    SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_CHORUS, SET_TRACK_COLOR, SET_TRACK_DRUMS,
+    SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_REVERB, SET_TRACK_SOLO,
+    SET_TRACK_STAVES, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_VOLUME, UNDO,
 };
 use crate::info::{SET_BARS_PER_SYSTEM, SET_PAGE_SETUP, SET_SYSTEM_BREAK};
 
@@ -302,6 +302,34 @@ pub enum Command {
         /// The measure.
         measure: MeasureIndex,
     },
+    /// Set a measure's repeat signs and alternative endings.
+    SetRepeat {
+        /// The measure.
+        measure: MeasureIndex,
+        /// The repeat signs and endings.
+        repeat: Repeat,
+    },
+    /// Show a double barline at the end of a measure, or remove it.
+    SetDoubleBar {
+        /// The measure.
+        measure: MeasureIndex,
+        /// Whether the barline is doubled.
+        double_bar: bool,
+    },
+    /// Set a measure's feel (triplet feel).
+    SetFeel {
+        /// The measure.
+        measure: MeasureIndex,
+        /// The feel.
+        feel: Feel,
+    },
+    /// Set or clear a measure's fermata.
+    SetFermata {
+        /// The measure.
+        measure: MeasureIndex,
+        /// The fermata, or `None` to clear it.
+        fermata: Option<Fermata>,
+    },
     /// Set or clear one effect of a note.
     SetNoteEffect {
         /// The beat.
@@ -502,6 +530,28 @@ impl Command {
             Command::ClearSection { measure } => {
                 format!("{id} measure={}", one(measure.get()))
             }
+            Command::SetRepeat { measure, repeat } => format!(
+                "{id} measure={} start={} end={} endings={}",
+                one(measure.get()),
+                repeat.start,
+                repeat.end_repeats.unwrap_or(0),
+                repeat.endings
+            ),
+            Command::SetDoubleBar {
+                measure,
+                double_bar,
+            } => format!(
+                "{id} measure={} double_bar={double_bar}",
+                one(measure.get())
+            ),
+            Command::SetFeel { measure, feel } => {
+                format!("{id} measure={} feel={}", one(measure.get()), feel.id())
+            }
+            Command::SetFermata { measure, fermata } => format!(
+                "{id} measure={} fermata={}",
+                one(measure.get()),
+                fermata.map_or("none", Fermata::id)
+            ),
             Command::SetNoteEffect {
                 at: p,
                 string,
@@ -601,6 +651,10 @@ impl Command {
             Command::SetKeySignature { .. } => &SET_KEY_SIGNATURE,
             Command::SetSection { .. } => &SET_SECTION,
             Command::ClearSection { .. } => &CLEAR_SECTION,
+            Command::SetRepeat { .. } => &SET_REPEAT,
+            Command::SetDoubleBar { .. } => &SET_DOUBLE_BAR,
+            Command::SetFeel { .. } => &SET_FEEL,
+            Command::SetFermata { .. } => &SET_FERMATA,
             Command::SetNoteEffect { .. } => &SET_NOTE_EFFECT,
             Command::SetBeatEffect { .. } => &SET_BEAT_EFFECT,
             Command::Batch { .. } => &BATCH,
@@ -674,7 +728,10 @@ impl Command {
             | Command::SetTimeSignature { .. }
             | Command::SetKeySignature { .. }
             | Command::SetSection { .. }
-            | Command::ClearSection { .. } => true,
+            | Command::ClearSection { .. }
+            | Command::SetRepeat { .. }
+            | Command::SetDoubleBar { .. }
+            | Command::SetFermata { .. } => true,
             Command::Batch { commands } => commands.iter().any(Command::changes_layout),
             _ => false,
         }
@@ -723,7 +780,10 @@ impl Command {
             | Command::SetNoteEffect { .. }
             | Command::SetBeatEffect { .. }
             | Command::SetDeadNote { .. }
-            | Command::SetDynamic { .. } => true,
+            | Command::SetDynamic { .. }
+            | Command::SetRepeat { .. }
+            | Command::SetFeel { .. }
+            | Command::SetFermata { .. } => true,
             Command::Batch { commands } => commands.iter().any(Command::rebuilds_playback),
             _ => false,
         }
@@ -742,6 +802,7 @@ impl Command {
             | Command::SetTrackStaves { .. }
             | Command::SetSection { .. }
             | Command::ClearSection { .. }
+            | Command::SetDoubleBar { .. }
             | Command::SetKeySignature { .. } => true,
             Command::Batch { commands } => commands.iter().all(Command::changes_display_only),
             _ => false,
@@ -925,6 +986,16 @@ impl Command {
                     && title.chars().count() <= MAX_SECTION_TITLE_CHARS
             }
             Command::ClearSection { measure } => measure.get() < song.measure_count(),
+            Command::SetRepeat { measure, repeat } => {
+                measure.get() < song.measure_count()
+                    && repeat
+                        .end_repeats
+                        .is_none_or(|repeats| (1..=127).contains(&repeats))
+            }
+            Command::SetDoubleBar { measure, .. } => measure.get() < song.measure_count(),
+            Command::SetFeel { measure, .. } | Command::SetFermata { measure, .. } => {
+                measure.get() < song.measure_count()
+            }
             Command::SetNoteEffect { at, string, effect } => {
                 effect.validate().is_ok()
                     && song.beat(*at).is_some_and(|beat| {
@@ -1021,6 +1092,13 @@ impl Command {
             Command::ClearSection { measure } => {
                 song.set_section(*measure, "", TrackColor::DEFAULT)
             }
+            Command::SetRepeat { measure, repeat } => song.set_repeat(*measure, *repeat),
+            Command::SetDoubleBar {
+                measure,
+                double_bar,
+            } => song.set_double_bar(*measure, *double_bar),
+            Command::SetFeel { measure, feel } => song.set_feel(*measure, *feel),
+            Command::SetFermata { measure, fermata } => song.set_fermata(*measure, *fermata),
             Command::SetNoteEffect { at, string, effect } => {
                 song.set_note_effect(*at, *string, effect.clone())
             }

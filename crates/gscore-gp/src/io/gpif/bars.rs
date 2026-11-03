@@ -17,6 +17,10 @@ pub(crate) struct MasterBarsWrapper {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct MasterBar {
+    /// GuitarScore addition: the measure's feel (`none`, `eighth`, `sixteenth`,
+    /// `dotted_eighth`, `dotted_sixteenth`).
+    #[serde(rename = "@gsFeel", default)]
+    pub gs_feel: Option<String>,
     #[serde(rename = "Key", default)]
     pub key: Option<Key>,
     #[serde(rename = "Time", default)]

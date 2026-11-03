@@ -267,6 +267,48 @@ const SECTION_COLOR: ParamInfo = ParamInfo {
     help: "Marker color as rrggbb in hexadecimal",
 };
 
+const START: ParamInfo = ParamInfo {
+    name: "start",
+    required: true,
+    default: None,
+    help: "true to start a repeat at the measure, false for none",
+};
+
+const END: ParamInfo = ParamInfo {
+    name: "end",
+    required: true,
+    default: None,
+    help: "How many times the section is played again, 1 to 127, or 0 for none",
+};
+
+const ENDINGS: ParamInfo = ParamInfo {
+    name: "endings",
+    required: true,
+    default: None,
+    help: "Alternative endings as a bit set (1 = ending 1, 3 = endings 1 and 2), 0 for none",
+};
+
+const DOUBLE_BAR: ParamInfo = ParamInfo {
+    name: "double_bar",
+    required: true,
+    default: None,
+    help: "true for a double barline at the end of the measure, false for a normal one",
+};
+
+const FEEL: ParamInfo = ParamInfo {
+    name: "feel",
+    required: true,
+    default: None,
+    help: "none, eighth, sixteenth, dotted_eighth or dotted_sixteenth",
+};
+
+const FERMATA: ParamInfo = ParamInfo {
+    name: "fermata",
+    required: true,
+    default: None,
+    help: "none, very_short, short, medium, long or very_long",
+};
+
 const EFFECT: ParamInfo = ParamInfo {
     name: "effect",
     required: true,
@@ -674,6 +716,40 @@ pub(crate) const CLEAR_SECTION: CommandInfo = CommandInfo {
     params: &[MEASURE],
 };
 
+pub(crate) const SET_REPEAT: CommandInfo = CommandInfo {
+    id: "set_repeat",
+    aliases: &["set_repeats"],
+    label: "Set repeat signs and endings",
+    help: "Sets the repeat start, the repeat end with how many times it plays again, and the \
+           alternative endings of a measure.",
+    params: &[MEASURE, START, END, ENDINGS],
+};
+
+pub(crate) const SET_DOUBLE_BAR: CommandInfo = CommandInfo {
+    id: "set_double_bar",
+    aliases: &["set_double_barline"],
+    label: "Set a double barline",
+    help: "Ends the measure with a double barline, which divides sections of the score.",
+    params: &[MEASURE, DOUBLE_BAR],
+};
+
+pub(crate) const SET_FEEL: CommandInfo = CommandInfo {
+    id: "set_feel",
+    aliases: &["set_triplet_feel"],
+    label: "Set the feel",
+    help: "Sets how the measure's notes swing: straight, eighth- or sixteenth-note triplet \
+           feel, or a dotted feel (GP7/GPX only).",
+    params: &[MEASURE, FEEL],
+};
+
+pub(crate) const SET_FERMATA: CommandInfo = CommandInfo {
+    id: "set_fermata",
+    aliases: &["set_fermatas"],
+    label: "Set a fermata",
+    help: "Puts a fermata of the chosen length on the measure, or removes it.",
+    params: &[MEASURE, FERMATA],
+};
+
 pub(crate) const SET_NOTE_EFFECT: CommandInfo = CommandInfo {
     id: "set_note_effect",
     aliases: &[],
@@ -757,6 +833,10 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_KEY_SIGNATURE,
     SET_SECTION,
     CLEAR_SECTION,
+    SET_REPEAT,
+    SET_DOUBLE_BAR,
+    SET_FEEL,
+    SET_FERMATA,
     SET_NOTE_EFFECT,
     SET_BEAT_EFFECT,
     BATCH,

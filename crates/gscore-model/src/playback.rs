@@ -158,6 +158,34 @@ impl Song {
         })
     }
 
+    /// Whether `measure` ends with a double barline (the same for every track), or `None`
+    /// if there is no such measure.
+    pub fn double_bar(&self, measure: MeasureIndex) -> Option<bool> {
+        self.inner()
+            .measure_headers
+            .get(measure.get())
+            .map(|header| header.double_bar)
+    }
+
+    /// The feel (triplet feel) `measure` starts with, or `None` if there is no such
+    /// measure.
+    pub fn feel(&self, measure: MeasureIndex) -> Option<crate::marks::Feel> {
+        let header = self.inner().measure_headers.get(measure.get())?;
+        Some(crate::marks::Feel::from_gp(
+            &header.triplet_feel,
+            header.gs_feel.as_deref(),
+        ))
+    }
+
+    /// The fermata at `measure`, or `None` if it has none or there is no such measure.
+    pub fn fermata(&self, measure: MeasureIndex) -> Option<crate::marks::Fermata> {
+        let header = self.inner().measure_headers.get(measure.get())?;
+        header
+            .fermatas
+            .first()
+            .map(|(kind, _)| crate::marks::Fermata::from_gp(kind))
+    }
+
     /// The tempo (beats per minute) set at the start of `measure` (GP6 and later store tempo
     /// changes per measure), if any.
     pub fn tempo_change(&self, measure: MeasureIndex) -> Option<u32> {

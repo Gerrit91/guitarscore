@@ -4,7 +4,7 @@
 //! with [`Glyph::codepoint`]. Names and code points are from the SMuFL specification
 //! (`glyphnames.json`); a test checks that the bundled font's metadata knows every name.
 
-use gscore_model::Dynamic;
+use gscore_model::{Dynamic, Fermata};
 
 /// A music-font glyph.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -63,6 +63,8 @@ pub enum Glyph {
     RepeatDot,
     /// A dynamic mark, `ppp` to `fff` (`dynamicPPP` ... `dynamicFFF`).
     Dynamic(Dynamic),
+    /// A fermata above the staff (`fermataVeryShortAbove` ... `fermataVeryLongAbove`).
+    Fermata(Fermata),
     /// Sharp (`accidentalSharp`).
     Sharp,
     /// Natural (`accidentalNatural`).
@@ -170,6 +172,7 @@ impl Glyph {
         .chain(digits)
         .chain(flags)
         .chain(Dynamic::ALL.map(Glyph::Dynamic))
+        .chain(Fermata::ALL.map(Glyph::Fermata))
     }
 
     /// The SMuFL glyph name.
@@ -222,6 +225,13 @@ impl Glyph {
                 Dynamic::Ff => "dynamicFF",
                 Dynamic::Fff => "dynamicFFF",
             },
+            Glyph::Fermata(fermata) => match fermata {
+                Fermata::VeryShort => "fermataVeryShortAbove",
+                Fermata::Short => "fermataShortAbove",
+                Fermata::Medium => "fermataAbove",
+                Fermata::Long => "fermataLongAbove",
+                Fermata::VeryLong => "fermataVeryLongAbove",
+            },
             Glyph::Sharp => "accidentalSharp",
             Glyph::Natural => "accidentalNatural",
             Glyph::Flag(flag) => FLAG_NAMES
@@ -269,6 +279,13 @@ impl Glyph {
                 Dynamic::F => 0xE522,
                 Dynamic::Ff => 0xE52F,
                 Dynamic::Fff => 0xE530,
+            },
+            Glyph::Fermata(fermata) => match fermata {
+                Fermata::VeryShort => 0xE4C2,
+                Fermata::Short => 0xE4C4,
+                Fermata::Medium => 0xE4C0,
+                Fermata::Long => 0xE4C6,
+                Fermata::VeryLong => 0xE4C8,
             },
             Glyph::Sharp => 0xE262,
             Glyph::Natural => 0xE261,

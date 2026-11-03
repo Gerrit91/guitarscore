@@ -16,9 +16,10 @@ use std::path::PathBuf;
 
 use gscore_model::testing::{self, GUITAR_6, TestNote};
 use gscore_model::{
-    BeatIndex, BeatPosition, MeasureIndex, SlideKind, Song, TrackIndex, VoiceIndex,
+    BeatIndex, BeatPosition, Feel, Fret, MeasureIndex, NoteValue, SlideKind, Song, StringNumber,
+    TrackIndex, VoiceIndex,
 };
-use gscore_play::{Channel, MidiEvent, PPQ, Sequence, to_smf};
+use gscore_play::{Channel, MidiEvent, PPQ, Sequence, Timeline, to_smf};
 
 fn testdata(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -649,6 +650,65 @@ fn a_sequence_reports_the_channel_each_track_plays_on() {
     let sequence = Sequence::new(&song, None).unwrap();
     assert_eq!(sequence.channel_of(TrackIndex::new(0)), None);
     assert!(sequence.channel_of(TrackIndex::new(1)).is_some());
+}
+
+#[test]
+fn swing_feel_moves_the_off_beats() {
+    let mut song = testing::song(&[GUITAR_6], 1).unwrap();
+    let at = |beat: usize| BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(beat),
+    };
+    let string = StringNumber::new(1).unwrap();
+    let fret = Fret::new(3).unwrap();
+    let set_length = |song: &mut Song, value: u16| {
+        let length = NoteValue::new(value, 0, None).unwrap();
+        for beat in 0..4 {
+            let _ = song.set_duration(at(beat), length).unwrap();
+            let _ = song.set_note(at(beat), string, fret).unwrap();
+        }
+    };
+    let starts = |song: &Song| {
+        let sequence = Sequence::new(song, None).unwrap();
+        let mut ticks: Vec<u64> = sequence
+            .events
+            .iter()
+            .filter_map(|event| match event.event {
+                MidiEvent::NoteOn { .. } => Some(event.tick),
+                _ => None,
+            })
+            .collect();
+        ticks.sort_unstable();
+        ticks
+    };
+
+    // Four eighth notes: straight, then two triplet pairs.
+    set_length(&mut song, 8);
+    assert_eq!(starts(&song), vec![0, 480, 960, 1440]);
+    let _ = song.set_feel(MeasureIndex::new(0), Feel::Eighth).unwrap();
+    assert_eq!(starts(&song), vec![0, 640, 960, 1600]);
+
+    // The cursor and the time readout use the same warped positions.
+    let sequence = Sequence::new(&song, None).unwrap();
+    let timeline = Timeline::new(&song).unwrap();
+    assert_eq!(sequence.tick_of(&song, at(1)), Some(640));
+    assert_eq!(timeline.tick_of(&song, at(1)), Some(640));
+    assert_eq!(sequence.beat_at(&song, at(1), 650), Some(at(1)));
+
+    // A dotted feel uses a three-to-one pair.
+    let _ = song
+        .set_feel(MeasureIndex::new(0), Feel::DottedEighth)
+        .unwrap();
+    assert_eq!(starts(&song), vec![0, 720, 960, 1680]);
+
+    // Sixteenths swing inside each eighth.
+    set_length(&mut song, 16);
+    let _ = song
+        .set_feel(MeasureIndex::new(0), Feel::Sixteenth)
+        .unwrap();
+    assert_eq!(starts(&song), vec![0, 320, 480, 800]);
 }
 
 #[test]

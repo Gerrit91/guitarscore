@@ -12,7 +12,7 @@ use gscore_layout::{
     ColorToken, DrawOp, Fonts, Glyph, Layout, LayoutCache, LayoutOptions, TextFont, layout_track,
 };
 use gscore_model::{
-    BeatIndex, BeatPosition, Dynamic, Fret, MeasureIndex, Song, StringNumber, TrackColor,
+    BeatIndex, BeatPosition, Dynamic, Fermata, Fret, MeasureIndex, Song, StringNumber, TrackColor,
     TrackIndex, VoiceIndex, testing,
 };
 
@@ -57,6 +57,59 @@ fn note(song: &mut Song, measure: usize, beat: usize) {
             Fret::new(3).unwrap(),
         )
         .unwrap();
+}
+
+#[test]
+fn a_double_barline_draws_two_lines() {
+    let plain = testing::song(&[testing::GUITAR_6], 2).unwrap();
+    let mut marked = plain.clone();
+    let _ = marked.set_double_bar(MeasureIndex::new(0), true).unwrap();
+    let barline_lines_at = |layout: &Layout, x: f32| {
+        layout
+            .ops
+            .iter()
+            .filter(|op| {
+                matches!(
+                    op,
+                    DrawOp::Line { from, to, color, .. }
+                        if *color == ColorToken::Barline
+                            && (from.x - to.x).abs() < 0.01
+                            && (from.x - x).abs() < 1.0
+                )
+            })
+            .count()
+    };
+    let plain = layout(&plain);
+    let marked = layout(&marked);
+    let plain_count = barline_lines_at(&plain, plain.places.measures[0].right);
+    assert_eq!(plain_count, 2, "one barline per staff");
+    assert_eq!(
+        barline_lines_at(&marked, marked.places.measures[0].right),
+        plain_count * 2
+    );
+}
+
+#[test]
+fn a_fermata_is_drawn_above_the_measure() {
+    let mut song = testing::song(&[testing::GUITAR_6], 2).unwrap();
+    let _ = song
+        .set_fermata(MeasureIndex::new(0), Some(Fermata::Long))
+        .unwrap();
+    let laid_out = layout(&song);
+    assert_eq!(glyph_count(&laid_out, Glyph::Fermata(Fermata::Long)), 1);
+    let y = laid_out
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            DrawOp::Glyph {
+                glyph: Glyph::Fermata(_),
+                at,
+                ..
+            } => Some(at.y),
+            _ => None,
+        })
+        .expect("the fermata glyph");
+    assert!(y < laid_out.places.systems[0].top);
 }
 
 #[test]

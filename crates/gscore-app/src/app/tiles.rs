@@ -6,7 +6,7 @@ use egui::{
 };
 
 use super::style;
-use crate::fonts::MUSIC;
+use crate::fonts::{BOLD, MUSIC};
 
 /// The size of a tile.
 pub(crate) const TILE: egui::Vec2 = egui::Vec2::new(27.0, 32.0);
@@ -36,6 +36,26 @@ pub(crate) enum Face<'a> {
     /// A slide: a line from `from` to `to`, each -1 (low), 0 (the note) or 1 (high), with
     /// a dot for the note at the end that is 0.
     Slide { from: i8, to: i8 },
+    /// A line break: a staff line that turns down into the next system.
+    Break,
+    /// Bars on a line: short barlines over a baseline.
+    Bars,
+    /// A tempo mark: a quarter note followed by "=".
+    Tempo,
+    /// A time signature: 4 over 4.
+    TimeSig,
+    /// A start repeat sign: thick and thin line, dots to the right.
+    RepeatStart,
+    /// An end repeat sign: dots to the left, thin and thick line.
+    RepeatEnd,
+    /// A double barline: two thin lines.
+    DoubleBar,
+    /// An alternative-ending bracket with "1.".
+    Endings,
+    /// A swing feel: two beamed eighth notes with a "3".
+    Swing,
+    /// A fermata: an arch over a dot.
+    Fermata,
 }
 
 /// One tile. `label` is what screen readers (and tests) call it; `tip` the tooltip.
@@ -173,6 +193,183 @@ fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Color32) {
                     painter.circle_filled(at, 2.8, ink);
                 }
             }
+        }
+        Face::Break => {
+            let stroke = Stroke::new(1.6, ink);
+            let y = rect.center().y - 5.0;
+            let corner = egui::pos2(rect.right() - 9.0, y);
+            painter.line_segment([egui::pos2(rect.left() + 5.0, y), corner], stroke);
+            painter.line_segment(
+                [corner, egui::pos2(corner.x, rect.center().y + 5.0)],
+                stroke,
+            );
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    egui::pos2(corner.x, rect.center().y + 8.0),
+                    egui::pos2(corner.x - 3.5, rect.center().y + 3.0),
+                    egui::pos2(corner.x + 3.5, rect.center().y + 3.0),
+                ],
+                ink,
+                Stroke::NONE,
+            ));
+        }
+        Face::Bars => {
+            let stroke = Stroke::new(1.5, ink);
+            let baseline = rect.center().y + 6.0;
+            painter.line_segment(
+                [
+                    egui::pos2(rect.left() + 5.0, baseline),
+                    egui::pos2(rect.right() - 5.0, baseline),
+                ],
+                stroke,
+            );
+            for x in [0.3, 0.5, 0.7] {
+                let x = rect.left() + rect.width() * x;
+                painter.line_segment(
+                    [
+                        egui::pos2(x, rect.center().y - 7.0),
+                        egui::pos2(x, baseline),
+                    ],
+                    stroke,
+                );
+            }
+        }
+        Face::Tempo => {
+            music_glyph(
+                painter,
+                egui::pos2(rect.center().x - 5.0, rect.center().y + 6.0),
+                "\u{ECA5}",
+                18.0,
+                ink,
+            );
+            painter.text(
+                egui::pos2(rect.center().x + 6.0, rect.center().y + 1.0),
+                Align2::CENTER_CENTER,
+                "=",
+                FontId::proportional(13.0),
+                ink,
+            );
+        }
+        Face::TimeSig => {
+            let font = FontId::new(13.0, FontFamily::Name(BOLD.into()));
+            for (dy, digit) in [(-6.0, "4"), (6.0, "4")] {
+                painter.text(
+                    egui::pos2(rect.center().x, rect.center().y + dy),
+                    Align2::CENTER_CENTER,
+                    digit,
+                    font.clone(),
+                    ink,
+                );
+            }
+        }
+        Face::RepeatStart => {
+            let top = rect.top() + 6.0;
+            let bottom = rect.bottom() - 6.0;
+            let thick_x = rect.left() + 8.0;
+            let thin_x = rect.left() + 13.0;
+            painter.line_segment(
+                [egui::pos2(thick_x, top), egui::pos2(thick_x, bottom)],
+                Stroke::new(2.2, ink),
+            );
+            painter.line_segment(
+                [egui::pos2(thin_x, top), egui::pos2(thin_x, bottom)],
+                Stroke::new(1.0, ink),
+            );
+            for y in [rect.center().y - 5.0, rect.center().y + 5.0] {
+                painter.circle_filled(egui::pos2(rect.left() + 18.0, y), 1.8, ink);
+            }
+        }
+        Face::RepeatEnd => {
+            let top = rect.top() + 6.0;
+            let bottom = rect.bottom() - 6.0;
+            let thick_x = rect.right() - 8.0;
+            let thin_x = rect.right() - 13.0;
+            painter.line_segment(
+                [egui::pos2(thick_x, top), egui::pos2(thick_x, bottom)],
+                Stroke::new(2.2, ink),
+            );
+            painter.line_segment(
+                [egui::pos2(thin_x, top), egui::pos2(thin_x, bottom)],
+                Stroke::new(1.0, ink),
+            );
+            for y in [rect.center().y - 5.0, rect.center().y + 5.0] {
+                painter.circle_filled(egui::pos2(rect.right() - 18.0, y), 1.8, ink);
+            }
+        }
+        Face::DoubleBar => {
+            let top = rect.top() + 6.0;
+            let bottom = rect.bottom() - 6.0;
+            let stroke = Stroke::new(1.2, ink);
+            for x in [rect.center().x - 3.0, rect.center().x + 3.0] {
+                painter.line_segment([egui::pos2(x, top), egui::pos2(x, bottom)], stroke);
+            }
+        }
+        Face::Endings => {
+            let stroke = Stroke::new(1.4, ink);
+            let top = rect.center().y - 8.0;
+            painter.line_segment(
+                [
+                    egui::pos2(rect.left() + 5.0, top),
+                    egui::pos2(rect.right() - 5.0, top),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(rect.left() + 5.0, top),
+                    egui::pos2(rect.left() + 5.0, top + 5.0),
+                ],
+                stroke,
+            );
+            painter.text(
+                egui::pos2(rect.center().x, rect.center().y + 4.0),
+                Align2::CENTER_CENTER,
+                "1.",
+                FontId::new(11.0, FontFamily::Name(BOLD.into())),
+                ink,
+            );
+        }
+        Face::Swing => {
+            let stroke = Stroke::new(1.3, ink);
+            let y = rect.center().y + 4.0;
+            let left = rect.left() + 7.0;
+            let right = rect.right() - 7.0;
+            for x in [left, right] {
+                painter.circle_filled(egui::pos2(x, y), 2.0, ink);
+                painter.line_segment(
+                    [egui::pos2(x + 1.8, y), egui::pos2(x + 1.8, y - 9.0)],
+                    stroke,
+                );
+            }
+            painter.line_segment(
+                [
+                    egui::pos2(left + 1.8, y - 9.0),
+                    egui::pos2(right + 1.8, y - 9.0),
+                ],
+                stroke,
+            );
+            painter.text(
+                egui::pos2(rect.center().x, rect.center().y - 11.0),
+                Align2::CENTER_CENTER,
+                "3",
+                FontId::new(9.0, FontFamily::Name(BOLD.into())),
+                ink,
+            );
+        }
+        Face::Fermata => {
+            let left = rect.left() + 6.0;
+            let right = rect.right() - 6.0;
+            let base = rect.center().y + 1.0;
+            let points: Vec<Pos2> = (0..=12)
+                .map(|step| {
+                    let t = step as f32 / 12.0;
+                    let x = left + (right - left) * t;
+                    let y = base - 5.0 * (1.0 - (2.0 * t - 1.0).powi(2));
+                    egui::pos2(x, y)
+                })
+                .collect();
+            painter.add(egui::Shape::line(points, Stroke::new(1.6, ink)));
+            painter.circle_filled(egui::pos2(rect.center().x, rect.center().y + 4.0), 2.0, ink);
         }
     }
 }

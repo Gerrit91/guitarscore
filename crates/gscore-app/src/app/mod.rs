@@ -9,6 +9,8 @@ mod bars;
 mod edit_dynamics;
 mod edit_effects;
 mod edit_palette;
+mod edit_staff;
+mod edit_staff_dialogs;
 mod editing;
 mod files;
 mod grid;
@@ -516,6 +518,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_history(&ctx);
         self.show_new_track_dialog(&ctx);
         self.show_shape_editors(&ctx);
+        self.show_staff_dialogs(&ctx);
         // Every edit of this frame goes to the recovery journal.
         if let Some(document) = &mut self.document
             && let Some(error) = document.record_changes()

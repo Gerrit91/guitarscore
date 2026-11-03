@@ -9,9 +9,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use gscore_model::{
-    BeatEffect, BeatIndex, BeatPosition, Dynamic, Fret, MAX_BARS_PER_SYSTEM, MAX_STRINGS,
-    MAX_TEMPO, MeasureIndex, NoteEffect, NoteValue, PageSetup, Pitch, SongTextField, StringNumber,
-    SystemBreak, TrackIndex, TrackStaves, VoiceIndex,
+    BeatEffect, BeatIndex, BeatPosition, Dynamic, Feel, Fermata, Fret, MAX_BARS_PER_SYSTEM,
+    MAX_STRINGS, MAX_TEMPO, MeasureIndex, NoteEffect, NoteValue, PageSetup, Pitch, Repeat,
+    SongTextField, StringNumber, SystemBreak, TrackIndex, TrackStaves, VoiceIndex,
 };
 
 use crate::command::Command;
@@ -350,6 +350,55 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
         "clear_section" => Ok(Command::ClearSection {
             measure: MeasureIndex::new(required_position(args, "measure")?),
         }),
+        "set_repeat" => {
+            let end = midi_value_arg(args, "end")?;
+            Ok(Command::SetRepeat {
+                measure: MeasureIndex::new(required_position(args, "measure")?),
+                repeat: Repeat {
+                    start: bool_arg(args, "start")?,
+                    end_repeats: (end > 0).then_some(end),
+                    endings: endings_arg(args)?,
+                },
+            })
+        }
+        "set_double_bar" => Ok(Command::SetDoubleBar {
+            measure: MeasureIndex::new(required_position(args, "measure")?),
+            double_bar: bool_arg(args, "double_bar")?,
+        }),
+        "set_feel" => {
+            let text = args.required("feel")?;
+            let feel = Feel::from_id(&text).ok_or_else(|| {
+                bad(
+                    args.command,
+                    "feel",
+                    &text,
+                    "none, eighth, sixteenth, dotted_eighth or dotted_sixteenth",
+                )
+            })?;
+            Ok(Command::SetFeel {
+                measure: MeasureIndex::new(required_position(args, "measure")?),
+                feel,
+            })
+        }
+        "set_fermata" => {
+            let text = args.required("fermata")?;
+            let fermata = if text == "none" {
+                None
+            } else {
+                Some(Fermata::from_id(&text).ok_or_else(|| {
+                    bad(
+                        args.command,
+                        "fermata",
+                        &text,
+                        "none, very_short, short, medium, long or very_long",
+                    )
+                })?)
+            };
+            Ok(Command::SetFermata {
+                measure: MeasureIndex::new(required_position(args, "measure")?),
+                fermata,
+            })
+        }
         "set_note_effect" => {
             let at = position(args)?;
             let string = string_arg(args)?;
@@ -765,6 +814,19 @@ fn midi_value_arg(args: &mut Args, name: &'static str) -> Result<u8, ParseError>
         return Err(bad(args.command, name, &text, expected));
     }
     Ok(value)
+}
+
+/// A bit set of alternative endings (bit 0 is ending 1).
+fn endings_arg(args: &mut Args) -> Result<u8, ParseError> {
+    let text = args.required("endings")?;
+    text.parse().map_err(|_| {
+        bad(
+            args.command,
+            "endings",
+            &text,
+            "a whole number from 0 to 255",
+        )
+    })
 }
 
 /// A `rrggbb` color, optionally written as `0xrrggbb`.
