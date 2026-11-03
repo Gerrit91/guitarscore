@@ -171,10 +171,7 @@ impl Song {
     /// measure.
     pub fn feel(&self, measure: MeasureIndex) -> Option<crate::marks::Feel> {
         let header = self.inner().measure_headers.get(measure.get())?;
-        Some(crate::marks::Feel::from_gp(
-            &header.triplet_feel,
-            header.gs_feel.as_deref(),
-        ))
+        Some(crate::marks::Feel::from_gp(&header.triplet_feel))
     }
 
     /// The fermata at `measure`, or `None` if it has none or there is no such measure.

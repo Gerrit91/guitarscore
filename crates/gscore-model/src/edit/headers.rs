@@ -1,6 +1,9 @@
-//! Song-wide header edits at one measure: its tempo, time and key signatures, and its
-//! section marker. Every track keeps a copy of the measure's signatures, so all copies are
+//! Song-wide header edits: a measure's tempo, repeats, section marker and fermata, and
+//! the time and key signatures and feel, which hold from their measure up to the next
+//! change. Every track keeps a copy of the measure's signatures, so all copies are
 //! changed together and restored together.
+
+use std::ops::Range;
 
 use gscore_gp::{
     Duration as GpDuration, KeySignature as GpKeySignature, Marker as GpMarker, Song as GpSong,
@@ -108,14 +111,20 @@ impl Song {
         })
     }
 
-    /// Sets a measure's feel (triplet feel), in the header and (at measure 1) the song's
-    /// initial feel.
+    /// Sets the feel (triplet feel) from `measure` on: the measure and the following ones
+    /// that had its feel, up to the next measure with a feel of its own (see [`reach`]).
+    /// One undoable change.
     pub fn set_feel(&mut self, measure: MeasureIndex, feel: Feel) -> Result<Change, ModelError> {
+        let measures = reach(self, measure, |header| header.triplet_feel.clone())?;
+        self.each_measure(measures, |song, at| song.set_feel_at(at, feel))
+    }
+
+    /// Sets one measure's feel, in the header and (at measure 1) the song's initial feel.
+    fn set_feel_at(&mut self, measure: MeasureIndex, feel: Feel) -> Result<Change, ModelError> {
         self.edit_headers(|inner| {
             let header = header_mut(inner, measure)?;
-            let previous = (header.triplet_feel.clone(), header.gs_feel.clone());
+            let previous = header.triplet_feel.clone();
             header.triplet_feel = feel.to_gp();
-            header.gs_feel = feel.gs_id().map(str::to_owned);
             let previous_initial = (measure.get() == 0).then(|| {
                 let previous = inner.triplet_feel.clone();
                 inner.triplet_feel = feel.to_gp();
@@ -141,7 +150,7 @@ impl Song {
             let header = header_mut(inner, measure)?;
             let previous = header.fermatas.clone();
             header.fermatas = match fermata {
-                Some(fermata) => vec![(fermata.to_gp().to_owned(), "0".to_owned())],
+                Some(fermata) => vec![(fermata.to_gp().to_owned(), "0/1".to_owned())],
                 None => Vec::new(),
             };
             Ok(Change {
@@ -150,7 +159,9 @@ impl Song {
         })
     }
 
-    /// Sets the time signature of a measure, in the header and in every track's copy of it.
+    /// Sets the time signature from `measure` on: the measure and the following ones that
+    /// had its signature, up to the next measure with a signature of its own (see
+    /// [`reach`]). One undoable change.
     pub fn set_time_signature(
         &mut self,
         measure: MeasureIndex,
@@ -159,7 +170,25 @@ impl Song {
     ) -> Result<Change, ModelError> {
         let signature = TimeSignature::new(numerator, denominator)?;
         let gp = gp_time_signature(&signature)?;
-        let change = self.edit_headers(|inner| {
+        let measures = reach(self, measure, |header| {
+            (
+                header.time_signature.numerator,
+                header.time_signature.denominator.value,
+            )
+        })?;
+        let change = self.each_measure(measures, |song, at| song.set_time_signature_at(at, &gp))?;
+        // The measures' layouts depend on their signature: lay them out again.
+        self.touch_all_measures();
+        Ok(change)
+    }
+
+    /// Sets one measure's time signature, in the header and in every track's copy of it.
+    fn set_time_signature_at(
+        &mut self,
+        measure: MeasureIndex,
+        gp: &GpTimeSignature,
+    ) -> Result<Change, ModelError> {
+        self.edit_headers(|inner| {
             let previous_measures = measures_time_signatures(inner, measure)?;
             let header = header_mut(inner, measure)?;
             let previous_header = header.time_signature.clone();
@@ -176,13 +205,12 @@ impl Song {
                     previous_measures,
                 },
             })
-        })?;
-        // The measure's layout depends on its signature: lay it out again.
-        self.touch_all_measures();
-        Ok(change)
+        })
     }
 
-    /// Sets the key signature of a measure, in the header and in every track's copy of it.
+    /// Sets the key signature from `measure` on: the measure and the following ones that
+    /// had its key, up to the next measure with a key of its own (see [`reach`]). One
+    /// undoable change.
     pub fn set_key_signature(
         &mut self,
         measure: MeasureIndex,
@@ -194,6 +222,19 @@ impl Song {
                 "key signature {key} (supported: -7 to 7 accidentals)"
             )));
         }
+        let measures = reach(self, measure, |header| header.key_signature.clone())?;
+        self.each_measure(measures, |song, at| {
+            song.set_key_signature_at(at, key, minor)
+        })
+    }
+
+    /// Sets one measure's key signature, in the header and in every track's copy of it.
+    fn set_key_signature_at(
+        &mut self,
+        measure: MeasureIndex,
+        key: i8,
+        minor: bool,
+    ) -> Result<Change, ModelError> {
         self.edit_headers(|inner| {
             let previous_measures = measures_key_signatures(inner, measure)?;
             let header = header_mut(inner, measure)?;
@@ -247,6 +288,62 @@ impl Song {
             })
         })
     }
+}
+
+impl Song {
+    /// Runs `edit` on each measure of `measures` and combines the changes into one
+    /// (a batch when there are several, undone in reverse order).
+    fn each_measure(
+        &mut self,
+        measures: Range<usize>,
+        mut edit: impl FnMut(&mut Song, MeasureIndex) -> Result<Change, ModelError>,
+    ) -> Result<Change, ModelError> {
+        let mut changes = Vec::new();
+        for index in measures {
+            match edit(self, MeasureIndex::new(index)) {
+                Ok(change) => changes.push(change),
+                Err(error) => {
+                    // Leave the song as it was: undo the measures already changed.
+                    for change in changes.iter().rev() {
+                        self.revert(change)?;
+                    }
+                    return Err(error);
+                }
+            }
+        }
+        if changes.len() == 1 {
+            return changes
+                .pop()
+                .ok_or_else(|| ModelError::Invalid("no change".to_owned()));
+        }
+        Ok(Change::batch(changes))
+    }
+}
+
+/// The measures a signature or feel set at `measure` reaches, as Guitar Pro applies
+/// them: `measure` itself and the following measures that carried the same value as it,
+/// up to the next measure whose value differs (where a change was written already).
+fn reach<T: PartialEq>(
+    song: &Song,
+    measure: MeasureIndex,
+    value: impl Fn(&gscore_gp::MeasureHeader) -> T,
+) -> Result<Range<usize>, ModelError> {
+    let headers = &song.inner().measure_headers;
+    let start = measure.get();
+    let first = headers.get(start).ok_or_else(|| {
+        ModelError::Invalid(format!(
+            "{measure}: the song has {} measure(s)",
+            headers.len()
+        ))
+    })?;
+    let old = value(first);
+    let end = headers
+        .iter()
+        .enumerate()
+        .skip(start.saturating_add(1))
+        .find(|(_, header)| value(header) != old)
+        .map_or(headers.len(), |(index, _)| index);
+    Ok(start..end)
 }
 
 /// The header of `measure`, or an error naming what is missing.

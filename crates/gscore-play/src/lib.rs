@@ -5,17 +5,23 @@
 //!
 //! Played: notes of all voices with exact timing, ties, dead notes (short and soft), the
 //! tracks' instruments, volume and pan, tempo changes, repeats and alternative endings,
-//! swing/triplet and dotted feel, bends and slides (pitch bends on a borrowed channel, so
-//! the rest of the chord stays put; the model stores only the highest point of a bend, so
-//! bend curves are simplified).
-//! Not yet: vibrato, let ring, palm mute, grace notes, trills, whammy bar, fermatas and
-//! directions (D.C., D.S., coda).
+//! swing/triplet, dotted and Scottish feel, bends, slides and vibrato (pitch bends on a
+//! borrowed channel, so the rest of the chord stays put; the model stores only the highest
+//! point of a bend, so bend curves are simplified), ghost notes and accents (velocity),
+//! staccato and palm mute (shorter), let ring, tremolo picking and brush strokes.
+//! [`Sequence::beat_excerpt`] plays one beat alone, for hearing an edit.
+//! Not yet: grace notes, trills, whammy bar, fade-in, fermatas and directions (D.C., D.S.,
+//! coda).
 
 #![warn(clippy::arithmetic_side_effects)]
 
+mod build;
 mod channels;
 mod click;
+mod curve;
+mod effects;
 mod event;
+mod excerpt;
 mod order;
 mod pitch;
 mod player;

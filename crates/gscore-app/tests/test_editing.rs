@@ -17,7 +17,7 @@ use egui::{Event, Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use gscore_app::GuitarScoreApp;
-use gscore_model::StringNumber;
+use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, StringNumber, TrackIndex, VoiceIndex};
 
 fn testdata(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -190,7 +190,7 @@ fn opening_another_file_with_unsaved_changes_asks_first() {
         .open(testdata("basic/steel_guitar_dadgad.gp"), &ctx);
     harness.run();
     assert!(harness.state().has_dialog());
-    harness.get_by_label("Unsaved changes");
+    harness.get_by_label("Close Unsaved changes");
     // Keys do not edit while the question is open.
     type_char(&mut harness, "5", Modifiers::NONE);
     assert_eq!(fret_at_cursor(harness.state(), 1), Some(3));
@@ -242,8 +242,8 @@ fn shift_arrows_select_beats_and_end_a_grid_selection() {
         .unwrap()
         .editor_mut()
         .set_selection(Some(gscore_edit::Selection::Measures {
-            anchor: gscore_model::MeasureIndex::new(0),
-            focus: gscore_model::MeasureIndex::new(0),
+            anchor: MeasureIndex::new(0),
+            focus: MeasureIndex::new(0),
         }));
     harness.run();
 
@@ -422,6 +422,223 @@ fn an_entered_fret_is_heard_and_undo_is_not() {
     assert_eq!(harness.state().playback().auditioning(), None);
     assert_eq!(fret_at_cursor(harness.state(), string), Some(3));
     std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn an_effect_chosen_in_the_palette_plays_its_beat_and_play_still_plays_the_song() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = std::env::temp_dir().join(format!("gscore-preview-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let font = dir.join("sine.sf2");
+    std::fs::write(&font, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    harness.state_mut().playback_mut().use_soundfont(font);
+    type_char(&mut harness, "5", Modifiers::NONE);
+    let ready = step_until(&mut harness, Duration::from_secs(10), |app| {
+        !app.playback().is_loading() || app.playback().error().is_some()
+    });
+    assert!(ready, "the synthesizer neither loaded nor failed");
+    if let Some(error) = harness.state().playback().error() {
+        eprintln!("skipped: no usable audio device ({error})");
+        std::fs::remove_dir_all(dir).ok();
+        return;
+    }
+
+    // The vibrato tile sets the effect and plays the beat with it; the song stays stopped.
+    harness.get_by_label("Vibrato").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Vibrato").click();
+    harness.run();
+    assert!(harness.state().playback().previewing());
+    let excerpt = harness
+        .state()
+        .playback()
+        .preview_sequence()
+        .unwrap()
+        .clone();
+    for event in &excerpt.events {
+        if matches!(
+            event.event,
+            gscore_play::MidiEvent::PitchBend { .. } | gscore_play::MidiEvent::NoteOn { .. }
+        ) {
+            eprintln!("excerpt {} {:?}", event.tick, event.event);
+        }
+    }
+    let shaking = excerpt.events.iter().any(|event| {
+        matches!(event.event, gscore_play::MidiEvent::PitchBend { value, .. } if value > 8192 + 500)
+    });
+    assert!(shaking, "the excerpt has no vibrato: {:?}", excerpt.events);
+    assert_eq!(
+        harness.state().playback().state(),
+        gscore_play::PlayState::Stopped
+    );
+    assert_eq!(harness.state().notice(), None);
+
+    // Listen in the bend editor plays the drawn bend without applying it.
+    let depth = harness.state().document().unwrap().editor().undo_depth();
+    harness.get_by_label("Bend").click();
+    harness.run();
+    harness.get_by_label("Listen").click();
+    harness.run();
+    let excerpt = harness
+        .state()
+        .playback()
+        .preview_sequence()
+        .unwrap()
+        .clone();
+    let bent = excerpt.events.iter().any(|event| {
+        matches!(event.event, gscore_play::MidiEvent::PitchBend { value, .. } if value > 8192 + 2000)
+    });
+    assert!(bent, "the excerpt bends");
+    assert_eq!(
+        harness.state().document().unwrap().editor().undo_depth(),
+        depth,
+        "listening changes nothing"
+    );
+    harness.get_by_label("Cancel").click();
+    harness.run();
+
+    // Play ends the excerpt and plays the song.
+    harness.get_by_label("Play").click();
+    harness.step();
+    assert!(!harness.state().playback().previewing());
+    let playing = step_until(&mut harness, Duration::from_secs(5), |app| {
+        app.playback().state() == gscore_play::PlayState::Playing
+    });
+    assert!(playing, "the song did not start after the excerpt");
+    // A paused song gives way to a heard beat.
+    harness.step();
+    harness.get_by_label("Pause").click();
+    harness.step();
+    harness.get_by_label("Vibrato").click();
+    harness.run();
+    assert!(
+        harness.state().playback().previewing(),
+        "heard while paused"
+    );
+    harness.get_by_label("Stop").click();
+    harness.step();
+    assert!(!harness.state().playback().previewing());
+
+    // The dynamic the beat already has (mezzo-forte, the default) changes nothing but is
+    // still heard.
+    let depth = harness.state().document().unwrap().editor().undo_depth();
+    harness.get_by_label("mf (mezzo-forte)").scroll_to_me();
+    harness.run();
+    harness.get_by_label("mf (mezzo-forte)").click();
+    harness.run();
+    assert!(harness.state().playback().previewing());
+    assert_eq!(
+        harness.state().document().unwrap().editor().undo_depth(),
+        depth
+    );
+    harness.get_by_label("Stop").click();
+    harness.step();
+
+    // Undo is quiet.
+    type_char(&mut harness, "z", Modifiers::COMMAND);
+    harness.run();
+    assert!(!harness.state().playback().previewing());
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn the_rest_tile_enters_a_rest_of_the_chosen_length_in_an_empty_bar() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    harness.get_by_label("New song").click();
+    settle(&mut harness);
+    let at = |measure: usize| BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(measure),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(0),
+    };
+    let rest = |harness: &Harness<'static, GuitarScoreApp>, measure: usize| {
+        let song = harness.state().document().unwrap().song();
+        let beat = song.beat(at(measure)).unwrap();
+        (beat.kind(), beat.duration().unwrap())
+    };
+    // Choose an eighth, then add a bar: it starts with a whole rest.
+    harness.get_by_label("1/8").click();
+    harness.run();
+    harness.get_by_label("Bar").click();
+    harness.run();
+    harness.get_by_label("Insert bar after").click_accesskit();
+    harness.run();
+    let document = harness.state_mut().document_mut().unwrap();
+    let mut cursor = document.editor().cursor();
+    cursor.measure = MeasureIndex::new(1);
+    cursor.beat = BeatIndex::new(0);
+    document.editor_mut().set_cursor(cursor);
+    harness.run();
+    let whole = gscore_model::Duration::new(1, 1).unwrap();
+    assert_eq!(rest(&harness, 1), (gscore_model::BeatKind::Rest, whole));
+    // The rest tile makes it a rest of the chosen length.
+    harness.get_by_label("Rest").click();
+    harness.run();
+    let eighth = gscore_model::Duration::new(1, 8).unwrap();
+    assert_eq!(rest(&harness, 1), (gscore_model::BeatKind::Rest, eighth));
+}
+
+#[test]
+fn the_harmonic_tile_sets_an_artificial_harmonic_with_its_touch_point() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    harness.run();
+    harness.get_by_label("Harmonic").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Harmonic").click();
+    harness.run();
+    harness.get_by_label("Artificial").click();
+    harness.run();
+    harness.get_by_label("+12").click();
+    harness.run();
+    assert!(
+        harness.query_by_label_contains("2nd partial").is_some(),
+        "the editor names what the harmonic sounds"
+    );
+    harness.get_by_label("OK").click();
+    harness.run();
+    let document = harness.state().document().unwrap();
+    let cursor = document.editor().cursor();
+    let song = document.song();
+    let beat = song.beat(cursor.position()).unwrap();
+    let note = beat
+        .notes()
+        .find(|note| note.string().unwrap().get() == cursor.string)
+        .unwrap();
+    assert_eq!(
+        note.harmonic(),
+        Some(gscore_model::Harmonic {
+            kind: gscore_model::HarmonicKind::Artificial,
+            node: Some(17),
+        })
+    );
+}
+
+#[test]
+fn notes_go_into_the_third_and_fourth_voice() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    for (label, voice) in [("Voice 3", 2), ("Voice 4", 3)] {
+        harness.get_by_label(label).scroll_to_me();
+        harness.run();
+        harness.get_by_label(label).click();
+        harness.run();
+        let cursor = harness.state().document().unwrap().editor().cursor();
+        assert_eq!(cursor.voice.get(), voice);
+        type_char(&mut harness, "7", Modifiers::NONE);
+        harness.run();
+        let document = harness.state().document().unwrap();
+        let cursor = document.editor().cursor();
+        let beat = document
+            .song()
+            .beat(cursor.position())
+            .expect("the voice's beat");
+        assert!(beat.notes().any(|note| note.fret().unwrap().get() == 7));
+        assert_eq!(harness.state().notice(), None);
+    }
+    // The page still lays out with four voices.
+    assert!(harness.render().is_ok());
 }
 
 #[test]
@@ -609,12 +826,12 @@ fn the_view_menu_switches_between_pages_and_the_endless_page() {
 #[test]
 fn staff_tiles_open_dialogs_for_repeats_barlines_and_breaks() {
     let mut harness = app_with(&testdata("basic/ornaments.gp"));
-    let measure = gscore_model::MeasureIndex::new(1);
+    let measure = MeasureIndex::new(1);
     {
         let document = harness.state_mut().document_mut().unwrap();
         let mut cursor = document.editor().cursor();
         cursor.measure = measure;
-        cursor.beat = gscore_model::BeatIndex::new(0);
+        cursor.beat = BeatIndex::new(0);
         document.editor_mut().set_cursor(cursor);
     }
     harness.run();
@@ -624,7 +841,7 @@ fn staff_tiles_open_dialogs_for_repeats_barlines_and_breaks() {
     let before_repeat = song(&harness).repeat(measure).unwrap_or_default();
     let before_double_bar = song(&harness).double_bar(measure);
     let before_break = song(&harness)
-        .track(gscore_model::TrackIndex::new(0))
+        .track(TrackIndex::new(0))
         .unwrap()
         .measure(measure)
         .unwrap()
@@ -673,7 +890,7 @@ fn staff_tiles_open_dialogs_for_repeats_barlines_and_breaks() {
     harness.run();
     harness.get_by_label("Swing feel").click();
     harness.run();
-    harness.get_by_label("Eighth-note swing").click();
+    harness.get_by_label("Triplet eighths (swing)").click();
     harness.get_by_label("OK").click();
     harness.run();
     assert_eq!(
@@ -715,7 +932,7 @@ fn staff_tiles_open_dialogs_for_repeats_barlines_and_breaks() {
     harness.run();
     assert_eq!(
         song(&harness)
-            .track(gscore_model::TrackIndex::new(0))
+            .track(TrackIndex::new(0))
             .unwrap()
             .measure(measure)
             .unwrap()
@@ -734,7 +951,7 @@ fn staff_tiles_open_dialogs_for_repeats_barlines_and_breaks() {
     assert_eq!(song(&harness).fermata(measure), before_fermata);
     assert_eq!(
         song(&harness)
-            .track(gscore_model::TrackIndex::new(0))
+            .track(TrackIndex::new(0))
             .unwrap()
             .measure(measure)
             .unwrap()
@@ -749,7 +966,7 @@ fn breaks_bars_per_line_and_the_page_setup_are_edited_from_the_menus() {
     let song = |harness: &Harness<'static, GuitarScoreApp>| {
         harness.state().document().unwrap().song().clone()
     };
-    let track = gscore_model::TrackIndex::new(0);
+    let track = TrackIndex::new(0);
     let break_at = |harness: &Harness<'static, GuitarScoreApp>, measure: usize| {
         song(harness)
             .track(track)
@@ -767,8 +984,8 @@ fn breaks_bars_per_line_and_the_page_setup_are_edited_from_the_menus() {
     {
         let document = harness.state_mut().document_mut().unwrap();
         let mut cursor = document.editor().cursor();
-        cursor.measure = gscore_model::MeasureIndex::new(6);
-        cursor.beat = gscore_model::BeatIndex::new(0);
+        cursor.measure = MeasureIndex::new(6);
+        cursor.beat = BeatIndex::new(0);
         document.editor_mut().set_cursor(cursor);
     }
     harness.run();

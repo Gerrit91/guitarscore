@@ -411,6 +411,40 @@ fn undoing_an_insert_into_a_measure_without_voices_removes_the_created_voice() {
     assert_eq!(measure(&song), 0, "undo must leave no voice behind");
 }
 
+#[test]
+fn a_fourth_voice_is_created_with_the_ones_before_it_and_undone() {
+    let mut song = from_gp(test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure((4, 4), vec![vec![rest(4)]])],
+    )]))
+    .unwrap();
+    let voices = |song: &Song| {
+        song.track(TrackIndex::new(0))
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .voices()
+            .len()
+    };
+    let fourth = BeatPosition {
+        voice: crate::VoiceIndex::new(3),
+        ..at(0)
+    };
+    let change = song.insert_beat(fourth, note(4)).unwrap();
+    assert_eq!(voices(&song), 4);
+    song.revert(&change).unwrap();
+    assert_eq!(voices(&song), 1, "undo removes the voices it created");
+    let fifth = BeatPosition {
+        voice: crate::VoiceIndex::new(4),
+        ..at(0)
+    };
+    assert!(
+        song.insert_beat(fifth, note(4)).is_err(),
+        "four voices at most"
+    );
+}
+
 /// A two-track, three-measure song: quarter rests in every measure.
 fn three_measures() -> Song {
     let measures = || {

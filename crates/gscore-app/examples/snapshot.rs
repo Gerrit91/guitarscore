@@ -2,7 +2,7 @@
 //! "Verify UI changes visually"):
 //!
 //! ```text
-//! cargo run -p gscore-app --example snapshot -- <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH] [--settings] [--history] [--mixer] [--new-track]
+//! cargo run -p gscore-app --example snapshot -- <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH] [--settings] [--history] [--mixer] [--new-track] [--scale S] [--click LABEL]...
 //! ```
 
 // An example is a small tool: failing loudly with a message is fine here.
@@ -26,7 +26,7 @@ const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let usage = "usage: snapshot <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH] [--settings] [--history] [--mixer] [--new-track]";
+    let usage = "usage: snapshot <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH] [--settings] [--history] [--mixer] [--new-track] [--scale S] [--click LABEL]...";
     let file = PathBuf::from(args.next().expect(usage));
     let out = PathBuf::from(args.next().expect(usage));
     let (mut dark, mut track, mut zoom, mut size) = (false, 1_usize, 1.0_f32, (1100.0, 800.0));
@@ -34,6 +34,8 @@ fn main() {
     let mut history = false;
     let mut mixer = false;
     let mut new_track = false;
+    let mut scale = 1.0_f32;
+    let mut clicks = Vec::new();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--dark" => dark = true,
@@ -42,6 +44,8 @@ fn main() {
             "--mixer" => mixer = true,
             "--new-track" => new_track = true,
             "--track" => track = args.next().and_then(|t| t.parse().ok()).expect(usage),
+            "--scale" => scale = args.next().and_then(|s| s.parse().ok()).expect(usage),
+            "--click" => clicks.push(args.next().expect(usage)),
             "--zoom" => zoom = args.next().and_then(|z| z.parse().ok()).expect(usage),
             "--size" => {
                 let text = args.next().expect(usage);
@@ -54,6 +58,7 @@ fn main() {
 
     let mut harness = Harness::builder()
         .with_size(egui::vec2(size.0, size.1))
+        .with_pixels_per_point(scale)
         .wgpu()
         .build_eframe(|cc| GuitarScoreApp::new(&cc.egui_ctx, Some(file.clone())));
     let started = Instant::now();
@@ -93,6 +98,11 @@ fn main() {
         }
     }
     harness.run();
+    // Widgets to click before the picture, by accessibility label (opens a dialog).
+    for label in &clicks {
+        harness.get_by_label(label).click();
+        harness.run();
+    }
     if let Some(notice) = harness.state().notice() {
         eprintln!("notice: {notice}");
     }

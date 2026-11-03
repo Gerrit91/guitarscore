@@ -731,6 +731,7 @@ impl Command {
             | Command::ClearSection { .. }
             | Command::SetRepeat { .. }
             | Command::SetDoubleBar { .. }
+            | Command::SetFeel { .. }
             | Command::SetFermata { .. } => true,
             Command::Batch { commands } => commands.iter().any(Command::changes_layout),
             _ => false,

@@ -4,8 +4,9 @@
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, VecDeque};
 
-use gscore_model::SlideKind;
+use gscore_model::{SlideKind, Vibrato};
 
+use crate::curve::Curve;
 use crate::event::Channel;
 use crate::pitch::PitchShape;
 use crate::tempo::PPQ;
@@ -13,6 +14,9 @@ use crate::tempo::PPQ;
 /// An upward bend reaches its target within a quarter note (or the note's length): Guitar
 /// Pro's own bends take about a beat.
 pub(super) const BEND_RAMP_TICKS: u64 = PPQ as u64;
+/// How long a borrowed channel stays reserved after its note ends, for the release that
+/// still sounds (and would follow the next note's bend): a quarter note.
+const RELEASE_TICKS: u64 = PPQ as u64;
 /// A slide into a note reaches its pitch within an eighth note (or the note's length).
 pub(super) const SLIDE_IN_RAMP_TICKS: u64 = PPQ as u64 / 2;
 /// How far an "into" slide starts from its note when the previous note is unknown: a whole
@@ -40,6 +44,21 @@ pub(super) struct Sounding {
     pub(super) bend: Option<(i16, bool)>,
     /// The pitch shape, once slide targets and channels are known.
     pub(super) shape: Option<PitchShape>,
+    /// The note's (or its beat's) vibrato, if any.
+    pub(super) vibrato: Option<Vibrato>,
+    /// Whether the note rings on until the next note on its string.
+    pub(super) let_ring: bool,
+    /// Whether the note is played as fast repeated picks.
+    pub(super) tremolo: bool,
+    /// Where its beat starts (a brush stroke may delay the note itself).
+    pub(super) onset: u64,
+    /// Whether the note stops dead at its end (staccato, palm mute) instead of fading
+    /// with the SoundFont's release: it plays on a borrowed channel whose expression drops
+    /// to zero then.
+    pub(super) damp: bool,
+    /// The bend's drawn curve, and the beat's whammy curve, if any.
+    pub(super) bend_curve: Option<Curve>,
+    pub(super) whammy: Option<Curve>,
 }
 
 /// Which slide of a note the sequencer plays.
@@ -149,9 +168,23 @@ pub(super) fn apply_slide_targets(notes: &mut [Sounding]) {
     }
 }
 
-/// Notes without a slide keep their bend, if any.
+/// Notes without a slide keep their bend, if any (its drawn curve when it has one), and
+/// every note of a beat with the whammy bar follows its curve.
 pub(super) fn apply_bends(notes: &mut [Sounding]) {
     for note in notes {
+        let length = note.end.saturating_sub(note.start);
+        if note.whammy.is_some() {
+            let base = note.shape.unwrap_or_else(PitchShape::steady);
+            note.shape = Some(base.with_curves(None, note.whammy, length));
+        }
+        if note.slide.is_some() && note.shape.is_some_and(|shape| !shape.is_steady()) {
+            continue;
+        }
+        if let Some(curve) = note.bend_curve {
+            let base = note.shape.unwrap_or_else(PitchShape::steady);
+            note.shape = Some(base.with_curves(Some(curve), None, length));
+            continue;
+        }
         if note.shape.is_some() {
             continue;
         }
@@ -175,7 +208,7 @@ pub(super) fn assign_pitch_channels(notes: &mut [Sounding], free: Vec<Channel>) 
     let mut order: Vec<usize> = notes
         .iter()
         .enumerate()
-        .filter(|(_, note)| note.shape.is_some())
+        .filter(|(_, note)| note.shape.is_some() || note.damp)
         .map(|(index, _)| index)
         .collect();
     order.sort_by_key(|&index| {
@@ -201,13 +234,22 @@ pub(super) fn assign_pitch_channels(notes: &mut [Sounding], free: Vec<Channel>) 
             }
         }
         let Some(channel) = free.pop_front() else {
-            degraded = degraded.saturating_add(1);
+            // A damped note without a channel only keeps its release; a pitch shape is
+            // lost, which is reported.
+            if note.shape.is_some() {
+                degraded = degraded.saturating_add(1);
+            }
             continue;
         };
         if let Some(note) = notes.get_mut(index) {
             note.play_channel = channel;
+            // A bent note's release rings on after its end: the channel stays its own
+            // until that has faded (a damped note is cut at once).
+            let release = if note.damp { 0 } else { RELEASE_TICKS };
             in_use.push(Reverse((
-                note.end.max(note.start.saturating_add(1)),
+                note.end
+                    .max(note.start.saturating_add(1))
+                    .saturating_add(release),
                 channel,
             )));
         }

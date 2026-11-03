@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use gscore_session::FoundSession;
 
 use super::GuitarScoreApp;
+use super::alert::{AlertIcon, Answer, Reply, alert};
 use crate::document::Document;
 use crate::tasks::{Event, SaveFailure};
 
@@ -309,63 +310,98 @@ impl GuitarScoreApp {
         let Some(dialog) = self.dialog.clone() else {
             return;
         };
-        let modal = egui::Modal::new(egui::Id::unique("gscore-dialog"));
-        modal.show(ctx, |ui| {
-            ui.set_max_width(420.0);
-            match dialog {
-                Dialog::Unsaved(then) => self.unsaved_dialog(ui, then),
-                Dialog::Losses { path, details } => self.losses_dialog(ui, path, &details),
-                Dialog::Recover(session) => self.recover_dialog(ui, *session),
-            }
-        });
+        match dialog {
+            Dialog::Unsaved(then) => self.unsaved_dialog(ctx, then),
+            Dialog::Losses { path, details } => self.losses_dialog(ctx, path, &details),
+            Dialog::Recover(session) => self.recover_dialog(ctx, *session),
+        }
     }
 
-    fn unsaved_dialog(&mut self, ui: &mut egui::Ui, then: Then) {
+    fn unsaved_dialog(&mut self, ctx: &egui::Context, then: Then) {
         let title = self
             .document
             .as_ref()
             .map_or_else(String::new, Document::display_title);
-        ui.heading("Unsaved changes");
-        ui.label(format!("“{title}” has changes that are not saved."));
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            if ui.button("Save").clicked() {
+        let reply = alert(
+            ctx,
+            "Unsaved changes",
+            AlertIcon::Warning,
+            &format!("Save the changes to “{title}”?"),
+            |ui| {
+                ui.label("Your changes are lost if you go on without saving them.");
+            },
+            &[
+                Answer {
+                    text: "Discard changes",
+                    main: false,
+                },
+                Answer {
+                    text: "Cancel",
+                    main: false,
+                },
+                Answer {
+                    text: "Save",
+                    main: true,
+                },
+            ],
+        );
+        match reply {
+            Reply::Answer(2) => {
                 self.dialog = None;
-                self.after_save = Some(then.clone());
-                self.save_song(ui.ctx());
+                self.after_save = Some(then);
+                self.save_song(ctx);
             }
-            if ui.button("Discard changes").clicked() {
+            Reply::Answer(0) => {
                 self.dialog = None;
-                self.go_on(then.clone(), ui.ctx());
+                self.go_on(then, ctx);
             }
-            if ui.button("Cancel").clicked() {
-                self.dialog = None;
-            }
-        });
+            Reply::Answer(_) | Reply::Closed => self.dialog = None,
+            Reply::Open => {}
+        }
     }
 
-    fn losses_dialog(&mut self, ui: &mut egui::Ui, path: PathBuf, details: &[String]) {
-        ui.heading("Save as Guitar Pro 7?");
-        ui.label("Guitar Pro 7 (.gp) cannot keep everything in this song:");
-        for detail in details.iter().take(SHOWN_LOSSES) {
-            ui.label(format!("• {detail}"));
-        }
-        if details.len() > SHOWN_LOSSES {
-            ui.label(format!(
-                "and {} more",
-                details.len().saturating_sub(SHOWN_LOSSES)
-            ));
-        }
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            if ui.button("Save anyway").clicked() {
+    fn losses_dialog(&mut self, ctx: &egui::Context, path: PathBuf, details: &[String]) {
+        let reply = alert(
+            ctx,
+            "Save as Guitar Pro 7",
+            AlertIcon::Warning,
+            "Some of the song cannot be kept",
+            |ui| {
+                ui.label("Guitar Pro 7 (.gp) has no place for:");
+                for detail in details.iter().take(SHOWN_LOSSES) {
+                    ui.label(format!("• {detail}"));
+                }
+                if details.len() > SHOWN_LOSSES {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "and {} more",
+                            details.len().saturating_sub(SHOWN_LOSSES)
+                        ))
+                        .weak(),
+                    );
+                }
+            },
+            &[
+                Answer {
+                    text: "Cancel",
+                    main: false,
+                },
+                Answer {
+                    text: "Save anyway",
+                    main: true,
+                },
+            ],
+        );
+        match reply {
+            Reply::Answer(1) => {
                 self.dialog = None;
-                self.start_save(path.clone(), true, ui.ctx());
+                self.start_save(path, true, ctx);
             }
-            if ui.button("Cancel").clicked() {
+            Reply::Answer(_) | Reply::Closed => {
                 self.dialog = None;
                 self.after_save = None;
             }
-        });
+            Reply::Open => {}
+        }
     }
 }

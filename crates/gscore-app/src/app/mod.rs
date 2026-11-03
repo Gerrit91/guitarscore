@@ -5,7 +5,9 @@
 //! Split by job: `bars` (menus, toolbar, status), `page` (the page view, cursor and
 //! clicks), `editing` (keys and actions), `files` (open, save, unsaved changes).
 
+mod alert;
 mod bars;
+mod circle_of_fifths;
 mod edit_dynamics;
 mod edit_effects;
 mod edit_palette;
@@ -14,9 +16,12 @@ mod edit_staff_dialogs;
 mod editing;
 mod files;
 mod grid;
+mod harmonic_diagram;
+mod harmonic_editor;
 mod history;
 mod icons;
 mod instrument;
+mod metronome;
 mod new_track;
 mod page;
 mod page_menu;
@@ -25,7 +30,10 @@ mod settings_page;
 mod settings_window;
 mod shape_editor;
 mod shortcuts;
+mod staff_pickers;
+mod staff_widgets;
 mod style;
+mod tile_faces;
 mod tiles;
 mod title_bar;
 mod toolbar;
@@ -366,6 +374,12 @@ impl eframe::App for GuitarScoreApp {
         self.poll_count_in();
         // Keep a loop of the selected measures going.
         self.poll_loop();
+        // A beat chosen while the SoundFont loaded plays once it is ready.
+        match self.playback.poll_preview() {
+            Ok(true) => ctx.request_repaint_after(std::time::Duration::from_millis(50)),
+            Ok(false) => {}
+            Err(error) => self.notice = Some(error),
+        }
         // An entered note stops after a moment.
         if let Some(left) = self.playback.poll_audition() {
             ctx.request_repaint_after(left);

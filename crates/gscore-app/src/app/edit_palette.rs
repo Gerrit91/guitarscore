@@ -69,6 +69,8 @@ impl EditPaletteState {
 pub(super) struct PaletteSnapshot {
     pub(super) cursor: Cursor,
     pub(super) beats: Vec<BeatPosition>,
+    /// The selected beats without notes (rests and empty beats).
+    pub(super) silent_beats: Vec<BeatPosition>,
     pub(super) measure: MeasureIndex,
     pub(super) tempo: Option<u32>,
     pub(super) time_signature: Option<gscore_model::TimeSignature>,
@@ -129,9 +131,18 @@ impl PaletteSnapshot {
         }
         let dynamics = DynamicsSnapshot::of(song, &beats, cursor.position());
         let measure_view = track.and_then(|track| track.measure(measure));
+        let silent_beats = beats
+            .iter()
+            .copied()
+            .filter(|at| {
+                song.beat(*at)
+                    .is_some_and(|beat| beat.notes().next().is_none())
+            })
+            .collect();
         PaletteSnapshot {
             cursor,
             beats,
+            silent_beats,
             measure,
             tempo: song
                 .tempo_change(measure)
@@ -170,6 +181,8 @@ impl GuitarScoreApp {
         let snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
 
         let mut commands: Vec<Command> = Vec::new();
+        // A beat to play although nothing changed (its dynamic chosen again).
+        let mut heard = None;
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -181,12 +194,15 @@ impl GuitarScoreApp {
                     note_length(ui, &mut self.edit_palette, &snapshot, &hint, &mut commands);
                     beat_buttons(ui, &mut self.edit_palette, &snapshot, &hint, &mut commands);
                 });
-                edit_dynamics::section(ui, &snapshot.dynamics, &mut commands);
+                edit_dynamics::section(ui, &snapshot.dynamics, &mut commands, &mut heard);
                 self.edit_palette
                     .effects
                     .panel(ui, &snapshot, &hint, &mut commands);
             });
         self.apply_commands(commands);
+        if let Some(at) = heard {
+            self.preview_beat(at);
+        }
         // New beats past the cursor take the palette's length.
         if let Some(duration) = self.edit_palette.duration()
             && let Some(document) = &mut self.document
@@ -256,7 +272,7 @@ impl GuitarScoreApp {
         if length {
             apply_duration(state, &snapshot, &mut commands);
         } else if action == ActionId::MakeRest {
-            commands = rest_commands(&snapshot);
+            commands = rest_commands(state, &snapshot);
         } else if action == ActionId::ToggleTie {
             commands = tie_commands(&snapshot);
         } else if action == ActionId::ToggleBend {
@@ -291,10 +307,17 @@ impl GuitarScoreApp {
             document.editor().selection(),
         );
         let mut commands = Vec::new();
-        self.edit_palette
-            .effects
-            .show_editors(ctx, &snapshot, &mut self.settings, &mut commands);
+        let mut trial = Vec::new();
+        self.edit_palette.effects.show_editors(
+            ctx,
+            &snapshot,
+            document.song(),
+            &mut self.settings,
+            &mut commands,
+            &mut trial,
+        );
         self.apply_commands(commands);
+        self.listen_to(&trial);
     }
 
     /// The staff dialog, while one is open. It floats over the app, so it shows even when
@@ -314,6 +337,16 @@ impl GuitarScoreApp {
 
     /// Applies one command, or a batch for several beats (one undo step).
     pub(super) fn apply_commands(&mut self, mut commands: Vec<Command>) {
+        let heard = commands.iter().find_map(super::editing::preview_target);
+        self.apply_commands_quietly(&mut commands);
+        // An effect or dynamic chosen in the palette is heard on its beat.
+        if let Some(at) = heard {
+            self.preview_beat(at);
+        }
+    }
+
+    /// Applies the commands without playing anything.
+    fn apply_commands_quietly(&mut self, commands: &mut Vec<Command>) {
         match commands.len() {
             0 => {}
             1 => {
@@ -321,7 +354,12 @@ impl GuitarScoreApp {
                     self.apply_command(command, false);
                 }
             }
-            _ => self.apply_command(Command::Batch { commands }, false),
+            _ => self.apply_command(
+                Command::Batch {
+                    commands: std::mem::take(commands),
+                },
+                false,
+            ),
         }
     }
 
@@ -395,8 +433,8 @@ fn note_length(
             };
             let face = Face::Glyph {
                 text: glyph,
-                size: 26.0,
-                baseline: 4.0,
+                size: 38.0,
+                baseline: 2.0,
             };
             let tip = format!("{tip}{}", hint(action));
             if tiles::tile(ui, face, state.dots == dots, true, label, &tip).clicked() {
@@ -417,7 +455,7 @@ fn note_length(
                 hint(tuplet_action(enters))
             );
             let on = state.tuplet == Some((enters, times));
-            if tiles::tile(ui, Face::Text(&text), on, true, &label, &tip).clicked() {
+            if tiles::tile(ui, Face::Tuplet(&text), on, true, &label, &tip).clicked() {
                 toggle_tuplet(state, (enters, times));
                 apply_duration(state, snapshot, commands);
             }
@@ -462,12 +500,31 @@ fn toggle_tuplet(state: &mut EditPaletteState, tuplet: (u8, u8)) {
 }
 
 /// The commands of the rest tile: every selected beat becomes a rest.
-fn rest_commands(snapshot: &PaletteSnapshot) -> Vec<Command> {
-    snapshot
-        .beats
-        .iter()
-        .map(|at| Command::SetBeatRest { at: *at })
-        .collect()
+///
+/// A beat without notes (a rest, such as the whole rest of a new bar, or an empty beat)
+/// becomes a rest of the palette's length; beats with notes keep theirs. Where the cursor
+/// has no beat yet (an empty GP7 bar), a rest of the palette's length is entered.
+fn rest_commands(state: &EditPaletteState, snapshot: &PaletteSnapshot) -> Vec<Command> {
+    let duration = state.duration();
+    if snapshot.beats.is_empty() {
+        return duration
+            .map(|duration| Command::InsertBeat {
+                at: snapshot.cursor.position(),
+                duration,
+            })
+            .into_iter()
+            .collect();
+    }
+    let mut commands = Vec::new();
+    for &at in &snapshot.beats {
+        commands.push(Command::SetBeatRest { at });
+        if snapshot.silent_beats.contains(&at)
+            && let Some(duration) = duration
+        {
+            commands.push(Command::SetDuration { at, duration });
+        }
+    }
+    commands
 }
 
 /// The commands of the tie tile: the cursor's note is tied, or untied.
@@ -527,11 +584,12 @@ fn beat_buttons(
             baseline: 1.0,
         };
         let tip = format!(
-            "Rest: the selected beats become rests{}",
+            "Rest: the selected beats become rests; in an empty bar, a rest of the chosen \
+             length is entered{}",
             hint(ActionId::MakeRest)
         );
         if tiles::tile(ui, rest, false, true, "Rest", &tip).clicked() {
-            commands.extend(rest_commands(snapshot));
+            commands.extend(rest_commands(state, snapshot));
         }
         let tip = format!(
             "Tie the note to the previous one on its string{}",
@@ -550,18 +608,27 @@ fn beat_buttons(
         }
     });
     ui.add_space(2.0);
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Voice").color(style::tokens(ui).text_weak));
-        let chosen = snapshot.cursor.voice.get();
-        if let Some(voice) = tiles::segments(
-            ui,
-            &[("1", "Voice 1"), ("2", "Voice 2")],
-            chosen,
-            "Enter notes in this voice",
-        ) {
-            state.pending_voice = Some(voice);
-        }
-    });
+    let chosen = snapshot.cursor.voice.get();
+    if let Some(voice) = tiles::segments_with_tips(
+        ui,
+        &[
+            ("1", "Voice 1", "First voice"),
+            ("2", "Voice 2", "Second voice"),
+            (
+                "3",
+                "Voice 3",
+                "Third voice (kept in GP7 files; GP3-5 keep two voices)",
+            ),
+            (
+                "4",
+                "Voice 4",
+                "Fourth voice (kept in GP7 files; GP3-5 keep two voices)",
+            ),
+        ],
+        chosen,
+    ) {
+        state.pending_voice = Some(voice);
+    }
 }
 
 /// Commands that set the chosen length on every selected beat.

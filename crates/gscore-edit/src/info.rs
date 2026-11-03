@@ -299,7 +299,7 @@ const FEEL: ParamInfo = ParamInfo {
     name: "feel",
     required: true,
     default: None,
-    help: "none, eighth, sixteenth, dotted_eighth or dotted_sixteenth",
+    help: "none, eighth, sixteenth, dotted_eighth, dotted_sixteenth, scottish_eighth or scottish_sixteenth",
 };
 
 const FERMATA: ParamInfo = ParamInfo {
@@ -688,7 +688,8 @@ pub(crate) const SET_TIME_SIGNATURE: CommandInfo = CommandInfo {
     id: "set_time_signature",
     aliases: &[],
     label: "Set the time signature",
-    help: "Sets the time signature of a measure, in every track.",
+    help: "Sets the time signature from the measure on, in every track, up to the next \
+           measure that has a different one.",
     params: &[MEASURE, NUMERATOR, DENOMINATOR],
 };
 
@@ -696,7 +697,8 @@ pub(crate) const SET_KEY_SIGNATURE: CommandInfo = CommandInfo {
     id: "set_key_signature",
     aliases: &[],
     label: "Set the key signature",
-    help: "Sets the key signature of a measure, in every track.",
+    help: "Sets the key signature from the measure on, in every track, up to the next \
+           measure that has a different one.",
     params: &[MEASURE, KEY, MINOR],
 };
 
@@ -737,8 +739,8 @@ pub(crate) const SET_FEEL: CommandInfo = CommandInfo {
     id: "set_feel",
     aliases: &["set_triplet_feel"],
     label: "Set the feel",
-    help: "Sets how the measure's notes swing: straight, eighth- or sixteenth-note triplet \
-           feel, or a dotted feel (GP7/GPX only).",
+    help: "Sets how notes swing from the measure on, up to the next measure with another \
+           feel: straight, triplet, dotted or Scottish (dotted and Scottish need GP7/GPX).",
     params: &[MEASURE, FEEL],
 };
 

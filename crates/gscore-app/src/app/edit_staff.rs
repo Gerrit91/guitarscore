@@ -9,7 +9,8 @@ use gscore_edit::Command;
 use gscore_model::{Feel, Fermata, MeasureIndex, Repeat, SystemBreak, TrackColor, TrackIndex};
 
 use super::edit_palette::PaletteSnapshot;
-use super::edit_staff_dialogs::{body, title};
+use super::edit_staff_dialogs::{body, title, width};
+use super::metronome;
 use super::style;
 use super::tiles::{self, Face};
 
@@ -62,6 +63,10 @@ pub(super) struct StaffState {
     pub(super) bars: u8,
     pub(super) feel: Feel,
     pub(super) fermata: Option<Fermata>,
+    /// When "Tap tempo" was clicked (seconds), the last few clicks.
+    taps: Vec<f64>,
+    /// When the tempo dialog's metronome was started (seconds), while it swings.
+    pub(super) swinging: Option<f64>,
     /// Why OK is disabled, if the drafts cannot become a command.
     pub(super) error: Option<String>,
 }
@@ -88,12 +93,19 @@ impl Default for StaffState {
             bars: 4,
             feel: Feel::None,
             fermata: None,
+            taps: Vec::new(),
+            swinging: None,
             error: None,
         }
     }
 }
 
 impl StaffState {
+    /// Records a tap-tempo click at `time` (seconds); see [`metronome::tap_tempo`].
+    pub(super) fn tap(&mut self, time: f64) -> Option<u32> {
+        metronome::tap_tempo(&mut self.taps, time)
+    }
+
     /// Whether a staff dialog is open.
     pub(super) fn is_open(&self) -> bool {
         self.open.is_some()
@@ -113,6 +125,7 @@ impl StaffState {
         });
         self.pos = None;
         self.error = None;
+        self.taps.clear();
         self.tempo = snapshot.tempo.unwrap_or(120);
         let (numerator, denominator) = snapshot.time_signature.map_or((4, 4), |signature| {
             (signature.numerator(), signature.denominator())
@@ -155,7 +168,8 @@ impl StaffState {
             return;
         };
         let title = title(target.dialog);
-        let size = vec2(320.0, 260.0);
+        let content_width = width(target.dialog);
+        let size = vec2(content_width + 32.0, 300.0);
         let pos = *self
             .pos
             .get_or_insert_with(|| style::centered_window_pos(ctx, size));
@@ -173,7 +187,7 @@ impl StaffState {
                 egui::Frame::new()
                     .inner_margin(Margin::symmetric(16, 12))
                     .show(ui, |ui| {
-                        ui.set_width(288.0);
+                        ui.set_width(content_width);
                         body(ui, self, target);
                         if let Some(error) = &self.error {
                             ui.colored_label(ui.visuals().error_fg_color, error);
@@ -305,13 +319,6 @@ pub(super) fn section(ui: &mut egui::Ui, state: &mut StaffState, snapshot: &Pale
     style::section(ui, "staff", "Staff", |ui| {
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = vec2(2.0, 3.0);
-            let glyph = |text: &'static str, baseline: f32| -> Face<'static> {
-                Face::Glyph {
-                    text,
-                    size: 20.0,
-                    baseline,
-                }
-            };
             let items = [
                 (
                     Dialog::Tempo,
@@ -329,14 +336,14 @@ pub(super) fn section(ui: &mut egui::Ui, state: &mut StaffState, snapshot: &Pale
                 ),
                 (
                     Dialog::Key,
-                    glyph("\u{E262}", 2.0),
+                    Face::KeySig,
                     "Key signature",
                     "Set the bar's key signature",
                     snapshot.key.is_some_and(|key| key.key != 0 || key.minor),
                 ),
                 (
                     Dialog::Section,
-                    glyph("\u{E047}", 2.0),
+                    Face::Section,
                     "Section",
                     "Name the section that starts here",
                     snapshot.section.is_some(),

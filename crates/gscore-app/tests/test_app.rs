@@ -147,6 +147,16 @@ fn the_staff_dialogs_match_their_snapshots() {
     harness.get_by_label("Fermata").click();
     harness.run();
     harness.snapshot("staff_fermata_dialog");
+    harness.get_by_label("Cancel").click();
+    harness.run();
+    harness.get_by_label("Key signature").click();
+    harness.run();
+    harness.snapshot("staff_key_dialog");
+    harness.get_by_label("Cancel").click();
+    harness.run();
+    harness.get_by_label("Tempo").click();
+    harness.run();
+    harness.snapshot("staff_tempo_dialog");
 }
 
 #[test]

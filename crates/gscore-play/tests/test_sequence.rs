@@ -412,8 +412,8 @@ fn a_bend_borrows_a_channel_and_moves_the_pitch() {
     assert!(
         bends
             .iter()
-            .any(|(tick, c, value)| *c == channel && *tick == sequence.end && *value == 8192),
-        "the bend is reset after the note"
+            .all(|(tick, c, _)| *c != channel || *tick < sequence.end),
+        "no pitch change after the note: its release keeps the bent pitch"
     );
 }
 
@@ -433,10 +433,16 @@ fn a_release_bend_starts_bent_and_returns_to_center() {
         .map(|(_, _, value)| *value)
         .collect();
     assert!(starts.contains(&WHOLE_STEP), "starts bent: {starts:?}");
+    // It comes back down during the note, not after it.
     assert!(
         bends
             .iter()
-            .any(|(tick, c, value)| { *c == channel && *tick == sequence.end && *value == 8192 })
+            .any(|(tick, c, value)| *c == channel && *tick < sequence.end && *value < 8192 + 200)
+    );
+    assert!(
+        bends
+            .iter()
+            .all(|(tick, c, _)| *c != channel || *tick < sequence.end)
     );
 }
 
@@ -487,10 +493,11 @@ fn a_shift_slide_bends_to_the_next_note() {
     assert!(bends.iter().any(|(tick, c, value)| {
         *c == slide_channel && *tick > 0 && *tick < second_tick && *value == WHOLE_STEP
     }));
+    // The slide's release is not pulled back when the next note starts.
     assert!(
-        bends.iter().any(|(tick, c, value)| {
-            *c == slide_channel && *tick == second_tick && *value == 8192
-        })
+        bends
+            .iter()
+            .all(|(tick, c, _)| *c != slide_channel || *tick < second_tick)
     );
 }
 

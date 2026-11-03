@@ -224,18 +224,20 @@ fn note_for_playback(note: &TestNote<'_>) -> Result<GpNote, ModelError> {
             } else {
                 BendType::Bend
             },
-            points: vec![
-                BendPoint {
-                    position: 0,
-                    value: 0,
-                    ..BendPoint::default()
-                },
-                BendPoint {
-                    position: 12,
-                    value,
-                    ..BendPoint::default()
-                },
-            ],
+            // As Guitar Pro draws them: a bend is up by the middle and held, a release
+            // starts bent and comes back down.
+            points: if bend.release {
+                vec![(0, value), (12, 0)]
+            } else {
+                vec![(0, 0), (6, value), (12, value)]
+            }
+            .into_iter()
+            .map(|(position, value)| BendPoint {
+                position,
+                value,
+                ..BendPoint::default()
+            })
+            .collect(),
             ..BendEffect::default()
         });
     }

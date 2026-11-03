@@ -372,7 +372,7 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
                     args.command,
                     "feel",
                     &text,
-                    "none, eighth, sixteenth, dotted_eighth or dotted_sixteenth",
+                    "none, eighth, sixteenth, dotted_eighth, dotted_sixteenth, scottish_eighth or scottish_sixteenth",
                 )
             })?;
             Ok(Command::SetFeel {

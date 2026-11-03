@@ -1814,4 +1814,178 @@ Owner's request: drum notation, dynamics in the edit palette and the score, sect
 - Open: fermata playback, fermatas below the staff, several fermatas per measure, and
   dotted feel in GP3-5.
 
+## 2026-11-03 — Review of the staff editing commit; palette icons and staff dialogs
+
+Review of fa7447c ("Improve staff editing"), found and fixed:
+
+- **GP7 swing was lost on import and export.** The commit claimed GPIF has no triplet-feel
+  field and wrote a private `gsFeel` attribute instead. GPIF has `<TripletFeel>` on
+  `<MasterBar>`; real Guitar Pro files with swing opened straight, and files saved here
+  carried swing only for GuitarScore. `gsFeel` is gone; `TripletFeel` (gscore-gp) and
+  `Feel` gained the dotted and Scottish feels Guitar Pro has (seven in all), with
+  Scottish (short-long, 1:3) timing in playback. GP3/4 wrote "swing" for any feel; now
+  only for eighth-note swing.
+- **The feel was not shown on the score.** The measure where the feel changes now gets
+  Guitar Pro's mark above the staff ("♫ = ⌐3¬♩♪", dotted and Scottish forms, "♫ = ♫" back
+  to straight), after a tempo mark at the same bar. `set_feel` now drops the layout
+  cache. Test `a_feel_is_written_where_it_changes`.
+- The Section tile showed a segno (the D.S. sign); it is now a framed "A" (rehearsal mark).
+- A fermata was written with offset `0`; GPIF offsets are fractions, now `0/1`.
+
+Palette and dialogs (owner: the icons looked cheap next to Guitar Pro's, the dialogs
+lifeless):
+
+- **Tiles**: no fill at rest, only on hover or when chosen, as a printed palette. Faces
+  are Bravura glyphs where the font has the sign (repeat signs, double barline, fermata,
+  time-signature digits, key-signature sharps, the swing triplet, tuplet numbers 3, 5:4,
+  7:4 in the music font's italic digits), engraved filled ties and slurs, and bold or
+  bold-italic lettering for text marks (P.M., let ring, tap/slap/pop, harmonics). Faces
+  moved to `tile_faces.rs`.
+- **Dialogs**: choices are rows with the engraved sign, the name and one line on what it
+  does, chosen with a click (fermata, feel, repeats, barline, break, bars per line). The
+  key signature is a circle of fifths (majors outside, relative minors inside, the key
+  signature engraved in the middle, enharmonic spelling for keys with 5-7 accidentals).
+  The tempo has a one-color metronome that swings at the tempo when clicked, the tempo
+  name, a slider, Italian presets and tap tempo. The time signature shows engraved digits
+  with steppers and presets; the section shows its framed mark in its color; endings are
+  bracket tiles.
+- Snapshot example: `--scale S` and `--click LABEL` (repeatable) to render a dialog.
+- Tests: snapshots for the key and tempo dialogs, all app snapshots updated (owner to
+  review); unit tests for the circle, tap tempo, tempo names, Scottish timing.
+- Owner's idea, done the same day (below): an effect or dynamic chosen plays its beat.
+
+## 2026-11-03 — Signatures and feel hold; effects heard in playback and on a click
+
+- **Time and key signatures and the feel hold up to the next change** (owner: a swing set
+  at a bar must go on for the following bars). Setting one at a bar changes that bar and
+  the following ones that carried the same value, up to the next bar with a value of its
+  own, as one undoable batch (`edit/headers.rs` `reach`, tests in `edit/reach_tests.rs`).
+- **Effects in playback**: vibrato (slight and wide, a pitch wave on a borrowed channel,
+  added to a bend or slide), ghost notes softer, accents and heavy accents louder,
+  staccato half length, palm mute short and a little softer, let ring held to the next
+  note on its string (at most a whole note more), tremolo picking as 32nd notes, brush
+  strokes spread over a 32nd note (down from the low string). The sequence builder was
+  split: `build.rs` collects notes and emits events, `effects.rs` holds the effects.
+- **Hearing an edit** (owner: clicking vibrato should play the note with vibrato):
+  `Sequence::beat_excerpt` is one beat alone with all its effects, from tick 0. The app
+  plays it after a palette effect, dynamic or dead note, and after an effect shortcut
+  (not undo, redo or paste), when "Play notes as they are entered" is on and the song is
+  stopped. The excerpt borrows the player; Play, Stop or a mix change ends it and loads
+  the song again (`playback/preview.rs`).
+- Tests: `test_effects.rs` (vibrato bends both ways on a borrowed channel, ghost and
+  accent velocities, palm mute and let ring lengths, brush spread, the excerpt), unit
+  tests in `effects.rs`, and an app test that the vibrato tile plays its beat and Play
+  then plays the song.
+- Open: trills, the whammy bar, fade-in and grace notes in playback; a palm-muted note
+  keeps the track's sound (no muted-guitar program).
+
+## 2026-11-03 — Question dialogs, slide and history icons
+
+- **Unsaved changes, recovery and "Save as Guitar Pro 7"** (owner: lifeless, no close
+  button): one modal look in `alert.rs`: the app's title bar with its close button
+  (closing is Cancel, or Later for recovery; Escape too, Enter takes the main answer), a
+  large icon (an amber warning triangle; a circular arrow round a clock for recovery), a
+  headline, a line of explanation and the answers right-aligned, the main one in the
+  accent color.
+- **Icons**: shift and legato slides join two notes, so they show a dot at each end (the
+  legato one with a slur); the history button is a counter-clockwise arrow round clock
+  hands.
+
+## 2026-11-03 — Effects really heard (owner: mf silent, no vibrato, staccato not short)
+
+- **mf was silent**: choosing the dynamic a beat already has (mezzo-forte is the default)
+  made no command, so nothing played. The palette now plays the beat anyway.
+- **Vibrato too subtle**: rendered offline through rustysynth, the slight vibrato swung
+  only ±25 cents (3 % pitch spread), hard to hear on a plucked note. Now ±50 cents slight,
+  ±100 cents wide. Test `a_vibrato_is_heard_as_a_changing_pitch` (gscore-audio) measures
+  the pitch of the rendered sound.
+- **Staccato rang on**: rustysynth has no release-time control, so a shortened note kept
+  ringing for the SoundFont's release. Staccato (now at most an eighth note) and palm-muted
+  notes play on a borrowed channel whose expression (CC 11) drops to zero at the note's
+  end, so they stop dead; the next note on that channel resets it. Damped notes without a
+  free channel only lose the cut (not counted as degraded pitch bends).
+
+## 2026-11-03 — The first click is heard; Play after a heard beat; rests; hints
+
+- **Vibrato and accent "not played"** (owner, with FluidR3_GM): rendering the owner's
+  song and SoundFont offline showed both working (vibrato 215-227 Hz, accent +4 dB). The
+  real cause: the synthesizer starts on first use and FluidR3 takes seconds to load; a
+  palette click meanwhile was dropped, so the second click (which turns the effect off)
+  was the first one heard. A beat chosen while the SoundFont loads now plays once it is
+  ready (`Playback::poll_preview`).
+- **Play right after a heard beat** sometimes paused instead: the player still reported
+  the excerpt as playing. Ending an excerpt now always counts as a fresh start.
+  `Playback::preview_sequence` exposes the excerpt for tests.
+- **Rest tile** (owner: the rest did not take the chosen length): a beat without notes (a
+  rest, such as a new bar's whole rest, or an empty beat) becomes a rest of the palette's
+  length; beats with notes keep theirs; where the cursor has no beat (an empty GP7 bar) a
+  rest of that length is inserted. Test
+  `the_rest_tile_enters_a_rest_of_the_chosen_length_in_an_empty_bar`.
+- The "Put the cursor on a note" lines under Dynamics and Techniques are gone; the greyed
+  tiles say it in their tooltip.
+
+## 2026-11-03 — Bend, whammy and harmonic previews; the harmonic editor
+
+- **Bend and whammy curves are played** (`gscore-play` `curve.rs`): bends follow every
+  drawn point (they played only their highest point before) and the whammy bar bends
+  every note of its beat (it was silent). The test helper's bends now look like Guitar
+  Pro's (up by the middle and held; a release starts bent).
+- **Listen** in the bend, whammy and harmonic editors plays the draft: the commands run on
+  a copy of the song (no undo step, nothing journaled) and the beat is played from it
+  (`listen_to`). A beat chosen while the SoundFont loads now waits as a built excerpt, so
+  a draft is heard as drafted.
+- **Harmonic editor** (owner: artificial and pinch harmonics could not be entered; one
+  tile and a window instead of five): one Harmonic tile opens it. Kinds as segments;
+  touched harmonics (artificial, tapped, pinch) take a touch point in frets above the note
+  (+12, +7, +5, +19, +24, +4 or any), stored as the node's fret; a natural harmonic warns
+  when its fret is no node. A picture after the classic diagram of a string's partials:
+  the vibrating length (from the nut, or from the fretted note) with 1-6 loops, the chosen
+  partial shaded, a fret ruler and the touch point. The model works out what it sounds
+  ("Sounds A3: the 3rd partial, an octave and a fifth up"). The harmonic keys still toggle
+  their kind. Files: `harmonic_editor.rs`, `harmonic_diagram.rs`; the editor windows' glue
+  moved to `edit_effects/editors.rs`.
+- Found on the way: egui panics on a character no bundled font has ("▶"); the Listen
+  button paints its triangle.
+- Tests: curve unit tests, `a_drawn_bend_is_followed_point_by_point`,
+  `a_whammy_dive_bends_every_note_of_the_beat`, the harmonic tile test, and Listen in the
+  bend editor plays a bend without an undo step.
+
+## 2026-11-03 — Four voices
+
+- Owner: up to four voices, four buttons without the "Voice" label, tooltips "First
+  voice" ... The palette shows 1-4 (tooltips name the voice; 3 and 4 note that GP3-5 keep
+  two). The model creates a voice the measure lacks (up to the 4th, with empty voices
+  before it) at its first beat, and undo removes all it created; paste handles four
+  voices. GP7 files already read and write four voices; GP3-5 keep two (the save check
+  reports more).
+- Tests: `a_fourth_voice_is_created_with_the_ones_before_it_and_undone`,
+  `notes_go_into_the_third_and_fourth_voice`.
+- Open: standard notation draws only the first voice (voices 2-4 show in the tab and play).
+
+## 2026-11-03 — Listen on tied beats and while paused
+
+- Owner: Listen (bend, harmonic) was silent. Reproduced with the owner's song, FluidR3
+  and the built-in synth: after playing and pausing, the cursor sat on a beat of tied
+  notes; the excerpt took them as the continuation of the chord before and had nothing to
+  strike. An excerpt now strikes the tied notes at its beat anew (in the song a tie still
+  continues the note). Test `an_excerpt_of_a_tied_beat_strikes_its_notes`.
+- A paused song no longer blocks hearing a beat (Play then starts at the cursor); a
+  playing song or count-in still does. Listen says in the status bar when it cannot play
+  and why (song playing, no note, output problem, SoundFont loading); palette clicks stay
+  quiet about it. `Playback::preview_beat` returns `Heard`; `Playback::output_state` for
+  tests.
+
+## 2026-11-03 — A bend no longer drops at its end
+
+- Owner: the default full-step bend fell back at the very end, which the graph does not
+  show. Cause: a pitch reset right after the note-off pulled the still-ringing release
+  back down; a heard beat also ended at the note-off, where the player centers every bend.
+  Now no reset follows a note (a borrowed channel is set again when next borrowed), a
+  borrowed channel stays reserved for a quarter note after its note for the release, and
+  an excerpt runs on a whole note for the release, then fades its bent channels and
+  silences them. Rendered with FluidR3: 225 Hz up to 248 Hz, held through the release,
+  then quiet.
+- Found on the way: a channel an excerpt borrowed can be a track's own channel in the
+  song's sequence, and a damped note left its expression at 0. Every track setup now
+  sends full expression. Test `a_bent_note_keeps_its_pitch_through_its_release`.
 

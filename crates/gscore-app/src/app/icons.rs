@@ -301,11 +301,31 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             );
         }
         Icon::History => {
-            painter.circle_stroke(center, size * 0.42, stroke);
-            // Clock hands: one to the top, one to the right.
-            painter.line_segment([center, center + vec2(0.0, -size * 0.28)], stroke);
-            painter.line_segment([center, center + vec2(size * 0.22, size * 0.08)], stroke);
-            painter.circle_filled(center, size * 0.06, color);
+            // A counter-clockwise arrow round the clock hands (back in time), open at
+            // the upper left where the arrowhead sits.
+            let radius = size * 0.42;
+            let start = -0.2 * std::f32::consts::PI;
+            let sweep = 1.55 * std::f32::consts::PI;
+            let point = |angle: f32| center + radius * vec2(angle.cos(), angle.sin());
+            let arc: Vec<Pos2> = (0..=24)
+                .map(|step| point(start - sweep * step as f32 / 24.0))
+                .collect();
+            painter.add(egui::Shape::line(arc, stroke));
+            let end = start - sweep;
+            let tip = point(end);
+            let along = vec2(end.sin(), -end.cos());
+            let out = vec2(end.cos(), end.sin());
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    tip + along * size * 0.2,
+                    tip - out * size * 0.17 - along * size * 0.04,
+                    tip + out * size * 0.17 - along * size * 0.04,
+                ],
+                color,
+                Stroke::NONE,
+            ));
+            painter.line_segment([center, center + vec2(0.0, -size * 0.24)], stroke);
+            painter.line_segment([center, center + vec2(size * 0.18, size * 0.1)], stroke);
         }
         Icon::Mixer => {
             for (index, offset) in [-0.28_f32, 0.0, 0.28].into_iter().enumerate() {

@@ -158,8 +158,8 @@ pub(super) fn paste_beats(
     Ok((commands, last))
 }
 
-/// Most voices a measure can have edits in (voice 1 and 2).
-const MAX_VOICES: usize = 2;
+/// Most voices a measure can have edits in (as Guitar Pro 7: four).
+const MAX_VOICES: usize = 4;
 
 /// Commands that write the copied measures at `start`, inside the existing measures. The
 /// target measures are replaced: tempo, time signature and section once per measure (they

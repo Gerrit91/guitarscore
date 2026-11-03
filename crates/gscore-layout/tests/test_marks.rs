@@ -12,8 +12,8 @@ use gscore_layout::{
     ColorToken, DrawOp, Fonts, Glyph, Layout, LayoutCache, LayoutOptions, TextFont, layout_track,
 };
 use gscore_model::{
-    BeatIndex, BeatPosition, Dynamic, Fermata, Fret, MeasureIndex, Song, StringNumber, TrackColor,
-    TrackIndex, VoiceIndex, testing,
+    BeatIndex, BeatPosition, Dynamic, Feel, Fermata, Fret, MeasureIndex, Song, StringNumber,
+    TrackColor, TrackIndex, VoiceIndex, testing,
 };
 
 fn at(measure: usize, beat: usize) -> BeatPosition {
@@ -87,6 +87,40 @@ fn a_double_barline_draws_two_lines() {
         barline_lines_at(&marked, marked.places.measures[0].right),
         plain_count * 2
     );
+}
+
+#[test]
+fn a_feel_is_written_where_it_changes() {
+    let mut song = testing::song(&[testing::GUITAR_6], 4).unwrap();
+    // Swing from measure 1 on (it holds), back to straight from measure 3.
+    let _ = song.set_feel(MeasureIndex::new(0), Feel::Eighth).unwrap();
+    let _ = song.set_feel(MeasureIndex::new(2), Feel::None).unwrap();
+    let laid_out = layout(&song);
+    // Swing at measure 1 (not again at 2), straight at 3: a beamed pair each, a triplet's
+    // 3 once, and "=" twice.
+    assert_eq!(glyph_count(&laid_out, Glyph::TextBeam8th), 3);
+    assert_eq!(glyph_count(&laid_out, Glyph::Tuplet3), 1);
+    let equals = texts(&laid_out)
+        .into_iter()
+        .filter(|(text, ..)| text == "=")
+        .count();
+    assert_eq!(equals, 2);
+    let y = laid_out
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            DrawOp::Glyph {
+                glyph: Glyph::Tuplet3,
+                at,
+                ..
+            } => Some(at.y),
+            _ => None,
+        })
+        .expect("the triplet number");
+    assert!(y < laid_out.places.systems[0].top);
+    // A straight song has no feel mark.
+    let plain = layout(&testing::song(&[testing::GUITAR_6], 2).unwrap());
+    assert_eq!(glyph_count(&plain, Glyph::TextNote), 0);
 }
 
 #[test]

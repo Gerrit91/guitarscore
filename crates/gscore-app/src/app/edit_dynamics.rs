@@ -61,13 +61,17 @@ fn glyph(dynamic: Dynamic) -> &'static str {
     }
 }
 
-/// The dynamics section: one tile per mark; the selected beats' mark is highlighted.
-pub(super) fn section(ui: &mut egui::Ui, snapshot: &DynamicsSnapshot, commands: &mut Vec<Command>) {
+/// The dynamics section: one tile per mark; the selected beats' mark is highlighted. A
+/// click on the mark the beats already have changes nothing but sets `heard` to the first
+/// of them, so it is still played.
+pub(super) fn section(
+    ui: &mut egui::Ui,
+    snapshot: &DynamicsSnapshot,
+    commands: &mut Vec<Command>,
+    heard: &mut Option<BeatPosition>,
+) {
     style::section(ui, "dynamics", "Dynamics", |ui| {
         let enabled = !snapshot.targets.is_empty();
-        if !enabled {
-            ui.label(egui::RichText::new("Put the cursor on a note").weak());
-        }
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(2.0, 3.0);
             for dynamic in Dynamic::ALL {
@@ -77,13 +81,20 @@ pub(super) fn section(ui: &mut egui::Ui, snapshot: &DynamicsSnapshot, commands: 
                     baseline: 3.0,
                 };
                 let label = format!("{} ({})", dynamic.id(), dynamic.name());
-                let tip = format!(
+                let mut tip = format!(
                     "{label}: how loud the selected notes are played; the notes entered \
                      after them follow"
                 );
+                if !enabled {
+                    tip.push_str("\nPut the cursor on a note first.");
+                }
                 let on = enabled && snapshot.shared == Some(dynamic);
                 if tiles::tile(ui, face, on, enabled, &label, &tip).clicked() {
-                    commands.extend(snapshot.commands(dynamic));
+                    let changes = snapshot.commands(dynamic);
+                    if changes.is_empty() {
+                        *heard = snapshot.targets.first().map(|&(at, _)| at);
+                    }
+                    commands.extend(changes);
                 }
             }
         });

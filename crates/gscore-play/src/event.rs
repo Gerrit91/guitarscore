@@ -30,6 +30,8 @@ pub mod controller {
     pub const DATA_ENTRY_MSB: u8 = 6;
     /// Pan.
     pub const PAN: u8 = 10;
+    /// Expression: a share of the channel volume (a damped note's channel drops it to 0).
+    pub const EXPRESSION: u8 = 11;
     /// Reverb send (effects 1 depth).
     pub const REVERB: u8 = 91;
     /// Chorus send (effects 3 depth).
