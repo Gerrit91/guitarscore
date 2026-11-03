@@ -1989,3 +1989,12 @@ lifeless):
   song's sequence, and a damped note left its expression at 0. Every track setup now
   sends full expression. Test `a_bent_note_keeps_its_pitch_through_its_release`.
 
+## 2026-11-03 — The synthesizer loads when a song opens
+
+- The first note of a session waited seconds for FluidR3 to load because the built-in
+  synthesizer started on the first audition or play. `Playback::preload_synth` starts it
+  when a document becomes the open one (`replace_document`, so opening, a new song and a
+  recovered session alike); MIDI output is untouched, and a synthesizer that failed before
+  is retried on the next open. The toolbar's "Loading sounds…" now shows during that load.
+- `Playback::is_connected` reports whether an output is connected (test and diagnostics).
+  Test `opening_a_song_starts_loading_the_synthesizer`.

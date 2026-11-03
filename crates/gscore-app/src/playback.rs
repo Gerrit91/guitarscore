@@ -190,6 +190,30 @@ impl Playback {
         Ok(())
     }
 
+    /// Starts the built-in synthesizer now, so its SoundFont is already loaded when the
+    /// first note sounds: a song opening calls this. Nothing happens for MIDI output. A
+    /// synthesizer that failed before (a SoundFont or device problem) is started afresh,
+    /// since the problem may have been fixed meanwhile; a failure is not reported here
+    /// (pressing Play reports it, and tries again).
+    pub fn preload_synth(&mut self) {
+        if !matches!(self.output, Output::Synth(_)) {
+            return;
+        }
+        if matches!(&self.player, Some(active) if active.error().is_some()) {
+            self.player = None;
+            self.reported = None;
+        }
+        if self.player.is_none() {
+            let _ = self.connect();
+        }
+    }
+
+    /// Whether an output is connected (the synthesizer has been started and may still be
+    /// loading its SoundFont, or a MIDI port is open).
+    pub fn is_connected(&self) -> bool {
+        self.player.is_some()
+    }
+
     /// Connects the output if nothing is connected yet (the synthesizer then loads its
     /// SoundFont in the background).
     fn connect(&mut self) -> Result<(), String> {

@@ -252,6 +252,34 @@ fn outputs_are_chosen_and_labelled() {
 }
 
 #[test]
+fn opening_a_song_starts_loading_the_synthesizer() {
+    // A SoundFont is read on the player's own thread; no audio device is needed to start
+    // it, so this also runs where playback cannot actually be heard.
+    let dir = temp_dir("preload");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+
+    // Choosing the synthesizer alone does not start it; a song opening does.
+    harness.state_mut().playback_mut().use_soundfont(path);
+    assert!(!harness.state().playback().is_connected());
+
+    let ctx = harness.ctx.clone();
+    harness
+        .state_mut()
+        .open(testdata("basic/note_lengths.gp"), &ctx);
+    settle(&mut harness);
+    assert_eq!(
+        harness.state().document().unwrap().display_title(),
+        "Note Lengths"
+    );
+    assert!(
+        harness.state().playback().is_connected(),
+        "the synthesizer should load as soon as the song opens"
+    );
+}
+
+#[test]
 fn a_broken_soundfont_is_reported_and_editing_goes_on() {
     let dir = temp_dir("broken-sf2");
     let path = dir.join("broken.sf2");
