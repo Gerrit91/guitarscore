@@ -1199,13 +1199,25 @@ fn the_history_window_lists_changes_and_undoes_them() {
     harness.run();
     harness.get_by_label("History…").click();
     harness.run();
-    harness.get_by_label_contains("Undo change 1:").click();
+    // The newest change is where the song is; the one before it is a step back.
+    harness.get_by_label_contains("Current point, change 1:");
+    harness.get_by_label_contains("Go to change 2:").click();
     harness.run();
     assert_eq!(depth(&harness), before.saturating_sub(1));
-    assert!(harness.query_by_label_contains("Redo change 1:").is_some());
-    harness.get_by_label_contains("Redo change 1:").click();
+    // The undone change is still listed first and brings the song forward again.
+    harness.get_by_label_contains("Current point, change 2:");
+    harness.get_by_label_contains("Go to change 1:").click();
     harness.run();
     assert_eq!(depth(&harness), before);
+
+    // The last row goes back to the song as it was opened.
+    let start = before.saturating_add(1);
+    harness
+        .get_by_label_contains(&format!("Go to change {start}: Start"))
+        .click();
+    harness.run();
+    assert_eq!(depth(&harness), 0);
+    assert!(harness.state().document().unwrap().editor().can_redo());
 }
 
 #[test]

@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
 use gscore_app::{GuitarScoreApp, ThemeChoice};
 
 /// How long to wait for the file to open.
@@ -60,6 +61,15 @@ fn main() {
         assert!(started.elapsed() < OPEN_TIMEOUT, "opening timed out");
         harness.step();
         std::thread::sleep(Duration::from_millis(10));
+    }
+    if history {
+        // A few edits, the last one undone, so the history shows every kind of row.
+        for label in ["1/8", "Rest", "1/4"] {
+            harness.get_by_label(label).click();
+            harness.run();
+        }
+        harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+        harness.run();
     }
     {
         let app = harness.state_mut();

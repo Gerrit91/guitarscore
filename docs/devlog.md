@@ -1486,3 +1486,18 @@ and the arc arrows of Loop and Revert ended in smeared strokes.
   button the left group reached under it at 1000 px and the track-panel toggle was hidden.
   It stays centered where there is room and otherwise moves clear of both groups (the left
   one wins if even that does not fit). Test `the_player_never_covers_the_toolbar_groups`.
+
+## 2026-11-03 — History window: full-width table, resizable columns, go to a point
+
+- The table spans the window. Time, Change and State can be resized by dragging the
+  handle at their right edge in the header (resize cursor, highlighted while dragged);
+  Details takes the rest (at least 80 px) and shows its full text on hover when cut off.
+  Built from plain egui (no `egui_extras`, which AGENTS.md says to ask about first).
+- Undo/Redo buttons are replaced by a leading clock icon, "Go to this point in time": it
+  brings the song to the state right after that change, undoing or redoing as many steps
+  as needed. The current point is highlighted and marked, and a last "Start" row goes back
+  to the song as opened.
+- Rows are ordered by the undo/redo stacks (undone changes first, furthest first), not by
+  sorting timestamps, and drawn with `show_rows`, so a long history only draws the visible
+  rows. The snapshot example's `--history` now makes three edits and undoes one.
+- Tests: column geometry, go to an earlier change, back to the undone one, and the start.
