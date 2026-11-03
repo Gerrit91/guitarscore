@@ -1879,3 +1879,15 @@ lifeless):
 - Open: trills, the whammy bar, fade-in and grace notes in playback; a palm-muted note
   keeps the track's sound (no muted-guitar program).
 
+## 2026-11-03 — Question dialogs, slide and history icons
+
+- **Unsaved changes, recovery and "Save as Guitar Pro 7"** (owner: lifeless, no close
+  button): one modal look in `alert.rs`: the app's title bar with its close button
+  (closing is Cancel, or Later for recovery; Escape too, Enter takes the main answer), a
+  large icon (an amber warning triangle; a circular arrow round a clock for recovery), a
+  headline, a line of explanation and the answers right-aligned, the main one in the
+  accent color.
+- **Icons**: shift and legato slides join two notes, so they show a dot at each end (the
+  legato one with a slur); the history button is a counter-clockwise arrow round clock
+  hands.
+

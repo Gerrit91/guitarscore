@@ -38,6 +38,9 @@ pub(crate) enum Face<'a> {
     /// A slide: a line from `from` to `to`, each -1 (low), 0 (the note) or 1 (high), with
     /// a dot for the note at the end that is 0.
     Slide { from: i8, to: i8 },
+    /// A slide from one note to the next: a dot at each end, a slur over it for a legato
+    /// slide.
+    SlideTo { legato: bool },
     /// A line break: a line that turns down into the next system.
     Break,
     /// Bars on a line: short barlines over a baseline.
@@ -223,6 +226,18 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
                 if level == 0 {
                     painter.circle_filled(point, 3.0, ink);
                 }
+            }
+        }
+        Face::SlideTo { legato } => {
+            let start = at(-8.0, 6.0);
+            let end = at(8.0, -2.0);
+            painter.line_segment([start, end], Stroke::new(1.8, ink));
+            for point in [start, end] {
+                painter.circle_filled(point, 3.0, ink);
+            }
+            if legato {
+                let points = crescent(at(-9.0, -4.0), at(9.0, -8.0), -5.0, 1.4);
+                fill_crescent(painter, &points, ink);
             }
         }
         Face::Break => {

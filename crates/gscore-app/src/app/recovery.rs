@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use gscore_session::FoundSession;
 
 use super::GuitarScoreApp;
+use super::alert::{AlertIcon, Answer, Reply, alert};
 use super::files::{Dialog, Then};
 use crate::document::Document;
 use crate::tasks::RecoveredDocument;
@@ -103,38 +104,66 @@ impl GuitarScoreApp {
     }
 
     /// The question about one crashed document.
-    pub(super) fn recover_dialog(&mut self, ui: &mut egui::Ui, session: FoundSession) {
-        ui.heading("Recover unsaved changes?");
-        ui.label(format!(
-            "GuitarScore did not close normally while {} had {} unsaved edit(s).",
+    pub(super) fn recover_dialog(&mut self, ctx: &egui::Context, session: FoundSession) {
+        let text = format!(
+            "GuitarScore did not close normally while {} had {} unsaved edit(s). They can \
+             be brought back.",
             describe(&session),
             session.edits
-        ));
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            if ui.button("Restore").clicked() {
+        );
+        let reply = alert(
+            ctx,
+            "Recovery",
+            AlertIcon::Restore,
+            "Recover unsaved changes?",
+            |ui| {
+                ui.label(text);
+                ui.add_space(2.0);
+                ui.label(
+                    egui::RichText::new("Later keeps them for the next start.")
+                        .small()
+                        .weak(),
+                );
+            },
+            &[
+                Answer {
+                    text: "Discard",
+                    main: false,
+                },
+                Answer {
+                    text: "Later",
+                    main: false,
+                },
+                Answer {
+                    text: "Restore",
+                    main: true,
+                },
+            ],
+        );
+        match reply {
+            Reply::Answer(2) => {
                 self.dialog = None;
                 if self.document.as_ref().is_some_and(Document::is_dirty) {
-                    self.dialog = Some(Dialog::Unsaved(Then::Restore(Box::new(session.clone()))));
+                    self.dialog = Some(Dialog::Unsaved(Then::Restore(Box::new(session))));
                 } else {
-                    self.start_recovery(session.clone(), ui.ctx());
+                    self.start_recovery(session, ctx);
                 }
             }
-            if ui.button("Discard").clicked() {
+            Reply::Answer(0) => {
                 self.dialog = None;
                 // File work off the UI thread; if it fails, the folder is offered again.
-                let discarded = session.clone();
                 let _ = std::thread::Builder::new()
                     .name("gscore-discard".to_owned())
-                    .spawn(move || gscore_session::discard(&discarded));
+                    .spawn(move || gscore_session::discard(&session));
                 self.ask_next_recovery();
             }
-            if ui.button("Later").clicked() {
+            Reply::Answer(_) | Reply::Closed => {
                 // Kept for the next start.
                 self.dialog = None;
                 self.ask_next_recovery();
             }
-        });
+            Reply::Open => {}
+        }
     }
 }
 

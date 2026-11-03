@@ -207,12 +207,12 @@ const NOTE_ITEMS: &[FxItem] = &[
 const SLIDE_ITEMS: &[FxItem] = &[
     item(
         ActionId::ToggleShiftSlide,
-        Face::Slide { from: 0, to: 1 },
+        Face::SlideTo { legato: false },
         Fx::Slide(SlideKind::ShiftSlideTo),
     ),
     item(
         ActionId::ToggleLegatoSlide,
-        Face::Slide { from: 0, to: -1 },
+        Face::SlideTo { legato: true },
         Fx::Slide(SlideKind::LegatoSlideTo),
     ),
     item(

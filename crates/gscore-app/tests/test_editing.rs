@@ -190,7 +190,7 @@ fn opening_another_file_with_unsaved_changes_asks_first() {
         .open(testdata("basic/steel_guitar_dadgad.gp"), &ctx);
     harness.run();
     assert!(harness.state().has_dialog());
-    harness.get_by_label("Unsaved changes");
+    harness.get_by_label("Close Unsaved changes");
     // Keys do not edit while the question is open.
     type_char(&mut harness, "5", Modifiers::NONE);
     assert_eq!(fret_at_cursor(harness.state(), 1), Some(3));

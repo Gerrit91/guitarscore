@@ -5,6 +5,7 @@
 //! Split by job: `bars` (menus, toolbar, status), `page` (the page view, cursor and
 //! clicks), `editing` (keys and actions), `files` (open, save, unsaved changes).
 
+mod alert;
 mod bars;
 mod circle_of_fifths;
 mod edit_dynamics;
