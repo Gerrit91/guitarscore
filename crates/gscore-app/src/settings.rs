@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use gscore_edit::{ActionId, Key, KeyCombo, Keymap};
+use gscore_edit::{ActionId, KeyCombo, Keymap};
 use gscore_session::{RecoveryOptions, SNAPSHOT_EVERY};
 use serde::{Deserialize, Serialize};
 
@@ -13,8 +13,9 @@ use crate::state::{ViewState, ZOOM_RANGE};
 
 /// How many recent files the File menu remembers.
 pub const MAX_RECENT_FILES: usize = 10;
-/// Most stored shortcuts accepted from the settings file.
-const MAX_KEY_BINDINGS: usize = 1024;
+/// Most changed actions accepted from the settings file, and keys per action.
+const MAX_SHORTCUT_OVERRIDES: usize = 1024;
+const MAX_KEYS_PER_ACTION: usize = 32;
 /// Default interval between recovery snapshots, in seconds.
 pub const DEFAULT_AUTOSAVE_SECONDS: u64 = 60;
 
@@ -55,14 +56,16 @@ impl WindowState {
     }
 }
 
-/// One stored shortcut: a key combination and the action it runs. Plain data, so the
+/// One action whose shortcuts the user changed, with all of its keys. Only changed actions
+/// are stored, so built-in shortcuts added later still reach the user. Plain data, so the
 /// keymap lives in the settings file instead of a separate text file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct KeyBindingSetting {
-    /// The key combination as written (`ctrl+z`, `Left`, `+`, ...).
-    pub key: String,
+pub struct ShortcutSetting {
     /// The action id.
     pub action: String,
+    /// Its key combinations as written (`ctrl+z`, `Left`, `+`, ...); empty when the action
+    /// has no shortcut any more.
+    pub keys: Vec<String>,
 }
 
 /// Everything the app remembers between runs.
@@ -100,9 +103,9 @@ pub struct Settings {
     pub last_file: Option<PathBuf>,
     /// The keymap file, if the user chose one.
     pub keymap_path: Option<PathBuf>,
-    /// The shortcuts last saved from the shortcut editor; `None` uses the built-in keymap
-    /// (or a keymap file chosen by an older version).
-    pub keymap_bindings: Option<Vec<KeyBindingSetting>>,
+    /// The actions whose shortcuts were changed in the shortcut editor (relative to the
+    /// built-in keymap), applied over the built-in keymap or a keymap file.
+    pub shortcut_overrides: Vec<ShortcutSetting>,
     /// Seconds between recovery snapshots; 0 means only by edit count.
     pub autosave_seconds: u64,
     /// The SoundFont chosen for the built-in synthesizer, if any.
@@ -131,7 +134,7 @@ impl Default for Settings {
             reopen_last_file: true,
             last_file: None,
             keymap_path: None,
-            keymap_bindings: None,
+            shortcut_overrides: Vec::new(),
             autosave_seconds: DEFAULT_AUTOSAVE_SECONDS,
             soundfont_path: None,
             prefer_synth: true,
@@ -187,37 +190,45 @@ impl Settings {
         }
     }
 
-    /// The shortcuts stored in the settings, if the user changed them. `None` means the
-    /// built-in keymap; an error leaves the caller with the fallback keymap and a message.
-    pub fn custom_keymap(&self) -> Option<Result<Keymap, String>> {
-        let bindings = self.keymap_bindings.as_ref()?;
-        let mut parsed = Vec::with_capacity(bindings.len());
+    /// Stores the shortcuts of `keymap` that differ from the built-in keymap.
+    pub fn store_shortcuts(&mut self, keymap: &Keymap) {
+        self.shortcut_overrides = keymap
+            .overrides(&Keymap::default())
+            .into_iter()
+            .map(|(action, keys)| ShortcutSetting {
+                action: action.id().to_owned(),
+                keys: keys.iter().map(ToString::to_string).collect(),
+            })
+            .collect();
+    }
+
+    /// Applies the stored shortcut changes to `keymap`. Unusable entries (an unknown
+    /// action or key) are skipped, the rest still apply; the error names what was skipped.
+    pub fn apply_shortcuts(&self, keymap: &mut Keymap) -> Result<(), String> {
+        let mut overrides = Vec::with_capacity(self.shortcut_overrides.len());
         let mut errors = Vec::new();
-        for binding in bindings {
-            let Some(action) = ActionId::from_id(&binding.action) else {
-                errors.push(format!("unknown action `{}`", binding.action));
+        for stored in &self.shortcut_overrides {
+            let Some(action) = ActionId::from_id(&stored.action) else {
+                errors.push(format!("unknown action `{}`", stored.action));
                 continue;
             };
-            let combo = match KeyCombo::parse(&binding.key) {
-                Ok(combo) => combo,
-                Err(error) => {
-                    errors.push(format!("`{}`: {error}", binding.key));
-                    continue;
+            let mut keys = Vec::with_capacity(stored.keys.len());
+            for key in &stored.keys {
+                match KeyCombo::parse(key) {
+                    Ok(combo) => keys.push(combo),
+                    Err(error) => errors.push(format!("`{key}`: {error}")),
                 }
-            };
-            if action == ActionId::EnterFret && !matches!(combo.key(), Key::Char('0'..='9')) {
-                errors.push(format!("enter_fret needs a digit key, not `{combo}`"));
-                continue;
             }
-            parsed.push((combo, action));
+            overrides.push((action, keys));
         }
+        keymap.apply_overrides(overrides);
         if errors.is_empty() {
-            Some(Ok(Keymap::from_bindings(parsed)))
+            Ok(())
         } else {
-            Some(Err(format!(
-                "The stored shortcuts are not usable: {}",
+            Err(format!(
+                "Some stored shortcuts are not usable and were skipped: {}",
                 errors.join("; ")
-            )))
+            ))
         }
     }
 
@@ -255,15 +266,13 @@ impl Settings {
             self.autosave_seconds = DEFAULT_AUTOSAVE_SECONDS;
         }
         self.recent_files.truncate(MAX_RECENT_FILES);
-        if let Some(bindings) = &mut self.keymap_bindings {
-            // A hostile or broken file cannot make the keymap editor huge.
-            bindings.truncate(MAX_KEY_BINDINGS);
-            bindings.retain(|binding| {
-                binding.key.len() <= 64
-                    && binding.action.len() <= 64
-                    && !binding.key.is_empty()
-                    && !binding.action.is_empty()
-            });
+        // A hostile or broken file cannot make the keymap huge.
+        self.shortcut_overrides.truncate(MAX_SHORTCUT_OVERRIDES);
+        self.shortcut_overrides
+            .retain(|stored| !stored.action.is_empty() && stored.action.len() <= 64);
+        for stored in &mut self.shortcut_overrides {
+            stored.keys.truncate(MAX_KEYS_PER_ACTION);
+            stored.keys.retain(|key| !key.is_empty() && key.len() <= 64);
         }
     }
 }
@@ -314,29 +323,38 @@ mod tests {
     }
 
     #[test]
-    fn stored_shortcuts_are_parsed_and_bad_ones_are_reported() {
-        let mut settings = Settings {
-            keymap_bindings: Some(vec![KeyBindingSetting {
-                key: "ctrl+k".to_owned(),
-                action: "copy".to_owned(),
-            }]),
-            ..Settings::default()
-        };
-        let keymap = settings
-            .custom_keymap()
-            .expect("some bindings")
-            .expect("valid bindings");
-        assert_eq!(
-            keymap.keys_for(ActionId::Copy),
-            [KeyCombo::parse("ctrl+k").expect("a valid combo")]
-        );
+    fn only_changed_shortcuts_are_stored_and_bad_ones_are_skipped() {
+        let mut settings = Settings::default();
+        settings.store_shortcuts(&Keymap::default());
+        assert!(settings.shortcut_overrides.is_empty(), "nothing changed");
 
-        settings.keymap_bindings = Some(vec![KeyBindingSetting {
-            key: "ctrl+k".to_owned(),
+        let mut keymap = Keymap::default();
+        let combo = KeyCombo::parse("ctrl+k").expect("a valid combo");
+        keymap
+            .bind(ActionId::Copy, combo)
+            .expect("copy can be bound");
+        settings.store_shortcuts(&keymap);
+        assert_eq!(
+            settings.shortcut_overrides,
+            [ShortcutSetting {
+                action: "copy".to_owned(),
+                keys: vec!["ctrl+k".to_owned()],
+            }]
+        );
+        let mut loaded = Keymap::default();
+        settings
+            .apply_shortcuts(&mut loaded)
+            .expect("valid shortcuts");
+        assert_eq!(loaded, keymap);
+
+        // A broken entry is reported; the usable ones still apply.
+        settings.shortcut_overrides.push(ShortcutSetting {
             action: "no_such_action".to_owned(),
-        }]);
-        assert!(settings.custom_keymap().expect("some bindings").is_err());
-        assert!(Settings::default().custom_keymap().is_none());
+            keys: vec!["ctrl+j".to_owned()],
+        });
+        let mut loaded = Keymap::default();
+        assert!(settings.apply_shortcuts(&mut loaded).is_err());
+        assert_eq!(loaded.keys_for(ActionId::Copy), [combo]);
     }
 
     #[test]
@@ -355,10 +373,10 @@ mod tests {
         let mut settings = Settings::default();
         settings.add_recent(PathBuf::from("/tabs/song.gp"));
         settings.keymap_path = Some(PathBuf::from("/keys/keymap.txt"));
-        settings.keymap_bindings = Some(vec![KeyBindingSetting {
-            key: "ctrl+k".to_owned(),
+        settings.shortcut_overrides = vec![ShortcutSetting {
             action: "copy".to_owned(),
-        }]);
+            keys: vec!["ctrl+k".to_owned()],
+        }];
         settings.grid_height_chosen = Some(180.0);
         settings.window = Some(WindowState {
             x: 10.0,

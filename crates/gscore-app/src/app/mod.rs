@@ -37,7 +37,7 @@ use gscore_session::FoundSession;
 use crate::document::Document;
 use crate::keys::KeyReader;
 use crate::playback::{Output, Playback};
-use crate::settings::{KeyBindingSetting, Settings, WindowState};
+use crate::settings::{Settings, WindowState};
 use crate::state::{ThemeChoice, ViewState};
 use crate::tasks::Tasks;
 
@@ -222,15 +222,7 @@ impl GuitarScoreApp {
         settings.soundfont_path = self.playback.soundfont().map(std::path::Path::to_path_buf);
         settings.prefer_synth = matches!(self.playback.output(), Output::Synth(_));
         settings.midi_port = self.playback.port().map(str::to_owned);
-        settings.keymap_bindings = Some(
-            self.keymap
-                .bindings()
-                .map(|(combo, action)| KeyBindingSetting {
-                    key: combo.to_string(),
-                    action: action.id().to_owned(),
-                })
-                .collect(),
-        );
+        settings.store_shortcuts(&self.keymap);
         settings
     }
 

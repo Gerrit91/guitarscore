@@ -85,9 +85,10 @@ fn all_sf2(dir: &Path) -> Vec<PathBuf> {
     found
 }
 
-/// SoundFonts the settings window can offer: the configured one, every `.sf2` in the user's
-/// SoundFont folders and the usual system folders, and the well-known system files. Unique
-/// and sorted, with the configured one first.
+/// SoundFonts the settings window can offer: the one named by [`SOUNDFONT_ENV`], every
+/// `.sf2` in the user's SoundFont folders and the usual system folders, and the well-known
+/// system files. Unique and sorted, with the [`SOUNDFONT_ENV`] one first. This reads
+/// directories: call it off the UI thread.
 pub fn available_soundfonts() -> Vec<PathBuf> {
     let env = std::env::var_os(SOUNDFONT_ENV)
         .filter(|value| !value.is_empty())
@@ -106,10 +107,9 @@ pub fn available_soundfonts_in(
     const MAX_SOUNDFONTS: usize = 128;
     let under_root = |path: &str| root.join(path.trim_start_matches('/'));
     let mut found: Vec<PathBuf> = Vec::new();
-    if let Some(env) = env
-        && env.is_file()
-    {
-        found.push(env);
+    let configured = env.filter(|env| env.is_file());
+    if let Some(env) = &configured {
+        found.push(env.clone());
     }
     if let Some(home) = home {
         for dir in HOME_DIRS {
@@ -125,15 +125,14 @@ pub fn available_soundfonts_in(
     for dir in SYSTEM_DIRS {
         found.extend(all_sf2(&under_root(dir)));
     }
-    let first = found.first().cloned();
     found.sort();
     found.dedup();
-    if let Some(first) = first {
-        // The configured one stays first; if it is missing, the sorted list is unchanged.
-        if let Some(index) = found.iter().position(|path| path == &first) {
-            let configured = found.remove(index);
-            found.insert(0, configured);
-        }
+    // The configured one goes first; without one, the list stays sorted.
+    if let Some(configured) = configured
+        && let Some(index) = found.iter().position(|path| path == &configured)
+    {
+        let configured = found.remove(index);
+        found.insert(0, configured);
     }
     found.truncate(MAX_SOUNDFONTS);
     found
@@ -174,6 +173,21 @@ mod tests {
                 configured.clone(),
                 user.join("User.sf2"),
                 system.join("A.sf2")
+            ]
+            .into_iter()
+            .collect::<Vec<_>>()
+        );
+
+        // Without a configured one, the list is simply sorted, even when a well-known
+        // file (found before the folders are listed) sorts after another one.
+        std::fs::write(system.join("default.sf2"), b"x").unwrap();
+        let found = available_soundfonts_in(None, None, &root);
+        assert_eq!(
+            found,
+            [
+                system.join("A.sf2"),
+                system.join("B.sf2"),
+                system.join("default.sf2")
             ]
             .into_iter()
             .collect::<Vec<_>>()

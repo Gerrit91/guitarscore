@@ -1414,3 +1414,24 @@ Owner follow-up (same day):
   mapping; tests cover the new headroom.
 - Mute/solo-all moved out of the grid header into the master row too, so the header is only
   view/add/move; the master strip in the mixer has the same pair.
+
+## 2026-11-03 — Review of the app shell follow-up (commit cfc71a1)
+
+Bugs fixed:
+- Stored shortcuts froze the whole keymap: every settings save wrote all bindings, so a
+  built-in shortcut added in a later version would never reach that user, and a keymap
+  file was replaced wholesale. The settings now keep only the actions that differ from the
+  built-in keymap (`shortcut_overrides`: action id plus all of its keys, empty when it lost
+  them), applied over the built-in keymap or the keymap file (`Keymap::overrides` and
+  `Keymap::apply_overrides` replace `Keymap::from_bindings`). An unusable stored entry is
+  skipped and reported; the others still apply. The one-day-old `keymap_bindings` key is
+  no longer read.
+- `Keymap::bind(enter_fret, digit)` dropped the other nine digit keys. `enter_fret` keeps
+  its fixed digits; `bind` refuses it (the shortcut editor never offered it).
+- The Audio I/O tab listed the SoundFont folders on the UI thread on every frame
+  (AGENTS.md "Never block the UI thread"). The search now runs on a background thread when
+  the tab is first shown and on "Search again"; the dropdown says "Searching…" meanwhile.
+- `available_soundfonts_in` moved the first file it happened to find to the top when no
+  SoundFont was configured, so the list was not sorted (test extended).
+- Keys reached the score while the new-track popup was open and its name field had lost
+  focus (Escape/Enter or a shortcut could edit the song behind the popup).

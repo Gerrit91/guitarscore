@@ -432,19 +432,46 @@ impl Keymap {
             .map(|(&combo, &action)| (combo, action))
     }
 
-    /// A keymap from `(key, action)` pairs (the stored form); a later pair wins.
-    pub fn from_bindings(bindings: impl IntoIterator<Item = (KeyCombo, ActionId)>) -> Self {
-        Keymap {
-            bindings: bindings.into_iter().collect(),
+    /// The actions whose keys differ from `base`, each with all of its keys here (empty
+    /// when it lost every key), in action order. This is what the app stores: a later
+    /// built-in shortcut still reaches a user who changed other ones.
+    pub fn overrides(&self, base: &Keymap) -> Vec<(ActionId, Vec<KeyCombo>)> {
+        crate::ACTIONS
+            .iter()
+            .map(|info| info.action)
+            .filter_map(|action| {
+                let keys = self.keys_for(action);
+                (keys != base.keys_for(action)).then_some((action, keys))
+            })
+            .collect()
+    }
+
+    /// Applies stored [`Keymap::overrides`]: each action gets exactly the keys given (taking
+    /// them over from any other action). `enter_fret` keeps digit keys only.
+    pub fn apply_overrides(
+        &mut self,
+        overrides: impl IntoIterator<Item = (ActionId, Vec<KeyCombo>)>,
+    ) {
+        for (action, keys) in overrides {
+            self.unbind(action);
+            for combo in keys {
+                if action == ActionId::EnterFret && !matches!(combo.key, Key::Char('0'..='9')) {
+                    continue;
+                }
+                self.bindings.insert(combo, action);
+            }
         }
     }
 
     /// Binds `action` to `combo`, replacing all of its old keys (a custom shortcut replacing
     /// a default one). A combo that belonged to another action is taken over. Fails with a
-    /// message if the combination cannot be bound (for example `enter_fret` needs a digit).
+    /// message for `enter_fret`, whose digit keys are fixed (binding one digit would drop
+    /// the other nine).
     pub fn bind(&mut self, action: ActionId, combo: KeyCombo) -> Result<(), String> {
-        if action == ActionId::EnterFret && !matches!(combo.key, Key::Char('0'..='9')) {
-            return Err(format!("enter_fret needs a digit key, not `{combo}`"));
+        if action == ActionId::EnterFret {
+            return Err(format!(
+                "enter_fret always uses the digit keys; `{combo}` cannot replace them"
+            ));
         }
         self.bindings.retain(|_, bound| *bound != action);
         self.bindings.insert(combo, action);
@@ -505,11 +532,46 @@ mod tests {
     }
 
     #[test]
-    fn enter_fret_only_accepts_digits() {
+    fn enter_fret_keeps_its_digit_keys() {
         let mut keymap = Keymap::default();
-        let letter = KeyCombo::parse("k").unwrap();
-        assert!(keymap.bind(ActionId::EnterFret, letter).is_err());
-        let digit = KeyCombo::parse("7").unwrap();
-        keymap.bind(ActionId::EnterFret, digit).unwrap();
+        let digits = keymap.keys_for(ActionId::EnterFret);
+        assert!(digits.len() >= 10, "{digits:?}");
+        assert!(
+            keymap
+                .bind(ActionId::EnterFret, KeyCombo::parse("k").unwrap())
+                .is_err()
+        );
+        assert!(
+            keymap
+                .bind(ActionId::EnterFret, KeyCombo::parse("7").unwrap())
+                .is_err()
+        );
+        assert_eq!(keymap.keys_for(ActionId::EnterFret), digits);
+    }
+
+    #[test]
+    fn overrides_hold_only_the_changed_actions_and_restore_them() {
+        let defaults = Keymap::default();
+        let mut keymap = Keymap::default();
+        assert!(keymap.overrides(&defaults).is_empty());
+        // Copy takes over Paste's key: both actions differ from the built-ins now.
+        let paste = keymap.keys_for(ActionId::Paste);
+        let taken = *paste.first().unwrap();
+        keymap.bind(ActionId::Copy, taken).unwrap();
+        let overrides = keymap.overrides(&defaults);
+        let actions: Vec<ActionId> = overrides.iter().map(|(action, _)| *action).collect();
+        assert!(actions.contains(&ActionId::Copy), "{actions:?}");
+        assert!(actions.contains(&ActionId::Paste), "{actions:?}");
+        assert!(!actions.contains(&ActionId::Undo), "{actions:?}");
+
+        let mut restored = Keymap::default();
+        restored.apply_overrides(overrides);
+        assert_eq!(restored, keymap);
+        assert_eq!(restored.keys_for(ActionId::Copy), [taken]);
+        // An action left out of the overrides keeps its built-in keys.
+        assert_eq!(
+            restored.keys_for(ActionId::Undo),
+            defaults.keys_for(ActionId::Undo)
+        );
     }
 }

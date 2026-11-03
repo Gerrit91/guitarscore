@@ -55,6 +55,7 @@ impl GuitarScoreApp {
             || self.dialog.is_some()
             || self.settings_window.is_some()
             || self.shortcuts.is_some()
+            || self.new_track.is_some()
             || ctx.egui_wants_keyboard_input()
             || egui::Popup::is_any_open(ctx)
         {

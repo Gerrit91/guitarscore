@@ -55,12 +55,13 @@ fn main() -> ExitCode {
                 Some(path) => gscore_session::load_keymap(path),
                 None => gscore_session::load_user_keymap(),
             };
-            // Shortcuts edited in the app live in the settings and win over a keymap file.
-            if let Some(custom) = settings.custom_keymap() {
-                match custom {
-                    Ok(keymap) => loaded.keymap = keymap,
-                    Err(problem) => loaded.problem = Some(problem),
-                }
+            // Shortcuts changed in the app live in the settings and are applied over the
+            // built-in keymap or the keymap file.
+            if let Err(problem) = settings.apply_shortcuts(&mut loaded.keymap) {
+                loaded.problem = Some(match loaded.problem.take() {
+                    Some(earlier) => format!("{earlier}\n{problem}"),
+                    None => problem,
+                });
             }
             // Edits are journaled for crash recovery (AGENTS.md "Never lose work").
             let recovery = gscore_session::default_recovery_dir();

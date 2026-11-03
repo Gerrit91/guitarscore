@@ -2,6 +2,10 @@
 //! changes go through commands, so they are undoable; the other settings apply at once and
 //! are remembered between runs.
 
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::path::PathBuf;
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+
 use egui::{Margin, RichText, Ui};
 use gscore_edit::Command;
 use gscore_model::{MAX_TEMPO, SONG_TEXT_FIELDS, SongInfo, SongTextField};
@@ -38,6 +42,8 @@ pub(super) struct SettingsWindow {
     base: SongInfo,
     /// Where the window is; `None` until it is centered on its first frame.
     pos: Option<egui::Pos2>,
+    /// The SoundFonts found on disk, for the Audio I/O tab.
+    soundfonts: SoundFontScan,
 }
 
 impl SettingsWindow {
@@ -47,7 +53,63 @@ impl SettingsWindow {
             base: info.clone(),
             draft: info,
             pos: None,
+            soundfonts: SoundFontScan::default(),
         }
+    }
+}
+
+/// The SoundFonts in the usual folders. Searching reads directories, so it runs on a
+/// background thread (never on the UI thread): once when the Audio I/O tab is first shown,
+/// and again on "Search again".
+#[derive(Debug, Default)]
+struct SoundFontScan {
+    /// What the last search found.
+    found: Vec<PathBuf>,
+    /// The search that is running.
+    pending: Option<Receiver<Vec<PathBuf>>>,
+    /// Whether a search was started yet.
+    started: bool,
+}
+
+impl SoundFontScan {
+    /// Starts the first search, and takes in a finished one.
+    fn poll(&mut self, ctx: &egui::Context) {
+        if !self.started {
+            self.start(ctx);
+        }
+        let Some(receiver) = &self.pending else {
+            return;
+        };
+        match receiver.try_recv() {
+            Ok(found) => {
+                self.found = found;
+                self.pending = None;
+            }
+            Err(TryRecvError::Disconnected) => self.pending = None,
+            Err(TryRecvError::Empty) => {}
+        }
+    }
+
+    /// Searches the folders again in the background.
+    fn start(&mut self, ctx: &egui::Context) {
+        self.started = true;
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let ctx = ctx.clone();
+        let spawned = std::thread::Builder::new()
+            .name("gscore-soundfont-search".to_owned())
+            .spawn(move || {
+                // A panic only means nothing is offered; the file chooser still works.
+                let found = catch_unwind(AssertUnwindSafe(gscore_audio::available_soundfonts))
+                    .unwrap_or_default();
+                let _ = sender.send(found);
+                ctx.request_repaint();
+            });
+        // Without a thread, nothing is listed; the file chooser still works.
+        self.pending = spawned.is_ok().then_some(receiver);
+    }
+
+    fn searching(&self) -> bool {
+        self.pending.is_some()
     }
 }
 
@@ -113,7 +175,7 @@ impl GuitarScoreApp {
                                 song_tab(ui, &mut window, &mut apply, &mut close);
                             }
                             SettingsTab::Editor => self.editor_tab(ui),
-                            SettingsTab::Audio => self.audio_tab(ui),
+                            SettingsTab::Audio => self.audio_tab(ui, &mut window.soundfonts),
                         }
                     });
             });
@@ -169,10 +231,11 @@ impl GuitarScoreApp {
     }
 
     /// The audio I/O tab: the output, a SoundFont for the synthesizer, and MIDI ports.
-    fn audio_tab(&mut self, ui: &mut Ui) {
+    fn audio_tab(&mut self, ui: &mut Ui, soundfonts: &mut SoundFontScan) {
+        soundfonts.poll(ui.ctx());
         ui.heading("Output");
         let current = self.playback.soundfont().map(std::path::Path::to_path_buf);
-        let mut available = gscore_audio::available_soundfonts();
+        let mut available = soundfonts.found.clone();
         if let Some(current) = &current
             && !available.contains(current)
         {
@@ -223,7 +286,9 @@ impl GuitarScoreApp {
                                 ui.close();
                             }
                         }
-                        if available.is_empty() {
+                        if soundfonts.searching() {
+                            ui.label("Searching…");
+                        } else if available.is_empty() {
                             ui.label("No SoundFont files found");
                         }
                     });
@@ -235,6 +300,13 @@ impl GuitarScoreApp {
                     && let Err(error) = self.tasks.pick_soundfont(ui.ctx())
                 {
                     self.notice = Some(error);
+                }
+                if ui
+                    .add_enabled(!soundfonts.searching(), egui::Button::new("Search again"))
+                    .on_hover_text("Look for new SoundFont files in the usual folders")
+                    .clicked()
+                {
+                    soundfonts.start(ui.ctx());
                 }
                 if let Some(path) = pick {
                     self.playback.use_soundfont(path);
