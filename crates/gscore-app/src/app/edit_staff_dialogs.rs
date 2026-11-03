@@ -151,7 +151,11 @@ pub(super) fn body(ui: &mut egui::Ui, state: &mut StaffState, target: Target) {
                     state.feel = feel;
                 }
             }
-            hint(ui, "GP3-5 files keep only the triplet feels.");
+            hint(
+                ui,
+                "Holds for the following bars, up to the next bar with its own feel. GP3-5 \
+                 files keep only the triplet feels.",
+            );
         }
         Dialog::Fermata => {
             if choice(

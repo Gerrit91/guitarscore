@@ -92,12 +92,9 @@ fn a_double_barline_draws_two_lines() {
 #[test]
 fn a_feel_is_written_where_it_changes() {
     let mut song = testing::song(&[testing::GUITAR_6], 4).unwrap();
-    for measure in [0, 1] {
-        let _ = song
-            .set_feel(MeasureIndex::new(measure), Feel::Eighth)
-            .unwrap();
-    }
-    // Measure 3 goes back to straight; measure 4 stays straight.
+    // Swing from measure 1 on (it holds), back to straight from measure 3.
+    let _ = song.set_feel(MeasureIndex::new(0), Feel::Eighth).unwrap();
+    let _ = song.set_feel(MeasureIndex::new(2), Feel::None).unwrap();
     let laid_out = layout(&song);
     // Swing at measure 1 (not again at 2), straight at 3: a beamed pair each, a triplet's
     // 3 once, and "=" twice.

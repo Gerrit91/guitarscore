@@ -922,6 +922,8 @@ mod mix_tests;
 #[cfg(test)]
 mod page_tests;
 #[cfg(test)]
+mod reach_tests;
+#[cfg(test)]
 mod song_tests;
 #[cfg(test)]
 mod tests;

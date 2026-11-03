@@ -198,7 +198,7 @@ pub(super) fn time(ui: &mut egui::Ui, state: &mut StaffState) {
     });
     hint(
         ui,
-        "The upper number counts the beats; the lower says their value.",
+        "Holds for the following bars, up to the next bar with its own time signature.",
     );
 }
 
@@ -226,7 +226,7 @@ pub(super) fn key(ui: &mut egui::Ui, state: &mut StaffState) {
     });
     hint(
         ui,
-        "Outer ring: major keys; inner ring: their relative minors.",
+        "Outer ring: major keys, inner ring: relative minors. Holds up to the next key change.",
     );
 }
 
