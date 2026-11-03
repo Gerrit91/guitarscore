@@ -1608,3 +1608,53 @@ Owner's request: drum notation, dynamics in the edit palette and the score, sect
   `new_notes_take_the_dynamic_in_effect`).
 - Open: drum tab, custom drum maps and a feet voice; hairpins; D.C./D.S./coda; a
   dynamics key binding; the `fff` tile wraps to a second row at the default panel width.
+
+## 2026-11-03 — Bend and whammy editors, score menus, window state, README
+
+- **Bend and whammy editors** (`gscore-app/src/app/shape_editor.rs`): a graph with
+  draggable square handles (snapped to position 0-12 and quarter tones, kept between their
+  neighbours; click adds, right-click/double-click removes), value labels as bends are
+  written (+½, +full) or in whole steps for the whammy (±6 steps, taller graph), built-in
+  presets (bend: Bend, Bend/Release, Bend/Release/Bend, Pre-Bend, Pre-Bend/Release,
+  Release; whammy: Dip, Dive, Release up, Inverted Dip, Return, Release down), user presets
+  saved in the settings (`bend_presets`/`whammy_presets`, sanitized on load), a range menu,
+  OK/Remove/Cancel. The bend and whammy tiles (now side by side) and their keys open the
+  editor on the note's shape or a default (full-step bend, two-step dip); the windows are
+  drawn outside the palette so they show with the section folded or the panel hidden.
+- **Score drawing:** bends are a quarter ellipse entering a solid arrowhead at a right
+  angle (new `DrawOp::Polygon`, in SVG and on screen); the whammy follows its real shape
+  (`ColumnMarks::whammy` is now the `WhammyShape`) with the depth written above each
+  turning point, no arrow. Goldens: `ornaments.svg` changed at both (owner to review).
+- **Menus** (`page_menu.rs`): the score's right-click menu has Cut/Copy/Paste and Note
+  (bend/whammy editors, techniques, slides and harmonics ticked when on, tie, rest, delete
+  note, durations, beats), Bar (insert before/after, delete, select) and Track (edit,
+  rename, add above/below, duplicate, move, delete) submenus; a right-click moves the
+  cursor first unless it is inside the selection. The menu bar has the same Track, Bar
+  and Note menus; Edit gained Cut/Copy/Paste. Grid actions run through one
+  `apply_grid_action`. The page has the accessibility label "Score page".
+- **Window:** the window state was never saved on Wayland (no position, so nothing was
+  stored). `WindowState` now has an optional position and a `fullscreen` flag (old files
+  load) and keeps the normal size while maximized; the app always opens maximized, or full
+  screen if it was closed so. New action `toggle_fullscreen` (F11, View menu).
+- **README** rewritten for newcomers: pitch, screenshots (`docs/media/`, rendered from the
+  app offscreen), feature tour, honest status, keyboard table; build details kept below.
+- Tests: shape editor (snap, move, insert, labels, presets valid, range), whammy turning
+  points and labels, window state (Wayland, maximized, fullscreen, old settings), F11
+  binding, UI tests for both editors and the menus. App snapshots updated (palette tiles,
+  menu bar).
+- Open: the whammy editor's "Return" shape is a guess (dive, hold, return); the
+  full-screen switch and startup maximizing are not covered by headless tests; the
+  screenshots need re-rendering when the UI changes.
+
+## 2026-11-03 — Milestone M21 planned: pages, multi-track scores and print
+
+- The owner made pages, multi-track systems and printing their own milestone (they were
+  two bullets in M17): M21 in `AGENTS.md` section 9, next after M17, before the rest of
+  M18 and before M19/M20. Scope: page setup (read from the GP file's `PageSetup`, which
+  nothing used), pagination with headers/footers and breaks, multi-track systems with
+  aligned columns, editing across staves, a page view, PDF/PNG/SVG export and print.
+- Open for the owner (section 11): the PDF writer dependency (`pdf-writer` + `subsetter`
+  recommended) and how printing works per platform. Needed: multi-track test files made
+  with Guitar Pro, with their PDFs.
+- Decided by the owner the same day: `pdf-writer` + `subsetter` for PDF, and PDF export
+  before native printing. A multi-track test song from Guitar Pro is coming.

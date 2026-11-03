@@ -312,8 +312,54 @@ panels that fill it.
   - Repeats and alternative endings, tempo changes, section markers, key signatures, ties
     across barlines, the second voice, grace notes, rhythm under the tab, chord diagrams,
     lyrics.
-  - Pages (page breaks, headers, page numbers), multi-track systems, drum notation.
-  - Print and export to PDF and PNG.
+  - Drum notation.
+  - Pages, multi-track systems and printing moved to their own milestone, M21.
+- **M21: Pages, multi-track scores and print** (owner, 2026-11-03: missing completely and
+  important; comes next, before the rest of M18, and before M19 and M20, since a release
+  without printing is not useful). Numbered M21 to keep the earlier numbers stable.
+  Today one track is laid out on one endless page and nothing can be printed.
+  - **Page setup:** paper size (A4, Letter, custom) and orientation, margins, score size
+    (staff space), header and footer contents. Read from and written to the Guitar Pro
+    file (`gscore-gp` already reads `PageSetup`, including the `%title%`, `%N%/%P%`
+    templates; nothing uses it yet), edited as commands with undo in a Page layout tab of
+    the settings window (planned in M12, not built), defaults in the app settings.
+  - **Pagination:** systems flow onto pages; the first page carries the title block, later
+    pages a running header; footers with page numbers ("Page 2/5") and copyright. Systems
+    are spread to fill a page (vertical justification), the last page is not stretched.
+    Breaks: automatic, a fixed number of bars per system, and manual system and page breaks
+    per bar (Guitar Pro stores line breaks; keep them on save).
+  - **Multi-track systems:** choose what a score shows: one track (as now), all tracks, or
+    a chosen set (a "view" kept with the document, like Guitar Pro's multitrack mode).
+    Every shown track's staves (notation, tab or both, per track as in the track panel)
+    stacked in one system: shared barlines through the system, a bracket or brace,
+    track names at the start of the first system and short names after, empty staves
+    optionally hidden, a drum track on its percussion staff. Columns aligned across all
+    tracks (one time grid per bar from every shown track's rhythms), so beats line up.
+  - **Editing across staves:** the cursor, selection, page clicks and keyboard work on any
+    staff of the system (Up/Down past the outer string moves to the next staff and track);
+    the track picker and grid still choose the cursor's track; playback follows across
+    pages.
+  - **Views in the app:** the page view (pages one below the other, or side by side when
+    zoomed out) next to today's endless view; scrolling to the cursor across pages; page
+    count and current page in the status bar.
+  - **Output:** export to PDF (vector, fonts embedded and subset: Bravura and Noto Sans are
+    SIL OFL, which allows embedding), PNG and SVG per page; `gscore-cli render` gains
+    `--pdf`, page and track selection. PDF export comes first (owner, 2026-11-03), written
+    with `pdf-writer` + `subsetter`; Print in the File menu follows later (section 11).
+  - **Performance:** keep the per-measure layout cache and the 16 ms budget (section 11)
+    with all tracks of `DrDr.gp` shown: cache the cross-track time grid per bar, re-break
+    systems and re-paginate only from the changed system on; `cargo xtask bench` gains a
+    multi-track and a pagination case. Exporting a long score runs in the background with
+    progress and cancel.
+  - **Tests:** golden SVGs per page (one-page and multi-page songs, multi-track systems,
+    breaks, header/footer templates), PDF structure tests (page count, fonts embedded,
+    page size, text extractable), page-setup round trip through GP7, `panic_hunt` on page
+    setup and break commands, app snapshots of the page view. Needs multi-track test files
+    made with Guitar Pro in `testdata/` (all current ones are single-track), with Guitar
+    Pro's own PDF of each for comparison, like `testdata/basic/*.pdf`.
+  - **Done when:** a multi-track song opens as a paginated score that looks like Guitar
+    Pro's print preview, prints, and exports a PDF that opens correctly in common viewers
+    (Evince, Firefox, Acrobat) with the same pages.
 - **M18: Playback polish.**
   - Play from a selection and loop it, count-in, metronome, speed slider.
   - Remaining techniques: vibrato, let ring, palm mute, grace notes, trills, whammy,
@@ -348,3 +394,9 @@ panels that fill it.
   from a key press to the new layout within 16 ms, opening a file within 2 s, in release
   builds; `cargo xtask bench` checks them on the owner's files.
 - Name availability checks for GuitarScore (GitHub, crates.io, domain) before the first public release.
+- ~~PDF writer for M21.~~ **Decided (2026-11-03):** `pdf-writer` + `subsetter` (Typst
+  project; MIT/Apache-2.0, pure Rust, build for wasm). The page content is written from the
+  `DrawOp`s; fonts are embedded as subsets.
+- ~~How to print (M21).~~ **Decided (2026-11-03):** PDF export first; printing happens from
+  a PDF viewer. Native printing (through the PDF: the XDG print portal on Linux, the print
+  verb on Windows, `NSPrintOperation` on macOS) is a later step of M21 or after it.
