@@ -31,7 +31,7 @@ use clap::{Parser, Subcommand};
 #[derive(Debug, Parser)]
 #[command(
     name = "gscore-cli",
-    version,
+    version = gscore_version::VERSION,
     after_help = "Supported formats: .gp3, .gp4, .gp5, .gpx (Guitar Pro 6), .gp (Guitar Pro 7+)"
 )]
 struct Cli {

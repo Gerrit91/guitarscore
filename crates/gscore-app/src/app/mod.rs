@@ -5,6 +5,7 @@
 //! Split by job: `bars` (menus, toolbar, status), `page` (the page view, cursor and
 //! clicks), `editing` (keys and actions), `files` (open, save, unsaved changes).
 
+mod about;
 mod alert;
 mod bars;
 mod circle_of_fifths;
@@ -109,6 +110,8 @@ pub struct GuitarScoreApp {
     history: Option<history::HistoryPanel>,
     /// The new-track popup, while it is open.
     new_track: Option<new_track::NewTrackDialog>,
+    /// The About window, while it is open.
+    about: Option<about::AboutWindow>,
     /// State of the mixer view between frames (the decibel field being typed).
     mixer: grid::MixerState,
     /// Wall-clock time when each history entry was first seen, by the entry's stable id.
@@ -214,6 +217,7 @@ impl GuitarScoreApp {
             shortcuts: None,
             history: None,
             new_track: None,
+            about: None,
             mixer: grid::MixerState::default(),
             history_stamps: HashMap::new(),
             settings,
@@ -531,6 +535,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_shortcuts(&ctx);
         self.show_history(&ctx);
         self.show_new_track_dialog(&ctx);
+        self.show_about(&ctx);
         self.show_shape_editors(&ctx);
         self.show_staff_dialogs(&ctx);
         // Every edit of this frame goes to the recovery journal.

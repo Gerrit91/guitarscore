@@ -8,6 +8,7 @@ name = "guitarscore"
 path = "src/main.rs"
 
 [dependencies]
+gscore-version = { path = "../gscore-version" }
 gscore-model = { path = "../gscore-model" }
 gscore-edit = { path = "../gscore-edit" }
 gscore-layout = { path = "../gscore-layout" }

@@ -1735,6 +1735,7 @@ dependencies = [
  "gscore-model",
  "gscore-play",
  "gscore-session",
+ "gscore-version",
  "image",
  "rfd",
  "serde",
@@ -1765,6 +1766,7 @@ dependencies = [
  "gscore-model",
  "gscore-play",
  "gscore-session",
+ "gscore-version",
 ]
 
 [[package]]
@@ -1832,6 +1834,10 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "gscore-version"
+version = "0.1.0"
 
 [[package]]
 name = "guillotiere"
