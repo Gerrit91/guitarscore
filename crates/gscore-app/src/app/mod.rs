@@ -85,8 +85,11 @@ pub struct GuitarScoreApp {
     dialog: Option<files::Dialog>,
     /// What to do once the save that is running has succeeded.
     after_save: Option<Then>,
-    /// Which tab the save that is running belongs to (to mark it saved).
-    saving_tab: Option<usize>,
+    /// Which tab the save that is running belongs to (to mark it saved). Only one save
+    /// runs at a time: its result does not say which tab it was for.
+    saving_tab: Option<tab::TabId>,
+    /// The id number the next tab gets.
+    next_tab_id: u64,
     /// A window close was deferred: each dirty tab is asked about in turn, then the window
     /// may close.
     closing_window: bool,
@@ -207,6 +210,7 @@ impl GuitarScoreApp {
             dialog: None,
             after_save: None,
             saving_tab: None,
+            next_tab_id: 0,
             closing_window: false,
             may_close: false,
             recovery_dir,

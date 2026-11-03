@@ -15,9 +15,15 @@ use super::grid::{MixerState, RenameTrack};
 use super::new_track::NewTrackDialog;
 use super::track_panel::TrackPanelState;
 
+/// A tab's identity for as long as it is open. Unlike its index, it does not change when
+/// another tab closes, so work that finishes later (a save, a question) finds the right tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct TabId(u64);
+
 /// One open song and the view state that belongs to it.
 #[derive(Debug)]
 pub(super) struct Tab {
+    pub(super) id: TabId,
     pub(super) document: Document,
     /// The shown track (0-based).
     pub(super) track: usize,
@@ -44,9 +50,11 @@ pub(super) struct Tab {
 }
 
 impl Tab {
-    /// A tab for `document`, showing its first track and nothing selected.
-    pub(super) fn new(document: Document) -> Self {
+    /// A tab for `document` with the id number `id`, showing its first track and nothing
+    /// selected.
+    pub(super) fn new(id: u64, document: Document) -> Self {
         Tab {
+            id: TabId(id),
             document,
             track: 0,
             selection: None,

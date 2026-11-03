@@ -13,6 +13,7 @@ use gscore_session::FoundSession;
 
 use super::GuitarScoreApp;
 use super::alert::{AlertIcon, Answer, Reply, alert};
+use super::tab::TabId;
 use crate::document::Document;
 use crate::tasks::{Event, SaveFailure};
 
@@ -26,7 +27,7 @@ const SHOWN_LOSSES: usize = 8;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Then {
     /// Close this tab (after its changes were saved or discarded).
-    CloseTab(usize),
+    CloseTab(TabId),
 }
 
 /// A question for the user.
@@ -82,12 +83,20 @@ impl GuitarScoreApp {
             self.save_settings();
             return;
         }
-        // The same file is being opened right now; it will become a tab shortly.
+        // The same file is being opened right now, or waits its turn: it becomes a tab
+        // shortly.
         if self
             .tasks
             .opening_path()
-            .is_some_and(|opening| same_file(opening, &path))
+            .into_iter()
+            .chain(self.pending_opens.iter().map(PathBuf::as_path))
+            .any(|opening| same_file(opening, &path))
         {
+            return;
+        }
+        // One open at a time: this one starts when the running one is done.
+        if self.tasks.open_progress().is_some() {
+            self.pending_opens.push_back(path);
             return;
         }
         let options = self.settings.recovery_options();
@@ -121,8 +130,12 @@ impl GuitarScoreApp {
         self.open_next_pending(ctx);
     }
 
-    /// Starts the next startup open, or finishes the restore when none is left.
+    /// Starts the next waiting open (the tabs from last time, or files chosen while another
+    /// was opening), or finishes the restore when none is left.
     fn open_next_pending(&mut self, ctx: &egui::Context) {
+        if self.tasks.open_progress().is_some() {
+            return;
+        }
         let options = self.settings.recovery_options();
         while let Some(path) = self.pending_opens.pop_front() {
             // Settings written before this could list the same file twice: only one tab.
@@ -165,18 +178,32 @@ impl GuitarScoreApp {
 
     /// Saves the active tab: to its own file if that is a `.gp` file, otherwise to a new one.
     pub fn save_song(&mut self, ctx: &egui::Context) {
-        if self.document().is_none() {
-            return;
-        }
-        self.save_tab(self.active, ctx);
-    }
-
-    /// Saves `index`'s document, asking for a `.gp` file when it has none.
-    fn save_tab(&mut self, index: usize, ctx: &egui::Context) {
-        let Some(tab) = self.tabs.get(index) else {
+        let Some(id) = self.tabs.get(self.active).map(|tab| tab.id) else {
             return;
         };
-        self.saving_tab = Some(index);
+        self.save_tab(id, None, ctx);
+    }
+
+    /// The index of the tab `id`, if it is still open.
+    fn tab_index(&self, id: TabId) -> Option<usize> {
+        self.tabs.iter().position(|tab| tab.id == id)
+    }
+
+    /// Saves tab `id`'s document, asking for a `.gp` file when it has none, and does `then`
+    /// once it is saved. While another save is running, nothing starts: its result could
+    /// not tell the two apart.
+    fn save_tab(&mut self, id: TabId, then: Option<Then>, ctx: &egui::Context) {
+        let Some(tab) = self.tab_index(id).and_then(|index| self.tabs.get(index)) else {
+            return;
+        };
+        if self.saving_tab.is_some() {
+            self.status =
+                Some("Another save is still running; try again when it is done".to_owned());
+            self.closing_window = false;
+            return;
+        }
+        self.saving_tab = Some(id);
+        self.after_save = then;
         if tab.document.saves_in_place() {
             let path = tab.document.path().to_path_buf();
             self.start_save(path, false, ctx);
@@ -187,10 +214,12 @@ impl GuitarScoreApp {
 
     /// Asks where to save the tab being saved as a `.gp` file.
     pub(super) fn save_as(&mut self, ctx: &egui::Context) {
-        let Some(index) = self.saving_tab else {
-            return;
-        };
-        let Some(tab) = self.tabs.get(index) else {
+        let Some(tab) = self
+            .saving_tab
+            .and_then(|id| self.tab_index(id))
+            .and_then(|index| self.tabs.get(index))
+        else {
+            self.abandon_save();
             return;
         };
         let stem = tab.document.path().file_stem().map_or_else(
@@ -199,8 +228,7 @@ impl GuitarScoreApp {
         );
         if let Err(error) = self.tasks.pick_save_file(format!("{stem}.gp"), ctx) {
             self.notice = Some(error);
-            self.after_save = None;
-            self.saving_tab = None;
+            self.abandon_save();
         }
     }
 
@@ -237,25 +265,36 @@ impl GuitarScoreApp {
 
     /// Saves the tab being saved to `path` in the background.
     fn start_save(&mut self, path: PathBuf, allow_losses: bool, ctx: &egui::Context) {
-        let Some(index) = self.saving_tab else {
-            return;
-        };
-        let Some(tab) = self.tabs.get(index) else {
+        // The tab may have been closed meanwhile (while the file dialog was open).
+        let Some(tab) = self
+            .saving_tab
+            .and_then(|id| self.tab_index(id))
+            .and_then(|index| self.tabs.get(index))
+        else {
+            self.abandon_save();
             return;
         };
         let song = tab.document.song().clone();
         let revision = tab.document.editor().revision();
         if let Err(error) = self.tasks.save(song, path, revision, allow_losses, ctx) {
             self.notice = Some(error);
-            self.after_save = None;
-            self.saving_tab = None;
+            self.abandon_save();
         }
+    }
+
+    /// The save did not happen (cancelled or failed): what waited for it does not happen
+    /// either, and a window close that waited for it is called off (a fresh close asks
+    /// again).
+    fn abandon_save(&mut self) {
+        self.after_save = None;
+        self.saving_tab = None;
+        self.closing_window = false;
     }
 
     /// Handles finished background jobs.
     pub(super) fn handle_events(&mut self, ctx: &egui::Context) {
+        let was_opening = self.tasks.open_progress().is_some();
         for event in self.tasks.poll() {
-            let an_open_finished = matches!(event, Event::Opened { .. } | Event::Failed(_));
             match event {
                 Event::Picked(Some(path)) => self.open(path, ctx),
                 Event::Picked(None) => {}
@@ -296,10 +335,7 @@ impl GuitarScoreApp {
                 Event::PickedSoundFont(Some(path)) => self.playback.use_soundfont(path),
                 Event::PickedSoundFont(None) => {}
                 // Cancelled: whatever was waiting for the save does not happen.
-                Event::PickedSave(None) => {
-                    self.after_save = None;
-                    self.saving_tab = None;
-                }
+                Event::PickedSave(None) => self.abandon_save(),
                 Event::PickedPdf(Some(path)) => {
                     let path = if path
                         .extension()
@@ -323,7 +359,8 @@ impl GuitarScoreApp {
                 } => match result {
                     Ok(message) => {
                         self.settings.last_file = Some(path.clone());
-                        if let Some(index) = self.saving_tab.take()
+                        if let Some(index) =
+                            self.saving_tab.take().and_then(|id| self.tab_index(id))
                             && let Some(tab) = self.tabs.get_mut(index)
                         {
                             tab.document.mark_saved(path, revision);
@@ -338,20 +375,19 @@ impl GuitarScoreApp {
                     }
                     Err(SaveFailure::Other(error)) => {
                         self.notice = Some(format!("Not saved: {error}"));
-                        self.after_save = None;
-                        self.saving_tab = None;
+                        self.abandon_save();
                     }
                 },
                 Event::Failed(error) => {
                     self.notice = Some(error);
-                    self.after_save = None;
-                    self.saving_tab = None;
+                    self.abandon_save();
                 }
             }
-            // Restoring the tabs from last time opens them one after another.
-            if an_open_finished {
-                self.open_next_pending(ctx);
-            }
+        }
+        // The running open is done (opened, failed or cancelled): the next waiting one
+        // starts.
+        if was_opening && self.tasks.open_progress().is_none() {
+            self.open_next_pending(ctx);
         }
     }
 
@@ -359,13 +395,17 @@ impl GuitarScoreApp {
     /// changed tab in turn before letting it close.
     pub(super) fn handle_close_request(&mut self, ctx: &egui::Context) {
         let requested = ctx.input(|i| i.viewport().close_requested());
-        if !requested || self.may_close || self.closing_window {
+        if !requested || self.may_close {
             return;
         }
-        if let Some(index) = self.first_dirty_tab() {
+        if let Some(id) = self.first_dirty_tab() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            // Already asking (or saving for it, or another question is up): just stay open.
+            if self.closing_window || self.dialog.is_some() || self.saving_tab.is_some() {
+                return;
+            }
             self.closing_window = true;
-            self.dialog = Some(Dialog::Unsaved(Then::CloseTab(index)));
+            self.dialog = Some(Dialog::Unsaved(Then::CloseTab(id)));
         } else {
             self.may_close = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -373,8 +413,11 @@ impl GuitarScoreApp {
     }
 
     /// The first tab with unsaved changes, if any.
-    fn first_dirty_tab(&self) -> Option<usize> {
-        self.tabs.iter().position(|tab| tab.document.is_dirty())
+    fn first_dirty_tab(&self) -> Option<TabId> {
+        self.tabs
+            .iter()
+            .find(|tab| tab.document.is_dirty())
+            .map(|tab| tab.id)
     }
 
     /// Makes `document` the active tab.
@@ -383,7 +426,9 @@ impl GuitarScoreApp {
         // Start loading the synthesizer's SoundFont now, not on the first note: it takes
         // seconds, and it does so on its own thread.
         self.playback.preload_synth();
-        self.tabs.push(super::tab::Tab::new(document));
+        let id = self.next_tab_id;
+        self.next_tab_id = self.next_tab_id.wrapping_add(1);
+        self.tabs.push(super::tab::Tab::new(id, document));
         self.active = self.tabs.len() - 1;
     }
 
@@ -393,7 +438,10 @@ impl GuitarScoreApp {
             return;
         };
         if tab.document.is_dirty() {
-            self.dialog = Some(Dialog::Unsaved(Then::CloseTab(index)));
+            // Another question is up (or this tab's save runs): that comes first.
+            if self.dialog.is_none() && self.saving_tab != Some(tab.id) {
+                self.dialog = Some(Dialog::Unsaved(Then::CloseTab(tab.id)));
+            }
         } else {
             self.remove_tab(index);
         }
@@ -426,8 +474,10 @@ impl GuitarScoreApp {
 
     /// Goes on with what waited for unsaved changes to be dealt with.
     pub(super) fn go_on(&mut self, then: Then, ctx: &egui::Context) {
-        let Then::CloseTab(index) = then;
-        self.remove_tab(index);
+        let Then::CloseTab(id) = then;
+        if let Some(index) = self.tab_index(id) {
+            self.remove_tab(index);
+        }
         // Closing the window asks about each dirty tab in turn, then lets it close.
         if self.closing_window {
             if let Some(next) = self.first_dirty_tab() {
@@ -453,10 +503,10 @@ impl GuitarScoreApp {
     }
 
     fn unsaved_dialog(&mut self, ctx: &egui::Context, then: Then) {
-        let Then::CloseTab(index) = then;
+        let Then::CloseTab(id) = then;
         let title = self
-            .tabs
-            .get(index)
+            .tab_index(id)
+            .and_then(|index| self.tabs.get(index))
             .map_or_else(String::new, |tab| tab.document.display_title());
         let reply = alert(
             ctx,
@@ -484,8 +534,7 @@ impl GuitarScoreApp {
         match reply {
             Reply::Answer(2) => {
                 self.dialog = None;
-                self.after_save = Some(then);
-                self.save_tab(index, ctx);
+                self.save_tab(id, Some(then), ctx);
             }
             Reply::Answer(0) => {
                 self.dialog = None;
@@ -540,8 +589,7 @@ impl GuitarScoreApp {
             }
             Reply::Answer(_) | Reply::Closed => {
                 self.dialog = None;
-                self.after_save = None;
-                self.saving_tab = None;
+                self.abandon_save();
             }
             Reply::Open => {}
         }

@@ -2069,3 +2069,29 @@ lifeless):
   plus parent folder, full path on hover; clicking opens it), with an "Open a song" heading
   and a short hint. Tests `the_same_file_is_never_open_in_two_tabs`,
   `the_empty_workspace_suggests_recent_files`.
+
+## 2026-11-03 — Review of the tabs branch: stable tab ids, window close, one open at a time
+
+- Data loss fixed: when a Save started from the window-close question failed (or its
+  Save-As dialog was cancelled), `closing_window` stayed set, so the *next* close request
+  skipped the unsaved-changes check, closed the window, and `on_exit` deleted the recovery
+  journals. Every way a save ends without success now goes through `abandon_save`, which
+  also calls off the pending window close; a close request while a question or save is up
+  just keeps the window open. Test
+  `a_save_that_fails_while_closing_the_window_asks_again_on_the_next_close` (fails before).
+- Tabs now have a stable `TabId`; `Then::CloseTab` and `saving_tab` hold it instead of an
+  index. Before, closing another tab while a save (or its Save-As dialog) was pending
+  shifted the indices: the save could mark the wrong tab saved, or the follow-up "close"
+  could remove a different, unsaved tab without asking.
+- Only one save runs at a time (its result does not say which tab it was for); a second
+  one says so in the status bar instead of mixing the two up. A dirty tab's close question
+  no longer replaces a question that is already up.
+- Opens form a real queue: a file chosen while another opens waits in `pending_opens`
+  (deduplicated) instead of racing it. The queue advances when the running open ends in
+  any way, including Cancel (before, a cancelled open during startup restore stalled the
+  rest of the restore until some later open finished). A panicking open now reports as
+  that open's failure, so the queue cannot stall on it. Test
+  `a_file_chosen_while_another_opens_waits_its_turn`.
+- Note: `cargo xtask ci` runs in the directory baked into the xtask binary
+  (`CARGO_MANIFEST_DIR`); a binary built in another worktree tests that worktree. Touch
+  `xtask/src/main.rs` if the failure paths point elsewhere.

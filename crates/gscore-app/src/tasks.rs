@@ -178,19 +178,28 @@ impl Tasks {
         self.open_cancelled = false;
         let spawned = self.spawn("open", ctx, move || {
             let shared = progress.clone();
-            let result = gscore_session::open_with_progress(
-                &path,
-                |done, total| shared.set(done, total),
-                || shared.cancelled(),
-            )
-            .map(|(imported, bytes)| Opened {
-                song: Box::new(imported.song),
-                format: imported.format,
-                journal: recovery
-                    .map(|root| Journal::start_with_options(&root, Some(&path), &bytes, options))
-                    .transpose(),
-            })
-            .map_err(|e| e.to_string());
+            // A panic still reports as this open's failure, so the open is known to be over
+            // (and the next waiting one can start).
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                gscore_session::open_with_progress(
+                    &path,
+                    |done, total| shared.set(done, total),
+                    || shared.cancelled(),
+                )
+                .map(|(imported, bytes)| Opened {
+                    song: Box::new(imported.song),
+                    format: imported.format,
+                    journal: recovery
+                        .map(|root| {
+                            Journal::start_with_options(&root, Some(&path), &bytes, options)
+                        })
+                        .transpose(),
+                })
+                .map_err(|e| e.to_string())
+            }))
+            .unwrap_or_else(|_| {
+                Err("the open failed unexpectedly; a crash report was written".to_owned())
+            });
             Event::Opened { path, result }
         });
         if spawned.is_err() {
