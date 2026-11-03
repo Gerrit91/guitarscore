@@ -1479,3 +1479,10 @@ and the arc arrows of Loop and Revert ended in smeared strokes.
   use a new `paint_arc_arrow` with a filled head. Undo/redo shafts are level.
 - Checked with an offscreen icon sheet at 2× (large and real size); page snapshots
   regenerated.
+
+## 2026-11-03 — Toolbar: the player no longer covers the panel toggles
+
+- The player was centered on the whole bar regardless of the side groups; with the new-song
+  button the left group reached under it at 1000 px and the track-panel toggle was hidden.
+  It stays centered where there is room and otherwise moves clear of both groups (the left
+  one wins if even that does not fit). Test `the_player_never_covers_the_toolbar_groups`.

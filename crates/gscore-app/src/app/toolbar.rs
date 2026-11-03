@@ -44,7 +44,7 @@ impl GuitarScoreApp {
         let row = Rect::from_min_size(bar.min, vec2(bar.width(), height));
 
         // Left: file, edit, panels.
-        ui.scope_builder(
+        let left = ui.scope_builder(
             UiBuilder::new()
                 .max_rect(row)
                 .layout(Layout::left_to_right(Align::Center)),
@@ -57,9 +57,10 @@ impl GuitarScoreApp {
                 }
             },
         );
+        let left_end = left.response.rect.right();
 
         // Right: settings rightmost, zoom before it (laid out right to left).
-        ui.scope_builder(
+        let right = ui.scope_builder(
             UiBuilder::new()
                 .max_rect(row)
                 .layout(Layout::right_to_left(Align::Center)),
@@ -74,6 +75,7 @@ impl GuitarScoreApp {
                 self.zoom(ui);
             },
         );
+        let right_start = right.response.rect.left();
 
         // Middle: the player, centered on the whole bar. Its width comes from the last
         // frame (egui lays out in one pass).
@@ -81,7 +83,15 @@ impl GuitarScoreApp {
         let width = ui
             .data(|data| data.get_temp::<f32>(id))
             .unwrap_or(PLAYER_WIDTH);
-        let player = Rect::from_center_size(row.center(), vec2(width, height));
+        // Centered on the whole bar where there is room; otherwise moved clear of the side
+        // groups (the left one wins when even that does not fit).
+        let gap = 8.0;
+        let centered = row.center().x - width / 2.0;
+        let x = centered.min(right_start - gap - width).max(left_end + gap);
+        let player = Rect::from_min_size(
+            egui::pos2(x, row.center().y - height / 2.0),
+            vec2(width, height),
+        );
         let drawn = ui.scope_builder(
             UiBuilder::new()
                 .max_rect(player)

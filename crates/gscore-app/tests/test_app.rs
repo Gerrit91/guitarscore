@@ -1368,3 +1368,19 @@ fn the_master_rows_mute_and_solo_line_up_with_the_tracks() {
         "the master row is below"
     );
 }
+
+#[test]
+fn the_player_never_covers_the_toolbar_groups() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    harness.run();
+    let panels = harness.get_by_label("Show track panel").rect();
+    let start = harness.get_by_label("Go to start").rect();
+    let history = harness.get_by_label("History").rect();
+    let settings = harness.get_by_label("Settings").rect();
+    assert!(
+        start.left() >= panels.right(),
+        "{start:?} overlaps {panels:?}"
+    );
+    assert!(history.left() > start.right());
+    assert!(settings.left() > history.right());
+}
