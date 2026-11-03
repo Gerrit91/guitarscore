@@ -1462,3 +1462,20 @@ of `(v / 127)²`, and the master multiplies every track's volume by `master / 97
   place theirs from the right-hand mixer controls, so the two columns only met at one
   panel width. Both now use `mixer::mute_rect`/`solo_rect`. Test
   `the_master_rows_mute_and_solo_line_up_with_the_tracks`; snapshots regenerated.
+
+## 2026-11-03 — Icons redrawn for their real size
+
+The toolbar draws icons in a 14×10 box (10 px high). Rendered at that size, several from the
+app-shell follow-up did not read: Open looked like a paper clip, Save was stretched to the
+box's width (a battery rather than a floppy), New song's plus stuck out of the page, Grid's
+cells became four dots, the metronome's weight was a blob and Count-in squeezed it to 7 px,
+and the arc arrows of Loop and Revert ended in smeared strokes.
+
+- Open is an open folder (back with tab, front flap tilted forward); Save a square floppy
+  with a cut corner, shutter and label; New song a page with a folded corner and a plus on
+  it; Grid a 2×2 table; the metronome has a thin pendulum with a small round weight, full
+  height in Count-in too.
+- Loop is two arrows chasing round a circle (repeat), Revert one arrow turning back; both
+  use a new `paint_arc_arrow` with a filled head. Undo/redo shafts are level.
+- Checked with an offscreen icon sheet at 2× (large and real size); page snapshots
+  regenerated.
