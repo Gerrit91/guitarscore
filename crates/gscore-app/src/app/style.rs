@@ -197,6 +197,82 @@ pub(crate) fn canvas_frame(ctx: &egui::Context) -> Frame {
         .inner_margin(Margin::same(0))
 }
 
+/// The frame of one of the app's own (floating) windows: panel fill, a thin edge and no
+/// inner margin, so the title bar spans the full width.
+pub(crate) fn window_frame(ctx: &egui::Context) -> Frame {
+    let tokens = context_tokens(ctx);
+    Frame::new()
+        .fill(tokens.panel)
+        .stroke(Stroke::new(1.0, tokens.line))
+        .inner_margin(Margin::same(0))
+}
+
+/// Where a floating window of `size` starts: centered in the app.
+pub(crate) fn centered_window_pos(ctx: &egui::Context, size: egui::Vec2) -> egui::Pos2 {
+    let screen = ctx.content_rect();
+    egui::pos2(
+        screen.center().x - size.x / 2.0,
+        screen.center().y - size.y / 2.0,
+    )
+}
+
+/// The title bar of one of the app's own windows, styled like the main title bar (same
+/// height and chrome color). Dragging it moves the window via `pos`; returns whether the
+/// close button was clicked.
+pub(crate) fn window_title_bar(
+    ui: &mut egui::Ui,
+    title: &str,
+    pos: &mut Option<egui::Pos2>,
+) -> bool {
+    let tokens = context_tokens(ui.ctx());
+    let width = ui.available_width();
+    let (rect, response) = ui.allocate_exact_size(
+        vec2(width, super::title_bar::TITLE_BAR_HEIGHT),
+        egui::Sense::click_and_drag(),
+    );
+    let painter = ui.painter().clone();
+    painter.rect_filled(rect, 0.0, tokens.chrome);
+    let close_rect =
+        egui::Rect::from_min_max(egui::pos2(rect.right() - 34.0, rect.top()), rect.max);
+    let title_rect =
+        egui::Rect::from_min_max(rect.min, egui::pos2(close_rect.left(), rect.bottom()));
+    painter.text(
+        title_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        title,
+        FontId::new(13.0, FontFamily::Name(BOLD.into())),
+        tokens.text,
+    );
+    if response.dragged_by(egui::PointerButton::Primary)
+        && let Some(position) = pos
+    {
+        *position += response.drag_delta();
+        ui.ctx().request_repaint();
+    }
+    let close = ui.interact(
+        close_rect,
+        ui.scope_id().with("window_close"),
+        egui::Sense::click(),
+    );
+    if close.hovered() {
+        painter.rect_filled(
+            close_rect,
+            0.0,
+            Color32::from_rgb(0xD9, 0x3A, 0x3A).gamma_multiply(0.65),
+        );
+    }
+    let ink = if close.hovered() {
+        Color32::WHITE
+    } else {
+        tokens.text_weak
+    };
+    let cross = Stroke::new(1.3, ink);
+    let cross_rect = close_rect.shrink(12.0);
+    painter.line_segment([cross_rect.left_top(), cross_rect.right_bottom()], cross);
+    painter.line_segment([cross_rect.right_top(), cross_rect.left_bottom()], cross);
+    close.clicked()
+}
+
 /// A titled section of a panel that can be folded away; its content is indented by the
 /// panel's margin. The title is small, bold and muted, like a property-sheet group.
 pub(crate) fn section<R>(

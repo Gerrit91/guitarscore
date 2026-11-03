@@ -21,11 +21,13 @@ pub struct Editor {
     song: Song,
     /// Oldest first; a deque so trimming at the limit is cheap.
     undo: VecDeque<Applied>,
-    redo: Vec<Command>,
+    redo: Vec<Redone>,
     history_limit: usize,
     /// The most the undo history may take, and what it takes now (estimated bytes).
     history_bytes_limit: usize,
     history_bytes: usize,
+    /// Next history-entry id (ids are never reused).
+    next_id: u64,
     /// Set by [`Editor::break_merge`]: the next command starts a new undo entry even if it
     /// would otherwise continue the previous one.
     merge_barrier: bool,
@@ -36,6 +38,28 @@ pub struct Editor {
 struct Applied {
     command: Command,
     change: Change,
+    /// Identifies this history entry across undo and redo, so the app can attach a
+    /// timestamp without the core crates needing a clock.
+    id: u64,
+}
+
+/// One undone command, waiting to be redone.
+#[derive(Debug)]
+struct Redone {
+    command: Command,
+    /// The history entry's id (the same it had when it was applied).
+    id: u64,
+}
+
+/// One row of the edit history, as the app shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryEntry {
+    /// Stable id across undo and redo, for an external timestamp.
+    pub id: u64,
+    /// The command's short label.
+    pub label: &'static str,
+    /// Its arguments in a readable form.
+    pub details: String,
 }
 
 /// Why an edit did not happen.
@@ -102,6 +126,7 @@ impl Editor {
             history_limit,
             history_bytes_limit: DEFAULT_HISTORY_BYTES,
             history_bytes: 0,
+            next_id: 1,
             merge_barrier: false,
         }
     }
@@ -144,6 +169,61 @@ impl Editor {
         self.undo.len()
     }
 
+    /// Number of edits that can be redone.
+    pub fn redo_depth(&self) -> usize {
+        self.redo.len()
+    }
+
+    /// The commands that can be undone, oldest first.
+    pub fn undo_commands(&self) -> impl DoubleEndedIterator<Item = &Command> {
+        self.undo.iter().map(|applied| &applied.command)
+    }
+
+    /// The commands that can be redone, in the order they would be redone.
+    pub fn redo_commands(&self) -> impl DoubleEndedIterator<Item = &Command> {
+        self.redo.iter().rev().map(|redone| &redone.command)
+    }
+
+    /// The undo entries with their stable ids, oldest first.
+    pub fn undo_entries(&self) -> impl DoubleEndedIterator<Item = (u64, &Command)> {
+        self.undo
+            .iter()
+            .map(|applied| (applied.id, &applied.command))
+    }
+
+    /// The redo entries with their stable ids, in the order they would be redone.
+    pub fn redo_entries(&self) -> impl DoubleEndedIterator<Item = (u64, &Command)> {
+        self.redo
+            .iter()
+            .rev()
+            .map(|redone| (redone.id, &redone.command))
+    }
+
+    /// The undo history as rows for the history table, oldest first.
+    pub fn undo_history(&self) -> Vec<HistoryEntry> {
+        self.undo
+            .iter()
+            .map(|applied| HistoryEntry {
+                id: applied.id,
+                label: applied.command.label(),
+                details: applied.command.details(),
+            })
+            .collect()
+    }
+
+    /// The redo history as rows for the history table, in the order they would be redone.
+    pub fn redo_history(&self) -> Vec<HistoryEntry> {
+        self.redo
+            .iter()
+            .rev()
+            .map(|redone| HistoryEntry {
+                id: redone.id,
+                label: redone.command.label(),
+                details: redone.command.details(),
+            })
+            .collect()
+    }
+
     /// Marks the end of a slider drag: the next command starts a new undo entry, even if it
     /// changes the same volume or pan again.
     pub fn break_merge(&mut self) {
@@ -181,7 +261,16 @@ impl Editor {
                     last.command = command;
                     return Ok(true);
                 }
-                self.push_undo(Applied { command, change });
+                let id = self.next_id;
+                self.next_id = self.next_id.wrapping_add(1);
+                if self.next_id == 0 {
+                    self.next_id = 1;
+                }
+                self.push_undo(Applied {
+                    command,
+                    change,
+                    id,
+                });
                 Ok(false)
             }
         }
@@ -200,25 +289,29 @@ impl Editor {
             .history_bytes
             .saturating_sub(applied.change.size_estimate());
         let command = applied.command;
-        self.redo.push(command.clone());
+        self.redo.push(Redone {
+            command: command.clone(),
+            id: applied.id,
+        });
         Ok(Some(command))
     }
 
     /// Re-applies the last undone edit and returns its command. A new edit clears the redo
     /// stack.
     pub fn redo(&mut self) -> Result<Option<Command>, EditError> {
-        let command = self.redo.pop().ok_or(EditError::NothingToRedo)?;
-        match command.apply(&mut self.song) {
+        let redone = self.redo.pop().ok_or(EditError::NothingToRedo)?;
+        match redone.command.apply(&mut self.song) {
             Ok(change) => {
                 self.push_undo(Applied {
-                    command: command.clone(),
+                    command: redone.command.clone(),
                     change,
+                    id: redone.id,
                 });
-                Ok(Some(command))
+                Ok(Some(redone.command))
             }
             Err(error) => {
                 // Put it back: the song is unchanged, so it can still be redone.
-                self.redo.push(command);
+                self.redo.push(redone);
                 Err(EditError::Model(error))
             }
         }

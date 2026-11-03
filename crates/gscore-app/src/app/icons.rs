@@ -14,10 +14,30 @@ pub(crate) enum Icon {
     Stop,
     /// Metronome.
     Metronome,
-    /// Count-in (a clock-wise arrow with a play sign).
+    /// Count-in (a metronome followed by a play sign).
     CountIn,
-    /// Save (a downward arrow into a tray).
+    /// Loop (a circular arrow with a play sign).
+    Loop,
+    /// Go to the top of the score (a bar and a left-pointing triangle).
+    ToStart,
+    /// One bar back (two left-pointing triangles).
+    PreviousBar,
+    /// One bar forward (two right-pointing triangles).
+    NextBar,
+    /// Go to the end of the score (a right-pointing triangle and a bar).
+    ToEnd,
+    /// Save (a floppy disk).
     Save,
+    /// A new song (a page with a plus).
+    NewSong,
+    /// Restore a default (a counter-clockwise arrow).
+    Revert,
+    /// The edit history (a clock).
+    History,
+    /// The mixer view (fader strips).
+    Mixer,
+    /// The measure grid (a 2x2 grid).
+    Grid,
     /// Open (a folder).
     Open,
     /// Undo (an arrow curving left).
@@ -139,36 +159,25 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             );
         }
         Icon::Metronome => {
-            let bottom = rect.bottom() - size * 0.08;
-            let top = rect.top() + size * 0.14;
-            let half_bottom = size * 0.34;
-            let half_top = size * 0.18;
-            painter.add(egui::Shape::convex_polygon(
-                vec![
-                    egui::pos2(center.x - half_bottom, bottom),
-                    egui::pos2(center.x - half_top, top),
-                    egui::pos2(center.x + half_top, top),
-                    egui::pos2(center.x + half_bottom, bottom),
-                ],
-                Color32::TRANSPARENT,
-                stroke,
-            ));
-            painter.line_segment(
-                [
-                    egui::pos2(center.x, bottom - size * 0.04),
-                    egui::pos2(center.x - size * 0.2, top + size * 0.18),
-                ],
-                stroke,
-            );
-            painter.line_segment(
-                [
-                    egui::pos2(center.x - size * 0.24, top + size * 0.14),
-                    egui::pos2(center.x - size * 0.12, top + size * 0.26),
-                ],
-                Stroke::new(2.5, color),
-            );
+            paint_metronome(painter, center, size, color);
         }
         Icon::CountIn => {
+            // A metronome, then a play sign: click a bar, then start.
+            paint_metronome(
+                painter,
+                egui::pos2(rect.left() + size * 0.34, center.y),
+                size * 0.72,
+                color,
+            );
+            paint_triangle(
+                painter,
+                egui::pos2(rect.right() - size * 0.22, center.y),
+                size * 0.2,
+                true,
+                color,
+            );
+        }
+        Icon::Loop => {
             let radius = size * 0.44;
             let start = std::f32::consts::FRAC_PI_2;
             let sweep = std::f32::consts::PI * 1.5;
@@ -203,50 +212,196 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 Stroke::NONE,
             ));
         }
-        Icon::Save => {
-            let arrow = rect.shrink(size * 0.2);
+        Icon::ToStart => {
+            let x = rect.left() + size * 0.22;
             painter.line_segment(
                 [
-                    Pos2::new(center.x, arrow.top()),
-                    Pos2::new(center.x, arrow.bottom()),
+                    egui::pos2(x, rect.top() + size * 0.1),
+                    egui::pos2(x, rect.bottom() - size * 0.1),
                 ],
                 stroke,
             );
-            painter.line_segment(
-                [
-                    Pos2::new(arrow.left(), center.y),
-                    Pos2::new(center.x, arrow.bottom()),
-                ],
-                stroke,
+            paint_triangle(
+                painter,
+                egui::pos2(rect.left() + size * 0.6, center.y),
+                size * 0.3,
+                false,
+                color,
             );
-            painter.line_segment(
-                [
-                    Pos2::new(arrow.right(), center.y),
-                    Pos2::new(center.x, arrow.bottom()),
-                ],
-                stroke,
+        }
+        Icon::PreviousBar => {
+            for offset in [-size * 0.22, size * 0.22] {
+                paint_triangle(
+                    painter,
+                    center + vec2(offset, 0.0),
+                    size * 0.24,
+                    false,
+                    color,
+                );
+            }
+        }
+        Icon::NextBar => {
+            for offset in [-size * 0.22, size * 0.22] {
+                paint_triangle(
+                    painter,
+                    center + vec2(offset, 0.0),
+                    size * 0.24,
+                    true,
+                    color,
+                );
+            }
+        }
+        Icon::ToEnd => {
+            paint_triangle(
+                painter,
+                egui::pos2(rect.right() - size * 0.6, center.y),
+                size * 0.3,
+                true,
+                color,
             );
+            let x = rect.right() - size * 0.22;
             painter.line_segment(
                 [
-                    Pos2::new(rect.left(), rect.bottom()),
-                    Pos2::new(rect.right(), rect.bottom()),
+                    egui::pos2(x, rect.top() + size * 0.1),
+                    egui::pos2(x, rect.bottom() - size * 0.1),
                 ],
                 stroke,
             );
         }
-        Icon::Open => {
-            let folder = Rect::from_center_size(
-                center + vec2(0.0, size * 0.08),
-                vec2(size * 0.95, size * 0.65),
+        Icon::Save => {
+            // A floppy disk: body, the shutter at the top and the label at the bottom.
+            let body = rect.shrink(size * 0.08);
+            painter.rect_stroke(body, 2.0, stroke, egui::StrokeKind::Inside);
+            let shutter = Rect::from_min_size(
+                egui::pos2(body.left() + size * 0.22, body.top()),
+                vec2(size * 0.34, size * 0.3),
             );
-            painter.rect_stroke(folder, 2.0, stroke, egui::StrokeKind::Inside);
+            painter.rect_filled(shutter, 0.0, color);
+            let label = Rect::from_min_size(
+                egui::pos2(body.left() + size * 0.16, body.bottom() - size * 0.34),
+                vec2(size * 0.52, size * 0.28),
+            );
+            painter.rect_filled(label, 1.0, color);
+        }
+        Icon::NewSong => {
+            let page = Rect::from_center_size(
+                center + vec2(-size * 0.08, 0.0),
+                vec2(size * 0.62, size * 0.9),
+            );
+            painter.rect_stroke(page, 1.0, stroke, egui::StrokeKind::Inside);
+            // The folded corner.
             painter.line_segment(
                 [
-                    Pos2::new(folder.left(), folder.top()),
-                    Pos2::new(folder.left() + size * 0.35, folder.top() - size * 0.18),
+                    egui::pos2(page.right() - size * 0.24, page.top()),
+                    egui::pos2(page.right() - size * 0.24, page.top() + size * 0.24),
                 ],
                 stroke,
             );
+            painter.line_segment(
+                [
+                    egui::pos2(page.right() - size * 0.24, page.top() + size * 0.24),
+                    egui::pos2(page.right(), page.top() + size * 0.24),
+                ],
+                stroke,
+            );
+            // A plus at the lower right.
+            let plus = egui::pos2(page.right() + size * 0.16, page.bottom() - size * 0.1);
+            painter.line_segment(
+                [plus - vec2(size * 0.16, 0.0), plus + vec2(size * 0.16, 0.0)],
+                stroke,
+            );
+            painter.line_segment(
+                [plus - vec2(0.0, size * 0.16), plus + vec2(0.0, size * 0.16)],
+                stroke,
+            );
+        }
+        Icon::Revert => {
+            let radius = size * 0.38;
+            let start = -std::f32::consts::FRAC_PI_2;
+            let sweep = -std::f32::consts::PI * 1.5;
+            let points: Vec<Pos2> = (0..=16)
+                .map(|step| {
+                    let angle = start + sweep * (step as f32) / 16.0;
+                    center + Vec2::angled(angle) * radius
+                })
+                .collect();
+            painter.add(egui::Shape::line(points, stroke));
+            let angle = start + sweep;
+            let tip = center + Vec2::angled(angle) * radius;
+            let direction = Vec2::angled(angle);
+            let tangent = Vec2::new(-direction.y, direction.x);
+            painter.line_segment(
+                [tip, tip - tangent * (size * 0.2) + direction * (size * 0.1)],
+                stroke,
+            );
+            painter.line_segment(
+                [tip, tip - tangent * (size * 0.2) - direction * (size * 0.1)],
+                stroke,
+            );
+        }
+        Icon::History => {
+            painter.circle_stroke(center, size * 0.42, stroke);
+            // Clock hands: one to the top, one to the right.
+            painter.line_segment([center, center + vec2(0.0, -size * 0.28)], stroke);
+            painter.line_segment([center, center + vec2(size * 0.22, size * 0.08)], stroke);
+            painter.circle_filled(center, size * 0.06, color);
+        }
+        Icon::Mixer => {
+            for (index, offset) in [-0.28_f32, 0.0, 0.28].into_iter().enumerate() {
+                let x = center.x + offset * size;
+                painter.line_segment(
+                    [
+                        egui::pos2(x, rect.top() + size * 0.12),
+                        egui::pos2(x, rect.bottom() - size * 0.12),
+                    ],
+                    stroke,
+                );
+                let knob_y = match index {
+                    0 => rect.top() + size * 0.34,
+                    1 => rect.top() + size * 0.62,
+                    _ => rect.top() + size * 0.46,
+                };
+                painter.rect_filled(
+                    Rect::from_center_size(egui::pos2(x, knob_y), vec2(size * 0.24, size * 0.1)),
+                    1.0,
+                    color,
+                );
+            }
+        }
+        Icon::Grid => {
+            let cell = size * 0.34;
+            for dx in [-1.0_f32, 1.0] {
+                for dy in [-1.0_f32, 1.0] {
+                    painter.rect_stroke(
+                        Rect::from_center_size(
+                            center + vec2(dx * cell * 0.62, dy * cell * 0.62),
+                            vec2(cell, cell),
+                        ),
+                        1.0,
+                        stroke,
+                        egui::StrokeKind::Inside,
+                    );
+                }
+            }
+        }
+        Icon::Open => {
+            // A folder: its body and a tab along the top left.
+            let body = Rect::from_min_max(
+                egui::pos2(rect.left() + size * 0.06, center.y - size * 0.12),
+                egui::pos2(rect.right() - size * 0.06, rect.bottom() - size * 0.08),
+            );
+            painter.rect_stroke(body, 2.0, stroke, egui::StrokeKind::Inside);
+            let tab_top = body.top() - size * 0.14;
+            painter.add(egui::Shape::line(
+                vec![
+                    egui::pos2(body.left(), body.top()),
+                    egui::pos2(body.left(), tab_top + size * 0.06),
+                    egui::pos2(body.left() + size * 0.08, tab_top),
+                    egui::pos2(body.left() + size * 0.4, tab_top),
+                    egui::pos2(body.left() + size * 0.48, body.top()),
+                ],
+                stroke,
+            ));
         }
         Icon::Undo | Icon::Redo => {
             let right = matches!(icon, Icon::Redo);
@@ -396,4 +551,51 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             painter.rect_filled(part, 1.5, color);
         }
     }
+}
+
+/// A metronome body with its pendulum, centered on `center` at `size`.
+fn paint_metronome(painter: &Painter, center: Pos2, size: f32, color: Color32) {
+    let stroke = Stroke::new(1.5, color);
+    let bottom = center.y + size * 0.42;
+    let top = center.y - size * 0.36;
+    let half_bottom = size * 0.34;
+    let half_top = size * 0.18;
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(center.x - half_bottom, bottom),
+            egui::pos2(center.x - half_top, top),
+            egui::pos2(center.x + half_top, top),
+            egui::pos2(center.x + half_bottom, bottom),
+        ],
+        Color32::TRANSPARENT,
+        stroke,
+    ));
+    painter.line_segment(
+        [
+            egui::pos2(center.x, bottom - size * 0.04),
+            egui::pos2(center.x - size * 0.2, top + size * 0.18),
+        ],
+        stroke,
+    );
+    painter.line_segment(
+        [
+            egui::pos2(center.x - size * 0.24, top + size * 0.14),
+            egui::pos2(center.x - size * 0.12, top + size * 0.26),
+        ],
+        Stroke::new(2.5, color),
+    );
+}
+
+/// A filled triangle centered on `center`; `right` points it right, else left.
+fn paint_triangle(painter: &Painter, center: Pos2, half: f32, right: bool, color: Color32) {
+    let direction = if right { 1.0 } else { -1.0 };
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            center + vec2(-direction * half, -half),
+            center + vec2(direction * half, 0.0),
+            center + vec2(-direction * half, half),
+        ],
+        color,
+        Stroke::NONE,
+    ));
 }

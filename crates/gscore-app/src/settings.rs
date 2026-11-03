@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use gscore_edit::{ActionId, Key, KeyCombo, Keymap};
 use gscore_session::{RecoveryOptions, SNAPSHOT_EVERY};
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +13,8 @@ use crate::state::{ViewState, ZOOM_RANGE};
 
 /// How many recent files the File menu remembers.
 pub const MAX_RECENT_FILES: usize = 10;
+/// Most stored shortcuts accepted from the settings file.
+const MAX_KEY_BINDINGS: usize = 1024;
 /// Default interval between recovery snapshots, in seconds.
 pub const DEFAULT_AUTOSAVE_SECONDS: u64 = 60;
 
@@ -52,6 +55,16 @@ impl WindowState {
     }
 }
 
+/// One stored shortcut: a key combination and the action it runs. Plain data, so the
+/// keymap lives in the settings file instead of a separate text file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyBindingSetting {
+    /// The key combination as written (`ctrl+z`, `Left`, `+`, ...).
+    pub key: String,
+    /// The action id.
+    pub action: String,
+}
+
 /// Everything the app remembers between runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -62,6 +75,8 @@ pub struct Settings {
     pub zoom: f32,
     /// Whether the song grid (bottom panel) is shown.
     pub show_track_grid: bool,
+    /// Whether the bottom panel shows the mixer instead of the measure grid.
+    pub grid_mixer: bool,
     /// Whether the track panel (right panel) is shown.
     pub show_track_panel: bool,
     /// Whether the edit palette (left panel) is shown.
@@ -69,6 +84,8 @@ pub struct Settings {
     /// Height the song grid was dragged to; `None`: it follows the number of tracks. (The
     /// key is new: the old `grid_height_chosen` held whatever the panel happened to be.)
     pub grid_height_chosen: Option<f32>,
+    /// Height the mixer view was dragged to; `None` uses its default.
+    pub mixer_height_chosen: Option<f32>,
     /// Width of the track panel, as last dragged.
     pub track_panel_width: Option<f32>,
     /// Width of the edit palette, as last dragged.
@@ -83,6 +100,9 @@ pub struct Settings {
     pub last_file: Option<PathBuf>,
     /// The keymap file, if the user chose one.
     pub keymap_path: Option<PathBuf>,
+    /// The shortcuts last saved from the shortcut editor; `None` uses the built-in keymap
+    /// (or a keymap file chosen by an older version).
+    pub keymap_bindings: Option<Vec<KeyBindingSetting>>,
     /// Seconds between recovery snapshots; 0 means only by edit count.
     pub autosave_seconds: u64,
     /// The SoundFont chosen for the built-in synthesizer, if any.
@@ -99,9 +119,11 @@ impl Default for Settings {
             theme: crate::state::ThemeChoice::Light,
             zoom: 1.0,
             show_track_grid: true,
+            grid_mixer: false,
             show_track_panel: true,
             show_edit_panel: true,
             grid_height_chosen: None,
+            mixer_height_chosen: None,
             track_panel_width: None,
             edit_panel_width: None,
             window: None,
@@ -109,6 +131,7 @@ impl Default for Settings {
             reopen_last_file: true,
             last_file: None,
             keymap_path: None,
+            keymap_bindings: None,
             autosave_seconds: DEFAULT_AUTOSAVE_SECONDS,
             soundfont_path: None,
             prefer_synth: true,
@@ -130,6 +153,7 @@ impl Settings {
         self.theme = view.theme;
         self.zoom = view.zoom();
         self.show_track_grid = view.show_track_grid;
+        self.grid_mixer = view.grid_mixer;
         self.show_track_panel = view.show_track_panel;
         self.show_edit_panel = view.show_edit_panel;
     }
@@ -139,6 +163,7 @@ impl Settings {
         view.theme = self.theme;
         view.set_zoom(self.zoom);
         view.show_track_grid = self.show_track_grid;
+        view.grid_mixer = self.grid_mixer;
         view.show_track_panel = self.show_track_panel;
         view.show_edit_panel = self.show_edit_panel;
     }
@@ -162,6 +187,40 @@ impl Settings {
         }
     }
 
+    /// The shortcuts stored in the settings, if the user changed them. `None` means the
+    /// built-in keymap; an error leaves the caller with the fallback keymap and a message.
+    pub fn custom_keymap(&self) -> Option<Result<Keymap, String>> {
+        let bindings = self.keymap_bindings.as_ref()?;
+        let mut parsed = Vec::with_capacity(bindings.len());
+        let mut errors = Vec::new();
+        for binding in bindings {
+            let Some(action) = ActionId::from_id(&binding.action) else {
+                errors.push(format!("unknown action `{}`", binding.action));
+                continue;
+            };
+            let combo = match KeyCombo::parse(&binding.key) {
+                Ok(combo) => combo,
+                Err(error) => {
+                    errors.push(format!("`{}`: {error}", binding.key));
+                    continue;
+                }
+            };
+            if action == ActionId::EnterFret && !matches!(combo.key(), Key::Char('0'..='9')) {
+                errors.push(format!("enter_fret needs a digit key, not `{combo}`"));
+                continue;
+            }
+            parsed.push((combo, action));
+        }
+        if errors.is_empty() {
+            Some(Ok(Keymap::from_bindings(parsed)))
+        } else {
+            Some(Err(format!(
+                "The stored shortcuts are not usable: {}",
+                errors.join("; ")
+            )))
+        }
+    }
+
     /// Makes the loaded values safe: finite zoom and sizes, a sane autosave interval, and
     /// no nonsense window rectangles.
     pub fn sanitize(&mut self) {
@@ -173,6 +232,11 @@ impl Settings {
             && !(height.is_finite() && height > 0.0)
         {
             self.grid_height_chosen = None;
+        }
+        if let Some(height) = self.mixer_height_chosen
+            && !(height.is_finite() && height > 0.0)
+        {
+            self.mixer_height_chosen = None;
         }
         if let Some(width) = self.track_panel_width
             && !(width.is_finite() && width > 0.0)
@@ -191,6 +255,16 @@ impl Settings {
             self.autosave_seconds = DEFAULT_AUTOSAVE_SECONDS;
         }
         self.recent_files.truncate(MAX_RECENT_FILES);
+        if let Some(bindings) = &mut self.keymap_bindings {
+            // A hostile or broken file cannot make the keymap editor huge.
+            bindings.truncate(MAX_KEY_BINDINGS);
+            bindings.retain(|binding| {
+                binding.key.len() <= 64
+                    && binding.action.len() <= 64
+                    && !binding.key.is_empty()
+                    && !binding.action.is_empty()
+            });
+        }
     }
 }
 
@@ -240,6 +314,32 @@ mod tests {
     }
 
     #[test]
+    fn stored_shortcuts_are_parsed_and_bad_ones_are_reported() {
+        let mut settings = Settings {
+            keymap_bindings: Some(vec![KeyBindingSetting {
+                key: "ctrl+k".to_owned(),
+                action: "copy".to_owned(),
+            }]),
+            ..Settings::default()
+        };
+        let keymap = settings
+            .custom_keymap()
+            .expect("some bindings")
+            .expect("valid bindings");
+        assert_eq!(
+            keymap.keys_for(ActionId::Copy),
+            [KeyCombo::parse("ctrl+k").expect("a valid combo")]
+        );
+
+        settings.keymap_bindings = Some(vec![KeyBindingSetting {
+            key: "ctrl+k".to_owned(),
+            action: "no_such_action".to_owned(),
+        }]);
+        assert!(settings.custom_keymap().expect("some bindings").is_err());
+        assert!(Settings::default().custom_keymap().is_none());
+    }
+
+    #[test]
     fn the_autosave_interval_sets_the_snapshot_interval() {
         let mut settings = Settings::default();
         assert_eq!(
@@ -255,6 +355,10 @@ mod tests {
         let mut settings = Settings::default();
         settings.add_recent(PathBuf::from("/tabs/song.gp"));
         settings.keymap_path = Some(PathBuf::from("/keys/keymap.txt"));
+        settings.keymap_bindings = Some(vec![KeyBindingSetting {
+            key: "ctrl+k".to_owned(),
+            action: "copy".to_owned(),
+        }]);
         settings.grid_height_chosen = Some(180.0);
         settings.window = Some(WindowState {
             x: 10.0,

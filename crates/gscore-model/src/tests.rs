@@ -744,3 +744,17 @@ fn differences_include_note_and_beat_effects() {
     );
     assert!(text[2].ends_with("palm mute false became true"), "{text:?}");
 }
+
+#[test]
+fn a_new_score_has_one_track_and_one_filled_measure() {
+    let song = Song::new_score().expect("a new score");
+    assert_eq!(song.track_count(), 1);
+    assert_eq!(song.measure_count(), 1);
+    let track = song.track(TrackIndex::new(0)).expect("a track");
+    assert_eq!(track.string_count(), 6);
+    let measure = track.measure(MeasureIndex::new(0)).expect("a measure");
+    assert_eq!(measure.time_signature().unwrap().numerator(), 4);
+    let voice = measure.voice(VoiceIndex::new(0)).expect("a voice");
+    assert_eq!(voice.total_duration().unwrap(), d(1, 1), "a full 4/4 bar");
+    assert!(!measure.has_notes());
+}

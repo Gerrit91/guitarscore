@@ -539,6 +539,26 @@ fn decode_text_value(
     String::from_utf8(bytes).map_err(|_| bad(command, name, text, expected))
 }
 
+/// Decodes a text written by [`encode_text`], for display (for example in the history
+/// table). `None` if `text` is not an encoded value or is malformed.
+pub(crate) fn decode_text(text: &str) -> Option<String> {
+    let encoded = text.strip_prefix(ENCODED)?;
+    let mut bytes = Vec::with_capacity(encoded.len());
+    let mut rest = encoded.as_bytes();
+    while let Some((&byte, after)) = rest.split_first() {
+        if byte == b'%' {
+            let hex = after.get(..2)?;
+            let value = u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok()?;
+            bytes.push(value);
+            rest = after.get(2..)?;
+        } else {
+            bytes.push(byte);
+            rest = after;
+        }
+    }
+    String::from_utf8(bytes).ok()
+}
+
 /// The `numerator` parameter: beats per measure.
 fn numerator_arg(args: &mut Args) -> Result<u8, ParseError> {
     let text = args.required("numerator")?;

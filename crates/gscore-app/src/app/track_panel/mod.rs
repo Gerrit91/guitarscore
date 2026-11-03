@@ -5,6 +5,8 @@
 mod look;
 mod tuning;
 
+pub(crate) use look::PRESETS;
+
 use egui::RichText;
 use gscore_edit::Command;
 use gscore_model::{

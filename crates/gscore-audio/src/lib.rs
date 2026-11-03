@@ -15,7 +15,9 @@ pub mod testing;
 mod transport;
 
 pub use midi_out::{MidiOutPlayer, midi_output_ports};
-pub use soundfont::{SOUNDFONT_ENV, find_soundfont, find_soundfont_in};
+pub use soundfont::{
+    SOUNDFONT_ENV, available_soundfonts, available_soundfonts_in, find_soundfont, find_soundfont_in,
+};
 pub use synth::{BLOCK, SoundBank, SynthEngine};
 pub use synth_player::SynthPlayer;
 

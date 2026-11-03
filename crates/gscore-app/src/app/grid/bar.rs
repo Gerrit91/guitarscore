@@ -30,6 +30,16 @@ pub(super) fn header(
     };
     let mut bar = ui.new_child(egui::UiBuilder::new().max_rect(rect));
     bar.scope_builder(egui::UiBuilder::new().max_rect(button_at(0.0)), |ui| {
+        let (icon, label, tip) = if view.mixer {
+            (Icon::Grid, "Grid view", "Show the measure grid")
+        } else {
+            (Icon::Mixer, "Mixer view", "Show the mixer")
+        };
+        if icons::button(ui, icon, label, tip).clicked() {
+            actions.push(GridAction::ToggleMixer);
+        }
+    });
+    bar.scope_builder(egui::UiBuilder::new().max_rect(button_at(1.0)), |ui| {
         if icons::button(
             ui,
             Icon::Add,
@@ -38,15 +48,10 @@ pub(super) fn header(
         )
         .clicked()
         {
-            actions.push(GridAction::CommandShowing {
-                command: Command::InsertTrack {
-                    at: TrackIndex::new(after),
-                },
-                track: after,
-            });
+            actions.push(GridAction::NewTrack { at: after });
         }
     });
-    bar.scope_builder(egui::UiBuilder::new().max_rect(button_at(1.0)), |ui| {
+    bar.scope_builder(egui::UiBuilder::new().max_rect(button_at(2.0)), |ui| {
         ui.add_enabled_ui(shown > 0 && shown < rows.len(), |ui| {
             if icons::button(ui, Icon::MoveUp, "Move track up", "Move the shown track up").clicked()
             {
@@ -61,7 +66,7 @@ pub(super) fn header(
             }
         });
     });
-    bar.scope_builder(egui::UiBuilder::new().max_rect(button_at(2.0)), |ui| {
+    bar.scope_builder(egui::UiBuilder::new().max_rect(button_at(3.0)), |ui| {
         ui.add_enabled_ui(after < rows.len(), |ui| {
             if icons::button(
                 ui,
@@ -82,56 +87,59 @@ pub(super) fn header(
         });
     });
 
-    // Mute and solo for all tracks, above the rows' own buttons.
-    let row = Rect::from_min_size(rect.min, vec2(TRACK_COLUMN, ROW_HEIGHT));
-    let controls = mixer::controls_rect(row);
-    let at = |dx: f32| {
-        Rect::from_center_size(
-            pos2(controls.left() + dx, rect.center().y),
-            vec2(18.0, 18.0),
-        )
-    };
-    let tracks = rows.len();
-    let all = |make: &dyn Fn(TrackIndex) -> Command| Command::Batch {
-        commands: (0..tracks).map(|t| make(TrackIndex::new(t))).collect(),
-    };
-    let all_muted = !rows.is_empty() && rows.iter().all(|row| row.muted);
-    let mute = !all_muted;
-    if toggle(
-        &mut bar,
-        at(10.0),
-        "M",
-        "Mute all",
-        all_muted,
-        if mute {
-            "Mute all tracks"
-        } else {
-            "Unmute all tracks"
-        },
-    ) {
-        actions.push(GridAction::Command {
-            command: all(&|track| Command::SetTrackMute { track, mute }),
-            merge: false,
-        });
-    }
-    let all_soloed = !rows.is_empty() && rows.iter().all(|row| row.soloed);
-    let solo = !all_soloed;
-    if toggle(
-        &mut bar,
-        at(32.0),
-        "S",
-        "Solo all",
-        all_soloed,
-        if solo {
-            "Solo all tracks"
-        } else {
-            "Unsolo all tracks"
-        },
-    ) {
-        actions.push(GridAction::Command {
-            command: all(&|track| Command::SetTrackSolo { track, solo }),
-            merge: false,
-        });
+    // Mute and solo for all tracks live in the master strip of the mixer; in grid view
+    // they stay above the rows' own buttons.
+    if !view.mixer {
+        let row = Rect::from_min_size(rect.min, vec2(TRACK_COLUMN, ROW_HEIGHT));
+        let controls = mixer::controls_rect(row);
+        let at = |dx: f32| {
+            Rect::from_center_size(
+                pos2(controls.left() + dx, rect.center().y),
+                vec2(18.0, 18.0),
+            )
+        };
+        let tracks = rows.len();
+        let all = |make: &dyn Fn(TrackIndex) -> Command| Command::Batch {
+            commands: (0..tracks).map(|t| make(TrackIndex::new(t))).collect(),
+        };
+        let all_muted = !rows.is_empty() && rows.iter().all(|row| row.muted);
+        let mute = !all_muted;
+        if toggle(
+            &mut bar,
+            at(10.0),
+            "M",
+            "Mute all",
+            all_muted,
+            if mute {
+                "Mute all tracks"
+            } else {
+                "Unmute all tracks"
+            },
+        ) {
+            actions.push(GridAction::Command {
+                command: all(&|track| Command::SetTrackMute { track, mute }),
+                merge: false,
+            });
+        }
+        let all_soloed = !rows.is_empty() && rows.iter().all(|row| row.soloed);
+        let solo = !all_soloed;
+        if toggle(
+            &mut bar,
+            at(32.0),
+            "S",
+            "Solo all",
+            all_soloed,
+            if solo {
+                "Solo all tracks"
+            } else {
+                "Unsolo all tracks"
+            },
+        ) {
+            actions.push(GridAction::Command {
+                command: all(&|track| Command::SetTrackSolo { track, solo }),
+                merge: false,
+            });
+        }
     }
 }
 
@@ -146,7 +154,12 @@ fn toggle(ui: &mut egui::Ui, rect: Rect, letter: &str, label: &str, on: bool, ti
 }
 
 /// The master row: the volume of all tracks and a pan that shifts all of them.
-pub(super) fn master_row(ui: &mut egui::Ui, master: MasterMix, actions: &mut Vec<GridAction>) {
+pub(super) fn master_row(
+    ui: &mut egui::Ui,
+    master: MasterMix,
+    level: f32,
+    actions: &mut Vec<GridAction>,
+) {
     let (rect, _) = ui.allocate_exact_size(vec2(TRACK_COLUMN, ROW_HEIGHT), Sense::hover());
     // Widgets in a child limited to the row, like the track rows (see `rows.rs`).
     let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(rect));
@@ -158,11 +171,7 @@ pub(super) fn master_row(ui: &mut egui::Ui, master: MasterMix, actions: &mut Vec
         FontId::proportional(12.0),
         visuals.strong_text_color(),
     );
-    let controls = mixer::controls_rect(rect);
-    let volume_rect = Rect::from_min_size(
-        pos2(controls.left() + 46.0, rect.center().y - 8.0),
-        vec2(86.0, 16.0),
-    );
+    let volume_rect = mixer::volume_rect(rect);
     let mut volume = master.volume;
     let slider = ui.put(
         volume_rect,
@@ -190,10 +199,8 @@ pub(super) fn master_row(ui: &mut egui::Ui, master: MasterMix, actions: &mut Vec
             merge,
         });
     }
-    let pan_rect = Rect::from_center_size(
-        pos2(controls.left() + 148.0, rect.center().y),
-        vec2(16.0, 16.0),
-    );
+    mixer::paint_db(ui, rect, volume, slider.dragged());
+    let pan_rect = mixer::pan_rect(rect);
     let knob = mixer::pan_knob(ui, pan_rect, master.pan, usize::MAX, "Master pan");
     if knob.boundary {
         actions.push(GridAction::BreakMerge);
@@ -204,4 +211,11 @@ pub(super) fn master_row(ui: &mut egui::Ui, master: MasterMix, actions: &mut Vec
             merge,
         });
     }
+    mixer::paint_activity(ui, mixer::activity_rect(rect), level);
+    let meter = mixer::activity_rect(rect);
+    let response = ui.interact(meter, ui.scope_id().with("master_activity"), Sense::hover());
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label("Output activity master");
+    });
+    response.on_hover_text("Output activity (estimated from recent notes)");
 }

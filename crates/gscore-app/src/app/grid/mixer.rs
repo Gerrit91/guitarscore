@@ -1,14 +1,97 @@
 //! Mixer widgets for a track row: a pan knob and the geometry the volume slider, mute and
 //! solo buttons share. (The volume slider itself is egui's slider, placed by the row.)
 
-use egui::{Rect, Sense, Stroke, Vec2, pos2};
+use egui::{Align2, Color32, FontId, Rect, Sense, Stroke, Vec2, pos2};
 
 /// The x range the mixer controls get in a track row.
 pub(super) fn controls_rect(row: Rect) -> Rect {
     Rect::from_min_max(
-        pos2(row.right() - 182.0, row.top()),
+        pos2(row.right() - 224.0, row.top()),
         pos2(row.right() - 18.0, row.bottom()),
     )
+}
+
+/// The volume slider's slot in a row.
+pub(super) fn volume_rect(row: Rect) -> Rect {
+    let controls = controls_rect(row);
+    Rect::from_min_size(
+        pos2(controls.left() + 46.0, row.center().y - 8.0),
+        Vec2::new(80.0, 16.0),
+    )
+}
+
+/// The decibel readout between the volume slider and the pan knob.
+fn db_rect(row: Rect) -> Rect {
+    let controls = controls_rect(row);
+    Rect::from_min_size(
+        pos2(controls.left() + 132.0, row.center().y - 8.0),
+        Vec2::new(48.0, 16.0),
+    )
+}
+
+/// The pan knob's slot in a row.
+pub(super) fn pan_rect(row: Rect) -> Rect {
+    let controls = controls_rect(row);
+    Rect::from_center_size(
+        pos2(controls.left() + 192.0, row.center().y),
+        Vec2::splat(16.0),
+    )
+}
+
+/// The small activity indicator to the right of the pan knob.
+pub(super) fn activity_rect(row: Rect) -> Rect {
+    Rect::from_center_size(
+        pos2(row.right() - 13.0, row.center().y),
+        Vec2::new(6.0, 14.0),
+    )
+}
+
+/// Paints a small green activity bar (the compact form of the mixer meter).
+pub(super) fn paint_activity(ui: &egui::Ui, rect: Rect, level: f32) {
+    let visuals = ui.visuals();
+    ui.painter()
+        .rect_filled(rect, 1.0, visuals.extreme_bg_color);
+    let level = level.clamp(0.0, 1.0);
+    if level <= 0.0 {
+        return;
+    }
+    let filled = Rect::from_min_max(
+        pos2(rect.left(), rect.bottom() - rect.height() * level),
+        rect.max,
+    );
+    ui.painter()
+        .rect_filled(filled, 1.0, Color32::from_rgb(0x43, 0xA0, 0x47));
+}
+
+/// MIDI volume 0-127 as decibels (0 is silence).
+pub(super) fn db_text(volume: u8) -> String {
+    if volume == 0 {
+        return "−∞ dB".to_owned();
+    }
+    let db = 20.0 * (f32::from(volume) / 127.0).log10();
+    format!("{db:.1} dB")
+}
+
+/// Paints the volume in decibels beside its slider; highlighted while the slider is dragged.
+pub(super) fn paint_db(ui: &egui::Ui, row: Rect, volume: u8, active: bool) {
+    let rect = db_rect(row);
+    let visuals = ui.visuals();
+    if active {
+        ui.painter()
+            .rect_filled(rect, 3.0, visuals.selection.bg_fill.gamma_multiply(0.25));
+    }
+    let color = if active {
+        visuals.strong_text_color()
+    } else {
+        visuals.weak_text_color()
+    };
+    ui.painter().text(
+        rect.right_center(),
+        Align2::RIGHT_CENTER,
+        db_text(volume),
+        FontId::proportional(10.0),
+        color,
+    );
 }
 
 /// What a pan knob asks for: a new value (and whether it continues the current drag), and
@@ -85,5 +168,17 @@ fn pan_label(pan: u8) -> String {
         0 => "C".to_owned(),
         offset if offset < 0 => format!("L{}", offset.unsigned_abs()),
         offset => format!("R{offset}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::db_text;
+
+    #[test]
+    fn volumes_are_shown_in_decibels() {
+        assert_eq!(db_text(0), "−∞ dB");
+        assert_eq!(db_text(127), "0.0 dB");
+        assert_eq!(db_text(64), "-6.0 dB");
     }
 }

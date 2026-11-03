@@ -22,6 +22,10 @@ impl GuitarScoreApp {
     pub(super) fn menu_bar(&mut self, ui: &mut egui::Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
+                if ui.button("New").clicked() {
+                    self.new_song(ui.ctx());
+                    ui.close();
+                }
                 if ui.button("Open…").clicked() {
                     self.ask_open(ui.ctx());
                 }
@@ -75,6 +79,11 @@ impl GuitarScoreApp {
                     self.save_as(ui.ctx());
                 }
                 ui.separator();
+                if ui.button("Settings…").clicked() {
+                    self.open_settings_window();
+                    ui.close();
+                }
+                ui.separator();
                 if ui.button("Quit").clicked() {
                     ui.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
@@ -87,6 +96,11 @@ impl GuitarScoreApp {
                     if self.action_button(ui, action, enabled) {
                         self.perform_action(gscore_edit::Action::Plain(action), ui.ctx());
                     }
+                }
+                ui.separator();
+                if ui.button("History…").clicked() {
+                    self.open_history();
+                    ui.close();
                 }
                 ui.separator();
                 let has_document = self.document.is_some();
@@ -102,11 +116,6 @@ impl GuitarScoreApp {
                     if self.action_button(ui, action, has_document) {
                         self.perform_action(gscore_edit::Action::Plain(action), ui.ctx());
                     }
-                }
-                ui.separator();
-                if ui.button("Settings…").clicked() {
-                    self.open_settings_window();
-                    ui.close();
                 }
             });
             ui.menu_button("View", |ui| {

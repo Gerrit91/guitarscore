@@ -13,6 +13,9 @@ use super::GuitarScoreApp;
 use crate::document::Document;
 use crate::tasks::{Event, SaveFailure};
 
+/// The path and format of a new, unsaved score: Save asks for a real `.gp` file.
+const UNTITLED: &str = "Untitled.gp";
+
 /// How many lost details a dialog lists before "and N more".
 const SHOWN_LOSSES: usize = 8;
 
@@ -23,6 +26,8 @@ pub(crate) enum Then {
     Close,
     /// Open this file.
     Open(PathBuf),
+    /// Start a new score.
+    NewSong,
     /// Restore this crashed document.
     Restore(Box<FoundSession>),
 }
@@ -39,6 +44,32 @@ pub(super) enum Dialog {
 }
 
 impl GuitarScoreApp {
+    /// Starts a new score, asking first if the open song has unsaved changes.
+    pub fn new_song(&mut self, ctx: &egui::Context) {
+        if self.document.as_ref().is_some_and(Document::is_dirty) {
+            self.dialog = Some(Dialog::Unsaved(Then::NewSong));
+            return;
+        }
+        self.create_new_song();
+        ctx.request_repaint();
+    }
+
+    /// Makes a new, unsaved one-track score the open document.
+    fn create_new_song(&mut self) {
+        match gscore_model::Song::new_score() {
+            Ok(song) => {
+                self.replace_document(Document::new(
+                    PathBuf::from(UNTITLED),
+                    song,
+                    gscore_session::FileFormat::Gpx,
+                ));
+                self.status = Some("New song".to_owned());
+                self.notice = None;
+            }
+            Err(error) => self.notice = Some(format!("Could not create a song: {error}")),
+        }
+    }
+
     /// Opens `path` in the background, asking first if the open song has unsaved changes.
     pub fn open(&mut self, path: PathBuf, ctx: &egui::Context) {
         if self.document.as_ref().is_some_and(Document::is_dirty) {
@@ -145,8 +176,6 @@ impl GuitarScoreApp {
                 }
                 Event::PickedSoundFont(Some(path)) => self.playback.use_soundfont(path),
                 Event::PickedSoundFont(None) => {}
-                Event::PickedKeymap(Some(path)) => self.load_keymap_from(path),
-                Event::PickedKeymap(None) => {}
                 // Cancelled: whatever was waiting for the save does not happen.
                 Event::PickedSave(None) => self.after_save = None,
                 Event::Saved {
@@ -198,7 +227,10 @@ impl GuitarScoreApp {
             old.close(false);
         }
         self.view.track = 0;
+        self.view.selection = None;
         self.shown_cursor = None;
+        self.history_stamps.clear();
+        self.sync_history_stamps();
     }
 
     /// Goes on with what waited for unsaved changes to be dealt with.
@@ -217,6 +249,7 @@ impl GuitarScoreApp {
                     self.notice = Some(error);
                 }
             }
+            Then::NewSong => self.create_new_song(),
             Then::Restore(session) => self.start_recovery(*session, ctx),
         }
     }

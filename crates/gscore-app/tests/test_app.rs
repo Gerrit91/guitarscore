@@ -549,7 +549,7 @@ fn settle(harness: &mut Harness<'static, GuitarScoreApp>) {
 #[test]
 fn the_settings_window_edits_song_information_and_undoes_it() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
-    harness.get_by_label("Edit").click();
+    harness.get_by_label("File").click();
     harness.run();
     harness.get_by_label("Settings…").click();
     harness.run();
@@ -699,9 +699,13 @@ fn the_edit_palette_sets_lengths_effects_and_the_measure_header() {
     harness.run();
 
     // The measure tempo (measure 1 is the song's initial tempo too).
+    harness.get_by_label("Measure tempo").scroll_to_me();
+    harness.run();
     harness
         .get_by_label("Measure tempo")
         .set_value_accesskit(130.0);
+    harness.run();
+    harness.get_by_label("Set tempo").scroll_to_me();
     harness.run();
     harness.get_by_label("Set tempo").click();
     harness.run();
@@ -724,6 +728,8 @@ fn the_edit_palette_sets_lengths_effects_and_the_measure_header() {
     assert_eq!(shown_tempo(&harness), Some(130.0));
 
     // Voice 2.
+    harness.get_by_label("Voice 2").scroll_to_me();
+    harness.run();
     harness.get_by_label("Voice 2").click();
     harness.run();
     assert_eq!(
@@ -968,6 +974,7 @@ fn a_count_in_plays_one_bar_then_the_song_and_the_metronome_stays_live() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.state_mut().playback_mut().use_soundfont(path);
     harness.state_mut().set_count_in(true);
+    cursor_to_measure(&mut harness, 2);
 
     harness.get_by_label("Play").click();
     let started = step_until(&mut harness, 10, |app| {
@@ -978,8 +985,12 @@ fn a_count_in_plays_one_bar_then_the_song_and_the_metronome_stays_live() {
         eprintln!("skipped: no usable audio device ({notice})");
         return;
     }
-    // The count-in is running: the song has not started yet.
+    // The count-in is running, but the readout already shows where the song will start
+    // (measure 3: two 4/4 bars at 120 BPM, four seconds in) and not the clicks' position.
     assert!(harness.state().playback().count_in_pending());
+    assert_eq!(harness.state().playback().current_measure(), Some(3));
+    let bar = u64::from(gscore_play::PPQ).saturating_mul(4);
+    assert_eq!(harness.state().playback().position(), bar.saturating_mul(2));
 
     // Turning the metronome on while playing swaps the sequence without a stop.
     harness.state_mut().set_metronome(true);
@@ -989,7 +1000,7 @@ fn a_count_in_plays_one_bar_then_the_song_and_the_metronome_stays_live() {
         "the metronome must not stop playback"
     );
 
-    // After the count-in bar the song starts at the beginning, with the metronome on.
+    // After the count-in bar the song starts at measure 3, with the metronome on.
     assert!(
         step_until(&mut harness, 10, |app| {
             app.playback().state() == gscore_play::PlayState::Playing
@@ -998,6 +1009,339 @@ fn a_count_in_plays_one_bar_then_the_song_and_the_metronome_stays_live() {
         }),
         "the count-in did not lead into the song"
     );
-    assert_eq!(harness.state().playback().current_measure(), Some(1));
+    assert_eq!(harness.state().playback().current_measure(), Some(3));
     harness.state_mut().playback_mut().stop().unwrap();
+}
+
+#[test]
+fn the_player_moves_by_bar_and_to_the_score_ends() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let measure = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .editor()
+            .cursor()
+            .measure
+            .get()
+    };
+    assert_eq!(measure(&harness), 0);
+
+    harness.get_by_label("Next bar").click();
+    harness.run();
+    assert_eq!(measure(&harness), 1);
+    harness.get_by_label("Next bar").click();
+    harness.run();
+    assert_eq!(measure(&harness), 2);
+    harness.get_by_label("Previous bar").click();
+    harness.run();
+    assert_eq!(measure(&harness), 1);
+    harness.get_by_label("Go to end").click();
+    harness.run();
+    assert_eq!(measure(&harness), 8);
+    harness.get_by_label("Go to start").click();
+    harness.run();
+    assert_eq!(measure(&harness), 0);
+    // Already at the start: going back stays there.
+    harness.get_by_label("Previous bar").click();
+    harness.run();
+    assert_eq!(measure(&harness), 0);
+}
+
+#[test]
+fn looping_the_selected_measure_restarts_at_its_beginning() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("loop");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    let document = harness.state_mut().document_mut().unwrap();
+    document
+        .editor_mut()
+        .set_selection(Some(gscore_edit::Selection::Measures {
+            anchor: gscore_model::MeasureIndex::new(0),
+            focus: gscore_model::MeasureIndex::new(0),
+        }));
+    harness.state_mut().view_mut().selection = Some(gscore_app::MeasureSelection::new(0));
+    harness.state_mut().set_loop_selection(true);
+
+    harness.get_by_label("Play").click();
+    let started = step_until(&mut harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    });
+    assert!(started, "neither played nor failed");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+    // Play through most of the first (2 s) bar, then see the loop take it back to the top.
+    let bar = u64::from(gscore_play::PPQ).saturating_mul(4);
+    assert!(
+        step_until(&mut harness, 5, |app| app.playback().position()
+            >= bar.saturating_mul(3) / 4),
+        "the first bar did not play"
+    );
+    assert!(
+        step_until(&mut harness, 5, |app| app.playback().position() < bar / 4),
+        "playback did not loop back to the start of the selection"
+    );
+    harness.state_mut().playback_mut().stop().unwrap();
+}
+
+#[test]
+fn the_new_song_button_opens_a_one_measure_score() {
+    let mut harness = app_with(None);
+    assert!(harness.state().document().is_none());
+    harness.get_by_label("New song").click();
+    harness.run();
+    let document = harness.state().document().expect("a new document");
+    assert_eq!(document.song().measure_count(), 1);
+    assert_eq!(document.song().track_count(), 1);
+    assert_eq!(document.display_title(), "Untitled.gp");
+    harness.get_by_label("1 measure, 1 track");
+}
+
+#[test]
+fn the_audio_tab_is_last_and_named_audio_io() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness
+        .state_mut()
+        .playback_mut()
+        .use_soundfont(PathBuf::from("/fonts/Test.sf2"));
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Settings…").click();
+    harness.run();
+    harness.get_by_label("Audio I/O").click();
+    harness.run();
+    harness.get_by_label("SoundFont file");
+    harness.get_by_label("MIDI");
+}
+
+#[test]
+fn shortcuts_can_be_changed_and_reverted_from_the_editor() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Settings…").click();
+    harness.run();
+    harness.get_by_label("Editor").click();
+    harness.run();
+    harness.get_by_label("Edit shortcuts…").click();
+    harness.run();
+    harness.get_by_label("Filter shortcuts");
+
+    harness.get_by_label("Filter shortcuts").click();
+    harness.get_by_label("Filter shortcuts").type_text("Copy");
+    harness.run();
+    harness.get_by_label("Change").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::K);
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .keymap()
+            .keys_for(gscore_edit::ActionId::Copy),
+        [gscore_edit::KeyCombo::parse("ctrl+k").unwrap()]
+    );
+
+    harness.get_by_label("Revert shortcut").click();
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .keymap()
+            .keys_for(gscore_edit::ActionId::Copy),
+        Keymap::default().keys_for(gscore_edit::ActionId::Copy)
+    );
+
+    // A key another action uses is reported and can replace it.
+    harness.get_by_label("Change").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::X);
+    harness.run();
+    harness.get_by_label_contains("is already used by");
+    harness.get_by_label("Replace it").click();
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .keymap()
+            .keys_for(gscore_edit::ActionId::Copy),
+        [gscore_edit::KeyCombo::parse("ctrl+x").unwrap()]
+    );
+    assert!(
+        harness
+            .state()
+            .keymap()
+            .keys_for(gscore_edit::ActionId::Cut)
+            .is_empty()
+    );
+}
+
+#[test]
+fn the_history_window_lists_changes_and_undoes_them() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.get_by_label("1/8").click();
+    harness.run();
+    harness.get_by_label("Rest").click();
+    harness.run();
+    let depth = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness.state().document().unwrap().editor().undo_depth()
+    };
+    let before = depth(&harness);
+    assert!(before >= 2);
+
+    harness.get_by_label("Edit").click();
+    harness.run();
+    harness.get_by_label("History…").click();
+    harness.run();
+    harness.get_by_label_contains("Undo change 1:").click();
+    harness.run();
+    assert_eq!(depth(&harness), before.saturating_sub(1));
+    assert!(harness.query_by_label_contains("Redo change 1:").is_some());
+    harness.get_by_label_contains("Redo change 1:").click();
+    harness.run();
+    assert_eq!(depth(&harness), before);
+}
+
+#[test]
+fn a_section_title_is_applied_in_place_with_enter() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    assert!(harness.query_by_label("Set section").is_none());
+    harness.get_by_label("Section title").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Section title").click();
+    harness.run();
+    harness.get_by_label("Section title").type_text("Verse");
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    let section = harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .section(gscore_model::MeasureIndex::new(0))
+        .expect("a section");
+    assert_eq!(section.title, "Verse");
+}
+
+#[test]
+fn a_new_track_asks_for_name_color_and_symbol() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    harness.get_by_label("New track").click();
+    harness.run();
+    let count = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness.state().document().unwrap().song().track_count()
+    };
+    assert_eq!(
+        count(&harness),
+        1,
+        "the track is not created before the popup"
+    );
+    harness.get_by_label("Track name").click();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Track name").type_text("Bass 2");
+    harness
+        .get_all_by_role_and_label(egui::Role::Button, "Bass")
+        .last()
+        .expect("the Bass symbol")
+        .click();
+    harness
+        .get_all_by_role_and_label(egui::Role::Button, "Color Blue")
+        .last()
+        .expect("the blue color")
+        .click();
+    harness.get_by_label("Create track").click();
+    harness.run();
+
+    assert_eq!(count(&harness), 2);
+    let song = harness.state().document().unwrap().song();
+    let track = song
+        .track(gscore_model::TrackIndex::new(1))
+        .expect("the new track");
+    assert_eq!(track.name(), "Bass 2");
+    assert_eq!(track.color().rgb(), 0x1E_88E5);
+    assert_eq!(
+        song.track_sound(gscore_model::TrackIndex::new(1))
+            .expect("a sound")
+            .program,
+        33
+    );
+    assert_eq!(harness.state().view().track, 1);
+}
+
+#[test]
+fn the_grid_switches_to_a_mixer_view() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    assert!(harness.state().view().grid_mixer);
+    harness.get_by_label("Grid view");
+    harness.get_by_label("Volume Steel Guitar");
+    harness.get_by_label("Master volume");
+    harness.get_by_label("Pan Steel Guitar");
+    harness.get_by_label("Pan Master");
+    harness.get_by_label("Mute Steel Guitar");
+    harness.get_by_label("Solo Steel Guitar");
+
+    // Mute and solo are live from the mixer too.
+    let muted = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .track(gscore_model::TrackIndex::new(0))
+            .unwrap()
+            .is_muted()
+    };
+    harness.get_by_label("Mute Steel Guitar").click();
+    harness.run();
+    assert!(muted(&harness));
+    harness.get_by_label("Mute Steel Guitar").click();
+    harness.run();
+    assert!(!muted(&harness));
+
+    // All-tracks mute/solo live in the master strip.
+    harness.get_by_label("Mute all").click();
+    harness.run();
+    assert!(muted(&harness));
+    harness.get_by_label("Mute all").click();
+    harness.run();
+    assert!(!muted(&harness));
+    harness.get_by_label("Solo all");
+
+    // Clicking the level lets one type a value in decibels.
+    harness
+        .get_by_label("Level Steel Guitar in decibels")
+        .click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness
+        .get_by_label("Level Steel Guitar in decibels")
+        .type_text("-12");
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .track_sound(gscore_model::TrackIndex::new(0))
+            .unwrap()
+            .volume,
+        32
+    );
+
+    harness.get_by_label("Grid view").click();
+    harness.run();
+    assert!(!harness.state().view().grid_mixer);
+    harness.get_by_label("Song grid");
+    harness.get_by_label("Output activity Steel Guitar");
+    harness.get_by_label("Output activity master");
 }

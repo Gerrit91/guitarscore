@@ -68,6 +68,9 @@ impl GuitarScoreApp {
                 if icons::button(ui, Icon::Settings, "Settings", "Settings…").clicked() {
                     self.open_settings_window();
                 }
+                if icons::button(ui, Icon::History, "History", "Edit history…").clicked() {
+                    self.open_history();
+                }
                 self.zoom(ui);
             },
         );
@@ -95,6 +98,9 @@ impl GuitarScoreApp {
     /// Open, save, undo and redo.
     fn file_and_edit(&mut self, ui: &mut egui::Ui) {
         style::toolbar_group(ui, |ui| {
+            if icons::button(ui, Icon::NewSong, "New song", "Start a new score").clicked() {
+                self.new_song(ui.ctx());
+            }
             if icons::button(ui, Icon::Open, "Open", "Open a Guitar Pro file…").clicked() {
                 self.ask_open(ui.ctx());
             }
@@ -182,9 +188,30 @@ impl GuitarScoreApp {
         let playing = self.playback.state() == gscore_play::PlayState::Playing;
         let has_song = self.document.is_some();
         let (metronome, count_in) = (self.playback.metronome(), self.playback.count_in());
-        let (mut toggle_metronome, mut toggle_count_in) = (false, false);
+        let looping = self.playback.loop_selection();
+        let can_loop = has_song && self.view.selection.is_some();
+        let (mut toggle_metronome, mut toggle_count_in, mut toggle_loop) = (false, false, false);
+        let (mut to_start, mut previous, mut next, mut to_end) = (false, false, false, false);
         let start = ui.cursor().left();
         style::toolbar_group(ui, |ui| {
+            if ui
+                .add_enabled_ui(has_song, |ui| {
+                    icons::button(ui, Icon::ToStart, "Go to start", "Top of the score")
+                })
+                .inner
+                .clicked()
+            {
+                to_start = true;
+            }
+            if ui
+                .add_enabled_ui(has_song, |ui| {
+                    icons::button(ui, Icon::PreviousBar, "Previous bar", "One bar back")
+                })
+                .inner
+                .clicked()
+            {
+                previous = true;
+            }
             let (icon, label) = if playing {
                 (Icon::Pause, "Pause")
             } else {
@@ -203,6 +230,24 @@ impl GuitarScoreApp {
                 .inner;
             if stop.clicked() {
                 self.stop_playback();
+            }
+            if ui
+                .add_enabled_ui(has_song, |ui| {
+                    icons::button(ui, Icon::NextBar, "Next bar", "One bar forward")
+                })
+                .inner
+                .clicked()
+            {
+                next = true;
+            }
+            if ui
+                .add_enabled_ui(has_song, |ui| {
+                    icons::button(ui, Icon::ToEnd, "Go to end", "End of the score")
+                })
+                .inner
+                .clicked()
+            {
+                to_end = true;
             }
             let metronome_clicked = ui
                 .add_enabled_ui(has_song, |ui| {
@@ -234,13 +279,43 @@ impl GuitarScoreApp {
             if count_in_clicked {
                 toggle_count_in = true;
             }
+            if ui
+                .add_enabled_ui(can_loop, |ui| {
+                    icons::toggle_button(
+                        ui,
+                        Icon::Loop,
+                        "Loop selection",
+                        "Loop the selected measures while playing",
+                        looping,
+                    )
+                })
+                .inner
+                .clicked()
+            {
+                toggle_loop = true;
+            }
             self.position_readout(ui);
         });
+        if to_start {
+            self.go_to_start();
+        }
+        if previous {
+            self.previous_bar();
+        }
+        if next {
+            self.next_bar();
+        }
+        if to_end {
+            self.go_to_end();
+        }
         if toggle_metronome {
             self.set_metronome(!metronome);
         }
         if toggle_count_in {
             self.set_count_in(!count_in);
+        }
+        if toggle_loop {
+            self.set_loop_selection(!looping);
         }
         if self.playback.is_loading() {
             ui.label("Loading sounds…");
@@ -277,7 +352,13 @@ impl GuitarScoreApp {
         let position = self.playback.position();
         let sequence = self.playback.sequence().cloned();
         let (elapsed, total) = timeline.as_deref().map_or((0, 0), |timeline| {
-            playback_times(timeline, sequence.as_deref(), position, selection)
+            playback_times(
+                timeline,
+                sequence.as_deref(),
+                position,
+                selection,
+                self.playback.state() == gscore_play::PlayState::Playing,
+            )
         });
         let song = document.song();
         let measure = self
@@ -336,19 +417,31 @@ impl GuitarScoreApp {
 
 /// The position and total length, in microseconds, for the time readout. With a measure
 /// selection the total is the selection's length and the position is measured from its
-/// first measure.
+/// first measure — but only while playback is inside it. Once playback leaves the selection
+/// the whole song's time is shown, so the clock never freezes at the selection's end.
 pub(super) fn playback_times(
     timeline: &Timeline,
     sequence: Option<&Sequence>,
     position: u64,
     selection: Option<MeasureSelection>,
+    playing: bool,
 ) -> (u64, u64) {
-    let (start_tick, end_tick) = selection
-        .and_then(|selection| timeline.measure_range(selection.start(), selection.end()))
-        .unwrap_or((0, timeline.end));
+    let played = sequence.map_or(0, |sequence| sequence.tempo.micros_at(position));
+    let whole = (played, timeline.micros());
+    let Some(selection) = selection else {
+        return whole;
+    };
+    let Some((start_tick, end_tick)) = timeline.measure_range(selection.start(), selection.end())
+    else {
+        return whole;
+    };
     let start = timeline.micros_at(start_tick);
     let total = timeline.micros_at(end_tick).saturating_sub(start);
-    let played = sequence.map_or(0, |sequence| sequence.tempo.micros_at(position));
+    // A stale selection must not stop the clock when playback goes on past it, or starts
+    // before it.
+    if playing && (played < start || played >= start.saturating_add(total)) {
+        return whole;
+    }
     (played.saturating_sub(start).min(total), total)
 }
 
@@ -608,7 +701,8 @@ mod tests {
         let selection = MeasureSelection::new(1).to(2);
         let bar = u64::from(PPQ).saturating_mul(4);
 
-        let (elapsed, total) = playback_times(&timeline, Some(&sequence), 0, Some(selection));
+        let (elapsed, total) =
+            playback_times(&timeline, Some(&sequence), 0, Some(selection), false);
         assert_eq!((elapsed, total), (0, 4_000_000));
 
         // One bar into the selection: two seconds elapsed.
@@ -617,18 +711,34 @@ mod tests {
             Some(&sequence),
             bar.saturating_mul(2),
             Some(selection),
+            true,
         );
         assert_eq!((elapsed, total), (2_000_000, 4_000_000));
 
-        // After the selection the position is clamped to its length.
+        // After the selection the whole song's time takes over instead of freezing at the
+        // selection's end.
         let (elapsed, total) = playback_times(
             &timeline,
             Some(&sequence),
             bar.saturating_mul(3),
             Some(selection),
+            true,
+        );
+        assert_eq!((elapsed, total), (6_000_000, 8_000_000));
+        let (elapsed, total) = playback_times(
+            &timeline,
+            Some(&sequence),
+            bar.saturating_mul(3),
+            Some(selection),
+            false,
         );
         assert_eq!((elapsed, total), (4_000_000, 4_000_000));
-        let (elapsed, total) = playback_times(&timeline, Some(&sequence), bar, None);
+
+        // Before the selection, while playing, the whole song is shown too.
+        let (elapsed, total) = playback_times(&timeline, Some(&sequence), 0, Some(selection), true);
+        assert_eq!((elapsed, total), (0, 8_000_000));
+
+        let (elapsed, total) = playback_times(&timeline, Some(&sequence), bar, None, true);
         assert_eq!((elapsed, total), (2_000_000, 8_000_000));
     }
 }

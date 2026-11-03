@@ -1,14 +1,20 @@
-//! The settings window: the song's information, audio and MIDI output, and editor settings
-//! (theme, keymap file, autosave interval). Song changes go through commands, so they are
-//! undoable; the other settings apply at once and are remembered between runs.
+//! The settings window: the song's information, editor settings and audio I/O. Song
+//! changes go through commands, so they are undoable; the other settings apply at once and
+//! are remembered between runs.
 
-use egui::{RichText, Ui};
+use egui::{Margin, RichText, Ui};
 use gscore_edit::Command;
 use gscore_model::{MAX_TEMPO, SONG_TEXT_FIELDS, SongInfo, SongTextField};
 
 use super::GuitarScoreApp;
+use super::style;
 use crate::playback::Output;
 use crate::state::ThemeChoice;
+
+/// The settings window's default size; it opens centered.
+const SETTINGS_SIZE: egui::Vec2 = egui::vec2(780.0, 580.0);
+/// Smallest size the user may drag it to.
+const SETTINGS_MIN_SIZE: egui::Vec2 = egui::vec2(560.0, 400.0);
 
 /// The window's tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -16,10 +22,10 @@ pub(super) enum SettingsTab {
     /// Title, artist, notes, tempo, ...
     #[default]
     Song,
-    /// Output, SoundFont, MIDI ports.
-    Audio,
-    /// Theme, keymap file, autosave.
+    /// Theme, shortcuts, startup, autosave.
     Editor,
+    /// Output, SoundFont and MIDI ports.
+    Audio,
 }
 
 /// The open settings window: which tab, and the song fields being edited.
@@ -30,6 +36,8 @@ pub(super) struct SettingsWindow {
     draft: SongInfo,
     /// The document's fields when the draft was last synced, to notice outside edits.
     base: SongInfo,
+    /// Where the window is; `None` until it is centered on its first frame.
+    pos: Option<egui::Pos2>,
 }
 
 impl SettingsWindow {
@@ -38,6 +46,7 @@ impl SettingsWindow {
             tab: SettingsTab::default(),
             base: info.clone(),
             draft: info,
+            pos: None,
         }
     }
 }
@@ -66,34 +75,49 @@ impl GuitarScoreApp {
                 window.base = current;
             }
         }
-        let mut open = true;
-        let mut apply = false;
+        if window.pos.is_none() {
+            window.pos = Some(style::centered_window_pos(ctx, SETTINGS_SIZE));
+        }
+        let pos = window
+            .pos
+            .unwrap_or_else(|| style::centered_window_pos(ctx, SETTINGS_SIZE));
         let mut close = false;
+        let mut apply = false;
         egui::Window::new("Settings")
+            .title_bar(false)
             .collapsible(false)
             .resizable(true)
-            .default_size([460.0, 420.0])
-            .open(&mut open)
+            .default_size(SETTINGS_SIZE)
+            .min_size(SETTINGS_MIN_SIZE)
+            .current_pos(pos)
+            .frame(style::window_frame(ctx))
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    for (tab, label) in [
-                        (SettingsTab::Song, "Song"),
-                        (SettingsTab::Audio, "Audio and MIDI"),
-                        (SettingsTab::Editor, "Editor"),
-                    ] {
-                        ui.selectable_value(&mut window.tab, tab, label);
-                    }
-                });
-                ui.separator();
-                match window.tab {
-                    SettingsTab::Song => {
-                        song_tab(ui, &mut window, &mut apply, &mut close);
-                    }
-                    SettingsTab::Audio => self.audio_tab(ui),
-                    SettingsTab::Editor => self.editor_tab(ui),
+                if style::window_title_bar(ui, "Settings", &mut window.pos) {
+                    close = true;
                 }
+                egui::Frame::new()
+                    .inner_margin(Margin::symmetric(16, 12))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            for (tab, label) in [
+                                (SettingsTab::Song, "Song"),
+                                (SettingsTab::Editor, "Editor"),
+                                (SettingsTab::Audio, "Audio I/O"),
+                            ] {
+                                ui.selectable_value(&mut window.tab, tab, label);
+                            }
+                        });
+                        ui.separator();
+                        match window.tab {
+                            SettingsTab::Song => {
+                                song_tab(ui, &mut window, &mut apply, &mut close);
+                            }
+                            SettingsTab::Editor => self.editor_tab(ui),
+                            SettingsTab::Audio => self.audio_tab(ui),
+                        }
+                    });
             });
-        if !open || close {
+        if close {
             self.settings_window = None;
             self.save_settings();
             return;
@@ -144,86 +168,138 @@ impl GuitarScoreApp {
         }
     }
 
-    /// The audio and MIDI tab.
+    /// The audio I/O tab: the output, a SoundFont for the synthesizer, and MIDI ports.
     fn audio_tab(&mut self, ui: &mut Ui) {
         ui.heading("Output");
-        let soundfont = self.playback.soundfont().map(std::path::Path::to_path_buf);
-        if let Some(soundfont) = &soundfont {
-            let name = soundfont
-                .file_name()
-                .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-            let synth = Output::Synth(soundfont.clone());
-            if ui
-                .radio(
-                    *self.playback.output() == synth,
-                    format!("Synthesizer ({name})"),
-                )
-                .on_hover_text(soundfont.display().to_string())
-                .clicked()
-            {
-                self.playback.choose_output(synth);
-            }
+        let current = self.playback.soundfont().map(std::path::Path::to_path_buf);
+        let mut available = gscore_audio::available_soundfonts();
+        if let Some(current) = &current
+            && !available.contains(current)
+        {
+            available.insert(0, current.clone());
         }
-        let midi = Output::Midi(None);
-        if ui.radio(*self.playback.output() == midi, "MIDI").clicked() {
-            self.playback.choose_output(midi);
+        let synth = matches!(self.playback.output(), Output::Synth(_));
+        let chosen = current.clone().or_else(|| available.first().cloned());
+        if ui
+            .add_enabled(
+                chosen.is_some(),
+                egui::RadioButton::new(synth, "Synthesizer"),
+            )
+            .clicked()
+            && let Some(soundfont) = chosen.clone()
+        {
+            self.playback.use_soundfont(soundfont);
         }
-        ui.horizontal(|ui| {
-            let mut chosen = None;
-            egui::ComboBox::from_id_salt("settings_midi_port")
-                .selected_text(
-                    self.playback
-                        .port()
-                        .map_or_else(|| "Automatic port".to_owned(), str::to_owned),
-                )
-                .show_ui(ui, |ui| {
-                    if ui
-                        .selectable_label(self.playback.port().is_none(), "Automatic port")
-                        .clicked()
-                    {
-                        chosen = Some(None);
-                    }
-                    for port in self.playback.ports() {
-                        if ui
-                            .selectable_label(
-                                self.playback.port() == Some(port),
-                                format!("MIDI: {port}"),
-                            )
-                            .clicked()
-                        {
-                            chosen = Some(Some(port.clone()));
+        if ui.radio(!synth, "MIDI").clicked() {
+            self.playback.choose_output(Output::Midi(None));
+        }
+        if synth {
+            ui.horizontal(|ui| {
+                ui.label("SoundFont");
+                let selected = current
+                    .as_deref()
+                    .and_then(std::path::Path::file_name)
+                    .map_or_else(
+                        || "Choose…".to_owned(),
+                        |name| name.to_string_lossy().into_owned(),
+                    );
+                let mut pick = None;
+                let response = egui::ComboBox::from_id_salt("settings_soundfont")
+                    .selected_text(selected)
+                    .width(280.0)
+                    .show_ui(ui, |ui| {
+                        for path in &available {
+                            let name = path.file_name().map_or_else(
+                                || path.display().to_string(),
+                                |name| name.to_string_lossy().into_owned(),
+                            );
+                            let is_current = current.as_deref() == Some(path.as_path());
+                            if ui
+                                .selectable_label(is_current, name)
+                                .on_hover_text(path.display().to_string())
+                                .clicked()
+                            {
+                                pick = Some(path.clone());
+                                ui.close();
+                            }
                         }
-                    }
-                });
-            if let Some(port) = chosen {
-                self.playback.choose_port(port);
+                        if available.is_empty() {
+                            ui.label("No SoundFont files found");
+                        }
+                    });
+                ui.ctx()
+                    .accesskit_node_builder(response.response.id, |node| {
+                        node.set_label("SoundFont file");
+                    });
+                if ui.button("Choose SoundFont…").clicked()
+                    && let Err(error) = self.tasks.pick_soundfont(ui.ctx())
+                {
+                    self.notice = Some(error);
+                }
+                if let Some(path) = pick {
+                    self.playback.use_soundfont(path);
+                }
+            });
+            // The full path directly under the dropdown.
+            if let Some(soundfont) = &current {
+                ui.label(RichText::new(soundfont.display().to_string()).weak());
+            } else {
+                ui.label(RichText::new("No SoundFont chosen").weak());
             }
-            if ui.button("Refresh ports").clicked()
-                && let Err(error) = self.playback.refresh_ports()
+        } else {
+            if chosen.is_none()
+                && ui.button("Choose SoundFont…").clicked()
+                && let Err(error) = self.tasks.pick_soundfont(ui.ctx())
             {
                 self.notice = Some(error);
             }
-        });
-        if let Some(soundfont) = &soundfont {
-            ui.label(RichText::new(format!("SoundFont: {}", soundfont.display())).weak());
-        } else {
-            ui.label(RichText::new("No SoundFont found or chosen").weak());
-        }
-        if ui.button("Choose SoundFont…").clicked()
-            && let Err(error) = self.tasks.pick_soundfont(ui.ctx())
-        {
-            self.notice = Some(error);
+            ui.horizontal(|ui| {
+                let mut chosen_port = None;
+                let response = egui::ComboBox::from_id_salt("settings_midi_port")
+                    .selected_text(
+                        self.playback
+                            .port()
+                            .map_or_else(|| "Automatic port".to_owned(), str::to_owned),
+                    )
+                    .show_ui(ui, |ui| {
+                        if ui
+                            .selectable_label(self.playback.port().is_none(), "Automatic port")
+                            .clicked()
+                        {
+                            chosen_port = Some(None);
+                        }
+                        for port in self.playback.ports() {
+                            if ui
+                                .selectable_label(
+                                    self.playback.port() == Some(port),
+                                    format!("MIDI: {port}"),
+                                )
+                                .clicked()
+                            {
+                                chosen_port = Some(Some(port.clone()));
+                            }
+                        }
+                    });
+                ui.ctx()
+                    .accesskit_node_builder(response.response.id, |node| {
+                        node.set_label("MIDI port");
+                    });
+                if let Some(port) = chosen_port {
+                    self.playback.choose_port(port);
+                }
+                if ui.button("Refresh ports").clicked()
+                    && let Err(error) = self.playback.refresh_ports()
+                {
+                    self.notice = Some(error);
+                }
+            });
         }
         if let Some(error) = self.playback.new_error() {
             self.notice = Some(error);
         }
         ui.separator();
-        ui.label(
-            RichText::new(
-                "Inputs (a MIDI keyboard or guitar) and a settings file picker come later.",
-            )
-            .weak(),
-        );
+        ui.heading("Input");
+        ui.label(RichText::new("MIDI inputs (a keyboard or guitar) come later.").weak());
     }
 
     /// The editor tab: theme, keymap file and autosave interval.
@@ -235,29 +311,18 @@ impl GuitarScoreApp {
         });
 
         ui.separator();
-        ui.heading("Keymap");
-        let path = self.keymap_path();
+        ui.heading("Shortcuts");
         ui.label(
             RichText::new(
-                path.as_ref()
-                    .map_or_else(|| "Built-in keymap".to_owned(), |p| p.display().to_string()),
+                "Keys are typed characters or key names, so the same bindings work on \
+                 QWERTY, QWERTZ and AZERTY. Changed shortcuts are stored with the app \
+                 settings.",
             )
             .weak(),
         );
-        ui.horizontal(|ui| {
-            if ui.button("Choose keymap…").clicked()
-                && let Err(error) = self.tasks.pick_keymap(ui.ctx())
-            {
-                self.notice = Some(error);
-            }
-            if ui
-                .add_enabled(path.is_some(), egui::Button::new("Reload"))
-                .clicked()
-                && let Some(path) = path
-            {
-                self.load_keymap_from(path);
-            }
-        });
+        if ui.button("Edit shortcuts…").clicked() {
+            self.open_shortcut_editor();
+        }
 
         ui.separator();
         ui.heading("Startup");
@@ -275,12 +340,16 @@ impl GuitarScoreApp {
         ui.horizontal(|ui| {
             ui.label("Recovery snapshot");
             let mut seconds = self.settings.autosave_seconds;
-            egui::ComboBox::from_id_salt("settings_autosave")
+            let response = egui::ComboBox::from_id_salt("settings_autosave")
                 .selected_text(autosave_label(seconds))
                 .show_ui(ui, |ui| {
                     for choice in [30, 60, 120, 300, 0] {
                         ui.selectable_value(&mut seconds, choice, autosave_label(choice));
                     }
+                });
+            ui.ctx()
+                .accesskit_node_builder(response.response.id, |node| {
+                    node.set_label("Recovery snapshot");
                 });
             if seconds != self.settings.autosave_seconds {
                 self.settings.autosave_seconds = seconds;
@@ -299,24 +368,9 @@ impl GuitarScoreApp {
         }
     }
 
-    /// The keymap file in use: the user's choice, else the default config path.
-    fn keymap_path(&self) -> Option<std::path::PathBuf> {
-        self.settings.keymap_path.clone().or_else(|| {
-            gscore_session::default_config_dir().map(|dir| dir.join(gscore_session::KEYMAP_FILE))
-        })
-    }
-
-    /// Loads and uses the keymap at `path`, reporting a problem and remembering the file.
-    pub(super) fn load_keymap_from(&mut self, path: std::path::PathBuf) {
-        let loaded = gscore_session::load_keymap(&path);
-        self.keymap = loaded.keymap;
-        self.settings.keymap_path = Some(path);
-        if let Some(problem) = loaded.problem {
-            self.notice = Some(problem);
-        } else {
-            self.status = Some("Keymap loaded".to_owned());
-        }
-        self.save_settings();
+    /// The keymap editor's window, if it is open.
+    pub(super) fn open_shortcut_editor(&mut self) {
+        self.open_shortcuts();
     }
 }
 

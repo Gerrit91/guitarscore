@@ -20,8 +20,6 @@ pub(crate) enum Event {
     Picked(Option<PathBuf>),
     /// The SoundFont dialog closed; `None` if it was cancelled.
     PickedSoundFont(Option<PathBuf>),
-    /// The keymap dialog closed; `None` if it was cancelled.
-    PickedKeymap(Option<PathBuf>),
     /// The save dialog closed; `None` if it was cancelled.
     PickedSave(Option<PathBuf>),
     /// A save finished or failed.
@@ -283,17 +281,6 @@ impl Tasks {
                 .add_filter("SoundFont 2", &["sf2"])
                 .pick_file();
             Event::PickedSoundFont(picked)
-        })
-    }
-
-    /// Shows the dialog choosing a keymap file in the background.
-    pub(crate) fn pick_keymap(&mut self, ctx: &egui::Context) -> Result<(), String> {
-        self.spawn("keymap dialog", ctx, || {
-            let picked = rfd::FileDialog::new()
-                .set_title("Choose a keymap file")
-                .add_filter("Keymap", &["txt"])
-                .pick_file();
-            Event::PickedKeymap(picked)
         })
     }
 

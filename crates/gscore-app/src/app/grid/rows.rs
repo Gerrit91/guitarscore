@@ -17,6 +17,11 @@ pub(super) struct TrackRow {
     pub(super) soloed: bool,
     /// The instrument family, shown as an icon.
     pub(super) instrument: Instrument,
+    /// The instrument preset's name, for the mixer strip.
+    pub(super) preset: String,
+    /// The track's volume and pan, for the mixer strips.
+    pub(super) volume: u8,
+    pub(super) pan: u8,
     /// The instrument's full name, for the row's tooltip.
     description: String,
     sound: Option<TrackSound>,
@@ -33,6 +38,24 @@ pub(super) fn track_rows(document: &Document) -> Vec<TrackRow> {
             muted: track.is_muted(),
             soloed: track.is_soloed(),
             instrument: Instrument::of(&track, document.song().track_sound(track.index())),
+            preset: document.song().track_sound(track.index()).map_or_else(
+                || "No sound".to_owned(),
+                |sound| {
+                    if sound.percussion {
+                        "Drum kit".to_owned()
+                    } else {
+                        gscore_model::program_name(sound.program).to_owned()
+                    }
+                },
+            ),
+            volume: document
+                .song()
+                .track_sound(track.index())
+                .map_or(104, |sound| sound.volume),
+            pan: document
+                .song()
+                .track_sound(track.index())
+                .map_or(64, |sound| sound.pan),
             description: track
                 .instrument_name()
                 .map_or_else(|| track.name().to_owned(), str::to_owned),
@@ -48,6 +71,7 @@ pub(super) fn headers(
     rows: &[TrackRow],
     master: MasterMix,
     view: GridView,
+    levels: &[f32],
     actions: &mut Vec<GridAction>,
 ) {
     let height = RULER_HEIGHT + (rows.len() as f32 + 1.0) * ROW_HEIGHT;
@@ -62,9 +86,13 @@ pub(super) fn headers(
             ui.spacing_mut().interact_size.y = 16.0;
             bar::header(ui, rows, view, actions);
             for (index, row) in rows.iter().enumerate() {
-                track_header(ui, index, rows.len(), row, view, actions);
+                let level = levels.get(index).copied().unwrap_or(0.0);
+                track_header(ui, index, rows.len(), row, view, level, actions);
             }
-            bar::master_row(ui, master, actions);
+            let master_level = levels.iter().copied().fold(0.0_f32, f32::max)
+                * f32::from(master.volume)
+                / f32::from(gscore_model::MASTER_UNITY);
+            bar::master_row(ui, master, master_level, actions);
         },
     );
 }
@@ -76,6 +104,7 @@ fn track_header(
     count: usize,
     row: &TrackRow,
     view: GridView,
+    level: f32,
     actions: &mut Vec<GridAction>,
 ) {
     let (rect, _) = ui.allocate_exact_size(vec2(TRACK_COLUMN, ROW_HEIGHT), Sense::hover());
@@ -161,10 +190,7 @@ fn track_header(
     }
 
     // Volume and pan.
-    let volume_rect = Rect::from_min_size(
-        pos2(controls.left() + 46.0, rect.center().y - 8.0),
-        vec2(86.0, 16.0),
-    );
+    let volume_rect = mixer::volume_rect(rect);
     let (volume_value, pan_value) = row
         .sound
         .map_or((104, 64), |sound| (sound.volume, sound.pan));
@@ -178,6 +204,10 @@ fn track_header(
     );
     ui.ctx()
         .accesskit_node_builder(volume_response.id, |node| node.set_label("Volume"));
+    volume_response
+        .clone()
+        .on_hover_text(format!("Volume {volume} — {}", mixer::db_text(volume)));
+    mixer::paint_db(ui, rect, volume, volume_response.dragged());
     if volume_response.drag_started() || volume_response.drag_stopped() {
         actions.push(GridAction::BreakMerge);
     }
@@ -192,10 +222,7 @@ fn track_header(
                 && !volume_response.clicked(),
         });
     }
-    let pan_rect = Rect::from_center_size(
-        pos2(controls.left() + 148.0, rect.center().y),
-        vec2(16.0, 16.0),
-    );
+    let pan_rect = mixer::pan_rect(rect);
     let knob = mixer::pan_knob(ui, pan_rect, pan_value, index, "Pan");
     if knob.boundary {
         actions.push(GridAction::BreakMerge);
@@ -209,6 +236,17 @@ fn track_header(
             merge,
         });
     }
+    mixer::paint_activity(ui, mixer::activity_rect(rect), level);
+    let meter = mixer::activity_rect(rect);
+    let activity = ui.interact(
+        meter,
+        ui.scope_id().with(("activity", index)),
+        Sense::hover(),
+    );
+    ui.ctx().accesskit_node_builder(activity.id, |node| {
+        node.set_label(format!("Output activity {}", row.name));
+    });
+    activity.on_hover_text("Output activity (estimated from recent notes)");
 
     response
         .clone()
@@ -227,11 +265,8 @@ fn track_header(
         }
         ui.separator();
         if ui.button("Add track below").clicked() {
-            actions.push(GridAction::Command {
-                command: Command::InsertTrack {
-                    at: TrackIndex::new(index.saturating_add(1)),
-                },
-                merge: false,
+            actions.push(GridAction::NewTrack {
+                at: index.saturating_add(1),
             });
             ui.close();
         }

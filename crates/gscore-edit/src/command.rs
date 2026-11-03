@@ -530,6 +530,35 @@ impl Command {
         self.info().label
     }
 
+    /// The command's arguments as one human-readable line, for example
+    /// `track 1, measure 2, beat 3, string 4, fret 5`. Empty for undo/redo; a batch lists
+    /// how many changes it holds.
+    pub fn details(&self) -> String {
+        if let Command::Batch { commands } = self {
+            let labels: Vec<&str> = commands.iter().map(Command::label).collect();
+            return format!("{} change(s): {}", commands.len(), labels.join(", "));
+        }
+        if self.is_history() {
+            return String::new();
+        }
+        let line = self.to_line();
+        let Some((_, rest)) = line.split_once(' ') else {
+            return String::new();
+        };
+        rest.split(' ')
+            .filter(|token| !token.is_empty())
+            .map(|token| match token.split_once('=') {
+                Some((key, value)) => {
+                    let value =
+                        crate::parse::decode_text(value).unwrap_or_else(|| value.to_owned());
+                    format!("{key} {value}")
+                }
+                None => token.to_owned(),
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
     /// True for `undo` and `redo`, which the editor handles instead of the model.
     pub fn is_history(&self) -> bool {
         matches!(self, Command::Undo | Command::Redo)
@@ -933,5 +962,32 @@ impl From<Command> for Recorded {
             command,
             merged: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    fn parsed(line: &str) -> Command {
+        crate::parse_line(line).unwrap().unwrap()
+    }
+
+    #[test]
+    fn details_name_the_arguments_in_plain_words() {
+        let command = parsed("set_fret track=2 measure=3 voice=1 beat=4 string=5 fret=7");
+        assert_eq!(
+            command.details(),
+            "track 2, measure 3, voice 1, beat 4, string 5, fret 7"
+        );
+        let text = parsed("set_song_text field=title text=%%New%20Title");
+        assert!(
+            text.details().contains("text New Title"),
+            "{}",
+            text.details()
+        );
+        assert!(Command::Undo.details().is_empty());
     }
 }

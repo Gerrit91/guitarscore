@@ -424,4 +424,92 @@ impl Keymap {
             .map(|(combo, _)| *combo)
             .collect()
     }
+
+    /// Every binding, as `(key, action)`, in key order.
+    pub fn bindings(&self) -> impl Iterator<Item = (KeyCombo, ActionId)> + '_ {
+        self.bindings
+            .iter()
+            .map(|(&combo, &action)| (combo, action))
+    }
+
+    /// A keymap from `(key, action)` pairs (the stored form); a later pair wins.
+    pub fn from_bindings(bindings: impl IntoIterator<Item = (KeyCombo, ActionId)>) -> Self {
+        Keymap {
+            bindings: bindings.into_iter().collect(),
+        }
+    }
+
+    /// Binds `action` to `combo`, replacing all of its old keys (a custom shortcut replacing
+    /// a default one). A combo that belonged to another action is taken over. Fails with a
+    /// message if the combination cannot be bound (for example `enter_fret` needs a digit).
+    pub fn bind(&mut self, action: ActionId, combo: KeyCombo) -> Result<(), String> {
+        if action == ActionId::EnterFret && !matches!(combo.key, Key::Char('0'..='9')) {
+            return Err(format!("enter_fret needs a digit key, not `{combo}`"));
+        }
+        self.bindings.retain(|_, bound| *bound != action);
+        self.bindings.insert(combo, action);
+        Ok(())
+    }
+
+    /// Removes every key bound to `action`.
+    pub fn unbind(&mut self, action: ActionId) {
+        self.bindings.retain(|_, bound| *bound != action);
+    }
+
+    /// Restores the built-in key(s) of `action`, dropping a custom one.
+    pub fn revert_action(&mut self, action: ActionId) {
+        self.unbind(action);
+        let defaults = Keymap::default();
+        for combo in defaults.keys_for(action) {
+            self.bindings.insert(combo, action);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    #[test]
+    fn a_custom_binding_replaces_the_action_and_takes_over_the_combo() {
+        let mut keymap = Keymap::default();
+        let combo = KeyCombo::parse("ctrl+k").unwrap();
+        keymap.bind(ActionId::Copy, combo).unwrap();
+        assert_eq!(keymap.keys_for(ActionId::Copy), [combo]);
+        // No action keeps an old key.
+        assert!(
+            keymap
+                .bindings()
+                .all(|(key, action)| key != combo || action == ActionId::Copy)
+        );
+        // Rebinding the combo to another action takes it over.
+        keymap.bind(ActionId::Cut, combo).unwrap();
+        assert!(keymap.keys_for(ActionId::Copy).is_empty());
+        assert_eq!(keymap.keys_for(ActionId::Cut), [combo]);
+    }
+
+    #[test]
+    fn reverting_one_action_or_everything_restores_the_built_ins() {
+        let mut keymap = Keymap::default();
+        let default_copy = keymap.keys_for(ActionId::Copy);
+        let combo = KeyCombo::parse("ctrl+k").unwrap();
+        keymap.bind(ActionId::Copy, combo).unwrap();
+        keymap.revert_action(ActionId::Copy);
+        assert_eq!(keymap.keys_for(ActionId::Copy), default_copy);
+
+        keymap.bind(ActionId::Save, combo).unwrap();
+        keymap = Keymap::default();
+        assert_eq!(keymap, Keymap::default());
+    }
+
+    #[test]
+    fn enter_fret_only_accepts_digits() {
+        let mut keymap = Keymap::default();
+        let letter = KeyCombo::parse("k").unwrap();
+        assert!(keymap.bind(ActionId::EnterFret, letter).is_err());
+        let digit = KeyCombo::parse("7").unwrap();
+        keymap.bind(ActionId::EnterFret, digit).unwrap();
+    }
 }

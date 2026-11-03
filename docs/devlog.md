@@ -1262,3 +1262,140 @@ Landed:
 - Open: the metronome uses the SoundFont's/peripheral synth's drum kit (no separate click
   sound choice); count-in is one bar only; playback does not yet loop a selection; the
   time readout and transport toggles are not in the keymap.
+
+Owner follow-up (same day):
+- Player navigation: `|◀` top of the score, `◀◀` one bar back, `▶▶` one bar forward
+  and `▶|` end of the score. They move the cursor; while playing or paused they also
+  seek the player, so the music carries on. Jumping outside an active loop turns the loop
+  off (an explicit jump is a way out of it). Tests cover the bar and end jumps.
+- The count-in got its own icon (a metronome followed by a play sign); the former
+  circular arrow now means "loop selection", enabled when measures are selected. Loop
+  boundaries are polled from the UI (every 16 ms while looping, instead of the usual
+  50 ms), so a loop restarts within a frame of its end; a selection change outside the
+  loop is followed on the next frame, and losing the selection turns looping off.
+  Test `looping_the_selected_measure_restarts_at_its_beginning`.
+- The count-in now builds the song's sequence before the clicks: `Playback::position`
+  reports where the song will start while the count-in runs, and `current_measure` and
+  the time readout use it. Starting at measure 3 with a count-in shows 00:04 / total
+  during the clicks instead of 00:00, then continues from that tick. The pending sequence
+  is kept in step with mixer, metronome and output changes.
+- Tests: navigation, loop wrap, count-in readout at the start measure; page snapshots
+  regenerated again for the four extra transport icons (owner review still needed).
+
+## 2026-11-03 — App shell follow-up: settings, shortcuts, history, new song
+
+- Time readout bug fixed: a leftover measure selection clamped the clock to the selection
+  end while playback continued, so the seconds froze. While playing, the selection time is
+  now only shown while playback is inside it; outside it the whole song's time takes over.
+- Settings moved from Edit to the bottom of the File menu. The window opens centered at
+  780×580 and has the app's own title bar: same chrome color and 34 px height, with a close
+  button; it can be dragged and resized.
+- Settings tabs are Song, Editor, Audio I/O (last). The Audio I/O tab offers every
+  SoundFont found in the usual places in a dropdown when the synthesizer is selected
+  (`gscore-audio`'s new `available_soundfonts`), plus the file chooser.
+- Keymap editing no longer points at a text file. Settings → Editor → "Edit shortcuts…"
+  opens a table of every action with its keys; a row can be changed (the new key replaces
+  the action's old keys), reverted with an icon when it differs from the built-in keymap,
+  or reset for everything with "Reset all shortcuts". Bindings are stored in the settings
+  JSON (`keymap_bindings`) and loaded in `main`; a broken stored binding falls back to the
+  loaded keymap with a notice. `enter_fret` keeps its fixed digit keys.
+- New `gscore-edit` APIs: `Keymap::bindings/from_bindings/bind/unbind/revert_action`,
+  `Editor::undo_commands/redo_commands/redo_depth` and the corresponding `TabEditor`
+  labels, so tables can be built without exposing the history internals.
+- History window (Edit → History…): every undoable change as a row, with "Undo" and, for
+  undone rows, "Redo"; clicking one steps to that point. This is the same history that is
+  written to the recovery journal.
+- New song: File → New and a page-with-plus icon at the start of the toolbar create a
+  one-track, one-measure 4/4 score (`Song::new_score`, model test). Save asks for a real
+  `.gp` path because the placeholder is not writable in place.
+- File icons: the open folder was redrawn, save is now a floppy disk, and the new-song
+  icon was added.
+- Tests: new song, Audio I/O tab, shortcut change/revert, history rows, keymap APIs,
+  soundfont discovery, and the time-readout selection fallback. Snapshots regenerated for
+  the new toolbar icons; settings window visually checked with
+  `cargo run -p gscore-app --example snapshot -- <file> out.png --settings`.
+- Open: the history window shows the in-memory undo history (bounded by memory), not the
+  whole on-disk journal; switching a shortcut to one key replaces alternate defaults for
+  that action; available SoundFonts are rescanned while the Audio I/O tab is open.
+
+## 2026-11-03 — History details, shortcut capture, palette and mixer polish
+
+- History: a clock icon next to Settings opens the same window. Rows are now newest first,
+  with a UTC time (`HH:MM:SS`), the command label, its arguments (`track 2, measure 3,
+  string 5, fret 7`, decoded text parameters, ...) and done/undone state. `gscore-edit`
+  assigns stable ids to history entries (`Editor::undo_history/redo_history`,
+  `Command::details`); the app timestamps ids with `SystemTime`, so undo/redo and history
+  trimming keep their times without a clock in the core crates.
+- Audio I/O: the SoundFont file chooser sits next to the dropdown and the full path is
+  shown directly underneath. SoundFont controls are hidden while MIDI is selected, the
+  MIDI port controls are hidden while the synthesizer is selected, and the input section
+  now has an "Input" heading.
+- Shortcuts: clicking Change captures the next key combination (esc cancels). A used
+  combination names the action that owns it and offers "Replace it" or "Cancel"; no
+  hand-written key text is needed. Tests cover a fresh binding and a replaced conflict.
+- Edit palette: the Measure section moved below Techniques and Strokes and beat. A section
+  title is typed in place and applied with Enter (empty Enter clears it, Escape reverts);
+  the Set/Clear buttons are gone.
+- Song grid: the track column and mixer band are wider, the volume slider no longer
+  reaches the pan knob, and hovering/dragging the volume shows its level in decibels
+  (0 = −∞ dB; 127 = 0.0 dB).
+- Tests: command details, history timestamps, in-place section, shortcut capture/conflict,
+  volume-to-dB; page snapshots regenerated for the history icon and wider grid.
+
+## 2026-11-03 — New-track popup, mixer view, manager layout polish
+
+- New track (the grid header or a track's "Add track below") now opens a small centered
+  popup: name (prefilled with a free "Track N"), instrument symbol (guitar, bass, drums,
+  keyboard, voice, other) and a preset/custom color. Create writes insert, rename, color,
+  drums and program as one batch, so one undo removes the whole track. Enter creates,
+  Escape cancels, and the new track is shown. Tests cover name, color and program.
+- Instrument symbols are now authoritative for the string family (programs 40-51 show the
+  generic symbol), so the "Other" choice can stick even when the copied preset is a guitar.
+- Mixer view: the first icon in the grid header switches the bottom panel between the
+  measure grid and DAW-style strips. Each track has a vertical fader, an activity meter, a
+  pan knob, a greyed-out reverb knob (playback does not apply reverb yet), and underneath
+  the fader its name, instrument preset and track-color bar. A master strip follows the
+  tracks. The mode and its panel height are remembered.
+- The meters are an estimate from recent note velocities scaled by the track's volume and
+  decaying over a quarter note, not measured audio; this works for MIDI output too (the
+  tooltip says so). The faders send the same live volume/pan commands as the grid.
+- Mixer band geometry is now shared by track rows and the master row: wider track column,
+  a dedicated decibel column, more space before the pan knob, and a dB readout that is
+  always visible and highlighted while dragged (master included).
+- Tests: new-track popup contents and results, mixer toggle and strip controls; snapshots
+  regenerated for the wider grid and the mixer icon.
+
+## 2026-11-03 — Mixer follow-up: mute/solo, dB scale, editable levels, activity LEDs
+
+- Mixer strips now have M and S buttons (same commands as the grid) and a fixed bottom
+  block: editable dB readout, mute/solo, name, preset and track-color bar. The block is
+  pinned to the strip bottom with absolute rectangles, so names and colors no longer
+  overlap the fader area.
+- The fader and meter share exactly the same top and bottom. A decibel scale sits between
+  them: 0, -6, -12 and -24 dB, positioned at the volume values that produce those levels
+  (the fader travel is linear in MIDI volume, so the labels bunch towards the bottom).
+- Clicking the dB readout turns it into a text field; Enter or focus loss applies the value
+  (0 dB = 127, -60 dB or -inf = 0), Escape cancels. Invalid text leaves the level alone.
+  The same works for the master strip.
+- Grid rows (and the master row) now have a small green activity bar to the right of the
+  pan knob: the compact form of the mixer meter, fed by the same estimated note activity.
+- Tests: mixer mute/solo, typing -12 dB (maps to MIDI volume 32), activity indicators in
+  the grid. Page snapshots regenerated for the wider grid; the mixer and new-track popup
+  were rendered offscreen with the snapshot example.
+
+## 2026-11-03 — Mixer fader layout, L/R meters, master mute/solo, activity LEDs
+
+- The fader is now drawn by hand instead of egui's slider: a thin rail, a white rectangular
+  thumb and a logarithmic travel from 0 dB (top) to -60 dB/silence (bottom). Its height is
+  exactly the meter's height, and pointer dragging and Up/Down/Page/Home/End work.
+- Two scales flank the strip: gain (0 to -54 dB, then -∞) left of the fader, meter level
+  (0 to -60 dBFS) right of the L/R meter bars. Both use the same vertical positions.
+- The meter is two segments (left and right), balanced by the pan knob and filled in dBFS,
+  so the scale is accurate.
+- Mute/solo-all moved out of the mixer header and into the master strip; per-track M/S are
+  on every track strip. Pan and reverb knobs are centered in the column.
+- Strips are wider and taller, with more padding around the fader, scales and bottom block.
+  Names/presets/color bars stay pinned to the bottom.
+- Grid rows and the master row now show a small green activity bar to the right of the pan
+  knob, using the same estimated note-activity level as the mixer meters. Tests cover the
+  mixer controls, M/S-all, and the decibel entry.

@@ -27,6 +27,8 @@ impl Instrument {
             Some(0..=7 | 16..=23) => return Instrument::Keyboard,
             Some(24..=31) => return Instrument::Guitar,
             Some(32..=39) => return Instrument::Bass,
+            // The string family (violin, cello, ...) is the generic "instrument" symbol.
+            Some(40..=51) => return Instrument::Other,
             Some(52..=54 | 85) => return Instrument::Voice,
             _ => {}
         }

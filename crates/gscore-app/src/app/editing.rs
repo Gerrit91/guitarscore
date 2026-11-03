@@ -2,9 +2,10 @@
 //! editor hands back (play, save) is done here.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::time::SystemTime;
 
 use gscore_edit::{Action, ActionId, Command, Cursor, Outcome, Request};
-use gscore_model::TrackIndex;
+use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, TrackIndex, VoiceIndex};
 use gscore_play::PlayState;
 
 use super::GuitarScoreApp;
@@ -53,6 +54,7 @@ impl GuitarScoreApp {
         if self.document.is_none()
             || self.dialog.is_some()
             || self.settings_window.is_some()
+            || self.shortcuts.is_some()
             || ctx.egui_wants_keyboard_input()
             || egui::Popup::is_any_open(ctx)
         {
@@ -185,6 +187,27 @@ impl GuitarScoreApp {
         if let Err(error) = updated {
             self.notice = Some(error);
         }
+        self.sync_history_stamps();
+    }
+
+    /// Gives every history entry the time it was first seen (when its command was applied)
+    /// and forgets entries that are no longer in the undo or redo list.
+    pub(super) fn sync_history_stamps(&mut self) {
+        let Some(document) = &self.document else {
+            self.history_stamps.clear();
+            return;
+        };
+        let now = SystemTime::now();
+        let mut live = std::collections::HashSet::new();
+        for id in document
+            .editor()
+            .undo_ids()
+            .chain(document.editor().redo_ids())
+        {
+            live.insert(id);
+            self.history_stamps.entry(id).or_insert(now);
+        }
+        self.history_stamps.retain(|id, _| live.contains(id));
     }
 
     /// Applies `command` (from a panel or menu). `merge` continues the previous undo entry
@@ -250,6 +273,128 @@ impl GuitarScoreApp {
         if let Err(error) = self.playback.poll_count_in(document.song()) {
             self.notice = Some(error);
         }
+    }
+
+    /// Keeps the playing position inside the selected measures when looping is on.
+    pub(super) fn poll_loop(&mut self) {
+        if !self.playback.loop_selection() {
+            return;
+        }
+        let Some(document) = &mut self.document else {
+            return;
+        };
+        let Some(selection) = self.view.selection else {
+            // Nothing is selected any more: looping has no range.
+            self.playback.set_loop_selection(false);
+            return;
+        };
+        let timeline = document.timeline();
+        let range = timeline
+            .as_deref()
+            .and_then(|timeline| timeline.measure_range(selection.start(), selection.end()));
+        if let Err(error) = self.playback.poll_loop(range) {
+            self.notice = Some(error);
+        }
+    }
+
+    /// Moves the cursor to the first beat of `measure` and, while playing or paused, moves
+    /// the player there too. `at_end` seeks to the very end of the score instead of the
+    /// measure's start.
+    fn goto_measure(&mut self, measure: usize, at_end: bool) {
+        if self.playback.count_in_pending() {
+            // A count-in for the old place makes no sense now.
+            if let Err(error) = self.playback.stop() {
+                self.notice = Some(error);
+            }
+        }
+        let Some(document) = &mut self.document else {
+            return;
+        };
+        let measure_count = document.song().measure_count();
+        if measure_count == 0 {
+            return;
+        }
+        let timeline = document.timeline();
+        let loop_range = if self.playback.loop_selection() {
+            self.view.selection.and_then(|selection| {
+                timeline
+                    .as_deref()
+                    .and_then(|timeline| timeline.measure_range(selection.start(), selection.end()))
+            })
+        } else {
+            None
+        };
+        let measure = measure.min(measure_count.saturating_sub(1));
+        let cursor = document.editor().cursor();
+        let at = Cursor {
+            measure: MeasureIndex::new(measure),
+            voice: VoiceIndex::new(0),
+            beat: BeatIndex::new(0),
+            ..cursor
+        };
+        document.editor_mut().set_cursor(at);
+        let target = BeatPosition {
+            track: at.track,
+            measure: at.measure,
+            voice: at.voice,
+            beat: at.beat,
+        };
+        let Some(sequence) = self.playback.sequence().cloned() else {
+            return;
+        };
+        let tick = if at_end {
+            Some(sequence.end)
+        } else {
+            sequence.tick_of(document.song(), target)
+        };
+        if let (Some((start, end)), Some(tick)) = (loop_range, tick)
+            && (tick < start || tick > end)
+        {
+            // An explicit jump outside the loop is a way to leave it.
+            self.playback.set_loop_selection(false);
+        }
+        if let Some(tick) = tick
+            && let Err(error) = self.playback.seek_tick(tick)
+        {
+            self.notice = Some(error);
+        }
+    }
+
+    /// Moves to the previous bar (and seeks there while playing or paused).
+    pub fn previous_bar(&mut self) {
+        let Some(document) = &self.document else {
+            return;
+        };
+        let measure = document.editor().cursor().measure.get().saturating_sub(1);
+        self.goto_measure(measure, false);
+    }
+
+    /// Moves to the next bar (and seeks there while playing or paused).
+    pub fn next_bar(&mut self) {
+        let Some(document) = &self.document else {
+            return;
+        };
+        let measure = document.editor().cursor().measure.get().saturating_add(1);
+        self.goto_measure(measure, false);
+    }
+
+    /// Moves to the top of the score (and seeks there while playing or paused).
+    pub fn go_to_start(&mut self) {
+        self.goto_measure(0, false);
+    }
+
+    /// Moves to the end of the score (and seeks there while playing or paused).
+    pub fn go_to_end(&mut self) {
+        let Some(document) = &self.document else {
+            return;
+        };
+        let last = document.song().measure_count().saturating_sub(1);
+        self.goto_measure(last, true);
+    }
+
+    /// Turns looping of the selected measures on or off.
+    pub fn set_loop_selection(&mut self, enabled: bool) {
+        self.playback.set_loop_selection(enabled);
     }
 
     /// Turns the metronome on or off (heard at once while playing).

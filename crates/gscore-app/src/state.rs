@@ -82,6 +82,8 @@ pub struct ViewState {
     pub track: usize,
     /// Whether the track and song grid (the bottom panel) is shown.
     pub show_track_grid: bool,
+    /// Whether the bottom panel shows the mixer instead of the measure grid.
+    pub grid_mixer: bool,
     /// Whether the track panel (the right panel) is shown.
     pub show_track_panel: bool,
     /// Whether the edit palette (the left panel) is shown.
@@ -97,6 +99,7 @@ impl Default for ViewState {
             zoom: 1.0,
             track: 0,
             show_track_grid: true,
+            grid_mixer: false,
             show_track_panel: true,
             show_edit_panel: true,
             selection: None,
