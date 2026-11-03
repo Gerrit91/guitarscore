@@ -123,23 +123,25 @@ fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Color32) {
             painter.add(egui::Shape::line(points, Stroke::new(1.6, ink)));
         }
         Face::Bend => {
-            let start = rect.left_bottom() + vec2(7.0, -9.0);
-            let tip = rect.right_top() + vec2(-8.0, 8.0);
-            let points: Vec<Pos2> = (0..=12)
-                .map(|step| {
-                    let t = step as f32 / 12.0;
-                    let x = start.x + (tip.x - start.x) * t;
-                    let y = start.y + (tip.y - start.y) * t.powi(2);
-                    egui::pos2(x, y)
-                })
-                .collect();
-            painter.add(egui::Shape::line(points, Stroke::new(1.6, ink)));
-            painter.add(egui::Shape::convex_polygon(
-                vec![
-                    tip + vec2(0.0, -4.0),
-                    tip + vec2(-3.5, 2.0),
-                    tip + vec2(3.5, 2.0),
+            // Like the score's bend: a quarter ellipse that leaves level and rises straight
+            // into the base of a solid arrowhead.
+            const QUARTER_ELLIPSE: f32 = 0.552_284_8;
+            let start = rect.left_bottom() + vec2(6.0, -8.0);
+            let tip = rect.right_top() + vec2(-9.0, 5.0);
+            let base = tip + vec2(0.0, 6.0);
+            painter.add(egui::epaint::CubicBezierShape::from_points_stroke(
+                [
+                    start,
+                    egui::pos2(start.x + (base.x - start.x) * QUARTER_ELLIPSE, start.y),
+                    egui::pos2(base.x, base.y + (start.y - base.y) * QUARTER_ELLIPSE),
+                    base,
                 ],
+                false,
+                Color32::TRANSPARENT,
+                Stroke::new(1.6, ink),
+            ));
+            painter.add(egui::Shape::convex_polygon(
+                vec![tip, base + vec2(3.5, 0.0), base + vec2(-3.5, 0.0)],
                 ink,
                 Stroke::NONE,
             ));

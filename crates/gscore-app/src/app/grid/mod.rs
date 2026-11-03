@@ -56,6 +56,7 @@ pub(super) const CELL_PADDING: f32 = 0.0;
 pub(super) const SECTION_TITLE_MEASURES: f32 = 3.0;
 
 /// What the grid asks the app to do after drawing.
+#[derive(Debug)]
 pub(super) enum GridAction {
     /// Run a track command; `merge` continues the previous undo step (one slider drag).
     Command { command: Command, merge: bool },
@@ -123,64 +124,70 @@ impl GuitarScoreApp {
             &mut actions,
         );
         for action in actions {
-            match action {
-                GridAction::Command { command, merge } => self.apply_command(command, merge),
-                GridAction::CommandShowing { command, track } => {
-                    let revision = self.document.as_ref().map(|d| d.editor().revision());
-                    self.apply_command(command, false);
-                    if self.document.as_ref().map(|d| d.editor().revision()) != revision {
-                        self.view.track = track;
-                    }
-                }
-                GridAction::NewTrack { at } => self.begin_new_track(at),
-                GridAction::ToggleMixer => {
-                    self.view.grid_mixer = !self.view.grid_mixer;
-                    self.save_settings();
-                }
-                GridAction::BreakMerge => {
-                    if let Some(document) = &mut self.document {
-                        document.editor_mut().break_merge();
-                    }
-                }
-                GridAction::MoveCursor { track, measure } => self.move_cursor_to(track, measure),
-                GridAction::Select(selection) => {
-                    self.view.selection = Some(selection);
-                    if let Some(document) = &mut self.document {
-                        document.editor_mut().set_selection(Some(
-                            gscore_edit::Selection::Measures {
-                                anchor: gscore_model::MeasureIndex::new(selection.start()),
-                                focus: gscore_model::MeasureIndex::new(selection.end()),
-                            },
-                        ));
-                    }
-                    // While playing, playback goes to the selection's first measure, unless
-                    // that measure is already playing (the selection just follows it).
-                    let playing_measure =
-                        if self.playback.state() == gscore_play::PlayState::Playing {
-                            self.playback
-                                .current_measure()
-                                .map(|measure| measure.saturating_sub(1))
-                        } else {
-                            None
-                        };
-                    if playing_measure != Some(selection.start()) {
-                        self.jump_playback_to(self.view.track, selection.start());
-                    }
-                }
-                GridAction::Rename { track } => {
-                    let name = rows
-                        .get(track)
-                        .map_or_else(String::new, |row| row.name.clone());
-                    self.renaming = Some(RenameTrack {
-                        track,
-                        name,
-                        focused: false,
-                    });
-                }
-                GridAction::ShowTrack { track } => {
+            self.apply_grid_action(action);
+        }
+    }
+
+    /// Runs one action from the grid (or the score's right-click menu).
+    pub(super) fn apply_grid_action(&mut self, action: GridAction) {
+        match action {
+            GridAction::Command { command, merge } => self.apply_command(command, merge),
+            GridAction::CommandShowing { command, track } => {
+                let revision = self.document.as_ref().map(|d| d.editor().revision());
+                self.apply_command(command, false);
+                if self.document.as_ref().map(|d| d.editor().revision()) != revision {
                     self.view.track = track;
-                    self.view.show_track_panel = true;
                 }
+            }
+            GridAction::NewTrack { at } => self.begin_new_track(at),
+            GridAction::ToggleMixer => {
+                self.view.grid_mixer = !self.view.grid_mixer;
+                self.save_settings();
+            }
+            GridAction::BreakMerge => {
+                if let Some(document) = &mut self.document {
+                    document.editor_mut().break_merge();
+                }
+            }
+            GridAction::MoveCursor { track, measure } => self.move_cursor_to(track, measure),
+            GridAction::Select(selection) => {
+                self.view.selection = Some(selection);
+                if let Some(document) = &mut self.document {
+                    document
+                        .editor_mut()
+                        .set_selection(Some(gscore_edit::Selection::Measures {
+                            anchor: gscore_model::MeasureIndex::new(selection.start()),
+                            focus: gscore_model::MeasureIndex::new(selection.end()),
+                        }));
+                }
+                // While playing, playback goes to the selection's first measure, unless
+                // that measure is already playing (the selection just follows it).
+                let playing_measure = if self.playback.state() == gscore_play::PlayState::Playing {
+                    self.playback
+                        .current_measure()
+                        .map(|measure| measure.saturating_sub(1))
+                } else {
+                    None
+                };
+                if playing_measure != Some(selection.start()) {
+                    self.jump_playback_to(self.view.track, selection.start());
+                }
+            }
+            GridAction::Rename { track } => {
+                let name = self
+                    .document
+                    .as_ref()
+                    .and_then(|document| document.song().tracks().nth(track))
+                    .map_or_else(String::new, |row| row.name().to_owned());
+                self.renaming = Some(RenameTrack {
+                    track,
+                    name,
+                    focused: false,
+                });
+            }
+            GridAction::ShowTrack { track } => {
+                self.view.track = track;
+                self.view.show_track_panel = true;
             }
         }
     }

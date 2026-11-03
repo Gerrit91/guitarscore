@@ -166,6 +166,8 @@ pub enum ActionId {
     ZoomOut,
     /// Back to actual size.
     ZoomReset,
+    /// Switch the window to full screen and back.
+    ToggleFullscreen,
 }
 
 impl ActionId {
@@ -425,6 +427,11 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::ZoomIn, "zoom_in", "Zoom in"),
     info(ActionId::ZoomOut, "zoom_out", "Zoom out"),
     info(ActionId::ZoomReset, "zoom_reset", "Actual size"),
+    info(
+        ActionId::ToggleFullscreen,
+        "toggle_fullscreen",
+        "Full screen",
+    ),
 ];
 
 const fn info(action: ActionId, id: &'static str, label: &'static str) -> ActionInfo {
@@ -500,6 +507,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 77, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 78, "one entry per ActionId variant");
     }
 }

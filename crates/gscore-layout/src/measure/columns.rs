@@ -53,7 +53,7 @@ pub(super) fn column_items(
             marks.legato_destination = marks.legato_destination || legato.destination;
         }
         if marks.whammy.is_none() {
-            marks.whammy = beat.whammy_bar();
+            marks.whammy = beat.whammy_shape();
         }
         marks.add_vibrato(beat.vibrato());
     }

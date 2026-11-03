@@ -97,6 +97,13 @@ pub enum DrawOp {
         /// What the rectangle is.
         color: ColorToken,
     },
+    /// A filled polygon (convex), for solid arrowheads.
+    Polygon {
+        /// The corners, in order.
+        points: Vec<Point>,
+        /// What the polygon is.
+        color: ColorToken,
+    },
     /// A cubic Bézier curve, for slurs, ties and bends.
     Curve {
         /// Start point.

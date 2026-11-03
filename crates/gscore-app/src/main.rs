@@ -31,12 +31,17 @@ fn main() -> ExitCode {
         .with_inner_size([1100.0, 800.0])
         .with_min_inner_size([400.0, 300.0])
         // The app draws its own title bar (song title, window buttons) and no frame.
-        .with_decorations(false);
+        .with_decorations(false)
+        // It always opens maximized (or full screen, if it was closed that way); the
+        // remembered size is for when it is restored down.
+        .with_maximized(true);
     if let Some(window) = settings.window {
         viewport = viewport
             .with_inner_size(window.size())
-            .with_position(window.position())
-            .with_maximized(window.maximized);
+            .with_fullscreen(window.fullscreen);
+        if let Some(position) = window.position() {
+            viewport = viewport.with_position(position);
+        }
     }
     let options = eframe::NativeOptions {
         renderer: eframe::Renderer::Wgpu,

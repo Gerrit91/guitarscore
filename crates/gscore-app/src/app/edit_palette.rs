@@ -106,7 +106,7 @@ pub(super) struct PaletteSnapshot {
 }
 
 impl PaletteSnapshot {
-    fn of(song: &Song, cursor: Cursor, selection: Option<Selection>) -> Self {
+    pub(super) fn of(song: &Song, cursor: Cursor, selection: Option<Selection>) -> Self {
         let beats = selected_beats(song, cursor, selection);
         let measure = cursor.measure;
         let track = song.track(cursor.track);
@@ -284,6 +284,11 @@ impl GuitarScoreApp {
             commands = rest_commands(&snapshot);
         } else if action == ActionId::ToggleTie {
             commands = tie_commands(&snapshot);
+        } else if action == ActionId::ToggleBend {
+            // Like a click on the bend or whammy tile: the editor opens.
+            state.effects.open_bend(&snapshot);
+        } else if action == ActionId::ToggleWhammy {
+            state.effects.open_whammy(&snapshot);
         } else if let Some(item) = super::edit_effects::fx_item(action) {
             commands = super::edit_effects::fx_commands(item.fx, &snapshot);
         }
@@ -293,6 +298,28 @@ impl GuitarScoreApp {
         {
             document.editor_mut().set_entry_value(duration);
         }
+    }
+
+    /// The bend or whammy editor, while one is open. It floats over the app, so it shows
+    /// even when the palette is hidden or its section folded.
+    pub(super) fn show_shape_editors(&mut self, ctx: &egui::Context) {
+        if !self.edit_palette.effects.is_editing() {
+            return;
+        }
+        let Some(document) = &self.document else {
+            self.edit_palette.effects.close_editors();
+            return;
+        };
+        let snapshot = PaletteSnapshot::of(
+            document.song(),
+            document.editor().cursor(),
+            document.editor().selection(),
+        );
+        let mut commands = Vec::new();
+        self.edit_palette
+            .effects
+            .show_editors(ctx, &snapshot, &mut self.settings, &mut commands);
+        self.apply_commands(commands);
     }
 
     /// Applies one command, or a batch for several beats (one undo step).

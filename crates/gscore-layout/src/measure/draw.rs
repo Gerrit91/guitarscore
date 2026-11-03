@@ -121,7 +121,7 @@ impl MeasureLayout {
             let Some(&at) = xs.get(index) else {
                 continue;
             };
-            if let Some(whammy) = column.marks.whammy {
+            if let Some(whammy) = &column.marks.whammy {
                 ornaments::draw_whammy(at, span_end(index), top, whammy, ctx, ops);
             }
             if let Some(vibrato) = column.marks.vibrato {
