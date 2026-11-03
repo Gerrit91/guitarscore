@@ -16,7 +16,7 @@ use gscore_model::{
     AccentKind, BeatEffect, BeatIndex, BeatPosition, MeasureIndex, NoteEffect, Song, StringNumber,
     StrokeDirection, TrackIndex, Vibrato, VoiceIndex,
 };
-use gscore_play::{MidiEvent, PPQ, Sequence};
+use gscore_play::{MidiEvent, PPQ, Sequence, controller};
 
 fn at(beat: usize) -> BeatPosition {
     BeatPosition {
@@ -172,4 +172,43 @@ fn a_beat_excerpt_plays_one_beat_from_the_start() {
     let mut muted = song.clone();
     let _ = muted.set_track_mute(TrackIndex::new(0), true).unwrap();
     assert!(Sequence::beat_excerpt(&muted, at(1)).unwrap().is_none());
+}
+
+#[test]
+fn staccato_stops_dead_on_its_own_channel() {
+    let mut song = two_beats();
+    let _ = song
+        .set_note_effect(at(0), string(6), NoteEffect::Staccato(true))
+        .unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let base = sequence.tracks[0].channel;
+    let (on_tick, channel) = sequence
+        .events
+        .iter()
+        .find_map(|event| match event.event {
+            MidiEvent::NoteOn {
+                channel, key: 43, ..
+            } => Some((event.tick, channel)),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(on_tick, 0);
+    assert_ne!(channel, base, "a damped note borrows a channel");
+    let off = note_offs(&sequence)
+        .into_iter()
+        .find(|&(_, key)| key == 43)
+        .unwrap()
+        .0;
+    // Half of the half note, at most an eighth: the release is cut there.
+    assert_eq!(off, u64::from(PPQ) / 2);
+    let cut = sequence.events.iter().any(|event| {
+        event.tick == off
+            && matches!(
+                event.event,
+                MidiEvent::Control { channel: c, controller: controller::EXPRESSION, value: 0 }
+                    if c == channel
+            )
+    });
+    assert!(cut, "the expression drops to zero at the note's end");
+    assert_eq!(sequence.degraded_pitch_bends, 0);
 }

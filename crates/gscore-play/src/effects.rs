@@ -16,9 +16,10 @@ const GHOST_PERCENT: u32 = 55;
 const PALM_MUTE_PERCENT: u32 = 85;
 const ACCENT_PERCENT: u32 = 125;
 const HEAVY_ACCENT_PERCENT: u32 = 145;
-/// A palm-muted note stops after an eighth note at most; a staccato one after half its
-/// length.
+/// A palm-muted note stops after an eighth note at most.
 const PALM_MUTE_TICKS: u64 = QUARTER / 2;
+/// A staccato note sounds half its length, at most an eighth note.
+const STACCATO_TICKS: u64 = QUARTER / 2;
 /// A let-ring note holds at most this long past its own end when no note follows.
 const LET_RING_TICKS: u64 = 4 * QUARTER;
 /// Tremolo picking repeats the note every 32nd note.
@@ -26,8 +27,8 @@ const TREMOLO_TICKS: u64 = QUARTER / 8;
 /// A brush stroke spreads the chord over this long (a 32nd note, as Guitar Pro's default).
 const BRUSH_TICKS: u64 = QUARTER / 8;
 /// Vibrato: how far the pitch swings (cents) and one swing's length, slight and wide.
-const SLIGHT_DEPTH_CENTS: u16 = 25;
-const WIDE_DEPTH_CENTS: u16 = 60;
+const SLIGHT_DEPTH_CENTS: u16 = 50;
+const WIDE_DEPTH_CENTS: u16 = 100;
 const SLIGHT_PERIOD: u64 = QUARTER / 3;
 const WIDE_PERIOD: u64 = QUARTER / 2;
 
@@ -53,9 +54,13 @@ pub(crate) fn shape_note(sounding: &mut Sounding, note: &NoteView<'_>) {
     if note.is_palm_muted() {
         sounding.velocity = scale(sounding.velocity, PALM_MUTE_PERCENT);
         sounding.end = sounding.start.saturating_add(length.min(PALM_MUTE_TICKS));
+        sounding.damp = true;
     }
     if note.is_staccato() {
-        sounding.end = sounding.start.saturating_add((length / 2).max(1));
+        sounding.end = sounding
+            .start
+            .saturating_add((length / 2).clamp(1, STACCATO_TICKS));
+        sounding.damp = true;
     }
 }
 
@@ -198,6 +203,7 @@ mod tests {
             let_ring: false,
             tremolo: false,
             onset: start,
+            damp: false,
         }
     }
 

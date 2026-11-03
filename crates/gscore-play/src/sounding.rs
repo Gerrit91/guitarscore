@@ -48,6 +48,10 @@ pub(super) struct Sounding {
     pub(super) tremolo: bool,
     /// Where its beat starts (a brush stroke may delay the note itself).
     pub(super) onset: u64,
+    /// Whether the note stops dead at its end (staccato, palm mute) instead of fading
+    /// with the SoundFont's release: it plays on a borrowed channel whose expression drops
+    /// to zero then.
+    pub(super) damp: bool,
 }
 
 /// Which slide of a note the sequencer plays.
@@ -183,7 +187,7 @@ pub(super) fn assign_pitch_channels(notes: &mut [Sounding], free: Vec<Channel>) 
     let mut order: Vec<usize> = notes
         .iter()
         .enumerate()
-        .filter(|(_, note)| note.shape.is_some())
+        .filter(|(_, note)| note.shape.is_some() || note.damp)
         .map(|(index, _)| index)
         .collect();
     order.sort_by_key(|&index| {
@@ -209,7 +213,11 @@ pub(super) fn assign_pitch_channels(notes: &mut [Sounding], free: Vec<Channel>) 
             }
         }
         let Some(channel) = free.pop_front() else {
-            degraded = degraded.saturating_add(1);
+            // A damped note without a channel only keeps its release; a pitch shape is
+            // lost, which is reported.
+            if note.shape.is_some() {
+                degraded = degraded.saturating_add(1);
+            }
             continue;
         };
         if let Some(note) = notes.get_mut(index) {

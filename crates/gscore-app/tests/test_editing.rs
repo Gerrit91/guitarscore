@@ -466,6 +466,22 @@ fn an_effect_chosen_in_the_palette_plays_its_beat_and_play_still_plays_the_song(
     assert!(playing, "the song did not start after the excerpt");
     harness.get_by_label("Stop").click();
     harness.step();
+    assert!(!harness.state().playback().previewing());
+
+    // The dynamic the beat already has (mezzo-forte, the default) changes nothing but is
+    // still heard.
+    let depth = harness.state().document().unwrap().editor().undo_depth();
+    harness.get_by_label("mf (mezzo-forte)").scroll_to_me();
+    harness.run();
+    harness.get_by_label("mf (mezzo-forte)").click();
+    harness.run();
+    assert!(harness.state().playback().previewing());
+    assert_eq!(
+        harness.state().document().unwrap().editor().undo_depth(),
+        depth
+    );
+    harness.get_by_label("Stop").click();
+    harness.step();
 
     // Undo is quiet.
     type_char(&mut harness, "z", Modifiers::COMMAND);

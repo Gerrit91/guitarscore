@@ -170,6 +170,8 @@ impl GuitarScoreApp {
         let snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
 
         let mut commands: Vec<Command> = Vec::new();
+        // A beat to play although nothing changed (its dynamic chosen again).
+        let mut heard = None;
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -181,12 +183,15 @@ impl GuitarScoreApp {
                     note_length(ui, &mut self.edit_palette, &snapshot, &hint, &mut commands);
                     beat_buttons(ui, &mut self.edit_palette, &snapshot, &hint, &mut commands);
                 });
-                edit_dynamics::section(ui, &snapshot.dynamics, &mut commands);
+                edit_dynamics::section(ui, &snapshot.dynamics, &mut commands, &mut heard);
                 self.edit_palette
                     .effects
                     .panel(ui, &snapshot, &hint, &mut commands);
             });
         self.apply_commands(commands);
+        if let Some(at) = heard {
+            self.preview_beat(at);
+        }
         // New beats past the cursor take the palette's length.
         if let Some(duration) = self.edit_palette.duration()
             && let Some(document) = &mut self.document

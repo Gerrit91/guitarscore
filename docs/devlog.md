@@ -1891,3 +1891,17 @@ lifeless):
   legato one with a slur); the history button is a counter-clockwise arrow round clock
   hands.
 
+## 2026-11-03 — Effects really heard (owner: mf silent, no vibrato, staccato not short)
+
+- **mf was silent**: choosing the dynamic a beat already has (mezzo-forte is the default)
+  made no command, so nothing played. The palette now plays the beat anyway.
+- **Vibrato too subtle**: rendered offline through rustysynth, the slight vibrato swung
+  only ±25 cents (3 % pitch spread), hard to hear on a plucked note. Now ±50 cents slight,
+  ±100 cents wide. Test `a_vibrato_is_heard_as_a_changing_pitch` (gscore-audio) measures
+  the pitch of the rendered sound.
+- **Staccato rang on**: rustysynth has no release-time control, so a shortened note kept
+  ringing for the SoundFont's release. Staccato (now at most an eighth note) and palm-muted
+  notes play on a borrowed channel whose expression (CC 11) drops to zero at the note's
+  end, so they stop dead; the next note on that channel resets it. Damped notes without a
+  free channel only lose the cut (not counted as degraded pitch bends).
+

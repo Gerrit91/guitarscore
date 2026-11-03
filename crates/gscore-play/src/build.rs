@@ -11,7 +11,7 @@ use gscore_model::{
 
 use crate::channels::ChannelAllocator;
 use crate::effects;
-use crate::event::{MidiEvent, PITCH_BEND_CENTER};
+use crate::event::{MidiEvent, PITCH_BEND_CENTER, controller};
 use crate::pitch;
 use crate::sequence::{MeasureSpan, SequenceTrack, TimedEvent, sound_events, ticks};
 use crate::sounding::{self, Sounding};
@@ -174,6 +174,7 @@ pub(crate) fn collect(
                             let_ring: note.is_let_ring(),
                             tremolo: note.has_tremolo_picking(),
                             onset: start,
+                            damp: false,
                         };
                         effects::shape_note(&mut sounding, &note);
                         on_string.insert(string, notes.len());
@@ -225,6 +226,16 @@ pub(crate) fn emit(notes: &[Sounding], tracks: &[SequenceTrack], events: &mut Ve
             let range = note
                 .shape
                 .map_or(pitch::BEND_RANGE_SEMITONES, |shape| shape.range());
+            // A damped note before may have left the expression at zero.
+            events.push(TimedEvent {
+                tick: note.start,
+                track: note.track,
+                event: MidiEvent::Control {
+                    channel: note.play_channel,
+                    controller: controller::EXPRESSION,
+                    value: 127,
+                },
+            });
             for event in pitch::bend_range_setup(note.play_channel, range) {
                 events.push(TimedEvent {
                     tick: note.start,
@@ -260,6 +271,18 @@ pub(crate) fn emit(notes: &[Sounding], tracks: &[SequenceTrack], events: &mut Ve
                 key: note.key,
             },
         });
+        if borrowed && note.damp {
+            // Cut the release: the note stops at its end.
+            events.push(TimedEvent {
+                tick: end,
+                track: note.track,
+                event: MidiEvent::Control {
+                    channel: note.play_channel,
+                    controller: controller::EXPRESSION,
+                    value: 0,
+                },
+            });
+        }
         if borrowed && note.shape.is_some() {
             // Reset after the note, so a reused channel starts unbent.
             events.push(TimedEvent {
