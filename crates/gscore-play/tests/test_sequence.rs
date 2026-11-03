@@ -640,3 +640,32 @@ fn a_sequence_reports_the_channel_each_track_plays_on() {
     assert_eq!(sequence.channel_of(TrackIndex::new(0)), None);
     assert!(sequence.channel_of(TrackIndex::new(1)).is_some());
 }
+
+#[test]
+fn the_setup_sends_each_tracks_reverb_and_chorus() {
+    let mut song = testing::song(&[GUITAR_6], 1).unwrap();
+    let track = TrackIndex::new(0);
+    let _reverb = song.set_track_reverb(track, 64).unwrap();
+    let _chorus = song.set_track_chorus(track, 20).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let channel = sequence.channel_of(track).unwrap();
+    let setup: Vec<MidiEvent> = sequence
+        .events
+        .iter()
+        .take_while(|event| event.tick == 0)
+        .map(|event| event.event)
+        .collect();
+    for (controller, value) in [
+        (gscore_play::controller::REVERB, 64),
+        (gscore_play::controller::CHORUS, 20),
+    ] {
+        assert!(
+            setup.contains(&MidiEvent::Control {
+                channel,
+                controller,
+                value
+            }),
+            "controller {controller} = {value} in {setup:?}"
+        );
+    }
+}

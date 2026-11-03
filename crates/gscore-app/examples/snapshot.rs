@@ -2,7 +2,7 @@
 //! "Verify UI changes visually"):
 //!
 //! ```text
-//! cargo run -p gscore-app --example snapshot -- <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH]
+//! cargo run -p gscore-app --example snapshot -- <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH] [--settings] [--history] [--mixer] [--new-track]
 //! ```
 
 // An example is a small tool: failing loudly with a message is fine here.
@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
 use gscore_app::{GuitarScoreApp, ThemeChoice};
 
 /// How long to wait for the file to open.
@@ -25,13 +26,21 @@ const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let usage = "usage: snapshot <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH]";
+    let usage = "usage: snapshot <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH] [--settings] [--history] [--mixer] [--new-track]";
     let file = PathBuf::from(args.next().expect(usage));
     let out = PathBuf::from(args.next().expect(usage));
     let (mut dark, mut track, mut zoom, mut size) = (false, 1_usize, 1.0_f32, (1100.0, 800.0));
+    let mut settings = false;
+    let mut history = false;
+    let mut mixer = false;
+    let mut new_track = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--dark" => dark = true,
+            "--settings" => settings = true,
+            "--history" => history = true,
+            "--mixer" => mixer = true,
+            "--new-track" => new_track = true,
             "--track" => track = args.next().and_then(|t| t.parse().ok()).expect(usage),
             "--zoom" => zoom = args.next().and_then(|z| z.parse().ok()).expect(usage),
             "--size" => {
@@ -53,6 +62,15 @@ fn main() {
         harness.step();
         std::thread::sleep(Duration::from_millis(10));
     }
+    if history {
+        // A few edits, the last one undone, so the history shows every kind of row.
+        for label in ["1/8", "Rest", "1/4"] {
+            harness.get_by_label(label).click();
+            harness.run();
+        }
+        harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+        harness.run();
+    }
     {
         let app = harness.state_mut();
         let view = app.view_mut();
@@ -63,6 +81,16 @@ fn main() {
         };
         view.track = track.saturating_sub(1);
         view.set_zoom(zoom);
+        view.grid_mixer = mixer;
+        if settings {
+            app.open_settings();
+        }
+        if history {
+            app.open_history();
+        }
+        if new_track {
+            app.open_new_track();
+        }
     }
     harness.run();
     if let Some(notice) = harness.state().notice() {

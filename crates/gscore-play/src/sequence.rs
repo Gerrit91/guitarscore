@@ -16,7 +16,6 @@ use gscore_model::{
 
 use crate::channels::ChannelAllocator;
 use crate::event::{Channel, MidiEvent, PITCH_BEND_CENTER, controller};
-use crate::order::playback_order;
 use crate::pitch;
 use crate::sounding::{self, Sounding};
 use crate::tempo::{PPQ, TempoMap};
@@ -99,30 +98,21 @@ impl Sequence {
             .map(|entry| entry.channel)
     }
 
-    /// The sequence of `tracks` of `song` (all tracks if `None`).
+    /// The sequence of `tracks` of `song` (all tracks if `None`), without a metronome.
     pub fn new(song: &Song, tracks: Option<&[TrackIndex]>) -> Result<Self, ModelError> {
-        let order = playback_order(song);
+        Self::with_metronome(song, tracks, false)
+    }
 
+    /// The sequence of `tracks` of `song` (all tracks if `None`). With `metronome`, a click
+    /// track is added on the percussion channel: one click per beat, accented on the first
+    /// beat of every measure.
+    pub fn with_metronome(
+        song: &Song,
+        tracks: Option<&[TrackIndex]>,
+        metronome: bool,
+    ) -> Result<Self, ModelError> {
         // When each played measure starts, by its time signature.
-        let mut measures = Vec::with_capacity(order.len());
-        let mut tick: u64 = 0;
-        let four_four = TimeSignature::new(4, 4)?;
-        for &measure in &order {
-            let signature = song
-                .track(TrackIndex::new(0))
-                .and_then(|t| t.measure(measure))
-                .map(|m| m.time_signature())
-                .transpose()?
-                .unwrap_or(four_four);
-            let end = tick.saturating_add(ticks(signature.measure_length()));
-            measures.push(MeasureSpan {
-                measure,
-                start: tick,
-                end,
-                signature,
-            });
-            tick = end;
-        }
+        let (measures, tick) = crate::timeline::measure_spans(song)?;
 
         let mut tempo_changes: Vec<(u64, u32)> = vec![(0, song.tempo())];
         for span in &measures {
@@ -167,7 +157,7 @@ impl Sequence {
                 channel,
                 sound,
             });
-            for event in setup(channel, sound) {
+            for event in sound_events(channel, sound) {
                 events.push(TimedEvent {
                     tick: 0,
                     track: number,
@@ -270,7 +260,7 @@ impl Sequence {
         for note in &notes {
             let borrowed = note.play_channel != note.channel;
             if borrowed && let Some(track) = seq_tracks.get(note.track) {
-                for event in setup(note.play_channel, track.sound) {
+                for event in sound_events(note.play_channel, track.sound) {
                     events.push(TimedEvent {
                         tick: note.start,
                         track: note.track,
@@ -327,6 +317,11 @@ impl Sequence {
                 });
             }
         }
+        if metronome {
+            for span in &measures {
+                events.extend(crate::click::click_events(*span));
+            }
+        }
         events.sort_by_key(|e| (e.tick, rank(&e.event)));
 
         tempo_changes.sort_by_key(|&(tick, _)| tick);
@@ -346,6 +341,11 @@ impl Sequence {
         })
     }
 
+    /// The length of the whole sequence in microseconds.
+    pub fn micros(&self) -> u64 {
+        self.tempo.micros_at(self.end)
+    }
+
     /// The channels this sequence uses, including borrowed ones.
     pub fn channels(&self) -> Vec<Channel> {
         let mut channels: Vec<Channel> = self.tracks.iter().map(|t| t.channel).collect();
@@ -360,22 +360,7 @@ impl Sequence {
     /// A position past the voice's last beat (the cursor in an empty measure) is the
     /// measure's start. `None` if the measure is never played (or does not exist).
     pub fn tick_of(&self, song: &Song, at: BeatPosition) -> Option<u64> {
-        let span = self.measures.iter().find(|s| s.measure == at.measure)?;
-        let beats = song
-            .track(at.track)
-            .and_then(|t| t.measure(at.measure))
-            .and_then(|m| m.voice(at.voice));
-        let mut onset = Duration::new(0, 1).ok()?;
-        for beat in beats.iter().flat_map(|v| v.beats().take(at.beat.get())) {
-            if beat.kind() == BeatKind::Empty {
-                continue;
-            }
-            // A broken length counts as nothing: the start is still close.
-            if let Some(next) = beat.duration().ok().and_then(|d| onset.checked_add(d).ok()) {
-                onset = next;
-            }
-        }
-        Some(span.start.saturating_add(ticks(onset)).min(span.end))
+        beat_tick(&self.measures, song, at)
     }
 
     /// The played measure at `tick` (the last one at or after the end).
@@ -423,25 +408,28 @@ impl Sequence {
     }
 }
 
-/// Program, volume and pan for a channel.
-fn setup(channel: Channel, sound: TrackSound) -> Vec<MidiEvent> {
-    let mut events = Vec::with_capacity(3);
+/// The messages that give `channel` a track's sound: program (not for drums), volume, pan,
+/// reverb and chorus send. Used for a sequence's setup and to change a sound while playing.
+pub fn sound_events(channel: Channel, sound: TrackSound) -> Vec<MidiEvent> {
+    let mut events = Vec::with_capacity(5);
     if !sound.percussion {
         events.push(MidiEvent::ProgramChange {
             channel,
             program: sound.program,
         });
     }
-    events.push(MidiEvent::Control {
-        channel,
-        controller: controller::VOLUME,
-        value: sound.volume,
-    });
-    events.push(MidiEvent::Control {
-        channel,
-        controller: controller::PAN,
-        value: sound.pan,
-    });
+    for (controller, value) in [
+        (controller::VOLUME, sound.volume),
+        (controller::PAN, sound.pan),
+        (controller::REVERB, sound.reverb),
+        (controller::CHORUS, sound.chorus),
+    ] {
+        events.push(MidiEvent::Control {
+            channel,
+            controller,
+            value: value.min(127),
+        });
+    }
     events
 }
 
@@ -468,4 +456,26 @@ pub(crate) fn ticks(duration: Duration) -> u64 {
         .checked_div(denominator)
         .unwrap_or(0);
     u64::try_from(rounded).unwrap_or(u64::MAX)
+}
+
+/// The tick of the beat `at` at the first pass of its measure in `measures`, or `None` if
+/// that measure is never played. Shared by [`Sequence::tick_of`] and
+/// [`crate::Timeline::tick_of`], so the time readout and playback agree on where a beat is.
+pub(crate) fn beat_tick(measures: &[MeasureSpan], song: &Song, at: BeatPosition) -> Option<u64> {
+    let span = measures.iter().find(|s| s.measure == at.measure)?;
+    let beats = song
+        .track(at.track)
+        .and_then(|t| t.measure(at.measure))
+        .and_then(|m| m.voice(at.voice));
+    let mut onset = Duration::new(0, 1).ok()?;
+    for beat in beats.iter().flat_map(|v| v.beats().take(at.beat.get())) {
+        if beat.kind() == BeatKind::Empty {
+            continue;
+        }
+        // A broken length counts as nothing: the start is still close.
+        if let Some(next) = beat.duration().ok().and_then(|d| onset.checked_add(d).ok()) {
+            onset = next;
+        }
+    }
+    Some(span.start.saturating_add(ticks(onset)).min(span.end))
 }

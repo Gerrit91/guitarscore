@@ -161,12 +161,18 @@ fn a_pitch_bend_reaches_the_port() {
 
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut bent = false;
+    let mut stopped_at = None;
     while Instant::now() < deadline && !bent {
         if let Ok(message) = rx.recv_timeout(Duration::from_millis(100)) {
             bent = message.first().is_some_and(|status| status & 0xF0 == 0xE0);
         }
+        // Once the player has stopped, still read what is already on its way through the
+        // port (a busy machine delivers it late), then give up.
         if player.state() == PlayState::Stopped {
-            break;
+            let since = *stopped_at.get_or_insert_with(Instant::now);
+            if since.elapsed() > Duration::from_millis(500) {
+                break;
+            }
         }
     }
     assert!(bent, "a pitch bend reached the port");

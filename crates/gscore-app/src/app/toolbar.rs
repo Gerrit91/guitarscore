@@ -5,12 +5,14 @@
 
 use egui::{Align, FontFamily, FontId, Layout, Rect, RichText, Sense, UiBuilder, vec2};
 use gscore_edit::{Action, ActionId, Request};
-use gscore_model::MeasureIndex;
+use gscore_model::{BeatPosition, MeasureIndex};
+use gscore_play::Timeline;
 
 use super::GuitarScoreApp;
 use super::icons::{self, Icon};
 use super::style;
 use super::tiles;
+use crate::state::MeasureSelection;
 
 /// The player's width before it was first measured.
 const PLAYER_WIDTH: f32 = 220.0;
@@ -42,7 +44,7 @@ impl GuitarScoreApp {
         let row = Rect::from_min_size(bar.min, vec2(bar.width(), height));
 
         // Left: file, edit, panels.
-        ui.scope_builder(
+        let left = ui.scope_builder(
             UiBuilder::new()
                 .max_rect(row)
                 .layout(Layout::left_to_right(Align::Center)),
@@ -55,9 +57,10 @@ impl GuitarScoreApp {
                 }
             },
         );
+        let left_end = left.response.rect.right();
 
         // Right: settings rightmost, zoom before it (laid out right to left).
-        ui.scope_builder(
+        let right = ui.scope_builder(
             UiBuilder::new()
                 .max_rect(row)
                 .layout(Layout::right_to_left(Align::Center)),
@@ -66,9 +69,13 @@ impl GuitarScoreApp {
                 if icons::button(ui, Icon::Settings, "Settings", "Settings…").clicked() {
                     self.open_settings_window();
                 }
+                if icons::button(ui, Icon::History, "History", "Edit history…").clicked() {
+                    self.open_history();
+                }
                 self.zoom(ui);
             },
         );
+        let right_start = right.response.rect.left();
 
         // Middle: the player, centered on the whole bar. Its width comes from the last
         // frame (egui lays out in one pass).
@@ -76,7 +83,15 @@ impl GuitarScoreApp {
         let width = ui
             .data(|data| data.get_temp::<f32>(id))
             .unwrap_or(PLAYER_WIDTH);
-        let player = Rect::from_center_size(row.center(), vec2(width, height));
+        // Centered on the whole bar where there is room; otherwise moved clear of the side
+        // groups (the left one wins when even that does not fit).
+        let gap = 8.0;
+        let centered = row.center().x - width / 2.0;
+        let x = centered.min(right_start - gap - width).max(left_end + gap);
+        let player = Rect::from_min_size(
+            egui::pos2(x, row.center().y - height / 2.0),
+            vec2(width, height),
+        );
         let drawn = ui.scope_builder(
             UiBuilder::new()
                 .max_rect(player)
@@ -93,6 +108,9 @@ impl GuitarScoreApp {
     /// Open, save, undo and redo.
     fn file_and_edit(&mut self, ui: &mut egui::Ui) {
         style::toolbar_group(ui, |ui| {
+            if icons::button(ui, Icon::NewSong, "New song", "Start a new score").clicked() {
+                self.new_song(ui.ctx());
+            }
             if icons::button(ui, Icon::Open, "Open", "Open a Guitar Pro file…").clicked() {
                 self.ask_open(ui.ctx());
             }
@@ -179,8 +197,31 @@ impl GuitarScoreApp {
     fn transport(&mut self, ui: &mut egui::Ui) -> f32 {
         let playing = self.playback.state() == gscore_play::PlayState::Playing;
         let has_song = self.document.is_some();
+        let (metronome, count_in) = (self.playback.metronome(), self.playback.count_in());
+        let looping = self.playback.loop_selection();
+        let can_loop = has_song && self.view.selection.is_some();
+        let (mut toggle_metronome, mut toggle_count_in, mut toggle_loop) = (false, false, false);
+        let (mut to_start, mut previous, mut next, mut to_end) = (false, false, false, false);
         let start = ui.cursor().left();
         style::toolbar_group(ui, |ui| {
+            if ui
+                .add_enabled_ui(has_song, |ui| {
+                    icons::button(ui, Icon::ToStart, "Go to start", "Top of the score")
+                })
+                .inner
+                .clicked()
+            {
+                to_start = true;
+            }
+            if ui
+                .add_enabled_ui(has_song, |ui| {
+                    icons::button(ui, Icon::PreviousBar, "Previous bar", "One bar back")
+                })
+                .inner
+                .clicked()
+            {
+                previous = true;
+            }
             let (icon, label) = if playing {
                 (Icon::Pause, "Pause")
             } else {
@@ -200,8 +241,92 @@ impl GuitarScoreApp {
             if stop.clicked() {
                 self.stop_playback();
             }
+            if ui
+                .add_enabled_ui(has_song, |ui| {
+                    icons::button(ui, Icon::NextBar, "Next bar", "One bar forward")
+                })
+                .inner
+                .clicked()
+            {
+                next = true;
+            }
+            if ui
+                .add_enabled_ui(has_song, |ui| {
+                    icons::button(ui, Icon::ToEnd, "Go to end", "End of the score")
+                })
+                .inner
+                .clicked()
+            {
+                to_end = true;
+            }
+            let metronome_clicked = ui
+                .add_enabled_ui(has_song, |ui| {
+                    icons::toggle_button(
+                        ui,
+                        Icon::Metronome,
+                        "Metronome",
+                        "Click on every beat while playing",
+                        metronome,
+                    )
+                })
+                .inner
+                .clicked();
+            if metronome_clicked {
+                toggle_metronome = true;
+            }
+            let count_in_clicked = ui
+                .add_enabled_ui(has_song, |ui| {
+                    icons::toggle_button(
+                        ui,
+                        Icon::CountIn,
+                        "Count-in",
+                        "One bar of clicks before playback starts",
+                        count_in,
+                    )
+                })
+                .inner
+                .clicked();
+            if count_in_clicked {
+                toggle_count_in = true;
+            }
+            if ui
+                .add_enabled_ui(can_loop, |ui| {
+                    icons::toggle_button(
+                        ui,
+                        Icon::Loop,
+                        "Loop selection",
+                        "Loop the selected measures while playing",
+                        looping,
+                    )
+                })
+                .inner
+                .clicked()
+            {
+                toggle_loop = true;
+            }
             self.position_readout(ui);
         });
+        if to_start {
+            self.go_to_start();
+        }
+        if previous {
+            self.previous_bar();
+        }
+        if next {
+            self.next_bar();
+        }
+        if to_end {
+            self.go_to_end();
+        }
+        if toggle_metronome {
+            self.set_metronome(!metronome);
+        }
+        if toggle_count_in {
+            self.set_count_in(!count_in);
+        }
+        if toggle_loop {
+            self.set_loop_selection(!looping);
+        }
         if self.playback.is_loading() {
             ui.label("Loading sounds…");
             ui.add(
@@ -226,18 +351,49 @@ impl GuitarScoreApp {
         ui.min_rect().right() - start
     }
 
-    /// "3 / 12" and "♩ = 120": the measure being played (or the cursor's) and its tempo.
-    fn position_readout(&self, ui: &mut egui::Ui) {
-        let Some(document) = &self.document else {
+    /// The time (or the selection's time), the measure being played (or the cursor's), how
+    /// full it is and its tempo.
+    fn position_readout(&mut self, ui: &mut egui::Ui) {
+        let Some(document) = &mut self.document else {
             return;
         };
+        let timeline = document.timeline();
+        let selection = self.view.selection;
+        let state = self.playback.state();
         let song = document.song();
+        let cursor = document.editor().cursor();
+        // Playing, paused or counting in: where the player is. Stopped: the cursor's beat,
+        // which is where Play starts (the measure readout shows the cursor's measure too).
+        let tick = timeline.as_deref().map(|timeline| {
+            if state != gscore_play::PlayState::Stopped || self.playback.count_in_pending() {
+                self.playback.position()
+            } else {
+                let at = BeatPosition {
+                    track: cursor.track,
+                    measure: cursor.measure,
+                    voice: cursor.voice,
+                    beat: cursor.beat,
+                };
+                timeline.tick_of(song, at).unwrap_or(0)
+            }
+        });
+        let (elapsed, total) = match (timeline.as_deref(), tick) {
+            (Some(timeline), Some(tick)) => playback_times(
+                timeline,
+                tick,
+                selection,
+                state == gscore_play::PlayState::Playing,
+            ),
+            _ => (0, 0),
+        };
         let measure = self
             .playback
             .current_measure()
             .unwrap_or_else(|| document.editor().cursor().measure.get().saturating_add(1));
         let tokens = style::tokens(ui);
         ui.add_space(4.0);
+        time_readout(ui, elapsed, total);
+        ui.add_space(10.0);
         // Painted, not a Label, so screen readers get "Measure 3" rather than "3 / 12".
         let label = format!("Measure {measure}");
         let text = format!("{measure} / {}", song.measure_count());
@@ -248,7 +404,6 @@ impl GuitarScoreApp {
         response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &label));
         response.on_hover_text("The measure being played, or the cursor's");
         // How full that bar is in the cursor's track and voice.
-        let cursor = document.editor().cursor();
         if let Some(fill) = bar_fill(
             song,
             cursor.track,
@@ -258,12 +413,11 @@ impl GuitarScoreApp {
             ui.add_space(10.0);
             fill_readout(ui, &fill);
         }
-        // The tempo in effect at that measure.
-        let index = measure.saturating_sub(1);
-        let tempo = (0..=index)
-            .rev()
-            .find_map(|m| song.tempo_change(MeasureIndex::new(m)))
-            .unwrap_or_else(|| song.tempo());
+        // The tempo in effect there, including changes on a beat (as playback has them).
+        let tempo = match (timeline.as_deref(), tick) {
+            (Some(timeline), Some(tick)) => timeline.bpm_at(tick),
+            _ => song.tempo(),
+        };
         ui.add_space(10.0);
         let (rect, _) = ui.allocate_exact_size(vec2(10.0, 20.0), Sense::hover());
         // A quarter note from the music font (SMuFL `metNoteQuarterUp`).
@@ -279,9 +433,63 @@ impl GuitarScoreApp {
                 .size(12.0)
                 .color(tokens.text_weak),
         )
-        .on_hover_text("Tempo at this measure");
+        .on_hover_text("Tempo at this point");
         ui.add_space(6.0);
     }
+}
+
+/// The position and total length, in microseconds, for the time readout at `tick` (the
+/// player's position, or the cursor's while stopped). Both come from the same timeline (the
+/// sequence's ticks and tempo are the same). With a measure selection the total is the
+/// selection's length and the position is measured from its first measure — but only while
+/// playback is inside it. Once playback leaves the selection the whole song's time is shown,
+/// so the clock never freezes at the selection's end.
+pub(super) fn playback_times(
+    timeline: &Timeline,
+    tick: u64,
+    selection: Option<MeasureSelection>,
+    playing: bool,
+) -> (u64, u64) {
+    let played = timeline.micros_at(tick);
+    let whole = (played, timeline.micros());
+    let Some(selection) = selection else {
+        return whole;
+    };
+    let Some((start_tick, end_tick)) = timeline.measure_range(selection.start(), selection.end())
+    else {
+        return whole;
+    };
+    let start = timeline.micros_at(start_tick);
+    let total = timeline.micros_at(end_tick).saturating_sub(start);
+    // A stale selection must not stop the clock when playback goes on past it, or starts
+    // before it.
+    if playing && (played < start || played >= start.saturating_add(total)) {
+        return whole;
+    }
+    (played.saturating_sub(start).min(total), total)
+}
+
+/// "00:00" (or "103:20" for very long songs) from microseconds.
+pub(super) fn time_text(micros: u64) -> String {
+    let seconds = micros / 1_000_000;
+    let minutes = seconds / 60;
+    let seconds = seconds % 60;
+    format!("{minutes:02}:{seconds:02}")
+}
+
+/// The time position and total, painted (with one accessible label).
+fn time_readout(ui: &mut egui::Ui, elapsed: u64, total: u64) {
+    let tokens = style::tokens(ui);
+    let elapsed_text = time_text(elapsed);
+    let total_text = time_text(total);
+    let text = format!("{elapsed_text} / {total_text}");
+    let label = format!("Time {elapsed_text} of {total_text}");
+    let font = FontId::new(12.0, FontFamily::Name(crate::fonts::BOLD.into()));
+    let galley = ui.painter().layout_no_wrap(text, font, tokens.text_weak);
+    let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::hover());
+    ui.painter().galley(rect.min, galley, tokens.text_weak);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &label));
+    response.on_hover_text("Position and total length; a measure selection sets the total");
 }
 
 /// " (ctrl+z)": the keys `keymap` binds to `action`, for a tooltip; empty if none.
@@ -432,8 +640,10 @@ mod tests {
 
     use gscore_model::testing::{self, GUITAR_6};
     use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, NoteValue, TrackIndex, VoiceIndex};
+    use gscore_play::{PPQ, Timeline};
 
-    use super::{FillState, bar_fill, beats_text};
+    use super::{FillState, bar_fill, beats_text, playback_times, time_text};
+    use crate::state::MeasureSelection;
 
     fn at(beat: usize) -> BeatPosition {
         BeatPosition {
@@ -496,5 +706,46 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn times_are_written_as_minutes_and_seconds() {
+        assert_eq!(time_text(0), "00:00");
+        assert_eq!(time_text(9_000_000), "00:09");
+        assert_eq!(time_text(65_000_000), "01:05");
+        assert_eq!(time_text(6_000_000_000), "100:00");
+    }
+
+    #[test]
+    fn a_measure_selection_sets_the_total_and_the_position_origin() {
+        // Four 4/4 bars at 120 BPM: two seconds each.
+        let song = testing::song(&[GUITAR_6], 4).unwrap();
+        let timeline = Timeline::new(&song).unwrap();
+        let selection = MeasureSelection::new(1).to(2);
+        let bar = u64::from(PPQ).saturating_mul(4);
+
+        let (elapsed, total) = playback_times(&timeline, 0, Some(selection), false);
+        assert_eq!((elapsed, total), (0, 4_000_000));
+
+        // One bar into the selection: two seconds elapsed.
+        let (elapsed, total) =
+            playback_times(&timeline, bar.saturating_mul(2), Some(selection), true);
+        assert_eq!((elapsed, total), (2_000_000, 4_000_000));
+
+        // After the selection the whole song's time takes over instead of freezing at the
+        // selection's end.
+        let (elapsed, total) =
+            playback_times(&timeline, bar.saturating_mul(3), Some(selection), true);
+        assert_eq!((elapsed, total), (6_000_000, 8_000_000));
+        let (elapsed, total) =
+            playback_times(&timeline, bar.saturating_mul(3), Some(selection), false);
+        assert_eq!((elapsed, total), (4_000_000, 4_000_000));
+
+        // Before the selection, while playing, the whole song is shown too.
+        let (elapsed, total) = playback_times(&timeline, 0, Some(selection), true);
+        assert_eq!((elapsed, total), (0, 8_000_000));
+
+        let (elapsed, total) = playback_times(&timeline, bar, None, true);
+        assert_eq!((elapsed, total), (2_000_000, 8_000_000));
     }
 }

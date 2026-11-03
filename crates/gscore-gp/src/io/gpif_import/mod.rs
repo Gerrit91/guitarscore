@@ -44,7 +44,7 @@ mod vibrato_tests;
 use beats::convert_beat;
 pub(crate) use beats::flip_note_strings;
 use helpers::*;
-pub(crate) use helpers::{build_note_bend, build_whammy_effect};
+pub(crate) use helpers::{CHORUS_PROPERTY, REVERB_PROPERTY, build_note_bend, build_whammy_effect};
 use notes::convert_note;
 
 // ---------------------------------------------------------------------------
@@ -279,7 +279,9 @@ impl SongGpifOps for Song {
             // so the emptiness checks below never fired and the file's tuning was ignored.
             track.strings = Vec::new();
             let mut capo = None;
+            let mut sends = (None, None);
             if let Some(props) = &g_track.properties {
+                sends = extract_sends(&props.properties);
                 track.strings = extract_tuning(&props.properties);
                 track.tuning_label = extract_tuning_label(&props.properties);
                 capo = extract_capo(&props.properties);
@@ -383,6 +385,7 @@ impl SongGpifOps for Song {
                 .map(mixer_from_parameters)
                 .unwrap_or((None, None));
             apply_track_mix(&mut self.channels, track.channel_index, volume, pan);
+            apply_track_sends(&mut self.channels, track.channel_index, sends);
 
             // Current dynamic (persists across beats)
             let mut current_velocity: i16 = FORTE;
@@ -480,6 +483,23 @@ fn mixer_from_parameters(text: &str) -> (Option<i8>, Option<i8>) {
         }
     }
     (volume, pan)
+}
+
+/// Puts the GuitarScore reverb and chorus sends into the track's channel (which
+/// [`apply_track_mix`] has created).
+fn apply_track_sends(
+    channels: &mut [MidiChannel],
+    index: usize,
+    (reverb, chorus): (Option<i8>, Option<i8>),
+) {
+    if let Some(channel) = channels.get_mut(index) {
+        if let Some(reverb) = reverb {
+            channel.reverb = reverb;
+        }
+        if let Some(chorus) = chorus {
+            channel.chorus = chorus;
+        }
+    }
 }
 
 /// Most MIDI channels a GPIF track may name; a corrupt index is ignored instead of

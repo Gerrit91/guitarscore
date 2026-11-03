@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use gscore_edit::{ActionId, KeyCombo, Keymap};
 use gscore_session::{RecoveryOptions, SNAPSHOT_EVERY};
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +13,9 @@ use crate::state::{ViewState, ZOOM_RANGE};
 
 /// How many recent files the File menu remembers.
 pub const MAX_RECENT_FILES: usize = 10;
+/// Most changed actions accepted from the settings file, and keys per action.
+const MAX_SHORTCUT_OVERRIDES: usize = 1024;
+const MAX_KEYS_PER_ACTION: usize = 32;
 /// Default interval between recovery snapshots, in seconds.
 pub const DEFAULT_AUTOSAVE_SECONDS: u64 = 60;
 
@@ -52,6 +56,18 @@ impl WindowState {
     }
 }
 
+/// One action whose shortcuts the user changed, with all of its keys. Only changed actions
+/// are stored, so built-in shortcuts added later still reach the user. Plain data, so the
+/// keymap lives in the settings file instead of a separate text file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShortcutSetting {
+    /// The action id.
+    pub action: String,
+    /// Its key combinations as written (`ctrl+z`, `Left`, `+`, ...); empty when the action
+    /// has no shortcut any more.
+    pub keys: Vec<String>,
+}
+
 /// Everything the app remembers between runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -62,6 +78,8 @@ pub struct Settings {
     pub zoom: f32,
     /// Whether the song grid (bottom panel) is shown.
     pub show_track_grid: bool,
+    /// Whether the bottom panel shows the mixer instead of the measure grid.
+    pub grid_mixer: bool,
     /// Whether the track panel (right panel) is shown.
     pub show_track_panel: bool,
     /// Whether the edit palette (left panel) is shown.
@@ -69,6 +87,8 @@ pub struct Settings {
     /// Height the song grid was dragged to; `None`: it follows the number of tracks. (The
     /// key is new: the old `grid_height_chosen` held whatever the panel happened to be.)
     pub grid_height_chosen: Option<f32>,
+    /// Height the mixer view was dragged to; `None` uses its default.
+    pub mixer_height_chosen: Option<f32>,
     /// Width of the track panel, as last dragged.
     pub track_panel_width: Option<f32>,
     /// Width of the edit palette, as last dragged.
@@ -77,8 +97,17 @@ pub struct Settings {
     pub window: Option<WindowState>,
     /// Recently opened files, newest first.
     pub recent_files: Vec<PathBuf>,
+    /// Reopen the last open file at startup (on by default).
+    pub reopen_last_file: bool,
+    /// The file to reopen at startup.
+    pub last_file: Option<PathBuf>,
     /// The keymap file, if the user chose one.
     pub keymap_path: Option<PathBuf>,
+    /// The actions whose shortcuts were changed in the shortcut editor (relative to the
+    /// built-in keymap), applied over the built-in keymap or a keymap file.
+    pub shortcut_overrides: Vec<ShortcutSetting>,
+    /// Whether a fret typed into the score is played back at once.
+    pub audition_notes: bool,
     /// Seconds between recovery snapshots; 0 means only by edit count.
     pub autosave_seconds: u64,
     /// The SoundFont chosen for the built-in synthesizer, if any.
@@ -95,14 +124,20 @@ impl Default for Settings {
             theme: crate::state::ThemeChoice::Light,
             zoom: 1.0,
             show_track_grid: true,
+            grid_mixer: false,
             show_track_panel: true,
             show_edit_panel: true,
             grid_height_chosen: None,
+            mixer_height_chosen: None,
             track_panel_width: None,
             edit_panel_width: None,
             window: None,
             recent_files: Vec::new(),
+            reopen_last_file: true,
+            last_file: None,
             keymap_path: None,
+            shortcut_overrides: Vec::new(),
+            audition_notes: true,
             autosave_seconds: DEFAULT_AUTOSAVE_SECONDS,
             soundfont_path: None,
             prefer_synth: true,
@@ -124,6 +159,7 @@ impl Settings {
         self.theme = view.theme;
         self.zoom = view.zoom();
         self.show_track_grid = view.show_track_grid;
+        self.grid_mixer = view.grid_mixer;
         self.show_track_panel = view.show_track_panel;
         self.show_edit_panel = view.show_edit_panel;
     }
@@ -133,6 +169,7 @@ impl Settings {
         view.theme = self.theme;
         view.set_zoom(self.zoom);
         view.show_track_grid = self.show_track_grid;
+        view.grid_mixer = self.grid_mixer;
         view.show_track_panel = self.show_track_panel;
         view.show_edit_panel = self.show_edit_panel;
     }
@@ -156,6 +193,48 @@ impl Settings {
         }
     }
 
+    /// Stores the shortcuts of `keymap` that differ from the built-in keymap.
+    pub fn store_shortcuts(&mut self, keymap: &Keymap) {
+        self.shortcut_overrides = keymap
+            .overrides(&Keymap::default())
+            .into_iter()
+            .map(|(action, keys)| ShortcutSetting {
+                action: action.id().to_owned(),
+                keys: keys.iter().map(ToString::to_string).collect(),
+            })
+            .collect();
+    }
+
+    /// Applies the stored shortcut changes to `keymap`. Unusable entries (an unknown
+    /// action or key) are skipped, the rest still apply; the error names what was skipped.
+    pub fn apply_shortcuts(&self, keymap: &mut Keymap) -> Result<(), String> {
+        let mut overrides = Vec::with_capacity(self.shortcut_overrides.len());
+        let mut errors = Vec::new();
+        for stored in &self.shortcut_overrides {
+            let Some(action) = ActionId::from_id(&stored.action) else {
+                errors.push(format!("unknown action `{}`", stored.action));
+                continue;
+            };
+            let mut keys = Vec::with_capacity(stored.keys.len());
+            for key in &stored.keys {
+                match KeyCombo::parse(key) {
+                    Ok(combo) => keys.push(combo),
+                    Err(error) => errors.push(format!("`{key}`: {error}")),
+                }
+            }
+            overrides.push((action, keys));
+        }
+        keymap.apply_overrides(overrides);
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "Some stored shortcuts are not usable and were skipped: {}",
+                errors.join("; ")
+            ))
+        }
+    }
+
     /// Makes the loaded values safe: finite zoom and sizes, a sane autosave interval, and
     /// no nonsense window rectangles.
     pub fn sanitize(&mut self) {
@@ -167,6 +246,11 @@ impl Settings {
             && !(height.is_finite() && height > 0.0)
         {
             self.grid_height_chosen = None;
+        }
+        if let Some(height) = self.mixer_height_chosen
+            && !(height.is_finite() && height > 0.0)
+        {
+            self.mixer_height_chosen = None;
         }
         if let Some(width) = self.track_panel_width
             && !(width.is_finite() && width > 0.0)
@@ -185,6 +269,14 @@ impl Settings {
             self.autosave_seconds = DEFAULT_AUTOSAVE_SECONDS;
         }
         self.recent_files.truncate(MAX_RECENT_FILES);
+        // A hostile or broken file cannot make the keymap huge.
+        self.shortcut_overrides.truncate(MAX_SHORTCUT_OVERRIDES);
+        self.shortcut_overrides
+            .retain(|stored| !stored.action.is_empty() && stored.action.len() <= 64);
+        for stored in &mut self.shortcut_overrides {
+            stored.keys.truncate(MAX_KEYS_PER_ACTION);
+            stored.keys.retain(|key| !key.is_empty() && key.len() <= 64);
+        }
     }
 }
 
@@ -234,6 +326,41 @@ mod tests {
     }
 
     #[test]
+    fn only_changed_shortcuts_are_stored_and_bad_ones_are_skipped() {
+        let mut settings = Settings::default();
+        settings.store_shortcuts(&Keymap::default());
+        assert!(settings.shortcut_overrides.is_empty(), "nothing changed");
+
+        let mut keymap = Keymap::default();
+        let combo = KeyCombo::parse("ctrl+k").expect("a valid combo");
+        keymap
+            .bind(ActionId::Copy, combo)
+            .expect("copy can be bound");
+        settings.store_shortcuts(&keymap);
+        assert_eq!(
+            settings.shortcut_overrides,
+            [ShortcutSetting {
+                action: "copy".to_owned(),
+                keys: vec!["ctrl+k".to_owned()],
+            }]
+        );
+        let mut loaded = Keymap::default();
+        settings
+            .apply_shortcuts(&mut loaded)
+            .expect("valid shortcuts");
+        assert_eq!(loaded, keymap);
+
+        // A broken entry is reported; the usable ones still apply.
+        settings.shortcut_overrides.push(ShortcutSetting {
+            action: "no_such_action".to_owned(),
+            keys: vec!["ctrl+j".to_owned()],
+        });
+        let mut loaded = Keymap::default();
+        assert!(settings.apply_shortcuts(&mut loaded).is_err());
+        assert_eq!(loaded.keys_for(ActionId::Copy), [combo]);
+    }
+
+    #[test]
     fn the_autosave_interval_sets_the_snapshot_interval() {
         let mut settings = Settings::default();
         assert_eq!(
@@ -249,6 +376,10 @@ mod tests {
         let mut settings = Settings::default();
         settings.add_recent(PathBuf::from("/tabs/song.gp"));
         settings.keymap_path = Some(PathBuf::from("/keys/keymap.txt"));
+        settings.shortcut_overrides = vec![ShortcutSetting {
+            action: "copy".to_owned(),
+            keys: vec!["ctrl+k".to_owned()],
+        }];
         settings.grid_height_chosen = Some(180.0);
         settings.window = Some(WindowState {
             x: 10.0,

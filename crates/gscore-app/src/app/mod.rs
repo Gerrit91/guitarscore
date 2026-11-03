@@ -11,19 +11,24 @@ mod edit_palette;
 mod editing;
 mod files;
 mod grid;
+mod history;
 mod icons;
 mod instrument;
+mod new_track;
 mod page;
 mod recovery;
 mod settings_window;
+mod shortcuts;
 mod style;
 mod tiles;
 mod title_bar;
 mod toolbar;
 mod track_panel;
 
+use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 use gscore_edit::{Cursor, Keymap};
 use gscore_layout::{Fonts, LayoutOptions};
@@ -82,6 +87,16 @@ pub struct GuitarScoreApp {
     recoverable: Vec<FoundSession>,
     /// The settings window, while it is open.
     settings_window: Option<settings_window::SettingsWindow>,
+    /// The shortcut editor, while it is open.
+    shortcuts: Option<shortcuts::ShortcutPanel>,
+    /// The edit history, while it is open.
+    history: Option<history::HistoryPanel>,
+    /// The new-track popup, while it is open.
+    new_track: Option<new_track::NewTrackDialog>,
+    /// State of the mixer view between frames (the decibel field being typed).
+    mixer: grid::MixerState,
+    /// Wall-clock time when each history entry was first seen, by the entry's stable id.
+    history_stamps: HashMap<u64, SystemTime>,
     /// What the app remembers between runs.
     settings: Settings,
     /// Where the settings are stored (`None` keeps them only in memory).
@@ -96,6 +111,7 @@ pub struct GuitarScoreApp {
 #[derive(Debug, Clone, Copy, Default)]
 struct PanelSizes {
     grid: Option<f32>,
+    mixer: Option<f32>,
     track_panel: Option<f32>,
     edit_panel: Option<f32>,
 }
@@ -136,11 +152,20 @@ impl GuitarScoreApp {
         crate::fonts::install(ctx);
         style::install(ctx);
         settings.sanitize();
+        // Without a file on the command line, reopen the last one (if it is still there).
+        let file = file.or_else(|| {
+            if settings.reopen_last_file {
+                settings.last_file.clone().filter(|path| path.is_file())
+            } else {
+                None
+            }
+        });
         let mut view = ViewState::default();
         settings.apply_to_view(&mut view);
         let last_window = settings.window;
         let panel_sizes = PanelSizes {
             grid: settings.grid_height_chosen,
+            mixer: settings.mixer_height_chosen,
             track_panel: settings.track_panel_width,
             edit_panel: settings.edit_panel_width,
         };
@@ -169,6 +194,11 @@ impl GuitarScoreApp {
             recovery_searched: false,
             recoverable: Vec::new(),
             settings_window: None,
+            shortcuts: None,
+            history: None,
+            new_track: None,
+            mixer: grid::MixerState::default(),
+            history_stamps: HashMap::new(),
             settings,
             settings_path,
             panel_sizes,
@@ -185,12 +215,14 @@ impl GuitarScoreApp {
         let mut settings = self.settings.clone();
         settings.update_from_view(&self.view);
         settings.grid_height_chosen = self.panel_sizes.grid;
+        settings.mixer_height_chosen = self.panel_sizes.mixer;
         settings.track_panel_width = self.panel_sizes.track_panel;
         settings.edit_panel_width = self.panel_sizes.edit_panel;
         settings.window = self.last_window;
         settings.soundfont_path = self.playback.soundfont().map(std::path::Path::to_path_buf);
         settings.prefer_synth = matches!(self.playback.output(), Output::Synth(_));
         settings.midi_port = self.playback.port().map(str::to_owned);
+        settings.store_shortcuts(&self.keymap);
         settings
     }
 
@@ -252,6 +284,11 @@ impl GuitarScoreApp {
         &mut self.playback
     }
 
+    /// Opens the settings window (also used by the snapshot example).
+    pub fn open_settings(&mut self) {
+        self.open_settings_window();
+    }
+
     /// The view state (theme, zoom, track).
     pub fn view(&self) -> &ViewState {
         &self.view
@@ -260,6 +297,11 @@ impl GuitarScoreApp {
     /// The view state, to change it.
     pub fn view_mut(&mut self) -> &mut ViewState {
         &mut self.view
+    }
+
+    /// The keymap in use.
+    pub fn keymap(&self) -> &Keymap {
+        &self.keymap
     }
 
     fn apply_theme(&mut self, ctx: &egui::Context) {
@@ -315,10 +357,24 @@ impl eframe::App for GuitarScoreApp {
         self.apply_theme(&ctx);
         // Keys first, before any widget sees them (a focused button would take Space).
         self.handle_keys(&ctx);
+        // A count-in that has finished starts the song it was counting in.
+        self.poll_count_in();
+        // Keep a loop of the selected measures going.
+        self.poll_loop();
+        // An entered note stops after a moment.
+        if let Some(left) = self.playback.poll_audition() {
+            ctx.request_repaint_after(left);
+        }
         // The cursor follows the beat being played; the page scrolls with it.
         self.follow_playback();
         if self.playback.state() == gscore_play::PlayState::Playing {
-            ctx.request_repaint_after(std::time::Duration::from_millis(50));
+            // A loop checks its end more often; the position moves every frame otherwise.
+            let millis = if self.playback.loop_selection() {
+                16
+            } else {
+                50
+            };
+            ctx.request_repaint_after(std::time::Duration::from_millis(millis));
         }
         self.apply_title(&ctx);
 
@@ -359,19 +415,42 @@ impl eframe::App for GuitarScoreApp {
         if self.view.show_track_grid && self.document.is_some() {
             // Until the user drags it, the grid is just tall enough for its tracks (up to
             // eight) and the master row, and follows when tracks come and go: a panel id per
-            // fitting height makes egui take the new default. It is never taller than all
-            // of its rows.
+            // fitting height makes egui take the new default. The mixer view has its own,
+            // taller default and its own remembered height.
             let tracks = self.document.as_ref().map_or(1, |d| d.song().track_count());
-            let fit = grid::opening_height(tracks);
-            let chosen = self.panel_sizes.grid;
-            let id = match chosen {
-                Some(_) => "track_grid_chosen".to_owned(),
-                None => format!("track_grid_fit_{}", tracks.min(grid::OPEN_ROWS)),
+            let mixer = self.view.grid_mixer;
+            let (fit, min, max, chosen, id) = if mixer {
+                let chosen = self.panel_sizes.mixer;
+                let id = match chosen {
+                    Some(_) => "mixer_chosen".to_owned(),
+                    None => "mixer_fit".to_owned(),
+                };
+                (
+                    grid::MIXER_HEIGHT,
+                    grid::MIXER_MIN_HEIGHT,
+                    grid::MIXER_MAX_HEIGHT,
+                    chosen,
+                    id,
+                )
+            } else {
+                let fit = grid::opening_height(tracks);
+                let chosen = self.panel_sizes.grid;
+                let id = match chosen {
+                    Some(_) => "track_grid_chosen".to_owned(),
+                    None => format!("track_grid_fit_{}", tracks.min(grid::OPEN_ROWS)),
+                };
+                (
+                    fit,
+                    grid::height_for(0),
+                    grid::height_for(tracks),
+                    chosen,
+                    id,
+                )
             };
             let panel = egui::Panel::bottom(id)
                 .resizable(true)
-                .min_size(grid::height_for(0))
-                .max_size(grid::height_for(tracks))
+                .min_size(min)
+                .max_size(max)
                 .default_size(chosen.unwrap_or(fit))
                 .frame(style::panel_frame(&ctx))
                 .show(ui, |ui| {
@@ -382,7 +461,11 @@ impl eframe::App for GuitarScoreApp {
             let height = panel.response.rect.height();
             // A height other than the fitting one means the user dragged the edge.
             if chosen.is_some() || (height - fit).abs() > 1.0 {
-                self.panel_sizes.grid = Some(height);
+                if mixer {
+                    self.panel_sizes.mixer = Some(height);
+                } else {
+                    self.panel_sizes.grid = Some(height);
+                }
             }
         }
         if self.notice.is_some() {
@@ -426,6 +509,9 @@ impl eframe::App for GuitarScoreApp {
         self.show_dialog(&ctx);
         self.show_rename_window(&ctx);
         self.show_settings_window(&ctx);
+        self.show_shortcuts(&ctx);
+        self.show_history(&ctx);
+        self.show_new_track_dialog(&ctx);
         // Every edit of this frame goes to the recovery journal.
         if let Some(document) = &mut self.document
             && let Some(error) = document.record_changes()

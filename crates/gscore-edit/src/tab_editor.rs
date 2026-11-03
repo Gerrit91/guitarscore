@@ -193,6 +193,31 @@ impl TabEditor {
         self.editor.can_redo()
     }
 
+    /// The history rows that can be undone, oldest first.
+    pub fn undo_history(&self) -> Vec<crate::HistoryEntry> {
+        self.editor.undo_history()
+    }
+
+    /// The history rows that can be redone, in the order they would be redone.
+    pub fn redo_history(&self) -> Vec<crate::HistoryEntry> {
+        self.editor.redo_history()
+    }
+
+    /// The stable ids of the undo entries, oldest first.
+    pub fn undo_ids(&self) -> impl Iterator<Item = u64> + '_ {
+        self.editor.undo_entries().map(|(id, _)| id)
+    }
+
+    /// The stable ids of the redo entries, in the order they would be redone.
+    pub fn redo_ids(&self) -> impl Iterator<Item = u64> + '_ {
+        self.editor.redo_entries().map(|(id, _)| id)
+    }
+
+    /// Number of edits that can be redone.
+    pub fn redo_depth(&self) -> usize {
+        self.editor.redo_depth()
+    }
+
     /// Marks the end of a slider drag: the next command starts a new undo entry.
     pub fn break_merge(&mut self) {
         self.editor.break_merge();

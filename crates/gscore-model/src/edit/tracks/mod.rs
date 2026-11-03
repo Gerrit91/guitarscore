@@ -91,6 +91,20 @@ impl Song {
         set_pan(self, at, pan)
     }
 
+    /// Sets the track's reverb send (0-127, MIDI controller 91).
+    pub fn set_track_reverb(&mut self, at: TrackIndex, reverb: u8) -> Result<Change, ModelError> {
+        set_mix(self, at, |channel| {
+            channel.reverb = i8::try_from(reverb.min(127)).unwrap_or(127);
+        })
+    }
+
+    /// Sets the track's chorus send (0-127, MIDI controller 93).
+    pub fn set_track_chorus(&mut self, at: TrackIndex, chorus: u8) -> Result<Change, ModelError> {
+        set_mix(self, at, |channel| {
+            channel.chorus = i8::try_from(chorus.min(127)).unwrap_or(127);
+        })
+    }
+
     /// Mutes or unmutes the track.
     pub fn set_track_mute(&mut self, at: TrackIndex, mute: bool) -> Result<Change, ModelError> {
         set_flag(self, at, MixFlag::Mute, mute)

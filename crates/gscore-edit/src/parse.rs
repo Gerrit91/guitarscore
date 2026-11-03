@@ -252,6 +252,14 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
             pan: midi_value_arg(args, "pan")?,
         }),
+        "set_track_reverb" => Ok(Command::SetTrackReverb {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            reverb: midi_value_arg(args, "reverb")?,
+        }),
+        "set_track_chorus" => Ok(Command::SetTrackChorus {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            chorus: midi_value_arg(args, "chorus")?,
+        }),
         "set_track_mute" => Ok(Command::SetTrackMute {
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
             mute: bool_arg(args, "mute")?,
@@ -537,6 +545,26 @@ fn decode_text_value(
         }
     }
     String::from_utf8(bytes).map_err(|_| bad(command, name, text, expected))
+}
+
+/// Decodes a text written by [`encode_text`], for display (for example in the history
+/// table). `None` if `text` is not an encoded value or is malformed.
+pub(crate) fn decode_text(text: &str) -> Option<String> {
+    let encoded = text.strip_prefix(ENCODED)?;
+    let mut bytes = Vec::with_capacity(encoded.len());
+    let mut rest = encoded.as_bytes();
+    while let Some((&byte, after)) = rest.split_first() {
+        if byte == b'%' {
+            let hex = after.get(..2)?;
+            let value = u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok()?;
+            bytes.push(value);
+            rest = after.get(2..)?;
+        } else {
+            bytes.push(byte);
+            rest = after;
+        }
+    }
+    String::from_utf8(bytes).ok()
 }
 
 /// The `numerator` parameter: beats per measure.

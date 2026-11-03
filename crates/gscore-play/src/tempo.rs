@@ -68,6 +68,22 @@ impl TempoMap {
         micros
     }
 
+    /// The tempo at `tick` in beats per minute (rounded): the last change at or before it.
+    pub fn bpm_at(&self, tick: u64) -> u32 {
+        let after = self.points.partition_point(|&(start, _)| start <= tick);
+        let rate = after
+            .checked_sub(1)
+            .and_then(|index| self.points.get(index))
+            .or(self.points.first())
+            .map_or(0, |&(_, rate)| u64::from(rate));
+        // Rounded: 60 000 000 / rate, plus half the divisor first.
+        MICROS_PER_MINUTE
+            .checked_add(rate / 2)
+            .and_then(|minute| minute.checked_div(rate))
+            .and_then(|bpm| u32::try_from(bpm).ok())
+            .unwrap_or(0)
+    }
+
     /// The tick reached after `micros` microseconds.
     pub fn tick_at(&self, micros: u64) -> u64 {
         let mut elapsed: u64 = 0;
@@ -116,6 +132,18 @@ mod tests {
             let back = map.tick_at(map.micros_at(tick));
             assert!(back.abs_diff(tick) <= 1, "{tick} -> {back}");
         }
+    }
+
+    #[test]
+    fn the_tempo_at_a_tick_is_the_last_change_before_it() {
+        let mut map = TempoMap::new(120);
+        map.set(u64::from(PPQ) * 4, 60);
+        map.set(u64::from(PPQ) * 6, 133);
+        assert_eq!(map.bpm_at(0), 120);
+        assert_eq!(map.bpm_at(u64::from(PPQ) * 4 - 1), 120);
+        assert_eq!(map.bpm_at(u64::from(PPQ) * 4), 60);
+        assert_eq!(map.bpm_at(u64::from(PPQ) * 6), 133);
+        assert_eq!(map.bpm_at(u64::MAX), 133);
     }
 
     #[test]

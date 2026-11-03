@@ -299,7 +299,7 @@ pub(crate) struct Property {
     #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
     #[serde(rename = "Pitch", default)]
     pub pitch: Option<Pitch>,
-    #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
+    /// A plain number (GuitarScore uses it for the channel's reverb and chorus sends).
     #[serde(rename = "Number", default)]
     pub number: Option<i32>,
     #[serde(rename = "Enable", default)]

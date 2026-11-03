@@ -321,6 +321,18 @@ pub fn settings_differences(before: &Song, after: &Song) -> Vec<Difference> {
             old.map(|sound| sound.pan),
             new.map(|sound| sound.pan),
         );
+        diff.check(
+            &at,
+            "reverb",
+            old.map(|sound| sound.reverb),
+            new.map(|sound| sound.reverb),
+        );
+        diff.check(
+            &at,
+            "chorus",
+            old.map(|sound| sound.chorus),
+            new.map(|sound| sound.chorus),
+        );
     }
     diff.0
 }

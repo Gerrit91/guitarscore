@@ -51,10 +51,18 @@ fn main() -> ExitCode {
         Box::new(move |cc| {
             // A broken keymap file never stops the app: the built-in keymap is used and
             // the problem shown.
-            let loaded = match settings.keymap_path.as_deref() {
+            let mut loaded = match settings.keymap_path.as_deref() {
                 Some(path) => gscore_session::load_keymap(path),
                 None => gscore_session::load_user_keymap(),
             };
+            // Shortcuts changed in the app live in the settings and are applied over the
+            // built-in keymap or the keymap file.
+            if let Err(problem) = settings.apply_shortcuts(&mut loaded.keymap) {
+                loaded.problem = Some(match loaded.problem.take() {
+                    Some(earlier) => format!("{earlier}\n{problem}"),
+                    None => problem,
+                });
+            }
             // Edits are journaled for crash recovery (AGENTS.md "Never lose work").
             let recovery = gscore_session::default_recovery_dir();
             let audio = (

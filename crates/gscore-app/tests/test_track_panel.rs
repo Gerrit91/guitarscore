@@ -104,6 +104,10 @@ fn the_action_bar_adds_moves_mutes_and_solos_tracks() {
     let mut harness = app_with("basic/steel_guitar_dadgad.gp");
     harness.get_by_label("New track").click();
     harness.run();
+    assert_eq!(song(&harness).track_count(), 1, "the popup comes first");
+    harness.get_by_label("Track name");
+    harness.get_by_label("Create track").click();
+    harness.run();
     assert_eq!(song(&harness).track_count(), 2);
     assert_eq!(harness.state().view().track, 1, "the new track is shown");
 

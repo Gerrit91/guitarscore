@@ -40,6 +40,15 @@ impl Song {
         &self.inner
     }
 
+    /// A new score: one six-string guitar track with a single 4/4 measure of rests, ready
+    /// for note entry.
+    pub fn new_score() -> Result<Self, ModelError> {
+        let mut song = Song::default();
+        let _ = song.insert_track(TrackIndex::new(0))?;
+        let _ = song.insert_measure(MeasureIndex::new(0))?;
+        Ok(song)
+    }
+
     /// A number that changes whenever measure `measure` may have changed, in any track,
     /// and is never reused: a layout cache can key a measure's layout on it. Measures that
     /// move (a measure inserted before them) keep their stamp. 0 for a missing measure.

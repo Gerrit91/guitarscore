@@ -9,7 +9,7 @@ use super::TrackPanel;
 use crate::app::style;
 
 /// The preset colors: names (for tooltips and screen readers) and `rrggbb`.
-pub(super) const PRESETS: [(&str, u32); 16] = [
+pub(crate) const PRESETS: [(&str, u32); 16] = [
     ("Red", 0xE5_3935),
     ("Orange", 0xFB_8C00),
     ("Yellow", 0xFD_D835),

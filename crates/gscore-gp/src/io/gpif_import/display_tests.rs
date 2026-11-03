@@ -36,3 +36,26 @@ fn master_mix_and_staves_survive_saving() {
     assert!(!reread.tracks[0].settings.notation);
     assert!(reread.tracks[0].settings.tablature);
 }
+
+#[test]
+fn reverb_and_chorus_sends_survive_saving_and_are_absent_when_unset() {
+    let mut song = steel_guitar();
+    let index = song.tracks[0].channel_index;
+    assert_eq!(song.channels[index].reverb, 0, "GP7 has no send of its own");
+    let untouched = song.write_gp().expect("writes");
+
+    song.channels[index].reverb = 40;
+    song.channels[index].chorus = 12;
+    let mut reread = Song::default();
+    reread
+        .read_gp(&song.write_gp().expect("writes"))
+        .expect("reads back");
+    let channel = reread.channels[reread.tracks[0].channel_index];
+    assert_eq!((channel.reverb, channel.chorus), (40, 12));
+
+    // An untouched song stores no GuitarScore sends at all.
+    let mut plain = Song::default();
+    plain.read_gp(&untouched).expect("reads back");
+    let channel = plain.channels[plain.tracks[0].channel_index];
+    assert_eq!((channel.reverb, channel.chorus), (0, 0));
+}

@@ -318,3 +318,92 @@ fn the_player_tells_whether_the_bar_is_full() {
         "the overfull bar is reported"
     );
 }
+
+/// The sounding pitch of the note on `string` at the cursor.
+fn pitch_at_cursor(app: &GuitarScoreApp, string: u8) -> Option<u8> {
+    let document = app.document()?;
+    let cursor = document.editor().cursor();
+    let track = document.song().track(cursor.track)?;
+    let note = track
+        .measure(cursor.measure)?
+        .voice(cursor.voice)?
+        .beat(cursor.beat)?
+        .notes()
+        .find(|note| note.string().ok() == StringNumber::new(string).ok())?;
+    track.sounding_pitch(&note).ok().map(|pitch| pitch.get())
+}
+
+fn step_until(
+    harness: &mut Harness<'static, GuitarScoreApp>,
+    timeout: Duration,
+    done: impl Fn(&GuitarScoreApp) -> bool,
+) -> bool {
+    let started = Instant::now();
+    while !done(harness.state()) {
+        if started.elapsed() > timeout {
+            return false;
+        }
+        harness.step();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    true
+}
+
+#[test]
+fn an_entered_fret_is_heard_and_undo_is_not() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = std::env::temp_dir().join(format!("gscore-audition-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let font = dir.join("sine.sf2");
+    std::fs::write(&font, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    harness.state_mut().playback_mut().use_soundfont(font);
+
+    // The first fret starts the synthesizer; it is heard once the SoundFont is loaded.
+    type_char(&mut harness, "5", Modifiers::NONE);
+    let ready = step_until(&mut harness, Duration::from_secs(10), |app| {
+        !app.playback().is_loading() || app.playback().error().is_some()
+    });
+    assert!(ready, "the synthesizer neither loaded nor failed");
+    if let Some(error) = harness.state().playback().error() {
+        eprintln!("skipped: no usable audio device ({error})");
+        std::fs::remove_dir_all(dir).ok();
+        return;
+    }
+    assert_eq!(harness.state().notice(), None);
+
+    // A fret on another string sounds at that note's pitch, then stops.
+    press(&mut harness, Key::ArrowDown);
+    type_char(&mut harness, "7", Modifiers::NONE);
+    let string = harness.state().document().unwrap().editor().cursor().string;
+    let expected = pitch_at_cursor(harness.state(), string);
+    assert!(expected.is_some());
+    assert_eq!(harness.state().playback().auditioning(), expected);
+    let ended = step_until(&mut harness, Duration::from_secs(2), |app| {
+        app.playback().auditioning().is_none()
+    });
+    assert!(ended, "the entered note kept sounding");
+
+    // Undoing the fret is silent.
+    type_char(&mut harness, "z", Modifiers::COMMAND);
+    harness.run();
+    assert_eq!(harness.state().playback().auditioning(), None);
+
+    // With the setting off, nothing sounds.
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Settings…").click();
+    harness.run();
+    harness.get_by_label("Editor").click();
+    harness.run();
+    harness
+        .get_by_label("Play notes as they are entered")
+        .click();
+    harness.run();
+    harness.get_by_label("Close Settings").click();
+    harness.run();
+    type_char(&mut harness, "3", Modifiers::NONE);
+    assert_eq!(harness.state().playback().auditioning(), None);
+    assert_eq!(fret_at_cursor(harness.state(), string), Some(3));
+    std::fs::remove_dir_all(dir).ok();
+}

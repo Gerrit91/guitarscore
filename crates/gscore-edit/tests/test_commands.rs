@@ -500,6 +500,14 @@ fn every_track_command_edits_and_undoes() {
             track: TrackIndex::new(0),
             pan: 20,
         },
+        Command::SetTrackReverb {
+            track: TrackIndex::new(0),
+            reverb: 70,
+        },
+        Command::SetTrackChorus {
+            track: TrackIndex::new(1),
+            chorus: 30,
+        },
         Command::SetTrackMute {
             track: TrackIndex::new(0),
             mute: true,

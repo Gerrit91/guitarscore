@@ -196,12 +196,13 @@ impl GuitarScoreApp {
                     note_length(ui, &mut self.edit_palette, &snapshot, &hint, &mut commands);
                     beat_buttons(ui, &mut self.edit_palette, &snapshot, &hint, &mut commands);
                 });
-                style::section(ui, "measure", "Measure", |ui| {
-                    header_editors(ui, &mut self.edit_palette, &snapshot, &mut commands);
-                });
                 self.edit_palette
                     .effects
                     .panel(ui, &snapshot, &hint, &mut commands);
+                // The measure's headers come last, after the techniques and strokes.
+                style::section(ui, "measure", "Measure", |ui| {
+                    header_editors(ui, &mut self.edit_palette, &snapshot, &mut commands);
+                });
             });
         self.apply_commands(commands);
         // New beats past the cursor take the palette's length.
@@ -620,33 +621,51 @@ fn header_editors(
                 let response = ui.color_edit_button_srgb(&mut state.section_color);
                 ui.ctx()
                     .accesskit_node_builder(response.id, |node| node.set_label("Section color"));
+                response.on_hover_text("The color is applied with the title (Enter)");
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut state.section_title)
-                        .hint_text("Title")
-                        .desired_width(96.0),
+                        .hint_text("Section title, Enter to apply")
+                        .desired_width(110.0),
                 );
                 ui.ctx()
                     .accesskit_node_builder(response.id, |node| node.set_label("Section title"));
-            });
-            ui.end_row();
-
-            ui.label("");
-            ui.horizontal(|ui| {
-                if ui.button("Set section").clicked() {
-                    let [red, green, blue] = state.section_color;
-                    let color = TrackColor::new(
-                        u32::from(red) * 0x1_0000 + u32::from(green) * 0x100 + u32::from(blue),
-                    );
-                    commands.push(Command::SetSection {
-                        measure: snapshot.measure,
-                        title: state.section_title.clone(),
-                        color,
-                    });
+                let escape =
+                    response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Escape));
+                if escape {
+                    state.section_title = snapshot
+                        .section
+                        .as_ref()
+                        .map_or_else(String::new, |section| section.title.clone());
+                    if let Some(section) = &snapshot.section {
+                        let (red, green, blue) = section.color.parts();
+                        state.section_color = [red, green, blue];
+                    }
                 }
-                if ui.button("Clear").clicked() {
-                    commands.push(Command::ClearSection {
-                        measure: snapshot.measure,
-                    });
+                let submitted = (response.has_focus() || response.lost_focus())
+                    && ui.input(|input| input.key_pressed(egui::Key::Enter));
+                if submitted {
+                    let [red, green, blue] = state.section_color;
+                    let rgb =
+                        u32::from(red) * 0x1_0000 + u32::from(green) * 0x100 + u32::from(blue);
+                    let old_title = snapshot
+                        .section
+                        .as_ref()
+                        .map_or("", |section| section.title.as_str());
+                    let old_rgb = snapshot.section.as_ref().map(|section| section.color.rgb());
+                    let title = state.section_title.trim();
+                    if title.is_empty() {
+                        if snapshot.section.is_some() {
+                            commands.push(Command::ClearSection {
+                                measure: snapshot.measure,
+                            });
+                        }
+                    } else if title != old_title || old_rgb != Some(rgb) {
+                        commands.push(Command::SetSection {
+                            measure: snapshot.measure,
+                            title: title.to_owned(),
+                            color: TrackColor::new(rgb),
+                        });
+                    }
                 }
             });
             ui.end_row();

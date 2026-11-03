@@ -147,6 +147,20 @@ fn parses_every_command_and_fills_defaults() {
             },
         ),
         (
+            "set_track_reverb track=2 reverb=40",
+            Command::SetTrackReverb {
+                track: TrackIndex::new(1),
+                reverb: 40,
+            },
+        ),
+        (
+            "set_track_chorus chorus=0",
+            Command::SetTrackChorus {
+                track: TrackIndex::new(0),
+                chorus: 0,
+            },
+        ),
+        (
             "set_track_mute track=2 mute=true",
             Command::SetTrackMute {
                 track: TrackIndex::new(1),
@@ -351,6 +365,8 @@ fn bad_lines_are_errors_with_useful_messages() {
         ("rename_track track=1", "missing parameter"),
         ("set_track_volume volume=128", "0 to 127"),
         ("set_track_pan pan=abc", "0 to 127"),
+        ("set_track_reverb reverb=200", "0 to 127"),
+        ("set_track_chorus", "missing parameter"),
         ("set_track_staves staves=slash", "both, tab or notation"),
         ("set_track_staves", "missing parameter"),
         ("set_master_volume volume=128", "0 to 127"),
@@ -452,6 +468,8 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
         },
         Command::SetTrackVolume { track, volume: 127 },
         Command::SetTrackPan { track, pan: 0 },
+        Command::SetTrackReverb { track, reverb: 127 },
+        Command::SetTrackChorus { track, chorus: 5 },
         Command::SetTrackStaves {
             track,
             staves: TrackStaves::NotationOnly,

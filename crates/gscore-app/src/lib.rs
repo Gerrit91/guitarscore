@@ -17,7 +17,9 @@ pub use app::GuitarScoreApp;
 pub use document::{Document, GridData};
 pub use gscore_edit::Keymap;
 pub use playback::{Output, Playback};
-pub use settings::{DEFAULT_AUTOSAVE_SECONDS, MAX_RECENT_FILES, Settings, WindowState};
+pub use settings::{
+    DEFAULT_AUTOSAVE_SECONDS, MAX_RECENT_FILES, Settings, ShortcutSetting, WindowState,
+};
 pub use state::{MeasureSelection, ThemeChoice, ViewState, ZOOM_RANGE};
 
 // The snapshot test and example render the app offscreen and save PNGs; this marks the
