@@ -50,7 +50,10 @@ names, tempo changes, repeats and endings in the score).
 Planned in `AGENTS.md` section 9, in this order: M16 app design, M17 layout
 polish (whammy, bends, repeats, pages, PDF), M18 playback polish (first slice live:
 time readout, metronome, count-in, live track switching; still loops, techniques and WAV
-export), M19 bundled SoundFonts, M20 release packages, and M21 pages, multi-track scores and
+export), M19 bundled SoundFonts (release archives now bundle FluidR3 GM; still: a bundled
+pick in the UI and an optional higher-quality download), M20 release packages (a GitHub
+release workflow now builds Linux/Windows/macOS archives and a Linux AppImage; signing,
+notarization and packaging polish remain), and M21 pages, multi-track scores and
 print (owner, 2026-11-03: next after M17, before the rest of M18). M11, M12, M14 and M15 are done.
 
 ## Testing Policy

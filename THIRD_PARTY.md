@@ -12,6 +12,8 @@ This file documents all third-party assets used in the GuitarScore project.
 ## Sound Libraries
 
 | Path | Title | Author | Source | License |
+|------|-------|--------|--------|---------|
+| `assets/soundfonts/FluidR3-LICENSE.txt` (the `.sf2` itself is bundled into release archives, not the repo) | FluidR3 GM SoundFont (`FluidR3_GM.sf2`) | Frank Wen, Toby Smithe | Debian/Ubuntu `fluid-soundfont-gm` 3.1 (originally MuseScore's fluid-soundfont) | MIT (`assets/soundfonts/FluidR3-LICENSE.txt`) |
 
 ## Derived Code
 

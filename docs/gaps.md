@@ -145,8 +145,9 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    (its measure's first pass); so does a click or a measure selection in the song grid.
    Inside a selection the cursor's box and column band are not drawn. Pause/resume does not re-trigger notes that were
    sounding, and stopping `gscore-cli play --port` with Ctrl+C can leave notes hanging in
-   the external synth. The built-in synthesizer needs an installed `.sf2` SoundFont (none
-   is bundled; `.sf3` is not supported), always uses the default audio device, and the
+   the external synth. The built-in synthesizer needs an installed `.sf2` SoundFont (release
+   archives bundle FluidR3 GM, MIT, next to the binary; a source build has none, and `.sf3`
+   is not supported), always uses the default audio device, and the
    app remembers the chosen SoundFont and output in `settings.json`. GP7 stores keyboard and vocal notes by pitch, not
    string and fret; the reader turns them into invalid frets, so those tracks are silent
    (the owner's corpus: 8 of 59 files leave 18-116 notes out).

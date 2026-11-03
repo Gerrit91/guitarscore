@@ -2010,7 +2010,24 @@ lifeless):
   at compile time — the `GSCORE_VERSION` variable when the release workflow sets it to the
   tag, otherwise `<crate version>-dev+<short git sha>`. `gscore-cli --version` now prints it,
   and the app shows it (and the build SHA) in a new Help → About GuitarScore window.
-- The binaries are self-contained (fonts compiled in); a SoundFont is still found at run
-  time, not bundled (M19). Nothing is signed/notarized yet, so macOS shows Gatekeeper and
-  Windows SmartScreen — that is a later M20 task, as are AppImage/Flatpak packages.
-- Open: run the workflow once on a real tag and confirm each archive opens on its platform.
+- The binaries are self-contained (fonts compiled in). Nothing is signed/notarized yet, so
+  macOS shows Gatekeeper and Windows SmartScreen — that is a later M20 task.
+- Open: run the workflow once on a real tag and confirm each archive opens on its platform
+  (the bundled SoundFont and the AppImage follow in the next entry).
+
+## 2026-11-03 — Bundled SoundFont and a Linux AppImage
+
+- The built-in synth now finds a SoundFont shipped next to the executable: `gscore-audio`'s
+  `find_soundfont`/`available_soundfonts` check `<exe dir>/FluidR3_GM.sf2` and
+  `<exe dir>/soundfonts/*.sf2` (after the user's own folders, before system fonts). A
+  source build has none, so nothing changes there. Tests cover the order (the user's own
+  folder still wins over the bundled default).
+- Release archives now bundle FluidR3 GM (MIT, ~141 MB): a `soundfont` job apt-installs
+  `fluid-soundfont-gm` once and shares the `.sf2` with the Linux, Windows and macOS jobs, so
+  a downloaded build has sound out of the box. It is not committed to git (over GitHub's
+  100 MB file limit); `assets/soundfonts/FluidR3-LICENSE.txt` records the license and source.
+- Linux gains a single-file AppImage (`GuitarScore-<tag>-x86_64.AppImage`), built with
+  linuxdeploy + appimagetool from `packaging/guitarscore.desktop` and a new icon
+  (`packaging/guitarscore.svg`/`.png`); the GPU/driver libraries are left to the host.
+- Open: the AppImage and the bundled-SoundFont archives still need a real-tag run and a
+  handful of distros (Ubuntu, Fedora, Arch) to confirm they start and make sound.
