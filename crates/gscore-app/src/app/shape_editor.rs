@@ -45,6 +45,8 @@ pub(super) enum Outcome {
     Remove,
     /// Closed without a change.
     Cancel,
+    /// Play the note with the shape as drawn (the editor stays open).
+    Listen,
 }
 
 /// A preset that comes with the app.
@@ -296,6 +298,15 @@ impl ShapeEditor {
                                 if ui.add(ok).clicked() {
                                     outcome = Outcome::Apply;
                                 }
+                                // The rest of the row, from the left: hear the draft.
+                                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                                    if listen_button(ui)
+                                        .on_hover_text(format!("Play the note with this {what}"))
+                                        .clicked()
+                                    {
+                                        outcome = Outcome::Listen;
+                                    }
+                                });
                             },
                         );
                         if outcome == Outcome::Open && self.naming.is_none() {
@@ -443,6 +454,25 @@ impl ShapeEditor {
 }
 
 /// One row of the preset list.
+/// A button with a play triangle and "Listen", for hearing a draft effect.
+pub(super) fn listen_button(ui: &mut egui::Ui) -> egui::Response {
+    // Room on the left for the triangle, painted (the text fonts have no play sign).
+    let response = ui.add(egui::Button::new("    Listen").min_size(vec2(100.0, 28.0)));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Listen"));
+    let color = ui.style().interact(&response).fg_stroke.color;
+    let center = Pos2::new(response.rect.left() + 18.0, response.rect.center().y);
+    ui.painter().add(egui::Shape::convex_polygon(
+        vec![
+            center + vec2(-4.0, -6.0),
+            center + vec2(6.0, 0.0),
+            center + vec2(-4.0, 6.0),
+        ],
+        color,
+        Stroke::NONE,
+    ));
+    response
+}
+
 fn preset_row(ui: &mut egui::Ui, name: &str, on: bool) -> egui::Response {
     let response =
         ui.add(egui::Button::selectable(on, name).min_size(vec2(ui.available_width(), 26.0)));

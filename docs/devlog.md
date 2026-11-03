@@ -1924,3 +1924,29 @@ lifeless):
 - The "Put the cursor on a note" lines under Dynamics and Techniques are gone; the greyed
   tiles say it in their tooltip.
 
+## 2026-11-03 — Bend, whammy and harmonic previews; the harmonic editor
+
+- **Bend and whammy curves are played** (`gscore-play` `curve.rs`): bends follow every
+  drawn point (they played only their highest point before) and the whammy bar bends
+  every note of its beat (it was silent). The test helper's bends now look like Guitar
+  Pro's (up by the middle and held; a release starts bent).
+- **Listen** in the bend, whammy and harmonic editors plays the draft: the commands run on
+  a copy of the song (no undo step, nothing journaled) and the beat is played from it
+  (`listen_to`). A beat chosen while the SoundFont loads now waits as a built excerpt, so
+  a draft is heard as drafted.
+- **Harmonic editor** (owner: artificial and pinch harmonics could not be entered; one
+  tile and a window instead of five): one Harmonic tile opens it. Kinds as segments;
+  touched harmonics (artificial, tapped, pinch) take a touch point in frets above the note
+  (+12, +7, +5, +19, +24, +4 or any), stored as the node's fret; a natural harmonic warns
+  when its fret is no node. A picture after the classic diagram of a string's partials:
+  the vibrating length (from the nut, or from the fretted note) with 1-6 loops, the chosen
+  partial shaded, a fret ruler and the touch point. The model works out what it sounds
+  ("Sounds A3: the 3rd partial, an octave and a fifth up"). The harmonic keys still toggle
+  their kind. Files: `harmonic_editor.rs`, `harmonic_diagram.rs`; the editor windows' glue
+  moved to `edit_effects/editors.rs`.
+- Found on the way: egui panics on a character no bundled font has ("▶"); the Listen
+  button paints its triangle.
+- Tests: curve unit tests, `a_drawn_bend_is_followed_point_by_point`,
+  `a_whammy_dive_bends_every_note_of_the_beat`, the harmonic tile test, and Listen in the
+  bend editor plays a bend without an undo step.
+

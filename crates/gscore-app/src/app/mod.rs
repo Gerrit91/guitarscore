@@ -16,6 +16,8 @@ mod edit_staff_dialogs;
 mod editing;
 mod files;
 mod grid;
+mod harmonic_diagram;
+mod harmonic_editor;
 mod history;
 mod icons;
 mod instrument;
@@ -373,12 +375,10 @@ impl eframe::App for GuitarScoreApp {
         // Keep a loop of the selected measures going.
         self.poll_loop();
         // A beat chosen while the SoundFont loaded plays once it is ready.
-        if let Some(document) = &self.document {
-            match self.playback.poll_preview(document.song()) {
-                Ok(true) => ctx.request_repaint_after(std::time::Duration::from_millis(50)),
-                Ok(false) => {}
-                Err(error) => self.notice = Some(error),
-            }
+        match self.playback.poll_preview() {
+            Ok(true) => ctx.request_repaint_after(std::time::Duration::from_millis(50)),
+            Ok(false) => {}
+            Err(error) => self.notice = Some(error),
         }
         // An entered note stops after a moment.
         if let Some(left) = self.playback.poll_audition() {

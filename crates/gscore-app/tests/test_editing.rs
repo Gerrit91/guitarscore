@@ -474,6 +474,30 @@ fn an_effect_chosen_in_the_palette_plays_its_beat_and_play_still_plays_the_song(
     );
     assert_eq!(harness.state().notice(), None);
 
+    // Listen in the bend editor plays the drawn bend without applying it.
+    let depth = harness.state().document().unwrap().editor().undo_depth();
+    harness.get_by_label("Bend").click();
+    harness.run();
+    harness.get_by_label("Listen").click();
+    harness.run();
+    let excerpt = harness
+        .state()
+        .playback()
+        .preview_sequence()
+        .unwrap()
+        .clone();
+    let bent = excerpt.events.iter().any(|event| {
+        matches!(event.event, gscore_play::MidiEvent::PitchBend { value, .. } if value > 8192 + 2000)
+    });
+    assert!(bent, "the excerpt bends");
+    assert_eq!(
+        harness.state().document().unwrap().editor().undo_depth(),
+        depth,
+        "listening changes nothing"
+    );
+    harness.get_by_label("Cancel").click();
+    harness.run();
+
     // Play ends the excerpt and plays the song.
     harness.get_by_label("Play").click();
     harness.step();
@@ -544,6 +568,42 @@ fn the_rest_tile_enters_a_rest_of_the_chosen_length_in_an_empty_bar() {
     harness.run();
     let eighth = gscore_model::Duration::new(1, 8).unwrap();
     assert_eq!(rest(&harness, 1), (gscore_model::BeatKind::Rest, eighth));
+}
+
+#[test]
+fn the_harmonic_tile_sets_an_artificial_harmonic_with_its_touch_point() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    harness.run();
+    harness.get_by_label("Harmonic").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Harmonic").click();
+    harness.run();
+    harness.get_by_label("Artificial").click();
+    harness.run();
+    harness.get_by_label("+12").click();
+    harness.run();
+    assert!(
+        harness.query_by_label_contains("2nd partial").is_some(),
+        "the editor names what the harmonic sounds"
+    );
+    harness.get_by_label("OK").click();
+    harness.run();
+    let document = harness.state().document().unwrap();
+    let cursor = document.editor().cursor();
+    let song = document.song();
+    let beat = song.beat(cursor.position()).unwrap();
+    let note = beat
+        .notes()
+        .find(|note| note.string().unwrap().get() == cursor.string)
+        .unwrap();
+    assert_eq!(
+        note.harmonic(),
+        Some(gscore_model::Harmonic {
+            kind: gscore_model::HarmonicKind::Artificial,
+            node: Some(17),
+        })
+    );
 }
 
 #[test]

@@ -176,14 +176,9 @@ pub(crate) fn collect(
                             tremolo: note.has_tremolo_picking(),
                             onset: start,
                             damp: false,
-                            bend_curve: note
-                                .bend_shape()
-                                .filter(|_| pitched)
-                                .and_then(|shape| {
-                                    Curve::new(
-                                        shape.points.iter().map(|p| (p.position, p.value)),
-                                    )
-                                }),
+                            bend_curve: note.bend_shape().filter(|_| pitched).and_then(|shape| {
+                                Curve::new(shape.points.iter().map(|p| (p.position, p.value)))
+                            }),
                             whammy: beat.whammy_shape().filter(|_| pitched).and_then(|shape| {
                                 Curve::new(shape.points.iter().map(|p| (p.position, p.value)))
                             }),

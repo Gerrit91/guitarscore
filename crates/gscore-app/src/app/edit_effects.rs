@@ -2,6 +2,8 @@
 //! whammy shape editors. It shows the state of the note under the cursor and applies a
 //! click to every note or beat in the selection as commands.
 
+mod editors;
+
 use egui::vec2;
 use gscore_edit::{ActionId, Command};
 use gscore_model::{
@@ -10,10 +12,10 @@ use gscore_model::{
 };
 
 use super::edit_palette::PaletteSnapshot;
-use super::shape_editor::{Outcome, ShapeEditor, ShapeTarget};
+use super::harmonic_editor::HarmonicEditor;
+use super::shape_editor::ShapeEditor;
 use super::style;
 use super::tiles::{self, Face};
-use crate::settings::{Settings, ShapePreset};
 
 /// The effects of the note under the cursor.
 #[derive(Debug, Clone)]
@@ -31,6 +33,8 @@ pub(super) struct NoteState {
     harmonic: Option<Harmonic>,
     slides: Vec<SlideKind>,
     bend: Option<BendShape>,
+    /// The note's fret (0 when it has none), for the harmonic editor.
+    fret: u8,
 }
 
 impl NoteState {
@@ -49,6 +53,7 @@ impl NoteState {
             harmonic: note.harmonic(),
             slides: note.slides().collect(),
             bend: note.bend_shape(),
+            fret: note.fret().map_or(0, |fret| fret.get()),
         }
     }
 }
@@ -84,6 +89,7 @@ impl BeatState {
 pub(super) struct EffectsState {
     bend: Option<ShapeEditor>,
     whammy: Option<ShapeEditor>,
+    harmonic: Option<HarmonicEditor>,
 }
 
 /// What an effect tile (or its key) does.
@@ -102,6 +108,8 @@ pub(super) enum Fx {
     Vibrato(Vibrato),
     Accent(AccentKind),
     Harmonic(HarmonicKind),
+    /// Any harmonic: the tile that opens the harmonic editor.
+    AnyHarmonic,
     Pick(StrokeDirection),
     Brush(StrokeDirection),
     Slap(SlapKind),
@@ -241,6 +249,16 @@ const SLIDE_ITEMS: &[FxItem] = &[
 const PITCH_ITEMS: &[FxItem] = &[
     item(ActionId::ToggleBend, Face::Bend, Fx::Bend),
     item(ActionId::ToggleWhammy, Face::Whammy, Fx::Whammy),
+    // One tile for every harmonic: it opens the harmonic editor.
+    item(
+        ActionId::ToggleNaturalHarmonic,
+        glyph("\u{E0DD}", 42.0, 0.0),
+        Fx::AnyHarmonic,
+    ),
+];
+
+/// The harmonics, each with its key (their palette tile is the one harmonic tile).
+const HARMONIC_ITEMS: &[FxItem] = &[
     item(
         ActionId::ToggleNaturalHarmonic,
         glyph("\u{E0DD}", 42.0, 0.0),
@@ -316,10 +334,17 @@ const BEAT_ITEMS: &[FxItem] = &[
 
 /// The effect item bound to `action`, for a key press.
 pub(super) fn fx_item(action: ActionId) -> Option<&'static FxItem> {
-    [NOTE_ITEMS, SLIDE_ITEMS, PITCH_ITEMS, BEAT_ITEMS]
-        .into_iter()
-        .flatten()
-        .find(|item| item.action == action)
+    // The harmonic keys first: the harmonic tile shares the natural harmonic's action.
+    [
+        HARMONIC_ITEMS,
+        NOTE_ITEMS,
+        SLIDE_ITEMS,
+        PITCH_ITEMS,
+        BEAT_ITEMS,
+    ]
+    .into_iter()
+    .flatten()
+    .find(|item| item.action == action)
 }
 
 /// Whether the effect bound to `action` is on for the selected notes or beats, as its
@@ -358,6 +383,7 @@ fn is_on(fx: Fx, note: Option<&NoteState>, beat: &BeatState) -> bool {
         Fx::Vibrato(kind) => note.is_some_and(|n| n.vibrato == Some(kind)),
         Fx::Accent(kind) => note.is_some_and(|n| n.accent == Some(kind)),
         Fx::Harmonic(kind) => note.is_some_and(|n| n.harmonic.is_some_and(|h| h.kind == kind)),
+        Fx::AnyHarmonic => note.is_some_and(|n| n.harmonic.is_some()),
         Fx::Pick(direction) => beat.pick == Some(direction),
         Fx::Brush(direction) => beat.brush == Some(direction),
         Fx::Slap(kind) => beat.slap == Some(kind),
@@ -491,62 +517,6 @@ pub(super) fn fx_commands(fx: Fx, snapshot: &PaletteSnapshot) -> Vec<Command> {
 }
 
 impl EffectsState {
-    /// Opens the bend editor on the cursor note's bend, or on a full-step bend when the
-    /// note has none. Nothing changes until OK.
-    pub(super) fn open_bend(&mut self, snapshot: &PaletteSnapshot) {
-        if snapshot.note_targets.is_empty() {
-            return;
-        }
-        let bend = snapshot
-            .note_state
-            .as_ref()
-            .or(snapshot.target_states.first())
-            .and_then(|note| note.bend.clone());
-        self.bend = Some(match bend {
-            Some(bend) => ShapeEditor::new(ShapeTarget::Bend, bend.kind, bend.points),
-            None => ShapeEditor::new(ShapeTarget::Bend, BendKind::Up, default_bend()),
-        });
-    }
-
-    /// Opens the whammy bar editor on the cursor beat's shape, or on a dip when the beat
-    /// has none. Nothing changes until OK.
-    pub(super) fn open_whammy(&mut self, snapshot: &PaletteSnapshot) {
-        if snapshot.beats.is_empty() {
-            return;
-        }
-        let shape = snapshot
-            .beat_state
-            .as_ref()
-            .or(snapshot.beat_states.first())
-            .and_then(|beat| beat.whammy.clone());
-        let points = shape.map_or_else(default_whammy, |shape| shape.points);
-        self.whammy = Some(ShapeEditor::new(ShapeTarget::Whammy, BendKind::Up, points));
-    }
-
-    /// Whether the bend or whammy editor is open.
-    pub(super) fn is_editing(&self) -> bool {
-        self.bend.is_some() || self.whammy.is_some()
-    }
-
-    /// Closes the bend and whammy editors without a change.
-    pub(super) fn close_editors(&mut self) {
-        self.bend = None;
-        self.whammy = None;
-    }
-
-    /// Shows the open bend or whammy editor; OK and Remove turn into commands for the
-    /// selected notes or beats.
-    pub(super) fn show_editors(
-        &mut self,
-        ctx: &egui::Context,
-        snapshot: &PaletteSnapshot,
-        settings: &mut Settings,
-        commands: &mut Vec<Command>,
-    ) {
-        self.show_bend(ctx, snapshot, &mut settings.bend_presets, commands);
-        self.show_whammy(ctx, snapshot, &mut settings.whammy_presets, commands);
-    }
-
     /// Draws the effect tiles; clicks turn into commands (the bend tile opens the bend
     /// editor). `hint` gives an action's keys for the tooltips (" (P)").
     pub(super) fn panel(
@@ -571,7 +541,11 @@ impl EffectsState {
                     } else {
                         has_beats
                     };
-                    let label = item.action.label();
+                    let label = if item.fx == Fx::AnyHarmonic {
+                        "Harmonic"
+                    } else {
+                        item.action.label()
+                    };
                     let tip = if enabled {
                         format!("{label}{}", hint(item.action))
                     } else if item.fx.on_note() {
@@ -587,7 +561,7 @@ impl EffectsState {
                     };
                     let on = is_on_for_targets(item.fx, snapshot);
                     if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
-                        if matches!(item.fx, Fx::Bend | Fx::Whammy) {
+                        if matches!(item.fx, Fx::Bend | Fx::Whammy | Fx::AnyHarmonic) {
                             open = Some(item.fx);
                         } else {
                             commands.extend(fx_commands(item.fx, snapshot));
@@ -625,64 +599,9 @@ impl EffectsState {
         match open {
             Some(Fx::Bend) => self.open_bend(snapshot),
             Some(Fx::Whammy) => self.open_whammy(snapshot),
+            Some(Fx::AnyHarmonic) => self.open_harmonic(snapshot),
             _ => {}
         }
-    }
-
-    fn show_bend(
-        &mut self,
-        ctx: &egui::Context,
-        snapshot: &PaletteSnapshot,
-        presets: &mut Vec<ShapePreset>,
-        commands: &mut Vec<Command>,
-    ) {
-        let Some(editor) = &mut self.bend else {
-            return;
-        };
-        let effect = match editor.show(ctx, presets) {
-            Outcome::Open => return,
-            Outcome::Cancel => None,
-            Outcome::Remove => Some(NoteEffect::Bend(None)),
-            Outcome::Apply => match BendShape::new(editor.kind, editor.points.clone()) {
-                Ok(shape) => Some(NoteEffect::Bend(Some(shape))),
-                Err(error) => {
-                    editor.error = Some(error.to_string());
-                    return;
-                }
-            },
-        };
-        if let Some(effect) = effect {
-            apply_note(commands, &snapshot.note_targets, effect);
-        }
-        self.bend = None;
-    }
-
-    fn show_whammy(
-        &mut self,
-        ctx: &egui::Context,
-        snapshot: &PaletteSnapshot,
-        presets: &mut Vec<ShapePreset>,
-        commands: &mut Vec<Command>,
-    ) {
-        let Some(editor) = &mut self.whammy else {
-            return;
-        };
-        let effect = match editor.show(ctx, presets) {
-            Outcome::Open => return,
-            Outcome::Cancel => None,
-            Outcome::Remove => Some(BeatEffect::Whammy(None)),
-            Outcome::Apply => match WhammyShape::new(editor.points.clone()) {
-                Ok(shape) => Some(BeatEffect::Whammy(Some(shape))),
-                Err(error) => {
-                    editor.error = Some(error.to_string());
-                    return;
-                }
-            },
-        };
-        if let Some(effect) = effect {
-            apply_beat(commands, &snapshot.beats, effect);
-        }
-        self.whammy = None;
     }
 }
 

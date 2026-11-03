@@ -112,7 +112,7 @@ pub struct Playback {
     preview_sequence: Option<Arc<Sequence>>,
     /// A beat to play once the synthesizer has loaded its SoundFont (it was chosen while
     /// it loaded).
-    pending_preview: Option<BeatPosition>,
+    pending_preview: Option<Arc<Sequence>>,
 }
 
 impl Playback {

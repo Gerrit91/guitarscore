@@ -13,8 +13,8 @@
 
 use gscore_model::testing::{self, TestNote};
 use gscore_model::{
-    AccentKind, BeatEffect, BendKind, BendPoint, BendShape, WhammyShape, BeatIndex, BeatPosition, MeasureIndex, NoteEffect, Song, StringNumber,
-    StrokeDirection, TrackIndex, Vibrato, VoiceIndex,
+    AccentKind, BeatEffect, BeatIndex, BeatPosition, BendKind, BendPoint, BendShape, MeasureIndex,
+    NoteEffect, Song, StringNumber, StrokeDirection, TrackIndex, Vibrato, VoiceIndex, WhammyShape,
 };
 use gscore_play::{MidiEvent, PPQ, Sequence, controller};
 
@@ -247,21 +247,29 @@ fn a_drawn_bend_is_followed_point_by_point() {
         let tick = (share * half as f64) as u64;
         bends
             .iter()
-            .filter(|(at, _)| *at <= tick)
-            .last()
+            .rfind(|(at, _)| *at <= tick)
             .map(|&(_, value)| value)
             .unwrap()
     };
     let whole_step = 8192 + 2730;
-    assert!(value_near(1.0 / 3.0).abs_diff(whole_step) < 250, "up at a third");
-    assert!(value_near(2.0 / 3.0).abs_diff(8192) < 250, "back down at two thirds");
-    assert!(value_near(0.99).abs_diff(whole_step) < 250, "up again at the end");
+    assert!(
+        value_near(1.0 / 3.0).abs_diff(whole_step) < 250,
+        "up at a third"
+    );
+    assert!(
+        value_near(2.0 / 3.0).abs_diff(8192) < 250,
+        "back down at two thirds"
+    );
+    assert!(
+        value_near(0.99).abs_diff(whole_step) < 250,
+        "up again at the end"
+    );
 }
 
 #[test]
 fn a_whammy_dive_bends_every_note_of_the_beat() {
-    let mut song = testing::song_with_notes(&[(2, &[TestNote::new(6, 3), TestNote::new(4, 2)])])
-        .unwrap();
+    let mut song =
+        testing::song_with_notes(&[(2, &[TestNote::new(6, 3), TestNote::new(4, 2)])]).unwrap();
     let dive = WhammyShape::new(points(&[(0, 0), (6, -8), (12, -8)])).unwrap();
     let _ = song
         .set_beat_effect(at(0), BeatEffect::Whammy(Some(dive)))

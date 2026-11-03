@@ -27,7 +27,11 @@ impl Curve {
                 curve.len = curve.len.saturating_add(1);
             }
         }
-        curve.points().iter().any(|&(_, value)| value != 0).then_some(curve)
+        curve
+            .points()
+            .iter()
+            .any(|&(_, value)| value != 0)
+            .then_some(curve)
     }
 
     fn points(&self) -> &[(u8, i8)] {

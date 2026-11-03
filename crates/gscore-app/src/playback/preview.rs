@@ -27,15 +27,19 @@ impl Playback {
         }
         if self.is_loading() {
             // The first click starts the synthesizer: play the beat once it is ready.
-            self.pending_preview = Some(at);
+            self.pending_preview = Some(Arc::new(excerpt));
             return Ok(());
         }
         self.pending_preview = None;
+        self.play_excerpt(Arc::new(excerpt))
+    }
+
+    /// Loads and plays `excerpt` in place of the song.
+    fn play_excerpt(&mut self, excerpt: Arc<Sequence>) -> Result<(), String> {
         self.end_audition();
         let rest = self.preview.unwrap_or_else(|| self.output_position());
         let player = self.player_mut()?;
         player.stop().map_err(|e| e.to_string())?;
-        let excerpt = Arc::new(excerpt);
         player
             .load(Arc::clone(&excerpt))
             .map_err(|e| e.to_string())?;
@@ -49,15 +53,20 @@ impl Playback {
 
     /// Plays a beat chosen while the SoundFont was loading, once it has loaded. Returns
     /// whether one is still waiting (so the caller keeps checking).
-    pub fn poll_preview(&mut self, song: &Song) -> Result<bool, String> {
-        let Some(at) = self.pending_preview else {
+    pub fn poll_preview(&mut self) -> Result<bool, String> {
+        if self.pending_preview.is_none() {
             return Ok(false);
-        };
+        }
         if self.is_loading() {
             return Ok(true);
         }
-        self.pending_preview = None;
-        self.preview_beat(song, at)?;
+        let ready = self.state() == PlayState::Stopped && !self.count_in_pending();
+        if let Some(excerpt) = self.pending_preview.take()
+            && ready
+            && self.error().is_none()
+        {
+            self.play_excerpt(excerpt)?;
+        }
         Ok(false)
     }
 

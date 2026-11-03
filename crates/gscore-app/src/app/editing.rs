@@ -181,6 +181,28 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Plays a draft effect without applying it: `commands` run on a copy of the song (no
+    /// undo step, nothing journaled) and their beat is played from the copy. Asked for with
+    /// a Listen button, so it plays even with "Play notes as they are entered" off.
+    pub(super) fn listen_to(&mut self, commands: &[Command]) {
+        let Some(at) = commands.iter().find_map(preview_target) else {
+            return;
+        };
+        let Some(document) = &self.document else {
+            return;
+        };
+        let mut draft = document.song().clone();
+        for command in commands {
+            if let Err(error) = command.apply(&mut draft) {
+                self.notice = Some(error.to_string());
+                return;
+            }
+        }
+        if let Err(error) = self.playback.preview_beat(&draft, at) {
+            self.notice = Some(error);
+        }
+    }
+
     /// Plays the beat at `at` with its effects, if hearing notes is on.
     /// The player runs on its own thread, so nothing waits for the sound.
     pub(super) fn preview_beat(&mut self, at: BeatPosition) {

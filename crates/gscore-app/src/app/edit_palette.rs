@@ -307,10 +307,17 @@ impl GuitarScoreApp {
             document.editor().selection(),
         );
         let mut commands = Vec::new();
-        self.edit_palette
-            .effects
-            .show_editors(ctx, &snapshot, &mut self.settings, &mut commands);
+        let mut trial = Vec::new();
+        self.edit_palette.effects.show_editors(
+            ctx,
+            &snapshot,
+            document.song(),
+            &mut self.settings,
+            &mut commands,
+            &mut trial,
+        );
         self.apply_commands(commands);
+        self.listen_to(&trial);
     }
 
     /// The staff dialog, while one is open. It floats over the app, so it shows even when

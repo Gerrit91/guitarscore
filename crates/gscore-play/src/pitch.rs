@@ -138,7 +138,12 @@ impl PitchShape {
 
     /// This shape with the note's bend `curve` and its beat's `whammy` curve on top, over
     /// `length` ticks.
-    pub(crate) fn with_curves(self, bend: Option<Curve>, whammy: Option<Curve>, length: u64) -> Self {
+    pub(crate) fn with_curves(
+        self,
+        bend: Option<Curve>,
+        whammy: Option<Curve>,
+        length: u64,
+    ) -> Self {
         PitchShape {
             bend: bend.or(self.bend),
             whammy: whammy.or(self.whammy),
@@ -227,7 +232,12 @@ impl PitchShape {
 impl PitchShape {
     /// The movement sampled through the note: the bend or slide ramp, the bend and whammy
     /// curves (in cents), and a sine of the vibrato's depth.
-    fn sampled_events(&self, channel: Channel, start_tick: u64, range: u8) -> Vec<(u64, MidiEvent)> {
+    fn sampled_events(
+        &self,
+        channel: Channel,
+        start_tick: u64,
+        range: u8,
+    ) -> Vec<(u64, MidiEvent)> {
         let length = self.vibrato.map_or(self.length, |wave| wave.length).max(1);
         let step = match self.vibrato {
             Some(wave) => (wave.period / WAVE_STEPS).max(1),
