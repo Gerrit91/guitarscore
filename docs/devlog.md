@@ -2038,9 +2038,10 @@ lifeless):
   (`release: prereleased`), not on every published release. The owner checks the
   attached assets on the pre-release, then unticks "pre-release" to make it the full
   release, which builds nothing again. `overwrite_files` lets a re-run replace the assets.
-- App icon: the old pick-shaped icon was too close to Guitar Pro's. Proposed to the owner:
-  an eighth note whose stem is a guitar neck and whose flag is a Strat-style headstock
-  (three tuner posts), in a gold-to-magenta gradient on a deep violet disc. The app now
+- App icon: the old pick-shaped icon was too close to Guitar Pro's. The real icon is
+  postponed (owner); until then a placeholder: a white G (Noto Sans Bold) with an eighth
+  note (Bravura) in front of it on a blue disc that fades from light in the middle to
+  deep blue at the rim, both glyphs as outlines, so the SVG needs no fonts. The app now
   sets it as the window icon (it showed eframe's default), uses the app id `guitarscore`
   to match the desktop file (and its `StartupWMClass`) so docks on Wayland find the icon,
   and shows it in Help › About. `gscore_app::APP_ICON` holds the PNG for both. Tests
@@ -2055,6 +2056,7 @@ lifeless):
   toolbar repaints for more than 4 frames while the song and the SoundFont load (the player
   is measured again as its contents change). `settle` now steps until nothing is busy and
   `try_run` settles (15 of 15 runs green).
-- Open: a first pre-release run on GitHub (it was not run from here); Windows `.exe` and
-  macOS `.app` icons (both packages are plain archives so far); the rest of M20 (macOS
-  file-dialog fix, name check, user guide, public test files, signing).
+- Open: the real app icon (postponed); a first pre-release run on GitHub (it was not run
+  from here); Windows `.exe` and macOS `.app` icons (both packages are plain archives so
+  far); the rest of M20 (macOS file-dialog fix, name check, user guide, public test
+  files, signing).
