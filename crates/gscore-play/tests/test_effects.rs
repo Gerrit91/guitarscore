@@ -13,8 +13,9 @@
 
 use gscore_model::testing::{self, TestNote};
 use gscore_model::{
-    AccentKind, BeatEffect, BeatIndex, BeatPosition, BendKind, BendPoint, BendShape, MeasureIndex,
-    NoteEffect, Song, StringNumber, StrokeDirection, TrackIndex, Vibrato, VoiceIndex, WhammyShape,
+    AccentKind, BeatEffect, BeatIndex, BeatPosition, BendKind, BendPoint, BendShape, Fret, Grace,
+    GraceSpeed, MeasureIndex, NoteEffect, SlideKind, Song, StringNumber, StrokeDirection,
+    TrackIndex, TremoloSpeed, Trill, TrillSpeed, Vibrato, VoiceIndex, WhammyShape,
 };
 use gscore_play::{MidiEvent, PPQ, Sequence, controller};
 
@@ -296,7 +297,7 @@ fn an_excerpt_of_a_tied_beat_strikes_its_notes() {
     // A half note tied into the next: the second beat alone still sounds.
     let mut song = two_beats();
     let _ = song
-        .set_note(at(1), string(6), gscore_model::Fret::new(3).unwrap())
+        .set_note(at(1), string(6), Fret::new(3).unwrap())
         .unwrap();
     let _ = song.set_note_tie(at(1), string(6), true).unwrap();
     let full = note_ons(&Sequence::new(&song, None).unwrap());
@@ -459,6 +460,193 @@ fn a_fade_in_swells_on_its_own_channel() {
     // The next note, without a fade-in, is at full volume on the track's channel.
     let next = note_ons(&sequence)[1];
     assert_eq!(next.0, half);
+}
+
+#[test]
+fn an_arpeggio_rolls_the_chord_over_an_eighth() {
+    let mut song = chord_song();
+    let _ = song
+        .set_beat_effect(at(0), BeatEffect::Arpeggio(Some(StrokeDirection::Down)))
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&song, None).unwrap());
+    let last = ons.iter().map(|&(tick, ..)| tick).max().unwrap();
+    assert!(last > 0 && last <= u64::from(PPQ) / 2, "{ons:?}");
+    let first = ons.iter().min_by_key(|on| on.0).unwrap();
+    assert_eq!(first.1, 43, "a roll down starts on the low E string");
+}
+
+#[test]
+fn a_rasgueado_strikes_the_chord_three_times_softer_each_time() {
+    let mut song = chord_song();
+    let _ = song
+        .set_beat_effect(at(0), BeatEffect::Rasgueado(true))
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&song, None).unwrap());
+    assert_eq!(ons.len(), 9, "three strings struck three times");
+    let mut ticks: Vec<u64> = ons.iter().map(|&(tick, ..)| tick).collect();
+    ticks.sort_unstable();
+    ticks.dedup();
+    assert_eq!(ticks.len(), 3, "{ticks:?}");
+    assert!(ticks[2] <= u64::from(PPQ) / 8, "{ticks:?}");
+    let soft = |tick: u64| ons.iter().find(|on| on.0 == tick).unwrap().2;
+    assert!(soft(ticks[2]) < soft(ticks[1]) && soft(ticks[1]) < soft(ticks[0]));
+}
+
+#[test]
+fn a_dead_slapped_beat_hits_every_string_shortly_and_softly() {
+    let mut song = testing::song_with_notes(&[(1, &[TestNote::new(6, 3)])]).unwrap();
+    let _ = song
+        .set_beat_effect(at(0), BeatEffect::DeadSlapped(true))
+        .unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let ons = note_ons(&sequence);
+    assert_eq!(ons.len(), 6, "one muted hit per string");
+    let offs = note_offs(&sequence);
+    for (tick, key, velocity) in &ons {
+        assert_eq!(*tick, 0);
+        assert_eq!(*velocity, 70);
+        let off = offs.iter().find(|&&(_, k)| k == *key).unwrap().0;
+        assert!(off <= u64::from(PPQ) / 4, "{key} lasts too long");
+    }
+}
+
+#[test]
+fn a_pick_slide_scrapes_to_the_next_note() {
+    let mut song =
+        testing::song_with_notes(&[(4, &[TestNote::new(3, 12)]), (4, &[TestNote::new(3, 7)])])
+            .unwrap();
+    let _ = song
+        .set_note_effect(
+            at(0),
+            string(3),
+            NoteEffect::Slide(SlideKind::PickSlideDown, true),
+        )
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&song, None).unwrap());
+    // The slide replaces its note with six scraping notes, then the next note plays.
+    assert_eq!(ons.len(), 7, "{ons:?}");
+    let scrape: Vec<u8> = ons
+        .iter()
+        .filter(|&&(tick, ..)| tick < u64::from(PPQ) / 2)
+        .map(|&(_, key, _)| key)
+        .collect();
+    assert_eq!(scrape.len(), 6);
+    assert!(
+        scrape.windows(2).all(|pair| pair[0] >= pair[1]),
+        "it scrapes downwards: {scrape:?}"
+    );
+    assert!(scrape.first() > scrape.last());
+}
+
+#[test]
+fn a_trill_alternates_with_its_fret_at_its_speed() {
+    let mut song = testing::song_with_notes(&[(2, &[TestNote::new(3, 2)])]).unwrap();
+    let _ = song
+        .set_note_effect(
+            at(0),
+            string(3),
+            NoteEffect::Trill(Some(Trill {
+                fret: Some(4),
+                speed: TrillSpeed::ThirtySecond,
+            })),
+        )
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&song, None).unwrap());
+    // A half note at 32nds is sixteen notes, alternating between the note and its trill.
+    assert_eq!(ons.len(), 16, "{ons:?}");
+    let keys: Vec<u8> = ons.iter().map(|&(_, key, _)| key).collect();
+    assert!(keys[0] != keys[1]);
+    for pair in keys.windows(2) {
+        assert_ne!(pair[0], pair[1], "the trill alternates");
+    }
+}
+
+#[test]
+fn tremolo_picking_repeats_at_its_speed() {
+    let repeats = |speed| {
+        let mut song = testing::song_with_notes(&[(4, &[TestNote::new(3, 2)])]).unwrap();
+        let _ = song
+            .set_note_effect(at(0), string(3), NoteEffect::TremoloPicking(Some(speed)))
+            .unwrap();
+        note_ons(&Sequence::new(&song, None).unwrap()).len()
+    };
+    assert_eq!(repeats(TremoloSpeed::Eighth), 2);
+    assert_eq!(repeats(TremoloSpeed::Sixteenth), 4);
+    assert_eq!(repeats(TremoloSpeed::ThirtySecond), 8);
+}
+
+#[test]
+fn a_fade_out_and_a_swell_ramp_the_expression() {
+    let expression = |effect| {
+        let mut song = two_beats();
+        let _ = song.set_beat_effect(at(0), effect).unwrap();
+        let sequence = Sequence::new(&song, None).unwrap();
+        let base = sequence.tracks[0].channel;
+        let channel = sequence
+            .events
+            .iter()
+            .find_map(|event| match event.event {
+                MidiEvent::NoteOn {
+                    channel, key: 43, ..
+                } if channel != base => Some(channel),
+                _ => None,
+            })
+            .unwrap();
+        let values: Vec<(u64, u8)> = sequence
+            .events
+            .iter()
+            .filter_map(|event| match event.event {
+                MidiEvent::Control {
+                    channel: c,
+                    controller: controller::EXPRESSION,
+                    value,
+                } if c == channel => Some((event.tick, value)),
+                _ => None,
+            })
+            .collect();
+        values
+    };
+    // The channel setup also writes an expression at tick 0; the fade's own value is the
+    // last one there.
+    let at_start = |values: &[(u64, u8)]| {
+        values
+            .iter()
+            .rev()
+            .find(|&&(tick, _)| tick == 0)
+            .map(|&(_, value)| value)
+    };
+    let out = expression(BeatEffect::FadeOut(true));
+    assert_eq!(at_start(&out), Some(127));
+    assert_eq!(out.last().map(|&(_, value)| value), Some(0));
+    let swell = expression(BeatEffect::VolumeSwell(true));
+    assert_eq!(at_start(&swell), Some(0));
+    assert_eq!(swell.last().map(|&(_, value)| value), Some(0));
+    assert!(swell.iter().any(|&(_, value)| value == 127), "{swell:?}");
+}
+
+#[test]
+fn left_hand_taps_and_grace_hammers_are_softer() {
+    let plain = note_ons(&Sequence::new(&two_beats(), None).unwrap())[0].2;
+    let mut tapped = two_beats();
+    let _ = tapped
+        .set_note_effect(at(0), string(6), NoteEffect::LeftHandTap(true))
+        .unwrap();
+    assert!(note_ons(&Sequence::new(&tapped, None).unwrap())[0].2 < plain);
+
+    let mut hammered = two_beats();
+    let grace = Grace {
+        fret: Fret::new(1).unwrap(),
+        speed: GraceSpeed::Normal,
+        on_beat: false,
+        dead: false,
+        hammer: true,
+    };
+    let _ = hammered
+        .set_note_effect(at(0), string(6), NoteEffect::Grace(Some(grace)))
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&hammered, None).unwrap());
+    let main = ons.iter().find(|&&(_, key, _)| key == 43).unwrap();
+    assert!(main.2 < plain, "the hammered main note is softer: {ons:?}");
 }
 
 #[test]

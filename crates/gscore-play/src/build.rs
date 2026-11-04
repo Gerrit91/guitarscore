@@ -6,7 +6,8 @@
 use std::collections::{HashMap, HashSet};
 
 use gscore_model::{
-    BeatKind, BeatView, BendKind, Duration, ModelError, NoteKind, SlideKind, Song, TrackIndex,
+    BeatKind, BeatView, BendKind, Duration, Fret, ModelError, NoteKind, SlideKind, Song,
+    StringNumber, StrokeDirection, TrackIndex,
 };
 
 use crate::channels::ChannelAllocator;
@@ -27,6 +28,9 @@ const WHOLE: u64 = 4 * PPQ as u64;
 const DEAD_NOTE_TICKS: u64 = WHOLE / 32;
 /// Dead notes are played softer, at this share of their velocity (percent).
 const DEAD_NOTE_VELOCITY_PERCENT: u16 = 60;
+/// A dead slapped beat's synthesized hits: their velocity and how long they sound.
+const DEAD_SLAP_VELOCITY: u8 = 70;
+const DEAD_SLAP_TICKS: u64 = WHOLE / 64;
 /// A tied note continues the previous one if that ends within this many ticks of its start
 /// (rounding of tuplets).
 const TIE_TOLERANCE: u64 = 2;
@@ -137,6 +141,13 @@ pub(crate) fn collect(
                     let legato_beat = beat.legato().is_some_and(|legato| legato.destination);
                     let graces = graces::gather(&view, &pending_graces, &beat, &mut skipped_notes);
                     pending_graces.clear();
+                    // A grace note whose transition is a hammer-on means the main note on
+                    // its string is reached without a pick.
+                    let grace_hammers: HashSet<u8> = graces
+                        .iter()
+                        .filter(|grace| grace.hammer)
+                        .map(|grace| grace.string)
+                        .collect();
                     let (grace_notes, delays) = graces::place(
                         &graces,
                         start,
@@ -147,6 +158,10 @@ pub(crate) fn collect(
                     notes.extend(grace_notes);
                     let first_note = notes.len();
                     for note in beat.notes() {
+                        // A dead slapped beat is written as a cross instead of its notes.
+                        if beat.is_dead_slapped() {
+                            break;
+                        }
                         let kind = note.kind();
                         let string = note.string().map(|s| s.get()).unwrap_or(0);
                         let hammered = hammering.remove(&(voice_index, string));
@@ -191,6 +206,17 @@ pub(crate) fn collect(
                         } else {
                             Vec::new()
                         };
+                        let trill = note.trill().and_then(|trill| {
+                            let fret = trill.fret?;
+                            let string = StringNumber::new(string).ok()?;
+                            let pitch = view.pitch_at(string, Fret::new(fret).ok()?).ok()?;
+                            Some((pitch.get(), trill.speed))
+                        });
+                        let pick_slide = note.slides().find_map(|slide| match slide {
+                            SlideKind::PickSlideUp => Some(StrokeDirection::Up),
+                            SlideKind::PickSlideDown => Some(StrokeDirection::Down),
+                            _ => None,
+                        });
                         let mut sounding = Sounding {
                             track: number,
                             channel,
@@ -205,7 +231,10 @@ pub(crate) fn collect(
                             shape: None,
                             vibrato: note.vibrato().or(beat.vibrato()).filter(|_| pitched),
                             let_ring: note.is_let_ring(),
-                            tremolo: note.has_tremolo_picking(),
+                            tremolo: note.tremolo_speed(),
+                            trill: trill.filter(|_| pitched),
+                            pick_slide: pick_slide.filter(|_| pitched),
+                            rasgueado: false,
                             onset: start,
                             damp: false,
                             bend_curve: note.bend_shape().filter(|_| pitched).and_then(|shape| {
@@ -214,14 +243,57 @@ pub(crate) fn collect(
                             whammy: beat.whammy_shape().filter(|_| pitched).and_then(|shape| {
                                 Curve::new(shape.points.iter().map(|p| (p.position, p.value)))
                             }),
-                            fade_in: false,
+                            fade: None,
                         };
                         effects::shape_note(&mut sounding, &note);
-                        if hammered || legato_beat {
+                        if hammered
+                            || legato_beat
+                            || note.is_left_hand_tapped()
+                            || grace_hammers.contains(&string)
+                        {
                             strokes::legato(&mut sounding);
                         }
                         on_string.insert((voice_index, string), notes.len());
                         notes.push(sounding);
+                    }
+                    // A dead slapped beat writes no notes: play a short muted hit on every
+                    // string instead.
+                    if beat.is_dead_slapped() && !sound.percussion {
+                        for string_index in 1..=view.string_count() {
+                            let Some(string_number) = u8::try_from(string_index).ok() else {
+                                continue;
+                            };
+                            let Ok(string) = StringNumber::new(string_number) else {
+                                continue;
+                            };
+                            let Ok(pitch) = view.pitch_at(string, Fret::OPEN) else {
+                                continue;
+                            };
+                            notes.push(Sounding {
+                                track: number,
+                                channel,
+                                play_channel: channel,
+                                key: pitch.get(),
+                                velocity: DEAD_SLAP_VELOCITY,
+                                start,
+                                end: end.min(start.saturating_add(DEAD_SLAP_TICKS)),
+                                string: string_number,
+                                slide: None,
+                                bend: None,
+                                shape: None,
+                                vibrato: None,
+                                let_ring: false,
+                                tremolo: None,
+                                trill: None,
+                                pick_slide: None,
+                                rasgueado: false,
+                                onset: start,
+                                damp: true,
+                                bend_curve: None,
+                                whammy: None,
+                                fade: None,
+                            });
+                        }
                     }
                     // An appoggiatura takes the start of the beat on its string.
                     for note in notes.get_mut(first_note..).unwrap_or_default() {
@@ -247,6 +319,9 @@ pub(crate) fn collect(
         notes.retain(|note| keep(note));
     }
     let mut notes = effects::tremolo_picking(notes);
+    notes = effects::trills(notes);
+    notes = effects::pick_slides(notes);
+    notes = effects::rasgueados(notes);
     sounding::apply_bends(&mut notes);
     effects::apply_vibrato(&mut notes);
     let degraded_pitch_bends =
@@ -285,8 +360,8 @@ pub(crate) fn emit(notes: &[Sounding], tracks: &[SequenceTrack], events: &mut Ve
                 });
             }
         }
-        if borrowed && note.fade_in {
-            for (tick, event) in strokes::fade_in_events(note, note.play_channel) {
+        if borrowed && note.fade.is_some() {
+            for (tick, event) in strokes::fade_events(note, note.play_channel) {
                 events.push(TimedEvent {
                     tick,
                     track: note.track,

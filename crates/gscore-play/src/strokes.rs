@@ -3,7 +3,7 @@
 //! softer and slapping and popping louder, a fade-in swells from silence over the note,
 //! and a note reached by a hammer-on, pull-off or beat-level legato is not picked (softer).
 
-use gscore_model::{BeatView, SlapKind, StrokeDirection};
+use gscore_model::{BeatView, Fade, SlapKind, StrokeDirection};
 
 use crate::effects::{scale, spread};
 use crate::event::{Channel, MidiEvent, controller};
@@ -13,9 +13,10 @@ use crate::tempo::PPQ;
 /// A quarter note in ticks.
 const QUARTER: u64 = PPQ as u64;
 /// A pick stroke strikes a chord's strings within a 128th note; a brush stroke spreads
-/// them over a 32nd (Guitar Pro's default).
+/// them over a 32nd (Guitar Pro's default), an arpeggio (rolled chord) over an eighth.
 const PICK_STROKE_TICKS: u64 = QUARTER / 32;
 const BRUSH_TICKS: u64 = QUARTER / 8;
+const ARPEGGIO_TICKS: u64 = QUARTER / 2;
 /// Velocity shares (percent): an upstroke, tapping, slapping, popping, and a note reached
 /// by legato instead of a pick.
 const UPSTROKE_PERCENT: u32 = 90;
@@ -35,7 +36,7 @@ pub(crate) fn shape_beat(chord: &mut [Sounding], beat: &BeatView<'_>) {
         None => None,
     };
     let upstroke = beat.pick_stroke() == Some(StrokeDirection::Up);
-    let fade_in = beat.has_fade_in();
+    let fade = beat.fade();
     for note in chord.iter_mut() {
         if let Some(percent) = percent {
             note.velocity = scale(note.velocity, percent);
@@ -43,13 +44,18 @@ pub(crate) fn shape_beat(chord: &mut [Sounding], beat: &BeatView<'_>) {
         if upstroke {
             note.velocity = scale(note.velocity, UPSTROKE_PERCENT);
         }
-        note.fade_in |= fade_in;
+        note.fade = note.fade.or(fade);
+        note.rasgueado |= beat.has_rasgueado();
     }
-    // A brush stroke wins over a pick stroke: both strike the strings in turn.
-    match (beat.brush_stroke(), beat.pick_stroke()) {
-        (Some(direction), _) => spread(chord, direction, BRUSH_TICKS),
-        (None, Some(direction)) => spread(chord, direction, PICK_STROKE_TICKS),
-        (None, None) => {}
+    // An arpeggio rolls the chord widest; then a brush stroke; then a pick stroke.
+    if let Some(direction) = beat.arpeggio() {
+        spread(chord, direction, ARPEGGIO_TICKS);
+    } else {
+        match (beat.brush_stroke(), beat.pick_stroke()) {
+            (Some(direction), _) => spread(chord, direction, BRUSH_TICKS),
+            (None, Some(direction)) => spread(chord, direction, PICK_STROKE_TICKS),
+            (None, None) => {}
+        }
     }
 }
 
@@ -58,16 +64,33 @@ pub(crate) fn legato(note: &mut Sounding) {
     note.velocity = scale(note.velocity, LEGATO_PERCENT);
 }
 
-/// The expression steps of a fade-in on the note's own (borrowed) channel: from silence at
-/// its start up to full at its end.
-pub(crate) fn fade_in_events(note: &Sounding, channel: Channel) -> Vec<(u64, MidiEvent)> {
+/// The expression steps of a fade on the note's own (borrowed) channel: in from silence,
+/// out to silence, or a swell that rises and falls again.
+pub(crate) fn fade_events(note: &Sounding, channel: Channel) -> Vec<(u64, MidiEvent)> {
     let length = note.end.saturating_sub(note.start).max(1);
-    (0..=FADE_STEPS)
+    let Some(fade) = note.fade else {
+        return Vec::new();
+    };
+    let steps = if fade == Fade::Swell {
+        FADE_STEPS.saturating_mul(2)
+    } else {
+        FADE_STEPS
+    };
+    (0..=steps)
         .map(|step| {
-            let tick = note
-                .start
-                .saturating_add(length.saturating_mul(step) / FADE_STEPS);
-            let value = u8::try_from(step.saturating_mul(127) / FADE_STEPS).unwrap_or(127);
+            let tick = note.start.saturating_add(
+                length
+                    .saturating_mul(step)
+                    .checked_div(steps.max(1))
+                    .unwrap_or(0),
+            );
+            let falling = fade == Fade::Out || (fade == Fade::Swell && step > FADE_STEPS);
+            let share = if falling {
+                steps.saturating_sub(step)
+            } else {
+                step.min(FADE_STEPS)
+            };
+            let value = u8::try_from(share.saturating_mul(127) / FADE_STEPS).unwrap_or(127);
             (
                 tick,
                 MidiEvent::Control {
@@ -104,7 +127,9 @@ mod tests {
     #[test]
     fn a_fade_in_rises_from_silence_over_the_note() {
         let channel = Channel::new(3).unwrap();
-        let events = fade_in_events(&note(1, 100, 1060), channel);
+        let mut faded = note(1, 100, 1060);
+        faded.fade = Some(Fade::In);
+        let events = fade_events(&faded, channel);
         let values: Vec<(u64, u8)> = events
             .iter()
             .map(|(tick, event)| match event {
