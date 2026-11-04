@@ -159,7 +159,7 @@ pub(super) enum Fx {
 
 impl Fx {
     /// Whether the effect belongs to a note (else to a beat).
-    fn note_effect(self) -> bool {
+    fn on_note(self) -> bool {
         matches!(
             self,
             Fx::Dead
@@ -182,13 +182,6 @@ impl Fx {
                 | Fx::FingerLeft
                 | Fx::FingerRight
         )
-    }
-}
-
-impl Fx {
-    /// Whether the effect belongs to a note (else to a beat).
-    fn on_note(self) -> bool {
-        self.note_effect()
     }
 }
 
@@ -330,12 +323,12 @@ const SLIDE_ITEMS: &[FxItem] = &[
     ),
     item(
         ActionId::TogglePickSlideDown,
-        Face::PickSlide,
+        Face::PickSlide { down: true },
         Fx::Slide(SlideKind::PickSlideDown),
     ),
     item(
         ActionId::TogglePickSlideUp,
-        Face::PickSlide,
+        Face::PickSlide { down: false },
         Fx::Slide(SlideKind::PickSlideUp),
     ),
 ];

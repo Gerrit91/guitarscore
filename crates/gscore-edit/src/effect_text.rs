@@ -49,7 +49,8 @@ pub(crate) fn note_effect_text(effect: &NoteEffect) -> (&'static str, String) {
     }
 }
 
-/// A grace note as `fret:speed:timing`, with `:dead` for a dead one (`5:normal:before`).
+/// A grace note as `fret:speed:timing`, with `:dead` for a dead one and `:hammer` for a
+/// hammer-on or pull-off into the main note (`5:normal:before`, `5:fast:on:dead:hammer`).
 fn grace_text(grace: &Grace) -> String {
     let speed = match grace.speed {
         GraceSpeed::Fast => "fast",
@@ -58,12 +59,13 @@ fn grace_text(grace: &Grace) -> String {
     };
     let timing = if grace.on_beat { "on" } else { "before" };
     let dead = if grace.dead { ":dead" } else { "" };
-    format!("{}:{speed}:{timing}{dead}", grace.fret.get())
+    let hammer = if grace.hammer { ":hammer" } else { "" };
+    format!("{}:{speed}:{timing}{dead}{hammer}", grace.fret.get())
 }
 
 /// Reads [`grace_text`]'s form, or `none`.
 fn parse_grace(value: &str) -> Result<Option<Grace>, String> {
-    const FORM: &str = "grace: fret:fast|normal|slow:before|on[:dead], or none";
+    const FORM: &str = "grace: fret:fast|normal|slow:before|on[:dead][:hammer], or none";
     if value == "none" {
         return Ok(None);
     }
@@ -84,12 +86,16 @@ fn parse_grace(value: &str) -> Result<Option<Grace>, String> {
         Some("on") => true,
         _ => return Err(FORM.to_owned()),
     };
-    let dead = match parts.next() {
-        None => false,
-        Some("dead") => true,
-        Some(_) => return Err(FORM.to_owned()),
-    };
-    if parts.next().is_some() {
+    let mut next = parts.next();
+    let dead = next == Some("dead");
+    if dead {
+        next = parts.next();
+    }
+    let hammer = next == Some("hammer");
+    if hammer {
+        next = parts.next();
+    }
+    if next.is_some() {
         return Err(FORM.to_owned());
     }
     Ok(Some(Grace {
@@ -97,7 +103,7 @@ fn parse_grace(value: &str) -> Result<Option<Grace>, String> {
         speed,
         on_beat,
         dead,
-        hammer: false,
+        hammer,
     }))
 }
 

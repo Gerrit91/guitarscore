@@ -490,6 +490,29 @@ fn a_rasgueado_strikes_the_chord_three_times_softer_each_time() {
     assert!(ticks[2] <= u64::from(PPQ) / 8, "{ticks:?}");
     let soft = |tick: u64| ons.iter().find(|on| on.0 == tick).unwrap().2;
     assert!(soft(ticks[2]) < soft(ticks[1]) && soft(ticks[1]) < soft(ticks[0]));
+    // Each strike stops before the next one on its string, and none rings past the beat.
+    let sequence = Sequence::new(&song, None).unwrap();
+    let offs = note_offs(&sequence);
+    for &(tick, key, _) in &ons {
+        let off = offs
+            .iter()
+            .filter(|&&(off, k)| k == key && off > tick)
+            .map(|&(off, _)| off)
+            .min()
+            .unwrap();
+        let next_on = ons
+            .iter()
+            .filter(|&&(on, k, _)| k == key && on > tick)
+            .map(|&(on, ..)| on)
+            .min();
+        if let Some(next_on) = next_on {
+            assert!(
+                off <= next_on,
+                "{key}: off {off} after the next strike {next_on}"
+            );
+        }
+        assert!(off <= 4 * u64::from(PPQ), "{key} rings past its whole note");
+    }
 }
 
 #[test]

@@ -373,18 +373,33 @@ pub(crate) fn rasgueados(notes: Vec<Sounding>) -> Vec<Sounding> {
             end = end.saturating_add(1);
         }
         let chord = notes.get(start..end).unwrap_or_default();
-        out.extend(chord.iter().copied());
-        for strike in 1..RASGUEADO_STRIKES {
-            let percent = match strike {
-                1 => RASGUEADO_SECOND_PERCENT,
-                _ => RASGUEADO_THIRD_PERCENT,
+        for note in chord {
+            // Each strike sounds until the next one on its string; the last one keeps the
+            // note's end, so nothing rings into the next note (strings were already cut to
+            // one note at a time). A note too short for the strikes is struck once.
+            let room = note.end.saturating_sub(note.start);
+            let strikes = if room > RASGUEADO_STEP.saturating_mul(RASGUEADO_STRIKES) {
+                RASGUEADO_STRIKES
+            } else {
+                1
             };
-            for note in chord {
-                let offset = RASGUEADO_STEP.saturating_mul(strike);
-                let start = note.start.saturating_add(offset);
+            for strike in 0..strikes {
+                let percent = match strike {
+                    0 => 100,
+                    1 => RASGUEADO_SECOND_PERCENT,
+                    _ => RASGUEADO_THIRD_PERCENT,
+                };
+                let start = note
+                    .start
+                    .saturating_add(RASGUEADO_STEP.saturating_mul(strike));
+                let end = if strike.saturating_add(1) < strikes {
+                    start.saturating_add(RASGUEADO_STEP)
+                } else {
+                    note.end
+                };
                 out.push(Sounding {
                     start,
-                    end: note.end.saturating_add(offset),
+                    end,
                     velocity: scale(note.velocity, percent),
                     rasgueado: false,
                     ..*note

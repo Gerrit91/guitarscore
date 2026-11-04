@@ -2466,3 +2466,20 @@ lifeless):
 - Tests: model tests for whole-beat ties and beat text (with undo), command round-trip
   cases, a palette test for the tie-beat, beat-text and left-hand-fingering tiles, and the
   regenerated layout/app snapshots. `cargo xtask ci` is green.
+
+## 2026-11-04 — Review of the advanced-ornament commits
+
+- Grace notes: the command language lost a grace note's hammer-on (`grace_text` never
+  wrote it, `parse_grace` always read `false`), so a journal replay or a pasted command
+  dropped it. The form is now `fret:speed:timing[:dead][:hammer]`.
+- Rasgueado playback: the extra strikes were copies of the whole note shifted later, so
+  each strike overlapped the next on the same key and the last one rang past the beat into
+  the next note (strings are cut to one note before the rasgueados are added). Each strike
+  now ends where the next begins and the last keeps the note's end; a note too short for
+  three strikes is struck once.
+- Palette: the pick slide down and up tiles had the same face; the wiggle now slants with
+  the direction. The beat text dialog read its text before the frame's input. Removed a
+  duplicated `Fx::on_note` wrapper.
+- Open (older layout design): the rows above the staff (beat text, fermata, sections) are
+  at a fixed height, so a high note's ornament can touch them (bar 7 of
+  `advanced_ornaments`: "Left hand tap" and the circled T).

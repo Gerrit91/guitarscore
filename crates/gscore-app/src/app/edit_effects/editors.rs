@@ -145,12 +145,12 @@ impl EffectsState {
         let Some(editor) = &mut self.beat_text else {
             return;
         };
-        let text = editor.text().to_owned();
-        match editor.show(ctx) {
+        let outcome = editor.show(ctx);
+        match outcome {
             Outcome::Open => return,
             Outcome::Apply => commands.push(Command::SetBeatText {
                 at: snapshot.cursor.position(),
-                text,
+                text: editor.text().to_owned(),
             }),
             Outcome::Remove => commands.push(Command::SetBeatText {
                 at: snapshot.cursor.position(),

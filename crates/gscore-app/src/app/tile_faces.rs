@@ -58,8 +58,8 @@ pub(crate) enum Face<'a> {
     /// An arpeggio: a wavy vertical line with an arrowhead, up for a roll down and down
     /// for a roll up (as Guitar Pro writes them).
     Arpeggio { up: bool },
-    /// A pick slide: an "x" and the scrape's wiggle.
-    PickSlide,
+    /// A pick slide: an "x" and the scrape's wiggle, slanting down or up with the slide.
+    PickSlide { down: bool },
     /// A music glyph with the corner triangle of a tile that opens a dialog.
     GlyphMore {
         text: &'a str,
@@ -302,8 +302,10 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
                 Stroke::NONE,
             ));
         }
-        Face::PickSlide => {
+        Face::PickSlide { down } => {
             lettering(painter, at(-6.0, 1.0), "x", 14.0, false, ink);
+            // Screen y grows downwards: a slide down falls to the right.
+            let slant = if down { 6.0 } else { -6.0 };
             let stroke = Stroke::new(1.5, ink);
             let (left, right) = (at(-1.0, 0.0), at(10.0, 0.0));
             let mut points = Vec::with_capacity(9);
@@ -311,7 +313,7 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
                 let t = step as f32 / 8.0;
                 points.push(egui::pos2(
                     left.x + (right.x - left.x) * t,
-                    left.y + if step % 2 == 0 { -2.5 } else { 2.5 },
+                    left.y + slant * (t - 0.5) + if step % 2 == 0 { -2.5 } else { 2.5 },
                 ));
             }
             painter.add(Shape::line(points, stroke));

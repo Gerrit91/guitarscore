@@ -702,7 +702,7 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
                 speed: GraceSpeed::Slow,
                 on_beat: true,
                 dead: true,
-                hammer: false,
+                hammer: true,
             })),
         },
         Command::SetNoteEffect {
