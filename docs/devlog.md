@@ -2038,12 +2038,13 @@ lifeless):
   (`release: prereleased`), not on every published release. The owner checks the
   attached assets on the pre-release, then unticks "pre-release" to make it the full
   release, which builds nothing again. `overwrite_files` lets a re-run replace the assets.
-- App icon: the old pick-shaped icon was too close to Guitar Pro's; a replacement is being
-  chosen with the owner (the committed one is a placeholder). The app now sets it as the
-  window icon (it showed eframe's default), uses the app id `guitarscore` to match the
-  desktop file (and its `StartupWMClass`) so docks on Wayland find the icon, and shows it
-  in Help › About. `gscore_app::APP_ICON` holds the PNG for both. Tests `test_icon.rs`
-  and `help_about_shows_the_version` (Help › About had no test).
+- App icon: the old pick-shaped icon was too close to Guitar Pro's. Proposed to the owner:
+  an eighth note whose stem is a guitar neck and whose flag is a Strat-style headstock
+  (three tuner posts), in a gold-to-magenta gradient on a deep violet disc. The app now
+  sets it as the window icon (it showed eframe's default), uses the app id `guitarscore`
+  to match the desktop file (and its `StartupWMClass`) so docks on Wayland find the icon,
+  and shows it in Help › About. `gscore_app::APP_ICON` holds the PNG for both. Tests
+  `test_icon.rs` and `help_about_shows_the_version` (Help › About had no test).
 - The baked-in build SHA went stale: `gscore-version`'s build script reran only when
   `GSCORE_VERSION` changed, so a local build after a new commit still showed the old SHA
   in Help › About. It now also reruns when git's HEAD, the current branch or the packed

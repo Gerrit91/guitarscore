@@ -1,30 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <!-- GuitarScore: a guitar headstock in front of a five-line staff. -->
+  <!-- GuitarScore: an eighth note whose stem is a guitar neck and whose flag is the headstock. -->
   <defs>
-    <clipPath id="tile"><rect x="12" y="12" width="232" height="232" rx="54"/></clipPath>
+    <linearGradient id="warm" gradientUnits="userSpaceOnUse" x1="190" y1="20" x2="70" y2="236">
+      <stop offset="0" stop-color="#FFD84D"/><stop offset="0.45" stop-color="#FF8A2E"/>
+      <stop offset="0.8" stop-color="#F23D5C"/><stop offset="1" stop-color="#C81B78"/>
+    </linearGradient>
+    <radialGradient id="disc" cx="0.35" cy="0.28" r="0.95">
+      <stop offset="0" stop-color="#5B49D6"/><stop offset="0.6" stop-color="#2E1F8F"/><stop offset="1" stop-color="#170F52"/>
+    </radialGradient>
+  <mask id="m"><g fill="#FFFFFF" fill-rule="evenodd">
+      <ellipse cx="0" cy="0" rx="46" ry="33" transform="translate(106 184) rotate(-24)"/>
+      <rect x="136" y="56" width="16" height="128" rx="3"/>
+      <path d="M136 70 L136 34 C 136 22, 146 16, 156 22 C 186 40, 202 66, 196 96 C 194 106, 186 108, 184 98 C 180 76, 168 64, 152 60 L152 70 Z
+               M162 38 m-5 0 a5 5 0 1 0 10 0 a5 5 0 1 0 -10 0
+               M175 52 m-5 0 a5 5 0 1 0 10 0 a5 5 0 1 0 -10 0
+               M185 69 m-5 0 a5 5 0 1 0 10 0 a5 5 0 1 0 -10 0"/>
+    </g></mask>
   </defs>
-  <rect x="12" y="12" width="232" height="232" rx="54" fill="#26282C"/>
-  <g clip-path="url(#tile)">
-    <g stroke="#8A9099" stroke-width="5" stroke-linecap="round">
-      <line x1="40" y1="86" x2="216" y2="86"/>
-      <line x1="40" y1="104" x2="216" y2="104"/>
-      <line x1="40" y1="122" x2="216" y2="122"/>
-      <line x1="40" y1="140" x2="216" y2="140"/>
-      <line x1="40" y1="158" x2="216" y2="158"/>
-    </g>
-    <!-- headstock and neck, with a gap of the tile's color around them -->
-    <path d="M113 260 L113 166 C 108 138, 100 112, 100 78 C 100 54, 108 42, 119 42 C 123 42, 125 46, 128 46 C 131 46, 133 42, 137 42 C 148 42, 156 54, 156 78 C 156 112, 148 138, 143 166 L143 260 Z"
-          fill="#F2F3F5" stroke="#26282C" stroke-width="10" stroke-linejoin="round" paint-order="stroke"/>
-    <!-- the nut, as a thin gap where the neck meets the head -->
-    <line x1="110" y1="168" x2="146" y2="168" stroke="#26282C" stroke-width="3"/>
-    <!-- tuner posts -->
-    <g fill="#26282C">
-      <circle cx="115" cy="72" r="4.5"/>
-      <circle cx="115" cy="96" r="4.5"/>
-      <circle cx="115" cy="120" r="4.5"/>
-      <circle cx="141" cy="72" r="4.5"/>
-      <circle cx="141" cy="96" r="4.5"/>
-      <circle cx="141" cy="120" r="4.5"/>
-    </g>
-  </g>
+  <circle cx="128" cy="128" r="118" fill="url(#disc)"/>
+  <rect width="256" height="256" fill="url(#warm)" mask="url(#m)"/>
 </svg>
