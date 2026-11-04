@@ -17,7 +17,10 @@ use egui::{Event, Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use gscore_app::{GuitarScoreApp, MeasureSelection};
-use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, StringNumber, TrackIndex, VoiceIndex};
+use gscore_model::{
+    BeatIndex, BeatPosition, Fade, MeasureIndex, NoteView, StringNumber, StrokeDirection,
+    TrackIndex, VoiceIndex,
+};
 
 fn testdata(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -313,6 +316,66 @@ fn a_second_click_on_a_technique_removes_it_even_off_the_cursor_string() {
     harness.get_by_label("Palm mute").click_accesskit();
     harness.run();
     assert!(!palm_muted(&harness), "the second click removes it");
+}
+
+#[test]
+fn the_advanced_effect_tiles_edit_the_note_and_beat() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    let click = |harness: &mut Harness<'static, GuitarScoreApp>, label: &str| {
+        harness.get_by_label(label).scroll_to_me();
+        harness.run();
+        harness.get_by_label(label).click_accesskit();
+        harness.run();
+    };
+    let arpeggio = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let at = document.editor().cursor().position();
+        document.song().beat(at).unwrap().arpeggio()
+    };
+    let beat_flag = |harness: &Harness<'static, GuitarScoreApp>,
+                     test: fn(&gscore_model::BeatView<'_>) -> bool| {
+        let document = harness.state().document().unwrap();
+        let at = document.editor().cursor().position();
+        test(&document.song().beat(at).unwrap())
+    };
+    let fade = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let at = document.editor().cursor().position();
+        document.song().beat(at).unwrap().fade()
+    };
+    let note_flag = |harness: &Harness<'static, GuitarScoreApp>,
+                     test: fn(&NoteView<'_>) -> bool| {
+        let document = harness.state().document().unwrap();
+        let cursor = document.editor().cursor();
+        let beat = document.song().beat(cursor.position()).unwrap();
+        beat.notes()
+            .find(|note| note.string().unwrap().get() == cursor.string)
+            .is_some_and(|note| test(&note))
+    };
+
+    click(&mut harness, "Arpeggio down");
+    assert_eq!(arpeggio(&harness), Some(StrokeDirection::Down));
+    click(&mut harness, "Arpeggio down");
+    assert_eq!(arpeggio(&harness), None, "the second click removes it");
+    click(&mut harness, "Dead slapped");
+    assert!(beat_flag(&harness, |beat| beat.is_dead_slapped()));
+    click(&mut harness, "Rasgueado");
+    assert!(beat_flag(&harness, |beat| beat.has_rasgueado()));
+    click(&mut harness, "Left-hand tap");
+    assert!(note_flag(&harness, |note| note.is_left_hand_tapped()));
+    click(&mut harness, "String number");
+    assert!(note_flag(&harness, |note| note.shows_string_number()));
+    click(&mut harness, "Fade out");
+    assert_eq!(fade(&harness), Some(Fade::Out));
+    click(&mut harness, "Volume swell");
+    assert_eq!(fade(&harness), Some(Fade::Swell));
+    // The trill and tremolo tiles toggle their defaults with a click (the corner opens
+    // their dialogs).
+    click(&mut harness, "Trill");
+    assert!(note_flag(&harness, |note| note.trill().is_some()));
+    click(&mut harness, "Tremolo picking");
+    assert!(note_flag(&harness, |note| note.tremolo_speed().is_some()));
 }
 
 #[test]

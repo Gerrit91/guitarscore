@@ -41,6 +41,25 @@ pub(crate) enum Face<'a> {
     Whammy,
     /// A fade-in hairpin ("<").
     Hairpin,
+    /// A fade-out hairpin (">").
+    HairpinOut,
+    /// A volume swell ("<>").
+    HairpinSwell,
+    /// Text inside a circle ("T", "6"): the left-hand tap and the string number.
+    CircledText(&'a str),
+    /// A dead slapped beat: a large cross.
+    DeadSlap,
+    /// An arpeggio: a wavy vertical line with an arrowhead, up for a roll down and down
+    /// for a roll up (as Guitar Pro writes them).
+    Arpeggio { up: bool },
+    /// A pick slide: an "x" and the scrape's wiggle.
+    PickSlide,
+    /// A music glyph with the corner triangle of a tile that opens a dialog.
+    GlyphMore {
+        text: &'a str,
+        size: f32,
+        baseline: f32,
+    },
     /// A slide: a line from `from` to `to`, each -1 (low), 0 (the note) or 1 (high), with
     /// a dot for the note at the end that is 0.
     Slide { from: i8, to: i8 },
@@ -217,6 +236,84 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
             painter.line_segment([at(-9.0, 0.0), at(9.0, -6.0)], stroke);
             painter.line_segment([at(-9.0, 0.0), at(9.0, 6.0)], stroke);
         }
+        Face::HairpinOut => {
+            let stroke = Stroke::new(1.6, ink);
+            painter.line_segment([at(-9.0, -6.0), at(9.0, 0.0)], stroke);
+            painter.line_segment([at(-9.0, 6.0), at(9.0, 0.0)], stroke);
+        }
+        Face::HairpinSwell => {
+            let stroke = Stroke::new(1.6, ink);
+            painter.line_segment([at(-10.0, 0.0), at(-1.0, -6.0)], stroke);
+            painter.line_segment([at(-10.0, 0.0), at(-1.0, 6.0)], stroke);
+            painter.line_segment([at(-1.0, -6.0), at(10.0, 0.0)], stroke);
+            painter.line_segment([at(-1.0, 6.0), at(10.0, 0.0)], stroke);
+        }
+        Face::CircledText(text) => {
+            painter.circle_stroke(c, 9.5, Stroke::new(1.4, ink));
+            lettering(painter, c, text, 12.0, false, ink);
+        }
+        Face::DeadSlap => {
+            let stroke = Stroke::new(2.4, ink);
+            painter.line_segment([at(-9.0, -11.0), at(9.0, 11.0)], stroke);
+            painter.line_segment([at(-9.0, 11.0), at(9.0, -11.0)], stroke);
+        }
+        Face::Arpeggio { up } => {
+            let stroke = Stroke::new(1.6, ink);
+            let x = c.x;
+            let (top, bottom) = (c.y - 11.0, c.y + 8.0);
+            // A zigzag line, then the arrowhead at the pointing end.
+            let step = (bottom - top) / 6.0;
+            let mut points = Vec::with_capacity(7);
+            for step_index in 0..6 {
+                let y = top + step * step_index as f32;
+                points.push(egui::pos2(
+                    if step_index % 2 == 0 {
+                        x - 2.0
+                    } else {
+                        x + 2.0
+                    },
+                    y,
+                ));
+            }
+            painter.add(Shape::line(points, stroke));
+            let tip = if up {
+                egui::pos2(x, top - 4.0)
+            } else {
+                egui::pos2(x, bottom + 4.0)
+            };
+            let base = if up {
+                egui::pos2(x, top)
+            } else {
+                egui::pos2(x, bottom)
+            };
+            painter.add(Shape::convex_polygon(
+                vec![tip, base + vec2(4.0, 0.0), base + vec2(-4.0, 0.0)],
+                ink,
+                Stroke::NONE,
+            ));
+        }
+        Face::PickSlide => {
+            lettering(painter, at(-6.0, 1.0), "x", 14.0, false, ink);
+            let stroke = Stroke::new(1.5, ink);
+            let (left, right) = (at(-1.0, 0.0), at(10.0, 0.0));
+            let mut points = Vec::with_capacity(9);
+            for step in 0..9 {
+                let t = step as f32 / 8.0;
+                points.push(egui::pos2(
+                    left.x + (right.x - left.x) * t,
+                    left.y + if step % 2 == 0 { -2.5 } else { 2.5 },
+                ));
+            }
+            painter.add(Shape::line(points, stroke));
+        }
+        Face::GlyphMore {
+            text,
+            size,
+            baseline,
+        } => {
+            music_glyph(painter, at(0.0, baseline), text, size, ink);
+            more_corner(painter, rect, ink);
+        }
         Face::Slide { from, to } => {
             let y = |level: i8| c.y - 6.0 * f32::from(level);
             let start = egui::pos2(rect.left() + 6.0, y(from));
@@ -382,11 +479,16 @@ pub(crate) fn tuplet_bracket(
         );
     }
     if more {
-        let corner = rect.right_bottom() - vec2(2.0, 2.0);
-        painter.add(Shape::convex_polygon(
-            vec![corner, corner - vec2(6.0, 0.0), corner - vec2(0.0, 6.0)],
-            ink,
-            Stroke::NONE,
-        ));
+        more_corner(painter, rect, ink);
     }
+}
+
+/// The small triangle in a tile's bottom right corner that says it opens a dialog.
+fn more_corner(painter: &Painter, rect: Rect, ink: Color32) {
+    let corner = rect.right_bottom() - vec2(2.0, 2.0);
+    painter.add(Shape::convex_polygon(
+        vec![corner, corner - vec2(6.0, 0.0), corner - vec2(0.0, 6.0)],
+        ink,
+        Stroke::NONE,
+    ));
 }

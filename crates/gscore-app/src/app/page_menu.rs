@@ -73,7 +73,11 @@ const TECHNIQUES: &[ActionId] = &[
     ActionId::ToggleVibrato,
     ActionId::ToggleWideVibrato,
     ActionId::ToggleTrill,
+    ActionId::TrillOther,
     ActionId::ToggleTremoloPicking,
+    ActionId::TremoloOther,
+    ActionId::ToggleLeftHandTap,
+    ActionId::ToggleStringNumber,
 ];
 
 const SLIDES: &[ActionId] = &[
@@ -83,6 +87,8 @@ const SLIDES: &[ActionId] = &[
     ActionId::ToggleSlideInAbove,
     ActionId::ToggleSlideOutDown,
     ActionId::ToggleSlideOutUp,
+    ActionId::TogglePickSlideDown,
+    ActionId::TogglePickSlideUp,
 ];
 
 const HARMONICS: &[ActionId] = &[

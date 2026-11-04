@@ -2,16 +2,18 @@
 //! whammy shape editors. It shows the state of the note under the cursor and applies a
 //! click to every note or beat in the selection as commands.
 
+mod dialogs;
 mod editors;
 
 use egui::vec2;
 use gscore_edit::{ActionId, Command};
 use gscore_model::{
-    AccentKind, BeatEffect, BeatView, BendKind, BendPoint, BendShape, Grace, Harmonic,
+    AccentKind, BeatEffect, BeatView, BendKind, BendPoint, BendShape, Fade, Grace, Harmonic,
     HarmonicKind, Legato, NoteEffect, NoteView, SlapKind, SlideKind, StrokeDirection, TremoloSpeed,
     Trill, TrillSpeed, Vibrato, WhammyShape,
 };
 
+use super::edit_effects::dialogs::{TremoloEditor, TrillEditor};
 use super::edit_palette::PaletteSnapshot;
 use super::grace_editor::GraceEditor;
 use super::harmonic_editor::HarmonicEditor;
@@ -28,8 +30,10 @@ pub(super) struct NoteState {
     palm_mute: bool,
     let_ring: bool,
     staccato: bool,
-    trill: bool,
-    tremolo_picking: bool,
+    trill: Option<Trill>,
+    tremolo_picking: Option<TremoloSpeed>,
+    left_hand_tap: bool,
+    string_number: bool,
     accent: Option<AccentKind>,
     vibrato: Option<Vibrato>,
     harmonic: Option<Harmonic>,
@@ -49,8 +53,10 @@ impl NoteState {
             palm_mute: note.is_palm_muted(),
             let_ring: note.is_let_ring(),
             staccato: note.is_staccato(),
-            trill: note.has_trill(),
-            tremolo_picking: note.has_tremolo_picking(),
+            trill: note.trill(),
+            tremolo_picking: note.tremolo_speed(),
+            left_hand_tap: note.is_left_hand_tapped(),
+            string_number: note.shows_string_number(),
             accent: note.accent(),
             vibrato: note.vibrato(),
             harmonic: note.harmonic(),
@@ -67,8 +73,11 @@ impl NoteState {
 pub(super) struct BeatState {
     pick: Option<StrokeDirection>,
     brush: Option<StrokeDirection>,
+    arpeggio: Option<StrokeDirection>,
     slap: Option<SlapKind>,
-    fade_in: bool,
+    fade: Option<Fade>,
+    dead_slapped: bool,
+    rasgueado: bool,
     whammy: Option<WhammyShape>,
     legato: Option<Legato>,
     vibrato: Option<Vibrato>,
@@ -79,8 +88,11 @@ impl BeatState {
         BeatState {
             pick: beat.pick_stroke(),
             brush: beat.brush_stroke(),
+            arpeggio: beat.arpeggio(),
             slap: beat.slap(),
-            fade_in: beat.has_fade_in(),
+            fade: beat.fade(),
+            dead_slapped: beat.is_dead_slapped(),
+            rasgueado: beat.has_rasgueado(),
             whammy: beat.whammy_shape(),
             legato: beat.legato(),
             vibrato: beat.vibrato(),
@@ -95,6 +107,8 @@ pub(super) struct EffectsState {
     whammy: Option<ShapeEditor>,
     harmonic: Option<HarmonicEditor>,
     grace: Option<GraceEditor>,
+    trill: Option<TrillEditor>,
+    tremolo: Option<TremoloEditor>,
 }
 
 /// What an effect tile (or its key) does.
@@ -119,8 +133,15 @@ pub(super) enum Fx {
     Grace,
     Pick(StrokeDirection),
     Brush(StrokeDirection),
+    Arpeggio(StrokeDirection),
     Slap(SlapKind),
     FadeIn,
+    FadeOut,
+    VolumeSwell,
+    DeadSlapped,
+    Rasgueado,
+    LeftHandTap,
+    StringNumber,
     Whammy,
     Legato,
     BeatVibrato(Vibrato),
@@ -128,17 +149,34 @@ pub(super) enum Fx {
 
 impl Fx {
     /// Whether the effect belongs to a note (else to a beat).
-    fn on_note(self) -> bool {
-        !matches!(
+    fn note_effect(self) -> bool {
+        matches!(
             self,
-            Fx::Pick(_)
-                | Fx::Brush(_)
-                | Fx::Slap(_)
-                | Fx::FadeIn
-                | Fx::Whammy
-                | Fx::Legato
-                | Fx::BeatVibrato(_)
+            Fx::Dead
+                | Fx::Ghost
+                | Fx::Hammer
+                | Fx::PalmMute
+                | Fx::LetRing
+                | Fx::Staccato
+                | Fx::Trill
+                | Fx::Tremolo
+                | Fx::Slide(_)
+                | Fx::Bend
+                | Fx::Vibrato(_)
+                | Fx::Accent(_)
+                | Fx::Harmonic(_)
+                | Fx::AnyHarmonic
+                | Fx::Grace
+                | Fx::LeftHandTap
+                | Fx::StringNumber
         )
+    }
+}
+
+impl Fx {
+    /// Whether the effect belongs to a note (else to a beat).
+    fn on_note(self) -> bool {
+        self.note_effect()
     }
 }
 
@@ -208,13 +246,31 @@ const NOTE_ITEMS: &[FxItem] = &[
     ),
     item(
         ActionId::ToggleTrill,
-        glyph("\u{E566}", 30.0, 5.0),
+        Face::GlyphMore {
+            text: "\u{E566}",
+            size: 30.0,
+            baseline: 5.0,
+        },
         Fx::Trill,
     ),
     item(
         ActionId::ToggleTremoloPicking,
-        glyph("\u{E222}", 28.0, 4.0),
+        Face::GlyphMore {
+            text: "\u{E222}",
+            size: 28.0,
+            baseline: 4.0,
+        },
         Fx::Tremolo,
+    ),
+    item(
+        ActionId::ToggleLeftHandTap,
+        Face::CircledText("T"),
+        Fx::LeftHandTap,
+    ),
+    item(
+        ActionId::ToggleStringNumber,
+        Face::CircledText("6"),
+        Fx::StringNumber,
     ),
 ];
 
@@ -249,6 +305,16 @@ const SLIDE_ITEMS: &[FxItem] = &[
         ActionId::ToggleSlideOutUp,
         Face::Slide { from: 0, to: 1 },
         Fx::Slide(SlideKind::OutUpwards),
+    ),
+    item(
+        ActionId::TogglePickSlideDown,
+        Face::PickSlide,
+        Fx::Slide(SlideKind::PickSlideDown),
+    ),
+    item(
+        ActionId::TogglePickSlideUp,
+        Face::PickSlide,
+        Fx::Slide(SlideKind::PickSlideUp),
     ),
 ];
 
@@ -318,6 +384,22 @@ const BEAT_ITEMS: &[FxItem] = &[
         Fx::Brush(StrokeDirection::Up),
     ),
     item(
+        ActionId::ToggleArpeggioDown,
+        Face::Arpeggio { up: true },
+        Fx::Arpeggio(StrokeDirection::Down),
+    ),
+    item(
+        ActionId::ToggleArpeggioUp,
+        Face::Arpeggio { up: false },
+        Fx::Arpeggio(StrokeDirection::Up),
+    ),
+    item(ActionId::ToggleDeadSlapped, Face::DeadSlap, Fx::DeadSlapped),
+    item(
+        ActionId::ToggleRasgueado,
+        Face::Word("rasg."),
+        Fx::Rasgueado,
+    ),
+    item(
         ActionId::ToggleTapping,
         Face::Word("tap"),
         Fx::Slap(SlapKind::Tapping),
@@ -333,6 +415,12 @@ const BEAT_ITEMS: &[FxItem] = &[
         Fx::Slap(SlapKind::Popping),
     ),
     item(ActionId::ToggleFadeIn, Face::Hairpin, Fx::FadeIn),
+    item(ActionId::ToggleFadeOut, Face::HairpinOut, Fx::FadeOut),
+    item(
+        ActionId::ToggleVolumeSwell,
+        Face::HairpinSwell,
+        Fx::VolumeSwell,
+    ),
     item(ActionId::ToggleLegato, Face::Slur, Fx::Legato),
     item(
         ActionId::ToggleBeatVibrato,
@@ -367,8 +455,11 @@ fn no_beat() -> BeatState {
     BeatState {
         pick: None,
         brush: None,
+        arpeggio: None,
         slap: None,
-        fade_in: false,
+        fade: None,
+        dead_slapped: false,
+        rasgueado: false,
         whammy: None,
         legato: None,
         vibrato: None,
@@ -385,8 +476,10 @@ fn is_on(fx: Fx, note: Option<&NoteState>, beat: &BeatState) -> bool {
         Fx::PalmMute => note_on(|n| n.palm_mute),
         Fx::LetRing => note_on(|n| n.let_ring),
         Fx::Staccato => note_on(|n| n.staccato),
-        Fx::Trill => note_on(|n| n.trill),
-        Fx::Tremolo => note_on(|n| n.tremolo_picking),
+        Fx::Trill => note_on(|n| n.trill.is_some()),
+        Fx::Tremolo => note_on(|n| n.tremolo_picking.is_some()),
+        Fx::LeftHandTap => note_on(|n| n.left_hand_tap),
+        Fx::StringNumber => note_on(|n| n.string_number),
         Fx::Bend => note_on(|n| n.bend.is_some()),
         Fx::Slide(kind) => note.is_some_and(|n| n.slides.contains(&kind)),
         Fx::Vibrato(kind) => note.is_some_and(|n| n.vibrato == Some(kind)),
@@ -396,8 +489,13 @@ fn is_on(fx: Fx, note: Option<&NoteState>, beat: &BeatState) -> bool {
         Fx::Grace => note.is_some_and(|n| n.grace.is_some()),
         Fx::Pick(direction) => beat.pick == Some(direction),
         Fx::Brush(direction) => beat.brush == Some(direction),
+        Fx::Arpeggio(direction) => beat.arpeggio == Some(direction),
         Fx::Slap(kind) => beat.slap == Some(kind),
-        Fx::FadeIn => beat.fade_in,
+        Fx::FadeIn => beat.fade == Some(Fade::In),
+        Fx::FadeOut => beat.fade == Some(Fade::Out),
+        Fx::VolumeSwell => beat.fade == Some(Fade::Swell),
+        Fx::DeadSlapped => beat.dead_slapped,
+        Fx::Rasgueado => beat.rasgueado,
         Fx::Whammy => beat.whammy.is_some(),
         Fx::Legato => beat.legato.is_some(),
         Fx::BeatVibrato(kind) => beat.vibrato == Some(kind),
@@ -458,6 +556,8 @@ pub(super) fn fx_commands(fx: Fx, snapshot: &PaletteSnapshot) -> Vec<Command> {
         Fx::Tremolo => Some(NoteEffect::TremoloPicking(
             (!on).then_some(TremoloSpeed::Sixteenth),
         )),
+        Fx::LeftHandTap => Some(NoteEffect::LeftHandTap(!on)),
+        Fx::StringNumber => Some(NoteEffect::StringNumber(!on)),
         Fx::Slide(kind) => Some(NoteEffect::Slide(kind, !on)),
         Fx::Bend => Some(NoteEffect::Bend(if on {
             None
@@ -511,6 +611,15 @@ pub(super) fn fx_commands(fx: Fx, snapshot: &PaletteSnapshot) -> Vec<Command> {
             BeatEffect::Slap((!on).then_some(kind)),
         ),
         Fx::FadeIn => apply_beat(&mut commands, beats, BeatEffect::FadeIn(!on)),
+        Fx::FadeOut => apply_beat(&mut commands, beats, BeatEffect::FadeOut(!on)),
+        Fx::VolumeSwell => apply_beat(&mut commands, beats, BeatEffect::VolumeSwell(!on)),
+        Fx::Arpeggio(direction) => apply_beat(
+            &mut commands,
+            beats,
+            BeatEffect::Arpeggio((!on).then_some(direction)),
+        ),
+        Fx::DeadSlapped => apply_beat(&mut commands, beats, BeatEffect::DeadSlapped(!on)),
+        Fx::Rasgueado => apply_beat(&mut commands, beats, BeatEffect::Rasgueado(!on)),
         Fx::Whammy => {
             let shape = if on {
                 None
@@ -575,8 +684,18 @@ impl EffectsState {
                         )
                     };
                     let on = is_on_for_targets(item.fx, snapshot);
-                    if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
-                        if matches!(item.fx, Fx::Bend | Fx::Whammy | Fx::AnyHarmonic | Fx::Grace) {
+                    let response = tiles::tile(ui, item.face, on, enabled, label, &tip);
+                    if response.clicked() {
+                        // The corner triangle of the trill and tremolo tiles opens their
+                        // dialog; the rest of the tile toggles the default.
+                        let corner = response.interact_pointer_pos().is_some_and(|pos| {
+                            pos.x > response.rect.right() - 9.0
+                                && pos.y > response.rect.bottom() - 9.0
+                        });
+                        let opens =
+                            matches!(item.fx, Fx::Bend | Fx::Whammy | Fx::AnyHarmonic | Fx::Grace)
+                                || (matches!(item.fx, Fx::Trill | Fx::Tremolo) && corner);
+                        if opens {
                             open = Some(item.fx);
                         } else {
                             commands.extend(fx_commands(item.fx, snapshot));
@@ -616,6 +735,8 @@ impl EffectsState {
             Some(Fx::Whammy) => self.open_whammy(snapshot),
             Some(Fx::AnyHarmonic) => self.open_harmonic(snapshot),
             Some(Fx::Grace) => self.open_grace(snapshot),
+            Some(Fx::Trill) => self.open_trill(snapshot),
+            Some(Fx::Tremolo) => self.open_tremolo(snapshot),
             _ => {}
         }
     }

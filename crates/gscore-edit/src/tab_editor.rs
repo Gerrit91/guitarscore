@@ -374,9 +374,21 @@ impl TabEditor {
             | ActionId::ToggleSlapping
             | ActionId::TogglePopping
             | ActionId::ToggleFadeIn
+            | ActionId::ToggleFadeOut
+            | ActionId::ToggleVolumeSwell
             | ActionId::ToggleWhammy
             | ActionId::ToggleLegato
-            | ActionId::ToggleBeatVibrato => Ok(Outcome::Nothing),
+            | ActionId::ToggleBeatVibrato
+            | ActionId::ToggleArpeggioDown
+            | ActionId::ToggleArpeggioUp
+            | ActionId::ToggleDeadSlapped
+            | ActionId::ToggleRasgueado
+            | ActionId::ToggleLeftHandTap
+            | ActionId::ToggleStringNumber
+            | ActionId::TogglePickSlideDown
+            | ActionId::TogglePickSlideUp
+            | ActionId::TrillOther
+            | ActionId::TremoloOther => Ok(Outcome::Nothing),
         }
     }
 
