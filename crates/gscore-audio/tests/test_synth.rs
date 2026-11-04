@@ -290,11 +290,11 @@ fn soundfonts_are_found_in_the_usual_places() {
     let root = temp_dir("find-root");
     let home = temp_dir("find-home");
     // Nothing installed.
-    assert_eq!(find_soundfont_in(None, Some(&home), &root), None);
+    assert_eq!(find_soundfont_in(None, Some(&home), &root, None), None);
     // The variable wins, even for a missing file.
     let named = PathBuf::from("/nowhere/mine.sf2");
     assert_eq!(
-        find_soundfont_in(Some(named.clone()), Some(&home), &root),
+        find_soundfont_in(Some(named.clone()), Some(&home), &root, None),
         Some(named)
     );
 
@@ -302,11 +302,11 @@ fn soundfonts_are_found_in_the_usual_places() {
     let sf2 = root.join("usr/share/sounds/sf2");
     std::fs::create_dir_all(&sf2).unwrap();
     std::fs::write(sf2.join("MuseScore_General.sf3"), "").unwrap();
-    assert_eq!(find_soundfont_in(None, None, &root), None);
+    assert_eq!(find_soundfont_in(None, None, &root, None), None);
     std::fs::write(sf2.join("Zebra.sf2"), "").unwrap();
     std::fs::write(sf2.join("Alpha.SF2"), "").unwrap();
     assert_eq!(
-        find_soundfont_in(None, None, &root),
+        find_soundfont_in(None, None, &root, None),
         Some(sf2.join("Alpha.SF2"))
     );
     // A well-known file beats the folder search.
@@ -314,7 +314,7 @@ fn soundfonts_are_found_in_the_usual_places() {
     std::fs::create_dir_all(&arch).unwrap();
     std::fs::write(arch.join("FluidR3_GM.sf2"), "").unwrap();
     assert_eq!(
-        find_soundfont_in(None, None, &root),
+        find_soundfont_in(None, None, &root, None),
         Some(arch.join("FluidR3_GM.sf2"))
     );
     // The user's own folder beats everything but the variable.
@@ -322,9 +322,35 @@ fn soundfonts_are_found_in_the_usual_places() {
     std::fs::create_dir_all(&user).unwrap();
     std::fs::write(user.join("Mine.sf2"), "").unwrap();
     assert_eq!(
-        find_soundfont_in(None, Some(&home), &root),
+        find_soundfont_in(None, Some(&home), &root, None),
         Some(user.join("Mine.sf2"))
     );
+}
+
+#[test]
+fn a_soundfont_bundled_next_to_the_executable_is_used() {
+    let root = temp_dir("bundled-root");
+    let home = temp_dir("bundled-home");
+    let bin = temp_dir("bundled-bin");
+    // A release archive puts FluidR3_GM.sf2 beside the binary.
+    let bundled = bin.join("FluidR3_GM.sf2");
+    std::fs::write(&bundled, "").unwrap();
+    let exe = bin.join("guitarscore");
+    assert_eq!(
+        find_soundfont_in(None, None, &root, Some(&exe)),
+        Some(bundled.clone())
+    );
+    // A SoundFont the user put in their own folder still wins over the bundled default.
+    let user = home.join(".local/share/soundfonts");
+    std::fs::create_dir_all(&user).unwrap();
+    std::fs::write(user.join("Mine.sf2"), "").unwrap();
+    assert_eq!(
+        find_soundfont_in(None, Some(&home), &root, Some(&exe)),
+        Some(user.join("Mine.sf2"))
+    );
+    let _ = std::fs::remove_dir_all(bin);
+    let _ = std::fs::remove_dir_all(root);
+    let _ = std::fs::remove_dir_all(home);
 }
 
 /// Waits until `done` or a few seconds have passed.

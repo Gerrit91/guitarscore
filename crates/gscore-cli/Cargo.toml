@@ -8,6 +8,7 @@ name = "gscore-cli"
 path = "src/main.rs"
 
 [dependencies]
+gscore-version = { path = "../gscore-version" }
 gscore-model = { path = "../gscore-model" }
 gscore-io = { path = "../gscore-io" }
 gscore-edit = { path = "../gscore-edit" }

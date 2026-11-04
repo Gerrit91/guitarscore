@@ -1,0 +1,307 @@
+# Builds release binaries for every supported platform and attaches them to the GitHub
+# Release that triggered this run.
+#
+# Triggered by publishing a pre-release on GitHub (create the release, tick "Set as a
+# pre-release", press "Publish release"). Check the attached assets there, then untick
+# "pre-release" to make it the full release; that does not build again. A release published
+# directly as a full release, and a tag alone, build nothing. Running it again for the same
+# release (re-run in the Actions tab) replaces the assets.
+#
+# The archives are named `guitarscore-<tag>-<target>`, and each contains both the
+# `guitarscore` app and the `gscore-cli` command-line tool, the bundled FluidR3 GM
+# SoundFont, and the license texts. Linux also gets a single-file AppImage.
+#
+# The fonts (Bravura, Noto Sans) are compiled into the binaries (see crates/gscore-app/src/
+# fonts.rs). The SoundFont is fetched once from the distro (MIT, ~140 MB) and shared with
+# every platform, so the app has sound out of the box; it is never committed to git.
+#
+# Notes for later:
+# - Nothing is signed or notarized yet. macOS shows a Gatekeeper warning for the unsigned
+#   app; Windows shows SmartScreen. Signing/notarization is its own task (see M20).
+name: Release
+
+on:
+  release:
+    # Only pre-releases build; promoting one to a full release keeps its assets.
+    types: [prereleased]
+
+permissions:
+  contents: write
+
+env:
+  # Baked into the binaries by `crates/gscore-version/build.rs` (shown in Help > About and
+  # `gscore-cli --version`). For a published release, `github.ref_name` is the tag.
+  GSCORE_VERSION: ${{ github.ref_name }}
+
+jobs:
+  soundfont:
+    name: Fetch the bundled SoundFont
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # FluidR3 GM (MIT) from the distro, so the app has sound out of the box. The same
+      # file is bundled into every archive; a raw .sf2 download would need a third-party
+      # host, while the distro package is a trusted, signed source.
+      - name: Install FluidR3 GM
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fluid-soundfont-gm
+
+      - name: Collect the SoundFont and its license
+        run: |
+          set -euo pipefail
+          mkdir -p soundfont
+          sf2=$(find /usr/share -name 'FluidR3_GM.sf2' -print -quit)
+          test -n "$sf2"
+          cp "$sf2" soundfont/FluidR3_GM.sf2
+          cp assets/soundfonts/FluidR3-LICENSE.txt soundfont/
+          # A sanity check: the SoundFont is tens of megabytes, not a stub.
+          test "$(stat -c %s soundfont/FluidR3_GM.sf2)" -gt 50000000
+
+      - name: Upload the SoundFont
+        uses: actions/upload-artifact@v4
+        with:
+          name: soundfont
+          path: soundfont/
+          compression-level: 0   # already-compressed samples; zipping again wastes time
+
+  build-linux:
+    name: Build Linux (x86_64)
+    needs: soundfont
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the bundled SoundFont
+        uses: actions/download-artifact@v4
+        with:
+          name: soundfont
+          path: soundfont
+
+      # cpal and midir link against ALSA on Linux (alsa-sys); without the development
+      # files the build fails (same as ci.yml).
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"  # keep in sync with rust-toolchain.toml
+
+      - name: Setup cargo cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: release-linux
+
+      - name: Build
+        run: |
+          cargo build --release --package gscore-app --bin guitarscore
+          cargo build --release --package gscore-cli
+
+      - name: Package
+        id: package
+        run: |
+          set -euo pipefail
+          stage="guitarscore-${{ github.ref_name }}-x86_64-unknown-linux-gnu"
+          mkdir -p "$stage/licenses"
+          cp target/release/guitarscore target/release/gscore-cli "$stage/"
+          # Beside the binary, where gscore-audio looks for the bundled SoundFont.
+          cp soundfont/FluidR3_GM.sf2 "$stage/"
+          strip "$stage/guitarscore" "$stage/gscore-cli"
+          cp LICENSE README.md THIRD_PARTY.md "$stage/"
+          cp assets/fonts/bravura/OFL.txt "$stage/licenses/Bravura-OFL.txt"
+          cp assets/fonts/noto-sans/OFL.txt "$stage/licenses/NotoSans-OFL.txt"
+          cp soundfont/FluidR3-LICENSE.txt "$stage/licenses/FluidR3-LICENSE.txt"
+          tar -czf "$stage.tar.gz" "$stage"
+          echo "archive=$stage.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Build AppImage
+        id: appimage
+        run: |
+          set -euo pipefail
+          # Run the tools without FUSE (not available on GitHub runners).
+          curl -fsSL -o /tmp/linuxdeploy \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          curl -fsSL -o /tmp/appimagetool \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x /tmp/linuxdeploy /tmp/appimagetool
+
+          appdir=AppDir
+          rm -rf "$appdir"
+          mkdir -p "$appdir/usr/bin" "$appdir/usr/share/applications" \
+                   "$appdir/usr/share/icons/hicolor/256x256/apps"
+          cp target/release/guitarscore target/release/gscore-cli "$appdir/usr/bin/"
+          cp soundfont/FluidR3_GM.sf2 "$appdir/usr/bin/"
+          cp packaging/guitarscore.desktop "$appdir/usr/share/applications/"
+          cp packaging/guitarscore.png "$appdir/usr/share/icons/hicolor/256x256/apps/"
+          cp packaging/guitarscore.png "$appdir/guitarscore.png"
+
+          # Fill the AppDir: AppRun, desktop entry, icon, and the non-system libraries.
+          # The GPU/driver interface is left to the host (it must match the user's driver).
+          APPIMAGE_EXTRACT_AND_RUN=1 /tmp/linuxdeploy \
+            --appdir "$appdir" \
+            --executable "$appdir/usr/bin/guitarscore" \
+            --desktop-file "$appdir/usr/share/applications/guitarscore.desktop" \
+            --icon-file "$appdir/usr/share/icons/hicolor/256x256/apps/guitarscore.png" \
+            --exclude-library "libvulkan.so*" \
+            --exclude-library "libGL.so*" \
+            --exclude-library "libEGL.so*" \
+            --exclude-library "libgbm.so*" \
+            --exclude-library "libdrm.so*"
+
+          # libasound is the only hard link-time dependency (ALSA); bundle it so the app
+          # starts on a minimal system. Everything else is loaded from the host at run time.
+          mkdir -p "$appdir/usr/lib"
+          asound=$(ldconfig -p | awk '/libasound\.so\.2 /{print $NF; exit}')
+          test -n "$asound"
+          cp "$asound" "$appdir/usr/lib/libasound.so.2"
+
+          appimage="GuitarScore-${{ github.ref_name }}-x86_64.AppImage"
+          APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 /tmp/appimagetool "$appdir" "$appimage"
+          echo "appimage=$appimage" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: guitarscore-linux-x86_64
+          path: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.appimage.outputs.appimage }}
+
+  build-windows:
+    name: Build Windows (x86_64)
+    needs: soundfont
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the bundled SoundFont
+        uses: actions/download-artifact@v4
+        with:
+          name: soundfont
+          path: soundfont
+
+      # cpal (WASAPI) and midir (WinMM) use Windows' own audio stack: no extra system
+      # dependencies, unlike Linux.
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"  # keep in sync with rust-toolchain.toml
+
+      - name: Setup cargo cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: release-windows
+
+      - name: Build
+        shell: bash
+        run: |
+          cargo build --release --package gscore-app --bin guitarscore
+          cargo build --release --package gscore-cli
+
+      - name: Package
+        id: package
+        shell: pwsh
+        run: |
+          $stage = "guitarscore-${{ github.ref_name }}-x86_64-pc-windows-msvc"
+          New-Item -ItemType Directory -Force -Path "$stage\licenses" | Out-Null
+          Copy-Item target\release\guitarscore.exe, target\release\gscore-cli.exe $stage
+          Copy-Item soundfont\FluidR3_GM.sf2 $stage
+          Copy-Item LICENSE, README.md, THIRD_PARTY.md $stage
+          Copy-Item assets\fonts\bravura\OFL.txt "$stage\licenses\Bravura-OFL.txt"
+          Copy-Item assets\fonts\noto-sans\OFL.txt "$stage\licenses\NotoSans-OFL.txt"
+          Copy-Item soundfont\FluidR3-LICENSE.txt "$stage\licenses\FluidR3-LICENSE.txt"
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip"
+          echo "archive=$stage.zip" >> $env:GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: guitarscore-windows-x86_64
+          path: ${{ steps.package.outputs.archive }}
+
+  build-macos:
+    name: Build macOS (universal)
+    needs: soundfont
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the bundled SoundFont
+        uses: actions/download-artifact@v4
+        with:
+          name: soundfont
+          path: soundfont
+
+      # One archive for both Apple Silicon and Intel, combined with `lipo`. cpal, midir
+      # and wgpu use the system frameworks (CoreAudio, CoreMIDI, Metal), which the macOS
+      # SDK provides for both architectures.
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"  # keep in sync with rust-toolchain.toml
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - name: Setup cargo cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: release-macos
+
+      - name: Build (both architectures)
+        run: |
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --release --target "$target" --package gscore-app --bin guitarscore
+            cargo build --release --target "$target" --package gscore-cli
+          done
+          lipo -create \
+            target/aarch64-apple-darwin/release/guitarscore \
+            target/x86_64-apple-darwin/release/guitarscore \
+            -output target/release/guitarscore
+          lipo -create \
+            target/aarch64-apple-darwin/release/gscore-cli \
+            target/x86_64-apple-darwin/release/gscore-cli \
+            -output target/release/gscore-cli
+
+      - name: Package
+        id: package
+        run: |
+          set -euo pipefail
+          stage="guitarscore-${{ github.ref_name }}-universal-apple-darwin"
+          mkdir -p "$stage/licenses"
+          cp target/release/guitarscore target/release/gscore-cli "$stage/"
+          cp soundfont/FluidR3_GM.sf2 "$stage/"
+          cp LICENSE README.md THIRD_PARTY.md "$stage/"
+          cp assets/fonts/bravura/OFL.txt "$stage/licenses/Bravura-OFL.txt"
+          cp assets/fonts/noto-sans/OFL.txt "$stage/licenses/NotoSans-OFL.txt"
+          cp soundfont/FluidR3-LICENSE.txt "$stage/licenses/FluidR3-LICENSE.txt"
+          tar -czf "$stage.tar.gz" "$stage"
+          echo "archive=$stage.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: guitarscore-macos-universal
+          path: ${{ steps.package.outputs.archive }}
+
+  release:
+    name: Upload assets to the release
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: guitarscore-*
+          path: dist
+          merge-multiple: true
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          # A re-run replaces the assets of the earlier run instead of failing.
+          overwrite_files: true

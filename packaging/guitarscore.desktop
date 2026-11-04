@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=GuitarScore
+GenericName=Guitar Tablature Editor
+Comment=Write, edit and play guitar tablature
+Exec=guitarscore %f
+Icon=guitarscore
+Terminal=false
+Categories=AudioVideo;Music;
+StartupNotify=true
+StartupWMClass=guitarscore

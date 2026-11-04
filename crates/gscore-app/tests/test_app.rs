@@ -93,6 +93,17 @@ fn the_view_menu_switches_the_theme_and_the_toolbar_zooms() {
 }
 
 #[test]
+fn help_about_shows_the_version() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.get_by_label("Help").click();
+    harness.run();
+    harness.get_by_label("About GuitarScore").click();
+    harness.run();
+    harness.get_by_label(&format!("Version {}", gscore_version::VERSION));
+    harness.get_by_label("GuitarScore icon");
+}
+
+#[test]
 fn the_page_matches_its_snapshot_in_both_themes() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))
@@ -615,19 +626,19 @@ fn the_track_panel_edits_the_shown_track() {
     assert_eq!(first_track(&harness).name(), "Steel Guitar Lead");
 }
 
-/// Runs frames until background jobs are done.
+/// Runs frames until background jobs are done and the UI stops repainting. It steps first,
+/// so a click that starts a background job is processed; while a job runs, the UI may
+/// repaint for more frames than `Harness::run` allows (the "Opening…" bar, the player
+/// measured again as its contents change), so those frames are stepped, not run. The
+/// final `try_run` shows what the job produced.
 fn settle(harness: &mut Harness<'static, GuitarScoreApp>) {
     let started = Instant::now();
-    // Step first, so a click that starts a background job is processed; then wait for the
-    // job. (`Harness::run` would stop at its step limit while the "Opening…" bar repaints.)
     harness.step();
-    while harness.state().is_busy() {
+    while harness.state().is_busy() || harness.try_run().is_err() {
         assert!(started.elapsed() < Duration::from_secs(30), "timed out");
         harness.step();
         std::thread::sleep(Duration::from_millis(5));
     }
-    // A last frame, so what the job produced is shown.
-    harness.step();
 }
 
 #[test]

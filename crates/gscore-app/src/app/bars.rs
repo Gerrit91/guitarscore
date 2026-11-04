@@ -178,6 +178,12 @@ impl GuitarScoreApp {
                     });
                 });
             }
+            ui.menu_button("Help", |ui| {
+                if ui.button("About GuitarScore").clicked() {
+                    self.open_about();
+                    ui.close();
+                }
+            });
         });
         let ctx = ui.ctx().clone();
         self.run_menu_choices(choices, &ctx);

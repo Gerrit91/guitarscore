@@ -67,8 +67,9 @@ GuitarScore is in **early, active development**. It edits real songs today, but 
 a finished Guitar Pro replacement. The score shows one track at a time: multi-track scores
 are being built now, and printing goes through the PDF export for the moment. Some
 techniques in playback, WAV export, drum tab and a few notation details are still missing,
-and there are no release
-packages yet (build it from source, below; it takes a few minutes). [`docs/parity.md`](docs/parity.md)
+and packages are built by CI for Linux (tarball and AppImage), Windows and macOS and attached
+to GitHub Releases; until the first release, build it from source below (it takes a few
+minutes). [`docs/parity.md`](docs/parity.md)
 tracks every Guitar Pro feature (live, partial, missing), [`docs/gaps.md`](docs/gaps.md)
 the known shortfalls, and [`docs/devlog.md`](docs/devlog.md) what changed when.
 
@@ -134,8 +135,10 @@ does it (`mesa-vulkan-drivers` on Debian/Ubuntu, `vulkan-swrast` on Arch, plus
 
 The built-in synthesizer plays on the default audio device. It needs a General MIDI
 SoundFont (`.sf2`; `.sf3` files are not supported) and finds one in this order: the
-`GSCORE_SOUNDFONT` variable, `~/.local/share/soundfonts/`, the well-known files in
-`/usr/share/soundfonts/` and `/usr/share/sounds/sf2/`, then any `.sf2` there. In the app,
+`GSCORE_SOUNDFONT` variable, `~/.local/share/soundfonts/`, the SoundFont shipped next to
+the binary (release archives include FluidR3 GM, so a downloaded build has sound out of the
+box), the well-known files in `/usr/share/soundfonts/` and `/usr/share/sounds/sf2/`, then
+any `.sf2` there. In the app,
 the toolbar's "Output" menu switches between the synthesizer, "Choose SoundFont…" and the
 MIDI ports. Play starts at the cursor's note; after a pause it resumes, unless the cursor
 was moved meanwhile.

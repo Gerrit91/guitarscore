@@ -1,5 +1,7 @@
-//! Finding a SoundFont for the internal synth: the `GSCORE_SOUNDFONT` variable, then the
-//! places Linux distributions and macOS install General MIDI SoundFonts to.
+//! Finding a SoundFont for the internal synth: the `GSCORE_SOUNDFONT` variable, the user's
+//! own SoundFont folders, the SoundFont shipped next to the executable (a release archive
+//! puts `FluidR3_GM.sf2` beside the binary), and the places where Linux distributions and
+//! macOS install General MIDI SoundFonts.
 
 use std::path::{Path, PathBuf};
 
@@ -30,17 +32,19 @@ pub fn find_soundfont() -> Option<PathBuf> {
         .filter(|v| !v.is_empty())
         .map(PathBuf::from);
     let home = std::env::var_os("HOME").map(PathBuf::from);
-    find_soundfont_in(env, home.as_deref(), Path::new("/"))
+    let exe = std::env::current_exe().ok();
+    find_soundfont_in(env, home.as_deref(), Path::new("/"), exe.as_deref())
 }
 
-/// [`find_soundfont`] with the variable, the home folder and the system root given (for
-/// tests). Order: the variable (even if its file is missing, so the user hears about it),
-/// the user's SoundFont folders, the well-known system files, any `.sf2` in the system
-/// folders.
+/// [`find_soundfont`] with the variable, the home folder, the system root and the
+/// executable given (for tests). Order: the variable (even if its file is missing, so the
+/// user hears about it), the user's SoundFont folders, the SoundFont bundled next to the
+/// executable, the well-known system files, any `.sf2` in the system folders.
 pub fn find_soundfont_in(
     env: Option<PathBuf>,
     home: Option<&Path>,
     root: &Path,
+    exe: Option<&Path>,
 ) -> Option<PathBuf> {
     if env.is_some() {
         return env;
@@ -52,6 +56,7 @@ pub fn find_soundfont_in(
     let mut home_found = home_dirs.filter_map(|d| first_sf2(&d));
     home_found
         .next()
+        .or_else(|| exe.and_then(first_bundled))
         .or_else(|| {
             SYSTEM_FILES
                 .iter()
@@ -59,6 +64,26 @@ pub fn find_soundfont_in(
                 .find(|f| f.is_file())
         })
         .or_else(|| SYSTEM_DIRS.iter().find_map(|d| first_sf2(&under_root(d))))
+}
+
+/// The SoundFont shipped next to `exe`: `FluidR3_GM.sf2`, then any `.sf2` in a
+/// `soundfonts/` folder beside it. Empty when nothing is bundled (a source build).
+fn bundled_soundfonts(exe: &Path) -> Vec<PathBuf> {
+    let dir = exe.parent().unwrap_or(Path::new("."));
+    let mut found: Vec<PathBuf> = Vec::new();
+    let default = dir.join("FluidR3_GM.sf2");
+    if default.is_file() {
+        found.push(default);
+    }
+    found.extend(all_sf2(&dir.join("soundfonts")));
+    found.sort();
+    found.dedup();
+    found
+}
+
+/// The first soundfont in [`bundled_soundfonts`], if any.
+fn first_bundled(exe: &Path) -> Option<PathBuf> {
+    bundled_soundfonts(exe).into_iter().next()
 }
 
 /// The first `.sf2` file in `dir` by name, if any.
@@ -86,22 +111,25 @@ fn all_sf2(dir: &Path) -> Vec<PathBuf> {
 }
 
 /// SoundFonts the settings window can offer: the one named by [`SOUNDFONT_ENV`], every
-/// `.sf2` in the user's SoundFont folders and the usual system folders, and the well-known
-/// system files. Unique and sorted, with the [`SOUNDFONT_ENV`] one first. This reads
-/// directories: call it off the UI thread.
+/// `.sf2` in the user's SoundFont folders, the one bundled next to the executable, and the
+/// usual system folders and well-known system files. Unique and sorted, with the
+/// [`SOUNDFONT_ENV`] one first. This reads directories: call it off the UI thread.
 pub fn available_soundfonts() -> Vec<PathBuf> {
     let env = std::env::var_os(SOUNDFONT_ENV)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from);
     let home = std::env::var_os("HOME").map(PathBuf::from);
-    available_soundfonts_in(env, home.as_deref(), Path::new("/"))
+    let exe = std::env::current_exe().ok();
+    available_soundfonts_in(env, home.as_deref(), Path::new("/"), exe.as_deref())
 }
 
-/// [`available_soundfonts`] with the variable, home folder and system root given (for tests).
+/// [`available_soundfonts`] with the variable, home folder, system root and executable given
+/// (for tests).
 pub fn available_soundfonts_in(
     env: Option<PathBuf>,
     home: Option<&Path>,
     root: &Path,
+    exe: Option<&Path>,
 ) -> Vec<PathBuf> {
     /// Never offer an unbounded list from a huge folder.
     const MAX_SOUNDFONTS: usize = 128;
@@ -115,6 +143,9 @@ pub fn available_soundfonts_in(
         for dir in HOME_DIRS {
             found.extend(all_sf2(&home.join(dir)));
         }
+    }
+    if let Some(exe) = exe {
+        found.extend(bundled_soundfonts(exe));
     }
     for file in SYSTEM_FILES {
         let path = under_root(file);
@@ -166,7 +197,7 @@ mod tests {
         std::fs::write(user.join("User.sf2"), b"x").unwrap();
         let configured = system.join("B.sf2");
 
-        let found = available_soundfonts_in(Some(configured.clone()), Some(&home), &root);
+        let found = available_soundfonts_in(Some(configured.clone()), Some(&home), &root, None);
         assert_eq!(
             found,
             [
@@ -181,7 +212,7 @@ mod tests {
         // Without a configured one, the list is simply sorted, even when a well-known
         // file (found before the folders are listed) sorts after another one.
         std::fs::write(system.join("default.sf2"), b"x").unwrap();
-        let found = available_soundfonts_in(None, None, &root);
+        let found = available_soundfonts_in(None, None, &root, None);
         assert_eq!(
             found,
             [
@@ -194,5 +225,16 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(root);
         let _ = std::fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn the_bundled_soundfont_is_offered() {
+        let root = temp_dir("bundled-list-root");
+        let bin = temp_dir("bundled-list-bin");
+        std::fs::write(bin.join("FluidR3_GM.sf2"), b"x").unwrap();
+        let found = available_soundfonts_in(None, None, &root, Some(&bin.join("guitarscore")));
+        assert_eq!(found, vec![bin.join("FluidR3_GM.sf2")]);
+        let _ = std::fs::remove_dir_all(bin);
+        let _ = std::fs::remove_dir_all(root);
     }
 }

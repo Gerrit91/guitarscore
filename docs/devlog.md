@@ -2293,3 +2293,65 @@ lifeless):
 - Checked: 9:4, 2:3, 10:8 and 6:4 beats save as `.gp` without a reported loss (GP3-5's
   fixed tuplet list does not apply to GPIF). Test: `test_editing` (sextuplet tile, dialog
   with a common tuplet, steppers to 9:4, Remove).
+
+## 2026-11-03 — Release workflow and build version (M20 groundwork)
+
+- New `.github/workflows/release.yml`: on a published GitHub Release it builds `guitarscore`
+  and `gscore-cli` in release mode for Linux (x86_64, tarball), Windows (x86_64, zip) and
+  macOS (universal Apple Silicon + Intel via `lipo`, tarball), and attaches the archives to
+  the release with `softprops/action-gh-release`. Each archive carries the binaries plus
+  `LICENSE`, `README.md`, `THIRD_PARTY.md` and the two OFL font licenses.
+- New `gscore-version` crate (layer 0, dependency-free): its `build.rs` bakes the version in
+  at compile time — the `GSCORE_VERSION` variable when the release workflow sets it to the
+  tag, otherwise `<crate version>-dev+<short git sha>`. `gscore-cli --version` now prints it,
+  and the app shows it (and the build SHA) in a new Help → About GuitarScore window.
+- The binaries are self-contained (fonts compiled in). Nothing is signed/notarized yet, so
+  macOS shows Gatekeeper and Windows SmartScreen — that is a later M20 task.
+- Open: run the workflow once on a real tag and confirm each archive opens on its platform
+  (the bundled SoundFont and the AppImage follow in the next entry).
+
+## 2026-11-03 — Bundled SoundFont and a Linux AppImage
+
+- The built-in synth now finds a SoundFont shipped next to the executable: `gscore-audio`'s
+  `find_soundfont`/`available_soundfonts` check `<exe dir>/FluidR3_GM.sf2` and
+  `<exe dir>/soundfonts/*.sf2` (after the user's own folders, before system fonts). A
+  source build has none, so nothing changes there. Tests cover the order (the user's own
+  folder still wins over the bundled default).
+- Release archives now bundle FluidR3 GM (MIT, ~141 MB): a `soundfont` job apt-installs
+  `fluid-soundfont-gm` once and shares the `.sf2` with the Linux, Windows and macOS jobs, so
+  a downloaded build has sound out of the box. It is not committed to git (over GitHub's
+  100 MB file limit); `assets/soundfonts/FluidR3-LICENSE.txt` records the license and source.
+- Linux gains a single-file AppImage (`GuitarScore-<tag>-x86_64.AppImage`), built with
+  linuxdeploy + appimagetool from `packaging/guitarscore.desktop` and a new icon
+  (`packaging/guitarscore.svg`/`.png`); the GPU/driver libraries are left to the host.
+- Open: the AppImage and the bundled-SoundFont archives still need a real-tag run and a
+  handful of distros (Ubuntu, Fedora, Arch) to confirm they start and make sound.
+
+## 2026-11-04 — Releases build on pre-releases; a new app icon (M20)
+
+- The release workflow runs when a **pre-release** is published on GitHub
+  (`release: prereleased`), not on every published release. The owner checks the
+  attached assets on the pre-release, then unticks "pre-release" to make it the full
+  release, which builds nothing again. `overwrite_files` lets a re-run replace the assets.
+- App icon: the old pick-shaped icon was too close to Guitar Pro's. The real icon is
+  postponed (owner); until then a placeholder: a white G (Noto Sans Bold) with an eighth
+  note (Bravura) in front of it on a blue disc that fades from light in the middle to
+  deep blue at the rim, both glyphs as outlines, so the SVG needs no fonts. The app now
+  sets it as the window icon (it showed eframe's default), uses the app id `guitarscore`
+  to match the desktop file (and its `StartupWMClass`) so docks on Wayland find the icon,
+  and shows it in Help › About. `gscore_app::APP_ICON` holds the PNG for both. Tests
+  `test_icon.rs` and `help_about_shows_the_version` (Help › About had no test).
+- The baked-in build SHA went stale: `gscore-version`'s build script reran only when
+  `GSCORE_VERSION` changed, so a local build after a new commit still showed the old SHA
+  in Help › About. It now also reruns when git's HEAD, the current branch or the packed
+  refs change (paths from `git rev-parse --git-path`, so worktrees work too).
+- Tests: the app snapshots were stale since Help › About added a "Help" menu to the title
+  bar (the only difference; regenerated). `opening_a_song_starts_loading_the_synthesizer`
+  failed about one run in three: `settle` called `Harness::run`, which panics when the
+  toolbar repaints for more than 4 frames while the song and the SoundFont load (the player
+  is measured again as its contents change). `settle` now steps until nothing is busy and
+  `try_run` settles (15 of 15 runs green).
+- Open: the real app icon (postponed); a first pre-release run on GitHub (it was not run
+  from here); Windows `.exe` and macOS `.app` icons (both packages are plain archives so
+  far); the rest of M20 (macOS file-dialog fix, name check, user guide, public test
+  files, signing).

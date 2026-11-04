@@ -5,6 +5,7 @@
 //! Split by job: `bars` (menus, toolbar, status), `page` (the page view, cursor and
 //! clicks), `editing` (keys and actions), `files` (open, save, unsaved changes).
 
+mod about;
 mod alert;
 mod bars;
 mod circle_of_fifths;
@@ -116,6 +117,8 @@ pub struct GuitarScoreApp {
     startup_active: Option<PathBuf>,
     /// The settings window, while it is open.
     settings_window: Option<settings_window::SettingsWindow>,
+    /// The About window, while it is open.
+    about: Option<about::AboutWindow>,
     /// What the app remembers between runs.
     settings: Settings,
     /// Where the settings are stored (`None` keeps them only in memory).
@@ -225,6 +228,7 @@ impl GuitarScoreApp {
             pending_opens: VecDeque::new(),
             startup_active: None,
             settings_window: None,
+            about: None,
             settings,
             settings_path,
             panel_sizes,
@@ -582,6 +586,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_shortcuts(&ctx);
         self.show_history(&ctx);
         self.show_new_track_dialog(&ctx);
+        self.show_about(&ctx);
         self.show_shape_editors(&ctx);
         self.show_staff_dialogs(&ctx);
         self.show_tuplet_dialog(&ctx);

@@ -16,6 +16,7 @@ use crate::{TaskResult, cmd, source_scan, wasm};
 
 /// Layer of every workspace crate, lowest first. Register new crates here.
 pub(crate) const LAYERS: &[(&str, u8)] = &[
+    ("gscore-version", 0),
     ("gscore-gp", 0),
     ("gscore-model", 1),
     ("gscore-io", 2),

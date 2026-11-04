@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/gscore-version",
     "crates/gscore-gp",
     "crates/gscore-model",
     "crates/gscore-io",
