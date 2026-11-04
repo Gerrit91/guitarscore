@@ -879,7 +879,7 @@ impl Command {
                 .is_some_and(|beat| beat.notes().any(|note| note.string().ok() == Some(*string))),
             Command::SetDuration { at, .. } => song
                 .beat(*at)
-                .is_some_and(|beat| beat.kind() != BeatKind::Empty),
+                .is_some_and(|beat| beat.kind() != BeatKind::Empty && !beat.is_grace()),
             Command::InsertBeat { at, .. } => {
                 // `apply` creates voice 1 of a measure that has no voices (GP7 empty
                 // bars import that way), so the first beat of such a measure is editable.
@@ -1134,7 +1134,8 @@ fn note_target(song: &Song, at: BeatPosition, string: StringNumber) -> Option<Be
     if usize::from(string.get()) > track.string_count() {
         return None;
     }
-    song.beat(at)
+    // Grace notes are ornaments, not notes to edit on their own.
+    song.beat(at).filter(|beat| !beat.is_grace())
 }
 
 /// One entry of what changed a song, as the recovery journal records it: a command, and

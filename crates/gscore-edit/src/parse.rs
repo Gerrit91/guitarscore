@@ -839,7 +839,7 @@ fn color_arg(args: &mut Args) -> Result<gscore_model::TrackColor, ParseError> {
 fn optional_color_arg(args: &mut Args) -> Result<gscore_model::TrackColor, ParseError> {
     match args.take("color") {
         Some(text) => parse_color(args.command, "color", &text),
-        None => Ok(gscore_model::TrackColor::DEFAULT),
+        None => Ok(gscore_model::Section::DEFAULT_COLOR),
     }
 }
 

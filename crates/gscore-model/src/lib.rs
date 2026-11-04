@@ -24,6 +24,7 @@ mod dynamics;
 mod edit;
 mod effects;
 mod error;
+mod grace;
 mod instrument;
 pub mod interop;
 mod issues;
@@ -55,6 +56,7 @@ pub use effects::{
     StrokeDirection, Vibrato, Whammy, WhammyShape,
 };
 pub use error::ModelError;
+pub use grace::{Grace, GraceSpeed};
 pub use instrument::{InstrumentKind, program_name};
 pub use issues::{Issue, IssueKind};
 pub use marks::{Feel, Fermata};

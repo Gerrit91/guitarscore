@@ -3,7 +3,7 @@
 
 use crate::effects::HarmonicKind;
 use crate::error::ModelError;
-use crate::position::{MeasureIndex, Pitch, TrackIndex};
+use crate::position::{Fret, MeasureIndex, Pitch, StringNumber, TrackIndex};
 use crate::song::Song;
 use crate::views::{BeatView, NoteView, TrackView};
 
@@ -209,12 +209,7 @@ impl TrackView<'_> {
             return Pitch::new(fret);
         }
         let string = note.string()?;
-        let open = self
-            .strings()?
-            .into_iter()
-            .find(|s| s.string == string)
-            .ok_or_else(|| ModelError::Invalid(format!("the track has no {string}")))?;
-        let root = u16::from(open.pitch.get()).saturating_add(u16::from(self.capo()?));
+        let root = u16::from(self.pitch_at(string, Fret::new(0)?)?.get());
         let fretted = root.saturating_add(u16::from(fret));
         let pitch = match note.harmonic() {
             // A natural harmonic is touched at the written fret over the open string.
@@ -237,6 +232,23 @@ impl TrackView<'_> {
         };
         let pitch = u8::try_from(pitch)
             .map_err(|_| ModelError::Invalid(format!("pitch {pitch} is above MIDI's range")))?;
+        Pitch::new(pitch)
+    }
+
+    /// The pitch of `fret` on `string`, without any harmonic (grace notes read their pitch
+    /// this way). On drum tracks the "fret" is the drum sound itself.
+    pub fn pitch_at(&self, string: StringNumber, fret: Fret) -> Result<Pitch, ModelError> {
+        if self.is_percussion() {
+            return Pitch::new(fret.get());
+        }
+        let open = self
+            .strings()?
+            .into_iter()
+            .find(|s| s.string == string)
+            .ok_or_else(|| ModelError::Invalid(format!("the track has no {string}")))?;
+        let root = u16::from(open.pitch.get()).saturating_add(u16::from(self.capo()?));
+        let pitch = u8::try_from(root.saturating_add(u16::from(fret.get())))
+            .map_err(|_| ModelError::Invalid("pitch is above MIDI's range".to_owned()))?;
         Pitch::new(pitch)
     }
 }

@@ -53,6 +53,9 @@ pub(crate) const TOKENS: Tokens = Tokens {
     on_accent: Color32::WHITE,
 };
 
+/// The red behind a window's or tab's close button while it is hovered.
+pub(crate) const CLOSE_RED: Color32 = Color32::from_rgb(0xD9, 0x3A, 0x3A);
+
 /// The app's tokens (the same in every theme; `ui` keeps call sites uniform).
 pub(crate) fn tokens(_ui: &egui::Ui) -> &'static Tokens {
     &TOKENS

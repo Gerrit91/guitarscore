@@ -70,7 +70,7 @@ impl GuitarScoreApp {
                 if let Some(path) = chosen {
                     self.open(path, ui.ctx());
                 }
-                let has_document = self.document.is_some();
+                let has_document = self.document().is_some();
                 if self.action_button(ui, ActionId::Save, has_document) {
                     self.request(Request::Save, ui.ctx());
                 }
@@ -97,7 +97,7 @@ impl GuitarScoreApp {
                 }
             });
             ui.menu_button("Edit", |ui| {
-                let (can_undo, can_redo) = self.document.as_ref().map_or((false, false), |d| {
+                let (can_undo, can_redo) = self.document().map_or((false, false), |d| {
                     (d.editor().can_undo(), d.editor().can_redo())
                 });
                 for (action, enabled) in [(ActionId::Undo, can_undo), (ActionId::Redo, can_redo)] {
@@ -106,7 +106,7 @@ impl GuitarScoreApp {
                     }
                 }
                 ui.separator();
-                let has_document = self.document.is_some();
+                let has_document = self.document().is_some();
                 for action in [ActionId::Cut, ActionId::Copy, ActionId::Paste] {
                     if self.action_button(ui, action, has_document) {
                         self.perform_action(gscore_edit::Action::Plain(action), ui.ctx());
@@ -118,7 +118,7 @@ impl GuitarScoreApp {
                     ui.close();
                 }
                 ui.separator();
-                let has_document = self.document.is_some();
+                let has_document = self.document().is_some();
                 for action in [
                     ActionId::InsertBeat,
                     ActionId::DeleteBeat,
@@ -168,9 +168,9 @@ impl GuitarScoreApp {
                 ("Bar", Section::Bar),
                 ("Note", Section::Note),
             ] {
-                ui.add_enabled_ui(self.document.is_some(), |ui| {
+                ui.add_enabled_ui(self.document().is_some(), |ui| {
                     ui.menu_button(title, |ui| {
-                        if let Some(document) = &self.document {
+                        if let Some(document) = self.document() {
                             page_menu::with_target(document, |target| {
                                 page_menu::section(ui, section, target, &self.keymap, &mut choices);
                             });
@@ -190,26 +190,70 @@ impl GuitarScoreApp {
     }
 
     /// The keys bound to `action`, as a tooltip suffix: " (ctrl+s)".
-    pub(super) fn status_bar(&self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| match &self.document {
-            Some(document) => {
-                // The file name only (screenshots stay the same wherever the file is); the
-                // full path on hover.
-                let path = document.path();
-                let name = path.file_name().map_or_else(
-                    || path.display().to_string(),
-                    |n| n.to_string_lossy().into_owned(),
-                );
-                let name = if document.is_dirty() {
-                    format!("{name} (changed)")
-                } else {
-                    name
-                };
-                ui.label(name).on_hover_text(path.display().to_string());
-                if let Some(status) = &self.status {
-                    ui.separator();
-                    ui.label(status);
+    pub(super) fn status_bar(&mut self, ui: &mut egui::Ui) {
+        // Opening shows in the status bar (always present) rather than a panel of its own,
+        // so the page does not jump when it appears.
+        let progress = self.tasks.open_progress().cloned();
+        let mut cancel = false;
+        ui.horizontal(|ui| {
+            match &progress {
+                Some(progress) => {
+                    ui.label("Opening…");
+                    if let Some(fraction) = progress.fraction() {
+                        ui.add(
+                            egui::ProgressBar::new(fraction)
+                                .desired_width(200.0)
+                                .desired_height(12.0)
+                                .show_percentage(),
+                        );
+                    } else {
+                        ui.add(egui::Spinner::new().size(14.0));
+                    }
+                    if progress.importing() {
+                        ui.label("Importing…");
+                    }
+                    if ui.link("Cancel").clicked() {
+                        cancel = true;
+                    }
+                    // Keep the progress and the spinner moving.
+                    ui.ctx()
+                        .request_repaint_after(std::time::Duration::from_millis(100));
                 }
+                None => {
+                    if let Some(document) = self.document() {
+                        // The file name only (screenshots stay the same wherever the file
+                        // is); the full path on hover.
+                        let path = document.path();
+                        let name = path.file_name().map_or_else(
+                            || path.display().to_string(),
+                            |n| n.to_string_lossy().into_owned(),
+                        );
+                        let name = if document.is_dirty() {
+                            format!("{name} (changed)")
+                        } else {
+                            name
+                        };
+                        ui.label(name).on_hover_text(path.display().to_string());
+                        // A background job (a save, a file dialog, an export) in progress.
+                        if self.tasks.busy() {
+                            ui.add(egui::Spinner::new().size(14.0))
+                                .on_hover_text("Working…");
+                        }
+                        if let Some(status) = &self.status {
+                            ui.separator();
+                            ui.label(status);
+                        }
+                    } else {
+                        ui.label("No file open");
+                        if self.tasks.busy() {
+                            ui.add(egui::Spinner::new().size(14.0))
+                                .on_hover_text("Working…");
+                        }
+                    }
+                }
+            }
+            // The open document's counts, page and cursor, on the right.
+            if let Some(document) = self.document() {
                 ui.with_layout(UiLayout::right_to_left(Align::Center), |ui| {
                     let song = document.song();
                     ui.label(format!(
@@ -220,7 +264,8 @@ impl GuitarScoreApp {
                     ui.separator();
                     // Recorded by the page view; the view may have switched since.
                     if self.view.page_view
-                        && let Some((page, pages)) = self.page_info
+                        && let Some((page, pages)) =
+                            self.tabs.get(self.active).and_then(|tab| tab.page_info)
                     {
                         ui.label(format!("Page {page} of {pages}"));
                         ui.separator();
@@ -234,10 +279,10 @@ impl GuitarScoreApp {
                     ));
                 });
             }
-            None => {
-                ui.label("No file open");
-            }
         });
+        if cancel {
+            self.tasks.cancel_open();
+        }
     }
 
     pub(super) fn notice_bar(&mut self, ui: &mut egui::Ui) {

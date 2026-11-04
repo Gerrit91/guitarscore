@@ -1999,6 +1999,301 @@ lifeless):
 - `Playback::is_connected` reports whether an output is connected (test and diagnostics).
   Test `opening_a_song_starts_loading_the_synthesizer`.
 
+## 2026-11-03 — Songs open in tabs instead of replacing each other
+
+- Owner: opening a song silently closed the current one; no way to have several songs open.
+  The app now keeps one tab per open document. Opening a file, a new song, or a recovered
+  session opens a new tab (the current one is left untouched); File › New opens a small
+  "New song" dialog (title and tempo, prefilled "New Song" / 120 BPM so it needs no
+  typing), which creates the score in a new tab.
+- A tab shows a dot (•) before its title while it has unsaved changes, and its close
+  button asks Save / Discard changes / Cancel first; closing a clean tab just closes it.
+  Closing the last tab leaves an empty workspace. Closing the window asks about each
+  changed tab in turn before it closes.
+- Under the hood: `GuitarScoreApp` holds `tabs: Vec<Tab>` plus `active`; `Tab` groups a
+  `Document` with the per-document view state (shown track, measure selection, track
+  panel, edit palette, mixer, rename, new-track dialog, history stamps). Theme, zoom,
+  panel visibility and page view stay shared on `ViewState` (owner's choice). Playback
+  follows the active tab (`song_changed` + `preload_synth` on switch). `ViewState` lost
+  its `track`/`selection` fields; tests read them through `shown_track()`/`selection()`.
+- Public API: `tab_count()`, `tab_document(index)`, `active_tab()`, `shown_track()`,
+  `set_shown_track()`, `selection()`, `set_selection()`. Tests
+  `opening_another_file_opens_it_in_a_new_tab`, `the_new_song_dialog_creates_a_one_measure_score_in_a_new_tab`,
+  `closing_a_changed_tab_asks_before_closing_it`. App snapshots regenerated (tab strip).
+- Follow-up (owner): the tab strip now sits below the player bar and between the side
+  panels (created after them, so it spans only the central column). Each tab is a single
+  rounded widget with its close icon inside on the right (hover shows a circle); the
+  accesskit labels are "Tab N: title" and "Close tab N".
+
+## 2026-11-03 — Reopen all the tabs from last time, not just one
+
+- Owner: the app remembered only the last open file; it should remember every tab that was
+  open. The settings now store `open_files` (in tab order) and `active_file`, computed from
+  the live tabs whenever `settings()` is taken (open, save, exit). At startup they are
+  reopened one after another through the single-open task queue, each file skipped if it is
+  gone, and the tab that was active is selected again when the queue drains. A file given on
+  the command line still opens on its own (no restore).
+- `Document` gained a `reopenable` flag: opened files and recovered-with-a-source are
+  reopenable; a brand-new song and a recovered-without-a-file song are not (they are not
+  backed by a real path until saved). `Document::unsaved` builds the former, and
+  `mark_saved` makes a document reopenable.
+- `Settings.last_file` is still written (and read as a fallback) so older settings, or an
+  older build, still reopen something. The Settings label is now "Reopen the tabs from last
+  time at startup". Tests `every_open_tab_is_restored_at_startup`,
+  `a_missing_tab_is_skipped_at_startup`, `closing_and_reopening_remembers_every_open_tab`.
+- Also made the shared test helper `settle` step-based instead of `Harness::run`, which
+  used to trip its step limit while the "Opening…" bar repainted (a latent flake).
+
+## 2026-11-03 — The opening progress lives in the status bar
+
+- Owner: the "Opening…" bar was a top panel, so the whole page jumped when it appeared and
+  disappeared. It now shows inside the always-present bottom status bar (`status_bar` in
+  `bars.rs`): label, a slim progress bar (or a small spinner before the size is known),
+  "Importing…", and a Cancel link, with the active document's counts/page/cursor still on
+  the right. The status bar requests a repaint while it shows progress. Removed the
+  `Panel::top("opening")` block from `mod.rs`; the settled status bar is unchanged, so the
+  app snapshots still match.
+
+## 2026-11-03 — Busy spinner in the status bar, one tab per file, nicer close hover, recent files when empty
+
+- The toolbar's busy spinner moved to the status bar, next to the file name (and next to
+  "No file open"), so a save/dialog/export no longer shifts the toolbar groups. The
+  "Opening…" progress already lives there.
+- Opening a file that is already open now switches to its tab instead of adding a duplicate
+  (`GuitarScoreApp::open` -> `find_open_tab`, comparing canonical paths; an in-flight open
+  of the same path is ignored via `Tasks::opening_path`). Choosing it from Open Recent still
+  moves it to the top of the recent files. Startup restore skips duplicates too.
+- A tab's close icon now gets the same red hover background as the window close button
+  (white X on `style::CLOSE_RED`, shared with `title_bar`), not a circle.
+- The empty workspace (`page.rs::empty_workspace`) suggests the recent files as links (name
+  plus parent folder, full path on hover; clicking opens it), with an "Open a song" heading
+  and a short hint. Tests `the_same_file_is_never_open_in_two_tabs`,
+  `the_empty_workspace_suggests_recent_files`.
+
+## 2026-11-03 — Review of the tabs branch: stable tab ids, window close, one open at a time
+
+- Data loss fixed: when a Save started from the window-close question failed (or its
+  Save-As dialog was cancelled), `closing_window` stayed set, so the *next* close request
+  skipped the unsaved-changes check, closed the window, and `on_exit` deleted the recovery
+  journals. Every way a save ends without success now goes through `abandon_save`, which
+  also calls off the pending window close; a close request while a question or save is up
+  just keeps the window open. Test
+  `a_save_that_fails_while_closing_the_window_asks_again_on_the_next_close` (fails before).
+- Tabs now have a stable `TabId`; `Then::CloseTab` and `saving_tab` hold it instead of an
+  index. Before, closing another tab while a save (or its Save-As dialog) was pending
+  shifted the indices: the save could mark the wrong tab saved, or the follow-up "close"
+  could remove a different, unsaved tab without asking.
+- Only one save runs at a time (its result does not say which tab it was for); a second
+  one says so in the status bar instead of mixing the two up. A dirty tab's close question
+  no longer replaces a question that is already up.
+- Opens form a real queue: a file chosen while another opens waits in `pending_opens`
+  (deduplicated) instead of racing it. The queue advances when the running open ends in
+  any way, including Cancel (before, a cancelled open during startup restore stalled the
+  rest of the restore until some later open finished). A panicking open now reports as
+  that open's failure, so the queue cannot stall on it. Test
+  `a_file_chosen_while_another_opens_waits_its_turn`.
+- Note: `cargo xtask ci` runs in the directory baked into the xtask binary
+  (`CARGO_MANIFEST_DIR`); a binary built in another worktree tests that worktree. Touch
+  `xtask/src/main.rs` if the failure paths point elsewhere.
+
+## 2026-11-03 — Section titles out of their frames and with box glyphs
+
+- Root cause: Guitar Pro (GP6/GP7/GPX) writes a section's text as
+  `<Text>\n<![CDATA[Chorus]]>\n</Text>`; the GPIF reader kept the newlines. The score's text
+  layout then had an empty first line, so the title was painted one line below its frame,
+  and the section dialog showed the line breaks as boxes before and after the name. The
+  reader (`src/io/gpif_import/mod.rs`) now trims section text and letter and falls back to
+  the letter when the text is blank. Tests: `gscore-gp`'s `section_tests`; the owner's
+  `Ballad.gp` renders clean titles (checked with `gscore-cli render`).
+
+## 2026-11-03 — A calmer default section color, track colors in the section dialog
+
+- The default section color was Guitar Pro's pure red (`0xFF0000`), which jars in the song
+  grid's dark ruler. GP6/GP7 files store no marker color, so the value is ours to choose:
+  `gscore-gp`'s `Marker::DEFAULT_COLOR` is now a light grey (`0xB0B0B0`), and
+  `gscore-model`'s `Section::DEFAULT_COLOR` points at it, so the importer, the app and the
+  CLI (`set_section` without `color`) agree. GP3-5 files keep their stored color. The grey
+  is a palette entry ("Light grey", next to "Grey"), so the dialog outlines it.
+- The section dialog no longer has a bare color button: it offers the same preset swatches
+  as the track panel's Appearance section, plus the custom picker. The swatch grid moved to
+  `app/swatches.rs`; the track panel and the new-track dialog use it too (the new-track
+  dialog had its own copy).
+- `TrackColor::from_parts` replaces three copies of the `r*0x10000 + g*0x100 + b` formula.
+  Tests: `gscore-model`'s `colors_assemble_from_their_parts`, `gscore-gp`'s `section_tests`
+  (marker color); the section dialog and the grid were checked with the offscreen snapshot.
+  The seven `gscore-app` snapshots were regenerated: the only change is the added "Light
+  grey" swatch in the track panel (the dialogs' background).
+
+## 2026-11-03 — Key signatures in the score
+
+- Key signatures were never drawn, and accidentals assumed C major, so every score looked
+  like C major. The layout now reads the key per measure (`Song::key_signature`) and:
+  - draws the sharps/flats after the clef at the start of every system, and at a key change
+    in the middle of a system (with naturals cancelling the accidentals the old key had and
+    the new one does not). The notation staff carries them; a tab-only score shows them on
+    the tab staff, centered on a five-line frame;
+  - spells notes in the key: pitch classes the signature alters use its flats/sharps, other
+    pitch classes keep sharps (as Guitar Pro does for accidentals);
+  - starts each measure's accidental state from the key signature, so an F sharp in G major
+    or a B flat in F major needs no accidental, and a natural cancels the signature's alter.
+- The key (and the key before a change) is part of the per-measure layout cache key, so a
+  key edit or its undo lays out exactly the affected measures again; `test_cache` compares a
+  key change against a fresh layout. Line breaking now takes a system-start width per
+  measure, since the clef is followed by a different number of accidentals on each system.
+- Files: `notation/pitch.rs` (key alters, spelling, key-signature positions per clef),
+  `notation/draw.rs` (`KeySigLayout`, start widths), `measure/*` (the signature and its
+  room), `lib.rs`/`system.rs` (per-system prefixes), `glyph.rs` (`accidentalFlat`). Tests:
+  `crates/gscore-layout/tests/test_keys.rs` (sharp and flat keys, suppression, cancellation,
+  tab-only, drums) and `test_cache`. Rendered `Ballad.gp` (B minor, tab only) and
+  `note_lengths.gp` with an E-flat key: the signature appears on each system, and a natural
+  is written on the E that the key would flatten.
+
+## 2026-11-03 — Second voice in notation, ties across barlines
+
+- Notation now writes every voice, not only the first. A column holds one item per voice
+  (`Vec<Option<NotationItem>>`), all voices share the measure's accidental state, and each
+  voice is drawn with its own stems, beams and ties. With two or more voices the first
+  points its stems up and the rest down; a notehead of a lower voice that would sit exactly
+  on the first voice's position moves right by 0.6 staff spaces. The layout gives the
+  column the extra room and the second voice is offset only when it collides. Dynamics
+  below the staff still use the lowest head of any voice.
+- Ties across barlines: after a system is placed, adjacent measures draw the tie from the
+  last notehead with the destination's staff position to the tied head in the next
+  measure's first column, on the notation staff and on the tab (where the continuation has
+  no fret number). At a system break the tie becomes a short outgoing fragment at the end
+  of the line and a short incoming one at the start of the next; nothing is drawn across
+  systems. Ties work per voice and the tab matches the note on the same string.
+- Playback already played all voices and held ties across barlines; tests now cover it.
+  The tie bookkeeping (`on_string`) is keyed by (voice, string) instead of string alone, so
+  a tie in one voice can never extend another voice's note on the same string.
+- Files: `notation/{mod,draw,beams,pitch}.rs`, `measure/{mod,draw}.rs`, `lib.rs`,
+  `gscore-play/src/build.rs`. Tests: `crates/gscore-layout/tests/test_voices.rs` (second
+  voice, collision offset, tie across a barline on both staves, fragments at a system
+  break, a tie in the second voice) and three new `gscore-play` tests (cross-barline tie,
+  every voice plays, no cross-voice tie). Rendered a copy of `steel_guitar_dadgad` with
+  voice 2 (stems up/down, both in the tab) and a tied note across a barline (curves on both
+  staves). All app snapshots stay unchanged (the test files have one voice and no
+  cross-barline ties).
+
+## 2026-11-03 — Grace notes
+
+- GP6/GP7 store a grace note as a whole beat marked `<GraceNotes>`; the model kept it as an
+  ordinary beat, so its 32nd/16th length made the measure longer than its time signature
+  and the grace notes were drawn as normal notes. `Beat` now carries a `grace` flag (set by
+  the GPIF reader, used by the writer instead of the "all notes have a grace effect"
+  guess), and `BeatView::is_grace` exposes it.
+- The model counts a grace beat as zero length (`VoiceView::total_duration`), so measures
+  are no longer reported overfull. Layout and playback skip it when advancing time:
+  - Layout draws the grace notes just left of the next beat's main note, as small heads
+    with a stem, flag and the acciaccatura slash on the notation staff, and as small
+    slashed fret numbers on the tab (`measure/mod.rs`, `measure/draw.rs`, with the grace
+    group's width reserved in the column). GP3-5 grace effects attached to a normal note
+    are drawn the same way.
+  - Playback plays each grace note as a 32nd just before its beat (at the beat when it is
+    the first sound of the song, where no time is available), and does not lengthen the
+    song (`gscore-play/src/build.rs`; the beat clock and cursor lookups skip grace beats).
+  - A grace beat at the end of a measure gets a column of its own before the barline.
+- Editing grace notes (creating or removing them) is not implemented yet; they are read,
+  drawn and played. The cursor skips grace beats (and clamping after an edit does too), and
+  the note/duration/copy commands treat them as ornaments, so editing cannot turn one into
+  a normal note by accident.
+- Tests: `crates/gscore-layout/tests/test_graces.rs` (no time, small notation head and tab
+  number, GP5 attached grace) and two `gscore-play` tests (grace beat and attached grace
+  sound with their beat). Checked on the owner's `farewell.gp` (track 8, measure 102: a
+  small slashed `0` before the main `0`) and a synthetic both-staves song (small slashed
+  head before the main note).
+- `Beat` gained a field: the GPIF round trip of `farewell.gp` and `hangar18.gp` keeps its
+  grace beats (`<GraceNotes>` count survives).
+
+## 2026-11-04 — Review of the last four commits; readable and audible grace notes
+
+- Owner: grace notes were almost unreadable and could not be heard.
+- Drawing (`gscore-layout/src/measure/graces.rs`, new; the grace code moved out of
+  `measure/{columns,draw}.rs`):
+  - Graces were placed from the main note's *center* (`x - grace_width`), so they ran into
+    its notehead, fret number and accidental; the column reserved `max(grace, accidental)`
+    instead of the sum. Columns now keep the main note's own left extent (`main_left`) and
+    the graces end left of it, with room for their flag and slash.
+  - Notation: cue size 0.65; their own accidentals (against the key signature,
+    `Clef::place_grace`); ledger lines; stems always up, one eighth flag (the GP5 grace
+    duration unit was misread as a note value and gave four flags); the acciaccatura slash
+    crosses stem and flag instead of the head.
+  - Tab: fret numbers at 0.78 of the normal size instead of 0.6, and no slash (it covered
+    the digit: measure 102 of `farewell.gp` read like "Ø10").
+- Playback (`gscore-play/src/graces.rs`, new; `effects::one_note_per_string`):
+  - Cause: a grace note lasted a 32nd (44 ms at 170 BPM) while the previous note on its
+    string rang on over it at full level until the beat. Offline with FluidR3 on
+    `farewell.gp` measure 101 the previous note was 2.2x the grace note's level in that
+    window; now the grace note is 3.4x what is left of the previous note.
+  - A grace note sounds about 75 ms (between a 32nd and a 16th), a note still ringing on
+    the same string stops when the next note there starts, appoggiaturas (on-beat graces)
+    take the beat and delay the main note on their string, and at the very start of the
+    song the graces play first instead of together with the main note.
+  - The beat excerpt (palette clicks, notes as entered) plays a beat's grace notes too, and
+    a brush stroke no longer spreads the grace notes as if they were chord notes.
+- Key signatures (review of f361b20): chromatic notes are now spelled with flats in flat
+  keys (A flat, not G sharp, in B flat major), as Guitar Pro writes them.
+- Section titles (db73d8e) and the modelling plan (7dd4242): reviewed, no changes.
+- Tests: `test_graces` (graces clear of the main accidental, own sharp, readable unslashed
+  tab number, ledger lines), `test_sequence` (a grace note cuts the ringing note, the
+  excerpt plays the grace first), unit tests for grace placement and lengths, one note per
+  string, and flat spelling. `testing::song_with_graces` builds such songs.
+
+## 2026-11-04 — Entering grace notes
+
+- Owner: grace notes must be enterable, with a dialog for the speeds. (Ghost notes were
+  already enterable: `g` and the palette.)
+- One form for editing: the model keeps a grace note attached to its main note
+  (`NoteEffect::Grace(Option<Grace>)`; `Grace { fret, speed, on_beat, dead }`, speeds
+  fast/normal/slow = 64th/32nd/16th, `gscore-model/src/grace.rs`). `NoteView::grace`
+  returns the same type, so layout, playback and the dialog read what commands write.
+- Files (`gscore-gp/src/model/grace.rs`, docs/guitarpro.md #37): reading a GP6/GP7 file
+  folds each grace beat into its main note where nothing is lost; writing `.gp`/`.gpx`
+  turns attached grace notes back into grace beats, and the GP3-5 writer folds (or leaves
+  out) grace beats. Grace beats that do not fold (a grace note on a string the main beat
+  does not play, an eighth-note grace, one with its own vibrato) stay as they are: drawn
+  and played, not edited. The save check now compares grace notes and grace beats, so a
+  lost grace note is reported. `farewell.gp` still saves without a reported loss.
+- Command text: `set_note_effect ... effect=grace value=5:normal:before` (`:on` for on
+  the beat, `:dead` appended for a dead one, `none` to remove), journaled like every other
+  effect.
+- App (`grace_editor.rs`): the "Grace note" palette tile (a slashed grace note, next to
+  the harmonic tile), `Shift+G` and Note › Grace note… open the dialog: the fret with quick
+  choices one or two frets below/above the main note, a dead-note switch, the three speeds
+  as engraved 64th/32nd/16th notes with what each does, and before/on the beat as
+  engraved acciaccatura/appoggiatura signs. Listen plays the beat with the draft; OK applies
+  it to every selected note, Remove takes it off. The harmonic editor's button row and
+  Escape/Enter handling are shared with it.
+- Playback: a grace note now lasts its written value, at least 40/60/90 ms for
+  fast/normal/slow, so the speeds stay apart and audible at any tempo.
+- Tests: fold/unfold round trip and the cases that must not fold (`gscore-gp`), set/
+  change/remove with undo (`gscore-model`), the command text round trip and bad values
+  (`gscore-edit`), an extreme grace in `panic_hunt`, grace lengths per speed
+  (`gscore-play`), the dialog via `Shift+G`, OK and Remove via the palette tile
+  (`test_editing`). Checked with `gscore-cli edit` on `note_lengths.gp`: three grace notes
+  (slow before, fast on the beat, dead) save as `.gp`, reload, and render.
+
+## 2026-11-04 — Tuplet tiles and the tuplet dialog
+
+- Owner: tiles for triplets and sextuplets like Guitar Pro's, and a dialog for every kind
+  of tuplet.
+- Palette: the "3", "5:4", "7:4" tiles became Guitar Pro style bracket tiles: a triplet
+  (`⌐3¬`), a sextuplet (`⌐6¬`) and `⌐n:m¬` with a corner triangle that opens the dialog
+  (it shows the chosen tuplet, such as `⌐5:4¬`, when one without a tile of its own is
+  chosen). The bracket tiles are half as wide again as the others (`tiles::wide_tile`); the
+  bracket is drawn by `tile_faces::tuplet_bracket` with Bravura's tuplet digits.
+- Dialog (`tuplet_dialog.rs`): the chosen tuplet as a large engraved bracket, steppers for
+  "n in the time of m" (n 2-32, m 1-32), what it means in a line, and the common tuplets as
+  engraved signs with an explanation (triplet, sextuplet, quintuplet, septuplet, nonuplet,
+  decuplet, and the duplet and quadruplet of 6/8). OK sets the palette's tuplet and the
+  selected beats' length, Remove takes the tuplet off; no Listen (a length has nothing new
+  to hear). The harmonic editor's button row takes an optional Listen for it.
+- Actions: `tuplet_six` (sextuplet) and `tuplet_other` (opens the dialog); `tuplet_five`
+  and `tuplet_seven` keep working from the keymap without tiles. No default keys.
+- Checked: 9:4, 2:3, 10:8 and 6:4 beats save as `.gp` without a reported loss (GP3-5's
+  fixed tuplet list does not apply to GPIF). Test: `test_editing` (sextuplet tile, dialog
+  with a common tuplet, steppers to 9:4, Remove).
+
 ## 2026-11-03 — Release workflow and build version (M20 groundwork)
 
 - New `.github/workflows/release.yml`: on a published GitHub Release it builds `guitarscore`

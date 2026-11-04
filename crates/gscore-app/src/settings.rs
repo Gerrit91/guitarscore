@@ -13,6 +13,8 @@ use crate::state::{ViewState, ZOOM_RANGE};
 
 /// How many recent files the File menu remembers.
 pub const MAX_RECENT_FILES: usize = 10;
+/// Most tabs remembered to reopen at the next start.
+pub const MAX_OPEN_FILES: usize = 64;
 /// Most changed actions accepted from the settings file, and keys per action.
 const MAX_SHORTCUT_OVERRIDES: usize = 1024;
 const MAX_KEYS_PER_ACTION: usize = 32;
@@ -169,9 +171,13 @@ pub struct Settings {
     pub window: Option<WindowState>,
     /// Recently opened files, newest first.
     pub recent_files: Vec<PathBuf>,
-    /// Reopen the last open file at startup (on by default).
+    /// Reopen the tabs that were open last time at startup (on by default).
     pub reopen_last_file: bool,
-    /// The file to reopen at startup.
+    /// The files of the tabs that were open, in order (reopened at startup).
+    pub open_files: Vec<PathBuf>,
+    /// The file of the tab that was active when they were saved, if any.
+    pub active_file: Option<PathBuf>,
+    /// The file to reopen at startup (written for older versions; see `open_files`).
     pub last_file: Option<PathBuf>,
     /// The keymap file, if the user chose one.
     pub keymap_path: Option<PathBuf>,
@@ -211,6 +217,8 @@ impl Default for Settings {
             window: None,
             recent_files: Vec::new(),
             reopen_last_file: true,
+            open_files: Vec::new(),
+            active_file: None,
             last_file: None,
             keymap_path: None,
             shortcut_overrides: Vec::new(),
@@ -350,6 +358,7 @@ impl Settings {
             self.autosave_seconds = DEFAULT_AUTOSAVE_SECONDS;
         }
         self.recent_files.truncate(MAX_RECENT_FILES);
+        self.open_files.truncate(MAX_OPEN_FILES);
         // A hostile or broken file cannot make the keymap huge.
         self.shortcut_overrides.truncate(MAX_SHORTCUT_OVERRIDES);
         self.shortcut_overrides
@@ -532,6 +541,8 @@ mod tests {
             keys: vec!["ctrl+k".to_owned()],
         }];
         settings.grid_height_chosen = Some(180.0);
+        settings.open_files = vec![PathBuf::from("/tabs/a.gp"), PathBuf::from("/tabs/b.gp")];
+        settings.active_file = Some(PathBuf::from("/tabs/b.gp"));
         settings.window = Some(WindowState {
             x: Some(10.0),
             y: Some(20.0),

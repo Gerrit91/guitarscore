@@ -2,10 +2,12 @@
 //! flags, beams, dots, rests, ties and tuplet numbers.
 
 use super::beams::{beam_groups, draw_beams, draw_ties};
-use super::{Chord, Clef, DOT_GAP, MIDDLE, NotationItem};
+use super::pitch::key_alters;
+use super::{Alter, Chord, Clef, DOT_GAP, MIDDLE, NotationItem};
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point};
 use crate::glyph::{Flag, Glyph};
+use crate::staff::Staff;
 
 /// Normal stem length (one octave).
 const STEM_LENGTH: f32 = 3.5;
@@ -16,6 +18,108 @@ const LEDGER_BELOW: i32 = -2;
 const LEDGER_ABOVE: i32 = 10;
 /// Space between the system start and the clef, and after the clef.
 const CLEF_GAPS: (f32, f32) = (0.6, 1.0);
+/// Space between a clef and a key signature, and between a key signature and the first
+/// measure.
+pub(crate) const KEY_GAPS: (f32, f32) = (0.3, 0.6);
+
+/// A key signature as accidentals on staff positions, with the room it takes. Signatures
+/// follow the clef when the notation staff is shown; a tab-only score draws them centered
+/// on the tab staff.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct KeySigLayout {
+    glyphs: Vec<(Glyph, i32)>,
+    /// Whether the positions are drawn on a tab staff (no pitch lines) instead of notation.
+    on_tab: bool,
+    /// Room from its left edge to its right edge.
+    pub(crate) width: f32,
+}
+
+impl KeySigLayout {
+    /// The key signature that changes the key from `previous` to `key`: naturals cancel
+    /// what the old signature altered and the new one does not, then the new accidentals.
+    /// `on_tab` centers the accidentals on a tab staff; otherwise `clef` places them.
+    pub(crate) fn change(
+        clef: Clef,
+        previous: i8,
+        key: i8,
+        on_tab: bool,
+        ctx: &Context<'_>,
+    ) -> Option<Self> {
+        let new_alters = key_alters(key);
+        let mut glyphs = Vec::new();
+        for (letter, position) in clef.key_signature_marks(previous) {
+            let natural_now = new_alters
+                .get(letter)
+                .is_none_or(|alter| *alter == Alter::Natural);
+            if natural_now {
+                glyphs.push((Glyph::Natural, position));
+            }
+        }
+        for (letter, position) in clef.key_signature_marks(key) {
+            let alter = new_alters.get(letter).copied().unwrap_or(Alter::Natural);
+            glyphs.push((alter.glyph(), position));
+        }
+        Self::from_glyphs(glyphs, on_tab, ctx)
+    }
+
+    /// The plain key signature of `key` (no cancellations).
+    pub(crate) fn plain(clef: Clef, key: i8, on_tab: bool, ctx: &Context<'_>) -> Option<Self> {
+        if key == 0 {
+            return None;
+        }
+        let alters = key_alters(key);
+        let glyphs = clef
+            .key_signature_marks(key)
+            .into_iter()
+            .map(|(letter, position)| {
+                let alter = alters.get(letter).copied().unwrap_or(Alter::Natural);
+                (alter.glyph(), position)
+            })
+            .collect();
+        Self::from_glyphs(glyphs, on_tab, ctx)
+    }
+
+    fn from_glyphs(glyphs: Vec<(Glyph, i32)>, on_tab: bool, ctx: &Context<'_>) -> Option<Self> {
+        if glyphs.is_empty() {
+            return None;
+        }
+        let width = glyphs
+            .iter()
+            .map(|(glyph, _)| ctx.fonts.music.advance(*glyph))
+            .sum();
+        Some(KeySigLayout {
+            glyphs,
+            on_tab,
+            width,
+        })
+    }
+
+    /// Draws the signature with its left edge at `x`, on the staff whose top line is `top`.
+    pub(crate) fn draw_at(&self, x: f32, top: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
+        let mut at = x;
+        for (glyph, position) in &self.glyphs {
+            let y = if self.on_tab {
+                tab_key_y(top, *position, &ctx.staff)
+            } else {
+                y_of(top, *position)
+            };
+            ops.push(DrawOp::Glyph {
+                glyph: *glyph,
+                at: Point::new(at, y),
+                scale: 1.0,
+                color: ColorToken::Notation,
+            });
+            at += ctx.fonts.music.advance(*glyph);
+        }
+    }
+}
+
+/// The y of staff position `position` on a tab staff: a five-line frame centered on the
+/// staff, since tablature has no pitch lines of its own.
+fn tab_key_y(top: f32, position: i32, tab: &Staff) -> f32 {
+    let frame_top = top + (tab.height() - 4.0) / 2.0;
+    y_of(frame_top, position)
+}
 
 /// A notation item at its column's center `x`; `beat` is the beat it starts in (beams
 /// join notes within one beat).
@@ -26,26 +130,129 @@ pub(crate) struct BeamPlan<'m> {
     pub(crate) beat: u64,
 }
 
+/// The staff positions of the ledger lines a head at `position` needs (lines between the
+/// staff and the head).
+pub(crate) fn ledger_positions(position: i32) -> Vec<i32> {
+    if position <= LEDGER_BELOW {
+        (position..=LEDGER_BELOW).filter(|p| p % 2 == 0).collect()
+    } else if position >= LEDGER_ABOVE {
+        (LEDGER_ABOVE..=position).filter(|p| p % 2 == 0).collect()
+    } else {
+        Vec::new()
+    }
+}
+
 /// The y of staff position `position` on a notation staff whose top line is at `top`.
-pub(super) fn y_of(top: f32, position: i32) -> f32 {
+pub(crate) fn y_of(top: f32, position: i32) -> f32 {
     top + 4.0 - position as f32 * 0.5
 }
 
-/// The room the clef takes at the start of a system.
-pub(crate) fn prefix_width(clef: Clef, ctx: &Context<'_>) -> f32 {
-    let (glyph, _) = clef.glyph();
-    CLEF_GAPS.0 + ctx.fonts.music.advance(glyph) + CLEF_GAPS.1
+/// Tie curves: distance from the notehead and height of the arch.
+const TIE_OFFSET: f32 = 0.6;
+const TIE_ARCH: f32 = 0.5;
+
+/// Draws a tie between two noteheads, curving away from the stems (`up` for an up-stem).
+pub(crate) fn draw_tie_curve(
+    from_x: f32,
+    from_y: f32,
+    to_x: f32,
+    to_y: f32,
+    up: bool,
+    thickness: f32,
+    ops: &mut Vec<DrawOp>,
+) {
+    if to_x <= from_x {
+        return;
+    }
+    let direction = if up { 1.0 } else { -1.0 };
+    let handle = (to_x - from_x) / 3.0;
+    let y = |at: f32| at + direction * TIE_OFFSET;
+    ops.push(DrawOp::Curve {
+        from: Point::new(from_x, y(from_y)),
+        to: Point::new(to_x, y(to_y)),
+        control1: Point::new(from_x + handle, y(from_y) + direction * TIE_ARCH),
+        control2: Point::new(to_x - handle, y(to_y) + direction * TIE_ARCH),
+        thickness,
+        color: ColorToken::Notation,
+    });
 }
 
-/// Draws the clef at the start of a system whose left edge is `x`.
-pub(crate) fn draw_staff_start(x: f32, top: f32, clef: Clef, ops: &mut Vec<DrawOp>) {
+/// Room from a system start to where a key signature starts: the clef and the gap after it.
+pub(crate) fn key_start_width(clef: Clef, ctx: &Context<'_>) -> f32 {
+    let (glyph, _) = clef.glyph();
+    CLEF_GAPS.0 + ctx.fonts.music.advance(glyph) + KEY_GAPS.0
+}
+
+/// The room the clef takes at the start of a system; with a key signature that starts the
+/// system, the signature follows after [`KEY_GAPS`].
+pub(crate) fn prefix_width(clef: Clef, key: i8, on_tab: bool, ctx: &Context<'_>) -> f32 {
+    let (glyph, _) = clef.glyph();
+    let clef_width = CLEF_GAPS.0 + ctx.fonts.music.advance(glyph);
+    match KeySigLayout::plain(clef, key, on_tab, ctx) {
+        Some(key_signature) => clef_width + KEY_GAPS.0 + key_signature.width + KEY_GAPS.1,
+        None => clef_width + CLEF_GAPS.1,
+    }
+}
+
+/// Draws the clef at the start of a system whose left edge is `x`, then the key signature
+/// unless the first measure draws its own (a key change) at the measure start.
+pub(crate) fn draw_staff_start(
+    x: f32,
+    top: f32,
+    clef: Clef,
+    key: i8,
+    key_drawn_by_measure: bool,
+    ctx: &Context<'_>,
+    ops: &mut Vec<DrawOp>,
+) {
     let (glyph, position) = clef.glyph();
+    let clef_width = CLEF_GAPS.0 + ctx.fonts.music.advance(glyph);
     ops.push(DrawOp::Glyph {
         glyph,
         at: Point::new(x + CLEF_GAPS.0, y_of(top, position)),
         scale: 1.0,
         color: ColorToken::Notation,
     });
+    if key_drawn_by_measure {
+        return;
+    }
+    if let Some(key_signature) = KeySigLayout::plain(clef, key, false, ctx) {
+        key_signature.draw_at(x + clef_width + KEY_GAPS.0, top, ctx, ops);
+    }
+}
+
+/// Room a tab staff's system start takes: the TAB clef, then the key signature unless the
+/// first measure draws it (a key change).
+pub(crate) fn tab_prefix_width(key: i8, key_drawn_by_measure: bool, ctx: &Context<'_>) -> f32 {
+    let clef = ctx.staff.clef_width(&ctx.fonts.music);
+    if key_drawn_by_measure {
+        return clef + KEY_GAPS.0;
+    }
+    match KeySigLayout::plain(Clef::Treble, key, true, ctx) {
+        Some(key_signature) => clef + KEY_GAPS.0 + key_signature.width + KEY_GAPS.1,
+        None => ctx.staff.prefix_width(&ctx.fonts.music),
+    }
+}
+
+/// Draws the TAB clef and, unless the first tab-only measure draws its own, the key
+/// signature, at the start of a system whose left edge is `x`.
+pub(crate) fn draw_tab_staff_start(
+    x: f32,
+    top: f32,
+    key: i8,
+    key_drawn_by_measure: bool,
+    show_key: bool,
+    ctx: &Context<'_>,
+    ops: &mut Vec<DrawOp>,
+) {
+    ctx.staff.draw_clef(x, top, &ctx.fonts.music, ops);
+    if !show_key || key_drawn_by_measure {
+        return;
+    }
+    if let Some(key_signature) = KeySigLayout::plain(Clef::Treble, key, true, ctx) {
+        let at = x + ctx.staff.clef_width(&ctx.fonts.music) + KEY_GAPS.0;
+        key_signature.draw_at(at, top, ctx, ops);
+    }
 }
 
 /// Where a chord's stem goes.
@@ -248,18 +455,7 @@ fn draw_heads(x: f32, chord: &Chord, up: bool, top: f32, ctx: &Context<'_>, ops:
         let left = x - width / 2.0 + shift;
         let y = y_of(top, head.position);
         // Ledger lines between the staff and the note.
-        let ledgers: Vec<i32> = if head.position <= LEDGER_BELOW {
-            (head.position..=LEDGER_BELOW)
-                .filter(|p| p % 2 == 0)
-                .collect()
-        } else if head.position >= LEDGER_ABOVE {
-            (LEDGER_ABOVE..=head.position)
-                .filter(|p| p % 2 == 0)
-                .collect()
-        } else {
-            Vec::new()
-        };
-        for position in ledgers {
+        for position in ledger_positions(head.position) {
             let ly = y_of(top, position);
             ops.push(DrawOp::Line {
                 from: Point::new(left - engraving.leger_line_extension, ly),

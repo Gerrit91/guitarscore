@@ -77,6 +77,7 @@ r = make_rest
 l = toggle_tie
 x = toggle_dead_note
 g = toggle_ghost_note
+G = grace_note
 h = toggle_hammer
 s = toggle_shift_slide
 S = toggle_legato_slide

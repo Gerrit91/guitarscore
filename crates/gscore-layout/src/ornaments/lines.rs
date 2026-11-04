@@ -135,6 +135,26 @@ pub(crate) fn draw_tie(
     );
 }
 
+/// A short fragment of a tie that continues across a system break.
+pub(crate) fn draw_tie_fragment(
+    from_x: f32,
+    to_x: f32,
+    y: f32,
+    thickness: f32,
+    ops: &mut Vec<DrawOp>,
+) {
+    let distance = to_x - from_x;
+    let handle = distance / 3.0;
+    ops.push(DrawOp::Curve {
+        from: Point::new(from_x, y),
+        to: Point::new(to_x, y),
+        control1: Point::new(from_x + handle, y + SLUR_CURVE),
+        control2: Point::new(to_x - handle, y + SLUR_CURVE),
+        thickness,
+        color: ColorToken::Notation,
+    });
+}
+
 /// Draws a whole beat-level legato run as one slur above the staff.
 pub(crate) fn draw_legato_run(start_x: f32, end_x: f32, top: f32, ops: &mut Vec<DrawOp>) {
     let start = start_x - 0.6;

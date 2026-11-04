@@ -211,4 +211,35 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     a song-wide eighth-note swing (which was also written for a sixteenth feel); other
     feels save as straight and the save check reports it. Test
     `feels_round_trip_through_gpif`.
+34. Section titles (`src/io/gpif_import/mod.rs`, 2026-11-03): Guitar Pro writes a section's
+    text as a CDATA block on its own lines (`<Text>\n<![CDATA[Chorus]]>\n</Text>`). The
+    reader kept those newlines, so every marker title read from a GP6/GP7 file began and
+    ended with a line break: the score drew the text below its frame (the first line of the
+    galley is empty) and the section dialog showed the line breaks as boxes. Titles are now
+    trimmed, an empty text falls back to the section letter, and only a marker with neither
+    keeps the `Section` placeholder. Tests in `section_tests`.
+35. Default section color (`src/model/headers.rs`, `src/io/gpif_import/mod.rs`,
+    2026-11-03): GP6/GP7 files store no marker color, so the reader gave every section
+    Guitar Pro's aggressive red (`0xFF0000`). It is now `Marker::DEFAULT_COLOR`, a light
+    grey (`0xB0B0B0`) that the editor also offers as "Light grey" in its color palette;
+    GP3-5 files keep the color stored in them. `gscore-model`'s `Section::DEFAULT_COLOR`
+    uses the same value.
 
+36. Grace-note beats (`src/model/beat.rs`, `src/io/gpif_import/beats.rs`,
+    `src/io/gpif_export/beats.rs`, 2026-11-03): GP6/7 mark a whole beat as grace notes with
+    `<GraceNotes>BeforeBeat</GraceNotes>` or `OnBeat`. The reader kept the beat as an
+    ordinary one, so its (32nd/16th...) length made measures longer than their time
+    signature, and the writer guessed "all notes have a grace effect" to write the marker.
+    `Beat` now has a `grace` flag, set by the reader and used by the writer; the model,
+    layout and playback treat such a beat as taking no time.
+37. Grace notes in both forms (`src/model/grace.rs`, `src/io/gpif_import/mod.rs`,
+    `src/io/song.rs`, 2026-11-04): GP3-5 attach a grace note to its main note, GP6/GP7
+    give it a beat of its own, and each writer only knew its own form (attached grace
+    notes were dropped when writing GPIF; grace beats were written to GP3-5 as ordinary
+    beats, overfilling the measure). The GPIF reader now folds a grace beat into the next
+    beat where nothing is lost (`fold_grace_beats`: plain notes, at most a hammer-on or
+    shift slide, a 64th/32nd/16th, a main note on each string), the GPIF writers turn
+    attached grace notes back into grace beats (`Song::with_grace_beats`), and the GP3-5
+    writer folds grace beats and leaves out those that cannot be folded
+    (`Song::with_attached_graces`). The GPIF reader stored every grace length as 1; the
+    folded length is the beat's value. Tests in `model/grace.rs`.

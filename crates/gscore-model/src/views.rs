@@ -9,6 +9,7 @@ use gscore_gp::{BeatStatus, NoteType};
 
 use crate::duration::{Duration, NoteValue, TimeSignature};
 use crate::error::ModelError;
+use crate::grace::Grace;
 use crate::instrument::{self, InstrumentKind};
 use crate::position::{BeatIndex, Fret, MeasureIndex, Pitch, StringNumber, TrackIndex, VoiceIndex};
 
@@ -255,10 +256,10 @@ impl<'a> VoiceView<'a> {
         self.beats().all(|b| b.kind() == BeatKind::Empty)
     }
 
-    /// The summed length of all beats; placeholders count as zero.
+    /// The summed length of all beats; placeholders and grace-note beats count as zero.
     pub fn total_duration(&self) -> Result<Duration, ModelError> {
         self.beats().try_fold(Duration::ZERO, |sum, beat| {
-            if beat.kind() == BeatKind::Empty {
+            if beat.kind() == BeatKind::Empty || beat.is_grace() {
                 Ok(sum)
             } else {
                 sum.checked_add(beat.duration()?)
@@ -314,6 +315,12 @@ impl<'a> BeatView<'a> {
         }
     }
 
+    /// Whether this is a GP6/GP7 grace-note beat: its notes are quick ornaments before the
+    /// next beat and take no time of their own.
+    pub fn is_grace(&self) -> bool {
+        self.inner.grace
+    }
+
     /// The notes of this beat (at most one per string).
     pub fn notes(&self) -> impl ExactSizeIterator<Item = NoteView<'a>> + use<'a> {
         self.inner.notes.iter().map(NoteView::new)
@@ -365,5 +372,11 @@ impl<'a> NoteView<'a> {
             NoteType::Rest => NoteKind::Rest,
             NoteType::Unknown(_) => NoteKind::Unknown,
         }
+    }
+
+    /// The grace note attached to this note (GP6/GP7 grace beats are attached when the
+    /// file is read where possible; see [`BeatView::is_grace`] for the rest).
+    pub fn grace(&self) -> Option<Grace> {
+        self.inner.effect.grace.as_ref().map(Grace::from_gp)
     }
 }

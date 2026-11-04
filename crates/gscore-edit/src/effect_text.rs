@@ -2,8 +2,8 @@
 //! an effect id (`hammer`, `bend`, ...) and a value (`true`, `heavy`, `up:0:0,6:4,12:0`).
 
 use gscore_model::{
-    AccentKind, BeatEffect, BendKind, BendPoint, BendShape, Harmonic, HarmonicKind, Legato,
-    NoteEffect, SlapKind, SlideKind, StrokeDirection, Vibrato, WhammyShape,
+    AccentKind, BeatEffect, BendKind, BendPoint, BendShape, Fret, Grace, GraceSpeed, Harmonic,
+    HarmonicKind, Legato, NoteEffect, SlapKind, SlideKind, StrokeDirection, Vibrato, WhammyShape,
 };
 
 /// How a note effect is written: its id and its value.
@@ -38,7 +38,60 @@ pub(crate) fn note_effect_text(effect: &NoteEffect) -> (&'static str, String) {
         NoteEffect::TremoloPicking(on) => ("tremolo_picking", on.to_string()),
         NoteEffect::Vibrato(None) => ("vibrato", "none".to_owned()),
         NoteEffect::Vibrato(Some(vibrato)) => ("vibrato", vibrato_id(*vibrato).to_owned()),
+        NoteEffect::Grace(None) => ("grace", "none".to_owned()),
+        NoteEffect::Grace(Some(grace)) => ("grace", grace_text(grace)),
     }
+}
+
+/// A grace note as `fret:speed:timing`, with `:dead` for a dead one (`5:normal:before`).
+fn grace_text(grace: &Grace) -> String {
+    let speed = match grace.speed {
+        GraceSpeed::Fast => "fast",
+        GraceSpeed::Normal => "normal",
+        GraceSpeed::Slow => "slow",
+    };
+    let timing = if grace.on_beat { "on" } else { "before" };
+    let dead = if grace.dead { ":dead" } else { "" };
+    format!("{}:{speed}:{timing}{dead}", grace.fret.get())
+}
+
+/// Reads [`grace_text`]'s form, or `none`.
+fn parse_grace(value: &str) -> Result<Option<Grace>, String> {
+    const FORM: &str = "grace: fret:fast|normal|slow:before|on[:dead], or none";
+    if value == "none" {
+        return Ok(None);
+    }
+    let mut parts = value.split(':');
+    let fret = parts
+        .next()
+        .and_then(|fret| fret.parse::<u8>().ok())
+        .and_then(|fret| Fret::new(fret).ok())
+        .ok_or_else(|| FORM.to_owned())?;
+    let speed = match parts.next() {
+        Some("fast") => GraceSpeed::Fast,
+        Some("normal") => GraceSpeed::Normal,
+        Some("slow") => GraceSpeed::Slow,
+        _ => return Err(FORM.to_owned()),
+    };
+    let on_beat = match parts.next() {
+        Some("before") => false,
+        Some("on") => true,
+        _ => return Err(FORM.to_owned()),
+    };
+    let dead = match parts.next() {
+        None => false,
+        Some("dead") => true,
+        Some(_) => return Err(FORM.to_owned()),
+    };
+    if parts.next().is_some() {
+        return Err(FORM.to_owned());
+    }
+    Ok(Some(Grace {
+        fret,
+        speed,
+        on_beat,
+        dead,
+    }))
 }
 
 /// How a beat effect is written: its id and its value.
@@ -95,6 +148,7 @@ pub(crate) fn parse_note_effect(id: &str, value: &str) -> Result<NoteEffect, Str
             "wide" => Some(Vibrato::Wide),
             _ => return Err("vibrato: slight, wide or none".to_owned()),
         }),
+        "grace" => NoteEffect::Grace(parse_grace(value)?),
         _ => return Err(format!("unknown note effect \"{id}\"")),
     })
 }

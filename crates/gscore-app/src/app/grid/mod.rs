@@ -92,9 +92,10 @@ pub(super) struct RenameTrack {
 impl GuitarScoreApp {
     /// The bottom panel: track headers and the measure matrix.
     pub(super) fn track_grid(&mut self, ui: &mut egui::Ui) {
-        let Some(document) = &mut self.document else {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let document = &mut tab.document;
         let grid = document.grid();
         let cursor = document.editor().cursor();
         let rows = rows::track_rows(document);
@@ -115,12 +116,12 @@ impl GuitarScoreApp {
                 cursor_measure: cursor.measure.get(),
                 cursor_track: cursor.track.get(),
                 playing,
-                selection: self.view.selection,
-                shown_track: self.view.track,
+                selection: tab.selection,
+                shown_track: tab.track,
                 mixer: self.view.grid_mixer,
             },
             &levels,
-            &mut self.mixer,
+            &mut tab.mixer,
             &mut actions,
         );
         for action in actions {
@@ -133,10 +134,19 @@ impl GuitarScoreApp {
         match action {
             GridAction::Command { command, merge } => self.apply_command(command, merge),
             GridAction::CommandShowing { command, track } => {
-                let revision = self.document.as_ref().map(|d| d.editor().revision());
+                let revision = self
+                    .tabs
+                    .get(self.active)
+                    .map(|tab| tab.document.editor().revision());
                 self.apply_command(command, false);
-                if self.document.as_ref().map(|d| d.editor().revision()) != revision {
-                    self.view.track = track;
+                if self
+                    .tabs
+                    .get(self.active)
+                    .map(|tab| tab.document.editor().revision())
+                    != revision
+                    && let Some(tab) = self.tabs.get_mut(self.active)
+                {
+                    tab.track = track;
                 }
             }
             GridAction::NewTrack { at } => self.begin_new_track(at),
@@ -145,20 +155,20 @@ impl GuitarScoreApp {
                 self.save_settings();
             }
             GridAction::BreakMerge => {
-                if let Some(document) = &mut self.document {
-                    document.editor_mut().break_merge();
+                if let Some(tab) = self.tabs.get_mut(self.active) {
+                    tab.document.editor_mut().break_merge();
                 }
             }
             GridAction::MoveCursor { track, measure } => self.move_cursor_to(track, measure),
             GridAction::Select(selection) => {
-                self.view.selection = Some(selection);
-                if let Some(document) = &mut self.document {
-                    document
-                        .editor_mut()
-                        .set_selection(Some(gscore_edit::Selection::Measures {
+                if let Some(tab) = self.tabs.get_mut(self.active) {
+                    tab.selection = Some(selection);
+                    tab.document.editor_mut().set_selection(Some(
+                        gscore_edit::Selection::Measures {
                             anchor: gscore_model::MeasureIndex::new(selection.start()),
                             focus: gscore_model::MeasureIndex::new(selection.end()),
-                        }));
+                        },
+                    ));
                 }
                 // While playing, playback goes to the selection's first measure, unless
                 // that measure is already playing (the selection just follows it).
@@ -170,23 +180,28 @@ impl GuitarScoreApp {
                     None
                 };
                 if playing_measure != Some(selection.start()) {
-                    self.jump_playback_to(self.view.track, selection.start());
+                    let track = self.tabs.get(self.active).map_or(0, |tab| tab.track);
+                    self.jump_playback_to(track, selection.start());
                 }
             }
             GridAction::Rename { track } => {
                 let name = self
-                    .document
-                    .as_ref()
-                    .and_then(|document| document.song().tracks().nth(track))
+                    .tabs
+                    .get(self.active)
+                    .and_then(|tab| tab.document.song().tracks().nth(track))
                     .map_or_else(String::new, |row| row.name().to_owned());
-                self.renaming = Some(RenameTrack {
-                    track,
-                    name,
-                    focused: false,
-                });
+                if let Some(tab) = self.tabs.get_mut(self.active) {
+                    tab.renaming = Some(RenameTrack {
+                        track,
+                        name,
+                        focused: false,
+                    });
+                }
             }
             GridAction::ShowTrack { track } => {
-                self.view.track = track;
+                if let Some(tab) = self.tabs.get_mut(self.active) {
+                    tab.track = track;
+                }
                 self.view.show_track_panel = true;
             }
         }
@@ -196,9 +211,10 @@ impl GuitarScoreApp {
     /// track (or the measure that is already playing) keeps playback going where it is; only
     /// a different measure seeks.
     fn move_cursor_to(&mut self, track: usize, measure: usize) {
-        let Some(document) = &mut self.document else {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let document = &mut tab.document;
         let playing_measure = if self.playback.state() == gscore_play::PlayState::Playing {
             self.playback
                 .current_measure()
@@ -215,7 +231,7 @@ impl GuitarScoreApp {
             cursor.beat = gscore_model::BeatIndex::new(0);
         }
         document.editor_mut().set_cursor(cursor);
-        self.view.track = track;
+        tab.track = track;
         if !same_measure {
             self.jump_playback_to(track, measure);
         }
@@ -230,9 +246,10 @@ impl GuitarScoreApp {
             }
             return;
         }
-        let Some(document) = &self.document else {
+        let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
+        let document = &tab.document;
         let at = gscore_model::BeatPosition {
             track: TrackIndex::new(track),
             measure: gscore_model::MeasureIndex::new(measure),
@@ -246,7 +263,11 @@ impl GuitarScoreApp {
 
     /// The rename window: a text field and Rename/Cancel.
     pub(super) fn show_rename_window(&mut self, ctx: &egui::Context) {
-        let Some(mut rename) = self.renaming.take() else {
+        let Some(mut rename) = self
+            .tabs
+            .get_mut(self.active)
+            .and_then(|tab| tab.renaming.take())
+        else {
             return;
         };
         let mut open = true;
@@ -285,8 +306,11 @@ impl GuitarScoreApp {
                 },
                 false,
             );
-        } else if !cancel && open {
-            self.renaming = Some(rename);
+        } else if !cancel
+            && open
+            && let Some(tab) = self.tabs.get_mut(self.active)
+        {
+            tab.renaming = Some(rename);
         }
     }
 }

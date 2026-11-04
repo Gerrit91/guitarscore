@@ -61,6 +61,7 @@ pub(super) fn convert_beat(
     // Grace notes
     let is_grace_beat = g_beat.grace_notes.is_some();
     let grace_on_beat = g_beat.grace_notes.as_deref() == Some("OnBeat");
+    s_beat.grace = is_grace_beat;
 
     // Text
     if let Some(text) = &g_beat.free_text {

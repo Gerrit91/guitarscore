@@ -16,6 +16,7 @@ mod edit_staff;
 mod edit_staff_dialogs;
 mod editing;
 mod files;
+mod grace_editor;
 mod grid;
 mod harmonic_diagram;
 mod harmonic_editor;
@@ -23,6 +24,7 @@ mod history;
 mod icons;
 mod instrument;
 mod metronome;
+mod new_song;
 mod new_track;
 mod page;
 mod page_menu;
@@ -34,18 +36,21 @@ mod shortcuts;
 mod staff_pickers;
 mod staff_widgets;
 mod style;
+mod swatches;
+mod tab;
+mod tab_bar;
 mod tile_faces;
 mod tiles;
 mod title_bar;
 mod toolbar;
 mod track_panel;
+mod tuplet_dialog;
 
-use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
-use std::time::SystemTime;
 
-use gscore_edit::{Cursor, Keymap};
+use gscore_edit::Keymap;
 use gscore_layout::{Fonts, LayoutOptions};
 use gscore_session::FoundSession;
 
@@ -55,9 +60,9 @@ use crate::playback::{Output, Playback};
 use crate::settings::{Settings, WindowState};
 use crate::state::{ThemeChoice, ViewState};
 use crate::tasks::Tasks;
+use tab::Tab;
 
 pub(crate) use files::Then;
-use grid::RenameTrack;
 
 /// The GuitarScore application.
 #[derive(Debug)]
@@ -65,7 +70,9 @@ pub struct GuitarScoreApp {
     view: ViewState,
     fonts: Result<Fonts, String>,
     options: LayoutOptions,
-    document: Option<Document>,
+    /// The open documents, one per tab, and the active tab's index.
+    tabs: Vec<Tab>,
+    active: usize,
     tasks: Tasks,
     /// A message for the user (an error); shown until dismissed.
     notice: Option<String>,
@@ -82,40 +89,36 @@ pub struct GuitarScoreApp {
     dialog: Option<files::Dialog>,
     /// What to do once the save that is running has succeeded.
     after_save: Option<Then>,
+    /// Which tab the save that is running belongs to (to mark it saved). Only one save
+    /// runs at a time: its result does not say which tab it was for.
+    saving_tab: Option<tab::TabId>,
+    /// The id number the next tab gets.
+    next_tab_id: u64,
+    /// A window close was deferred: each dirty tab is asked about in turn, then the window
+    /// may close.
+    closing_window: bool,
     /// Unsaved changes were dealt with: the window may close.
     may_close: bool,
-    /// The track being renamed, while the rename window is open.
-    renaming: Option<RenameTrack>,
-    /// The right panel's state: the shown track, and the name being typed.
-    track_panel: track_panel::TrackPanelState,
-    /// The left panel's state: the chosen note length and header fields.
-    edit_palette: edit_palette::EditPaletteState,
-    /// Where a drag on the page started, while selecting beats.
-    drag_anchor: Option<Cursor>,
-    /// The cursor and revision the view last scrolled to, to scroll only on a change.
-    shown_cursor: Option<(Cursor, u64)>,
-    /// In the page view: the cursor's page and the page count (1-based), for the status bar.
-    page_info: Option<(usize, usize)>,
     /// Where documents' recovery journals go; `None` keeps no journal.
     recovery_dir: Option<PathBuf>,
     /// Whether the recovery directory was searched for crashed documents yet.
     recovery_searched: bool,
     /// Crashed documents still to ask about.
     recoverable: Vec<FoundSession>,
-    /// The settings window, while it is open.
-    settings_window: Option<settings_window::SettingsWindow>,
     /// The shortcut editor, while it is open.
     shortcuts: Option<shortcuts::ShortcutPanel>,
     /// The edit history, while it is open.
     history: Option<history::HistoryPanel>,
-    /// The new-track popup, while it is open.
-    new_track: Option<new_track::NewTrackDialog>,
+    /// The new-song dialog, while it is open.
+    new_song_dialog: Option<new_song::NewSongDialog>,
+    /// Files still to open when the tabs from last time are being restored.
+    pending_opens: VecDeque<PathBuf>,
+    /// The file that was active when the tabs were saved, to select after restoring them.
+    startup_active: Option<PathBuf>,
+    /// The settings window, while it is open.
+    settings_window: Option<settings_window::SettingsWindow>,
     /// The About window, while it is open.
     about: Option<about::AboutWindow>,
-    /// State of the mixer view between frames (the decibel field being typed).
-    mixer: grid::MixerState,
-    /// Wall-clock time when each history entry was first seen, by the entry's stable id.
-    history_stamps: HashMap<u64, SystemTime>,
     /// What the app remembers between runs.
     settings: Settings,
     /// Where the settings are stored (`None` keeps them only in memory).
@@ -171,14 +174,22 @@ impl GuitarScoreApp {
         crate::fonts::install(ctx);
         style::install(ctx);
         settings.sanitize();
-        // Without a file on the command line, reopen the last one (if it is still there).
-        let file = file.or_else(|| {
-            if settings.reopen_last_file {
-                settings.last_file.clone().filter(|path| path.is_file())
+        // What to open at startup: a file from the command line, or the tabs that were open
+        // last time (each skipped if it is no longer there).
+        let (startup_files, startup_active): (Vec<PathBuf>, Option<PathBuf>) =
+            if let Some(file) = file {
+                (vec![file], None)
+            } else if settings.reopen_last_file {
+                let mut files = settings.open_files.clone();
+                // Settings written by an older version only know the last file.
+                if files.is_empty() {
+                    files.extend(settings.last_file.clone());
+                }
+                files.retain(|path| path.is_file());
+                (files, settings.active_file.clone())
             } else {
-                None
-            }
-        });
+                (Vec::new(), None)
+            };
         let mut view = ViewState::default();
         settings.apply_to_view(&mut view);
         let last_window = settings.window;
@@ -192,7 +203,8 @@ impl GuitarScoreApp {
             view,
             fonts: Fonts::bundled().map_err(|e| e.to_string()),
             options: LayoutOptions::default(),
-            document: None,
+            tabs: Vec::new(),
+            active: 0,
             tasks: Tasks::default(),
             notice: None,
             status: None,
@@ -203,31 +215,26 @@ impl GuitarScoreApp {
             keys: KeyReader::default(),
             dialog: None,
             after_save: None,
+            saving_tab: None,
+            next_tab_id: 0,
+            closing_window: false,
             may_close: false,
-            renaming: None,
-            track_panel: track_panel::TrackPanelState::default(),
-            edit_palette: edit_palette::EditPaletteState::default(),
-            drag_anchor: None,
-            shown_cursor: None,
-            page_info: None,
             recovery_dir,
             recovery_searched: false,
             recoverable: Vec::new(),
-            settings_window: None,
             shortcuts: None,
             history: None,
-            new_track: None,
+            new_song_dialog: None,
+            pending_opens: VecDeque::new(),
+            startup_active: None,
+            settings_window: None,
             about: None,
-            mixer: grid::MixerState::default(),
-            history_stamps: HashMap::new(),
             settings,
             settings_path,
             panel_sizes,
             last_window,
         };
-        if let Some(path) = file {
-            app.open(path, ctx);
-        }
+        app.restore_tabs(startup_files, startup_active, ctx);
         app
     }
 
@@ -243,6 +250,22 @@ impl GuitarScoreApp {
         settings.soundfont_path = self.playback.soundfont().map(std::path::Path::to_path_buf);
         settings.prefer_synth = matches!(self.playback.output(), Output::Synth(_));
         settings.midi_port = self.playback.port().map(str::to_owned);
+        // Remember every tab backed by a real file, and which one was active. Setting the
+        // old single-file key too keeps older versions reopening something sensible.
+        settings.open_files = self
+            .tabs
+            .iter()
+            .filter_map(|tab| tab.document.reopen_path().map(std::path::Path::to_path_buf))
+            .collect();
+        settings.active_file = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| tab.document.reopen_path())
+            .map(std::path::Path::to_path_buf);
+        settings.last_file = settings
+            .active_file
+            .clone()
+            .or_else(|| settings.open_files.first().cloned());
         settings.store_shortcuts(&self.keymap);
         settings
     }
@@ -270,14 +293,53 @@ impl GuitarScoreApp {
         self.tasks.busy()
     }
 
-    /// The open document.
+    /// The active tab's index, if any.
+    pub fn active_tab(&self) -> Option<usize> {
+        self.tabs.get(self.active).map(|_| self.active)
+    }
+
+    /// The number of open tabs.
+    pub fn tab_count(&self) -> usize {
+        self.tabs.len()
+    }
+
+    /// The open document (the active tab's).
     pub fn document(&self) -> Option<&Document> {
-        self.document.as_ref()
+        self.tabs.get(self.active).map(|tab| &tab.document)
+    }
+
+    /// The document in `index` (for tests and inspection), if it exists.
+    pub fn tab_document(&self, index: usize) -> Option<&Document> {
+        self.tabs.get(index).map(|tab| &tab.document)
     }
 
     /// The open document, to change it (its editor and cursor).
     pub fn document_mut(&mut self) -> Option<&mut Document> {
-        self.document.as_mut()
+        self.tabs.get_mut(self.active).map(|tab| &mut tab.document)
+    }
+
+    /// The shown track of the active tab (0-based).
+    pub fn shown_track(&self) -> usize {
+        self.tabs.get(self.active).map_or(0, |tab| tab.track)
+    }
+
+    /// Sets the active tab's shown track.
+    pub fn set_shown_track(&mut self, track: usize) {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.track = track;
+        }
+    }
+
+    /// The selected measure range of the active tab, if any.
+    pub fn selection(&self) -> Option<crate::state::MeasureSelection> {
+        self.tabs.get(self.active).and_then(|tab| tab.selection)
+    }
+
+    /// Sets the active tab's measure selection (the grid and the page share it).
+    pub fn set_selection(&mut self, selection: Option<crate::state::MeasureSelection>) {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.selection = selection;
+        }
     }
 
     /// The current message for the user, if any.
@@ -335,7 +397,7 @@ impl GuitarScoreApp {
     }
 
     fn apply_title(&mut self, ctx: &egui::Context) {
-        let title = self.document.as_ref().map_or_else(
+        let title = self.document().map_or_else(
             || "GuitarScore".to_owned(),
             |d| {
                 let changed = if d.is_dirty() { "• " } else { "" };
@@ -409,38 +471,15 @@ impl eframe::App for GuitarScoreApp {
         egui::Panel::top("toolbar")
             .frame(style::chrome_frame(&ctx, 5))
             .show(ui, |ui| self.toolbar(ui));
-        if let Some(progress) = self.tasks.open_progress().cloned() {
-            egui::Panel::top("opening").show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Opening…");
-                    if let Some(fraction) = progress.fraction() {
-                        ui.add(
-                            egui::ProgressBar::new(fraction)
-                                .desired_width(220.0)
-                                .show_percentage(),
-                        );
-                    } else {
-                        ui.spinner();
-                    }
-                    if progress.importing() {
-                        ui.label("Importing…");
-                    }
-                    if ui.button("Cancel").clicked() {
-                        self.tasks.cancel_open();
-                    }
-                });
-            });
-            ctx.request_repaint_after(std::time::Duration::from_millis(100));
-        }
         egui::Panel::bottom("status")
             .frame(style::chrome_frame(&ctx, 3))
             .show(ui, |ui| self.status_bar(ui));
-        if self.view.show_track_grid && self.document.is_some() {
+        if self.view.show_track_grid && self.document().is_some() {
             // Until the user drags it, the grid is just tall enough for its tracks (up to
             // eight) and the master row, and follows when tracks come and go: a panel id per
             // fitting height makes egui take the new default. The mixer view has its own,
             // taller default and its own remembered height.
-            let tracks = self.document.as_ref().map_or(1, |d| d.song().track_count());
+            let tracks = self.document().map_or(1, |d| d.song().track_count());
             let mixer = self.view.grid_mixer;
             let (fit, min, max, chosen, id) = if mixer {
                 let chosen = self.panel_sizes.mixer;
@@ -494,7 +533,7 @@ impl eframe::App for GuitarScoreApp {
         if self.notice.is_some() {
             egui::Panel::top("notice").show(ui, |ui| self.notice_bar(ui));
         }
-        if self.view.show_track_panel && self.document.is_some() {
+        if self.view.show_track_panel && self.document().is_some() {
             let panel = egui::Panel::right("track_panel")
                 .resizable(true)
                 .min_size(200.0)
@@ -505,7 +544,7 @@ impl eframe::App for GuitarScoreApp {
                 });
             self.panel_sizes.track_panel = Some(panel.response.rect.width());
         }
-        if self.view.show_edit_panel && self.document.is_some() {
+        if self.view.show_edit_panel && self.document().is_some() {
             let panel = egui::Panel::left("edit_palette")
                 .resizable(true)
                 .min_size(200.0)
@@ -515,6 +554,17 @@ impl eframe::App for GuitarScoreApp {
                     self.edit_palette(ui);
                 });
             self.panel_sizes.edit_panel = Some(panel.response.rect.width());
+        }
+        // The tab strip sits below the toolbar, between the side panels: because it is
+        // created after them, it spans only the central column.
+        if !self.tabs.is_empty() {
+            egui::Panel::top("tabs")
+                .frame(style::panel_frame(&ctx))
+                .show(ui, |ui| {
+                    egui::Frame::new()
+                        .inner_margin(egui::Margin::symmetric(6, 2))
+                        .show(ui, |ui| self.tab_bar(ui));
+                });
         }
         egui::CentralPanel::default()
             .frame(style::canvas_frame(&ctx))
@@ -530,6 +580,7 @@ impl eframe::App for GuitarScoreApp {
             });
         title_bar::resize_edges(&ctx);
         self.show_dialog(&ctx);
+        self.show_new_song_dialog(&ctx);
         self.show_rename_window(&ctx);
         self.show_settings_window(&ctx);
         self.show_shortcuts(&ctx);
@@ -538,19 +589,24 @@ impl eframe::App for GuitarScoreApp {
         self.show_about(&ctx);
         self.show_shape_editors(&ctx);
         self.show_staff_dialogs(&ctx);
-        // Every edit of this frame goes to the recovery journal.
-        if let Some(document) = &mut self.document
-            && let Some(error) = document.record_changes()
-        {
+        self.show_tuplet_dialog(&ctx);
+        // Every edit of this frame goes to the recovery journal (one per open document).
+        let mut journal_error = None;
+        for tab in &mut self.tabs {
+            if let Some(error) = tab.document.record_changes() {
+                journal_error.get_or_insert(error);
+            }
+        }
+        if let Some(error) = journal_error {
             self.notice = Some(error);
         }
     }
 
     fn on_exit(&mut self) {
         self.save_settings();
-        // A normal exit (unsaved changes were asked about): the recovery folder goes.
-        if let Some(document) = self.document.take() {
-            document.close(true);
+        // A normal exit (unsaved changes were asked about): the recovery folders go.
+        for tab in self.tabs.drain(..) {
+            tab.document.close(true);
         }
     }
 }

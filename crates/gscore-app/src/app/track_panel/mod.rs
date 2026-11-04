@@ -5,8 +5,6 @@
 mod look;
 mod tuning;
 
-pub(crate) use look::PRESETS;
-
 use egui::RichText;
 use gscore_edit::Command;
 use gscore_model::{
@@ -69,18 +67,19 @@ impl TrackPanel {
 impl GuitarScoreApp {
     /// The right panel: the shown track's settings.
     pub(super) fn track_panel(&mut self, ui: &mut egui::Ui) {
-        let Some(document) = &self.document else {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
-        let index = self.view.track;
+        let document = &tab.document;
+        let index = tab.track;
         let Some(track) = document.song().track(TrackIndex::new(index)) else {
             return;
         };
         let snapshot = TrackPanel::of(document.song(), &track);
-        if self.track_panel.track != Some(index) {
-            self.track_panel.track = Some(index);
-            self.track_panel.name.clone_from(&snapshot.name);
-            self.track_panel.editing = false;
+        if tab.track_panel.track != Some(index) {
+            tab.track_panel.track = Some(index);
+            tab.track_panel.name.clone_from(&snapshot.name);
+            tab.track_panel.editing = false;
         }
 
         let mut commands: Vec<(Command, bool)> = Vec::new();
@@ -116,7 +115,10 @@ impl GuitarScoreApp {
         commands: &mut Vec<(Command, bool)>,
     ) {
         let tokens = style::tokens(ui);
-        let state = &mut self.track_panel;
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let state = &mut tab.track_panel;
         egui::Frame::new()
             .inner_margin(egui::Margin::symmetric(12, 10))
             .show(ui, |ui| {

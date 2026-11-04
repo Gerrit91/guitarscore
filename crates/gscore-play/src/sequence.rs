@@ -204,7 +204,7 @@ impl Sequence {
         let mut onset = Duration::new(0, 1).ok()?;
         let mut last = 0_usize;
         for (index, beat) in voice.beats().enumerate() {
-            if beat.kind() == BeatKind::Empty {
+            if beat.kind() == BeatKind::Empty || beat.is_grace() {
                 continue;
             }
             last = index;
@@ -296,7 +296,7 @@ pub(crate) fn beat_tick(measures: &[MeasureSpan], song: &Song, at: BeatPosition)
     let measure_ticks = span.end.saturating_sub(span.start);
     let mut onset = Duration::new(0, 1).ok()?;
     for beat in beats.iter().flat_map(|v| v.beats().take(at.beat.get())) {
-        if beat.kind() == BeatKind::Empty {
+        if beat.kind() == BeatKind::Empty || beat.is_grace() {
             continue;
         }
         // A broken length counts as nothing: the start is still close.

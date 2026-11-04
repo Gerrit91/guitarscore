@@ -71,15 +71,15 @@ impl MeasureSelection {
     }
 }
 
-/// How the open document is shown.
+/// How the open document is shown, shared by every tab: the theme, the zoom and which
+/// panels are visible. What differs per tab (the shown track and the measure selection)
+/// lives on each [`super::app::tab::Tab`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct ViewState {
     /// Color theme.
     pub theme: ThemeChoice,
     /// Zoom factor; 1.0 is the normal size.
     zoom: f32,
-    /// The shown track (0-based).
-    pub track: usize,
     /// Whether the track and song grid (the bottom panel) is shown.
     pub show_track_grid: bool,
     /// Whether the bottom panel shows the mixer instead of the measure grid.
@@ -90,8 +90,6 @@ pub struct ViewState {
     pub show_edit_panel: bool,
     /// Whether the score is shown on separate pages (as printed) instead of one endless page.
     pub page_view: bool,
-    /// The selected range of measures in the song grid, if any.
-    pub selection: Option<MeasureSelection>,
 }
 
 impl Default for ViewState {
@@ -99,13 +97,11 @@ impl Default for ViewState {
         ViewState {
             theme: ThemeChoice::Light,
             zoom: 1.0,
-            track: 0,
             show_track_grid: true,
             grid_mixer: false,
             show_track_panel: true,
             show_edit_panel: true,
             page_view: true,
-            selection: None,
         }
     }
 }
@@ -133,14 +129,6 @@ impl ViewState {
     /// One step smaller.
     pub fn zoom_out(&mut self) {
         self.set_zoom(self.zoom / ZOOM_STEP);
-    }
-
-    /// Selects `measure`, or extends the selection to it when `extend` is set.
-    pub fn select_measure(&mut self, measure: usize, extend: bool) {
-        self.selection = Some(match (self.selection, extend) {
-            (Some(selection), true) => selection.to(measure),
-            _ => MeasureSelection::new(measure),
-        });
     }
 }
 
@@ -173,13 +161,6 @@ mod tests {
         assert_eq!((extended.start(), extended.end()), (2, 5));
         assert!(extended.contains(3));
         assert!(!extended.contains(6));
-        let mut view = ViewState::default();
-        view.select_measure(4, false);
-        view.select_measure(1, true);
-        assert_eq!(view.selection.map(MeasureSelection::start), Some(1));
-        assert_eq!(view.selection.map(MeasureSelection::end), Some(4));
-        view.select_measure(7, false);
-        assert_eq!(view.selection.map(MeasureSelection::start), Some(7));
     }
 
     #[test]

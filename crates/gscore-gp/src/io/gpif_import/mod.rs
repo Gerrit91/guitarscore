@@ -39,6 +39,8 @@ mod notes;
 #[cfg(test)]
 mod page_tests;
 #[cfg(test)]
+mod section_tests;
+#[cfg(test)]
 mod tuning_tests;
 #[cfg(test)]
 mod vibrato_tests;
@@ -217,14 +219,25 @@ impl SongGpifOps for Song {
 
             // Marker (Section)
             if let Some(section) = &mb.section {
-                let title = section
+                // GuitarScore fix: Guitar Pro writes the text inside a CDATA block on its
+                // own lines (`<Text>\n<![CDATA[Chorus]]>\n</Text>`), so the reader used to
+                // keep the newlines around the title. A section title is one line: trim the
+                // formatting whitespace and fall back to the letter when the text is empty.
+                let text = section
                     .text
                     .as_deref()
-                    .unwrap_or(section.letter.as_deref().unwrap_or("Section"));
-                // GP6/7 GPIF XML does not include marker color; use the default (red).
+                    .map(str::trim)
+                    .filter(|text| !text.is_empty());
+                let letter = section
+                    .letter
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|letter| !letter.is_empty());
+                let title = text.or(letter).unwrap_or("Section");
+                // GP6/7 GPIF XML does not include the marker color.
                 mh.marker = Some(Marker {
                     title: title.to_string(),
-                    color: 0xff0000,
+                    color: Marker::DEFAULT_COLOR,
                 });
             }
 
@@ -462,6 +475,10 @@ impl SongGpifOps for Song {
         // GuitarScore fix: GPIF numbers strings from the lowest; the legacy model's string 1
         // is the highest (as its tuning list is, see `extract_tuning`).
         flip_note_strings(&mut self.tracks);
+        // GuitarScore: a grace beat becomes a grace note attached to its main note where
+        // nothing is lost, as the editor works with attached grace notes. Writing turns
+        // them back into grace beats (`Song::with_grace_beats`).
+        self.fold_grace_beats();
     }
 }
 

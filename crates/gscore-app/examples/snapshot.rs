@@ -78,15 +78,17 @@ fn main() {
     }
     {
         let app = harness.state_mut();
-        let view = app.view_mut();
-        view.theme = if dark {
-            ThemeChoice::Dark
-        } else {
-            ThemeChoice::Light
-        };
-        view.track = track.saturating_sub(1);
-        view.set_zoom(zoom);
-        view.grid_mixer = mixer;
+        {
+            let view = app.view_mut();
+            view.theme = if dark {
+                ThemeChoice::Dark
+            } else {
+                ThemeChoice::Light
+            };
+            view.set_zoom(zoom);
+            view.grid_mixer = mixer;
+        }
+        app.set_shown_track(track.saturating_sub(1));
         if settings {
             app.open_settings();
         }

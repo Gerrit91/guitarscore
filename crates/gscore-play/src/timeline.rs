@@ -66,7 +66,7 @@ impl Timeline {
                 for voice in measure.voices() {
                     let mut onset = Duration::new(0, 1)?;
                     for beat in voice.beats() {
-                        if beat.kind() == BeatKind::Empty {
+                        if beat.kind() == BeatKind::Empty || beat.is_grace() {
                             continue;
                         }
                         let length = beat.duration()?;

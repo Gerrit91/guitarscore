@@ -1,10 +1,12 @@
-//! The effect editor windows (bend, whammy bar, harmonic): opening them on the cursor's
+//! The effect editor windows (bend, whammy bar, harmonic, grace note): opening them on the
+//! cursor's
 //! note or beat, showing them, and turning OK, Remove and Listen into commands.
 
 use gscore_edit::Command;
 use gscore_model::{BeatEffect, BendKind, BendShape, NoteEffect, WhammyShape};
 
 use super::super::edit_palette::PaletteSnapshot;
+use super::super::grace_editor::GraceEditor;
 use super::super::harmonic_editor::HarmonicEditor;
 use super::super::shape_editor::{Outcome, ShapeEditor, ShapeTarget};
 use super::{EffectsState, apply_beat, apply_note, default_bend, default_whammy};
@@ -45,14 +47,10 @@ impl EffectsState {
 
     /// Whether the bend or whammy editor is open.
     pub(in crate::app) fn is_editing(&self) -> bool {
-        self.bend.is_some() || self.whammy.is_some() || self.harmonic.is_some()
-    }
-
-    /// Closes the bend and whammy editors without a change.
-    pub(in crate::app) fn close_editors(&mut self) {
-        self.bend = None;
-        self.whammy = None;
-        self.harmonic = None;
+        self.bend.is_some()
+            || self.whammy.is_some()
+            || self.harmonic.is_some()
+            || self.grace.is_some()
     }
 
     /// Shows the open bend or whammy editor; OK and Remove turn into commands for the
@@ -69,6 +67,54 @@ impl EffectsState {
         self.show_bend(ctx, snapshot, &mut settings.bend_presets, commands, trial);
         self.show_whammy(ctx, snapshot, &mut settings.whammy_presets, commands, trial);
         self.show_harmonic(ctx, snapshot, song, commands, trial);
+        self.show_grace(ctx, snapshot, commands, trial);
+    }
+
+    /// Opens the grace note dialog on the cursor note's grace note (or the first selected
+    /// note's), or on a new one two frets below the note.
+    pub(in crate::app) fn open_grace(&mut self, snapshot: &PaletteSnapshot) {
+        let Some(note) = snapshot
+            .note_state
+            .as_ref()
+            .or(snapshot.target_states.first())
+        else {
+            return;
+        };
+        self.grace = Some(GraceEditor::new(note.grace, note.fret));
+    }
+
+    fn show_grace(
+        &mut self,
+        ctx: &egui::Context,
+        snapshot: &PaletteSnapshot,
+        commands: &mut Vec<Command>,
+        trial: &mut Vec<Command>,
+    ) {
+        let Some(editor) = &mut self.grace else {
+            return;
+        };
+        let grace = editor.grace();
+        match editor.show(ctx) {
+            Outcome::Open => return,
+            Outcome::Listen => {
+                apply_note(
+                    trial,
+                    &snapshot.note_targets,
+                    NoteEffect::Grace(Some(grace)),
+                );
+                return;
+            }
+            Outcome::Apply => apply_note(
+                commands,
+                &snapshot.note_targets,
+                NoteEffect::Grace(Some(grace)),
+            ),
+            Outcome::Remove => {
+                apply_note(commands, &snapshot.note_targets, NoteEffect::Grace(None))
+            }
+            Outcome::Cancel => {}
+        }
+        self.grace = None;
     }
 
     /// Opens the harmonic editor on the cursor's note (or the first selected one).

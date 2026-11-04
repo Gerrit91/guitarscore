@@ -7,6 +7,9 @@
 
 mod columns;
 mod draw;
+mod graces;
+
+pub(crate) use draw::draw_barline_ties;
 
 use gscore_model::{
     BeatIndex, BeatView, Dynamic, MeasureIndex, MeasureView, TimeSignature, VoiceIndex,
@@ -16,10 +19,11 @@ use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point};
 use crate::error::LayoutError;
 use crate::glyph::Glyph;
-use crate::notation::{self, NotationItem};
+use crate::notation::{self, KeySigLayout, NotationItem};
 use crate::ornaments::{ColumnMarks, Fret};
 
 use columns::{as_f64, beat_length, beat_starts, column_items};
+use graces::Grace;
 
 /// Space before and after a time signature.
 const TIME_SIG_PAD: (f32, f32) = (0.8, 0.6);
@@ -31,9 +35,11 @@ const MIN_LEAD: f32 = 1.5;
 const DOT_GAP: f32 = 0.3;
 /// Shown instead of a fret number the model cannot read.
 const UNREADABLE: &str = "?";
-/// How far a measure number sits above the staff (to its baseline).
+/// How far measure numbers sit above the staff (to its baseline).
 const MEASURE_NUMBER_RISE: f32 = 0.8;
-
+/// How far a second voice's noteheads move right when they share a staff position with the
+/// first voice's.
+const VOICE_OFFSET: f32 = 0.6;
 /// Where a system's staves are: the tab's top line, and the notation staff's top line if
 /// notation is shown.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -48,8 +54,11 @@ pub(crate) struct Tops {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct MeasureLayout {
     index: MeasureIndex,
+    /// The key signature when it changes here (or starts the score), on the staff that
+    /// carries it.
+    key_signature: Option<KeySigLayout>,
     time_signature: Option<TimeSigLayout>,
-    /// Fixed space from the measure start (after the time signature) to the first column.
+    /// Fixed space from the measure start (after the signature changes) to the first column.
     lead: f32,
     columns: Vec<Column>,
 }
@@ -72,8 +81,18 @@ struct Column {
     items: Vec<Item>,
     /// Effects that belong to the beat rather than to one note.
     marks: ColumnMarks,
-    /// What the notation staff shows here (first voice), if notation is on.
-    notation: Option<NotationItem>,
+    /// What the notation staff shows here, per voice (first and second, ...).
+    notation: Vec<Option<NotationItem>>,
+    /// How far the second and further voices move right to clear the first voice's
+    /// noteheads when they share a staff position.
+    notation_offset: f32,
+    /// Quick grace notes drawn before the column's main note.
+    graces: Vec<Grace>,
+    /// Room the grace notes take, including the gap to the main note.
+    grace_width: f32,
+    /// How far the main note reaches left of the column's center (its accidentals
+    /// included): the grace notes end there.
+    main_left: f32,
     /// The beat this column starts in (beams join notes within one beat).
     beat: u64,
     /// The model beats that start here, as `(voice, beat)`.
@@ -89,7 +108,9 @@ struct Column {
 struct ColumnData {
     items: Vec<Item>,
     marks: ColumnMarks,
-    notation: Option<NotationItem>,
+    notation: Vec<Option<NotationItem>>,
+    graces: Vec<Grace>,
+    grace_width: f32,
     beat: u64,
     beats: Vec<(VoiceIndex, BeatIndex)>,
 }
@@ -118,15 +139,37 @@ impl MeasureLayout {
         }
     }
 
-    /// Lays out `measure`; `show_time_signature` when it starts the piece or changes the
-    /// time signature.
+    /// Lays out `measure` in `key`, which `previous` differs from when the key signature
+    /// changes here; `show_time_signature` when it starts the piece or changes the time
+    /// signature.
     pub(crate) fn new(
         measure: MeasureView<'_>,
         show_time_signature: bool,
+        key: i8,
+        previous_key: Option<i8>,
         ctx: &Context<'_>,
     ) -> Result<Self, LayoutError> {
         let signature = measure.time_signature()?;
         let time_signature = show_time_signature.then(|| TimeSigLayout::new(signature, ctx));
+        // The key signature goes on the notation staff; a tab-only score shows it on the
+        // tab staff. Drums have none.
+        let key_signature = if previous_key == Some(key) {
+            None
+        } else {
+            match ctx.notation {
+                Some(notation) if notation.clef != notation::Clef::Percussion => {
+                    KeySigLayout::change(notation.clef, previous_key.unwrap_or(0), key, false, ctx)
+                }
+                Some(_) => None,
+                None => KeySigLayout::change(
+                    notation::Clef::Treble,
+                    previous_key.unwrap_or(0),
+                    key,
+                    true,
+                    ctx,
+                ),
+            }
+        };
         let starts = beat_starts(measure, signature)?;
         let beat_length = as_f64(beat_length(signature)?);
         type Pending = (ColumnData, f32, Option<Dynamic>, Option<u32>);
@@ -141,8 +184,38 @@ impl MeasureLayout {
             let plain: Vec<BeatView<'_>> = beats.iter().map(|&(_, beat)| beat).collect();
             let mut data = column_items(&plain, ctx)?;
             if let Some(notation) = &ctx.notation {
-                data.notation = notation::column_item(beats, notation)?;
+                data.notation = notation::column_items(beats, notation, key)?;
             }
+            let voice_count = measure.voices().len();
+            let mut group = 0_usize;
+            for voice in 0..voice_count {
+                if let Some(grace_beats) = starts.graces.get(&(voice, *onset)) {
+                    for grace_beat in grace_beats {
+                        let mut drew = false;
+                        for note in grace_beat.notes() {
+                            if let Some(grace) = graces::from_note(note, ctx, key) {
+                                data.graces.push(Grace { group, ..grace });
+                                drew = true;
+                            }
+                        }
+                        if drew {
+                            group = group.saturating_add(1);
+                        }
+                    }
+                }
+            }
+            // GP3-5 attach grace notes to a normal note instead of a beat of their own.
+            for &(_, beat) in beats {
+                for note in beat.notes() {
+                    if let Some(grace) = note.grace()
+                        && let Some(grace) = graces::from_effect(note, grace, ctx, key)
+                    {
+                        data.graces.push(Grace { group, ..grace });
+                        group = group.saturating_add(1);
+                    }
+                }
+            }
+            data.grace_width = graces::width(&data.graces, ctx);
             // A tiny epsilon keeps exact beat starts (computed in floats) in their beat.
             data.beat = if beat_length > 0.0 {
                 (as_f64(*onset) / beat_length + 1e-9).floor() as u64
@@ -165,7 +238,9 @@ impl MeasureLayout {
                 ColumnData {
                     items: Vec::new(),
                     marks: ColumnMarks::default(),
-                    notation: None,
+                    notation: Vec::new(),
+                    graces: Vec::new(),
+                    grace_width: 0.0,
                     beat: 0,
                     beats: Vec::new(),
                 },
@@ -173,6 +248,24 @@ impl MeasureLayout {
                 None,
                 None,
             ));
+        }
+        // When a measure has a second voice, the first voice points its stems up and the
+        // second down throughout, so their stems and beams do not run into each other.
+        let two_voices = columns
+            .iter()
+            .any(|(data, _, _, _)| data.notation.get(1).is_some_and(Option::is_some));
+        if two_voices
+            && ctx
+                .notation
+                .is_some_and(|n| n.clef != notation::Clef::Percussion)
+        {
+            for (data, _, _, _) in &mut columns {
+                for (voice, item) in data.notation.iter_mut().enumerate() {
+                    if let Some(NotationItem::Chord(chord)) = item {
+                        chord.stem_up = Some(voice == 0);
+                    }
+                }
+            }
         }
 
         // Keep neighbouring fret numbers apart, whatever the durations say. A note also
@@ -183,37 +276,68 @@ impl MeasureLayout {
         notation::assign_accidentals(
             columns
                 .iter_mut()
-                .filter_map(|(d, _, _, _)| d.notation.as_mut()),
+                .flat_map(|(d, _, _, _)| d.notation.iter_mut().flatten()),
+            key,
         );
         // Room each column needs left and right of its center: the tab's fret numbers are
-        // symmetric, notation is not (accidentals left; dots and flags right).
-        let beamed = notation::beamed_columns(
-            columns
-                .iter()
-                .map(|(d, _, _, _)| (d.notation.as_ref(), d.beat)),
-        );
-        let extents: Vec<(f32, f32)> = columns
+        // symmetric, notation is not (accidentals left; dots and flags right). A second
+        // voice whose notehead shares a staff position with the first moves right.
+        let offsets: Vec<f32> = columns
             .iter()
-            .zip(&beamed)
-            .map(|((data, _, _, _), &beamed)| {
+            .map(|(data, _, _, _)| voice_offset(&data.notation))
+            .collect();
+        let voices = columns
+            .iter()
+            .map(|(data, _, _, _)| data.notation.len())
+            .max()
+            .unwrap_or(0);
+        let beamed: Vec<Vec<bool>> = (0..voices)
+            .map(|voice| {
+                notation::beamed_columns(columns.iter().map(|(data, _, _, _)| {
+                    (data.notation.get(voice).and_then(Option::as_ref), data.beat)
+                }))
+            })
+            .collect();
+        // Each column's room left of its center for the main note alone, then with its
+        // grace notes before it, and right of its center.
+        let extents: Vec<(f32, f32, f32)> = columns
+            .iter()
+            .enumerate()
+            .map(|(index, (data, _, _, _))| {
                 let tab = half_width(&data.items, ctx);
-                let (left, right) = data.notation.as_ref().map_or((0.0, 0.0), |item| {
-                    notation::extent(item, beamed, &ctx.fonts.music)
-                });
-                (tab.max(left), tab.max(right))
+                let mut left = 0.0_f32;
+                let mut right = 0.0_f32;
+                for (voice, item) in data.notation.iter().enumerate() {
+                    let Some(item) = item else { continue };
+                    let beamed = beamed
+                        .get(voice)
+                        .and_then(|b| b.get(index))
+                        .copied()
+                        .unwrap_or(false);
+                    let (item_left, item_right) = notation::extent(item, beamed, &ctx.fonts.music);
+                    let shift = if voice > 0 {
+                        offsets.get(index).copied().unwrap_or(0.0)
+                    } else {
+                        0.0
+                    };
+                    left = left.max(item_left + shift);
+                    right = right.max(item_right + shift);
+                }
+                let main = tab.max(left);
+                (main, main + data.grace_width, tab.max(right))
             })
             .collect();
         let lead = extents
             .first()
-            .map_or(MIN_LEAD, |(left, _)| (left + edge_padding).max(MIN_LEAD));
+            .map_or(MIN_LEAD, |(_, left, _)| (left + edge_padding).max(MIN_LEAD));
         let columns = columns
             .into_iter()
             .enumerate()
             .map(|(i, (data, space, dynamic, tempo))| {
-                let own = extents.get(i).map_or(0.0, |(_, right)| *right);
+                let own = extents.get(i).map_or(0.0, |(_, _, right)| *right);
                 let next = extents
                     .get(i.saturating_add(1))
-                    .map_or(0.0, |(left, _)| *left);
+                    .map_or(0.0, |(_, left, _)| *left);
                 // The last column ends at the barline and needs the wider edge padding.
                 let padding = if i.saturating_add(1) < extents.len() {
                     min_gap
@@ -225,6 +349,10 @@ impl MeasureLayout {
                     items: data.items,
                     marks: data.marks,
                     notation: data.notation,
+                    notation_offset: offsets.get(i).copied().unwrap_or(0.0),
+                    graces: data.graces,
+                    grace_width: data.grace_width,
+                    main_left: extents.get(i).map_or(0.0, |(main, _, _)| *main),
                     beat: data.beat,
                     beats: data.beats,
                     dynamic,
@@ -235,15 +363,23 @@ impl MeasureLayout {
 
         Ok(MeasureLayout {
             index: measure.index(),
+            key_signature,
             time_signature,
             lead,
             columns,
         })
     }
 
-    /// The width that does not stretch: time signature and lead.
+    /// Whether the measure carries a key signature (a change, or the score's first).
+    pub(crate) fn has_key_signature(&self) -> bool {
+        self.key_signature.is_some()
+    }
+
+    /// The width that does not stretch: key and time signature, and the lead.
     pub(crate) fn fixed_width(&self) -> f32 {
-        self.time_signature.as_ref().map_or(0.0, |t| t.width) + self.lead
+        self.key_signature.as_ref().map_or(0.0, |k| k.width)
+            + self.time_signature.as_ref().map_or(0.0, |t| t.width)
+            + self.lead
     }
 
     /// The width that stretches when a system is justified.
@@ -386,4 +522,20 @@ fn half_width(items: &[Item], ctx: &Context<'_>) -> f32 {
         .iter()
         .map(|item| item.half_width(ctx))
         .fold(0.0, f32::max)
+}
+
+/// How far the second and further voices move right: enough to clear the first voice's
+/// noteheads when a notehead of theirs sits on the same staff position.
+fn voice_offset(items: &[Option<NotationItem>]) -> f32 {
+    let Some(NotationItem::Chord(first)) = items.first().and_then(Option::as_ref) else {
+        return 0.0;
+    };
+    let collides = items.iter().skip(1).any(|item| match item {
+        Some(NotationItem::Chord(chord)) => chord
+            .heads
+            .iter()
+            .any(|head| first.heads.iter().any(|h| h.position == head.position)),
+        _ => false,
+    });
+    if collides { VOICE_OFFSET } else { 0.0 }
 }

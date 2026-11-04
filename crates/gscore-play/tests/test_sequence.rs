@@ -191,6 +191,237 @@ fn tied_notes_are_held_and_dead_notes_are_short() {
 }
 
 #[test]
+fn a_tie_across_a_barline_is_held() {
+    let at = |measure: usize, beat: usize| BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(measure),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(beat),
+    };
+    let mut song = testing::song(&[GUITAR_6], 2).unwrap();
+    let string = StringNumber::new(1).unwrap();
+    // A quarter note on the last beat of bar 1, tied to the first beat of bar 2.
+    let _ = song
+        .set_note(at(0, 3), string, Fret::new(5).unwrap())
+        .unwrap();
+    let _ = song
+        .set_note(at(1, 0), string, Fret::new(5).unwrap())
+        .unwrap();
+    let _ = song.set_note_tie(at(1, 0), string, true).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let ppq = u64::from(PPQ);
+    let key = 69; // string 1, fret 5 (A4)
+    let ons: Vec<(u64, u8)> = sequence
+        .events
+        .iter()
+        .filter_map(|event| match event.event {
+            MidiEvent::NoteOn { key, .. } => Some((event.tick, key)),
+            _ => None,
+        })
+        .collect();
+    let offs: Vec<(u64, u8)> = sequence
+        .events
+        .iter()
+        .filter_map(|event| match event.event {
+            MidiEvent::NoteOff { key, .. } => Some((event.tick, key)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ons, [(3 * ppq, key)], "the note starts once");
+    assert_eq!(offs, [(5 * ppq, key)], "held through the barline");
+}
+
+#[test]
+fn every_voice_plays() {
+    let at = |voice: usize| BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: VoiceIndex::new(voice),
+        beat: BeatIndex::new(0),
+    };
+    let mut song = testing::song(&[GUITAR_6], 1).unwrap();
+    let _ = song
+        .set_note(at(0), StringNumber::new(1).unwrap(), Fret::new(5).unwrap())
+        .unwrap();
+    let _ = song
+        .insert_beat(at(1), NoteValue::new(4, 0, None).unwrap())
+        .unwrap();
+    let _ = song
+        .set_note(at(1), StringNumber::new(6).unwrap(), Fret::new(3).unwrap())
+        .unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let mut keys: Vec<u8> = sequence
+        .events
+        .iter()
+        .filter_map(|event| match event.event {
+            MidiEvent::NoteOn { key, .. } if event.tick == 0 => Some(key),
+            _ => None,
+        })
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(keys, [43, 69], "one note per voice at the start");
+}
+
+#[test]
+fn a_tie_does_not_extend_another_voice_s_note() {
+    let at = |measure: usize, beat: usize, voice: usize| BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(measure),
+        voice: VoiceIndex::new(voice),
+        beat: BeatIndex::new(beat),
+    };
+    let mut song = testing::song(&[GUITAR_6], 2).unwrap();
+    let string = StringNumber::new(1).unwrap();
+    // Voice 1 sounds the last beat of bar 1.
+    let _ = song
+        .set_note(at(0, 3, 0), string, Fret::new(5).unwrap())
+        .unwrap();
+    // Voice 2 has a tie at the start of bar 2 with no note before it in its own voice; it
+    // must be struck, not held on from voice 1's note.
+    let _ = song
+        .insert_beat(at(1, 0, 1), NoteValue::new(4, 0, None).unwrap())
+        .unwrap();
+    let _ = song
+        .set_note(at(1, 0, 1), string, Fret::new(5).unwrap())
+        .unwrap();
+    let _ = song.set_note_tie(at(1, 0, 1), string, true).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let ppq = u64::from(PPQ);
+    let ons: Vec<u64> = sequence
+        .events
+        .iter()
+        .filter(|event| matches!(event.event, MidiEvent::NoteOn { .. }))
+        .map(|event| event.tick)
+        .collect();
+    assert_eq!(ons, [3 * ppq, 4 * ppq], "both voices strike their note");
+}
+
+#[test]
+fn grace_notes_sound_with_their_beat_and_take_no_time() {
+    let song = testing::song_with_grace_beat().unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let ppq = u64::from(PPQ);
+    assert_eq!(sequence.end, 4 * ppq, "the grace beat takes no time");
+    let ons: Vec<(u64, u8)> = sequence
+        .events
+        .iter()
+        .filter_map(|event| match event.event {
+            MidiEvent::NoteOn { key, .. } => Some((event.tick, key)),
+            _ => None,
+        })
+        .collect();
+    // The song starts with the grace note (string 1, fret 5): there is no time before
+    // the beat, so it takes the beat's start and the main note (fret 3) follows it.
+    let grace = ons.iter().find(|(_, key)| *key == 69).copied();
+    let main = ons.iter().find(|(_, key)| *key == 67).copied();
+    assert_eq!(
+        grace.map(|(tick, _)| tick),
+        Some(0),
+        "the grace note: {ons:?}"
+    );
+    let main = main.map(|(tick, _)| tick).unwrap();
+    assert!(
+        main > 0 && main <= ppq / 4,
+        "the main note follows soon: {ons:?}"
+    );
+    let grace_off = sequence.events.iter().any(|event| {
+        event.tick == main && matches!(event.event, MidiEvent::NoteOff { key: 69, .. })
+    });
+    assert!(grace_off, "the grace note ends as the main note starts");
+}
+
+/// The note-on and note-off ticks of `key` in `sequence`.
+fn spans_of(sequence: &Sequence, key: u8) -> Vec<(u64, u64)> {
+    let mut ons = Vec::new();
+    let mut spans = Vec::new();
+    for event in &sequence.events {
+        match event.event {
+            MidiEvent::NoteOn { key: k, .. } if k == key => ons.push(event.tick),
+            MidiEvent::NoteOff { key: k, .. } if k == key && !ons.is_empty() => {
+                spans.push((ons.remove(0), event.tick));
+            }
+            _ => {}
+        }
+    }
+    spans
+}
+
+#[test]
+fn a_grace_note_cuts_the_note_ringing_on_its_string() {
+    // Beat 1: string 1 open (E4, 64). Beat 2: grace at fret 2 (66), then fret 4 (68).
+    let song = testing::song_with_graces(&[(&[], &[(1, 0)]), (&[(1, 2)], &[(1, 4)])]).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let ppq = u64::from(PPQ);
+    let grace = spans_of(&sequence, 66);
+    assert_eq!(grace.len(), 1, "{:?}", sequence.events);
+    let (grace_on, grace_off) = grace[0];
+    assert_eq!(grace_off, ppq, "the grace note ends on the beat");
+    assert!(
+        grace_off - grace_on >= ppq / 8,
+        "long enough to hear: {grace:?}"
+    );
+    assert_eq!(
+        spans_of(&sequence, 64),
+        [(0, grace_on)],
+        "the open string stops when the grace note is struck"
+    );
+    assert_eq!(
+        spans_of(&sequence, 68)[0].0,
+        ppq,
+        "the main note is on the beat"
+    );
+}
+
+#[test]
+fn a_beat_excerpt_plays_its_grace_notes_first() {
+    let song = testing::song_with_graces(&[(&[], &[(1, 0)]), (&[(1, 2)], &[(1, 4)])]).unwrap();
+    let at = BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: VoiceIndex::new(0),
+        // Beat 0 is the first quarter, beat 1 the grace beat, beat 2 its main note.
+        beat: BeatIndex::new(2),
+    };
+    let excerpt = Sequence::beat_excerpt(&song, at).unwrap().unwrap();
+    let ons: Vec<(u64, u8)> = excerpt
+        .events
+        .iter()
+        .filter_map(|event| match event.event {
+            MidiEvent::NoteOn { key, .. } => Some((event.tick, key)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ons.first(), Some(&(0, 66)), "the grace note first: {ons:?}");
+    assert!(
+        ons.iter().any(|&(tick, key)| key == 68 && tick > 0),
+        "then the main note: {ons:?}"
+    );
+    assert!(
+        !ons.iter().any(|&(_, key)| key == 64),
+        "not the beat before"
+    );
+}
+
+#[test]
+fn an_attached_grace_note_sounds() {
+    let song = testing::song_with_attached_grace().unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let ons: Vec<(u64, u8)> = sequence
+        .events
+        .iter()
+        .filter_map(|event| match event.event {
+            MidiEvent::NoteOn { key, .. } => Some((event.tick, key)),
+            _ => None,
+        })
+        .collect();
+    assert!(ons.contains(&(0, 69)), "the grace note: {ons:?}");
+    assert!(
+        ons.iter().any(|&(tick, key)| key == 67 && tick > 0),
+        "the main note after it: {ons:?}"
+    );
+}
+
+#[test]
 fn every_note_on_has_a_later_note_off() {
     for file in [
         "basic/steel_guitar_dadgad.gp5",

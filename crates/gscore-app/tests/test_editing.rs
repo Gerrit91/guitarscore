@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use egui::{Event, Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use gscore_app::GuitarScoreApp;
+use gscore_app::{GuitarScoreApp, MeasureSelection};
 use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, StringNumber, TrackIndex, VoiceIndex};
 
 fn testdata(relative: &str) -> PathBuf {
@@ -180,38 +180,30 @@ fn a_note_that_cannot_be_heard_does_not_interrupt_editing() {
 }
 
 #[test]
-fn opening_another_file_with_unsaved_changes_asks_first() {
-    let (dir, file) = scratch_copy("note_lengths.gp", "unsaved");
+fn opening_another_file_opens_it_in_a_new_tab() {
+    let (dir, file) = scratch_copy("note_lengths.gp", "tabs");
     let mut harness = app_with(&file);
+    assert_eq!(harness.state().tab_count(), 1);
     type_char(&mut harness, "3", Modifiers::NONE);
+
+    // Opening another file does not ask about unsaved changes: it opens in a new tab and
+    // leaves the first one (with its unsaved edit) untouched.
     let ctx = harness.ctx.clone();
     harness
         .state_mut()
         .open(testdata("basic/steel_guitar_dadgad.gp"), &ctx);
-    harness.run();
-    assert!(harness.state().has_dialog());
-    harness.get_by_label("Close Unsaved changes");
-    // Keys do not edit while the question is open.
-    type_char(&mut harness, "5", Modifiers::NONE);
-    assert_eq!(fret_at_cursor(harness.state(), 1), Some(3));
-
-    harness.get_by_label("Cancel").click();
-    harness.run();
-    assert!(!harness.state().has_dialog());
-    assert_eq!(
-        harness.state().document().unwrap().display_title(),
-        "Note Lengths"
-    );
-
-    harness
-        .state_mut()
-        .open(testdata("basic/steel_guitar_dadgad.gp"), &ctx);
-    harness.run();
-    harness.get_by_label("Discard changes").click();
     settle(&mut harness);
+    assert!(!harness.state().has_dialog());
+    assert_eq!(harness.state().tab_count(), 2);
     assert_eq!(
         harness.state().document().unwrap().display_title(),
         "Steel Guitar DADGAD"
+    );
+    // The first tab still holds its unsaved change.
+    assert!(harness.state().tab_document(0).unwrap().is_dirty());
+    assert_eq!(
+        harness.state().tab_document(0).unwrap().display_title(),
+        "Note Lengths"
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
@@ -235,7 +227,9 @@ fn the_edit_menu_undoes_and_shows_the_keys() {
 fn shift_arrows_select_beats_and_end_a_grid_selection() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
     // A measure selected in the grid first.
-    harness.state_mut().view_mut().select_measure(0, false);
+    harness
+        .state_mut()
+        .set_selection(Some(MeasureSelection::new(0)));
     harness
         .state_mut()
         .document_mut()
@@ -264,7 +258,7 @@ fn shift_arrows_select_beats_and_end_a_grid_selection() {
         "the cursor's beat and two more"
     );
     assert!(
-        harness.state().view().selection.is_none(),
+        harness.state().selection().is_none(),
         "the grid no longer shows a measure selection"
     );
 
@@ -779,10 +773,10 @@ fn the_score_and_the_menu_bar_edit_bars_and_tracks() {
 
     menu(&mut harness, &["Track", "Duplicate track"]);
     assert_eq!(counts(&harness), (measures, tracks + 1), "a track is added");
-    assert_eq!(harness.state().view().track, 1, "the copy is shown");
+    assert_eq!(harness.state().shown_track(), 1, "the copy is shown");
     menu(&mut harness, &["Track", "Move up"]);
     assert_eq!(
-        harness.state().view().track,
+        harness.state().shown_track(),
         0,
         "the moved track stays shown"
     );
@@ -1037,4 +1031,167 @@ fn breaks_bars_per_line_and_the_page_setup_are_edited_from_the_menus() {
         !song(&harness).page_setup().is_landscape(),
         "undone in one step"
     );
+}
+
+/// Asks the window to close, as the window manager's close button does.
+fn request_window_close(harness: &mut Harness<'static, GuitarScoreApp>) {
+    harness
+        .input_mut()
+        .viewports
+        .entry(egui::ViewportId::ROOT)
+        .or_default()
+        .events
+        .push(egui::ViewportEvent::Close);
+    harness.run();
+}
+
+#[test]
+fn a_save_that_fails_while_closing_the_window_asks_again_on_the_next_close() {
+    let (dir, file) = scratch_copy("note_lengths.gp", "close-fail");
+    let mut harness = app_with(&file);
+    type_char(&mut harness, "3", Modifiers::NONE);
+    assert!(harness.state().document().unwrap().is_dirty());
+
+    // Saving into a folder that cannot be written fails.
+    let set_mode = |mode| {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode)).unwrap();
+    };
+    set_mode(0o555);
+    if std::fs::write(dir.join("probe"), b"").is_ok() {
+        // Running as root: the folder is writable anyway; nothing to test.
+        set_mode(0o755);
+        std::fs::remove_dir_all(&dir).unwrap();
+        return;
+    }
+
+    request_window_close(&mut harness);
+    assert!(
+        harness.state().has_dialog(),
+        "closing asks about the changes"
+    );
+    // The dialog's Save (the toolbar has a Save button too; the dialog is drawn last).
+    harness.get_all_by_label("Save").last().unwrap().click();
+    settle(&mut harness);
+    assert!(harness.state().notice().unwrap().starts_with("Not saved"));
+    assert!(harness.state().document().unwrap().is_dirty());
+    assert!(!harness.state().has_dialog());
+
+    // The window stayed open, and closing it again asks again (it must not just close and
+    // throw the changes and their recovery journal away).
+    request_window_close(&mut harness);
+    assert!(harness.state().has_dialog(), "the next close asks again");
+
+    set_mode(0o755);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_file_chosen_while_another_opens_waits_its_turn() {
+    let (dir, file) = scratch_copy("note_lengths.gp", "queue");
+    std::fs::copy(
+        testdata("basic/steel_guitar_dadgad.gp"),
+        dir.join("steel_guitar_dadgad.gp"),
+    )
+    .unwrap();
+    let mut harness = app_with(&file);
+    let ctx = harness.ctx.clone();
+    // Two opens in a row: the second waits for the first instead of racing it.
+    harness
+        .state_mut()
+        .open(testdata("basic/steel_guitar_dadgad.gp"), &ctx);
+    harness
+        .state_mut()
+        .open(dir.join("steel_guitar_dadgad.gp"), &ctx);
+    // Asking for a waiting file again does not queue it twice.
+    harness
+        .state_mut()
+        .open(dir.join("steel_guitar_dadgad.gp"), &ctx);
+    settle(&mut harness);
+    assert_eq!(harness.state().tab_count(), 3);
+    assert_eq!(harness.state().active_tab(), Some(2));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn shift_g_opens_the_grace_note_dialog_and_ok_sets_the_chosen_speed() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    harness.run();
+    type_char(&mut harness, "G", Modifiers::SHIFT);
+    harness.run();
+    harness.get_by_label("Slow").click();
+    harness.run();
+    harness.get_by_label("On the beat").click();
+    harness.run();
+    harness.get_by_label("2 below").click();
+    harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    let grace_at_cursor = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let cursor = document.editor().cursor();
+        let beat = document.song().beat(cursor.position()).unwrap();
+        beat.notes()
+            .find(|note| note.string().unwrap().get() == cursor.string)
+            .unwrap()
+            .grace()
+    };
+    assert_eq!(
+        grace_at_cursor(&harness),
+        Some(gscore_model::Grace {
+            fret: gscore_model::Fret::new(3).unwrap(),
+            speed: gscore_model::GraceSpeed::Slow,
+            on_beat: true,
+            dead: false,
+        })
+    );
+    // The palette tile reopens the dialog on it; Remove takes the grace note off.
+    harness.get_by_label("Grace note").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Grace note").click();
+    harness.run();
+    harness.get_by_label("Remove").click();
+    harness.run();
+    assert_eq!(grace_at_cursor(&harness), None);
+}
+
+#[test]
+fn the_sextuplet_tile_and_the_tuplet_dialog_set_the_beats_tuplet() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    harness.run();
+    let tuplet_at_cursor = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let cursor = document.editor().cursor();
+        let beat = document.song().beat(cursor.position()).unwrap();
+        beat.note_value().unwrap().tuplet()
+    };
+    harness.get_by_label("Sextuplet").click();
+    harness.run();
+    assert_eq!(tuplet_at_cursor(&harness), Some((6, 4)));
+    // The dialog opens on the current tuplet; a common one is a click away.
+    harness.get_by_label("Tuplet…").click();
+    harness.run();
+    harness.get_by_label("Septuplet").click();
+    harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(tuplet_at_cursor(&harness), Some((7, 4)));
+    // Steppers reach any tuplet: 7:4 becomes 8:4... and 9:4 is not a common one.
+    harness.get_by_label("Tuplet…").click();
+    harness.run();
+    harness.get_by_label("More: Notes").click();
+    harness.run();
+    harness.get_by_label("More: Notes").click();
+    harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(tuplet_at_cursor(&harness), Some((9, 4)));
+    // Remove takes the tuplet off.
+    harness.get_by_label("Tuplet…").click();
+    harness.run();
+    harness.get_by_label("Remove").click();
+    harness.run();
+    assert_eq!(tuplet_at_cursor(&harness), None);
 }

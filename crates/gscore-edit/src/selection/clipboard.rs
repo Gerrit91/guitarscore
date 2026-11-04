@@ -226,7 +226,7 @@ impl TabEditor {
 /// The copyable content of one beat; `None` for a placeholder beat (no length, dropped
 /// when saving), which a paste must not turn into a rest.
 fn beat_clip(beat: &BeatView<'_>) -> Result<Option<BeatClip>, EditError> {
-    if beat.kind() == BeatKind::Empty {
+    if beat.kind() == BeatKind::Empty || beat.is_grace() {
         return Ok(None);
     }
     let duration = beat.note_value().map_err(EditError::Model)?;

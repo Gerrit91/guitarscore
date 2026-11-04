@@ -10,6 +10,7 @@ use gscore_gp::{
 };
 
 use crate::error::ModelError;
+use crate::grace::Grace;
 use crate::views::{BeatView, NoteView};
 
 /// The direction of a pick or brush stroke.
@@ -286,6 +287,8 @@ pub enum NoteEffect {
     TremoloPicking(bool),
     /// The note's vibrato width; `None` removes it.
     Vibrato(Option<Vibrato>),
+    /// The grace note before (or on) the note; `None` removes it.
+    Grace(Option<Grace>),
 }
 
 /// One effect of a beat to set or clear; every other effect stays as it was.
@@ -371,6 +374,7 @@ impl NoteEffect {
                 note.effect.vibrato = vibrato.is_some();
                 note.effect.wide_vibrato = matches!(vibrato, Some(Vibrato::Wide));
             }
+            NoteEffect::Grace(grace) => Grace::apply(*grace, note)?,
         }
         Ok(())
     }

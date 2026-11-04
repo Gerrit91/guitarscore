@@ -220,10 +220,15 @@ impl Staff {
         (glyph, scale)
     }
 
+    /// Room the tab clef takes from the system start (including the gap before it).
+    pub(crate) fn clef_width(&self, font: &MusicFont) -> f32 {
+        let (glyph, scale) = self.clef(font);
+        CLEF_LEFT_GAP + font.advance(glyph) * scale
+    }
+
     /// Room the system start takes before the first measure: clef and gaps.
     pub(crate) fn prefix_width(&self, font: &MusicFont) -> f32 {
-        let (glyph, scale) = self.clef(font);
-        CLEF_LEFT_GAP + font.advance(glyph) * scale + CLEF_RIGHT_GAP
+        self.clef_width(font) + CLEF_RIGHT_GAP
     }
 
     /// The tab clef at the start of a system whose left edge is `x`.

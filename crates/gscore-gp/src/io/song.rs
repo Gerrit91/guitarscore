@@ -184,12 +184,22 @@ impl Song {
         Ok(())
     }
     /// Write this song as a Guitar Pro 6 (.gpx) binary.
+    ///
+    /// GuitarScore: attached grace notes are written as GPIF grace beats.
     pub fn write_gpx(&self) -> GpResult<Vec<u8>> {
-        gpx::write_gpx_bytes(self)
+        match self.with_grace_beats() {
+            Some(song) => gpx::write_gpx_bytes(&song),
+            None => gpx::write_gpx_bytes(self),
+        }
     }
     /// Write this song as a Guitar Pro 7+ (.gp) binary.
+    ///
+    /// GuitarScore: attached grace notes are written as GPIF grace beats.
     pub fn write_gp(&self) -> GpResult<Vec<u8>> {
-        gpx::write_gp_bytes(self)
+        match self.with_grace_beats() {
+            Some(song) => gpx::write_gp_bytes(&song),
+            None => gpx::write_gp_bytes(self),
+        }
     }
     /// Read information (name, artist, ...)
     pub(crate) fn read_info(&mut self, data: &[u8], seek: &mut usize) -> GpResult<()> {
@@ -222,7 +232,13 @@ impl Song {
     /// GuitarScore fix: GP3-5 files need a table of 64 MIDI channels, which songs read from
     /// GP6/GP7 do not have (writing used to panic, or would have produced an unreadable
     /// file). Such songs are written from a copy with a generated table.
+    ///
+    /// GuitarScore: GP3-5 have no grace beats; they are folded into their main notes (or
+    /// left out) on a copy, see [`Song::with_attached_graces`].
     pub fn write(&self, version: (u8, u8, u8), clipboard: Option<bool>) -> GpResult<Vec<u8>> {
+        if let Some(song) = self.with_attached_graces() {
+            return song.write(version, clipboard);
+        }
         if self.channels.len() >= MIDI_CHANNEL_COUNT {
             return self.write_with_channel_table(version, clipboard);
         }

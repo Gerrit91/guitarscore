@@ -279,7 +279,17 @@ fn opening_a_song_starts_loading_the_synthesizer() {
     harness
         .state_mut()
         .open(testdata("basic/note_lengths.gp"), &ctx);
-    settle(&mut harness);
+    // Step (not `run`, which stops at a step limit while the loading spinner repaints)
+    // until the file is open and the synthesizer is connected.
+    assert!(
+        step_until(&mut harness, 30, |app| {
+            !app.is_busy()
+                && app
+                    .document()
+                    .is_some_and(|document| document.display_title() == "Note Lengths")
+        }),
+        "the second file did not open"
+    );
     assert_eq!(
         harness.state().document().unwrap().display_title(),
         "Note Lengths"
@@ -616,11 +626,14 @@ fn the_track_panel_edits_the_shown_track() {
     assert_eq!(first_track(&harness).name(), "Steel Guitar Lead");
 }
 
-/// Runs frames until background jobs are done and the UI stops repainting. While a job
-/// runs, the toolbar may repaint for a few frames more than `run` allows (the player is
-/// measured again when its contents change), so those frames are stepped, not run.
+/// Runs frames until background jobs are done and the UI stops repainting. It steps first,
+/// so a click that starts a background job is processed; while a job runs, the UI may
+/// repaint for more frames than `Harness::run` allows (the "Opening…" bar, the player
+/// measured again as its contents change), so those frames are stepped, not run. The
+/// final `try_run` shows what the job produced.
 fn settle(harness: &mut Harness<'static, GuitarScoreApp>) {
     let started = Instant::now();
+    harness.step();
     while harness.state().is_busy() || harness.try_run().is_err() {
         assert!(started.elapsed() < Duration::from_secs(30), "timed out");
         harness.step();
@@ -705,6 +718,28 @@ fn recent_files_are_remembered_and_open_from_the_file_menu() {
             .recent_files
             .first()
             .is_some_and(|path| path.ends_with("steel_guitar_dadgad.gp"))
+    );
+}
+
+#[test]
+fn the_empty_workspace_suggests_recent_files() {
+    let settings = Settings {
+        reopen_last_file: false,
+        recent_files: vec![
+            testdata("basic/note_lengths.gp"),
+            testdata("basic/steel_guitar_dadgad.gp"),
+        ],
+        ..Settings::default()
+    };
+    let mut harness = app_with_settings(settings);
+    assert!(harness.state().document().is_none());
+    // The empty workspace lists the recent files; a click opens one.
+    harness.get_by_label("Recent files");
+    harness.get_by_label("note_lengths.gp").click();
+    settle(&mut harness);
+    assert_eq!(
+        harness.state().document().unwrap().display_title(),
+        "Note Lengths"
     );
 }
 
@@ -885,8 +920,7 @@ fn clicking_the_song_grid_moves_the_cursor_and_selects_measures() {
     assert_eq!(
         harness
             .state()
-            .view()
-            .selection
+            .selection()
             .map(gscore_app::MeasureSelection::start),
         Some(2)
     );
@@ -981,12 +1015,121 @@ fn app_with_settings(settings: Settings) -> Harness<'static, GuitarScoreApp> {
 
 #[test]
 fn the_last_file_reopens_at_startup() {
+    // Settings written before tabs existed only know one file; it still reopens.
     let settings = Settings {
         reopen_last_file: true,
         last_file: Some(testdata("basic/note_lengths.gp")),
         ..Settings::default()
     };
     let harness = app_with_settings(settings);
+    assert_eq!(
+        harness.state().document().unwrap().display_title(),
+        "Note Lengths"
+    );
+}
+
+#[test]
+fn every_open_tab_is_restored_at_startup() {
+    let settings = Settings {
+        reopen_last_file: true,
+        open_files: vec![
+            testdata("basic/note_lengths.gp"),
+            testdata("basic/steel_guitar_dadgad.gp"),
+        ],
+        active_file: Some(testdata("basic/note_lengths.gp")),
+        ..Settings::default()
+    };
+    let harness = app_with_settings(settings);
+    assert_eq!(harness.state().tab_count(), 2, "both tabs come back");
+    assert_eq!(
+        harness.state().tab_document(0).unwrap().display_title(),
+        "Note Lengths"
+    );
+    assert_eq!(
+        harness.state().tab_document(1).unwrap().display_title(),
+        "Steel Guitar DADGAD"
+    );
+    // The tab that was active last time is active again.
+    assert_eq!(
+        harness.state().document().unwrap().display_title(),
+        "Note Lengths"
+    );
+}
+
+#[test]
+fn a_missing_tab_is_skipped_at_startup() {
+    let settings = Settings {
+        reopen_last_file: true,
+        open_files: vec![
+            testdata("basic/no_such_file.gp"),
+            testdata("basic/note_lengths.gp"),
+        ],
+        active_file: Some(testdata("basic/note_lengths.gp")),
+        ..Settings::default()
+    };
+    let harness = app_with_settings(settings);
+    assert_eq!(harness.state().tab_count(), 1, "only the file that exists");
+    assert_eq!(
+        harness.state().document().unwrap().display_title(),
+        "Note Lengths"
+    );
+    assert_eq!(harness.state().notice(), None);
+}
+
+#[test]
+fn closing_and_reopening_remembers_every_open_tab() {
+    // Build the settings one app would write after opening two files, then start afresh
+    // with them: both tabs must come back.
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let ctx = harness.ctx.clone();
+    harness
+        .state_mut()
+        .open(testdata("basic/steel_guitar_dadgad.gp"), &ctx);
+    settle(&mut harness);
+    assert_eq!(harness.state().tab_count(), 2);
+    let saved = harness.state().settings();
+    assert_eq!(saved.open_files.len(), 2);
+    assert_eq!(
+        saved.active_file.as_deref(),
+        Some(testdata("basic/steel_guitar_dadgad.gp").as_path())
+    );
+
+    let harness = app_with_settings(saved);
+    assert_eq!(harness.state().tab_count(), 2);
+    assert_eq!(
+        harness.state().document().unwrap().display_title(),
+        "Steel Guitar DADGAD"
+    );
+}
+
+#[test]
+fn the_same_file_is_never_open_in_two_tabs() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let ctx = harness.ctx.clone();
+    assert_eq!(harness.state().tab_count(), 1);
+
+    // Opening the file that is already open switches to its tab instead of adding another.
+    harness
+        .state_mut()
+        .open(testdata("basic/note_lengths.gp"), &ctx);
+    settle(&mut harness);
+    assert_eq!(harness.state().tab_count(), 1);
+    assert_eq!(
+        harness.state().document().unwrap().display_title(),
+        "Note Lengths"
+    );
+
+    // Another file still opens in a new tab; reopening the first switches back to it.
+    harness
+        .state_mut()
+        .open(testdata("basic/steel_guitar_dadgad.gp"), &ctx);
+    settle(&mut harness);
+    assert_eq!(harness.state().tab_count(), 2);
+    harness
+        .state_mut()
+        .open(testdata("basic/note_lengths.gp"), &ctx);
+    settle(&mut harness);
+    assert_eq!(harness.state().tab_count(), 2);
     assert_eq!(
         harness.state().document().unwrap().display_title(),
         "Note Lengths"
@@ -1042,7 +1185,7 @@ fn the_shown_track_changes_from_the_grid_during_playback() {
     let position = harness.state().playback().position();
     let row = harness.get_by_label("Track 2: Steel Guitar 2").rect();
     left_click_at(&mut harness, row.left_center() + egui::vec2(60.0, 0.0));
-    assert_eq!(harness.state().view().track, 1);
+    assert_eq!(harness.state().shown_track(), 1);
     assert_eq!(
         harness.state().playback().state(),
         gscore_play::PlayState::Playing,
@@ -1154,7 +1297,9 @@ fn looping_the_selected_measure_restarts_at_its_beginning() {
             anchor: gscore_model::MeasureIndex::new(0),
             focus: gscore_model::MeasureIndex::new(0),
         }));
-    harness.state_mut().view_mut().selection = Some(gscore_app::MeasureSelection::new(0));
+    harness
+        .state_mut()
+        .set_selection(Some(gscore_app::MeasureSelection::new(0)));
     harness.state_mut().set_loop_selection(true);
 
     harness.get_by_label("Play").click();
@@ -1181,16 +1326,49 @@ fn looping_the_selected_measure_restarts_at_its_beginning() {
 }
 
 #[test]
-fn the_new_song_button_opens_a_one_measure_score() {
+fn the_new_song_dialog_creates_a_one_measure_score_in_a_new_tab() {
     let mut harness = app_with(None);
     assert!(harness.state().document().is_none());
     harness.get_by_label("New song").click();
     harness.run();
+    // The dialog appears first; no document exists yet.
+    assert!(harness.state().document().is_none());
+    harness.get_by_label("New song title");
+    harness.get_by_label("Create").click();
+    harness.run();
     let document = harness.state().document().expect("a new document");
     assert_eq!(document.song().measure_count(), 1);
     assert_eq!(document.song().track_count(), 1);
-    assert_eq!(document.display_title(), "Untitled.gp");
+    assert_eq!(document.display_title(), "New Song");
+    assert_eq!(document.song().tempo(), 120);
     harness.get_by_label("1 measure, 1 track");
+}
+
+#[test]
+fn closing_a_changed_tab_asks_before_closing_it() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    // Make the single tab dirty.
+    harness.event_modifiers(egui::Event::Text("3".to_owned()), egui::Modifiers::NONE);
+    harness.run();
+    assert!(harness.state().document().unwrap().is_dirty());
+
+    // The tab's close icon asks before closing; Cancel keeps the tab.
+    harness.get_by_label("Close tab 1").click();
+    harness.run();
+    assert!(harness.state().has_dialog());
+    assert_eq!(harness.state().tab_count(), 1);
+    harness.get_by_label("Cancel").click();
+    harness.run();
+    assert_eq!(harness.state().tab_count(), 1);
+
+    // Discard changes closes it, leaving an empty workspace.
+    harness.get_by_label("Close tab 1").click();
+    harness.run();
+    harness.get_by_label("Discard changes").click();
+    harness.run();
+    assert!(harness.state().document().is_none());
+    assert_eq!(harness.state().tab_count(), 0);
+    harness.get_by_label("No file open");
 }
 
 #[test]
@@ -1374,7 +1552,7 @@ fn a_new_track_asks_for_name_color_and_symbol() {
             .program,
         33
     );
-    assert_eq!(harness.state().view().track, 1);
+    assert_eq!(harness.state().shown_track(), 1);
 }
 
 #[test]

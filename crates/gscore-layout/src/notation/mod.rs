@@ -1,12 +1,15 @@
 //! Standard notation on a five-line staff above the tab, as Guitar Pro shows it: the same
 //! columns as the tab, so a note and its fret number line up.
 //!
-//! This module turns a column's beats into a [`NotationItem`] (a chord or a rest) and
-//! decides accidentals per measure; [`draw`] paints a measure's items (noteheads, ledger
-//! lines, stems, flags, beams, dots, rests, ties, tuplet numbers). Only the first voice is
-//! written; key signatures, grace notes and articulations are not drawn yet. Drum tracks
-//! get a percussion staff instead: each drum sound has its own place and notehead
-//! ([`drums`]) and stems point up.
+//! This module turns a column's beats into a [`NotationItem`] per voice (a chord or a rest)
+//! and decides accidentals per measure; [`draw`] paints a measure's items (noteheads, ledger
+//! lines, stems, flags, beams, dots, rests, ties, tuplet numbers). All voices are written:
+//! when two share the staff the first points its stems up and the others down, and a voice
+//! whose notehead would sit on the first voice's position moves right. Grace notes are small
+//! heads with a slash before their main note. Articulations and other ornaments on the
+//! notation staff are not drawn yet (they live on the tab). Drum tracks get a percussion
+//! staff instead: each drum sound has its own place and notehead ([`drums`]) and stems point
+//! up.
 
 mod beams;
 mod draw;
@@ -17,8 +20,11 @@ use std::collections::HashMap;
 
 use gscore_model::{BeatKind, BeatView, NoteKind, TrackView};
 
-pub(crate) use draw::{BeamPlan, draw_measure, draw_staff_start, prefix_width};
-pub(crate) use pitch::Clef;
+pub(crate) use draw::{
+    BeamPlan, KeySigLayout, draw_measure, draw_staff_start, draw_tab_staff_start, draw_tie_curve,
+    key_start_width, ledger_positions, prefix_width, tab_prefix_width, y_of,
+};
+pub(crate) use pitch::{Alter, Clef};
 
 use crate::error::LayoutError;
 use crate::glyph::Glyph;
@@ -104,9 +110,9 @@ pub(crate) struct Chord {
 pub(crate) struct Head {
     /// Staff position: 0 bottom line, 1 first space, ... (negative below the staff).
     pub(crate) position: i32,
-    /// Diatonic step and sharp, for accidentals.
+    /// Diatonic step and alteration, for accidentals.
     step: i32,
-    sharp: bool,
+    alter: Alter,
     /// The accidental shown before the head, if any (decided per measure).
     pub(crate) accidental: Option<Glyph>,
     /// Continues a tied note: no accidental, a tie curve from the previous chord.
@@ -151,17 +157,56 @@ impl Chord {
             .windows(2)
             .any(|pair| matches!(pair, [a, b] if b.position.abs_diff(a.position) == 1))
     }
+
+    /// The stem's direction: the fixed one, or the one the noteheads choose (a chord above
+    /// the middle line points down).
+    pub(crate) fn stem_up(&self) -> bool {
+        self.stem_up.unwrap_or_else(|| {
+            let (sum, count) = self
+                .heads
+                .iter()
+                .fold((0.0_f32, 0.0_f32), |(sum, count), head| {
+                    (sum + head.position as f32, count + 1.0)
+                });
+            let mean = if count > 0.0 {
+                sum / count
+            } else {
+                MIDDLE as f32
+            };
+            mean < MIDDLE as f32
+        })
+    }
 }
 
-/// The notation item of a column: the chord or rest of its first voice, if that voice has
-/// a beat starting here. `beats` are `(voice, beat)` pairs.
-pub(crate) fn column_item(
+/// The notation items of a column: one per voice that has a beat starting here, in voice
+/// order. `beats` are `(voice, beat)` pairs.
+pub(crate) fn column_items(
     beats: &[(usize, BeatView<'_>)],
     notation: &Notation<'_>,
+    key: i8,
+) -> Result<Vec<Option<NotationItem>>, LayoutError> {
+    let voices = beats
+        .iter()
+        .map(|(voice, _)| voice.saturating_add(1))
+        .max()
+        .unwrap_or(0);
+    let mut items: Vec<Option<NotationItem>> = vec![None; voices];
+    for &(voice, beat) in beats {
+        let item = beat_item(voice, beat, notation, key)?;
+        if let Some(slot) = items.get_mut(voice) {
+            *slot = item;
+        }
+    }
+    Ok(items)
+}
+
+/// The notation item of one voice's beat, if that voice has a beat starting here.
+fn beat_item(
+    voice: usize,
+    beat: BeatView<'_>,
+    notation: &Notation<'_>,
+    key: i8,
 ) -> Result<Option<NotationItem>, LayoutError> {
-    let Some(&(_, beat)) = beats.iter().find(|(voice, _)| *voice == 0) else {
-        return Ok(None);
-    };
     let value = beat.note_value()?;
     match beat.kind() {
         BeatKind::Rest => Ok(Glyph::rest(value.value()).map(|glyph| NotationItem::Rest {
@@ -186,18 +231,18 @@ pub(crate) fn column_item(
                     Head {
                         position: drum.position,
                         step: drum.position,
-                        sharp: false,
+                        alter: Alter::Natural,
                         accidental: None,
                         tied: kind == NoteKind::Tie,
                         dead: false,
                         glyph: drum.head.glyph(),
                     }
                 } else {
-                    let (spelled, position) = notation.clef.place(pitch.get());
+                    let (spelled, position) = notation.clef.place(pitch.get(), key);
                     Head {
                         position,
                         step: spelled.step,
-                        sharp: spelled.sharp,
+                        alter: spelled.alter,
                         accidental: None,
                         tied: kind == NoteKind::Tie,
                         dead: kind == NoteKind::Dead,
@@ -222,31 +267,38 @@ pub(crate) fn column_item(
                 value: value.value(),
                 dots: value.dots(),
                 tuplet: value.tuplet().map(|(enters, _)| enters),
-                stem_up: (notation.clef == Clef::Percussion).then_some(true),
+                // A second (or further) voice points its stems down, as engravers do.
+                stem_up: if notation.clef == Clef::Percussion {
+                    Some(true)
+                } else if voice > 0 {
+                    Some(false)
+                } else {
+                    None
+                },
             })))
         }
     }
 }
 
-/// Decides the accidentals of a measure's items, in time order: a sharp or natural is shown
-/// when a note differs from what the same step last was in this measure (no key signature
-/// yet, so every step starts natural). Tied notes keep the earlier accidental silently.
-pub(crate) fn assign_accidentals<'i>(items: impl Iterator<Item = &'i mut NotationItem>) {
-    let mut sharp_now: HashMap<i32, bool> = HashMap::new();
+/// Decides the accidentals of a measure's items, in time order: an accidental is shown when
+/// a note differs from the key signature's alteration of the same step, or from what that
+/// step was earlier in this measure. Tied notes keep the earlier accidental silently.
+pub(crate) fn assign_accidentals<'i>(items: impl Iterator<Item = &'i mut NotationItem>, key: i8) {
+    let alters = pitch::key_alters(key);
+    // The alteration each step (octave and letter) last had in this measure.
+    let mut alter_now: HashMap<i32, Alter> = HashMap::new();
     for item in items {
         let NotationItem::Chord(chord) = item else {
             continue;
         };
         for head in &mut chord.heads {
-            let current = sharp_now.get(&head.step).copied().unwrap_or(false);
-            if !head.tied && head.sharp != current {
-                head.accidental = Some(if head.sharp {
-                    Glyph::Sharp
-                } else {
-                    Glyph::Natural
-                });
+            let letter = usize::try_from(head.step.rem_euclid(7)).unwrap_or(0);
+            let key_alter = alters.get(letter).copied().unwrap_or(Alter::Natural);
+            let current = alter_now.get(&head.step).copied().unwrap_or(key_alter);
+            if !head.tied && head.alter != current {
+                head.accidental = Some(head.alter.glyph());
             }
-            sharp_now.insert(head.step, head.sharp);
+            alter_now.insert(head.step, head.alter);
         }
     }
 }
@@ -315,11 +367,11 @@ pub(crate) fn extent(item: &NotationItem, beamed: bool, font: &MusicFont) -> (f3
 mod tests {
     use super::*;
 
-    fn head(step: i32, sharp: bool, tied: bool) -> Head {
+    fn head(step: i32, alter: Alter, tied: bool) -> Head {
         Head {
             position: step - 30,
             step,
-            sharp,
+            alter,
             accidental: None,
             tied,
             dead: false,
@@ -351,12 +403,12 @@ mod tests {
     fn accidentals_last_until_the_barline() {
         // F#, F#, F, F#: sharp, nothing, natural, sharp again.
         let mut items = vec![
-            chord(vec![head(31, true, false)]),
-            chord(vec![head(31, true, false)]),
-            chord(vec![head(31, false, false)]),
-            chord(vec![head(31, true, false)]),
+            chord(vec![head(31, Alter::Sharp, false)]),
+            chord(vec![head(31, Alter::Sharp, false)]),
+            chord(vec![head(31, Alter::Natural, false)]),
+            chord(vec![head(31, Alter::Sharp, false)]),
         ];
-        assign_accidentals(items.iter_mut());
+        assign_accidentals(items.iter_mut(), 0);
         assert_eq!(
             accidentals(&items),
             [
@@ -369,19 +421,41 @@ mod tests {
     }
 
     #[test]
+    fn the_key_signature_sets_the_default_alteration() {
+        // G major has F sharp: F# needs no accidental, F natural does.
+        let mut items = vec![
+            chord(vec![head(31, Alter::Sharp, false)]),
+            chord(vec![head(31, Alter::Natural, false)]),
+            chord(vec![head(31, Alter::Sharp, false)]),
+        ];
+        assign_accidentals(items.iter_mut(), 1);
+        assert_eq!(
+            accidentals(&items),
+            [None, Some(Glyph::Natural), Some(Glyph::Sharp)]
+        );
+        // B flat in F major (one flat): no accidental; B natural needs one.
+        let mut flat = vec![
+            chord(vec![head(34, Alter::Flat, false)]),
+            chord(vec![head(34, Alter::Natural, false)]),
+        ];
+        assign_accidentals(flat.iter_mut(), -1);
+        assert_eq!(accidentals(&flat), [None, Some(Glyph::Natural)]);
+    }
+
+    #[test]
     fn tied_notes_do_not_repeat_their_accidental() {
         let mut items = vec![
-            chord(vec![head(31, true, false)]),
-            chord(vec![head(31, true, true)]),
+            chord(vec![head(31, Alter::Sharp, false)]),
+            chord(vec![head(31, Alter::Sharp, true)]),
         ];
-        assign_accidentals(items.iter_mut());
+        assign_accidentals(items.iter_mut(), 0);
         assert_eq!(accidentals(&items), [Some(Glyph::Sharp), None]);
     }
 
     #[test]
     fn note_values_choose_heads_and_beams() {
         let mut c = Chord {
-            heads: vec![head(30, false, false)],
+            heads: vec![head(30, Alter::Natural, false)],
             value: 1,
             dots: 0,
             tuplet: None,
@@ -391,7 +465,7 @@ mod tests {
         assert_eq!(c.head_glyph(&h), Glyph::NoteheadWhole);
         c.value = 16;
         assert_eq!((c.head_glyph(&h), c.beams()), (Glyph::NoteheadBlack, 2));
-        c.heads.push(head(31, false, false));
+        c.heads.push(head(31, Alter::Natural, false));
         assert!(c.has_second());
     }
 }

@@ -109,7 +109,7 @@ fn the_action_bar_adds_moves_mutes_and_solos_tracks() {
     harness.get_by_label("Create track").click();
     harness.run();
     assert_eq!(song(&harness).track_count(), 2);
-    assert_eq!(harness.state().view().track, 1, "the new track is shown");
+    assert_eq!(harness.state().shown_track(), 1, "the new track is shown");
 
     let name = |harness: &Harness<'static, GuitarScoreApp>, index| {
         song(harness)
@@ -123,7 +123,7 @@ fn the_action_bar_adds_moves_mutes_and_solos_tracks() {
     harness.run();
     assert_eq!(name(&harness, 0), new_name);
     assert_eq!(
-        harness.state().view().track,
+        harness.state().shown_track(),
         0,
         "the moved track stays shown"
     );

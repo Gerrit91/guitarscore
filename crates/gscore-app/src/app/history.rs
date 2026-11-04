@@ -81,10 +81,10 @@ impl GuitarScoreApp {
         let pos = *panel
             .pos
             .get_or_insert_with(|| style::centered_window_pos(ctx, HISTORY_SIZE));
-        let Some(document) = &self.document else {
+        let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
-        let rows = self.history_rows(document);
+        let rows = self.history_rows(tab);
         let mut close = false;
         let mut target = None;
         egui::Window::new("History")
@@ -135,15 +135,15 @@ impl GuitarScoreApp {
 
     /// The table's rows, newest first: the undone changes (the furthest one first), the
     /// applied ones, then the song as it was opened.
-    fn history_rows(&self, document: &crate::document::Document) -> Vec<Row> {
-        let undo = document.editor().undo_history();
-        let redo = document.editor().redo_history();
+    fn history_rows(&self, tab: &super::tab::Tab) -> Vec<Row> {
+        let undo = tab.document.editor().undo_history();
+        let redo = tab.document.editor().redo_history();
         let mut rows = Vec::with_capacity(undo.len().saturating_add(redo.len()).saturating_add(1));
         for (index, entry) in redo.iter().enumerate().rev() {
             rows.push(Row {
                 label: entry.label,
                 details: entry.details.clone(),
-                stamp: self.history_stamps.get(&entry.id).copied(),
+                stamp: tab.history_stamps.get(&entry.id).copied(),
                 place: Place::Later(index.saturating_add(1)),
                 done: false,
             });
@@ -154,7 +154,7 @@ impl GuitarScoreApp {
             rows.push(Row {
                 label: entry.label,
                 details: entry.details.clone(),
-                stamp: self.history_stamps.get(&entry.id).copied(),
+                stamp: tab.history_stamps.get(&entry.id).copied(),
                 place: if steps == 0 {
                     Place::Current
                 } else {

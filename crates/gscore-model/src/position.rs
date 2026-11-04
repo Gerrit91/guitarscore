@@ -119,6 +119,9 @@ const MAX_FRET: u8 = 127;
 pub struct Fret(u8);
 
 impl Fret {
+    /// The open string.
+    pub const OPEN: Fret = Fret(0);
+
     /// Fret `value`. Fails above 127.
     pub fn new(value: u8) -> Result<Self, ModelError> {
         if value > MAX_FRET {

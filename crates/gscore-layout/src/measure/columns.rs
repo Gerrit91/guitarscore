@@ -15,6 +15,8 @@ use crate::ornaments::{self, ColumnMarks, Fret, NoteMarks};
 pub(super) struct BeatStarts<'a> {
     /// `(voice, beat)` pairs by start time.
     pub(super) onsets: BTreeMap<Duration, Vec<(usize, BeatView<'a>)>>,
+    /// Grace-note beats waiting before the regular beat at a voice's onset.
+    pub(super) graces: BTreeMap<(usize, Duration), Vec<BeatView<'a>>>,
     /// The time signature's length, or the longest voice if one is overfull.
     pub(super) end: Duration,
 }
@@ -24,20 +26,46 @@ pub(super) fn beat_starts<'a>(
     signature: TimeSignature,
 ) -> Result<BeatStarts<'a>, LayoutError> {
     let mut onsets: BTreeMap<Duration, Vec<(usize, BeatView<'a>)>> = BTreeMap::new();
+    let mut graces: BTreeMap<(usize, Duration), Vec<BeatView<'a>>> = BTreeMap::new();
     let mut end = signature.measure_length();
     for voice in measure.voices() {
         let voice_index = voice.index().get();
         let mut at = Duration::new(0, 1)?;
+        let mut pending: Vec<BeatView<'a>> = Vec::new();
         for beat in voice.beats() {
             if beat.kind() == BeatKind::Empty {
                 continue;
             }
+            // A grace beat is an ornament for the next beat and takes no time.
+            if beat.is_grace() {
+                pending.push(beat);
+                continue;
+            }
             onsets.entry(at).or_default().push((voice_index, beat));
+            if !pending.is_empty() {
+                graces
+                    .entry((voice_index, at))
+                    .or_default()
+                    .append(&mut pending);
+            }
             at = at.checked_add(beat.duration()?)?;
+        }
+        if !pending.is_empty() {
+            // Grace notes at the end of the measure keep a column of their own, before the
+            // barline.
+            onsets.entry(at).or_default();
+            graces
+                .entry((voice_index, at))
+                .or_default()
+                .append(&mut pending);
         }
         end = end.max(at);
     }
-    Ok(BeatStarts { onsets, end })
+    Ok(BeatStarts {
+        onsets,
+        graces,
+        end,
+    })
 }
 
 /// The fret numbers of a column's beats; a rest if no beat has notes.
@@ -138,7 +166,9 @@ pub(super) fn column_items(
     Ok(ColumnData {
         items,
         marks,
-        notation: None,
+        notation: Vec::new(),
+        graces: Vec::new(),
+        grace_width: 0.0,
         beat: 0,
         beats: Vec::new(),
     })

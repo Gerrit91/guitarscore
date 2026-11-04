@@ -6,13 +6,14 @@
 use std::collections::HashMap;
 
 use gscore_model::{
-    BeatKind, BendKind, Duration, ModelError, NoteKind, SlideKind, Song, TrackIndex,
+    BeatKind, BeatView, BendKind, Duration, ModelError, NoteKind, SlideKind, Song, TrackIndex,
 };
 
 use crate::channels::ChannelAllocator;
 use crate::curve::Curve;
 use crate::effects;
 use crate::event::{MidiEvent, controller};
+use crate::graces;
 use crate::pitch;
 use crate::sequence::{MeasureSpan, SequenceTrack, TimedEvent, sound_events, ticks};
 use crate::sounding::{self, Sounding};
@@ -86,8 +87,10 @@ pub(crate) fn collect(
             });
         }
 
-        // The note currently sounding on each string, to extend it on a tie.
-        let mut on_string: HashMap<u8, usize> = HashMap::new();
+        // The note currently sounding on each (voice, string), to extend it on a tie.
+        // Voices are independent: a tie in one must not extend a note of another on the
+        // same string.
+        let mut on_string: HashMap<(usize, u8), usize> = HashMap::new();
         for span in measures {
             let Some(measure) = view.measure(span.measure) else {
                 continue;
@@ -95,9 +98,16 @@ pub(crate) fn collect(
             let feel = song.feel(span.measure).unwrap_or_default();
             let measure_ticks = span.end.saturating_sub(span.start);
             for voice in measure.voices() {
+                let voice_index = voice.index().get();
                 let mut onset = Duration::new(0, 1)?;
+                // Grace beats do not take time; their notes play just before the next beat.
+                let mut pending_graces: Vec<BeatView<'_>> = Vec::new();
                 for beat in voice.beats() {
                     if beat.kind() == BeatKind::Empty {
+                        continue;
+                    }
+                    if beat.is_grace() {
+                        pending_graces.push(beat);
                         continue;
                     }
                     let length = beat.duration()?;
@@ -117,15 +127,26 @@ pub(crate) fn collect(
                         tempo_changes.push((start, bpm));
                     }
                     if beat.kind() != BeatKind::Normal {
+                        pending_graces.clear();
                         continue;
                     }
+                    let graces = graces::gather(&view, &pending_graces, &beat, &mut skipped_notes);
+                    pending_graces.clear();
+                    let (grace_notes, delays) = graces::place(
+                        &graces,
+                        start,
+                        crate::timeline::tempo_at(song, span.measure),
+                        number,
+                        channel,
+                    );
+                    notes.extend(grace_notes);
                     let first_note = notes.len();
                     for note in beat.notes() {
                         let kind = note.kind();
                         let string = note.string().map(|s| s.get()).unwrap_or(0);
                         if kind == NoteKind::Tie && fresh_at != Some(start) {
                             let tied = on_string
-                                .get(&string)
+                                .get(&(voice_index, string))
                                 .and_then(|&i| notes.get_mut(i))
                                 .filter(|n| n.end.abs_diff(start) <= TIE_TOLERANCE);
                             if let Some(previous) = tied {
@@ -186,8 +207,17 @@ pub(crate) fn collect(
                             }),
                         };
                         effects::shape_note(&mut sounding, &note);
-                        on_string.insert(string, notes.len());
+                        on_string.insert((voice_index, string), notes.len());
                         notes.push(sounding);
+                    }
+                    // An appoggiatura takes the start of the beat on its string.
+                    for note in notes.get_mut(first_note..).unwrap_or_default() {
+                        if let Some(&delay) = delays.get(&note.string) {
+                            note.start = note
+                                .start
+                                .saturating_add(delay)
+                                .min(note.end.saturating_sub(1));
+                        }
                     }
                     if let Some(direction) = beat.brush_stroke()
                         && let Some(chord) = notes.get_mut(first_note..)
@@ -199,6 +229,7 @@ pub(crate) fn collect(
         }
     }
 
+    effects::one_note_per_string(&mut notes);
     sounding::apply_slide_targets(&mut notes);
     effects::let_ring(&mut notes);
     if let Some(keep) = keep {

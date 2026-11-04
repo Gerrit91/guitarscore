@@ -6,8 +6,9 @@
 //! `test-support` feature is enabled.
 
 use gscore_gp::{
-    Beat, BeatStatus, BendEffect, BendPoint, BendType, Measure, MeasureHeader, Note as GpNote,
-    NoteEffect, NoteType, SlideType, Song as GpSong, Track, Voice,
+    Beat, BeatStatus, BendEffect, BendPoint, BendType, Duration as GpDuration, GraceEffect,
+    GraceEffectTransition, Measure, MeasureHeader, Note as GpNote, NoteEffect, NoteType, SlideType,
+    Song as GpSong, Track, Voice,
 };
 
 use crate::effects::SlideKind;
@@ -70,6 +71,155 @@ pub fn song(tunings: &[&[i8]], measures: usize) -> Result<Song, ModelError> {
 /// A one-track, one-measure 4/4 guitar song.
 pub fn one_measure() -> Result<Song, ModelError> {
     song(&[GUITAR_6], 1)
+}
+
+/// A one-measure song with a GP3-5 style grace note: a normal note on string 1 fret 3 with
+/// a grace note at fret 5 attached to it.
+pub fn song_with_attached_grace() -> Result<Song, ModelError> {
+    let song = song(&[GUITAR_6], 1)?;
+    let mut inner = song.inner().clone();
+    let voice = inner
+        .tracks
+        .first_mut()
+        .and_then(|track| track.measures.first_mut())
+        .and_then(|measure| measure.voices.first_mut())
+        .ok_or_else(|| ModelError::Invalid("the test song has no voice".to_owned()))?;
+    if let Some(first) = voice.beats.first_mut() {
+        let mut note = GpNote {
+            value: 3,
+            string: 1,
+            kind: NoteType::Normal,
+            velocity: 90,
+            ..GpNote::default()
+        };
+        note.effect.grace = Some(GraceEffect {
+            fret: 5,
+            velocity: 90,
+            duration: 8,
+            is_dead: false,
+            is_on_beat: false,
+            transition: GraceEffectTransition::None,
+        });
+        first.notes = vec![note];
+        first.status = BeatStatus::Normal;
+    }
+    Song::from_inner(inner)
+}
+
+/// A one-measure song with a GP6/GP7 grace beat (a 32nd) before its first note. The grace
+/// note is string 1 fret 5; the main note is string 1 fret 3.
+pub fn song_with_grace_beat() -> Result<Song, ModelError> {
+    let song = song(&[GUITAR_6], 1)?;
+    let mut inner = song.inner().clone();
+    let mut grace_note = GpNote {
+        value: 5,
+        string: 1,
+        kind: NoteType::Normal,
+        velocity: 90,
+        ..GpNote::default()
+    };
+    grace_note.effect.grace = Some(GraceEffect {
+        fret: 5,
+        velocity: 90,
+        duration: 1,
+        is_dead: false,
+        is_on_beat: false,
+        transition: GraceEffectTransition::None,
+    });
+    let grace = Beat {
+        grace: true,
+        status: BeatStatus::Normal,
+        duration: GpDuration {
+            value: 32,
+            ..GpDuration::default()
+        },
+        notes: vec![grace_note],
+        ..Beat::default()
+    };
+    let voice = inner
+        .tracks
+        .first_mut()
+        .and_then(|track| track.measures.first_mut())
+        .and_then(|measure| measure.voices.first_mut())
+        .ok_or_else(|| ModelError::Invalid("the test song has no voice".to_owned()))?;
+    if let Some(first) = voice.beats.first_mut() {
+        first.notes = vec![GpNote {
+            value: 3,
+            string: 1,
+            kind: NoteType::Normal,
+            velocity: 90,
+            ..GpNote::default()
+        }];
+        first.status = BeatStatus::Normal;
+    }
+    voice.beats.insert(0, grace);
+    Song::from_inner(inner)
+}
+
+/// One quarter of [`song_with_graces`]: its grace notes and its notes, `(string, fret)`.
+pub type GraceQuarter<'a> = (&'a [(u8, u8)], &'a [(u8, u8)]);
+
+/// A one-measure 4/4 song on a 6-string guitar of quarter notes, each `(graces, notes)`:
+/// a GP6/GP7 grace beat (a 32nd) holding `graces` (skipped when empty) before a quarter
+/// holding `notes`. Notes are `(string, fret)`. Up to four quarters; the rest stay rests.
+pub fn song_with_graces(quarters: &[GraceQuarter<'_>]) -> Result<Song, ModelError> {
+    let song = song(&[GUITAR_6], 1)?;
+    let mut inner = song.inner().clone();
+    let note = |&(string, fret): &(u8, u8)| GpNote {
+        value: i16::from(fret),
+        string: i8::try_from(string).unwrap_or(1),
+        kind: NoteType::Normal,
+        velocity: 90,
+        ..GpNote::default()
+    };
+    let mut beats = Vec::new();
+    for (graces, notes) in quarters.iter().take(4) {
+        if !graces.is_empty() {
+            beats.push(Beat {
+                grace: true,
+                status: BeatStatus::Normal,
+                duration: GpDuration {
+                    value: 32,
+                    ..GpDuration::default()
+                },
+                notes: graces
+                    .iter()
+                    .map(|grace| {
+                        let mut grace_note = note(grace);
+                        grace_note.effect.grace = Some(GraceEffect {
+                            fret: i8::try_from(grace.1).unwrap_or(0),
+                            velocity: 90,
+                            duration: 1,
+                            is_dead: false,
+                            is_on_beat: false,
+                            transition: GraceEffectTransition::None,
+                        });
+                        grace_note
+                    })
+                    .collect(),
+                ..Beat::default()
+            });
+        }
+        beats.push(Beat {
+            status: BeatStatus::Normal,
+            duration: GpDuration {
+                value: 4,
+                ..GpDuration::default()
+            },
+            notes: notes.iter().map(note).collect(),
+            ..Beat::default()
+        });
+    }
+    beats.extend(quarter_rests().into_iter().skip(quarters.len().min(4)));
+    if let Some(voice) = inner
+        .tracks
+        .first_mut()
+        .and_then(|track| track.measures.first_mut())
+        .and_then(|measure| measure.voices.first_mut())
+    {
+        voice.beats = beats;
+    }
+    Song::from_inner(inner)
 }
 
 /// A one-measure 4/4 song on a 6-string guitar whose only beat (a whole note) holds `notes`

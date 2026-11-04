@@ -1,14 +1,14 @@
 //! The "New track" popup: asks for a name, an instrument symbol and a color before the
 //! track exists, and creates all of it as one undo step.
 
-use egui::{Color32, Margin, RichText, Sense, Stroke, vec2};
+use egui::{Margin, RichText, Sense, vec2};
 use gscore_edit::Command;
 use gscore_model::{TrackColor, TrackIndex};
 
 use super::GuitarScoreApp;
 use super::instrument::Instrument;
 use super::style;
-use super::track_panel::PRESETS;
+use super::swatches;
 
 /// The popup's default size.
 const DIALOG_SIZE: egui::Vec2 = vec2(450.0, 330.0);
@@ -42,18 +42,18 @@ impl GuitarScoreApp {
     /// snapshot example).
     pub fn open_new_track(&mut self) {
         let at = self
-            .document
-            .as_ref()
-            .map_or(0, |document| document.song().track_count());
+            .tabs
+            .get(self.active)
+            .map_or(0, |tab| tab.document.song().track_count());
         self.begin_new_track(at);
     }
 
     /// Opens the popup for a track inserted before `at`.
     pub(super) fn begin_new_track(&mut self, at: usize) {
-        let Some(document) = &self.document else {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
-        let song = document.song();
+        let song = tab.document.song();
         let count = song.track_count();
         let at = at.min(count);
         let template = at
@@ -76,7 +76,7 @@ impl GuitarScoreApp {
             number = number.saturating_add(1);
         };
         let color = TrackColor::DEFAULT;
-        self.new_track = Some(NewTrackDialog {
+        tab.new_track = Some(NewTrackDialog {
             at,
             name,
             color,
@@ -88,7 +88,11 @@ impl GuitarScoreApp {
 
     /// The new-track popup, if it is open.
     pub(super) fn show_new_track_dialog(&mut self, ctx: &egui::Context) {
-        let Some(mut dialog) = self.new_track.take() else {
+        let Some(mut dialog) = self
+            .tabs
+            .get_mut(self.active)
+            .and_then(|tab| tab.new_track.take())
+        else {
             return;
         };
         if dialog.pos.is_none() {
@@ -170,54 +174,21 @@ impl GuitarScoreApp {
 
                         ui.add_space(8.0);
                         ui.label(RichText::new("Color").weak());
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
-                            for (name, rgb) in PRESETS {
-                                let preset = TrackColor::new(rgb);
-                                let (rect, response) =
-                                    ui.allocate_exact_size(vec2(20.0, 20.0), Sense::click());
-                                ui.ctx().accesskit_node_builder(response.id, |node| {
-                                    node.set_label(format!("Color {name}"));
-                                    node.set_role(egui::Role::Button);
-                                });
-                                let (red, green, blue) = preset.parts();
-                                ui.painter().rect_filled(
-                                    rect,
-                                    3.0,
-                                    Color32::from_rgb(red, green, blue),
-                                );
-                                ui.painter().rect_stroke(
-                                    rect,
-                                    3.0,
-                                    Stroke::new(1.0, ui.visuals().weak_text_color()),
-                                    egui::StrokeKind::Inside,
-                                );
-                                if preset == dialog.color || response.hovered() {
-                                    ui.painter().rect_stroke(
-                                        rect.expand(1.5),
-                                        4.0,
-                                        Stroke::new(2.0, ui.visuals().strong_text_color()),
-                                        egui::StrokeKind::Outside,
-                                    );
-                                }
-                                if response.on_hover_text(name).clicked() {
-                                    dialog.color = preset;
-                                }
-                            }
-                            // Any other color.
-                            let (red, green, blue) = dialog.color.parts();
-                            let mut rgb = [red, green, blue];
+                        if let Some(preset) = swatches::presets(ui, dialog.color) {
+                            dialog.color = preset;
+                        }
+                        // Any other color.
+                        let (red, green, blue) = dialog.color.parts();
+                        let mut rgb = [red, green, blue];
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("Custom").weak());
                             let response = ui.color_edit_button_srgb(&mut rgb);
                             ui.ctx().accesskit_node_builder(response.id, |node| {
                                 node.set_label("Custom track color");
                             });
                             if response.changed() {
                                 let [red, green, blue] = rgb;
-                                dialog.color = TrackColor::new(
-                                    u32::from(red) * 0x1_0000
-                                        + u32::from(green) * 0x100
-                                        + u32::from(blue),
-                                );
+                                dialog.color = TrackColor::from_parts(red, green, blue);
                             }
                         });
 
@@ -244,10 +215,14 @@ impl GuitarScoreApp {
             return;
         }
         if close {
-            self.new_track = None;
+            if let Some(tab) = self.tabs.get_mut(self.active) {
+                tab.new_track = None;
+            }
             return;
         }
-        self.new_track = Some(dialog);
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.new_track = Some(dialog);
+        }
     }
 
     /// Inserts the track from `dialog` with its name, color and symbol, as one undo step.
@@ -279,11 +254,22 @@ impl GuitarScoreApp {
                 commands.push(Command::SetTrackProgram { track, program });
             }
         }
-        self.new_track = None;
-        let revision = self.document.as_ref().map(|d| d.editor().revision());
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.new_track = None;
+        }
+        let revision = self
+            .tabs
+            .get(self.active)
+            .map(|tab| tab.document.editor().revision());
         self.apply_command(Command::Batch { commands }, false);
-        if self.document.as_ref().map(|d| d.editor().revision()) != revision {
-            self.view.track = dialog.at;
+        if self
+            .tabs
+            .get(self.active)
+            .map(|tab| tab.document.editor().revision())
+            != revision
+            && let Some(tab) = self.tabs.get_mut(self.active)
+        {
+            tab.track = dialog.at;
         }
     }
 }

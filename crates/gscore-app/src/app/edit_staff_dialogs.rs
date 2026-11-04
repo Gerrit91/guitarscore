@@ -33,6 +33,7 @@ pub(super) fn width(dialog: Dialog) -> f32 {
     match dialog {
         Dialog::Key => 340.0,
         Dialog::Feel => 430.0,
+        Dialog::Section => 380.0,
         Dialog::Tempo | Dialog::Fermata => 380.0,
         _ => 330.0,
     }
