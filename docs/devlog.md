@@ -2204,3 +2204,37 @@ lifeless):
   head before the main note).
 - `Beat` gained a field: the GPIF round trip of `farewell.gp` and `hangar18.gp` keeps its
   grace beats (`<GraceNotes>` count survives).
+
+## 2026-11-04 — Review of the last four commits; readable and audible grace notes
+
+- Owner: grace notes were almost unreadable and could not be heard.
+- Drawing (`gscore-layout/src/measure/graces.rs`, new; the grace code moved out of
+  `measure/{columns,draw}.rs`):
+  - Graces were placed from the main note's *center* (`x - grace_width`), so they ran into
+    its notehead, fret number and accidental; the column reserved `max(grace, accidental)`
+    instead of the sum. Columns now keep the main note's own left extent (`main_left`) and
+    the graces end left of it, with room for their flag and slash.
+  - Notation: cue size 0.65; their own accidentals (against the key signature,
+    `Clef::place_grace`); ledger lines; stems always up, one eighth flag (the GP5 grace
+    duration unit was misread as a note value and gave four flags); the acciaccatura slash
+    crosses stem and flag instead of the head.
+  - Tab: fret numbers at 0.78 of the normal size instead of 0.6, and no slash (it covered
+    the digit: measure 102 of `farewell.gp` read like "Ø10").
+- Playback (`gscore-play/src/graces.rs`, new; `effects::one_note_per_string`):
+  - Cause: a grace note lasted a 32nd (44 ms at 170 BPM) while the previous note on its
+    string rang on over it at full level until the beat. Offline with FluidR3 on
+    `farewell.gp` measure 101 the previous note was 2.2x the grace note's level in that
+    window; now the grace note is 3.4x what is left of the previous note.
+  - A grace note sounds about 75 ms (between a 32nd and a 16th), a note still ringing on
+    the same string stops when the next note there starts, appoggiaturas (on-beat graces)
+    take the beat and delay the main note on their string, and at the very start of the
+    song the graces play first instead of together with the main note.
+  - The beat excerpt (palette clicks, notes as entered) plays a beat's grace notes too, and
+    a brush stroke no longer spreads the grace notes as if they were chord notes.
+- Key signatures (review of f361b20): chromatic notes are now spelled with flats in flat
+  keys (A flat, not G sharp, in B flat major), as Guitar Pro writes them.
+- Section titles (db73d8e) and the modelling plan (7dd4242): reviewed, no changes.
+- Tests: `test_graces` (graces clear of the main accidental, own sharp, readable unslashed
+  tab number, ledger lines), `test_sequence` (a grace note cuts the ringing note, the
+  excerpt plays the grace first), unit tests for grace placement and lengths, one note per
+  string, and flat spelling. `testing::song_with_graces` builds such songs.

@@ -7,6 +7,7 @@
 
 mod columns;
 mod draw;
+mod graces;
 
 pub(crate) use draw::draw_barline_ties;
 
@@ -22,6 +23,7 @@ use crate::notation::{self, KeySigLayout, NotationItem};
 use crate::ornaments::{ColumnMarks, Fret};
 
 use columns::{as_f64, beat_length, beat_starts, column_items};
+use graces::Grace;
 
 /// Space before and after a time signature.
 const TIME_SIG_PAD: (f32, f32) = (0.8, 0.6);
@@ -38,11 +40,6 @@ const MEASURE_NUMBER_RISE: f32 = 0.8;
 /// How far a second voice's noteheads move right when they share a staff position with the
 /// first voice's.
 const VOICE_OFFSET: f32 = 0.6;
-/// Scale of grace notes against normal notes.
-const GRACE_SCALE: f32 = 0.6;
-/// Gap between two grace notes, and before the main note.
-const GRACE_GAP: f32 = 0.25;
-
 /// Where a system's staves are: the tab's top line, and the notation staff's top line if
 /// notation is shown.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -51,24 +48,6 @@ pub(crate) struct Tops {
     pub(crate) notation: Option<f32>,
     /// Whether the tab staff is drawn (a track may show notation only).
     pub(crate) show_tab: bool,
-}
-
-/// A grace note drawn just before a column's main note.
-#[derive(Debug, Clone, PartialEq)]
-pub(super) struct Grace {
-    /// The grace notes that share a stem (one grace beat, or one attached grace).
-    pub(super) group: usize,
-    /// Staff position on the notation staff, when it can be worked out.
-    pub(super) position: Option<i32>,
-    /// The tab staff's line, when the string is on the staff.
-    pub(super) line: Option<usize>,
-    /// The fret number (or `x`) for the tab.
-    pub(super) text: String,
-    pub(super) dead: bool,
-    /// Written value as a power of two (8 = eighth, ...), for the flags.
-    pub(super) value: u16,
-    /// Played on the beat (an appoggiatura, without a slash).
-    pub(super) on_beat: bool,
 }
 
 /// A measure, laid out independently of its position.
@@ -111,6 +90,9 @@ struct Column {
     graces: Vec<Grace>,
     /// Room the grace notes take, including the gap to the main note.
     grace_width: f32,
+    /// How far the main note reaches left of the column's center (its accidentals
+    /// included): the grace notes end there.
+    main_left: f32,
     /// The beat this column starts in (beams join notes within one beat).
     beat: u64,
     /// The model beats that start here, as `(voice, beat)`.
@@ -209,10 +191,9 @@ impl MeasureLayout {
             for voice in 0..voice_count {
                 if let Some(grace_beats) = starts.graces.get(&(voice, *onset)) {
                     for grace_beat in grace_beats {
-                        let value = grace_beat.note_value()?.value();
                         let mut drew = false;
                         for note in grace_beat.notes() {
-                            if let Some(grace) = columns::grace_from_note(note, value, ctx, key) {
+                            if let Some(grace) = graces::from_note(note, ctx, key) {
                                 data.graces.push(Grace { group, ..grace });
                                 drew = true;
                             }
@@ -227,14 +208,14 @@ impl MeasureLayout {
             for &(_, beat) in beats {
                 for note in beat.notes() {
                     if let Some(grace) = note.grace()
-                        && let Some(grace) = columns::grace_from_effect(note, grace, ctx, key)
+                        && let Some(grace) = graces::from_effect(note, grace, ctx, key)
                     {
                         data.graces.push(Grace { group, ..grace });
                         group = group.saturating_add(1);
                     }
                 }
             }
-            data.grace_width = columns::grace_width(&data.graces, ctx);
+            data.grace_width = graces::width(&data.graces, ctx);
             // A tiny epsilon keeps exact beat starts (computed in floats) in their beat.
             data.beat = if beat_length > 0.0 {
                 (as_f64(*onset) / beat_length + 1e-9).floor() as u64
@@ -317,12 +298,14 @@ impl MeasureLayout {
                 }))
             })
             .collect();
-        let extents: Vec<(f32, f32)> = columns
+        // Each column's room left of its center for the main note alone, then with its
+        // grace notes before it, and right of its center.
+        let extents: Vec<(f32, f32, f32)> = columns
             .iter()
             .enumerate()
             .map(|(index, (data, _, _, _))| {
                 let tab = half_width(&data.items, ctx);
-                let mut left = data.grace_width;
+                let mut left = 0.0_f32;
                 let mut right = 0.0_f32;
                 for (voice, item) in data.notation.iter().enumerate() {
                     let Some(item) = item else { continue };
@@ -340,20 +323,21 @@ impl MeasureLayout {
                     left = left.max(item_left + shift);
                     right = right.max(item_right + shift);
                 }
-                (tab.max(left), tab.max(right))
+                let main = tab.max(left);
+                (main, main + data.grace_width, tab.max(right))
             })
             .collect();
         let lead = extents
             .first()
-            .map_or(MIN_LEAD, |(left, _)| (left + edge_padding).max(MIN_LEAD));
+            .map_or(MIN_LEAD, |(_, left, _)| (left + edge_padding).max(MIN_LEAD));
         let columns = columns
             .into_iter()
             .enumerate()
             .map(|(i, (data, space, dynamic, tempo))| {
-                let own = extents.get(i).map_or(0.0, |(_, right)| *right);
+                let own = extents.get(i).map_or(0.0, |(_, _, right)| *right);
                 let next = extents
                     .get(i.saturating_add(1))
-                    .map_or(0.0, |(left, _)| *left);
+                    .map_or(0.0, |(_, left, _)| *left);
                 // The last column ends at the barline and needs the wider edge padding.
                 let padding = if i.saturating_add(1) < extents.len() {
                     min_gap
@@ -368,6 +352,7 @@ impl MeasureLayout {
                     notation_offset: offsets.get(i).copied().unwrap_or(0.0),
                     graces: data.graces,
                     grace_width: data.grace_width,
+                    main_left: extents.get(i).map_or(0.0, |(main, _, _)| *main),
                     beat: data.beat,
                     beats: data.beats,
                     dynamic,

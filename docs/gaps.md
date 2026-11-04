@@ -100,7 +100,8 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    Missing in notation: tuplet groups spanning several beats (each beat's beam gets its own
    number), articulations and ornaments on the notation staff (they stay on the
    tab), harmonic diamonds (harmonics are written at their sounding pitch). Grace notes are
-   drawn as small slashed heads before their note (GP6/GP7 grace beats and GP3-5 attached
+   drawn as cue-sized heads (own accidentals and ledger lines, slashed eighth flag) and
+   smaller fret numbers before their note (GP6/GP7 grace beats and GP3-5 attached
    graces) and take no time. Since 2026-11-03
    section names, tempo changes, repeat signs (with "x3" counts), alternative endings and
    dynamics are drawn, and drum tracks get a percussion staff. Missing everywhere:

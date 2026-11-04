@@ -22,7 +22,7 @@ use gscore_model::{BeatKind, BeatView, NoteKind, TrackView};
 
 pub(crate) use draw::{
     BeamPlan, KeySigLayout, draw_measure, draw_staff_start, draw_tab_staff_start, draw_tie_curve,
-    key_start_width, prefix_width, tab_prefix_width, y_of,
+    key_start_width, ledger_positions, prefix_width, tab_prefix_width, y_of,
 };
 pub(crate) use pitch::{Alter, Clef};
 

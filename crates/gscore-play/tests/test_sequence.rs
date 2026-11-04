@@ -310,16 +310,96 @@ fn grace_notes_sound_with_their_beat_and_take_no_time() {
             _ => None,
         })
         .collect();
-    // The grace note (string 1, fret 5) and the main note (fret 3) both start at tick 0
-    // here (the song starts there, so there is no time before it).
-    assert!(ons.contains(&(0, 69)), "the grace note: {ons:?}");
-    assert!(ons.contains(&(0, 67)), "the main note: {ons:?}");
+    // The song starts with the grace note (string 1, fret 5): there is no time before
+    // the beat, so it takes the beat's start and the main note (fret 3) follows it.
+    let grace = ons.iter().find(|(_, key)| *key == 69).copied();
+    let main = ons.iter().find(|(_, key)| *key == 67).copied();
+    assert_eq!(
+        grace.map(|(tick, _)| tick),
+        Some(0),
+        "the grace note: {ons:?}"
+    );
+    let main = main.map(|(tick, _)| tick).unwrap();
+    assert!(
+        main > 0 && main <= ppq / 4,
+        "the main note follows soon: {ons:?}"
+    );
     let grace_off = sequence.events.iter().any(|event| {
-        event.tick > 0
-            && event.tick <= ppq / 8
-            && matches!(event.event, MidiEvent::NoteOff { key: 69, .. })
+        event.tick == main && matches!(event.event, MidiEvent::NoteOff { key: 69, .. })
     });
-    assert!(grace_off, "the grace note is short");
+    assert!(grace_off, "the grace note ends as the main note starts");
+}
+
+/// The note-on and note-off ticks of `key` in `sequence`.
+fn spans_of(sequence: &Sequence, key: u8) -> Vec<(u64, u64)> {
+    let mut ons = Vec::new();
+    let mut spans = Vec::new();
+    for event in &sequence.events {
+        match event.event {
+            MidiEvent::NoteOn { key: k, .. } if k == key => ons.push(event.tick),
+            MidiEvent::NoteOff { key: k, .. } if k == key && !ons.is_empty() => {
+                spans.push((ons.remove(0), event.tick));
+            }
+            _ => {}
+        }
+    }
+    spans
+}
+
+#[test]
+fn a_grace_note_cuts_the_note_ringing_on_its_string() {
+    // Beat 1: string 1 open (E4, 64). Beat 2: grace at fret 2 (66), then fret 4 (68).
+    let song = testing::song_with_graces(&[(&[], &[(1, 0)]), (&[(1, 2)], &[(1, 4)])]).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let ppq = u64::from(PPQ);
+    let grace = spans_of(&sequence, 66);
+    assert_eq!(grace.len(), 1, "{:?}", sequence.events);
+    let (grace_on, grace_off) = grace[0];
+    assert_eq!(grace_off, ppq, "the grace note ends on the beat");
+    assert!(
+        grace_off - grace_on >= ppq / 8,
+        "long enough to hear: {grace:?}"
+    );
+    assert_eq!(
+        spans_of(&sequence, 64),
+        [(0, grace_on)],
+        "the open string stops when the grace note is struck"
+    );
+    assert_eq!(
+        spans_of(&sequence, 68)[0].0,
+        ppq,
+        "the main note is on the beat"
+    );
+}
+
+#[test]
+fn a_beat_excerpt_plays_its_grace_notes_first() {
+    let song = testing::song_with_graces(&[(&[], &[(1, 0)]), (&[(1, 2)], &[(1, 4)])]).unwrap();
+    let at = BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: VoiceIndex::new(0),
+        // Beat 0 is the first quarter, beat 1 the grace beat, beat 2 its main note.
+        beat: BeatIndex::new(2),
+    };
+    let excerpt = Sequence::beat_excerpt(&song, at).unwrap().unwrap();
+    let ons: Vec<(u64, u8)> = excerpt
+        .events
+        .iter()
+        .filter_map(|event| match event.event {
+            MidiEvent::NoteOn { key, .. } => Some((event.tick, key)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ons.first(), Some(&(0, 66)), "the grace note first: {ons:?}");
+    assert!(
+        ons.iter().any(|&(tick, key)| key == 68 && tick > 0),
+        "then the main note: {ons:?}"
+    );
+    assert!(
+        !ons.iter().any(|&(_, key)| key == 64),
+        "not the beat before"
+    );
 }
 
 #[test]
@@ -335,7 +415,10 @@ fn an_attached_grace_note_sounds() {
         })
         .collect();
     assert!(ons.contains(&(0, 69)), "the grace note: {ons:?}");
-    assert!(ons.contains(&(0, 67)), "the main note: {ons:?}");
+    assert!(
+        ons.iter().any(|&(tick, key)| key == 67 && tick > 0),
+        "the main note after it: {ons:?}"
+    );
 }
 
 #[test]
