@@ -292,6 +292,10 @@ impl GuitarScoreApp {
             state.effects.open_whammy(&snapshot);
         } else if action == ActionId::GraceNote {
             state.effects.open_grace(&snapshot);
+        } else if action == ActionId::TrillOther {
+            state.effects.open_trill(&snapshot);
+        } else if action == ActionId::TremoloOther {
+            state.effects.open_tremolo(&snapshot);
         } else if let Some(item) = super::edit_effects::fx_item(action) {
             commands = super::edit_effects::fx_commands(item.fx, &snapshot);
         }
