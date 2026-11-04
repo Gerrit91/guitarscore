@@ -23,6 +23,10 @@ pub use settings::{
 };
 pub use state::{MeasureSelection, ThemeChoice, ViewState, ZOOM_RANGE};
 
+/// The app icon as a 256 px PNG (`packaging/guitarscore.svg` rendered): the window icon
+/// and the picture in Help › About.
+pub const APP_ICON: &[u8] = include_bytes!("../../../packaging/guitarscore.png");
+
 // The snapshot test and example render the app offscreen and save PNGs; this marks the
 // test-only dependencies for the library test target's unused-dependency check.
 #[cfg(test)]

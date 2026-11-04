@@ -6,10 +6,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use gscore_app::{GuitarScoreApp, Settings};
-
-/// The app icon: a guitar headstock in front of a staff (`packaging/guitarscore.svg`).
-const APP_ICON: &[u8] = include_bytes!("../../../packaging/guitarscore.png");
+use gscore_app::{APP_ICON, GuitarScoreApp, Settings};
 
 fn main() -> ExitCode {
     if let Some(dir) = gscore_session::default_crash_dir() {

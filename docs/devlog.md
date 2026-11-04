@@ -2038,13 +2038,16 @@ lifeless):
   (`release: prereleased`), not on every published release. The owner checks the
   attached assets on the pre-release, then unticks "pre-release" to make it the full
   release, which builds nothing again. `overwrite_files` lets a re-run replace the assets.
-- New icon (`packaging/guitarscore.svg`/`.png`): a plain white headstock with six tuner
-  posts and the nut, in front of a grey five-line staff on the charcoal tile. It has no
-  strings, no tuner buttons and no tilt, so it stays clear at 24 px. The old pick-shaped
-  icon was too close to Guitar Pro's. The app now sets it as the window icon (it showed
-  eframe's default) and uses the app id `guitarscore`, matching the desktop file (and its
-  `StartupWMClass`), so docks on Wayland find the icon. Tests `test_icon.rs` and
-  `help_about_shows_the_version` (Help › About had no test).
+- App icon: the old pick-shaped icon was too close to Guitar Pro's; a replacement is being
+  chosen with the owner (the committed one is a placeholder). The app now sets it as the
+  window icon (it showed eframe's default), uses the app id `guitarscore` to match the
+  desktop file (and its `StartupWMClass`) so docks on Wayland find the icon, and shows it
+  in Help › About. `gscore_app::APP_ICON` holds the PNG for both. Tests `test_icon.rs`
+  and `help_about_shows_the_version` (Help › About had no test).
+- The baked-in build SHA went stale: `gscore-version`'s build script reran only when
+  `GSCORE_VERSION` changed, so a local build after a new commit still showed the old SHA
+  in Help › About. It now also reruns when git's HEAD, the current branch or the packed
+  refs change (paths from `git rev-parse --git-path`, so worktrees work too).
 - Tests: the app snapshots were stale since Help › About added a "Help" menu to the title
   bar (the only difference; regenerated). `opening_a_song_starts_loading_the_synthesizer`
   failed about one run in three: `settle` called `Harness::run`, which panics when the

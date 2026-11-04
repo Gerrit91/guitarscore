@@ -2,7 +2,7 @@
 
 #![allow(clippy::expect_used, unused_crate_dependencies)]
 
-const APP_ICON: &[u8] = include_bytes!("../../../packaging/guitarscore.png");
+use gscore_app::APP_ICON;
 const APP_ICON_SVG: &str = include_str!("../../../packaging/guitarscore.svg");
 
 #[test]

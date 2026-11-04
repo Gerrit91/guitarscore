@@ -100,6 +100,7 @@ fn help_about_shows_the_version() {
     harness.get_by_label("About GuitarScore").click();
     harness.run();
     harness.get_by_label(&format!("Version {}", gscore_version::VERSION));
+    harness.get_by_label("GuitarScore icon");
 }
 
 #[test]
