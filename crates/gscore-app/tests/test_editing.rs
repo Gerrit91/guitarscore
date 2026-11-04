@@ -370,11 +370,12 @@ fn the_advanced_effect_tiles_edit_the_note_and_beat() {
     assert_eq!(fade(&harness), Some(Fade::Out));
     click(&mut harness, "Volume swell");
     assert_eq!(fade(&harness), Some(Fade::Swell));
-    // The trill and tremolo tiles toggle their defaults with a click (the corner opens
-    // their dialogs).
+    // The trill and tremolo tiles open their dialogs, like the bend and grace tiles.
     click(&mut harness, "Trill");
+    click(&mut harness, "OK");
     assert!(note_flag(&harness, |note| note.trill().is_some()));
     click(&mut harness, "Tremolo picking");
+    click(&mut harness, "OK");
     assert!(note_flag(&harness, |note| note.tremolo_speed().is_some()));
 }
 

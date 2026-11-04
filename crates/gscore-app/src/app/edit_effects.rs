@@ -320,16 +320,28 @@ const SLIDE_ITEMS: &[FxItem] = &[
 
 /// The bend, the whammy bar (a beat effect, but its neighbour) and the harmonics.
 const PITCH_ITEMS: &[FxItem] = &[
-    item(ActionId::ToggleBend, Face::Bend, Fx::Bend),
-    item(ActionId::ToggleWhammy, Face::Whammy, Fx::Whammy),
+    item(ActionId::ToggleBend, Face::BendMore, Fx::Bend),
+    item(ActionId::ToggleWhammy, Face::WhammyMore, Fx::Whammy),
     // One tile for every harmonic: it opens the harmonic editor.
     item(
         ActionId::ToggleNaturalHarmonic,
-        glyph("\u{E0DD}", 42.0, 0.0),
+        Face::GlyphMore {
+            text: "\u{E0DD}",
+            size: 42.0,
+            baseline: 0.0,
+        },
         Fx::AnyHarmonic,
     ),
     // A slashed grace note: it opens the grace note dialog.
-    item(ActionId::GraceNote, glyph("\u{E560}", 40.0, 6.0), Fx::Grace),
+    item(
+        ActionId::GraceNote,
+        Face::GlyphMore {
+            text: "\u{E560}",
+            size: 40.0,
+            baseline: 6.0,
+        },
+        Fx::Grace,
+    ),
 ];
 
 /// The harmonics, each with its key (their palette tile is the one harmonic tile).
@@ -414,13 +426,6 @@ const BEAT_ITEMS: &[FxItem] = &[
         Face::Word("pop"),
         Fx::Slap(SlapKind::Popping),
     ),
-    item(ActionId::ToggleFadeIn, Face::Hairpin, Fx::FadeIn),
-    item(ActionId::ToggleFadeOut, Face::HairpinOut, Fx::FadeOut),
-    item(
-        ActionId::ToggleVolumeSwell,
-        Face::HairpinSwell,
-        Fx::VolumeSwell,
-    ),
     item(ActionId::ToggleLegato, Face::Slur, Fx::Legato),
     item(
         ActionId::ToggleBeatVibrato,
@@ -428,6 +433,41 @@ const BEAT_ITEMS: &[FxItem] = &[
         Fx::BeatVibrato(Vibrato::Slight),
     ),
 ];
+
+/// The fades: dynamics, so they sit in the dynamics section of the palette.
+const FADE_ITEMS: &[FxItem] = &[
+    item(ActionId::ToggleFadeIn, Face::Hairpin, Fx::FadeIn),
+    item(ActionId::ToggleFadeOut, Face::HairpinOut, Fx::FadeOut),
+    item(
+        ActionId::ToggleVolumeSwell,
+        Face::HairpinSwell,
+        Fx::VolumeSwell,
+    ),
+];
+
+/// The fade tiles, in the dynamics section: a fade-in, a fade-out and a volume swell.
+pub(super) fn fade_tiles(
+    ui: &mut egui::Ui,
+    snapshot: &PaletteSnapshot,
+    hint: &dyn Fn(ActionId) -> String,
+    commands: &mut Vec<Command>,
+) {
+    let enabled = !snapshot.beats.is_empty();
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = vec2(2.0, 3.0);
+        for item in FADE_ITEMS {
+            let label = item.action.label();
+            let mut tip = format!("{label}{}", hint(item.action));
+            if !enabled {
+                tip.push_str("\nPut the cursor on a beat first.");
+            }
+            let on = is_on_for_targets(item.fx, snapshot);
+            if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
+                commands.extend(fx_commands(item.fx, snapshot));
+            }
+        }
+    });
+}
 
 /// The effect item bound to `action`, for a key press.
 pub(super) fn fx_item(action: ActionId) -> Option<&'static FxItem> {
@@ -437,6 +477,7 @@ pub(super) fn fx_item(action: ActionId) -> Option<&'static FxItem> {
         NOTE_ITEMS,
         SLIDE_ITEMS,
         PITCH_ITEMS,
+        FADE_ITEMS,
         BEAT_ITEMS,
     ]
     .into_iter()
@@ -684,17 +725,17 @@ impl EffectsState {
                         )
                     };
                     let on = is_on_for_targets(item.fx, snapshot);
-                    let response = tiles::tile(ui, item.face, on, enabled, label, &tip);
-                    if response.clicked() {
-                        // The corner triangle of the trill and tremolo tiles opens their
-                        // dialog; the rest of the tile toggles the default.
-                        let corner = response.interact_pointer_pos().is_some_and(|pos| {
-                            pos.x > response.rect.right() - 9.0
-                                && pos.y > response.rect.bottom() - 9.0
-                        });
-                        let opens =
-                            matches!(item.fx, Fx::Bend | Fx::Whammy | Fx::AnyHarmonic | Fx::Grace)
-                                || (matches!(item.fx, Fx::Trill | Fx::Tremolo) && corner);
+                    if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
+                        // These tiles open a dialog; the others toggle the effect.
+                        let opens = matches!(
+                            item.fx,
+                            Fx::Bend
+                                | Fx::Whammy
+                                | Fx::AnyHarmonic
+                                | Fx::Grace
+                                | Fx::Trill
+                                | Fx::Tremolo
+                        );
                         if opens {
                             open = Some(item.fx);
                         } else {

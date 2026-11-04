@@ -196,7 +196,7 @@ impl GuitarScoreApp {
                     note_length(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
                     beat_buttons(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
                 });
-                edit_dynamics::section(ui, &snapshot.dynamics, &mut commands, &mut heard);
+                edit_dynamics::section(ui, &snapshot, &hint, &mut commands, &mut heard);
                 tab.edit_palette
                     .effects
                     .panel(ui, &snapshot, &hint, &mut commands);

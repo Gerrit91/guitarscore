@@ -35,10 +35,10 @@ pub(crate) enum Face<'a> {
     Slur,
     /// A hammer-on or pull-off: an "H" under a slur.
     Hammer,
-    /// A bend: a curve rising to an arrow.
-    Bend,
-    /// A whammy dip: down and back up.
-    Whammy,
+    /// A bend whose tile opens the bend editor.
+    BendMore,
+    /// A whammy dip whose tile opens the whammy editor.
+    WhammyMore,
     /// A fade-in hairpin ("<").
     Hairpin,
     /// A fade-out hairpin (">").
@@ -202,34 +202,13 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
             fill_crescent(painter, &points, ink);
             lettering(painter, at(0.0, 4.0), "H", 12.0, false, ink);
         }
-        Face::Bend => {
-            // Like the score's bend: a quarter ellipse that leaves level and rises straight
-            // into the base of a solid arrowhead.
-            const QUARTER_ELLIPSE: f32 = 0.552_284_8;
-            let start = at(-8.0, 8.0);
-            let tip = at(5.0, -10.0);
-            let base = tip + vec2(0.0, 7.0);
-            painter.add(egui::epaint::CubicBezierShape::from_points_stroke(
-                [
-                    start,
-                    egui::pos2(start.x + (base.x - start.x) * QUARTER_ELLIPSE, start.y),
-                    egui::pos2(base.x, base.y + (start.y - base.y) * QUARTER_ELLIPSE),
-                    base,
-                ],
-                false,
-                Color32::TRANSPARENT,
-                Stroke::new(1.8, ink),
-            ));
-            painter.add(Shape::convex_polygon(
-                vec![tip, base + vec2(4.0, 0.5), base + vec2(-4.0, 0.5)],
-                ink,
-                Stroke::NONE,
-            ));
+        Face::BendMore => {
+            paint_bend(painter, rect, ink);
+            more_corner(painter, rect, ink);
         }
-        Face::Whammy => {
-            let points = vec![at(-10.0, -4.0), at(-5.0, -4.0), at(0.0, 6.0), at(5.0, -4.0)];
-            painter.add(Shape::line(points, Stroke::new(1.8, ink)));
-            painter.line_segment([at(5.0, -4.0), at(10.0, -4.0)], Stroke::new(1.8, ink));
+        Face::WhammyMore => {
+            paint_whammy(painter, rect, ink);
+            more_corner(painter, rect, ink);
         }
         Face::Hairpin => {
             let stroke = Stroke::new(1.6, ink);
@@ -481,6 +460,42 @@ pub(crate) fn tuplet_bracket(
     if more {
         more_corner(painter, rect, ink);
     }
+}
+
+/// A bend: a quarter ellipse that leaves level and rises straight into the base of a solid
+/// arrowhead, like the score's bend.
+fn paint_bend(painter: &Painter, rect: Rect, ink: Color32) {
+    const QUARTER_ELLIPSE: f32 = 0.552_284_8;
+    let c = rect.center();
+    let at = |dx: f32, dy: f32| egui::pos2(c.x + dx, c.y + dy);
+    let start = at(-8.0, 8.0);
+    let tip = at(5.0, -10.0);
+    let base = tip + vec2(0.0, 7.0);
+    painter.add(egui::epaint::CubicBezierShape::from_points_stroke(
+        [
+            start,
+            egui::pos2(start.x + (base.x - start.x) * QUARTER_ELLIPSE, start.y),
+            egui::pos2(base.x, base.y + (start.y - base.y) * QUARTER_ELLIPSE),
+            base,
+        ],
+        false,
+        Color32::TRANSPARENT,
+        Stroke::new(1.8, ink),
+    ));
+    painter.add(Shape::convex_polygon(
+        vec![tip, base + vec2(4.0, 0.5), base + vec2(-4.0, 0.5)],
+        ink,
+        Stroke::NONE,
+    ));
+}
+
+/// A whammy dip: down and back up.
+fn paint_whammy(painter: &Painter, rect: Rect, ink: Color32) {
+    let c = rect.center();
+    let at = |dx: f32, dy: f32| egui::pos2(c.x + dx, c.y + dy);
+    let points = vec![at(-10.0, -4.0), at(-5.0, -4.0), at(0.0, 6.0), at(5.0, -4.0)];
+    painter.add(Shape::line(points, Stroke::new(1.8, ink)));
+    painter.line_segment([at(5.0, -4.0), at(10.0, -4.0)], Stroke::new(1.8, ink));
 }
 
 /// The small triangle in a tile's bottom right corner that says it opens a dialog.

@@ -682,3 +682,23 @@ fn a_hammered_note_and_a_legato_beat_are_not_picked() {
     assert_eq!(ons[0].2, plain[0].2);
     assert!(ons[1].2 < plain[1].2);
 }
+
+#[test]
+fn a_beat_excerpt_keeps_brush_arpeggio_and_rasgueado_spreads() {
+    for effect in [
+        BeatEffect::BrushStroke(Some(StrokeDirection::Down)),
+        BeatEffect::Arpeggio(Some(StrokeDirection::Down)),
+        BeatEffect::Rasgueado(true),
+    ] {
+        let mut song = chord_song();
+        let _ = song.set_beat_effect(at(0), effect.clone()).unwrap();
+        let excerpt = Sequence::beat_excerpt(&song, at(0)).unwrap().unwrap();
+        let ons = note_ons(&excerpt);
+        assert!(
+            ons.len() >= 3,
+            "{effect:?}: the excerpt keeps the chord: {ons:?}"
+        );
+        let last = ons.iter().map(|on| on.0).max().unwrap();
+        assert!(last > 0, "{effect:?}: the chord is spread: {ons:?}");
+    }
+}
