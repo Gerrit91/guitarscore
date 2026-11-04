@@ -97,6 +97,7 @@ fn parse_grace(value: &str) -> Result<Option<Grace>, String> {
         speed,
         on_beat,
         dead,
+        hammer: false,
     }))
 }
 

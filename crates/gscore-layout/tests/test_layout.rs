@@ -58,18 +58,39 @@ fn assert_on_page(layout: &Layout, what: &str) {
     }
 }
 
-/// The notes layout should show as fret numbers. A tie continuation is not written in
-/// tablature: the origin already carries the note.
+/// The notes layout should show as fret numbers. A tie continuation is not written within a
+/// measure (the origin already carries the note), but one carried into a measure's first
+/// column is written as `(7)`.
 fn shown_notes(song: &Song, track: usize) -> usize {
     let track = song.track(TrackIndex::new(track)).unwrap();
-    track
-        .measures()
-        .flat_map(|m| m.voices())
-        .flat_map(|v| v.beats())
-        .filter(|b| b.kind() == BeatKind::Normal)
-        .flat_map(|b| b.notes())
-        .filter(|n| matches!(n.kind(), NoteKind::Normal | NoteKind::Dead))
-        .count()
+    let mut count = 0;
+    for measure in track.measures() {
+        for voice in measure.voices() {
+            let mut first = true;
+            for beat in voice.beats() {
+                if beat.kind() == BeatKind::Empty {
+                    continue;
+                }
+                if beat.kind() == BeatKind::Normal {
+                    for note in beat.notes() {
+                        match note.kind() {
+                            NoteKind::Normal | NoteKind::Dead => count += 1,
+                            NoteKind::Tie if first && !beat.is_grace() => count += 1,
+                            _ => {}
+                        }
+                        // An attached grace note is written as a small fret number too.
+                        if !beat.is_grace() && note.grace().is_some() {
+                            count += 1;
+                        }
+                    }
+                }
+                if !beat.is_grace() {
+                    first = false;
+                }
+            }
+        }
+    }
+    count
 }
 
 fn fret_numbers(layout: &Layout) -> usize {

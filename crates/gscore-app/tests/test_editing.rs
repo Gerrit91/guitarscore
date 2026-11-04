@@ -1144,6 +1144,7 @@ fn shift_g_opens_the_grace_note_dialog_and_ok_sets_the_chosen_speed() {
             speed: gscore_model::GraceSpeed::Slow,
             on_beat: true,
             dead: false,
+            hammer: false,
         })
     );
     // The palette tile reopens the dialog on it; Remove takes the grace note off.

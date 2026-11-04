@@ -6,7 +6,7 @@
 use gscore_model::Dynamic;
 
 use super::effects::LANE_CLEARANCE;
-use super::{Column, Item, MEASURE_NUMBER_RISE, MeasureLayout, Tops};
+use super::{Column, DEAD_SLAP_HALF, Item, MEASURE_NUMBER_RISE, MeasureLayout, Tops};
 
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
@@ -225,6 +225,21 @@ impl MeasureLayout {
         let (xs, right) = self.column_positions(x, stretch);
         // Where each column's space ends: the next column, or the end of the measure.
         let span_end = |index: usize| xs.get(index.saturating_add(1)).copied().unwrap_or(right);
+        // A dead slapped beat is a large cross across each staff instead of its notes.
+        for (index, column) in self.columns.iter().enumerate() {
+            if !column.marks.dead_slapped {
+                continue;
+            }
+            let Some(&at) = xs.get(index) else {
+                continue;
+            };
+            if tops.show_tab {
+                draw_dead_slap(at, top, ctx.staff.height(), ops);
+            }
+            if let Some(notation_top) = tops.notation {
+                draw_dead_slap(at, notation_top, notation::staff().height(), ops);
+            }
+        }
         if tops.show_tab {
             for (index, column) in self.columns.iter().enumerate() {
                 let at = xs.get(index).copied().unwrap_or(right);
@@ -325,6 +340,13 @@ impl MeasureLayout {
                 });
                 ornaments::draw_tab_brush(at, frets, top, direction, ctx, ops);
             }
+            if let Some(direction) = column.marks.arpeggio {
+                let frets = column.items.iter().filter_map(|item| match item {
+                    Item::Fret(fret) => Some(fret),
+                    Item::Rest { .. } => None,
+                });
+                ornaments::draw_tab_arpeggio(at, frets, top, direction, ctx, ops);
+            }
         }
         self.draw_column_ornaments(&xs, right, &vec![top; xs.len()], ctx, ops);
         self.draw_legato(&xs, top, ops);
@@ -353,6 +375,8 @@ impl MeasureLayout {
                 };
                 if target.tie_destination {
                     ornaments::draw_tie(at, target_x, top, origin, target, ctx, ops);
+                } else if origin.marks.pick_slide.is_some() {
+                    ornaments::draw_pick_slide(at, target_x, top, origin, target, ctx, ops);
                 } else if origin.marks.hammer || origin.marks.direct_slide().is_some() {
                     ornaments::draw_link(at, target_x, top, origin, target, ctx, ops);
                 }
@@ -388,6 +412,23 @@ impl MeasureLayout {
                 NotationItem::Rest { .. } => None,
             })
             .min()
+    }
+}
+
+/// A large cross across a staff for a dead slapped beat, centered on `x`.
+fn draw_dead_slap(x: f32, top: f32, height: f32, ops: &mut Vec<DrawOp>) {
+    let (left, right) = (x - DEAD_SLAP_HALF, x + DEAD_SLAP_HALF);
+    let (high, low) = (top - 0.3, top + height + 0.3);
+    for (from, to) in [
+        (Point::new(left, high), Point::new(right, low)),
+        (Point::new(left, low), Point::new(right, high)),
+    ] {
+        ops.push(DrawOp::Line {
+            from,
+            to,
+            thickness: 0.22,
+            color: ColorToken::Notation,
+        });
     }
 }
 

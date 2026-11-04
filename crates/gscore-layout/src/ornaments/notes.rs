@@ -1,6 +1,10 @@
 //! Painting ornaments that sit on or above one note: number, mask, slashes, accents,
 //! vibrato, beats and bends.
 
+use super::symbols::{
+    CIRCLE_RADIUS, MAX_WIGGLES, QUARTER_ELLIPSE, arrow_base, draw_arrowhead, draw_circled_symbol,
+    draw_horizontal_wiggle, draw_tap_arc, draw_tremolo_strokes,
+};
 use super::{Fret, LINE_THICKNESS, MASK_PAD, SLASH_GAP, SLASH_REACH};
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, Rect, TextAnchor, TextFont};
@@ -21,22 +25,16 @@ const WIGGLE_INSET: (f32, f32) = (0.3, 1.0);
 const WIGGLE_MIN: f32 = 1.2;
 /// Length of one slight-vibrato half wave and one wide-vibrato stroke.
 const WIGGLE_STEP: (f32, f32) = (0.45, 0.7);
-/// Most wiggle segments drawn for one note.
-const MAX_WIGGLES: f32 = 200.0;
 /// Gap between a bend's arrow and the next note.
 const BEND_END_GAP: f32 = 0.8;
 /// Shortest bend, from the number to the arrow.
 const BEND_MIN: f32 = 1.5;
-/// How far a cubic Bézier's control points reach for a quarter ellipse (4/3·(√2−1)).
-const QUARTER_ELLIPSE: f32 = 0.552_284_8;
-/// An arrowhead's length (tip to base) and half its base width.
-const ARROW_LENGTH: f32 = 0.9;
-const ARROW_HALF_WIDTH: f32 = 0.42;
 
 impl Fret {
-    /// Draws the number (with its mask and inline slide slashes).
+    /// Draws the number (with its mask and inline slide slashes). An empty tie continuation
+    /// shows nothing; one carried into a measure shows `(7)`.
     pub(crate) fn draw(&self, x: f32, top: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
-        if self.tie_destination {
+        if self.tie_destination && self.text.is_empty() {
             return;
         }
         let size = ctx.options.fret_size;
@@ -63,6 +61,12 @@ impl Fret {
             color: ColorToken::FretNumber,
         });
         self.draw_side_slashes(x, line_y, cap, ops);
+        if self.marks.left_hand_tap {
+            draw_tap_arc(x - self.width / 2.0 - MASK_PAD.0, line_y, cap, ops);
+        }
+        if let Some(speed) = self.marks.tremolo {
+            draw_tremolo_strokes(x, line_y + cap / 2.0, speed.strokes(), ops);
+        }
     }
 
     /// The steep slashes of slides in and out, just outside the number.
@@ -116,11 +120,26 @@ impl Fret {
             if self.marks.staccato {
                 draw_staccato(x, top, ctx, ops);
             }
-            if self.marks.tremolo_picking {
-                draw_glyph_centered(Glyph::Tremolo3, x, top - ORNAMENT_LANE, 1.0, ctx, ops);
-            }
         }
         self.draw_lane_marks(x, top, ctx, ops);
+        // Guitar Pro writes `tr` above the tab too (and above the notation staff, which the
+        // notation draws itself).
+        if self.marks.trill.is_some() {
+            draw_glyph_centered(Glyph::Trill, x, top - ORNAMENT_LANE, 1.0, ctx, ops);
+        }
+        if self.marks.left_hand_tap {
+            draw_circled_symbol("T", x, top - ORNAMENT_LANE, CIRCLE_RADIUS, ctx, ops);
+        }
+        if self.marks.pick_slide.is_some() {
+            ops.push(DrawOp::Text {
+                text: "P.S.".to_owned(),
+                at: Point::new(x, top - ORNAMENT_LANE),
+                size: 0.9,
+                font: TextFont::Regular,
+                anchor: TextAnchor::Middle,
+                color: ColorToken::Annotation,
+            });
+        }
         if let Some(bend) = self.marks.bend {
             draw_bend(x, span_end, top, self, bend, ctx, ops);
         }
@@ -132,14 +151,11 @@ impl Fret {
         &self,
         x: f32,
         top: f32,
-        ctx: &Context<'_>,
+        _ctx: &Context<'_>,
         ops: &mut Vec<DrawOp>,
     ) {
         if self.tie_destination {
             return;
-        }
-        if self.marks.trill {
-            draw_glyph_centered(Glyph::Trill, x, top - ORNAMENT_LANE, 1.0, ctx, ops);
         }
         if self
             .marks
@@ -208,6 +224,10 @@ pub(crate) fn draw_vibrato(
         Vibrato::Slight => (WIGGLE_STEP.0, 0.18),
         Vibrato::Wide => (WIGGLE_STEP.1, 0.42),
     };
+    if vibrato == Vibrato::Slight {
+        draw_horizontal_wiggle(start, start + width, center_y, amplitude, step_length, ops);
+        return;
+    }
     // An even number of segments, so the line ends where it started.
     let pairs = (width / step_length / 2.0)
         .round()
@@ -218,36 +238,17 @@ pub(crate) fn draw_vibrato(
         let from_x = start + step * f32::from(segment);
         let to_x = from_x + step;
         let rising = segment % 2 == 0;
-        match vibrato {
-            Vibrato::Slight => {
-                let peak = if rising {
-                    center_y - amplitude
-                } else {
-                    center_y + amplitude
-                };
-                ops.push(DrawOp::Curve {
-                    from: Point::new(from_x, center_y),
-                    to: Point::new(to_x, center_y),
-                    control1: Point::new(from_x + step * 0.35, peak),
-                    control2: Point::new(to_x - step * 0.35, peak),
-                    thickness: LINE_THICKNESS,
-                    color: ColorToken::Notation,
-                });
-            }
-            Vibrato::Wide => {
-                let (from_y, to_y) = if rising {
-                    (center_y + amplitude, center_y - amplitude)
-                } else {
-                    (center_y - amplitude, center_y + amplitude)
-                };
-                ops.push(DrawOp::Line {
-                    from: Point::new(from_x, from_y),
-                    to: Point::new(to_x, to_y),
-                    thickness: LINE_THICKNESS,
-                    color: ColorToken::Notation,
-                });
-            }
-        }
+        let (from_y, to_y) = if rising {
+            (center_y + amplitude, center_y - amplitude)
+        } else {
+            (center_y - amplitude, center_y + amplitude)
+        };
+        ops.push(DrawOp::Line {
+            from: Point::new(from_x, from_y),
+            to: Point::new(to_x, to_y),
+            thickness: LINE_THICKNESS,
+            color: ColorToken::Notation,
+        });
     }
 }
 
@@ -334,27 +335,6 @@ pub(super) fn draw_glyph_centered(
             bottom + bbox.y_min * scale,
         ),
         scale,
-        color: ColorToken::Notation,
-    });
-}
-
-/// The middle of the base of an arrowhead with its tip at `tip`: where the line into it
-/// ends.
-fn arrow_base(tip: Point, pointing_up: bool) -> Point {
-    let direction = if pointing_up { 1.0 } else { -1.0 };
-    Point::new(tip.x, tip.y + direction * ARROW_LENGTH)
-}
-
-/// Draws a solid arrowhead with its tip at `tip`. Vector shapes, so it is visible wherever
-/// the SVG is opened, even without the music font.
-fn draw_arrowhead(tip: Point, pointing_up: bool, ops: &mut Vec<DrawOp>) {
-    let base = arrow_base(tip, pointing_up);
-    ops.push(DrawOp::Polygon {
-        points: vec![
-            tip,
-            Point::new(base.x + ARROW_HALF_WIDTH, base.y),
-            Point::new(base.x - ARROW_HALF_WIDTH, base.y),
-        ],
         color: ColorToken::Notation,
     });
 }

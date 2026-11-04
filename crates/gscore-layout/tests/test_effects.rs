@@ -221,7 +221,9 @@ fn the_notation_staff_shows_the_articulations() {
     );
     assert_eq!(glyph_count(&layout, Glyph::ParenthesisRight), 1);
     assert_eq!(glyph_count(&layout, Glyph::NoteheadHarmonic), 1);
-    assert_eq!(glyph_count(&layout, Glyph::Tremolo3), 1, "on the stem only");
+    // An eighth-speed tremolo writes one stroke through the stem.
+    assert_eq!(glyph_count(&layout, Glyph::Tremolo1), 1, "on the stem only");
+    assert_eq!(glyph_count(&layout, Glyph::Tremolo3), 0);
     // The accents moved from the tab to the notation staff.
     assert!(!texts(&layout).iter().any(|t| t == ">" || t == "v"));
     // The pick strokes stay in the beat lane above the tab; Guitar Pro draws the brush

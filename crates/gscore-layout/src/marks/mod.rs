@@ -14,7 +14,7 @@ mod feel;
 mod text;
 
 use crate::Context;
-use crate::draw::{ColorToken, DrawOp, Point};
+use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
 use crate::glyph::Glyph;
 use crate::measure::{MeasureLayout, Tops};
 use crate::staff::Staff;
@@ -72,6 +72,8 @@ pub(crate) struct MeasureMarks {
     pub(crate) beat_effects: bool,
     /// Whether a column has ornaments in the tab's lanes (trill, vibrato, whammy line).
     pub(crate) lane_ornaments: bool,
+    /// Whether a column carries Guitar Pro's beat text.
+    pub(crate) beat_text: bool,
 }
 
 /// An alternative-ending bracket over one measure.
@@ -126,6 +128,7 @@ pub(crate) fn plan(song: &Song, measures: &[Arc<MeasureLayout>]) -> Vec<MeasureM
                 fermata: song.fermata(index),
                 beat_effects: measure.has_beat_effects(),
                 lane_ornaments: measure.has_lane_ornaments(),
+                beat_text: measure.has_beat_text(),
                 ..MeasureMarks::default()
             };
             let feel = song.feel(index).unwrap_or_default();
@@ -184,6 +187,7 @@ pub(crate) struct Rows {
     beat_effects: bool,
     /// Whether the top staff is a tab (no notation), which puts the beat effects higher.
     tab_only: bool,
+    beat_text: bool,
     fermata: bool,
     endings: bool,
     tempo: bool,
@@ -197,6 +201,7 @@ impl Rows {
             ornaments: notation && !tab && marks.iter().any(|m| m.lane_ornaments),
             beat_effects: marks.iter().any(|m| m.beat_effects),
             tab_only: !notation,
+            beat_text: marks.iter().any(|m| m.beat_text),
             fermata: marks.iter().any(|m| m.fermata.is_some()),
             endings: marks.iter().any(|m| m.ending.is_some()),
             tempo: marks.iter().any(MeasureMarks::has_tempo),
@@ -206,10 +211,16 @@ impl Rows {
 
     /// How much room the rows take above the system.
     pub(crate) fn height(self) -> f32 {
-        let rows = [self.fermata, self.endings, self.tempo, self.section]
-            .into_iter()
-            .filter(|&row| row)
-            .count();
+        let rows = [
+            self.beat_text,
+            self.fermata,
+            self.endings,
+            self.tempo,
+            self.section,
+        ]
+        .into_iter()
+        .filter(|&row| row)
+        .count();
         rows as f32 * ROW_HEIGHT + self.band()
     }
 
@@ -233,8 +244,17 @@ impl Rows {
         top - self.band() - FIRST_ROW - n as f32 * ROW_HEIGHT
     }
 
+    /// The beat text sits nearest the staff, above the measure numbers.
+    fn beat_text_row(self) -> usize {
+        0
+    }
+
+    fn fermata_row(self) -> usize {
+        usize::from(self.beat_text)
+    }
+
     fn ending_row(self) -> usize {
-        usize::from(self.fermata)
+        usize::from(self.beat_text).saturating_add(usize::from(self.fermata))
     }
 
     fn tempo_row(self) -> usize {
@@ -272,13 +292,30 @@ pub(crate) fn draw(
     let (xs, _) = placed
         .layout
         .column_positions(placed.content, placed.stretch);
+    // Guitar Pro's beat text, left-aligned at its column.
+    for (column, text) in placed.layout.beat_texts() {
+        let Some(&x) = xs.get(column) else {
+            continue;
+        };
+        ops.push(DrawOp::Text {
+            text: text.to_owned(),
+            at: Point::new(x, rows.baseline(rows.beat_text_row(), top)),
+            size: 1.0,
+            font: TextFont::Regular,
+            anchor: TextAnchor::Start,
+            color: ColorToken::Annotation,
+        });
+    }
     if let Some(fermata) = marks.fermata {
         let x = xs.first().copied().unwrap_or(placed.content);
         let glyph = Glyph::Fermata(fermata);
         let bbox = ctx.fonts.music.bbox(glyph);
         ops.push(DrawOp::Glyph {
             glyph,
-            at: Point::new(x - (bbox.x_min + bbox.x_max) / 2.0, rows.baseline(0, top)),
+            at: Point::new(
+                x - (bbox.x_min + bbox.x_max) / 2.0,
+                rows.baseline(rows.fermata_row(), top),
+            ),
             scale: 1.0,
             color: ColorToken::Notation,
         });

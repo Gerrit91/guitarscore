@@ -10,6 +10,7 @@ use super::{BeamPlan, Chord, Head, NotationItem};
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point};
 use crate::glyph::Glyph;
+use crate::ornaments::{CIRCLE_RADIUS, draw_arrowhead, draw_circled_symbol, draw_vertical_wiggle};
 
 /// Distance from a notehead's middle to the first mark beside it.
 const HEAD_CLEARANCE: f32 = 0.8;
@@ -27,6 +28,17 @@ const BRUSH_MIN: f32 = 2.0;
 const ARROW: (f32, f32) = (0.7, 0.3);
 /// Room the brush arrow takes left of the chord.
 pub(super) const BRUSH_ROOM: f32 = BRUSH_GAP + ARROW.1 + 0.2;
+/// Arpeggio arrow: gap to the chord, how far it reaches past the outer heads, its shortest
+/// length, and the wiggle's amplitude and step.
+const ARPEGGIO_GAP: f32 = 0.45;
+const ARPEGGIO_OVERHANG: f32 = 0.6;
+const ARPEGGIO_MIN: f32 = 2.0;
+const ARPEGGIO_AMPLITUDE: f32 = 0.16;
+const ARPEGGIO_STEP: f32 = 0.45;
+/// Room the arpeggio arrow takes left of the chord.
+pub(super) const ARPEGGIO_ROOM: f32 = ARPEGGIO_GAP + ARPEGGIO_AMPLITUDE + 0.3;
+/// Baseline of the `tr` and the circled T above a chord.
+const UPPER_LANE: f32 = 2.2;
 /// Slides into and out of a note: length and drop of the line, and its gap to the head.
 const SLIDE_REACH: f32 = 0.9;
 const SLIDE_DROP: f32 = 0.5;
@@ -100,8 +112,12 @@ pub(super) fn draw_articulations(
             put(glyph, cursor.min(top - STAFF_CLEARANCE), ops);
         }
     }
-    if chord.marks.tremolo {
-        let glyph = Glyph::Tremolo3;
+    if let Some(speed) = chord.marks.tremolo {
+        let glyph = match speed.strokes() {
+            1 => Glyph::Tremolo1,
+            2 => Glyph::Tremolo2,
+            _ => Glyph::Tremolo3,
+        };
         let bbox = font.bbox(glyph);
         // On the stem between the heads and the beam, or above a stemless head.
         let (stem_x, middle) = match stem {
@@ -116,6 +132,24 @@ pub(super) fn draw_articulations(
             color: ColorToken::Notation,
         });
         highest = highest.min(y - bbox.y_max);
+    }
+    if chord.marks.trill {
+        let glyph = Glyph::Trill;
+        let bbox = font.bbox(glyph);
+        ops.push(DrawOp::Glyph {
+            glyph,
+            at: Point::new(
+                x - (bbox.x_min + bbox.x_max) / 2.0,
+                top - UPPER_LANE + bbox.y_min,
+            ),
+            scale: 1.0,
+            color: ColorToken::Notation,
+        });
+        highest = highest.min(top - UPPER_LANE - bbox.y_max + bbox.y_min);
+    }
+    if chord.marks.tap {
+        draw_circled_symbol("T", x, top - UPPER_LANE, CIRCLE_RADIUS, ctx, ops);
+        highest = highest.min(top - UPPER_LANE - CIRCLE_RADIUS);
     }
     highest
 }
@@ -174,6 +208,40 @@ pub(super) fn draw_brush(
     let high = y_of(top, highest.position) - BRUSH_OVERHANG;
     let high = high.min(bottom - BRUSH_MIN);
     draw_arrow(line_x, high, bottom, direction == StrokeDirection::Up, ops);
+}
+
+/// The arpeggio's wavy arrow before a chord. A roll down is drawn as an arrow pointing up,
+/// as Guitar Pro does for both the brush and the arpeggio.
+pub(super) fn draw_arpeggio(
+    chord: &Chord,
+    x: f32,
+    top: f32,
+    ctx: &Context<'_>,
+    ops: &mut Vec<DrawOp>,
+) {
+    let Some(direction) = chord.marks.arpeggio else {
+        return;
+    };
+    let (Some(lowest), Some(highest)) = (chord.heads.first(), chord.heads.last()) else {
+        return;
+    };
+    let width = head_width(chord, lowest, ctx);
+    let line_x = x - width / 2.0 - accidental_room(chord, ctx) - ARPEGGIO_GAP;
+    let bottom = y_of(top, lowest.position) + ARPEGGIO_OVERHANG;
+    let high = y_of(top, highest.position) - ARPEGGIO_OVERHANG;
+    let middle = (high + bottom) / 2.0;
+    let half_length = ((bottom - high) / 2.0).max(ARPEGGIO_MIN / 2.0);
+    let (high, bottom) = (middle - half_length, middle + half_length);
+    let up = direction == StrokeDirection::Down;
+    let head = if up { high } else { bottom };
+    // Leave the arrowhead's length free at the pointing end.
+    let (from, to) = if up {
+        (head + ARROW.0, bottom)
+    } else {
+        (high, head - ARROW.0)
+    };
+    draw_vertical_wiggle(line_x, from, to, ARPEGGIO_AMPLITUDE, ARPEGGIO_STEP, ops);
+    draw_arrowhead(Point::new(line_x, head), up, ops);
 }
 
 /// A vertical arrow from `high` to `low` at `x`, its head at the bottom when `down`.

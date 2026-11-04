@@ -3,12 +3,10 @@
 use super::draw::{BeamPlan, Stem, chord_at, draw_tie_curve, y_of};
 use super::{Chord, NotationItem};
 use crate::Context;
-use crate::draw::{ColorToken, DrawOp, Point, Rect, TextAnchor, TextFont};
+use crate::draw::{ColorToken, DrawOp, Point, Rect};
 
 /// Length of a partial beam (a 16th next to an 8th, ...).
 const STUB_LENGTH: f32 = 1.1;
-/// Size of a tuplet number.
-const TUPLET_SIZE: f32 = 1.3;
 
 /// Runs of at least two neighbouring beamable chords (eighths and shorter) within one beat.
 pub(super) fn beam_groups(placed: &[BeamPlan<'_>]) -> Vec<Vec<usize>> {
@@ -51,7 +49,7 @@ pub(super) fn draw_beams(
         .iter()
         .filter_map(|&i| Some((chord_at(placed, i)?, stems.get(i).copied().flatten()?)))
         .collect();
-    let Some(&(first_chord, first)) = notes.first() else {
+    let Some(&(_, first)) = notes.first() else {
         return;
     };
     let half = engraving.stem_thickness / 2.0;
@@ -92,21 +90,6 @@ pub(super) fn draw_beams(
                 color: ColorToken::Notation,
             });
         }
-    }
-    if let (Some(n), Some(&(_, last))) = (first_chord.tuplet, notes.last()) {
-        let y = if first.up {
-            first.to - 0.6
-        } else {
-            first.to + 1.6
-        };
-        ops.push(DrawOp::Text {
-            text: n.to_string(),
-            at: Point::new((first.x + last.x) / 2.0, y),
-            size: TUPLET_SIZE,
-            font: TextFont::Regular,
-            anchor: TextAnchor::Middle,
-            color: ColorToken::Notation,
-        });
     }
 }
 

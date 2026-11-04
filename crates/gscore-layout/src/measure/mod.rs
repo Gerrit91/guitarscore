@@ -8,6 +8,7 @@
 mod columns;
 mod draw;
 mod effects;
+mod grace_marks;
 mod graces;
 
 pub(crate) use draw::draw_barline_ties;
@@ -41,6 +42,8 @@ const MEASURE_NUMBER_RISE: f32 = 0.8;
 /// How far a second voice's noteheads move right when they share a staff position with the
 /// first voice's.
 const VOICE_OFFSET: f32 = 0.6;
+/// Half the width of a dead slapped beat's cross.
+pub(crate) const DEAD_SLAP_HALF: f32 = 1.4;
 /// Where a system's staves are: the tab's top line, and the notation staff's top line if
 /// notation is shown.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -103,6 +106,8 @@ struct Column {
     beat: u64,
     /// The model beats that start here, as `(voice, beat)`.
     beats: Vec<(VoiceIndex, BeatIndex)>,
+    /// Guitar Pro's beat text, written above the staff at this column.
+    text: Option<String>,
     /// The dynamic of the first voice's beat (else another voice's), if it has notes.
     dynamic: Option<Dynamic>,
     /// A tempo change on one of the beats (GP3-5 store tempo changes on beats).
@@ -119,6 +124,7 @@ struct ColumnData {
     grace_width: f32,
     beat: u64,
     beats: Vec<(VoiceIndex, BeatIndex)>,
+    text: Option<String>,
 }
 
 /// One thing drawn in a column.
@@ -180,7 +186,7 @@ impl MeasureLayout {
         let beat_length = as_f64(beat_length(signature)?);
         type Pending = (ColumnData, f32, Option<Dynamic>, Option<u32>);
         let mut columns: Vec<Pending> = Vec::with_capacity(starts.onsets.len());
-        for (onset, beats) in &starts.onsets {
+        for (column_index, (onset, beats)) in starts.onsets.iter().enumerate() {
             let next = starts
                 .onsets
                 .range((std::ops::Bound::Excluded(onset), std::ops::Bound::Unbounded))
@@ -188,7 +194,7 @@ impl MeasureLayout {
                 .map_or(starts.end, |(next, _)| *next);
             let length = next.checked_sub(*onset).map_or(0.0, as_f64);
             let plain: Vec<BeatView<'_>> = beats.iter().map(|&(_, beat)| beat).collect();
-            let mut data = column_items(&plain, ctx)?;
+            let mut data = column_items(&plain, ctx, column_index == 0)?;
             if let Some(notation) = &ctx.notation {
                 data.notation = notation::column_items(beats, notation, key)?;
             }
@@ -249,6 +255,7 @@ impl MeasureLayout {
                     grace_width: 0.0,
                     beat: 0,
                     beats: Vec::new(),
+                    text: None,
                 },
                 ctx.options.spacing.after(as_f64(starts.end)),
                 None,
@@ -311,12 +318,15 @@ impl MeasureLayout {
             .enumerate()
             .map(|(index, (data, _, _, _))| {
                 let tab = half_width(&data.items, ctx);
-                // A brush arrow stands left of the fret numbers.
-                let tab_left = if data.marks.brush.is_some() {
+                // A brush or arpeggio arrow stands left of the fret numbers.
+                let mut tab_left = if data.marks.brush.is_some() {
                     tab + ornaments::BRUSH_ROOM
                 } else {
                     tab
                 };
+                if data.marks.arpeggio.is_some() {
+                    tab_left = tab_left.max(tab + ornaments::ARPEGGIO_ROOM);
+                }
                 let mut left = 0.0_f32;
                 let mut right = 0.0_f32;
                 for (voice, item) in data.notation.iter().enumerate() {
@@ -326,7 +336,7 @@ impl MeasureLayout {
                         .and_then(|b| b.get(index))
                         .copied()
                         .unwrap_or(false);
-                    let (item_left, item_right) = notation::extent(item, beamed, &ctx.fonts.music);
+                    let (item_left, item_right) = notation::extent(item, beamed, ctx);
                     let shift = if voice > 0 {
                         offsets.get(index).copied().unwrap_or(0.0)
                     } else {
@@ -334,6 +344,13 @@ impl MeasureLayout {
                     };
                     left = left.max(item_left + shift);
                     right = right.max(item_right + shift);
+                }
+                // A dead slapped beat writes a large cross on both staves, so its column
+                // needs room for it even though it has no items.
+                if data.marks.dead_slapped {
+                    left = left.max(DEAD_SLAP_HALF);
+                    right = right.max(DEAD_SLAP_HALF);
+                    tab_left = tab_left.max(DEAD_SLAP_HALF);
                 }
                 let main = tab_left.max(left);
                 (main, main + data.grace_width, tab.max(right))
@@ -367,6 +384,7 @@ impl MeasureLayout {
                     main_left: extents.get(i).map_or(0.0, |(main, _, _)| *main),
                     beat: data.beat,
                     beats: data.beats,
+                    text: data.text,
                     dynamic,
                     tempo,
                 }
@@ -385,6 +403,19 @@ impl MeasureLayout {
     /// Whether the measure carries a key signature (a change, or the score's first).
     pub(crate) fn has_key_signature(&self) -> bool {
         self.key_signature.is_some()
+    }
+
+    /// The beat text of each column that has one, with its column index.
+    pub(crate) fn beat_texts(&self) -> impl Iterator<Item = (usize, &str)> {
+        self.columns
+            .iter()
+            .enumerate()
+            .filter_map(|(index, column)| column.text.as_deref().map(|text| (index, text)))
+    }
+
+    /// Whether any column carries beat text.
+    pub(crate) fn has_beat_text(&self) -> bool {
+        self.columns.iter().any(|column| column.text.is_some())
     }
 
     /// The width that does not stretch: key and time signature, and the lead.

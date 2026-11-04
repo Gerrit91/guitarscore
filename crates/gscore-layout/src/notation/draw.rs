@@ -7,8 +7,9 @@ use super::marks;
 use super::pitch::key_alters;
 use super::{Alter, Chord, Clef, DOT_GAP, MIDDLE, NotationItem};
 use crate::Context;
-use crate::draw::{ColorToken, DrawOp, Point};
+use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
 use crate::glyph::{Flag, Glyph};
+use crate::ornaments::{CIRCLE_RADIUS, draw_circled_symbol, draw_horizontal_wiggle};
 use crate::staff::Staff;
 
 /// Normal stem length (one octave).
@@ -333,7 +334,7 @@ pub(crate) fn draw_measure(
     for (i, p) in placed.iter().enumerate() {
         let stem = stems.get(i).copied().flatten();
         match p.item {
-            NotationItem::Rest { glyph, dots } => draw_rest(p.x, *glyph, *dots, top, ctx, ops),
+            NotationItem::Rest { glyph, dots, .. } => draw_rest(p.x, *glyph, *dots, top, ctx, ops),
             NotationItem::Chord(chord) => {
                 let up = stem.is_none_or(|s| s.up);
                 draw_heads(p.x, chord, up, top, ctx, ops);
@@ -350,6 +351,7 @@ pub(crate) fn draw_measure(
                 if show_brush {
                     marks::draw_brush(chord, p.x, top, ctx, ops);
                 }
+                marks::draw_arpeggio(chord, p.x, top, ctx, ops);
                 if let Some(stem) = stem {
                     ops.push(DrawOp::Line {
                         from: Point::new(stem.x, stem.from),
@@ -374,9 +376,67 @@ pub(crate) fn draw_measure(
     for group in &groups {
         draw_beams(group, placed, &stems, ctx, ops);
     }
+    super::tuplets::draw_tuplets(placed, &stems, &groups, top, ops);
     draw_ties(placed, &stems, top, ctx, ops);
     marks::draw_links(placed, &stems, top, ctx, ops);
+    draw_string_numbers(placed, top, ctx, ops);
+    draw_pick_slides(placed, top, ctx, ops);
     ceilings
+}
+
+/// Circled string numbers above or below the staff: low notes take them above the staff,
+/// high notes below, as Guitar Pro writes them.
+fn draw_string_numbers(
+    placed: &[BeamPlan<'_>],
+    top: f32,
+    ctx: &Context<'_>,
+    ops: &mut Vec<DrawOp>,
+) {
+    let height = super::staff().height();
+    for p in placed {
+        let NotationItem::Chord(chord) = p.item else {
+            continue;
+        };
+        for head in &chord.heads {
+            let Some(number) = head.string_number else {
+                continue;
+            };
+            let above = head.position <= MIDDLE;
+            let y = if above { top - 2.4 } else { top + height + 1.4 };
+            draw_circled_symbol(&number.to_string(), p.x, y, CIRCLE_RADIUS, ctx, ops);
+        }
+    }
+}
+
+/// A wavy line from a pick-slide note's head to the next chord's head on the same staff.
+fn draw_pick_slides(placed: &[BeamPlan<'_>], top: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
+    let font = &ctx.fonts.music;
+    for (index, p) in placed.iter().enumerate() {
+        let NotationItem::Chord(chord) = p.item else {
+            continue;
+        };
+        let Some(head) = chord.heads.iter().find(|head| head.pick_slide) else {
+            continue;
+        };
+        let width = font.advance(chord.head_glyph(head));
+        let start = p.x + width / 2.0 + 0.15;
+        let end = match placed.get(index.saturating_add(1)) {
+            Some(next) => match next.item {
+                NotationItem::Chord(next_chord) => {
+                    let Some(next_head) = next_chord.heads.first() else {
+                        continue;
+                    };
+                    next.x - font.advance(next_chord.head_glyph(next_head)) / 2.0 - 0.15
+                }
+                NotationItem::Rest { .. } => next.x - 1.0,
+            },
+            None => start + 2.0,
+        };
+        if end > start {
+            let y = y_of(top, head.position);
+            draw_horizontal_wiggle(start, end, y, 0.16, 0.45, ops);
+        }
+    }
 }
 
 pub(super) fn chord_at<'m>(placed: &[BeamPlan<'m>], index: usize) -> Option<&'m Chord> {
@@ -511,15 +571,32 @@ fn draw_heads(x: f32, chord: &Chord, up: bool, top: f32, ctx: &Context<'_>, ops:
         } else {
             0.0
         };
+        let mut left_edge = (x - width / 2.0).min(left) - paren;
         if let Some(accidental) = head.accidental {
             // Left of the head, or of the column when the head moved right.
-            let base = (x - width / 2.0).min(left) - paren;
+            let base = left_edge;
+            let accidental_x = base - ACCIDENTAL_GAP - font.advance(accidental);
             ops.push(DrawOp::Glyph {
                 glyph: accidental,
-                at: Point::new(base - ACCIDENTAL_GAP - font.advance(accidental), y),
+                at: Point::new(accidental_x, y),
                 scale: 1.0,
                 color: ColorToken::Notation,
             });
+            left_edge = accidental_x;
+        }
+        // Fingering signs sit just left of the head (and of its accidental).
+        let cap = ctx.fonts.text.cap_height * super::FINGER_SIZE;
+        let mut finger_x = left_edge - super::FINGER_GAP;
+        for finger in [head.finger_left, head.finger_right].into_iter().flatten() {
+            ops.push(DrawOp::Text {
+                text: finger.to_owned(),
+                at: Point::new(finger_x, y + cap / 2.0),
+                size: super::FINGER_SIZE,
+                font: TextFont::Regular,
+                anchor: TextAnchor::End,
+                color: ColorToken::Notation,
+            });
+            finger_x -= ctx.fonts.text.width(finger, super::FINGER_SIZE) + super::FINGER_GAP;
         }
         // Dots sit in a space: a note on a line gets its dot in the space above.
         let dot_y = if head.position % 2 == 0 {

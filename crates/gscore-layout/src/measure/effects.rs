@@ -79,7 +79,7 @@ impl MeasureLayout {
                 || column.marks.whammy.is_some()
                 || column.items.iter().any(|item| match item {
                     Item::Fret(fret) => {
-                        fret.marks.trill
+                        fret.marks.trill.is_some()
                             || fret
                                 .marks
                                 .harmonic

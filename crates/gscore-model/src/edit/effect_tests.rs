@@ -606,6 +606,7 @@ fn a_grace_note_is_set_changed_and_removed() {
         speed: GraceSpeed::Slow,
         on_beat: true,
         dead: false,
+        hammer: false,
     };
     round_trip_note(
         NoteEffect::Grace(Some(slow)),

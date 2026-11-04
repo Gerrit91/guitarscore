@@ -181,6 +181,7 @@ fn extreme_typed_commands_never_panic() {
                 speed: gscore_model::GraceSpeed::Fast,
                 on_beat: true,
                 dead: true,
+                hammer: false,
             })),
         },
     ];

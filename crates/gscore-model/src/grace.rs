@@ -57,6 +57,9 @@ pub struct Grace {
     pub on_beat: bool,
     /// A dead (muted) grace note.
     pub dead: bool,
+    /// Played with a hammer-on or pull-off into the main note (Guitar Pro's
+    /// `GraceEffect.transition` of `Hammer`; GP3-5 do not store it).
+    pub hammer: bool,
 }
 
 impl Grace {
@@ -67,6 +70,7 @@ impl Grace {
             speed: GraceSpeed::Normal,
             on_beat: false,
             dead: false,
+            hammer: false,
         }
     }
 
@@ -81,6 +85,7 @@ impl Grace {
             speed: GraceSpeed::from_value(grace_value(grace.duration)),
             on_beat: grace.is_on_beat,
             dead,
+            hammer: grace.transition == GraceEffectTransition::Hammer,
         }
     }
 
@@ -102,13 +107,26 @@ impl Grace {
             ))
         })?;
         let previous = note.effect.grace.take();
+        // A slide or bend transition the file stores survives; a hammer-on is set or
+        // cleared from the model's flag.
+        let previous_transition = previous
+            .as_ref()
+            .map(|p| p.transition.clone())
+            .unwrap_or(GraceEffectTransition::None);
+        let transition = if grace.hammer {
+            GraceEffectTransition::Hammer
+        } else if previous_transition == GraceEffectTransition::Hammer {
+            GraceEffectTransition::None
+        } else {
+            previous_transition
+        };
         note.effect.grace = Some(GraceEffect {
             fret,
             velocity: previous.as_ref().map_or(note.velocity, |p| p.velocity),
             duration: grace.speed.value(),
             is_dead: grace.dead,
             is_on_beat: grace.on_beat,
-            transition: previous.map_or(GraceEffectTransition::None, |p| p.transition),
+            transition,
         });
         Ok(())
     }

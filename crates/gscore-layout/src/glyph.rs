@@ -55,7 +55,9 @@ pub enum Glyph {
     Tuplet3,
     /// The trill ornament (`ornamentTrill`).
     Trill,
-    /// Three tremolo strokes (`tremolo3`).
+    /// One to three tremolo strokes (`tremolo1`..`tremolo3`).
+    Tremolo1,
+    Tremolo2,
     Tremolo3,
     /// Treble clef (`gClef`).
     GClef,
@@ -202,6 +204,8 @@ impl Glyph {
             Glyph::TextEnd16th,
             Glyph::Tuplet3,
             Glyph::Trill,
+            Glyph::Tremolo1,
+            Glyph::Tremolo2,
             Glyph::Tremolo3,
             Glyph::GClef,
             Glyph::FClef,
@@ -274,6 +278,8 @@ impl Glyph {
             Glyph::TextEnd16th => "textBlackNoteFrac16thLongStem",
             Glyph::Tuplet3 => "tuplet3",
             Glyph::Trill => "ornamentTrill",
+            Glyph::Tremolo1 => "tremolo1",
+            Glyph::Tremolo2 => "tremolo2",
             Glyph::Tremolo3 => "tremolo3",
             Glyph::GClef => "gClef",
             Glyph::FClef => "fClef",
@@ -351,6 +357,8 @@ impl Glyph {
             Glyph::TextEnd16th => 0xE1F5,
             Glyph::Tuplet3 => 0xE883,
             Glyph::Trill => 0xE566,
+            Glyph::Tremolo1 => 0xE220,
+            Glyph::Tremolo2 => 0xE221,
             Glyph::Tremolo3 => 0xE222,
             Glyph::GClef => 0xE050,
             Glyph::FClef => 0xE062,
