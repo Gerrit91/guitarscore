@@ -1,11 +1,15 @@
 # Builds release binaries for every supported platform and attaches them to the GitHub
 # Release that triggered this run.
 #
-# Triggered by publishing a release (the "Publish release" button, or `gh release create`).
-# It does NOT run on tags alone: a tag without a published release produces nothing. The
-# archives are named `guitarscore-<tag>-<target>`, and each contains both the `guitarscore`
-# app and the `gscore-cli` command-line tool, the bundled FluidR3 GM SoundFont, and the
-# license texts. Linux also gets a single-file AppImage.
+# Triggered by publishing a pre-release on GitHub (create the release, tick "Set as a
+# pre-release", press "Publish release"). Check the attached assets there, then untick
+# "pre-release" to make it the full release; that does not build again. A release published
+# directly as a full release, and a tag alone, build nothing. Running it again for the same
+# release (re-run in the Actions tab) replaces the assets.
+#
+# The archives are named `guitarscore-<tag>-<target>`, and each contains both the
+# `guitarscore` app and the `gscore-cli` command-line tool, the bundled FluidR3 GM
+# SoundFont, and the license texts. Linux also gets a single-file AppImage.
 #
 # The fonts (Bravura, Noto Sans) are compiled into the binaries (see crates/gscore-app/src/
 # fonts.rs). The SoundFont is fetched once from the distro (MIT, ~140 MB) and shared with
@@ -18,7 +22,8 @@ name: Release
 
 on:
   release:
-    types: [published]
+    # Only pre-releases build; promoting one to a full release keeps its assets.
+    types: [prereleased]
 
 permissions:
   contents: write
@@ -298,3 +303,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          # A re-run replaces the assets of the earlier run instead of failing.
+          overwrite_files: true

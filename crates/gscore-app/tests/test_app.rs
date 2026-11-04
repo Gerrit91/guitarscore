@@ -93,6 +93,16 @@ fn the_view_menu_switches_the_theme_and_the_toolbar_zooms() {
 }
 
 #[test]
+fn help_about_shows_the_version() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.get_by_label("Help").click();
+    harness.run();
+    harness.get_by_label("About GuitarScore").click();
+    harness.run();
+    harness.get_by_label(&format!("Version {}", gscore_version::VERSION));
+}
+
+#[test]
 fn the_page_matches_its_snapshot_in_both_themes() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))

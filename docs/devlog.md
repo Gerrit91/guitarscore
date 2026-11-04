@@ -2031,3 +2031,26 @@ lifeless):
   (`packaging/guitarscore.svg`/`.png`); the GPU/driver libraries are left to the host.
 - Open: the AppImage and the bundled-SoundFont archives still need a real-tag run and a
   handful of distros (Ubuntu, Fedora, Arch) to confirm they start and make sound.
+
+## 2026-11-04 — Releases build on pre-releases; a new app icon (M20)
+
+- The release workflow runs when a **pre-release** is published on GitHub
+  (`release: prereleased`), not on every published release. The owner checks the
+  attached assets on the pre-release, then unticks "pre-release" to make it the full
+  release, which builds nothing again. `overwrite_files` lets a re-run replace the assets.
+- New icon (`packaging/guitarscore.svg`/`.png`): a plain white headstock with six tuner
+  posts and the nut, in front of a grey five-line staff on the charcoal tile. It has no
+  strings, no tuner buttons and no tilt, so it stays clear at 24 px. The old pick-shaped
+  icon was too close to Guitar Pro's. The app now sets it as the window icon (it showed
+  eframe's default) and uses the app id `guitarscore`, matching the desktop file (and its
+  `StartupWMClass`), so docks on Wayland find the icon. Tests `test_icon.rs` and
+  `help_about_shows_the_version` (Help › About had no test).
+- Tests: the app snapshots were stale since Help › About added a "Help" menu to the title
+  bar (the only difference; regenerated). `opening_a_song_starts_loading_the_synthesizer`
+  failed about one run in three: `settle` called `Harness::run`, which panics when the
+  toolbar repaints for more than 4 frames while the song and the SoundFont load (the player
+  is measured again as its contents change). `settle` now steps until nothing is busy and
+  `try_run` settles (15 of 15 runs green).
+- Open: a first pre-release run on GitHub (it was not run from here); Windows `.exe` and
+  macOS `.app` icons (both packages are plain archives so far); the rest of M20 (macOS
+  file-dialog fix, name check, user guide, public test files, signing).

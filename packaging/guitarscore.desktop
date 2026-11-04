@@ -8,4 +8,4 @@ Icon=guitarscore
 Terminal=false
 Categories=AudioVideo;Music;
 StartupNotify=true
-StartupWMClass=GuitarScore
+StartupWMClass=guitarscore

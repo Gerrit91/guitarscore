@@ -8,6 +8,9 @@ use std::process::ExitCode;
 
 use gscore_app::{GuitarScoreApp, Settings};
 
+/// The app icon: a guitar headstock in front of a staff (`packaging/guitarscore.svg`).
+const APP_ICON: &[u8] = include_bytes!("../../../packaging/guitarscore.png");
+
 fn main() -> ExitCode {
     if let Some(dir) = gscore_session::default_crash_dir() {
         gscore_session::install_panic_hook(dir);
@@ -28,6 +31,8 @@ fn main() -> ExitCode {
     settings.sanitize();
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("GuitarScore")
+        // Matches `packaging/guitarscore.desktop`, so Wayland docks show its icon.
+        .with_app_id("guitarscore")
         .with_inner_size([1100.0, 800.0])
         .with_min_inner_size([400.0, 300.0])
         // The app draws its own title bar (song title, window buttons) and no frame.
@@ -35,6 +40,11 @@ fn main() -> ExitCode {
         // It always opens maximized (or full screen, if it was closed that way); the
         // remembered size is for when it is restored down.
         .with_maximized(true);
+    // The window and taskbar icon (X11, Windows); a broken image only loses the icon.
+    match eframe::icon_data::from_png_bytes(APP_ICON) {
+        Ok(icon) => viewport = viewport.with_icon(icon),
+        Err(e) => eprintln!("guitarscore: cannot read the app icon: {e}"),
+    }
     if let Some(window) = settings.window {
         viewport = viewport
             .with_inner_size(window.size())
