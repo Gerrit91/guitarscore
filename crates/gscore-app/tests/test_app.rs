@@ -605,16 +605,16 @@ fn the_track_panel_edits_the_shown_track() {
     assert_eq!(first_track(&harness).name(), "Steel Guitar Lead");
 }
 
-/// Runs frames until background jobs are done.
+/// Runs frames until background jobs are done and the UI stops repainting. While a job
+/// runs, the toolbar may repaint for a few frames more than `run` allows (the player is
+/// measured again when its contents change), so those frames are stepped, not run.
 fn settle(harness: &mut Harness<'static, GuitarScoreApp>) {
     let started = Instant::now();
-    harness.run();
-    while harness.state().is_busy() {
+    while harness.state().is_busy() || harness.try_run().is_err() {
         assert!(started.elapsed() < Duration::from_secs(30), "timed out");
         harness.step();
         std::thread::sleep(Duration::from_millis(5));
     }
-    harness.run();
 }
 
 #[test]
