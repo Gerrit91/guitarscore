@@ -9,6 +9,7 @@ use gscore_gp::{BeatStatus, NoteType};
 
 use crate::duration::{Duration, NoteValue, TimeSignature};
 use crate::error::ModelError;
+use crate::grace::Grace;
 use crate::instrument::{self, InstrumentKind};
 use crate::position::{BeatIndex, Fret, MeasureIndex, Pitch, StringNumber, TrackIndex, VoiceIndex};
 
@@ -373,27 +374,9 @@ impl<'a> NoteView<'a> {
         }
     }
 
-    /// The grace note attached to this note in GP3-5 files (GP6/GP7 store grace notes in
-    /// beats of their own; see [`BeatView::is_grace`]).
-    pub fn grace(&self) -> Option<GraceNote> {
-        self.inner.effect.grace.as_ref().map(|grace| GraceNote {
-            fret: grace.fret,
-            dead: grace.is_dead,
-            on_beat: grace.is_on_beat,
-            duration: grace.duration,
-        })
+    /// The grace note attached to this note (GP6/GP7 grace beats are attached when the
+    /// file is read where possible; see [`BeatView::is_grace`] for the rest).
+    pub fn grace(&self) -> Option<Grace> {
+        self.inner.effect.grace.as_ref().map(Grace::from_gp)
     }
-}
-
-/// A grace note attached to a normal note (GP3-5): a quick ornament on the same string.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GraceNote {
-    /// The fret of the grace note on the note's string; negative marks a dead note.
-    pub fret: i8,
-    /// A dead (muted) grace note.
-    pub dead: bool,
-    /// Played on the beat (an appoggiatura) instead of before it.
-    pub on_beat: bool,
-    /// Written value as a power of two (1 whole, 2 half, 4 quarter, 8 eighth, ...).
-    pub duration: u8,
 }

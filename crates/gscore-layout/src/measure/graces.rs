@@ -5,7 +5,7 @@
 //! stem and flag. On the tab it is a smaller fret number. The group sits left of the main
 //! note's own left edge (its accidental included), so the two never overlap.
 
-use gscore_model::{Fret as ModelFret, GraceNote, NoteKind, NoteView};
+use gscore_model::{Grace as ModelGrace, NoteKind, NoteView};
 
 use super::{Column, Tops, UNREADABLE};
 use crate::Context;
@@ -76,32 +76,38 @@ pub(super) fn from_note(note: NoteView<'_>, ctx: &Context<'_>, key: i8) -> Optio
     ))
 }
 
-/// A grace note attached to a normal note in a GP3-5 file.
+/// A grace note attached to a normal note.
 pub(super) fn from_effect(
     note: NoteView<'_>,
-    effect: GraceNote,
+    effect: ModelGrace,
     ctx: &Context<'_>,
     key: i8,
 ) -> Option<Grace> {
     let string = note.string().ok()?;
-    let dead = effect.dead || effect.fret < 0;
     let placed = ctx.notation.and_then(|notation| {
         if notation.clef == notation::Clef::Percussion {
             return None;
         }
-        let pitch = u8::try_from(effect.fret)
-            .ok()
-            .and_then(|fret| ModelFret::new(fret).ok())
-            .and_then(|fret| notation.track.pitch_at(string, fret).ok())
-            .or_else(|| notation.track.sounding_pitch(&note).ok())?;
+        let pitch = notation
+            .track
+            .pitch_at(string, effect.fret)
+            .or_else(|_| notation.track.sounding_pitch(&note))
+            .ok()?;
         Some(notation.clef.place_grace(pitch.get(), key))
     });
-    let text = if dead {
+    let text = if effect.dead {
         "x".to_owned()
     } else {
-        effect.fret.to_string()
+        effect.fret.get().to_string()
     };
-    Some(grace(ctx, string.get(), placed, text, dead, effect.on_beat))
+    Some(grace(
+        ctx,
+        string.get(),
+        placed,
+        text,
+        effect.dead,
+        effect.on_beat,
+    ))
 }
 
 fn grace(

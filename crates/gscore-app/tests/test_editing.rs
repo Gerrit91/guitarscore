@@ -1112,3 +1112,46 @@ fn a_file_chosen_while_another_opens_waits_its_turn() {
     assert_eq!(harness.state().active_tab(), Some(2));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn shift_g_opens_the_grace_note_dialog_and_ok_sets_the_chosen_speed() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    harness.run();
+    type_char(&mut harness, "G", Modifiers::SHIFT);
+    harness.run();
+    harness.get_by_label("Slow").click();
+    harness.run();
+    harness.get_by_label("On the beat").click();
+    harness.run();
+    harness.get_by_label("2 below").click();
+    harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    let grace_at_cursor = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let cursor = document.editor().cursor();
+        let beat = document.song().beat(cursor.position()).unwrap();
+        beat.notes()
+            .find(|note| note.string().unwrap().get() == cursor.string)
+            .unwrap()
+            .grace()
+    };
+    assert_eq!(
+        grace_at_cursor(&harness),
+        Some(gscore_model::Grace {
+            fret: gscore_model::Fret::new(3).unwrap(),
+            speed: gscore_model::GraceSpeed::Slow,
+            on_beat: true,
+            dead: false,
+        })
+    );
+    // The palette tile reopens the dialog on it; Remove takes the grace note off.
+    harness.get_by_label("Grace note").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Grace note").click();
+    harness.run();
+    harness.get_by_label("Remove").click();
+    harness.run();
+    assert_eq!(grace_at_cursor(&harness), None);
+}

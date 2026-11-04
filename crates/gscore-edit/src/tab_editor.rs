@@ -358,6 +358,7 @@ impl TabEditor {
             | ActionId::ToggleLetRing
             | ActionId::ToggleTrill
             | ActionId::ToggleTremoloPicking
+            | ActionId::GraceNote
             | ActionId::ToggleNaturalHarmonic
             | ActionId::ToggleArtificialHarmonic
             | ActionId::ToggleTappedHarmonic

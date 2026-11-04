@@ -7,11 +7,13 @@ mod editors;
 use egui::vec2;
 use gscore_edit::{ActionId, Command};
 use gscore_model::{
-    AccentKind, BeatEffect, BeatView, BendKind, BendPoint, BendShape, Harmonic, HarmonicKind,
-    Legato, NoteEffect, NoteView, SlapKind, SlideKind, StrokeDirection, Vibrato, WhammyShape,
+    AccentKind, BeatEffect, BeatView, BendKind, BendPoint, BendShape, Grace, Harmonic,
+    HarmonicKind, Legato, NoteEffect, NoteView, SlapKind, SlideKind, StrokeDirection, Vibrato,
+    WhammyShape,
 };
 
 use super::edit_palette::PaletteSnapshot;
+use super::grace_editor::GraceEditor;
 use super::harmonic_editor::HarmonicEditor;
 use super::shape_editor::ShapeEditor;
 use super::style;
@@ -33,7 +35,8 @@ pub(super) struct NoteState {
     harmonic: Option<Harmonic>,
     slides: Vec<SlideKind>,
     bend: Option<BendShape>,
-    /// The note's fret (0 when it has none), for the harmonic editor.
+    grace: Option<Grace>,
+    /// The note's fret (0 when it has none), for the harmonic and grace note editors.
     fret: u8,
 }
 
@@ -53,6 +56,7 @@ impl NoteState {
             harmonic: note.harmonic(),
             slides: note.slides().collect(),
             bend: note.bend_shape(),
+            grace: note.grace(),
             fret: note.fret().map_or(0, |fret| fret.get()),
         }
     }
@@ -90,6 +94,7 @@ pub(super) struct EffectsState {
     bend: Option<ShapeEditor>,
     whammy: Option<ShapeEditor>,
     harmonic: Option<HarmonicEditor>,
+    grace: Option<GraceEditor>,
 }
 
 /// What an effect tile (or its key) does.
@@ -110,6 +115,8 @@ pub(super) enum Fx {
     Harmonic(HarmonicKind),
     /// Any harmonic: the tile that opens the harmonic editor.
     AnyHarmonic,
+    /// A grace note: the tile opens the grace note dialog.
+    Grace,
     Pick(StrokeDirection),
     Brush(StrokeDirection),
     Slap(SlapKind),
@@ -255,6 +262,8 @@ const PITCH_ITEMS: &[FxItem] = &[
         glyph("\u{E0DD}", 42.0, 0.0),
         Fx::AnyHarmonic,
     ),
+    // A slashed grace note: it opens the grace note dialog.
+    item(ActionId::GraceNote, glyph("\u{E560}", 40.0, 6.0), Fx::Grace),
 ];
 
 /// The harmonics, each with its key (their palette tile is the one harmonic tile).
@@ -384,6 +393,7 @@ fn is_on(fx: Fx, note: Option<&NoteState>, beat: &BeatState) -> bool {
         Fx::Accent(kind) => note.is_some_and(|n| n.accent == Some(kind)),
         Fx::Harmonic(kind) => note.is_some_and(|n| n.harmonic.is_some_and(|h| h.kind == kind)),
         Fx::AnyHarmonic => note.is_some_and(|n| n.harmonic.is_some()),
+        Fx::Grace => note.is_some_and(|n| n.grace.is_some()),
         Fx::Pick(direction) => beat.pick == Some(direction),
         Fx::Brush(direction) => beat.brush == Some(direction),
         Fx::Slap(kind) => beat.slap == Some(kind),
@@ -561,7 +571,7 @@ impl EffectsState {
                     };
                     let on = is_on_for_targets(item.fx, snapshot);
                     if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
-                        if matches!(item.fx, Fx::Bend | Fx::Whammy | Fx::AnyHarmonic) {
+                        if matches!(item.fx, Fx::Bend | Fx::Whammy | Fx::AnyHarmonic | Fx::Grace) {
                             open = Some(item.fx);
                         } else {
                             commands.extend(fx_commands(item.fx, snapshot));
@@ -600,6 +610,7 @@ impl EffectsState {
             Some(Fx::Bend) => self.open_bend(snapshot),
             Some(Fx::Whammy) => self.open_whammy(snapshot),
             Some(Fx::AnyHarmonic) => self.open_harmonic(snapshot),
+            Some(Fx::Grace) => self.open_grace(snapshot),
             _ => {}
         }
     }

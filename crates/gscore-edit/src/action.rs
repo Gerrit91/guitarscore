@@ -128,6 +128,8 @@ pub enum ActionId {
     ToggleTrill,
     /// Palette: Tremolo picking.
     ToggleTremoloPicking,
+    /// Palette: Grace note (opens the grace note dialog).
+    GraceNote,
     /// Palette: Natural harmonic.
     ToggleNaturalHarmonic,
     /// Palette: Artificial harmonic.
@@ -209,6 +211,7 @@ impl ActionId {
                 | ActionId::ToggleLetRing
                 | ActionId::ToggleTrill
                 | ActionId::ToggleTremoloPicking
+                | ActionId::GraceNote
                 | ActionId::ToggleNaturalHarmonic
                 | ActionId::ToggleArtificialHarmonic
                 | ActionId::ToggleTappedHarmonic
@@ -368,6 +371,7 @@ pub const ACTIONS: &[ActionInfo] = &[
         "toggle_tremolo_picking",
         "Tremolo picking",
     ),
+    info(ActionId::GraceNote, "grace_note", "Grace note"),
     info(
         ActionId::ToggleNaturalHarmonic,
         "toggle_natural_harmonic",
@@ -507,6 +511,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 78, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 79, "one entry per ActionId variant");
     }
 }

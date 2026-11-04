@@ -14,6 +14,7 @@ use crate::effects::{
     AccentKind, Bend, Harmonic, Legato, SlapKind, SlideKind, StrokeDirection, Vibrato, Whammy,
 };
 use crate::error::ModelError;
+use crate::grace::Grace;
 use crate::position::{MeasureIndex, VoiceIndex};
 use crate::song::Song;
 use crate::views::{BeatKind, MeasureView, NoteKind, NoteView, TrackView, VoiceView};
@@ -171,6 +172,7 @@ fn compare_measure(diff: &mut Diffs, track: &str, a: &MeasureView<'_>, b: &Measu
 #[derive(Debug, PartialEq)]
 struct BeatContent {
     kind: BeatKind,
+    grace: bool,
     duration: Result<Duration, ModelError>,
     pick_stroke: Option<StrokeDirection>,
     brush_stroke: Option<StrokeDirection>,
@@ -200,6 +202,7 @@ struct NoteContent {
     trill: bool,
     tremolo_picking: bool,
     vibrato: Option<Vibrato>,
+    grace: Option<Grace>,
     dynamic: Dynamic,
 }
 
@@ -221,6 +224,7 @@ impl NoteContent {
             trill: note.has_trill(),
             tremolo_picking: note.has_tremolo_picking(),
             vibrato: note.vibrato(),
+            grace: note.grace(),
             dynamic: note.dynamic(),
         }
     }
@@ -239,6 +243,7 @@ fn beats(voice: Option<VoiceView<'_>>) -> Vec<BeatContent> {
             notes.sort_by_key(|note| note.string);
             BeatContent {
                 kind: beat.kind(),
+                grace: beat.is_grace(),
                 duration: beat.duration(),
                 pick_stroke: beat.pick_stroke(),
                 brush_stroke: beat.brush_stroke(),
@@ -256,6 +261,7 @@ fn beats(voice: Option<VoiceView<'_>>) -> Vec<BeatContent> {
 /// Records each field of two beats that differs, then each note's.
 fn compare_beat(diff: &mut Diffs, at: &str, a: &BeatContent, b: &BeatContent) {
     diff.check(at, "kind", a.kind, b.kind);
+    diff.check(at, "grace beat", a.grace, b.grace);
     diff.check(at, "length", &a.duration, &b.duration);
     diff.check(at, "pick stroke", a.pick_stroke, b.pick_stroke);
     diff.check(at, "brush stroke", a.brush_stroke, b.brush_stroke);
@@ -290,6 +296,7 @@ fn compare_beat(diff: &mut Diffs, at: &str, a: &BeatContent, b: &BeatContent) {
             nb.tremolo_picking,
         );
         diff.check(&at, "vibrato", na.vibrato, nb.vibrato);
+        diff.check(&at, "grace note", na.grace, nb.grace);
         diff.check(&at, "dynamic", na.dynamic, nb.dynamic);
     }
 }

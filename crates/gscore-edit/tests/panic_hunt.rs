@@ -173,6 +173,16 @@ fn extreme_typed_commands_never_panic() {
         Command::DeleteMeasure {
             measure: MeasureIndex::new(huge),
         },
+        Command::SetNoteEffect {
+            at: pos(0, 0, 0),
+            string: StringNumber::new(1).unwrap(),
+            effect: gscore_model::NoteEffect::Grace(Some(gscore_model::Grace {
+                fret: Fret::new(127).unwrap(),
+                speed: gscore_model::GraceSpeed::Fast,
+                on_beat: true,
+                dead: true,
+            })),
+        },
     ];
     for (name, song) in test_songs() {
         for command in &commands {

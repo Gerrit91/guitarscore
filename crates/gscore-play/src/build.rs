@@ -135,7 +135,7 @@ pub(crate) fn collect(
                     let (grace_notes, delays) = graces::place(
                         &graces,
                         start,
-                        graces::length(crate::timeline::tempo_at(song, span.measure)),
+                        crate::timeline::tempo_at(song, span.measure),
                         number,
                         channel,
                     );

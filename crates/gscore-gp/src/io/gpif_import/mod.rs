@@ -475,6 +475,10 @@ impl SongGpifOps for Song {
         // GuitarScore fix: GPIF numbers strings from the lowest; the legacy model's string 1
         // is the highest (as its tuning list is, see `extract_tuning`).
         flip_note_strings(&mut self.tracks);
+        // GuitarScore: a grace beat becomes a grace note attached to its main note where
+        // nothing is lost, as the editor works with attached grace notes. Writing turns
+        // them back into grace beats (`Song::with_grace_beats`).
+        self.fold_grace_beats();
     }
 }
 

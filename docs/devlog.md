@@ -2238,3 +2238,37 @@ lifeless):
   tab number, ledger lines), `test_sequence` (a grace note cuts the ringing note, the
   excerpt plays the grace first), unit tests for grace placement and lengths, one note per
   string, and flat spelling. `testing::song_with_graces` builds such songs.
+
+## 2026-11-04 — Entering grace notes
+
+- Owner: grace notes must be enterable, with a dialog for the speeds. (Ghost notes were
+  already enterable: `g` and the palette.)
+- One form for editing: the model keeps a grace note attached to its main note
+  (`NoteEffect::Grace(Option<Grace>)`; `Grace { fret, speed, on_beat, dead }`, speeds
+  fast/normal/slow = 64th/32nd/16th, `gscore-model/src/grace.rs`). `NoteView::grace`
+  returns the same type, so layout, playback and the dialog read what commands write.
+- Files (`gscore-gp/src/model/grace.rs`, docs/guitarpro.md #37): reading a GP6/GP7 file
+  folds each grace beat into its main note where nothing is lost; writing `.gp`/`.gpx`
+  turns attached grace notes back into grace beats, and the GP3-5 writer folds (or leaves
+  out) grace beats. Grace beats that do not fold (a grace note on a string the main beat
+  does not play, an eighth-note grace, one with its own vibrato) stay as they are: drawn
+  and played, not edited. The save check now compares grace notes and grace beats, so a
+  lost grace note is reported. `farewell.gp` still saves without a reported loss.
+- Command text: `set_note_effect ... effect=grace value=5:normal:before` (`:on` for on
+  the beat, `:dead` appended for a dead one, `none` to remove), journaled like every other
+  effect.
+- App (`grace_editor.rs`): the "Grace note" palette tile (a slashed grace note, next to
+  the harmonic tile), `Shift+G` and Note › Grace note… open the dialog: the fret with quick
+  choices one or two frets below/above the main note, a dead-note switch, the three speeds
+  as engraved 64th/32nd/16th notes with what each does, and before/on the beat as
+  engraved acciaccatura/appoggiatura signs. Listen plays the beat with the draft; OK applies
+  it to every selected note, Remove takes it off. The harmonic editor's button row and
+  Escape/Enter handling are shared with it.
+- Playback: a grace note now lasts its written value, at least 40/60/90 ms for
+  fast/normal/slow, so the speeds stay apart and audible at any tempo.
+- Tests: fold/unfold round trip and the cases that must not fold (`gscore-gp`), set/
+  change/remove with undo (`gscore-model`), the command text round trip and bad values
+  (`gscore-edit`), an extreme grace in `panic_hunt`, grace lengths per speed
+  (`gscore-play`), the dialog via `Shift+G`, OK and Remove via the palette tile
+  (`test_editing`). Checked with `gscore-cli edit` on `note_lengths.gp`: three grace notes
+  (slow before, fast on the beat, dead) save as `.gp`, reload, and render.

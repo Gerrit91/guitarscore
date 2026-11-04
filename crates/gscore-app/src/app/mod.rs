@@ -15,6 +15,7 @@ mod edit_staff;
 mod edit_staff_dialogs;
 mod editing;
 mod files;
+mod grace_editor;
 mod grid;
 mod harmonic_diagram;
 mod harmonic_editor;

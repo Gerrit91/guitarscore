@@ -276,6 +276,8 @@ impl GuitarScoreApp {
             state.effects.open_bend(&snapshot);
         } else if action == ActionId::ToggleWhammy {
             state.effects.open_whammy(&snapshot);
+        } else if action == ActionId::GraceNote {
+            state.effects.open_grace(&snapshot);
         } else if let Some(item) = super::edit_effects::fx_item(action) {
             commands = super::edit_effects::fx_commands(item.fx, &snapshot);
         }

@@ -2,8 +2,8 @@
 
 use super::*;
 use gscore_model::{
-    AccentKind, BeatEffect, BeatIndex, BendKind, BendPoint, BendShape, Dynamic, Harmonic,
-    HarmonicKind, NoteEffect, StrokeDirection, WhammyShape,
+    AccentKind, BeatEffect, BeatIndex, BendKind, BendPoint, BendShape, Dynamic, Grace, GraceSpeed,
+    Harmonic, HarmonicKind, NoteEffect, StrokeDirection, WhammyShape,
 };
 
 fn at(track: usize, measure: usize, voice: usize, beat: usize) -> BeatPosition {
@@ -484,6 +484,14 @@ fn bad_lines_are_errors_with_useful_messages() {
             "set_beat_effect measure=1 beat=1 effect=whammy value=0:0,0:1",
             "beat effect",
         ),
+        (
+            "set_note_effect measure=1 beat=1 string=1 effect=grace value=5:quick:before",
+            "note effect",
+        ),
+        (
+            "set_note_effect measure=1 beat=1 string=1 effect=grace value=200:normal:before",
+            "note effect",
+        ),
     ];
     for (line, expected) in cases {
         let error = parse_line(line).unwrap_err().to_string();
@@ -677,6 +685,26 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
                 kind: HarmonicKind::Artificial,
                 node: Some(19),
             })),
+        },
+        Command::SetNoteEffect {
+            at: at(0, 1, 0, 1),
+            string,
+            effect: NoteEffect::Grace(Some(Grace {
+                fret: Fret::new(7).unwrap(),
+                speed: GraceSpeed::Slow,
+                on_beat: true,
+                dead: true,
+            })),
+        },
+        Command::SetNoteEffect {
+            at: at(0, 1, 0, 1),
+            string,
+            effect: NoteEffect::Grace(Some(Grace::before(Fret::new(0).unwrap()))),
+        },
+        Command::SetNoteEffect {
+            at: at(0, 1, 0, 1),
+            string,
+            effect: NoteEffect::Grace(None),
         },
         Command::SetBeatEffect {
             at: at(0, 2, 0, 0),
