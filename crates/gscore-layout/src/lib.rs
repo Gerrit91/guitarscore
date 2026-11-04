@@ -272,7 +272,13 @@ fn layout_with(
     };
     let rows: Vec<marks::Rows> = plans
         .iter()
-        .map(|plan| marks::Rows::of(marks.get(plan.measures.clone()).unwrap_or_default()))
+        .map(|plan| {
+            marks::Rows::of(
+                marks.get(plan.measures.clone()).unwrap_or_default(),
+                ctx.notation.is_some(),
+                show_tab,
+            )
+        })
         .collect();
     let heights: Vec<f32> = rows
         .iter()
@@ -305,12 +311,24 @@ fn layout_with(
         let rows = rows.get(index).copied().unwrap_or_default();
         // Section names, tempo marks and endings need room above the system.
         let top = placement.tops.get(index).copied().unwrap_or(bottom) + rows.height();
+        let tab_top = top + tab_offset;
         let tops = Tops {
-            tab: top + tab_offset,
+            tab: tab_top,
             notation: ctx.notation.map(|_| top),
             show_tab,
+            // Beat effects go above the notation staff, below the rows of text marks, or
+            // in a lane above the tab when there is no notation.
+            beat_bottom: if ctx.notation.is_some() {
+                top - rows.ornament_band() - marks::BEAT_ABOVE
+            } else {
+                tab_top - ornaments::TAB_BEAT_LANE
+            },
+            lanes: if show_tab {
+                tab_top
+            } else {
+                top + marks::LANES_DROP
+            },
         };
-        let tab_top = tops.tab;
         let system = places.systems.len();
         places.systems.push(if show_tab {
             SystemPlace {

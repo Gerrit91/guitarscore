@@ -95,7 +95,9 @@ impl Fret {
     }
 
     /// Draws the ornaments that sit above the staff (or above the note). `span_end` is
-    /// where the note's space ends: the next column, or the end of the measure.
+    /// where the note's space ends: the next column, or the end of the measure. With a
+    /// notation staff, accents, staccato and tremolo picking are written by its heads
+    /// instead, as in Guitar Pro.
     pub(crate) fn draw_above(
         &self,
         x: f32,
@@ -107,17 +109,37 @@ impl Fret {
         if self.tie_destination {
             return;
         }
-        if let Some(accent) = self.marks.accent {
-            draw_accent(x, top, accent, ops);
+        if ctx.notation.is_none() {
+            if let Some(accent) = self.marks.accent {
+                draw_accent(x, top, accent, ops);
+            }
+            if self.marks.staccato {
+                draw_staccato(x, top, ctx, ops);
+            }
+            if self.marks.tremolo_picking {
+                draw_glyph_centered(Glyph::Tremolo3, x, top - ORNAMENT_LANE, 1.0, ctx, ops);
+            }
         }
-        if self.marks.staccato {
-            draw_staccato(x, top, ctx, ops);
+        self.draw_lane_marks(x, top, ctx, ops);
+        if let Some(bend) = self.marks.bend {
+            draw_bend(x, span_end, top, self, bend, ctx, ops);
+        }
+    }
+
+    /// The trill and the pinch harmonic's "PH" in the lane above `top`: above the tab, or
+    /// above a notation staff shown without a tab.
+    pub(crate) fn draw_lane_marks(
+        &self,
+        x: f32,
+        top: f32,
+        ctx: &Context<'_>,
+        ops: &mut Vec<DrawOp>,
+    ) {
+        if self.tie_destination {
+            return;
         }
         if self.marks.trill {
             draw_glyph_centered(Glyph::Trill, x, top - ORNAMENT_LANE, 1.0, ctx, ops);
-        }
-        if self.marks.tremolo_picking {
-            draw_glyph_centered(Glyph::Tremolo3, x, top - ORNAMENT_LANE, 1.0, ctx, ops);
         }
         if self
             .marks
@@ -133,9 +155,6 @@ impl Fret {
                 anchor: TextAnchor::Middle,
                 color: ColorToken::Notation,
             });
-        }
-        if let Some(bend) = self.marks.bend {
-            draw_bend(x, span_end, top, self, bend, ctx, ops);
         }
     }
 }
@@ -298,7 +317,7 @@ pub(crate) fn bend_label(quarter_tones: i16) -> String {
 }
 
 /// Draws a music glyph horizontally centered on `x` with its bottom at `bottom`.
-fn draw_glyph_centered(
+pub(super) fn draw_glyph_centered(
     glyph: Glyph,
     x: f32,
     bottom: f32,

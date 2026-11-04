@@ -169,6 +169,7 @@ fn sounding(
         damp: false,
         bend_curve: None,
         whammy: None,
+        fade_in: false,
     }
 }
 

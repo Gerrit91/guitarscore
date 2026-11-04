@@ -9,9 +9,12 @@
 //! swing/triplet, dotted and Scottish feel, bends, slides and vibrato (pitch bends on a
 //! borrowed channel, so the rest of the chord stays put; the model stores only the highest
 //! point of a bend, so bend curves are simplified), ghost notes and accents (velocity),
-//! staccato and palm mute (shorter), let ring, tremolo picking and brush strokes.
+//! staccato and palm mute (shorter), let ring, tremolo picking, the whammy bar, pick and
+//! brush strokes (the chord struck string by string), tapping, slapping and popping
+//! (velocity), fade-ins (an expression swell on a borrowed channel), and hammer-ons,
+//! pull-offs and legato (the reached note is not picked: softer).
 //! [`Sequence::beat_excerpt`] plays one beat alone, for hearing an edit.
-//! Not yet: trills, whammy bar, fade-in, fermatas and directions (D.C., D.S., coda).
+//! Not yet: trills, fermatas and directions (D.C., D.S., coda).
 
 #![warn(clippy::arithmetic_side_effects)]
 
@@ -29,6 +32,7 @@ mod player;
 mod sequence;
 mod smf;
 mod sounding;
+mod strokes;
 mod swing;
 mod tempo;
 mod timeline;

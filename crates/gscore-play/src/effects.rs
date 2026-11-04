@@ -1,7 +1,7 @@
 //! How note and beat effects change what is played: ghost notes and accents change the
 //! velocity, staccato and palm mute shorten the note, let ring holds it to the next note on
-//! its string, tremolo picking repeats it, a brush stroke spreads the chord, and vibrato
-//! shakes the pitch.
+//! its string, tremolo picking repeats it, and vibrato shakes the pitch. A stroke spreads
+//! a chord ([`spread`]; the beat effects themselves are in `strokes`).
 
 use gscore_model::{AccentKind, NoteView, StrokeDirection, Vibrato};
 
@@ -24,8 +24,6 @@ const STACCATO_TICKS: u64 = QUARTER / 2;
 const LET_RING_TICKS: u64 = 4 * QUARTER;
 /// Tremolo picking repeats the note every 32nd note.
 const TREMOLO_TICKS: u64 = QUARTER / 8;
-/// A brush stroke spreads the chord over this long (a 32nd note, as Guitar Pro's default).
-const BRUSH_TICKS: u64 = QUARTER / 8;
 /// Vibrato: how far the pitch swings (cents) and one swing's length, slight and wide.
 const SLIGHT_DEPTH_CENTS: u16 = 50;
 const WIDE_DEPTH_CENTS: u16 = 100;
@@ -33,7 +31,7 @@ const SLIGHT_PERIOD: u64 = QUARTER / 3;
 const WIDE_PERIOD: u64 = QUARTER / 2;
 
 /// `velocity` scaled to `percent`, kept within MIDI's 1 to 127.
-fn scale(velocity: u8, percent: u32) -> u8 {
+pub(crate) fn scale(velocity: u8, percent: u32) -> u8 {
     let scaled = u32::from(velocity).saturating_mul(percent) / 100;
     u8::try_from(scaled.clamp(1, 127)).unwrap_or(127)
 }
@@ -64,9 +62,9 @@ pub(crate) fn shape_note(sounding: &mut Sounding, note: &NoteView<'_>) {
     }
 }
 
-/// Spreads a chord's onsets for a brush stroke: a down stroke from the lowest string (the
-/// highest string number), an up stroke from the highest.
-pub(crate) fn brush(chord: &mut [Sounding], direction: StrokeDirection) {
+/// Spreads a chord's onsets over `total` ticks for a pick or brush stroke: a down stroke
+/// from the lowest string (the highest string number), an up stroke from the highest.
+pub(crate) fn spread(chord: &mut [Sounding], direction: StrokeDirection, total: u64) {
     let count = chord.len();
     if count < 2 {
         return;
@@ -81,7 +79,7 @@ pub(crate) fn brush(chord: &mut [Sounding], direction: StrokeDirection) {
         let Some(note) = chord.get_mut(index) else {
             continue;
         };
-        let delay = BRUSH_TICKS
+        let delay = total
             .saturating_mul(u64::try_from(position).unwrap_or(0))
             .checked_div(gaps)
             .unwrap_or(0);
@@ -172,7 +170,8 @@ pub(crate) fn tremolo_picking(notes: Vec<Sounding>) -> Vec<Sounding> {
                 start,
                 end,
                 tremolo: false,
-                // Only the first pick carries a slide or bend.
+                // Only the first pick carries a slide, a bend or a fade-in.
+                fade_in: note.fade_in && start == note.start,
                 slide: if start == note.start {
                     note.slide
                 } else {
@@ -216,11 +215,12 @@ pub(crate) fn apply_vibrato(notes: &mut [Sounding]) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::event::Channel;
 
-    fn note(string: u8, start: u64, end: u64) -> Sounding {
+    /// A plain note for the tests.
+    pub(crate) fn note(string: u8, start: u64, end: u64) -> Sounding {
         let channel = Channel::new(0).unwrap();
         Sounding {
             track: 0,
@@ -241,6 +241,7 @@ mod tests {
             damp: false,
             bend_curve: None,
             whammy: None,
+            fade_in: false,
         }
     }
 
@@ -254,10 +255,10 @@ mod tests {
     #[test]
     fn a_down_brush_starts_on_the_lowest_string() {
         let mut chord = [note(1, 0, 960), note(6, 0, 960), note(3, 0, 960)];
-        brush(&mut chord, StrokeDirection::Down);
+        spread(&mut chord, StrokeDirection::Down, 120);
         assert_eq!(chord[1].start, 0);
         assert!(chord[2].start > 0 && chord[2].start < chord[0].start);
-        assert_eq!(chord[0].start, BRUSH_TICKS);
+        assert_eq!(chord[0].start, 120);
     }
 
     #[test]

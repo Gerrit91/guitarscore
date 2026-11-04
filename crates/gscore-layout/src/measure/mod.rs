@@ -7,6 +7,7 @@
 
 mod columns;
 mod draw;
+mod effects;
 mod graces;
 
 pub(crate) use draw::draw_barline_ties;
@@ -20,7 +21,7 @@ use crate::draw::{ColorToken, DrawOp, Point};
 use crate::error::LayoutError;
 use crate::glyph::Glyph;
 use crate::notation::{self, KeySigLayout, NotationItem};
-use crate::ornaments::{ColumnMarks, Fret};
+use crate::ornaments::{self, ColumnMarks, Fret};
 
 use columns::{as_f64, beat_length, beat_starts, column_items};
 use graces::Grace;
@@ -48,6 +49,11 @@ pub(crate) struct Tops {
     pub(crate) notation: Option<f32>,
     /// Whether the tab staff is drawn (a track may show notation only).
     pub(crate) show_tab: bool,
+    /// Where the bottom of the beat effects (pick strokes, tapping, fade-ins) goes.
+    pub(crate) beat_bottom: f32,
+    /// The line the ornament lanes (trill, vibrato, whammy) are measured up from: the tab's
+    /// top line, or just below a notation-only staff's.
+    pub(crate) lanes: f32,
 }
 
 /// A measure, laid out independently of its position.
@@ -305,6 +311,12 @@ impl MeasureLayout {
             .enumerate()
             .map(|(index, (data, _, _, _))| {
                 let tab = half_width(&data.items, ctx);
+                // A brush arrow stands left of the fret numbers.
+                let tab_left = if data.marks.brush.is_some() {
+                    tab + ornaments::BRUSH_ROOM
+                } else {
+                    tab
+                };
                 let mut left = 0.0_f32;
                 let mut right = 0.0_f32;
                 for (voice, item) in data.notation.iter().enumerate() {
@@ -323,7 +335,7 @@ impl MeasureLayout {
                     left = left.max(item_left + shift);
                     right = right.max(item_right + shift);
                 }
-                let main = tab.max(left);
+                let main = tab_left.max(left);
                 (main, main + data.grace_width, tab.max(right))
             })
             .collect();

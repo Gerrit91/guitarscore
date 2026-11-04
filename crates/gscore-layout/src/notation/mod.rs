@@ -6,24 +6,30 @@
 //! lines, stems, flags, beams, dots, rests, ties, tuplet numbers). All voices are written:
 //! when two share the staff the first points its stems up and the others down, and a voice
 //! whose notehead would sit on the first voice's position moves right. Grace notes are small
-//! heads with a slash before their main note. Articulations and other ornaments on the
-//! notation staff are not drawn yet (they live on the tab). Drum tracks get a percussion
-//! staff instead: each drum sound has its own place and notehead ([`drums`]) and stems point
-//! up.
+//! heads with a slash before their main note. The notes' articulations sit by the heads
+//! ([`marks`]): accents and staccato opposite the stem, ghost notes in parentheses, natural
+//! harmonics as diamonds, tremolo picking as strokes through the stem, slurs for hammer-ons
+//! and legato, lines for slides, and an arrow before a brushed chord. Drum tracks get a
+//! percussion staff instead: each drum sound has its own place and notehead ([`drums`]) and
+//! stems point up.
 
 mod beams;
 mod draw;
 mod drums;
+mod marks;
 mod pitch;
 
 use std::collections::HashMap;
 
-use gscore_model::{BeatKind, BeatView, NoteKind, TrackView};
+use gscore_model::{
+    AccentKind, BeatKind, BeatView, HarmonicKind, NoteKind, SlideKind, StrokeDirection, TrackView,
+};
 
 pub(crate) use draw::{
     BeamPlan, KeySigLayout, draw_measure, draw_staff_start, draw_tab_staff_start, draw_tie_curve,
     key_start_width, ledger_positions, prefix_width, tab_prefix_width, y_of,
 };
+pub(crate) use marks::draw_arrow;
 pub(crate) use pitch::{Alter, Clef};
 
 use crate::error::LayoutError;
@@ -103,6 +109,24 @@ pub(crate) struct Chord {
     pub(crate) tuplet: Option<u8>,
     /// A fixed stem direction (up for drums); `None` decides by the noteheads.
     pub(crate) stem_up: Option<bool>,
+    /// Articulations and beat effects written by the chord.
+    pub(crate) marks: ChordMarks,
+}
+
+/// What a chord shows besides its heads.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct ChordMarks {
+    /// The strongest accent of its notes.
+    pub(crate) accent: Option<AccentKind>,
+    /// A staccato dot (any note staccato).
+    pub(crate) staccato: bool,
+    /// Tremolo picking (any note): strokes through the stem.
+    pub(crate) tremolo: bool,
+    /// A brush stroke: an arrow before the chord.
+    pub(crate) brush: Option<StrokeDirection>,
+    /// The beat starts or continues a beat-level legato slur.
+    pub(crate) legato_origin: bool,
+    pub(crate) legato_destination: bool,
 }
 
 /// One notehead.
@@ -121,6 +145,36 @@ pub(crate) struct Head {
     pub(crate) dead: bool,
     /// A notehead other than the note value's (drum sounds).
     pub(crate) glyph: Option<Glyph>,
+    /// The string the note is played on: slurs and slides join heads on one string.
+    pub(crate) string: Option<u8>,
+    /// A ghost note: the head in parentheses.
+    pub(crate) ghost: bool,
+    /// A natural harmonic: a diamond head.
+    pub(crate) harmonic: bool,
+    /// A hammer-on or pull-off to the next note on the string.
+    pub(crate) hammer: bool,
+    /// The note's slides.
+    pub(crate) slides: Vec<SlideKind>,
+}
+
+impl Head {
+    /// A head on the middle line with nothing else set, to fill in.
+    fn plain() -> Self {
+        Head {
+            position: MIDDLE,
+            step: 0,
+            alter: Alter::Natural,
+            accidental: None,
+            tied: false,
+            dead: false,
+            glyph: None,
+            string: None,
+            ghost: false,
+            harmonic: false,
+            hammer: false,
+            slides: Vec::new(),
+        }
+    }
 }
 
 impl Chord {
@@ -131,6 +185,9 @@ impl Chord {
         }
         if head.dead {
             return Glyph::NoteheadX;
+        }
+        if head.harmonic {
+            return Glyph::NoteheadHarmonic;
         }
         match self.value {
             1 => Glyph::NoteheadWhole,
@@ -216,6 +273,12 @@ fn beat_item(
         BeatKind::Empty => Ok(None),
         BeatKind::Normal => {
             let mut heads: Vec<Head> = Vec::new();
+            let mut marks = ChordMarks {
+                brush: beat.brush_stroke(),
+                legato_origin: beat.legato().is_some_and(|l| l.origin),
+                legato_destination: beat.legato().is_some_and(|l| l.destination),
+                ..ChordMarks::default()
+            };
             for note in beat.notes() {
                 let kind = note.kind();
                 if !matches!(kind, NoteKind::Normal | NoteKind::Tie | NoteKind::Dead) {
@@ -224,6 +287,35 @@ fn beat_item(
                 // Unreadable notes are listed as issues by the model; leave them out here.
                 let Ok(pitch) = notation.track.sounding_pitch(&note) else {
                     continue;
+                };
+                let tie = kind == NoteKind::Tie;
+                if !tie {
+                    marks.accent = match (marks.accent, note.accent()) {
+                        (Some(AccentKind::Heavy), _) | (_, Some(AccentKind::Heavy)) => {
+                            Some(AccentKind::Heavy)
+                        }
+                        (accent, None) => accent,
+                        (_, accent) => accent,
+                    };
+                    marks.staccato |= note.is_staccato();
+                    marks.tremolo |= note.has_tremolo_picking();
+                }
+                let string = note.string().ok().map(|s| s.get());
+                let pitched = notation.clef != Clef::Percussion;
+                let link = |mut head: Head| {
+                    head.string = string;
+                    head.ghost = note.is_ghost();
+                    head.harmonic = pitched
+                        && note
+                            .harmonic()
+                            .is_some_and(|h| h.kind == HarmonicKind::Natural);
+                    head.hammer = pitched && note.is_hammer();
+                    head.slides = if pitched {
+                        note.slides().collect()
+                    } else {
+                        Vec::new()
+                    };
+                    head
                 };
                 let head = if notation.clef == Clef::Percussion {
                     // A drum's "pitch" is the sound; it has a place, never an accidental.
@@ -236,6 +328,7 @@ fn beat_item(
                         tied: kind == NoteKind::Tie,
                         dead: false,
                         glyph: drum.head.glyph(),
+                        ..Head::plain()
                     }
                 } else {
                     let (spelled, position) = notation.clef.place(pitch.get(), key);
@@ -246,9 +339,10 @@ fn beat_item(
                         accidental: None,
                         tied: kind == NoteKind::Tie,
                         dead: kind == NoteKind::Dead,
-                        glyph: None,
+                        ..Head::plain()
                     }
                 };
+                let head = link(head);
                 // Two sounds on one place share a head only when they look the same.
                 if heads
                     .iter()
@@ -275,6 +369,7 @@ fn beat_item(
                 } else {
                     None
                 },
+                marks,
             })))
         }
     }
@@ -357,7 +452,33 @@ pub(crate) fn extent(item: &NotationItem, beamed: bool, font: &MusicFont) -> (f3
             } else {
                 0.0
             };
-            (half + accidental, half + second + dots.max(flag))
+            let paren = if chord.heads.iter().any(|h| h.ghost) {
+                draw::paren_room(font)
+            } else {
+                0.0
+            };
+            let slides = |kinds: [SlideKind; 2]| {
+                if chord
+                    .heads
+                    .iter()
+                    .any(|h| h.slides.iter().any(|s| kinds.contains(s)))
+                {
+                    marks::SLIDE_ROOM
+                } else {
+                    0.0
+                }
+            };
+            let slide_in = slides([SlideKind::IntoFromBelow, SlideKind::IntoFromAbove]);
+            let slide_out = slides([SlideKind::OutDownwards, SlideKind::OutUpwards]);
+            let brush = if chord.marks.brush.is_some() {
+                marks::BRUSH_ROOM
+            } else {
+                0.0
+            };
+            (
+                half + paren + accidental + slide_in.max(brush),
+                half + second + paren + dots.max(flag) + slide_out,
+            )
         }
     }
 }
@@ -372,10 +493,8 @@ mod tests {
             position: step - 30,
             step,
             alter,
-            accidental: None,
             tied,
-            dead: false,
-            glyph: None,
+            ..Head::plain()
         }
     }
 
@@ -386,6 +505,7 @@ mod tests {
             dots: 0,
             tuplet: None,
             stem_up: None,
+            marks: ChordMarks::default(),
         })
     }
 
@@ -460,6 +580,7 @@ mod tests {
             dots: 0,
             tuplet: None,
             stem_up: None,
+            marks: ChordMarks::default(),
         };
         let h = c.heads[0].clone();
         assert_eq!(c.head_glyph(&h), Glyph::NoteheadWhole);

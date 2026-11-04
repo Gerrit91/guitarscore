@@ -224,6 +224,28 @@ mod tests {
     }
 
     #[test]
+    fn every_glyph_code_point_is_the_named_glyph() {
+        // The font's own advance at each code point matches the metadata's advance for the
+        // glyph's SMuFL name, so a wrong code point shows up here.
+        let fonts = PdfFonts::bundled();
+        let music = FontInfo::parse(fonts.music).unwrap();
+        let metrics = crate::MusicFont::bravura().unwrap();
+        for glyph in crate::Glyph::all() {
+            let id = music
+                .glyph(glyph.codepoint())
+                .unwrap_or_else(|| panic!("{} is not in the font", glyph.name()));
+            // Advances in em; a staff space is a quarter em.
+            let font_advance = music.per_mille(f32::from(music.advance(id))) / 250.0;
+            assert!(
+                (font_advance - metrics.advance(glyph)).abs() < 0.01,
+                "{}: font {font_advance}, metadata {}",
+                glyph.name(),
+                metrics.advance(glyph)
+            );
+        }
+    }
+
+    #[test]
     fn broken_fonts_are_errors() {
         let fonts = PdfFonts::bundled();
         for cut in [0, 4, 12, 100, 1000] {

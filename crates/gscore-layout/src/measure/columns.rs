@@ -84,6 +84,12 @@ pub(super) fn column_items(
             marks.whammy = beat.whammy_shape();
         }
         marks.add_vibrato(beat.vibrato());
+        if beat.kind() == BeatKind::Normal {
+            marks.pick = marks.pick.or(beat.pick_stroke());
+            marks.brush = marks.brush.or(beat.brush_stroke());
+            marks.slap = marks.slap.or(beat.slap());
+            marks.fade_in |= beat.has_fade_in();
+        }
     }
     for beat in beats.iter().filter(|b| b.kind() == BeatKind::Normal) {
         for note in beat.notes() {

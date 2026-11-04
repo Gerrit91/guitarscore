@@ -5,18 +5,26 @@
 //! legato slides, a slanted line for a shift slide, slashes at the fret for slides in and
 //! out, wiggles above the staff for vibrato, angle brackets for harmonics, and `P.M.` /
 //! `let ring` rows below the staff. Bend arrows and the whammy-bar line rise above the staff.
+//! Beat effects ([`beat`]) have a lane of their own above those: pick strokes, tapping,
+//! slapping and popping, and fade-ins; a brushed chord gets an arrow beside its numbers.
 //!
 //! This module holds what a note remembers about its ornaments; [`draw`] paints it.
 
+mod beat;
 mod lines;
 mod notes;
+
+pub(crate) use beat::{BRUSH_ROOM, TAB_BEAT_LANE, draw_beat_marks, draw_tab_brush};
 
 pub(crate) use lines::{
     draw_legato_run, draw_link, draw_tie, draw_tie_fragment, draw_under_staff_run, draw_whammy,
 };
 pub(crate) use notes::draw_vibrato;
 
-use gscore_model::{AccentKind, Bend, Harmonic, HarmonicKind, SlideKind, Vibrato, WhammyShape};
+use gscore_model::{
+    AccentKind, Bend, Harmonic, HarmonicKind, SlapKind, SlideKind, StrokeDirection, Vibrato,
+    WhammyShape,
+};
 
 /// Thickness of slurs, slides and arrows.
 const LINE_THICKNESS: f32 = 0.15;
@@ -143,6 +151,21 @@ pub(crate) struct ColumnMarks {
     pub(crate) whammy: Option<WhammyShape>,
     /// The widest vibrato of the beat or its notes; drawn once per column.
     pub(crate) vibrato: Option<Vibrato>,
+    /// A pick stroke.
+    pub(crate) pick: Option<StrokeDirection>,
+    /// A brush stroke over the chord.
+    pub(crate) brush: Option<StrokeDirection>,
+    /// Tapping, slapping or popping.
+    pub(crate) slap: Option<SlapKind>,
+    /// A fade-in (volume swell).
+    pub(crate) fade_in: bool,
+}
+
+impl ColumnMarks {
+    /// Whether the column has a mark in the beat lane.
+    pub(crate) fn has_beat_lane(&self) -> bool {
+        self.pick.is_some() || self.slap.is_some() || self.fade_in
+    }
 }
 
 impl ColumnMarks {

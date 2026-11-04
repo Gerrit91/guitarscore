@@ -2355,3 +2355,41 @@ lifeless):
   from here); Windows `.exe` and macOS `.app` icons (both packages are plain archives so
   far); the rest of M20 (macOS file-dialog fix, name check, user guide, public test
   files, signing).
+
+## 2026-11-04 — Beat effects and notation articulations drawn and played
+
+- Owner: the "Strokes and beat" effects were neither drawn nor played, and some symbols
+  were missing on the notation staff.
+- Drawn: pick strokes (down and up bow signs), tapping, slapping and popping (`T`, `S`,
+  `P`, as Guitar Pro writes them) and fade-ins (an opening hairpin) in a row of their own
+  above the top staff, reserved like the fermata row (`marks::Rows`); with notation it sits
+  above the notation staff and rises over a high note in its column. Brush strokes get a
+  vertical arrow beside the chord on the tab and on the notation staff, pointing the way the
+  palette tile does.
+- Notation staff (it showed no ornaments before): accents, heavy accents and staccato
+  opposite the stem (staccato in a space), ghost notes in parentheses, natural harmonics
+  as diamond heads, tremolo picking as strokes through the stem, slurs for hammer-ons,
+  pull-offs, legato slides and beat-level legato, lines for shift and legato slides, and
+  short lines for slides into and out of a note (`notation/marks.rs`). With notation
+  shown, accents, staccato and tremolo are written there only, as in Guitar Pro; tab-only
+  keeps them on the tab. A dynamic below a low note clears its accent.
+- A notation-only staff now also shows what lived only on the tab: trill, "PH", vibrato
+  and the whammy line in a band above it, P.M. and let ring below it (the dynamics move
+  below those rows). Bends are still drawn on the tab only.
+- New glyphs (`articAccent*`, `articStaccato*`, `articMarcato*`, `stringsDownBow`,
+  `stringsUpBow`, `noteheadDiamondWhite`, `noteheadParenthesis*`), and a test that every
+  glyph's code point is the named glyph in the bundled Bravura (font advance against the
+  metadata's).
+- Played (`gscore-play/src/strokes.rs`): a pick stroke strikes a chord string by string
+  within a 128th note in its direction, an upstroke at 90%; tapping 85%, slapping 115%,
+  popping 125%; a fade-in swells its notes' expression from 0 to full over the note on a
+  borrowed channel; a note reached by a hammer-on, pull-off or beat-level legato is not
+  picked (80%). The beat preview (Listen) plays them too. The crate doc listed the whammy
+  bar as unplayed; it has been played for a while.
+- Golden: `ornaments.svg` regenerated (the notation staff gains the slurs, slides, accents,
+  staccato, ghost parentheses, legato slur and harmonic diamond; it now matches Guitar
+  Pro's export of that file much more closely). Tests: `gscore-layout/tests/test_effects.rs`
+  (tab, notation and notation-only), new playback tests in `gscore-play/tests/test_effects.rs`.
+- Open: trills are still not played; artificial, pinch, tapped and semi harmonics keep a
+  normal head on the notation staff (their text stays on the tab); bends on a notation-only
+  staff; a dynamic under a chord with a down-stem beam can touch the beam (older).

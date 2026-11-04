@@ -299,8 +299,6 @@ fn ornaments_are_drawn_on_the_tab_staff() {
         "P",        // pull-off
         "PH",       // pinch harmonic
         "-3",       // whammy dive
-        ">",        // accent
-        "v",        // heavy accent
     ] {
         assert!(texts.contains(&expected), "missing {expected:?}: {texts:?}");
     }
@@ -313,7 +311,38 @@ fn ornaments_are_drawn_on_the_tab_staff() {
             .filter(|op| matches!(op, DrawOp::Glyph { glyph, .. } if *glyph == wanted))
             .count()
     };
-    assert_eq!(glyph_count(Glyph::AugmentationDot), 1, "staccato dot");
+    // With notation, accents and the staccato dot are engraved by the noteheads.
+    let either = |above, below| glyph_count(above) + glyph_count(below);
+    assert_eq!(either(Glyph::AccentAbove, Glyph::AccentBelow), 1, "accent");
+    assert_eq!(
+        either(Glyph::MarcatoAbove, Glyph::MarcatoBelow),
+        1,
+        "heavy accent"
+    );
+    assert_eq!(
+        either(Glyph::StaccatoAbove, Glyph::StaccatoBelow),
+        1,
+        "staccato"
+    );
+    assert!(
+        !texts.contains(&">") && !texts.contains(&"v"),
+        "not on the tab too"
+    );
+    // The tab-only layout keeps them on the tab.
+    let tab_texts: Vec<String> = common::layout_tab_only(&song, 0)
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    for expected in [">", "v"] {
+        assert!(
+            tab_texts.iter().any(|t| t == expected),
+            "tab-only {expected:?}"
+        );
+    }
     assert!(
         layout
             .ops

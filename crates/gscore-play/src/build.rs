@@ -3,7 +3,7 @@
 //! MIDI events (borrowed channels for pitch movement, note-on and note-off). The whole
 //! song and a one-beat excerpt share both passes.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use gscore_model::{
     BeatKind, BeatView, BendKind, Duration, ModelError, NoteKind, SlideKind, Song, TrackIndex,
@@ -17,6 +17,7 @@ use crate::graces;
 use crate::pitch;
 use crate::sequence::{MeasureSpan, SequenceTrack, TimedEvent, sound_events, ticks};
 use crate::sounding::{self, Sounding};
+use crate::strokes;
 use crate::swing;
 use crate::tempo::PPQ;
 
@@ -91,6 +92,8 @@ pub(crate) fn collect(
         // Voices are independent: a tie in one must not extend a note of another on the
         // same string.
         let mut on_string: HashMap<(usize, u8), usize> = HashMap::new();
+        // The (voice, string) pairs whose last note hammers on or pulls off to the next.
+        let mut hammering: HashSet<(usize, u8)> = HashSet::new();
         for span in measures {
             let Some(measure) = view.measure(span.measure) else {
                 continue;
@@ -128,8 +131,10 @@ pub(crate) fn collect(
                     }
                     if beat.kind() != BeatKind::Normal {
                         pending_graces.clear();
+                        hammering.retain(|(voice, _)| *voice != voice_index);
                         continue;
                     }
+                    let legato_beat = beat.legato().is_some_and(|legato| legato.destination);
                     let graces = graces::gather(&view, &pending_graces, &beat, &mut skipped_notes);
                     pending_graces.clear();
                     let (grace_notes, delays) = graces::place(
@@ -144,6 +149,10 @@ pub(crate) fn collect(
                     for note in beat.notes() {
                         let kind = note.kind();
                         let string = note.string().map(|s| s.get()).unwrap_or(0);
+                        let hammered = hammering.remove(&(voice_index, string));
+                        if note.is_hammer() {
+                            hammering.insert((voice_index, string));
+                        }
                         if kind == NoteKind::Tie && fresh_at != Some(start) {
                             let tied = on_string
                                 .get(&(voice_index, string))
@@ -205,8 +214,12 @@ pub(crate) fn collect(
                             whammy: beat.whammy_shape().filter(|_| pitched).and_then(|shape| {
                                 Curve::new(shape.points.iter().map(|p| (p.position, p.value)))
                             }),
+                            fade_in: false,
                         };
                         effects::shape_note(&mut sounding, &note);
+                        if hammered || legato_beat {
+                            strokes::legato(&mut sounding);
+                        }
                         on_string.insert((voice_index, string), notes.len());
                         notes.push(sounding);
                     }
@@ -219,10 +232,8 @@ pub(crate) fn collect(
                                 .min(note.end.saturating_sub(1));
                         }
                     }
-                    if let Some(direction) = beat.brush_stroke()
-                        && let Some(chord) = notes.get_mut(first_note..)
-                    {
-                        effects::brush(chord, direction);
+                    if let Some(chord) = notes.get_mut(first_note..) {
+                        strokes::shape_beat(chord, &beat);
                     }
                 }
             }
@@ -269,6 +280,15 @@ pub(crate) fn emit(notes: &[Sounding], tracks: &[SequenceTrack], events: &mut Ve
             for event in pitch::bend_range_setup(note.play_channel, range) {
                 events.push(TimedEvent {
                     tick: note.start,
+                    track: note.track,
+                    event,
+                });
+            }
+        }
+        if borrowed && note.fade_in {
+            for (tick, event) in strokes::fade_in_events(note, note.play_channel) {
+                events.push(TimedEvent {
+                    tick,
                     track: note.track,
                     event,
                 });

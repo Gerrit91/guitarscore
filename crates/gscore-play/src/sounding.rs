@@ -59,6 +59,9 @@ pub(super) struct Sounding {
     /// The bend's drawn curve, and the beat's whammy curve, if any.
     pub(super) bend_curve: Option<Curve>,
     pub(super) whammy: Option<Curve>,
+    /// Whether the note swells from silence (a fade-in): it plays on a borrowed channel
+    /// whose expression rises over the note.
+    pub(super) fade_in: bool,
 }
 
 /// Which slide of a note the sequencer plays.
@@ -208,7 +211,7 @@ pub(super) fn assign_pitch_channels(notes: &mut [Sounding], free: Vec<Channel>) 
     let mut order: Vec<usize> = notes
         .iter()
         .enumerate()
-        .filter(|(_, note)| note.shape.is_some() || note.damp)
+        .filter(|(_, note)| note.shape.is_some() || note.damp || note.fade_in)
         .map(|(index, _)| index)
         .collect();
     order.sort_by_key(|&index| {
