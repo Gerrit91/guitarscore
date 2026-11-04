@@ -137,10 +137,6 @@
 <line x1="39.78" y1="90.94" x2="42.58" y2="82.84" stroke="#101010" stroke-width="0.22"/>
 <line x1="39.78" y1="70.84" x2="42.58" y2="75.44" stroke="#101010" stroke-width="0.22"/>
 <line x1="39.78" y1="75.44" x2="42.58" y2="70.84" stroke="#101010" stroke-width="0.22"/>
-<text x="14.34" y="73.14" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restQuarter">&#xE4E5;</text>
-<text x="23.11" y="73.14" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restQuarter">&#xE4E5;</text>
-<text x="31.88" y="73.14" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restQuarter">&#xE4E5;</text>
-<text x="40.64" y="73.14" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restQuarter">&#xE4E5;</text>
 <text x="14.88" y="68.54" font-family="Noto Sans" font-size="1" fill="#404040">Dead Slapped</text>
 <line x1="49.87" y1="83.14" x2="49.87" y2="90.64" stroke="#303030" stroke-width="0.16"/>
 <line x1="49.87" y1="71.14" x2="49.87" y2="75.14" stroke="#303030" stroke-width="0.16"/>

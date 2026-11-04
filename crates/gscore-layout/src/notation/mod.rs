@@ -297,6 +297,11 @@ fn beat_item(
     notation: &Notation<'_>,
     key: i8,
 ) -> Result<Option<NotationItem>, LayoutError> {
+    // A dead slapped beat writes a large cross across the staff instead of a rest or its
+    // notes, whether the file calls the empty beat a rest or a normal beat.
+    if beat.is_dead_slapped() {
+        return Ok(None);
+    }
     let value = beat.note_value()?;
     let tuplet = value
         .tuplet()
@@ -309,10 +314,6 @@ fn beat_item(
         })),
         BeatKind::Empty => Ok(None),
         BeatKind::Normal => {
-            // A dead slapped beat writes a large cross instead of a rest or notes.
-            if beat.is_dead_slapped() {
-                return Ok(None);
-            }
             let mut heads: Vec<Head> = Vec::new();
             let mut marks = ChordMarks {
                 brush: beat.brush_stroke(),
