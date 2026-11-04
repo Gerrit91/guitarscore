@@ -5,12 +5,9 @@
 
 use gscore_model::Dynamic;
 
-use super::{
-    Column, GRACE_GAP, GRACE_SCALE, Grace, Item, MEASURE_NUMBER_RISE, MeasureLayout, Tops,
-};
+use super::{Column, Item, MEASURE_NUMBER_RISE, MeasureLayout, Tops};
 use crate::Context;
-use crate::draw::{ColorToken, DrawOp, Point, Rect, TextAnchor, TextFont};
-use crate::glyph::{Flag, Glyph};
+use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
 use crate::notation::{self, BeamPlan, Chord, Head, NotationItem};
 use crate::ornaments::{self, Fret};
 use crate::place::{BeatPlace, MeasurePlace};
@@ -103,116 +100,6 @@ pub(crate) fn draw_barline_ties(
                 ornaments::draw_tie_fragment(into, to_x, target_y, thickness, ops);
             }
         }
-    }
-}
-
-/// The beams a written value needs (8 = one flag, 16 = two, ...).
-fn beams_for_value(value: u16) -> u8 {
-    match value {
-        8 => 1,
-        16 => 2,
-        32 => 3,
-        64 => 4,
-        128 => 5,
-        _ => 0,
-    }
-}
-
-/// A small grace-note head with a stem, flag and (unless it is an appoggiatura) the slash
-/// of an acciaccatura.
-fn draw_grace_head(
-    x: f32,
-    top: f32,
-    position: i32,
-    grace: &Grace,
-    ctx: &Context<'_>,
-    ops: &mut Vec<DrawOp>,
-) {
-    let font = &ctx.fonts.music;
-    let glyph = if grace.dead {
-        Glyph::NoteheadX
-    } else {
-        Glyph::NoteheadBlack
-    };
-    let width = font.advance(glyph) * GRACE_SCALE;
-    let left = x - width / 2.0;
-    let y = notation::y_of(top, position);
-    ops.push(DrawOp::Glyph {
-        glyph,
-        at: Point::new(left, y),
-        scale: GRACE_SCALE,
-        color: ColorToken::Notation,
-    });
-    let up = position < notation::MIDDLE;
-    let thickness = font.engraving().stem_thickness * GRACE_SCALE;
-    let stem_x = if up {
-        left + width - thickness / 2.0
-    } else {
-        left + thickness / 2.0
-    };
-    let length = 2.8 * GRACE_SCALE;
-    let end = if up { y - length } else { y + length };
-    ops.push(DrawOp::Line {
-        from: Point::new(stem_x, y),
-        to: Point::new(stem_x, end),
-        thickness,
-        color: ColorToken::Notation,
-    });
-    if let Some(flag) = Flag::new(beams_for_value(grace.value), up) {
-        ops.push(DrawOp::Glyph {
-            glyph: Glyph::Flag(flag),
-            at: Point::new(stem_x - thickness / 2.0, end),
-            scale: GRACE_SCALE,
-            color: ColorToken::Notation,
-        });
-    }
-    if !grace.on_beat {
-        // The slash of an acciaccatura crosses the stem.
-        ops.push(DrawOp::Line {
-            from: Point::new(left - 0.15, y + 0.75),
-            to: Point::new(left + width + 0.35, y - 0.75),
-            thickness: 0.1,
-            color: ColorToken::Notation,
-        });
-    }
-}
-
-/// A small grace fret number on the tab, with the acciaccatura slash.
-fn draw_grace_text(
-    x: f32,
-    top: f32,
-    line: usize,
-    grace: &Grace,
-    ctx: &Context<'_>,
-    ops: &mut Vec<DrawOp>,
-) {
-    let size = ctx.options.fret_size * GRACE_SCALE;
-    let line_y = top + ctx.staff.line_y(line);
-    let width = ctx.fonts.text.width(&grace.text, size);
-    let cap = ctx.fonts.text.cap_height * size;
-    ops.push(DrawOp::Rect {
-        rect: Rect {
-            origin: Point::new(x - width / 2.0 - 0.1, line_y - cap / 2.0 - 0.1),
-            width: width + 0.2,
-            height: cap + 0.2,
-        },
-        color: ColorToken::Paper,
-    });
-    ops.push(DrawOp::Text {
-        text: grace.text.clone(),
-        at: Point::new(x, line_y + cap / 2.0),
-        size,
-        font: TextFont::Regular,
-        anchor: TextAnchor::Middle,
-        color: ColorToken::FretNumber,
-    });
-    if !grace.on_beat {
-        ops.push(DrawOp::Line {
-            from: Point::new(x - width / 2.0 - 0.2, line_y + cap / 2.0 + 0.2),
-            to: Point::new(x + width / 2.0 + 0.2, line_y - cap / 2.0 - 0.2),
-            thickness: 0.1,
-            color: ColorToken::Notation,
-        });
     }
 }
 
@@ -382,7 +269,7 @@ impl MeasureLayout {
         // Grace notes sit just left of their column's main note, on both staves.
         for (index, column) in self.columns.iter().enumerate() {
             if let Some(&at) = xs.get(index) {
-                self.draw_graces(at, column, tops, ctx, ops);
+                super::graces::draw(at, column, tops, ctx, ops);
             }
         }
         // Everything below belongs to the tab staff.
@@ -403,73 +290,6 @@ impl MeasureLayout {
         }
         self.draw_legato(&xs, top, ops);
         self.draw_under_staff(&xs, right, top, ctx, ops);
-    }
-
-    /// Grace notes of one column, just left of its main note, on the notation staff and the
-    /// tab. Notes of one grace beat share a stem position.
-    fn draw_graces(
-        &self,
-        x: f32,
-        column: &Column,
-        tops: Tops,
-        ctx: &Context<'_>,
-        ops: &mut Vec<DrawOp>,
-    ) {
-        if column.graces.is_empty() {
-            return;
-        }
-        let mut groups: Vec<usize> = Vec::new();
-        for grace in &column.graces {
-            if !groups.contains(&grace.group) {
-                groups.push(grace.group);
-            }
-        }
-        let round = |graces: &[&Grace], notation: bool| -> f32 {
-            graces
-                .iter()
-                .filter(|grace| {
-                    if notation {
-                        grace.position.is_some()
-                    } else {
-                        grace.line.is_some()
-                    }
-                })
-                .map(|grace| {
-                    if notation {
-                        ctx.fonts.music.advance(Glyph::NoteheadBlack) * GRACE_SCALE
-                    } else {
-                        ctx.fonts
-                            .text
-                            .width(&grace.text, ctx.options.fret_size * GRACE_SCALE)
-                    }
-                })
-                .fold(0.0, f32::max)
-        };
-        let mut at = x - column.grace_width;
-        for group in groups {
-            let notes: Vec<&Grace> = column
-                .graces
-                .iter()
-                .filter(|grace| grace.group == group)
-                .collect();
-            let width = round(&notes, true).max(round(&notes, false));
-            let center = at + width / 2.0;
-            if let Some(notation_top) = tops.notation {
-                for grace in &notes {
-                    if let Some(position) = grace.position {
-                        draw_grace_head(center, notation_top, position, grace, ctx, ops);
-                    }
-                }
-            }
-            if tops.show_tab {
-                for grace in &notes {
-                    if let Some(line) = grace.line {
-                        draw_grace_text(center, tops.tab, line, grace, ctx, ops);
-                    }
-                }
-            }
-            at += width + GRACE_GAP;
-        }
     }
 
     /// Slurs and lines between one note and the next one on the same string.

@@ -19,12 +19,37 @@ pub(crate) fn tile(
     label: &str,
     tip: &str,
 ) -> Response {
+    sized_tile(ui, TILE, face, selected, enabled, label, tip)
+}
+
+/// A [`tile`] wider than the others, for signs that need the room (tuplet brackets).
+pub(crate) fn wide_tile(
+    ui: &mut egui::Ui,
+    face: Face<'_>,
+    selected: bool,
+    enabled: bool,
+    label: &str,
+    tip: &str,
+) -> Response {
+    let size = vec2(TILE.x * 1.5, TILE.y);
+    sized_tile(ui, size, face, selected, enabled, label, tip)
+}
+
+fn sized_tile(
+    ui: &mut egui::Ui,
+    size: egui::Vec2,
+    face: Face<'_>,
+    selected: bool,
+    enabled: bool,
+    label: &str,
+    tip: &str,
+) -> Response {
     let sense = if enabled {
         Sense::click()
     } else {
         Sense::hover()
     };
-    let (rect, response) = ui.allocate_exact_size(TILE, sense);
+    let (rect, response) = ui.allocate_exact_size(size, sense);
     response
         .widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, enabled, selected, label));
     let tokens = style::tokens(ui);

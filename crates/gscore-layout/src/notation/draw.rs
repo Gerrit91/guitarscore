@@ -130,6 +130,18 @@ pub(crate) struct BeamPlan<'m> {
     pub(crate) beat: u64,
 }
 
+/// The staff positions of the ledger lines a head at `position` needs (lines between the
+/// staff and the head).
+pub(crate) fn ledger_positions(position: i32) -> Vec<i32> {
+    if position <= LEDGER_BELOW {
+        (position..=LEDGER_BELOW).filter(|p| p % 2 == 0).collect()
+    } else if position >= LEDGER_ABOVE {
+        (LEDGER_ABOVE..=position).filter(|p| p % 2 == 0).collect()
+    } else {
+        Vec::new()
+    }
+}
+
 /// The y of staff position `position` on a notation staff whose top line is at `top`.
 pub(crate) fn y_of(top: f32, position: i32) -> f32 {
     top + 4.0 - position as f32 * 0.5
@@ -443,18 +455,7 @@ fn draw_heads(x: f32, chord: &Chord, up: bool, top: f32, ctx: &Context<'_>, ops:
         let left = x - width / 2.0 + shift;
         let y = y_of(top, head.position);
         // Ledger lines between the staff and the note.
-        let ledgers: Vec<i32> = if head.position <= LEDGER_BELOW {
-            (head.position..=LEDGER_BELOW)
-                .filter(|p| p % 2 == 0)
-                .collect()
-        } else if head.position >= LEDGER_ABOVE {
-            (LEDGER_ABOVE..=head.position)
-                .filter(|p| p % 2 == 0)
-                .collect()
-        } else {
-            Vec::new()
-        };
-        for position in ledgers {
+        for position in ledger_positions(head.position) {
             let ly = y_of(top, position);
             ops.push(DrawOp::Line {
                 from: Point::new(left - engraving.leger_line_extension, ly),

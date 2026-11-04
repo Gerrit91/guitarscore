@@ -594,3 +594,36 @@ fn toggling_one_beat_effect_leaves_the_others_intact() {
     song.revert(&fade).unwrap();
     assert_unchanged(&before, &song);
 }
+
+#[test]
+fn a_grace_note_is_set_changed_and_removed() {
+    use crate::{Fret, Grace, GraceSpeed};
+    let slow = Grace {
+        fret: Fret::new(3).unwrap(),
+        speed: GraceSpeed::Slow,
+        on_beat: true,
+        dead: false,
+    };
+    round_trip_note(
+        NoteEffect::Grace(Some(slow)),
+        move |note| assert_eq!(note.grace(), Some(slow)),
+        |note| assert_eq!(note.grace(), None),
+    );
+    // Changing the speed keeps the stored loudness of the grace note.
+    let mut song = song_with_note();
+    let _ = song
+        .set_note_effect(at(0), string(1), NoteEffect::Grace(Some(slow)))
+        .unwrap();
+    let fast = Grace {
+        speed: GraceSpeed::Fast,
+        ..slow
+    };
+    let _ = song
+        .set_note_effect(at(0), string(1), NoteEffect::Grace(Some(fast)))
+        .unwrap();
+    assert_eq!(only_note(&song).grace(), Some(fast));
+    let _ = song
+        .set_note_effect(at(0), string(1), NoteEffect::Grace(None))
+        .unwrap();
+    assert_eq!(only_note(&song).grace(), None);
+}

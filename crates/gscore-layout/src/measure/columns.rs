@@ -3,16 +3,12 @@
 
 use std::collections::BTreeMap;
 
-use gscore_model::{
-    BeatKind, BeatView, Duration, Fret as ModelFret, GraceNote, MeasureView, NoteKind, NoteView,
-    TimeSignature,
-};
+use gscore_model::{BeatKind, BeatView, Duration, MeasureView, NoteKind, TimeSignature};
 
-use super::{ColumnData, GRACE_GAP, GRACE_SCALE, Grace, Item, UNREADABLE};
+use super::{ColumnData, Item, UNREADABLE};
 use crate::Context;
 use crate::error::LayoutError;
 use crate::glyph::Glyph;
-use crate::notation;
 use crate::ornaments::{self, ColumnMarks, Fret, NoteMarks};
 
 /// Beats grouped by when they start, across voices, and where the measure ends.
@@ -176,115 +172,6 @@ pub(super) fn column_items(
         beat: 0,
         beats: Vec::new(),
     })
-}
-
-/// Room the grace-note groups take before a column's main note, including the gap before
-/// the main note.
-pub(super) fn grace_width(graces: &[Grace], ctx: &Context<'_>) -> f32 {
-    let mut groups: Vec<usize> = Vec::new();
-    for grace in graces {
-        if !groups.contains(&grace.group) {
-            groups.push(grace.group);
-        }
-    }
-    let count = groups.len();
-    let mut width = 0.0_f32;
-    for group in groups {
-        let notes = || graces.iter().filter(move |grace| grace.group == group);
-        let notation = notes()
-            .filter(|grace| grace.position.is_some())
-            .map(|_| ctx.fonts.music.advance(Glyph::NoteheadBlack) * GRACE_SCALE)
-            .fold(0.0, f32::max);
-        let tab = notes()
-            .filter(|grace| grace.line.is_some())
-            .map(|grace| {
-                ctx.fonts
-                    .text
-                    .width(&grace.text, ctx.options.fret_size * GRACE_SCALE)
-            })
-            .fold(0.0, f32::max);
-        width += notation.max(tab) + GRACE_GAP;
-    }
-    if count > 0 { width + GRACE_GAP } else { 0.0 }
-}
-
-/// A grace note from a GP6/GP7 grace beat: the note itself carries string and fret.
-pub(super) fn grace_from_note(
-    note: NoteView<'_>,
-    value: u16,
-    ctx: &Context<'_>,
-    key: i8,
-) -> Option<Grace> {
-    let string = note.string().ok()?;
-    let line = usize::from(string.get()).saturating_sub(1);
-    let line = (line < ctx.staff.lines()).then_some(line);
-    let effect = note.grace();
-    let dead = note.kind() == NoteKind::Dead || effect.is_some_and(|grace| grace.dead);
-    let fret = note.fret().ok();
-    let position = grace_position(ctx, &note, key);
-    let text = if dead {
-        "x".to_owned()
-    } else {
-        fret.map_or_else(|| UNREADABLE.to_owned(), |fret| fret.get().to_string())
-    };
-    Some(Grace {
-        group: 0,
-        position,
-        line,
-        text,
-        dead,
-        value,
-        on_beat: effect.is_some_and(|grace| grace.on_beat),
-    })
-}
-
-/// A grace note attached to a normal note in a GP3-5 file.
-pub(super) fn grace_from_effect(
-    note: NoteView<'_>,
-    grace: GraceNote,
-    ctx: &Context<'_>,
-    key: i8,
-) -> Option<Grace> {
-    let string = note.string().ok()?;
-    let line = usize::from(string.get()).saturating_sub(1);
-    let line = (line < ctx.staff.lines()).then_some(line);
-    let dead = grace.dead || grace.fret < 0;
-    let position = ctx.notation.and_then(|notation| {
-        if notation.clef == notation::Clef::Percussion {
-            return None;
-        }
-        let pitched = u8::try_from(grace.fret)
-            .ok()
-            .and_then(|fret| ModelFret::new(fret).ok())
-            .and_then(|fret| notation.track.pitch_at(string, fret).ok())
-            .or_else(|| notation.track.sounding_pitch(&note).ok())?;
-        Some(notation.clef.place(pitched.get(), key).1)
-    });
-    let text = if dead {
-        "x".to_owned()
-    } else {
-        grace.fret.to_string()
-    };
-    Some(Grace {
-        group: 0,
-        position,
-        line,
-        text,
-        dead,
-        value: u16::from(grace.duration),
-        on_beat: grace.on_beat,
-    })
-}
-
-/// Where a grace note goes on the notation staff; percussion staves place drums by their
-/// own map, so they get no pitch position here.
-fn grace_position(ctx: &Context<'_>, note: &NoteView<'_>, key: i8) -> Option<i32> {
-    let notation = ctx.notation?;
-    if notation.clef == notation::Clef::Percussion {
-        return None;
-    }
-    let pitch = notation.track.sounding_pitch(note).ok()?;
-    Some(notation.clef.place(pitch.get(), key).1)
 }
 
 /// The beat notes are beamed within: a dotted quarter in compound meters (6/8, 9/8,

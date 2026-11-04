@@ -91,6 +91,36 @@ pub(crate) fn brush(chord: &mut [Sounding], direction: StrokeDirection) {
     }
 }
 
+/// A string sounds one note at a time: a note still ringing when the next one on its
+/// string (of the same track) starts stops there. This matters where notes overlap on
+/// purpose, such as a grace note struck before the beat while the previous note would
+/// still ring into it.
+pub(crate) fn one_note_per_string(notes: &mut [Sounding]) {
+    let mut order: Vec<usize> = (0..notes.len())
+        .filter(|&index| notes.get(index).is_some_and(|note| note.string != 0))
+        .collect();
+    order.sort_by_key(|&index| {
+        notes
+            .get(index)
+            .map_or((0, 0, 0), |note| (note.track, note.string, note.start))
+    });
+    for pair in order.windows(2) {
+        let [this, next] = pair else {
+            continue;
+        };
+        let Some(&next) = notes.get(*next) else {
+            continue;
+        };
+        if let Some(note) = notes.get_mut(*this)
+            && (note.track, note.string) == (next.track, next.string)
+            && note.start < next.start
+            && note.end > next.start
+        {
+            note.end = next.start;
+        }
+    }
+}
+
 /// Holds let-ring notes until the next note on the same string of the same track starts
 /// (at most [`LET_RING_TICKS`] past their own end).
 pub(crate) fn let_ring(notes: &mut [Sounding]) {
@@ -238,6 +268,15 @@ mod tests {
         let_ring(&mut notes);
         assert_eq!(notes[0].end, 960);
         assert_eq!(notes[1].end, 240 + LET_RING_TICKS);
+    }
+
+    #[test]
+    fn a_note_stops_when_the_next_on_its_string_starts() {
+        let mut notes = [note(1, 0, 960), note(1, 840, 960), note(2, 0, 960)];
+        one_note_per_string(&mut notes);
+        assert_eq!(notes[0].end, 840, "cut by the grace note on its string");
+        assert_eq!(notes[1].end, 960);
+        assert_eq!(notes[2].end, 960, "another string rings on");
     }
 
     #[test]

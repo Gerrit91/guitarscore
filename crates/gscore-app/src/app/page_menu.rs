@@ -248,6 +248,7 @@ impl Menu<'_> {
         let beats = !self.snapshot.beats.is_empty();
         self.action(ui, ActionId::ToggleBend, Some("Bend…"), notes);
         self.action(ui, ActionId::ToggleWhammy, Some("Whammy bar…"), beats);
+        self.action(ui, ActionId::GraceNote, Some("Grace note…"), notes);
         ui.menu_button("Techniques", |ui| {
             for &action in TECHNIQUES {
                 self.action(ui, action, None, notes);

@@ -6,13 +6,14 @@
 use std::collections::HashMap;
 
 use gscore_model::{
-    BeatKind, BendKind, Duration, Fret, ModelError, NoteKind, SlideKind, Song, TrackIndex,
+    BeatKind, BeatView, BendKind, Duration, ModelError, NoteKind, SlideKind, Song, TrackIndex,
 };
 
 use crate::channels::ChannelAllocator;
 use crate::curve::Curve;
 use crate::effects;
 use crate::event::{MidiEvent, controller};
+use crate::graces;
 use crate::pitch;
 use crate::sequence::{MeasureSpan, SequenceTrack, TimedEvent, sound_events, ticks};
 use crate::sounding::{self, Sounding};
@@ -28,10 +29,6 @@ const DEAD_NOTE_VELOCITY_PERCENT: u16 = 60;
 /// A tied note continues the previous one if that ends within this many ticks of its start
 /// (rounding of tuplets).
 const TIE_TOLERANCE: u64 = 2;
-/// How long one grace note sounds: a 32nd note.
-fn grace_ticks() -> u64 {
-    u64::from(PPQ) / 8
-}
 
 /// What [`collect`] gathers.
 pub(crate) struct Collected {
@@ -104,7 +101,7 @@ pub(crate) fn collect(
                 let voice_index = voice.index().get();
                 let mut onset = Duration::new(0, 1)?;
                 // Grace beats do not take time; their notes play just before the next beat.
-                let mut pending_graces: Vec<gscore_model::BeatView<'_>> = Vec::new();
+                let mut pending_graces: Vec<BeatView<'_>> = Vec::new();
                 for beat in voice.beats() {
                     if beat.kind() == BeatKind::Empty {
                         continue;
@@ -133,89 +130,17 @@ pub(crate) fn collect(
                         pending_graces.clear();
                         continue;
                     }
+                    let graces = graces::gather(&view, &pending_graces, &beat, &mut skipped_notes);
+                    pending_graces.clear();
+                    let (grace_notes, delays) = graces::place(
+                        &graces,
+                        start,
+                        crate::timeline::tempo_at(song, span.measure),
+                        number,
+                        channel,
+                    );
+                    notes.extend(grace_notes);
                     let first_note = notes.len();
-                    // Grace notes before this beat: a GP6/GP7 grace beat, a GP3-5 grace
-                    // attached to a note, or both. They are short and end at the beat.
-                    let mut graces: Vec<(u8, u8, u8, bool)> = Vec::new();
-                    for grace_beat in pending_graces.drain(..) {
-                        for note in grace_beat.notes() {
-                            match (view.sounding_pitch(&note), note.string()) {
-                                (Ok(pitch), Ok(string)) => graces.push((
-                                    pitch.get(),
-                                    note.velocity(),
-                                    string.get(),
-                                    note.kind() == NoteKind::Dead,
-                                )),
-                                _ => skipped_notes = skipped_notes.saturating_add(1),
-                            }
-                        }
-                    }
-                    for note in beat.notes() {
-                        let Some(grace) = note.grace() else {
-                            continue;
-                        };
-                        let string = note.string().ok();
-                        let pitch = string
-                            .and_then(|string| {
-                                u8::try_from(grace.fret)
-                                    .ok()
-                                    .and_then(|fret| Fret::new(fret).ok())
-                                    .and_then(|fret| view.pitch_at(string, fret).ok())
-                            })
-                            .or_else(|| view.sounding_pitch(&note).ok());
-                        if let Some(pitch) = pitch {
-                            graces.push((
-                                pitch.get(),
-                                note.velocity(),
-                                string.map(|string| string.get()).unwrap_or(0),
-                                grace.dead || grace.fret < 0,
-                            ));
-                        } else {
-                            skipped_notes = skipped_notes.saturating_add(1);
-                        }
-                    }
-                    let count = graces.len();
-                    let ticks = grace_ticks();
-                    for (index, (pitch, velocity, string, dead)) in graces.into_iter().enumerate() {
-                        let before = u64::try_from(count.saturating_sub(index))
-                            .unwrap_or(u64::MAX)
-                            .saturating_mul(ticks);
-                        // Before the beat, or at it when the beat starts the song and
-                        // there is no time to spare.
-                        let (grace_start, grace_end) = if start > before {
-                            let start_at = start.saturating_sub(before);
-                            (start_at, start_at.saturating_add(ticks).min(start))
-                        } else {
-                            (start, start.saturating_add(ticks))
-                        };
-                        let grace_end = grace_end.max(grace_start.saturating_add(1));
-                        let velocity = if dead {
-                            u16::from(velocity) * DEAD_NOTE_VELOCITY_PERCENT / 100
-                        } else {
-                            u16::from(velocity)
-                        };
-                        let velocity = u8::try_from(velocity).unwrap_or(1).max(1);
-                        notes.push(Sounding {
-                            track: number,
-                            channel,
-                            play_channel: channel,
-                            key: pitch,
-                            velocity,
-                            start: grace_start,
-                            end: grace_end,
-                            string,
-                            slide: None,
-                            bend: None,
-                            shape: None,
-                            vibrato: None,
-                            let_ring: false,
-                            tremolo: false,
-                            onset: grace_start,
-                            damp: false,
-                            bend_curve: None,
-                            whammy: None,
-                        });
-                    }
                     for note in beat.notes() {
                         let kind = note.kind();
                         let string = note.string().map(|s| s.get()).unwrap_or(0);
@@ -285,6 +210,15 @@ pub(crate) fn collect(
                         on_string.insert((voice_index, string), notes.len());
                         notes.push(sounding);
                     }
+                    // An appoggiatura takes the start of the beat on its string.
+                    for note in notes.get_mut(first_note..).unwrap_or_default() {
+                        if let Some(&delay) = delays.get(&note.string) {
+                            note.start = note
+                                .start
+                                .saturating_add(delay)
+                                .min(note.end.saturating_sub(1));
+                        }
+                    }
                     if let Some(direction) = beat.brush_stroke()
                         && let Some(chord) = notes.get_mut(first_note..)
                     {
@@ -295,6 +229,7 @@ pub(crate) fn collect(
         }
     }
 
+    effects::one_note_per_string(&mut notes);
     sounding::apply_slide_targets(&mut notes);
     effects::let_ring(&mut notes);
     if let Some(keep) = keep {

@@ -4,8 +4,8 @@
 //! into the [`Scheduler`].
 //!
 //! Played: notes of all voices with exact timing, ties, dead notes (short and soft), grace
-//! notes (short, just before their beat; they take no time of their own), the tracks'
-//! instruments, volume and pan, tempo changes, repeats and alternative endings,
+//! notes (about 75 ms, just before their beat or on it; they take no time of their own),
+//! the tracks' instruments, volume and pan, tempo changes, repeats and alternative endings,
 //! swing/triplet, dotted and Scottish feel, bends, slides and vibrato (pitch bends on a
 //! borrowed channel, so the rest of the chord stays put; the model stores only the highest
 //! point of a bend, so bend curves are simplified), ghost notes and accents (velocity),
@@ -22,6 +22,7 @@ mod curve;
 mod effects;
 mod event;
 mod excerpt;
+mod graces;
 mod order;
 mod pitch;
 mod player;

@@ -15,6 +15,7 @@ mod edit_staff;
 mod edit_staff_dialogs;
 mod editing;
 mod files;
+mod grace_editor;
 mod grid;
 mod harmonic_diagram;
 mod harmonic_editor;
@@ -42,6 +43,7 @@ mod tiles;
 mod title_bar;
 mod toolbar;
 mod track_panel;
+mod tuplet_dialog;
 
 use std::collections::VecDeque;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -582,6 +584,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_new_track_dialog(&ctx);
         self.show_shape_editors(&ctx);
         self.show_staff_dialogs(&ctx);
+        self.show_tuplet_dialog(&ctx);
         // Every edit of this frame goes to the recovery journal (one per open document).
         let mut journal_error = None;
         for tab in &mut self.tabs {

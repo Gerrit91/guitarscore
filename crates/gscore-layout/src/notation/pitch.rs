@@ -48,6 +48,22 @@ const SHARP_SPELLING: [(usize, bool); 12] = [
     (6, false),
 ];
 
+/// Letter and alteration of each pitch class, spelled with flats: (letter, flat).
+const FLAT_SPELLING: [(usize, bool); 12] = [
+    (0, false),
+    (1, true),
+    (1, false),
+    (2, true),
+    (2, false),
+    (3, false),
+    (4, true),
+    (4, false),
+    (5, true),
+    (5, false),
+    (6, true),
+    (6, false),
+];
+
 /// The letters a key signature alters, in the order they are written: sharps F C G D A E B,
 /// flats B E A D G C F.
 const SHARP_LETTERS: [usize; 7] = [3, 0, 4, 1, 5, 2, 6];
@@ -89,7 +105,9 @@ pub(crate) struct Spelled {
 }
 
 /// Spells MIDI pitch `midi` in `key`: a pitch class the key signature alters uses the
-/// signature's spelling (B flat in F major); other pitch classes are spelled with sharps.
+/// signature's spelling (B flat in F major); other pitch classes are spelled with flats in
+/// a flat key and with sharps otherwise (A flat, not G sharp, in B flat major), as Guitar
+/// Pro writes them.
 pub(crate) fn spell_in_key(midi: u8, key: i8) -> Spelled {
     let class = i32::from(midi % 12);
     let alters = key_alters(key);
@@ -100,12 +118,16 @@ pub(crate) fn spell_in_key(midi: u8, key: i8) -> Spelled {
             (altered_pitch_class(letter, alter) == Some(class)).then_some((letter, alter))
         })
         .unwrap_or_else(|| {
-            let (letter, sharp) = SHARP_SPELLING
+            let (table, altered) = if key < 0 {
+                (&FLAT_SPELLING, Alter::Flat)
+            } else {
+                (&SHARP_SPELLING, Alter::Sharp)
+            };
+            let (letter, changed) = table
                 .get(usize::from(midi % 12))
                 .copied()
                 .unwrap_or((0, false));
-            let alter = if sharp { Alter::Sharp } else { Alter::Natural };
-            (letter, alter)
+            (letter, if changed { altered } else { Alter::Natural })
         });
     // MIDI octave -1 starts at 0: octave = midi / 12 - 1.
     let octave = i32::from(midi / 12).saturating_sub(1);
@@ -180,6 +202,20 @@ impl Clef {
         )
     }
 
+    /// Where a grace note sounding at `midi` is written in `key`: its staff position and
+    /// the accidental it shows (when its letter differs from the key signature). Grace
+    /// notes do not take part in the measure's accidental bookkeeping.
+    pub(crate) fn place_grace(self, midi: u8, key: i8) -> (i32, Option<Glyph>) {
+        let (spelled, position) = self.place(midi, key);
+        let letter = usize::try_from(spelled.step.rem_euclid(7)).unwrap_or(0);
+        let in_key = key_alters(key)
+            .get(letter)
+            .copied()
+            .unwrap_or(Alter::Natural);
+        let accidental = (spelled.alter != in_key).then(|| spelled.alter.glyph());
+        (position, accidental)
+    }
+
     /// The key signature's letters with their staff positions, in written order. A
     /// percussion clef has none.
     pub(crate) fn key_signature_marks(self, key: i8) -> Vec<(usize, i32)> {
@@ -228,9 +264,12 @@ mod tests {
         assert_eq!(spell_in_key(70, key), spelled(34, Alter::Flat)); // Bb4
         assert_eq!(spell_in_key(63, key), spelled(30, Alter::Flat)); // Eb4
         assert_eq!(spell_in_key(67, key), spelled(32, Alter::Natural)); // G4
-        // Chromatic notes outside the signature keep sharps.
-        assert_eq!(spell_in_key(66, key), spelled(31, Alter::Sharp)); // F#4
+        // Chromatic notes outside the signature are spelled with flats too.
+        assert_eq!(spell_in_key(66, key), spelled(32, Alter::Flat)); // Gb4
+        assert_eq!(spell_in_key(68, key), spelled(33, Alter::Flat)); // Ab4
         assert_eq!(spell_in_key(62, key), spelled(29, Alter::Natural)); // D4
+        // A note the signature flats, played natural, is its natural letter.
+        assert_eq!(spell_in_key(71, key), spelled(34, Alter::Natural)); // B4
     }
 
     #[test]

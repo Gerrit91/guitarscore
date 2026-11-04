@@ -337,6 +337,8 @@ impl TabEditor {
             | ActionId::TupletThree
             | ActionId::TupletFive
             | ActionId::TupletSeven
+            | ActionId::TupletSix
+            | ActionId::TupletOther
             | ActionId::MakeRest
             | ActionId::ToggleTie
             | ActionId::ToggleDeadNote
@@ -358,6 +360,7 @@ impl TabEditor {
             | ActionId::ToggleLetRing
             | ActionId::ToggleTrill
             | ActionId::ToggleTremoloPicking
+            | ActionId::GraceNote
             | ActionId::ToggleNaturalHarmonic
             | ActionId::ToggleArtificialHarmonic
             | ActionId::ToggleTappedHarmonic

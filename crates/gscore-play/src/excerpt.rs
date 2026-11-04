@@ -1,5 +1,5 @@
 //! A one-beat excerpt of a song: the notes of one beat (all voices of its track that
-//! start there) with every effect, as the song plays them, moved to tick 0. The app plays
+//! start there, and their grace notes) with every effect, as the song plays them, moved to tick 0. The app plays
 //! it to let a palette click be heard.
 
 use gscore_model::{BeatPosition, ModelError, Song};
@@ -38,9 +38,11 @@ impl Sequence {
             return Ok(None);
         }
         let mut notes = collected.notes;
+        // Grace notes before the beat belong to it: the excerpt starts with the first.
+        let origin = notes.iter().map(|note| note.start).fold(start, u64::min);
         for note in &mut notes {
-            note.start = note.start.saturating_sub(start);
-            note.end = note.end.saturating_sub(start).min(MAX_TICKS);
+            note.start = note.start.saturating_sub(origin);
+            note.end = note.end.saturating_sub(origin).min(MAX_TICKS);
         }
         let mut events = collected.setup;
         build::emit(&notes, &collected.tracks, &mut events);

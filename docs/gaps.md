@@ -57,8 +57,9 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    turns them into commands with undo/redo, and `gscore-cli edit` runs them from `-c` or a
    script; the app edits at a cursor (#10). Since M14 there is selection with copy/cut/
    paste, a left edit palette (durations, ties, rests, tempo, time/key signatures, sections
-   and the effect matrix) and model/command support for every effect except grace notes (they are read and drawn/played, but have no editing commands).
-   Still missing: chord diagrams and lyrics, grace-note editing, and accessors for the
+   and the effect matrix) and model/command support for every effect, grace notes included (since 2026-11-04;
+   GP6/GP7 grace beats that cannot be attached to a main note on their string stay
+   read-only). Still missing: chord diagrams and lyrics, and accessors for the
    data the model does not expose. Edits copy
    and check only the measure they touch (M10), and the app lays out only changed measures
    again; line breaking and drawing still run over the whole track (0.85 ms for 415
@@ -68,8 +69,8 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    Only the initial tempo is exposed.
 6. **Saving is GP7 only.** `gscore_session::save` and `gscore-cli convert` refuse other
    formats until their round trips pass (#2). Whether Guitar Pro itself opens our GP7 files
-   is not verified yet (the owner can check). Effects the model has no accessor for (grace
-   notes, fingerings, lyrics, mix tables, ...) are not part of the save verification.
+   is not verified yet (the owner can check). Effects the model has no accessor for
+   (fingerings, lyrics, mix tables, ...) are not part of the save verification.
 7. **Recovery covers the editor's commands (M11).** Every edit, undo and redo is journaled
    (checksummed lines, periodic snapshots, written on a thread of its own) and replayed
    after a crash, with the undo history. Edits are on disk within milliseconds; a crash in
@@ -100,7 +101,8 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    Missing in notation: tuplet groups spanning several beats (each beat's beam gets its own
    number), articulations and ornaments on the notation staff (they stay on the
    tab), harmonic diamonds (harmonics are written at their sounding pitch). Grace notes are
-   drawn as small slashed heads before their note (GP6/GP7 grace beats and GP3-5 attached
+   drawn as cue-sized heads (own accidentals and ledger lines, slashed eighth flag) and
+   smaller fret numbers before their note (GP6/GP7 grace beats and GP3-5 attached
    graces) and take no time. Since 2026-11-03
    section names, tempo changes, repeat signs (with "x3" counts), alternative endings and
    dynamics are drawn, and drum tracks get a percussion staff. Missing everywhere:
@@ -119,7 +121,7 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    `ctrl+=`/`ctrl+-`/`ctrl+0`, has a settings window, and the cursor follows playback and
    scrolls with it. Since M14 it has a left edit palette, beat and measure selection with
    copy/cut/paste, voice 2 entry, effect editing, tempo/time/key signatures and section
-   markers. Missing: a multi-page view, grace-note editing, chord diagrams and lyrics, and
+   markers. Missing: a multi-page view, chord diagrams and lyrics, and
    a beat selection that crosses tracks. Undo back to the saved state still
    counts as "changed". `clear_note`,
    `previous_measure` and `next_measure` have no default key yet (owner's decision; they
@@ -200,8 +202,8 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    each target measure (creating voice 2 when the copy has one); a pasted measure keeps
    the target's tempo change when the copied measure had none (there is no command to
    remove a tempo change). Pasting beats appends beats at the end of a short voice.
-   Placeholder beats (Guitar Pro's fillers in unused voices) are not copied. Grace notes, chord diagrams and lyrics are not copied or
-   editable (the model has no setters). Bend and whammy shapes are edited as point rows
+   Placeholder beats (Guitar Pro's fillers in unused voices) are not copied. Chord diagrams and lyrics are not copied or editable (the
+   model has no setters); grace notes attached to a note are copied with it. Bend and whammy shapes are edited as point rows
    (position 0-12, value in quarter tones) with a preview, not by dragging a curve; the
    full shape is stored, but playback and `dump` still use the highest point. A batch is one
    undo step and one usually long journal line (its nested commands are percent-encoded;

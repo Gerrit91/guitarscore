@@ -162,16 +162,13 @@ impl HarmonicEditor {
                         ui.add_space(6.0);
                         ui.separator();
                         ui.add_space(4.0);
-                        buttons(ui, &mut outcome);
-                        if outcome == Outcome::Open {
-                            ui.input(|input| {
-                                if input.key_pressed(egui::Key::Escape) {
-                                    outcome = Outcome::Cancel;
-                                } else if input.key_pressed(egui::Key::Enter) {
-                                    outcome = Outcome::Apply;
-                                }
-                            });
-                        }
+                        buttons(
+                            ui,
+                            &mut outcome,
+                            "Play the note without a harmonic",
+                            Some("Play the note with this harmonic"),
+                        );
+                        keys(ui, &mut outcome);
                     });
             });
         outcome
@@ -279,8 +276,14 @@ fn ordinal(n: u32) -> String {
     }
 }
 
-/// Listen on the left; OK, Remove and Cancel on the right.
-fn buttons(ui: &mut egui::Ui, outcome: &mut Outcome) {
+/// Listen on the left (without `listen`, none); OK, Remove and Cancel on the right.
+/// `remove` and `listen` are the tooltips of those buttons.
+pub(super) fn buttons(
+    ui: &mut egui::Ui,
+    outcome: &mut Outcome,
+    remove: &str,
+    listen: Option<&str>,
+) {
     ui.allocate_ui_with_layout(
         vec2(ui.available_width(), 30.0),
         Layout::right_to_left(Align::Center),
@@ -289,11 +292,7 @@ fn buttons(ui: &mut egui::Ui, outcome: &mut Outcome) {
             if ui.add(button("Cancel")).clicked() {
                 *outcome = Outcome::Cancel;
             }
-            if ui
-                .add(button("Remove"))
-                .on_hover_text("Play the note without a harmonic")
-                .clicked()
-            {
+            if ui.add(button("Remove")).on_hover_text(remove).clicked() {
                 *outcome = Outcome::Remove;
             }
             let tokens = style::tokens(ui);
@@ -303,16 +302,29 @@ fn buttons(ui: &mut egui::Ui, outcome: &mut Outcome) {
             if ui.add(ok).clicked() {
                 *outcome = Outcome::Apply;
             }
-            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                if listen_button(ui)
-                    .on_hover_text("Play the note with this harmonic")
-                    .clicked()
-                {
-                    *outcome = Outcome::Listen;
-                }
-            });
+            if let Some(listen) = listen {
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                    if listen_button(ui).on_hover_text(listen).clicked() {
+                        *outcome = Outcome::Listen;
+                    }
+                });
+            }
         },
     );
+}
+
+/// Escape cancels and Enter applies while a dialog is still open.
+pub(super) fn keys(ui: &egui::Ui, outcome: &mut Outcome) {
+    if *outcome != Outcome::Open {
+        return;
+    }
+    ui.input(|input| {
+        if input.key_pressed(egui::Key::Escape) {
+            *outcome = Outcome::Cancel;
+        } else if input.key_pressed(egui::Key::Enter) {
+            *outcome = Outcome::Apply;
+        }
+    });
 }
 
 #[cfg(test)]

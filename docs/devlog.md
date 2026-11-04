@@ -2204,3 +2204,92 @@ lifeless):
   head before the main note).
 - `Beat` gained a field: the GPIF round trip of `farewell.gp` and `hangar18.gp` keeps its
   grace beats (`<GraceNotes>` count survives).
+
+## 2026-11-04 — Review of the last four commits; readable and audible grace notes
+
+- Owner: grace notes were almost unreadable and could not be heard.
+- Drawing (`gscore-layout/src/measure/graces.rs`, new; the grace code moved out of
+  `measure/{columns,draw}.rs`):
+  - Graces were placed from the main note's *center* (`x - grace_width`), so they ran into
+    its notehead, fret number and accidental; the column reserved `max(grace, accidental)`
+    instead of the sum. Columns now keep the main note's own left extent (`main_left`) and
+    the graces end left of it, with room for their flag and slash.
+  - Notation: cue size 0.65; their own accidentals (against the key signature,
+    `Clef::place_grace`); ledger lines; stems always up, one eighth flag (the GP5 grace
+    duration unit was misread as a note value and gave four flags); the acciaccatura slash
+    crosses stem and flag instead of the head.
+  - Tab: fret numbers at 0.78 of the normal size instead of 0.6, and no slash (it covered
+    the digit: measure 102 of `farewell.gp` read like "Ø10").
+- Playback (`gscore-play/src/graces.rs`, new; `effects::one_note_per_string`):
+  - Cause: a grace note lasted a 32nd (44 ms at 170 BPM) while the previous note on its
+    string rang on over it at full level until the beat. Offline with FluidR3 on
+    `farewell.gp` measure 101 the previous note was 2.2x the grace note's level in that
+    window; now the grace note is 3.4x what is left of the previous note.
+  - A grace note sounds about 75 ms (between a 32nd and a 16th), a note still ringing on
+    the same string stops when the next note there starts, appoggiaturas (on-beat graces)
+    take the beat and delay the main note on their string, and at the very start of the
+    song the graces play first instead of together with the main note.
+  - The beat excerpt (palette clicks, notes as entered) plays a beat's grace notes too, and
+    a brush stroke no longer spreads the grace notes as if they were chord notes.
+- Key signatures (review of f361b20): chromatic notes are now spelled with flats in flat
+  keys (A flat, not G sharp, in B flat major), as Guitar Pro writes them.
+- Section titles (db73d8e) and the modelling plan (7dd4242): reviewed, no changes.
+- Tests: `test_graces` (graces clear of the main accidental, own sharp, readable unslashed
+  tab number, ledger lines), `test_sequence` (a grace note cuts the ringing note, the
+  excerpt plays the grace first), unit tests for grace placement and lengths, one note per
+  string, and flat spelling. `testing::song_with_graces` builds such songs.
+
+## 2026-11-04 — Entering grace notes
+
+- Owner: grace notes must be enterable, with a dialog for the speeds. (Ghost notes were
+  already enterable: `g` and the palette.)
+- One form for editing: the model keeps a grace note attached to its main note
+  (`NoteEffect::Grace(Option<Grace>)`; `Grace { fret, speed, on_beat, dead }`, speeds
+  fast/normal/slow = 64th/32nd/16th, `gscore-model/src/grace.rs`). `NoteView::grace`
+  returns the same type, so layout, playback and the dialog read what commands write.
+- Files (`gscore-gp/src/model/grace.rs`, docs/guitarpro.md #37): reading a GP6/GP7 file
+  folds each grace beat into its main note where nothing is lost; writing `.gp`/`.gpx`
+  turns attached grace notes back into grace beats, and the GP3-5 writer folds (or leaves
+  out) grace beats. Grace beats that do not fold (a grace note on a string the main beat
+  does not play, an eighth-note grace, one with its own vibrato) stay as they are: drawn
+  and played, not edited. The save check now compares grace notes and grace beats, so a
+  lost grace note is reported. `farewell.gp` still saves without a reported loss.
+- Command text: `set_note_effect ... effect=grace value=5:normal:before` (`:on` for on
+  the beat, `:dead` appended for a dead one, `none` to remove), journaled like every other
+  effect.
+- App (`grace_editor.rs`): the "Grace note" palette tile (a slashed grace note, next to
+  the harmonic tile), `Shift+G` and Note › Grace note… open the dialog: the fret with quick
+  choices one or two frets below/above the main note, a dead-note switch, the three speeds
+  as engraved 64th/32nd/16th notes with what each does, and before/on the beat as
+  engraved acciaccatura/appoggiatura signs. Listen plays the beat with the draft; OK applies
+  it to every selected note, Remove takes it off. The harmonic editor's button row and
+  Escape/Enter handling are shared with it.
+- Playback: a grace note now lasts its written value, at least 40/60/90 ms for
+  fast/normal/slow, so the speeds stay apart and audible at any tempo.
+- Tests: fold/unfold round trip and the cases that must not fold (`gscore-gp`), set/
+  change/remove with undo (`gscore-model`), the command text round trip and bad values
+  (`gscore-edit`), an extreme grace in `panic_hunt`, grace lengths per speed
+  (`gscore-play`), the dialog via `Shift+G`, OK and Remove via the palette tile
+  (`test_editing`). Checked with `gscore-cli edit` on `note_lengths.gp`: three grace notes
+  (slow before, fast on the beat, dead) save as `.gp`, reload, and render.
+
+## 2026-11-04 — Tuplet tiles and the tuplet dialog
+
+- Owner: tiles for triplets and sextuplets like Guitar Pro's, and a dialog for every kind
+  of tuplet.
+- Palette: the "3", "5:4", "7:4" tiles became Guitar Pro style bracket tiles: a triplet
+  (`⌐3¬`), a sextuplet (`⌐6¬`) and `⌐n:m¬` with a corner triangle that opens the dialog
+  (it shows the chosen tuplet, such as `⌐5:4¬`, when one without a tile of its own is
+  chosen). The bracket tiles are half as wide again as the others (`tiles::wide_tile`); the
+  bracket is drawn by `tile_faces::tuplet_bracket` with Bravura's tuplet digits.
+- Dialog (`tuplet_dialog.rs`): the chosen tuplet as a large engraved bracket, steppers for
+  "n in the time of m" (n 2-32, m 1-32), what it means in a line, and the common tuplets as
+  engraved signs with an explanation (triplet, sextuplet, quintuplet, septuplet, nonuplet,
+  decuplet, and the duplet and quadruplet of 6/8). OK sets the palette's tuplet and the
+  selected beats' length, Remove takes the tuplet off; no Listen (a length has nothing new
+  to hear). The harmonic editor's button row takes an optional Listen for it.
+- Actions: `tuplet_six` (sextuplet) and `tuplet_other` (opens the dialog); `tuplet_five`
+  and `tuplet_seven` keep working from the keymap without tiles. No default keys.
+- Checked: 9:4, 2:3, 10:8 and 6:4 beats save as `.gp` without a reported loss (GP3-5's
+  fixed tuplet list does not apply to GPIF). Test: `test_editing` (sextuplet tile, dialog
+  with a common tuplet, steppers to 9:4, Remove).

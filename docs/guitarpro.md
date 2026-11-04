@@ -232,3 +232,14 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     signature, and the writer guessed "all notes have a grace effect" to write the marker.
     `Beat` now has a `grace` flag, set by the reader and used by the writer; the model,
     layout and playback treat such a beat as taking no time.
+37. Grace notes in both forms (`src/model/grace.rs`, `src/io/gpif_import/mod.rs`,
+    `src/io/song.rs`, 2026-11-04): GP3-5 attach a grace note to its main note, GP6/GP7
+    give it a beat of its own, and each writer only knew its own form (attached grace
+    notes were dropped when writing GPIF; grace beats were written to GP3-5 as ordinary
+    beats, overfilling the measure). The GPIF reader now folds a grace beat into the next
+    beat where nothing is lost (`fold_grace_beats`: plain notes, at most a hammer-on or
+    shift slide, a 64th/32nd/16th, a main note on each string), the GPIF writers turn
+    attached grace notes back into grace beats (`Song::with_grace_beats`), and the GP3-5
+    writer folds grace beats and leaves out those that cannot be folded
+    (`Song::with_attached_graces`). The GPIF reader stored every grace length as 1; the
+    folded length is the beat's value. Tests in `model/grace.rs`.

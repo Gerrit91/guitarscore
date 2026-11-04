@@ -21,8 +21,14 @@ pub(crate) enum Face<'a> {
     Text(&'a str),
     /// A word in bold italic, as a score writes it ("tap", "let ring" on two lines).
     Word(&'a str),
-    /// A tuplet number in the music font's italic digits ("3", "5:4").
-    Tuplet(&'a str),
+    /// A tuplet bracket around its number in the music font's tuplet digits ("3",
+    /// "5:4"), or around italic letters ("n:m") when `letters`. `more` adds the corner
+    /// triangle of a tile that opens a dialog.
+    TupletBracket {
+        text: &'a str,
+        letters: bool,
+        more: bool,
+    },
     /// A tie: an engraved arc under two noteheads.
     Tie,
     /// A slur over a short line (a beat-level legato run).
@@ -156,17 +162,11 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
             let size = if text.contains('\n') { 9.5 } else { 11.0 };
             lettering(painter, c, text, size, true, ink);
         }
-        Face::Tuplet(text) => {
-            // The tuplet digits: 0-9 from U+E880, the colon at U+E88A.
-            let digits: String = text
-                .chars()
-                .filter_map(|ch| match ch {
-                    ':' => char::from_u32(0xE88A),
-                    _ => ch.to_digit(10).and_then(|d| char::from_u32(0xE880 + d)),
-                })
-                .collect();
-            music_glyph(painter, at(0.0, 5.0), &digits, 24.0, ink);
-        }
+        Face::TupletBracket {
+            text,
+            letters,
+            more,
+        } => tuplet_bracket(painter, rect, text, letters, ink, more),
         Face::Tie => {
             for dx in [-5.0, 6.0] {
                 music_glyph(painter, at(dx, 3.0), "\u{ECA5}", 19.0, ink);
@@ -298,5 +298,95 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
             );
         }
         Face::Fermata => music_glyph(painter, at(0.0, 4.0), "\u{E4C0}", 30.0, ink),
+    }
+}
+
+/// The tuplet digits of `text`: 0-9 from U+E880, the colon at U+E88A.
+pub(crate) fn tuplet_digits(text: &str) -> String {
+    text.chars()
+        .filter_map(|ch| match ch {
+            ':' => char::from_u32(0xE88A),
+            _ => ch.to_digit(10).and_then(|d| char::from_u32(0xE880 + d)),
+        })
+        .collect()
+}
+
+/// A tuplet bracket across `rect` (hooks pointing down) with `text` in its gap: tuplet
+/// digits, or bold italic letters when `letters`. With `more`, a small triangle in the
+/// bottom right corner says the tile opens a dialog.
+pub(crate) fn tuplet_bracket(
+    painter: &Painter,
+    rect: Rect,
+    text: &str,
+    letters: bool,
+    ink: Color32,
+    more: bool,
+) {
+    let scale = (rect.height() / 32.0).max(0.5);
+    let c = rect.center();
+    let line_y = c.y - 3.0 * scale;
+    let half = if letters {
+        let mut job = LayoutJob::default();
+        job.append(
+            text,
+            0.0,
+            TextFormat {
+                font_id: bold(11.0 * scale),
+                color: ink,
+                italics: true,
+                ..Default::default()
+            },
+        );
+        let galley = painter.layout_job(job);
+        let size = galley.size();
+        painter.galley(
+            egui::pos2(c.x - size.x / 2.0, line_y - size.y / 2.0),
+            galley,
+            ink,
+        );
+        size.x / 2.0
+    } else {
+        // Tuplet digits are about 0.3 em tall: their baseline goes that far below the
+        // bracket's middle, half of it.
+        let size = 26.0 * scale;
+        let digits = tuplet_digits(text);
+        let width = painter
+            .layout_no_wrap(digits.clone(), music(size), ink)
+            .size()
+            .x;
+        music_glyph(
+            painter,
+            egui::pos2(c.x, line_y + size * 0.15),
+            &digits,
+            size,
+            ink,
+        );
+        width / 2.0
+    };
+    let stroke = Stroke::new(1.3 * scale, ink);
+    let gap = 2.0 * scale;
+    let (left, right) = (rect.left() + 3.0 * scale, rect.right() - 3.0 * scale);
+    let hook = 4.0 * scale;
+    for (from, to) in [
+        (left, (c.x - half - gap).max(left)),
+        ((c.x + half + gap).min(right), right),
+    ] {
+        if to - from > 1.0 {
+            painter.line_segment([egui::pos2(from, line_y), egui::pos2(to, line_y)], stroke);
+        }
+    }
+    for x in [left, right] {
+        painter.line_segment(
+            [egui::pos2(x, line_y), egui::pos2(x, line_y + hook)],
+            stroke,
+        );
+    }
+    if more {
+        let corner = rect.right_bottom() - vec2(2.0, 2.0);
+        painter.add(Shape::convex_polygon(
+            vec![corner, corner - vec2(6.0, 0.0), corner - vec2(0.0, 6.0)],
+            ink,
+            Stroke::NONE,
+        ));
     }
 }
