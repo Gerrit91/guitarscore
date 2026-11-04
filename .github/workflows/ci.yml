@@ -10,7 +10,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     # cpal and midir link against the system ALSA library on Linux (alsa-sys);
     # without the development files the build fails with "system library `alsa`
@@ -26,7 +26,7 @@ jobs:
           libasound2-dev pkg-config libvulkan1 mesa-vulkan-drivers
 
     - name: Install Rust
-      uses: dtolnay/rust-toolchain@master
+      uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: "1.99.1"  # keep in sync with rust-toolchain.toml
         components: rustfmt, clippy

@@ -38,7 +38,7 @@ jobs:
     name: Fetch the bundled SoundFont
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # FluidR3 GM (MIT) from the distro, so the app has sound out of the box. The same
       # file is bundled into every archive; a raw .sf2 download would need a third-party
@@ -60,7 +60,7 @@ jobs:
           test "$(stat -c %s soundfont/FluidR3_GM.sf2)" -gt 50000000
 
       - name: Upload the SoundFont
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: soundfont
           path: soundfont/
@@ -71,10 +71,10 @@ jobs:
     needs: soundfont
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download the bundled SoundFont
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: soundfont
           path: soundfont
@@ -88,7 +88,7 @@ jobs:
             libasound2-dev pkg-config
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.99.1"  # keep in sync with rust-toolchain.toml
 
@@ -165,7 +165,7 @@ jobs:
           echo "appimage=$appimage" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: guitarscore-linux-x86_64
           path: |
@@ -177,10 +177,10 @@ jobs:
     needs: soundfont
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download the bundled SoundFont
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: soundfont
           path: soundfont
@@ -188,7 +188,7 @@ jobs:
       # cpal (WASAPI) and midir (WinMM) use Windows' own audio stack: no extra system
       # dependencies, unlike Linux.
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.99.1"  # keep in sync with rust-toolchain.toml
 
@@ -219,7 +219,7 @@ jobs:
           echo "archive=$stage.zip" >> $env:GITHUB_OUTPUT
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: guitarscore-windows-x86_64
           path: ${{ steps.package.outputs.archive }}
@@ -229,10 +229,10 @@ jobs:
     needs: soundfont
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download the bundled SoundFont
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: soundfont
           path: soundfont
@@ -241,7 +241,7 @@ jobs:
       # and wgpu use the system frameworks (CoreAudio, CoreMIDI, Metal), which the macOS
       # SDK provides for both architectures.
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.99.1"  # keep in sync with rust-toolchain.toml
           targets: aarch64-apple-darwin, x86_64-apple-darwin
@@ -282,7 +282,7 @@ jobs:
           echo "archive=$stage.tar.gz" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: guitarscore-macos-universal
           path: ${{ steps.package.outputs.archive }}
@@ -293,14 +293,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: guitarscore-*
           path: dist
           merge-multiple: true
 
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           # A re-run replaces the assets of the earlier run instead of failing.
