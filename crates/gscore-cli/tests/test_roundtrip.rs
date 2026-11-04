@@ -23,6 +23,7 @@ fn every_format_round_trips_without_differences() {
         "basic/steel_guitar_dadgad.gp",
         "basic/steel_guitar_dadgad.gpx",
         "basic/steel_guitar_dadgad.gp5",
+        "basic/advanced_ornaments.gp",
     ] {
         let out = roundtrip(file, &[]).unwrap_or_else(|e| panic!("{file}: {e}"));
         assert!(out.starts_with("Round trip OK"), "{file}: {out}");
@@ -64,6 +65,7 @@ fn every_conversion_finishes_without_panicking() {
         "basic/steel_guitar_dadgad.gp",
         "basic/steel_guitar_dadgad.gpx",
         "basic/steel_guitar_dadgad.gp5",
+        "basic/advanced_ornaments.gp",
     ] {
         for to in ["gp", "gpx", "gp5", "gp4", "gp3"] {
             if let Err(err) = roundtrip(file, &["--to", to]) {

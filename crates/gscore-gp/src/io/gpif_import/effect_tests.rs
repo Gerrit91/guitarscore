@@ -40,6 +40,163 @@ pub(super) fn note_with(property: &str) -> Note {
     }
 }
 
+/// A GPIF beat with nothing set.
+fn beat() -> GpifBeat {
+    GpifBeat {
+        id: 0,
+        notes: None,
+        rhythm: None,
+        dynamic: None,
+        grace_notes: None,
+        fadding: None,
+        tremolo: None,
+        whammy: None,
+        wah: None,
+        legato: None,
+        free_text: None,
+        arpeggio: None,
+        dead_slapped: None,
+        properties: None,
+    }
+}
+
+/// GuitarScore additions: a rolled chord, a dead slapped beat, the three fades and the
+/// beat text all come from GPIF elements the old reader dropped.
+#[test]
+fn advanced_beat_effects_are_imported() {
+    let mut rolled = beat();
+    rolled.arpeggio = Some("Down".to_owned());
+    rolled.dead_slapped = Some(EnableTag);
+    rolled.free_text = Some("Dead slapped".to_owned());
+    rolled.fadding = Some("FadeOut".to_owned());
+    let mut velocity = 0;
+    let song_beat = super::convert_beat(&rolled, &HashMap::new(), &HashMap::new(), &mut velocity);
+    assert_eq!(
+        song_beat.effect.arpeggio,
+        crate::model::BeatStrokeDirection::Down
+    );
+    assert!(song_beat.effect.dead_slapped);
+    assert_eq!(song_beat.text, "Dead slapped");
+    assert!(song_beat.effect.fade_out);
+
+    let mut swell = beat();
+    swell.fadding = Some("VolumeSwell".to_owned());
+    let song_beat = super::convert_beat(&swell, &HashMap::new(), &HashMap::new(), &mut velocity);
+    assert!(song_beat.effect.volume_swell);
+
+    let mut fade_in = beat();
+    fade_in.fadding = Some("FadeIn".to_owned());
+    let song_beat = super::convert_beat(&fade_in, &HashMap::new(), &HashMap::new(), &mut velocity);
+    assert!(song_beat.effect.fade_in);
+}
+
+/// GPIF writes a tremolo picking speed as the beat's `<Tremolo>`.
+#[test]
+fn tremolo_picking_speed_is_read_from_the_beat() {
+    assert_eq!(super::beats::tremolo_speed("1/2"), Some(8));
+    assert_eq!(super::beats::tremolo_speed("1/4"), Some(16));
+    assert_eq!(super::beats::tremolo_speed("1/8"), Some(32));
+    assert_eq!(super::beats::tremolo_speed("nonsense"), None);
+}
+
+/// Tapping, string numbers and fingering are note properties the old reader dropped.
+#[test]
+fn advanced_note_effects_are_imported() {
+    let tapped = super::convert_note(&note_with("LeftHandTapped"), 80, false, false);
+    assert!(tapped.effect.left_hand_tapped);
+    let numbered = super::convert_note(&note_with("ShowStringNumber"), 80, false, false);
+    assert!(numbered.effect.show_string_number);
+
+    let mut fingered = note_with("LeftHandTapped");
+    fingered.left_fingering = Some("C".to_owned());
+    fingered.right_fingering = Some("P".to_owned());
+    let song_note = super::convert_note(&fingered, 80, false, false);
+    assert_eq!(
+        song_note.effect.left_hand_finger,
+        crate::model::Fingering::Little
+    );
+    assert_eq!(
+        song_note.effect.right_hand_finger,
+        crate::model::Fingering::Thumb
+    );
+}
+
+/// GPIF slide flags 64 and 128 are pick slides, not ordinary slides.
+#[test]
+fn pick_slide_flags_are_imported() {
+    let slide = |flags: i32| {
+        let mut note = note_with("Slide");
+        if let Some(property) = note.properties.properties.first_mut() {
+            property.enable = None;
+            property.flags = Some(flags);
+        }
+        super::convert_note(&note, 80, false, false)
+    };
+    assert!(
+        slide(64)
+            .effect
+            .slides
+            .contains(&crate::model::SlideType::PickSlideDown)
+    );
+    assert!(
+        slide(128)
+            .effect
+            .slides
+            .contains(&crate::model::SlideType::PickSlideUp)
+    );
+}
+
+/// GPIF stores a trill's other note as a MIDI pitch; it becomes a fret on import.
+#[test]
+fn trill_pitch_becomes_a_fret() {
+    use crate::model::{Beat, Measure, Note, NoteType, TrillEffect, Voice};
+    let mut note = Note {
+        string: 3,
+        value: 2,
+        kind: NoteType::Normal,
+        ..Note::default()
+    };
+    note.effect.trill = Some(TrillEffect {
+        fret: 47,
+        duration: Default::default(),
+    });
+    let mut track = crate::model::Track {
+        strings: vec![(3, 43)],
+        ..crate::model::Track::default()
+    };
+    track.measures = vec![Measure {
+        voices: vec![Voice {
+            beats: vec![Beat {
+                notes: vec![note],
+                ..Beat::default()
+            }],
+            ..Voice::default()
+        }],
+        ..Measure::default()
+    }];
+    super::convert_trills(std::slice::from_mut(&mut track), false);
+    assert_eq!(
+        track.measures[0].voices[0].beats[0].notes[0]
+            .effect
+            .trill
+            .as_ref()
+            .map(|trill| trill.fret),
+        Some(4),
+        "47 on a G string is fret 4"
+    );
+}
+
+/// A grace note with `HopoOrigin` has a hammer transition, so the main note is not picked.
+#[test]
+fn a_grace_note_keeps_its_hammer_transition() {
+    let song_note = super::convert_note(&note_with("HopoOrigin"), 80, true, false);
+    let grace = song_note.effect.grace.expect("grace note imported");
+    assert_eq!(
+        grace.transition,
+        crate::model::GraceEffectTransition::Hammer
+    );
+}
+
 /// GPIF has both `HopoOrigin` and `HopoDestination`; the model's single `hammer` flag
 /// means "origin", as in GP3-5, so a dump prints one `h` per hammer/pull pair.
 #[test]

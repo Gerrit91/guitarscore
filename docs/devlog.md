@@ -2393,3 +2393,46 @@ lifeless):
 - Open: trills are still not played; artificial, pinch, tapped and semi harmonics keep a
   normal head on the notation staff (their text stays on the tab); bends on a notation-only
   staff; a dynamic under a chord with a down-stem beam can touch the beam (older).
+
+## 2026-11-04 — Advanced ornaments: drawn, played and in the palette
+
+- Owner: everything in `testdata/basic/advanced_ornaments.gp` must be read, written, drawn,
+  played and editable from the palette, with Guitar Pro's `advanced_ornaments#1.png` as the
+  reference.
+- Brush and arpeggio arrows: a roll down is drawn as an arrow pointing **up**, as Guitar Pro
+  does; the brush arrow is on the tab only (the notation keeps it only when the tab is
+  hidden), and the two brush palette tiles were swapped to match.
+- Layout (`gscore-layout`): Guitar Pro's beat text in a new row above the staff; `(7)` for
+  a tie carried into a measure's first column; tuplet brackets with `n:m` (a number over a
+  beam when the group is exactly one beam group, otherwise a bracket, including rests);
+  a large cross instead of the rest/notes of a dead slapped beat; `P.S.` and a scrape
+  wiggle for pick slides; a circled T and a small arc for left-hand taps; fingering signs
+  left of the heads; circled string numbers above or below the staff; wavy arpeggio arrows
+  on both staves; `rasg.`; `H`/`P` and slurs for grace-note hammers; `tr` on both staves
+  and the trilled fret as `2 (4)` on the tab; tremolo picking with one to three strokes
+  by speed (under the tab number and through the notation stem); fade-in, fade-out and
+  volume-swell hairpins. The model's `Grace` gained `hammer`; `NoteMarks`, `ColumnMarks`,
+  `ChordMarks`, `Head` and `Rows` carry the new state. New modules `ornaments/symbols.rs`,
+  `measure/grace_marks.rs` and `notation/tuplets.rs` keep the files from growing further.
+- Playback (`gscore-play`): arpeggios spread over an eighth; rasgueados strike three times;
+  a dead slapped beat plays short muted hits on every string; a pick slide is a quick run of
+  muted notes to the next note; trills alternate with the trilled fret at 16th/32nd/64th
+  speed; tremolo picking uses its speed (8th/16th/32nd) instead of always 32nds; fade-out
+  and swell ramp expression; left-hand taps and grace-note hammers are played as legato
+  (softer). The crate doc no longer lists trills as unplayed.
+- Palette (`gscore-app`): tiles for left-hand tap, string number, the two pick slides, both
+  arpeggio directions, dead slapped, `rasg.`, fade out and volume swell. The trill and
+  tremolo tiles show a corner triangle; a click on the sign toggles the default, a click on
+  the corner opens a small engraved dialog (`edit_effects/dialogs.rs`) for the trill fret
+  and speed or the tremolo speed. New actions and menu entries; no default keys.
+- Tests: `advanced_ornaments` is in the layout testdata and golden lists
+  (`tests/golden/advanced_ornaments.svg`, owner review pending); GPIF import tests for the
+  new beat and note fields, pick-slide flags, trill pitch conversion and grace hammers;
+  `.gp` round trip without losses; playback tests for every new effect and the whole file;
+  a palette test clicking the new tiles. `note_lengths.svg` and `ornaments.svg` were
+  regenerated (tuplet brackets instead of per-beam numbers, beat text, trill/tremolo
+  changes; owner review pending).
+- Open: `edit_effects.rs` (835 lines) and `notation/draw.rs` (655) are past the ~400-line
+  guideline and should be split in a later cleanup; the fade hairpins sit above the
+  notation staff with the other beat effects (Guitar Pro prints them above the tab); the
+  beat effects' row placement is otherwise unchanged from the previous entry.
