@@ -1155,3 +1155,43 @@ fn shift_g_opens_the_grace_note_dialog_and_ok_sets_the_chosen_speed() {
     harness.run();
     assert_eq!(grace_at_cursor(&harness), None);
 }
+
+#[test]
+fn the_sextuplet_tile_and_the_tuplet_dialog_set_the_beats_tuplet() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    harness.run();
+    let tuplet_at_cursor = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let cursor = document.editor().cursor();
+        let beat = document.song().beat(cursor.position()).unwrap();
+        beat.note_value().unwrap().tuplet()
+    };
+    harness.get_by_label("Sextuplet").click();
+    harness.run();
+    assert_eq!(tuplet_at_cursor(&harness), Some((6, 4)));
+    // The dialog opens on the current tuplet; a common one is a click away.
+    harness.get_by_label("Tuplet…").click();
+    harness.run();
+    harness.get_by_label("Septuplet").click();
+    harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(tuplet_at_cursor(&harness), Some((7, 4)));
+    // Steppers reach any tuplet: 7:4 becomes 8:4... and 9:4 is not a common one.
+    harness.get_by_label("Tuplet…").click();
+    harness.run();
+    harness.get_by_label("More: Notes").click();
+    harness.run();
+    harness.get_by_label("More: Notes").click();
+    harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(tuplet_at_cursor(&harness), Some((9, 4)));
+    // Remove takes the tuplet off.
+    harness.get_by_label("Tuplet…").click();
+    harness.run();
+    harness.get_by_label("Remove").click();
+    harness.run();
+    assert_eq!(tuplet_at_cursor(&harness), None);
+}

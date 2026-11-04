@@ -5,6 +5,8 @@
 //! Changes are ordinary commands (or one `batch` command for several beats), so every
 //! palette click is undoable and recorded in the recovery journal.
 
+use super::shape_editor::Outcome;
+use super::tuplet_dialog::TupletDialog;
 use gscore_edit::{ActionId, Command, Cursor, Selection};
 use gscore_model::{
     BeatIndex, BeatPosition, Feel, Fermata, MeasureIndex, NoteValue, Repeat, Song, SystemBreak,
@@ -21,8 +23,9 @@ use super::toolbar::key_hint;
 
 /// Note lengths offered, as the `1/value` of a whole note.
 const NOTE_VALUES: [u16; 7] = [1, 2, 4, 8, 16, 32, 64];
-/// Tuplets offered: "in the time of".
-const TUPLETS: [(u8, u8); 3] = [(3, 2), (5, 4), (7, 4)];
+/// Tuplets with a tile of their own: "in the time of". Every other one is chosen in the
+/// tuplet dialog.
+const TUPLETS: [(u8, u8); 2] = [(3, 2), (6, 4)];
 
 /// What the palette keeps between frames.
 #[derive(Debug)]
@@ -33,6 +36,8 @@ pub(super) struct EditPaletteState {
     dots: u8,
     /// The chosen tuplet, if any.
     tuplet: Option<(u8, u8)>,
+    /// The tuplet dialog, while it is open.
+    tuplet_dialog: Option<TupletDialog>,
     /// The staff tiles and the dialog one of them opened.
     pub(super) staff: StaffState,
     /// A voice chosen this frame, for the caller to move the cursor.
@@ -47,6 +52,7 @@ impl Default for EditPaletteState {
             value: 4,
             dots: 0,
             tuplet: None,
+            tuplet_dialog: None,
             staff: StaffState::default(),
             pending_voice: None,
             effects: EffectsState::default(),
@@ -262,6 +268,14 @@ impl GuitarScoreApp {
                 toggle_tuplet(state, (7, 4));
                 true
             }
+            (None, ActionId::TupletSix) => {
+                toggle_tuplet(state, (6, 4));
+                true
+            }
+            (None, ActionId::TupletOther) => {
+                state.tuplet_dialog = Some(TupletDialog::new(state.tuplet));
+                false
+            }
             _ => false,
         };
         let mut commands = Vec::new();
@@ -321,6 +335,44 @@ impl GuitarScoreApp {
         );
         self.apply_commands(commands);
         self.listen_to(&trial);
+    }
+
+    /// The tuplet dialog, while it is open. OK sets the palette's tuplet and the length of
+    /// the selected beats; Remove takes the tuplet off them.
+    pub(super) fn show_tuplet_dialog(&mut self, ctx: &egui::Context) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let state = &mut tab.edit_palette;
+        let Some(dialog) = &mut state.tuplet_dialog else {
+            return;
+        };
+        let tuplet = match dialog.show(ctx) {
+            Outcome::Open | Outcome::Listen => return,
+            Outcome::Cancel => {
+                state.tuplet_dialog = None;
+                return;
+            }
+            Outcome::Apply => dialog.tuplet(),
+            Outcome::Remove => None,
+        };
+        state.tuplet_dialog = None;
+        state.tuplet = tuplet;
+        let document = &tab.document;
+        let snapshot = PaletteSnapshot::of(
+            document.song(),
+            document.editor().cursor(),
+            document.editor().selection(),
+        );
+        let mut commands = Vec::new();
+        apply_duration(state, &snapshot, &mut commands);
+        let duration = state.duration();
+        self.apply_commands(commands);
+        if let Some(duration) = duration
+            && let Some(tab) = self.tabs.get_mut(self.active)
+        {
+            tab.document.editor_mut().set_entry_value(duration);
+        }
     }
 
     /// The staff dialog, while one is open. It floats over the app, so it shows even when
@@ -449,21 +501,37 @@ fn note_length(
         }
         ui.add_space(6.0);
         for (enters, times) in TUPLETS {
-            let text = if times == 2 && enters == 3 {
-                "3".to_owned()
-            } else {
-                format!("{enters}:{times}")
-            };
-            let label = format!("{enters}:{times}");
+            let text = enters.to_string();
+            let label = tuplet_name(enters, times);
             let tip = format!(
-                "Tuplet: {enters} in the time of {times}{}",
+                "{label}: {enters} in the time of {times}{}",
                 hint(tuplet_action(enters))
             );
             let on = state.tuplet == Some((enters, times));
-            if tiles::tile(ui, Face::Tuplet(&text), on, true, &label, &tip).clicked() {
+            let face = Face::TupletBracket {
+                text: &text,
+                letters: false,
+                more: false,
+            };
+            if tiles::wide_tile(ui, face, on, true, &label, &tip).clicked() {
                 toggle_tuplet(state, (enters, times));
                 apply_duration(state, snapshot, commands);
             }
+        }
+        // Any other tuplet: the tile shows it when one is chosen, else "n:m".
+        let other = state.tuplet.filter(|tuplet| !TUPLETS.contains(tuplet));
+        let text = other.map_or_else(|| "n:m".to_owned(), |(n, m)| format!("{n}:{m}"));
+        let face = Face::TupletBracket {
+            text: &text,
+            letters: other.is_none(),
+            more: true,
+        };
+        let tip = format!(
+            "Tuplet…: any number of notes in the time of another{}",
+            hint(ActionId::TupletOther)
+        );
+        if tiles::wide_tile(ui, face, other.is_some(), true, "Tuplet…", &tip).clicked() {
+            state.tuplet_dialog = Some(TupletDialog::new(state.tuplet));
         }
     });
 }
@@ -481,12 +549,20 @@ fn value_action(value: u16) -> ActionId {
     }
 }
 
-/// The palette action of a tuplet, by how many notes it has.
+/// The palette action of a tuplet tile, by how many notes it has.
 fn tuplet_action(enters: u8) -> ActionId {
     match enters {
         3 => ActionId::TupletThree,
-        5 => ActionId::TupletFive,
-        _ => ActionId::TupletSeven,
+        _ => ActionId::TupletSix,
+    }
+}
+
+/// The name of a tuplet tile.
+fn tuplet_name(enters: u8, times: u8) -> String {
+    match (enters, times) {
+        (3, 2) => "Triplet".to_owned(),
+        (6, 4) => "Sextuplet".to_owned(),
+        _ => format!("{enters}:{times}"),
     }
 }
 

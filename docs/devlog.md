@@ -2272,3 +2272,24 @@ lifeless):
   (`gscore-play`), the dialog via `Shift+G`, OK and Remove via the palette tile
   (`test_editing`). Checked with `gscore-cli edit` on `note_lengths.gp`: three grace notes
   (slow before, fast on the beat, dead) save as `.gp`, reload, and render.
+
+## 2026-11-04 — Tuplet tiles and the tuplet dialog
+
+- Owner: tiles for triplets and sextuplets like Guitar Pro's, and a dialog for every kind
+  of tuplet.
+- Palette: the "3", "5:4", "7:4" tiles became Guitar Pro style bracket tiles: a triplet
+  (`⌐3¬`), a sextuplet (`⌐6¬`) and `⌐n:m¬` with a corner triangle that opens the dialog
+  (it shows the chosen tuplet, such as `⌐5:4¬`, when one without a tile of its own is
+  chosen). The bracket tiles are half as wide again as the others (`tiles::wide_tile`); the
+  bracket is drawn by `tile_faces::tuplet_bracket` with Bravura's tuplet digits.
+- Dialog (`tuplet_dialog.rs`): the chosen tuplet as a large engraved bracket, steppers for
+  "n in the time of m" (n 2-32, m 1-32), what it means in a line, and the common tuplets as
+  engraved signs with an explanation (triplet, sextuplet, quintuplet, septuplet, nonuplet,
+  decuplet, and the duplet and quadruplet of 6/8). OK sets the palette's tuplet and the
+  selected beats' length, Remove takes the tuplet off; no Listen (a length has nothing new
+  to hear). The harmonic editor's button row takes an optional Listen for it.
+- Actions: `tuplet_six` (sextuplet) and `tuplet_other` (opens the dialog); `tuplet_five`
+  and `tuplet_seven` keep working from the keymap without tiles. No default keys.
+- Checked: 9:4, 2:3, 10:8 and 6:4 beats save as `.gp` without a reported loss (GP3-5's
+  fixed tuplet list does not apply to GPIF). Test: `test_editing` (sextuplet tile, dialog
+  with a common tuplet, steppers to 9:4, Remove).

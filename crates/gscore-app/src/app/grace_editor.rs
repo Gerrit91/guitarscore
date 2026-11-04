@@ -127,7 +127,7 @@ impl GraceEditor {
                             ui,
                             &mut outcome,
                             "Play the note without a grace note",
-                            "Play the note with this grace note",
+                            Some("Play the note with this grace note"),
                         );
                         keys(ui, &mut outcome);
                     });

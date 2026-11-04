@@ -86,6 +86,10 @@ pub enum ActionId {
     TupletFive,
     /// Palette: Septuplet (7:4).
     TupletSeven,
+    /// Palette: Sextuplet (6:4).
+    TupletSix,
+    /// Palette: any tuplet (opens the tuplet dialog).
+    TupletOther,
     /// Palette: Rest.
     MakeRest,
     /// Palette: Tie.
@@ -190,6 +194,8 @@ impl ActionId {
                 | ActionId::TupletThree
                 | ActionId::TupletFive
                 | ActionId::TupletSeven
+                | ActionId::TupletSix
+                | ActionId::TupletOther
                 | ActionId::MakeRest
                 | ActionId::ToggleTie
                 | ActionId::ToggleDeadNote
@@ -310,6 +316,8 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::TupletThree, "tuplet_three", "Triplet"),
     info(ActionId::TupletFive, "tuplet_five", "Quintuplet (5:4)"),
     info(ActionId::TupletSeven, "tuplet_seven", "Septuplet (7:4)"),
+    info(ActionId::TupletSix, "tuplet_six", "Sextuplet (6:4)"),
+    info(ActionId::TupletOther, "tuplet_other", "Tuplet…"),
     info(ActionId::MakeRest, "make_rest", "Rest"),
     info(ActionId::ToggleTie, "toggle_tie", "Tie"),
     info(ActionId::ToggleDeadNote, "toggle_dead_note", "Dead note"),
@@ -511,6 +519,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 79, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 81, "one entry per ActionId variant");
     }
 }

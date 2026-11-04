@@ -166,7 +166,7 @@ impl HarmonicEditor {
                             ui,
                             &mut outcome,
                             "Play the note without a harmonic",
-                            "Play the note with this harmonic",
+                            Some("Play the note with this harmonic"),
                         );
                         keys(ui, &mut outcome);
                     });
@@ -276,9 +276,14 @@ fn ordinal(n: u32) -> String {
     }
 }
 
-/// Listen on the left; OK, Remove and Cancel on the right. `remove` and `listen` are the
-/// tooltips of those buttons.
-pub(super) fn buttons(ui: &mut egui::Ui, outcome: &mut Outcome, remove: &str, listen: &str) {
+/// Listen on the left (without `listen`, none); OK, Remove and Cancel on the right.
+/// `remove` and `listen` are the tooltips of those buttons.
+pub(super) fn buttons(
+    ui: &mut egui::Ui,
+    outcome: &mut Outcome,
+    remove: &str,
+    listen: Option<&str>,
+) {
     ui.allocate_ui_with_layout(
         vec2(ui.available_width(), 30.0),
         Layout::right_to_left(Align::Center),
@@ -297,11 +302,13 @@ pub(super) fn buttons(ui: &mut egui::Ui, outcome: &mut Outcome, remove: &str, li
             if ui.add(ok).clicked() {
                 *outcome = Outcome::Apply;
             }
-            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                if listen_button(ui).on_hover_text(listen).clicked() {
-                    *outcome = Outcome::Listen;
-                }
-            });
+            if let Some(listen) = listen {
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                    if listen_button(ui).on_hover_text(listen).clicked() {
+                        *outcome = Outcome::Listen;
+                    }
+                });
+            }
         },
     );
 }

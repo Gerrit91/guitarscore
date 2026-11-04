@@ -337,6 +337,8 @@ impl TabEditor {
             | ActionId::TupletThree
             | ActionId::TupletFive
             | ActionId::TupletSeven
+            | ActionId::TupletSix
+            | ActionId::TupletOther
             | ActionId::MakeRest
             | ActionId::ToggleTie
             | ActionId::ToggleDeadNote
