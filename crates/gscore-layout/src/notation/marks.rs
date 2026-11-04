@@ -290,7 +290,10 @@ fn draw_slides_in_out(
             SlideKind::IntoFromAbove => line(left - SLIDE_REACH, y - SLIDE_DROP, left, y, ops),
             SlideKind::OutDownwards => line(right, y, right + SLIDE_REACH, y + SLIDE_DROP, ops),
             SlideKind::OutUpwards => line(right, y, right + SLIDE_REACH, y - SLIDE_DROP, ops),
-            SlideKind::ShiftSlideTo | SlideKind::LegatoSlideTo => {}
+            SlideKind::ShiftSlideTo
+            | SlideKind::LegatoSlideTo
+            | SlideKind::PickSlideDown
+            | SlideKind::PickSlideUp => {}
         }
     }
 }

@@ -288,6 +288,8 @@ pub(crate) fn from_slide_type(value: &SlideType) -> i8 {
         SlideType::LegatoSlideTo => 2,
         SlideType::OutDownwards => 3,
         SlideType::OutUpWards => 4,
+        // GP3-5 have no pick slides.
+        SlideType::PickSlideDown | SlideType::PickSlideUp => 0,
     }
 }
 
@@ -331,6 +333,7 @@ pub(crate) fn from_fingering(value: &Fingering) -> i8 {
         Fingering::Middle => 2,
         Fingering::Annular => 3,
         Fingering::Little => 4,
+        Fingering::OpenString => -1,
         Fingering::Unknown(value) => *value,
     }
 }

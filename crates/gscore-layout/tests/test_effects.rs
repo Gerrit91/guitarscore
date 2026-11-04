@@ -96,10 +96,23 @@ fn effects_song() -> Song {
         2,
         NoteEffect::Vibrato(Some(gscore_model::Vibrato::Slight)),
     );
-    note(&mut song, 3, 2, NoteEffect::Trill(true));
+    note(
+        &mut song,
+        3,
+        2,
+        NoteEffect::Trill(Some(gscore_model::Trill {
+            fret: Some(4),
+            speed: gscore_model::TrillSpeed::ThirtySecond,
+        })),
+    );
     note(&mut song, 2, 2, NoteEffect::Ghost(true));
     note(&mut song, 3, 2, NoteEffect::Accent(Some(AccentKind::Heavy)));
-    note(&mut song, 4, 2, NoteEffect::TremoloPicking(true));
+    note(
+        &mut song,
+        4,
+        2,
+        NoteEffect::TremoloPicking(Some(gscore_model::TremoloSpeed::Eighth)),
+    );
     note(
         &mut song,
         4,

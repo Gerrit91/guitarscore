@@ -84,6 +84,8 @@ pub(super) fn slide_types_to_flags(slides: &[SlideType]) -> i32 {
             SlideType::OutUpWards => 0x08,
             SlideType::IntoFromBelow => 0x10,
             SlideType::IntoFromAbove => 0x20,
+            SlideType::PickSlideDown => 0x40,
+            SlideType::PickSlideUp => 0x80,
             SlideType::None => 0,
         };
     }

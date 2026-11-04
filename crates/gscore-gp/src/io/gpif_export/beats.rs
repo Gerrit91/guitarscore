@@ -81,9 +81,32 @@ pub(super) fn build_beat_xml(
         bxml.push_str(&format!("<FreeText>{}</FreeText>", escape_xml(&beat.text)));
     }
 
-    // Fade in
+    // Fade in, fade out, volume swell (one of them).
     if beat.effect.fade_in {
         bxml.push_str("<Fadding>FadeIn</Fadding>");
+    } else if beat.effect.fade_out {
+        bxml.push_str("<Fadding>FadeOut</Fadding>");
+    } else if beat.effect.volume_swell {
+        bxml.push_str("<Fadding>VolumeSwell</Fadding>");
+    }
+    match beat.effect.arpeggio {
+        BeatStrokeDirection::Down => bxml.push_str("<Arpeggio>Down</Arpeggio>"),
+        BeatStrokeDirection::Up => bxml.push_str("<Arpeggio>Up</Arpeggio>"),
+        BeatStrokeDirection::None => {}
+    }
+    if beat.effect.dead_slapped {
+        bxml.push_str("<DeadSlapped />");
+    }
+    // Tremolo picking: the beat's speed in GPIF (the first picked note's).
+    if let Some(tremolo) = beat
+        .notes
+        .iter()
+        .find_map(|note| note.effect.tremolo_picking.as_ref())
+    {
+        bxml.push_str(&format!(
+            "<Tremolo>{}</Tremolo>",
+            gpif_import::tremolo_text(tremolo.duration.value)
+        ));
     }
 
     // Beat-level legato (GP6/GP7 `<Legato>`).

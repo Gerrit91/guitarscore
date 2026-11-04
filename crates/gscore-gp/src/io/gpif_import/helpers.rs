@@ -88,6 +88,13 @@ pub(super) fn parse_slide_flags(flags: i32) -> Vec<SlideType> {
     if (flags & 0x20) != 0 {
         v.push(SlideType::IntoFromAbove);
     }
+    // GuitarScore addition: pick slides (pick scrapes).
+    if (flags & 0x40) != 0 {
+        v.push(SlideType::PickSlideDown);
+    }
+    if (flags & 0x80) != 0 {
+        v.push(SlideType::PickSlideUp);
+    }
     v
 }
 

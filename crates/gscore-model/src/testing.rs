@@ -410,6 +410,8 @@ fn slide_type(kind: SlideKind) -> SlideType {
         SlideKind::LegatoSlideTo => SlideType::LegatoSlideTo,
         SlideKind::OutDownwards => SlideType::OutDownwards,
         SlideKind::OutUpwards => SlideType::OutUpWards,
+        SlideKind::PickSlideDown => SlideType::PickSlideDown,
+        SlideKind::PickSlideUp => SlideType::PickSlideUp,
     }
 }
 

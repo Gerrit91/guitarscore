@@ -17,6 +17,7 @@ use crate::error::ModelError;
 use crate::grace::Grace;
 use crate::position::{MeasureIndex, VoiceIndex};
 use crate::song::Song;
+use crate::techniques::{Fade, Finger, Hand, TremoloSpeed, Trill};
 use crate::views::{BeatKind, MeasureView, NoteKind, NoteView, TrackView, VoiceView};
 
 /// One difference between two songs.
@@ -177,10 +178,14 @@ struct BeatContent {
     pick_stroke: Option<StrokeDirection>,
     brush_stroke: Option<StrokeDirection>,
     slap: Option<SlapKind>,
-    fade_in: bool,
+    fade: Option<Fade>,
     whammy_bar: Option<Whammy>,
     legato: Option<Legato>,
     vibrato: Option<Vibrato>,
+    arpeggio: Option<StrokeDirection>,
+    dead_slapped: bool,
+    rasgueado: bool,
+    text: String,
     notes: Vec<NoteContent>,
 }
 
@@ -199,11 +204,14 @@ struct NoteContent {
     palm_mute: bool,
     let_ring: bool,
     staccato: bool,
-    trill: bool,
-    tremolo_picking: bool,
+    trill: Option<Trill>,
+    tremolo_picking: Option<TremoloSpeed>,
     vibrato: Option<Vibrato>,
     grace: Option<Grace>,
     dynamic: Dynamic,
+    fingers: (Option<Finger>, Option<Finger>),
+    left_hand_tap: bool,
+    string_number: bool,
 }
 
 impl NoteContent {
@@ -221,11 +229,14 @@ impl NoteContent {
             palm_mute: note.is_palm_muted(),
             let_ring: note.is_let_ring(),
             staccato: note.is_staccato(),
-            trill: note.has_trill(),
-            tremolo_picking: note.has_tremolo_picking(),
+            trill: note.trill(),
+            tremolo_picking: note.tremolo_speed(),
             vibrato: note.vibrato(),
             grace: note.grace(),
             dynamic: note.dynamic(),
+            fingers: (note.finger(Hand::Left), note.finger(Hand::Right)),
+            left_hand_tap: note.is_left_hand_tapped(),
+            string_number: note.shows_string_number(),
         }
     }
 }
@@ -248,10 +259,14 @@ fn beats(voice: Option<VoiceView<'_>>) -> Vec<BeatContent> {
                 pick_stroke: beat.pick_stroke(),
                 brush_stroke: beat.brush_stroke(),
                 slap: beat.slap(),
-                fade_in: beat.has_fade_in(),
+                fade: beat.fade(),
                 whammy_bar: beat.whammy_bar(),
                 legato: beat.legato(),
                 vibrato: beat.vibrato(),
+                arpeggio: beat.arpeggio(),
+                dead_slapped: beat.is_dead_slapped(),
+                rasgueado: beat.has_rasgueado(),
+                text: beat.text().to_owned(),
                 notes,
             }
         })
@@ -266,7 +281,11 @@ fn compare_beat(diff: &mut Diffs, at: &str, a: &BeatContent, b: &BeatContent) {
     diff.check(at, "pick stroke", a.pick_stroke, b.pick_stroke);
     diff.check(at, "brush stroke", a.brush_stroke, b.brush_stroke);
     diff.check(at, "slap", a.slap, b.slap);
-    diff.check(at, "fade in", a.fade_in, b.fade_in);
+    diff.check(at, "fade", a.fade, b.fade);
+    diff.check(at, "arpeggio", a.arpeggio, b.arpeggio);
+    diff.check(at, "dead slapped", a.dead_slapped, b.dead_slapped);
+    diff.check(at, "rasgueado", a.rasgueado, b.rasgueado);
+    diff.check(at, "text", &a.text, &b.text);
     diff.check(at, "whammy bar", a.whammy_bar, b.whammy_bar);
     diff.check(at, "legato", a.legato, b.legato);
     diff.check(at, "vibrato", a.vibrato, b.vibrato);
@@ -297,6 +316,9 @@ fn compare_beat(diff: &mut Diffs, at: &str, a: &BeatContent, b: &BeatContent) {
         );
         diff.check(&at, "vibrato", na.vibrato, nb.vibrato);
         diff.check(&at, "grace note", na.grace, nb.grace);
+        diff.check(&at, "fingering", na.fingers, nb.fingers);
+        diff.check(&at, "left-hand tap", na.left_hand_tap, nb.left_hand_tap);
+        diff.check(&at, "string number", na.string_number, nb.string_number);
         diff.check(&at, "dynamic", na.dynamic, nb.dynamic);
     }
 }

@@ -106,6 +106,16 @@ pub struct BeatEffects {
     pub wide_vibrato: bool,
     /// GuitarScore addition: GPIF's beat-level legato (not a slide or a hammer).
     pub legato: LegatoEffect,
+    /// GuitarScore addition: GPIF's `Arpeggio` direction (a rolled chord, apart from the
+    /// brush stroke). GP3-5 have none.
+    pub arpeggio: BeatStrokeDirection,
+    /// GuitarScore addition: GPIF's `DeadSlapped` (a percussive slap on muted strings,
+    /// a beat without notes). GP3-5 have none.
+    pub dead_slapped: bool,
+    /// GuitarScore addition: GPIF's `Fadding` `FadeOut` and `VolumeSwell`. GP3-5 know the
+    /// fade-in only.
+    pub fade_out: bool,
+    pub volume_swell: bool,
 }
 
 impl Default for BeatEffects {
@@ -122,6 +132,10 @@ impl Default for BeatEffects {
             vibrato: false,
             wide_vibrato: false,
             legato: LegatoEffect::default(),
+            arpeggio: BeatStrokeDirection::None,
+            dead_slapped: false,
+            fade_out: false,
+            volume_swell: false,
         }
     }
 }
@@ -150,6 +164,10 @@ impl BeatEffects {
             && self.tremolo_bar == d.tremolo_bar
             && self.slap_effect == d.slap_effect
             && self.legato == d.legato
+            && self.arpeggio == d.arpeggio
+            && self.dead_slapped == d.dead_slapped
+            && self.fade_out == d.fade_out
+            && self.volume_swell == d.volume_swell
     }
 }
 

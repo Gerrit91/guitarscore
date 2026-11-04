@@ -1,6 +1,7 @@
 //! The text form of a note or beat effect for command lines and the recovery journal:
 //! an effect id (`hammer`, `bend`, ...) and a value (`true`, `heavy`, `up:0:0,6:4,12:0`).
 
+use crate::technique_text;
 use gscore_model::{
     AccentKind, BeatEffect, BendKind, BendPoint, BendShape, Fret, Grace, GraceSpeed, Harmonic,
     HarmonicKind, Legato, NoteEffect, SlapKind, SlideKind, StrokeDirection, Vibrato, WhammyShape,
@@ -34,8 +35,13 @@ pub(crate) fn note_effect_text(effect: &NoteEffect) -> (&'static str, String) {
         NoteEffect::PalmMute(on) => ("palm_mute", on.to_string()),
         NoteEffect::LetRing(on) => ("let_ring", on.to_string()),
         NoteEffect::Staccato(on) => ("staccato", on.to_string()),
-        NoteEffect::Trill(on) => ("trill", on.to_string()),
-        NoteEffect::TremoloPicking(on) => ("tremolo_picking", on.to_string()),
+        NoteEffect::Trill(trill) => ("trill", technique_text::trill_text(*trill)),
+        NoteEffect::TremoloPicking(speed) => {
+            ("tremolo_picking", technique_text::tremolo_text(*speed))
+        }
+        NoteEffect::LeftHandTap(on) => ("left_hand_tap", on.to_string()),
+        NoteEffect::StringNumber(on) => ("string_number", on.to_string()),
+        NoteEffect::Finger(hand, finger) => ("finger", technique_text::finger_text(*hand, *finger)),
         NoteEffect::Vibrato(None) => ("vibrato", "none".to_owned()),
         NoteEffect::Vibrato(Some(vibrato)) => ("vibrato", vibrato_id(*vibrato).to_owned()),
         NoteEffect::Grace(None) => ("grace", "none".to_owned()),
@@ -117,6 +123,11 @@ pub(crate) fn beat_effect_text(effect: &BeatEffect) -> (&'static str, String) {
         ),
         BeatEffect::Vibrato(None) => ("vibrato", "none".to_owned()),
         BeatEffect::Vibrato(Some(vibrato)) => ("vibrato", vibrato_id(*vibrato).to_owned()),
+        BeatEffect::Arpeggio(stroke) => ("arpeggio", stroke_text(*stroke).to_owned()),
+        BeatEffect::DeadSlapped(on) => ("dead_slapped", on.to_string()),
+        BeatEffect::Rasgueado(on) => ("rasgueado", on.to_string()),
+        BeatEffect::FadeOut(on) => ("fade_out", on.to_string()),
+        BeatEffect::VolumeSwell(on) => ("volume_swell", on.to_string()),
     }
 }
 
@@ -140,8 +151,14 @@ pub(crate) fn parse_note_effect(id: &str, value: &str) -> Result<NoteEffect, Str
         "palm_mute" => NoteEffect::PalmMute(boolean(value)?),
         "let_ring" => NoteEffect::LetRing(boolean(value)?),
         "staccato" => NoteEffect::Staccato(boolean(value)?),
-        "trill" => NoteEffect::Trill(boolean(value)?),
-        "tremolo_picking" => NoteEffect::TremoloPicking(boolean(value)?),
+        "trill" => NoteEffect::Trill(technique_text::parse_trill(value)?),
+        "tremolo_picking" => NoteEffect::TremoloPicking(technique_text::parse_tremolo(value)?),
+        "left_hand_tap" => NoteEffect::LeftHandTap(boolean(value)?),
+        "string_number" => NoteEffect::StringNumber(boolean(value)?),
+        "finger" => {
+            let (hand, finger) = technique_text::parse_finger(value)?;
+            NoteEffect::Finger(hand, finger)
+        }
         "vibrato" => NoteEffect::Vibrato(match value {
             "none" => None,
             "slight" => Some(Vibrato::Slight),
@@ -166,6 +183,11 @@ pub(crate) fn parse_beat_effect(id: &str, value: &str) -> Result<BeatEffect, Str
             _ => return Err("slap: tapping, slapping, popping or none".to_owned()),
         }),
         "fade_in" => BeatEffect::FadeIn(boolean(value)?),
+        "fade_out" => BeatEffect::FadeOut(boolean(value)?),
+        "volume_swell" => BeatEffect::VolumeSwell(boolean(value)?),
+        "arpeggio" => BeatEffect::Arpeggio(parse_stroke(value)?),
+        "dead_slapped" => BeatEffect::DeadSlapped(boolean(value)?),
+        "rasgueado" => BeatEffect::Rasgueado(boolean(value)?),
         "whammy" => BeatEffect::Whammy(match value {
             "none" => None,
             _ => Some(WhammyShape::new(parse_points(value)?).map_err(|e| e.to_string())?),
@@ -273,6 +295,8 @@ fn slide_id(kind: SlideKind) -> &'static str {
         SlideKind::LegatoSlideTo => "legato_slide_to",
         SlideKind::OutDownwards => "out_downwards",
         SlideKind::OutUpwards => "out_upwards",
+        SlideKind::PickSlideDown => "pick_slide_down",
+        SlideKind::PickSlideUp => "pick_slide_up",
     }
 }
 
@@ -284,6 +308,8 @@ fn parse_slide(id: &str) -> Result<SlideKind, String> {
         "legato_slide_to" => SlideKind::LegatoSlideTo,
         "out_downwards" => SlideKind::OutDownwards,
         "out_upwards" => SlideKind::OutUpwards,
+        "pick_slide_down" => SlideKind::PickSlideDown,
+        "pick_slide_up" => SlideKind::PickSlideUp,
         _ => return Err(format!("unknown slide \"{id}\"")),
     })
 }

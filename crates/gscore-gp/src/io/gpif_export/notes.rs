@@ -82,6 +82,12 @@ pub(super) fn build_note_xml(note: &Note, note_id: i32) -> String {
     if note.effect.hammer {
         s.push_str("<Property name=\"HopoOrigin\"><Enable /></Property>");
     }
+    if note.effect.left_hand_tapped {
+        s.push_str("<Property name=\"LeftHandTapped\"><Enable /></Property>");
+    }
+    if note.effect.show_string_number {
+        s.push_str("<Property name=\"ShowStringNumber\"><Enable /></Property>");
+    }
 
     if note.kind == NoteType::Dead {
         s.push_str("<Property name=\"Dead\"><Enable /></Property>");
@@ -122,6 +128,12 @@ pub(super) fn build_note_xml(note: &Note, note_id: i32) -> String {
 
     if let Some(trill) = &note.effect.trill {
         s.push_str(&format!("<Trill>{}</Trill>", trill.fret));
+    }
+    if let Some(name) = gpif_import::finger_name(&note.effect.left_hand_finger) {
+        s.push_str(&format!("<LeftFingering>{name}</LeftFingering>"));
+    }
+    if let Some(name) = gpif_import::finger_name(&note.effect.right_hand_finger) {
+        s.push_str(&format!("<RightFingering>{name}</RightFingering>"));
     }
     if let Some(orn) = &note.effect.ornament {
         s.push_str(&format!("<Ornament>{}</Ornament>", escape_xml(orn)));

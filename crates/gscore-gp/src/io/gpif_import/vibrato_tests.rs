@@ -77,6 +77,8 @@ fn beat_vibrato_survives_reading_and_writing() {
         wah: None,
         legato: None,
         free_text: None,
+        arpeggio: None,
+        dead_slapped: None,
         properties: Some(BeatPropertiesWrapper {
             properties: vec![property],
         }),
@@ -131,6 +133,8 @@ fn beat_legato_survives_reading_and_writing() {
             destination: "false".to_owned(),
         }),
         free_text: None,
+        arpeggio: None,
+        dead_slapped: None,
         properties: None,
     };
     let mut velocity = 0;

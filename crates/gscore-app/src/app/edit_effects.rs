@@ -8,8 +8,8 @@ use egui::vec2;
 use gscore_edit::{ActionId, Command};
 use gscore_model::{
     AccentKind, BeatEffect, BeatView, BendKind, BendPoint, BendShape, Grace, Harmonic,
-    HarmonicKind, Legato, NoteEffect, NoteView, SlapKind, SlideKind, StrokeDirection, Vibrato,
-    WhammyShape,
+    HarmonicKind, Legato, NoteEffect, NoteView, SlapKind, SlideKind, StrokeDirection, TremoloSpeed,
+    Trill, TrillSpeed, Vibrato, WhammyShape,
 };
 
 use super::edit_palette::PaletteSnapshot;
@@ -451,8 +451,13 @@ pub(super) fn fx_commands(fx: Fx, snapshot: &PaletteSnapshot) -> Vec<Command> {
         Fx::PalmMute => Some(NoteEffect::PalmMute(!on)),
         Fx::LetRing => Some(NoteEffect::LetRing(!on)),
         Fx::Staccato => Some(NoteEffect::Staccato(!on)),
-        Fx::Trill => Some(NoteEffect::Trill(!on)),
-        Fx::Tremolo => Some(NoteEffect::TremoloPicking(!on)),
+        Fx::Trill => Some(NoteEffect::Trill((!on).then_some(Trill {
+            fret: None,
+            speed: TrillSpeed::Sixteenth,
+        }))),
+        Fx::Tremolo => Some(NoteEffect::TremoloPicking(
+            (!on).then_some(TremoloSpeed::Sixteenth),
+        )),
         Fx::Slide(kind) => Some(NoteEffect::Slide(kind, !on)),
         Fx::Bend => Some(NoteEffect::Bend(if on {
             None

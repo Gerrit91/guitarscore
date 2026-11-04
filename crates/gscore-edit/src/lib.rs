@@ -26,6 +26,7 @@ mod keymap;
 mod parse;
 mod selection;
 mod tab_editor;
+mod technique_text;
 #[cfg(any(test, feature = "test-support"))]
 pub mod testing;
 

@@ -177,6 +177,12 @@ pub(crate) struct Beat {
     pub legato: Option<LegatoInfo>,
     #[serde(rename = "FreeText", default)]
     pub free_text: Option<String>,
+    /// GuitarScore addition: a rolled chord's direction (`Up` or `Down`).
+    #[serde(rename = "Arpeggio", default)]
+    pub arpeggio: Option<String>,
+    /// GuitarScore addition: a dead slapped beat (an empty `<DeadSlapped />`).
+    #[serde(rename = "DeadSlapped", default)]
+    pub dead_slapped: Option<EnableTag>,
     #[serde(rename = "Properties", default)]
     pub properties: Option<BeatPropertiesWrapper>,
 }
@@ -260,6 +266,12 @@ pub(crate) struct Note {
     pub trill: Option<i32>,
     #[serde(rename = "Ornament", default)]
     pub ornament: Option<String>,
+    /// GuitarScore addition: the fingers (`P`, `I`, `M`, `A`, `C`, and `Open` for the left
+    /// hand).
+    #[serde(rename = "LeftFingering", default)]
+    pub left_fingering: Option<String>,
+    #[serde(rename = "RightFingering", default)]
+    pub right_fingering: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

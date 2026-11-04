@@ -147,8 +147,12 @@ pub(super) fn slide_symbol(
     for slide in note.slides() {
         any = true;
         match slide {
-            SlideKind::OutDownwards | SlideKind::IntoFromAbove => return Some(Symbol::SlideDown),
-            SlideKind::OutUpwards | SlideKind::IntoFromBelow => return Some(Symbol::SlideUp),
+            SlideKind::OutDownwards | SlideKind::IntoFromAbove | SlideKind::PickSlideDown => {
+                return Some(Symbol::SlideDown);
+            }
+            SlideKind::OutUpwards | SlideKind::IntoFromBelow | SlideKind::PickSlideUp => {
+                return Some(Symbol::SlideUp);
+            }
             SlideKind::ShiftSlideTo | SlideKind::LegatoSlideTo => {
                 if fallback.is_none() {
                     fallback = Some(if slide == SlideKind::ShiftSlideTo {

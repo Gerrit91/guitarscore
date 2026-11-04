@@ -46,10 +46,11 @@ mod tuning_tests;
 mod vibrato_tests;
 
 use beats::convert_beat;
-pub(crate) use beats::flip_note_strings;
+pub(crate) use beats::{convert_trills, flip_note_strings, tremolo_text};
 use helpers::*;
 pub(crate) use helpers::{CHORUS_PROPERTY, REVERB_PROPERTY, build_note_bend, build_whammy_effect};
 use notes::convert_note;
+pub(crate) use notes::finger_name;
 
 // ---------------------------------------------------------------------------
 // Main conversion
@@ -475,6 +476,7 @@ impl SongGpifOps for Song {
         // GuitarScore fix: GPIF numbers strings from the lowest; the legacy model's string 1
         // is the highest (as its tuning list is, see `extract_tuning`).
         flip_note_strings(&mut self.tracks);
+        convert_trills(&mut self.tracks, false);
         // GuitarScore: a grace beat becomes a grace note attached to its main note where
         // nothing is lost, as the editor works with attached grace notes. Writing turns
         // them back into grace beats (`Song::with_grace_beats`).
