@@ -224,9 +224,10 @@ fn the_notation_staff_shows_the_articulations() {
     assert_eq!(glyph_count(&layout, Glyph::Tremolo3), 1, "on the stem only");
     // The accents moved from the tab to the notation staff.
     assert!(!texts(&layout).iter().any(|t| t == ">" || t == "v"));
-    // The pick strokes stay in the beat lane above the tab; brush arrows on both staves.
+    // The pick strokes stay in the beat lane above the tab; Guitar Pro draws the brush
+    // arrows on the tab only, not on the notation staff above it.
     assert_eq!(glyph_count(&layout, Glyph::DownStroke), 1);
-    assert_eq!(arrowheads(&layout), 4);
+    assert_eq!(arrowheads(&layout), 2, "the brush arrows on the tab");
 }
 
 #[test]

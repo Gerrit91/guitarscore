@@ -270,10 +270,12 @@ pub(super) struct Stem {
 
 /// Draws one measure of notation on the staff whose top line is at `top`. Returns the
 /// highest point of each item (heads, stems and marks), in the order of `placed`, so the
-/// marks above the staff can clear high notes.
+/// marks above the staff can clear high notes. `show_brush` draws the brush arrow here;
+/// with a tab below it is drawn there instead (Guitar Pro draws it on the tab only).
 pub(crate) fn draw_measure(
     placed: &[BeamPlan<'_>],
     top: f32,
+    show_brush: bool,
     ctx: &Context<'_>,
     ops: &mut Vec<DrawOp>,
 ) -> Vec<f32> {
@@ -345,7 +347,9 @@ pub(crate) fn draw_measure(
                 if let Some(slot) = ceilings.get_mut(i) {
                     *slot = highest;
                 }
-                marks::draw_brush(chord, p.x, top, ctx, ops);
+                if show_brush {
+                    marks::draw_brush(chord, p.x, top, ctx, ops);
+                }
                 if let Some(stem) = stem {
                     ops.push(DrawOp::Line {
                         from: Point::new(stem.x, stem.from),

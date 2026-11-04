@@ -86,8 +86,9 @@ pub(crate) fn draw_beat_marks(
     }
 }
 
-/// Draws the brush arrow left of a column's fret numbers, over the strings they are on,
-/// pointing the way the stroke goes.
+/// Draws the brush arrow left of a column's fret numbers, over the strings they are on.
+/// Guitar Pro writes a brush down as an arrow pointing up (the hand moves down, the arrow
+/// points up), so the arrowhead is at the top for `Down`.
 pub(crate) fn draw_tab_brush<'f>(
     x: f32,
     frets: impl Iterator<Item = &'f Fret>,
@@ -116,7 +117,7 @@ pub(crate) fn draw_tab_brush<'f>(
         x - half - BRUSH_GAP,
         middle - half_length,
         middle + half_length,
-        direction == StrokeDirection::Down,
+        direction == StrokeDirection::Up,
         ops,
     );
 }

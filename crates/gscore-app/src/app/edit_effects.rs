@@ -309,12 +309,12 @@ const BEAT_ITEMS: &[FxItem] = &[
     ),
     item(
         ActionId::ToggleBrushDown,
-        glyph("\u{E635}", 15.0, 10.0),
+        glyph("\u{E634}", 15.0, 10.0),
         Fx::Brush(StrokeDirection::Down),
     ),
     item(
         ActionId::ToggleBrushUp,
-        glyph("\u{E634}", 15.0, 10.0),
+        glyph("\u{E635}", 15.0, 10.0),
         Fx::Brush(StrokeDirection::Up),
     ),
     item(

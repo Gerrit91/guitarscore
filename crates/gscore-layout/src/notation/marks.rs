@@ -153,8 +153,8 @@ fn head_width(chord: &Chord, head: &Head, ctx: &Context<'_>) -> f32 {
     ctx.fonts.music.advance(chord.head_glyph(head))
 }
 
-/// The brush arrow before a chord: a vertical line over its heads with the arrowhead
-/// pointing the way the stroke goes, as the palette's tile shows it.
+/// The brush arrow before a chord: a vertical line over its heads. Guitar Pro writes a
+/// brush down as an arrow pointing up, so the arrowhead is at the top for `Down`.
 pub(super) fn draw_brush(
     chord: &Chord,
     x: f32,
@@ -173,13 +173,7 @@ pub(super) fn draw_brush(
     let bottom = y_of(top, lowest.position) + BRUSH_OVERHANG;
     let high = y_of(top, highest.position) - BRUSH_OVERHANG;
     let high = high.min(bottom - BRUSH_MIN);
-    draw_arrow(
-        line_x,
-        high,
-        bottom,
-        direction == StrokeDirection::Down,
-        ops,
-    );
+    draw_arrow(line_x, high, bottom, direction == StrokeDirection::Up, ops);
 }
 
 /// A vertical arrow from `high` to `low` at `x`, its head at the bottom when `down`.

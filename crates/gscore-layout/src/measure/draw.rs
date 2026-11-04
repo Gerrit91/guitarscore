@@ -271,7 +271,8 @@ impl MeasureLayout {
                         ))
                     })
                     .unzip();
-                let highest = notation::draw_measure(&placed, notation_top, ctx, ops);
+                let highest =
+                    notation::draw_measure(&placed, notation_top, !tops.show_tab, ctx, ops);
                 for (index, y) in indices.into_iter().zip(highest) {
                     if let Some(slot) = ceilings.get_mut(index) {
                         *slot = slot.min(y);
