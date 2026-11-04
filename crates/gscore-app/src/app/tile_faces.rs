@@ -19,6 +19,8 @@ pub(crate) enum Face<'a> {
     },
     /// A short abbreviation in bold ("P.M.", "A.H.").
     Text(&'a str),
+    /// A short abbreviation whose tile opens a dialog.
+    TextMore(&'a str),
     /// A word in bold italic, as a score writes it ("tap", "let ring" on two lines).
     Word(&'a str),
     /// A tuplet bracket around its number in the music font's tuplet digits ("3",
@@ -31,6 +33,10 @@ pub(crate) enum Face<'a> {
     },
     /// A tie: an engraved arc under two noteheads.
     Tie,
+    /// A whole beat tied: two stacked noteheads on each side under one arc.
+    BeatTie,
+    /// Text above a beat: a "T" under a line.
+    BeatText,
     /// A slur over a short line (a beat-level legato run).
     Slur,
     /// A hammer-on or pull-off: an "H" under a slur.
@@ -115,7 +121,14 @@ pub(crate) fn music_glyph(painter: &Painter, at: Pos2, text: &str, size: f32, in
 }
 
 /// Paints bold text centered on `at`, slanted when `italic`; several lines stack.
-fn lettering(painter: &Painter, at: Pos2, text: &str, size: f32, italic: bool, ink: Color32) {
+pub(crate) fn lettering(
+    painter: &Painter,
+    at: Pos2,
+    text: &str,
+    size: f32,
+    italic: bool,
+    ink: Color32,
+) {
     let mut job = LayoutJob::default();
     job.append(
         text,
@@ -177,6 +190,10 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
             baseline,
         } => music_glyph(painter, at(0.0, baseline), text, size, ink),
         Face::Text(text) => lettering(painter, c, text, 10.5, false, ink),
+        Face::TextMore(text) => {
+            lettering(painter, c, text, 10.5, false, ink);
+            more_corner(painter, rect, ink);
+        }
         Face::Word(text) => {
             let size = if text.contains('\n') { 9.5 } else { 11.0 };
             lettering(painter, c, text, size, true, ink);
@@ -192,6 +209,20 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
             }
             let points = crescent(at(-8.0, 7.0), at(8.0, 7.0), 4.0, 1.6);
             fill_crescent(painter, &points, ink);
+        }
+        Face::BeatTie => {
+            // Two chords, each a pair of stacked heads, joined by one tie.
+            for dx in [-6.0, 7.0] {
+                for dy in [-3.0, 5.0] {
+                    music_glyph(painter, at(dx, dy), "\u{ECA5}", 16.0, ink);
+                }
+            }
+            let points = crescent(at(-7.0, 10.0), at(8.0, 10.0), 4.0, 1.4);
+            fill_crescent(painter, &points, ink);
+        }
+        Face::BeatText => {
+            painter.line_segment([at(-8.0, -9.0), at(8.0, -9.0)], Stroke::new(1.5, ink));
+            lettering(painter, at(0.0, 2.0), "T", 16.0, false, ink);
         }
         Face::Slur => {
             let points = crescent(at(-9.0, 5.0), at(9.0, 5.0), -10.0, 2.0);

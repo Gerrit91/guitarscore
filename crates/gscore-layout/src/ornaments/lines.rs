@@ -1,7 +1,7 @@
 //! Ornaments that connect notes or run along the staff: slurs, slides, legato runs, the
 //! whammy line, and the palm-mute / let-ring rows below the staff.
 
-use super::symbols::draw_horizontal_wiggle;
+use super::symbols::draw_slanted_wiggle;
 use super::{Fret, LINE_THICKNESS};
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
@@ -126,8 +126,9 @@ pub(crate) fn draw_pick_slide(
     if to_x <= from_x {
         return;
     }
-    let y = top + ctx.staff.line_y(origin.line);
-    draw_horizontal_wiggle(from_x, to_x, y, 0.16, 0.45, ops);
+    let from = Point::new(from_x, top + ctx.staff.line_y(origin.line));
+    let to = Point::new(to_x, top + ctx.staff.line_y(target.line));
+    draw_slanted_wiggle(from, to, 0.16, 0.45, ops);
 }
 
 /// Draws the slur of a tie from its origin to the hidden continuation.

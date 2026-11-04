@@ -9,7 +9,7 @@ use super::{Alter, Chord, Clef, DOT_GAP, MIDDLE, NotationItem};
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
 use crate::glyph::{Flag, Glyph};
-use crate::ornaments::{CIRCLE_RADIUS, draw_circled_symbol, draw_horizontal_wiggle};
+use crate::ornaments::{CIRCLE_RADIUS, draw_circled_symbol, draw_slanted_wiggle};
 use crate::staff::Staff;
 
 /// Normal stem length (one octave).
@@ -420,21 +420,30 @@ fn draw_pick_slides(placed: &[BeamPlan<'_>], top: f32, ctx: &Context<'_>, ops: &
         };
         let width = font.advance(chord.head_glyph(head));
         let start = p.x + width / 2.0 + 0.15;
-        let end = match placed.get(index.saturating_add(1)) {
+        let (end, target) = match placed.get(index.saturating_add(1)) {
             Some(next) => match next.item {
                 NotationItem::Chord(next_chord) => {
-                    let Some(next_head) = next_chord.heads.first() else {
+                    let next_head = next_chord
+                        .heads
+                        .iter()
+                        .find(|next_head| next_head.string == head.string)
+                        .or_else(|| next_chord.heads.first());
+                    let Some(next_head) = next_head else {
                         continue;
                     };
-                    next.x - font.advance(next_chord.head_glyph(next_head)) / 2.0 - 0.15
+                    (
+                        next.x - font.advance(next_chord.head_glyph(next_head)) / 2.0 - 0.15,
+                        y_of(top, next_head.position),
+                    )
                 }
-                NotationItem::Rest { .. } => next.x - 1.0,
+                NotationItem::Rest { .. } => (next.x - 1.0, y_of(top, head.position)),
             },
-            None => start + 2.0,
+            None => (start + 2.0, y_of(top, head.position)),
         };
         if end > start {
-            let y = y_of(top, head.position);
-            draw_horizontal_wiggle(start, end, y, 0.16, 0.45, ops);
+            // The scrape follows the pitch change, so it slants like the reference.
+            let from = Point::new(start, y_of(top, head.position));
+            draw_slanted_wiggle(from, Point::new(end, target), 0.16, 0.45, ops);
         }
     }
 }

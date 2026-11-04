@@ -341,6 +341,10 @@ impl TabEditor {
             | ActionId::TupletOther
             | ActionId::MakeRest
             | ActionId::ToggleTie
+            | ActionId::TieBeat
+            | ActionId::EditBeatText
+            | ActionId::EditLeftFinger
+            | ActionId::EditRightFinger
             | ActionId::ToggleDeadNote
             | ActionId::ToggleGhostNote
             | ActionId::ToggleHammer

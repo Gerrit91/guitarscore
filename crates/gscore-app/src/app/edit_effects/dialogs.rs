@@ -2,13 +2,13 @@
 //! picking's speed, chosen by clicking engraved signs.
 
 use egui::{Margin, Pos2, RichText, vec2};
-use gscore_model::{TremoloSpeed, Trill, TrillSpeed};
+use gscore_model::{Finger, Hand, TremoloSpeed, Trill, TrillSpeed};
 
 use super::super::harmonic_editor::{buttons, keys};
 use super::super::shape_editor::Outcome;
 use super::super::staff_widgets::{choice, stepper};
 use super::super::style;
-use super::super::tile_faces::music_glyph;
+use super::super::tile_faces::{lettering, music_glyph};
 
 /// Width of a dialog's content.
 const WIDTH: f32 = 460.0;
@@ -170,6 +170,106 @@ impl TrillEditor {
                 self.speed = speed;
             }
         }
+    }
+}
+
+/// The open fingering dialog.
+#[derive(Debug, Clone)]
+pub(super) struct FingerEditor {
+    pos: Option<Pos2>,
+    hand: Hand,
+    finger: Option<Finger>,
+}
+
+impl FingerEditor {
+    /// A dialog on `current`, or on the index finger.
+    pub(super) fn new(hand: Hand, current: Option<Finger>) -> Self {
+        FingerEditor {
+            pos: None,
+            hand,
+            finger: current.or(Some(Finger::Index)),
+        }
+    }
+
+    /// The finger as chosen; `None` removes the fingering.
+    pub(super) fn finger(&self) -> Option<Finger> {
+        self.finger
+    }
+
+    /// Shows the window.
+    pub(super) fn show(&mut self, ctx: &egui::Context) -> Outcome {
+        let title = match self.hand {
+            Hand::Left => "Left-hand fingering",
+            Hand::Right => "Right-hand fingering",
+        };
+        let size = vec2(WIDTH + 32.0, 360.0);
+        let pos = *self
+            .pos
+            .get_or_insert_with(|| style::centered_window_pos(ctx, size));
+        let mut outcome = Outcome::Open;
+        egui::Window::new(title)
+            .title_bar(false)
+            .collapsible(false)
+            .resizable(false)
+            .current_pos(pos)
+            .frame(style::window_frame(ctx))
+            .show(ctx, |ui| {
+                if style::window_title_bar(ui, title, &mut self.pos) {
+                    outcome = Outcome::Cancel;
+                }
+                egui::Frame::new()
+                    .inner_margin(Margin::symmetric(16, 12))
+                    .show(ui, |ui| {
+                        ui.set_width(WIDTH);
+                        ui.label(
+                            RichText::new(match self.hand {
+                                Hand::Left => {
+                                    "The fretting hand: 0 is the open string, t the thumb."
+                                }
+                                Hand::Right => {
+                                    "The picking hand: p i m a c, as classical guitar writes them."
+                                }
+                            })
+                            .weak(),
+                        );
+                        ui.add_space(4.0);
+                        for finger in Finger::ALL {
+                            let sign = finger.sign(self.hand);
+                            let name = finger_name(finger);
+                            if choice(
+                                ui,
+                                self.finger == Some(finger),
+                                name,
+                                "Which finger plays this note.",
+                                |painter, rect, ink| {
+                                    lettering(painter, rect.center(), sign, 16.0, false, ink);
+                                },
+                            )
+                            .clicked()
+                            {
+                                self.finger = Some(finger);
+                            }
+                        }
+                        ui.add_space(6.0);
+                        ui.separator();
+                        ui.add_space(4.0);
+                        buttons(ui, &mut outcome, "No fingering", None);
+                        keys(ui, &mut outcome);
+                    });
+            });
+        outcome
+    }
+}
+
+/// A finger's name for the dialog.
+fn finger_name(finger: Finger) -> &'static str {
+    match finger {
+        Finger::Open => "Open string",
+        Finger::Thumb => "Thumb",
+        Finger::Index => "Index",
+        Finger::Middle => "Middle",
+        Finger::Ring => "Ring",
+        Finger::Little => "Little",
     }
 }
 

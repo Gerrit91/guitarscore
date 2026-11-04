@@ -161,6 +161,8 @@ enum ChangeKind {
         previous: i16,
         previous_first: Option<i32>,
     },
+    /// A beat's text changed; `previous` is the text before.
+    BeatText { at: BeatPosition, previous: String },
     /// A beat was made a rest; its notes are kept to put them back.
     BeatRest {
         at: BeatPosition,
@@ -303,7 +305,9 @@ impl Change {
             ChangeKind::TrackStringPitch { previous_label, .. } => {
                 previous_label.as_ref().map_or(0, String::len)
             }
-            ChangeKind::SongText { previous, .. } => previous.len(),
+            ChangeKind::SongText { previous, .. } | ChangeKind::BeatText { previous, .. } => {
+                previous.len()
+            }
             ChangeKind::SongTempo { .. } => 0,
             ChangeKind::BeatRest { notes, .. } => notes.len().saturating_mul(size_of::<GpNote>()),
             ChangeKind::NoteTie { .. } | ChangeKind::NoteDead { .. } => 0,
@@ -669,6 +673,12 @@ impl Song {
                 }
                 Ok(())
             }),
+            ChangeKind::BeatText { at, previous } => {
+                self.edit_measure(at.track, at.measure, |measure| {
+                    beat_in(measure, *at)?.text = previous.clone();
+                    Ok(())
+                })
+            }
             ChangeKind::BeatRest {
                 at,
                 previous_status,

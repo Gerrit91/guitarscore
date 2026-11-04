@@ -25,8 +25,7 @@ pub(crate) use lines::{
 };
 pub(crate) use notes::draw_vibrato;
 pub(crate) use symbols::{
-    CIRCLE_RADIUS, draw_arrowhead, draw_circled_symbol, draw_horizontal_wiggle,
-    draw_vertical_wiggle,
+    CIRCLE_RADIUS, draw_arrowhead, draw_circled_symbol, draw_slanted_wiggle, draw_vertical_wiggle,
 };
 
 use gscore_model::{

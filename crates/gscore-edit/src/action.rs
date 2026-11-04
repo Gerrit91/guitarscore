@@ -94,6 +94,14 @@ pub enum ActionId {
     MakeRest,
     /// Palette: Tie.
     ToggleTie,
+    /// Palette: tie the whole beat to the previous one.
+    TieBeat,
+    /// Palette: text written above the beat (opens the beat text dialog).
+    EditBeatText,
+    /// Palette: left-hand fingering (opens the fingering dialog).
+    EditLeftFinger,
+    /// Palette: right-hand fingering (opens the fingering dialog).
+    EditRightFinger,
     /// Palette: Dead note.
     ToggleDeadNote,
     /// Palette: Ghost note.
@@ -222,6 +230,10 @@ impl ActionId {
                 | ActionId::TupletOther
                 | ActionId::MakeRest
                 | ActionId::ToggleTie
+                | ActionId::TieBeat
+                | ActionId::EditBeatText
+                | ActionId::EditLeftFinger
+                | ActionId::EditRightFinger
                 | ActionId::ToggleDeadNote
                 | ActionId::ToggleGhostNote
                 | ActionId::ToggleHammer
@@ -356,6 +368,18 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::TupletOther, "tuplet_other", "Tuplet…"),
     info(ActionId::MakeRest, "make_rest", "Rest"),
     info(ActionId::ToggleTie, "toggle_tie", "Tie"),
+    info(ActionId::TieBeat, "tie_beat", "Tie beat"),
+    info(ActionId::EditBeatText, "edit_beat_text", "Beat text…"),
+    info(
+        ActionId::EditLeftFinger,
+        "edit_left_finger",
+        "Left-hand fingering…",
+    ),
+    info(
+        ActionId::EditRightFinger,
+        "edit_right_finger",
+        "Right-hand fingering…",
+    ),
     info(ActionId::ToggleDeadNote, "toggle_dead_note", "Dead note"),
     info(ActionId::ToggleGhostNote, "toggle_ghost_note", "Ghost note"),
     info(
@@ -599,6 +623,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 93, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 97, "one entry per ActionId variant");
     }
 }

@@ -68,6 +68,67 @@ fn a_note_can_be_tied_and_untied() {
 }
 
 #[test]
+fn a_whole_beat_ties_every_note_of_a_chord() {
+    let mut song = from_gp(test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure(
+            (4, 4),
+            vec![vec![
+                beat(4, &[(1, 3), (2, 5)]),
+                beat(4, &[(1, 3), (2, 5), (3, 2)]),
+            ]],
+        )],
+    )]))
+    .unwrap();
+    let before = song.clone();
+    assert_eq!(song.beat_tie_state(at(1)), Some(false));
+    let change = song.set_beat_tie(at(1), true).unwrap();
+    assert_eq!(song.beat_tie_state(at(1)), Some(true));
+    // Strings 1 and 2 exist in the previous beat and continue; string 3 has nothing to
+    // continue from, so it stays a normal note.
+    for note in song.beat(at(1)).unwrap().notes() {
+        let expected = if note.string().unwrap().get() == 3 {
+            crate::NoteKind::Normal
+        } else {
+            crate::NoteKind::Tie
+        };
+        assert_eq!(
+            note.kind(),
+            expected,
+            "string {}",
+            note.string().unwrap().get()
+        );
+    }
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+    // With no matching note in the previous beat there is nothing to tie.
+    assert!(song.set_beat_tie(at(0), true).is_err());
+}
+
+#[test]
+fn a_beat_text_is_set_changed_and_removed() {
+    let mut song = from_gp(test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure((4, 4), vec![vec![beat(4, &[(1, 3)])]])],
+    )]))
+    .unwrap();
+    let before = song.clone();
+    let change = song.set_beat_text(at(0), "Fermata").unwrap();
+    assert_eq!(song.beat(at(0)).unwrap().text(), "Fermata");
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+    let change = song.set_beat_text(at(0), "Long text").unwrap();
+    let undo = song.set_beat_text(at(0), "").unwrap();
+    assert_eq!(song.beat(at(0)).unwrap().text(), "");
+    song.revert(&undo).unwrap();
+    assert_eq!(song.beat(at(0)).unwrap().text(), "Long text");
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+}
+
+#[test]
 fn the_measure_tempo_changes_and_undo_restores_it() {
     let mut song = from_gp(test_song(vec![track(
         "Guitar",

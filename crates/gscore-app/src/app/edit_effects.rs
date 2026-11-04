@@ -8,11 +8,12 @@ mod editors;
 use egui::vec2;
 use gscore_edit::{ActionId, Command};
 use gscore_model::{
-    AccentKind, BeatEffect, BeatView, BendKind, BendPoint, BendShape, Fade, Grace, Harmonic,
-    HarmonicKind, Legato, NoteEffect, NoteView, SlapKind, SlideKind, StrokeDirection, TremoloSpeed,
-    Trill, TrillSpeed, Vibrato, WhammyShape,
+    AccentKind, BeatEffect, BeatView, BendKind, BendPoint, BendShape, Fade, Finger, Grace, Hand,
+    Harmonic, HarmonicKind, Legato, NoteEffect, NoteView, SlapKind, SlideKind, StrokeDirection,
+    TremoloSpeed, Trill, TrillSpeed, Vibrato, WhammyShape,
 };
 
+use super::beat_text_editor::BeatTextEditor;
 use super::edit_effects::dialogs::{TremoloEditor, TrillEditor};
 use super::edit_palette::PaletteSnapshot;
 use super::grace_editor::GraceEditor;
@@ -34,6 +35,8 @@ pub(super) struct NoteState {
     tremolo_picking: Option<TremoloSpeed>,
     left_hand_tap: bool,
     string_number: bool,
+    finger_left: Option<Finger>,
+    finger_right: Option<Finger>,
     accent: Option<AccentKind>,
     vibrato: Option<Vibrato>,
     harmonic: Option<Harmonic>,
@@ -57,6 +60,8 @@ impl NoteState {
             tremolo_picking: note.tremolo_speed(),
             left_hand_tap: note.is_left_hand_tapped(),
             string_number: note.shows_string_number(),
+            finger_left: note.finger(Hand::Left),
+            finger_right: note.finger(Hand::Right),
             accent: note.accent(),
             vibrato: note.vibrato(),
             harmonic: note.harmonic(),
@@ -109,6 +114,9 @@ pub(super) struct EffectsState {
     grace: Option<GraceEditor>,
     trill: Option<TrillEditor>,
     tremolo: Option<TremoloEditor>,
+    beat_text: Option<BeatTextEditor>,
+    finger_left: Option<dialogs::FingerEditor>,
+    finger_right: Option<dialogs::FingerEditor>,
 }
 
 /// What an effect tile (or its key) does.
@@ -142,6 +150,8 @@ pub(super) enum Fx {
     Rasgueado,
     LeftHandTap,
     StringNumber,
+    FingerLeft,
+    FingerRight,
     Whammy,
     Legato,
     BeatVibrato(Vibrato),
@@ -169,6 +179,8 @@ impl Fx {
                 | Fx::Grace
                 | Fx::LeftHandTap
                 | Fx::StringNumber
+                | Fx::FingerLeft
+                | Fx::FingerRight
         )
     }
 }
@@ -271,6 +283,16 @@ const NOTE_ITEMS: &[FxItem] = &[
         ActionId::ToggleStringNumber,
         Face::CircledText("6"),
         Fx::StringNumber,
+    ),
+    item(
+        ActionId::EditLeftFinger,
+        Face::TextMore("L.H."),
+        Fx::FingerLeft,
+    ),
+    item(
+        ActionId::EditRightFinger,
+        Face::TextMore("R.H."),
+        Fx::FingerRight,
     ),
 ];
 
@@ -521,6 +543,8 @@ fn is_on(fx: Fx, note: Option<&NoteState>, beat: &BeatState) -> bool {
         Fx::Tremolo => note_on(|n| n.tremolo_picking.is_some()),
         Fx::LeftHandTap => note_on(|n| n.left_hand_tap),
         Fx::StringNumber => note_on(|n| n.string_number),
+        Fx::FingerLeft => note_on(|n| n.finger_left.is_some()),
+        Fx::FingerRight => note_on(|n| n.finger_right.is_some()),
         Fx::Bend => note_on(|n| n.bend.is_some()),
         Fx::Slide(kind) => note.is_some_and(|n| n.slides.contains(&kind)),
         Fx::Vibrato(kind) => note.is_some_and(|n| n.vibrato == Some(kind)),
@@ -735,6 +759,8 @@ impl EffectsState {
                                 | Fx::Grace
                                 | Fx::Trill
                                 | Fx::Tremolo
+                                | Fx::FingerLeft
+                                | Fx::FingerRight
                         );
                         if opens {
                             open = Some(item.fx);
@@ -778,6 +804,8 @@ impl EffectsState {
             Some(Fx::Grace) => self.open_grace(snapshot),
             Some(Fx::Trill) => self.open_trill(snapshot),
             Some(Fx::Tremolo) => self.open_tremolo(snapshot),
+            Some(Fx::FingerLeft) => self.open_finger(snapshot, Hand::Left),
+            Some(Fx::FingerRight) => self.open_finger(snapshot, Hand::Right),
             _ => {}
         }
     }

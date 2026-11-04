@@ -660,6 +660,23 @@ pub(crate) const SET_TIE: CommandInfo = CommandInfo {
     params: &[TRACK, MEASURE, VOICE, BEAT, STRING, TIE],
 };
 
+pub(crate) const SET_BEAT_TIE: CommandInfo = CommandInfo {
+    id: "set_beat_tie",
+    aliases: &[],
+    label: "Tie or untie a whole beat",
+    help: "Ties every note of the beat to the note on its string in the previous beat, so a \
+           chord continues as one; removes those ties again.",
+    params: &[TRACK, MEASURE, VOICE, BEAT, TIE],
+};
+
+pub(crate) const SET_BEAT_TEXT: CommandInfo = CommandInfo {
+    id: "set_beat_text",
+    aliases: &[],
+    label: "Set the text above a beat",
+    help: "Writes text above a beat (Guitar Pro's beat text); an empty text removes it.",
+    params: &[TRACK, MEASURE, VOICE, BEAT, TEXT],
+};
+
 pub(crate) const SET_DEAD_NOTE: CommandInfo = CommandInfo {
     id: "set_dead_note",
     aliases: &[],
@@ -828,6 +845,8 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_TEMPO,
     SET_BEAT_REST,
     SET_TIE,
+    SET_BEAT_TIE,
+    SET_BEAT_TEXT,
     SET_DEAD_NOTE,
     SET_DYNAMIC,
     SET_MEASURE_TEMPO,

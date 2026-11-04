@@ -8,6 +8,7 @@
 mod about;
 mod alert;
 mod bars;
+mod beat_text_editor;
 mod circle_of_fifths;
 mod edit_dynamics;
 mod edit_effects;

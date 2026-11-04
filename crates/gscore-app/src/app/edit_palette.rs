@@ -9,8 +9,8 @@ use super::shape_editor::Outcome;
 use super::tuplet_dialog::TupletDialog;
 use gscore_edit::{ActionId, Command, Cursor, Selection};
 use gscore_model::{
-    BeatIndex, BeatPosition, Feel, Fermata, MeasureIndex, NoteValue, Repeat, Song, SystemBreak,
-    VoiceIndex,
+    BeatIndex, BeatPosition, Feel, Fermata, Hand, MeasureIndex, NoteValue, Repeat, Song,
+    SystemBreak, VoiceIndex,
 };
 
 use super::GuitarScoreApp;
@@ -88,6 +88,11 @@ pub(super) struct PaletteSnapshot {
     /// The note on the cursor's string: whether it exists and whether it is a tie.
     pub(super) note_exists: bool,
     pub(super) note_tie: bool,
+    /// Whether every note of the cursor beat that continues the previous beat is tied;
+    /// `None` when the beat has no note to tie.
+    pub(super) beat_tie: Option<bool>,
+    /// The cursor beat's text, if it has one.
+    pub(super) beat_text: String,
     /// The cursor note's effects, and the cursor beat's.
     pub(super) note_state: Option<NoteState>,
     pub(super) beat_state: Option<BeatState>,
@@ -116,6 +121,11 @@ impl PaletteSnapshot {
         });
         let note_state = note.as_ref().map(NoteState::of);
         let beat_state = beat.as_ref().map(BeatState::of);
+        let beat_tie = song.beat_tie_state(cursor.position());
+        let beat_text = beat
+            .as_ref()
+            .map(|beat| beat.text().to_owned())
+            .unwrap_or_default();
         let mut note_targets = Vec::new();
         let mut target_states = Vec::new();
         let mut beat_states = Vec::new();
@@ -161,6 +171,8 @@ impl PaletteSnapshot {
             note_tie: note
                 .as_ref()
                 .is_some_and(|note| note.kind() == gscore_model::NoteKind::Tie),
+            beat_tie,
+            beat_text,
             note_state,
             beat_state,
             note_targets,
@@ -285,6 +297,14 @@ impl GuitarScoreApp {
             commands = rest_commands(state, &snapshot);
         } else if action == ActionId::ToggleTie {
             commands = tie_commands(&snapshot);
+        } else if action == ActionId::TieBeat {
+            commands = tie_beat_commands(&snapshot);
+        } else if action == ActionId::EditBeatText {
+            state.effects.open_beat_text(&snapshot);
+        } else if action == ActionId::EditLeftFinger {
+            state.effects.open_finger(&snapshot, Hand::Left);
+        } else if action == ActionId::EditRightFinger {
+            state.effects.open_finger(&snapshot, Hand::Right);
         } else if action == ActionId::ToggleBend {
             // Like a click on the bend or whammy tile: the editor opens.
             state.effects.open_bend(&snapshot);
@@ -612,6 +632,18 @@ fn rest_commands(state: &EditPaletteState, snapshot: &PaletteSnapshot) -> Vec<Co
     commands
 }
 
+/// The commands of the tie-beat tile: every note of the cursor beat is tied to the
+/// previous beat, or those ties are removed.
+fn tie_beat_commands(snapshot: &PaletteSnapshot) -> Vec<Command> {
+    let Some(all_tied) = snapshot.beat_tie else {
+        return Vec::new();
+    };
+    vec![Command::SetBeatTie {
+        at: snapshot.cursor.position(),
+        tie: !all_tied,
+    }]
+}
+
 /// The commands of the tie tile: the cursor's note is tied, or untied.
 fn tie_commands(snapshot: &PaletteSnapshot) -> Vec<Command> {
     match gscore_model::StringNumber::new(snapshot.cursor.string) {
@@ -690,6 +722,36 @@ fn beat_buttons(
         );
         if tie.clicked() {
             commands.extend(tie_commands(snapshot));
+        }
+        let tip = format!(
+            "Tie beat: tie every note of the beat to the previous beat{}",
+            hint(ActionId::TieBeat)
+        );
+        let tie_beat = tiles::tile(
+            ui,
+            Face::BeatTie,
+            snapshot.beat_tie == Some(true),
+            snapshot.beat_tie.is_some(),
+            "Tie beat",
+            &tip,
+        );
+        if tie_beat.clicked() {
+            commands.extend(tie_beat_commands(snapshot));
+        }
+        let tip = format!(
+            "Beat text: text written above the beat, like Guitar Pro's beat text{}",
+            hint(ActionId::EditBeatText)
+        );
+        let beat_text = tiles::tile(
+            ui,
+            Face::BeatText,
+            !snapshot.beat_text.is_empty(),
+            true,
+            "Beat text…",
+            &tip,
+        );
+        if beat_text.clicked() {
+            state.effects.open_beat_text(snapshot);
         }
     });
     ui.add_space(2.0);

@@ -2436,3 +2436,33 @@ lifeless):
   guideline and should be split in a later cleanup; the fade hairpins sit above the
   notation staff with the other beat effects (Guitar Pro prints them above the tab); the
   beat effects' row placement is otherwise unchanged from the previous entry.
+
+## 2026-11-04 — Tie beat, beat text, fingerings and the last ornament fixes
+
+- A dead slapped beat no longer draws a rest behind its large cross on the notation staff:
+  the rest suppression moved before the beat-kind match in `notation::beat_item`.
+- Fades moved from "Strokes and beat" to **Dynamics**: fade in, fade out and volume swell
+  are dynamics markings; the dynamics section now ends with a "Fades" row. Every tile that
+  opens a dialog (bend, whammy, harmonic, grace, trill, tremolo, fingering, beat text) now
+  shows the corner triangle, and the whole tile opens the dialog (the tiny corner alone was
+  too hard to hit).
+- New **Tie beat** tile: `set_beat_tie` in the model ties every note of a beat to the note
+  on its string in the previous beat (also across a barline), so a chord continues as one;
+  `Command::SetBeatTie`, `gscore-cli` support, undo and `panic_hunt` coverage. The tile is
+  highlighted when the whole beat is already tied.
+- New **Beat text** tile and dialog: Guitar Pro's beat text, separate from a section title.
+  `Song::set_beat_text` + `ChangeKind::BeatText`, `Command::SetBeatText`, the
+  `set_beat_text` CLI command, an undoable app dialog, and a text row already drawn above
+  the staff.
+- **Fingering** tiles and dialogs: one for the left hand (0-4, t) and one for the right
+  hand (p i m a c), opening a small dialog that picks the finger by clicking its engraved
+  sign; Remove clears it. Both apply to the selected notes through the existing
+  `NoteEffect::Finger`.
+- Pick slides now follow the pitch change between the two notes on the **notation** staff
+  (a wavy, slightly slanted scrape) instead of a horizontal line; the tab keeps its
+  string-line wiggle. New `ornaments::symbols::draw_slanted_wiggle`.
+- Fixed a `panic_hunt` hang: `previous_beat` searched every index down from a hostile
+  `beat=18446744073709551615`, now it stops at the voice's beat count.
+- Tests: model tests for whole-beat ties and beat text (with undo), command round-trip
+  cases, a palette test for the tie-beat, beat-text and left-hand-fingering tiles, and the
+  regenerated layout/app snapshots. `cargo xtask ci` is green.

@@ -10,12 +10,13 @@ use gscore_model::{
 use crate::info::{
     BATCH, CLEAR_NOTE, CLEAR_SECTION, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_TRACK,
     DUPLICATE_TRACK, INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO, RENAME_TRACK,
-    SET_BEAT_EFFECT, SET_BEAT_REST, SET_DEAD_NOTE, SET_DOUBLE_BAR, SET_DURATION, SET_DYNAMIC,
-    SET_FEEL, SET_FERMATA, SET_FRET, SET_KEY_SIGNATURE, SET_MASTER_PAN, SET_MASTER_VOLUME,
-    SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_REPEAT, SET_SECTION, SET_SONG_TEXT, SET_TEMPO, SET_TIE,
-    SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_CHORUS, SET_TRACK_COLOR, SET_TRACK_DRUMS,
-    SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_REVERB, SET_TRACK_SOLO,
-    SET_TRACK_STAVES, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_VOLUME, UNDO,
+    SET_BEAT_EFFECT, SET_BEAT_REST, SET_BEAT_TEXT, SET_BEAT_TIE, SET_DEAD_NOTE, SET_DOUBLE_BAR,
+    SET_DURATION, SET_DYNAMIC, SET_FEEL, SET_FERMATA, SET_FRET, SET_KEY_SIGNATURE, SET_MASTER_PAN,
+    SET_MASTER_VOLUME, SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_REPEAT, SET_SECTION, SET_SONG_TEXT,
+    SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_CHORUS, SET_TRACK_COLOR,
+    SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_REVERB,
+    SET_TRACK_SOLO, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_VOLUME,
+    UNDO,
 };
 use crate::info::{SET_BARS_PER_SYSTEM, SET_PAGE_SETUP, SET_SYSTEM_BREAK};
 
@@ -263,6 +264,21 @@ pub enum Command {
         /// Whether it is tied.
         tie: bool,
     },
+    /// Tie every note of a beat to the note on its string in the previous beat, or remove
+    /// those ties.
+    SetBeatTie {
+        /// The beat.
+        at: BeatPosition,
+        /// Whether the notes are tied.
+        tie: bool,
+    },
+    /// Set the text written above a beat; an empty text removes it.
+    SetBeatText {
+        /// The beat.
+        at: BeatPosition,
+        /// The new text.
+        text: String,
+    },
     /// Set the tempo a measure starts at.
     SetMeasureTempo {
         /// The measure.
@@ -488,6 +504,10 @@ impl Command {
             Command::SetTie { at: p, string, tie } => {
                 format!("{id} {} string={} tie={tie}", at(p), string.get())
             }
+            Command::SetBeatTie { at: p, tie } => format!("{id} {} tie={tie}", at(p)),
+            Command::SetBeatText { at: p, text } => {
+                format!("{id} {} text={}", at(p), crate::parse::encode_text(text))
+            }
             Command::SetDeadNote {
                 at: p,
                 string,
@@ -644,6 +664,8 @@ impl Command {
             Command::SetTempo { .. } => &SET_TEMPO,
             Command::SetBeatRest { .. } => &SET_BEAT_REST,
             Command::SetTie { .. } => &SET_TIE,
+            Command::SetBeatTie { .. } => &SET_BEAT_TIE,
+            Command::SetBeatText { .. } => &SET_BEAT_TEXT,
             Command::SetDeadNote { .. } => &SET_DEAD_NOTE,
             Command::SetDynamic { .. } => &SET_DYNAMIC,
             Command::SetMeasureTempo { .. } => &SET_MEASURE_TEMPO,
@@ -781,6 +803,7 @@ impl Command {
             | Command::SetNoteEffect { .. }
             | Command::SetBeatEffect { .. }
             | Command::SetDeadNote { .. }
+            | Command::SetBeatTie { .. }
             | Command::SetDynamic { .. }
             | Command::SetRepeat { .. }
             | Command::SetFeel { .. }
@@ -968,6 +991,11 @@ impl Command {
             Command::SetTie { at, string, .. } | Command::SetDeadNote { at, string, .. } => song
                 .beat(*at)
                 .is_some_and(|beat| beat.notes().any(|note| note.string().ok() == Some(*string))),
+            Command::SetBeatTie { at, .. } => song.beat_tie_state(*at).is_some(),
+            Command::SetBeatText { at, text } => {
+                song.beat(*at).is_some()
+                    && text.chars().count() <= gscore_model::MAX_BEAT_TEXT_CHARS
+            }
             Command::SetMeasureTempo { measure, tempo } => {
                 measure.get() < song.measure_count() && (1..=MAX_TEMPO).contains(tempo)
             }
@@ -1072,6 +1100,8 @@ impl Command {
             Command::SetTempo { tempo } => song.set_tempo(*tempo),
             Command::SetBeatRest { at } => song.set_beat_rest(*at),
             Command::SetTie { at, string, tie } => song.set_note_tie(*at, *string, *tie),
+            Command::SetBeatTie { at, tie } => song.set_beat_tie(*at, *tie),
+            Command::SetBeatText { at, text } => song.set_beat_text(*at, text),
             Command::SetDeadNote { at, string, dead } => song.set_note_dead(*at, *string, *dead),
             Command::SetDynamic { at, dynamic } => song.set_dynamic(*at, *dynamic),
             Command::SetMeasureTempo { measure, tempo } => song.set_measure_tempo(*measure, *tempo),

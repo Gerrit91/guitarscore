@@ -55,6 +55,48 @@ pub(crate) fn draw_horizontal_wiggle(
     }
 }
 
+/// Draws a wiggle from `start` to `end`, following the line between them but rising and
+/// falling around it: a pick slide slants with the pitch while it stays a scrape.
+pub(crate) fn draw_slanted_wiggle(
+    start: Point,
+    end: Point,
+    amplitude: f32,
+    step_length: f32,
+    ops: &mut Vec<DrawOp>,
+) {
+    let width = end.x - start.x;
+    if width <= 0.0 || step_length <= 0.0 {
+        return;
+    }
+    let pairs = (width / step_length / 2.0)
+        .round()
+        .clamp(1.0, MAX_WIGGLES / 2.0);
+    let segments = (pairs * 2.0) as u16;
+    let step = width / f32::from(segments);
+    let at = |x: f32| {
+        let share = (x - start.x) / width;
+        start.y + (end.y - start.y) * share
+    };
+    for segment in 0..segments {
+        let from_x = start.x + step * f32::from(segment);
+        let to_x = from_x + step;
+        let middle = at(from_x + step / 2.0);
+        let peak = if segment % 2 == 0 {
+            middle - amplitude
+        } else {
+            middle + amplitude
+        };
+        ops.push(DrawOp::Curve {
+            from: Point::new(from_x, at(from_x)),
+            to: Point::new(to_x, at(to_x)),
+            control1: Point::new(from_x + step * 0.35, peak),
+            control2: Point::new(to_x - step * 0.35, peak),
+            thickness: LINE_THICKNESS,
+            color: ColorToken::Notation,
+        });
+    }
+}
+
 /// Draws a vertical wiggle from `high` to `low` at `x`, as the arpeggio arrow uses it.
 pub(crate) fn draw_vertical_wiggle(
     x: f32,

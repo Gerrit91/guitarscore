@@ -18,8 +18,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use gscore_app::{GuitarScoreApp, MeasureSelection};
 use gscore_model::{
-    BeatIndex, BeatPosition, Fade, MeasureIndex, NoteView, StringNumber, StrokeDirection,
-    TrackIndex, VoiceIndex,
+    BeatIndex, BeatPosition, Fade, Finger, Hand, MeasureIndex, NoteView, StringNumber,
+    StrokeDirection, TrackIndex, VoiceIndex,
 };
 
 fn testdata(relative: &str) -> PathBuf {
@@ -377,6 +377,64 @@ fn the_advanced_effect_tiles_edit_the_note_and_beat() {
     click(&mut harness, "Tremolo picking");
     click(&mut harness, "OK");
     assert!(note_flag(&harness, |note| note.tremolo_speed().is_some()));
+}
+
+#[test]
+fn the_tie_beat_text_and_fingering_tiles_work() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    press(&mut harness, Key::ArrowRight);
+    type_char(&mut harness, "5", Modifiers::NONE);
+    harness.run();
+
+    let note_kind = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let cursor = document.editor().cursor();
+        let beat = document.song().beat(cursor.position()).unwrap();
+        beat.notes()
+            .find(|note| note.string().unwrap().get() == cursor.string)
+            .map(|note| note.kind())
+            .unwrap()
+    };
+    harness.get_by_label("Tie beat").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Tie beat").click_accesskit();
+    harness.run();
+    assert_eq!(note_kind(&harness), gscore_model::NoteKind::Tie);
+
+    // The fingering tile opens a dialog; choosing a finger and OK sets it.
+    let finger = |harness: &Harness<'static, GuitarScoreApp>, hand: Hand| {
+        let document = harness.state().document().unwrap();
+        let cursor = document.editor().cursor();
+        let beat = document.song().beat(cursor.position()).unwrap();
+        beat.notes()
+            .find(|note| note.string().unwrap().get() == cursor.string)
+            .and_then(|note| note.finger(hand))
+    };
+    harness.get_by_label("Left-hand fingering…").scroll_to_me();
+    harness.run();
+    harness
+        .get_by_label("Left-hand fingering…")
+        .click_accesskit();
+    harness.run();
+    harness.get_by_label("Little").click_accesskit();
+    harness.run();
+    harness.get_by_label("OK").click_accesskit();
+    harness.run();
+    assert_eq!(finger(&harness, Hand::Left), Some(Finger::Little));
+
+    // The beat text tile opens its dialog; Cancel leaves the beat unchanged.
+    harness.get_by_label("Beat text…").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Beat text…").click_accesskit();
+    harness.run();
+    harness.get_by_label("Beat text");
+    harness.get_by_label("Cancel").click_accesskit();
+    harness.run();
+    assert!(
+        harness.query_by_label("Beat text").is_none(),
+        "the dialog closed"
+    );
 }
 
 #[test]
