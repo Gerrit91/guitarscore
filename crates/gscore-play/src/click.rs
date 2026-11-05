@@ -12,9 +12,11 @@ use crate::timeline::tempo_at;
 /// The `track` field of a click event: clicks belong to no track (SMF export leaves them
 /// out of the track chunks).
 pub const CLICK_TRACK: usize = usize::MAX;
-/// General MIDI keys: the high wood block on the first beat, the low one elsewhere.
-const ACCENT_KEY: u8 = 76;
-const CLICK_KEY: u8 = 77;
+/// General MIDI keys: Metronome Bell on the first beat, Metronome Click elsewhere. The
+/// built-in synthesizer plays its own click for them (whatever the SoundFont has there);
+/// an external synthesizer plays its metronome sounds.
+const ACCENT_KEY: u8 = 34;
+const CLICK_KEY: u8 = 33;
 /// How hard the clicks are played.
 const ACCENT_VELOCITY: u8 = 110;
 const CLICK_VELOCITY: u8 = 80;

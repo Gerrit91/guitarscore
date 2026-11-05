@@ -3049,3 +3049,12 @@ needed for a much larger font); owner listening check.
   and the cursor caught up). An interrupted count-in starts again from its first click at
   the cursor's new place instead of finishing the old bar, and a click on the score or the
   grid while playing counts in again there when the count-in is on.
+- **Tuner tone**: low notes get overtones (up to about 2.4 kHz, at most twelve partials
+  falling off as 1/k^1.3) at the loudness of the old sine, so a low E or a bass's B can be
+  heard and tuned to; high notes stay nearly pure.
+- **Metronome sound**: the clicks are General MIDI's Metronome Click and Bell (keys 33 and
+  34) instead of the wood blocks, and the built-in synthesizer plays a click of its own for
+  them (two damped partials like a wood block, the accent higher and longer), whatever the
+  SoundFont has there. The wood blocks were average in FluidR3 and nearly silent in the
+  bundled GeneralUser GS; the new click is well above the guitars. MIDI output plays the
+  external synthesizer's own metronome sounds.

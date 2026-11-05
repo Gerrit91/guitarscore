@@ -1,4 +1,6 @@
-//! A tuning tone: a sine wave at a chosen pitch on the default audio output.
+//! A tuning tone at a chosen pitch on the default audio output: the fundamental with
+//! overtones for low notes (a bare low sine is barely audible, and the ear finds a low
+//! string's pitch by its overtones), a nearly pure tone for high ones.
 //!
 //! The device is opened on a thread of its own, so the UI never waits for it. The audio
 //! callback reads two atomics (the frequency and whether it should sound) and renders a
@@ -18,8 +20,17 @@ use gscore_play::PlayError;
 
 /// How long the fade in and out lasts, in seconds.
 const FADE: f32 = 0.012;
-/// How loud the tone is (a sine at 0.25 of full scale is comfortable and never clips).
+/// How loud the tone is: as loud as a sine at 0.25 of full scale, whatever its overtones
+/// (comfortable, and it never clips).
 const LEVEL: f32 = 0.25;
+/// Overtones go up to about this pitch (hertz): a low E gets many, an A4 a few, the top
+/// strings none.
+const OVERTONE_CEILING: f32 = 2_400.0;
+/// The most partials (the fundamental and its overtones) a tone has.
+const MAX_PARTIALS: usize = 12;
+/// How fast the overtones fall off: partial `k` has `1 / k^ROLL_OFF` of the fundamental's
+/// amplitude (between a sawtooth's bright 1 and a softer string-like tone).
+const ROLL_OFF: f32 = 1.3;
 /// How often the worker checks whether it should end.
 const POLL: Duration = Duration::from_millis(200);
 
@@ -47,7 +58,30 @@ fn audible(frequency: f32) -> bool {
     frequency.is_finite() && (20.0..=20_000.0).contains(&frequency)
 }
 
-/// Plays one sine tone at a time (the tuner).
+/// How many partials a tone at `frequency` has: the fundamental and the overtones below
+/// [`OVERTONE_CEILING`].
+fn partials(frequency: f32) -> usize {
+    if !(frequency.is_finite() && frequency > 0.0) {
+        return 1;
+    }
+    ((OVERTONE_CEILING / frequency) as usize).clamp(1, MAX_PARTIALS)
+}
+
+/// The tone at `phase` (0 to 1 through one period) with `count` partials, scaled to the
+/// loudness (RMS) of a sine of amplitude 1.
+fn tone(phase: f32, count: usize) -> f32 {
+    let mut sum = 0.0;
+    let mut energy = 0.0;
+    for k in 1..=count.max(1) {
+        let partial = k as f32;
+        let amplitude = partial.powf(-ROLL_OFF);
+        sum += amplitude * (phase * partial * std::f32::consts::TAU).sin();
+        energy += amplitude * amplitude;
+    }
+    sum / energy.sqrt()
+}
+
+/// Plays one tuning tone at a time (the tuner).
 #[derive(Debug)]
 pub struct TunerPlayer {
     shared: Arc<Shared>,
@@ -244,13 +278,14 @@ where
     };
     let step = 1.0 / (FADE * parts.sample_rate.max(1.0));
     let increment = frequency / parts.sample_rate.max(1.0);
+    let count = partials(frequency);
     for frame in data.chunks_mut(parts.channels.max(1)) {
         if parts.gain < target {
             parts.gain = (parts.gain + step).min(target);
         } else {
             parts.gain = (parts.gain - step).max(target);
         }
-        let sample = (parts.phase * std::f32::consts::TAU).sin() * parts.gain * LEVEL;
+        let sample = tone(parts.phase, count) * parts.gain * LEVEL;
         for slot in frame.iter_mut() {
             *slot = T::from_sample(sample);
         }
@@ -261,6 +296,30 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn low_notes_get_overtones_and_high_ones_stay_pure() {
+        // Low E on a guitar, a bass's B, A4 and a high E.
+        assert!(partials(82.41) >= 10);
+        assert_eq!(partials(30.87), MAX_PARTIALS);
+        assert!((2..=6).contains(&partials(440.0)));
+        assert_eq!(partials(1_318.5), 1);
+        // One partial is the plain sine.
+        assert!((tone(0.25, 1) - 1.0).abs() < 1e-6);
+        // However many overtones, the tone is as loud as the sine and stays in range.
+        for count in [1, 4, MAX_PARTIALS] {
+            let samples: Vec<f32> = (0..4_000)
+                .map(|i| tone(i as f32 / 4_000.0, count))
+                .collect();
+            let rms = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
+            assert!(
+                (rms - std::f32::consts::FRAC_1_SQRT_2).abs() < 0.01,
+                "{count}: {rms}"
+            );
+            let peak = samples.iter().fold(0.0_f32, |a, b| a.max(b.abs()));
+            assert!(peak * LEVEL < 1.0, "{count}: {peak}");
+        }
+    }
 
     #[test]
     fn only_audible_frequencies_are_accepted() {
