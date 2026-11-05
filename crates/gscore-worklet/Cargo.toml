@@ -1,0 +1,16 @@
+[package]
+name = "gscore-worklet"
+version = "0.1.0"
+edition = "2024"
+description = "The browser's AudioWorklet synthesizer: gscore-audio's engine as a wasm module"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gscore-audio = { path = "../gscore-audio" }
+gscore-play = { path = "../gscore-play" }
+wasm-bindgen = "0.2.130"
+
+[lints]
+workspace = true

@@ -10,5 +10,9 @@ gscore-edit = { path = "../gscore-edit" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 
+# Settings and the recovery journal live in the browser's storage instead of files.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["Storage", "Window"] }
+
 [lints]
 workspace = true

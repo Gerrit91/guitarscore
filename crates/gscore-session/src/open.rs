@@ -76,6 +76,24 @@ pub fn open_with_bytes(path: &Path) -> Result<(Imported, Vec<u8>), OpenError> {
     open_with_progress(path, |_, _| {}, || false)
 }
 
+/// Imports bytes that were read elsewhere (a browser file picker, a drop): the same size
+/// limit and import as [`open`], with `name` only used in messages.
+pub fn open_bytes(name: &Path, bytes: Vec<u8>) -> Result<(Imported, Vec<u8>), OpenError> {
+    let limit = u64::try_from(MAX_INPUT_BYTES).unwrap_or(u64::MAX);
+    let size = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    if size > limit {
+        return Err(OpenError::TooLarge {
+            path: name.to_path_buf(),
+            size,
+        });
+    }
+    let imported = import_guitar_pro_from_bytes(&bytes).map_err(|error| OpenError::Import {
+        path: name.to_path_buf(),
+        error,
+    })?;
+    Ok((imported, bytes))
+}
+
 /// Bytes read at a time while reporting progress.
 const READ_CHUNK: usize = 64 * 1024;
 

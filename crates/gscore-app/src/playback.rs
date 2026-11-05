@@ -4,8 +4,13 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use crate::Instant;
+
+#[cfg(target_arch = "wasm32")]
+use gscore_audio::WebPlayer;
+#[cfg(not(target_arch = "wasm32"))]
 use gscore_audio::{MidiOutPlayer, SynthPlayer, midi_output_ports};
 use gscore_model::{
     BeatIndex, BeatPosition, MeasureIndex, NoteKind, Song, StringNumber, TrackIndex, VoiceIndex,
@@ -48,29 +53,46 @@ impl Default for Output {
 /// The connected player.
 #[derive(Debug)]
 enum Active {
+    #[cfg(not(target_arch = "wasm32"))]
     Midi(MidiOutPlayer),
+    #[cfg(not(target_arch = "wasm32"))]
     Synth(SynthPlayer),
+    /// The browser's AudioWorklet synthesizer.
+    #[cfg(target_arch = "wasm32")]
+    Web(WebPlayer),
 }
 
 impl Active {
     fn player(&self) -> &dyn Player {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Active::Midi(p) => p,
+            #[cfg(not(target_arch = "wasm32"))]
             Active::Synth(p) => p,
+            #[cfg(target_arch = "wasm32")]
+            Active::Web(p) => p,
         }
     }
 
     fn player_mut(&mut self) -> &mut dyn Player {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Active::Midi(p) => p,
+            #[cfg(not(target_arch = "wasm32"))]
             Active::Synth(p) => p,
+            #[cfg(target_arch = "wasm32")]
+            Active::Web(p) => p,
         }
     }
 
     fn error(&self) -> Option<String> {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Active::Midi(p) => p.error(),
+            #[cfg(not(target_arch = "wasm32"))]
             Active::Synth(p) => p.error(),
+            #[cfg(target_arch = "wasm32")]
+            Active::Web(p) => p.error(),
         }
     }
 }
@@ -120,7 +142,15 @@ pub struct Playback {
 impl Playback {
     /// Lists the MIDI output ports again.
     pub fn refresh_ports(&mut self) -> Result<(), String> {
-        self.ports = midi_output_ports().map_err(|e| e.to_string())?;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.ports = midi_output_ports().map_err(|e| e.to_string())?;
+        }
+        // A browser has no MIDI port list; the worklet is the only output.
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.ports.clear();
+        }
         Ok(())
     }
 
@@ -145,6 +175,7 @@ impl Playback {
     /// The MIDI port the player is connected to, if it is.
     pub fn connected_port(&self) -> Option<&str> {
         match &self.player {
+            #[cfg(not(target_arch = "wasm32"))]
             Some(Active::Midi(p)) => Some(p.port()),
             _ => None,
         }
@@ -218,6 +249,7 @@ impl Playback {
     /// SoundFont in the background).
     fn connect(&mut self) -> Result<(), String> {
         if self.player.is_none() {
+            #[cfg(not(target_arch = "wasm32"))]
             let active = match &self.output {
                 Output::Synth(path) => {
                     Active::Synth(SynthPlayer::start(path).map_err(|e| e.to_string())?)
@@ -225,6 +257,13 @@ impl Playback {
                 Output::Midi(port) => Active::Midi(
                     MidiOutPlayer::connect(port.as_deref()).map_err(|e| e.to_string())?,
                 ),
+            };
+            // A browser always plays through the AudioWorklet; the chosen output only
+            // names the SoundFont to use once the worklet is started.
+            #[cfg(target_arch = "wasm32")]
+            let active = {
+                let _ = &self.output;
+                Active::Web(WebPlayer::start().map_err(|e| e.to_string())?)
             };
             self.player = Some(active);
             self.sequence = None;
@@ -411,7 +450,13 @@ impl Playback {
 
     /// Whether the built-in synthesizer is still loading its SoundFont.
     pub fn is_loading(&self) -> bool {
-        matches!(&self.player, Some(Active::Synth(p)) if p.is_loading())
+        match &self.player {
+            #[cfg(not(target_arch = "wasm32"))]
+            Some(Active::Synth(p)) => p.is_loading(),
+            #[cfg(target_arch = "wasm32")]
+            Some(Active::Web(p)) => p.is_loading(),
+            _ => false,
+        }
     }
 
     /// Stops waiting for a SoundFont that is loading: the player is dropped and the next
@@ -499,7 +544,11 @@ impl Playback {
         }
         // A synthesizer that failed (SoundFont, device) is started afresh: the problem
         // may have been fixed meanwhile, and it is reported again if not.
-        if matches!(&self.player, Some(active @ Active::Synth(_)) if active.error().is_some()) {
+        if self
+            .player
+            .as_ref()
+            .is_some_and(|active| active.error().is_some())
+        {
             self.player = None;
             self.reported = None;
         }

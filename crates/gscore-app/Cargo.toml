@@ -3,9 +3,22 @@ name = "gscore-app"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+# `rlib` for the desktop binary, tests and examples; `cdylib` for the wasm module a
+# browser loads.
+crate-type = ["rlib", "cdylib"]
+
 [[bin]]
 name = "guitarscore"
 path = "src/main.rs"
+
+[features]
+# Renderer for the desktop build (the same renderer the snapshot tests use).
+default = ["wgpu"]
+wgpu = ["eframe/wgpu"]
+# Browser build (`cargo xtask web`): WebGL2 through egui_glow, so it runs wherever a
+# browser has WebGL (without waiting for WebGPU). Build with `--no-default-features`.
+web = ["eframe/glow"]
 
 [dependencies]
 gscore-version = { path = "../gscore-version" }
@@ -15,13 +28,54 @@ gscore-layout = { path = "../gscore-layout" }
 gscore-session = { path = "../gscore-session" }
 gscore-play = { path = "../gscore-play" }
 gscore-audio = { path = "../gscore-audio" }
-# GUI: egui with the wgpu renderer (the same renderer the snapshot tests use). Default
-# features off; window backends for Linux (Wayland, X11) and accessibility are named.
-eframe = { version = "0.37", default-features = false, features = ["wgpu", "accesskit", "wayland", "x11", "default_fonts"] }
+# GUI. Default features off; the window renderer is a feature of this crate (wgpu for the
+# desktop, glow/WebGL for the browser). Window backends for Linux (Wayland, X11) and
+# accessibility are named.
+eframe = { version = "0.37", default-features = false, features = ["accesskit", "wayland", "x11", "default_fonts"] }
 egui = "0.37"
 serde = { version = "1.0.228", features = ["derive"] }
+# `Instant` that also works in a browser (`performance.now()`); on native it is the
+# standard library's.
+web-time = "1.1"
+
 # Native file dialogs (XDG desktop portal on Linux, no GTK).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.17"
+
+# Browser APIs: the wasm entry point, dialogs, downloads and persistent storage.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+rfd = { version = "0.17", default-features = false, features = ["file-handle-inner"] }
+wasm-bindgen = "0.2.130"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "AudioContext",
+    "AudioContextOptions",
+    "AudioDestinationNode",
+    "AudioNode",
+    "AudioWorklet",
+    "AudioWorkletNode",
+    "AudioWorkletNodeOptions",
+    "BaseAudioContext",
+    "BeforeUnloadEvent",
+    "Blob",
+    "BlobPropertyBag",
+    "console",
+    "Document",
+    "Element",
+    "Event",
+    "EventTarget",
+    "File",
+    "HtmlAnchorElement",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "MessageEvent",
+    "MessagePort",
+    "Response",
+    "Storage",
+    "Url",
+    "Window",
+] }
 
 [dev-dependencies]
 # A command that panics on demand, for the panic-injection test.

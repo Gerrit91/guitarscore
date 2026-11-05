@@ -1,9 +1,11 @@
 //! Project tasks for GuitarScore, run as `cargo xtask <task>` (alias in `.cargo/config.toml`).
 
+mod cdp;
 mod cmd;
 mod layers;
 mod source_scan;
 mod wasm;
+mod web;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -18,6 +20,11 @@ Tasks:
   bench [FILE...]       Time opening, layout and editing in a release build and check the
                         performance budgets. Files: the arguments, else GSCORE_BENCH_FILES
                         (separated by ':'), else the files in testdata/basic
+  web [--out DIR] [--debug] [--no-wasm-opt] [--smoke]
+                        Build the browser app (WebAssembly) and assemble the static site
+                        (index.html, guitarscore.js, guitarscore_bg.wasm, assets/,
+                        manifest.json, sw.js) in dist/web; --smoke checks it in headless
+                        Chromium and saves a screenshot
   corpus                Run the opt-in corpus tests (not implemented yet)";
 
 /// Error type of every task: a message for the person running it.
@@ -44,6 +51,7 @@ fn run(args: &[String]) -> TaskResult {
         "layers" => layers::run(&root, parse_skip_wasm(rest)?),
         "ci" => ci(&root, parse_skip_wasm(rest)?),
         "bench" => bench(&root, rest),
+        "web" => web::run(&root, rest),
         "corpus" => Err("`corpus` is not implemented yet (planned for M2)".to_owned()),
         "help" | "--help" | "-h" => {
             println!("{USAGE}");

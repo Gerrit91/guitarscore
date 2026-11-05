@@ -17,3 +17,6 @@ Thumbs.db
 corpus/
 
 opencode.jsonc
+
+# Build artifacts
+dist/

@@ -1,0 +1,26 @@
+{
+  "name": "GuitarScore",
+  "short_name": "GuitarScore",
+  "description": "A fast keyboard-first guitar tablature editor.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#181a1f",
+  "theme_color": "#181a1f",
+  "icons": [
+    {
+      "src": "assets/icon.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "application/x-guitar-pro": [".gp", ".gpx", ".gp5", ".gp4", ".gp3"]
+      }
+    }
+  ]
+}

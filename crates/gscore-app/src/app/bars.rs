@@ -91,9 +91,12 @@ impl GuitarScoreApp {
                     self.open_settings_window();
                     ui.close();
                 }
-                ui.separator();
-                if ui.button("Quit").clicked() {
-                    ui.send_viewport_cmd(egui::ViewportCommand::Close);
+                // A browser tab is closed by the browser, not from the page.
+                if cfg!(not(target_arch = "wasm32")) {
+                    ui.separator();
+                    if ui.button("Quit").clicked() {
+                        ui.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
                 }
             });
             ui.menu_button("Edit", |ui| {

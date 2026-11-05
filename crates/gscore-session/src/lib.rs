@@ -8,6 +8,8 @@ mod crash_report;
 mod open;
 mod recovery;
 mod save;
+#[cfg(target_arch = "wasm32")]
+mod web;
 
 pub use config::{
     KEYMAP_FILE, LoadedJson, LoadedKeymap, SETTINGS_FILE, default_config_dir,
@@ -15,9 +17,11 @@ pub use config::{
 };
 pub use crash_report::{default_crash_dir, install_panic_hook};
 pub use gscore_io::FileFormat;
-pub use open::{OpenError, open, open_with_bytes, open_with_progress};
+pub use open::{OpenError, open, open_bytes, open_with_bytes, open_with_progress};
 pub use recovery::{
     FoundSession, Journal, Recovered, RecoveryOptions, SNAPSHOT_EVERY, SNAPSHOT_INTERVAL,
     default_recovery_dir, discard, find_sessions, recover,
 };
-pub use save::{SAVE_FORMATS, SaveError, SaveOptions, SaveReport, backup_path, save};
+pub use save::{SAVE_FORMATS, SaveError, SaveOptions, SaveReport, backup_path, save, save_bytes};
+#[cfg(target_arch = "wasm32")]
+pub use web::{WebKey, load_web_json, load_web_keymap, save_web_json};

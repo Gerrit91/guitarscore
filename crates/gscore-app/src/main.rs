@@ -1,13 +1,21 @@
-//! `guitarscore [FILE]`: the desktop application.
+//! `guitarscore [FILE]`: the desktop application. The browser build starts through
+//! [`gscore_app::web`] instead (an empty `main` keeps the binary target valid on wasm).
 
 // The lint checks each target separately; the dependencies are used by the library target.
 #![allow(unused_crate_dependencies)]
 
+#[cfg(target_arch = "wasm32")]
+fn main() {}
+
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+#[cfg(not(target_arch = "wasm32"))]
 use std::process::ExitCode;
 
+#[cfg(not(target_arch = "wasm32"))]
 use gscore_app::{APP_ICON, GuitarScoreApp, Settings};
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> ExitCode {
     if let Some(dir) = gscore_session::default_crash_dir() {
         gscore_session::install_panic_hook(dir);
