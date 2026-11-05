@@ -60,6 +60,7 @@ impl GuitarScoreApp {
             || self.shortcuts.is_some()
             || tab.is_some_and(|tab| tab.new_track.is_some())
             || tab.is_some_and(|tab| tab.edit_palette.staff.is_open())
+            || tab.is_some_and(|tab| tab.edit_palette.is_editing())
             || ctx.egui_wants_keyboard_input()
             || egui::Popup::is_any_open(ctx)
         {

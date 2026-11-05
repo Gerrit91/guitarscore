@@ -532,7 +532,7 @@ fn paint_whammy(painter: &Painter, rect: Rect, ink: Color32) {
 }
 
 /// The small triangle in a tile's bottom right corner that says it opens a dialog.
-fn more_corner(painter: &Painter, rect: Rect, ink: Color32) {
+pub(super) fn more_corner(painter: &Painter, rect: Rect, ink: Color32) {
     let corner = rect.right_bottom() - vec2(2.0, 2.0);
     painter.add(Shape::convex_polygon(
         vec![corner, corner - vec2(6.0, 0.0), corner - vec2(0.0, 6.0)],

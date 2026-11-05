@@ -64,6 +64,12 @@ impl EditPaletteState {
     fn duration(&self) -> Option<NoteValue> {
         NoteValue::new(self.value, self.dots, self.tuplet).ok()
     }
+
+    /// Whether one of the palette's effect dialogs is open (the bend, whammy, harmonic,
+    /// grace, trill, tremolo, beat text or fingering editor).
+    pub(super) fn is_editing(&self) -> bool {
+        self.effects.is_editing()
+    }
 }
 
 /// The song data the palette shows, taken before the widgets run.
@@ -207,7 +213,11 @@ impl GuitarScoreApp {
                 ui.spacing_mut().item_spacing.y = 6.0;
                 let keymap = &self.keymap;
                 let hint = |action: ActionId| key_hint(keymap, action);
-                edit_staff::section(ui, &mut tab.edit_palette.staff, &snapshot);
+                let beat_text =
+                    edit_staff::section(ui, &mut tab.edit_palette.staff, &snapshot, &hint);
+                if beat_text == Some(ActionId::EditBeatText) {
+                    tab.edit_palette.effects.open_beat_text(&snapshot);
+                }
                 style::section(ui, "note_input", "Note input", |ui| {
                     note_length(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
                     beat_buttons(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
@@ -741,21 +751,6 @@ fn beat_buttons(
         );
         if tie_beat.clicked() {
             commands.extend(tie_beat_commands(snapshot));
-        }
-        let tip = format!(
-            "Beat text: text written above the beat, like Guitar Pro's beat text{}",
-            hint(ActionId::EditBeatText)
-        );
-        let beat_text = tiles::tile(
-            ui,
-            Face::BeatText,
-            !snapshot.beat_text.is_empty(),
-            true,
-            "Beat text…",
-            &tip,
-        );
-        if beat_text.clicked() {
-            state.effects.open_beat_text(snapshot);
         }
     });
     ui.add_space(2.0);

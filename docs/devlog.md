@@ -2699,3 +2699,21 @@ needed for a much larger font); owner listening check.
 - Tests: `gscore-session::export` writes and replaces a GP3/GP4 file, reports no losses
   for an empty song and never leaves a temporary file; `ExportFormat` keeps the menu's
   extensions unique and maps the score entries to their `FileFormat`.
+
+## 2026-11-05 — Dialog indicator on every dialog tile; beat text in Staff
+
+- The small corner triangle that the technique tiles use for "this opens a dialog" now
+  marks every tile that opens one: all twelve Staff tiles (tempo, time and key signature,
+  section, repeats, endings, swing, fermata, barline, break, bars per line) and beat text.
+  `tiles::dialog_tile` draws it; faces themselves are unchanged, so dialog choice rows
+  (which reuse `paint_face`) stay clean.
+- Beat text moved from Note input to the Staff section: it is a bar-level mark that opens
+  a dialog, like its neighbours. `t` opens it (as in Guitar Pro); tapping moved to
+  `shift+t` (`T`), since `t` used to be tapping. The dialog focuses its text field in the
+  first frame, so typing continues straight away and Enter still applies. Escape cancels.
+- The score keys are now also held back while a palette effect editor is open (bend,
+  whammy, harmonic, grace, trill, tremolo, beat text, fingering), not only while a staff
+  dialog is: with the text field unfocused, `r` or `x` used to edit the score behind the
+  dialog.
+- Tests: the app snapshots of the staff dialogs and the page updated (the corner marks and
+  the moved tile), the keymap still parses (`t` and `T` are distinct bindings).
