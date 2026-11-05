@@ -192,20 +192,26 @@ pub(crate) struct Rows {
     endings: bool,
     tempo: bool,
     section: bool,
+    /// Whether these are the rows over a system's top track: only there go the marks that
+    /// belong to the whole system (endings, tempo, sections).
+    system: bool,
 }
 
 impl Rows {
     /// The rows the measures of one system need; `notation` and `tab` are the staves shown.
-    pub(crate) fn of(marks: &[MeasureMarks], notation: bool, tab: bool) -> Rows {
+    /// `system` is false for a track below a system's top one: it gets only its own rows
+    /// (beat effects, beat text, fermatas).
+    pub(crate) fn of(marks: &[MeasureMarks], notation: bool, tab: bool, system: bool) -> Rows {
         Rows {
+            system,
             ornaments: notation && !tab && marks.iter().any(|m| m.lane_ornaments),
             beat_effects: marks.iter().any(|m| m.beat_effects),
             tab_only: !notation,
             beat_text: marks.iter().any(|m| m.beat_text),
             fermata: marks.iter().any(|m| m.fermata.is_some()),
-            endings: marks.iter().any(|m| m.ending.is_some()),
-            tempo: marks.iter().any(MeasureMarks::has_tempo),
-            section: marks.iter().any(|m| m.section.is_some()),
+            endings: system && marks.iter().any(|m| m.ending.is_some()),
+            tempo: system && marks.iter().any(MeasureMarks::has_tempo),
+            section: system && marks.iter().any(|m| m.section.is_some()),
         }
     }
 
@@ -320,6 +326,10 @@ pub(crate) fn draw(
             color: ColorToken::Notation,
         });
     }
+    if !rows.system {
+        draw_dynamics(placed, &xs, tops, ctx, ops);
+        return;
+    }
     if let Some(ending) = &marks.ending {
         text::draw_ending(
             placed.left,
@@ -357,7 +367,18 @@ pub(crate) fn draw(
             ops,
         );
     }
-    for &(column, dynamic) in &marks.dynamics {
+    draw_dynamics(placed, &xs, tops, ctx, ops);
+}
+
+/// The dynamics under the measure's columns at `xs`.
+fn draw_dynamics(
+    placed: Placed<'_>,
+    xs: &[f32],
+    tops: Tops,
+    ctx: &Context<'_>,
+    ops: &mut Vec<DrawOp>,
+) {
+    for &(column, dynamic) in &placed.marks.dynamics {
         let Some(&x) = xs.get(column) else {
             continue;
         };

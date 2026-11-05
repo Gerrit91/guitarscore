@@ -81,6 +81,31 @@ pub(crate) fn system_break(value: &LineBreak) -> SystemBreak {
 }
 
 impl Song {
+    /// Where lines start when every track is shown together (Guitar Pro's multitrack
+    /// layout, kept apart from each track's own breaks): one entry per measure, `true` where
+    /// a new line starts. Without such a layout (or past its end) nothing is forced.
+    pub fn score_line_breaks(&self) -> Vec<bool> {
+        let count = self.measure_count();
+        let mut breaks = vec![false; count];
+        let mut at = 0_usize;
+        let layout = self
+            .inner()
+            .score_systems_layout
+            .as_deref()
+            .unwrap_or_default();
+        for bars in layout.split_whitespace() {
+            let Some(bars) = bars.parse::<usize>().ok().filter(|bars| *bars > 0) else {
+                break;
+            };
+            at = at.saturating_add(bars);
+            match breaks.get_mut(at) {
+                Some(slot) => *slot = true,
+                None => break,
+            }
+        }
+        breaks
+    }
+
     /// How the song is printed, with odd values from a file moved into range.
     pub fn page_setup(&self) -> PageSetup {
         load(&self.inner().page_setup).sanitized()

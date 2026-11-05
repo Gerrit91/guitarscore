@@ -5,16 +5,18 @@
 //! and document revision once editing needs fast relayout (M8); placing measures into
 //! systems only chooses an x position and a stretch factor.
 
+mod align;
 mod columns;
 mod draw;
 mod effects;
 mod grace_marks;
 mod graces;
 
+pub(crate) use align::align;
 pub(crate) use draw::draw_barline_ties;
 
 use gscore_model::{
-    BeatIndex, BeatView, Dynamic, MeasureIndex, MeasureView, TimeSignature, VoiceIndex,
+    BeatIndex, BeatView, Duration, Dynamic, MeasureIndex, MeasureView, TimeSignature, VoiceIndex,
 };
 
 use crate::Context;
@@ -52,6 +54,9 @@ pub(crate) struct Tops {
     pub(crate) notation: Option<f32>,
     /// Whether the tab staff is drawn (a track may show notation only).
     pub(crate) show_tab: bool,
+    /// Whether the measure number is written above the staves (only over a system's top
+    /// track when several tracks are shown).
+    pub(crate) numbers: bool,
     /// Where the bottom of the beat effects (pick strokes, tapping, fade-ins) goes.
     pub(crate) beat_bottom: f32,
     /// The line the ornament lanes (trill, vibrato, whammy) are measured up from: the tab's
@@ -67,9 +72,14 @@ pub(crate) struct MeasureLayout {
     /// carries it.
     key_signature: Option<KeySigLayout>,
     time_signature: Option<TimeSigLayout>,
+    /// Room after the key signature, so the time signature lines up with other tracks'
+    /// (0 on its own; set by [`align`]).
+    signature_pad: f32,
     /// Fixed space from the measure start (after the signature changes) to the first column.
     lead: f32,
     columns: Vec<Column>,
+    /// When the measure ends: the time signature's length, or the longest voice.
+    end: Duration,
 }
 
 /// A time signature as glyph rows, scaled to the staff.
@@ -85,6 +95,8 @@ struct TimeSigLayout {
 /// Everything that starts at the same time in a measure, across voices.
 #[derive(Debug, Clone, PartialEq)]
 struct Column {
+    /// When the column starts in the measure.
+    onset: Duration,
     /// Natural space from this column to the next one (or to the barline).
     space: f32,
     items: Vec<Item>,
@@ -186,6 +198,8 @@ impl MeasureLayout {
         let beat_length = as_f64(beat_length(signature)?);
         type Pending = (ColumnData, f32, Option<Dynamic>, Option<u32>);
         let mut columns: Vec<Pending> = Vec::with_capacity(starts.onsets.len());
+        // Each column's start, beside `columns`.
+        let mut onsets: Vec<Duration> = Vec::with_capacity(starts.onsets.len());
         for (column_index, (onset, beats)) in starts.onsets.iter().enumerate() {
             let next = starts
                 .onsets
@@ -243,6 +257,7 @@ impl MeasureLayout {
             let dynamic = by_voice.iter().find_map(|(_, beat)| beat.dynamic());
             let tempo = beats.iter().find_map(|(_, beat)| beat.tempo_change());
             columns.push((data, ctx.options.spacing.after(length), dynamic, tempo));
+            onsets.push(*onset);
         }
         if columns.is_empty() {
             // An empty measure still gets the room its length asks for.
@@ -261,6 +276,7 @@ impl MeasureLayout {
                 None,
                 None,
             ));
+            onsets.push(Duration::new(0, 1)?);
         }
         // When a measure has a second voice, the first voice points its stems up and the
         // second down throughout, so their stems and beams do not run into each other.
@@ -374,6 +390,7 @@ impl MeasureLayout {
                     edge_padding
                 };
                 Column {
+                    onset: onsets.get(i).copied().unwrap_or(starts.end),
                     space: space.max(own + next + padding),
                     items: data.items,
                     marks: data.marks,
@@ -395,8 +412,10 @@ impl MeasureLayout {
             index: measure.index(),
             key_signature,
             time_signature,
+            signature_pad: 0.0,
             lead,
             columns,
+            end: starts.end,
         })
     }
 
@@ -421,6 +440,7 @@ impl MeasureLayout {
     /// The width that does not stretch: key and time signature, and the lead.
     pub(crate) fn fixed_width(&self) -> f32 {
         self.key_signature.as_ref().map_or(0.0, |k| k.width)
+            + self.signature_pad
             + self.time_signature.as_ref().map_or(0.0, |t| t.width)
             + self.lead
     }

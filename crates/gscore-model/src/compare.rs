@@ -340,6 +340,12 @@ pub fn settings_differences(before: &Song, after: &Song) -> Vec<Difference> {
         before.page_setup(),
         after.page_setup(),
     );
+    diff.check(
+        "song",
+        "line breaks of the multitrack view",
+        before.score_line_breaks(),
+        after.score_line_breaks(),
+    );
     for (a, b) in before.tracks().zip(after.tracks()) {
         let at = a.index().to_string();
         diff.check(

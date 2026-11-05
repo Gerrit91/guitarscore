@@ -117,11 +117,12 @@ enum Command {
         #[arg(long, default_value_t = 1.0)]
         speed: f32,
     },
-    /// Draw one track's score as an SVG image or a PDF
+    /// Draw a score of one or more tracks as an SVG image or a PDF
     ///
-    /// Lays out one track (title, tuning, tempo, then the measures broken into lines on an
-    /// A4-wide page: standard notation and tab as the track shows them, a percussion staff
-    /// for drums) and writes it as SVG, or as PDF when <OUTPUT> ends in .pdf. The SVG uses
+    /// Lays out one track, or several together (title, tuning, tempo, then the measures
+    /// broken into lines on an A4-wide page: standard notation and tab as each track shows
+    /// them, a percussion staff for drums; several tracks are stacked in every system with
+    /// their beats lined up) and writes it as SVG, or as PDF when <OUTPUT> ends in .pdf. The SVG uses
     /// the Bravura and Noto Sans fonts by name (bundled in assets/fonts/); install them to
     /// view it correctly. The PDF lays the track out on pages with the song's page setup
     /// (paper, margins, score size, header and footer) and embeds the fonts.
@@ -131,9 +132,13 @@ enum Command {
         /// The SVG or PDF file to write
         #[arg(short, long)]
         output: PathBuf,
-        /// The track to draw (1-based, as `info` numbers them)
-        #[arg(long)]
-        track: Option<usize>,
+        /// A track to draw (1-based, as `info` numbers them); repeat it for several tracks,
+        /// drawn in the order given. Default: track 1
+        #[arg(long = "track", value_name = "N")]
+        tracks: Vec<usize>,
+        /// Draw every track of the song together
+        #[arg(long, conflicts_with = "tracks")]
+        all_tracks: bool,
         /// Color theme
         #[arg(long, value_enum, default_value = "light")]
         theme: render::ThemeArg,
@@ -312,9 +317,10 @@ where
         Command::Render {
             file,
             output,
-            track,
+            tracks,
+            all_tracks,
             theme,
-        } => render::run(&file, &output, track, theme),
+        } => render::run(&file, &output, &tracks, all_tracks, theme),
         Command::Convert {
             file,
             output,

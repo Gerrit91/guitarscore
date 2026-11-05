@@ -61,6 +61,11 @@ pub struct Song {
     pub master_volume_pan: Option<(f32, f32)>,
 
     pub page_setup: PageSetup,
+    /// GuitarScore addition: Guitar Pro's systems layout for all tracks shown together
+    /// (`ScoreSystemsLayout`, bars per line, `"4 4 2"`), and its default bars per line;
+    /// GP7 only, kept as written.
+    pub score_systems_layout: Option<String>,
+    pub score_systems_default: Option<String>,
     /// GuitarScore addition: GP7's style sheet, kept so saving writes back what is not
     /// edited (the page setup is read from it and written into it).
     pub stylesheet: Option<Stylesheet>,
@@ -104,6 +109,8 @@ impl Default for Song {
             key: KeySignature::default(),
             sync_points: Vec::new(),
             backing_track_audio: None,
+            score_systems_layout: None,
+            score_systems_default: None,
 
             triplet_feel: TripletFeel::None,
             current_measure_number: None,

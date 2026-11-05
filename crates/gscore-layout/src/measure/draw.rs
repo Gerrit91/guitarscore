@@ -150,10 +150,7 @@ impl MeasureLayout {
     /// Where each column's center lies when the measure starts at `x` and its columns are
     /// stretched by `stretch`, and where the measure ends.
     pub(crate) fn column_positions(&self, x: f32, stretch: f32) -> (Vec<f32>, f32) {
-        let mut cursor = x
-            + self.key_signature.as_ref().map_or(0.0, |k| k.width)
-            + self.time_signature.as_ref().map_or(0.0, |t| t.width)
-            + self.lead;
+        let mut cursor = x + self.fixed_width();
         let mut xs = Vec::with_capacity(self.columns.len());
         for column in &self.columns {
             xs.push(cursor);
@@ -198,19 +195,22 @@ impl MeasureLayout {
     ) {
         let top = tops.tab;
         // The measure number goes above the topmost staff, as in Guitar Pro.
-        ops.push(DrawOp::Text {
-            text: self.index.get().saturating_add(1).to_string(),
-            at: Point::new(x, tops.notation.unwrap_or(top) - MEASURE_NUMBER_RISE),
-            size: ctx.options.measure_number_size,
-            font: TextFont::Regular,
-            anchor: TextAnchor::Start,
-            color: ColorToken::Annotation,
-        });
+        if tops.numbers {
+            ops.push(DrawOp::Text {
+                text: self.index.get().saturating_add(1).to_string(),
+                at: Point::new(x, tops.notation.unwrap_or(top) - MEASURE_NUMBER_RISE),
+                size: ctx.options.measure_number_size,
+                font: TextFont::Regular,
+                anchor: TextAnchor::Start,
+                color: ColorToken::Annotation,
+            });
+        }
         let mut signature_x = x;
         if let Some(key_signature) = &self.key_signature {
             key_signature.draw_at(signature_x, tops.notation.unwrap_or(top), ctx, ops);
             signature_x += key_signature.width;
         }
+        signature_x += self.signature_pad;
         if let Some(time_signature) = &self.time_signature {
             // With notation, the signature is written there only, as in Guitar Pro.
             match tops.notation {
@@ -391,6 +391,39 @@ impl MeasureLayout {
 
     /// The lowest notehead's staff position in column `index` of the notation staff, lower
     /// by the room an accent or staccato dot below it takes.
+    /// How far the notation reaches above its staff's top line and below its bottom line
+    /// (noteheads, ledger lines and stems), in staff spaces; 0 within the staff.
+    pub(crate) fn notation_reach(&self) -> (f32, f32) {
+        // Staff positions: 0 the bottom line, 8 the top line; a stem is 3.5 spaces long.
+        const TOP_LINE: i32 = 8;
+        const STEM: f32 = 3.5;
+        const HEAD: f32 = 0.5;
+        let mut above = 0.0_f32;
+        let mut below = 0.0_f32;
+        let chords = self
+            .columns
+            .iter()
+            .flat_map(|column| column.notation.iter().flatten())
+            .filter_map(|item| match item {
+                NotationItem::Chord(chord) => Some(chord),
+                NotationItem::Rest { .. } => None,
+            });
+        for chord in chords {
+            let (Some(low), Some(high)) = (chord.heads.first(), chord.heads.last()) else {
+                continue;
+            };
+            let stem_up = chord.stem_up() && chord.value >= 2;
+            let stem_down = !chord.stem_up() && chord.value >= 2;
+            let top = high.position.saturating_sub(TOP_LINE) as f32 / 2.0
+                + HEAD
+                + if stem_up { STEM } else { 0.0 };
+            let bottom = -(low.position as f32) / 2.0 + HEAD + if stem_down { STEM } else { 0.0 };
+            above = above.max(top);
+            below = below.max(bottom);
+        }
+        (above, below)
+    }
+
     pub(crate) fn lowest_head(&self, index: usize) -> Option<i32> {
         self.columns
             .get(index)?

@@ -60,10 +60,33 @@ fn owner_files_match_their_golden_svg() {
         "note_lengths",
         "ornaments",
         "advanced_ornaments",
+        "multi_staff",
     ] {
         let song = common::open(&format!("basic/{name}.gp"));
         check(name, &svg(&song, &Theme::LIGHT));
     }
+}
+
+#[test]
+fn every_track_together_matches_its_golden_svg() {
+    let song = common::open("basic/multi_staff.gp");
+    let tracks: Vec<_> = song.tracks().map(|track| track.index()).collect();
+    let layout = gscore_layout::layout_tracks(
+        &song,
+        &tracks,
+        tracks[0],
+        &LayoutOptions::default(),
+        &gscore_layout::Fonts::bundled().unwrap(),
+    )
+    .unwrap();
+    check(
+        "multi_staff.all",
+        &to_svg(
+            &layout,
+            &Theme::LIGHT,
+            LayoutOptions::default().staff_space_mm,
+        ),
+    );
 }
 
 #[test]

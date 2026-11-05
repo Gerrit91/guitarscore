@@ -68,6 +68,13 @@ pub(crate) struct Score {
     pub instructions: String,
     #[serde(default)]
     pub notices: String,
+    /// Bars per line when every track is shown (Guitar Pro's multitrack view), `"4 4 2"`;
+    /// the per-track `SystemsLayout` is for one track on its own.
+    #[serde(rename = "ScoreSystemsLayout", default)]
+    pub score_systems_layout: Option<String>,
+    /// The default bars per line of the multitrack view.
+    #[serde(rename = "ScoreSystemsDefaultLayout", default)]
+    pub score_systems_default: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

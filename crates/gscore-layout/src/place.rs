@@ -162,6 +162,23 @@ impl Places {
         })
     }
 
+    /// How far `point` is above or below the nearest system's staves (0 on them); `None`
+    /// without systems. With several tracks, a point belongs to the nearest one's staves.
+    pub fn distance(&self, point: Point) -> Option<f32> {
+        self.systems
+            .iter()
+            .map(|s| {
+                if point.y < s.top {
+                    s.top - point.y
+                } else if point.y > s.tab_bottom() {
+                    point.y - s.tab_bottom()
+                } else {
+                    0.0
+                }
+            })
+            .min_by(f32::total_cmp)
+    }
+
     /// The beat and string nearest to `point`, if it is on a system: the nearest column of
     /// the measure under it, and the nearest string.
     pub fn hit(&self, point: Point) -> Option<Hit> {
