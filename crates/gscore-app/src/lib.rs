@@ -28,6 +28,8 @@ use web_time as _;
 pub use app::GuitarScoreApp;
 pub use document::{Document, GridData};
 pub use gscore_edit::Keymap;
+#[cfg(target_arch = "wasm32")]
+pub use playback::BROWSER_SOUNDFONT_NAME;
 pub use playback::{Heard, Output, Playback};
 pub use settings::{
     DEFAULT_AUTOSAVE_SECONDS, MAX_OPEN_FILES, MAX_RECENT_FILES, MAX_SHAPE_PRESETS, Settings,

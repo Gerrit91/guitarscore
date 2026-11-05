@@ -13,6 +13,7 @@ use gscore_model::{MAX_TEMPO, SONG_TEXT_FIELDS, SongInfo, SongTextField};
 use super::GuitarScoreApp;
 use super::settings_page::{PageDraft, PagePreview, page_tab};
 use super::style;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::playback::Output;
 use crate::state::ThemeChoice;
 
@@ -71,6 +72,7 @@ impl SettingsWindow {
 /// background thread (never on the UI thread): once when the Audio I/O tab is first shown,
 /// and again on "Search again".
 #[derive(Debug, Default)]
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 struct SoundFontScan {
     /// What the last search found.
     found: Vec<PathBuf>,
@@ -80,6 +82,7 @@ struct SoundFontScan {
     started: bool,
 }
 
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 impl SoundFontScan {
     /// Starts the first search, and takes in a finished one.
     fn poll(&mut self, ctx: &egui::Context) {
@@ -281,6 +284,7 @@ impl GuitarScoreApp {
     }
 
     /// The audio I/O tab: the output, a SoundFont for the synthesizer, and MIDI ports.
+    #[cfg(not(target_arch = "wasm32"))]
     fn audio_tab(&mut self, ui: &mut Ui, soundfonts: &mut SoundFontScan) {
         soundfonts.poll(ui.ctx());
         ui.heading("Output");
@@ -416,6 +420,30 @@ impl GuitarScoreApp {
                 }
             });
         }
+        if let Some(error) = self.playback.new_error() {
+            self.notice = Some(error);
+        }
+        ui.separator();
+        ui.heading("Input");
+        ui.label(RichText::new("MIDI inputs (a keyboard or guitar) come later.").weak());
+    }
+
+    /// The audio I/O tab in a browser: the synthesizer with the site's SoundFont is the
+    /// only output (no MIDI ports, no folders to search).
+    #[cfg(target_arch = "wasm32")]
+    fn audio_tab(&mut self, ui: &mut Ui, soundfonts: &mut SoundFontScan) {
+        let _ = soundfonts;
+        ui.heading("Output");
+        ui.label("Synthesizer");
+        ui.horizontal(|ui| {
+            ui.label("SoundFont");
+            // The name the site's manifest gives, once the font is loaded.
+            let name = self
+                .playback
+                .soundfont_name()
+                .unwrap_or_else(|| crate::BROWSER_SOUNDFONT_NAME.to_owned());
+            ui.label(RichText::new(format!("{name} (bundled with this site)")).weak());
+        });
         if let Some(error) = self.playback.new_error() {
             self.notice = Some(error);
         }

@@ -2614,3 +2614,71 @@ the browser; multi-threaded import (web worker) if opening large files becomes n
 - Tests: layout (systems with tracks left out, marks on the topmost drawn track, hits,
   the primary track kept), app (View menu option, Ctrl vs Ctrl+Shift zoom and the
   settings), key reader (Ctrl+minus), the zoom key table for QWERTY and QWERTZ.
+
+## 2026-11-05 — Browser build plays out of the box (GeneralUser GS 2.0.3)
+
+Landed:
+- Font choice: rendered 13 General MIDI programs (piano, nylon/steel/clean/overdriven/
+  distortion guitars, acoustic/finger/slap basses, strings, choir, pad, kick) through
+  `SynthEngine` with GeneralUser GS 2.0.3 and FluidR3 (`gscore-audio/examples/
+  render_soundfont.rs`, writes WAVs and prints RMS/peak). Every program is audible with
+  sane levels; GeneralUser is about 2–7 dB below FluidR3 and has no silent or extreme
+  preset, so rustysynth's modulator support is adequate for this font. The owner should
+  still listen to `/tmp` WAVs of both before a public release.
+- Pinned font: GeneralUser GS 2.0.3 from commit `9704918` (2026-02-23), 32 319 396 bytes,
+  SHA-256 `9575028c…88cfe`, GeneralUser GS License v2.0. The `.sf2` is not committed.
+  `cargo xtask web` downloads it once into `target/web-soundfont/`, verifies size and
+  SHA-256 every build (in-tree SHA-256 with reference tests), and writes the file, license
+  and `soundfont.json` into the site. `--soundfont PATH` (size + RIFF header checked) and
+  `--no-soundfont` (silent, says so) are the alternatives.
+- Browser playback loads it automatically: the manifest is fetched, the body read as a
+  stream (real progress in the toolbar) and the bytes transferred to the worklet, not
+  copied on the UI thread. The browser's `Output` default is the synthesizer; web.rs
+  preloads it when the editor starts; the Audio tab names the bundled font and hides MIDI
+  and folder-search controls.
+- Service worker: SoundFonts live in `guitarscore-soundfonts`, which survives app-cache
+  changes and is pruned to the manifest's current file; the manifest is network-first,
+  the font cache-first, and partial (206) responses are never cached.
+- Smoke test: the app page waits for `data-guitarscore-sound=loaded`; the worklet page
+  loads the font, plays middle C through an analyser and requires non-silent samples.
+  Results: font ready in ~0.6 s from page start (local server, 30.8 MB) and worklet RMS
+  ~0.0073 — well above silence. Screenshot: `dist/web/smoke-worklet.png`.
+- Site size: wasm 13.56 MiB raw / 5.39 gzip / 2.99 brotli, JavaScript 90 KiB, SoundFont
+  30.82 MiB raw / 27.94 gzip (most hosts do not compress `.sf2`).
+- Credits and docs: THIRD_PARTY row, license beside FluidR3's, About window names the font,
+  `docs/web.md`, README build options, gaps.
+
+Open: choosing another SoundFont in the browser; the worklet parses 30 MB on the audio
+thread at startup (measured under 1 s; acceptable, but a worker-side parse would be
+needed for a much larger font); owner listening check.
+
+## 2026-11-05 — Review of the browser SoundFont
+
+- Reviewed the cheaper model's `web-soundfont` work (rebased onto main as
+  `web-soundfont-review`; only the devlog conflicted). It follows the handoff: pinned and
+  hashed download at build time, automatic load with progress, transfer to the worklet,
+  its own service-worker cache, an audible-note smoke test, credits.
+- Fixed: the downloaded font was copied chunk by chunk into the app's wasm memory and
+  then back out for the worklet, which grew the memory by 30 MB for good (wasm memory
+  never shrinks); the chunks are now joined as a JavaScript array and transferred.
+  `--soundfont PATH` copied GeneralUser GS's license next to someone else's font; it no
+  longer does (the build says to add the font's own license). The About window gave any
+  font GeneralUser's license, and the toolbar named the bundled font even when the site's
+  manifest names another; both use the manifest's name now. The smoke-test marker said
+  `loaded` when the audio output never started. The Audio tab was one function with the
+  whole desktop code re-indented in a `cfg` block; now a desktop and a browser function,
+  the desktop one unchanged from main.
+- Also fixed an older race in the desktop synthesizer: it cleared "loading" before it
+  stored the error of a broken SoundFont, so for a moment a failed font looked loaded
+  (`the_player_reports_a_bad_soundfont_without_blocking` failed now and then).
+- Checked: `cargo xtask ci`; `cargo xtask web --smoke` (font loaded 0.6 s after page start
+  locally, worklet RMS 0.0074). The owner's listening check of GeneralUser GS is still open.
+
+## 2026-11-05 — Browser build in an nginx image
+
+- `Dockerfile` (nginx:1.29-alpine) copies `dist/web` and `docker/nginx.conf`; it builds
+  nothing (owner: build in GitHub Actions, copy the artifacts). The release workflow's new
+  `web` job runs `cargo xtask web` and pushes `ghcr.io/<owner>/<repo>-web:<tag>` and
+  `:latest`. Checked locally: image 176 MB, wasm served as `application/wasm` with gzip,
+  the SoundFont cached for a year, everything else revalidated. The workflow job itself
+  is untested until the next pre-release.

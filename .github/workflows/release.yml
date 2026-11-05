@@ -27,6 +27,7 @@ on:
 
 permissions:
   contents: write
+  packages: write  # the browser build's image on ghcr.io
 
 env:
   # Baked into the binaries by `crates/gscore-version/build.rs` (shown in Help > About and
@@ -286,6 +287,49 @@ jobs:
         with:
           name: guitarscore-macos-universal
           path: ${{ steps.package.outputs.archive }}
+
+  web:
+    name: Browser build (nginx image on ghcr.io)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.99.1"  # keep in sync with rust-toolchain.toml
+          targets: wasm32-unknown-unknown
+
+      # wasm-bindgen must match the crate in Cargo.lock; binaryen gives wasm-opt.
+      - name: Install the web tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends binaryen
+          cargo install wasm-bindgen-cli --version 0.2.130 --locked
+
+      - name: Build the site
+        run: cargo xtask web
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Image names on ghcr.io must be lower case.
+      - name: Image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}-web" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.name }}:${{ github.ref_name }}
+            ${{ steps.image.outputs.name }}:latest
 
   release:
     name: Upload assets to the release

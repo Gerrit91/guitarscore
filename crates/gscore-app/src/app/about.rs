@@ -63,6 +63,7 @@ impl GuitarScoreApp {
             .pos
             .unwrap_or_else(|| style::centered_window_pos(ctx, ABOUT_SIZE));
         let icon = about.icon.get_or_insert_with(|| icon_texture(ctx)).clone();
+        let soundfont = self.playback.soundfont_name();
         let mut close = false;
         egui::Window::new("About GuitarScore")
             .title_bar(false)
@@ -86,7 +87,7 @@ impl GuitarScoreApp {
                                 );
                                 ui.add_space(14.0);
                             }
-                            ui.vertical(about_text);
+                            ui.vertical(|ui| about_text(ui, soundfont.as_deref()));
                         });
                     });
             });
@@ -96,8 +97,8 @@ impl GuitarScoreApp {
     }
 }
 
-/// The name, version, build, links and license.
-fn about_text(ui: &mut egui::Ui) {
+/// The name, version, build, links, license and (in the browser) the bundled SoundFont.
+fn about_text(ui: &mut egui::Ui, soundfont: Option<&str>) {
     ui.heading("GuitarScore");
     ui.label(RichText::new(format!("Version {}", gscore_version::VERSION)).weak());
     ui.label(RichText::new(format!("Build {}", gscore_version::SHA)).weak());
@@ -109,6 +110,18 @@ fn about_text(ui: &mut egui::Ui) {
         "https://github.com/Gerrit91/guitarscore",
     );
     ui.label(RichText::new("MIT license").weak());
+    // The bundled font's license; a font a site brings itself is only named.
+    #[cfg(target_arch = "wasm32")]
+    if let Some(name) = soundfont {
+        let text = if name.starts_with("GeneralUser GS") {
+            format!("{name} — GeneralUser GS License v2.0")
+        } else {
+            format!("SoundFont: {name}")
+        };
+        ui.label(RichText::new(text).weak());
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = soundfont;
     ui.add_space(10.0);
     ui.hyperlink_to(
         "Third-party licenses",

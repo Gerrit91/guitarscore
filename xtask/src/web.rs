@@ -18,6 +18,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+mod soundfont;
+
 use crate::{TaskResult, cmd};
 
 /// Where the build goes unless `--out` says otherwise.
@@ -40,11 +42,13 @@ pub(crate) fn run(root: &Path, args: &[String]) -> TaskResult {
     let worklet = build_worklet(root, &options)?;
     bindgen(&worklet, &out, "worklet_synth")?;
     copy_shell(root, &out)?;
+    soundfont::install(root, &out, &options.soundfont)?;
     stamp_service_worker(&out)?;
     if !options.no_wasm_opt {
         optimise(&out.join("guitarscore_bg.wasm"))?;
     }
     report_sizes(&out)?;
+    soundfont::report_size(&out);
     if options.smoke {
         smoke(&out)?;
     }
@@ -63,6 +67,8 @@ struct Options {
     no_wasm_opt: bool,
     /// Open the result in a headless browser and check that it starts.
     smoke: bool,
+    /// Which SoundFont the site ships.
+    soundfont: soundfont::Source,
 }
 
 impl Options {
@@ -72,6 +78,7 @@ impl Options {
             debug: false,
             no_wasm_opt: false,
             smoke: false,
+            soundfont: soundfont::Source::Bundled,
         };
         let mut rest = args.iter();
         while let Some(arg) = rest.next() {
@@ -85,10 +92,26 @@ impl Options {
                 "--debug" => options.debug = true,
                 "--no-wasm-opt" => options.no_wasm_opt = true,
                 "--smoke" => options.smoke = true,
+                "--soundfont" => {
+                    let Some(value) = rest.next() else {
+                        return Err("--soundfont needs a .sf2 file".to_owned());
+                    };
+                    if matches!(options.soundfont, soundfont::Source::None) {
+                        return Err("--soundfont and --no-soundfont cannot be combined".to_owned());
+                    }
+                    options.soundfont = soundfont::Source::Local(PathBuf::from(value));
+                }
+                "--no-soundfont" => {
+                    if matches!(options.soundfont, soundfont::Source::Local(_)) {
+                        return Err("--soundfont and --no-soundfont cannot be combined".to_owned());
+                    }
+                    options.soundfont = soundfont::Source::None;
+                }
                 other => {
                     return Err(format!(
                         "unexpected argument `{other}`\n\nusage: cargo xtask web \
-                         [--out DIR] [--debug] [--no-wasm-opt] [--smoke]"
+                         [--out DIR] [--debug] [--no-wasm-opt] [--smoke] \
+                         [--soundfont PATH | --no-soundfont]"
                     ));
                 }
             }
@@ -312,7 +335,7 @@ fn report_sizes(out: &Path) -> Result<(), String> {
 /// The size of `path` after `program` compresses it to stdout, or 0 if the program is
 /// missing. The file is the compressor's argument, so a full stdout pipe cannot deadlock
 /// the writer.
-fn compressed_size(program: &str, args: &[&str], path: &Path) -> Result<u64, String> {
+pub(crate) fn compressed_size(program: &str, args: &[&str], path: &Path) -> Result<u64, String> {
     let Some(program) = which(&[program]) else {
         return Ok(0);
     };
@@ -391,26 +414,54 @@ fn run_headless(browser: &std::ffi::OsString, out: &Path, port: u16) -> TaskResu
     }
     browser.screenshot(&out.join("smoke.png"))?;
 
-    // The audio worklet page: its module and second wasm instance must load, and the
-    // message port must answer, in a real browser.
-    let worklet = "new Promise((resolve) => { const started = Date.now(); \
-                   const poll = () => { const body = document.body; \
-                   const check = body ? body.dataset.workletCheck : 'none'; \
-                   const status = document.getElementById('status'); \
-                   if (check === 'ok') return resolve('ok'); \
-                   if (check === 'failed') return resolve('failed: ' + (status ? status.textContent : 'unknown')); \
-                   if (Date.now() - started > 20000) return resolve('timeout: href=' + location.href + \
-                     ' step=' + (body ? body.dataset.step : 'none') + \
-                     ' status=' + (status ? status.textContent : 'none')); \
-                   setTimeout(poll, 100); }; poll(); })";
-    let url = format!("http://127.0.0.1:{port}/worklet-check.html");
-    let result = browser.evaluate(&url, worklet)?;
+    // The bundled SoundFont must download and be accepted by the worklet, or the page
+    // says why. This is where a wrong manifest, a failed download or a broken RIFF file
+    // shows up in CI.
+    let sound = "new Promise((resolve) => { const started = Date.now(); \
+                  const poll = () => { const value = document.body.dataset.guitarscoreSound; \
+                  if (value === 'loaded') return resolve('ok'); \
+                  if (value) return resolve(value); \
+                  if (Date.now() - started > 45000) return resolve('timeout; progress=' + \
+                    (document.body.dataset.guitarscoreSoundProgress || 'none')); \
+                  setTimeout(poll, 100); }; poll(); })";
+    let started = Instant::now();
+    let result = browser.eval(sound)?;
     if result != "ok" {
         return Err(format!(
-            "the AudioWorklet synthesizer did not start in the browser: {result}{}",
+            "the browser's SoundFont did not load: {result}{}",
             console_log(browser.events())
         ));
     }
+    let millis = browser
+        .eval("document.body.dataset.guitarscoreSoundMs || 'unknown'")
+        .unwrap_or_else(|_| "unknown".to_owned());
+    println!(
+        "web: SoundFont loaded in {millis} ms from page start ({:.1} s after the editor marker)",
+        started.elapsed().as_secs_f32()
+    );
+
+    // The audio worklet page: its module and second wasm instance must load, the
+    // SoundFont must play a note, and the analyser must see samples (not silence).
+    let worklet = "new Promise((resolve) => { const started = Date.now(); \
+                   const poll = () => { const body = document.body; \
+                   const sound = body.dataset.workletSound; \
+                   const status = document.getElementById('status'); \
+                   if (sound === 'ok') return resolve('ok, rms ' + body.dataset.workletRms); \
+                   if (sound === 'silent') return resolve('silent (rms ' + body.dataset.workletRms + ')'); \
+                   if (body.dataset.workletCheck === 'failed') \
+                     return resolve('failed: ' + (status ? status.textContent : 'unknown')); \
+                   if (Date.now() - started > 60000) return resolve('timeout: step=' + \
+                     (body.dataset.step || 'none') + ' status=' + (status ? status.textContent : 'none')); \
+                   setTimeout(poll, 100); }; poll(); })";
+    let url = format!("http://127.0.0.1:{port}/worklet-check.html");
+    let result = browser.evaluate(&url, worklet)?;
+    if !result.starts_with("ok") {
+        return Err(format!(
+            "the AudioWorklet synthesizer did not play in the browser: {result}{}",
+            console_log(browser.events())
+        ));
+    }
+    println!("web: worklet sound OK ({result})");
     browser.screenshot(&out.join("smoke-worklet.png"))?;
     println!(
         "web: smoke tests OK; screenshots at {} and {}",

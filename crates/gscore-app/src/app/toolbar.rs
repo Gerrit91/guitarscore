@@ -330,9 +330,21 @@ impl GuitarScoreApp {
         }
         if self.playback.is_loading() {
             ui.label("Loading sounds…");
+            // A browser reports real bytes; the desktop's synthesizer has no byte count.
+            let (fraction, text) = match self.playback.load_progress() {
+                Some((done, total)) if total > 0 => {
+                    let percent =
+                        u16::try_from(done.saturating_mul(100).checked_div(total).unwrap_or(0))
+                            .unwrap_or(0)
+                            .min(100);
+                    (f32::from(percent) / 100.0, format!("{percent}%"))
+                }
+                _ => (0.0, String::new()),
+            };
             ui.add(
-                egui::ProgressBar::new(0.0)
-                    .animate(true)
+                egui::ProgressBar::new(fraction)
+                    .text(text)
+                    .animate(fraction <= 0.0)
                     .desired_width(80.0),
             );
             if ui.small_button("Cancel").clicked() {

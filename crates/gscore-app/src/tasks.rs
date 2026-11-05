@@ -516,9 +516,9 @@ impl Tasks {
         Ok(())
     }
 
-    /// The browser's SoundFont dialog (not offered yet: the worklet's SoundFont handling
-    /// is still being built).
+    /// The browser's SoundFont dialog (the site ships its own, so it is not offered).
     #[cfg(target_arch = "wasm32")]
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(crate) fn pick_soundfont(&mut self, _ctx: &egui::Context) -> Result<(), String> {
         Err("choosing a SoundFont is not available in the browser build yet".to_owned())
     }
