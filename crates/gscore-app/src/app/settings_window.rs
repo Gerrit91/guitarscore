@@ -191,39 +191,38 @@ impl GuitarScoreApp {
                 if style::window_title_bar(ui, "Settings", &mut window.pos) {
                     close = true;
                 }
-                egui::Frame::new()
-                    .inner_margin(Margin::symmetric(16, 12))
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            for (tab, label) in [
-                                (SettingsTab::Song, "Song"),
-                                (SettingsTab::Page, "Page layout"),
-                                (SettingsTab::Editor, "Editor"),
-                                (SettingsTab::Audio, "Audio I/O"),
-                            ] {
-                                ui.selectable_value(&mut window.tab, tab, label);
-                            }
-                        });
-                        ui.separator();
-                        match window.tab {
-                            SettingsTab::Song => {
-                                song_tab(ui, &mut window, &mut apply, &mut close);
-                            }
-                            SettingsTab::Page => {
-                                let has_song = self.document().is_some();
-                                page_tab(
-                                    ui,
-                                    &mut window.page,
-                                    preview.as_deref(),
-                                    has_song,
-                                    &mut apply_page,
-                                    &mut close,
-                                );
-                            }
-                            SettingsTab::Editor => self.editor_tab(ui),
-                            SettingsTab::Audio => self.audio_tab(ui, &mut window.soundfonts),
+                let escape = style::dialog_body(ui, Margin::symmetric(16, 12), |ui| {
+                    ui.horizontal(|ui| {
+                        for (tab, label) in [
+                            (SettingsTab::Song, "Song"),
+                            (SettingsTab::Page, "Page layout"),
+                            (SettingsTab::Editor, "Editor"),
+                            (SettingsTab::Audio, "Audio I/O"),
+                        ] {
+                            ui.selectable_value(&mut window.tab, tab, label);
                         }
                     });
+                    ui.separator();
+                    match window.tab {
+                        SettingsTab::Song => {
+                            song_tab(ui, &mut window, &mut apply, &mut close);
+                        }
+                        SettingsTab::Page => {
+                            let has_song = self.document().is_some();
+                            page_tab(
+                                ui,
+                                &mut window.page,
+                                preview.as_deref(),
+                                has_song,
+                                &mut apply_page,
+                                &mut close,
+                            );
+                        }
+                        SettingsTab::Editor => self.editor_tab(ui),
+                        SettingsTab::Audio => self.audio_tab(ui, &mut window.soundfonts),
+                    }
+                });
+                close |= escape;
             });
         if close {
             self.settings_window = None;

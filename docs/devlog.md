@@ -2842,3 +2842,14 @@ needed for a much larger font); owner listening check.
   spread and for an arpeggio ending on the beat; GP7 round trip of both strokes and GP5 of
   the brush speed; an app test sets 1/16 and "ends on the beat" through the dialog, with a
   new `brush_dialog` snapshot.
+
+## 2026-11-05 — Every dialog closes with Escape
+
+- The windows had grown different habits: About, History, Settings and New song ignored
+  Escape. They share `style::dialog_body` now: the standard inner frame and margins, and
+  "Escape closes me". Shortcuts (which has its own filter field and key capture) closes on
+  Escape too, after an active capture has been cancelled by the first press.
+- Shared modal behaviour: the score's keys are held back while About, History, New song,
+  the rename window or the tuning dialog is open, not only for the other dialogs, so a
+  stray key no longer edits the song behind them.
+- Tests: one test opens About, Settings, History and New song and closes each with Escape.

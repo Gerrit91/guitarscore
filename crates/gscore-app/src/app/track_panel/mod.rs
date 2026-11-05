@@ -31,6 +31,13 @@ pub(super) struct TrackPanelState {
     tuning: Option<tuning::TuningDialog>,
 }
 
+impl TrackPanelState {
+    /// Whether the tuning dialog is open.
+    pub(super) fn tuning_open(&self) -> bool {
+        self.tuning.is_some()
+    }
+}
+
 /// A snapshot of the shown track, taken before drawing so the song is not borrowed while
 /// the widgets run.
 struct TrackPanel {

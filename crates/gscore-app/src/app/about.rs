@@ -76,20 +76,18 @@ impl GuitarScoreApp {
                 if style::window_title_bar(ui, "About GuitarScore", &mut about.pos) {
                     close = true;
                 }
-                egui::Frame::new()
-                    .inner_margin(Margin::symmetric(18, 14))
-                    .show(ui, |ui| {
-                        ui.horizontal_top(|ui| {
-                            if let Some(icon) = &icon {
-                                ui.add(
-                                    egui::Image::new((icon.id(), egui::vec2(ICON_SIZE, ICON_SIZE)))
-                                        .alt_text("GuitarScore icon"),
-                                );
-                                ui.add_space(14.0);
-                            }
-                            ui.vertical(|ui| about_text(ui, soundfont.as_deref()));
-                        });
+                close |= style::dialog_body(ui, Margin::symmetric(18, 14), |ui| {
+                    ui.horizontal_top(|ui| {
+                        if let Some(icon) = &icon {
+                            ui.add(
+                                egui::Image::new((icon.id(), egui::vec2(ICON_SIZE, ICON_SIZE)))
+                                    .alt_text("GuitarScore icon"),
+                            );
+                            ui.add_space(14.0);
+                        }
+                        ui.vertical(|ui| about_text(ui, soundfont.as_deref()));
                     });
+                });
             });
         if !close {
             self.about = Some(about);

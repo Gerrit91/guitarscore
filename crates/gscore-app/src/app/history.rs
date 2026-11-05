@@ -99,20 +99,18 @@ impl GuitarScoreApp {
                 if style::window_title_bar(ui, "History", &mut panel.pos) {
                     close = true;
                 }
-                egui::Frame::new()
-                    .inner_margin(Margin::symmetric(14, 10))
-                    .show(ui, |ui| {
-                        ui.label(
-                            RichText::new(
-                                "Newest first (times are UTC). The clock on a row brings the \
-                                 song back to that point; every change is also recorded in \
-                                 the recovery journal.",
-                            )
-                            .weak(),
-                        );
-                        ui.add_space(6.0);
-                        target = table(ui, &mut panel.widths, &rows);
-                    });
+                close |= style::dialog_body(ui, Margin::symmetric(14, 10), |ui| {
+                    ui.label(
+                        RichText::new(
+                            "Newest first (times are UTC). The clock on a row brings the \
+                             song back to that point; every change is also recorded in the \
+                             recovery journal.",
+                        )
+                        .weak(),
+                    );
+                    ui.add_space(6.0);
+                    target = table(ui, &mut panel.widths, &rows);
+                });
             });
         if close {
             return;

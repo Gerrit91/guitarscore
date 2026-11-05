@@ -217,6 +217,10 @@ impl GuitarScoreApp {
                 Err(error) => panel.error = Some(error),
             }
         }
+        let was_capturing = panel.capturing.is_some();
+        if !was_capturing && !close && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+            close = true;
+        }
         if let Some(action) = panel.capturing {
             let events = ctx.input(|input| input.events.clone());
             for event in events {

@@ -335,3 +335,19 @@ pub(crate) fn toolbar_group<R>(
         })
         .inner
 }
+
+/// The body of one of the app's own windows: the shared inner frame and margins. Returns
+/// whether Escape was pressed, which closes every dialog; the caller treats that exactly
+/// like its close button.
+pub(crate) fn dialog_body(
+    ui: &mut egui::Ui,
+    margin: Margin,
+    add_contents: impl FnOnce(&mut egui::Ui),
+) -> bool {
+    let mut escape = false;
+    Frame::new().inner_margin(margin).show(ui, |ui| {
+        add_contents(ui);
+        escape = ui.input(|input| input.key_pressed(egui::Key::Escape));
+    });
+    escape
+}

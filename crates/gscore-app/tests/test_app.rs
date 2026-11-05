@@ -93,6 +93,59 @@ fn the_view_menu_switches_the_theme_and_the_toolbar_zooms() {
 }
 
 #[test]
+fn escape_closes_the_shared_windows() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    // About
+    harness.get_by_label("Help").click();
+    harness.run();
+    harness.get_by_label("About GuitarScore").click();
+    harness.run();
+    harness.get_by_label("GuitarScore icon");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert!(
+        harness.query_by_label("GuitarScore icon").is_none(),
+        "Escape closes About"
+    );
+
+    // Settings
+    harness.get_by_label("Settings").click();
+    harness.run();
+    harness.get_by_label("Page layout");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert!(
+        harness.query_by_label("Page layout").is_none(),
+        "Escape closes Settings"
+    );
+
+    // History
+    harness.get_by_label("History").click();
+    harness.run();
+    harness.get_by_label_contains("Newest first");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert!(
+        harness.query_by_label_contains("Newest first").is_none(),
+        "Escape closes History"
+    );
+
+    // New song (the song behind it stays)
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("New").click();
+    harness.run();
+    harness.get_by_label("New song title");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert!(
+        harness.query_by_label("New song title").is_none(),
+        "Escape closes New song"
+    );
+    assert!(harness.state().document().is_some());
+}
+
+#[test]
 fn help_about_shows_the_version() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("Help").click();
