@@ -352,6 +352,7 @@ impl Direction {
     }
 
     /// Guitar Pro's direction-sign field.
+    #[allow(dead_code)] // used by the test song builder, and by editing once it is exposed
     pub(crate) fn to_gp(self) -> GpDirectionSign {
         match self {
             Direction::Coda => GpDirectionSign::Coda,

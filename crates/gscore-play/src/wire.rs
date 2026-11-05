@@ -8,7 +8,7 @@
 use crate::{Channel, MidiEvent, Sequence, TempoMap, TimedEvent};
 
 /// Identifies the format; bump the last digit when the layout changes.
-const MAGIC: &[u8; 4] = b"GSQ1";
+const MAGIC: &[u8; 4] = b"GSQ2";
 /// Caps sized by the input, so a damaged message cannot allocate without bound.
 const MAX_EVENTS: usize = 4_000_000;
 const MAX_TEMPO_POINTS: usize = 65_536;
@@ -31,6 +31,12 @@ pub fn encode_sequence(sequence: &Sequence) -> Vec<u8> {
     for &(tick, micros) in points {
         put_u64(&mut out, tick);
         put_u32(&mut out, micros);
+    }
+    let pauses = sequence.tempo.pauses();
+    put_u32(&mut out, u32::try_from(pauses.len()).unwrap_or(u32::MAX));
+    for &(tick, micros) in pauses {
+        put_u64(&mut out, tick);
+        put_u64(&mut out, micros);
     }
     put_u64(&mut out, sequence.end);
     out
@@ -64,8 +70,16 @@ pub fn decode_sequence(bytes: &[u8]) -> Result<Sequence, String> {
     for _ in 0..tempo_count {
         points.push((reader.u64()?, reader.u32()?));
     }
+    let pause_count = reader.u32()? as usize;
+    if pause_count > MAX_TEMPO_POINTS || pause_count > reader.remaining().saturating_div(16) {
+        return Err("the playback sequence is damaged (too many pauses)".to_owned());
+    }
+    let mut pauses = Vec::with_capacity(pause_count);
+    for _ in 0..pause_count {
+        pauses.push((reader.u64()?, reader.u64()?));
+    }
     let end = reader.u64()?;
-    let tempo = TempoMap::from_points(points)
+    let tempo = TempoMap::from_parts(points, pauses)
         .ok_or_else(|| "the playback sequence has no valid tempo".to_owned())?;
     Ok(Sequence {
         tracks: Vec::new(),
@@ -227,6 +241,7 @@ mod tests {
     fn sequence() -> Sequence {
         let mut tempo = TempoMap::new(120);
         tempo.set(u64::from(PPQ), 90);
+        tempo.pause(u64::from(PPQ) * 2, 250_000);
         Sequence {
             tracks: Vec::new(),
             events: vec![

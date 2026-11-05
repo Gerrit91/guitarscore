@@ -14,6 +14,9 @@ const TEMPO_RANGE: (u32, u32) = (10, 1000);
 pub struct TempoMap {
     /// `(tick, microseconds per quarter note)`, sorted by tick, starting at tick 0.
     points: Vec<(u64, u32)>,
+    /// `(tick, microseconds)`: a fermata or similar hold just before that tick. Sorted by
+    /// tick. Ticks do not move: the pause only lengthens the time taken to reach them.
+    pauses: Vec<(u64, u64)>,
 }
 
 /// Microseconds per quarter note at `bpm` beats per minute (clamped to a sane range).
@@ -32,6 +35,7 @@ impl TempoMap {
     pub fn new(bpm: u32) -> Self {
         TempoMap {
             points: vec![(0, micros_per_quarter(bpm))],
+            pauses: Vec::new(),
         }
     }
 
@@ -52,9 +56,44 @@ impl TempoMap {
         &self.points
     }
 
+    /// The pauses: `(tick, microseconds)` holds just before that tick.
+    pub fn pauses(&self) -> &[(u64, u64)] {
+        &self.pauses
+    }
+
+    /// Holds `micros` microseconds just before reaching `tick` (a fermata). Ticks do not
+    /// move; only the time taken to reach them grows. Several holds at one tick add up.
+    pub fn pause(&mut self, tick: u64, micros: u64) {
+        if micros == 0 {
+            return;
+        }
+        let at = self.pauses.partition_point(|&(start, _)| start < tick);
+        match self.pauses.get_mut(at) {
+            Some(hold) if hold.0 == tick => hold.1 = hold.1.saturating_add(micros),
+            _ => self.pauses.insert(at, (tick, micros)),
+        }
+    }
+
+    /// Holds `ticks` of the tempo in effect just before `tick`, converted to time.
+    pub fn hold_ticks(&mut self, tick: u64, ticks: u64) {
+        let bpm = self.bpm_at(tick.saturating_sub(1));
+        let micros = u128::from(ticks)
+            .saturating_mul(u128::from(micros_per_quarter(bpm)))
+            .checked_div(u128::from(PPQ))
+            .unwrap_or(0);
+        if let Ok(micros) = u64::try_from(micros) {
+            self.pause(tick, micros);
+        }
+    }
+
     /// A map from decoded points: non-empty, starting at tick 0, in tick order, with a
     /// positive rate. `None` if they are not (a damaged message).
     pub(crate) fn from_points(points: Vec<(u64, u32)>) -> Option<Self> {
+        Self::from_parts(points, Vec::new())
+    }
+
+    /// A map from decoded points and pauses, both checked; `None` if they are damaged.
+    pub(crate) fn from_parts(points: Vec<(u64, u32)>, pauses: Vec<(u64, u64)>) -> Option<Self> {
         let first = points.first()?;
         if first.0 != 0 || first.1 == 0 {
             return None;
@@ -65,10 +104,19 @@ impl TempoMap {
         }) {
             return None;
         }
-        Some(TempoMap { points })
+        if pauses.iter().any(|&(_, micros)| micros == 0) {
+            return None;
+        }
+        if pauses.windows(2).any(|pair| match pair {
+            [a, b] => a.0 >= b.0,
+            _ => true,
+        }) {
+            return None;
+        }
+        Some(TempoMap { points, pauses })
     }
 
-    /// The time of `tick` in microseconds from the start.
+    /// The time of `tick` in microseconds from the start, including the pauses before it.
     pub fn micros_at(&self, tick: u64) -> u64 {
         let mut micros: u64 = 0;
         for (i, &(start, rate)) in self.points.iter().enumerate() {
@@ -80,6 +128,12 @@ impl TempoMap {
                 .get(i.saturating_add(1))
                 .map_or(tick, |&(next, _)| next.min(tick));
             micros = micros.saturating_add(span_micros(end.saturating_sub(start), rate));
+        }
+        for &(pause_tick, pause) in &self.pauses {
+            if pause_tick > tick {
+                break;
+            }
+            micros = micros.saturating_add(pause);
         }
         micros
     }
@@ -100,27 +154,62 @@ impl TempoMap {
             .unwrap_or(0)
     }
 
-    /// The tick reached after `micros` microseconds.
+    /// The tick reached after `micros` microseconds. A pause holds the result just before
+    /// its tick, so the events at that tick do not come due until the hold is over.
     pub fn tick_at(&self, micros: u64) -> u64 {
         let mut elapsed: u64 = 0;
-        for (i, &(start, rate)) in self.points.iter().enumerate() {
-            let next = self.points.get(i.saturating_add(1)).map(|&(next, _)| next);
-            let span = next.map(|next| span_micros(next.saturating_sub(start), rate));
-            match span {
-                Some(span) if elapsed.saturating_add(span) <= micros => {
-                    elapsed = elapsed.saturating_add(span);
+        let mut point: usize = 0;
+        let mut current = self.points.first().map_or(0, |&(tick, _)| tick);
+        let mut rate = self.points.first().map_or(1, |&(_, rate)| rate.max(1));
+        let mut pause: usize = 0;
+        loop {
+            let next_point = self
+                .points
+                .get(point.saturating_add(1))
+                .map(|&(tick, _)| tick);
+            let next_pause = self.pauses.get(pause).map(|&(tick, _)| tick);
+            let boundary = match (next_point, next_pause) {
+                (Some(a), Some(b)) => a.min(b),
+                (Some(a), None) => a,
+                (None, Some(b)) => b,
+                (None, None) => u64::MAX,
+            };
+            if boundary == u64::MAX {
+                let left = micros.saturating_sub(elapsed);
+                return current.saturating_add(ticks_for(left, rate));
+            }
+            let span = boundary.saturating_sub(current);
+            let cost = span_micros(span, rate);
+            if elapsed.saturating_add(cost) > micros {
+                let left = micros.saturating_sub(elapsed);
+                return current.saturating_add(ticks_for(left, rate));
+            }
+            elapsed = elapsed.saturating_add(cost);
+            current = boundary;
+            let mut advanced = false;
+            if next_pause == Some(boundary) {
+                let hold = self.pauses.get(pause).map_or(0, |&(_, micros)| micros);
+                if elapsed.saturating_add(hold) > micros {
+                    // Still holding: stay just before the tick whose events wait.
+                    return current.saturating_sub(1);
                 }
-                _ => {
-                    let left = micros.saturating_sub(elapsed);
-                    let ticks = u128::from(left)
-                        .saturating_mul(u128::from(PPQ))
-                        .checked_div(u128::from(rate))
-                        .unwrap_or(0);
-                    return start.saturating_add(u64::try_from(ticks).unwrap_or(u64::MAX));
+                elapsed = elapsed.saturating_add(hold);
+                pause = pause.saturating_add(1);
+                advanced = true;
+            }
+            if next_point == Some(boundary) {
+                point = point.saturating_add(1);
+                if let Some(&(tick, new_rate)) = self.points.get(point) {
+                    current = tick;
+                    rate = new_rate.max(1);
                 }
+                advanced = true;
+            }
+            if !advanced {
+                break;
             }
         }
-        0
+        current
     }
 }
 
@@ -131,6 +220,15 @@ fn span_micros(ticks: u64, rate: u32) -> u64 {
         .checked_div(u128::from(PPQ))
         .unwrap_or(0);
     u64::try_from(micros).unwrap_or(u64::MAX)
+}
+
+/// How many ticks fit in `micros` at `rate` microseconds per quarter.
+fn ticks_for(micros: u64, rate: u32) -> u64 {
+    let ticks = u128::from(micros)
+        .saturating_mul(u128::from(PPQ))
+        .checked_div(u128::from(rate.max(1)))
+        .unwrap_or(0);
+    u64::try_from(ticks).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]
@@ -160,6 +258,33 @@ mod tests {
         assert_eq!(map.bpm_at(u64::from(PPQ) * 4), 60);
         assert_eq!(map.bpm_at(u64::from(PPQ) * 6), 133);
         assert_eq!(map.bpm_at(u64::MAX), 133);
+    }
+
+    #[test]
+    fn a_pause_holds_the_clock_just_before_its_tick() {
+        let mut map = TempoMap::new(120); // a quarter is 0.5 s
+        map.pause(u64::from(PPQ) * 4, 1_000_000);
+        assert_eq!(map.micros_at(0), 0);
+        assert_eq!(map.micros_at(u64::from(PPQ) * 4 - 1), 1_999_479);
+        // Reaching the end of the fourth quarter includes the hold.
+        assert_eq!(map.micros_at(u64::from(PPQ) * 4), 3_000_000);
+        // The clock waits just before it, then crosses it.
+        assert_eq!(map.tick_at(2_000_000), u64::from(PPQ) * 4 - 1);
+        assert_eq!(map.tick_at(2_500_000), u64::from(PPQ) * 4 - 1);
+        assert_eq!(map.tick_at(3_000_000), u64::from(PPQ) * 4);
+        assert_eq!(map.tick_at(3_500_000), u64::from(PPQ) * 5);
+        // The tempo itself does not change.
+        assert_eq!(map.bpm_at(u64::from(PPQ) * 4), 120);
+        // Holds at the same tick add up, and they are kept in tick order.
+        map.pause(u64::from(PPQ) * 2, 100_000);
+        map.pause(u64::from(PPQ) * 4, 500_000);
+        assert_eq!(
+            map.pauses(),
+            [
+                (u64::from(PPQ) * 2, 100_000),
+                (u64::from(PPQ) * 4, 1_500_000)
+            ]
+        );
     }
 
     #[test]

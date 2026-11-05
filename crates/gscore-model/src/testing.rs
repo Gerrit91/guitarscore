@@ -454,6 +454,23 @@ pub fn song_with_directions(
     Song::from_inner(inner)
 }
 
+/// A 4/4 guitar song of `count` measures with fermatas at the given measures.
+pub fn song_with_fermatas(
+    count: usize,
+    marks: &[(usize, crate::marks::Fermata)],
+) -> Result<Song, ModelError> {
+    let song = song(&[GUITAR_6], count)?;
+    let mut inner = song.inner().clone();
+    for &(measure, fermata) in marks {
+        let header = inner
+            .measure_headers
+            .get_mut(measure)
+            .ok_or_else(|| ModelError::Invalid(format!("no measure {measure} for a fermata")))?;
+        header.fermatas = vec![(fermata.to_gp().to_owned(), "0/1".to_owned())];
+    }
+    Song::from_inner(inner)
+}
+
 /// Four quarter-note rests.
 fn quarter_rests() -> Vec<Beat> {
     (0..4)

@@ -51,8 +51,10 @@ pub struct MeasureSpan {
     pub measure: MeasureIndex,
     /// First tick.
     pub start: u64,
-    /// Tick after the last.
+    /// Tick after the last musical beat (a fermata's hold comes after it).
     pub end: u64,
+    /// Silence after the measure, in ticks: its fermata's hold, or 0.
+    pub pause: u64,
     /// Its time signature.
     pub signature: TimeSignature,
 }
@@ -156,6 +158,9 @@ impl Sequence {
         let mut tempo = TempoMap::new(song.tempo());
         for (tick, bpm) in tempo_changes {
             tempo.set(tick, bpm);
+        }
+        for span in &measures {
+            tempo.hold_ticks(span.end, span.pause);
         }
 
         Ok(Sequence {

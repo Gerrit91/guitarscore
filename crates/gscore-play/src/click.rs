@@ -192,6 +192,7 @@ pub fn count_in(
             measure: at.measure,
             start,
             end: start.saturating_add(bar),
+            pause: 0,
             signature,
         };
         events.extend(click_events_at(span, click.volume));
@@ -258,7 +259,14 @@ pub fn lead_in(sequence: &Sequence, clicks: &Sequence, start: u64) -> Sequence {
             .filter(|(tick, _)| *tick > start)
             .map(|&(tick, rate)| (moved(tick), rate)),
     );
-    let tempo = TempoMap::from_points(points).unwrap_or_else(|| clicks.tempo.clone());
+    let pauses: Vec<(u64, u64)> = sequence
+        .tempo
+        .pauses()
+        .iter()
+        .filter(|&&(tick, _)| tick > start)
+        .map(|&(tick, micros)| (moved(tick), micros))
+        .collect();
+    let tempo = TempoMap::from_parts(points, pauses).unwrap_or_else(|| clicks.tempo.clone());
     Sequence {
         tracks: sequence.tracks.clone(),
         events,

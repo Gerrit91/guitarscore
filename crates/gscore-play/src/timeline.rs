@@ -8,7 +8,7 @@ use gscore_model::{
 use crate::order::playback_order;
 use crate::sequence::{MeasureSpan, beat_tick, ticks};
 use crate::swing;
-use crate::tempo::TempoMap;
+use crate::tempo::{PPQ, TempoMap};
 
 /// The played measures of `song` and the tick where the piece ends. The same measure can
 /// appear several times (repeats).
@@ -25,15 +25,27 @@ pub(crate) fn measure_spans(song: &Song) -> Result<(Vec<MeasureSpan>, u64), Mode
             .transpose()?
             .unwrap_or(four_four);
         let end = tick.saturating_add(ticks(signature.measure_length()));
+        let pause = song.fermata(measure).map_or(0, fermata_hold);
         measures.push(MeasureSpan {
             measure,
             start: tick,
             end,
+            pause,
             signature,
         });
+        // A fermata holds the end of its measure in real time; it does not move any tick.
         tick = end;
     }
     Ok((measures, tick))
+}
+
+/// How long a fermata holds, in ticks: a quarter note for the ordinary one.
+fn fermata_hold(fermata: gscore_model::Fermata) -> u64 {
+    let (numerator, denominator) = fermata.hold_quarters();
+    u64::from(PPQ)
+        .saturating_mul(u64::from(numerator))
+        .checked_div(u64::from(denominator.max(1)))
+        .unwrap_or(0)
 }
 
 /// A song's played measures and tempo, without its events.
@@ -87,6 +99,9 @@ impl Timeline {
         let mut tempo = TempoMap::new(song.tempo());
         for (tick, bpm) in changes {
             tempo.set(tick, bpm);
+        }
+        for span in &measures {
+            tempo.hold_ticks(span.end, span.pause);
         }
         Ok(Timeline {
             measures,
@@ -165,6 +180,7 @@ mod tests {
     use gscore_model::testing::{self, GUITAR_6};
 
     use super::*;
+    use crate::PPQ;
 
     #[test]
     fn the_total_time_follows_the_tempo_and_the_bars() {
@@ -188,6 +204,34 @@ mod tests {
         assert_eq!(timeline.measure_micros(1, 2), Some(4_000_000));
         assert_eq!(timeline.measure_micros(2, 1), None);
         assert_eq!(timeline.measure_micros(0, 9), None);
+    }
+
+    #[test]
+    fn a_fermata_holds_the_end_of_its_measure() {
+        // Two 4/4 bars at 120 BPM, the first with an ordinary fermata (one quarter added).
+        let song = testing::song_with_fermatas(2, &[(0, gscore_model::Fermata::Medium)]).unwrap();
+        let timeline = Timeline::new(&song).unwrap();
+        let bar = u64::from(PPQ).saturating_mul(4);
+        assert_eq!(timeline.measures[0].pause, u64::from(PPQ));
+        // The pause does not move any tick: only the time taken to reach them grows.
+        assert_eq!(timeline.measures[1].start, bar);
+        assert_eq!(timeline.measures[1].end, bar.saturating_mul(2));
+        assert_eq!(timeline.end, bar.saturating_mul(2));
+        // Two 2-second bars plus a half-second hold.
+        assert_eq!(timeline.micros(), 4_500_000);
+        assert_eq!(timeline.measure_range(0, 0), Some((0, bar)));
+        assert_eq!(timeline.measure_micros(1, 1), Some(2_000_000));
+        // The first bar's time includes its hold (the measure's last beat is held).
+        assert_eq!(timeline.measure_micros(0, 0), Some(2_500_000));
+
+        let sequence = crate::Sequence::new(&song, None).unwrap();
+        assert_eq!(sequence.measures[1].start, bar);
+        assert_eq!(sequence.micros(), timeline.micros());
+        // A very short fermata holds a sixteenth of a quarter.
+        let song =
+            testing::song_with_fermatas(1, &[(0, gscore_model::Fermata::VeryShort)]).unwrap();
+        let timeline = Timeline::new(&song).unwrap();
+        assert_eq!(timeline.measures[0].pause, u64::from(PPQ) / 4);
     }
 
     #[test]
