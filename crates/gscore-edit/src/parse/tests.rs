@@ -2,8 +2,8 @@
 
 use super::*;
 use gscore_model::{
-    AccentKind, BeatEffect, BeatIndex, BendKind, BendPoint, BendShape, Dynamic, Grace, GraceSpeed,
-    Harmonic, HarmonicKind, NoteEffect, StrokeDirection, WhammyShape,
+    AccentKind, BeatEffect, BeatIndex, BendKind, BendPoint, BendShape, Clef, Dynamic, Grace,
+    GraceSpeed, Harmonic, HarmonicKind, NoteEffect, StrokeDirection, WhammyShape,
 };
 
 fn at(track: usize, measure: usize, voice: usize, beat: usize) -> BeatPosition {
@@ -776,6 +776,15 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
         Command::SetFermata {
             measure: MeasureIndex::new(1),
             fermata: Some(Fermata::VeryLong),
+        },
+        Command::SetClef {
+            track: TrackIndex::new(1),
+            measure: MeasureIndex::new(2),
+            clef: Clef::Tenor,
+        },
+        Command::SetFreeTime {
+            measure: MeasureIndex::new(2),
+            free_time: true,
         },
     ]);
     // Names a plain command line could not hold: empty, spaces, the comment sign, `=`,
