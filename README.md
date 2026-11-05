@@ -8,20 +8,18 @@ built never to lose your work.
 
 ## Why GuitarScore
 
-- **Keyboard first.** Type a fret, press `+` for a shorter note, arrow on. Every action
-  has a key, and every key can be rebound.
+- **Native and light.** One binary, GPU-rendered, no account, no cloud. Runs on all platforms and in the
+  browser. MIT licensed.
 - **Your Guitar Pro files.** Opens Guitar Pro 3 to 7+, saves Guitar Pro 7, and exports
   older Guitar Pro versions, MIDI and PDF.
 - **Never lose work.** Every edit goes to a recovery journal first; after a crash the next
   start offers your document back, undo history included.
 - **Hear it.** A built-in synthesizer plays every track with its techniques, or send it
   to any MIDI synthesizer. A tuner is included.
+- **Keyboard first.** Type a fret, press `+` for a shorter note, arrow on. Every action
+  has a key, and every key can be rebound.
 - **The whole score.** Notation and tab, all techniques with their own editors, several
   tracks on one page, real pages or one endless page, light and dark.
-- **Native and light.** One binary, GPU-rendered, no account, no cloud. Also runs in the
-  browser. MIT licensed.
-
-![The bend editor: a graph with draggable points and presets](docs/media/bend-editor.png)
 
 ## Status
 
