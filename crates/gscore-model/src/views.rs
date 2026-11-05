@@ -215,6 +215,14 @@ impl<'a> MeasureView<'a> {
         })
     }
 
+    /// Guitar Pro's bar-repetition (simile) mark on this measure, if any.
+    pub fn simile_mark(&self) -> Option<crate::style::SimileMark> {
+        self.inner
+            .simile_mark
+            .as_deref()
+            .and_then(crate::style::SimileMark::from_gp)
+    }
+
     /// The clef this measure's standard-notation staff is written in, if the file stored
     /// one (GP6/GP7 do; GP3-5 do not, and the layout derives it from the instrument).
     pub fn clef(&self) -> Option<crate::style::Clef> {

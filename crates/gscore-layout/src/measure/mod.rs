@@ -84,6 +84,8 @@ pub(crate) struct MeasureLayout {
     time_signature: Option<TimeSigLayout>,
     /// Free time: the measure's time signature is written in parentheses.
     free_time: bool,
+    /// Guitar Pro's bar-repetition (simile) mark.
+    simile: Option<gscore_model::SimileMark>,
     /// Room after the key signature, so the time signature lines up with other tracks'
     /// (0 on its own; set by [`align`]).
     signature_pad: f32,
@@ -474,6 +476,7 @@ impl MeasureLayout {
             key_signature,
             time_signature,
             free_time,
+            simile: measure.simile_mark(),
             signature_pad: 0.0,
             lead,
             columns,

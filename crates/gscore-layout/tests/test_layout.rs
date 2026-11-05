@@ -452,3 +452,35 @@ fn free_time_is_written_over_its_measure() {
         "{texts:?}"
     );
 }
+
+/// Bar repetitions are read and drawn: the staff file repeats measures 9 to 11.
+#[test]
+fn simile_marks_are_read_and_drawn() {
+    use gscore_model::{MeasureIndex, SimileMark};
+    let song = common::open("basic/staff.gp");
+    let track = song.track(TrackIndex::new(0)).unwrap();
+    assert_eq!(
+        track.measure(MeasureIndex::new(8)).unwrap().simile_mark(),
+        Some(SimileMark::Simple)
+    );
+    assert_eq!(
+        track.measure(MeasureIndex::new(9)).unwrap().simile_mark(),
+        Some(SimileMark::FirstOfDouble)
+    );
+    assert_eq!(
+        track.measure(MeasureIndex::new(10)).unwrap().simile_mark(),
+        Some(SimileMark::SecondOfDouble)
+    );
+    let layout = common::layout(&song, 0);
+    let slashes = layout
+        .ops
+        .iter()
+        .filter(
+            |op| matches!(op, DrawOp::Line { thickness, .. } if (*thickness - 0.16).abs() < 1e-6),
+        )
+        .count();
+    assert!(
+        slashes >= 5,
+        "one simple mark and two double marks: {slashes}"
+    );
+}

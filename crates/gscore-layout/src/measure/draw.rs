@@ -10,6 +10,7 @@ use super::{Column, DEAD_SLAP_HALF, Item, MEASURE_NUMBER_RISE, MeasureLayout, To
 
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
+use crate::glyph::Glyph;
 use crate::notation::{self, BeamPlan, Chord, Head, NotationItem};
 use crate::ornaments::{self, Fret};
 use crate::place::{BeatPlace, MeasurePlace};
@@ -233,6 +234,23 @@ impl MeasureLayout {
         }
         // Positions first: ornaments connect neighbouring columns.
         let (xs, right) = self.column_positions(x, stretch);
+        if let Some(simile) = self.simile {
+            let center = (x + right) / 2.0;
+            if tops.show_tab {
+                draw_simile(center, top + ctx.staff.middle(), simile, ops);
+            }
+            if let Some(notation_top) = tops.notation {
+                draw_simile(
+                    center,
+                    notation_top + notation::staff().middle(),
+                    simile,
+                    ops,
+                );
+            }
+            if let Some(slash_top) = tops.slash {
+                draw_simile(center, slash_top + notation::staff().middle(), simile, ops);
+            }
+        }
         // Where each column's space ends: the next column, or the end of the measure.
         let span_end = |index: usize| xs.get(index.saturating_add(1)).copied().unwrap_or(right);
         // A dead slapped beat is a large cross across each staff instead of its notes.
@@ -593,6 +611,36 @@ impl MeasureLayout {
 }
 
 /// A large cross across a staff for a dead slapped beat, centered on `x`.
+/// Guitar Pro's bar-repetition sign: one or two slashes through the middle of the staff,
+/// with a dot marking which half of a repeated pair it is.
+fn draw_simile(center: f32, middle: f32, simile: gscore_model::SimileMark, ops: &mut Vec<DrawOp>) {
+    let half = 0.8;
+    let offsets: &[f32] = match simile {
+        gscore_model::SimileMark::Simple => &[0.0],
+        _ => &[-0.45, 0.45],
+    };
+    for offset in offsets {
+        ops.push(DrawOp::Line {
+            from: Point::new(center - half + offset, middle + half),
+            to: Point::new(center + half + offset, middle - half),
+            thickness: 0.16,
+            color: ColorToken::Notation,
+        });
+    }
+    let dot_x = match simile {
+        gscore_model::SimileMark::Simple | gscore_model::SimileMark::SecondOfDouble => {
+            center + half - 0.1
+        }
+        gscore_model::SimileMark::FirstOfDouble => center - half + 0.1,
+    };
+    ops.push(DrawOp::Glyph {
+        glyph: Glyph::AugmentationDot,
+        at: Point::new(dot_x, middle + half - 0.3),
+        scale: 1.0,
+        color: ColorToken::Notation,
+    });
+}
+
 fn draw_dead_slap(x: f32, top: f32, height: f32, ops: &mut Vec<DrawOp>) {
     let (left, right) = (x - DEAD_SLAP_HALF, x + DEAD_SLAP_HALF);
     let (high, low) = (top - 0.3, top + height + 0.3);

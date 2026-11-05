@@ -40,6 +40,30 @@ impl TrackColor {
     }
 }
 
+/// Guitar Pro's bar-repetition sign (a "simile mark"): repeat the previous measure's
+/// music without writing it again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SimileMark {
+    /// Repeat the previous measure.
+    Simple,
+    /// The first half of a repeated pair of measures.
+    FirstOfDouble,
+    /// The second half of a repeated pair of measures.
+    SecondOfDouble,
+}
+
+impl SimileMark {
+    /// The mark named by Guitar Pro's stored value, if it is one.
+    pub fn from_gp(text: &str) -> Option<Self> {
+        match text {
+            "Simple" => Some(SimileMark::Simple),
+            "FirstOfDouble" => Some(SimileMark::FirstOfDouble),
+            "SecondOfDouble" => Some(SimileMark::SecondOfDouble),
+            _ => None,
+        }
+    }
+}
+
 /// A clef on the standard-notation staff.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Clef {
