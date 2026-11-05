@@ -970,6 +970,14 @@ fn the_view_menu_switches_between_the_five_score_views() {
         gscore_app::ScoreView::ScreenVertical
     );
     assert!(harness.query_by_label("Page 1 of 1").is_none());
+    // The screen fills the room between the panels exactly: it does not reach under the
+    // track panel, so nothing scrolls sideways.
+    let surface = harness.get_by_label("Score page").rect();
+    let panel = harness.get_by_label("Tablature").rect();
+    assert!(
+        surface.right() < panel.left(),
+        "the screen ({surface:?}) stays left of the track panel ({panel:?})"
+    );
     harness.get_by_label("View").click();
     harness.run();
     harness.get_by_label("Page grid").click();

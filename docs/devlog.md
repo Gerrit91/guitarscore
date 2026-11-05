@@ -3026,3 +3026,7 @@ needed for a much larger font); owner listening check.
 - **Vertical screen view while playing** turns over like the printed page view: when the
   playing line leaves the view, it goes to the top instead of the view creeping down a
   line at a time.
+- **Screen views** are paper from edge to edge (no page edges, shadow or grey canvas). The
+  vertical screen fits the room between the panels exactly (it was a margin wider and
+  scrolled sideways), and the space around the score grew from 24 to 32 points so the
+  panels' shadows stay clear of it. New `screen_view` snapshot.

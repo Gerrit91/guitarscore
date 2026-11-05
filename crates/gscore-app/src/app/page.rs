@@ -19,7 +19,7 @@ use crate::state::ScoreView;
 const SELECTION_ALPHA: f32 = 0.32;
 
 /// Space around the page inside the view, in points.
-const PAGE_MARGIN: f32 = 24.0;
+const PAGE_MARGIN: f32 = 32.0;
 /// Room kept above the playing line when the view turns over during playback, in staff
 /// spaces: the bar numbers, section names and tempo marks above the staff stay in view.
 const TURN_HEADROOM: f32 = 7.0;
@@ -108,8 +108,12 @@ impl GuitarScoreApp {
         // the horizontal one gets its width from the whole score on one line.
         let options = if score_view == ScoreView::ScreenVertical {
             let scale = POINTS_PER_SPACE * zoom;
+            // The surface and its margins fill the room left beside the scroll bar
+            // exactly, so the view never scrolls sideways and keeps clear of the panels.
+            let room =
+                ui.available_width() - 2.0 * PAGE_MARGIN - ui.spacing().scroll.allocated_width();
             let width = if scale > 0.0 {
-                ui.available_width() / scale
+                room / scale
             } else {
                 options.page_width
             };
@@ -207,6 +211,14 @@ impl GuitarScoreApp {
             ui.ctx()
                 .accesskit_node_builder(response.id, |node| node.set_label("Score page"));
             let origin = egui::pos2(rect.center().x - page.x / 2.0, rect.top() + PAGE_MARGIN);
+            // The screen views are paper from edge to edge: no pages, no canvas around them.
+            let surface = if score_view.on_pages() {
+                canvas::Surface::Pages
+            } else {
+                ui.painter()
+                    .rect_filled(ui.clip_rect(), 0.0, canvas::color(theme.paper));
+                canvas::Surface::Screen
+            };
             let painter = ui.painter_at(rect);
             canvas::paint(
                 &painter,
@@ -216,6 +228,7 @@ impl GuitarScoreApp {
                 theme,
                 zoom,
                 ui.clip_rect(),
+                surface,
             );
             // A position on the screen as a point of the layout.
             let to_layout = |pos: egui::Pos2| arrangement.layout_point((pos - origin) / scale);

@@ -124,8 +124,19 @@ pub(crate) fn page_size(layout: &Layout, arrangement: &Arrangement, zoom: f32) -
     arrangement.size(layout) * POINTS_PER_SPACE * zoom
 }
 
+/// What the score is painted on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Surface {
+    /// Sheets of paper floating on the canvas, each with its shadow and edge.
+    Pages,
+    /// Paper filling the whole view (the screen views), without page edges.
+    Screen,
+}
+
 /// Paints the pages with the top-left corner at `origin`, arranged by `arrangement`,
-/// skipping what lies outside `visible`.
+/// skipping what lies outside `visible`. On a [`Surface::Screen`] the caller fills the view
+/// with paper; no page edges are drawn.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn paint(
     painter: &Painter,
     origin: Pos2,
@@ -134,6 +145,7 @@ pub(crate) fn paint(
     theme: &Theme,
     zoom: f32,
     visible: Rect,
+    surface: Surface,
 ) {
     let scale = POINTS_PER_SPACE * zoom;
     let to_screen = |p: Point| origin + arrangement.to_display(p) * scale;
@@ -153,7 +165,7 @@ pub(crate) fn paint(
             origin + Vec2::new(page.origin.x, page.origin.y) * scale,
             Vec2::new(page.width, page.height) * scale,
         );
-        if !visible.expand(CULL_MARGIN).intersects(page) {
+        if surface == Surface::Screen || !visible.expand(CULL_MARGIN).intersects(page) {
             continue;
         }
         painter.add(shadow.as_shape(page, 2));
