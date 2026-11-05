@@ -107,6 +107,9 @@ impl GuitarScoreApp {
                 style::section(ui, "track_look", "Appearance", |ui| {
                     look::staves(ui, index, &snapshot, &mut commands);
                 });
+                style::section(ui, "track_sound", "Sound", |ui| {
+                    ui.label(RichText::new("Coming soon!").color(style::tokens(ui).text_weak));
+                });
             });
         for (command, merge) in commands {
             self.apply_command(command, merge);

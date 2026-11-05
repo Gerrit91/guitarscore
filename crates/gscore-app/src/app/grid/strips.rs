@@ -54,7 +54,7 @@ pub(super) fn strips(
     rows: &[TrackRow],
     master: MasterMix,
     levels: &[f32],
-    metronome_volume: f32,
+    metronome: (f32, f32),
     state: &mut MixerState,
     actions: &mut Vec<GridAction>,
 ) {
@@ -90,7 +90,7 @@ pub(super) fn strips(
                     state,
                     actions,
                 );
-                metronome_strip(ui, metronome_volume, height, state, actions);
+                metronome_strip(ui, metronome, height, state, actions);
             });
         });
 }
@@ -275,7 +275,7 @@ fn master_strip(
 /// switch stays in the toolbar). Full volume is the click as loud as it comes.
 fn metronome_strip(
     ui: &mut egui::Ui,
-    volume: f32,
+    (volume, level): (f32, f32),
     height: f32,
     state: &mut MixerState,
     actions: &mut Vec<GridAction>,
@@ -301,7 +301,7 @@ fn metronome_strip(
         METRONOME,
         value,
         64,
-        0.0,
+        level,
         127,
         "Metronome volume",
         |value, _| actions.push(GridAction::SetMetronomeVolume(set(value))),

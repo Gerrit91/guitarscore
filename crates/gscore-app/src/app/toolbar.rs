@@ -207,7 +207,7 @@ impl GuitarScoreApp {
             && self
                 .tabs
                 .get(self.active)
-                .is_some_and(|tab| tab.selection.is_some());
+                .is_some_and(|tab| tab.loop_measures().is_some());
         let (mut toggle_metronome, mut toggle_count_in, mut toggle_loop) = (false, false, false);
         let (mut to_start, mut previous, mut next, mut to_end) = (false, false, false, false);
         let start = ui.cursor().left();
@@ -307,6 +307,9 @@ impl GuitarScoreApp {
                         "Loop selection",
                         "Loop the selected measures while playing",
                         looping,
+                    )
+                    .on_disabled_hover_text(
+                        "Loop selection: select bars in the score or the grid first",
                     )
                 })
                 .inner

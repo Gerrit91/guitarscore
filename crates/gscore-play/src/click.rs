@@ -11,7 +11,7 @@ use crate::timeline::tempo_at;
 
 /// The `track` field of a click event: clicks belong to no track (SMF export leaves them
 /// out of the track chunks).
-pub(crate) const CLICK_TRACK: usize = usize::MAX;
+pub const CLICK_TRACK: usize = usize::MAX;
 /// General MIDI keys: the high wood block on the first beat, the low one elsewhere.
 const ACCENT_KEY: u8 = 76;
 const CLICK_KEY: u8 = 77;
@@ -22,6 +22,7 @@ const CLICK_VELOCITY: u8 = 80;
 const CLICK_LENGTH: u64 = (PPQ as u64) / 8;
 
 /// The clicks of one played measure: one per beat of its time signature, the first accented.
+#[cfg(test)]
 pub(crate) fn click_events(span: MeasureSpan) -> Vec<TimedEvent> {
     click_events_at(span, 1.0)
 }
@@ -71,8 +72,9 @@ pub(crate) fn click_events_at(span: MeasureSpan, volume: f32) -> Vec<TimedEvent>
 }
 
 /// One measure of clicks before playback starts at `at`, using the tempo and time signature
-/// of its measure.
-pub fn count_in(song: &Song, at: BeatPosition) -> Result<Sequence, ModelError> {
+/// of its measure, at the metronome's `volume` (0 to 1). It clicks whether or not the
+/// metronome clicks during the song.
+pub fn count_in(song: &Song, at: BeatPosition, volume: f32) -> Result<Sequence, ModelError> {
     let four_four = TimeSignature::new(4, 4)?;
     let signature = song
         .track(TrackIndex::new(0))
@@ -87,7 +89,7 @@ pub fn count_in(song: &Song, at: BeatPosition) -> Result<Sequence, ModelError> {
         end,
         signature,
     };
-    let mut events = click_events(span);
+    let mut events = click_events_at(span, volume);
     events.sort_by_key(|event| event.tick);
     Ok(Sequence {
         tracks: Vec::new(),
@@ -171,7 +173,7 @@ mod tests {
             voice: VoiceIndex::new(0),
             beat: BeatIndex::new(0),
         };
-        let count = count_in(&song, at).unwrap();
+        let count = count_in(&song, at, 1.0).unwrap();
         assert_eq!(count.end, 4 * u64::from(PPQ));
         assert_eq!(count.micros(), 2_000_000);
         assert_eq!(count.events.len(), 8);

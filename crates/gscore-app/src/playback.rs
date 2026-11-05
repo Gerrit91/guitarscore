@@ -140,6 +140,8 @@ pub struct Playback {
     count_in_start: Option<u64>,
     /// The song's sequence built for after the count-in (the player holds the clicks).
     count_in_sequence: Option<Arc<Sequence>>,
+    /// While the count-in plays: its clicks, for the metronome's level meter.
+    count_in_clicks: Option<Arc<Sequence>>,
     /// Whether playback loops the selected measures.
     loop_selection: bool,
     /// The entered note that is sounding, until its note-off is due.
@@ -170,6 +172,7 @@ impl Default for Playback {
             count_in_from: None,
             count_in_start: None,
             count_in_sequence: None,
+            count_in_clicks: None,
             loop_selection: false,
             audition: None,
             preview: None,
@@ -538,6 +541,7 @@ impl Playback {
         self.count_in_from = None;
         self.count_in_start = None;
         self.count_in_sequence = None;
+        self.count_in_clicks = None;
     }
 
     /// Chooses the output; the player reconnects on the next play.
@@ -702,7 +706,9 @@ impl Playback {
         // A fresh start with the count-in on: one bar of clicks, then the song.
         if !resume && self.count_in {
             let at = from.unwrap_or_else(first_beat);
-            let clicks = gscore_play::count_in(song, at).map_err(|e| e.to_string())?;
+            let clicks = gscore_play::count_in(song, at, self.metronome_volume)
+                .map(Arc::new)
+                .map_err(|e| e.to_string())?;
             // Build the song's sequence now: its start tick is what the readout shows while
             // the count-in plays.
             let sequence = match self.sequence.take() {
@@ -711,8 +717,9 @@ impl Playback {
             };
             let start = from.and_then(|at| sequence.tick_of(song, at)).unwrap_or(0);
             self.player_mut()?
-                .load(Arc::new(clicks))
+                .load(Arc::clone(&clicks))
                 .map_err(|e| e.to_string())?;
+            self.count_in_clicks = Some(clicks);
             self.count_in_start = Some(start);
             self.count_in_sequence = Some(sequence);
             self.count_in_from = Some(from);
@@ -917,6 +924,41 @@ impl Playback {
         // include the master.
         let gain = f32::from(entry.sound.volume) / 127.0;
         peak * gain * gain
+    }
+
+    /// How loud the metronome sounds right now (0 to 1), for the mixer's meter: its
+    /// clicks during the count-in and, with the metronome on, during the song.
+    pub fn metronome_level(&self) -> f32 {
+        if self.state() != PlayState::Playing {
+            return 0.0;
+        }
+        let (sequence, position) = if self.count_in_pending() {
+            (self.count_in_clicks.as_ref(), self.output_position())
+        } else {
+            (self.sequence.as_ref(), self.position())
+        };
+        let Some(sequence) = sequence else {
+            return 0.0;
+        };
+        // A click is short: its meter falls over an eighth note.
+        let window = u64::from(PPQ) / 2;
+        let start = position.saturating_sub(window);
+        let events = &sequence.events;
+        let first = events.partition_point(|event| event.tick < start);
+        let last = events.partition_point(|event| event.tick <= position);
+        events
+            .get(first..last)
+            .unwrap_or_default()
+            .iter()
+            .filter(|event| event.track == gscore_play::CLICK_TRACK)
+            .filter_map(|event| match event.event {
+                MidiEvent::NoteOn { velocity, .. } => {
+                    let age = position.saturating_sub(event.tick) as f32 / window as f32;
+                    Some(f32::from(velocity) / 127.0 * (1.0 - age).max(0.0))
+                }
+                _ => None,
+            })
+            .fold(0.0, f32::max)
     }
 
     /// A track's volume, pan or program changed. The new values are sent to the player at

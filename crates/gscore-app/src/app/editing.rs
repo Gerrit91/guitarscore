@@ -470,13 +470,12 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
-        let document = &mut tab.document;
-        let Some(selection) = tab.selection else {
+        let Some(selection) = tab.loop_measures() else {
             // Nothing is selected any more: looping has no range.
             self.playback.set_loop_selection(false);
             return;
         };
-        let timeline = document.timeline();
+        let timeline = tab.document.timeline();
         let range = timeline
             .as_deref()
             .and_then(|timeline| timeline.measure_range(selection.start(), selection.end()));
@@ -498,6 +497,7 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let looped = tab.loop_measures();
         let document = &mut tab.document;
         let measure_count = document.song().measure_count();
         if measure_count == 0 {
@@ -505,7 +505,7 @@ impl GuitarScoreApp {
         }
         let timeline = document.timeline();
         let loop_range = if self.playback.loop_selection() {
-            tab.selection.and_then(|selection| {
+            looped.and_then(|selection| {
                 timeline
                     .as_deref()
                     .and_then(|timeline| timeline.measure_range(selection.start(), selection.end()))

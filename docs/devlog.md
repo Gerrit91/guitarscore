@@ -3033,3 +3033,10 @@ needed for a much larger font); owner listening check.
 - **Horizontal screen view while playing** turns over a screen at a time: once the playing
   column leaves the view, it goes to the left edge (with a little room before it) instead
   of the view creeping along bar by bar.
+- **Loop selection** is enabled by a selection made in the score too (it loops the bars the
+  selection spans), not only by bars selected in the grid; while disabled, its tooltip
+  says why.
+- **Metronome meter**: the mixer's metronome strip shows the clicks as they play, during the
+  count-in and with the metronome on. The count-in follows the metronome volume and clicks
+  whether or not the metronome is on.
+- **Track panel**: a "Sound" section, a placeholder for now ("Coming soon!").

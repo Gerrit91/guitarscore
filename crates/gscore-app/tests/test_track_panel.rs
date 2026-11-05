@@ -276,3 +276,9 @@ fn a_click_in_the_song_grid_while_playing_jumps_there() {
     wait_for_position(&harness, measure_start(2));
     harness.state_mut().playback_mut().stop().unwrap();
 }
+
+#[test]
+fn the_sound_section_is_a_placeholder_for_now() {
+    let harness = app_with("basic/note_lengths.gp");
+    harness.get_by_label("Coming soon!");
+}

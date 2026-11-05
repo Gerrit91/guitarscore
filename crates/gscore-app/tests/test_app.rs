@@ -1470,6 +1470,14 @@ fn a_count_in_plays_one_bar_then_the_song_and_the_metronome_stays_live() {
     let bar = u64::from(gscore_play::PPQ).saturating_mul(4);
     assert_eq!(harness.state().playback().position(), bar.saturating_mul(2));
 
+    // The count-in clicks without the metronome, and the mixer's metronome meter shows them.
+    assert!(!harness.state().playback().metronome());
+    assert!(
+        step_until(&mut harness, 2, |app| app.playback().metronome_level()
+            > 0.0),
+        "the count-in's clicks show on the metronome's meter"
+    );
+
     // Turning the metronome on while playing swaps the sequence without a stop.
     harness.state_mut().set_metronome(true);
     assert_eq!(

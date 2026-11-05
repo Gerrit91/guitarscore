@@ -1535,3 +1535,33 @@ fn bar_repetitions_are_switch_tiles() {
     assert_eq!(simile(&harness, 2), None);
     assert_eq!(simile(&harness, 3), None);
 }
+
+#[test]
+fn a_selection_in_the_score_can_be_looped() {
+    use egui_kittest::kittest::NodeT as _;
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    let enabled = |harness: &Harness<'static, GuitarScoreApp>| {
+        !harness
+            .get_by_label("Loop selection")
+            .accesskit_node()
+            .is_disabled()
+    };
+    assert!(!enabled(&harness), "nothing selected: nothing to loop");
+    // Select beats in the score until the selection reaches the next bar.
+    for _ in 0..6 {
+        harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
+        harness.run();
+    }
+    let selection = harness
+        .state()
+        .document()
+        .unwrap()
+        .editor()
+        .selection()
+        .expect("a selection");
+    assert!(selection.last_measure() > selection.first_measure());
+    assert!(enabled(&harness), "the score's selection can be looped");
+    harness.get_by_label("Loop selection").click();
+    harness.run();
+    assert!(harness.state().playback().loop_selection());
+}

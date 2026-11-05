@@ -124,7 +124,10 @@ impl GuitarScoreApp {
                 selection: tab.selection,
                 shown_track: tab.track,
                 mixer: self.view.grid_mixer,
-                metronome_volume: self.playback.metronome_volume(),
+                metronome: (
+                    self.playback.metronome_volume(),
+                    self.playback.metronome_level(),
+                ),
             },
             &levels,
             &mut tab.mixer,
@@ -386,7 +389,8 @@ pub(super) struct GridView {
     selection: Option<MeasureSelection>,
     shown_track: usize,
     mixer: bool,
-    metronome_volume: f32,
+    /// The metronome's volume and how loud it sounds right now (both 0 to 1).
+    metronome: (f32, f32),
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -407,7 +411,7 @@ fn draw(
             rows,
             master,
             levels,
-            view.metronome_volume,
+            view.metronome,
             mixer_state,
             actions,
         );

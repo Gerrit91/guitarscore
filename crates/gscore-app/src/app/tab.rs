@@ -56,6 +56,20 @@ pub(super) struct Tab {
 }
 
 impl Tab {
+    /// The measures a loop plays: the grid's measure selection, or the measures a
+    /// selection made in the score spans.
+    pub(super) fn loop_measures(&self) -> Option<MeasureSelection> {
+        self.selection.or_else(|| {
+            self.document
+                .editor()
+                .selection()
+                .map(|selection| MeasureSelection {
+                    anchor: selection.first_measure().get(),
+                    focus: selection.last_measure().get(),
+                })
+        })
+    }
+
     /// The tracks the score shows, top to bottom (the cursor's among them).
     pub(super) fn shown_tracks(&self) -> Vec<usize> {
         self.score
