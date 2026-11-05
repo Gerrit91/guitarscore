@@ -165,10 +165,9 @@ impl GuitarScoreApp {
         let mut drag_to: Option<Cursor> = None;
         let mut choices: Vec<MenuChoice> = Vec::new();
         let playing = self.playback.state() == PlayState::Playing;
-        // Only the printed page view turns over line by line while playing. The screen
-        // views (and pages shown side by side) keep their position and scroll just enough
-        // to show the playing column, so the view does not slide out from under the user
-        // when the music wraps.
+        // The vertical views turn over while playing: once the playing line leaves the
+        // view, it goes to the top. Pages side by side turn page by page; the horizontal
+        // screen scrolls just enough to show the playing column.
         let turn_pages = playing && score_view.turns_pages();
         let in_selection = document.editor().selection().is_some_and(|selection| {
             selection

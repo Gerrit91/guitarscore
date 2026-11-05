@@ -3023,3 +3023,6 @@ needed for a much larger font); owner listening check.
   the playing line out of view after turning to the next page. A page that fits is still
   shown whole; a taller one is scrolled to with the playing line at the top, as the
   vertical view turns over.
+- **Vertical screen view while playing** turns over like the printed page view: when the
+  playing line leaves the view, it goes to the top instead of the view creeping down a
+  line at a time.
