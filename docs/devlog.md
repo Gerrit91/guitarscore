@@ -3088,3 +3088,13 @@ needed for a much larger font); owner listening check.
 - `docs/gaps.md` rewritten as a short list of current shortfalls (17 items in five
   groups); the history of each item stays in this devlog. CLAUDE.md's branch note
   updated.
+- Documents reviewed against the code: AGENTS.md section 5 (directory tree with
+  `gscore-version`, `gscore-worklet`, `web/`, `packaging/`, layer notes, the browser build
+  as a fact) and section 6 (`cargo xtask ci` as the definition of done; the `corpus`
+  feature never existed, so corpus checks are by hand until `cargo xtask corpus` is built,
+  now in the backlog; app snapshots and golden-update variables); `docs/architecture.md`
+  rewritten (a layer table, model, layout with pages and PDF, editing, playback, session,
+  app and CLI as they are now); `docs/development.md` workspace list; `docs/usage.md`
+  metronome, count-in and loop; `docs/parity.md` playback row and milestones;
+  `docs/guitarpro.md` changes 40 (slash bit) and 41 (bars per staff);
+  `docs/guitar-modelling.md` status and the owner's M22 decisions.
