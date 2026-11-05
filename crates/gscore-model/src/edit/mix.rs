@@ -34,6 +34,27 @@ impl Song {
         Ok(change)
     }
 
+    /// Sets the clef a measure's standard-notation staff uses.
+    pub fn set_clef(
+        &mut self,
+        track: TrackIndex,
+        measure: crate::position::MeasureIndex,
+        clef: crate::style::Clef,
+    ) -> Result<Change, ModelError> {
+        self.edit_measure(track, measure, |m| {
+            let previous = (clef_of(m), m.has_clef);
+            m.clef = clef.to_gp();
+            m.has_clef = true;
+            Ok(Change {
+                kind: ChangeKind::Clef {
+                    track,
+                    measure,
+                    previous,
+                },
+            })
+        })
+    }
+
     /// Sets the master volume (0-127; [`crate::MASTER_UNITY`] leaves every track as loud as
     /// it is).
     pub fn set_master_volume(&mut self, volume: u8) -> Result<Change, ModelError> {
@@ -68,4 +89,9 @@ impl Song {
             })
         })
     }
+}
+
+/// The clef of a measure, also when the file did not store one (Guitar Pro's default).
+fn clef_of(measure: &gscore_gp::Measure) -> crate::style::Clef {
+    crate::style::Clef::from_gp(&measure.clef)
 }

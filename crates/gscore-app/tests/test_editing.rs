@@ -1366,3 +1366,72 @@ fn the_sextuplet_tile_and_the_tuplet_dialog_set_the_beats_tuplet() {
         "removing the tuplet restores the original note value"
     );
 }
+
+#[test]
+fn clefs_and_free_time_are_edited_from_the_staff_tiles() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    let measure = MeasureIndex::new(0);
+    {
+        let document = harness.state_mut().document_mut().unwrap();
+        let mut cursor = document.editor().cursor();
+        cursor.measure = measure;
+        document.editor_mut().set_cursor(cursor);
+    }
+    harness.run();
+
+    harness.get_by_label("Clef").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Clef").click();
+    harness.run();
+    harness.get_by_label("Bass clef").click();
+    harness.get_by_label("OK").click();
+    harness.run();
+    let clef = || {
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .track(TrackIndex::new(0))
+            .unwrap()
+            .measure(measure)
+            .unwrap()
+            .clef()
+    };
+    assert_eq!(clef(), Some(gscore_model::Clef::Bass));
+
+    harness.get_by_label("Free time").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Free time").click();
+    harness.run();
+    harness.get_by_label("Free time bar").click();
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .free_time(measure),
+        Some(true)
+    );
+
+    // Both are ordinary undoable commands.
+    let _ = harness
+        .state_mut()
+        .document_mut()
+        .unwrap()
+        .editor_mut()
+        .undo();
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .free_time(measure),
+        Some(false)
+    );
+}

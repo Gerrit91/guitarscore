@@ -86,6 +86,10 @@ pub(super) struct PaletteSnapshot {
     pub(super) tempo: Option<u32>,
     pub(super) time_signature: Option<gscore_model::TimeSignature>,
     pub(super) key: Option<gscore_model::KeySignature>,
+    /// The clef of the cursor's measure (treble when the file stores none).
+    pub(super) clef: gscore_model::Clef,
+    /// Whether the cursor's measure is in free time.
+    pub(super) free_time: bool,
     pub(super) section: Option<gscore_model::Section>,
     /// The measure's repeat signs, double barline, break and bars-per-line limit.
     pub(super) repeat: Repeat,
@@ -175,6 +179,11 @@ impl PaletteSnapshot {
                 .or_else(|| (measure.get() == 0).then(|| song.tempo())),
             time_signature,
             key: song.key_signature(measure),
+            clef: track
+                .and_then(|track| track.measure(measure))
+                .and_then(|measure| measure.clef())
+                .unwrap_or(gscore_model::Clef::Treble),
+            free_time: song.free_time(measure).unwrap_or(false),
             section: song.section(measure),
             repeat: song.repeat(measure).unwrap_or_default(),
             double_bar: song.double_bar(measure).unwrap_or(false),

@@ -1,7 +1,7 @@
 //! The command enum: what an edit is, whether it can run, and how it applies.
 
 use gscore_model::{
-    BeatEffect, BeatKind, BeatPosition, BeatView, Change, Dynamic, Feel, Fermata, Fret,
+    BeatEffect, BeatKind, BeatPosition, BeatView, Change, Clef, Dynamic, Feel, Fermata, Fret,
     InstrumentSymbol, MAX_BARS_PER_SYSTEM, MAX_SECTION_TITLE_CHARS, MAX_TEMPO, MeasureIndex,
     ModelError, NoteEffect, NoteValue, PageSetup, Pitch, Repeat, Song, SongTextField, StringNumber,
     SystemBreak, TimeSignature, TrackColor, TrackIndex, TrackStaves,
@@ -10,13 +10,13 @@ use gscore_model::{
 use crate::info::{
     BATCH, CLEAR_NOTE, CLEAR_SECTION, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_TRACK,
     DUPLICATE_TRACK, INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO, RENAME_TRACK,
-    SET_BEAT_EFFECT, SET_BEAT_REST, SET_BEAT_TEXT, SET_BEAT_TIE, SET_DEAD_NOTE, SET_DOUBLE_BAR,
-    SET_DURATION, SET_DYNAMIC, SET_FEEL, SET_FERMATA, SET_FRET, SET_KEY_SIGNATURE, SET_MASTER_PAN,
-    SET_MASTER_VOLUME, SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_REPEAT, SET_SECTION, SET_SONG_TEXT,
-    SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_CHORUS, SET_TRACK_COLOR,
-    SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_REVERB,
-    SET_TRACK_SOLO, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_SYMBOL,
-    SET_TRACK_VOLUME, UNDO,
+    SET_BEAT_EFFECT, SET_BEAT_REST, SET_BEAT_TEXT, SET_BEAT_TIE, SET_CLEF, SET_DEAD_NOTE,
+    SET_DOUBLE_BAR, SET_DURATION, SET_DYNAMIC, SET_FEEL, SET_FERMATA, SET_FREE_TIME, SET_FRET,
+    SET_KEY_SIGNATURE, SET_MASTER_PAN, SET_MASTER_VOLUME, SET_MEASURE_TEMPO, SET_NOTE_EFFECT,
+    SET_REPEAT, SET_SECTION, SET_SONG_TEXT, SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO,
+    SET_TRACK_CHORUS, SET_TRACK_COLOR, SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN,
+    SET_TRACK_PROGRAM, SET_TRACK_REVERB, SET_TRACK_SOLO, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH,
+    SET_TRACK_STRINGS, SET_TRACK_SYMBOL, SET_TRACK_VOLUME, UNDO,
 };
 use crate::info::{SET_BARS_PER_SYSTEM, SET_PAGE_SETUP, SET_SCORE_LINE_BREAK, SET_SYSTEM_BREAK};
 
@@ -361,6 +361,22 @@ pub enum Command {
         /// The fermata, or `None` to clear it.
         fermata: Option<Fermata>,
     },
+    /// Set the clef of a measure's standard-notation staff in one track.
+    SetClef {
+        /// The track.
+        track: TrackIndex,
+        /// The measure.
+        measure: MeasureIndex,
+        /// The clef.
+        clef: Clef,
+    },
+    /// Set or clear a measure's free time (no metronome).
+    SetFreeTime {
+        /// The measure.
+        measure: MeasureIndex,
+        /// Whether the measure is in free time.
+        free_time: bool,
+    },
     /// Set or clear one effect of a note.
     SetNoteEffect {
         /// The beat.
@@ -593,6 +609,19 @@ impl Command {
                 one(measure.get()),
                 fermata.map_or("none", Fermata::id)
             ),
+            Command::SetClef {
+                track,
+                measure,
+                clef,
+            } => format!(
+                "{id} track={} measure={} clef={}",
+                one(track.get()),
+                one(measure.get()),
+                clef.id()
+            ),
+            Command::SetFreeTime { measure, free_time } => {
+                format!("{id} measure={} free_time={free_time}", one(measure.get()))
+            }
             Command::SetNoteEffect {
                 at: p,
                 string,
@@ -700,6 +729,8 @@ impl Command {
             Command::SetDoubleBar { .. } => &SET_DOUBLE_BAR,
             Command::SetFeel { .. } => &SET_FEEL,
             Command::SetFermata { .. } => &SET_FERMATA,
+            Command::SetClef { .. } => &SET_CLEF,
+            Command::SetFreeTime { .. } => &SET_FREE_TIME,
             Command::SetNoteEffect { .. } => &SET_NOTE_EFFECT,
             Command::SetBeatEffect { .. } => &SET_BEAT_EFFECT,
             Command::Batch { .. } => &BATCH,
@@ -777,7 +808,9 @@ impl Command {
             | Command::SetRepeat { .. }
             | Command::SetDoubleBar { .. }
             | Command::SetFeel { .. }
-            | Command::SetFermata { .. } => true,
+            | Command::SetFermata { .. }
+            | Command::SetClef { .. }
+            | Command::SetFreeTime { .. } => true,
             Command::Batch { commands } => commands.iter().any(Command::changes_layout),
             _ => false,
         }
@@ -830,7 +863,8 @@ impl Command {
             | Command::SetDynamic { .. }
             | Command::SetRepeat { .. }
             | Command::SetFeel { .. }
-            | Command::SetFermata { .. } => true,
+            | Command::SetFermata { .. }
+            | Command::SetFreeTime { .. } => true,
             Command::Batch { commands } => commands.iter().any(Command::rebuilds_playback),
             _ => false,
         }
@@ -852,7 +886,8 @@ impl Command {
             | Command::SetSection { .. }
             | Command::ClearSection { .. }
             | Command::SetDoubleBar { .. }
-            | Command::SetKeySignature { .. } => true,
+            | Command::SetKeySignature { .. }
+            | Command::SetClef { .. } => true,
             Command::Batch { commands } => commands.iter().all(Command::changes_display_only),
             _ => false,
         }
@@ -1051,9 +1086,14 @@ impl Command {
                         .is_none_or(|repeats| (1..=127).contains(&repeats))
             }
             Command::SetDoubleBar { measure, .. } => measure.get() < song.measure_count(),
-            Command::SetFeel { measure, .. } | Command::SetFermata { measure, .. } => {
-                measure.get() < song.measure_count()
-            }
+            Command::SetFeel { measure, .. }
+            | Command::SetFermata { measure, .. }
+            | Command::SetFreeTime { measure, .. } => measure.get() < song.measure_count(),
+            Command::SetClef {
+                track,
+                measure,
+                clef: _,
+            } => song.track(*track).is_some() && measure.get() < song.measure_count(),
             Command::SetNoteEffect { at, string, effect } => {
                 effect.validate().is_ok()
                     && song.beat(*at).is_some_and(|beat| {
@@ -1163,6 +1203,12 @@ impl Command {
             } => song.set_double_bar(*measure, *double_bar),
             Command::SetFeel { measure, feel } => song.set_feel(*measure, *feel),
             Command::SetFermata { measure, fermata } => song.set_fermata(*measure, *fermata),
+            Command::SetClef {
+                track,
+                measure,
+                clef,
+            } => song.set_clef(*track, *measure, *clef),
+            Command::SetFreeTime { measure, free_time } => song.set_free_time(*measure, *free_time),
             Command::SetNoteEffect { at, string, effect } => {
                 song.set_note_effect(*at, *string, effect.clone())
             }

@@ -295,6 +295,20 @@ const DOUBLE_BAR: ParamInfo = ParamInfo {
     help: "true for a double barline at the end of the measure, false for a normal one",
 };
 
+const CLEF: ParamInfo = ParamInfo {
+    name: "clef",
+    required: true,
+    default: None,
+    help: "treble, bass, alto or tenor",
+};
+
+const FREE_TIME: ParamInfo = ParamInfo {
+    name: "free_time",
+    required: true,
+    default: None,
+    help: "true for free time (no metronome), false for normal time",
+};
+
 const FEEL: ParamInfo = ParamInfo {
     name: "feel",
     required: true,
@@ -802,6 +816,22 @@ pub(crate) const SET_FERMATA: CommandInfo = CommandInfo {
     params: &[MEASURE, FERMATA],
 };
 
+pub(crate) const SET_CLEF: CommandInfo = CommandInfo {
+    id: "set_clef",
+    aliases: &[],
+    label: "Set the clef",
+    help: "Sets the clef of one track's standard-notation staff at a measure.",
+    params: &[TRACK, MEASURE, CLEF],
+};
+
+pub(crate) const SET_FREE_TIME: CommandInfo = CommandInfo {
+    id: "set_free_time",
+    aliases: &["set_free"],
+    label: "Set free time",
+    help: "Makes the measure free time (no metronome), or normal time again.",
+    params: &[MEASURE, FREE_TIME],
+};
+
 pub(crate) const SET_NOTE_EFFECT: CommandInfo = CommandInfo {
     id: "set_note_effect",
     aliases: &[],
@@ -893,6 +923,8 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_DOUBLE_BAR,
     SET_FEEL,
     SET_FERMATA,
+    SET_CLEF,
+    SET_FREE_TIME,
     SET_NOTE_EFFECT,
     SET_BEAT_EFFECT,
     BATCH,

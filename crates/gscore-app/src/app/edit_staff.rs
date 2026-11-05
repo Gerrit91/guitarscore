@@ -7,7 +7,7 @@
 use egui::{Align, Layout, Margin, RichText, vec2};
 use gscore_edit::{ActionId, Command};
 use gscore_model::{
-    Feel, Fermata, MeasureIndex, Repeat, Section, SystemBreak, TrackColor, TrackIndex,
+    Clef, Feel, Fermata, MeasureIndex, Repeat, Section, SystemBreak, TrackColor, TrackIndex,
 };
 
 use super::edit_palette::PaletteSnapshot;
@@ -22,6 +22,8 @@ pub(super) enum Dialog {
     Tempo,
     Time,
     Key,
+    Clef,
+    FreeTime,
     Section,
     RepeatStart,
     RepeatEnd,
@@ -53,6 +55,8 @@ pub(super) struct StaffState {
     pub(super) denominator: u16,
     pub(super) key: i8,
     pub(super) minor: bool,
+    pub(super) clef: Clef,
+    pub(super) free_time: bool,
     pub(super) section_title: String,
     pub(super) section_color: TrackColor,
     pub(super) repeat_start: bool,
@@ -83,6 +87,8 @@ impl Default for StaffState {
             denominator: 4,
             key: 0,
             minor: false,
+            clef: Clef::Treble,
+            free_time: false,
             section_title: String::new(),
             section_color: Section::DEFAULT_COLOR,
             repeat_start: false,
@@ -134,6 +140,8 @@ impl StaffState {
             .map_or((0, false), |signature| (signature.key, signature.minor));
         self.key = key;
         self.minor = minor;
+        self.clef = snapshot.clef;
+        self.free_time = snapshot.free_time;
         self.section_title = snapshot
             .section
             .as_ref()
@@ -253,6 +261,15 @@ impl StaffState {
                 key: self.key,
                 minor: self.minor,
             },
+            Dialog::Clef => Command::SetClef {
+                track: target.track,
+                measure: target.measure,
+                clef: self.clef,
+            },
+            Dialog::FreeTime => Command::SetFreeTime {
+                measure: target.measure,
+                free_time: self.free_time,
+            },
             Dialog::Section => {
                 let title = self.section_title.trim();
                 if title.is_empty() {
@@ -341,6 +358,24 @@ pub(super) fn section(
                     "Key signature",
                     "Set the bar's key signature",
                     snapshot.key.is_some_and(|key| key.key != 0 || key.minor),
+                ),
+                (
+                    Dialog::Clef,
+                    Face::GlyphMore {
+                        text: "\u{E050}",
+                        size: 30.0,
+                        baseline: 9.0,
+                    },
+                    "Clef",
+                    "Set the clef of the notation staff",
+                    snapshot.clef != Clef::Treble,
+                ),
+                (
+                    Dialog::FreeTime,
+                    Face::TextMore("free"),
+                    "Free time",
+                    "No metronome for this bar",
+                    snapshot.free_time,
                 ),
                 (
                     Dialog::Section,

@@ -133,3 +133,41 @@ fn fader_positions_map_to_midi_values() {
         assert_eq!(unit_to_midi(midi_to_unit(value)), value);
     }
 }
+
+#[test]
+fn a_clef_change_is_set_and_undone() {
+    use crate::style::Clef;
+    let mut song = song();
+    let track = TrackIndex::new(0);
+    let before = song.clone();
+    assert_eq!(
+        song.track(track)
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .clef(),
+        None,
+        "a synthetic song stores no clef"
+    );
+    let change = song
+        .set_clef(track, MeasureIndex::new(0), Clef::Bass)
+        .unwrap();
+    assert_eq!(
+        song.track(track)
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .clef(),
+        Some(Clef::Bass)
+    );
+    song.revert(&change).unwrap();
+    assert_eq!(
+        song.track(track)
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .clef(),
+        None
+    );
+    assert!(differences(&before, &song).is_empty());
+}

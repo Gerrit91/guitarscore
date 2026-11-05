@@ -16,6 +16,8 @@ pub(super) fn title(dialog: Dialog) -> &'static str {
         Dialog::Tempo => "Tempo",
         Dialog::Time => "Time signature",
         Dialog::Key => "Key signature",
+        Dialog::Clef => "Clef",
+        Dialog::FreeTime => "Free time",
         Dialog::Section => "Section",
         Dialog::RepeatStart => "Start repeat",
         Dialog::RepeatEnd => "End repeat",
@@ -32,6 +34,7 @@ pub(super) fn title(dialog: Dialog) -> &'static str {
 pub(super) fn width(dialog: Dialog) -> f32 {
     match dialog {
         Dialog::Key => 340.0,
+        Dialog::Clef => 330.0,
         Dialog::Feel => 430.0,
         Dialog::Section => 380.0,
         Dialog::Tempo | Dialog::Fermata => 380.0,
@@ -72,6 +75,49 @@ pub(super) fn body(ui: &mut egui::Ui, state: &mut StaffState, target: Target) {
         Dialog::Tempo => staff_pickers::tempo(ui, state),
         Dialog::Time => staff_pickers::time(ui, state),
         Dialog::Key => staff_pickers::key(ui, state),
+        Dialog::Clef => {
+            for (clef, sign) in [
+                (gscore_model::Clef::Treble, "\u{E050}"),
+                (gscore_model::Clef::Bass, "\u{E062}"),
+                (gscore_model::Clef::Alto, "\u{E05C}"),
+                (gscore_model::Clef::Tenor, "\u{E05C}"),
+            ] {
+                if choice(
+                    ui,
+                    state.clef == clef,
+                    clef.label(),
+                    clef_detail(clef),
+                    glyphs(sign, 34.0, 9.0),
+                )
+                .clicked()
+                {
+                    state.clef = clef;
+                }
+            }
+            hint(
+                ui,
+                "The clef holds from this bar until the next clef change. Guitar Pro stores \
+                 it per bar and track.",
+            );
+        }
+        Dialog::FreeTime => {
+            for (on, name, detail) in [
+                (
+                    false,
+                    "Normal time",
+                    "The metronome clicks on every beat of this bar.",
+                ),
+                (
+                    true,
+                    "Free time bar",
+                    "No metronome; the time signature is shown in parentheses.",
+                ),
+            ] {
+                if choice(ui, state.free_time == on, name, detail, |_, _, _| {}).clicked() {
+                    state.free_time = on;
+                }
+            }
+        }
         Dialog::Section => staff_pickers::section(ui, state),
         Dialog::RepeatStart => {
             for (on, name, detail, sign) in [
@@ -280,6 +326,16 @@ pub(super) fn body(ui: &mut egui::Ui, state: &mut StaffState, target: Target) {
             });
             hint(ui, "This applies to the whole shown track.");
         }
+    }
+}
+
+/// What a clef is for.
+fn clef_detail(clef: gscore_model::Clef) -> &'static str {
+    match clef {
+        gscore_model::Clef::Treble => "Guitars and other high instruments.",
+        gscore_model::Clef::Bass => "Basses and low instruments.",
+        gscore_model::Clef::Alto => "C clef on the middle line.",
+        gscore_model::Clef::Tenor => "C clef on the fourth line from the bottom.",
     }
 }
 

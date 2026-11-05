@@ -79,6 +79,9 @@ pub enum Clef {
 }
 
 impl Clef {
+    /// Every clef, in menu order.
+    pub const ALL: [Clef; 4] = [Clef::Treble, Clef::Bass, Clef::Alto, Clef::Tenor];
+
     /// The clef `clef` as Guitar Pro stores it.
     pub fn from_gp(clef: &gscore_gp::MeasureClef) -> Self {
         match clef {
@@ -86,6 +89,41 @@ impl Clef {
             gscore_gp::MeasureClef::Alto => Clef::Alto,
             gscore_gp::MeasureClef::Tenor => Clef::Tenor,
             gscore_gp::MeasureClef::Treble => Clef::Treble,
+        }
+    }
+
+    /// This clef as Guitar Pro stores it.
+    pub fn to_gp(self) -> gscore_gp::MeasureClef {
+        match self {
+            Clef::Treble => gscore_gp::MeasureClef::Treble,
+            Clef::Bass => gscore_gp::MeasureClef::Bass,
+            Clef::Alto => gscore_gp::MeasureClef::Alto,
+            Clef::Tenor => gscore_gp::MeasureClef::Tenor,
+        }
+    }
+
+    /// The id the command language uses.
+    pub fn id(self) -> &'static str {
+        match self {
+            Clef::Treble => "treble",
+            Clef::Bass => "bass",
+            Clef::Alto => "alto",
+            Clef::Tenor => "tenor",
+        }
+    }
+
+    /// The clef named by `id`.
+    pub fn from_id(id: &str) -> Option<Self> {
+        Clef::ALL.into_iter().find(|clef| clef.id() == id)
+    }
+
+    /// A label for menus and dialogs.
+    pub fn label(self) -> &'static str {
+        match self {
+            Clef::Treble => "Treble clef",
+            Clef::Bass => "Bass clef",
+            Clef::Alto => "Alto clef",
+            Clef::Tenor => "Tenor clef",
         }
     }
 }
