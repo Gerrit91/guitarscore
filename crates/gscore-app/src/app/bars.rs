@@ -93,15 +93,6 @@ impl GuitarScoreApp {
                                 ui.close();
                             }
                         }
-                        ui.separator();
-                        ui.label(
-                            egui::RichText::new(
-                                "PDF shows the pages as the score is set up; MIDI plays every \
-                                 track. Older Guitar Pro versions keep less of the song.",
-                            )
-                            .small()
-                            .weak(),
-                        );
                     });
                 });
                 if let Some(format) = export {

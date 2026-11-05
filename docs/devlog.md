@@ -2804,3 +2804,9 @@ needed for a much larger font); owner listening check.
   window now passes a `ToneRequest` (play or stop) and acts on both.
 - Small − / + buttons beside the note move it a semitone, clamped to the picker's C1–C8.
 - Tests: the semitone step and its clamping at both ends.
+
+## 2026-11-05 — Export menu width
+
+- The Export submenu no longer carries a long explanation under the formats: it stretched
+  the menu to that line's width. The entries say enough, and the older formats still
+  explain their losses in a tooltip.
