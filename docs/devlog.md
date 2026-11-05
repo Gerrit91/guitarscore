@@ -2810,3 +2810,10 @@ needed for a much larger font); owner listening check.
 - The Export submenu no longer carries a long explanation under the formats: it stretched
   the menu to that line's width. The entries say enough, and the older formats still
   explain their losses in a tooltip.
+
+## 2026-11-05 — Larger toolbar icons
+
+- The toolbar's icon buttons draw their glyphs larger (a 3.5 px shrink instead of 6) while
+  keeping the same layout size. Making the buttons themselves wider pushed the zoom group
+  under the player at a 1000 px window; the panel's icon buttons keep the compact size.
+- Snapshots updated.

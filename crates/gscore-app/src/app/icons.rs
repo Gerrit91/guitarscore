@@ -76,9 +76,31 @@ pub(crate) enum Icon {
     Tuner,
 }
 
+/// The size of the compact icon buttons in the panels and the toolbar.
+const BUTTON: Vec2 = vec2(26.0, 22.0);
+/// How much the toolbar's icons are shrunk inside their button: less than the panels', so
+/// the drawing is a little larger without making the toolbar wider (a wider toolbar pushes
+/// the side groups into the player at narrow window sizes).
+const TOOLBAR_SHRINK: f32 = 3.5;
+
 /// A square icon button with a tooltip and an accessibility label.
 pub(crate) fn button(ui: &mut egui::Ui, icon: Icon, label: &str, tip: &str) -> Response {
-    let size = vec2(26.0, 22.0);
+    sized_button(ui, icon, label, tip, BUTTON, 6.0)
+}
+
+/// A [`button`] for the toolbar, with a larger drawn icon but the same layout size.
+pub(crate) fn toolbar_button(ui: &mut egui::Ui, icon: Icon, label: &str, tip: &str) -> Response {
+    sized_button(ui, icon, label, tip, BUTTON, TOOLBAR_SHRINK)
+}
+
+fn sized_button(
+    ui: &mut egui::Ui,
+    icon: Icon,
+    label: &str,
+    tip: &str,
+    size: Vec2,
+    shrink: f32,
+) -> Response {
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     ui.ctx().accesskit_node_builder(response.id, |node| {
         node.set_label(label);
@@ -90,7 +112,7 @@ pub(crate) fn button(ui: &mut egui::Ui, icon: Icon, label: &str, tip: &str) -> R
     }
     paint(
         ui.painter(),
-        rect.shrink(6.0),
+        rect.shrink(shrink),
         visuals.fg_stroke.color,
         icon,
     );
@@ -98,6 +120,7 @@ pub(crate) fn button(ui: &mut egui::Ui, icon: Icon, label: &str, tip: &str) -> R
 }
 
 /// An icon button that shows whether something is on (a panel shown): highlighted while on.
+/// The panel toggles live in the toolbar, so they draw the larger icon.
 pub(crate) fn toggle_button(
     ui: &mut egui::Ui,
     icon: Icon,
@@ -105,7 +128,18 @@ pub(crate) fn toggle_button(
     tip: &str,
     on: bool,
 ) -> Response {
-    let size = vec2(26.0, 22.0);
+    sized_toggle(ui, icon, label, tip, on, BUTTON, TOOLBAR_SHRINK)
+}
+
+fn sized_toggle(
+    ui: &mut egui::Ui,
+    icon: Icon,
+    label: &str,
+    tip: &str,
+    on: bool,
+    size: Vec2,
+    shrink: f32,
+) -> Response {
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, label));
     let visuals = ui.style().interact(&response);
@@ -120,7 +154,7 @@ pub(crate) fn toggle_button(
     }
     paint(
         ui.painter(),
-        rect.shrink(6.0),
+        rect.shrink(shrink),
         visuals.fg_stroke.color,
         icon,
     );

@@ -33,7 +33,7 @@ impl GuitarScoreApp {
     ) -> bool {
         let label = action.label();
         let tip = format!("{label}{}", self.key_hint(action));
-        ui.add_enabled_ui(enabled, |ui| icons::button(ui, icon, label, &tip))
+        ui.add_enabled_ui(enabled, |ui| icons::toolbar_button(ui, icon, label, &tip))
             .inner
             .clicked()
     }
@@ -63,13 +63,16 @@ impl GuitarScoreApp {
                 .layout(Layout::right_to_left(Align::Center)),
             |ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                if icons::button(ui, Icon::Settings, "Settings", "Settings…").clicked() {
+                if icons::toolbar_button(ui, Icon::Settings, "Settings", "Settings…").clicked() {
                     self.open_settings_window();
                 }
-                if icons::button(ui, Icon::Tuner, "Tuner", "Tuner: a reference tone…").clicked() {
+                if icons::toolbar_button(ui, Icon::Tuner, "Tuner", "Tuner: a reference tone…")
+                    .clicked()
+                {
                     self.open_tuner();
                 }
-                if icons::button(ui, Icon::History, "History", "Edit history…").clicked() {
+                if icons::toolbar_button(ui, Icon::History, "History", "Edit history…").clicked()
+                {
                     self.open_history();
                 }
                 self.zoom(ui);
@@ -108,14 +111,15 @@ impl GuitarScoreApp {
     /// Open, save, undo and redo.
     fn file_and_edit(&mut self, ui: &mut egui::Ui) {
         style::toolbar_group(ui, |ui| {
-            if icons::button(ui, Icon::NewSong, "New song", "Start a new score").clicked() {
+            if icons::toolbar_button(ui, Icon::NewSong, "New song", "Start a new score").clicked() {
                 self.new_song(ui.ctx());
             }
-            if icons::button(ui, Icon::Open, "Open", "Open a Guitar Pro file…").clicked() {
+            if icons::toolbar_button(ui, Icon::Open, "Open", "Open a Guitar Pro file…").clicked()
+            {
                 self.ask_open(ui.ctx());
             }
             let tip = format!("Save the file{}", self.key_hint(ActionId::Save));
-            if icons::button(ui, Icon::Save, "Save", &tip).clicked() {
+            if icons::toolbar_button(ui, Icon::Save, "Save", &tip).clicked() {
                 self.request(Request::Save, ui.ctx());
             }
         });
@@ -210,7 +214,7 @@ impl GuitarScoreApp {
         style::toolbar_group(ui, |ui| {
             if ui
                 .add_enabled_ui(has_song, |ui| {
-                    icons::button(ui, Icon::ToStart, "Go to start", "Top of the score")
+                    icons::toolbar_button(ui, Icon::ToStart, "Go to start", "Top of the score")
                 })
                 .inner
                 .clicked()
@@ -219,7 +223,7 @@ impl GuitarScoreApp {
             }
             if ui
                 .add_enabled_ui(has_song, |ui| {
-                    icons::button(ui, Icon::PreviousBar, "Previous bar", "One bar back")
+                    icons::toolbar_button(ui, Icon::PreviousBar, "Previous bar", "One bar back")
                 })
                 .inner
                 .clicked()
@@ -233,21 +237,23 @@ impl GuitarScoreApp {
             };
             let tip = format!("{label}{}", self.key_hint(ActionId::PlayPause));
             let play = ui
-                .add_enabled_ui(has_song, |ui| icons::button(ui, icon, label, &tip))
+                .add_enabled_ui(has_song, |ui| icons::toolbar_button(ui, icon, label, &tip))
                 .inner;
             if play.clicked() {
                 self.play_pause();
             }
             let tip = format!("Stop{}", self.key_hint(ActionId::Stop));
             let stop = ui
-                .add_enabled_ui(has_song, |ui| icons::button(ui, Icon::Stop, "Stop", &tip))
+                .add_enabled_ui(has_song, |ui| {
+                    icons::toolbar_button(ui, Icon::Stop, "Stop", &tip)
+                })
                 .inner;
             if stop.clicked() {
                 self.stop_playback();
             }
             if ui
                 .add_enabled_ui(has_song, |ui| {
-                    icons::button(ui, Icon::NextBar, "Next bar", "One bar forward")
+                    icons::toolbar_button(ui, Icon::NextBar, "Next bar", "One bar forward")
                 })
                 .inner
                 .clicked()
@@ -256,7 +262,7 @@ impl GuitarScoreApp {
             }
             if ui
                 .add_enabled_ui(has_song, |ui| {
-                    icons::button(ui, Icon::ToEnd, "Go to end", "End of the score")
+                    icons::toolbar_button(ui, Icon::ToEnd, "Go to end", "End of the score")
                 })
                 .inner
                 .clicked()
