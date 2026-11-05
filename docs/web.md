@@ -16,6 +16,9 @@ cargo xtask web --smoke    # also start it in headless Chromium and save screens
 | `guitarscore.js` | wasm-bindgen's glue |
 | `guitarscore_bg.wasm` | the whole editor (about 13.5 MiB; 5.4 MiB gzip, 3.0 MiB brotli) |
 | `assets/icon.png` | app icon for the page and the manifest |
+| `assets/soundfonts/GeneralUser-GS-2.0.3.sf2` | the bundled General MIDI SoundFont (30.8 MiB; not compressed by most static hosts) |
+| `assets/soundfonts/soundfont.json` | which SoundFont to load, its size and SHA-256 |
+| `assets/soundfonts/GeneralUser-GS-LICENSE.txt` | the font's license |
 | `manifest.json` | installable app metadata |
 | `sw.js` | service worker: cached app shell, offline start |
 | `worklet.js`, `worklet-polyfills.js`, `worklet_synth.js`, `worklet_synth_bg.wasm` | the AudioWorklet synthesizer |
@@ -23,6 +26,13 @@ cargo xtask web --smoke    # also start it in headless Chromium and save screens
 The build needs `wasm-bindgen` (`cargo install wasm-bindgen-cli --version 0.2.130`, or a
 release binary) and benefits from `wasm-opt` (binaryen): without it the module is not
 size-optimised. `--debug` builds without optimisations, `--out DIR` writes elsewhere.
+
+The site ships GeneralUser GS 2.0.3 (about 30.8 MiB, GeneralUser GS License v2.0). The
+first build downloads it from the upstream repository at a pinned commit into
+`target/web-soundfont/` and verifies its size and SHA-256 every time; later builds reuse the
+cache. `--soundfont PATH` ships another `.sf2` (its size and RIFF header are checked), and
+`--no-soundfont` builds a silent site and says so. Nothing from the upstream repository is
+committed except the license text.
 
 ## How the platform split works
 
@@ -70,11 +80,14 @@ The browser has no audio device API from wasm, so playback goes through an Audio
    stop, seek, tempo and live mixer events through the node's port, and receives position
    and state back.
 
-The SoundFont is fetched from `assets/soundfonts/default.sf2`. While it downloads and the
-worklet parses it, the player reports loading (the toolbar shows it), and a Play, seek or
-tempo change made meanwhile takes effect once it is loaded. A site without one says so on
-Play; editing works either way. Bundling a licensed General MIDI
-SoundFont is M19; choosing one from the browser is not wired up yet.
+At startup the page fetches `assets/soundfonts/soundfont.json`, then the versioned `.sf2`
+it names (falling back to `default.sf2` for a hand-assembled site). The response is read
+as a stream, so the toolbar's "Loading sounds…" bar shows real bytes, and the bytes are
+transferred to the worklet rather than copied. The worklet parses the font on the audio
+thread and answers `loaded`; a Play, seek or tempo change made meanwhile takes effect once
+it is loaded. Measured in the smoke test: about 0.6 s from page start to a parsed font
+(local server). A site without one says so on Play; editing works either way. The app names
+the font in About; choosing another one from the browser is not wired up yet.
 
 ## Smoke test
 
@@ -83,7 +96,8 @@ protocol (a small dependency-free client in `xtask/src/cdp.rs`, because `--dump-
 not wait for wasm and AudioWorklet loading). It checks:
 
 - the app page sets `data-guitarscore-ready` and saves `smoke.png`;
-- `worklet-check.html` loads the AudioWorklet module, instantiates the synth wasm and gets
-  an answer on its port, and saves `smoke-worklet.png`.
+- `worklet-check.html` loads the AudioWorklet module, instantiates the synth wasm, loads
+  the bundled SoundFont, plays middle C through an analyser, requires non-silent samples,
+  and saves `smoke-worklet.png`.
 
 It needs Chromium and Python 3 (`http.server`), not a display.

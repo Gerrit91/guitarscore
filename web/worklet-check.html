@@ -6,75 +6,97 @@
   </head>
   <body data-worklet-check="running">
     <!-- Loaded by `cargo xtask web --smoke`: proves the AudioWorklet module, its second
-         wasm instance and the message port work in a real browser, without needing a
-         user gesture for sound. -->
+         wasm instance, the SoundFont and the message port work in a real browser, and that
+         a played note is not silent. -->
     <p id="status">checking…</p>
     <script type="module">
-      const state = document.getElementById("status");
+      const status = document.getElementById("status");
       const fail = (error) => {
         document.body.dataset.workletCheck = "failed";
-        state.textContent = String(error);
+        status.textContent = String(error);
       };
       window.addEventListener("error", (event) => fail(event.message));
       window.addEventListener("unhandledrejection", (event) => fail(event.reason));
 
-      // An empty song: magic, no events, one tempo point, end at tick 0.
-      function emptySequence() {
-        const bytes = new Uint8Array(32);
-        const view = new DataView(bytes.buffer);
-        bytes.set([0x47, 0x53, 0x51, 0x31], 0); // "GSQ1"
-        view.setUint32(4, 0, true); // events
-        view.setUint32(8, 1, true); // tempo points
-        view.setBigUint64(12, 0n, true); // tick 0
-        view.setUint32(20, 500000, true); // 120 BPM
-        view.setBigUint64(24, 0n, true); // end
-        return bytes;
+      const step = (name) => {
+        document.body.dataset.step = name;
+        status.textContent = name;
+      };
+
+      /// The root-mean-square of the analyser's current window.
+      function rms(analyser) {
+        const samples = new Float32Array(analyser.fftSize);
+        analyser.getFloatTimeDomainData(samples);
+        let sum = 0;
+        for (const sample of samples) sum += sample * sample;
+        return Math.sqrt(sum / samples.length);
       }
 
       try {
-        document.body.dataset.step = "start";
+        step("start");
         if (!("AudioWorkletNode" in globalThis)) throw new Error("no AudioWorklet in this browser");
         const context = new AudioContext();
-        // Headless browsers start the context suspended; the module loads either way, but
-        // resuming keeps every browser happy (do not wait for it: a silent device may never
-        // resolve the promise).
         context.resume().catch(() => {});
         await context.audioWorklet.addModule("./worklet.js");
-        document.body.dataset.step = "module";
-        state.textContent = "module loaded";
+        step("module");
+
         const node = new AudioWorkletNode(context, "gscore-synth", {
           numberOfInputs: 0,
           numberOfOutputs: 1,
           outputChannelCount: [2],
         });
-        document.body.dataset.step = "node";
-        const bytes = emptySequence();
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 2048;
+        node.connect(analyser);
+        analyser.connect(context.destination);
+
         // An AudioWorklet cannot fetch its own wasm: compile it here and send the module.
-        const response = await fetch("./worklet_synth_bg.wasm");
-        if (!response.ok) throw new Error(`cannot fetch the synthesizer module (${response.status})`);
-        const module = await WebAssembly.compile(await response.arrayBuffer());
+        const moduleResponse = await fetch("./worklet_synth_bg.wasm");
+        if (!moduleResponse.ok) throw new Error("cannot fetch the synthesizer module");
+        const module = await WebAssembly.compile(await moduleResponse.arrayBuffer());
         node.port.postMessage({ type: "module", module });
+        step("node");
+
         node.onprocessorerror = () => fail("the worklet processor failed");
-        node.port.onmessage = (event) => {
+        node.port.onmessage = async (event) => {
           const message = event.data;
           if (message.type === "ready") {
-            // The module and its second wasm instance are up. (Headless Chromium may keep
-            // the audio context suspended, so rendering is not required here.)
+            // The module and its second wasm instance are up.
             document.body.dataset.workletCheck = "ok";
-            state.textContent = "worklet ready";
-            node.port.postMessage({ type: "sequence", bytes: bytes.buffer });
-            node.port.postMessage({ type: "command", name: "play" });
+            step("ready");
+            // The bundled font, then one note through it.
+            try {
+              const manifest = await (await fetch("./assets/soundfonts/soundfont.json")).json();
+              const url = new URL(manifest.url, new URL("./assets/soundfonts/", location.href));
+              const response = await fetch(url);
+              if (!response.ok) throw new Error(`cannot fetch the SoundFont (${response.status})`);
+              const bytes = await response.arrayBuffer();
+              node.port.postMessage({ type: "soundfont", bytes }, [bytes]);
+            } catch (error) {
+              fail(error);
+            }
+          } else if (message.type === "loaded") {
+            step("soundfont");
+            // A clean electric guitar, middle C.
+            node.port.postMessage({ type: "midi", status: 0xc0, data1: 27, data2: 0 });
+            node.port.postMessage({ type: "midi", status: 0x90, data1: 60, data2: 100 });
+            setTimeout(() => {
+              const level = rms(analyser);
+              document.body.dataset.workletRms = String(level);
+              document.body.dataset.workletSound = level > 0.0001 ? "ok" : "silent";
+              status.textContent = `rms ${level}`;
+            }, 1000);
           } else if (message.type === "error") {
             fail(message.message);
           }
         };
-        node.connect(context.destination);
+
         // A silent device may never render; say so instead of waiting forever.
         setTimeout(() => {
-          if (document.body.dataset.workletCheck === "running") {
-            fail("the worklet never answered on its port");
+          if (!document.body.dataset.workletRms) {
+            fail("the worklet produced no samples");
           }
-        }, 8000);
+        }, 12000);
       } catch (error) {
         fail(error);
       }

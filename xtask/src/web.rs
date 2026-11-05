@@ -440,26 +440,28 @@ fn run_headless(browser: &std::ffi::OsString, out: &Path, port: u16) -> TaskResu
         started.elapsed().as_secs_f32()
     );
 
-    // The audio worklet page: its module and second wasm instance must load, and the
-    // message port must answer, in a real browser.
+    // The audio worklet page: its module and second wasm instance must load, the
+    // SoundFont must play a note, and the analyser must see samples (not silence).
     let worklet = "new Promise((resolve) => { const started = Date.now(); \
                    const poll = () => { const body = document.body; \
-                   const check = body ? body.dataset.workletCheck : 'none'; \
+                   const sound = body.dataset.workletSound; \
                    const status = document.getElementById('status'); \
-                   if (check === 'ok') return resolve('ok'); \
-                   if (check === 'failed') return resolve('failed: ' + (status ? status.textContent : 'unknown')); \
-                   if (Date.now() - started > 20000) return resolve('timeout: href=' + location.href + \
-                     ' step=' + (body ? body.dataset.step : 'none') + \
-                     ' status=' + (status ? status.textContent : 'none')); \
+                   if (sound === 'ok') return resolve('ok, rms ' + body.dataset.workletRms); \
+                   if (sound === 'silent') return resolve('silent (rms ' + body.dataset.workletRms + ')'); \
+                   if (body.dataset.workletCheck === 'failed') \
+                     return resolve('failed: ' + (status ? status.textContent : 'unknown')); \
+                   if (Date.now() - started > 60000) return resolve('timeout: step=' + \
+                     (body.dataset.step || 'none') + ' status=' + (status ? status.textContent : 'none')); \
                    setTimeout(poll, 100); }; poll(); })";
     let url = format!("http://127.0.0.1:{port}/worklet-check.html");
     let result = browser.evaluate(&url, worklet)?;
-    if result != "ok" {
+    if !result.starts_with("ok") {
         return Err(format!(
-            "the AudioWorklet synthesizer did not start in the browser: {result}{}",
+            "the AudioWorklet synthesizer did not play in the browser: {result}{}",
             console_log(browser.events())
         ));
     }
+    println!("web: worklet sound OK ({result})");
     browser.screenshot(&out.join("smoke-worklet.png"))?;
     println!(
         "web: smoke tests OK; screenshots at {} and {}",

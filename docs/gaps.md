@@ -218,7 +218,7 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
   storage-backed journal and autosave (IndexedDB for the base song and snapshots) before
   the web build is as safe as the desktop.
 - **No PDF export in the browser.** The dialog and download path are not wired up.
-- **No SoundFont picker in the browser.** `assets/soundfonts/default.sf2` is loaded when a
-  site provides it; otherwise playback is silent. Bundling a licensed GM SoundFont is M19.
+- **No SoundFont picker in the browser.** The site ships GeneralUser GS 2.0.3 and loads it
+  automatically (2026-11-05); a browser user cannot choose another SoundFont yet.
 - **Opening imports on the UI thread** after the bytes arrive (no wasm threads). Fine for
   the tested files; a web worker is the escape hatch for very large scores.
