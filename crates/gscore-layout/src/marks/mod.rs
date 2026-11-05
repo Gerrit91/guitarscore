@@ -66,9 +66,11 @@ pub(crate) struct MeasureMarks {
     pub(crate) repeat: Repeat,
     /// Whether the measure ends with a double barline.
     pub(crate) double_bar: bool,
-    /// Whether the measure is in free time ("Free time" over it, its time signature in
-    /// parentheses).
+    /// Whether the measure is in free time (its barline is dashed).
     pub(crate) free_time: bool,
+    /// Whether free time starts here: "Free time" over it (its time signature is in
+    /// parentheses). The following free bars repeat neither.
+    pub(crate) free_time_starts: bool,
     /// The fermata over the measure's first note, if any.
     pub(crate) fermata: Option<Fermata>,
     /// The feel, written where it changes (and at the start unless straight).
@@ -112,7 +114,7 @@ impl MeasureMarks {
         self.tempo.is_some()
             || !self.column_tempos.is_empty()
             || self.feel.is_some()
-            || self.free_time
+            || self.free_time_starts
     }
 }
 
@@ -124,6 +126,7 @@ pub(crate) fn plan(song: &Song, measures: &[Arc<MeasureLayout>]) -> Vec<MeasureM
     let mut dynamic = Dynamic::DEFAULT;
     let mut previous_endings = 0;
     let mut previous_feel = Feel::None;
+    let mut previous_free = false;
     measures
         .iter()
         .map(|measure| {
@@ -136,12 +139,15 @@ pub(crate) fn plan(song: &Song, measures: &[Arc<MeasureLayout>]) -> Vec<MeasureM
                 repeat: song.repeat(index).unwrap_or_default(),
                 double_bar: song.double_bar(index).unwrap_or(false),
                 free_time: song.free_time(index).unwrap_or(false),
+                free_time_starts: false,
                 fermata: song.fermata(index),
                 beat_effects: measure.has_beat_effects(),
                 lane_ornaments: measure.has_lane_ornaments(),
                 beat_text: measure.has_beat_text(),
                 ..MeasureMarks::default()
             };
+            marks.free_time_starts = marks.free_time && !previous_free;
+            previous_free = marks.free_time;
             let feel = song.feel(index).unwrap_or_default();
             if feel != previous_feel {
                 marks.feel = Some(feel);
@@ -352,8 +358,8 @@ pub(crate) fn draw(
     }
     let tempo_y = rows.baseline(rows.tempo_row(), top);
     let mut start = placed.left + 0.3;
-    if marks.free_time {
-        // Guitar Pro writes "Free time" above a measure whose metronome is off.
+    if marks.free_time_starts {
+        // Guitar Pro writes "Free time" above the first measure whose metronome is off.
         ops.push(DrawOp::Text {
             text: "Free time".to_owned(),
             at: Point::new(start, tempo_y),

@@ -20,6 +20,15 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    `DrDr.gp`), which exceeds the GPX container limit (~4 MB, now a clear error).
    Drum and piano notes are mapped onto tab strings on import (several drum notes on
    string 1, negative piano frets); reported as issues, kept unchanged.
+   **Pitched instruments without strings** (voice, synth, piano, strings ensemble): GP7
+   gives their notes a real pitch (`Midi`, `ConcertPitch`) and only leftover string and
+   fret values against a guitar tuning, often negative. We read the string and fret, so
+   notes below that tuning's low string show as "?", and such tracks get no notation
+   staff (no tuning), only a tab. Guitar Pro shows them as standard notation only (the
+   `Ballad.gp` vocals). Fixing it needs notes that keep a pitch of their own.
+   **Second staves are not read**: a GP7 track with two staves (a piano's or synth's
+   treble and bass) keeps its first staff only. Since 2026-11-05 the tracks after it no
+   longer read the wrong bars (bars are listed per staff, not per track).
 3. **GP6 instrument not read.** GP6 stores only an instrument id (`<Instrument
    ref="s-gtr6"/>`), no type or name; such tracks count as string instruments unless they
    are percussion. (The GP6 tuning order, unverified before, is now covered by the GPX

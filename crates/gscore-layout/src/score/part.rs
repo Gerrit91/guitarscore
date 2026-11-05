@@ -74,11 +74,15 @@ impl<'a> Part<'a> {
         let mut previous_signature = None;
         let mut previous_key = None;
         let mut previous_clef = None;
+        let mut previous_free = false;
         for measure in view.measures() {
             let signature = measure.time_signature()?;
             let free_time = song.free_time(measure.index()).unwrap_or(false);
-            // Free time shows its signature in parentheses even when it did not change.
-            let show = previous_signature != Some(signature) || free_time;
+            // Where free time starts, its signature is written in parentheses even when it
+            // did not change. Bars inside a free-time run do not repeat it, and the bar after
+            // the run does not either (as Guitar Pro prints it).
+            let show = previous_signature != Some(signature) || (free_time && !previous_free);
+            previous_free = free_time;
             let key = song.key_signature(measure.index()).map_or(0, |key| key.key);
             let clef = match ctx.notation {
                 Some(notation) if notation.clef != Clef::Percussion => {

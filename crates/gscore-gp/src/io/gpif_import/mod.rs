@@ -215,6 +215,23 @@ impl SongGpifOps for Song {
         self.measure_headers.clear();
         let num_tracks = gpif.tracks.tracks.len();
         let mut track_bar_ids: Vec<Vec<i32>> = vec![Vec::new(); num_tracks];
+        // A master bar lists one bar per staff, not per track: a track with two staves (a
+        // piano's or synth's treble and bass) takes two places. Each track reads the bar of
+        // its first staff (a second staff is not read yet: docs/gaps.md).
+        let first_staff: Vec<usize> = gpif
+            .tracks
+            .tracks
+            .iter()
+            .scan(0_usize, |next, track| {
+                let at = *next;
+                let staves = track
+                    .staves
+                    .as_ref()
+                    .map_or(1, |staves| staves.staves.len().max(1));
+                *next = next.saturating_add(staves);
+                Some(at)
+            })
+            .collect();
 
         for (mh_idx, mb) in gpif.master_bars.master_bars.iter().enumerate() {
             let mut mh = MeasureHeader {
@@ -332,8 +349,9 @@ impl SongGpifOps for Song {
 
             // Per-track bar IDs
             let bar_ids = parse_ids(&mb.bars);
-            for (ids, &bar_id) in track_bar_ids.iter_mut().zip(&bar_ids) {
-                ids.push(bar_id);
+            for (ids, &staff) in track_bar_ids.iter_mut().zip(&first_staff) {
+                // A missing entry is an empty bar, so the track's later bars stay in place.
+                ids.push(bar_ids.get(staff).copied().unwrap_or(-1));
             }
 
             self.measure_headers.push(mh);
