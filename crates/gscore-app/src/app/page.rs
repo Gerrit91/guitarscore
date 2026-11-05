@@ -73,8 +73,27 @@ impl GuitarScoreApp {
             .clone()
             .with_page_setup(&document.song().page_setup());
         let score_view = self.view.score_view;
+        let zoom = self.view.zoom();
         let options = if score_view.on_pages() {
             options.on_pages()
+        } else {
+            options
+        };
+        // The vertical screen view fills the window instead of keeping the paper width;
+        // the horizontal one gets its width from the whole score on one line.
+        let options = if score_view == ScoreView::ScreenVertical {
+            let scale = POINTS_PER_SPACE * zoom;
+            let width = if scale > 0.0 {
+                ui.available_width() / scale
+            } else {
+                options.page_width
+            };
+            gscore_layout::LayoutOptions {
+                page_width: width.max(20.0),
+                margin_left: 2.0,
+                margin_right: 2.0,
+                ..options
+            }
         } else {
             options
         };
@@ -115,7 +134,6 @@ impl GuitarScoreApp {
                 .unwrap_or(0);
             (page.saturating_add(1), layout.pages.len())
         });
-        let zoom = self.view.zoom();
         let scale = POINTS_PER_SPACE * zoom;
         let theme = self.view.theme.palette();
         let mut clicked: Option<Point> = None;
