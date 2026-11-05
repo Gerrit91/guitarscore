@@ -177,3 +177,44 @@ fn empty_staves_can_be_hidden_from_the_view_menu() {
     press(&mut harness, Key::ArrowRight, 40);
     assert_eq!(cursor(&harness).0, 0);
 }
+
+#[test]
+fn the_mixer_matches_its_snapshot() {
+    let file =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/basic/multi_staff.gp");
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1400.0, 900.0))
+        .wgpu()
+        .build_eframe(|cc| GuitarScoreApp::new(&cc.egui_ctx, Some(file)));
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(started.elapsed() < Duration::from_secs(30), "timed out");
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    // The tracks, the master (a waveform for all tracks) and the metronome's fader.
+    harness.snapshot("mixer_view");
+}
+
+#[test]
+fn the_screen_view_matches_its_snapshot() {
+    let file =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/basic/multi_staff.gp");
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1400.0, 900.0))
+        .wgpu()
+        .build_eframe(|cc| GuitarScoreApp::new(&cc.egui_ctx, Some(file)));
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(started.elapsed() < Duration::from_secs(30), "timed out");
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    view_menu(&mut harness, "Screen view (vertical)");
+    // Paper from edge to edge, as wide as the room between the panels and no wider.
+    harness.snapshot("screen_view");
+}

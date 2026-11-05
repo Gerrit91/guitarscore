@@ -66,6 +66,9 @@ pub(crate) struct MeasureMarks {
     pub(crate) repeat: Repeat,
     /// Whether the measure ends with a double barline.
     pub(crate) double_bar: bool,
+    /// Whether the measure is in free time ("Free time" over it, its time signature in
+    /// parentheses).
+    pub(crate) free_time: bool,
     /// The fermata over the measure's first note, if any.
     pub(crate) fermata: Option<Fermata>,
     /// The feel, written where it changes (and at the start unless straight).
@@ -106,7 +109,10 @@ impl MeasureMarks {
 
     /// Whether the tempo row is needed: a tempo change or a feel mark.
     fn has_tempo(&self) -> bool {
-        self.tempo.is_some() || !self.column_tempos.is_empty() || self.feel.is_some()
+        self.tempo.is_some()
+            || !self.column_tempos.is_empty()
+            || self.feel.is_some()
+            || self.free_time
     }
 }
 
@@ -129,6 +135,7 @@ pub(crate) fn plan(song: &Song, measures: &[Arc<MeasureLayout>]) -> Vec<MeasureM
                     .filter(|title| !title.trim().is_empty()),
                 repeat: song.repeat(index).unwrap_or_default(),
                 double_bar: song.double_bar(index).unwrap_or(false),
+                free_time: song.free_time(index).unwrap_or(false),
                 fermata: song.fermata(index),
                 beat_effects: measure.has_beat_effects(),
                 lane_ornaments: measure.has_lane_ornaments(),
@@ -298,7 +305,7 @@ pub(crate) fn draw(
     ops: &mut Vec<DrawOp>,
 ) {
     let marks = placed.marks;
-    let top = tops.notation.unwrap_or(tops.tab);
+    let top = tops.top_line();
     let (xs, _) = placed
         .layout
         .column_positions(placed.content, placed.stretch);
@@ -344,7 +351,19 @@ pub(crate) fn draw(
         );
     }
     let tempo_y = rows.baseline(rows.tempo_row(), top);
-    let start = placed.left + 0.3;
+    let mut start = placed.left + 0.3;
+    if marks.free_time {
+        // Guitar Pro writes "Free time" above a measure whose metronome is off.
+        ops.push(DrawOp::Text {
+            text: "Free time".to_owned(),
+            at: Point::new(start, tempo_y),
+            size: 1.0,
+            font: TextFont::Regular,
+            anchor: TextAnchor::Start,
+            color: ColorToken::Annotation,
+        });
+        start += 5.2;
+    }
     // The feel mark follows a tempo mark at the measure start.
     let mut feel_x = start;
     if let Some(tempo) = marks.tempo {

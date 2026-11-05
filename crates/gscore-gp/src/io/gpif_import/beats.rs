@@ -130,6 +130,15 @@ pub(super) fn convert_beat(
         s_beat.text = text.clone();
     }
 
+    // Octave sign
+    s_beat.octave = match g_beat.ottavia.as_deref() {
+        Some("8va") => Octave::Ottava,
+        Some("8vb") => Octave::OttavaBassa,
+        Some("15ma") => Octave::Quindicesima,
+        Some("15mb") => Octave::QuindicesimaBassa,
+        _ => Octave::None,
+    };
+
     // Fade in, and (GuitarScore addition) fade out and volume swell.
     match g_beat.fadding.as_deref() {
         Some("FadeIn") => s_beat.effect.fade_in = true,

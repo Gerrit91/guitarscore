@@ -10,9 +10,10 @@ use std::io::{BufReader, Read};
 use std::path::Path;
 use std::sync::Arc;
 
-use gscore_play::{MidiEvent, PlayError, PlayState, Sequence};
+use gscore_play::{Channel, MidiEvent, PlayError, PlayState, Sequence};
 use rustysynth::{SoundFont, Synthesizer, SynthesizerSettings};
 
+use crate::click::ClickVoice;
 use crate::transport::{Command, Sink, Transport};
 
 /// Frames rendered between two looks at the schedule.
@@ -87,6 +88,8 @@ pub struct SynthEngine {
     sample_rate: u32,
     /// Frames rendered so far: the engine's clock.
     frames: u64,
+    /// The metronome's own click (keys 33 and 34 on the percussion channel).
+    click: ClickVoice,
     /// One block of samples per side, rendered before interleaving.
     left: [f32; BLOCK],
     right: [f32; BLOCK],
@@ -117,6 +120,7 @@ impl SynthEngine {
             transport: Transport::default(),
             sample_rate,
             frames: 0,
+            click: ClickVoice::new(sample_rate),
             left: [0.0; BLOCK],
             right: [0.0; BLOCK],
         })
@@ -238,14 +242,18 @@ impl SynthEngine {
     /// Carries out a player command now.
     pub(crate) fn apply(&mut self, command: Command) -> Option<Arc<Sequence>> {
         let now = self.now();
-        self.transport
-            .handle(command, now, &mut SynthSink(&mut self.synth))
+        self.transport.handle(
+            command,
+            now,
+            &mut SynthSink(&mut self.synth, &mut self.click),
+        )
     }
 
     /// Stops playing where it is, after the output failed.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // the worklet stops via `stop`
     pub(crate) fn fail(&mut self) {
-        self.transport.fail(&mut SynthSink(&mut self.synth));
+        self.transport
+            .fail(&mut SynthSink(&mut self.synth, &mut self.click));
     }
 
     /// The clock: microseconds of rendered audio.
@@ -258,19 +266,44 @@ impl SynthEngine {
     fn render_block(&mut self, frames: usize) {
         let frames = frames.min(BLOCK);
         let now = self.now();
-        self.transport.advance(now, &mut SynthSink(&mut self.synth));
+        self.transport
+            .advance(now, &mut SynthSink(&mut self.synth, &mut self.click));
         if let (Some(l), Some(r)) = (self.left.get_mut(..frames), self.right.get_mut(..frames)) {
             self.synth.render(l, r);
+            self.click.add(l, r);
         }
         self.frames = self.frames.saturating_add(frames as u64);
     }
 }
 
-/// Sends events to the synthesizer.
-struct SynthSink<'a>(&'a mut Synthesizer);
+/// Sends events to the synthesizer; the metronome's keys go to its own click.
+struct SynthSink<'a>(&'a mut Synthesizer, &'a mut ClickVoice);
 
 impl Sink for SynthSink<'_> {
     fn send(&mut self, event: MidiEvent) {
+        match event {
+            MidiEvent::NoteOn {
+                channel: Channel::PERCUSSION,
+                key,
+                velocity,
+            } if ClickVoice::plays(key) => {
+                self.1.trigger(key, velocity);
+                return;
+            }
+            MidiEvent::NoteOff {
+                channel: Channel::PERCUSSION,
+                key,
+            } if ClickVoice::plays(key) => return,
+            MidiEvent::Control {
+                channel: Channel::PERCUSSION,
+                controller,
+                value,
+            } if ClickVoice::chooses(controller) => {
+                self.1.choose(value);
+                return;
+            }
+            _ => {}
+        }
         let (channel, command, data1, data2) = match event {
             MidiEvent::NoteOn {
                 channel,

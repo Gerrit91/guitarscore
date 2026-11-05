@@ -23,7 +23,7 @@ use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point};
 use crate::error::LayoutError;
 use crate::glyph::Glyph;
-use crate::notation::{self, KeySigLayout, NotationItem};
+use crate::notation::{self, KeySigLayout, Notation, NotationItem};
 use crate::ornaments::{self, ColumnMarks, Fret};
 
 use columns::{as_f64, beat_length, beat_starts, column_items};
@@ -31,6 +31,8 @@ use graces::Grace;
 
 /// Space before and after a time signature.
 const TIME_SIG_PAD: (f32, f32) = (0.8, 0.6);
+/// Extra room on each side for the parentheses of a free-time signature.
+const FREE_TIME_PAD: f32 = 0.55;
 /// How much of the staff height a time signature covers.
 const TIME_SIG_HEIGHT_RATIO: f32 = 0.7;
 /// Smallest space between the start of a measure and its first beat.
@@ -52,6 +54,8 @@ pub(crate) const DEAD_SLAP_HALF: f32 = 1.4;
 pub(crate) struct Tops {
     pub(crate) tab: f32,
     pub(crate) notation: Option<f32>,
+    /// The slash-notation staff's top line, if the track shows one.
+    pub(crate) slash: Option<f32>,
     /// Whether the tab staff is drawn (a track may show notation only).
     pub(crate) show_tab: bool,
     /// Whether the measure number is written above the staves (only over a system's top
@@ -64,14 +68,32 @@ pub(crate) struct Tops {
     pub(crate) lanes: f32,
 }
 
+impl Tops {
+    /// The topmost staff's top line, which marks and measure numbers go above: the slash
+    /// staff's, else the notation staff's, else the tab's.
+    pub(crate) fn top_line(&self) -> f32 {
+        self.slash.or(self.notation).unwrap_or(self.tab)
+    }
+}
+
 /// A measure, laid out independently of its position.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct MeasureLayout {
     index: MeasureIndex,
+    /// The clef this measure's notation staff uses.
+    clef: notation::Clef,
+    /// Whether the measure starts with a clef change (drawn before its key signature).
+    clef_change: bool,
+    /// Room the clef change takes, including the gaps around it.
+    clef_width: f32,
     /// The key signature when it changes here (or starts the score), on the staff that
     /// carries it.
     key_signature: Option<KeySigLayout>,
     time_signature: Option<TimeSigLayout>,
+    /// Free time: the measure's time signature is written in parentheses.
+    free_time: bool,
+    /// Guitar Pro's bar-repetition (simile) mark.
+    simile: Option<gscore_model::SimileMark>,
     /// Room after the key signature, so the time signature lines up with other tracks'
     /// (0 on its own; set by [`align`]).
     signature_pad: f32,
@@ -104,6 +126,8 @@ struct Column {
     marks: ColumnMarks,
     /// What the notation staff shows here, per voice (first and second, ...).
     notation: Vec<Option<NotationItem>>,
+    /// What the slash-notation staff shows here, per voice, if the track has one.
+    slash: Vec<Option<NotationItem>>,
     /// How far the second and further voices move right to clear the first voice's
     /// noteheads when they share a staff position.
     notation_offset: f32,
@@ -116,6 +140,13 @@ struct Column {
     main_left: f32,
     /// The beat this column starts in (beams join notes within one beat).
     beat: u64,
+    /// The tuplet this column belongs to (`enters:times`), if any. The tab staff shows it
+    /// when no notation staff is there to carry it.
+    tuplet: Option<(u8, u8)>,
+    /// The octave sign written at this column, if any.
+    octave: Option<gscore_model::OctaveSign>,
+    /// The chord diagram written at this column, if any.
+    chord: Option<gscore_model::ChordDiagram>,
     /// The model beats that start here, as `(voice, beat)`.
     beats: Vec<(VoiceIndex, BeatIndex)>,
     /// Guitar Pro's beat text, written above the staff at this column.
@@ -132,9 +163,13 @@ struct ColumnData {
     items: Vec<Item>,
     marks: ColumnMarks,
     notation: Vec<Option<NotationItem>>,
+    slash: Vec<Option<NotationItem>>,
     graces: Vec<Grace>,
     grace_width: f32,
     beat: u64,
+    tuplet: Option<(u8, u8)>,
+    octave: Option<gscore_model::OctaveSign>,
+    chord: Option<gscore_model::ChordDiagram>,
     beats: Vec<(VoiceIndex, BeatIndex)>,
     text: Option<String>,
 }
@@ -165,16 +200,34 @@ impl MeasureLayout {
 
     /// Lays out `measure` in `key`, which `previous` differs from when the key signature
     /// changes here; `show_time_signature` when it starts the piece or changes the time
-    /// signature.
+    /// signature. `clef` is the clef in effect here and `previous_clef` the one before, so
+    /// a change is written at the measure's start.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         measure: MeasureView<'_>,
         show_time_signature: bool,
+        free_time: bool,
         key: i8,
         previous_key: Option<i8>,
+        clef: notation::Clef,
+        previous_clef: Option<notation::Clef>,
         ctx: &Context<'_>,
     ) -> Result<Self, LayoutError> {
+        // The staff's items and key signature are laid out in this measure's clef.
+        let local;
+        let ctx = match ctx.notation {
+            Some(notation) => {
+                local = Context {
+                    notation: Some(Notation { clef, ..notation }),
+                    ..*ctx
+                };
+                &local
+            }
+            None => ctx,
+        };
         let signature = measure.time_signature()?;
-        let time_signature = show_time_signature.then(|| TimeSigLayout::new(signature, ctx));
+        let time_signature =
+            show_time_signature.then(|| TimeSigLayout::new(signature, free_time, ctx));
         // The key signature goes on the notation staff; a tab-only score shows it on the
         // tab staff. Drums have none.
         let key_signature = if previous_key == Some(key) {
@@ -209,8 +262,19 @@ impl MeasureLayout {
             let length = next.checked_sub(*onset).map_or(0.0, as_f64);
             let plain: Vec<BeatView<'_>> = beats.iter().map(|&(_, beat)| beat).collect();
             let mut data = column_items(&plain, ctx, column_index == 0)?;
+            // The shortest tuplet of the beats starting here; all normal beats of one
+            // tuplet share it.
+            data.tuplet = plain
+                .iter()
+                .filter(|beat| beat.kind() != gscore_model::BeatKind::Empty)
+                .find_map(|beat| beat.note_value().ok()?.tuplet());
+            data.octave = plain.iter().find_map(BeatView::octave);
+            data.chord = plain.iter().find_map(BeatView::chord_diagram);
             if let Some(notation) = &ctx.notation {
                 data.notation = notation::column_items(beats, notation, key)?;
+            }
+            if ctx.slash {
+                data.slash = notation::slash_column_items(beats)?;
             }
             let voice_count = measure.voices().len();
             let mut group = 0_usize;
@@ -266,9 +330,13 @@ impl MeasureLayout {
                     items: Vec::new(),
                     marks: ColumnMarks::default(),
                     notation: Vec::new(),
+                    slash: Vec::new(),
                     graces: Vec::new(),
                     grace_width: 0.0,
                     beat: 0,
+                    tuplet: None,
+                    octave: None,
+                    chord: None,
                     beats: Vec::new(),
                     text: None,
                 },
@@ -395,11 +463,15 @@ impl MeasureLayout {
                     items: data.items,
                     marks: data.marks,
                     notation: data.notation,
+                    slash: data.slash,
                     notation_offset: offsets.get(i).copied().unwrap_or(0.0),
                     graces: data.graces,
                     grace_width: data.grace_width,
                     main_left: extents.get(i).map_or(0.0, |(main, _, _)| *main),
                     beat: data.beat,
+                    tuplet: data.tuplet,
+                    octave: data.octave,
+                    chord: data.chord,
                     beats: data.beats,
                     text: data.text,
                     dynamic,
@@ -408,10 +480,24 @@ impl MeasureLayout {
             })
             .collect();
 
+        let pitched = ctx
+            .notation
+            .is_some_and(|notation| notation.clef != notation::Clef::Percussion);
+        let clef_change = pitched && previous_clef.is_some_and(|previous| previous != clef);
+        let clef_width = if clef_change {
+            notation::clef_change_width(clef, ctx)
+        } else {
+            0.0
+        };
         Ok(MeasureLayout {
             index: measure.index(),
+            clef,
+            clef_change,
+            clef_width,
             key_signature,
             time_signature,
+            free_time,
+            simile: measure.simile_mark(),
             signature_pad: 0.0,
             lead,
             columns,
@@ -431,10 +517,21 @@ impl MeasureLayout {
                 || column
                     .notation
                     .iter()
+                    .chain(&column.slash)
                     .flatten()
                     .any(|item| matches!(item, NotationItem::Chord(_)))
                 || column.marks.dead_slapped
         })
+    }
+
+    /// The measure's bar-repetition (simile) mark.
+    pub(crate) fn simile(&self) -> Option<gscore_model::SimileMark> {
+        self.simile
+    }
+
+    /// The clef of this measure's notation staff.
+    pub(crate) fn clef(&self) -> notation::Clef {
+        self.clef
     }
 
     /// Whether the measure carries a key signature (a change, or the score's first).
@@ -455,9 +552,18 @@ impl MeasureLayout {
         self.columns.iter().any(|column| column.text.is_some())
     }
 
+    /// The room the key signature takes, with the gap before it (after the barline, or
+    /// the clef at a system's start), or 0 without one.
+    pub(crate) fn key_width(&self) -> f32 {
+        self.key_signature
+            .as_ref()
+            .map_or(0.0, |key| notation::KEY_GAPS.0 + key.width)
+    }
+
     /// The width that does not stretch: key and time signature, and the lead.
     pub(crate) fn fixed_width(&self) -> f32 {
-        self.key_signature.as_ref().map_or(0.0, |k| k.width)
+        self.clef_width
+            + self.key_width()
             + self.signature_pad
             + self.time_signature.as_ref().map_or(0.0, |t| t.width)
             + self.lead
@@ -475,7 +581,7 @@ impl MeasureLayout {
 }
 
 impl TimeSigLayout {
-    fn new(signature: TimeSignature, ctx: &Context<'_>) -> Self {
+    fn new(signature: TimeSignature, free_time: bool, ctx: &Context<'_>) -> Self {
         // Each digit row is two staff spaces high at scale 1; together they cover most of the
         // staff.
         let scale = (ctx.staff.height() * TIME_SIG_HEIGHT_RATIO / 4.0).max(1.0);
@@ -488,7 +594,9 @@ impl TimeSigLayout {
                 .sum::<f32>()
                 * scale
         };
-        let width = TIME_SIG_PAD.0 + row(&numerator).max(row(&denominator)) + TIME_SIG_PAD.1;
+        let parens = if free_time { 2.0 * FREE_TIME_PAD } else { 0.0 };
+        let width =
+            TIME_SIG_PAD.0 + row(&numerator).max(row(&denominator)) + TIME_SIG_PAD.1 + parens;
         TimeSigLayout {
             numerator,
             denominator,
@@ -497,8 +605,40 @@ impl TimeSigLayout {
         }
     }
 
-    fn draw(&self, x: f32, top: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
-        self.draw_at(x, top + ctx.staff.middle(), self.scale, ctx, ops);
+    fn draw(&self, x: f32, top: f32, free_time: bool, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
+        self.draw_at(x, top + ctx.staff.middle(), self.scale, ctx, ops, free_time);
+    }
+
+    /// Parentheses around a free-time signature.
+    fn draw_parentheses(
+        &self,
+        x: f32,
+        middle: f32,
+        scale: f32,
+        free_time: bool,
+        ctx: &Context<'_>,
+        ops: &mut Vec<DrawOp>,
+    ) {
+        if !free_time {
+            return;
+        }
+        let font = &ctx.fonts.music;
+        let size = (scale * 1.7).max(1.4);
+        for (glyph, at_x) in [
+            (Glyph::ParenthesisLeft, x + 0.1),
+            (
+                Glyph::ParenthesisRight,
+                x + self.width - font.advance(Glyph::ParenthesisRight) * size - 0.1,
+            ),
+        ] {
+            let y = middle + font.bbox(glyph).middle_above_origin() * size;
+            ops.push(DrawOp::Glyph {
+                glyph,
+                at: Point::new(at_x, y),
+                scale: size,
+                color: ColorToken::Notation,
+            });
+        }
     }
 
     /// Draws the digits centered on `middle` at `scale` (1 on a five-line staff).
@@ -509,12 +649,14 @@ impl TimeSigLayout {
         scale: f32,
         ctx: &Context<'_>,
         ops: &mut Vec<DrawOp>,
+        free_time: bool,
     ) {
         let font = &ctx.fonts.music;
         let row_width = |glyphs: &[Glyph]| -> f32 {
             glyphs.iter().map(|g| font.advance(*g)).sum::<f32>() * scale
         };
         let inner = self.width - TIME_SIG_PAD.0 - TIME_SIG_PAD.1;
+        self.draw_parentheses(x, middle, scale, free_time, ctx, ops);
         // Time signature digits have their origin at their vertical middle.
         for (glyphs, y) in [
             (&self.numerator, middle - scale),

@@ -2,8 +2,8 @@
 
 use super::*;
 use gscore_model::{
-    AccentKind, BeatEffect, BeatIndex, BendKind, BendPoint, BendShape, Dynamic, Grace, GraceSpeed,
-    Harmonic, HarmonicKind, NoteEffect, StrokeDirection, WhammyShape,
+    AccentKind, BeatEffect, BeatIndex, BendKind, BendPoint, BendShape, Clef, Dynamic, Grace,
+    GraceSpeed, Harmonic, HarmonicKind, NoteEffect, SimileMark, StrokeDirection, WhammyShape,
 };
 
 fn at(track: usize, measure: usize, voice: usize, beat: usize) -> BeatPosition {
@@ -156,7 +156,7 @@ fn parses_every_command_and_fills_defaults() {
             "set_track_staves track=2 staves=tab",
             Command::SetTrackStaves {
                 track: TrackIndex::new(1),
-                staves: TrackStaves::TabOnly,
+                staves: TrackStaves::TAB_ONLY,
             },
         ),
         (
@@ -438,7 +438,10 @@ fn bad_lines_are_errors_with_useful_messages() {
         ("set_track_pan pan=abc", "0 to 127"),
         ("set_track_reverb reverb=200", "0 to 127"),
         ("set_track_chorus", "missing parameter"),
-        ("set_track_staves staves=slash", "both, tab or notation"),
+        (
+            "set_track_staves staves=bogus",
+            "both, tab, notation, tab+slash, notation+slash, both+slash or slash",
+        ),
         ("set_track_staves", "missing parameter"),
         ("set_master_volume volume=128", "0 to 127"),
         ("set_master_pan", "missing parameter"),
@@ -567,7 +570,7 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
         Command::SetTrackChorus { track, chorus: 5 },
         Command::SetTrackStaves {
             track,
-            staves: TrackStaves::NotationOnly,
+            staves: TrackStaves::NOTATION_ONLY,
         },
         Command::SetMasterVolume { volume: 90 },
         Command::SetMasterPan { pan: 127 },
@@ -773,6 +776,20 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
         Command::SetFermata {
             measure: MeasureIndex::new(1),
             fermata: Some(Fermata::VeryLong),
+        },
+        Command::SetClef {
+            track: TrackIndex::new(1),
+            measure: MeasureIndex::new(2),
+            clef: Clef::Tenor,
+        },
+        Command::SetFreeTime {
+            measure: MeasureIndex::new(2),
+            free_time: true,
+        },
+        Command::SetSimileMark {
+            track: TrackIndex::new(0),
+            measure: MeasureIndex::new(1),
+            mark: Some(SimileMark::FirstOfDouble),
         },
     ]);
     // Names a plain command line could not hold: empty, spaces, the comment sign, `=`,

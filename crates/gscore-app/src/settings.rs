@@ -158,8 +158,12 @@ pub struct Settings {
     pub show_track_panel: bool,
     /// Whether the edit palette (left panel) is shown.
     pub show_edit_panel: bool,
-    /// Whether the score is shown on pages (else one endless page).
-    pub page_view: bool,
+    /// How the score fills the window: pages or an endless surface, vertical or horizontal.
+    pub score_view: crate::state::ScoreView,
+    /// The old on/off page switch from settings files written before the view modes. Only
+    /// read; `None` once this version has saved the file.
+    #[serde(rename = "page_view", default, skip_serializing_if = "Option::is_none")]
+    pub legacy_page_view: Option<bool>,
     /// With several tracks shown, whether empty staves are left out of a line.
     pub hide_empty_staves: bool,
     /// Height the song grid was dragged to; `None`: it follows the number of tracks. (The
@@ -192,6 +196,14 @@ pub struct Settings {
     pub audition_notes: bool,
     /// Seconds between recovery snapshots; 0 means only by edit count.
     pub autosave_seconds: u64,
+    /// The metronome's volume, 0 to 1.
+    pub metronome_volume: f32,
+    /// The built-in synthesizer's click sound (`wood`, `beep` or `cowbell`).
+    pub click_sound: String,
+    /// How many bars the count-in clicks (1 to 4).
+    pub count_in_bars: u8,
+    /// Whether a looped selection is counted in again each time it starts over.
+    pub count_in_loops: bool,
     /// The SoundFont chosen for the built-in synthesizer, if any.
     pub soundfont_path: Option<PathBuf>,
     /// Whether playback prefers the built-in synthesizer over MIDI output.
@@ -214,7 +226,8 @@ impl Default for Settings {
             grid_mixer: false,
             show_track_panel: true,
             show_edit_panel: true,
-            page_view: true,
+            score_view: crate::state::ScoreView::PageVertical,
+            legacy_page_view: None,
             hide_empty_staves: false,
             grid_height_chosen: None,
             mixer_height_chosen: None,
@@ -230,6 +243,10 @@ impl Default for Settings {
             shortcut_overrides: Vec::new(),
             audition_notes: true,
             autosave_seconds: DEFAULT_AUTOSAVE_SECONDS,
+            metronome_volume: 1.0,
+            click_sound: gscore_play::ClickSound::default().id().to_owned(),
+            count_in_bars: 1,
+            count_in_loops: false,
             soundfont_path: None,
             prefer_synth: true,
             midi_port: None,
@@ -256,7 +273,8 @@ impl Settings {
         self.grid_mixer = view.grid_mixer;
         self.show_track_panel = view.show_track_panel;
         self.show_edit_panel = view.show_edit_panel;
-        self.page_view = view.page_view;
+        self.score_view = view.score_view;
+        self.legacy_page_view = None;
         self.hide_empty_staves = view.hide_empty_staves;
     }
 
@@ -269,7 +287,10 @@ impl Settings {
         view.grid_mixer = self.grid_mixer;
         view.show_track_panel = self.show_track_panel;
         view.show_edit_panel = self.show_edit_panel;
-        view.page_view = self.page_view;
+        view.score_view = match self.legacy_page_view {
+            Some(false) => crate::state::ScoreView::ScreenVertical,
+            _ => self.score_view,
+        };
         view.hide_empty_staves = self.hide_empty_staves;
     }
 
@@ -277,6 +298,10 @@ impl Settings {
     pub fn add_recent(&mut self, path: PathBuf) {
         self.recent_files.retain(|recent| recent != &path);
         self.recent_files.insert(0, path);
+        if gscore_play::ClickSound::from_id(&self.click_sound).is_none() {
+            self.click_sound = gscore_play::ClickSound::default().id().to_owned();
+        }
+        self.count_in_bars = self.count_in_bars.clamp(1, gscore_play::MAX_COUNT_IN_BARS);
         self.recent_files.truncate(MAX_RECENT_FILES);
     }
 
@@ -370,6 +395,11 @@ impl Settings {
         if self.autosave_seconds > 24 * 60 * 60 {
             self.autosave_seconds = DEFAULT_AUTOSAVE_SECONDS;
         }
+        self.metronome_volume = if self.metronome_volume.is_finite() {
+            self.metronome_volume.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
         self.recent_files.truncate(MAX_RECENT_FILES);
         self.open_files.truncate(MAX_OPEN_FILES);
         // A hostile or broken file cannot make the keymap huge.

@@ -317,3 +317,70 @@ fn a_stroke_speed_and_timing_survive_gp7_and_gp5() {
         Some(16)
     );
 }
+
+/// The staff test file's clefs, free time, simile marks and octave signs survive a GP7 save.
+#[test]
+fn staff_features_round_trip_through_gp7() {
+    use gscore_model::{Clef, MeasureIndex, SimileMark, TrackStaves};
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/basic/staff.gp");
+    let imported = import_guitar_pro_from_bytes(&std::fs::read(path).unwrap()).unwrap();
+    let mut song = imported.song;
+    let track = song.track(TrackIndex::new(0)).unwrap();
+    assert_eq!(
+        track.measure(MeasureIndex::new(11)).unwrap().clef(),
+        Some(Clef::Bass)
+    );
+    assert_eq!(
+        track.measure(MeasureIndex::new(12)).unwrap().clef(),
+        Some(Clef::Alto)
+    );
+    assert_eq!(
+        track.measure(MeasureIndex::new(13)).unwrap().clef(),
+        Some(Clef::Tenor)
+    );
+    assert!(song.free_time(MeasureIndex::new(6)).unwrap());
+    assert_eq!(
+        track.measure(MeasureIndex::new(8)).unwrap().simile_mark(),
+        Some(SimileMark::Simple)
+    );
+    let octaves: Vec<&str> = track
+        .measures()
+        .flat_map(|measure| measure.voices())
+        .flat_map(|voice| voice.beats())
+        .filter_map(|beat| beat.octave())
+        .map(gscore_model::OctaveSign::label)
+        .collect();
+    for sign in ["8va", "8vb", "15ma", "15mb"] {
+        assert!(octaves.contains(&sign), "missing {sign}: {octaves:?}");
+    }
+
+    // Our own slash switch (not GP7's alternative-style bit) survives a save too.
+    let _ = song
+        .set_track_staves(TrackIndex::new(0), TrackStaves::NOTATION_AND_SLASH)
+        .unwrap();
+    let bytes = export_to_bytes(&song, FileFormat::Gp).unwrap();
+    let reread = import_guitar_pro_from_bytes(&bytes).unwrap().song;
+    assert_eq!(
+        reread.track(TrackIndex::new(0)).unwrap().staves(),
+        TrackStaves::NOTATION_AND_SLASH
+    );
+    assert_eq!(
+        reread
+            .track(TrackIndex::new(0))
+            .unwrap()
+            .measure(MeasureIndex::new(11))
+            .unwrap()
+            .clef(),
+        Some(Clef::Bass)
+    );
+    assert!(reread.free_time(MeasureIndex::new(6)).unwrap());
+    assert_eq!(
+        reread
+            .track(TrackIndex::new(0))
+            .unwrap()
+            .measure(MeasureIndex::new(8))
+            .unwrap()
+            .simile_mark(),
+        Some(SimileMark::Simple)
+    );
+}

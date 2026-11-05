@@ -40,6 +40,9 @@ pub struct LayoutOptions {
     pub notation_gap: f32,
     /// With several tracks: whether a track is left out of a system where it has no note.
     pub empty_staves: EmptyStaves,
+    /// Lay the whole score out on one line that scrolls horizontally, instead of breaking
+    /// it into systems (the app's horizontal screen view).
+    pub single_line: bool,
 }
 
 /// With several tracks shown, what happens to a track's staves in a system where it has
@@ -170,6 +173,7 @@ impl Default for LayoutOptions {
             notation: true,
             notation_gap: 8.0,
             empty_staves: EmptyStaves::Shown,
+            single_line: false,
         }
     }
 }

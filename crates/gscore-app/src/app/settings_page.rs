@@ -167,6 +167,7 @@ fn preview_panel(ui: &mut Ui, layout: Option<&Layout>, valid: bool) {
         &Theme::LIGHT,
         zoom,
         rect,
+        canvas::Surface::Pages,
     );
     ui.label(
         RichText::new(format!("Page 1 of {}", layout.pages.len()))

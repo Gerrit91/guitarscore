@@ -2,6 +2,28 @@
 
 This document provides guidelines for contributing to the GuitarScore project.
 
+## Building
+
+`rust-toolchain.toml` pins the Rust version and installs `rustfmt`, `clippy` and the
+`wasm32-unknown-unknown` target. With a distribution's Rust instead, install the wasm
+target yourself (Arch: `pacman -S rust-wasm`). Building the Guitar Pro reader for wasm also
+needs `clang`.
+
+```bash
+cargo build
+cargo xtask ci   # everything a change must pass: fmt, clippy, tests, layer and wasm checks
+cargo gui testdata/basic/note_lengths.gp      # build and start the app (a cargo alias)
+gscore-cli gui testdata/basic/note_lengths.gp # start the built app from the command line
+cargo xtask web                                # the browser build in dist/web (docs/web.md)
+cargo xtask web --smoke                        # also check it in headless Chromium
+cargo xtask web --soundfont PATH               # ship another .sf2; --no-soundfont for silence
+```
+
+The app renders with wgpu (Vulkan, Metal or DirectX 12). Its snapshot tests render
+offscreen, so a headless machine needs a Vulkan adapter; without a GPU, Mesa's lavapipe
+does it (`mesa-vulkan-drivers` on Debian/Ubuntu, `vulkan-swrast` on Arch, plus
+`libvulkan1`/`vulkan-icd-loader`).
+
 ## Workspace Structure
 
 The workspace is layered; a crate may only depend on crates in lower layers

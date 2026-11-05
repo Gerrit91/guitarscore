@@ -37,6 +37,11 @@ impl Staff {
         self.lines
     }
 
+    /// Distance between two lines.
+    pub(crate) fn spacing(&self) -> f32 {
+        self.spacing
+    }
+
     /// Distance from the top line to the bottom line.
     pub(crate) fn height(&self) -> f32 {
         self.spacing * self.lines.saturating_sub(1) as f32
@@ -98,6 +103,29 @@ impl Staff {
             ops.push(line(thick_center, thick));
         } else {
             ops.push(line(x - thin / 2.0, thin));
+        }
+    }
+
+    /// A dashed thin barline whose right edge is at `x` (a free-time bar's end): four
+    /// dashes from the top line to the bottom one, the gaps half as long.
+    pub(crate) fn draw_dashed_barline(
+        &self,
+        x: f32,
+        top: f32,
+        font: &MusicFont,
+        ops: &mut Vec<DrawOp>,
+    ) {
+        const DASHES: usize = 4;
+        let thin = font.engraving().thin_barline_thickness;
+        let dash = self.height() / (DASHES as f32 * 1.5 - 0.5);
+        for index in 0..DASHES {
+            let from = top + index as f32 * dash * 1.5;
+            ops.push(DrawOp::Line {
+                from: Point::new(x - thin / 2.0, from),
+                to: Point::new(x - thin / 2.0, from + dash),
+                thickness: thin,
+                color: ColorToken::Barline,
+            });
         }
     }
 
@@ -189,18 +217,6 @@ impl Staff {
                 color: ColorToken::Barline,
             });
         }
-    }
-
-    /// The thin line at the start of a system, its left edge at `x`.
-    pub(crate) fn draw_start_line(
-        &self,
-        x: f32,
-        top: f32,
-        font: &MusicFont,
-        ops: &mut Vec<DrawOp>,
-    ) {
-        let thin = font.engraving().thin_barline_thickness;
-        self.draw_barline(x + thin, top, false, font, ops);
     }
 
     /// The tab clef glyph for this staff, and its scale.

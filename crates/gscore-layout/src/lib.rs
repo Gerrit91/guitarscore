@@ -166,6 +166,8 @@ pub(crate) struct Context<'a> {
     pub(crate) staff: Staff,
     /// Standard notation above the tab, if shown for this track.
     pub(crate) notation: Option<Notation<'a>>,
+    /// Whether the track shows a slash-notation staff (rhythm slashes, no pitches).
+    pub(crate) slash: bool,
 }
 
 /// Lays out `track` of `song` on its own (its notation and tab staves, as the track shows
@@ -196,8 +198,18 @@ pub fn layout_tracks(
         primary,
         options,
         fonts,
-        &mut |_, measure, show, key, prev, ctx| {
-            MeasureLayout::new(measure, show, key, prev, ctx).map(Arc::new)
+        &mut |_, measure, show, free_time, key, prev, clef, previous_clef, ctx| {
+            MeasureLayout::new(
+                measure,
+                show,
+                free_time,
+                key,
+                prev,
+                clef,
+                previous_clef,
+                ctx,
+            )
+            .map(Arc::new)
         },
         &mut |_, column| measure::align(column, &options.spacing),
     )
@@ -213,8 +225,11 @@ type MeasureSource<'s> = dyn FnMut(
         TrackIndex,
         MeasureView<'_>,
         bool,
+        bool,
         i8,
         Option<i8>,
+        notation::Clef,
+        Option<notation::Clef>,
         &Context<'_>,
     ) -> Result<Arc<MeasureLayout>, LayoutError>
     + 's;

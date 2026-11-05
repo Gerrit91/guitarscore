@@ -254,6 +254,13 @@ impl GuitarScoreApp {
             #[cfg(target_arch = "wasm32")]
             browser_sound: None,
         };
+        app.playback
+            .store_metronome_volume(app.settings.metronome_volume);
+        app.playback.store_click_sound(
+            gscore_play::ClickSound::from_id(&app.settings.click_sound).unwrap_or_default(),
+        );
+        app.playback.set_count_in_bars(app.settings.count_in_bars);
+        app.playback.set_count_in_loops(app.settings.count_in_loops);
         app.restore_tabs(startup_files, startup_active, ctx);
         app
     }
@@ -267,6 +274,10 @@ impl GuitarScoreApp {
         settings.track_panel_width = self.panel_sizes.track_panel;
         settings.edit_panel_width = self.panel_sizes.edit_panel;
         settings.window = self.last_window;
+        settings.metronome_volume = self.playback.metronome_volume();
+        settings.click_sound = self.playback.click_sound().id().to_owned();
+        settings.count_in_bars = self.playback.count_in_bars();
+        settings.count_in_loops = self.playback.count_in_loops();
         settings.soundfont_path = self.playback.soundfont().map(std::path::Path::to_path_buf);
         settings.prefer_synth = matches!(self.playback.output(), Output::Synth(_));
         settings.midi_port = self.playback.port().map(str::to_owned);

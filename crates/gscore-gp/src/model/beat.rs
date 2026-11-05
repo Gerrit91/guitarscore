@@ -200,6 +200,8 @@ pub struct Beat {
     /// A GP6/GP7 grace-note beat (`<GraceNotes>`): its notes are ornaments for the next
     /// beat and take no time of their own.
     pub grace: bool,
+    /// The chord diagram shown at this beat (GuitarScore addition; GP7's `<Chord>`).
+    pub chord_diagram: Option<ChordDiagram>,
 }
 
 impl Default for Beat {
@@ -214,6 +216,7 @@ impl Default for Beat {
             display: BeatDisplay::default(),
             status: BeatStatus::Normal,
             grace: false,
+            chord_diagram: None,
         }
     }
 }

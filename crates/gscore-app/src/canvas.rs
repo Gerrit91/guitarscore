@@ -124,8 +124,19 @@ pub(crate) fn page_size(layout: &Layout, arrangement: &Arrangement, zoom: f32) -
     arrangement.size(layout) * POINTS_PER_SPACE * zoom
 }
 
+/// What the score is painted on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Surface {
+    /// Sheets of paper floating on the canvas, each with its shadow and edge.
+    Pages,
+    /// Paper filling the whole view (the screen views), without page edges.
+    Screen,
+}
+
 /// Paints the pages with the top-left corner at `origin`, arranged by `arrangement`,
-/// skipping what lies outside `visible`.
+/// skipping what lies outside `visible`. On a [`Surface::Screen`] the caller fills the view
+/// with paper; no page edges are drawn.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn paint(
     painter: &Painter,
     origin: Pos2,
@@ -134,6 +145,7 @@ pub(crate) fn paint(
     theme: &Theme,
     zoom: f32,
     visible: Rect,
+    surface: Surface,
 ) {
     let scale = POINTS_PER_SPACE * zoom;
     let to_screen = |p: Point| origin + arrangement.to_display(p) * scale;
@@ -153,7 +165,7 @@ pub(crate) fn paint(
             origin + Vec2::new(page.origin.x, page.origin.y) * scale,
             Vec2::new(page.width, page.height) * scale,
         );
-        if !visible.expand(CULL_MARGIN).intersects(page) {
+        if surface == Surface::Screen || !visible.expand(CULL_MARGIN).intersects(page) {
             continue;
         }
         painter.add(shadow.as_shape(page, 2));
@@ -382,5 +394,58 @@ mod arrangement_tests {
         let shown = one.to_display(point);
         assert!((shown.x - point.x).abs() < 1e-4 && (shown.y - point.y).abs() < 1e-4);
         assert_eq!(one.size(&layout), Vec2::new(layout.width, layout.height));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    /// Three A4 pages, as the layout stacks them.
+    fn layout() -> Layout {
+        let page = gscore_layout::Rect {
+            origin: Point::new(0.0, 0.0),
+            width: 120.0,
+            height: 170.0,
+        };
+        Layout {
+            width: 120.0,
+            height: page.height * 3.0 + gscore_layout::PAGE_GAP * 2.0,
+            pages: (0..3)
+                .map(|index| gscore_layout::Rect {
+                    origin: Point::new(0.0, index as f32 * (page.height + gscore_layout::PAGE_GAP)),
+                    ..page
+                })
+                .collect(),
+            ops: Vec::new(),
+            places: gscore_layout::Places::default(),
+            tracks: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn vertical_pages_stay_in_one_column() {
+        let arrangement = Arrangement::new(&layout(), 1);
+        let size = arrangement.size(&layout());
+        assert!((size.x - 120.0).abs() < 1e-3);
+        assert!(size.y > 500.0);
+    }
+
+    #[test]
+    fn horizontal_pages_go_in_one_row() {
+        let arrangement = Arrangement::new(&layout(), 3);
+        let size = arrangement.size(&layout());
+        assert!(size.x > 360.0, "three pages side by side: {size:?}");
+        assert!((size.y - 170.0).abs() < 1e-3, "one row: {size:?}");
+    }
+
+    #[test]
+    fn grid_pages_wrap_to_the_next_row() {
+        let arrangement = Arrangement::new(&layout(), 2);
+        let size = arrangement.size(&layout());
+        assert!(size.x > 240.0 && size.x < 260.0, "two columns: {size:?}");
+        assert!(size.y > 340.0, "two rows: {size:?}");
     }
 }

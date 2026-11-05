@@ -10,6 +10,7 @@ use super::{Column, DEAD_SLAP_HALF, Item, MEASURE_NUMBER_RISE, MeasureLayout, To
 
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
+use crate::glyph::Glyph;
 use crate::notation::{self, BeamPlan, Chord, Head, NotationItem};
 use crate::ornaments::{self, Fret};
 use crate::place::{BeatPlace, MeasurePlace};
@@ -190,6 +191,7 @@ impl MeasureLayout {
         x: f32,
         tops: Tops,
         stretch: f32,
+        first_in_system: bool,
         ctx: &Context<'_>,
         ops: &mut Vec<DrawOp>,
     ) {
@@ -198,7 +200,7 @@ impl MeasureLayout {
         if tops.numbers {
             ops.push(DrawOp::Text {
                 text: self.index.get().saturating_add(1).to_string(),
-                at: Point::new(x, tops.notation.unwrap_or(top) - MEASURE_NUMBER_RISE),
+                at: Point::new(x, tops.top_line() - MEASURE_NUMBER_RISE),
                 size: ctx.options.measure_number_size,
                 font: TextFont::Regular,
                 anchor: TextAnchor::Start,
@@ -206,23 +208,45 @@ impl MeasureLayout {
             });
         }
         let mut signature_x = x;
-        if let Some(key_signature) = &self.key_signature {
-            key_signature.draw_at(signature_x, tops.notation.unwrap_or(top), ctx, ops);
-            signature_x += key_signature.width;
+        // A clef change is written before the key signature. On a system's first measure
+        // the system-start clef already shows it.
+        if self.clef_change
+            && !first_in_system
+            && let Some(notation_top) = tops.notation
+        {
+            notation::draw_clef_change(signature_x, notation_top, self.clef, ops);
+            signature_x += self.clef_width;
         }
+        // A slash staff alone has no key signature: its slashes have no pitch.
+        let slash_only = tops.notation.is_none() && !tops.show_tab;
+        if let Some(key_signature) = &self.key_signature
+            && !slash_only
+        {
+            // Clear of the barline before it (a thick one, after an end repeat).
+            let at = signature_x + notation::KEY_GAPS.0;
+            key_signature.draw_at(at, tops.notation.unwrap_or(top), ctx, ops);
+        }
+        signature_x += self.key_width();
         signature_x += self.signature_pad;
         if let Some(time_signature) = &self.time_signature {
             // With notation, the signature is written there only, as in Guitar Pro.
-            match tops.notation {
-                Some(notation_top) => {
-                    let middle = notation_top + notation::staff().middle();
-                    time_signature.draw_at(signature_x, middle, 1.0, ctx, ops);
+            // Alone, the slash staff carries it, centered on its line.
+            let staff_top = tops.notation.or(tops.slash.filter(|_| slash_only));
+            match staff_top {
+                Some(staff_top) => {
+                    let middle = staff_top + notation::staff().middle();
+                    time_signature.draw_at(signature_x, middle, 1.0, ctx, ops, self.free_time);
                 }
-                None => time_signature.draw(signature_x, top, ctx, ops),
+                None => time_signature.draw(signature_x, top, self.free_time, ctx, ops),
             }
         }
         // Positions first: ornaments connect neighbouring columns.
         let (xs, right) = self.column_positions(x, stretch);
+        // A bar-repetition sign stands for the bar's music: its own notes are not written
+        // (the score draws the sign, which can sit on the barline between two bars).
+        if self.simile.is_some() {
+            return;
+        }
         // Where each column's space ends: the next column, or the end of the measure.
         let span_end = |index: usize| xs.get(index.saturating_add(1)).copied().unwrap_or(right);
         // A dead slapped beat is a large cross across each staff instead of its notes.
@@ -252,6 +276,66 @@ impl MeasureLayout {
                         Item::Rest { .. } => item.draw(at, top, ctx, ops),
                     }
                 }
+            }
+            // Without a notation staff, the tab carries the tuplet numbers itself: a
+            // triplet must be visible there too, not only in the standard notation.
+            if tops.notation.is_none() {
+                self.draw_tab_tuplets(&xs, right, top, ops);
+            }
+        }
+        // Octave signs go over or under the staff that carries the notes.
+        let octave_top = tops.notation.unwrap_or(top);
+        let octave_height = if tops.notation.is_some() {
+            notation::staff().height()
+        } else {
+            ctx.staff.height()
+        };
+        for (index, column) in self.columns.iter().enumerate() {
+            let Some(octave) = column.octave else {
+                continue;
+            };
+            let Some(&at) = xs.get(index) else {
+                continue;
+            };
+            draw_octave(
+                at,
+                span_end(index),
+                octave_top,
+                octave_height,
+                octave,
+                ctx,
+                ops,
+            );
+        }
+        // Chord diagrams sit above the top staff, at their beat's column.
+        for (index, column) in self.columns.iter().enumerate() {
+            let (Some(chord), Some(&at)) = (&column.chord, xs.get(index)) else {
+                continue;
+            };
+            draw_chord_diagram(at, tops.top_line(), chord, ctx, ops);
+        }
+        // The slash-notation staff: the same rhythm, written as slashes.
+        if let Some(slash_top) = tops.slash {
+            let voices = self
+                .columns
+                .iter()
+                .map(|column| column.slash.len())
+                .max()
+                .unwrap_or(0);
+            for voice in 0..voices {
+                let placed: Vec<BeamPlan<'_>> = self
+                    .columns
+                    .iter()
+                    .zip(&xs)
+                    .filter_map(|(column, &x)| {
+                        Some(BeamPlan {
+                            x,
+                            item: column.slash.get(voice)?.as_ref()?,
+                            beat: column.beat,
+                        })
+                    })
+                    .collect();
+                notation::draw_measure(&placed, slash_top, true, ctx, ops);
             }
         }
         // The highest point of each column's notation, so marks above the staff clear it.
@@ -351,6 +435,63 @@ impl MeasureLayout {
         self.draw_column_ornaments(&xs, right, &vec![top; xs.len()], ctx, ops);
         self.draw_legato(&xs, top, ops);
         self.draw_under_staff(&xs, right, top, ctx, ops);
+    }
+
+    /// Tuplet brackets above a tab staff that has no notation staff to carry them: one
+    /// number per beat's group, over the columns it spans.
+    fn draw_tab_tuplets(&self, xs: &[f32], right: f32, top: f32, ops: &mut Vec<DrawOp>) {
+        let mut index = 0;
+        while index < self.columns.len() {
+            let Some(column) = self.columns.get(index) else {
+                break;
+            };
+            let Some((enters, _)) = column.tuplet else {
+                index = index.saturating_add(1);
+                continue;
+            };
+            let beat = column.beat;
+            let start = xs.get(index).copied().unwrap_or(right);
+            // The columns of this beat that share the tuplet.
+            let mut end = index;
+            while self
+                .columns
+                .get(end.saturating_add(1))
+                .is_some_and(|next| next.beat == beat && next.tuplet == column.tuplet)
+            {
+                end = end.saturating_add(1);
+            }
+            let last = xs.get(end).copied().unwrap_or(start);
+            let bracket = (start - 0.5, last + 0.5);
+            let line_y = top - 1.0;
+            let hook = 0.25;
+            ops.push(DrawOp::Line {
+                from: Point::new(bracket.0, line_y + hook),
+                to: Point::new(bracket.0, line_y),
+                thickness: 0.08,
+                color: ColorToken::Notation,
+            });
+            ops.push(DrawOp::Line {
+                from: Point::new(bracket.0, line_y),
+                to: Point::new(bracket.1, line_y),
+                thickness: 0.08,
+                color: ColorToken::Notation,
+            });
+            ops.push(DrawOp::Line {
+                from: Point::new(bracket.1, line_y),
+                to: Point::new(bracket.1, line_y + hook),
+                thickness: 0.08,
+                color: ColorToken::Notation,
+            });
+            ops.push(DrawOp::Text {
+                text: enters.to_string(),
+                at: Point::new((bracket.0 + bracket.1) / 2.0, line_y - 0.35),
+                size: 0.9,
+                font: TextFont::Regular,
+                anchor: TextAnchor::Middle,
+                color: ColorToken::Notation,
+            });
+            index = end.saturating_add(1);
+        }
     }
 
     /// Slurs and lines between one note and the next one on the same string.
@@ -493,6 +634,144 @@ impl MeasureLayout {
                 NotationItem::Rest { .. } => None,
             })
             .min()
+    }
+}
+
+/// A large cross across a staff for a dead slapped beat, centered on `x`.
+/// A chord diagram above the staff: its name, a small fretboard grid and a dot per
+/// fretted string.
+fn draw_chord_diagram(
+    x: f32,
+    top: f32,
+    chord: &gscore_model::ChordDiagram,
+    ctx: &Context<'_>,
+    ops: &mut Vec<DrawOp>,
+) {
+    let strings = usize::from(chord.string_count.max(1));
+    let frets = usize::from(chord.fret_count.max(1));
+    let width = (strings.saturating_sub(1)) as f32 * 0.9;
+    let height = frets as f32 * 0.8;
+    let left = x - width / 2.0;
+    // Above the staff and clear of the measure number at the staff's top.
+    let name_y = top - 7.0;
+    ops.push(DrawOp::Text {
+        text: chord.name.clone(),
+        at: Point::new(x, name_y),
+        size: 0.9,
+        font: TextFont::Regular,
+        anchor: TextAnchor::Middle,
+        color: ColorToken::Annotation,
+    });
+    let grid_top = top - 6.0;
+    // Strings (vertical) and frets (horizontal).
+    for string in 0..strings {
+        let sx = left + string as f32 * 0.9;
+        ops.push(DrawOp::Line {
+            from: Point::new(sx, grid_top),
+            to: Point::new(sx, grid_top + height),
+            thickness: 0.06,
+            color: ColorToken::Annotation,
+        });
+    }
+    for fret in 0..=frets {
+        let fy = grid_top + fret as f32 * 0.8;
+        ops.push(DrawOp::Line {
+            from: Point::new(left, fy),
+            to: Point::new(left + width, fy),
+            thickness: if fret == 0 && chord.base_fret == 0 {
+                0.18
+            } else {
+                0.06
+            },
+            color: ColorToken::Annotation,
+        });
+    }
+    if chord.base_fret > 0 {
+        ops.push(DrawOp::Text {
+            text: chord.base_fret.to_string(),
+            at: Point::new(left - 0.6, grid_top),
+            size: 0.8,
+            font: TextFont::Regular,
+            anchor: TextAnchor::End,
+            color: ColorToken::Annotation,
+        });
+    }
+    for &(string, fret) in &chord.frets {
+        let index = usize::from(string);
+        if index >= strings {
+            continue;
+        }
+        let sx = left + index as f32 * 0.9;
+        if fret < 0 {
+            ops.push(DrawOp::Text {
+                text: "x".to_owned(),
+                at: Point::new(sx, grid_top - 0.2),
+                size: 0.8,
+                font: TextFont::Regular,
+                anchor: TextAnchor::Middle,
+                color: ColorToken::Annotation,
+            });
+        } else if fret == 0 {
+            ops.push(DrawOp::Glyph {
+                glyph: Glyph::AugmentationDot,
+                at: Point::new(sx - 0.2, grid_top - 0.1),
+                scale: 0.5,
+                color: ColorToken::Annotation,
+            });
+        } else {
+            let row = i32::from(fret).saturating_sub(i32::from(chord.base_fret.max(1)));
+            if row < 0 || row >= i32::try_from(frets).unwrap_or(0) {
+                continue;
+            }
+            let fy = grid_top + (row as f32 + 0.5) * 0.8;
+            ops.push(DrawOp::Glyph {
+                glyph: Glyph::AugmentationDot,
+                at: Point::new(sx - 0.2, fy),
+                scale: 0.5,
+                color: ColorToken::Annotation,
+            });
+        }
+    }
+    let _ = ctx;
+}
+
+/// An octave sign over or under the tab staff: "8va", "8vb", "15ma" or "15mb" and a line
+/// to the end of the column's space.
+fn draw_octave(
+    x: f32,
+    end: f32,
+    top: f32,
+    staff_height: f32,
+    octave: gscore_model::OctaveSign,
+    ctx: &Context<'_>,
+    ops: &mut Vec<DrawOp>,
+) {
+    let below = octave.below();
+    let y = if below {
+        top + staff_height + 1.3
+    } else {
+        top - 1.5
+    };
+    let label = octave.label();
+    ops.push(DrawOp::Text {
+        text: label.to_owned(),
+        at: Point::new(x, y),
+        size: 0.9,
+        font: TextFont::Regular,
+        anchor: TextAnchor::Start,
+        color: ColorToken::Annotation,
+    });
+    let width = ctx.fonts.text.width(label, 0.9);
+    let line_y = if below { y - 0.9 } else { y + 0.35 };
+    let from = x + width + 0.25;
+    let to = end.max(from);
+    if to > from {
+        ops.push(DrawOp::Line {
+            from: Point::new(from, line_y),
+            to: Point::new(to, line_y),
+            thickness: 0.08,
+            color: ColorToken::Annotation,
+        });
     }
 }
 

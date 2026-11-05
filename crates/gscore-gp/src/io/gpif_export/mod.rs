@@ -201,6 +201,14 @@ impl WriteGpifInGpifStringOrder for Song {
                     escape_xml(symbol)
                 ));
             }
+            // GuitarScore addition: the slash-notation switch (GP7's PartConfiguration
+            // bit only means its alternative staff style, so keep this separately).
+            if track.settings.slash {
+                xml.push_str(&format!(
+                    "<Property name=\"{}\"><Number>1</Number></Property>",
+                    gpif_import::SLASH_PROPERTY
+                ));
+            }
             // GuitarScore addition: the capo fret (GP6/GP7 store it as a staff property).
             xml.push_str(&format!(
                 "<Property name=\"CapoFret\"><Fret>{}</Fret></Property>",
@@ -287,9 +295,8 @@ impl WriteGpifInGpifStringOrder for Song {
         // Build all bars/voices/beats/notes/rhythms with sequential IDs
         let num_measures = self.measure_headers.len();
 
-        // (bar_id, voice_ids_string)
-        // (bar id, voice ids, simile mark)
-        let mut bars: Vec<(i32, String, Option<String>)> = Vec::new();
+        // (bar id, voice ids, simile mark, clef)
+        let mut bars: Vec<(i32, String, Option<String>, &'static str)> = Vec::new();
         let mut voices_xml: Vec<String> = Vec::new();
         let mut beats_xml: Vec<String> = Vec::new();
         let mut notes_xml: Vec<String> = Vec::new();
@@ -352,7 +359,18 @@ impl WriteGpifInGpifStringOrder for Song {
                     voice_ids.push(voice_id.to_string());
                 }
 
-                bars.push((bar_id, voice_ids.join(" "), measure.simile_mark.clone()));
+                let clef = match measure.clef {
+                    MeasureClef::Bass => "F4",
+                    MeasureClef::Alto => "C4",
+                    MeasureClef::Tenor => "C3",
+                    MeasureClef::Treble => "G2",
+                };
+                bars.push((
+                    bar_id,
+                    voice_ids.join(" "),
+                    measure.simile_mark.clone(),
+                    clef,
+                ));
             }
         }
 
@@ -438,14 +456,14 @@ impl WriteGpifInGpifStringOrder for Song {
         xml.push_str("<Bars>");
         // GuitarScore fix: the simile mark is stored, not parsed back out of a string (the
         // slicing could panic on a quote in the value), and it is escaped.
-        for (bar_id, voices, simile) in &bars {
-            match simile {
-                Some(simile) => xml.push_str(&format!(
-                    "<Bar id=\"{bar_id}\"><Voices>{voices}</Voices><SimileMark>{}</SimileMark></Bar>",
-                    escape_xml(simile)
-                )),
-                None => xml.push_str(&format!("<Bar id=\"{bar_id}\"><Voices>{voices}</Voices></Bar>")),
+        for (bar_id, voices, simile, clef) in &bars {
+            xml.push_str(&format!(
+                "<Bar id=\"{bar_id}\"><Clef>{clef}</Clef><Voices>{voices}</Voices>"
+            ));
+            if let Some(simile) = simile {
+                xml.push_str(&format!("<SimileMark>{}</SimileMark>", escape_xml(simile)));
             }
+            xml.push_str("</Bar>");
         }
         xml.push_str("</Bars>");
 

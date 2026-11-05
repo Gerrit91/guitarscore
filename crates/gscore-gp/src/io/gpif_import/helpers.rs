@@ -326,6 +326,20 @@ pub(crate) fn extract_symbol(properties: &[Property]) -> Option<String> {
 /// The track property holding the app's instrument symbol (a GuitarScore addition).
 pub(crate) const SYMBOL_PROPERTY: &str = "GuitarScoreSymbol";
 
+/// GuitarScore addition: whether the track shows slash notation, from a GuitarScore
+/// property (GP7 keeps the same switch in `PartConfiguration` bit 2, which wins when the
+/// file has one).
+pub(crate) fn extract_slash(properties: &[Property]) -> Option<bool> {
+    properties
+        .iter()
+        .find(|p| p.name == SLASH_PROPERTY)
+        .and_then(|p| p.number)
+        .map(|value| value != 0)
+}
+
+/// The track property holding the slash-notation switch (a GuitarScore addition).
+pub(crate) const SLASH_PROPERTY: &str = "GuitarScoreSlash";
+
 /// The track property holding the reverb send (a GuitarScore addition).
 pub(crate) const REVERB_PROPERTY: &str = "GuitarScoreReverb";
 /// The track property holding the chorus send (a GuitarScore addition).

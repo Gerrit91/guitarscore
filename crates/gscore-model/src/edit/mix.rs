@@ -17,14 +17,62 @@ impl Song {
     ) -> Result<Change, ModelError> {
         let change = self.edit_track_settings(|inner| {
             let track = track_mut(inner, at)?;
-            let previous = (track.settings.notation, track.settings.tablature);
-            (track.settings.notation, track.settings.tablature) = staves.flags();
+            let previous = (
+                track.settings.notation,
+                track.settings.tablature,
+                track.settings.slash,
+            );
+            let (notation, tablature, slash) = staves.flags();
+            track.settings.notation = notation;
+            track.settings.tablature = tablature;
+            track.settings.slash = slash;
             Ok(Change {
                 kind: ChangeKind::TrackStaves { at, previous },
             })
         })?;
         self.touch_all_measures();
         Ok(change)
+    }
+
+    /// Sets the clef a measure's standard-notation staff uses.
+    pub fn set_clef(
+        &mut self,
+        track: TrackIndex,
+        measure: crate::position::MeasureIndex,
+        clef: crate::style::Clef,
+    ) -> Result<Change, ModelError> {
+        self.edit_measure(track, measure, |m| {
+            let previous = (clef_of(m), m.has_clef);
+            m.clef = clef.to_gp();
+            m.has_clef = true;
+            Ok(Change {
+                kind: ChangeKind::Clef {
+                    track,
+                    measure,
+                    previous,
+                },
+            })
+        })
+    }
+
+    /// Sets or clears a measure's bar-repetition (simile) mark.
+    pub fn set_simile_mark(
+        &mut self,
+        track: TrackIndex,
+        measure: crate::position::MeasureIndex,
+        mark: Option<crate::style::SimileMark>,
+    ) -> Result<Change, ModelError> {
+        self.edit_measure(track, measure, |m| {
+            let previous = m.simile_mark.clone();
+            m.simile_mark = mark.map(|mark| mark.to_gp().to_owned());
+            Ok(Change {
+                kind: ChangeKind::SimileMark {
+                    track,
+                    measure,
+                    previous,
+                },
+            })
+        })
     }
 
     /// Sets the master volume (0-127; [`crate::MASTER_UNITY`] leaves every track as loud as
@@ -61,4 +109,9 @@ impl Song {
             })
         })
     }
+}
+
+/// The clef of a measure, also when the file did not store one (Guitar Pro's default).
+fn clef_of(measure: &gscore_gp::Measure) -> crate::style::Clef {
+    crate::style::Clef::from_gp(&measure.clef)
 }

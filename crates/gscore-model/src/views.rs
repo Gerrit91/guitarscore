@@ -133,6 +133,7 @@ impl<'a> TrackView<'a> {
         crate::style::TrackStaves::from_flags(
             self.inner.settings.notation,
             self.inner.settings.tablature,
+            self.inner.settings.slash,
         )
     }
 
@@ -171,6 +172,30 @@ impl<'a> TrackView<'a> {
             .measures
             .get(index.get())
             .map(|m| MeasureView::new(index, m))
+    }
+
+    /// The measure whose music sounds at `index`: `index` itself, or for a bar-repetition
+    /// mark the bar it repeats (the bar before a one-bar repeat, two bars before either
+    /// half of a two-bar repeat), followed through repeats of repeats. A mark with no bar
+    /// before it to repeat plays its own (usually empty) bar.
+    pub fn sounding_measure(&self, index: MeasureIndex) -> MeasureIndex {
+        let mut at = index.get();
+        // Every step goes back at least one bar, so this many steps always end.
+        for _ in 0..=at {
+            let back = match self
+                .measure(MeasureIndex::new(at))
+                .and_then(|m| m.simile_mark())
+            {
+                Some(crate::style::SimileMark::Simple) => 1,
+                Some(_) => 2,
+                None => break,
+            };
+            match at.checked_sub(back) {
+                Some(source) => at = source,
+                None => break,
+            }
+        }
+        MeasureIndex::new(at)
     }
 }
 
@@ -212,6 +237,22 @@ impl<'a> MeasureView<'a> {
                 .beats()
                 .any(|beat| beat.kind() == BeatKind::Normal && beat.notes().next().is_some())
         })
+    }
+
+    /// Guitar Pro's bar-repetition (simile) mark on this measure, if any.
+    pub fn simile_mark(&self) -> Option<crate::style::SimileMark> {
+        self.inner
+            .simile_mark
+            .as_deref()
+            .and_then(crate::style::SimileMark::from_gp)
+    }
+
+    /// The clef this measure's standard-notation staff is written in, if the file stored
+    /// one (GP6/GP7 do; GP3-5 do not, and the layout derives it from the instrument).
+    pub fn clef(&self) -> Option<crate::style::Clef> {
+        self.inner
+            .has_clef
+            .then(|| crate::style::Clef::from_gp(&self.inner.clef))
     }
 
     /// All voices, in order.
@@ -334,6 +375,19 @@ impl<'a> BeatView<'a> {
     /// next beat and take no time of their own.
     pub fn is_grace(&self) -> bool {
         self.inner.grace
+    }
+
+    /// The chord diagram shown at this beat, if any.
+    pub fn chord_diagram(&self) -> Option<crate::techniques::ChordDiagram> {
+        self.inner
+            .chord_diagram
+            .as_ref()
+            .map(crate::techniques::ChordDiagram::from_gp)
+    }
+
+    /// The octave sign on this beat, if any.
+    pub fn octave(&self) -> Option<crate::effects::OctaveSign> {
+        crate::effects::OctaveSign::from_gp(&self.inner.octave)
     }
 
     /// The notes of this beat (at most one per string).

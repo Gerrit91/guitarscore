@@ -10,6 +10,8 @@
 // AudioWorklet (see `docs/web.md`) and there is no MIDI port list.
 #[cfg(not(target_arch = "wasm32"))]
 mod midi_out;
+// The metronome's own click (the synth engine plays it in a browser too).
+mod click;
 mod soundfont;
 mod synth;
 #[cfg(not(target_arch = "wasm32"))]

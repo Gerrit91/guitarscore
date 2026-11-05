@@ -95,6 +95,24 @@ impl Song {
         })
     }
 
+    /// Sets whether a measure is in free time (no metronome), the same for every track.
+    pub fn set_free_time(
+        &mut self,
+        measure: MeasureIndex,
+        free_time: bool,
+    ) -> Result<Change, ModelError> {
+        let change = self.edit_headers(|inner| {
+            let header = header_mut(inner, measure)?;
+            let previous = header.free_time;
+            header.free_time = free_time;
+            Ok(Change {
+                kind: ChangeKind::FreeTime { measure, previous },
+            })
+        })?;
+        self.touch_all_measures();
+        Ok(change)
+    }
+
     /// Sets whether a measure ends with a double barline (the same for every track).
     pub fn set_double_bar(
         &mut self,

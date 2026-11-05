@@ -23,9 +23,9 @@ fn staves_change_relay_out_and_undo() {
     let track = TrackIndex::new(0);
     assert_eq!(
         song.track(track).unwrap().staves(),
-        TrackStaves::NotationAndTab
+        TrackStaves::NOTATION_AND_TAB
     );
-    for staves in [TrackStaves::NotationOnly, TrackStaves::TabOnly] {
+    for staves in [TrackStaves::NOTATION_ONLY, TrackStaves::TAB_ONLY] {
         let stamp = song.measure_stamp(MeasureIndex::new(0));
         let change = song.set_track_staves(track, staves).unwrap();
         assert_eq!(song.track(track).unwrap().staves(), staves);
@@ -40,11 +40,11 @@ fn staves_change_relay_out_and_undo() {
         assert_unchanged(&before, &song);
         assert_eq!(
             song.track(track).unwrap().staves(),
-            TrackStaves::NotationAndTab
+            TrackStaves::NOTATION_AND_TAB
         );
     }
     assert!(
-        song.set_track_staves(TrackIndex::new(5), TrackStaves::TabOnly)
+        song.set_track_staves(TrackIndex::new(5), TrackStaves::TAB_ONLY)
             .is_err()
     );
     assert_unchanged(&before, &song);
@@ -132,4 +132,71 @@ fn fader_positions_map_to_midi_values() {
     for value in 0..=127 {
         assert_eq!(unit_to_midi(midi_to_unit(value)), value);
     }
+}
+
+#[test]
+fn a_clef_change_is_set_and_undone() {
+    use crate::style::Clef;
+    let mut song = song();
+    let track = TrackIndex::new(0);
+    let before = song.clone();
+    assert_eq!(
+        song.track(track)
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .clef(),
+        None,
+        "a synthetic song stores no clef"
+    );
+    let change = song
+        .set_clef(track, MeasureIndex::new(0), Clef::Bass)
+        .unwrap();
+    assert_eq!(
+        song.track(track)
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .clef(),
+        Some(Clef::Bass)
+    );
+    song.revert(&change).unwrap();
+    assert_eq!(
+        song.track(track)
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .clef(),
+        None
+    );
+    assert!(differences(&before, &song).is_empty());
+}
+
+#[test]
+fn a_bar_repetition_mark_is_set_and_undone() {
+    use crate::style::SimileMark;
+    let mut song = song();
+    let track = TrackIndex::new(0);
+    let before = song.clone();
+    let change = song
+        .set_simile_mark(track, MeasureIndex::new(0), Some(SimileMark::Simple))
+        .unwrap();
+    assert_eq!(
+        song.track(track)
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .simile_mark(),
+        Some(SimileMark::Simple)
+    );
+    song.revert(&change).unwrap();
+    assert_eq!(
+        song.track(track)
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .simile_mark(),
+        None
+    );
+    assert!(differences(&before, &song).is_empty());
 }

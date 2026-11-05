@@ -412,3 +412,202 @@ fn notation_adds_a_five_line_staff_and_one_notehead_per_note() {
     let bass = common::layout(&testing::song(&[BASS_4], 1).unwrap(), 0);
     assert_eq!(glyphs(&bass, Glyph::FClef), 1);
 }
+
+/// The staff test file changes clefs through the score: treble, bass, alto, tenor, treble.
+#[test]
+fn clef_changes_are_read_and_drawn() {
+    let song = common::open("basic/staff.gp");
+    let layout = common::layout(&song, 0);
+    let count = |wanted: Glyph| {
+        layout
+            .ops
+            .iter()
+            .filter(|op| matches!(op, DrawOp::Glyph { glyph, .. } if *glyph == wanted))
+            .count()
+    };
+    assert!(count(Glyph::GClef) >= 1, "treble clef");
+    assert!(count(Glyph::FClef) >= 1, "bass clef change");
+    assert!(
+        count(Glyph::CClef) >= 2,
+        "alto and tenor clef changes (got {})",
+        count(Glyph::CClef)
+    );
+}
+
+/// The staff file's free-time measure says so, and its time signature is in parentheses.
+#[test]
+fn free_time_is_written_over_its_measure() {
+    let song = common::open("basic/staff.gp");
+    let layout = common::layout(&song, 0);
+    let texts: Vec<&str> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        texts.iter().filter(|text| **text == "Free time").count() == 1,
+        "{texts:?}"
+    );
+}
+
+/// Bar repetitions are read and drawn: the staff file repeats measures 9 to 11.
+#[test]
+fn simile_marks_are_read_and_drawn() {
+    use gscore_model::{MeasureIndex, SimileMark};
+    let song = common::open("basic/staff.gp");
+    let track = song.track(TrackIndex::new(0)).unwrap();
+    assert_eq!(
+        track.measure(MeasureIndex::new(8)).unwrap().simile_mark(),
+        Some(SimileMark::Simple)
+    );
+    assert_eq!(
+        track.measure(MeasureIndex::new(9)).unwrap().simile_mark(),
+        Some(SimileMark::FirstOfDouble)
+    );
+    assert_eq!(
+        track.measure(MeasureIndex::new(10)).unwrap().simile_mark(),
+        Some(SimileMark::SecondOfDouble)
+    );
+    let layout = common::layout(&song, 0);
+    let slashes = layout
+        .ops
+        .iter()
+        .filter(
+            |op| matches!(op, DrawOp::Line { thickness, .. } if (*thickness - 0.16).abs() < 1e-6),
+        )
+        .count();
+    assert!(
+        slashes >= 5,
+        "one simple mark and two double marks: {slashes}"
+    );
+}
+
+/// Octave signs are read from the file and written over/under the staff.
+#[test]
+fn octave_signs_are_read_and_drawn() {
+    let song = common::open("basic/staff.gp");
+    let layout = common::layout(&song, 0);
+    let texts: Vec<&str> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    for sign in ["8va", "8vb", "15ma", "15mb"] {
+        assert!(texts.contains(&sign), "missing {sign:?}: {texts:?}");
+    }
+}
+
+/// The chord diagram of the staff file is read and drawn with its name and shape.
+#[test]
+fn chord_diagrams_are_read_and_drawn() {
+    let song = common::open("basic/staff.gp");
+    let diagram = song
+        .track(TrackIndex::new(0))
+        .unwrap()
+        .measures()
+        .flat_map(|measure| {
+            measure
+                .voices()
+                .flat_map(|voice| voice.beats())
+                .filter_map(|beat| beat.chord_diagram())
+        })
+        .next()
+        .expect("the file has a chord diagram");
+    assert_eq!(diagram.name, "Gb7/#11");
+    assert_eq!(diagram.string_count, 6);
+    assert!(!diagram.frets.is_empty());
+    let layout = common::layout(&song, 0);
+    let texts: Vec<&str> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(texts.contains(&"Gb7/#11"), "{texts:?}");
+}
+
+/// The staff file's repeats, alternative endings and key change are read and drawn.
+#[test]
+fn repeats_endings_and_key_changes_come_from_the_staff_file() {
+    use gscore_model::MeasureIndex;
+    let song = common::open("basic/staff.gp");
+    let first = song.repeat(MeasureIndex::new(0)).unwrap();
+    assert!(first.start);
+    let second = song.repeat(MeasureIndex::new(1)).unwrap();
+    assert_eq!(second.end_repeats, Some(1), "one repeat back to the start");
+    assert_eq!(second.endings, 1);
+    assert_eq!(
+        song.repeat(MeasureIndex::new(2)).unwrap().endings,
+        2,
+        "the second ending"
+    );
+    let key = song.key_signature(MeasureIndex::new(2)).unwrap();
+    assert_eq!((key.key, key.minor), (-4, true));
+    assert!(song.free_time(MeasureIndex::new(6)).unwrap());
+
+    let layout = common::layout(&song, 0);
+    let texts: Vec<&str> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    for label in ["1.", "2."] {
+        assert!(
+            texts.contains(&label),
+            "missing ending {label:?}: {texts:?}"
+        );
+    }
+    assert!(
+        layout.ops.iter().any(|op| matches!(
+            op,
+            DrawOp::Glyph {
+                glyph: Glyph::RepeatDot,
+                ..
+            }
+        )),
+        "repeat dots are drawn"
+    );
+}
+
+/// Time signature changes are laid out: 3/8 in a 4/4 piece.
+#[test]
+fn time_signature_changes_are_laid_out() {
+    use gscore_model::{MeasureIndex, TimeSignature};
+    let mut song = testing::song(&[GUITAR_6], 2).unwrap();
+    let signature = TimeSignature::new(3, 8).unwrap();
+    let _change = song.set_time_signature(MeasureIndex::new(1), 3, 8).unwrap();
+    let track = song.track(TrackIndex::new(0)).unwrap();
+    assert_eq!(
+        track
+            .measure(MeasureIndex::new(1))
+            .unwrap()
+            .time_signature()
+            .unwrap(),
+        signature
+    );
+    let layout = common::layout(&song, 0);
+    let digits: Vec<u8> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Glyph {
+                glyph: Glyph::TimeSigDigit(digit),
+                ..
+            } => Some(digit.get()),
+            _ => None,
+        })
+        .collect();
+    assert!(digits.contains(&3), "the numerator: {digits:?}");
+    assert!(digits.contains(&8), "the denominator: {digits:?}");
+}

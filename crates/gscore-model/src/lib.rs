@@ -53,8 +53,8 @@ pub use dynamics::Dynamic;
 pub use edit::{Change, MAX_SECTION_TITLE_CHARS, MAX_STRINGS, MAX_TRACK_NAME_CHARS, MAX_TRACKS};
 pub use effects::{
     AccentKind, BEND_MAX_POSITION, BEND_MAX_VALUE, BeatEffect, Bend, BendKind, BendPoint,
-    BendShape, Harmonic, HarmonicKind, Legato, MAX_BEND_POINTS, NoteEffect, SlapKind, SlideKind,
-    Stroke, StrokeDirection, StrokeKind, Vibrato, Whammy, WhammyShape,
+    BendShape, Harmonic, HarmonicKind, Legato, MAX_BEND_POINTS, NoteEffect, OctaveSign, SlapKind,
+    SlideKind, Stroke, StrokeDirection, StrokeKind, Vibrato, Whammy, WhammyShape,
 };
 pub use error::ModelError;
 pub use grace::{Grace, GraceSpeed};
@@ -73,8 +73,10 @@ pub use position::{
     BeatIndex, BeatPosition, Fret, MeasureIndex, Pitch, StringNumber, TrackIndex, VoiceIndex,
 };
 pub use song::Song;
-pub use style::{KeySignature, Section, TrackColor, TrackStaves};
-pub use techniques::{Fade, Finger, Hand, MAX_BEAT_TEXT_CHARS, TremoloSpeed, Trill, TrillSpeed};
+pub use style::{Clef, KeySignature, Section, SimileMark, TrackColor, TrackStaves};
+pub use techniques::{
+    ChordDiagram, Fade, Finger, Hand, MAX_BEAT_TEXT_CHARS, TremoloSpeed, Trill, TrillSpeed,
+};
 pub use views::{
     BeatKind, BeatView, MeasureView, NoteKind, NoteView, StringTuning, TrackView, VoiceView,
 };

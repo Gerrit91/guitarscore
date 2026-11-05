@@ -2,7 +2,7 @@
 //! tuning, capo and string count. Every change is a [`Command`] with undo, and sound changes
 //! are heard at once (the sound commands go to the player while it plays).
 
-mod look;
+pub(super) mod look;
 mod tuning;
 
 use egui::RichText;
@@ -106,6 +106,9 @@ impl GuitarScoreApp {
                 });
                 style::section(ui, "track_look", "Appearance", |ui| {
                     look::staves(ui, index, &snapshot, &mut commands);
+                });
+                style::section(ui, "track_sound", "Sound", |ui| {
+                    ui.label(RichText::new("Coming soon!").color(style::tokens(ui).text_weak));
                 });
             });
         for (command, merge) in commands {

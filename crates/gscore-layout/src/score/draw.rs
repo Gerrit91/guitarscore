@@ -5,13 +5,16 @@ use std::sync::Arc;
 
 use super::part::Part;
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
+use crate::glyph::Glyph;
 use crate::marks::{self, MeasureMarks, Rows};
 use crate::measure::{self, MeasureLayout, Tops};
+use crate::metrics::MusicFont;
 use crate::notation;
 use crate::ornaments;
 use crate::place::{Places, SystemPlace};
 use crate::staff::Staff;
 use crate::{MEASURE_NUMBER_RISE, REPEAT_COUNT_GAP};
+use gscore_model::SimileMark;
 
 /// One system as one track draws it.
 pub(super) struct System {
@@ -28,6 +31,8 @@ pub(super) struct System {
     pub(super) numbers: bool,
     /// The key at the system's start.
     pub(super) key: i8,
+    /// The clef of the notation staff at the system's start.
+    pub(super) clef: notation::Clef,
     /// How many measures the score has (the last one ends with a final barline).
     pub(super) last_measure: usize,
 }
@@ -77,9 +82,21 @@ pub(super) fn draw_part(
     let rows = system.rows;
     let top = system.top;
     let tab_top = top + part.tab_offset(system.plan_measures.clone());
+    // The slash staff is the top one (as Guitar Pro writes it); the notation staff below.
+    let slash_top = part.show_slash.then_some(top);
+    let notation_top = ctx
+        .notation
+        .map(|_| top + part.below_slash(system.plan_measures.clone()));
+    // The slash staff is one line in the middle of a five-line staff's room; its barlines
+    // reach a space above and below that line.
+    let slash_line = Staff::new(1, notation_staff.spacing());
+    let slash_frame = Staff::new(3, notation_staff.spacing());
+    let slash_line_top = |slash_top: f32| slash_top + notation_staff.middle();
+    let slash_frame_top = |slash_top: f32| slash_top + notation_staff.line_y(1);
     let tops = Tops {
         tab: tab_top,
-        notation: ctx.notation.map(|_| top),
+        notation: notation_top,
+        slash: slash_top,
         show_tab,
         numbers: system.numbers,
         // Beat effects go above the notation staff, below the rows of text marks, or in a
@@ -92,7 +109,7 @@ pub(super) fn draw_part(
         lanes: if show_tab {
             tab_top
         } else {
-            top + marks::LANES_DROP
+            notation_top.unwrap_or(top) + marks::LANES_DROP
         },
     };
     let place_index = drawn.places.systems.len();
@@ -108,9 +125,10 @@ pub(super) fn draw_part(
         // Notation only: the cursor's string rows are spread over the notation staff.
         let strings = part.view.string_count();
         let gaps = strings.saturating_sub(1).max(1) as f32;
+        let staff_top = notation_top.unwrap_or(top);
         SystemPlace {
-            top,
-            tab_top: top,
+            top: staff_top,
+            tab_top: staff_top,
             string_spacing: notation_staff.height() / gaps,
             strings,
         }
@@ -144,7 +162,14 @@ pub(super) fn draw_part(
         if let Some(slot) = drawn.measure_tops.get_mut(index) {
             *slot = Some(tops);
         }
-        measure.draw(content_x, tops, system.stretch, ctx, &mut content);
+        measure.draw(
+            content_x,
+            tops,
+            system.stretch,
+            offset == 0,
+            ctx,
+            &mut content,
+        );
         x = content_x + measure.width(system.stretch) + after;
         marks::draw(
             marks::Placed {
@@ -167,14 +192,33 @@ pub(super) fn draw_part(
             .saturating_add(1)
             == system.last_measure;
         let end_repeat = measure_marks.repeat.end_repeats.is_some();
-        let mut staves: Vec<(&Staff, f32)> = Vec::with_capacity(2);
+        let mut staves: Vec<(&Staff, f32)> = Vec::with_capacity(3);
         if show_tab {
             staves.push((&ctx.staff, tab_top));
         }
         if let Some(notation_top) = tops.notation {
             staves.push((&notation_staff, notation_top));
         }
+        if let Some(slash_top) = tops.slash {
+            staves.push((&slash_frame, slash_frame_top(slash_top)));
+        }
         for (staff, staff_top) in staves {
+            // Guitar Pro's bar-repetition signs: one bar's in its middle, a pair's once,
+            // on the barline between its two bars.
+            let simile = match measure.simile() {
+                Some(SimileMark::Simple) => Some((Glyph::Repeat1Bar, (left + x) / 2.0)),
+                Some(SimileMark::SecondOfDouble) => Some((Glyph::Repeat2Bars, left)),
+                Some(SimileMark::FirstOfDouble) | None => None,
+            };
+            if let Some((glyph, center)) = simile {
+                draw_centered(
+                    glyph,
+                    center,
+                    staff_top + staff.middle(),
+                    font,
+                    &mut content,
+                );
+            }
             if measure_marks.repeat.start {
                 staff.draw_repeat(left, staff_top, true, font, &mut content);
             }
@@ -184,6 +228,9 @@ pub(super) fn draw_part(
                 staff.draw_barline(x, staff_top, true, font, &mut content);
             } else if measure_marks.double_bar {
                 staff.draw_double_barline(x, staff_top, font, &mut content);
+            } else if measure_marks.free_time {
+                // A free-time bar has no strict meter: its barline is dashed.
+                staff.draw_dashed_barline(x, staff_top, font, &mut content);
             } else {
                 staff.draw_barline(x, staff_top, false, font, &mut content);
             }
@@ -194,10 +241,7 @@ pub(super) fn draw_part(
             content.push(DrawOp::Text {
                 text: count,
                 // Left of the barline, clear of the next measure's number.
-                at: Point::new(
-                    x - REPEAT_COUNT_GAP,
-                    tops.notation.unwrap_or(tab_top) - MEASURE_NUMBER_RISE,
-                ),
+                at: Point::new(x - REPEAT_COUNT_GAP, tops.top_line() - MEASURE_NUMBER_RISE),
                 size: ctx.options.measure_number_size,
                 font: TextFont::Regular,
                 anchor: TextAnchor::End,
@@ -223,34 +267,58 @@ pub(super) fn draw_part(
             ops,
         );
     }
-    if let (Some(notation), Some(notation_top)) = (ctx.notation, tops.notation) {
+    if let (Some(_), Some(notation_top)) = (ctx.notation, tops.notation) {
         notation_staff.draw_lines(notation_top, left, x, font, ops);
         notation::draw_staff_start(
             left,
             notation_top,
-            notation.clef,
+            system.clef,
             key,
             key_drawn_by_measure,
             ctx,
             ops,
         );
-        // One line joins the staves of a track at the system's start.
-        let thin = font.engraving().thin_barline_thickness;
-        let end = if show_tab {
-            tab_top + ctx.staff.height()
-        } else {
-            notation_top + notation_staff.height()
-        };
-        ops.push(DrawOp::Line {
-            from: Point::new(left + thin / 2.0, notation_top),
-            to: Point::new(left + thin / 2.0, end),
-            thickness: thin,
-            color: ColorToken::Barline,
-        });
-    } else {
-        ctx.staff.draw_start_line(left, tab_top, font, ops);
     }
+    if let Some(slash_top) = tops.slash {
+        // No clef or key signature: the slashes have no pitch.
+        slash_line.draw_lines(slash_line_top(slash_top), left, x, font, ops);
+    }
+    // One line joins the staves of a track at the system's start, from the topmost
+    // staff to the lowest.
+    let first = tops
+        .slash
+        .map(slash_frame_top)
+        .or(tops.notation)
+        .unwrap_or(tab_top);
+    let last = if show_tab {
+        tab_top + ctx.staff.height()
+    } else if let Some(notation_top) = tops.notation {
+        notation_top + notation_staff.height()
+    } else {
+        tops.slash.map_or(tab_top, slash_frame_top) + slash_frame.height()
+    };
+    let thin = font.engraving().thin_barline_thickness;
+    ops.push(DrawOp::Line {
+        from: Point::new(left + thin / 2.0, first),
+        to: Point::new(left + thin / 2.0, last),
+        thickness: thin,
+        color: ColorToken::Barline,
+    });
     ops.append(&mut content);
+}
+
+/// `glyph` with its box centered on (`x`, `y`).
+fn draw_centered(glyph: Glyph, x: f32, y: f32, font: &MusicFont, ops: &mut Vec<DrawOp>) {
+    let bbox = font.bbox(glyph);
+    ops.push(DrawOp::Glyph {
+        glyph,
+        at: Point::new(
+            x - (bbox.x_min + bbox.x_max) / 2.0,
+            y + bbox.middle_above_origin(),
+        ),
+        scale: 1.0,
+        color: ColorToken::Notation,
+    });
 }
 
 /// Ties that continue a note across a barline, drawn after the measures are placed so

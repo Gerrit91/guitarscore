@@ -323,3 +323,31 @@ impl NoteView<'_> {
         self.inner.effect.show_string_number
     }
 }
+
+/// A chord diagram (a chord shape with its frets) shown at a beat, as Guitar Pro stores it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChordDiagram {
+    /// The chord's name ("Gb7/#11").
+    pub name: String,
+    /// Number of strings the diagram shows.
+    pub string_count: u8,
+    /// Number of frets the diagram shows.
+    pub fret_count: u8,
+    /// The fret at the top of the diagram (0 means the nut).
+    pub base_fret: u8,
+    /// A fret per string: `(string, fret)`; string 0 is the lowest string.
+    pub frets: Vec<(u8, i8)>,
+}
+
+impl ChordDiagram {
+    /// The diagram as the file stores it.
+    pub(crate) fn from_gp(diagram: &gscore_gp::ChordDiagram) -> Self {
+        ChordDiagram {
+            name: diagram.name.clone(),
+            string_count: diagram.string_count,
+            fret_count: diagram.fret_count,
+            base_fret: diagram.base_fret,
+            frets: diagram.frets.clone(),
+        }
+    }
+}

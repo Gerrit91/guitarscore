@@ -2936,3 +2936,133 @@ needed for a much larger font); owner listening check.
   margin included.
 - Test: the track panel test checks that the full-width tuning button keeps its right
   edge while a name is edited and after a long name is entered.
+
+## 2026-11-05 — Staff test file, slash notation, five views, metronome volume
+
+- **Tuplets no longer change note values.** The dot and tuplet tiles changed every
+  selected beat to the palette's value, so taking a triplet off a previously eighth note
+  left a quarter. They now keep each beat's written value and change only its dots or
+  tuplet; a tab-only staff repeats the tuplet numbers (3, 5, 6, 7) it used to hide.
+- **Legato slides** draw only their slur and "sl."; the shift-slide's straight line no
+  longer crosses it. Golden SVGs updated.
+- **Slash notation** is a third per-track staff (GP7 `PartConfiguration` bit 2, saved and
+  loaded): rhythm slashes with stems, beams, rests and tuplets, combinable with notation
+  and tab. The track panel has three icon switches and always leaves one on.
+- **Five score views** (View menu, saved in settings, old `page_view` read as either page
+  vertical or screen vertical): page vertical, page horizontal, page grid, screen vertical
+  and screen horizontal (the score is laid out on one line and scrolls right).
+- **Metronome volume** is a knob in the mixer view only; it scales the click velocities
+  (0 is silent) and is saved in the settings. The grid view has no knob.
+- **The edit palette** stays on the cursor and selection from when playback started,
+  instead of following the playing cursor.
+- **`testdata/basic/staff.gp`** now drives tests for clef changes (treble, bass, alto,
+  tenor), free time (parenthesized signature and "Free time"), simile marks (simple and
+  both halves of a double), octave signs (8va/8vb/15ma/15mb), chord diagrams (name and
+  shape), repeats, alternative endings, key changes and time signatures. Clefs, ottava and
+  simile marks are written back; chord diagrams are read and drawn but not yet written.
+- Tests: `cargo test --workspace`, clippy `-D warnings`, `cargo xtask layers`; the app
+  snapshots were regenerated for the three staff icons.
+
+## 2026-11-05 — Clef and free-time editing; slash and playback-view fixes
+
+- The Staff section of the edit palette gained **Clef** and **Free time** tiles. The clef
+  dialog chooses treble, bass, alto or tenor for one track's bar; free time turns the
+  metronome off for the bar and writes its signature in parentheses. Both are ordinary
+  commands (`set_clef`, `set_free_time`) with undo, parse lines, panic-hunt coverage and a
+  UI test.
+- Slash notation alone now draws a start line as tall as its five-line staff (it borrowed
+  the tab staff's six-string height), and a slash staff's clef is included in the prefix
+  even beside a tab staff, so a repeat sign on the first bar no longer runs into it. The
+  rhythm slashes are thicker and their stems leave the slash at its end.
+- Playing in a side-by-side page view now scrolls to the whole page; the screen views
+  scroll just enough to show the playing column. Only the printed vertical page view still
+  turns over line by line, so the page or screen no longer slides partly out of view when
+  the music wraps.
+
+## 2026-11-05 — Bar-repetition tiles; free time as a switch
+
+- The Staff palette has **Bar repeat** and **Double bar repeat** icons. The first toggles a
+  one-bar (simple) simile mark; the second sets the two halves of a two-bar repetition on
+  the current and next bar as one undoable batch, and clears the pair again when clicked.
+  Backed by `set_simile_mark` (parse, panic-hunt and model/UI tests).
+- Free time is now a one-click switch tile with a dotted-line icon instead of a dialog; the
+  clef tile's glyph was shrunk to fit its tile.
+
+## 2026-11-05 — Palette icons, bar repeats, slash staff and mixer review
+
+- **Palette icons fit their tiles**: a test paints every tile face (staff, note input,
+  effects, dynamics, tuplets, staff switches) and fails when ink reaches the tile's edge;
+  a snapshot (`palette_faces`) shows them all. Music glyphs are centered on their ink, so
+  the slanted *f*, *ff* and *fff* sit in the middle like the other dynamics.
+- **Staff palette**: clef, key, time signature and tempo come first; beat text sits next to
+  the section tile. The double barline, the bar repeats and free time are on/off switches
+  without the dialog corner (the barline dialog is gone); free time shows a dashed barline.
+- **Bar repeats** use Bravura's signs as Guitar Pro prints them: a one-bar sign in the middle
+  of its bar, a two-bar sign once on the barline between its pair, the bars' own notes
+  hidden. They **play** the bars they repeat (repeats of repeats followed), matching Guitar
+  Pro's MIDI export of `staff.gp` (now part of the MIDI reference test). The tiles are only
+  enabled where there are bars to repeat, and setting or clearing one never leaves half a
+  pair behind.
+- **Free time** bars end with a dashed barline, as in Guitar Pro.
+- **Key changes** inside a line keep a small gap after the barline (the first flat touched
+  an end-repeat's thick line).
+- **Slash notation** is drawn as Guitar Pro does: the top staff, one line, no clef or key,
+  stems up from the slash's upper end (down from the lower end in voice 2), hollow slashes
+  for halves and wholes, a whole rest hanging from the line; one line joins it to the
+  staves below at each system start. With slash notation alone, the time signature sits on
+  its line. GP7's `PartConfiguration` bit 2 is read as the slash staff again: Guitar Pro's
+  print of `staff.gp` (bit set, with notation and tab) shows all three staves.
+- **Track panel**: the three staff switches are palette-style tiles (treble clef, TAB clef,
+  rhythm slash) without the "Show" label; a chosen tile that cannot be switched off stays
+  legible.
+- **Rest tile**: a second click on rests it just made brings their notes back (undo)
+  instead of doubling the rest's length.
+- **Mixer**: the metronome strip has a fader and level field like the others and a
+  metronome symbol; the master strip shows a small waveform. New `mixer_view` snapshot.
+- **Side-by-side page views while playing**: a page taller than the window no longer leaves
+  the playing line out of view after turning to the next page. A page that fits is still
+  shown whole; a taller one is scrolled to with the playing line at the top, as the
+  vertical view turns over.
+- **Vertical screen view while playing** turns over like the printed page view: when the
+  playing line leaves the view, it goes to the top instead of the view creeping down a
+  line at a time.
+- **Screen views** are paper from edge to edge (no page edges, shadow or grey canvas). The
+  vertical screen fits the room between the panels exactly (it was a margin wider and
+  scrolled sideways), and the space around the score grew from 24 to 32 points so the
+  panels' shadows stay clear of it. New `screen_view` snapshot.
+- **Horizontal screen view while playing** turns over a screen at a time: once the playing
+  column leaves the view, it goes to the left edge (with a little room before it) instead
+  of the view creeping along bar by bar.
+- **Loop selection** is enabled by a selection made in the score too (it loops the bars the
+  selection spans), not only by bars selected in the grid; while disabled, its tooltip
+  says why.
+- **Metronome meter**: the mixer's metronome strip shows the clicks as they play, during the
+  count-in and with the metronome on. The count-in follows the metronome volume and clicks
+  whether or not the metronome is on.
+- **Track panel**: a "Sound" section, a placeholder for now ("Coming soon!").
+- **Selection while playing**: a selection is not drawn during playback (it could cover the
+  playing note); it stays selected, so a loop still plays it, and shows again on pause or
+  stop.
+- **Count-in** rework: the count-in bar and the song are one sequence (`gscore_play::lead_in`),
+  so the song follows the last click exactly and the playing cursor starts with the music
+  (before, the song was started when a frame noticed the clicks had ended, a little late,
+  and the cursor caught up). An interrupted count-in starts again from its first click at
+  the cursor's new place instead of finishing the old bar, and a click on the score or the
+  grid while playing counts in again there when the count-in is on.
+- **Tuner tone**: low notes get overtones (up to about 2.4 kHz, at most twelve partials
+  falling off as 1/k^1.3) at the loudness of the old sine, so a low E or a bass's B can be
+  heard and tuned to; high notes stay nearly pure.
+- **Metronome sound**: the clicks are General MIDI's Metronome Click and Bell (keys 33 and
+  34) instead of the wood blocks, and the built-in synthesizer plays a click of its own for
+  them (two damped partials like a wood block, the accent higher and longer), whatever the
+  SoundFont has there. The wood blocks were average in FluidR3 and nearly silent in the
+  bundled GeneralUser GS; the new click is well above the guitars. MIDI output plays the
+  external synthesizer's own metronome sounds.
+- **Metronome settings tab** (Settings › Metronome): click volume (the same as the mixer's
+  metronome fader), the click sound (wood block, electronic beep or cowbell, each with a
+  Listen button), the count-in switch, its length (1 to 4 bars) and whether a looped
+  selection is counted in again each time it starts over. All are saved in the settings.
+  The sound reaches the synthesizer as controller 3 on the percussion channel (undefined in
+  General MIDI), so the desktop and browser synthesizers both follow it.
+- **Looping a note selection** starts at the first bar of the loop (after the count-in, if
+  on), like every later pass, instead of at the first selected note.

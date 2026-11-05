@@ -43,7 +43,9 @@ mod timeline;
 mod wire;
 
 pub use channels::ChannelAllocator;
-pub use click::count_in;
+pub use click::{
+    CLICK_SOUND_CONTROLLER, CLICK_TRACK, Click, ClickSound, MAX_COUNT_IN_BARS, count_in, lead_in,
+};
 pub use event::{Channel, MidiEvent, controller};
 pub use order::playback_order;
 pub use player::{PlayError, PlayState, Player, Scheduler, TEMPO_SCALE_RANGE};

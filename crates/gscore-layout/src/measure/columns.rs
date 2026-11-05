@@ -209,9 +209,13 @@ pub(super) fn column_items(
         items,
         marks,
         notation: Vec::new(),
+        slash: Vec::new(),
         graces: Vec::new(),
         grace_width: 0.0,
         beat: 0,
+        tuplet: None,
+        octave: None,
+        chord: None,
         beats: Vec::new(),
         text,
     })

@@ -156,8 +156,9 @@ impl GuitarScoreApp {
                 ui.radio_value(&mut self.view.theme, ThemeChoice::Light, "Light score");
                 ui.radio_value(&mut self.view.theme, ThemeChoice::Dark, "Dark score");
                 ui.separator();
-                ui.radio_value(&mut self.view.page_view, true, "Page view");
-                ui.radio_value(&mut self.view.page_view, false, "Endless view");
+                for view in crate::state::ScoreView::ALL {
+                    ui.radio_value(&mut self.view.score_view, view, view.label());
+                }
                 ui.separator();
                 self.score_view_menu(ui);
                 ui.separator();
@@ -305,7 +306,7 @@ impl GuitarScoreApp {
                     ));
                     ui.separator();
                     // Recorded by the page view; the view may have switched since.
-                    if self.view.page_view
+                    if self.view.score_view.on_pages()
                         && let Some((page, pages)) =
                             self.tabs.get(self.active).and_then(|tab| tab.page_info)
                     {

@@ -4,7 +4,9 @@
 #![allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 #![allow(unused_crate_dependencies)]
 
-use gscore_layout::{ColorToken, DrawOp, Fonts, Layout, LayoutOptions, layout_track};
+mod common;
+
+use gscore_layout::{ColorToken, DrawOp, Fonts, Glyph, Layout, LayoutOptions, layout_track};
 use gscore_model::testing::{self, GUITAR_6};
 use gscore_model::{Fret, MeasureIndex, Song, StringNumber, TrackIndex, TrackStaves};
 
@@ -48,9 +50,9 @@ fn fret_numbers(layout: &Layout) -> usize {
 
 #[test]
 fn each_choice_shows_its_staves() {
-    let both = layout(TrackStaves::NotationAndTab);
-    let tab = layout(TrackStaves::TabOnly);
-    let notation = layout(TrackStaves::NotationOnly);
+    let both = layout(TrackStaves::NOTATION_AND_TAB);
+    let tab = layout(TrackStaves::TAB_ONLY);
+    let notation = layout(TrackStaves::NOTATION_ONLY);
 
     assert!(fret_numbers(&both) > 0);
     assert_eq!(fret_numbers(&tab), fret_numbers(&both));
@@ -65,4 +67,123 @@ fn each_choice_shows_its_staves() {
     assert_eq!(system.strings, 6);
     let both_system = &both.places.systems[0];
     assert!(system.tab_bottom() < both_system.tab_top);
+}
+
+/// A tab-only staff still shows the tuplets the notation staff would carry.
+#[test]
+fn tab_only_shows_tuplet_numbers() {
+    let song = common::open("basic/note_lengths.gp");
+    let layout = common::layout_tab_only(&song, 0);
+    let texts: Vec<&str> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    for tuplet in ["3", "5", "6", "7"] {
+        assert!(
+            texts.contains(&tuplet),
+            "missing tuplet {tuplet:?} in the tab: {texts:?}"
+        );
+    }
+}
+
+/// Slash notation is a staff of its own: rhythm slashes on one line, without a clef, and
+/// it combines with the other two staves as the top one, joined to them at the start.
+#[test]
+fn slash_notation_is_a_staff_of_its_own_and_combines() {
+    let is_slash = |op: &DrawOp| matches!(op, DrawOp::Line { thickness, .. } if (*thickness - 0.24).abs() < 1e-6);
+    let slash = layout(TrackStaves::SLASH_ONLY);
+    assert_eq!(fret_numbers(&slash), 0, "no tablature");
+    assert!(
+        !slash.ops.iter().any(|op| matches!(
+            op,
+            DrawOp::Glyph {
+                glyph: Glyph::GClef,
+                ..
+            }
+        )),
+        "the slash staff has no clef"
+    );
+    assert!(slash.ops.iter().any(is_slash), "a rhythm slash is drawn");
+
+    let tab_and_slash = layout(TrackStaves::TAB_AND_SLASH);
+    assert!(fret_numbers(&tab_and_slash) > 0, "the tablature stays");
+    assert!(tab_and_slash.height > slash.height);
+
+    let all = layout(TrackStaves::ALL_STAVES);
+    assert!(fret_numbers(&all) > 0);
+    assert!(all.height > tab_and_slash.height, "notation adds a staff");
+    // The slashes are above the notation's clef, and the tab's numbers below it.
+    let lowest_slash = all
+        .ops
+        .iter()
+        .filter(|op| is_slash(op))
+        .filter_map(|op| match op {
+            DrawOp::Line { from, to, .. } => Some(from.y.max(to.y)),
+            _ => None,
+        })
+        .fold(f32::MIN, f32::max);
+    let clef = all
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            DrawOp::Glyph {
+                glyph: Glyph::GClef,
+                at,
+                ..
+            } => Some(at.y),
+            _ => None,
+        })
+        .unwrap();
+    assert!(lowest_slash < clef - 4.0, "the slash staff is on top");
+    // One line at the system's start joins the slash staff to the tab below.
+    let lowest_fret = all
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text {
+                at,
+                color: ColorToken::FretNumber,
+                ..
+            } => Some(at.y),
+            _ => None,
+        })
+        .fold(f32::MIN, f32::max);
+    let start = all.ops.iter().find(|op| {
+        matches!(op, DrawOp::Line { from, to, color: ColorToken::Barline, .. }
+            if (from.x - to.x).abs() < 1e-3
+                && from.y.min(to.y) < lowest_slash - 1.0
+                && from.y.max(to.y) > lowest_fret)
+    });
+    assert!(
+        start.is_some(),
+        "a line joins the slash staff to the others"
+    );
+}
+
+/// The horizontal screen view puts every measure on one line and widens the page to it.
+#[test]
+fn a_single_line_layout_is_wider_than_the_page() {
+    let song = common::open("basic/note_lengths.gp");
+    let fonts = Fonts::bundled().unwrap();
+    let endless = |single_line| {
+        let options = LayoutOptions {
+            single_line,
+            ..LayoutOptions::default()
+        };
+        layout_track(&song, TrackIndex::new(0), &options, &fonts).unwrap()
+    };
+    let broken = endless(false);
+    let one_line = endless(true);
+    assert!(broken.places.systems.len() > 1, "the score wraps normally");
+    assert_eq!(one_line.places.systems.len(), 1, "everything on one line");
+    assert!(
+        one_line.width > broken.width,
+        "the line is as wide as the whole score: {} vs {}",
+        one_line.width,
+        broken.width
+    );
 }

@@ -251,10 +251,28 @@ enum ChangeKind {
         measure: MeasureIndex,
         previous: Vec<(String, String)>,
     },
-    /// A track's notation and tab switches changed; `previous` is `(notation, tablature)`.
+    /// A measure's free-time (no metronome) switch changed.
+    FreeTime {
+        measure: MeasureIndex,
+        previous: bool,
+    },
+    /// A measure's clef changed; `previous` is the clef and whether the file stored one.
+    Clef {
+        track: TrackIndex,
+        measure: MeasureIndex,
+        previous: (crate::style::Clef, bool),
+    },
+    /// A measure's bar-repetition (simile) mark changed; `previous` is its stored value.
+    SimileMark {
+        track: TrackIndex,
+        measure: MeasureIndex,
+        previous: Option<String>,
+    },
+    /// A track's notation, tab and slash switches changed; `previous` is
+    /// `(notation, tablature, slash)`.
     TrackStaves {
         at: TrackIndex,
-        previous: (bool, bool),
+        previous: (bool, bool, bool),
     },
     /// The master volume and pan changed (`None`: the song had none).
     MasterMix { previous: Option<(f32, f32)> },
@@ -340,7 +358,12 @@ impl Change {
                 previous.as_ref().map_or(0, |marker| marker.title.len())
             }
             ChangeKind::TrackStaves { .. } | ChangeKind::MasterMix { .. } => 0,
-            ChangeKind::Repeat { .. } | ChangeKind::DoubleBar { .. } | ChangeKind::Feel { .. } => 0,
+            ChangeKind::Repeat { .. }
+            | ChangeKind::DoubleBar { .. }
+            | ChangeKind::Feel { .. }
+            | ChangeKind::FreeTime { .. }
+            | ChangeKind::Clef { .. }
+            | ChangeKind::SimileMark { .. } => 0,
             ChangeKind::Fermata { previous, .. } => previous
                 .iter()
                 .map(|(kind, offset)| kind.len().saturating_add(offset.len()))
@@ -862,10 +885,45 @@ impl Song {
                 header.fermatas.clone_from(previous);
                 Ok(())
             }),
+            ChangeKind::FreeTime { measure, previous } => {
+                self.edit_headers(|inner| {
+                    let header = inner
+                        .measure_headers
+                        .get_mut(measure.get())
+                        .ok_or_else(|| {
+                            ModelError::Invalid(format!("{measure}: no such measure"))
+                        })?;
+                    header.free_time = *previous;
+                    Ok(())
+                })?;
+                self.touch_all_measures();
+                Ok(())
+            }
+            ChangeKind::Clef {
+                track,
+                measure,
+                previous,
+            } => self.edit_measure(*track, *measure, |m| {
+                m.clef = previous.0.to_gp();
+                m.has_clef = previous.1;
+                Ok(())
+            }),
+            ChangeKind::SimileMark {
+                track,
+                measure,
+                previous,
+            } => self.edit_measure(*track, *measure, |m| {
+                m.simile_mark.clone_from(previous);
+                Ok(())
+            }),
             ChangeKind::TrackStaves { at, previous } => {
                 self.edit_track_settings(|inner| {
                     let track = track_mut(inner, *at)?;
-                    (track.settings.notation, track.settings.tablature) = *previous;
+                    (
+                        track.settings.notation,
+                        track.settings.tablature,
+                        track.settings.slash,
+                    ) = *previous;
                     Ok(())
                 })?;
                 self.touch_all_measures();

@@ -701,6 +701,37 @@ fn the_rest_tile_enters_a_rest_of_the_chosen_length_in_an_empty_bar() {
 }
 
 #[test]
+fn a_second_click_on_the_rest_tile_brings_the_notes_back() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    let at = harness
+        .state()
+        .document()
+        .unwrap()
+        .editor()
+        .cursor()
+        .position();
+    let beat = |harness: &Harness<'static, GuitarScoreApp>| {
+        let song = harness.state().document().unwrap().song();
+        let beat = song.beat(at).unwrap();
+        (beat.kind(), beat.duration().unwrap(), beat.notes().count())
+    };
+    let before = beat(&harness);
+    assert_eq!(before.0, gscore_model::BeatKind::Normal);
+    assert!(before.2 > 0, "the first beat has notes");
+    harness.get_by_label("Rest").click();
+    harness.run();
+    assert_eq!(beat(&harness), (gscore_model::BeatKind::Rest, before.1, 0));
+    // Not a rest twice as long: the notes as they were.
+    harness.get_by_label("Rest").click();
+    harness.run();
+    assert_eq!(beat(&harness), before);
+    // And a rest again.
+    harness.get_by_label("Rest").click();
+    harness.run();
+    assert_eq!(beat(&harness), (gscore_model::BeatKind::Rest, before.1, 0));
+}
+
+#[test]
 fn the_harmonic_tile_sets_an_artificial_harmonic_with_its_touch_point() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
     type_char(&mut harness, "5", Modifiers::NONE);
@@ -922,25 +953,60 @@ fn the_score_and_the_menu_bar_edit_bars_and_tracks() {
 }
 
 #[test]
-fn the_view_menu_switches_between_pages_and_the_endless_page() {
+fn the_view_menu_switches_between_the_five_score_views() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
-    assert!(harness.state().view().page_view, "pages by default");
+    assert_eq!(
+        harness.state().view().score_view,
+        gscore_app::ScoreView::PageVertical,
+        "pages by default"
+    );
     harness.get_by_label("Page 1 of 1");
     harness.get_by_label("View").click();
     harness.run();
-    harness.get_by_label("Endless view").click();
+    harness.get_by_label("Screen view (vertical)").click();
     harness.run();
-    assert!(!harness.state().view().page_view);
+    assert_eq!(
+        harness.state().view().score_view,
+        gscore_app::ScoreView::ScreenVertical
+    );
     assert!(harness.query_by_label("Page 1 of 1").is_none());
+    // The screen fills the room between the panels exactly: it does not reach under the
+    // track panel, so nothing scrolls sideways.
+    let surface = harness.get_by_label("Score page").rect();
+    let panel = harness.get_by_label("Tablature").rect();
     assert!(
-        !harness.state().settings().page_view,
+        surface.right() < panel.left(),
+        "the screen ({surface:?}) stays left of the track panel ({panel:?})"
+    );
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Page grid").click();
+    harness.run();
+    assert_eq!(
+        harness.state().view().score_view,
+        gscore_app::ScoreView::PageGrid
+    );
+    assert_eq!(
+        harness.state().settings().score_view,
+        gscore_app::ScoreView::PageGrid,
         "remembered in the settings"
     );
     harness.get_by_label("View").click();
     harness.run();
-    harness.get_by_label("Page view").click();
+    harness.get_by_label("Screen view (horizontal)").click();
     harness.run();
-    assert!(harness.state().view().page_view);
+    assert_eq!(
+        harness.state().view().score_view,
+        gscore_app::ScoreView::ScreenHorizontal
+    );
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Page view (vertical)").click();
+    harness.run();
+    assert_eq!(
+        harness.state().view().score_view,
+        gscore_app::ScoreView::PageVertical
+    );
 }
 
 #[test]
@@ -1031,14 +1097,9 @@ fn staff_tiles_open_dialogs_for_repeats_barlines_and_breaks() {
     );
 
     // A double barline.
-    harness.get_by_label("Barline").scroll_to_me();
+    harness.get_by_label("Double barline").scroll_to_me();
     harness.run();
-    harness.get_by_label("Barline").click();
-    harness.run();
-    harness
-        .get_by_label("End this bar with a double barline")
-        .click();
-    harness.get_by_label("OK").click();
+    harness.get_by_label("Double barline").click();
     harness.run();
     assert_eq!(song(&harness).double_bar(measure), Some(true));
 
@@ -1288,6 +1349,17 @@ fn the_sextuplet_tile_and_the_tuplet_dialog_set_the_beats_tuplet() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
     type_char(&mut harness, "5", Modifiers::NONE);
     harness.run();
+    // An eighth note, so taking a tuplet off again must leave an eighth note: the tuplet
+    // choice changes the tuplet only, not the written value.
+    harness.get_by_label("1/8").click();
+    harness.run();
+    let value_at_cursor = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let cursor = document.editor().cursor();
+        let beat = document.song().beat(cursor.position()).unwrap();
+        beat.note_value().unwrap().value()
+    };
+    assert_eq!(value_at_cursor(&harness), 8);
     let tuplet_at_cursor = |harness: &Harness<'static, GuitarScoreApp>| {
         let document = harness.state().document().unwrap();
         let cursor = document.editor().cursor();
@@ -1297,6 +1369,7 @@ fn the_sextuplet_tile_and_the_tuplet_dialog_set_the_beats_tuplet() {
     harness.get_by_label("Sextuplet").click();
     harness.run();
     assert_eq!(tuplet_at_cursor(&harness), Some((6, 4)));
+    assert_eq!(value_at_cursor(&harness), 8, "the written value is kept");
     // The dialog opens on the current tuplet; a common one is a click away.
     harness.get_by_label("Tuplet…").click();
     harness.run();
@@ -1321,4 +1394,174 @@ fn the_sextuplet_tile_and_the_tuplet_dialog_set_the_beats_tuplet() {
     harness.get_by_label("Remove").click();
     harness.run();
     assert_eq!(tuplet_at_cursor(&harness), None);
+    assert_eq!(
+        value_at_cursor(&harness),
+        8,
+        "removing the tuplet restores the original note value"
+    );
+}
+
+#[test]
+fn clefs_and_free_time_are_edited_from_the_staff_tiles() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    let measure = MeasureIndex::new(0);
+    {
+        let document = harness.state_mut().document_mut().unwrap();
+        let mut cursor = document.editor().cursor();
+        cursor.measure = measure;
+        document.editor_mut().set_cursor(cursor);
+    }
+    harness.run();
+
+    harness.get_by_label("Clef").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Clef").click();
+    harness.run();
+    harness.get_by_label("Bass clef").click();
+    harness.get_by_label("OK").click();
+    harness.run();
+    let clef = || {
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .track(TrackIndex::new(0))
+            .unwrap()
+            .measure(measure)
+            .unwrap()
+            .clef()
+    };
+    assert_eq!(clef(), Some(gscore_model::Clef::Bass));
+
+    // Free time is a switch tile: one click, no dialog.
+    harness.get_by_label("Free time").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Free time").click();
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .free_time(measure),
+        Some(true)
+    );
+
+    // Both are ordinary undoable commands.
+    let _ = harness
+        .state_mut()
+        .document_mut()
+        .unwrap()
+        .editor_mut()
+        .undo();
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .free_time(measure),
+        Some(false)
+    );
+}
+
+#[test]
+fn bar_repetitions_are_switch_tiles() {
+    use gscore_model::SimileMark;
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    let move_to = |harness: &mut Harness<'static, GuitarScoreApp>, measure: usize| {
+        let document = harness.state_mut().document_mut().unwrap();
+        let mut cursor = document.editor().cursor();
+        cursor.measure = MeasureIndex::new(measure);
+        document.editor_mut().set_cursor(cursor);
+        harness.run();
+    };
+    let simile = |harness: &Harness<'static, GuitarScoreApp>, measure: usize| {
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .track(TrackIndex::new(0))
+            .unwrap()
+            .measure(MeasureIndex::new(measure))
+            .unwrap()
+            .simile_mark()
+    };
+    let enabled = |harness: &Harness<'static, GuitarScoreApp>, label: &str| {
+        use egui_kittest::kittest::NodeT as _;
+        !harness.get_by_label(label).accesskit_node().is_disabled()
+    };
+
+    // The first bar has nothing before it to repeat; the second has one bar, not two.
+    move_to(&mut harness, 0);
+    harness.get_by_label("Bar repeat").scroll_to_me();
+    harness.run();
+    assert!(!enabled(&harness, "Bar repeat"));
+    assert!(!enabled(&harness, "Two-bar repeat"));
+    move_to(&mut harness, 1);
+    assert!(enabled(&harness, "Bar repeat"));
+    assert!(!enabled(&harness, "Two-bar repeat"));
+
+    move_to(&mut harness, 2);
+    harness.get_by_label("Bar repeat").click();
+    harness.run();
+    assert_eq!(simile(&harness, 2), Some(SimileMark::Simple));
+    harness.get_by_label("Bar repeat").click();
+    harness.run();
+    assert_eq!(simile(&harness, 2), None);
+
+    harness.get_by_label("Two-bar repeat").click();
+    harness.run();
+    assert_eq!(simile(&harness, 2), Some(SimileMark::FirstOfDouble));
+    assert_eq!(simile(&harness, 3), Some(SimileMark::SecondOfDouble));
+    // A one-bar repeat on the pair's second half takes the whole pair's place.
+    move_to(&mut harness, 3);
+    harness.get_by_label("Bar repeat").click();
+    harness.run();
+    assert_eq!(simile(&harness, 2), None);
+    assert_eq!(simile(&harness, 3), Some(SimileMark::Simple));
+    // Clicking a pair's second half clears both halves.
+    move_to(&mut harness, 2);
+    harness.get_by_label("Two-bar repeat").click();
+    harness.run();
+    assert_eq!(simile(&harness, 3), Some(SimileMark::SecondOfDouble));
+    move_to(&mut harness, 3);
+    harness.get_by_label("Two-bar repeat").click();
+    harness.run();
+    assert_eq!(simile(&harness, 2), None);
+    assert_eq!(simile(&harness, 3), None);
+}
+
+#[test]
+fn a_selection_in_the_score_can_be_looped() {
+    use egui_kittest::kittest::NodeT as _;
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    let enabled = |harness: &Harness<'static, GuitarScoreApp>| {
+        !harness
+            .get_by_label("Loop selection")
+            .accesskit_node()
+            .is_disabled()
+    };
+    assert!(!enabled(&harness), "nothing selected: nothing to loop");
+    // Select beats in the score until the selection reaches the next bar.
+    for _ in 0..6 {
+        harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
+        harness.run();
+    }
+    let selection = harness
+        .state()
+        .document()
+        .unwrap()
+        .editor()
+        .selection()
+        .expect("a selection");
+    assert!(selection.last_measure() > selection.first_measure());
+    assert!(enabled(&harness), "the score's selection can be looped");
+    harness.get_by_label("Loop selection").click();
+    harness.run();
+    assert!(harness.state().playback().loop_selection());
 }

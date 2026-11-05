@@ -14,6 +14,7 @@ pub(crate) const PART_CONFIGURATION: &str = "Content/PartConfiguration";
 
 const NOTATION: u8 = 0x01;
 const TABLATURE: u8 = 0x02;
+const SLASH: u8 = 0x04;
 
 /// More views or tracks than this means a broken file: it is ignored.
 const MAX_ENTRIES: usize = 4096;
@@ -41,7 +42,12 @@ pub(crate) fn read_track_flags(data: &[u8]) -> Option<Vec<u8>> {
 /// neither keeps the tablature, so it never disappears from the page.
 pub(crate) fn apply_flags(track: &mut Track, flags: u8) {
     track.settings.notation = flags & NOTATION != 0;
-    track.settings.tablature = flags & TABLATURE != 0 || !track.settings.notation;
+    // Bit 2 is a slash staff of its own, beside notation and tab as well (Guitar Pro's
+    // print of testdata/basic/staff.gp shows all three).
+    track.settings.slash = flags & SLASH != 0;
+    // A track showing nothing would disappear from the page; keep its tablature.
+    track.settings.tablature =
+        flags & TABLATURE != 0 || (!track.settings.notation && !track.settings.slash);
 }
 
 /// The part configuration for `tracks`: the multi-track view, then one view per track.
@@ -53,7 +59,10 @@ pub(crate) fn write(tracks: &[Track]) -> Vec<u8> {
             if track.settings.notation {
                 flags |= NOTATION;
             }
-            if track.settings.tablature || !track.settings.notation {
+            if track.settings.slash {
+                flags |= SLASH;
+            }
+            if track.settings.tablature || (!track.settings.notation && !track.settings.slash) {
                 flags |= TABLATURE;
             }
             flags
@@ -100,6 +109,18 @@ mod tests {
             Some(vec![NOTATION, TABLATURE, TABLATURE]),
             "a track showing nothing keeps its tablature"
         );
+    }
+
+    #[test]
+    fn slash_notation_survives_a_round_trip() {
+        // With or without notation, bit 2 is a slash staff of its own.
+        let mut track = Track::default();
+        apply_flags(&mut track, NOTATION | TABLATURE | SLASH);
+        assert!(track.settings.notation && track.settings.tablature && track.settings.slash);
+        assert_eq!(read_track_flags(&write(&[track.clone()])), Some(vec![7]));
+        apply_flags(&mut track, TABLATURE | SLASH);
+        assert!(!track.settings.notation && track.settings.slash);
+        assert_eq!(read_track_flags(&write(&[track])), Some(vec![6]));
     }
 
     #[test]

@@ -168,7 +168,6 @@
 <line x1="65.18" y1="65.24" x2="66.08" y2="65.74" stroke="#101010" stroke-width="0.13"/>
 <line x1="73.68" y1="67.24" x2="74.58" y2="67.74" stroke="#101010" stroke-width="0.13"/>
 <line x1="30.98" y1="81.89" x2="34.88" y2="82.59" stroke="#101010" stroke-width="0.15"/>
-<line x1="43.02" y1="82.59" x2="46.92" y2="81.89" stroke="#101010" stroke-width="0.15"/>
 <path d="M 43.02 82.24 C 44.32 81.34 45.62 81.34 46.92 82.24" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
 <text x="44.97" y="81.04" font-family="Noto Sans" font-size="0.9" text-anchor="middle" fill="#404040">sl.</text>
 <text x="29.92" y="66.14" font-family="Noto Sans" font-size="1" fill="#404040">Slides</text>

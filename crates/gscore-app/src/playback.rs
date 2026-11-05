@@ -19,7 +19,10 @@ mod preview;
 
 pub use preview::Heard;
 
-use gscore_play::{Channel, MidiEvent, PPQ, PlayState, Player, Sequence, sound_events};
+use gscore_play::{
+    Channel, Click, ClickSound, MAX_COUNT_IN_BARS, MidiEvent, PPQ, PlayState, Player, Sequence,
+    sound_events,
+};
 
 /// How long an entered note sounds.
 const AUDITION_LENGTH: Duration = Duration::from_millis(450);
@@ -110,8 +113,26 @@ impl Active {
     }
 }
 
+/// A count-in bar played as one sequence with the song after it ([`gscore_play::lead_in`]),
+/// so the song follows the last click without a gap. The player's tick `t` past the bar
+/// is the song's tick `t - bar + start`.
+#[derive(Debug)]
+struct Lead {
+    /// The count-in's clicks.
+    clicks: Arc<Sequence>,
+    /// Where the song starts (its tick).
+    start: u64,
+    /// How long the count-in is, in the player's ticks.
+    bar: u64,
+    /// Whether the player has been seen inside the count-in (its position from before
+    /// the load is not trusted until then).
+    armed: bool,
+    /// Whether the count-in is over and the song plays.
+    passed: bool,
+}
+
 /// The app's playback state.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Playback {
     /// MIDI output ports, as last listed.
     ports: Vec<String>,
@@ -130,14 +151,18 @@ pub struct Playback {
     paused_at: Option<BeatPosition>,
     /// Whether the metronome clicks on every beat while playing.
     metronome: bool,
+    /// The metronome's volume, 0 to 1 (1 is full).
+    metronome_volume: f32,
+    /// The built-in synthesizer's click sound.
+    click_sound: ClickSound,
+    /// How many bars the count-in clicks (1 to [`MAX_COUNT_IN_BARS`]).
+    count_in_bars: u8,
+    /// Whether a looped selection is counted in again each time it starts over.
+    count_in_loops: bool,
     /// Whether one bar of clicks is played before playback starts.
     count_in: bool,
-    /// While the count-in plays: where the song starts when it ends.
-    count_in_from: Option<Option<BeatPosition>>,
-    /// The song's tick when the count-in ends, for the time readout while counting in.
-    count_in_start: Option<u64>,
-    /// The song's sequence built for after the count-in (the player holds the clicks).
-    count_in_sequence: Option<Arc<Sequence>>,
+    /// While the player holds a count-in joined to the song (see [`Lead`]).
+    lead: Option<Lead>,
     /// Whether playback loops the selected measures.
     loop_selection: bool,
     /// The entered note that is sounding, until its note-off is due.
@@ -150,6 +175,32 @@ pub struct Playback {
     /// A beat to play once the synthesizer has loaded its SoundFont (it was chosen while
     /// it loaded).
     pending_preview: Option<Arc<Sequence>>,
+}
+
+impl Default for Playback {
+    fn default() -> Self {
+        Playback {
+            ports: Vec::new(),
+            output: Output::default(),
+            soundfont: None,
+            player: None,
+            sequence: None,
+            reported: None,
+            paused_at: None,
+            metronome: false,
+            metronome_volume: 1.0,
+            click_sound: ClickSound::default(),
+            count_in_bars: 1,
+            count_in_loops: false,
+            count_in: false,
+            lead: None,
+            loop_selection: false,
+            audition: None,
+            preview: None,
+            preview_sequence: None,
+            pending_preview: None,
+        }
+    }
 }
 
 impl Playback {
@@ -252,6 +303,98 @@ impl Playback {
         self.metronome
     }
 
+    /// The metronome's volume, 0 to 1.
+    pub fn metronome_volume(&self) -> f32 {
+        self.metronome_volume
+    }
+
+    /// Sets the metronome's volume without rebuilding a sequence (used when the settings
+    /// load, before any song is open).
+    pub fn store_metronome_volume(&mut self, volume: f32) {
+        self.metronome_volume = if volume.is_finite() {
+            volume.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+    }
+
+    /// Sets the metronome's volume (0 to 1), heard at once while playing.
+    pub fn set_metronome_volume(&mut self, song: &Song, volume: f32) -> Result<(), String> {
+        let volume = if volume.is_finite() {
+            volume.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        if (self.metronome_volume - volume).abs() < f32::EPSILON {
+            return Ok(());
+        }
+        self.metronome_volume = volume;
+        self.rebuild_sequence(song)
+    }
+
+    /// The metronome's click: its volume and sound.
+    fn click(&self) -> Click {
+        Click {
+            volume: self.metronome_volume,
+            sound: self.click_sound,
+        }
+    }
+
+    /// The built-in synthesizer's click sound.
+    pub fn click_sound(&self) -> ClickSound {
+        self.click_sound
+    }
+
+    /// Chooses the click sound, heard at once while playing.
+    pub fn set_click_sound(&mut self, song: &Song, sound: ClickSound) -> Result<(), String> {
+        if self.click_sound == sound {
+            return Ok(());
+        }
+        self.click_sound = sound;
+        self.rebuild_sequence(song)
+    }
+
+    /// Chooses the click sound without rebuilding a sequence (when the settings load).
+    pub fn store_click_sound(&mut self, sound: ClickSound) {
+        self.click_sound = sound;
+    }
+
+    /// How many bars the count-in clicks.
+    pub fn count_in_bars(&self) -> u8 {
+        self.count_in_bars
+    }
+
+    /// Sets how many bars the count-in clicks (1 to [`MAX_COUNT_IN_BARS`]); the next
+    /// count-in uses it.
+    pub fn set_count_in_bars(&mut self, bars: u8) {
+        self.count_in_bars = bars.clamp(1, MAX_COUNT_IN_BARS);
+    }
+
+    /// Whether a looped selection is counted in again each time it starts over.
+    pub fn count_in_loops(&self) -> bool {
+        self.count_in_loops
+    }
+
+    /// Counts a loop in again each time it starts over (with the count-in on), or not.
+    pub fn set_count_in_loops(&mut self, enabled: bool) {
+        self.count_in_loops = enabled;
+    }
+
+    /// Plays one bar of the metronome alone, to hear its sound and volume. Only while the
+    /// song is stopped (as a beat preview); `song` gives the tempo.
+    pub fn preview_click(&mut self, song: &Song) -> Result<(), String> {
+        if self.state() == PlayState::Playing || self.count_in_pending() {
+            return Ok(());
+        }
+        let bar = gscore_play::count_in(song, first_beat(), 1, self.click())
+            .map_err(|e| e.to_string())?;
+        self.connect()?;
+        if self.is_loading() {
+            return Ok(());
+        }
+        self.play_excerpt(Arc::new(bar))
+    }
+
     /// Whether one bar of clicks is played before playback starts.
     pub fn count_in(&self) -> bool {
         self.count_in
@@ -259,7 +402,7 @@ impl Playback {
 
     /// Whether the count-in is playing right now.
     pub fn count_in_pending(&self) -> bool {
-        self.count_in_from.is_some()
+        self.lead.as_ref().is_some_and(|lead| !lead.passed)
     }
 
     /// Turns the metronome on or off. While a sequence is loaded it is rebuilt and swapped
@@ -274,10 +417,16 @@ impl Playback {
 
     /// Turns the count-in on or off. Turning it off during the count-in starts the song at
     /// once instead of waiting for the bar of clicks to finish.
-    pub fn set_count_in(&mut self, song: &Song, enabled: bool) -> Result<(), String> {
+    pub fn set_count_in(&mut self, _song: &Song, enabled: bool) -> Result<(), String> {
         self.count_in = enabled;
-        if !enabled && let Some(from) = self.count_in_from.take() {
-            return self.start_music(song, from);
+        if !enabled
+            && let Some(lead) = &mut self.lead
+            && !lead.passed
+        {
+            // Skip the rest of the clicks: the song starts now.
+            lead.passed = true;
+            let bar = lead.bar;
+            return self.player_mut()?.seek(bar).map_err(|e| e.to_string());
         }
         Ok(())
     }
@@ -445,7 +594,15 @@ impl Playback {
     /// Keeps playback inside `range` (first and last tick) when the loop is on: a position
     /// outside it jumps to its start, and reaching its end starts it again. Does nothing
     /// while paused or stopped (except to restart at the song's end, where playback stops).
-    pub fn poll_loop(&mut self, range: Option<(u64, u64)>) -> Result<(), String> {
+    ///
+    /// `first` is the loop's first beat: with the count-in on and
+    /// [`Playback::count_in_loops`], each new pass is counted in there.
+    pub fn poll_loop(
+        &mut self,
+        song: &Song,
+        range: Option<(u64, u64)>,
+        first: BeatPosition,
+    ) -> Result<(), String> {
         if !self.loop_selection || self.count_in_pending() {
             return Ok(());
         }
@@ -457,12 +614,13 @@ impl Playback {
         }
         let position = self.position();
         match self.state() {
-            PlayState::Playing if position < start || position >= end => {
-                self.player_mut()?.seek(start).map_err(|e| e.to_string())
+            PlayState::Playing if position >= end && self.count_in && self.count_in_loops => {
+                self.start_count_in(song, Some(first))
             }
+            PlayState::Playing if position < start || position >= end => self.seek_song(start),
             PlayState::Stopped if position >= end => {
                 // The song ended at the loop's end: play the loop again.
-                self.player_mut()?.seek(start).map_err(|e| e.to_string())?;
+                self.seek_song(start)?;
                 self.player_mut()?.play().map_err(|e| e.to_string())
             }
             _ => Ok(()),
@@ -474,14 +632,55 @@ impl Playback {
         if self.count_in_pending() || self.state() == PlayState::Stopped {
             return Ok(());
         }
-        self.player_mut()?.seek(tick).map_err(|e| e.to_string())
+        self.seek_song(tick)
     }
 
-    /// Forgets a count-in that is running or queued.
-    fn clear_count_in(&mut self) {
-        self.count_in_from = None;
-        self.count_in_start = None;
-        self.count_in_sequence = None;
+    /// Moves the player to the song's `tick`. Behind a count-in, that tick is a bar later
+    /// in the player; a tick before the count-in's song start leaves the joined sequence for
+    /// the song's own (in the same state).
+    fn seek_song(&mut self, tick: u64) -> Result<(), String> {
+        let Some(lead) = &self.lead else {
+            return self.player_mut()?.seek(tick).map_err(|e| e.to_string());
+        };
+        if tick >= lead.start {
+            let at = tick.saturating_sub(lead.start).saturating_add(lead.bar);
+            return self.player_mut()?.seek(at).map_err(|e| e.to_string());
+        }
+        let playing = self.state() == PlayState::Playing;
+        self.drop_lead()?;
+        self.player_mut()?.seek(tick).map_err(|e| e.to_string())?;
+        if playing {
+            self.player_mut()?.play().map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// Ends a count-in joined to the song: the player gets the song's own sequence again
+    /// (stopped at its start).
+    fn drop_lead(&mut self) -> Result<(), String> {
+        if self.lead.take().is_none() {
+            return Ok(());
+        }
+        let Some(sequence) = self.sequence.clone() else {
+            return Ok(());
+        };
+        if let Some(active) = &mut self.player {
+            active.player_mut().stop().map_err(|e| e.to_string())?;
+            active
+                .player_mut()
+                .load(sequence)
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// What the player plays for the song's `sequence`: behind a running or finished
+    /// count-in, the two joined.
+    fn played(&self, sequence: &Arc<Sequence>) -> Arc<Sequence> {
+        match &self.lead {
+            Some(lead) => Arc::new(gscore_play::lead_in(sequence, &lead.clicks, lead.start)),
+            None => Arc::clone(sequence),
+        }
     }
 
     /// Chooses the output; the player reconnects on the next play.
@@ -493,7 +692,7 @@ impl Playback {
             self.player = None;
             self.sequence = None;
             self.reported = None;
-            self.clear_count_in();
+            self.lead = None;
             self.output = output;
         }
     }
@@ -527,7 +726,7 @@ impl Playback {
             self.player = None;
             self.sequence = None;
             self.reported = None;
-            self.clear_count_in();
+            self.lead = None;
         }
     }
 
@@ -557,7 +756,7 @@ impl Playback {
         }
         self.sequence = None;
         self.paused_at = None;
-        self.clear_count_in();
+        self.lead = None;
     }
 
     /// The song's mix (volume, pan, mute, solo) changed: rebuild the sequence. While it is
@@ -567,12 +766,8 @@ impl Playback {
         if self.end_preview() {
             return Ok(());
         }
-        if self.count_in_pending() {
-            // The song has not started yet: keep the waiting sequence in step.
-            self.count_in_sequence = Some(self.build_sequence(song)?);
-            return Ok(());
-        }
         let sequence = self.build_sequence(song)?;
+        let played = self.played(&sequence);
         let Some(active) = &mut self.player else {
             // Nothing is connected: the next play builds the sequence again.
             self.sequence = None;
@@ -581,7 +776,7 @@ impl Playback {
         let state = active.player().state();
         let position = active.player().position();
         active.player_mut().stop().map_err(|e| e.to_string())?;
-        if let Err(error) = active.player_mut().load(Arc::clone(&sequence)) {
+        if let Err(error) = active.player_mut().load(played) {
             self.sequence = None;
             return Err(error.to_string());
         }
@@ -623,44 +818,22 @@ impl Playback {
         }
         self.end_audition();
         self.connect()?;
-        // A paused count-in resumes where it paused; one that has ended starts the song.
-        if self.count_in_from.is_some() {
-            if self.is_loading() {
-                // The count-in is on its way to the output; it has not started yet.
-                return Ok(());
-            }
-            if self.state() == PlayState::Paused {
-                return self.player_mut()?.play().map_err(|e| e.to_string());
-            }
-            // A stopped count-in that never started has a position of 0 (its commands are
-            // still queued); one that played to the end stays at its last tick.
-            if self.output_position() == 0 {
-                return Ok(());
-            }
-            let at = self.count_in_from.take().unwrap_or(None);
-            return self.start_music(song, at);
+        // An interrupted count-in starts again from its first click, at the place asked for
+        // now (the cursor may have moved): half a bar of clicks is no count-in.
+        if self.count_in_pending() && self.state() == PlayState::Paused {
+            self.drop_lead()?;
         }
         let resume =
             self.sequence.is_some() && self.state() == PlayState::Paused && self.paused_at == from;
         self.paused_at = None;
-        // A fresh start with the count-in on: one bar of clicks, then the song.
+        if !resume {
+            // A fresh start: whatever count-in came before is over.
+            self.drop_lead()?;
+        }
+        // A fresh start with the count-in on: one bar of clicks, then the song, played as
+        // one sequence so the song follows the last click exactly.
         if !resume && self.count_in {
-            let at = from.unwrap_or_else(first_beat);
-            let clicks = gscore_play::count_in(song, at).map_err(|e| e.to_string())?;
-            // Build the song's sequence now: its start tick is what the readout shows while
-            // the count-in plays.
-            let sequence = match self.sequence.take() {
-                Some(sequence) => sequence,
-                None => self.build_sequence(song)?,
-            };
-            let start = from.and_then(|at| sequence.tick_of(song, at)).unwrap_or(0);
-            self.player_mut()?
-                .load(Arc::new(clicks))
-                .map_err(|e| e.to_string())?;
-            self.count_in_start = Some(start);
-            self.count_in_sequence = Some(sequence);
-            self.count_in_from = Some(from);
-            return self.player_mut()?.play().map_err(|e| e.to_string());
+            return self.start_count_in(song, from);
         }
         let sequence = match &self.sequence {
             Some(sequence) => Arc::clone(sequence),
@@ -679,27 +852,57 @@ impl Playback {
         self.player_mut()?.play().map_err(|e| e.to_string())
     }
 
-    /// When the count-in has finished, starts the song where it was asked to. Call it every
-    /// frame while [`Playback::count_in_pending`] is set.
-    pub fn poll_count_in(&mut self, song: &Song) -> Result<(), String> {
-        if self.count_in_from.is_none() || self.is_loading() {
+    /// Plays one bar of clicks, then the song from `from` (its start without), as one
+    /// sequence so the song follows the last click exactly.
+    fn start_count_in(&mut self, song: &Song, from: Option<BeatPosition>) -> Result<(), String> {
+        let at = from.unwrap_or_else(first_beat);
+        let clicks = gscore_play::count_in(song, at, self.count_in_bars, self.click())
+            .map(Arc::new)
+            .map_err(|e| e.to_string())?;
+        let sequence = match &self.sequence {
+            Some(sequence) => Arc::clone(sequence),
+            None => self.build_sequence(song)?,
+        };
+        let start = from.and_then(|at| sequence.tick_of(song, at)).unwrap_or(0);
+        self.lead = Some(Lead {
+            bar: clicks.end,
+            clicks,
+            start,
+            armed: false,
+            passed: false,
+        });
+        let played = self.played(&sequence);
+        self.sequence = Some(sequence);
+        let player = self.player_mut()?;
+        player.stop().map_err(|e| e.to_string())?;
+        player.load(played).map_err(|e| e.to_string())?;
+        player.play().map_err(|e| e.to_string())
+    }
+
+    /// Notes when the count-in has given way to the song (the readout then follows the
+    /// player). Call it every frame while [`Playback::count_in_pending`] is set; the song
+    /// itself already follows the clicks in the player.
+    pub fn poll_count_in(&mut self, _song: &Song) -> Result<(), String> {
+        let position = self.output_position();
+        let playing = self.state() == PlayState::Playing;
+        let loading = self.is_loading();
+        let Some(lead) = &mut self.lead else {
+            return Ok(());
+        };
+        if lead.passed || loading {
             return Ok(());
         }
-        if self.error().is_some() {
-            // The output failed; there is nothing to lead into. The error is reported.
-            self.clear_count_in();
-            return Ok(());
-        }
-        if self.state() == PlayState::Stopped && self.output_position() > 0 {
-            let from = self.count_in_from.take().unwrap_or(None);
-            return self.start_music(song, from);
+        if !lead.armed {
+            lead.armed = playing && position < lead.bar;
+        } else if position >= lead.bar {
+            lead.passed = true;
         }
         Ok(())
     }
 
-    /// Builds the song's sequence with the current metronome setting.
+    /// Builds the song's sequence with the current metronome setting and volume.
     fn build_sequence(&self, song: &Song) -> Result<Arc<Sequence>, String> {
-        Sequence::with_metronome(song, None, self.metronome)
+        Sequence::with_click(song, None, self.metronome.then(|| self.click()))
             .map(Arc::new)
             .map_err(|e| e.to_string())
     }
@@ -707,65 +910,34 @@ impl Playback {
     /// Swaps in a sequence rebuilt with the current settings at the position playback is,
     /// without stopping or silencing.
     fn rebuild_sequence(&mut self, song: &Song) -> Result<(), String> {
-        if self.count_in_pending() {
-            // The song waits behind the count-in: rebuild the sequence it will start with.
-            self.count_in_sequence = Some(self.build_sequence(song)?);
-            return Ok(());
-        }
         if self.player.is_none() || self.sequence.is_none() {
             self.sequence = None;
             return Ok(());
         }
         let sequence = self.build_sequence(song)?;
+        let played = self.played(&sequence);
         let Some(active) = &mut self.player else {
             return Ok(());
         };
         active
             .player_mut()
-            .replace(Arc::clone(&sequence))
+            .replace(played)
             .map_err(|e| e.to_string())?;
         self.sequence = Some(sequence);
         Ok(())
     }
 
-    /// Loads (or reuses) the song's sequence and starts it at `from`.
-    fn start_music(&mut self, song: &Song, from: Option<BeatPosition>) -> Result<(), String> {
-        self.paused_at = None;
-        let count_in = self.count_in_sequence.take();
-        let sequence = match count_in.or_else(|| self.sequence.take()) {
-            Some(sequence) => {
-                // The player holds the count-in's clicks: load the song's sequence.
-                self.player_mut()?
-                    .load(Arc::clone(&sequence))
-                    .map_err(|e| e.to_string())?;
-                sequence
-            }
-            None => {
-                let sequence = self.build_sequence(song)?;
-                self.player_mut()?
-                    .load(Arc::clone(&sequence))
-                    .map_err(|e| e.to_string())?;
-                sequence
-            }
-        };
-        let tick = self
-            .count_in_start
-            .take()
-            .or_else(|| from.and_then(|at| sequence.tick_of(song, at)));
-        if let Some(tick) = tick {
-            self.player_mut()?.seek(tick).map_err(|e| e.to_string())?;
-        }
-        self.count_in_from = None;
-        self.sequence = Some(sequence);
-        self.player_mut()?.play().map_err(|e| e.to_string())
-    }
-
     /// While playing, continues from `at` (a beat the user clicked), at its measure's first
-    /// pass, without stopping. Paused or stopped, nothing happens here: the next play
+    /// pass, without stopping; with the count-in on, after a new bar of clicks. Paused or stopped, nothing happens here: the next play
     /// starts at the cursor anyway.
     pub fn jump_to(&mut self, song: &Song, at: BeatPosition) -> Result<(), String> {
         if self.state() != PlayState::Playing {
             return Ok(());
+        }
+        // With the count-in on, a new place is counted in again.
+        if self.count_in {
+            self.paused_at = None;
+            return self.start_count_in(song, Some(at));
         }
         let Some(tick) = self
             .sequence
@@ -774,14 +946,14 @@ impl Playback {
         else {
             return Ok(());
         };
-        self.player_mut()?.seek(tick).map_err(|e| e.to_string())
+        self.seek_song(tick)
     }
 
     /// Stops and goes back to the start.
     pub fn stop(&mut self) -> Result<(), String> {
         let _ = self.end_preview();
         self.paused_at = None;
-        self.clear_count_in();
+        self.lead = None;
         match &mut self.player {
             Some(active) => active.player_mut().stop().map_err(|e| e.to_string()),
             None => Ok(()),
@@ -801,10 +973,15 @@ impl Playback {
 
     /// The position in the song, in ticks: during the count-in, where the song will start.
     pub fn position(&self) -> u64 {
-        if let Some(tick) = self.preview.or(self.count_in_start) {
+        if let Some(tick) = self.preview {
             return tick;
         }
-        self.output_position()
+        let position = self.output_position();
+        match &self.lead {
+            Some(lead) if !lead.passed || position < lead.bar => lead.start,
+            Some(lead) => position.saturating_sub(lead.bar).saturating_add(lead.start),
+            None => position,
+        }
     }
 
     /// The player's own position in ticks (the count-in's bar while it runs).
@@ -863,6 +1040,41 @@ impl Playback {
         peak * gain * gain
     }
 
+    /// How loud the metronome sounds right now (0 to 1), for the mixer's meter: its
+    /// clicks during the count-in and, with the metronome on, during the song.
+    pub fn metronome_level(&self) -> f32 {
+        if self.state() != PlayState::Playing {
+            return 0.0;
+        }
+        let (sequence, position) = if let Some(lead) = self.lead.as_ref().filter(|l| !l.passed) {
+            (Some(&lead.clicks), self.output_position())
+        } else {
+            (self.sequence.as_ref(), self.position())
+        };
+        let Some(sequence) = sequence else {
+            return 0.0;
+        };
+        // A click is short: its meter falls over an eighth note.
+        let window = u64::from(PPQ) / 2;
+        let start = position.saturating_sub(window);
+        let events = &sequence.events;
+        let first = events.partition_point(|event| event.tick < start);
+        let last = events.partition_point(|event| event.tick <= position);
+        events
+            .get(first..last)
+            .unwrap_or_default()
+            .iter()
+            .filter(|event| event.track == gscore_play::CLICK_TRACK)
+            .filter_map(|event| match event.event {
+                MidiEvent::NoteOn { velocity, .. } => {
+                    let age = position.saturating_sub(event.tick) as f32 / window as f32;
+                    Some(f32::from(velocity) / 127.0 * (1.0 - age).max(0.0))
+                }
+                _ => None,
+            })
+            .fold(0.0, f32::max)
+    }
+
     /// A track's volume, pan or program changed. The new values are sent to the player at
     /// once, so a slider or preset is heard while it changes; then the sequence is rebuilt
     /// and swapped in where playback is (no stop, no silence), so its setup holds the new
@@ -885,12 +1097,6 @@ impl Playback {
         song: &Song,
         tracks: impl IntoIterator<Item = TrackIndex>,
     ) -> Result<(), String> {
-        if self.count_in_pending() {
-            // The song has not started yet; only the sequence waiting behind the count-in
-            // needs the new mix.
-            self.count_in_sequence = Some(self.build_sequence(song)?);
-            return Ok(());
-        }
         if self.player.is_none() {
             // Nothing is connected: the next play builds the sequence again.
             self.sequence = None;
@@ -919,17 +1125,20 @@ impl Playback {
         let Some(sequence) = rebuilt else {
             return Ok(());
         };
-        active
-            .player_mut()
-            .replace(Arc::clone(&sequence))
-            .map_err(|e| e.to_string())?;
+        let played = self.played(&sequence);
+        if let Some(active) = &mut self.player {
+            active
+                .player_mut()
+                .replace(played)
+                .map_err(|e| e.to_string())?;
+        }
         self.sequence = Some(sequence);
         Ok(())
     }
 
-    /// The sequence the player has, or the one waiting after a count-in.
+    /// The song's sequence (also while a count-in plays before it).
     pub fn sequence(&self) -> Option<&Arc<Sequence>> {
-        self.sequence.as_ref().or(self.count_in_sequence.as_ref())
+        self.sequence.as_ref()
     }
 
     /// The last output error, if playback stopped because of one.

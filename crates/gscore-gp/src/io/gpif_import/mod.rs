@@ -14,6 +14,7 @@ use crate::io::primitive::{
 };
 use crate::model::{
     beat::{Beat as SongBeat, LegatoEffect, Voice as SongVoice},
+    chord::ChordDiagram,
     effects::*,
     enums::*,
     headers::{Marker, MeasureHeader},
@@ -30,6 +31,59 @@ pub(crate) trait SongGpifOps {
 }
 
 mod beats;
+
+/// The chord diagrams of a GP7 track's staves, by their id.
+fn extract_diagrams(track: &Track) -> HashMap<i32, ChordDiagram> {
+    let mut diagrams = HashMap::new();
+    let mut properties = Vec::new();
+    if let Some(props) = &track.properties {
+        properties.push(&props.properties);
+    }
+    if let Some(staves) = &track.staves {
+        for staff in &staves.staves {
+            if let Some(props) = &staff.properties {
+                properties.push(&props.properties);
+            }
+        }
+    }
+    for props in properties {
+        for property in props {
+            if property.name != "DiagramCollection" {
+                continue;
+            }
+            let Some(items) = &property.items else {
+                continue;
+            };
+            for item in &items.items {
+                let Some(diagram) = &item.diagram else {
+                    continue;
+                };
+                let frets = diagram
+                    .frets
+                    .iter()
+                    .filter_map(|fret| {
+                        Some((
+                            u8::try_from(fret.string).ok()?,
+                            i8::try_from(fret.fret).ok()?,
+                        ))
+                    })
+                    .collect();
+                diagrams.insert(
+                    item.id,
+                    ChordDiagram {
+                        name: item.name.clone(),
+                        string_count: u8::try_from(diagram.string_count).unwrap_or(0),
+                        fret_count: u8::try_from(diagram.fret_count).unwrap_or(0),
+                        base_fret: u8::try_from(diagram.base_fret).unwrap_or(0),
+                        frets,
+                    },
+                );
+            }
+        }
+    }
+    diagrams
+}
+
 #[cfg(test)]
 mod display_tests;
 #[cfg(test)]
@@ -49,8 +103,8 @@ use beats::convert_beat;
 pub(crate) use beats::{convert_trills, flip_note_strings, tremolo_text};
 use helpers::*;
 pub(crate) use helpers::{
-    CHORUS_PROPERTY, REVERB_PROPERTY, SYMBOL_PROPERTY, build_note_bend, build_whammy_effect,
-    extract_symbol,
+    CHORUS_PROPERTY, REVERB_PROPERTY, SLASH_PROPERTY, SYMBOL_PROPERTY, build_note_bend,
+    build_whammy_effect, extract_symbol,
 };
 use notes::convert_note;
 pub(crate) use notes::finger_name;
@@ -324,6 +378,19 @@ impl SongGpifOps for Song {
                 track.tuning_label = extract_tuning_label(&props.properties);
                 capo = extract_capo(&props.properties);
                 track.symbol = extract_symbol(&props.properties);
+                if let Some(slash) = extract_slash(&props.properties) {
+                    track.settings.slash = slash;
+                }
+            }
+            let diagrams = extract_diagrams(g_track);
+            if let Some(staves) = &g_track.staves
+                && let Some(props) = staves
+                    .staves
+                    .first()
+                    .and_then(|staff| staff.properties.as_ref())
+                && let Some(slash) = extract_slash(&props.properties)
+            {
+                track.settings.slash = slash;
             }
             if (track.strings.is_empty() || capo.is_none())
                 && let Some(staves) = &g_track.staves
@@ -450,6 +517,13 @@ impl SongGpifOps for Song {
 
                 if let Some(bar) = bars_map.get(&bar_id) {
                     measure.simile_mark = bar.simile_mark.clone();
+                    measure.has_clef = bar.clef.is_some();
+                    measure.clef = match bar.clef.as_deref() {
+                        Some("F4") => MeasureClef::Bass,
+                        Some("C4") => MeasureClef::Alto,
+                        Some("C3") => MeasureClef::Tenor,
+                        _ => MeasureClef::Treble,
+                    };
                     let voice_ids = parse_ids(&bar.voices);
                     measure.voices.clear();
 
@@ -464,12 +538,19 @@ impl SongGpifOps for Song {
 
                             for &bid in &beat_ids {
                                 if let Some(g_beat) = beats_map.get(&bid) {
-                                    let s_beat = convert_beat(
+                                    let mut s_beat = convert_beat(
                                         g_beat,
                                         &rhythms_map,
                                         &notes_map,
                                         &mut current_velocity,
                                     );
+                                    if let Some(id) = g_beat
+                                        .chord
+                                        .as_deref()
+                                        .and_then(|id| id.trim().parse::<i32>().ok())
+                                    {
+                                        s_beat.chord_diagram = diagrams.get(&id).cloned();
+                                    }
                                     s_voice.beats.push(s_beat);
                                 }
                             }

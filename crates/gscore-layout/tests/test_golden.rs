@@ -61,6 +61,7 @@ fn owner_files_match_their_golden_svg() {
         "ornaments",
         "advanced_ornaments",
         "multi_staff",
+        "staff",
     ] {
         let song = common::open(&format!("basic/{name}.gp"));
         check(name, &svg(&song, &Theme::LIGHT));

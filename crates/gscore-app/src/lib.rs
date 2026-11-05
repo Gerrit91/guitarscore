@@ -36,7 +36,7 @@ pub use settings::{
     DEFAULT_AUTOSAVE_SECONDS, MAX_OPEN_FILES, MAX_RECENT_FILES, MAX_SHAPE_PRESETS, Settings,
     ShapePreset, ShortcutSetting, WindowState,
 };
-pub use state::{MeasureSelection, ThemeChoice, ViewState, ZOOM_RANGE};
+pub use state::{MeasureSelection, ScoreView, ThemeChoice, ViewState, ZOOM_RANGE};
 
 /// The app icon as a 256 px PNG (`packaging/guitarscore.svg` rendered): the window icon
 /// and the picture in Help › About.

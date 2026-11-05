@@ -1470,6 +1470,14 @@ fn a_count_in_plays_one_bar_then_the_song_and_the_metronome_stays_live() {
     let bar = u64::from(gscore_play::PPQ).saturating_mul(4);
     assert_eq!(harness.state().playback().position(), bar.saturating_mul(2));
 
+    // The count-in clicks without the metronome, and the mixer's metronome meter shows them.
+    assert!(!harness.state().playback().metronome());
+    assert!(
+        step_until(&mut harness, 2, |app| app.playback().metronome_level()
+            > 0.0),
+        "the count-in's clicks show on the metronome's meter"
+    );
+
     // Turning the metronome on while playing swaps the sequence without a stop.
     harness.state_mut().set_metronome(true);
     assert_eq!(
@@ -1488,6 +1496,73 @@ fn a_count_in_plays_one_bar_then_the_song_and_the_metronome_stays_live() {
         "the count-in did not lead into the song"
     );
     assert_eq!(harness.state().playback().current_measure(), Some(3));
+    harness.state_mut().playback_mut().stop().unwrap();
+}
+
+#[test]
+fn an_interrupted_count_in_starts_again_where_the_cursor_is_now() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("count-in-again");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    harness.state_mut().set_count_in(true);
+    cursor_to_measure(&mut harness, 2);
+    harness.get_by_label("Play").click();
+    let started = step_until(&mut harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    });
+    assert!(started, "neither played nor failed");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+    // Half way into the count-in: pause, move the cursor, play again.
+    assert!(step_until(&mut harness, 5, |app| {
+        app.playback().metronome_level() > 0.0
+    }));
+    std::thread::sleep(Duration::from_millis(1100));
+    harness.step();
+    assert!(harness.state().playback().count_in_pending());
+    harness.get_by_label("Pause").click();
+    harness.run();
+    cursor_to_measure(&mut harness, 0);
+    harness.get_by_label("Play").click();
+    harness.run();
+    // A whole new count-in for the new place, not the rest of the old one.
+    assert!(harness.state().playback().count_in_pending());
+    assert_eq!(harness.state().playback().current_measure(), Some(1));
+    assert!(
+        step_until(&mut harness, 10, |app| {
+            app.playback().state() == gscore_play::PlayState::Playing
+                && !app.playback().count_in_pending()
+        }),
+        "the count-in did not lead into the song"
+    );
+    assert_eq!(harness.state().playback().current_measure(), Some(1));
+
+    // A click on the score while the song plays counts in again, then plays from there.
+    let song = harness.state().document().unwrap().song().clone();
+    let at = gscore_model::BeatPosition {
+        track: gscore_model::TrackIndex::new(0),
+        measure: gscore_model::MeasureIndex::new(3),
+        voice: gscore_model::VoiceIndex::new(0),
+        beat: gscore_model::BeatIndex::new(0),
+    };
+    harness
+        .state_mut()
+        .playback_mut()
+        .jump_to(&song, at)
+        .unwrap();
+    harness.step();
+    assert!(harness.state().playback().count_in_pending());
+    assert_eq!(harness.state().playback().current_measure(), Some(4));
+    assert!(
+        step_until(&mut harness, 10, |app| !app.playback().count_in_pending()),
+        "the second count-in did not lead into the song"
+    );
+    assert_eq!(harness.state().playback().current_measure(), Some(4));
     harness.state_mut().playback_mut().stop().unwrap();
 }
 
@@ -1631,6 +1706,135 @@ fn the_audio_tab_is_last_and_named_audio_io() {
     harness.run();
     harness.get_by_label("SoundFont file");
     harness.get_by_label("MIDI");
+}
+
+#[test]
+fn the_metronome_tab_sets_the_click_and_the_count_in() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Settings…").click();
+    harness.run();
+    // The tab (the toolbar's metronome switch has the same name).
+    harness
+        .get_all_by_label("Metronome")
+        .last()
+        .unwrap()
+        .click();
+    harness.run();
+    harness.get_by_label("Cowbell").click();
+    harness.run();
+    assert_eq!(
+        harness.state().playback().click_sound(),
+        gscore_play::ClickSound::Cowbell
+    );
+    harness
+        .get_by_label("Count in before playback starts")
+        .click();
+    harness.run();
+    assert!(harness.state().playback().count_in());
+    harness.get_by_label("Count-in length").click();
+    harness.run();
+    harness.get_by_label("2 bars").click();
+    harness.run();
+    assert_eq!(harness.state().playback().count_in_bars(), 2);
+    harness
+        .get_by_label("Count in again each time a loop starts over")
+        .click();
+    harness.run();
+    assert!(harness.state().playback().count_in_loops());
+    // All of it is kept in the settings.
+    let settings = harness.state().settings();
+    assert_eq!(settings.click_sound, "cowbell");
+    assert_eq!(settings.count_in_bars, 2);
+    assert!(settings.count_in_loops);
+}
+
+#[test]
+fn a_loop_is_counted_in_again_each_time_it_starts_over() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("count-in-loop");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    harness.state_mut().set_count_in(true);
+    harness.state_mut().playback_mut().set_count_in_loops(true);
+    // Loop the second bar.
+    let document = harness.state_mut().document_mut().unwrap();
+    document
+        .editor_mut()
+        .set_selection(Some(gscore_edit::Selection::Measures {
+            anchor: gscore_model::MeasureIndex::new(1),
+            focus: gscore_model::MeasureIndex::new(1),
+        }));
+    harness
+        .state_mut()
+        .set_selection(Some(gscore_app::MeasureSelection::new(1)));
+    harness.state_mut().set_loop_selection(true);
+    cursor_to_measure(&mut harness, 1);
+    harness.get_by_label("Play").click();
+    let started = step_until(&mut harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    });
+    assert!(started, "neither played nor failed");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+    assert!(step_until(&mut harness, 5, |app| !app
+        .playback()
+        .count_in_pending()));
+    assert_eq!(harness.state().playback().current_measure(), Some(2));
+    // At the bar's end, a new count-in, then the bar again.
+    assert!(
+        step_until(&mut harness, 5, |app| app.playback().count_in_pending()),
+        "the loop's next pass was not counted in"
+    );
+    assert_eq!(harness.state().playback().current_measure(), Some(2));
+    harness.state_mut().playback_mut().stop().unwrap();
+}
+
+#[test]
+fn a_looped_note_selection_starts_at_its_first_bar() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("loop-notes");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    harness.state_mut().set_count_in(true);
+    // The third and fourth beat of the fourth bar (quarter notes), looped.
+    let spot = |beat: usize| gscore_edit::BeatSpot {
+        measure: gscore_model::MeasureIndex::new(3),
+        beat: gscore_model::BeatIndex::new(beat),
+    };
+    let document = harness.state_mut().document_mut().unwrap();
+    document
+        .editor_mut()
+        .set_selection(Some(gscore_edit::Selection::Beats {
+            track: gscore_model::TrackIndex::new(0),
+            voice: gscore_model::VoiceIndex::new(0),
+            anchor: spot(2),
+            focus: spot(3),
+        }));
+    harness.run();
+    harness.state_mut().set_loop_selection(true);
+    harness.get_by_label("Play").click();
+    let started = step_until(&mut harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    });
+    assert!(started, "neither played nor failed");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+    // While counting in, the readout shows the bar's start, not the selected note.
+    let bar = u64::from(gscore_play::PPQ).saturating_mul(4);
+    assert!(harness.state().playback().count_in_pending());
+    assert_eq!(harness.state().playback().position(), bar.saturating_mul(3));
+    assert_eq!(harness.state().playback().current_measure(), Some(4));
+    harness.state_mut().playback_mut().stop().unwrap();
 }
 
 #[test]
@@ -1803,6 +2007,10 @@ fn a_new_track_asks_for_name_color_and_symbol() {
 #[test]
 fn the_grid_switches_to_a_mixer_view() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    assert!(
+        harness.query_by_label("Metronome volume").is_none(),
+        "the grid view has no metronome fader"
+    );
     harness.get_by_label("Mixer view").click();
     harness.run();
     assert!(harness.state().view().grid_mixer);
@@ -1813,6 +2021,22 @@ fn the_grid_switches_to_a_mixer_view() {
     harness.get_by_label("Pan Master");
     harness.get_by_label("Mute Steel Guitar");
     harness.get_by_label("Solo Steel Guitar");
+    // The metronome has its volume fader in the mixer, and only there.
+    let fader = harness.get_by_label("Metronome volume");
+    let start = fader.rect().center();
+    harness.hover_at(start);
+    harness.drag_at(start);
+    harness.run();
+    for step in 1..=4 {
+        harness.hover_at(start + egui::vec2(0.0, 8.0 * step as f32));
+        harness.run();
+    }
+    harness.drop_at(start + egui::vec2(0.0, 32.0));
+    harness.run();
+    assert!(
+        harness.state().playback().metronome_volume() < 0.5,
+        "the fader turns the click volume down"
+    );
 
     // Mute and solo are live from the mixer too.
     let muted = |harness: &Harness<'static, GuitarScoreApp>| {

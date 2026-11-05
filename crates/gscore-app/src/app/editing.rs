@@ -443,6 +443,9 @@ impl GuitarScoreApp {
         if let Err(error) = self.playback.stop() {
             self.notice = Some(error);
         }
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.palette_anchor = None;
+        }
     }
 
     /// Starts the song when its count-in bar has finished.
@@ -467,17 +470,23 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
-        let document = &mut tab.document;
-        let Some(selection) = tab.selection else {
+        let Some(selection) = tab.loop_measures() else {
             // Nothing is selected any more: looping has no range.
             self.playback.set_loop_selection(false);
             return;
         };
-        let timeline = document.timeline();
+        let timeline = tab.document.timeline();
         let range = timeline
             .as_deref()
             .and_then(|timeline| timeline.measure_range(selection.start(), selection.end()));
-        if let Err(error) = self.playback.poll_loop(range) {
+        // The loop's first beat, where a count-in leads each pass.
+        let first = BeatPosition {
+            track: tab.document.editor().cursor().track,
+            measure: MeasureIndex::new(selection.start()),
+            voice: VoiceIndex::new(0),
+            beat: BeatIndex::new(0),
+        };
+        if let Err(error) = self.playback.poll_loop(tab.document.song(), range, first) {
             self.notice = Some(error);
         }
     }
@@ -495,6 +504,7 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let looped = tab.loop_measures();
         let document = &mut tab.document;
         let measure_count = document.song().measure_count();
         if measure_count == 0 {
@@ -502,7 +512,7 @@ impl GuitarScoreApp {
         }
         let timeline = document.timeline();
         let loop_range = if self.playback.loop_selection() {
-            tab.selection.and_then(|selection| {
+            looped.and_then(|selection| {
                 timeline
                     .as_deref()
                     .and_then(|timeline| timeline.measure_range(selection.start(), selection.end()))
@@ -593,6 +603,43 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Sets the metronome's volume (0 to 1), heard at once while playing.
+    pub fn set_metronome_volume(&mut self, volume: f32) {
+        let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
+            self.playback.store_metronome_volume(volume);
+            return;
+        };
+        if let Err(error) = self.playback.set_metronome_volume(document.song(), volume) {
+            self.notice = Some(error);
+        }
+    }
+
+    /// Chooses the metronome's click sound (heard at once while playing).
+    pub fn set_click_sound(&mut self, sound: gscore_play::ClickSound) {
+        let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
+            self.playback.store_click_sound(sound);
+            return;
+        };
+        if let Err(error) = self.playback.set_click_sound(document.song(), sound) {
+            self.notice = Some(error);
+        }
+    }
+
+    /// Plays a bar of the metronome alone (the open song's tempo, else 120 BPM).
+    pub fn preview_click(&mut self) {
+        let fallback;
+        let song = match self.tabs.get(self.active) {
+            Some(tab) => tab.document.song(),
+            None => {
+                fallback = gscore_model::Song::default();
+                &fallback
+            }
+        };
+        if let Err(error) = self.playback.preview_click(song) {
+            self.notice = Some(error);
+        }
+    }
+
     /// Turns the one-bar count-in on or off.
     pub fn set_count_in(&mut self, enabled: bool) {
         let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
@@ -612,18 +659,48 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Where a loop starts: the first beat of its first bar, while looping is on. A loop
+    /// plays whole bars, so its first pass starts there too, not at the first selected note.
+    fn loop_start(&self) -> Option<BeatPosition> {
+        if !self.playback.loop_selection() {
+            return None;
+        }
+        let tab = self.tabs.get(self.active)?;
+        let measures = tab.loop_measures()?;
+        Some(BeatPosition {
+            track: tab.document.editor().cursor().track,
+            measure: MeasureIndex::new(measures.start()),
+            voice: VoiceIndex::new(0),
+            beat: BeatIndex::new(0),
+        })
+    }
+
     /// Starts playback of the open song at the cursor, or pauses it. Pausing leaves the
     /// cursor on the last played beat.
     pub fn play_pause(&mut self) {
-        if self.playback.state() == PlayState::Playing {
+        let already_playing = self.playback.state() == PlayState::Playing;
+        if already_playing {
             self.follow_playback();
+        }
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            if already_playing {
+                // Paused: the palette follows the cursor again.
+                tab.palette_anchor = None;
+            } else {
+                // Starting (or continuing after a count-in): remember what the palette
+                // showed so its tiles stay on the note chosen before playback.
+                tab.palette_anchor = Some((
+                    tab.document.editor().cursor(),
+                    tab.document.editor().selection(),
+                ));
+            }
         }
         // Pausing then playing resumes at the cursor; a fresh start plays from the
         // selection's first note when there is a selection.
         let started = if self.playback.state() == PlayState::Paused {
             None
         } else {
-            self.selection_start()
+            self.loop_start().or_else(|| self.selection_start())
         };
         let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
             return;

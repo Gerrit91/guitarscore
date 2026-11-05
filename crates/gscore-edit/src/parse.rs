@@ -9,9 +9,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use gscore_model::{
-    BeatEffect, BeatIndex, BeatPosition, Dynamic, Feel, Fermata, Fret, MAX_BARS_PER_SYSTEM,
+    BeatEffect, BeatIndex, BeatPosition, Clef, Dynamic, Feel, Fermata, Fret, MAX_BARS_PER_SYSTEM,
     MAX_STRINGS, MAX_TEMPO, MeasureIndex, NoteEffect, NoteValue, PageSetup, Pitch, Repeat,
-    SongTextField, StringNumber, SystemBreak, TrackIndex, TrackStaves, VoiceIndex,
+    SimileMark, SongTextField, StringNumber, SystemBreak, TrackIndex, TrackStaves, VoiceIndex,
 };
 
 use crate::command::Command;
@@ -243,8 +243,14 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
         "set_track_staves" => {
             let track = TrackIndex::new(optional_position(args, "track")?.unwrap_or(0));
             let text = args.required("staves")?;
-            let staves = TrackStaves::from_id(&text)
-                .ok_or_else(|| bad(args.command, "staves", &text, "both, tab or notation"))?;
+            let staves = TrackStaves::from_id(&text).ok_or_else(|| {
+                bad(
+                    args.command,
+                    "staves",
+                    &text,
+                    "both, tab, notation, tab+slash, notation+slash, both+slash or slash",
+                )
+            })?;
             Ok(Command::SetTrackStaves { track, staves })
         }
         "set_master_volume" => Ok(Command::SetMasterVolume {
@@ -414,6 +420,40 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             Ok(Command::SetFermata {
                 measure: MeasureIndex::new(required_position(args, "measure")?),
                 fermata,
+            })
+        }
+        "set_clef" => {
+            let text = args.required("clef")?;
+            let clef = Clef::from_id(&text)
+                .ok_or_else(|| bad(args.command, "clef", &text, "treble, bass, alto or tenor"))?;
+            Ok(Command::SetClef {
+                track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+                measure: MeasureIndex::new(required_position(args, "measure")?),
+                clef,
+            })
+        }
+        "set_free_time" => Ok(Command::SetFreeTime {
+            measure: MeasureIndex::new(required_position(args, "measure")?),
+            free_time: bool_arg(args, "free_time")?,
+        }),
+        "set_simile_mark" => {
+            let text = args.required("mark")?;
+            let mark = if text == "none" {
+                None
+            } else {
+                Some(SimileMark::from_id(&text).ok_or_else(|| {
+                    bad(
+                        args.command,
+                        "mark",
+                        &text,
+                        "none, simple, first_of_double or second_of_double",
+                    )
+                })?)
+            };
+            Ok(Command::SetSimileMark {
+                track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+                measure: MeasureIndex::new(required_position(args, "measure")?),
+                mark,
             })
         }
         "set_note_effect" => {

@@ -52,7 +52,7 @@ impl Playback {
     }
 
     /// Loads and plays `excerpt` in place of the song.
-    fn play_excerpt(&mut self, excerpt: Arc<Sequence>) -> Result<(), String> {
+    pub(super) fn play_excerpt(&mut self, excerpt: Arc<Sequence>) -> Result<(), String> {
         self.end_audition();
         let rest = self.preview.unwrap_or_else(|| self.output_position());
         let player = self.player_mut()?;
@@ -64,6 +64,7 @@ impl Playback {
         self.preview_sequence = Some(excerpt);
         // The song's sequence is no longer loaded: the next play loads it again.
         self.sequence = None;
+        self.lead = None;
         self.preview = Some(rest);
         Ok(())
     }

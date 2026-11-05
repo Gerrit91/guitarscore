@@ -77,7 +77,8 @@ fn sized_tile(
     } else {
         (Color32::TRANSPARENT, tokens.text)
     };
-    let ink = if enabled {
+    // A chosen tile that cannot be switched off (the last staff left) still reads as on.
+    let ink = if enabled || selected {
         ink
     } else {
         tokens.text_weak.gamma_multiply(0.6)

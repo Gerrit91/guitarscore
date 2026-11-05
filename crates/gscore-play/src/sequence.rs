@@ -13,6 +13,7 @@ use gscore_model::{
 };
 
 use crate::build;
+use crate::click::Click;
 use crate::event::{Channel, MidiEvent, PITCH_BEND_CENTER, controller};
 use crate::swing;
 use crate::tempo::{PPQ, TempoMap};
@@ -101,6 +102,16 @@ impl Sequence {
         tracks: Option<&[TrackIndex]>,
         metronome: bool,
     ) -> Result<Self, ModelError> {
+        Self::with_click(song, tracks, metronome.then(Click::default))
+    }
+
+    /// Like [`Sequence::with_metronome`], clicking as `click` says (`None`: no metronome).
+    /// At volume 0 the metronome is silent even though it is on.
+    pub fn with_click(
+        song: &Song,
+        tracks: Option<&[TrackIndex]>,
+        click: Option<Click>,
+    ) -> Result<Self, ModelError> {
         // When each played measure starts, by its time signature.
         let (measures, tick) = crate::timeline::measure_spans(song)?;
 
@@ -129,9 +140,14 @@ impl Sequence {
         let mut events = collected.setup;
         build::emit(&collected.notes, &collected.tracks, &mut events);
         tempo_changes.extend(collected.tempo_changes);
-        if metronome {
+        if let Some(click) = click {
+            events.push(crate::click::sound_event(click.sound, 0));
             for span in &measures {
-                events.extend(crate::click::click_events(*span));
+                // Free time has no metronome, as in Guitar Pro.
+                if song.free_time(span.measure) == Some(true) {
+                    continue;
+                }
+                events.extend(crate::click::click_events_at(*span, click.volume));
             }
         }
         events.sort_by_key(|e| (e.tick, rank(&e.event)));

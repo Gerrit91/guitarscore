@@ -187,7 +187,7 @@ fn arrowheads(layout: &Layout) -> usize {
 
 #[test]
 fn beat_effects_are_drawn_on_the_tab() {
-    let layout = layout_with(&effects_song(), TrackStaves::TabOnly);
+    let layout = layout_with(&effects_song(), TrackStaves::TAB_ONLY);
     assert_eq!(glyph_count(&layout, Glyph::DownStroke), 1);
     assert_eq!(glyph_count(&layout, Glyph::UpStroke), 1);
     let texts = texts(&layout);
@@ -201,7 +201,7 @@ fn beat_effects_are_drawn_on_the_tab() {
 
 #[test]
 fn the_notation_staff_shows_the_articulations() {
-    let layout = layout_with(&effects_song(), TrackStaves::NotationAndTab);
+    let layout = layout_with(&effects_song(), TrackStaves::NOTATION_AND_TAB);
     assert_eq!(
         glyph_count(&layout, Glyph::AccentAbove) + glyph_count(&layout, Glyph::AccentBelow),
         1
@@ -234,7 +234,7 @@ fn the_notation_staff_shows_the_articulations() {
 
 #[test]
 fn a_notation_only_staff_keeps_the_beat_effects() {
-    let layout = layout_with(&effects_song(), TrackStaves::NotationOnly);
+    let layout = layout_with(&effects_song(), TrackStaves::NOTATION_ONLY);
     assert_eq!(glyph_count(&layout, Glyph::DownStroke), 1);
     assert_eq!(glyph_count(&layout, Glyph::UpStroke), 1);
     let texts = texts(&layout);
@@ -290,7 +290,7 @@ fn articulations_sit_opposite_the_stem() {
             )
             .unwrap();
     }
-    let layout = layout_with(&song, TrackStaves::NotationAndTab);
+    let layout = layout_with(&song, TrackStaves::NOTATION_AND_TAB);
     assert_eq!(glyph_count(&layout, Glyph::AccentBelow), 1);
     assert_eq!(glyph_count(&layout, Glyph::AccentAbove), 1);
 }
@@ -300,7 +300,7 @@ fn a_legato_beat_run_gets_a_slur_on_the_notation_staff() {
     let note = [TestNote::new(2, 3)];
     let mut song = song_with_notes(&[(4, &note), (4, &note), (4, &note)]).unwrap();
     let curves = |song: &Song| {
-        layout_with(song, TrackStaves::NotationOnly)
+        layout_with(song, TrackStaves::NOTATION_ONLY)
             .ops
             .iter()
             .filter(|op| matches!(op, DrawOp::Curve { .. }))

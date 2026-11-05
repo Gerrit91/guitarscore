@@ -21,6 +21,13 @@ const LEDGER_BELOW: i32 = -2;
 const LEDGER_ABOVE: i32 = 10;
 /// Space between the system start and the clef, and after the clef.
 const CLEF_GAPS: (f32, f32) = (0.6, 1.0);
+/// Room before the first measure of a slash staff on its own (it has no clef).
+pub(crate) const SLASH_PREFIX: f32 = 1.5;
+/// Half the length of a rhythm slash along its stroke, and the stroke's thickness.
+const SLASH_HALF: f32 = 0.55;
+const SLASH_THICKNESS: f32 = 0.24;
+/// The line of a hollow (half or whole) rhythm slash's outline.
+const SLASH_OUTLINE: f32 = 0.1;
 /// Space between a clef and a key signature, and between a key signature and the first
 /// measure.
 pub(crate) const KEY_GAPS: (f32, f32) = (0.3, 0.6);
@@ -180,10 +187,28 @@ pub(crate) fn draw_tie_curve(
     });
 }
 
-/// Room from a system start to where a key signature starts: the clef and the gap after it.
+/// Room a clef change takes at a measure start: the clef and the gap after it.
+pub(crate) fn clef_change_width(clef: Clef, ctx: &Context<'_>) -> f32 {
+    let (glyph, _) = clef.glyph();
+    CLEF_GAPS.0 + ctx.fonts.music.advance(glyph) + CLEF_GAPS.1
+}
+
+/// Draws a clef change at a measure start whose left edge is `x`.
+pub(crate) fn draw_clef_change(x: f32, top: f32, clef: Clef, ops: &mut Vec<DrawOp>) {
+    let (glyph, position) = clef.glyph();
+    ops.push(DrawOp::Glyph {
+        glyph,
+        at: Point::new(x + CLEF_GAPS.0, y_of(top, position)),
+        scale: 1.0,
+        color: ColorToken::Notation,
+    });
+}
+
+/// Room from a system start to where its first measure draws a key signature: the clef
+/// (the measure keeps the gap before the signature itself).
 pub(crate) fn key_start_width(clef: Clef, ctx: &Context<'_>) -> f32 {
     let (glyph, _) = clef.glyph();
-    CLEF_GAPS.0 + ctx.fonts.music.advance(glyph) + KEY_GAPS.0
+    CLEF_GAPS.0 + ctx.fonts.music.advance(glyph)
 }
 
 /// The room the clef takes at the start of a system; with a key signature that starts the
@@ -229,7 +254,8 @@ pub(crate) fn draw_staff_start(
 pub(crate) fn tab_prefix_width(key: i8, key_drawn_by_measure: bool, ctx: &Context<'_>) -> f32 {
     let clef = ctx.staff.clef_width(&ctx.fonts.music);
     if key_drawn_by_measure {
-        return clef + KEY_GAPS.0;
+        // The measure keeps the gap before its key signature itself.
+        return clef;
     }
     match KeySigLayout::plain(Clef::Treble, key, true, ctx) {
         Some(key_signature) => clef + KEY_GAPS.0 + key_signature.width + KEY_GAPS.1,
@@ -334,7 +360,12 @@ pub(crate) fn draw_measure(
     for (i, p) in placed.iter().enumerate() {
         let stem = stems.get(i).copied().flatten();
         match p.item {
-            NotationItem::Rest { glyph, dots, .. } => draw_rest(p.x, *glyph, *dots, top, ctx, ops),
+            NotationItem::Rest {
+                glyph,
+                dots,
+                on_line,
+                ..
+            } => draw_rest(p.x, *glyph, *dots, *on_line, top, ctx, ops),
             NotationItem::Chord(chord) => {
                 let up = stem.is_none_or(|s| s.up);
                 draw_heads(p.x, chord, up, top, ctx, ops);
@@ -484,6 +515,27 @@ fn free_end(chord: &Chord, up: bool, top: f32) -> f32 {
 
 /// The stem's x and its end at the noteheads, from the notehead's stem anchors.
 fn stem_for(chord: &Chord, x: f32, up: bool, top: f32, ctx: &Context<'_>) -> Stem {
+    if chord.slash {
+        // The stem leaves the slash at its end on the stem's side: the upper right end
+        // for a stem up, the lower left end for a stem down.
+        let y = y_of(top, MIDDLE);
+        let half = SLASH_HALF;
+        return if up {
+            Stem {
+                up,
+                x: x + half,
+                from: y - half,
+                to: 0.0,
+            }
+        } else {
+            Stem {
+                up,
+                x: x - half,
+                from: y + half,
+                to: 0.0,
+            }
+        };
+    }
     let font = &ctx.fonts.music;
     let glyph = chord
         .heads
@@ -513,8 +565,47 @@ fn stem_for(chord: &Chord, x: f32, up: bool, top: f32, ctx: &Context<'_>) -> Ste
     }
 }
 
+/// A rhythm slash centered on (`x`, `y`), rising to the right: a thick stroke, or for a
+/// half or whole note (`hollow`) its outline, as Guitar Pro writes them.
+fn draw_rhythm_slash(x: f32, y: f32, hollow: bool, ops: &mut Vec<DrawOp>) {
+    let (low, high) = (
+        Point::new(x - SLASH_HALF, y + SLASH_HALF),
+        Point::new(x + SLASH_HALF, y - SLASH_HALF),
+    );
+    if !hollow {
+        ops.push(DrawOp::Line {
+            from: low,
+            to: high,
+            thickness: SLASH_THICKNESS,
+            color: ColorToken::Notation,
+        });
+        return;
+    }
+    // The outline of the same stroke: its two long sides and its flat ends.
+    let side = SLASH_THICKNESS * 0.75;
+    let shift = |point: Point, dx: f32| Point::new(point.x + dx, point.y);
+    let corners = [
+        shift(low, -side),
+        shift(high, -side),
+        shift(high, side),
+        shift(low, side),
+    ];
+    for (&from, &to) in corners.iter().zip(corners.iter().cycle().skip(1)) {
+        ops.push(DrawOp::Line {
+            from,
+            to,
+            thickness: SLASH_OUTLINE,
+            color: ColorToken::Notation,
+        });
+    }
+}
+
 /// Noteheads (seconds side by side), ledger lines, accidentals and dots.
 fn draw_heads(x: f32, chord: &Chord, up: bool, top: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
+    if chord.slash {
+        draw_rhythm_slash(x, y_of(top, MIDDLE), chord.value <= 2, ops);
+        return;
+    }
     let font = &ctx.fonts.music;
     let engraving = font.engraving();
     // Which heads move beside the stem: in a second, the upper one with an up-stem, the
@@ -641,10 +732,19 @@ fn draw_dot(x: f32, y: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
 
 /// A rest: the whole rest hangs from the fourth line, the half rest sits on the middle
 /// line, the others are centered on the staff.
-fn draw_rest(x: f32, glyph: Glyph, dots: u8, top: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
+fn draw_rest(
+    x: f32,
+    glyph: Glyph,
+    dots: u8,
+    on_line: bool,
+    top: f32,
+    ctx: &Context<'_>,
+    ops: &mut Vec<DrawOp>,
+) {
     let font = &ctx.fonts.music;
     let bbox = font.bbox(glyph);
     let y = match glyph {
+        Glyph::RestWhole if on_line => y_of(top, MIDDLE),
         Glyph::RestWhole => y_of(top, MIDDLE + 2),
         Glyph::RestHalf => y_of(top, MIDDLE),
         _ => y_of(top, MIDDLE) + bbox.middle_above_origin(),

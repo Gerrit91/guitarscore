@@ -12,13 +12,14 @@ use gscore_play::PlayState;
 use super::GuitarScoreApp;
 use super::page_menu::{self, MenuChoice};
 use crate::canvas::{self, Arrangement, POINTS_PER_SPACE};
+use crate::state::ScoreView;
 
 /// How strongly the selection color is laid over the page: the shade the cursor's band and
 /// the selection made together, used for the whole selection.
 const SELECTION_ALPHA: f32 = 0.32;
 
 /// Space around the page inside the view, in points.
-const PAGE_MARGIN: f32 = 24.0;
+const PAGE_MARGIN: f32 = 32.0;
 /// Room kept above the playing line when the view turns over during playback, in staff
 /// spaces: the bar numbers, section names and tempo marks above the staff stay in view.
 const TURN_HEADROOM: f32 = 7.0;
@@ -46,6 +47,51 @@ fn cursor_scroll(
     Some((line, Some(Align::TOP)))
 }
 
+/// How the horizontal screen (one endless line) turns over while playing: nothing moves
+/// until the playing `column` leaves `visible`; then it goes to the left edge with `room`
+/// points before it, so the next screenful follows. The view keeps its height.
+fn screen_turn(column: Rect, visible: Rect, room: f32) -> Option<(Rect, Option<Align>)> {
+    if visible.x_range().contains(column.left()) && visible.x_range().contains(column.right()) {
+        return None;
+    }
+    let target = Rect::from_min_max(
+        egui::pos2(column.left() - room, visible.top()),
+        egui::pos2(column.right(), visible.bottom()),
+    );
+    Some((target, Some(Align::Min)))
+}
+
+/// The selection drawn on the page: none while playing, as it would cover the playing
+/// note. It stays selected (a loop plays it) and shows again once playback pauses or stops.
+fn shown_selection(selection: Option<Selection>, playing: bool) -> Option<Selection> {
+    selection.filter(|_| !playing)
+}
+
+/// Where side-by-side pages scroll to show the cursor `column` on `page`: the whole page
+/// when it fits in `visible`; else the page's left part with the column's line at the top
+/// (`headroom` above it), as the vertical view turns over, so the column never ends up
+/// above or below the view. `None` when the column is already in view on its page.
+fn page_scroll(
+    page: Rect,
+    column: Rect,
+    visible: Rect,
+    headroom: f32,
+) -> Option<(Rect, Option<Align>)> {
+    let fits = page.height() <= visible.height() && page.width() <= visible.width();
+    if fits {
+        return (!visible.contains_rect(page)).then_some((page, None));
+    }
+    if visible.contains_rect(column) {
+        return None;
+    }
+    let right = page.right().min(page.left() + visible.width());
+    let target = Rect::from_min_max(
+        egui::pos2(page.left(), column.top() - headroom),
+        egui::pos2(right, column.bottom()),
+    );
+    Some((target, Some(Align::TOP)))
+}
+
 impl GuitarScoreApp {
     /// The page, scrollable, centered horizontally.
     pub(super) fn page_view(&mut self, ui: &mut egui::Ui) {
@@ -71,10 +117,38 @@ impl GuitarScoreApp {
             .options
             .clone()
             .with_page_setup(&document.song().page_setup());
-        let options = if self.view.page_view {
+        let score_view = self.view.score_view;
+        let zoom = self.view.zoom();
+        let options = if score_view.on_pages() {
             options.on_pages()
         } else {
             options
+        };
+        // The vertical screen view fills the window instead of keeping the paper width;
+        // the horizontal one gets its width from the whole score on one line.
+        let options = if score_view == ScoreView::ScreenVertical {
+            let scale = POINTS_PER_SPACE * zoom;
+            // The surface and its margins fill the room left beside the scroll bar
+            // exactly, so the view never scrolls sideways and keeps clear of the panels.
+            let room =
+                ui.available_width() - 2.0 * PAGE_MARGIN - ui.spacing().scroll.allocated_width();
+            let width = if scale > 0.0 {
+                room / scale
+            } else {
+                options.page_width
+            };
+            gscore_layout::LayoutOptions {
+                page_width: width.max(20.0),
+                margin_left: 2.0,
+                margin_right: 2.0,
+                ..options
+            }
+        } else {
+            options
+        };
+        let options = gscore_layout::LayoutOptions {
+            single_line: score_view.single_line(),
+            ..options
         };
         // Empty staves may be left out, but never the cursor's: it must stay editable.
         let options = gscore_layout::LayoutOptions {
@@ -97,7 +171,7 @@ impl GuitarScoreApp {
         let cursor = document.editor().cursor();
         let revision = document.editor().revision();
         // The cursor's page, for the status bar.
-        tab.page_info = self.view.page_view.then(|| {
+        tab.page_info = score_view.on_pages().then(|| {
             let y = layout
                 .places
                 .column_rect(cursor.measure, cursor.voice, cursor.beat)
@@ -109,14 +183,18 @@ impl GuitarScoreApp {
                 .unwrap_or(0);
             (page.saturating_add(1), layout.pages.len())
         });
-        let zoom = self.view.zoom();
         let scale = POINTS_PER_SPACE * zoom;
         let theme = self.view.theme.palette();
         let mut clicked: Option<Point> = None;
         let mut drag_to: Option<Cursor> = None;
         let mut choices: Vec<MenuChoice> = Vec::new();
         let playing = self.playback.state() == PlayState::Playing;
-        let in_selection = document.editor().selection().is_some_and(|selection| {
+        // The vertical views turn over while playing: once the playing line leaves the
+        // view, it goes to the top. Pages side by side turn page by page, and the
+        // horizontal screen screen by screen (`screen_turn`).
+        let turn_pages = playing && score_view.turns_pages();
+        let shown_selection = shown_selection(document.editor().selection(), playing);
+        let in_selection = shown_selection.is_some_and(|selection| {
             selection
                 .positions(document.song())
                 .contains(&cursor.position())
@@ -132,14 +210,18 @@ impl GuitarScoreApp {
             tab.selection = None;
         }
         let scroll_to_cursor = tab.shown_cursor != Some((cursor, revision));
-        let page_view = self.view.page_view;
         ScrollArea::both().auto_shrink(false).show(ui, |ui| {
             let available = ui.available_width();
-            // Zoomed out, as many pages side by side as fit.
-            let arrangement = if page_view {
-                Arrangement::fitting(&layout, available - 2.0 * PAGE_MARGIN, zoom)
-            } else {
-                Arrangement::new(&layout, 1)
+            let arrangement = match score_view {
+                ScoreView::PageHorizontal => Arrangement::new(&layout, layout.pages.len()),
+                // Zoomed out, as many pages side by side as fit.
+                ScoreView::PageGrid => {
+                    Arrangement::fitting(&layout, available - 2.0 * PAGE_MARGIN, zoom)
+                }
+                // One page, endless surface, or one horizontal line.
+                ScoreView::PageVertical
+                | ScoreView::ScreenVertical
+                | ScoreView::ScreenHorizontal => Arrangement::new(&layout, 1),
             };
             let page = canvas::page_size(&layout, &arrangement, zoom);
             let size = egui::vec2(
@@ -150,6 +232,14 @@ impl GuitarScoreApp {
             ui.ctx()
                 .accesskit_node_builder(response.id, |node| node.set_label("Score page"));
             let origin = egui::pos2(rect.center().x - page.x / 2.0, rect.top() + PAGE_MARGIN);
+            // The screen views are paper from edge to edge: no pages, no canvas around them.
+            let surface = if score_view.on_pages() {
+                canvas::Surface::Pages
+            } else {
+                ui.painter()
+                    .rect_filled(ui.clip_rect(), 0.0, canvas::color(theme.paper));
+                canvas::Surface::Screen
+            };
             let painter = ui.painter_at(rect);
             canvas::paint(
                 &painter,
@@ -159,11 +249,12 @@ impl GuitarScoreApp {
                 theme,
                 zoom,
                 ui.clip_rect(),
+                surface,
             );
             // A position on the screen as a point of the layout.
             let to_layout = |pos: egui::Pos2| arrangement.layout_point((pos - origin) / scale);
             // The selection: one solid band per system line it touches.
-            if let Some(selection) = document.editor().selection() {
+            if let Some(selection) = shown_selection {
                 for band in
                     selection_bands(&layout.places, document.song(), selection, cursor.track)
                 {
@@ -203,11 +294,37 @@ impl GuitarScoreApp {
                 // the rest; the selection's one shade covers it already.
                 let column_band = (!in_selection).then_some(column);
                 canvas::paint_cursor(&painter, column_band, string, theme);
-                if scroll_to_cursor
-                    && let Some((target, align)) =
-                        cursor_scroll(column, ui.clip_rect(), playing, TURN_HEADROOM * scale)
-                {
-                    ui.scroll_to_rect(target, align);
+                if scroll_to_cursor {
+                    if score_view.pages_side_by_side() {
+                        // Side-by-side pages follow page by page: bring the whole page
+                        // into view instead of sliding a line to the top and cutting the
+                        // page's top and bottom off.
+                        let y = layout
+                            .places
+                            .column_rect(cursor.measure, cursor.voice, cursor.beat)
+                            .map_or(0.0, |rect| rect.origin.y);
+                        if let Some(page) =
+                            layout.pages.iter().rev().find(|page| page.origin.y <= y)
+                            && let Some((target, align)) = page_scroll(
+                                to_screen(*page),
+                                column,
+                                ui.clip_rect(),
+                                TURN_HEADROOM * scale,
+                            )
+                        {
+                            ui.scroll_to_rect(target, align);
+                        }
+                    } else if playing && score_view.single_line() {
+                        if let Some((target, align)) =
+                            screen_turn(column, ui.clip_rect(), TURN_HEADROOM * scale)
+                        {
+                            ui.scroll_to_rect(target, align);
+                        }
+                    } else if let Some((target, align)) =
+                        cursor_scroll(column, ui.clip_rect(), turn_pages, TURN_HEADROOM * scale)
+                    {
+                        ui.scroll_to_rect(target, align);
+                    }
                 }
             }
             // What the pointer is on: the beat and string of whichever track's staves.
@@ -440,7 +557,7 @@ mod tests {
     use gscore_edit::{BeatSpot, Selection};
     use gscore_layout::{BeatPlace, MeasurePlace, Places, SystemPlace};
 
-    use super::cursor_scroll;
+    use super::{cursor_scroll, page_scroll, screen_turn, shown_selection};
     use egui::Rect;
 
     #[test]
@@ -463,6 +580,69 @@ mod tests {
         let (target, align) = cursor_scroll(column(-400.0), visible, true, 30.0).unwrap();
         assert!((target.top() + 430.0).abs() < 1e-3);
         assert_eq!(align, Some(egui::Align::TOP));
+    }
+
+    #[test]
+    fn the_selection_is_hidden_while_playing() {
+        let selection = Some(Selection::Measures {
+            anchor: MeasureIndex::new(0),
+            focus: MeasureIndex::new(1),
+        });
+        assert_eq!(shown_selection(selection, false), selection);
+        assert_eq!(shown_selection(selection, true), None);
+    }
+
+    #[test]
+    fn the_horizontal_screen_turns_over_a_screen_at_a_time() {
+        let visible = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
+        let column =
+            |left: f32| Rect::from_min_size(egui::pos2(left, 100.0), egui::vec2(4.0, 80.0));
+        // On screen: the view stays, however far right the column has moved.
+        assert_eq!(screen_turn(column(790.0), visible, 50.0), None);
+        // Off the right edge: it goes to the left edge, room before it, height kept.
+        let (target, align) = screen_turn(column(798.0), visible, 50.0).unwrap();
+        assert_eq!(align, Some(egui::Align::Min));
+        assert!((target.left() - 748.0).abs() < 1e-3);
+        assert!((target.top() - visible.top()).abs() < 1e-3);
+        assert!((target.bottom() - visible.bottom()).abs() < 1e-3);
+        // A repeat jumps back left of the view: the same.
+        let (target, _) = screen_turn(column(-500.0), visible, 50.0).unwrap();
+        assert!((target.left() + 550.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn side_by_side_pages_keep_the_playing_line_in_view() {
+        let visible = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1600.0, 600.0));
+        let page = |left: f32| Rect::from_min_size(egui::pos2(left, 0.0), egui::vec2(700.0, 990.0));
+        let column =
+            |left: f32, top: f32| Rect::from_min_size(egui::pos2(left, top), egui::vec2(4.0, 80.0));
+        // The page is taller than the view: the playing line is shown, not the page's top
+        // or bottom wherever the last page left the view.
+        let (target, align) = page_scroll(page(1500.0), column(1600.0, 60.0), visible, 30.0)
+            .expect("the next page is out of view");
+        assert_eq!(align, Some(egui::Align::TOP));
+        assert!(
+            (target.top() - 30.0).abs() < 1e-3,
+            "the line goes to the top"
+        );
+        assert!(
+            (target.left() - 1500.0).abs() < 1e-3,
+            "the page's left edge"
+        );
+        // A line further down the same page, already visible: the view stays.
+        assert_eq!(
+            page_scroll(page(0.0), column(100.0, 400.0), visible, 30.0),
+            None
+        );
+        // Below the view: turned over, that line to the top.
+        let (target, _) = page_scroll(page(0.0), column(100.0, 700.0), visible, 30.0).unwrap();
+        assert!((target.top() - 670.0).abs() < 1e-3);
+        // A page that fits is shown whole.
+        let small = Rect::from_min_size(egui::pos2(1700.0, 0.0), egui::vec2(700.0, 500.0));
+        assert_eq!(
+            page_scroll(small, column(1800.0, 60.0), visible, 30.0),
+            Some((small, None))
+        );
     }
     use gscore_model::testing::{self, GUITAR_6};
     use gscore_model::{BeatIndex, MeasureIndex, TrackIndex, VoiceIndex};

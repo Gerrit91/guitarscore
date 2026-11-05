@@ -65,17 +65,23 @@ fn a_preset_color_and_the_staves_are_one_click_each() {
     undo(&mut harness);
     assert_eq!(song(&harness).track(track).unwrap().color(), before);
 
-    harness.get_by_label("Tabs only").click();
+    harness.get_by_label("Tablature").click();
     harness.run();
     assert_eq!(
         song(&harness).track(track).unwrap().staves(),
-        TrackStaves::TabOnly
+        TrackStaves::NOTATION_ONLY
     );
-    harness.get_by_label("Notes only").click();
+    harness.get_by_label("Slash notation").click();
     harness.run();
     assert_eq!(
         song(&harness).track(track).unwrap().staves(),
-        TrackStaves::NotationOnly
+        TrackStaves::NOTATION_AND_SLASH
+    );
+    harness.get_by_label("Standard notation").click();
+    harness.run();
+    assert_eq!(
+        song(&harness).track(track).unwrap().staves(),
+        TrackStaves::SLASH_ONLY
     );
 }
 
@@ -269,4 +275,10 @@ fn a_click_in_the_song_grid_while_playing_jumps_there() {
     harness.step();
     wait_for_position(&harness, measure_start(2));
     harness.state_mut().playback_mut().stop().unwrap();
+}
+
+#[test]
+fn the_sound_section_is_a_placeholder_for_now() {
+    let harness = app_with("basic/note_lengths.gp");
+    harness.get_by_label("Coming soon!");
 }

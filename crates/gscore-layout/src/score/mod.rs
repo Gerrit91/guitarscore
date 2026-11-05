@@ -164,6 +164,7 @@ pub(crate) fn layout_with(
                 .bars_per_system()
                 .filter(|_| !multi)
                 .map(usize::from),
+            single_line: options.single_line,
         },
     );
     // Per system, which tracks are drawn: all, unless empty staves are hidden; then a
@@ -289,6 +290,7 @@ pub(crate) fn layout_with(
 
     let mut drawn: Vec<Drawn> = parts.iter().map(|_| Drawn::new(count)).collect();
     let mut bottom = header_end;
+    let mut rightmost = 0.0_f32;
     for (index, plan) in plans.iter().enumerate() {
         let left = options.margin_left;
         let x = left
@@ -327,6 +329,10 @@ pub(crate) fn layout_with(
                 rows: part_rows,
                 numbers: part_index == first_shown(index),
                 key: keys.get(plan.measures.start).copied().unwrap_or_default(),
+                clef: part
+                    .measures
+                    .get(plan.measures.start)
+                    .map_or(crate::notation::Clef::Treble, |measure| measure.clef()),
                 last_measure: count,
             };
             draw_part(part, &system, drawn, &mut ops);
@@ -356,17 +362,29 @@ pub(crate) fn layout_with(
                 color: ColorToken::Barline,
             });
         }
+        let line_width: f32 = plan
+            .measures
+            .clone()
+            .filter_map(|index| widths.get(index))
+            .map(|width| width.fixed + width.stretchable * plan.stretch)
+            .sum();
+        rightmost = rightmost.max(x + line_width);
     }
     for (part, drawn) in parts.iter().zip(&drawn) {
         draw_barline_ties(part, drawn, &mut ops);
     }
 
+    let width = if options.single_line {
+        rightmost + options.margin_right
+    } else {
+        options.page_width
+    };
     let (pages, height) = if placement.pages.is_empty() {
         let height = bottom + options.margin_bottom;
         (
             vec![Rect {
                 origin: Point::new(0.0, 0.0),
-                width: options.page_width,
+                width,
                 height,
             }],
             height,
@@ -395,7 +413,7 @@ pub(crate) fn layout_with(
         .map(|t| t.places.clone())
         .unwrap_or_default();
     Ok(Layout {
-        width: options.page_width,
+        width,
         height,
         pages,
         ops,

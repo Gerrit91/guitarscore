@@ -2,9 +2,10 @@
 //! its page shows.
 
 use gscore_edit::Command;
-use gscore_model::{TrackColor, TrackIndex, TrackStaves};
+use gscore_model::{TrackColor, TrackIndex};
 
 use super::TrackPanel;
+use crate::app::tiles::{self, Face};
 use crate::app::{style, swatches};
 
 /// The track color: one click on a preset, or the color picker for any other.
@@ -42,7 +43,27 @@ pub(super) fn color(
     chosen
 }
 
-/// Notes and tabs, tabs only, or notes only.
+/// The tile of standard notation: a treble clef.
+pub(in crate::app) const NOTATION_FACE: Face<'static> = Face::Glyph {
+    text: "\u{E050}",
+    size: 17.0,
+    baseline: 4.0,
+};
+/// The tile of tablature: the tab clef.
+pub(in crate::app) const TABLATURE_FACE: Face<'static> = Face::Glyph {
+    text: "\u{E06D}",
+    size: 17.0,
+    baseline: 0.0,
+};
+/// The tile of slash notation: a rhythm slash, as the slash staff writes a beat.
+pub(in crate::app) const SLASH_FACE: Face<'static> = Face::Glyph {
+    text: "\u{E101}",
+    size: 34.0,
+    baseline: 0.0,
+};
+
+/// Three independent switches — standard notation, tablature and slash notation — with at
+/// least one always on.
 pub(super) fn staves(
     ui: &mut egui::Ui,
     index: usize,
@@ -50,37 +71,78 @@ pub(super) fn staves(
     commands: &mut Vec<(Command, bool)>,
 ) {
     ui.add_space(4.0);
-    ui.label(egui::RichText::new("Show").color(style::tokens(ui).text_weak));
     // A drum kit is always written on a percussion staff; there is nothing to choose.
     if snapshot.percussion {
         ui.label(egui::RichText::new("Percussion staff").color(style::tokens(ui).text_weak));
         return;
     }
-    // Notation needs a tuning: without one, tabs only.
+    // Notation needs a tuning; slash notation does not.
     let notation_possible = !snapshot.tuning.is_empty();
-    ui.horizontal_wrapped(|ui| {
-        for staves in TrackStaves::ALL {
-            let enabled = notation_possible || staves == TrackStaves::TabOnly;
-            let shown = if notation_possible {
-                snapshot.staves
+    let staves = snapshot.staves;
+    let count = staves.count();
+    let track = TrackIndex::new(index);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        for (staff, face, label, tip, on, possible) in [
+            (
+                Staff::Notation,
+                NOTATION_FACE,
+                "Standard notation",
+                "Show standard notation",
+                staves.notation(),
+                notation_possible,
+            ),
+            (
+                Staff::Tablature,
+                TABLATURE_FACE,
+                "Tablature",
+                "Show the tablature",
+                staves.tablature(),
+                true,
+            ),
+            (
+                Staff::Slash,
+                SLASH_FACE,
+                "Slash notation",
+                "Show rhythm slashes instead of pitches",
+                staves.slash(),
+                true,
+            ),
+        ] {
+            let last_one = on && count == 1;
+            let enabled = possible && !last_one;
+            let tip = if last_one {
+                format!("{tip}\nAt least one staff must stay on")
+            } else if !possible {
+                format!("{tip}\nThis track has no tuning to write notes from")
             } else {
-                TrackStaves::TabOnly
+                tip.to_owned()
             };
-            let response = ui
-                .add_enabled(
-                    enabled,
-                    egui::Button::selectable(shown == staves, staves.label()),
-                )
-                .on_disabled_hover_text("This track has no tuning to write notes from");
-            if response.clicked() && staves != snapshot.staves {
-                commands.push((
-                    Command::SetTrackStaves {
-                        track: TrackIndex::new(index),
-                        staves,
-                    },
-                    false,
-                ));
+            let response = tiles::tile(ui, face, on, enabled, label, &tip);
+            if response.clicked() && enabled {
+                let next = match staff {
+                    Staff::Notation => staves.with_notation(!on),
+                    Staff::Tablature => staves.with_tablature(!on),
+                    Staff::Slash => staves.with_slash(!on),
+                };
+                if next != staves {
+                    commands.push((
+                        Command::SetTrackStaves {
+                            track,
+                            staves: next,
+                        },
+                        false,
+                    ));
+                }
             }
         }
     });
+}
+
+/// The three staves a track can show.
+#[derive(Debug, Clone, Copy)]
+enum Staff {
+    Notation,
+    Tablature,
+    Slash,
 }

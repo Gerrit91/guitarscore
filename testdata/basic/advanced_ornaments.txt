@@ -1,4 +1,4 @@
-Title: Basic Ornaments
+Title: Advanced Ornaments
 SubTitle: Test Material
 Artist: GuitarScore
 Album: Basic Tests
