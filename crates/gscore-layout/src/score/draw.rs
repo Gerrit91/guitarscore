@@ -77,9 +77,13 @@ pub(super) fn draw_part(
     let rows = system.rows;
     let top = system.top;
     let tab_top = top + part.tab_offset(system.plan_measures.clone());
+    let slash_top = part
+        .show_slash
+        .then(|| top + part.slash_offset(system.plan_measures.clone()));
     let tops = Tops {
         tab: tab_top,
         notation: ctx.notation.map(|_| top),
+        slash: slash_top,
         show_tab,
         numbers: system.numbers,
         // Beat effects go above the notation staff, below the rows of text marks, or in a
@@ -167,12 +171,15 @@ pub(super) fn draw_part(
             .saturating_add(1)
             == system.last_measure;
         let end_repeat = measure_marks.repeat.end_repeats.is_some();
-        let mut staves: Vec<(&Staff, f32)> = Vec::with_capacity(2);
+        let mut staves: Vec<(&Staff, f32)> = Vec::with_capacity(3);
         if show_tab {
             staves.push((&ctx.staff, tab_top));
         }
         if let Some(notation_top) = tops.notation {
             staves.push((&notation_staff, notation_top));
+        }
+        if let Some(slash_top) = tops.slash {
+            staves.push((&notation_staff, slash_top));
         }
         for (staff, staff_top) in staves {
             if measure_marks.repeat.start {
@@ -249,6 +256,13 @@ pub(super) fn draw_part(
         });
     } else {
         ctx.staff.draw_start_line(left, tab_top, font, ops);
+    }
+    if let Some(slash_top) = tops.slash {
+        notation_staff.draw_lines(slash_top, left, x, font, ops);
+        let clef = ctx
+            .notation
+            .map_or(notation::Clef::Treble, |notation| notation.clef);
+        notation::draw_staff_start(left, slash_top, clef, key, key_drawn_by_measure, ctx, ops);
     }
     ops.append(&mut content);
 }

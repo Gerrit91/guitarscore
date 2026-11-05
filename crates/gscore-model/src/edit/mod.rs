@@ -251,10 +251,11 @@ enum ChangeKind {
         measure: MeasureIndex,
         previous: Vec<(String, String)>,
     },
-    /// A track's notation and tab switches changed; `previous` is `(notation, tablature)`.
+    /// A track's notation, tab and slash switches changed; `previous` is
+    /// `(notation, tablature, slash)`.
     TrackStaves {
         at: TrackIndex,
-        previous: (bool, bool),
+        previous: (bool, bool, bool),
     },
     /// The master volume and pan changed (`None`: the song had none).
     MasterMix { previous: Option<(f32, f32)> },
@@ -865,7 +866,11 @@ impl Song {
             ChangeKind::TrackStaves { at, previous } => {
                 self.edit_track_settings(|inner| {
                     let track = track_mut(inner, *at)?;
-                    (track.settings.notation, track.settings.tablature) = *previous;
+                    (
+                        track.settings.notation,
+                        track.settings.tablature,
+                        track.settings.slash,
+                    ) = *previous;
                     Ok(())
                 })?;
                 self.touch_all_measures();

@@ -1065,16 +1065,16 @@ fn choosing_staves_is_undoable() {
     editor
         .execute(Command::SetTrackStaves {
             track,
-            staves: gscore_model::TrackStaves::NotationOnly,
+            staves: gscore_model::TrackStaves::NOTATION_ONLY,
         })
         .unwrap();
     assert_eq!(
         editor.song().track(track).unwrap().staves(),
-        gscore_model::TrackStaves::NotationOnly
+        gscore_model::TrackStaves::NOTATION_ONLY
     );
     editor.undo().unwrap();
     assert_eq!(
         editor.song().track(track).unwrap().staves(),
-        gscore_model::TrackStaves::NotationAndTab
+        gscore_model::TrackStaves::NOTATION_AND_TAB
     );
 }

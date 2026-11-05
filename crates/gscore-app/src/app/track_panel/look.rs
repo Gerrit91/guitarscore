@@ -2,7 +2,7 @@
 //! its page shows.
 
 use gscore_edit::Command;
-use gscore_model::{TrackColor, TrackIndex, TrackStaves};
+use gscore_model::{TrackColor, TrackIndex};
 
 use super::TrackPanel;
 use crate::app::{style, swatches};
@@ -42,13 +42,15 @@ pub(super) fn color(
     chosen
 }
 
-/// Notes and tabs, tabs only, or notes only.
+/// Three independent switches — standard notation, tablature and slash notation — with at
+/// least one always on.
 pub(super) fn staves(
     ui: &mut egui::Ui,
     index: usize,
     snapshot: &TrackPanel,
     commands: &mut Vec<(Command, bool)>,
 ) {
+    use super::super::icons::{self, Icon};
     ui.add_space(4.0);
     ui.label(egui::RichText::new("Show").color(style::tokens(ui).text_weak));
     // A drum kit is always written on a percussion staff; there is nothing to choose.
@@ -56,30 +58,64 @@ pub(super) fn staves(
         ui.label(egui::RichText::new("Percussion staff").color(style::tokens(ui).text_weak));
         return;
     }
-    // Notation needs a tuning: without one, tabs only.
+    // Notation needs a tuning; slash notation does not.
     let notation_possible = !snapshot.tuning.is_empty();
-    ui.horizontal_wrapped(|ui| {
-        for staves in TrackStaves::ALL {
-            let enabled = notation_possible || staves == TrackStaves::TabOnly;
-            let shown = if notation_possible {
-                snapshot.staves
-            } else {
-                TrackStaves::TabOnly
-            };
-            let response = ui
-                .add_enabled(
-                    enabled,
-                    egui::Button::selectable(shown == staves, staves.label()),
-                )
-                .on_disabled_hover_text("This track has no tuning to write notes from");
-            if response.clicked() && staves != snapshot.staves {
-                commands.push((
-                    Command::SetTrackStaves {
-                        track: TrackIndex::new(index),
-                        staves,
-                    },
-                    false,
-                ));
+    let staves = snapshot.staves;
+    let count = staves.count();
+    let track = TrackIndex::new(index);
+    ui.horizontal(|ui| {
+        for (icon, label, tip, on, possible) in [
+            (
+                Icon::Notation,
+                "Standard notation",
+                "Show standard notation",
+                staves.notation(),
+                notation_possible,
+            ),
+            (
+                Icon::Tablature,
+                "Tablature",
+                "Show the tablature",
+                staves.tablature(),
+                true,
+            ),
+            (
+                Icon::Slash,
+                "Slash notation",
+                "Show rhythm slashes instead of pitches",
+                staves.slash(),
+                true,
+            ),
+        ] {
+            let last_one = on && count == 1;
+            let enabled = possible && !last_one;
+            let response =
+                ui.add_enabled_ui(enabled, |ui| icons::toggle_button(ui, icon, label, tip, on));
+            let response = response.inner;
+            if last_one {
+                response
+                    .clone()
+                    .on_hover_text("At least one staff must stay on");
+            } else if !possible {
+                response
+                    .clone()
+                    .on_hover_text("This track has no tuning to write notes from");
+            }
+            if response.clicked() && possible && !last_one {
+                let next = match icon {
+                    Icon::Notation => staves.with_notation(!on),
+                    Icon::Tablature => staves.with_tablature(!on),
+                    _ => staves.with_slash(!on),
+                };
+                if next != staves {
+                    commands.push((
+                        Command::SetTrackStaves {
+                            track,
+                            staves: next,
+                        },
+                        false,
+                    ));
+                }
             }
         }
     });

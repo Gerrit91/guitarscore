@@ -259,6 +259,30 @@ impl MeasureLayout {
                 self.draw_tab_tuplets(&xs, right, top, ops);
             }
         }
+        // The slash-notation staff: the same rhythm, written as slashes.
+        if let Some(slash_top) = tops.slash {
+            let voices = self
+                .columns
+                .iter()
+                .map(|column| column.slash.len())
+                .max()
+                .unwrap_or(0);
+            for voice in 0..voices {
+                let placed: Vec<BeamPlan<'_>> = self
+                    .columns
+                    .iter()
+                    .zip(&xs)
+                    .filter_map(|(column, &x)| {
+                        Some(BeamPlan {
+                            x,
+                            item: column.slash.get(voice)?.as_ref()?,
+                            beat: column.beat,
+                        })
+                    })
+                    .collect();
+                notation::draw_measure(&placed, slash_top, true, ctx, ops);
+            }
+        }
         // The highest point of each column's notation, so marks above the staff clear it.
         let mut ceilings = vec![f32::MAX; self.columns.len()];
         if let Some(notation_top) = tops.notation {

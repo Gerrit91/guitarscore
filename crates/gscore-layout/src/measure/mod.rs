@@ -52,6 +52,8 @@ pub(crate) const DEAD_SLAP_HALF: f32 = 1.4;
 pub(crate) struct Tops {
     pub(crate) tab: f32,
     pub(crate) notation: Option<f32>,
+    /// The slash-notation staff's top line, if the track shows one.
+    pub(crate) slash: Option<f32>,
     /// Whether the tab staff is drawn (a track may show notation only).
     pub(crate) show_tab: bool,
     /// Whether the measure number is written above the staves (only over a system's top
@@ -104,6 +106,8 @@ struct Column {
     marks: ColumnMarks,
     /// What the notation staff shows here, per voice (first and second, ...).
     notation: Vec<Option<NotationItem>>,
+    /// What the slash-notation staff shows here, per voice, if the track has one.
+    slash: Vec<Option<NotationItem>>,
     /// How far the second and further voices move right to clear the first voice's
     /// noteheads when they share a staff position.
     notation_offset: f32,
@@ -135,6 +139,7 @@ struct ColumnData {
     items: Vec<Item>,
     marks: ColumnMarks,
     notation: Vec<Option<NotationItem>>,
+    slash: Vec<Option<NotationItem>>,
     graces: Vec<Grace>,
     grace_width: f32,
     beat: u64,
@@ -222,6 +227,9 @@ impl MeasureLayout {
             if let Some(notation) = &ctx.notation {
                 data.notation = notation::column_items(beats, notation, key)?;
             }
+            if ctx.slash {
+                data.slash = notation::slash_column_items(beats)?;
+            }
             let voice_count = measure.voices().len();
             let mut group = 0_usize;
             for voice in 0..voice_count {
@@ -276,6 +284,7 @@ impl MeasureLayout {
                     items: Vec::new(),
                     marks: ColumnMarks::default(),
                     notation: Vec::new(),
+                    slash: Vec::new(),
                     graces: Vec::new(),
                     grace_width: 0.0,
                     beat: 0,
@@ -406,6 +415,7 @@ impl MeasureLayout {
                     items: data.items,
                     marks: data.marks,
                     notation: data.notation,
+                    slash: data.slash,
                     notation_offset: offsets.get(i).copied().unwrap_or(0.0),
                     graces: data.graces,
                     grace_width: data.grace_width,
@@ -443,6 +453,7 @@ impl MeasureLayout {
                 || column
                     .notation
                     .iter()
+                    .chain(&column.slash)
                     .flatten()
                     .any(|item| matches!(item, NotationItem::Chord(_)))
                 || column.marks.dead_slapped

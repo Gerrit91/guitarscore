@@ -515,6 +515,18 @@ fn stem_for(chord: &Chord, x: f32, up: bool, top: f32, ctx: &Context<'_>) -> Ste
 
 /// Noteheads (seconds side by side), ledger lines, accidentals and dots.
 fn draw_heads(x: f32, chord: &Chord, up: bool, top: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
+    if chord.slash {
+        // Rhythm slash: a short stroke through the middle line, regardless of pitch.
+        let y = y_of(top, MIDDLE);
+        let half = 0.55;
+        ops.push(DrawOp::Line {
+            from: Point::new(x - half, y + half),
+            to: Point::new(x + half, y - half),
+            thickness: 0.18,
+            color: ColorToken::Notation,
+        });
+        return;
+    }
     let font = &ctx.fonts.music;
     let engraving = font.engraving();
     // Which heads move beside the stem: in a second, the upper one with an up-stem, the

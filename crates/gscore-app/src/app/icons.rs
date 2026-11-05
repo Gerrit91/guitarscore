@@ -74,6 +74,12 @@ pub(crate) enum Icon {
     Rename,
     /// A tuner (a tuning fork).
     Tuner,
+    /// Standard notation (a staff with a note).
+    Notation,
+    /// Tablature (a staff with a fret number).
+    Tablature,
+    /// Slash notation (a staff with a rhythm slash).
+    Slash,
 }
 
 /// The size of the compact icon buttons in the panels and the toolbar.
@@ -474,6 +480,46 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                     ],
                     stroke,
                 );
+            }
+        }
+        Icon::Notation | Icon::Tablature | Icon::Slash => {
+            // Five staff lines, and the mark that tells the three staves apart.
+            let left = center.x - size * 0.38;
+            let right = center.x + size * 0.38;
+            for line in 0..5 {
+                let y = center.y + (line as f32 - 2.0) * size * 0.1;
+                painter.line_segment([pos2(left, y), pos2(right, y)], Stroke::new(0.6, color));
+            }
+            match icon {
+                Icon::Notation => {
+                    let head = pos2(center.x - size * 0.06, center.y + size * 0.1);
+                    painter.circle_filled(head, size * 0.1, color);
+                    painter.line_segment(
+                        [
+                            head + vec2(size * 0.08, 0.0),
+                            head + vec2(size * 0.08, -size * 0.38),
+                        ],
+                        stroke,
+                    );
+                }
+                Icon::Tablature => {
+                    painter.text(
+                        center,
+                        egui::Align2::CENTER_CENTER,
+                        "TAB",
+                        egui::FontId::proportional(size * 0.34),
+                        color,
+                    );
+                }
+                _ => {
+                    painter.line_segment(
+                        [
+                            center + vec2(-size * 0.16, size * 0.2),
+                            center + vec2(size * 0.16, -size * 0.2),
+                        ],
+                        Stroke::new(2.0, color),
+                    );
+                }
             }
         }
         Icon::Settings => {

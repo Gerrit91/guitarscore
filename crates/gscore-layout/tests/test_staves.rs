@@ -6,7 +6,7 @@
 
 mod common;
 
-use gscore_layout::{ColorToken, DrawOp, Fonts, Layout, LayoutOptions, layout_track};
+use gscore_layout::{ColorToken, DrawOp, Fonts, Glyph, Layout, LayoutOptions, layout_track};
 use gscore_model::testing::{self, GUITAR_6};
 use gscore_model::{Fret, MeasureIndex, Song, StringNumber, TrackIndex, TrackStaves};
 
@@ -50,9 +50,9 @@ fn fret_numbers(layout: &Layout) -> usize {
 
 #[test]
 fn each_choice_shows_its_staves() {
-    let both = layout(TrackStaves::NotationAndTab);
-    let tab = layout(TrackStaves::TabOnly);
-    let notation = layout(TrackStaves::NotationOnly);
+    let both = layout(TrackStaves::NOTATION_AND_TAB);
+    let tab = layout(TrackStaves::TAB_ONLY);
+    let notation = layout(TrackStaves::NOTATION_ONLY);
 
     assert!(fret_numbers(&both) > 0);
     assert_eq!(fret_numbers(&tab), fret_numbers(&both));
@@ -88,4 +88,36 @@ fn tab_only_shows_tuplet_numbers() {
             "missing tuplet {tuplet:?} in the tab: {texts:?}"
         );
     }
+}
+
+/// Slash notation is a staff of its own: rhythm slashes under a clef, no fret numbers,
+/// and it combines with the other two staves.
+#[test]
+fn slash_notation_is_a_staff_of_its_own_and_combines() {
+    let slash = layout(TrackStaves::SLASH_ONLY);
+    assert_eq!(fret_numbers(&slash), 0, "no tablature");
+    assert!(
+        slash.ops.iter().any(|op| matches!(
+            op,
+            DrawOp::Glyph {
+                glyph: Glyph::GClef,
+                ..
+            }
+        )),
+        "the slash staff has a clef"
+    );
+    assert!(
+        slash.ops.iter().any(
+            |op| matches!(op, DrawOp::Line { thickness, .. } if (*thickness - 0.18).abs() < 1e-6)
+        ),
+        "a rhythm slash is drawn"
+    );
+
+    let tab_and_slash = layout(TrackStaves::TAB_AND_SLASH);
+    assert!(fret_numbers(&tab_and_slash) > 0, "the tablature stays");
+    assert!(tab_and_slash.height > slash.height);
+
+    let all = layout(TrackStaves::ALL_STAVES);
+    assert!(fret_numbers(&all) > 0);
+    assert!(all.height > tab_and_slash.height, "notation adds a staff");
 }

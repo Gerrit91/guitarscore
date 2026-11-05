@@ -17,8 +17,15 @@ impl Song {
     ) -> Result<Change, ModelError> {
         let change = self.edit_track_settings(|inner| {
             let track = track_mut(inner, at)?;
-            let previous = (track.settings.notation, track.settings.tablature);
-            (track.settings.notation, track.settings.tablature) = staves.flags();
+            let previous = (
+                track.settings.notation,
+                track.settings.tablature,
+                track.settings.slash,
+            );
+            let (notation, tablature, slash) = staves.flags();
+            track.settings.notation = notation;
+            track.settings.tablature = tablature;
+            track.settings.slash = slash;
             Ok(Change {
                 kind: ChangeKind::TrackStaves { at, previous },
             })

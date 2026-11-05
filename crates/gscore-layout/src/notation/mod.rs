@@ -125,6 +125,8 @@ pub(crate) struct Chord {
     pub(crate) tuplet: Option<Tuplet>,
     /// A fixed stem direction (up for drums); `None` decides by the noteheads.
     pub(crate) stem_up: Option<bool>,
+    /// Slash notation: draw rhythm slashes instead of pitched noteheads.
+    pub(crate) slash: bool,
     /// Articulations and beat effects written by the chord.
     pub(crate) marks: ChordMarks,
 }
@@ -290,6 +292,52 @@ pub(crate) fn column_items(
     Ok(items)
 }
 
+/// The slash-notation items of one column: one rhythm slash per voice on the middle line,
+/// or that voice's rest. Slash notation shows the rhythm, not the pitches.
+pub(crate) fn slash_column_items(
+    beats: &[(usize, BeatView<'_>)],
+) -> Result<Vec<Option<NotationItem>>, LayoutError> {
+    let voices = beats
+        .iter()
+        .map(|(voice, _)| voice.saturating_add(1))
+        .max()
+        .unwrap_or(0);
+    let mut items: Vec<Option<NotationItem>> = vec![None; voices];
+    for &(voice, beat) in beats {
+        if beat.is_dead_slapped() {
+            continue;
+        }
+        let value = beat.note_value()?;
+        let tuplet = value
+            .tuplet()
+            .map(|(enters, times)| Tuplet { enters, times });
+        let item = match beat.kind() {
+            BeatKind::Rest => Glyph::rest(value.value()).map(|glyph| NotationItem::Rest {
+                glyph,
+                dots: value.dots(),
+                tuplet,
+            }),
+            BeatKind::Empty => None,
+            BeatKind::Normal => Some(NotationItem::Chord(Chord {
+                heads: vec![Head {
+                    position: MIDDLE,
+                    ..Head::plain()
+                }],
+                value: value.value(),
+                dots: value.dots(),
+                tuplet,
+                stem_up: (voice > 0).then_some(false),
+                slash: true,
+                marks: ChordMarks::default(),
+            })),
+        };
+        if let Some(slot) = items.get_mut(voice) {
+            *slot = item;
+        }
+    }
+    Ok(items)
+}
+
 /// The notation item of one voice's beat, if that voice has a beat starting here.
 fn beat_item(
     voice: usize,
@@ -428,6 +476,7 @@ fn beat_item(
                 } else {
                     None
                 },
+                slash: false,
                 marks,
             })))
         }
@@ -585,6 +634,7 @@ mod tests {
             dots: 0,
             tuplet: None,
             stem_up: None,
+            slash: false,
             marks: ChordMarks::default(),
         })
     }
@@ -660,6 +710,7 @@ mod tests {
             dots: 0,
             tuplet: None,
             stem_up: None,
+            slash: false,
             marks: ChordMarks::default(),
         };
         let h = c.heads[0].clone();

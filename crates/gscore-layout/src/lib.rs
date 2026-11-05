@@ -166,6 +166,8 @@ pub(crate) struct Context<'a> {
     pub(crate) staff: Staff,
     /// Standard notation above the tab, if shown for this track.
     pub(crate) notation: Option<Notation<'a>>,
+    /// Whether the track shows a slash-notation staff (rhythm slashes, no pitches).
+    pub(crate) slash: bool,
 }
 
 /// Lays out `track` of `song` on its own (its notation and tab staves, as the track shows

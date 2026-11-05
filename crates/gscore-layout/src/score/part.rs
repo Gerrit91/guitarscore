@@ -19,6 +19,8 @@ pub(super) struct Part<'a> {
     pub(super) view: TrackView<'a>,
     pub(super) ctx: Context<'a>,
     pub(super) show_tab: bool,
+    /// Whether a slash-notation staff is shown below the other staves.
+    pub(super) show_slash: bool,
     pub(super) measures: Vec<Arc<MeasureLayout>>,
     pub(super) marks: Vec<MeasureMarks>,
     /// From the top staff's top line to the tab's at the least (0 without notation): the
@@ -48,13 +50,17 @@ impl<'a> Part<'a> {
         } else {
             None
         };
-        // A track without notation (none possible, or switched off) always shows its tab.
-        let show_tab = !drums && (staves.tablature() || notation.is_none());
+        // Slash notation is a staff of its own, with or without notation and tab. Drums
+        // already have their percussion staff.
+        let slash = !drums && staves.slash();
+        // A track showing neither notation nor slash always keeps its tab.
+        let show_tab = !drums && (staves.tablature() || (notation.is_none() && !slash));
         let ctx = Context {
             options,
             fonts,
             staff: Staff::new(view.string_count(), options.tab_line_spacing),
             notation,
+            slash,
         };
         let mut measures = Vec::with_capacity(view.measures().len());
         let mut previous_signature = None;
@@ -86,6 +92,7 @@ impl<'a> Part<'a> {
             view,
             ctx,
             show_tab,
+            show_slash: slash,
             measures,
             marks: Vec::new(),
             tab_offset,
@@ -118,10 +125,28 @@ impl<'a> Part<'a> {
         notation_height + needed
     }
 
+    /// From the top staff's top line to the slash staff's top line in a system of
+    /// `measures`.
+    pub(super) fn slash_offset(&self, measures: std::ops::Range<usize>) -> f32 {
+        if !self.show_slash {
+            return 0.0;
+        }
+        if self.show_tab {
+            self.tab_offset(measures.clone())
+                + self.ctx.staff.height()
+                + self.ctx.options.notation_gap
+        } else {
+            // Below the notation staff (tab_offset includes its gap), or at the top.
+            self.tab_offset(measures)
+        }
+    }
+
     /// From the top staff's top line to the lowest staff's bottom line, in a system of
     /// `measures`.
     pub(super) fn staves_height(&self, measures: std::ops::Range<usize>) -> f32 {
-        if self.show_tab {
+        if self.show_slash {
+            self.slash_offset(measures) + notation::staff().height()
+        } else if self.show_tab {
             self.tab_offset(measures) + self.ctx.staff.height()
         } else {
             notation::staff().height()
@@ -153,7 +178,19 @@ impl<'a> Part<'a> {
         } else {
             0.0
         };
-        notation_prefix.max(tab_prefix)
+        let slash_prefix = if self.show_slash && !self.show_tab && ctx.notation.is_none() {
+            let clef = ctx
+                .notation
+                .map_or(notation::Clef::Treble, |notation| notation.clef);
+            if drawn_by_measure {
+                notation::key_start_width(clef, ctx)
+            } else {
+                notation::prefix_width(clef, key, false, ctx)
+            }
+        } else {
+            0.0
+        };
+        notation_prefix.max(tab_prefix).max(slash_prefix)
     }
 
     /// How far the notation of `measures` reaches above the top staff and below the

@@ -243,8 +243,14 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
         "set_track_staves" => {
             let track = TrackIndex::new(optional_position(args, "track")?.unwrap_or(0));
             let text = args.required("staves")?;
-            let staves = TrackStaves::from_id(&text)
-                .ok_or_else(|| bad(args.command, "staves", &text, "both, tab or notation"))?;
+            let staves = TrackStaves::from_id(&text).ok_or_else(|| {
+                bad(
+                    args.command,
+                    "staves",
+                    &text,
+                    "both, tab, notation, tab+slash, notation+slash, both+slash or slash",
+                )
+            })?;
             Ok(Command::SetTrackStaves { track, staves })
         }
         "set_master_volume" => Ok(Command::SetMasterVolume {

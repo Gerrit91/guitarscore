@@ -10,6 +10,8 @@ use crate::model::*;
 pub struct TrackSettings {
     pub tablature: bool,
     pub notation: bool,
+    /// GuitarScore addition: GP7's slash-notation flag (`PartConfiguration`, bit 2).
+    pub slash: bool,
     pub diagram_are_below: bool,
     pub show_rhythm: bool,
     pub force_horizontal: bool,
@@ -26,6 +28,7 @@ impl Default for TrackSettings {
         TrackSettings {
             tablature: true,
             notation: true,
+            slash: false,
             diagram_are_below: false,
             show_rhythm: false,
             force_horizontal: false,

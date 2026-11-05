@@ -133,6 +133,7 @@ impl<'a> TrackView<'a> {
         crate::style::TrackStaves::from_flags(
             self.inner.settings.notation,
             self.inner.settings.tablature,
+            self.inner.settings.slash,
         )
     }
 

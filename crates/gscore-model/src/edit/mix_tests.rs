@@ -23,9 +23,9 @@ fn staves_change_relay_out_and_undo() {
     let track = TrackIndex::new(0);
     assert_eq!(
         song.track(track).unwrap().staves(),
-        TrackStaves::NotationAndTab
+        TrackStaves::NOTATION_AND_TAB
     );
-    for staves in [TrackStaves::NotationOnly, TrackStaves::TabOnly] {
+    for staves in [TrackStaves::NOTATION_ONLY, TrackStaves::TAB_ONLY] {
         let stamp = song.measure_stamp(MeasureIndex::new(0));
         let change = song.set_track_staves(track, staves).unwrap();
         assert_eq!(song.track(track).unwrap().staves(), staves);
@@ -40,11 +40,11 @@ fn staves_change_relay_out_and_undo() {
         assert_unchanged(&before, &song);
         assert_eq!(
             song.track(track).unwrap().staves(),
-            TrackStaves::NotationAndTab
+            TrackStaves::NOTATION_AND_TAB
         );
     }
     assert!(
-        song.set_track_staves(TrackIndex::new(5), TrackStaves::TabOnly)
+        song.set_track_staves(TrackIndex::new(5), TrackStaves::TAB_ONLY)
             .is_err()
     );
     assert_unchanged(&before, &song);

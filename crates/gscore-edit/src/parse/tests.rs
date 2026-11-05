@@ -156,7 +156,7 @@ fn parses_every_command_and_fills_defaults() {
             "set_track_staves track=2 staves=tab",
             Command::SetTrackStaves {
                 track: TrackIndex::new(1),
-                staves: TrackStaves::TabOnly,
+                staves: TrackStaves::TAB_ONLY,
             },
         ),
         (
@@ -438,7 +438,10 @@ fn bad_lines_are_errors_with_useful_messages() {
         ("set_track_pan pan=abc", "0 to 127"),
         ("set_track_reverb reverb=200", "0 to 127"),
         ("set_track_chorus", "missing parameter"),
-        ("set_track_staves staves=slash", "both, tab or notation"),
+        (
+            "set_track_staves staves=bogus",
+            "both, tab, notation, tab+slash, notation+slash, both+slash or slash",
+        ),
         ("set_track_staves", "missing parameter"),
         ("set_master_volume volume=128", "0 to 127"),
         ("set_master_pan", "missing parameter"),
@@ -567,7 +570,7 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
         Command::SetTrackChorus { track, chorus: 5 },
         Command::SetTrackStaves {
             track,
-            staves: TrackStaves::NotationOnly,
+            staves: TrackStaves::NOTATION_ONLY,
         },
         Command::SetMasterVolume { volume: 90 },
         Command::SetMasterPan { pan: 127 },
