@@ -3069,3 +3069,8 @@ needed for a much larger font); owner listening check.
 - **Free time over several bars** is marked once: "Free time" and the parenthesized time
   signature on the run's first bar only (each bar keeps its dashed barline), and no time
   signature after the run, as Guitar Pro prints it.
+- **GP7 tracks with two staves** no longer shift the tracks after them: a master bar lists
+  one bar per staff, and every track now reads its first staff's bar. In `Ballad.gp` the
+  synth's second staff pushed each later track onto its neighbour's bars, so "Vocal ALEX"
+  showed "Vocal SAMIR"'s part (and a bass clef). A second staff itself is not read yet,
+  and pitched tracks without strings still lack notation (`docs/gaps.md` #2).
