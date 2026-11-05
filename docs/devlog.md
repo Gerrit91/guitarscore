@@ -2515,3 +2515,27 @@ Landed:
 Open: browser recovery journal/autosave; SoundFont picker in the browser; PDF export in
 the browser; multi-threaded import (web worker) if opening large files becomes noticeable;
 `xtask web --smoke` needs Chromium and Python 3.
+
+## 2026-11-05 — Review of the browser build
+
+- Saving in the browser failed or lied: Save on an opened `.gp` (which saves in place)
+  and "Save anyway" after a loss warning had no save handle and always failed ("try Save
+  again"), and rfd's web save showed its own "click here to download" overlay whose
+  Cancel still reported success, so a song that was never downloaded was marked saved.
+  The browser save now starts the download itself (Blob + link, URL revoked later); Save
+  and Save As both download under the song's name.
+- With no recovery journal in the browser, closing or reloading the tab lost unsaved
+  edits silently: the page now asks first (`beforeunload`, set from the editors' dirty
+  state every frame).
+- Playback: a Play, seek or tempo change sent while the SoundFont was still loading was
+  dropped by the worklet; it now waits and takes effect when the font is loaded. A new
+  SoundFont keeps the loaded song. The player reports loading until the worklet answers
+  `loaded`, and a site without `assets/soundfonts/default.sf2` says so on Play instead of
+  playing silence. A dropped `WebPlayer` (a failed one is restarted on Play) closes its
+  `AudioContext`; browsers allow only a few.
+- Browser chrome: no minimize/maximize/close buttons or window dragging in the title bar
+  and no File > Quit (the browser owns the tab); the start no longer shows a red notice
+  that only said how to open a file.
+- Not done: `cargo xtask web` writes the smoke screenshots and `worklet-check.html` into
+  the site directory (they would be deployed with it); clippy for the wasm target fails on
+  older `drop_non_drop` lints in `gscore-session` (CI does not lint wasm).

@@ -70,9 +70,6 @@ pub(crate) struct Picked {
     /// The file's bytes, when the picker already read them (browser).
     #[cfg(target_arch = "wasm32")]
     pub(crate) bytes: Vec<u8>,
-    /// The writable handle of a browser save dialog (writing downloads the file).
-    #[cfg(target_arch = "wasm32")]
-    pub(crate) save_handle: Option<rfd::FileHandle>,
 }
 
 impl Picked {
@@ -170,10 +167,6 @@ pub(crate) struct Tasks {
     /// open that `open` starts runs.
     #[cfg(target_arch = "wasm32")]
     picked_bytes: HashMap<PathBuf, Vec<u8>>,
-    /// The writable handle of a browser save dialog: the download happens when the save
-    /// writes to it.
-    #[cfg(target_arch = "wasm32")]
-    save_file: Option<rfd::FileHandle>,
 }
 
 impl Default for Tasks {
@@ -188,8 +181,6 @@ impl Default for Tasks {
             open_cancelled: false,
             #[cfg(target_arch = "wasm32")]
             picked_bytes: HashMap::new(),
-            #[cfg(target_arch = "wasm32")]
-            save_file: None,
         }
     }
 }
@@ -512,7 +503,6 @@ impl Tasks {
                         Ok(bytes) => Event::Picked(Some(Picked {
                             path: PathBuf::from(name),
                             bytes,
-                            save_handle: None,
                         })),
                         Err(error) => Event::Failed(format!("cannot read {name}: {error}")),
                     }
@@ -533,51 +523,22 @@ impl Tasks {
         Err("choosing a SoundFont is not available in the browser build yet".to_owned())
     }
 
-    /// The browser's save dialog: it returns a writable handle, and writing to it downloads
-    /// the file. The handle travels with the event and waits for the save that follows.
+    /// A browser has no save dialog: a save downloads the file under the suggested
+    /// name (the browser decides where, usually the downloads folder, and may ask).
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn pick_save_file(
         &mut self,
         name: String,
         ctx: &egui::Context,
     ) -> Result<(), String> {
-        let sender = self.sender.clone();
-        let repaint = ctx.clone();
-        wasm_bindgen_futures::spawn_local(async move {
-            let handle = rfd::AsyncFileDialog::new()
-                .set_title("Save as Guitar Pro 7 (.gp)")
-                .add_filter("Guitar Pro 7", &["gp"])
-                .set_file_name(name)
-                .save_file()
-                .await;
-            let event = match handle {
-                Some(handle) => {
-                    let name = handle.file_name();
-                    Event::PickedSave(Some(Picked {
-                        path: PathBuf::from(&name),
-                        bytes: Vec::new(),
-                        save_handle: Some(handle),
-                    }))
-                }
-                None => Event::PickedSave(None),
-            };
-            let _ = sender.send(event);
-            repaint.request_repaint();
-        });
-        self.running = self.running.saturating_add(1);
+        self.deliver(
+            Event::PickedSave(Some(Picked {
+                path: PathBuf::from(name),
+                bytes: Vec::new(),
+            })),
+            ctx,
+        );
         Ok(())
-    }
-
-    /// Keeps the writable handle of a browser save dialog until the save writes to it.
-    pub(crate) fn arm_save(&mut self, picked: &Picked) {
-        #[cfg(target_arch = "wasm32")]
-        {
-            self.save_file = picked.save_handle.clone();
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let _ = picked;
-        }
     }
 
     /// PDF export in the browser is not built yet.
@@ -670,10 +631,6 @@ impl Tasks {
         allow_losses: bool,
         ctx: &egui::Context,
     ) -> Result<(), String> {
-        let handle = self
-            .save_file
-            .take()
-            .ok_or_else(|| "the save dialog was not answered; try Save again".to_owned())?;
         let sender = self.sender.clone();
         let repaint = ctx.clone();
         wasm_bindgen_futures::spawn_local(async move {
@@ -686,7 +643,7 @@ impl Tasks {
                 |name| name.to_string_lossy().into_owned(),
             );
             let result = match gscore_session::save_bytes(&song, options) {
-                Ok((bytes, losses)) => match handle.write(&bytes).await {
+                Ok((bytes, losses)) => match download(&name, &bytes) {
                     Ok(()) => {
                         let mut message = format!("Saved {name}");
                         if !losses.is_empty() {
@@ -697,7 +654,9 @@ impl Tasks {
                         }
                         Ok(message)
                     }
-                    Err(error) => Err(SaveFailure::Other(format!("cannot write {name}: {error}"))),
+                    Err(error) => Err(SaveFailure::Other(format!(
+                        "cannot download {name}: {error}"
+                    ))),
                 },
                 Err(SaveError::Losses(losses)) => Err(SaveFailure::Losses(
                     losses.iter().map(ToString::to_string).collect(),
@@ -777,6 +736,39 @@ impl Tasks {
         self.deliver(event, ctx);
         Ok(())
     }
+}
+
+/// Hands `bytes` to the browser as a download named `name`. (rfd's web save shows its own
+/// "click here to download" overlay and reports success even when it is cancelled, so the
+/// app would mark an undownloaded song as saved.)
+#[cfg(target_arch = "wasm32")]
+fn download(name: &str, bytes: &[u8]) -> Result<(), String> {
+    use wasm_bindgen::JsCast;
+    let fail = |what: &str| format!("the browser {what}");
+    let parts = js_sys::Array::of1(&js_sys::Uint8Array::from(bytes));
+    let options = web_sys::BlobPropertyBag::new();
+    options.set_type("application/octet-stream");
+    let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &options)
+        .map_err(|_| fail("could not prepare the file"))?;
+    let url = web_sys::Url::create_object_url_with_blob(&blob)
+        .map_err(|_| fail("could not prepare the file"))?;
+    let window = web_sys::window().ok_or_else(|| fail("window is missing"))?;
+    let anchor = window
+        .document()
+        .and_then(|document| document.create_element("a").ok())
+        .and_then(|element| element.dyn_into::<web_sys::HtmlAnchorElement>().ok())
+        .ok_or_else(|| fail("could not start the download"))?;
+    anchor.set_href(&url);
+    anchor.set_download(name);
+    anchor.click();
+    // The download has started from the URL; free it a moment later (revoking at once can
+    // cancel it in some browsers).
+    let revoke = wasm_bindgen::closure::Closure::once_into_js(move || {
+        let _ = web_sys::Url::revoke_object_url(&url);
+    });
+    let _ = window
+        .set_timeout_with_callback_and_timeout_and_arguments_0(revoke.unchecked_ref(), 10_000);
+    Ok(())
 }
 
 /// Reads a file the browser's picker returned, without the panic on I/O that rfd's own

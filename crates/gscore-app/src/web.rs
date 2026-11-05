@@ -6,11 +6,39 @@
 //! `cfg(target_arch = "wasm32")` in the rest of the crate: opening picks a file in the
 //! browser, saving downloads it, and the settings live in `localStorage`.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::GuitarScoreApp;
 use crate::Settings;
+
+/// Whether a song has unsaved edits, as of the last frame.
+static UNSAVED: AtomicBool = AtomicBool::new(false);
+
+/// Tells the page whether a song has unsaved edits (the app calls it every frame).
+pub(crate) fn set_unsaved(unsaved: bool) {
+    UNSAVED.store(unsaved, Ordering::Relaxed);
+}
+
+/// Makes the browser ask before the page is closed or reloaded while a song has unsaved
+/// edits. There is no recovery journal in the browser yet, so this is the only guard.
+fn warn_before_leaving(window: &web_sys::Window) -> Result<(), JsValue> {
+    let handler = Closure::<dyn FnMut(web_sys::BeforeUnloadEvent)>::new(
+        |event: web_sys::BeforeUnloadEvent| {
+            if UNSAVED.load(Ordering::Relaxed) {
+                event.prevent_default();
+                // Older browsers show the prompt only when a return value is set.
+                event.set_return_value("unsaved");
+            }
+        },
+    );
+    window.add_event_listener_with_callback("beforeunload", handler.as_ref().unchecked_ref())?;
+    // The listener lives as long as the page.
+    handler.forget();
+    Ok(())
+}
 
 /// Logs a panic to the browser console instead of losing it silently. Panics abort the
 /// wasm instance, so this is a diagnostic aid, not containment (AGENTS.md "Portability").
@@ -26,6 +54,7 @@ fn install_panic_hook() {
 pub async fn start() -> Result<(), JsValue> {
     install_panic_hook();
     let window = web_sys::window().ok_or_else(|| JsValue::from_str("no browser window"))?;
+    warn_before_leaving(&window)?;
     let document = window
         .document()
         .ok_or_else(|| JsValue::from_str("no document"))?;
@@ -59,12 +88,11 @@ pub async fn start() -> Result<(), JsValue> {
             settings,
             None,
         );
-        let browser_note = "Browser build: open a Guitar Pro file or start a new song.";
-        let notice = match problem {
-            Some(problem) => format!("{problem}\n{browser_note}"),
-            None => browser_note.to_owned(),
-        };
-        app.set_notice(notice);
+        // The notice bar is for problems (it is drawn as an error); the empty page
+        // already says how to open a song.
+        if let Some(problem) = problem {
+            app.set_notice(problem);
+        }
         Ok(Box::new(app))
     });
 

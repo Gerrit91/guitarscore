@@ -328,7 +328,6 @@ impl GuitarScoreApp {
                 Event::FoundRecoverable(sessions) => self.found_recoverable(sessions),
                 Event::Recovered { session, result } => self.recovered(&session, result),
                 Event::PickedSave(Some(picked)) => {
-                    self.tasks.arm_save(&picked);
                     let path = if picked.path.extension().is_some_and(|e| e == "gp") {
                         picked.path
                     } else {

@@ -35,8 +35,13 @@ The app crate is the same on both platforms. Native-only pieces are behind
 - Files: the browser picks a file with `rfd`'s async dialog, reads its bytes with a
   checked `File.arrayBuffer` (not rfd's panicking `read`), and imports them through
   `gscore_session::open_bytes`. Saving uses `gscore_session::save_bytes` (the same
-  read-back and loss check as a file save) and writes to the browser's save handle, which
-  downloads the file.
+  read-back and loss check as a file save) and starts a download under the song's name
+  (Save and Save As alike; the browser decides where it goes). rfd's web save is not
+  used: it shows its own "click here to download" overlay and reports success even when
+  that is cancelled, which would mark an undownloaded song as saved.
+- Leaving: with unsaved edits, closing or reloading the page asks first (`beforeunload`),
+  because there is no recovery journal in the browser yet. The title bar has no window
+  buttons and the File menu no Quit: the browser owns the tab.
 - Storage: settings and shortcuts live in `localStorage` (`gscore-session/src/web.rs`),
   with the same "missing or broken falls back to defaults, and says why" behaviour as the
   files on the desktop. The settings window and keymap continue to work; a keymap file is
@@ -65,8 +70,10 @@ The browser has no audio device API from wasm, so playback goes through an Audio
    stop, seek, tempo and live mixer events through the node's port, and receives position
    and state back.
 
-A SoundFont is optional. If the site has `assets/soundfonts/default.sf2`, it is fetched and
-loaded; without one the engine is silent and editing works. Bundling a licensed General MIDI
+The SoundFont is fetched from `assets/soundfonts/default.sf2`. While it downloads and the
+worklet parses it, the player reports loading (the toolbar shows it), and a Play, seek or
+tempo change made meanwhile takes effect once it is loaded. A site without one says so on
+Play; editing works either way. Bundling a licensed General MIDI
 SoundFont is M19; choosing one from the browser is not wired up yet.
 
 ## Smoke test

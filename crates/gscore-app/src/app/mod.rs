@@ -457,6 +457,10 @@ impl eframe::App for GuitarScoreApp {
             self.last_window = Some(window);
         }
         self.handle_events(&ctx);
+        // The page asks before it is left while a song has unsaved edits: the browser
+        // build has no recovery journal yet.
+        #[cfg(target_arch = "wasm32")]
+        crate::web::set_unsaved(self.tabs.iter().any(|tab| tab.document.is_dirty()));
         // A file dropped on the window opens like File > Open (asking about unsaved work).
         // A browser drop is read asynchronously; a native one is a path to read.
         #[cfg(target_arch = "wasm32")]

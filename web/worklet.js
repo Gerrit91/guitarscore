@@ -9,6 +9,7 @@
 //   {type: "command", name, value?}           play, pause, stop, seek, tempo
 // Messages to the app:
 //   {type: "ready"}                           the wasm module is up
+//   {type: "loaded"}                          the SoundFont is loaded: playback can sound
 //   {type: "status", position, state}         every few blocks while playing
 //   {type: "error", message}                  anything that went wrong
 
@@ -59,6 +60,7 @@ class GuitarScoreSynth extends AudioWorkletProcessor {
       switch (message.type) {
         case "soundfont":
           this.synth.load_soundfont(new Uint8Array(message.bytes));
+          this.port.postMessage({ type: "loaded" });
           break;
         case "sequence":
           this.synth.load_sequence(new Uint8Array(message.bytes));

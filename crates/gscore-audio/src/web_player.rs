@@ -7,9 +7,12 @@
 //! wire format in `gscore_play::encode_sequence`.
 //!
 //! The browser may hold audio back until the user interacts with the page; Play is a key
-//! press, so resuming the context there is allowed. A SoundFont is fetched from
-//! `assets/soundfonts/default.sf2` when the site has one; without it the engine is silent
-//! but editing works.
+//! press, so resuming the context there is allowed. The SoundFont is fetched from
+//! `assets/soundfonts/default.sf2`; while it loads the player reports
+//! [`WebPlayer::is_loading`] (the worklet keeps a Play pressed meanwhile), and a site
+//! without one reports why playback is unavailable. Editing works either way.
+
+use std::cell::Cell;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -29,6 +32,8 @@ struct Shared {
     position: RefCell<u64>,
     state: RefCell<PlayState>,
     error: RefCell<Option<String>>,
+    /// The SoundFont is still being fetched or loaded into the worklet.
+    loading: Cell<bool>,
     /// The node must stay alive, or the browser disconnects it.
     node: RefCell<Option<AudioWorkletNode>>,
     port: RefCell<Option<MessagePort>>,
@@ -42,6 +47,7 @@ impl Default for Shared {
             position: RefCell::new(0),
             state: RefCell::new(PlayState::Stopped),
             error: RefCell::new(None),
+            loading: Cell::new(true),
             node: RefCell::new(None),
             port: RefCell::new(None),
             queue: RefCell::new(Vec::new()),
@@ -51,6 +57,7 @@ impl Default for Shared {
 
 impl Shared {
     fn report(&self, error: String) {
+        self.loading.set(false);
         *self.state.borrow_mut() = PlayState::Stopped;
         *self.error.borrow_mut() = Some(error);
     }
@@ -94,10 +101,10 @@ impl WebPlayer {
         self.shared.error.borrow().clone()
     }
 
-    /// Whether the worklet's SoundFont is still loading. There is no loading state to
-    /// report: the engine is silent until the font arrives.
+    /// Whether the worklet's SoundFont is still loading (fetched, then parsed in the
+    /// worklet). Commands sent meanwhile take effect once it is loaded.
     pub fn is_loading(&self) -> bool {
-        false
+        self.shared.loading.get()
     }
 
     /// A short description of the audio output, for the toolbar.
@@ -187,8 +194,10 @@ fn start_worklet(context: AudioContext, shared: Rc<Shared>) {
             shared.report(error);
             return;
         }
-        // An optional SoundFont: a site without one still edits, just silently.
-        fetch_soundfont(shared).await;
+        // Without a SoundFont there is no sound: the reason is reported on Play.
+        if let Err(error) = fetch_soundfont(&shared).await {
+            shared.report(error);
+        }
     });
 }
 
@@ -218,29 +227,32 @@ async fn load_worklet_module() -> Result<JsValue, String> {
     Ok(message.into())
 }
 
-/// Fetches the site's SoundFont, if there is one, and hands it to the worklet.
-async fn fetch_soundfont(shared: Rc<Shared>) {
-    let Some(window) = web_sys::window() else {
-        return;
+/// Fetches the site's SoundFont and hands it to the worklet, which answers `loaded`.
+async fn fetch_soundfont(shared: &Shared) -> Result<(), String> {
+    let missing = || {
+        format!(
+            "no SoundFont on this site ({SOUNDFONT_URL}): the browser build cannot play \
+             sound yet; editing works"
+        )
     };
-    let fetched = JsFuture::from(window.fetch_with_str(SOUNDFONT_URL)).await;
-    let Ok(response) = fetched else {
-        return;
-    };
+    let window = web_sys::window().ok_or_else(|| "there is no browser window".to_owned())?;
+    let response = JsFuture::from(window.fetch_with_str(SOUNDFONT_URL))
+        .await
+        .map_err(|_| missing())?;
     let response: web_sys::Response = response.unchecked_into();
     if !response.ok() {
-        return;
+        return Err(missing());
     }
-    let Ok(buffer) = response.array_buffer() else {
-        return;
-    };
-    let Ok(buffer) = JsFuture::from(buffer).await else {
-        shared.report("cannot read the SoundFont".to_owned());
-        return;
-    };
+    let buffer = response
+        .array_buffer()
+        .map_err(|_| "cannot read the SoundFont".to_owned())?;
+    let buffer = JsFuture::from(buffer)
+        .await
+        .map_err(|_| "cannot read the SoundFont".to_owned())?;
     let message = object("soundfont");
     set(&message, "bytes", &buffer);
     shared.post(message.into());
+    Ok(())
 }
 
 fn handle_message(shared: &Shared, data: JsValue) {
@@ -265,6 +277,7 @@ fn handle_message(shared: &Shared, data: JsValue) {
                 _ => PlayState::Stopped,
             };
         }
+        Some("loaded") => shared.loading.set(false),
         Some("error") => {
             let message = get(object, "message")
                 .and_then(|value| value.as_string())
@@ -287,6 +300,20 @@ fn set(object: &js_sys::Object, key: &str, value: &JsValue) {
 
 fn get(object: &js_sys::Object, key: &str) -> Option<JsValue> {
     js_sys::Reflect::get(object, &JsValue::from_str(key)).ok()
+}
+
+impl Drop for WebPlayer {
+    /// A dropped player (a failed one is started afresh) closes its audio context:
+    /// browsers allow only a few at a time.
+    fn drop(&mut self) {
+        if let Some(port) = self.shared.port.borrow_mut().take() {
+            port.set_onmessage(None);
+        }
+        if let Some(node) = self.shared.node.borrow_mut().take() {
+            let _ = node.disconnect();
+        }
+        let _ = self.context.close();
+    }
 }
 
 impl Player for WebPlayer {

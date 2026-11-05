@@ -18,6 +18,10 @@ const WINDOW_BUTTON: f32 = 44.0;
 /// How close to the window's edge a press starts resizing.
 const RESIZE_MARGIN: f32 = 5.0;
 
+/// Whether the bar has window buttons and moves the window. A browser tab has its own,
+/// and the page cannot be minimized, maximized or closed from inside.
+const WINDOW_CONTROLS: bool = cfg!(not(target_arch = "wasm32"));
+
 impl GuitarScoreApp {
     /// The title bar.
     pub(super) fn title_bar(&mut self, ui: &mut egui::Ui) {
@@ -30,7 +34,9 @@ impl GuitarScoreApp {
             Sense::click_and_drag(),
         );
         let maximized = ctx.input(|input| input.viewport().maximized.unwrap_or(false));
-        if background.double_clicked() {
+        if !WINDOW_CONTROLS {
+            // Nothing to drag or maximize in a browser tab.
+        } else if background.double_clicked() {
             ctx.send_viewport_cmd(ViewportCommand::Maximized(!maximized));
         } else if background.drag_started_by(egui::PointerButton::Primary) {
             ctx.send_viewport_cmd(ViewportCommand::StartDrag);
@@ -45,7 +51,11 @@ impl GuitarScoreApp {
                 format!("{}{changed}", document.display_title())
             },
         );
-        let buttons = 3.0 * WINDOW_BUTTON;
+        let buttons = if WINDOW_CONTROLS {
+            3.0 * WINDOW_BUTTON
+        } else {
+            0.0
+        };
         let title_room = Rect::from_center_size(
             rect.center(),
             vec2(
@@ -64,6 +74,9 @@ impl GuitarScoreApp {
         ui.horizontal_centered(|ui| {
             ui.add_space(4.0);
             self.menu_bar(ui);
+            if !WINDOW_CONTROLS {
+                return;
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 if window_button(ui, Icon::WindowClose, "Close window", true).clicked() {

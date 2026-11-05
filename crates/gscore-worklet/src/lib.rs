@@ -8,7 +8,8 @@
 //!
 //! The worklet gets a song as `gscore_play::encode_sequence` bytes and a SoundFont as
 //! bytes. A SoundFont can arrive after a sequence (a fast click on Play while the font
-//! still downloads): the sequence waits for the engine.
+//! still downloads): the sequence, and what was asked meanwhile (play, seek, tempo),
+//! wait for the engine.
 
 // The browser's sample rate and tick position cross the JS boundary as `f64`; the casts
 // are clamped first and checked where a wrong value would matter.
@@ -18,18 +19,31 @@
     clippy::cast_precision_loss
 )]
 
+use std::sync::Arc;
+
 use wasm_bindgen::prelude::*;
 
 use gscore_audio::{SoundBank, SynthEngine};
-use gscore_play::{PlayState, decode_sequence, encode_sequence};
+use gscore_play::{PlayState, Sequence, decode_sequence, encode_sequence};
 
 /// The synthesizer, as the worklet's JavaScript sees it.
 #[wasm_bindgen]
 pub struct Synth {
     sample_rate: u32,
     engine: Option<SynthEngine>,
-    /// A sequence that arrived before the SoundFont did.
-    waiting: Option<Vec<u8>>,
+    /// The song last loaded: it waits for the first SoundFont and is loaded again into
+    /// the engine of a SoundFont that replaces the previous one.
+    sequence: Option<Arc<Sequence>>,
+    /// What was asked before there was an engine, applied when the SoundFont arrives.
+    pending: Pending,
+}
+
+/// Playback requests made while the SoundFont was still loading.
+#[derive(Debug, Default)]
+struct Pending {
+    play: bool,
+    seek: Option<u64>,
+    tempo_scale: Option<f32>,
 }
 
 impl std::fmt::Debug for Synth {
@@ -56,19 +70,29 @@ impl Synth {
         Ok(Synth {
             sample_rate: rate,
             engine: None,
-            waiting: None,
+            sequence: None,
+            pending: Pending::default(),
         })
     }
 
-    /// Loads a SoundFont (SF2) and starts the engine. Replaces a previous one.
+    /// Loads a SoundFont (SF2) and starts the engine. Replaces a previous one; the song
+    /// stays loaded, and a play, seek or tempo asked while it loaded takes effect now.
     pub fn load_soundfont(&mut self, bytes: &[u8]) -> Result<(), JsValue> {
         let bank = SoundBank::from_bytes(bytes).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let mut engine = SynthEngine::new(&bank, self.sample_rate)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
-        if let Some(waiting) = self.waiting.take()
-            && let Ok(sequence) = decode_sequence(&waiting)
-        {
-            let _ = engine.load(std::sync::Arc::new(sequence));
+        if let Some(sequence) = &self.sequence {
+            let _ = engine.load(Arc::clone(sequence));
+        }
+        let pending = std::mem::take(&mut self.pending);
+        if let Some(scale) = pending.tempo_scale {
+            engine.set_tempo_scale(scale);
+        }
+        if let Some(tick) = pending.seek {
+            engine.seek(tick);
+        }
+        if pending.play {
+            engine.play();
         }
         self.engine = Some(engine);
         Ok(())
@@ -85,18 +109,17 @@ impl Synth {
     }
 
     fn swap_sequence(&mut self, bytes: &[u8], replace: bool) -> Result<(), JsValue> {
-        let sequence = decode_sequence(bytes).map_err(|e| JsValue::from_str(&e))?;
+        let sequence = Arc::new(decode_sequence(bytes).map_err(|e| JsValue::from_str(&e))?);
         match &mut self.engine {
+            Some(engine) if replace => engine.replace(Arc::clone(&sequence)),
             Some(engine) => {
-                let sequence = std::sync::Arc::new(sequence);
-                if replace {
-                    engine.replace(sequence);
-                } else {
-                    let _ = engine.load(sequence);
-                }
+                let _ = engine.load(Arc::clone(&sequence));
             }
-            None => self.waiting = Some(bytes.to_vec()),
+            // A new song before the engine: what was asked for the old one is void.
+            None if !replace => self.pending = Pending::default(),
+            None => {}
         }
+        self.sequence = Some(sequence);
         Ok(())
     }
 
@@ -139,22 +162,25 @@ impl Synth {
 
     /// Starts or resumes playback.
     pub fn play(&mut self) {
-        if let Some(engine) = &mut self.engine {
-            engine.play();
+        match &mut self.engine {
+            Some(engine) => engine.play(),
+            None => self.pending.play = true,
         }
     }
 
     /// Pauses where it is.
     pub fn pause(&mut self) {
-        if let Some(engine) = &mut self.engine {
-            engine.pause();
+        match &mut self.engine {
+            Some(engine) => engine.pause(),
+            None => self.pending.play = false,
         }
     }
 
     /// Stops and returns to the start.
     pub fn stop(&mut self) {
-        if let Some(engine) = &mut self.engine {
-            engine.stop();
+        match &mut self.engine {
+            Some(engine) => engine.stop(),
+            None => self.pending = Pending::default(),
         }
     }
 
@@ -165,15 +191,17 @@ impl Synth {
         } else {
             0
         };
-        if let Some(engine) = &mut self.engine {
-            engine.seek(tick);
+        match &mut self.engine {
+            Some(engine) => engine.seek(tick),
+            None => self.pending.seek = Some(tick),
         }
     }
 
     /// Plays faster or slower than written.
     pub fn set_tempo_scale(&mut self, scale: f32) {
-        if let Some(engine) = &mut self.engine {
-            engine.set_tempo_scale(scale);
+        match &mut self.engine {
+            Some(engine) => engine.set_tempo_scale(scale),
+            None => self.pending.tempo_scale = Some(scale),
         }
     }
 
