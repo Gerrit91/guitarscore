@@ -2962,3 +2962,19 @@ needed for a much larger font); owner listening check.
   simile marks are written back; chord diagrams are read and drawn but not yet written.
 - Tests: `cargo test --workspace`, clippy `-D warnings`, `cargo xtask layers`; the app
   snapshots were regenerated for the three staff icons.
+
+## 2026-11-05 — Clef and free-time editing; slash and playback-view fixes
+
+- The Staff section of the edit palette gained **Clef** and **Free time** tiles. The clef
+  dialog chooses treble, bass, alto or tenor for one track's bar; free time turns the
+  metronome off for the bar and writes its signature in parentheses. Both are ordinary
+  commands (`set_clef`, `set_free_time`) with undo, parse lines, panic-hunt coverage and a
+  UI test.
+- Slash notation alone now draws a start line as tall as its five-line staff (it borrowed
+  the tab staff's six-string height), and a slash staff's clef is included in the prefix
+  even beside a tab staff, so a repeat sign on the first bar no longer runs into it. The
+  rhythm slashes are thicker and their stems leave the slash at its end.
+- Playing in a side-by-side page view now scrolls to the whole page; the screen views
+  scroll just enough to show the playing column. Only the printed vertical page view still
+  turns over line by line, so the page or screen no longer slides partly out of view when
+  the music wraps.
