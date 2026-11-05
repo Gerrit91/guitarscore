@@ -2790,3 +2790,10 @@ needed for a much larger font); owner listening check.
   only the colored start line, which still lines up with the measure.
 - Tests: a new `grid_section_title` snapshot adds a "Chorus" section and shows it in the
   master row under its measure, clear of the number.
+
+## 2026-11-05 — Dynamics palette without the status line
+
+- The Dynamics section no longer prints "In effect here: mf (mezzo-forte)" or the "Fades"
+  caption. The highlighted dynamic tile already says what the selection has, and the
+  hairpin tiles below read as fades on their own. `DynamicsSnapshot` no longer computes the
+  cursor's dynamic; its test drops that assertion. Snapshots updated.

@@ -146,7 +146,7 @@ impl PaletteSnapshot {
                 }
             }
         }
-        let dynamics = DynamicsSnapshot::of(song, &beats, cursor.position());
+        let dynamics = DynamicsSnapshot::of(song, &beats);
         let measure_view = track.and_then(|track| track.measure(measure));
         let silent_beats = beats
             .iter()
