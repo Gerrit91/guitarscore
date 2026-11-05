@@ -23,7 +23,9 @@ name: Release
 on:
   release:
     # Only pre-releases build; promoting one to a full release keeps its assets.
-    types: [prereleased]
+    types: 
+      - prereleased
+      - released
 
 permissions:
   contents: write
