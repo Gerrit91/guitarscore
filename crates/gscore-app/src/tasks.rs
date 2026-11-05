@@ -601,6 +601,28 @@ impl Tasks {
         })
     }
 
+    /// Renders every track of `song` with the SoundFont at `soundfont` (or one found on
+    /// disk) to a WAV file at `path`, in the background.
+    pub(crate) fn export_wav(
+        &mut self,
+        song: Song,
+        path: PathBuf,
+        soundfont: Option<PathBuf>,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (song, path, soundfont, ctx);
+            Err("exporting audio is not available in the browser build yet".to_owned())
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.spawn("WAV export", ctx, move || {
+                Event::Exported(export_wav(&song, &path, soundfont))
+            })
+        }
+    }
+
     /// Saves `song` (editor `revision`) to `path` as `.gp` in the background, with the
     /// safe-save procedure of `gscore-session`.
     #[cfg(not(target_arch = "wasm32"))]
@@ -914,6 +936,70 @@ fn export_midi(song: &Song, path: &std::path::Path) -> Result<String, String> {
     ))
 }
 
+/// The work of [`Tasks::export_wav`]: the status message, or why it failed.
+fn export_wav(
+    song: &Song,
+    path: &std::path::Path,
+    soundfont: Option<PathBuf>,
+) -> Result<String, String> {
+    let soundfont = soundfont
+        .or_else(gscore_audio::find_soundfont)
+        .ok_or_else(|| "no SoundFont found; choose one in Settings › Audio I/O".to_owned())?;
+    let bank = gscore_audio::SoundBank::open(&soundfont).map_err(|e| e.to_string())?;
+    // Every track goes into the file, as in the MIDI export.
+    let mut song = song.clone();
+    for index in 0..song.track_count() {
+        let track = gscore_model::TrackIndex::new(index);
+        let _ = song
+            .set_track_mute(track, false)
+            .map_err(|e| e.to_string())?;
+        let _ = song
+            .set_track_solo(track, false)
+            .map_err(|e| e.to_string())?;
+    }
+    let sequence = Sequence::new(&song, None).map_err(|e| e.to_string())?;
+    let temp = path.with_extension("wav.part");
+    let written = std::fs::File::create(&temp)
+        .map_err(|e| format!("cannot write {}: {e}", temp.display()))
+        .and_then(|file| {
+            let mut writer = std::io::BufWriter::new(file);
+            gscore_audio::write_wav(&mut writer, &sequence, &bank)
+                .and_then(|info| {
+                    std::io::Write::flush(&mut writer)
+                        .map_err(|e| {
+                            gscore_play::PlayError::Device(format!(
+                                "cannot write the WAV file: {e}"
+                            ))
+                        })
+                        .map(|()| info)
+                })
+                .map_err(|e| e.to_string())
+        });
+    let info = match written {
+        Ok(info) => info,
+        Err(error) => {
+            let _ = std::fs::remove_file(&temp);
+            return Err(error);
+        }
+    };
+    if let Err(error) = std::fs::rename(&temp, path) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(format!("cannot write {}: {error}", path.display()));
+    }
+    let name = path.file_name().map_or_else(
+        || "export.wav".to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    let seconds = info.frames / u64::from(info.sample_rate.max(1));
+    Ok(format!(
+        "Exported {name} ({}:{:02}, {} track{})",
+        seconds / 60,
+        seconds % 60,
+        sequence.tracks.len(),
+        if sequence.tracks.len() == 1 { "" } else { "s" }
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -961,6 +1047,35 @@ mod tests {
         let bytes = std::fs::read(&path).unwrap();
         // The header counts the conductor track and the three tracks.
         assert_eq!(bytes.get(10..12), Some(&[0, 4][..]));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_wav_export_renders_the_song_or_leaves_no_partial_file() {
+        use gscore_model::testing::{TestNote, song_with_notes};
+        let dir = std::env::temp_dir().join(format!("gscore-wav-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let soundfont = dir.join("sine.sf2");
+        std::fs::write(&soundfont, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+        let song =
+            song_with_notes(&[(4, &[TestNote::new(1, 5)]), (4, &[]), (4, &[]), (4, &[])]).unwrap();
+        let path = dir.join("song.wav");
+        let message = export_wav(&song, &path, Some(soundfont.clone())).unwrap();
+        assert!(message.contains("song.wav"), "{message}");
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(bytes.get(0..4), Some(&b"RIFF"[..]));
+        assert_eq!(bytes.get(8..12), Some(&b"WAVE"[..]));
+
+        // A SoundFont that is not there fails without leaving a file behind.
+        let missing = dir.join("missing.wav");
+        assert!(export_wav(&song, &missing, Some(dir.join("none.sf2"))).is_err());
+        assert!(!missing.exists());
+        let temp_files = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.path().extension().is_some_and(|e| e == "part"))
+            .count();
+        assert_eq!(temp_files, 0, "no temporary file was left behind");
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

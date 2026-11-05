@@ -23,6 +23,7 @@ mod transport;
 pub mod tuner;
 #[cfg(target_arch = "wasm32")]
 mod tuner_web;
+mod wav;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use midi_out::{MidiOutPlayer, midi_output_ports};
@@ -43,6 +44,7 @@ pub use web_player::WebPlayer;
 pub use tuner::TunerPlayer;
 #[cfg(target_arch = "wasm32")]
 pub use tuner_web::TunerPlayer;
+pub use wav::{WAV_SAMPLE_RATE, WavInfo, write_wav, write_wav_at};
 
 // The integration test builds songs with `gscore-model`'s test support; this marks the
 // test-only dependency for the library test target's unused-dependency check.

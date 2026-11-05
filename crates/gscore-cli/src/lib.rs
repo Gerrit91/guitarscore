@@ -88,6 +88,25 @@ enum Command {
         #[arg(long = "track", value_name = "N")]
         tracks: Vec<usize>,
     },
+    /// Write a song as a WAV audio file
+    ///
+    /// Renders the song offline with the built-in synthesizer and writes 16-bit stereo PCM
+    /// at 44.1 kHz. Needs a SoundFont (.sf2), given by --soundfont, the GSCORE_SOUNDFONT
+    /// variable, or found in the usual places. Every note, effect, repeat and fermata of
+    /// the playback sequence is rendered; the metronome is not.
+    Wav {
+        /// The Guitar Pro file to read
+        file: PathBuf,
+        /// The WAV file to write
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Only these tracks (1-based; repeat for several)
+        #[arg(long = "track", value_name = "N")]
+        tracks: Vec<usize>,
+        /// The SoundFont (.sf2) to render with
+        #[arg(long, value_name = "FILE")]
+        soundfont: Option<PathBuf>,
+    },
     /// List the MIDI output ports `play` can use
     Ports,
     /// Play a song with the built-in synthesizer or to a MIDI output port
@@ -352,6 +371,12 @@ where
             output,
             tracks,
         } => play::export(&file, &output, &tracks),
+        Command::Wav {
+            file,
+            output,
+            tracks,
+            soundfont,
+        } => play::export_wav(&file, &output, &tracks, soundfont),
         Command::Ports => play::ports(),
         Command::Play {
             file,

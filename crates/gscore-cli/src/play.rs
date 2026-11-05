@@ -79,6 +79,54 @@ pub(crate) fn export(input: &Path, output: &Path, tracks: &[usize]) -> Result<St
     Ok(out)
 }
 
+/// Writes `input` as a WAV audio file to `output`.
+pub(crate) fn export_wav(
+    input: &Path,
+    output: &Path,
+    tracks: &[usize],
+    soundfont: Option<PathBuf>,
+) -> Result<String, CliError> {
+    if !output
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("wav"))
+    {
+        return Err(CliError::Usage(format!(
+            "{} must end in .wav\n",
+            output.display()
+        )));
+    }
+    let soundfont = soundfont.or_else(find_soundfont).ok_or_else(|| {
+        CliError::Failed(
+            "no SoundFont found; pass --soundfont <file.sf2> or set GSCORE_SOUNDFONT\n".to_owned(),
+        )
+    })?;
+    let song = crate::input::read_song(input)?.song;
+    let sequence = sequence(&song, tracks)?;
+    let bank =
+        gscore_audio::SoundBank::open(&soundfont).map_err(|e| CliError::Failed(e.to_string()))?;
+    let file = std::fs::File::create(output)
+        .map_err(|e| CliError::Failed(format!("cannot write {}: {e}", output.display())))?;
+    let mut writer = std::io::BufWriter::new(file);
+    let info = gscore_audio::write_wav(&mut writer, &sequence, &bank)
+        .map_err(|e| CliError::Failed(e.to_string()))?;
+    let seconds = info.frames / u64::from(info.sample_rate.max(1));
+    let mut out = format!(
+        "Wrote {} ({}:{:02} from {} track(s), {} measure(s) played).\n",
+        output.display(),
+        seconds / 60,
+        seconds % 60,
+        sequence.tracks.len(),
+        sequence.measures.len()
+    );
+    if sequence.skipped_notes > 0 {
+        out.push_str(&format!(
+            "{} note(s) left out: their pitch is invalid (see `gscore-cli info`).\n",
+            sequence.skipped_notes
+        ));
+    }
+    Ok(out)
+}
+
 /// Lists the MIDI output ports.
 pub(crate) fn ports() -> Result<String, CliError> {
     let ports = midi_output_ports().map_err(|e| CliError::Failed(e.to_string()))?;

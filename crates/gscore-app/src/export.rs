@@ -10,6 +10,8 @@ pub(crate) enum ExportFormat {
     Pdf,
     /// A Standard MIDI File of every track.
     Midi,
+    /// The song rendered to audio with the SoundFont.
+    Wav,
     /// Guitar Pro 7+.
     Gp,
     /// Guitar Pro 6 (`.gpx`).
@@ -24,9 +26,10 @@ pub(crate) enum ExportFormat {
 
 impl ExportFormat {
     /// Every entry, in menu order.
-    pub(crate) const ALL: [ExportFormat; 7] = [
+    pub(crate) const ALL: [ExportFormat; 8] = [
         ExportFormat::Pdf,
         ExportFormat::Midi,
+        ExportFormat::Wav,
         ExportFormat::Gp,
         ExportFormat::Gpx,
         ExportFormat::Gp5,
@@ -39,6 +42,7 @@ impl ExportFormat {
         match self {
             ExportFormat::Pdf => "PDF (printed score)",
             ExportFormat::Midi => "MIDI (.mid)",
+            ExportFormat::Wav => "Audio (WAV)",
             ExportFormat::Gp => "Guitar Pro 7 (.gp)",
             ExportFormat::Gpx => "Guitar Pro 6 (.gpx)",
             ExportFormat::Gp5 => "Guitar Pro 5 (.gp5)",
@@ -52,6 +56,7 @@ impl ExportFormat {
         match self {
             ExportFormat::Pdf => "pdf",
             ExportFormat::Midi => "mid",
+            ExportFormat::Wav => "wav",
             ExportFormat::Gp => "gp",
             ExportFormat::Gpx => "gpx",
             ExportFormat::Gp5 => "gp5",
@@ -63,7 +68,7 @@ impl ExportFormat {
     /// The Guitar Pro format, for the score formats.
     pub(crate) fn score_format(self) -> Option<FileFormat> {
         match self {
-            ExportFormat::Pdf | ExportFormat::Midi => None,
+            ExportFormat::Pdf | ExportFormat::Midi | ExportFormat::Wav => None,
             ExportFormat::Gp => Some(FileFormat::Gp),
             ExportFormat::Gpx => Some(FileFormat::Gpx),
             ExportFormat::Gp5 => Some(FileFormat::Gp5),
@@ -76,7 +81,11 @@ impl ExportFormat {
     /// song may use, so the user is warned before choosing it.
     pub(crate) fn loses_details(self) -> Option<&'static str> {
         match self {
-            ExportFormat::Pdf | ExportFormat::Midi | ExportFormat::Gp | ExportFormat::Gpx => None,
+            ExportFormat::Pdf
+            | ExportFormat::Midi
+            | ExportFormat::Wav
+            | ExportFormat::Gp
+            | ExportFormat::Gpx => None,
             ExportFormat::Gp5 | ExportFormat::Gp4 | ExportFormat::Gp3 => Some(
                 "An older Guitar Pro version holds less than the song may use. The export \
                  says how many details it could not keep.",
@@ -97,7 +106,10 @@ mod tests {
             seen.push(format.extension());
             assert_eq!(
                 format.score_format().is_some(),
-                !matches!(format, ExportFormat::Pdf | ExportFormat::Midi)
+                !matches!(
+                    format,
+                    ExportFormat::Pdf | ExportFormat::Midi | ExportFormat::Wav
+                )
             );
         }
     }

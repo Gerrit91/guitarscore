@@ -266,6 +266,16 @@ impl GuitarScoreApp {
                     self.notice = Some(error);
                 }
             }
+            ExportFormat::Wav => {
+                let Some(tab) = self.tabs.get(self.active) else {
+                    return;
+                };
+                let song = tab.document.song().clone();
+                let soundfont = self.playback.soundfont().map(Path::to_path_buf);
+                if let Err(error) = self.tasks.export_wav(song, path, soundfont, ctx) {
+                    self.notice = Some(error);
+                }
+            }
             ExportFormat::Gp
             | ExportFormat::Gpx
             | ExportFormat::Gp5
