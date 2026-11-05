@@ -31,6 +31,8 @@ use graces::Grace;
 
 /// Space before and after a time signature.
 const TIME_SIG_PAD: (f32, f32) = (0.8, 0.6);
+/// Extra room on each side for the parentheses of a free-time signature.
+const FREE_TIME_PAD: f32 = 0.55;
 /// How much of the staff height a time signature covers.
 const TIME_SIG_HEIGHT_RATIO: f32 = 0.7;
 /// Smallest space between the start of a measure and its first beat.
@@ -80,6 +82,8 @@ pub(crate) struct MeasureLayout {
     /// carries it.
     key_signature: Option<KeySigLayout>,
     time_signature: Option<TimeSigLayout>,
+    /// Free time: the measure's time signature is written in parentheses.
+    free_time: bool,
     /// Room after the key signature, so the time signature lines up with other tracks'
     /// (0 on its own; set by [`align`]).
     signature_pad: f32,
@@ -185,6 +189,7 @@ impl MeasureLayout {
     pub(crate) fn new(
         measure: MeasureView<'_>,
         show_time_signature: bool,
+        free_time: bool,
         key: i8,
         previous_key: Option<i8>,
         clef: notation::Clef,
@@ -204,7 +209,8 @@ impl MeasureLayout {
             None => ctx,
         };
         let signature = measure.time_signature()?;
-        let time_signature = show_time_signature.then(|| TimeSigLayout::new(signature, ctx));
+        let time_signature =
+            show_time_signature.then(|| TimeSigLayout::new(signature, free_time, ctx));
         // The key signature goes on the notation staff; a tab-only score shows it on the
         // tab staff. Drums have none.
         let key_signature = if previous_key == Some(key) {
@@ -467,6 +473,7 @@ impl MeasureLayout {
             clef_width,
             key_signature,
             time_signature,
+            free_time,
             signature_pad: 0.0,
             lead,
             columns,
@@ -537,7 +544,7 @@ impl MeasureLayout {
 }
 
 impl TimeSigLayout {
-    fn new(signature: TimeSignature, ctx: &Context<'_>) -> Self {
+    fn new(signature: TimeSignature, free_time: bool, ctx: &Context<'_>) -> Self {
         // Each digit row is two staff spaces high at scale 1; together they cover most of the
         // staff.
         let scale = (ctx.staff.height() * TIME_SIG_HEIGHT_RATIO / 4.0).max(1.0);
@@ -550,7 +557,9 @@ impl TimeSigLayout {
                 .sum::<f32>()
                 * scale
         };
-        let width = TIME_SIG_PAD.0 + row(&numerator).max(row(&denominator)) + TIME_SIG_PAD.1;
+        let parens = if free_time { 2.0 * FREE_TIME_PAD } else { 0.0 };
+        let width =
+            TIME_SIG_PAD.0 + row(&numerator).max(row(&denominator)) + TIME_SIG_PAD.1 + parens;
         TimeSigLayout {
             numerator,
             denominator,
@@ -559,8 +568,40 @@ impl TimeSigLayout {
         }
     }
 
-    fn draw(&self, x: f32, top: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
-        self.draw_at(x, top + ctx.staff.middle(), self.scale, ctx, ops);
+    fn draw(&self, x: f32, top: f32, free_time: bool, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
+        self.draw_at(x, top + ctx.staff.middle(), self.scale, ctx, ops, free_time);
+    }
+
+    /// Parentheses around a free-time signature.
+    fn draw_parentheses(
+        &self,
+        x: f32,
+        middle: f32,
+        scale: f32,
+        free_time: bool,
+        ctx: &Context<'_>,
+        ops: &mut Vec<DrawOp>,
+    ) {
+        if !free_time {
+            return;
+        }
+        let font = &ctx.fonts.music;
+        let size = (scale * 1.7).max(1.4);
+        for (glyph, at_x) in [
+            (Glyph::ParenthesisLeft, x + 0.1),
+            (
+                Glyph::ParenthesisRight,
+                x + self.width - font.advance(Glyph::ParenthesisRight) * size - 0.1,
+            ),
+        ] {
+            let y = middle + font.bbox(glyph).middle_above_origin() * size;
+            ops.push(DrawOp::Glyph {
+                glyph,
+                at: Point::new(at_x, y),
+                scale: size,
+                color: ColorToken::Notation,
+            });
+        }
     }
 
     /// Draws the digits centered on `middle` at `scale` (1 on a five-line staff).
@@ -571,12 +612,14 @@ impl TimeSigLayout {
         scale: f32,
         ctx: &Context<'_>,
         ops: &mut Vec<DrawOp>,
+        free_time: bool,
     ) {
         let font = &ctx.fonts.music;
         let row_width = |glyphs: &[Glyph]| -> f32 {
             glyphs.iter().map(|g| font.advance(*g)).sum::<f32>() * scale
         };
         let inner = self.width - TIME_SIG_PAD.0 - TIME_SIG_PAD.1;
+        self.draw_parentheses(x, middle, scale, free_time, ctx, ops);
         // Time signature digits have their origin at their vertical middle.
         for (glyphs, y) in [
             (&self.numerator, middle - scale),

@@ -433,3 +433,22 @@ fn clef_changes_are_read_and_drawn() {
         count(Glyph::CClef)
     );
 }
+
+/// The staff file's free-time measure says so, and its time signature is in parentheses.
+#[test]
+fn free_time_is_written_over_its_measure() {
+    let song = common::open("basic/staff.gp");
+    let layout = common::layout(&song, 0);
+    let texts: Vec<&str> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        texts.iter().filter(|text| **text == "Free time").count() == 1,
+        "{texts:?}"
+    );
+}

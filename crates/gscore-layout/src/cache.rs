@@ -32,6 +32,7 @@ struct TrackKey {
 type Entry = (
     u64,
     bool,
+    bool,
     i8,
     Option<i8>,
     crate::notation::Clef,
@@ -117,10 +118,11 @@ impl LayoutCache {
             primary,
             options,
             fonts,
-            &mut |track, measure, show, key, previous_key, clef, previous_clef, ctx| {
+            &mut |track, measure, show, free_time, key, previous_key, clef, previous_clef, ctx| {
                 let entry = (
                     song.measure_stamp(measure.index()),
                     show,
+                    free_time,
                     key,
                     previous_key,
                     clef,
@@ -135,6 +137,7 @@ impl LayoutCache {
                         Arc::new(MeasureLayout::new(
                             measure,
                             show,
+                            free_time,
                             key,
                             previous_key,
                             clef,

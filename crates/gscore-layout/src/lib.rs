@@ -198,8 +198,18 @@ pub fn layout_tracks(
         primary,
         options,
         fonts,
-        &mut |_, measure, show, key, prev, clef, previous_clef, ctx| {
-            MeasureLayout::new(measure, show, key, prev, clef, previous_clef, ctx).map(Arc::new)
+        &mut |_, measure, show, free_time, key, prev, clef, previous_clef, ctx| {
+            MeasureLayout::new(
+                measure,
+                show,
+                free_time,
+                key,
+                prev,
+                clef,
+                previous_clef,
+                ctx,
+            )
+            .map(Arc::new)
         },
         &mut |_, column| measure::align(column, &options.spacing),
     )
@@ -214,6 +224,7 @@ type AlignSource<'s> = dyn FnMut(usize, &[Arc<MeasureLayout>]) -> Vec<Arc<Measur
 type MeasureSource<'s> = dyn FnMut(
         TrackIndex,
         MeasureView<'_>,
+        bool,
         bool,
         i8,
         Option<i8>,

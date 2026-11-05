@@ -226,9 +226,9 @@ impl MeasureLayout {
             match tops.notation {
                 Some(notation_top) => {
                     let middle = notation_top + notation::staff().middle();
-                    time_signature.draw_at(signature_x, middle, 1.0, ctx, ops);
+                    time_signature.draw_at(signature_x, middle, 1.0, ctx, ops, self.free_time);
                 }
-                None => time_signature.draw(signature_x, top, ctx, ops),
+                None => time_signature.draw(signature_x, top, self.free_time, ctx, ops),
             }
         }
         // Positions first: ornaments connect neighbouring columns.

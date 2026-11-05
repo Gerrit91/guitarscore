@@ -158,6 +158,15 @@ impl Song {
         })
     }
 
+    /// Whether `measure` is in free time (Guitar Pro's "no metronome"), or `None` if
+    /// there is no such measure.
+    pub fn free_time(&self, measure: MeasureIndex) -> Option<bool> {
+        self.inner()
+            .measure_headers
+            .get(measure.get())
+            .map(|header| header.free_time)
+    }
+
     /// Whether `measure` ends with a double barline (the same for every track), or `None`
     /// if there is no such measure.
     pub fn double_bar(&self, measure: MeasureIndex) -> Option<bool> {

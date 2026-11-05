@@ -81,6 +81,7 @@ impl<'a> Part<'a> {
                 track,
                 measure,
                 show,
+                song.free_time(measure.index()).unwrap_or(false),
                 key,
                 previous_key,
                 clef,
