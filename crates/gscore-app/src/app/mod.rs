@@ -713,6 +713,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_dialog(&ctx);
         self.show_new_song_dialog(&ctx);
         self.show_rename_window(&ctx);
+        self.show_tuning_dialog(&ctx);
         self.show_settings_window(&ctx);
         self.show_shortcuts(&ctx);
         self.show_history(&ctx);

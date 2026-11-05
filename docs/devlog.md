@@ -2736,3 +2736,20 @@ needed for a much larger font); owner listening check.
   coverage, a `panic_hunt` value and `settings_differences` so a test notices the change.
 - Tests: symbol ids are unique and round-trip; a chosen symbol wins over the derived one;
   GPIF write/read keeps it and leaves the instrument type alone; the app snapshots updated.
+
+## 2026-11-05 — Tuning in its own dialog
+
+- The track panel's inline string list (one note menu per string, plus count and capo) did
+  not read as a tuning and made the panel long. It is now a **Tuning…** button under the
+  preset (disabled for tracks that are not string instruments), showing the current
+  tuning's name.
+- The dialog shows the strings as a headstock (string 1, the highest, at the top; lower
+  strings drawn thicker), one note menu and − / + per string, a **Common tuning** menu
+  with sixteen presets across 4 to 8 strings (E/Eb/D standard, Drop D, double drop D,
+  DADGAD, Open C/D/G, B standard, Drop A, the 4/5-string bass tunings), the string count,
+  the capo, and Reset to standard. OK turns the whole draft into one `Command::Batch`, so
+  it is one undo step. A string count that would remove strings carrying notes is refused
+  with the model's message and the dialog stays open.
+- Tests: the panel test drives the capo and string count through the dialog; a new
+  snapshot (`tuning_dialog`) covers the layout; preset/default tuning lengths are unit
+  tested.

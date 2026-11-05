@@ -26,6 +26,8 @@ pub(super) struct TrackPanelState {
     name: String,
     /// Whether the name is being edited in place.
     editing: bool,
+    /// The tuning dialog, while it is open.
+    tuning: Option<tuning::TuningDialog>,
 }
 
 /// A snapshot of the shown track, taken before drawing so the song is not borrowed while
@@ -83,6 +85,7 @@ impl GuitarScoreApp {
         }
 
         let mut commands: Vec<(Command, bool)> = Vec::new();
+        let mut open_tuning = false;
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -91,17 +94,55 @@ impl GuitarScoreApp {
                 style::section(ui, "track_instrument", "Instrument", |ui| {
                     instrument(ui, index, &snapshot, &mut commands);
                     sound(ui, index, &snapshot, &mut commands);
+                    tuning::button(ui, &snapshot, &mut open_tuning);
                 });
                 style::section(ui, "track_look", "Appearance", |ui| {
                     look::color(ui, index, &snapshot, &mut commands);
                     look::staves(ui, index, &snapshot, &mut commands);
                 });
-                style::section(ui, "track_tuning", "Tuning", |ui| {
-                    tuning::tuning(ui, index, &snapshot, &mut commands);
-                });
             });
         for (command, merge) in commands {
             self.apply_command(command, merge);
+        }
+        if open_tuning && let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.track_panel.tuning = Some(tuning::TuningDialog::of(index, &snapshot));
+        }
+    }
+
+    /// The tuning dialog, while it is open.
+    pub(super) fn show_tuning_dialog(&mut self, ctx: &egui::Context) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let Some(mut dialog) = tab.track_panel.tuning.take() else {
+            return;
+        };
+        let mut outcome = dialog.show(ctx);
+        if outcome == tuning::Outcome::Apply {
+            let track = TrackIndex::new(dialog.track());
+            let song = &tab.document.song();
+            // The strings that would go must carry no notes; the model says whether.
+            if dialog.strings() != song.track(track).map_or(0, |track| track.string_count())
+                && let Err(error) = song.check_track_strings(track, dialog.strings())
+            {
+                dialog.set_error(Some(error.to_string()));
+                outcome = tuning::Outcome::Open;
+            } else {
+                dialog.set_error(None);
+            }
+        }
+        match outcome {
+            tuning::Outcome::Apply => {
+                let commands = dialog.commands();
+                self.apply_commands(commands);
+            }
+            tuning::Outcome::Cancel => {}
+            tuning::Outcome::Remove | tuning::Outcome::Listen => {
+                tab.track_panel.tuning = Some(dialog);
+            }
+            tuning::Outcome::Open => {
+                tab.track_panel.tuning = Some(dialog);
+            }
         }
     }
 

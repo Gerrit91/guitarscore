@@ -128,6 +128,29 @@ fn the_page_matches_its_snapshot_in_both_themes() {
 }
 
 #[test]
+fn the_tuning_dialog_matches_its_snapshot() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .wgpu()
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/steel_guitar_dadgad.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness.get_by_label("Tuning: DADGAD…").click();
+    harness.run();
+    harness.snapshot("tuning_dialog");
+}
+
+#[test]
 fn the_staff_dialogs_match_their_snapshots() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))
@@ -591,20 +614,24 @@ fn the_track_panel_edits_the_shown_track() {
     harness.run();
     assert!(!first_track(&harness).is_percussion());
 
-    // The capo and the string count (the label text and the spin button share a name).
+    // The capo and the string count live in the tuning dialog.
+    harness.get_by_label("Tuning: DADGAD…").click();
+    harness.run();
     harness
         .get_all_by_role_and_label(egui::Role::SpinButton, "Capo")
         .next()
         .unwrap()
         .increment_accesskit();
     harness.run();
-    assert_eq!(first_track(&harness).capo().unwrap(), 1);
     harness
         .get_all_by_role_and_label(egui::Role::SpinButton, "Strings")
         .next()
         .unwrap()
         .increment_accesskit();
     harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(first_track(&harness).capo().unwrap(), 1);
     assert_eq!(first_track(&harness).string_count(), 7);
 
     // A rename in place: click the name, type, Enter. One step too.
