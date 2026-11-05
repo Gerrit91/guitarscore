@@ -32,6 +32,8 @@ pub(super) enum SettingsTab {
     Page,
     /// Theme, shortcuts, startup, autosave.
     Editor,
+    /// The metronome's click and the count-in.
+    Metronome,
     /// Output, SoundFont and MIDI ports.
     Audio,
 }
@@ -197,6 +199,7 @@ impl GuitarScoreApp {
                             (SettingsTab::Song, "Song"),
                             (SettingsTab::Page, "Page layout"),
                             (SettingsTab::Editor, "Editor"),
+                            (SettingsTab::Metronome, "Metronome"),
                             (SettingsTab::Audio, "Audio I/O"),
                         ] {
                             ui.selectable_value(&mut window.tab, tab, label);
@@ -219,6 +222,7 @@ impl GuitarScoreApp {
                             );
                         }
                         SettingsTab::Editor => self.editor_tab(ui),
+                        SettingsTab::Metronome => self.metronome_tab(ui),
                         SettingsTab::Audio => self.audio_tab(ui, &mut window.soundfonts),
                     }
                 });
@@ -452,6 +456,89 @@ impl GuitarScoreApp {
     }
 
     /// The editor tab: theme, keymap file and autosave interval.
+    /// The metronome's volume and sound, and the count-in.
+    fn metronome_tab(&mut self, ui: &mut Ui) {
+        ui.heading("Click");
+        ui.horizontal(|ui| {
+            ui.label("Volume");
+            let mut percent = (self.playback.metronome_volume() * 100.0).round();
+            let response = ui.add(egui::Slider::new(&mut percent, 0.0..=100.0).suffix(" %"));
+            ui.ctx()
+                .accesskit_node_builder(response.id, |node| node.set_label("Click volume"));
+            if response.changed() {
+                self.set_metronome_volume(percent / 100.0);
+            }
+        });
+        ui.add_space(4.0);
+        ui.label("Sound");
+        let chosen = self.playback.click_sound();
+        for sound in gscore_play::ClickSound::ALL {
+            ui.horizontal(|ui| {
+                if ui.radio(chosen == sound, sound.label()).clicked() {
+                    self.set_click_sound(sound);
+                }
+                let listen = ui
+                    .small_button("Listen")
+                    .on_hover_text("Play one bar of this click");
+                ui.ctx().accesskit_node_builder(listen.id, |node| {
+                    node.set_label(format!("Listen to {}", sound.label()));
+                });
+                if listen.clicked() {
+                    self.set_click_sound(sound);
+                    self.preview_click();
+                }
+            });
+        }
+        ui.label(
+            RichText::new(
+                "The built-in synthesizer plays this click; a MIDI output plays its own \
+                 metronome sounds. The volume is also on the metronome's fader in the mixer.",
+            )
+            .weak(),
+        );
+
+        ui.separator();
+        ui.heading("Count-in");
+        let mut count_in = self.playback.count_in();
+        if ui
+            .checkbox(&mut count_in, "Count in before playback starts")
+            .changed()
+        {
+            self.set_count_in(count_in);
+        }
+        ui.horizontal(|ui| {
+            ui.label("Length");
+            let mut bars = self.playback.count_in_bars();
+            let response = egui::ComboBox::from_id_salt("settings_count_in_bars")
+                .selected_text(bars_label(bars))
+                .show_ui(ui, |ui| {
+                    for choice in 1..=gscore_play::MAX_COUNT_IN_BARS {
+                        ui.selectable_value(&mut bars, choice, bars_label(choice));
+                    }
+                });
+            ui.ctx()
+                .accesskit_node_builder(response.response.id, |node| {
+                    node.set_label("Count-in length");
+                });
+            if bars != self.playback.count_in_bars() {
+                self.playback.set_count_in_bars(bars);
+            }
+        });
+        let mut loops = self.playback.count_in_loops();
+        if ui
+            .checkbox(&mut loops, "Count in again each time a loop starts over")
+            .changed()
+        {
+            self.playback.set_count_in_loops(loops);
+        }
+        ui.label(
+            RichText::new(
+                "The count-in clicks whether or not the metronome clicks during the song.",
+            )
+            .weak(),
+        );
+    }
+
     fn editor_tab(&mut self, ui: &mut Ui) {
         ui.heading("Score");
         ui.horizontal(|ui| {
@@ -591,6 +678,15 @@ fn song_tab(ui: &mut Ui, window: &mut SettingsWindow, apply: &mut bool, close: &
 }
 
 /// The autosave choices, as the combo box shows them.
+/// "1 bar", "2 bars", ...
+fn bars_label(bars: u8) -> String {
+    if bars == 1 {
+        "1 bar".to_owned()
+    } else {
+        format!("{bars} bars")
+    }
+}
+
 fn autosave_label(seconds: u64) -> String {
     match seconds {
         0 => "only after many edits".to_owned(),

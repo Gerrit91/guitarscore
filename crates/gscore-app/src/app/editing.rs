@@ -479,7 +479,14 @@ impl GuitarScoreApp {
         let range = timeline
             .as_deref()
             .and_then(|timeline| timeline.measure_range(selection.start(), selection.end()));
-        if let Err(error) = self.playback.poll_loop(range) {
+        // The loop's first beat, where a count-in leads each pass.
+        let first = BeatPosition {
+            track: tab.document.editor().cursor().track,
+            measure: MeasureIndex::new(selection.start()),
+            voice: VoiceIndex::new(0),
+            beat: BeatIndex::new(0),
+        };
+        if let Err(error) = self.playback.poll_loop(tab.document.song(), range, first) {
             self.notice = Some(error);
         }
     }
@@ -603,6 +610,32 @@ impl GuitarScoreApp {
             return;
         };
         if let Err(error) = self.playback.set_metronome_volume(document.song(), volume) {
+            self.notice = Some(error);
+        }
+    }
+
+    /// Chooses the metronome's click sound (heard at once while playing).
+    pub fn set_click_sound(&mut self, sound: gscore_play::ClickSound) {
+        let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
+            self.playback.store_click_sound(sound);
+            return;
+        };
+        if let Err(error) = self.playback.set_click_sound(document.song(), sound) {
+            self.notice = Some(error);
+        }
+    }
+
+    /// Plays a bar of the metronome alone (the open song's tempo, else 120 BPM).
+    pub fn preview_click(&mut self) {
+        let fallback;
+        let song = match self.tabs.get(self.active) {
+            Some(tab) => tab.document.song(),
+            None => {
+                fallback = gscore_model::Song::default();
+                &fallback
+            }
+        };
+        if let Err(error) = self.playback.preview_click(song) {
             self.notice = Some(error);
         }
     }

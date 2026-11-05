@@ -294,6 +294,14 @@ impl Sink for SynthSink<'_> {
                 channel: Channel::PERCUSSION,
                 key,
             } if ClickVoice::plays(key) => return,
+            MidiEvent::Control {
+                channel: Channel::PERCUSSION,
+                controller,
+                value,
+            } if ClickVoice::chooses(controller) => {
+                self.1.choose(value);
+                return;
+            }
             _ => {}
         }
         let (channel, command, data1, data2) = match event {

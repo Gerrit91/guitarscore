@@ -198,6 +198,12 @@ pub struct Settings {
     pub autosave_seconds: u64,
     /// The metronome's volume, 0 to 1.
     pub metronome_volume: f32,
+    /// The built-in synthesizer's click sound (`wood`, `beep` or `cowbell`).
+    pub click_sound: String,
+    /// How many bars the count-in clicks (1 to 4).
+    pub count_in_bars: u8,
+    /// Whether a looped selection is counted in again each time it starts over.
+    pub count_in_loops: bool,
     /// The SoundFont chosen for the built-in synthesizer, if any.
     pub soundfont_path: Option<PathBuf>,
     /// Whether playback prefers the built-in synthesizer over MIDI output.
@@ -238,6 +244,9 @@ impl Default for Settings {
             audition_notes: true,
             autosave_seconds: DEFAULT_AUTOSAVE_SECONDS,
             metronome_volume: 1.0,
+            click_sound: gscore_play::ClickSound::default().id().to_owned(),
+            count_in_bars: 1,
+            count_in_loops: false,
             soundfont_path: None,
             prefer_synth: true,
             midi_port: None,
@@ -289,6 +298,10 @@ impl Settings {
     pub fn add_recent(&mut self, path: PathBuf) {
         self.recent_files.retain(|recent| recent != &path);
         self.recent_files.insert(0, path);
+        if gscore_play::ClickSound::from_id(&self.click_sound).is_none() {
+            self.click_sound = gscore_play::ClickSound::default().id().to_owned();
+        }
+        self.count_in_bars = self.count_in_bars.clamp(1, gscore_play::MAX_COUNT_IN_BARS);
         self.recent_files.truncate(MAX_RECENT_FILES);
     }
 

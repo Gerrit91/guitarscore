@@ -3058,3 +3058,9 @@ needed for a much larger font); owner listening check.
   SoundFont has there. The wood blocks were average in FluidR3 and nearly silent in the
   bundled GeneralUser GS; the new click is well above the guitars. MIDI output plays the
   external synthesizer's own metronome sounds.
+- **Metronome settings tab** (Settings › Metronome): click volume (the same as the mixer's
+  metronome fader), the click sound (wood block, electronic beep or cowbell, each with a
+  Listen button), the count-in switch, its length (1 to 4 bars) and whether a looped
+  selection is counted in again each time it starts over. All are saved in the settings.
+  The sound reaches the synthesizer as controller 3 on the percussion channel (undefined in
+  General MIDI), so the desktop and browser synthesizers both follow it.

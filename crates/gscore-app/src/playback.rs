@@ -19,7 +19,10 @@ mod preview;
 
 pub use preview::Heard;
 
-use gscore_play::{Channel, MidiEvent, PPQ, PlayState, Player, Sequence, sound_events};
+use gscore_play::{
+    Channel, Click, ClickSound, MAX_COUNT_IN_BARS, MidiEvent, PPQ, PlayState, Player, Sequence,
+    sound_events,
+};
 
 /// How long an entered note sounds.
 const AUDITION_LENGTH: Duration = Duration::from_millis(450);
@@ -150,6 +153,12 @@ pub struct Playback {
     metronome: bool,
     /// The metronome's volume, 0 to 1 (1 is full).
     metronome_volume: f32,
+    /// The built-in synthesizer's click sound.
+    click_sound: ClickSound,
+    /// How many bars the count-in clicks (1 to [`MAX_COUNT_IN_BARS`]).
+    count_in_bars: u8,
+    /// Whether a looped selection is counted in again each time it starts over.
+    count_in_loops: bool,
     /// Whether one bar of clicks is played before playback starts.
     count_in: bool,
     /// While the player holds a count-in joined to the song (see [`Lead`]).
@@ -180,6 +189,9 @@ impl Default for Playback {
             paused_at: None,
             metronome: false,
             metronome_volume: 1.0,
+            click_sound: ClickSound::default(),
+            count_in_bars: 1,
+            count_in_loops: false,
             count_in: false,
             lead: None,
             loop_selection: false,
@@ -318,6 +330,69 @@ impl Playback {
         }
         self.metronome_volume = volume;
         self.rebuild_sequence(song)
+    }
+
+    /// The metronome's click: its volume and sound.
+    fn click(&self) -> Click {
+        Click {
+            volume: self.metronome_volume,
+            sound: self.click_sound,
+        }
+    }
+
+    /// The built-in synthesizer's click sound.
+    pub fn click_sound(&self) -> ClickSound {
+        self.click_sound
+    }
+
+    /// Chooses the click sound, heard at once while playing.
+    pub fn set_click_sound(&mut self, song: &Song, sound: ClickSound) -> Result<(), String> {
+        if self.click_sound == sound {
+            return Ok(());
+        }
+        self.click_sound = sound;
+        self.rebuild_sequence(song)
+    }
+
+    /// Chooses the click sound without rebuilding a sequence (when the settings load).
+    pub fn store_click_sound(&mut self, sound: ClickSound) {
+        self.click_sound = sound;
+    }
+
+    /// How many bars the count-in clicks.
+    pub fn count_in_bars(&self) -> u8 {
+        self.count_in_bars
+    }
+
+    /// Sets how many bars the count-in clicks (1 to [`MAX_COUNT_IN_BARS`]); the next
+    /// count-in uses it.
+    pub fn set_count_in_bars(&mut self, bars: u8) {
+        self.count_in_bars = bars.clamp(1, MAX_COUNT_IN_BARS);
+    }
+
+    /// Whether a looped selection is counted in again each time it starts over.
+    pub fn count_in_loops(&self) -> bool {
+        self.count_in_loops
+    }
+
+    /// Counts a loop in again each time it starts over (with the count-in on), or not.
+    pub fn set_count_in_loops(&mut self, enabled: bool) {
+        self.count_in_loops = enabled;
+    }
+
+    /// Plays one bar of the metronome alone, to hear its sound and volume. Only while the
+    /// song is stopped (as a beat preview); `song` gives the tempo.
+    pub fn preview_click(&mut self, song: &Song) -> Result<(), String> {
+        if self.state() == PlayState::Playing || self.count_in_pending() {
+            return Ok(());
+        }
+        let bar = gscore_play::count_in(song, first_beat(), 1, self.click())
+            .map_err(|e| e.to_string())?;
+        self.connect()?;
+        if self.is_loading() {
+            return Ok(());
+        }
+        self.play_excerpt(Arc::new(bar))
     }
 
     /// Whether one bar of clicks is played before playback starts.
@@ -519,7 +594,15 @@ impl Playback {
     /// Keeps playback inside `range` (first and last tick) when the loop is on: a position
     /// outside it jumps to its start, and reaching its end starts it again. Does nothing
     /// while paused or stopped (except to restart at the song's end, where playback stops).
-    pub fn poll_loop(&mut self, range: Option<(u64, u64)>) -> Result<(), String> {
+    ///
+    /// `first` is the loop's first beat: with the count-in on and
+    /// [`Playback::count_in_loops`], each new pass is counted in there.
+    pub fn poll_loop(
+        &mut self,
+        song: &Song,
+        range: Option<(u64, u64)>,
+        first: BeatPosition,
+    ) -> Result<(), String> {
         if !self.loop_selection || self.count_in_pending() {
             return Ok(());
         }
@@ -531,6 +614,9 @@ impl Playback {
         }
         let position = self.position();
         match self.state() {
+            PlayState::Playing if position >= end && self.count_in && self.count_in_loops => {
+                self.start_count_in(song, Some(first))
+            }
             PlayState::Playing if position < start || position >= end => self.seek_song(start),
             PlayState::Stopped if position >= end => {
                 // The song ended at the loop's end: play the loop again.
@@ -770,7 +856,7 @@ impl Playback {
     /// sequence so the song follows the last click exactly.
     fn start_count_in(&mut self, song: &Song, from: Option<BeatPosition>) -> Result<(), String> {
         let at = from.unwrap_or_else(first_beat);
-        let clicks = gscore_play::count_in(song, at, self.metronome_volume)
+        let clicks = gscore_play::count_in(song, at, self.count_in_bars, self.click())
             .map(Arc::new)
             .map_err(|e| e.to_string())?;
         let sequence = match &self.sequence {
@@ -816,7 +902,7 @@ impl Playback {
 
     /// Builds the song's sequence with the current metronome setting and volume.
     fn build_sequence(&self, song: &Song) -> Result<Arc<Sequence>, String> {
-        Sequence::with_metronome_volume(song, None, self.metronome, self.metronome_volume)
+        Sequence::with_click(song, None, self.metronome.then(|| self.click()))
             .map(Arc::new)
             .map_err(|e| e.to_string())
     }

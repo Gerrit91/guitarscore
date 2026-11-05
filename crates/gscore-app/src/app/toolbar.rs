@@ -290,7 +290,7 @@ impl GuitarScoreApp {
                         ui,
                         Icon::CountIn,
                         "Count-in",
-                        "One bar of clicks before playback starts",
+                        "Clicks before playback starts (length in Settings › Metronome)",
                         count_in,
                     )
                 })

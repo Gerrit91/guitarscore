@@ -22,6 +22,99 @@ const ACCENT_VELOCITY: u8 = 110;
 const CLICK_VELOCITY: u8 = 80;
 /// How long a click sounds, in ticks (an eighth of a quarter note).
 const CLICK_LENGTH: u64 = (PPQ as u64) / 8;
+/// The controller on the percussion channel that chooses the click's sound (3 is
+/// undefined in General MIDI, so other synthesizers ignore it).
+pub const CLICK_SOUND_CONTROLLER: u8 = 3;
+/// The most count-in bars.
+pub const MAX_COUNT_IN_BARS: u8 = 4;
+
+/// How the built-in synthesizer's metronome sounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ClickSound {
+    /// A short wooden "tock", like a wood block.
+    #[default]
+    Wood,
+    /// A clean electronic beep.
+    Beep,
+    /// A mellow cowbell.
+    Cowbell,
+}
+
+impl ClickSound {
+    /// Every sound, in menu order.
+    pub const ALL: [ClickSound; 3] = [ClickSound::Wood, ClickSound::Beep, ClickSound::Cowbell];
+
+    /// The id the settings store.
+    pub fn id(self) -> &'static str {
+        match self {
+            ClickSound::Wood => "wood",
+            ClickSound::Beep => "beep",
+            ClickSound::Cowbell => "cowbell",
+        }
+    }
+
+    /// The sound named by `id`.
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|sound| sound.id() == id)
+    }
+
+    /// A name for menus.
+    pub fn label(self) -> &'static str {
+        match self {
+            ClickSound::Wood => "Wood block",
+            ClickSound::Beep => "Electronic beep",
+            ClickSound::Cowbell => "Cowbell",
+        }
+    }
+
+    /// The value of [`CLICK_SOUND_CONTROLLER`] that chooses it.
+    pub fn value(self) -> u8 {
+        match self {
+            ClickSound::Wood => 0,
+            ClickSound::Beep => 1,
+            ClickSound::Cowbell => 2,
+        }
+    }
+
+    /// The sound a [`CLICK_SOUND_CONTROLLER`] value chooses (unknown values: the wood).
+    pub fn of_value(value: u8) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|sound| sound.value() == value)
+            .unwrap_or_default()
+    }
+}
+
+/// How the metronome clicks: its volume (0 to 1; 0 is silent) and sound.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Click {
+    /// The volume, 0 to 1.
+    pub volume: f32,
+    /// The built-in synthesizer's sound.
+    pub sound: ClickSound,
+}
+
+impl Default for Click {
+    fn default() -> Self {
+        Click {
+            volume: 1.0,
+            sound: ClickSound::Wood,
+        }
+    }
+}
+
+/// The event that chooses `sound` for the clicks after it, at `tick`.
+pub(crate) fn sound_event(sound: ClickSound, tick: u64) -> TimedEvent {
+    TimedEvent {
+        tick,
+        track: CLICK_TRACK,
+        event: MidiEvent::Control {
+            channel: Channel::PERCUSSION,
+            controller: CLICK_SOUND_CONTROLLER,
+            value: sound.value(),
+        },
+    }
+}
 
 /// The clicks of one played measure: one per beat of its time signature, the first accented.
 #[cfg(test)]
@@ -73,10 +166,15 @@ pub(crate) fn click_events_at(span: MeasureSpan, volume: f32) -> Vec<TimedEvent>
     events
 }
 
-/// One measure of clicks before playback starts at `at`, using the tempo and time signature
-/// of its measure, at the metronome's `volume` (0 to 1). It clicks whether or not the
-/// metronome clicks during the song.
-pub fn count_in(song: &Song, at: BeatPosition, volume: f32) -> Result<Sequence, ModelError> {
+/// `bars` measures of clicks (1 to [`MAX_COUNT_IN_BARS`]) before playback starts at `at`,
+/// using the tempo and time signature of its measure, as `click` says. It clicks whether or
+/// not the metronome clicks during the song.
+pub fn count_in(
+    song: &Song,
+    at: BeatPosition,
+    bars: u8,
+    click: Click,
+) -> Result<Sequence, ModelError> {
     let four_four = TimeSignature::new(4, 4)?;
     let signature = song
         .track(TrackIndex::new(0))
@@ -84,15 +182,21 @@ pub fn count_in(song: &Song, at: BeatPosition, volume: f32) -> Result<Sequence, 
         .map(|measure| measure.time_signature())
         .transpose()?
         .unwrap_or(four_four);
-    let end = ticks(signature.measure_length());
-    let span = MeasureSpan {
-        measure: at.measure,
-        start: 0,
-        end,
-        signature,
-    };
-    let mut events = click_events_at(span, volume);
-    events.sort_by_key(|event| event.tick);
+    let bar = ticks(signature.measure_length());
+    let bars = u64::from(bars.clamp(1, MAX_COUNT_IN_BARS));
+    let end = bar.saturating_mul(bars);
+    let mut events = vec![sound_event(click.sound, 0)];
+    for index in 0..bars {
+        let start = bar.saturating_mul(index);
+        let span = MeasureSpan {
+            measure: at.measure,
+            start,
+            end: start.saturating_add(bar),
+            signature,
+        };
+        events.extend(click_events_at(span, click.volume));
+    }
+    events.sort_by_key(|event| (event.tick, event.event.is_note()));
     Ok(Sequence {
         tracks: Vec::new(),
         events,
@@ -233,7 +337,10 @@ mod tests {
             .iter()
             .filter(|event| event.track == CLICK_TRACK)
             .count();
-        assert_eq!(clicks, 16, "four clicks and their offs in each of two bars");
+        assert_eq!(
+            clicks, 17,
+            "the sound, then four clicks and their offs in each of two bars"
+        );
         assert_eq!(clicked.events.len(), plain.events.len() + clicks);
     }
 
@@ -247,7 +354,7 @@ mod tests {
             beat: BeatIndex::new(0),
         };
         let sequence = Sequence::new(&song, None).unwrap();
-        let clicks = count_in(&song, at(1), 1.0).unwrap();
+        let clicks = count_in(&song, at(1), 1, Click::default()).unwrap();
         let bar = clicks.end;
         let start = sequence.tick_of(&song, at(1)).unwrap();
         let joined = lead_in(&sequence, &clicks, start);
@@ -291,9 +398,29 @@ mod tests {
             voice: VoiceIndex::new(0),
             beat: BeatIndex::new(0),
         };
-        let count = count_in(&song, at, 1.0).unwrap();
+        let count = count_in(&song, at, 1, Click::default()).unwrap();
         assert_eq!(count.end, 4 * u64::from(PPQ));
         assert_eq!(count.micros(), 2_000_000);
-        assert_eq!(count.events.len(), 8);
+        // The sound first, then four clicks and their offs.
+        assert_eq!(count.events.len(), 9);
+        assert!(matches!(
+            count.events[0].event,
+            MidiEvent::Control {
+                controller: CLICK_SOUND_CONTROLLER,
+                ..
+            }
+        ));
+        // Two bars are twice as long, with twice the clicks, in the chosen sound.
+        let beep = Click {
+            volume: 1.0,
+            sound: ClickSound::Beep,
+        };
+        let two = count_in(&song, at, 2, beep).unwrap();
+        assert_eq!(two.end, 8 * u64::from(PPQ));
+        assert_eq!(two.events.len(), 17);
+        assert!(matches!(
+            two.events[0].event,
+            MidiEvent::Control { value: 1, .. }
+        ));
     }
 }

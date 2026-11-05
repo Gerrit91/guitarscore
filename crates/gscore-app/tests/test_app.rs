@@ -1709,6 +1709,93 @@ fn the_audio_tab_is_last_and_named_audio_io() {
 }
 
 #[test]
+fn the_metronome_tab_sets_the_click_and_the_count_in() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Settings…").click();
+    harness.run();
+    // The tab (the toolbar's metronome switch has the same name).
+    harness
+        .get_all_by_label("Metronome")
+        .last()
+        .unwrap()
+        .click();
+    harness.run();
+    harness.get_by_label("Cowbell").click();
+    harness.run();
+    assert_eq!(
+        harness.state().playback().click_sound(),
+        gscore_play::ClickSound::Cowbell
+    );
+    harness
+        .get_by_label("Count in before playback starts")
+        .click();
+    harness.run();
+    assert!(harness.state().playback().count_in());
+    harness.get_by_label("Count-in length").click();
+    harness.run();
+    harness.get_by_label("2 bars").click();
+    harness.run();
+    assert_eq!(harness.state().playback().count_in_bars(), 2);
+    harness
+        .get_by_label("Count in again each time a loop starts over")
+        .click();
+    harness.run();
+    assert!(harness.state().playback().count_in_loops());
+    // All of it is kept in the settings.
+    let settings = harness.state().settings();
+    assert_eq!(settings.click_sound, "cowbell");
+    assert_eq!(settings.count_in_bars, 2);
+    assert!(settings.count_in_loops);
+}
+
+#[test]
+fn a_loop_is_counted_in_again_each_time_it_starts_over() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("count-in-loop");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    harness.state_mut().set_count_in(true);
+    harness.state_mut().playback_mut().set_count_in_loops(true);
+    // Loop the second bar.
+    let document = harness.state_mut().document_mut().unwrap();
+    document
+        .editor_mut()
+        .set_selection(Some(gscore_edit::Selection::Measures {
+            anchor: gscore_model::MeasureIndex::new(1),
+            focus: gscore_model::MeasureIndex::new(1),
+        }));
+    harness
+        .state_mut()
+        .set_selection(Some(gscore_app::MeasureSelection::new(1)));
+    harness.state_mut().set_loop_selection(true);
+    cursor_to_measure(&mut harness, 1);
+    harness.get_by_label("Play").click();
+    let started = step_until(&mut harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    });
+    assert!(started, "neither played nor failed");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+    assert!(step_until(&mut harness, 5, |app| !app
+        .playback()
+        .count_in_pending()));
+    assert_eq!(harness.state().playback().current_measure(), Some(2));
+    // At the bar's end, a new count-in, then the bar again.
+    assert!(
+        step_until(&mut harness, 5, |app| app.playback().count_in_pending()),
+        "the loop's next pass was not counted in"
+    );
+    assert_eq!(harness.state().playback().current_measure(), Some(2));
+    harness.state_mut().playback_mut().stop().unwrap();
+}
+
+#[test]
 fn shortcuts_can_be_changed_and_reverted_from_the_editor() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("File").click();
