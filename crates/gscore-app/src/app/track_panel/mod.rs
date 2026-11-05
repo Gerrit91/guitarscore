@@ -279,42 +279,43 @@ fn instrument(
             label.on_hover_text(name);
         }
     });
-    // The symbol shown for the track (the grid, the tab and this panel).
-    let mut symbol = snapshot.instrument;
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("Symbol").color(style::tokens(ui).text_weak));
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
-        instrument::paint(ui.painter(), rect, symbol, style::tokens(ui).text);
-        let combo = egui::ComboBox::from_id_salt("track_symbol")
-            .selected_text(symbol.name())
-            .width(ui.available_width())
-            .show_ui(ui, |ui| {
-                for candidate in InstrumentSymbol::ALL {
-                    let chosen = ui
-                        .horizontal(|ui| {
-                            let (icon, _) = ui
-                                .allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
-                            instrument::paint(
-                                ui.painter(),
-                                icon,
-                                candidate,
-                                ui.visuals().text_color(),
-                            );
-                            ui.selectable_value(&mut symbol, candidate, candidate.name())
-                        })
-                        .inner;
-                    if chosen.clicked() {
-                        ui.close();
-                    }
-                }
-            });
-        ui.ctx().accesskit_node_builder(combo.response.id, |node| {
-            node.set_label("Instrument symbol");
-        });
-        combo.response.on_hover_text(
+    // The symbol shown for the track (the grid, the tab and this panel): click one.
+    ui.label(RichText::new("Symbol").color(style::tokens(ui).text_weak))
+        .on_hover_text(
             "The symbol the track is shown with. It is only the symbol: the sound comes \
              from the preset.",
         );
+    let mut symbol = snapshot.instrument;
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = egui::vec2(2.0, 3.0);
+        for candidate in InstrumentSymbol::ALL {
+            let (rect, response) =
+                ui.allocate_exact_size(egui::vec2(32.0, 30.0), egui::Sense::click());
+            response.widget_info(|| {
+                egui::WidgetInfo::selected(
+                    egui::Role::Button,
+                    true,
+                    candidate == snapshot.instrument,
+                    candidate.name(),
+                )
+            });
+            let tokens = style::tokens(ui);
+            let chosen = candidate == snapshot.instrument;
+            if chosen {
+                ui.painter().rect_filled(rect, 4.0, tokens.accent);
+            } else if response.hovered() {
+                ui.painter().rect_filled(rect, 4.0, tokens.control_hover);
+            }
+            let ink = if chosen {
+                tokens.on_accent
+            } else {
+                tokens.text
+            };
+            instrument::paint(ui.painter(), rect.shrink(4.0), candidate, ink);
+            if response.on_hover_text(candidate.name()).clicked() {
+                symbol = candidate;
+            }
+        }
     });
     if symbol != snapshot.instrument {
         commands.push((

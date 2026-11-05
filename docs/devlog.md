@@ -2817,3 +2817,9 @@ needed for a much larger font); owner listening check.
   keeping the same layout size. Making the buttons themselves wider pushed the zoom group
   under the player at a 1000 px window; the panel's icon buttons keep the compact size.
 - Snapshots updated.
+
+## 2026-11-05 — Instrument symbols as a grid
+
+- The track panel's Symbol dropdown became a grid of the fifteen symbols: one click
+  chooses, like the palette tiles. The selected one is filled with the accent color.
+- Tests: the panel test chooses Banjo and undoes it; snapshots updated.

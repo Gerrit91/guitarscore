@@ -652,6 +652,18 @@ fn the_track_panel_edits_the_shown_track() {
     harness.run();
     assert!(!first_track(&harness).is_percussion());
 
+    // The instrument symbol is a grid of clickable symbols; one click chooses it.
+    assert_eq!(first_track(&harness).symbol(), None);
+    harness.get_by_label("Banjo").click();
+    harness.run();
+    assert_eq!(
+        first_track(&harness).symbol(),
+        Some(gscore_model::InstrumentSymbol::Banjo)
+    );
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+    harness.run();
+    assert_eq!(first_track(&harness).symbol(), None);
+
     // The capo and the string count live in the tuning dialog.
     harness.get_by_label("Tuning: DADGAD…").click();
     harness.run();
