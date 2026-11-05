@@ -8,7 +8,7 @@ use gscore_model::{MASTER_UNITY, MasterMix, TrackIndex};
 use super::mixer::{self, FLOOR_DB, TRACK_UNITY, db_value, volume_from_db};
 use super::rows::TrackRow;
 use super::{GridAction, ROW_HEIGHT};
-use crate::app::instrument;
+use crate::app::{icons, instrument};
 
 /// One strip's width.
 const STRIP_WIDTH: f32 = 124.0;
@@ -90,7 +90,7 @@ pub(super) fn strips(
                     state,
                     actions,
                 );
-                metronome_strip(ui, metronome_volume, height, actions);
+                metronome_strip(ui, metronome_volume, height, state, actions);
             });
         });
 }
@@ -177,7 +177,7 @@ fn track_strip(
         bottom,
         &row.name,
         &row.preset,
-        row.instrument,
+        Symbol::Instrument(row.instrument),
         Color32::from_rgb(red, green, blue),
     );
 }
@@ -266,13 +266,22 @@ fn master_strip(
         bottom,
         "Master",
         "All tracks",
-        gscore_model::InstrumentSymbol::Other,
+        Symbol::Waveform,
         visuals.selection.bg_fill,
     );
 }
 
-/// The metronome's own strip: only its click volume (the switch stays in the toolbar).
-fn metronome_strip(ui: &mut egui::Ui, volume: f32, height: f32, actions: &mut Vec<GridAction>) {
+/// The metronome's own strip: only its click volume, on a fader like the tracks' (the
+/// switch stays in the toolbar). Full volume is the click as loud as it comes.
+fn metronome_strip(
+    ui: &mut egui::Ui,
+    volume: f32,
+    height: f32,
+    state: &mut MixerState,
+    actions: &mut Vec<GridAction>,
+) {
+    /// The id of the metronome's controls (the master's is `usize::MAX`).
+    const METRONOME: usize = usize::MAX - 1;
     let (rect, _) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::hover());
     let visuals = ui.visuals().clone();
     ui.painter().line_segment(
@@ -280,45 +289,43 @@ fn metronome_strip(ui: &mut egui::Ui, volume: f32, height: f32, actions: &mut Ve
         Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
     );
     let inner = rect.shrink2(vec2(8.0, 6.0));
-    let (top, fader_area, bottom) = layout(inner);
+    let (_, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
     let value = (volume.clamp(0.0, 1.0) * 127.0).round();
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let value = value as u8;
-    let knob_rect = Rect::from_center_size(
-        pos2(top.center().x, top.top() + KNOB_SIZE / 2.0 + 2.0),
-        vec2(KNOB_SIZE, KNOB_SIZE),
-    );
-    let knob = mixer::send_knob(
+    let set = |value: u8| f32::from(value) / 127.0;
+    fader(
         &mut strip,
-        knob_rect,
+        fader_area,
+        METRONOME,
         value,
-        ("metronome", usize::MAX),
-        "Metronome volume",
-        "Metronome volume",
+        64,
+        0.0,
         127,
+        "Metronome volume",
+        |value, _| actions.push(GridAction::SetMetronomeVolume(set(value))),
     );
-    strip.painter().text(
-        pos2(knob_rect.center().x, knob_rect.bottom() + 2.0),
-        Align2::CENTER_TOP,
-        "Click",
-        FontId::proportional(8.0),
-        strip.visuals().weak_text_color(),
+    let db_rect = Rect::from_min_size(
+        pos2(bottom.left(), bottom.top()),
+        vec2(bottom.width(), 16.0),
     );
-    if knob.boundary {
-        actions.push(GridAction::BreakMerge);
-    }
-    if let Some((value, _)) = knob.change {
-        actions.push(GridAction::SetMetronomeVolume(f32::from(value) / 127.0));
-    }
-    // The lower part is empty, as for the master's fader row.
-    let _ = fader_area;
+    db_field(
+        &mut strip,
+        db_rect,
+        state,
+        METRONOME,
+        value,
+        127,
+        "Metronome level",
+        |value| actions.push(GridAction::SetMetronomeVolume(set(value))),
+    );
     labels(
         &mut strip,
         bottom,
         "Metronome",
         "Click volume",
-        gscore_model::InstrumentSymbol::Other,
+        Symbol::Metronome,
         visuals.selection.bg_fill,
     );
 }
@@ -860,12 +867,40 @@ fn mute_solo_all(
     }
 }
 
+/// The small symbol before a strip's second line.
+#[derive(Debug, Clone, Copy)]
+enum Symbol {
+    /// A track's instrument.
+    Instrument(gscore_model::InstrumentSymbol),
+    /// The metronome strip.
+    Metronome,
+    /// The master strip, the sum of every track: a short waveform.
+    Waveform,
+}
+
+/// A short waveform filling `rect`: a few cycles that swell and fade.
+fn paint_waveform(painter: &egui::Painter, rect: Rect, ink: Color32) {
+    const STEPS: usize = 40;
+    let points = (0..=STEPS)
+        .map(|step| {
+            let t = step as f32 / STEPS as f32;
+            let envelope = (std::f32::consts::PI * t).sin();
+            let wave = (std::f32::consts::TAU * 2.5 * t).sin();
+            pos2(
+                rect.left() + rect.width() * t,
+                rect.center().y - rect.height() * 0.48 * envelope * wave,
+            )
+        })
+        .collect();
+    painter.add(egui::Shape::line(points, Stroke::new(1.0, ink)));
+}
+
 fn labels(
     ui: &mut egui::Ui,
     bottom: Rect,
     name: &str,
     preset: &str,
-    instrument: gscore_model::InstrumentSymbol,
+    symbol: Symbol,
     color: Color32,
 ) {
     let visuals = ui.visuals().clone();
@@ -891,7 +926,12 @@ fn labels(
         pos2(preset_rect.left(), preset_rect.center().y - 5.0),
         vec2(10.0, 10.0),
     );
-    instrument::paint(ui.painter(), icon, instrument, visuals.weak_text_color());
+    let ink = visuals.weak_text_color();
+    match symbol {
+        Symbol::Instrument(instrument) => instrument::paint(ui.painter(), icon, instrument, ink),
+        Symbol::Metronome => icons::paint(ui.painter(), icon, ink, icons::Icon::Metronome),
+        Symbol::Waveform => paint_waveform(ui.painter(), icon, ink),
+    }
     let text_rect =
         Rect::from_min_max(pos2(icon.right() + 3.0, preset_rect.top()), preset_rect.max);
     ui.painter().with_clip_rect(text_rect).text(

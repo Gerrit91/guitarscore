@@ -327,7 +327,8 @@ pub(crate) fn extract_symbol(properties: &[Property]) -> Option<String> {
 pub(crate) const SYMBOL_PROPERTY: &str = "GuitarScoreSymbol";
 
 /// GuitarScore addition: whether the track shows slash notation, from a GuitarScore
-/// property (GP7's `PartConfiguration` bit 2 is only its alternative staff style).
+/// property (GP7 keeps the same switch in `PartConfiguration` bit 2, which wins when the
+/// file has one).
 pub(crate) fn extract_slash(properties: &[Property]) -> Option<bool> {
     properties
         .iter()

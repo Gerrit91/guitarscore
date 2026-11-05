@@ -1016,6 +1016,7 @@ fn the_exported_midi_file_matches_guitar_pros_for_every_reference() {
         "ornaments",
         "advanced_ornaments",
         "multi_staff",
+        "staff",
     ] {
         for extension in ["gp", "gpx"] {
             // GP6 drum notes (element and variation) are not read yet: docs/gaps.md.
@@ -1045,6 +1046,17 @@ fn the_exported_midi_file_matches_guitar_pros_for_every_reference() {
                         ours.iter()
                             .any(|&(t, k)| k == key && t >= tick && t - tick <= 240),
                         "{name}: Guitar Pro's {key} at {tick} is missing"
+                    );
+                }
+            } else if name.starts_with("staff") {
+                // The same notes (the bar repeats play the bars they stand for), but we
+                // roll the arpeggio Guitar Pro's export strikes at once.
+                let (ours, theirs) = (note_starts(&ours), note_starts(&theirs));
+                assert_eq!(ours.len(), theirs.len(), "{name}: note count");
+                for (&(tick, key), &(their_tick, their_key)) in ours.iter().zip(&theirs) {
+                    assert!(
+                        key == their_key && tick >= their_tick && tick - their_tick <= 240,
+                        "{name}: ({tick}, {key}) vs Guitar Pro's ({their_tick}, {their_key})"
                     );
                 }
             } else {

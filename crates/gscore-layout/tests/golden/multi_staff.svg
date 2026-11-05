@@ -19,7 +19,7 @@
 <line x1="8" y1="35.12" x2="112" y2="35.12" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="34.12" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
 <line x1="8.08" y1="31.12" x2="8.08" y2="50.62" stroke="#303030" stroke-width="0.16"/>
-<text x="13.2" y="30.32" font-family="Noto Sans" font-size="1.1" fill="#404040">1</text>
+<text x="12.9" y="30.32" font-family="Noto Sans" font-size="1.1" fill="#404040">1</text>
 <text x="13.2" y="31.12" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.2" y="32.62" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="15.2" y="30.62" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
@@ -97,20 +97,20 @@
 <line x1="50.29" y1="52.47" x2="50.79" y2="52.47" stroke="#404040" stroke-width="0.2"/>
 <line x1="51.09" y1="52.47" x2="51.37" y2="52.47" stroke="#404040" stroke-width="0.2"/>
 <line x1="51.37" y1="52.17" x2="51.37" y2="52.77" stroke="#404040" stroke-width="0.2"/>
-<line x1="11.58" y1="27.09" x2="16.98" y2="27.09" stroke="#101010" stroke-width="0.12"/>
-<line x1="11.58" y1="28.87" x2="16.98" y2="28.87" stroke="#101010" stroke-width="0.12"/>
-<line x1="11.58" y1="27.09" x2="11.58" y2="28.87" stroke="#101010" stroke-width="0.12"/>
-<line x1="16.98" y1="27.09" x2="16.98" y2="28.87" stroke="#101010" stroke-width="0.12"/>
-<text x="11.93" y="28.52" font-family="Noto Sans" font-size="1.5" font-weight="bold" fill="#101010">Intro</text>
-<line x1="11.83" y1="43.12" x2="11.83" y2="50.62" stroke="#303030" stroke-width="0.5"/>
-<line x1="12.56" y1="43.12" x2="12.56" y2="50.62" stroke="#303030" stroke-width="0.16"/>
-<text x="12.8" y="45.37" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
-<text x="12.8" y="48.37" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
+<line x1="11.28" y1="27.09" x2="16.68" y2="27.09" stroke="#101010" stroke-width="0.12"/>
+<line x1="11.28" y1="28.87" x2="16.68" y2="28.87" stroke="#101010" stroke-width="0.12"/>
+<line x1="11.28" y1="27.09" x2="11.28" y2="28.87" stroke="#101010" stroke-width="0.12"/>
+<line x1="16.68" y1="27.09" x2="16.68" y2="28.87" stroke="#101010" stroke-width="0.12"/>
+<text x="11.63" y="28.52" font-family="Noto Sans" font-size="1.5" font-weight="bold" fill="#101010">Intro</text>
+<line x1="11.53" y1="43.12" x2="11.53" y2="50.62" stroke="#303030" stroke-width="0.5"/>
+<line x1="12.26" y1="43.12" x2="12.26" y2="50.62" stroke="#303030" stroke-width="0.16"/>
+<text x="12.5" y="45.37" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
+<text x="12.5" y="48.37" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
 <line x1="51.29" y1="43.12" x2="51.29" y2="50.62" stroke="#303030" stroke-width="0.16"/>
-<line x1="11.83" y1="31.12" x2="11.83" y2="35.12" stroke="#303030" stroke-width="0.5"/>
-<line x1="12.56" y1="31.12" x2="12.56" y2="35.12" stroke="#303030" stroke-width="0.16"/>
-<text x="12.8" y="32.62" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
-<text x="12.8" y="33.62" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
+<line x1="11.53" y1="31.12" x2="11.53" y2="35.12" stroke="#303030" stroke-width="0.5"/>
+<line x1="12.26" y1="31.12" x2="12.26" y2="35.12" stroke="#303030" stroke-width="0.16"/>
+<text x="12.5" y="32.62" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
+<text x="12.5" y="33.62" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
 <line x1="51.29" y1="31.12" x2="51.29" y2="35.12" stroke="#303030" stroke-width="0.16"/>
 <text x="51.37" y="30.32" font-family="Noto Sans" font-size="1.1" fill="#404040">2</text>
 <rect x="52.58" y="45.38" width="1.16" height="1.47" fill="#ffffff"/>

@@ -2,7 +2,7 @@
 //! tuning, capo and string count. Every change is a [`Command`] with undo, and sound changes
 //! are heard at once (the sound commands go to the player while it plays).
 
-mod look;
+pub(super) mod look;
 mod tuning;
 
 use egui::RichText;

@@ -96,11 +96,11 @@ pub(crate) enum Face<'a> {
     Swing,
     /// A fermata.
     Fermata,
-    /// Free time: a dotted line (no strict meter or metronome).
+    /// Free time: a dashed barline (no strict meter or metronome).
     FreeTime,
-    /// A one-bar repetition: a slash and a dot.
+    /// A one-bar repetition: a slash between two dots.
     SimileSingle,
-    /// A two-bar repetition: two slashes.
+    /// A two-bar repetition: two slashes between two dots.
     SimileDouble,
 }
 
@@ -114,7 +114,9 @@ fn bold(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name(BOLD.into()))
 }
 
-/// Paints a music-font glyph with its baseline (not its box) centered at `at`.
+/// Paints a music-font glyph with its ink centered across `at` and its baseline (not its
+/// box) at `at`'s height. Centering the ink, not the advance, keeps slanted signs (the
+/// italic dynamics) in the middle like upright ones.
 pub(crate) fn music_glyph(painter: &Painter, at: Pos2, text: &str, size: f32, ink: Color32) {
     let galley = painter.layout_no_wrap(text.to_owned(), music(size), ink);
     let baseline = galley
@@ -122,8 +124,12 @@ pub(crate) fn music_glyph(painter: &Painter, at: Pos2, text: &str, size: f32, in
         .first()
         .and_then(|row| row.row.glyphs.first().map(|glyph| row.pos.y + glyph.pos.y))
         .unwrap_or(0.0);
-    let width = galley.size().x;
-    painter.galley(egui::pos2(at.x - width / 2.0, at.y - baseline), galley, ink);
+    let middle = if galley.mesh_bounds.is_positive() {
+        galley.mesh_bounds.center().x
+    } else {
+        galley.size().x / 2.0
+    };
+    painter.galley(egui::pos2(at.x - middle, at.y - baseline), galley, ink);
 }
 
 /// Paints bold text centered on `at`, slanted when `italic`; several lines stack.
@@ -201,8 +207,13 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
             more_corner(painter, rect, ink);
         }
         Face::Word(text) => {
-            let size = if text.contains('\n') { 9.5 } else { 11.0 };
-            lettering(painter, c, text, size, true, ink);
+            let size = if text.contains('\n') || text.chars().count() > 4 {
+                9.5
+            } else {
+                10.0
+            };
+            // The slant leans the ink to the right of the layout box.
+            lettering(painter, at(-0.5, 0.0), text, size, true, ink);
         }
         Face::TupletBracket {
             text,
@@ -414,24 +425,16 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
         }
         Face::Fermata => music_glyph(painter, at(0.0, 4.0), "\u{E4C0}", 30.0, ink),
         Face::FreeTime => {
-            let stroke = Stroke::new(2.0, ink);
+            // A dashed barline, as a free-time bar ends.
+            let stroke = Stroke::new(1.8, ink);
             for step in 0..5 {
-                let x = -12.0 + step as f32 * 6.0;
-                painter.line_segment([at(x, 3.0), at(x + 3.0, 3.0)], stroke);
+                let y = -11.0 + step as f32 * 4.8;
+                painter.line_segment([at(0.0, y), at(0.0, y + 3.0)], stroke);
             }
         }
-        Face::SimileSingle => {
-            let stroke = Stroke::new(2.2, ink);
-            painter.line_segment([at(-7.0, 9.0), at(4.0, -5.0)], stroke);
-            painter.circle_filled(at(8.0, 8.0), 1.8, ink);
-        }
-        Face::SimileDouble => {
-            let stroke = Stroke::new(2.2, ink);
-            for dx in [-9.0, 1.0] {
-                painter.line_segment([at(dx, 9.0), at(dx + 11.0, -5.0)], stroke);
-            }
-            painter.circle_filled(at(9.0, 8.0), 1.8, ink);
-        }
+        // Bravura's bar-repetition signs, as the score writes them.
+        Face::SimileSingle => music_glyph(painter, at(0.0, 0.0), "\u{E500}", 24.0, ink),
+        Face::SimileDouble => music_glyph(painter, at(0.0, 0.0), "\u{E501}", 24.0, ink),
     }
 }
 
@@ -564,4 +567,127 @@ pub(super) fn more_corner(painter: &Painter, rect: Rect, ink: Color32) {
         ink,
         Stroke::NONE,
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::tiles::TILE;
+
+    /// How far each side of `face`'s ink reaches past a tile of `size` (left, top, right,
+    /// bottom; positive: outside the tile).
+    fn overflow(ctx: &egui::Context, face: Face<'_>, size: egui::Vec2) -> [f32; 4] {
+        let rect = Rect::from_min_size(egui::pos2(100.0, 100.0), size);
+        let mut bounds = Rect::NOTHING;
+        // Two frames: fonts set before the first are in use from the second.
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let painter = ui.ctx().layer_painter(egui::LayerId::background());
+                paint_face(&painter, rect, face, Color32::WHITE);
+            });
+            output.textures_delta.clear();
+            bounds = output.shapes.iter().fold(Rect::NOTHING, |all, clipped| {
+                all.union(clipped.shape.visual_bounding_rect())
+            });
+        }
+        [
+            rect.left() - bounds.left(),
+            rect.top() - bounds.top(),
+            bounds.right() - rect.right(),
+            bounds.bottom() - rect.bottom(),
+        ]
+    }
+
+    /// The track panel's staff switches.
+    fn staff_switches() -> [Face<'static>; 3] {
+        use crate::app::track_panel::look;
+        [look::NOTATION_FACE, look::TABLATURE_FACE, look::SLASH_FACE]
+    }
+
+    #[test]
+    fn every_face_fits_inside_its_tile() {
+        let ctx = egui::Context::default();
+        crate::fonts::install(&ctx);
+        let (notes, wide) = super::super::edit_palette::faces();
+        let regular = notes
+            .into_iter()
+            .chain(super::super::edit_staff::faces())
+            .chain(super::super::edit_effects::faces())
+            .chain(super::super::edit_dynamics::faces())
+            .chain(staff_switches());
+        let wide_size = vec2(TILE.x * 1.5, TILE.y);
+        let mut misfits = Vec::new();
+        for (face, size) in regular
+            .map(|face| (face, TILE))
+            .chain(wide.into_iter().map(|face| (face, wide_size)))
+        {
+            let sides = overflow(&ctx, face, size);
+            // A little room to the tile's edge, so neighbouring signs never touch.
+            if sides.iter().any(|&side| side > -1.0) {
+                misfits.push(format!("{face:?}: {sides:?}"));
+            }
+        }
+        assert!(
+            misfits.is_empty(),
+            "faces past their tile:\n{}",
+            misfits.join("\n")
+        );
+    }
+
+    /// Every face on its tile (outlined), light and dark, so a change is seen next to the
+    /// others.
+    #[test]
+    fn the_faces_match_their_snapshot() {
+        let (notes, wide) = super::super::edit_palette::faces();
+        let mut faces: Vec<(Face<'static>, egui::Vec2)> = notes
+            .into_iter()
+            .chain(super::super::edit_staff::faces())
+            .chain(super::super::edit_effects::faces())
+            .chain(super::super::edit_dynamics::faces())
+            .chain(staff_switches())
+            .map(|face| (face, TILE))
+            .collect();
+        faces.extend(
+            wide.into_iter()
+                .map(|face| (face, vec2(TILE.x * 1.5, TILE.y))),
+        );
+        const COLUMNS: usize = 12;
+        let rows = faces.len().div_ceil(COLUMNS);
+        let pitch = vec2(TILE.x * 1.5 + 6.0, TILE.y + 6.0);
+        let half = vec2(COLUMNS as f32 * pitch.x + 6.0, rows as f32 * pitch.y + 6.0);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(vec2(half.x, 2.0 * half.y))
+            .with_pixels_per_point(2.0)
+            .wgpu()
+            .build_ui(move |ui| {
+                crate::fonts::install(ui.ctx());
+                for (index, (ground, ink)) in [
+                    (Color32::WHITE, Color32::from_gray(30)),
+                    (Color32::from_gray(36), Color32::from_gray(225)),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let origin = egui::pos2(0.0, index as f32 * half.y);
+                    let painter = ui.painter();
+                    painter.rect_filled(Rect::from_min_size(origin, half), 0.0, ground);
+                    for (at, (face, size)) in faces.iter().enumerate() {
+                        let cell = vec2(
+                            (at % COLUMNS) as f32 * pitch.x,
+                            (at / COLUMNS) as f32 * pitch.y,
+                        );
+                        let rect = Rect::from_min_size(origin + vec2(6.0, 6.0) + cell, *size);
+                        painter.rect_stroke(
+                            rect,
+                            4.0,
+                            Stroke::new(0.5, ink.gamma_multiply(0.3)),
+                            egui::StrokeKind::Outside,
+                        );
+                        paint_face(painter, rect, *face, ink);
+                    }
+                }
+            });
+        harness.run();
+        harness.snapshot("palette_faces");
+    }
 }

@@ -114,6 +114,10 @@ pub enum Glyph {
     /// `noteheadParenthesisRight`).
     ParenthesisLeft,
     ParenthesisRight,
+    /// Repeat the previous bar (`repeat1Bar`).
+    Repeat1Bar,
+    /// Repeat the previous two bars (`repeat2Bars`).
+    Repeat2Bars,
 }
 
 /// A flag: how many beams it stands for (1 for an eighth, up to 5 for a 128th) and
@@ -235,6 +239,8 @@ impl Glyph {
             Glyph::NoteheadHarmonic,
             Glyph::ParenthesisLeft,
             Glyph::ParenthesisRight,
+            Glyph::Repeat1Bar,
+            Glyph::Repeat2Bars,
         ]
         .into_iter()
         .chain(digits)
@@ -331,6 +337,8 @@ impl Glyph {
             Glyph::NoteheadHarmonic => "noteheadDiamondWhite",
             Glyph::ParenthesisLeft => "noteheadParenthesisLeft",
             Glyph::ParenthesisRight => "noteheadParenthesisRight",
+            Glyph::Repeat1Bar => "repeat1Bar",
+            Glyph::Repeat2Bars => "repeat2Bars",
         }
     }
 
@@ -408,6 +416,8 @@ impl Glyph {
             Glyph::NoteheadHarmonic => 0xE0DD,
             Glyph::ParenthesisLeft => 0xE0F5,
             Glyph::ParenthesisRight => 0xE0F6,
+            Glyph::Repeat1Bar => 0xE500,
+            Glyph::Repeat2Bars => 0xE501,
         };
         // All codes above are in the Private Use Area, which is valid `char` range.
         char::from_u32(code).unwrap_or(char::REPLACEMENT_CHARACTER)

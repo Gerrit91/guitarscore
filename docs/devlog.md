@@ -2987,3 +2987,35 @@ needed for a much larger font); owner listening check.
   Backed by `set_simile_mark` (parse, panic-hunt and model/UI tests).
 - Free time is now a one-click switch tile with a dotted-line icon instead of a dialog; the
   clef tile's glyph was shrunk to fit its tile.
+
+## 2026-11-05 — Palette icons, bar repeats, slash staff and mixer review
+
+- **Palette icons fit their tiles**: a test paints every tile face (staff, note input,
+  effects, dynamics, tuplets, staff switches) and fails when ink reaches the tile's edge;
+  a snapshot (`palette_faces`) shows them all. Music glyphs are centered on their ink, so
+  the slanted *f*, *ff* and *fff* sit in the middle like the other dynamics.
+- **Staff palette**: clef, key, time signature and tempo come first; beat text sits next to
+  the section tile. The double barline, the bar repeats and free time are on/off switches
+  without the dialog corner (the barline dialog is gone); free time shows a dashed barline.
+- **Bar repeats** use Bravura's signs as Guitar Pro prints them: a one-bar sign in the middle
+  of its bar, a two-bar sign once on the barline between its pair, the bars' own notes
+  hidden. They **play** the bars they repeat (repeats of repeats followed), matching Guitar
+  Pro's MIDI export of `staff.gp` (now part of the MIDI reference test). The tiles are only
+  enabled where there are bars to repeat, and setting or clearing one never leaves half a
+  pair behind.
+- **Free time** bars end with a dashed barline, as in Guitar Pro.
+- **Key changes** inside a line keep a small gap after the barline (the first flat touched
+  an end-repeat's thick line).
+- **Slash notation** is drawn as Guitar Pro does: the top staff, one line, no clef or key,
+  stems up from the slash's upper end (down from the lower end in voice 2), hollow slashes
+  for halves and wholes, a whole rest hanging from the line; one line joins it to the
+  staves below at each system start. With slash notation alone, the time signature sits on
+  its line. GP7's `PartConfiguration` bit 2 is read as the slash staff again: Guitar Pro's
+  print of `staff.gp` (bit set, with notation and tab) shows all three staves.
+- **Track panel**: the three staff switches are palette-style tiles (treble clef, TAB clef,
+  rhythm slash) without the "Show" label; a chosen tile that cannot be switched off stays
+  legible.
+- **Rest tile**: a second click on rests it just made brings their notes back (undo)
+  instead of doubling the rest's length.
+- **Mixer**: the metronome strip has a fader and level field like the others and a
+  metronome symbol; the master strip shows a small waveform. New `mixer_view` snapshot.

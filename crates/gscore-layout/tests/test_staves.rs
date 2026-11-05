@@ -90,28 +90,24 @@ fn tab_only_shows_tuplet_numbers() {
     }
 }
 
-/// Slash notation is a staff of its own: rhythm slashes under a clef, no fret numbers,
-/// and it combines with the other two staves.
+/// Slash notation is a staff of its own: rhythm slashes on one line, without a clef, and
+/// it combines with the other two staves as the top one, joined to them at the start.
 #[test]
 fn slash_notation_is_a_staff_of_its_own_and_combines() {
+    let is_slash = |op: &DrawOp| matches!(op, DrawOp::Line { thickness, .. } if (*thickness - 0.24).abs() < 1e-6);
     let slash = layout(TrackStaves::SLASH_ONLY);
     assert_eq!(fret_numbers(&slash), 0, "no tablature");
     assert!(
-        slash.ops.iter().any(|op| matches!(
+        !slash.ops.iter().any(|op| matches!(
             op,
             DrawOp::Glyph {
                 glyph: Glyph::GClef,
                 ..
             }
         )),
-        "the slash staff has a clef"
+        "the slash staff has no clef"
     );
-    assert!(
-        slash.ops.iter().any(
-            |op| matches!(op, DrawOp::Line { thickness, .. } if (*thickness - 0.24).abs() < 1e-6)
-        ),
-        "a rhythm slash is drawn"
-    );
+    assert!(slash.ops.iter().any(is_slash), "a rhythm slash is drawn");
 
     let tab_and_slash = layout(TrackStaves::TAB_AND_SLASH);
     assert!(fret_numbers(&tab_and_slash) > 0, "the tablature stays");
@@ -120,6 +116,52 @@ fn slash_notation_is_a_staff_of_its_own_and_combines() {
     let all = layout(TrackStaves::ALL_STAVES);
     assert!(fret_numbers(&all) > 0);
     assert!(all.height > tab_and_slash.height, "notation adds a staff");
+    // The slashes are above the notation's clef, and the tab's numbers below it.
+    let lowest_slash = all
+        .ops
+        .iter()
+        .filter(|op| is_slash(op))
+        .filter_map(|op| match op {
+            DrawOp::Line { from, to, .. } => Some(from.y.max(to.y)),
+            _ => None,
+        })
+        .fold(f32::MIN, f32::max);
+    let clef = all
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            DrawOp::Glyph {
+                glyph: Glyph::GClef,
+                at,
+                ..
+            } => Some(at.y),
+            _ => None,
+        })
+        .unwrap();
+    assert!(lowest_slash < clef - 4.0, "the slash staff is on top");
+    // One line at the system's start joins the slash staff to the tab below.
+    let lowest_fret = all
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text {
+                at,
+                color: ColorToken::FretNumber,
+                ..
+            } => Some(at.y),
+            _ => None,
+        })
+        .fold(f32::MIN, f32::max);
+    let start = all.ops.iter().find(|op| {
+        matches!(op, DrawOp::Line { from, to, color: ColorToken::Barline, .. }
+            if (from.x - to.x).abs() < 1e-3
+                && from.y.min(to.y) < lowest_slash - 1.0
+                && from.y.max(to.y) > lowest_fret)
+    });
+    assert!(
+        start.is_some(),
+        "a line joins the slash staff to the others"
+    );
 }
 
 /// The horizontal screen view puts every measure on one line and widens the page to it.

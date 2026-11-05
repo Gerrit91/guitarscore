@@ -200,7 +200,7 @@ impl MeasureLayout {
         if tops.numbers {
             ops.push(DrawOp::Text {
                 text: self.index.get().saturating_add(1).to_string(),
-                at: Point::new(x, tops.notation.unwrap_or(top) - MEASURE_NUMBER_RISE),
+                at: Point::new(x, tops.top_line() - MEASURE_NUMBER_RISE),
                 size: ctx.options.measure_number_size,
                 font: TextFont::Regular,
                 anchor: TextAnchor::Start,
@@ -217,16 +217,24 @@ impl MeasureLayout {
             notation::draw_clef_change(signature_x, notation_top, self.clef, ops);
             signature_x += self.clef_width;
         }
-        if let Some(key_signature) = &self.key_signature {
-            key_signature.draw_at(signature_x, tops.notation.unwrap_or(top), ctx, ops);
-            signature_x += key_signature.width;
+        // A slash staff alone has no key signature: its slashes have no pitch.
+        let slash_only = tops.notation.is_none() && !tops.show_tab;
+        if let Some(key_signature) = &self.key_signature
+            && !slash_only
+        {
+            // Clear of the barline before it (a thick one, after an end repeat).
+            let at = signature_x + notation::KEY_GAPS.0;
+            key_signature.draw_at(at, tops.notation.unwrap_or(top), ctx, ops);
         }
+        signature_x += self.key_width();
         signature_x += self.signature_pad;
         if let Some(time_signature) = &self.time_signature {
             // With notation, the signature is written there only, as in Guitar Pro.
-            match tops.notation {
-                Some(notation_top) => {
-                    let middle = notation_top + notation::staff().middle();
+            // Alone, the slash staff carries it, centered on its line.
+            let staff_top = tops.notation.or(tops.slash.filter(|_| slash_only));
+            match staff_top {
+                Some(staff_top) => {
+                    let middle = staff_top + notation::staff().middle();
                     time_signature.draw_at(signature_x, middle, 1.0, ctx, ops, self.free_time);
                 }
                 None => time_signature.draw(signature_x, top, self.free_time, ctx, ops),
@@ -234,22 +242,10 @@ impl MeasureLayout {
         }
         // Positions first: ornaments connect neighbouring columns.
         let (xs, right) = self.column_positions(x, stretch);
-        if let Some(simile) = self.simile {
-            let center = (x + right) / 2.0;
-            if tops.show_tab {
-                draw_simile(center, top + ctx.staff.middle(), simile, ops);
-            }
-            if let Some(notation_top) = tops.notation {
-                draw_simile(
-                    center,
-                    notation_top + notation::staff().middle(),
-                    simile,
-                    ops,
-                );
-            }
-            if let Some(slash_top) = tops.slash {
-                draw_simile(center, slash_top + notation::staff().middle(), simile, ops);
-            }
+        // A bar-repetition sign stands for the bar's music: its own notes are not written
+        // (the score draws the sign, which can sit on the barline between two bars).
+        if self.simile.is_some() {
+            return;
         }
         // Where each column's space ends: the next column, or the end of the measure.
         let span_end = |index: usize| xs.get(index.saturating_add(1)).copied().unwrap_or(right);
@@ -311,12 +307,12 @@ impl MeasureLayout {
                 ops,
             );
         }
-        // Chord diagrams sit above the staff, at their beat's column.
+        // Chord diagrams sit above the top staff, at their beat's column.
         for (index, column) in self.columns.iter().enumerate() {
             let (Some(chord), Some(&at)) = (&column.chord, xs.get(index)) else {
                 continue;
             };
-            draw_chord_diagram(at, octave_top, chord, ctx, ops);
+            draw_chord_diagram(at, tops.top_line(), chord, ctx, ops);
         }
         // The slash-notation staff: the same rhythm, written as slashes.
         if let Some(slash_top) = tops.slash {
@@ -779,36 +775,7 @@ fn draw_octave(
     }
 }
 
-/// Guitar Pro's bar-repetition sign: one or two slashes through the middle of the staff,
-/// with a dot marking which half of a repeated pair it is.
-fn draw_simile(center: f32, middle: f32, simile: gscore_model::SimileMark, ops: &mut Vec<DrawOp>) {
-    let half = 0.8;
-    let offsets: &[f32] = match simile {
-        gscore_model::SimileMark::Simple => &[0.0],
-        _ => &[-0.45, 0.45],
-    };
-    for offset in offsets {
-        ops.push(DrawOp::Line {
-            from: Point::new(center - half + offset, middle + half),
-            to: Point::new(center + half + offset, middle - half),
-            thickness: 0.16,
-            color: ColorToken::Notation,
-        });
-    }
-    let dot_x = match simile {
-        gscore_model::SimileMark::Simple | gscore_model::SimileMark::SecondOfDouble => {
-            center + half - 0.1
-        }
-        gscore_model::SimileMark::FirstOfDouble => center - half + 0.1,
-    };
-    ops.push(DrawOp::Glyph {
-        glyph: Glyph::AugmentationDot,
-        at: Point::new(dot_x, middle + half - 0.3),
-        scale: 1.0,
-        color: ColorToken::Notation,
-    });
-}
-
+/// A large cross across a staff for a dead slapped beat, centered on `x`.
 fn draw_dead_slap(x: f32, top: f32, height: f32, ops: &mut Vec<DrawOp>) {
     let (left, right) = (x - DEAD_SLAP_HALF, x + DEAD_SLAP_HALF);
     let (high, low) = (top - 0.3, top + height + 0.3);

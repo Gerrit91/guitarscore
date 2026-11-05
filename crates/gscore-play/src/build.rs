@@ -100,7 +100,8 @@ pub(crate) fn collect(
         // The (voice, string) pairs whose last note hammers on or pulls off to the next.
         let mut hammering: HashSet<(usize, u8)> = HashSet::new();
         for span in measures {
-            let Some(measure) = view.measure(span.measure) else {
+            // A bar-repetition mark plays the bar it repeats.
+            let Some(measure) = view.measure(view.sounding_measure(span.measure)) else {
                 continue;
             };
             let feel = song.feel(span.measure).unwrap_or_default();

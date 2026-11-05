@@ -42,6 +42,21 @@ impl DynamicsSnapshot {
     }
 }
 
+/// Every dynamic tile's face, for the test that they fit their tiles.
+#[cfg(test)]
+pub(super) fn faces() -> Vec<Face<'static>> {
+    Dynamic::ALL.into_iter().map(face).collect()
+}
+
+/// The tile face of `dynamic`.
+fn face(dynamic: Dynamic) -> Face<'static> {
+    Face::Glyph {
+        text: glyph(dynamic),
+        size: 18.0,
+        baseline: 3.0,
+    }
+}
+
 /// The SMuFL character of a dynamic mark.
 fn glyph(dynamic: Dynamic) -> &'static str {
     match dynamic {
@@ -72,11 +87,7 @@ pub(super) fn section(
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(2.0, 3.0);
             for dynamic in Dynamic::ALL {
-                let face = Face::Glyph {
-                    text: glyph(dynamic),
-                    size: 20.0,
-                    baseline: 3.0,
-                };
+                let face = face(dynamic);
                 let label = format!("{} ({})", dynamic.id(), dynamic.name());
                 let mut tip = format!(
                     "{label}: how loud the selected notes are played; the notes entered \

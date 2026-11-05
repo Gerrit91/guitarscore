@@ -497,6 +497,23 @@ pub(super) fn fade_tiles(
     });
 }
 
+/// Every effect tile's face, for the test that they fit their tiles.
+#[cfg(test)]
+pub(super) fn faces() -> Vec<Face<'static>> {
+    [
+        NOTE_ITEMS,
+        SLIDE_ITEMS,
+        PITCH_ITEMS,
+        HARMONIC_ITEMS,
+        BEAT_ITEMS,
+        FADE_ITEMS,
+    ]
+    .into_iter()
+    .flatten()
+    .map(|item| item.face)
+    .collect()
+}
+
 /// The effect item bound to `action`, for a key press.
 pub(super) fn fx_item(action: ActionId) -> Option<&'static FxItem> {
     // The harmonic keys first: the harmonic tile shares the natural harmonic's action.

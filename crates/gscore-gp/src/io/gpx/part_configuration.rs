@@ -42,12 +42,9 @@ pub(crate) fn read_track_flags(data: &[u8]) -> Option<Vec<u8>> {
 /// neither keeps the tablature, so it never disappears from the page.
 pub(crate) fn apply_flags(track: &mut Track, flags: u8) {
     track.settings.notation = flags & NOTATION != 0;
-    // GP7 sets bit 2 together with standard notation in files that show no slash staff (it
-    // is its alternative staff style); only treat it as our separate staff when notation is
-    // off. GuitarScore keeps its own switch in a track property.
-    if !track.settings.notation {
-        track.settings.slash = flags & SLASH != 0;
-    }
+    // Bit 2 is a slash staff of its own, beside notation and tab as well (Guitar Pro's
+    // print of testdata/basic/staff.gp shows all three).
+    track.settings.slash = flags & SLASH != 0;
     // A track showing nothing would disappear from the page; keep its tablature.
     track.settings.tablature =
         flags & TABLATURE != 0 || (!track.settings.notation && !track.settings.slash);
@@ -62,9 +59,7 @@ pub(crate) fn write(tracks: &[Track]) -> Vec<u8> {
             if track.settings.notation {
                 flags |= NOTATION;
             }
-            // GP7's slash bit is its alternative staff style, so it is only written when
-            // no standard notation is shown (GuitarScore keeps its switch separately).
-            if track.settings.slash && !track.settings.notation {
+            if track.settings.slash {
                 flags |= SLASH;
             }
             if track.settings.tablature || (!track.settings.notation && !track.settings.slash) {
@@ -118,17 +113,14 @@ mod tests {
 
     #[test]
     fn slash_notation_survives_a_round_trip() {
-        // Without notation, GP7's slash bit really is a separate slash staff.
+        // With or without notation, bit 2 is a slash staff of its own.
         let mut track = Track::default();
-        apply_flags(&mut track, TABLATURE | SLASH);
-        assert!(track.settings.slash);
-        assert_eq!(read_track_flags(&write(&[track.clone()])), Some(vec![6]));
-        // With notation, the bit is GP7's alternative staff style and is ignored; the
-        // GuitarScore property keeps our switch instead.
-        track.settings.slash = false;
         apply_flags(&mut track, NOTATION | TABLATURE | SLASH);
-        assert!(!track.settings.slash);
-        assert_eq!(read_track_flags(&write(&[track])), Some(vec![3]));
+        assert!(track.settings.notation && track.settings.tablature && track.settings.slash);
+        assert_eq!(read_track_flags(&write(&[track.clone()])), Some(vec![7]));
+        apply_flags(&mut track, TABLATURE | SLASH);
+        assert!(!track.settings.notation && track.settings.slash);
+        assert_eq!(read_track_flags(&write(&[track])), Some(vec![6]));
     }
 
     #[test]

@@ -28,9 +28,9 @@ use gscore_model::{
 };
 
 pub(crate) use draw::{
-    BeamPlan, KeySigLayout, clef_change_width, draw_clef_change, draw_measure, draw_staff_start,
-    draw_tab_staff_start, draw_tie_curve, key_start_width, ledger_positions, prefix_width,
-    tab_prefix_width, y_of,
+    BeamPlan, KEY_GAPS, KeySigLayout, SLASH_PREFIX, clef_change_width, draw_clef_change,
+    draw_measure, draw_staff_start, draw_tab_staff_start, draw_tie_curve, key_start_width,
+    ledger_positions, prefix_width, tab_prefix_width, y_of,
 };
 pub(crate) use marks::draw_arrow;
 pub(crate) use pitch::{Alter, Clef};
@@ -111,6 +111,9 @@ pub(crate) enum NotationItem {
         dots: u8,
         /// The tuplet the rest belongs to, if any.
         tuplet: Option<Tuplet>,
+        /// On the slash staff's one line: a whole rest hangs from it and a half rest sits
+        /// on it (on five lines they take the lines around the middle).
+        on_line: bool,
     },
 }
 
@@ -327,6 +330,7 @@ pub(crate) fn slash_column_items(
                 glyph,
                 dots: value.dots(),
                 tuplet,
+                on_line: true,
             }),
             BeatKind::Empty => None,
             BeatKind::Normal => Some(NotationItem::Chord(Chord {
@@ -337,7 +341,9 @@ pub(crate) fn slash_column_items(
                 value: value.value(),
                 dots: value.dots(),
                 tuplet,
-                stem_up: (voice > 0).then_some(false),
+                // Above the slash for the first voice, as Guitar Pro writes it; below it
+                // for the others.
+                stem_up: Some(voice == 0),
                 slash: true,
                 marks: ChordMarks::default(),
             })),
@@ -370,6 +376,7 @@ fn beat_item(
             glyph,
             dots: value.dots(),
             tuplet,
+            on_line: false,
         })),
         BeatKind::Empty => Ok(None),
         BeatKind::Normal => {

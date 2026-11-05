@@ -1,13 +1,15 @@
 //! The staff half of the edit palette: tiles for a bar's repeat signs, double barline,
 //! line and page breaks, tempo, time and key signature, section marker and bars per line.
 //!
-//! Each tile opens a small dialog. OK turns the dialog's drafts into one ordinary command,
+//! Most tiles open a small dialog; the bar repetitions, double barline and free time are
+//! switches. OK turns the dialog's drafts into one ordinary command,
 //! so every change is undoable and recorded in the recovery journal.
 
 use egui::{Align, Layout, Margin, RichText, vec2};
 use gscore_edit::{ActionId, Command};
 use gscore_model::{
-    Clef, Feel, Fermata, MeasureIndex, Repeat, Section, SystemBreak, TrackColor, TrackIndex,
+    Clef, Feel, Fermata, MeasureIndex, Repeat, Section, SimileMark, SystemBreak, TrackColor,
+    TrackIndex,
 };
 
 use super::edit_palette::PaletteSnapshot;
@@ -29,7 +31,6 @@ pub(super) enum Dialog {
     Endings,
     Feel,
     Fermata,
-    Barline,
     Break,
     Bars,
 }
@@ -61,7 +62,6 @@ pub(super) struct StaffState {
     pub(super) repeat_end: bool,
     pub(super) repeat_count: u8,
     pub(super) endings: u8,
-    pub(super) double_bar: bool,
     pub(super) system_break: SystemBreak,
     pub(super) bars_fixed: bool,
     pub(super) bars: u8,
@@ -92,7 +92,6 @@ impl Default for StaffState {
             repeat_end: false,
             repeat_count: 1,
             endings: 0,
-            double_bar: false,
             system_break: SystemBreak::None,
             bars_fixed: false,
             bars: 4,
@@ -150,7 +149,6 @@ impl StaffState {
         self.repeat_end = snapshot.repeat.end_repeats.is_some();
         self.repeat_count = snapshot.repeat.end_repeats.unwrap_or(1).max(1);
         self.endings = snapshot.repeat.endings;
-        self.double_bar = snapshot.double_bar;
         // The first bar always starts the score, so it cannot carry a break.
         self.system_break = if snapshot.measure.get() == 0 {
             SystemBreak::None
@@ -292,10 +290,6 @@ impl StaffState {
                 measure: target.measure,
                 fermata: self.fermata,
             },
-            Dialog::Barline => Command::SetDoubleBar {
-                measure: target.measure,
-                double_bar: self.double_bar,
-            },
             Dialog::Break => Command::SetSystemBreak {
                 track: target.track,
                 measure: target.measure,
@@ -317,6 +311,111 @@ enum Outcome {
     Cancel,
 }
 
+/// Whether a bar repetition can start at `measure` of `count`: a one-bar repeat needs a
+/// bar before it, a two-bar repeat two bars before it and one after.
+fn repeat_fits(measure: usize, count: usize, double: bool) -> bool {
+    if double {
+        measure >= 2 && measure.saturating_add(1) < count
+    } else {
+        measure >= 1 && measure < count
+    }
+}
+
+/// The measures a mark on `measure` belongs with: itself, and the other half of a pair.
+fn repeat_group(marks: &[Option<SimileMark>], measure: usize) -> Vec<usize> {
+    match marks.get(measure).copied().flatten() {
+        Some(SimileMark::FirstOfDouble) => vec![measure, measure.saturating_add(1)],
+        Some(SimileMark::SecondOfDouble) => vec![measure.saturating_sub(1), measure],
+        Some(SimileMark::Simple) => vec![measure],
+        None => Vec::new(),
+    }
+}
+
+/// The commands a click on the one-bar (or, when `double`, the two-bar) repetition tile
+/// at `measure` makes: switch it off when it is on, else set it and clear whatever marks
+/// it overlaps whole, so no half of a pair is left behind.
+fn repeat_commands(
+    track: TrackIndex,
+    marks: &[Option<SimileMark>],
+    measure: usize,
+    double: bool,
+) -> Vec<Command> {
+    let set = |measure: usize, mark| Command::SetSimileMark {
+        track,
+        measure: MeasureIndex::new(measure),
+        mark,
+    };
+    let current = marks.get(measure).copied().flatten();
+    let on = match current {
+        Some(SimileMark::Simple) => !double,
+        Some(_) => double,
+        None => false,
+    };
+    if on {
+        return repeat_group(marks, measure)
+            .into_iter()
+            .map(|measure| set(measure, None))
+            .collect();
+    }
+    if !repeat_fits(measure, marks.len(), double) {
+        return Vec::new();
+    }
+    let new: Vec<(usize, SimileMark)> = if double {
+        vec![
+            (measure, SimileMark::FirstOfDouble),
+            (measure.saturating_add(1), SimileMark::SecondOfDouble),
+        ]
+    } else {
+        vec![(measure, SimileMark::Simple)]
+    };
+    let mut cleared: Vec<usize> = new
+        .iter()
+        .flat_map(|&(measure, _)| repeat_group(marks, measure))
+        .filter(|cleared| !new.iter().any(|&(measure, _)| measure == *cleared))
+        .collect();
+    cleared.sort_unstable();
+    cleared.dedup();
+    cleared
+        .into_iter()
+        .map(|measure| set(measure, None))
+        .chain(
+            new.into_iter()
+                .map(|(measure, mark)| set(measure, Some(mark))),
+        )
+        .collect()
+}
+
+/// The clef tile: a treble clef.
+const CLEF_FACE: Face<'static> = Face::GlyphMore {
+    text: "\u{E050}",
+    size: 17.0,
+    baseline: 4.0,
+};
+
+/// Every staff tile's face, for the test that they fit their tiles.
+#[cfg(test)]
+pub(super) fn faces() -> Vec<Face<'static>> {
+    vec![
+        CLEF_FACE,
+        Face::KeySig,
+        Face::TimeSig,
+        Face::Tempo,
+        Face::Section,
+        Face::RepeatStart,
+        Face::RepeatEnd,
+        Face::Endings,
+        Face::Swing,
+        Face::Fermata,
+        Face::DoubleBar,
+        Face::Break,
+        Face::Bars,
+        Face::SimileSingle,
+        Face::SimileDouble,
+        Face::FreeTime,
+        Face::BeatText,
+    ]
+}
+
 /// The Staff section: icon tiles, each opening a dialog. Returns the palette action of a
 /// tile that has no staff dialog of its own (the beat text editor is one of the effects).
 pub(super) fn section(
@@ -332,18 +431,11 @@ pub(super) fn section(
             ui.spacing_mut().item_spacing = vec2(2.0, 3.0);
             let items = [
                 (
-                    Dialog::Tempo,
-                    Face::Tempo,
-                    "Tempo",
-                    "Set the tempo this bar starts at",
-                    snapshot.tempo.is_some(),
-                ),
-                (
-                    Dialog::Time,
-                    Face::TimeSig,
-                    "Time signature",
-                    "Set the bar's time signature",
-                    false,
+                    Dialog::Clef,
+                    CLEF_FACE,
+                    "Clef",
+                    "Set the clef of the notation staff",
+                    snapshot.clef != Clef::Treble,
                 ),
                 (
                     Dialog::Key,
@@ -353,15 +445,18 @@ pub(super) fn section(
                     snapshot.key.is_some_and(|key| key.key != 0 || key.minor),
                 ),
                 (
-                    Dialog::Clef,
-                    Face::GlyphMore {
-                        text: "\u{E050}",
-                        size: 23.0,
-                        baseline: 6.0,
-                    },
-                    "Clef",
-                    "Set the clef of the notation staff",
-                    snapshot.clef != Clef::Treble,
+                    Dialog::Time,
+                    Face::TimeSig,
+                    "Time signature",
+                    "Set the bar's time signature",
+                    false,
+                ),
+                (
+                    Dialog::Tempo,
+                    Face::Tempo,
+                    "Tempo",
+                    "Set the tempo this bar starts at",
+                    snapshot.tempo.is_some(),
                 ),
                 (
                     Dialog::Section,
@@ -406,13 +501,6 @@ pub(super) fn section(
                     snapshot.fermata.is_some(),
                 ),
                 (
-                    Dialog::Barline,
-                    Face::DoubleBar,
-                    "Barline",
-                    "End this bar with a double barline",
-                    snapshot.double_bar,
-                ),
-                (
                     Dialog::Break,
                     Face::Break,
                     "Break",
@@ -431,79 +519,84 @@ pub(super) fn section(
                 if tiles::dialog_tile(ui, face, on, true, label, tip).clicked() {
                     state.open_dialog(dialog, snapshot);
                 }
+                if dialog == Dialog::Section {
+                    // Beat text has its own editor rather than a staff dialog, but it is a dialog
+                    // tile like the others, next to the section's text.
+                    let tip = format!(
+                        "Beat text: text written above the beat, like Guitar Pro's beat text{}",
+                        hint(ActionId::EditBeatText)
+                    );
+                    let beat_text = tiles::dialog_tile(
+                        ui,
+                        Face::BeatText,
+                        !snapshot.beat_text.is_empty(),
+                        true,
+                        "Beat text…",
+                        &tip,
+                    );
+                    if beat_text.clicked() {
+                        action = Some(ActionId::EditBeatText);
+                    }
+                }
             }
-            // Bar repetitions are switches too: a one-bar repeat, or the two halves of a
-            // two-bar repeat as one pair.
-            let single_on = snapshot.simile == Some(gscore_model::SimileMark::Simple);
-            if tiles::dialog_tile(
+            // Bar repetitions are switches: a one-bar repeat, or a two-bar repeat set and
+            // cleared as one pair.
+            let measure = snapshot.measure.get();
+            let mark = snapshot.similes.get(measure).copied().flatten();
+            for (double, face, label, tip) in [
+                (
+                    false,
+                    Face::SimileSingle,
+                    "Bar repeat",
+                    "This bar repeats the bar before it",
+                ),
+                (
+                    true,
+                    Face::SimileDouble,
+                    "Two-bar repeat",
+                    "This bar and the next repeat the two bars before them",
+                ),
+            ] {
+                let on = match mark {
+                    Some(SimileMark::Simple) => !double,
+                    Some(_) => double,
+                    None => false,
+                };
+                let possible = repeat_fits(measure, snapshot.similes.len(), double);
+                if tiles::tile(ui, face, on, on || possible, label, tip).clicked() {
+                    let parts =
+                        repeat_commands(snapshot.cursor.track, &snapshot.similes, measure, double);
+                    if !parts.is_empty() {
+                        commands.push(Command::Batch { commands: parts });
+                    }
+                }
+            }
+            // A double barline is a switch too: one click doubles this bar's end barline (or
+            // makes it single again).
+            if tiles::tile(
                 ui,
-                Face::SimileSingle,
-                single_on,
+                Face::DoubleBar,
+                snapshot.double_bar,
                 true,
-                "Bar repeat",
-                "Repeat the previous bar",
+                "Double barline",
+                "End this bar with a double barline",
             )
             .clicked()
             {
-                commands.push(Command::SetSimileMark {
-                    track: snapshot.cursor.track,
+                commands.push(Command::SetDoubleBar {
                     measure: snapshot.measure,
-                    mark: (!single_on).then_some(gscore_model::SimileMark::Simple),
+                    double_bar: !snapshot.double_bar,
                 });
-            }
-            let double_on = matches!(
-                snapshot.simile,
-                Some(
-                    gscore_model::SimileMark::FirstOfDouble
-                        | gscore_model::SimileMark::SecondOfDouble
-                )
-            );
-            let pair_fits = snapshot.measure.get().saturating_add(1) < snapshot.measure_count;
-            let double = tiles::dialog_tile(
-                ui,
-                Face::SimileDouble,
-                double_on,
-                pair_fits || double_on,
-                "Double bar repeat",
-                "Repeat the previous two bars (the current and the next bar)",
-            );
-            if double.clicked() {
-                let mut parts = Vec::new();
-                let (start, end) = match snapshot.simile {
-                    Some(gscore_model::SimileMark::SecondOfDouble) => (
-                        MeasureIndex::new(snapshot.measure.get().saturating_sub(1)),
-                        snapshot.measure,
-                    ),
-                    _ => (
-                        snapshot.measure,
-                        MeasureIndex::new(snapshot.measure.get().saturating_add(1)),
-                    ),
-                };
-                let mark = |measure, mark| Command::SetSimileMark {
-                    track: snapshot.cursor.track,
-                    measure,
-                    mark,
-                };
-                if double_on {
-                    parts.push(mark(start, None));
-                    parts.push(mark(end, None));
-                } else if pair_fits {
-                    parts.push(mark(start, Some(gscore_model::SimileMark::FirstOfDouble)));
-                    parts.push(mark(end, Some(gscore_model::SimileMark::SecondOfDouble)));
-                }
-                if !parts.is_empty() {
-                    commands.push(Command::Batch { commands: parts });
-                }
             }
             // Free time is a switch, not a dialog: one click turns the metronome off (or
             // back on) for this bar.
-            if tiles::dialog_tile(
+            if tiles::tile(
                 ui,
                 Face::FreeTime,
                 snapshot.free_time,
                 true,
                 "Free time",
-                "No metronome for this bar",
+                "Free time",
             )
             .clicked()
             {
@@ -512,24 +605,61 @@ pub(super) fn section(
                     free_time: !snapshot.free_time,
                 });
             }
-            // Beat text has its own editor rather than a staff dialog, but it is a dialog
-            // tile like the others (and lives here, next to the other bar-level marks).
-            let tip = format!(
-                "Beat text: text written above the beat, like Guitar Pro's beat text{}",
-                hint(ActionId::EditBeatText)
-            );
-            let beat_text = tiles::dialog_tile(
-                ui,
-                Face::BeatText,
-                !snapshot.beat_text.is_empty(),
-                true,
-                "Beat text…",
-                &tip,
-            );
-            if beat_text.clicked() {
-                action = Some(ActionId::EditBeatText);
-            }
         });
     });
     action
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `marks` after `commands`.
+    fn apply(marks: &[Option<SimileMark>], commands: &[Command]) -> Vec<Option<SimileMark>> {
+        let mut marks = marks.to_vec();
+        for command in commands {
+            if let Command::SetSimileMark { measure, mark, .. } = command {
+                marks[measure.get()] = *mark;
+            }
+        }
+        marks
+    }
+
+    #[test]
+    fn a_two_bar_repeat_over_other_marks_clears_them_whole() {
+        use SimileMark::{FirstOfDouble as First, SecondOfDouble as Second, Simple};
+        let track = TrackIndex::new(0);
+        // Bar 4 repeats once, bars 5 and 6 as a pair; a new pair on bars 4 and 5 overlaps
+        // both, so bar 6 loses its first half and is cleared too.
+        let before = [
+            None,
+            None,
+            None,
+            Some(Simple),
+            Some(First),
+            Some(Second),
+            None,
+        ];
+        let after = apply(&before, &repeat_commands(track, &before, 3, true));
+        assert_eq!(
+            after,
+            [None, None, None, Some(First), Some(Second), None, None]
+        );
+        // Clicking either half of the new pair clears it whole.
+        let cleared = apply(&after, &repeat_commands(track, &after, 4, true));
+        assert_eq!(cleared, [None; 7]);
+    }
+
+    #[test]
+    fn a_repeat_needs_bars_before_it_to_repeat() {
+        let track = TrackIndex::new(0);
+        let none = [None; 4];
+        assert!(repeat_commands(track, &none, 0, false).is_empty());
+        assert!(repeat_commands(track, &none, 1, true).is_empty());
+        assert!(
+            repeat_commands(track, &none, 3, true).is_empty(),
+            "no bar after it"
+        );
+        assert_eq!(repeat_commands(track, &none, 2, true).len(), 2);
+    }
 }

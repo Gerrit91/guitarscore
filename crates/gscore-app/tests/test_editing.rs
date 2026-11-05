@@ -701,6 +701,37 @@ fn the_rest_tile_enters_a_rest_of_the_chosen_length_in_an_empty_bar() {
 }
 
 #[test]
+fn a_second_click_on_the_rest_tile_brings_the_notes_back() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    let at = harness
+        .state()
+        .document()
+        .unwrap()
+        .editor()
+        .cursor()
+        .position();
+    let beat = |harness: &Harness<'static, GuitarScoreApp>| {
+        let song = harness.state().document().unwrap().song();
+        let beat = song.beat(at).unwrap();
+        (beat.kind(), beat.duration().unwrap(), beat.notes().count())
+    };
+    let before = beat(&harness);
+    assert_eq!(before.0, gscore_model::BeatKind::Normal);
+    assert!(before.2 > 0, "the first beat has notes");
+    harness.get_by_label("Rest").click();
+    harness.run();
+    assert_eq!(beat(&harness), (gscore_model::BeatKind::Rest, before.1, 0));
+    // Not a rest twice as long: the notes as they were.
+    harness.get_by_label("Rest").click();
+    harness.run();
+    assert_eq!(beat(&harness), before);
+    // And a rest again.
+    harness.get_by_label("Rest").click();
+    harness.run();
+    assert_eq!(beat(&harness), (gscore_model::BeatKind::Rest, before.1, 0));
+}
+
+#[test]
 fn the_harmonic_tile_sets_an_artificial_harmonic_with_its_touch_point() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
     type_char(&mut harness, "5", Modifiers::NONE);
@@ -1058,14 +1089,9 @@ fn staff_tiles_open_dialogs_for_repeats_barlines_and_breaks() {
     );
 
     // A double barline.
-    harness.get_by_label("Barline").scroll_to_me();
+    harness.get_by_label("Double barline").scroll_to_me();
     harness.run();
-    harness.get_by_label("Barline").click();
-    harness.run();
-    harness
-        .get_by_label("End this bar with a double barline")
-        .click();
-    harness.get_by_label("OK").click();
+    harness.get_by_label("Double barline").click();
     harness.run();
     assert_eq!(song(&harness).double_bar(measure), Some(true));
 
@@ -1436,16 +1462,16 @@ fn clefs_and_free_time_are_edited_from_the_staff_tiles() {
 
 #[test]
 fn bar_repetitions_are_switch_tiles() {
+    use gscore_model::SimileMark;
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
-    let measure = MeasureIndex::new(1);
-    {
+    let move_to = |harness: &mut Harness<'static, GuitarScoreApp>, measure: usize| {
         let document = harness.state_mut().document_mut().unwrap();
         let mut cursor = document.editor().cursor();
-        cursor.measure = measure;
+        cursor.measure = MeasureIndex::new(measure);
         document.editor_mut().set_cursor(cursor);
-    }
-    harness.run();
-    let simile = |harness: &Harness<'static, GuitarScoreApp>, measure: MeasureIndex| {
+        harness.run();
+    };
+    let simile = |harness: &Harness<'static, GuitarScoreApp>, measure: usize| {
         harness
             .state()
             .document()
@@ -1453,35 +1479,51 @@ fn bar_repetitions_are_switch_tiles() {
             .song()
             .track(TrackIndex::new(0))
             .unwrap()
-            .measure(measure)
+            .measure(MeasureIndex::new(measure))
             .unwrap()
             .simile_mark()
     };
+    let enabled = |harness: &Harness<'static, GuitarScoreApp>, label: &str| {
+        use egui_kittest::kittest::NodeT as _;
+        !harness.get_by_label(label).accesskit_node().is_disabled()
+    };
 
+    // The first bar has nothing before it to repeat; the second has one bar, not two.
+    move_to(&mut harness, 0);
     harness.get_by_label("Bar repeat").scroll_to_me();
     harness.run();
-    harness.get_by_label("Bar repeat").click();
-    harness.run();
-    assert_eq!(
-        simile(&harness, measure),
-        Some(gscore_model::SimileMark::Simple)
-    );
-    harness.get_by_label("Bar repeat").click();
-    harness.run();
-    assert_eq!(simile(&harness, measure), None);
+    assert!(!enabled(&harness, "Bar repeat"));
+    assert!(!enabled(&harness, "Two-bar repeat"));
+    move_to(&mut harness, 1);
+    assert!(enabled(&harness, "Bar repeat"));
+    assert!(!enabled(&harness, "Two-bar repeat"));
 
-    harness.get_by_label("Double bar repeat").click();
+    move_to(&mut harness, 2);
+    harness.get_by_label("Bar repeat").click();
     harness.run();
-    assert_eq!(
-        simile(&harness, measure),
-        Some(gscore_model::SimileMark::FirstOfDouble)
-    );
-    assert_eq!(
-        simile(&harness, MeasureIndex::new(2)),
-        Some(gscore_model::SimileMark::SecondOfDouble)
-    );
-    harness.get_by_label("Double bar repeat").click();
+    assert_eq!(simile(&harness, 2), Some(SimileMark::Simple));
+    harness.get_by_label("Bar repeat").click();
     harness.run();
-    assert_eq!(simile(&harness, measure), None);
-    assert_eq!(simile(&harness, MeasureIndex::new(2)), None);
+    assert_eq!(simile(&harness, 2), None);
+
+    harness.get_by_label("Two-bar repeat").click();
+    harness.run();
+    assert_eq!(simile(&harness, 2), Some(SimileMark::FirstOfDouble));
+    assert_eq!(simile(&harness, 3), Some(SimileMark::SecondOfDouble));
+    // A one-bar repeat on the pair's second half takes the whole pair's place.
+    move_to(&mut harness, 3);
+    harness.get_by_label("Bar repeat").click();
+    harness.run();
+    assert_eq!(simile(&harness, 2), None);
+    assert_eq!(simile(&harness, 3), Some(SimileMark::Simple));
+    // Clicking a pair's second half clears both halves.
+    move_to(&mut harness, 2);
+    harness.get_by_label("Two-bar repeat").click();
+    harness.run();
+    assert_eq!(simile(&harness, 3), Some(SimileMark::SecondOfDouble));
+    move_to(&mut harness, 3);
+    harness.get_by_label("Two-bar repeat").click();
+    harness.run();
+    assert_eq!(simile(&harness, 2), None);
+    assert_eq!(simile(&harness, 3), None);
 }

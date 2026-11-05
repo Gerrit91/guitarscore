@@ -173,6 +173,30 @@ impl<'a> TrackView<'a> {
             .get(index.get())
             .map(|m| MeasureView::new(index, m))
     }
+
+    /// The measure whose music sounds at `index`: `index` itself, or for a bar-repetition
+    /// mark the bar it repeats (the bar before a one-bar repeat, two bars before either
+    /// half of a two-bar repeat), followed through repeats of repeats. A mark with no bar
+    /// before it to repeat plays its own (usually empty) bar.
+    pub fn sounding_measure(&self, index: MeasureIndex) -> MeasureIndex {
+        let mut at = index.get();
+        // Every step goes back at least one bar, so this many steps always end.
+        for _ in 0..=at {
+            let back = match self
+                .measure(MeasureIndex::new(at))
+                .and_then(|m| m.simile_mark())
+            {
+                Some(crate::style::SimileMark::Simple) => 1,
+                Some(_) => 2,
+                None => break,
+            };
+            match at.checked_sub(back) {
+                Some(source) => at = source,
+                None => break,
+            }
+        }
+        MeasureIndex::new(at)
+    }
 }
 
 /// One measure (bar) of one track.

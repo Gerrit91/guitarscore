@@ -305,7 +305,7 @@ pub(crate) fn draw(
     ops: &mut Vec<DrawOp>,
 ) {
     let marks = placed.marks;
-    let top = tops.notation.unwrap_or(tops.tab);
+    let top = tops.top_line();
     let (xs, _) = placed
         .layout
         .column_positions(placed.content, placed.stretch);

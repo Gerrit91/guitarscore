@@ -23,7 +23,6 @@ pub(super) fn title(dialog: Dialog) -> &'static str {
         Dialog::Endings => "Alternative endings",
         Dialog::Feel => "Swing feel",
         Dialog::Fermata => "Fermata",
-        Dialog::Barline => "Barline",
         Dialog::Break => "Line break",
         Dialog::Bars => "Bars per line",
     }
@@ -215,29 +214,6 @@ pub(super) fn body(ui: &mut egui::Ui, state: &mut StaffState, target: Target) {
                 ui,
                 "Shown over the bar's first note; playback does not hold it yet.",
             );
-        }
-        Dialog::Barline => {
-            for (on, name, detail, sign) in [
-                (false, "Single barline", "The usual barline.", "\u{E030}"),
-                (
-                    true,
-                    "End this bar with a double barline",
-                    "Divides sections of the score.",
-                    "\u{E031}",
-                ),
-            ] {
-                if choice(
-                    ui,
-                    state.double_bar == on,
-                    name,
-                    detail,
-                    glyphs(sign, 30.0, 15.0),
-                )
-                .clicked()
-                {
-                    state.double_bar = on;
-                }
-            }
         }
         Dialog::Break => {
             let first = target.measure.get() == 0;

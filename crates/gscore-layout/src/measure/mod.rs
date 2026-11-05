@@ -68,6 +68,14 @@ pub(crate) struct Tops {
     pub(crate) lanes: f32,
 }
 
+impl Tops {
+    /// The topmost staff's top line, which marks and measure numbers go above: the slash
+    /// staff's, else the notation staff's, else the tab's.
+    pub(crate) fn top_line(&self) -> f32 {
+        self.slash.or(self.notation).unwrap_or(self.tab)
+    }
+}
+
 /// A measure, laid out independently of its position.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct MeasureLayout {
@@ -516,6 +524,11 @@ impl MeasureLayout {
         })
     }
 
+    /// The measure's bar-repetition (simile) mark.
+    pub(crate) fn simile(&self) -> Option<gscore_model::SimileMark> {
+        self.simile
+    }
+
     /// The clef of this measure's notation staff.
     pub(crate) fn clef(&self) -> notation::Clef {
         self.clef
@@ -539,10 +552,18 @@ impl MeasureLayout {
         self.columns.iter().any(|column| column.text.is_some())
     }
 
+    /// The room the key signature takes, with the gap before it (after the barline, or
+    /// the clef at a system's start), or 0 without one.
+    pub(crate) fn key_width(&self) -> f32 {
+        self.key_signature
+            .as_ref()
+            .map_or(0.0, |key| notation::KEY_GAPS.0 + key.width)
+    }
+
     /// The width that does not stretch: key and time signature, and the lead.
     pub(crate) fn fixed_width(&self) -> f32 {
         self.clef_width
-            + self.key_signature.as_ref().map_or(0.0, |k| k.width)
+            + self.key_width()
             + self.signature_pad
             + self.time_signature.as_ref().map_or(0.0, |t| t.width)
             + self.lead

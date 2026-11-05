@@ -23,7 +23,7 @@ pub(crate) fn align(measures: &[Arc<MeasureLayout>], spacing: &Spacing) -> Vec<A
     if measures.len() < 2 {
         return measures.to_vec();
     }
-    let key_width = |m: &MeasureLayout| m.key_signature.as_ref().map_or(0.0, |k| k.width);
+    let key_width = |m: &MeasureLayout| m.key_width();
     let time_width = |m: &MeasureLayout| m.time_signature.as_ref().map_or(0.0, |t| t.width);
     let widest =
         |f: &dyn Fn(&MeasureLayout) -> f32| measures.iter().map(|m| f(m)).fold(0.0_f32, f32::max);

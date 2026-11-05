@@ -19,7 +19,7 @@ pub(super) struct Part<'a> {
     pub(super) view: TrackView<'a>,
     pub(super) ctx: Context<'a>,
     pub(super) show_tab: bool,
-    /// Whether a slash-notation staff is shown below the other staves.
+    /// Whether a slash-notation staff is shown above the other staves.
     pub(super) show_slash: bool,
     pub(super) measures: Vec<Arc<MeasureLayout>>,
     pub(super) marks: Vec<MeasureMarks>,
@@ -31,6 +31,14 @@ pub(super) struct Part<'a> {
 /// Room between the lowest note of the notation staff and the tab's top line, for what
 /// is written just above the tab (bends, the tab's own marks).
 const NOTES_ABOVE_TAB: f32 = 2.0;
+
+/// The slash staff's height: one line in the middle of a five-line staff's room, so its
+/// slashes, stems and rests sit as on a notation staff.
+const SLASH_HEIGHT: f32 = 4.0;
+/// Room between the slash staff's room and what the staff below it reaches up to.
+const SLASH_GAP: f32 = 3.0;
+/// How far the slash staff's stems and beams reach above its room.
+const SLASH_REACH: f32 = 1.5;
 
 impl<'a> Part<'a> {
     pub(super) fn new(
@@ -113,12 +121,30 @@ impl<'a> Part<'a> {
         })
     }
 
-    /// From the top staff's top line to the tab's in a system of `measures`: the gap
-    /// between notation and tab is the options' gap, or more where the notes hang lower or
-    /// a dynamic under them needs room above the tab.
+    /// From the top staff's top line (the slash staff's, when shown) to the notation
+    /// staff's (or without notation, the tab's) in a system of `measures`: 0 without a
+    /// slash staff; else the slash staff, the gap and what the notes below reach above
+    /// their staff.
+    pub(super) fn below_slash(&self, measures: std::ops::Range<usize>) -> f32 {
+        if !self.show_slash || (self.ctx.notation.is_none() && !self.show_tab) {
+            return 0.0;
+        }
+        let notes_above = if self.ctx.notation.is_some() {
+            self.notation_reach(measures).0
+        } else {
+            0.0
+        };
+        SLASH_HEIGHT + SLASH_GAP + notes_above
+    }
+
+    /// From the top staff's top line to the tab's in a system of `measures`: below the
+    /// slash staff, the notation staff and the gap between notation and tab, which is the
+    /// options' gap or more where the notes hang lower or a dynamic under them needs room
+    /// above the tab.
     pub(super) fn tab_offset(&self, measures: std::ops::Range<usize>) -> f32 {
+        let slash = self.below_slash(measures.clone());
         if self.ctx.notation.is_none() || !self.show_tab {
-            return self.tab_offset;
+            return slash + self.tab_offset;
         }
         let notation_height = notation::staff().height();
         let gap = self.tab_offset - notation_height;
@@ -136,34 +162,18 @@ impl<'a> Part<'a> {
                 notes.max(dynamics)
             })
             .fold(gap, f32::max);
-        notation_height + needed
-    }
-
-    /// From the top staff's top line to the slash staff's top line in a system of
-    /// `measures`.
-    pub(super) fn slash_offset(&self, measures: std::ops::Range<usize>) -> f32 {
-        if !self.show_slash {
-            return 0.0;
-        }
-        if self.show_tab {
-            self.tab_offset(measures.clone())
-                + self.ctx.staff.height()
-                + self.ctx.options.notation_gap
-        } else {
-            // Below the notation staff (tab_offset includes its gap), or at the top.
-            self.tab_offset(measures)
-        }
+        slash + notation_height + needed
     }
 
     /// From the top staff's top line to the lowest staff's bottom line, in a system of
     /// `measures`.
     pub(super) fn staves_height(&self, measures: std::ops::Range<usize>) -> f32 {
-        if self.show_slash {
-            self.slash_offset(measures) + notation::staff().height()
-        } else if self.show_tab {
+        if self.show_tab {
             self.tab_offset(measures) + self.ctx.staff.height()
+        } else if self.ctx.notation.is_some() {
+            self.below_slash(measures) + notation::staff().height()
         } else {
-            notation::staff().height()
+            SLASH_HEIGHT
         }
     }
 
@@ -196,25 +206,30 @@ impl<'a> Part<'a> {
         } else {
             0.0
         };
-        // A slash staff also starts with a clef and key signature, whether or not a tab
-        // staff is shown beside it; its prefix must be part of the room before the first
-        // measure (a repeat sign there would otherwise run into the clef).
-        let slash_prefix = if self.show_slash && ctx.notation.is_none() {
-            let clef = ctx.notation.map_or(Clef::Treble, |notation| notation.clef);
-            if drawn_by_measure {
-                notation::key_start_width(clef, ctx)
-            } else {
-                notation::prefix_width(clef, key, false, ctx)
-            }
+        // A slash staff has no clef or key signature (as Guitar Pro writes it); alone, it
+        // only needs a little room before the first measure.
+        let slash_prefix = if self.show_slash {
+            notation::SLASH_PREFIX
         } else {
             0.0
         };
         notation_prefix.max(tab_prefix).max(slash_prefix)
     }
 
-    /// How far the notation of `measures` reaches above the top staff and below the
-    /// notation staff (0 without notation).
+    /// How far `measures` reach above the top staff (the slash staff's stems, or the
+    /// notation's notes) and below the notation staff (0 without notation).
     pub(super) fn reach(&self, measures: std::ops::Range<usize>) -> (f32, f32) {
+        let (above, below) = self.notation_reach(measures);
+        if self.show_slash {
+            (SLASH_REACH, below)
+        } else {
+            (above, below)
+        }
+    }
+
+    /// How far the notation of `measures` reaches above and below the notation staff (0
+    /// without notation).
+    fn notation_reach(&self, measures: std::ops::Range<usize>) -> (f32, f32) {
         if self.ctx.notation.is_none() {
             return (0.0, 0.0);
         }

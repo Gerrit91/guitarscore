@@ -5,6 +5,7 @@ use gscore_edit::Command;
 use gscore_model::{TrackColor, TrackIndex};
 
 use super::TrackPanel;
+use crate::app::tiles::{self, Face};
 use crate::app::{style, swatches};
 
 /// The track color: one click on a preset, or the color picker for any other.
@@ -42,6 +43,25 @@ pub(super) fn color(
     chosen
 }
 
+/// The tile of standard notation: a treble clef.
+pub(in crate::app) const NOTATION_FACE: Face<'static> = Face::Glyph {
+    text: "\u{E050}",
+    size: 17.0,
+    baseline: 4.0,
+};
+/// The tile of tablature: the tab clef.
+pub(in crate::app) const TABLATURE_FACE: Face<'static> = Face::Glyph {
+    text: "\u{E06D}",
+    size: 17.0,
+    baseline: 0.0,
+};
+/// The tile of slash notation: a rhythm slash, as the slash staff writes a beat.
+pub(in crate::app) const SLASH_FACE: Face<'static> = Face::Glyph {
+    text: "\u{E101}",
+    size: 34.0,
+    baseline: 0.0,
+};
+
 /// Three independent switches — standard notation, tablature and slash notation — with at
 /// least one always on.
 pub(super) fn staves(
@@ -50,9 +70,7 @@ pub(super) fn staves(
     snapshot: &TrackPanel,
     commands: &mut Vec<(Command, bool)>,
 ) {
-    use super::super::icons::{self, Icon};
     ui.add_space(4.0);
-    ui.label(egui::RichText::new("Show").color(style::tokens(ui).text_weak));
     // A drum kit is always written on a percussion staff; there is nothing to choose.
     if snapshot.percussion {
         ui.label(egui::RichText::new("Percussion staff").color(style::tokens(ui).text_weak));
@@ -64,23 +82,27 @@ pub(super) fn staves(
     let count = staves.count();
     let track = TrackIndex::new(index);
     ui.horizontal(|ui| {
-        for (icon, label, tip, on, possible) in [
+        ui.spacing_mut().item_spacing.x = 2.0;
+        for (staff, face, label, tip, on, possible) in [
             (
-                Icon::Notation,
+                Staff::Notation,
+                NOTATION_FACE,
                 "Standard notation",
                 "Show standard notation",
                 staves.notation(),
                 notation_possible,
             ),
             (
-                Icon::Tablature,
+                Staff::Tablature,
+                TABLATURE_FACE,
                 "Tablature",
                 "Show the tablature",
                 staves.tablature(),
                 true,
             ),
             (
-                Icon::Slash,
+                Staff::Slash,
+                SLASH_FACE,
                 "Slash notation",
                 "Show rhythm slashes instead of pitches",
                 staves.slash(),
@@ -89,23 +111,19 @@ pub(super) fn staves(
         ] {
             let last_one = on && count == 1;
             let enabled = possible && !last_one;
-            let response =
-                ui.add_enabled_ui(enabled, |ui| icons::toggle_button(ui, icon, label, tip, on));
-            let response = response.inner;
-            if last_one {
-                response
-                    .clone()
-                    .on_hover_text("At least one staff must stay on");
+            let tip = if last_one {
+                format!("{tip}\nAt least one staff must stay on")
             } else if !possible {
-                response
-                    .clone()
-                    .on_hover_text("This track has no tuning to write notes from");
-            }
-            if response.clicked() && possible && !last_one {
-                let next = match icon {
-                    Icon::Notation => staves.with_notation(!on),
-                    Icon::Tablature => staves.with_tablature(!on),
-                    _ => staves.with_slash(!on),
+                format!("{tip}\nThis track has no tuning to write notes from")
+            } else {
+                tip.to_owned()
+            };
+            let response = tiles::tile(ui, face, on, enabled, label, &tip);
+            if response.clicked() && enabled {
+                let next = match staff {
+                    Staff::Notation => staves.with_notation(!on),
+                    Staff::Tablature => staves.with_tablature(!on),
+                    Staff::Slash => staves.with_slash(!on),
                 };
                 if next != staves {
                     commands.push((
@@ -119,4 +137,12 @@ pub(super) fn staves(
             }
         }
     });
+}
+
+/// The three staves a track can show.
+#[derive(Debug, Clone, Copy)]
+enum Staff {
+    Notation,
+    Tablature,
+    Slash,
 }

@@ -82,6 +82,11 @@ pub(super) struct PaletteSnapshot {
     pub(super) beat_values: Vec<Option<NoteValue>>,
     /// The selected beats without notes (rests and empty beats).
     pub(super) silent_beats: Vec<BeatPosition>,
+    /// The target beats that are rests.
+    pub(super) rest_beats: Vec<BeatPosition>,
+    /// Whether the last edit made the target beats rests (from the rest tile), so another
+    /// click on it undoes that and brings their notes back.
+    pub(super) rest_was_last: bool,
     pub(super) measure: MeasureIndex,
     pub(super) tempo: Option<u32>,
     pub(super) time_signature: Option<gscore_model::TimeSignature>,
@@ -90,10 +95,9 @@ pub(super) struct PaletteSnapshot {
     pub(super) clef: gscore_model::Clef,
     /// Whether the cursor's measure is in free time.
     pub(super) free_time: bool,
-    /// The cursor measure's bar-repetition (simile) mark.
-    pub(super) simile: Option<gscore_model::SimileMark>,
-    /// How many measures the song has (for the two-bar repetition pair).
-    pub(super) measure_count: usize,
+    /// Every measure's bar-repetition (simile) mark in the cursor's track, so a pair is
+    /// set and cleared whole.
+    pub(super) similes: Vec<Option<gscore_model::SimileMark>>,
     pub(super) section: Option<gscore_model::Section>,
     /// The measure's repeat signs, double barline, break and bars-per-line limit.
     pub(super) repeat: Repeat,
@@ -172,11 +176,21 @@ impl PaletteSnapshot {
                     .is_some_and(|beat| beat.notes().next().is_none())
             })
             .collect();
+        let rest_beats = beats
+            .iter()
+            .copied()
+            .filter(|at| {
+                song.beat(*at)
+                    .is_some_and(|beat| beat.kind() == gscore_model::BeatKind::Rest)
+            })
+            .collect();
         PaletteSnapshot {
             cursor,
             beats,
             beat_values,
             silent_beats,
+            rest_beats,
+            rest_was_last: false,
             measure,
             tempo: song
                 .tempo_change(measure)
@@ -188,10 +202,12 @@ impl PaletteSnapshot {
                 .and_then(|measure| measure.clef())
                 .unwrap_or(gscore_model::Clef::Treble),
             free_time: song.free_time(measure).unwrap_or(false),
-            simile: track
-                .and_then(|track| track.measure(measure))
-                .and_then(|measure| measure.simile_mark()),
-            measure_count: song.measure_count(),
+            similes: track.map_or_else(Vec::new, |track| {
+                track
+                    .measures()
+                    .map(|measure| measure.simile_mark())
+                    .collect()
+            }),
             section: song.section(measure),
             repeat: song.repeat(measure).unwrap_or_default(),
             double_bar: song.double_bar(measure).unwrap_or(false),
@@ -244,6 +260,7 @@ impl GuitarScoreApp {
         let document = &tab.document;
         let (cursor, selection) = palette_position(&self.playback, tab);
         let mut snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
+        snapshot.rest_was_last = rest_was_last(&snapshot, document.editor().last_command());
         // With several tracks shown, the line breaks are the multitrack layout's.
         snapshot.system_break =
             super::score_view::shown_break(document.song(), cursor.track, cursor.measure, several);
@@ -303,7 +320,8 @@ impl GuitarScoreApp {
         };
         let document = &tab.document;
         let (cursor, selection) = palette_position(&self.playback, tab);
-        let snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
+        let mut snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
+        snapshot.rest_was_last = rest_was_last(&snapshot, document.editor().last_command());
         let state = &mut tab.edit_palette;
         let value = match action {
             ActionId::NoteWhole => Some(1),
@@ -569,16 +587,7 @@ fn note_length(
             ),
             (2, "Double dot", "Double dotted", ActionId::ToggleDoubleDot),
         ] {
-            let glyph = if dots == 1 {
-                "\u{E1E7}"
-            } else {
-                "\u{E1E7}\u{E1E7}"
-            };
-            let face = Face::Glyph {
-                text: glyph,
-                size: 38.0,
-                baseline: 2.0,
-            };
+            let face = dot_face(dots);
             let tip = format!("{tip}{}", hint(action));
             if tiles::tile(ui, face, state.dots == dots, true, label, &tip).clicked() {
                 toggle_dots(state, dots);
@@ -682,16 +691,46 @@ fn rest_commands(state: &EditPaletteState, snapshot: &PaletteSnapshot) -> Vec<Co
             .into_iter()
             .collect();
     }
-    let mut commands = Vec::new();
+    // A second click on rests the tile just made brings their notes back.
+    if snapshot.rest_was_last && snapshot.rest_beats.len() == snapshot.beats.len() {
+        return vec![Command::Undo];
+    }
+    // Every beat becomes a rest; an empty one (a rest too) takes the chosen length.
+    let mut batch = Vec::new();
     for &at in &snapshot.beats {
-        commands.push(Command::SetBeatRest { at });
+        batch.push(Command::SetBeatRest { at });
         if snapshot.silent_beats.contains(&at)
             && let Some(duration) = duration
         {
-            commands.push(Command::SetDuration { at, duration });
+            batch.push(Command::SetDuration { at, duration });
         }
     }
-    commands
+    vec![Command::Batch { commands: batch }]
+}
+
+/// Whether `last`, the editor's last command, is the rest tile's batch for exactly the
+/// snapshot's beats, and they are all rests now (it was not undone).
+pub(super) fn rest_was_last(snapshot: &PaletteSnapshot, last: Option<&Command>) -> bool {
+    let Some(Command::Batch { commands }) = last else {
+        return false;
+    };
+    let rested: Vec<BeatPosition> = commands
+        .iter()
+        .filter_map(|command| match command {
+            Command::SetBeatRest { at } => Some(*at),
+            _ => None,
+        })
+        .collect();
+    let only_rests = commands.iter().all(|command| {
+        matches!(
+            command,
+            Command::SetBeatRest { .. } | Command::SetDuration { .. }
+        )
+    });
+    only_rests
+        && !snapshot.beats.is_empty()
+        && rested == snapshot.beats
+        && snapshot.rest_beats.len() == snapshot.beats.len()
 }
 
 /// The commands of the tie-beat tile: every note of the cursor beat is tied to the
@@ -718,6 +757,67 @@ fn tie_commands(snapshot: &PaletteSnapshot) -> Vec<Command> {
     }
 }
 
+/// The tile face of one or two augmentation dots.
+fn dot_face(dots: u8) -> Face<'static> {
+    let text = if dots == 1 {
+        "\u{E1E7}"
+    } else {
+        "\u{E1E7}\u{E1E7}"
+    };
+    Face::Glyph {
+        text,
+        size: 38.0,
+        baseline: 2.0,
+    }
+}
+
+/// The rest tile: a quarter rest.
+const REST_FACE: Face<'static> = Face::Glyph {
+    text: "\u{E4E5}",
+    size: 22.0,
+    baseline: 1.0,
+};
+
+/// Every note-input tile's face, for the test that they fit their tiles: the regular
+/// tiles, then the wide (tuplet) ones.
+#[cfg(test)]
+pub(super) fn faces() -> (Vec<Face<'static>>, Vec<Face<'static>>) {
+    let mut regular: Vec<_> = [1, 2, 4, 8, 16, 32, 64]
+        .into_iter()
+        .map(note_face)
+        .collect();
+    regular.extend([
+        dot_face(1),
+        dot_face(2),
+        REST_FACE,
+        Face::Tie,
+        Face::BeatTie,
+    ]);
+    let wide = vec![
+        Face::TupletBracket {
+            text: "3",
+            letters: false,
+            more: false,
+        },
+        Face::TupletBracket {
+            text: "6",
+            letters: false,
+            more: false,
+        },
+        Face::TupletBracket {
+            text: "n:m",
+            letters: true,
+            more: true,
+        },
+        Face::TupletBracket {
+            text: "12:8",
+            letters: false,
+            more: true,
+        },
+    ];
+    (regular, wide)
+}
+
 /// The tile face of a note value: the note from the music font.
 fn note_face(value: u16) -> Face<'static> {
     // SMuFL "Individual notes", stems up. Longer stems (32nd, 64th) sit a little higher.
@@ -728,7 +828,7 @@ fn note_face(value: u16) -> Face<'static> {
         8 => ("\u{E1D7}", 9.0),
         16 => ("\u{E1D9}", 9.0),
         32 => ("\u{E1DB}", 10.0),
-        _ => ("\u{E1DD}", 11.0),
+        _ => ("\u{E1DD}", 12.0),
     };
     Face::Glyph {
         text,
@@ -757,17 +857,14 @@ fn beat_buttons(
 ) {
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = egui::vec2(2.0, 3.0);
-        let rest = Face::Glyph {
-            text: "\u{E4E5}",
-            size: 22.0,
-            baseline: 1.0,
-        };
+        let rest = REST_FACE;
         let tip = format!(
-            "Rest: the selected beats become rests; in an empty bar, a rest of the chosen \
-             length is entered{}",
+            "Rest: the selected beats become rests (click again to get their notes back); \
+             in an empty bar, a rest of the chosen length is entered{}",
             hint(ActionId::MakeRest)
         );
-        if tiles::tile(ui, rest, false, true, "Rest", &tip).clicked() {
+        let rests = !snapshot.beats.is_empty() && snapshot.rest_beats.len() == snapshot.beats.len();
+        if tiles::tile(ui, rest, rests, true, "Rest", &tip).clicked() {
             commands.extend(rest_commands(state, snapshot));
         }
         let tip = format!(
