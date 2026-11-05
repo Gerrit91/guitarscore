@@ -165,3 +165,48 @@ fn bars_per_line_are_limited_and_undone() {
     song.revert(&change).unwrap();
     assert_unchanged(&before, &song);
 }
+
+#[test]
+fn the_multitrack_line_breaks_are_set_written_and_undone() {
+    let mut song = song(10);
+    let before = song.clone();
+    assert!(song.score_line_breaks().iter().all(|on| !on));
+    let first = song
+        .set_score_line_break(MeasureIndex::new(4), true)
+        .unwrap();
+    let second = song
+        .set_score_line_break(MeasureIndex::new(8), true)
+        .unwrap();
+    // Written as Guitar Pro's systems layout: bars per line.
+    assert_eq!(song.inner().score_systems_layout.as_deref(), Some("4 4 2"));
+    let starts = song.score_line_breaks();
+    assert!(starts[4] && starts[8] && !starts[5]);
+    // A track's own breaks are not touched.
+    assert_eq!(breaks(&song), breaks(&before));
+    assert!(
+        !settings_differences(&before, &song).is_empty(),
+        "a save check sees them"
+    );
+    song.revert(&second).unwrap();
+    assert_eq!(song.inner().score_systems_layout.as_deref(), Some("4 6"));
+    let off = song
+        .set_score_line_break(MeasureIndex::new(4), false)
+        .unwrap();
+    assert_eq!(song.inner().score_systems_layout, None);
+    song.revert(&off).unwrap();
+    song.revert(&first).unwrap();
+    assert_unchanged(&before, &song);
+    // The first measure starts the score; a measure past the end does not exist.
+    assert!(
+        song.set_score_line_break(MeasureIndex::new(0), true)
+            .is_err()
+    );
+    assert!(
+        song.set_score_line_break(MeasureIndex::new(0), false)
+            .is_ok()
+    );
+    assert!(
+        song.set_score_line_break(MeasureIndex::new(10), true)
+            .is_err()
+    );
+}

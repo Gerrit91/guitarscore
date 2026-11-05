@@ -31,6 +31,9 @@ struct TrackKey {
 /// the key before.
 type Entry = (u64, bool, i8, Option<i8>);
 
+/// One measure lined up across tracks: from these layouts, this result.
+type Aligned = (Vec<Arc<MeasureLayout>>, Vec<Arc<MeasureLayout>>);
+
 /// One track's measure layouts.
 #[derive(Debug)]
 struct TrackCache {
@@ -43,6 +46,10 @@ struct TrackCache {
 #[derive(Debug, Default)]
 pub struct LayoutCache {
     tracks: HashMap<TrackIndex, TrackCache>,
+    /// Measures lined up across tracks, by measure index: the tracks' layouts they were
+    /// made from (kept alive, so an unchanged measure is recognised by identity) and the
+    /// result.
+    aligned: HashMap<usize, Aligned>,
     /// Measures the last call laid out afresh.
     laid_out: usize,
 }
@@ -94,6 +101,9 @@ impl LayoutCache {
             kept.insert(track, (key, HashMap::new()));
         }
         let mut laid_out = 0_usize;
+        let old_aligned = std::mem::take(&mut self.aligned);
+        let mut aligned: HashMap<usize, Aligned> = HashMap::new();
+        let spacing = options.spacing;
         let layout = layout_with(
             song,
             tracks,
@@ -116,7 +126,23 @@ impl LayoutCache {
                 }
                 Ok(layout)
             },
+            &mut |index, column| {
+                // The same layouts as last time (the same tracks, nothing edited): the
+                // same alignment.
+                let result = match old_aligned.get(&index) {
+                    Some((from, result))
+                        if from.len() == column.len()
+                            && from.iter().zip(column).all(|(a, b)| Arc::ptr_eq(a, b)) =>
+                    {
+                        result.clone()
+                    }
+                    _ => crate::measure::align(column, &spacing),
+                };
+                aligned.insert(index, (column.to_vec(), result.clone()));
+                result
+            },
         );
+        self.aligned = aligned;
         // Keep only what this layout used: deleted and edited measures go.
         for (track, (key, measures)) in kept {
             self.tracks.insert(track, TrackCache { key, measures });

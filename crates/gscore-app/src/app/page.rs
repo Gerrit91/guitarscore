@@ -76,7 +76,8 @@ impl GuitarScoreApp {
         } else {
             options
         };
-        let layout = match document.layout(tab.track, &options, fonts) {
+        let shown = tab.score.tracks(tab.track, document.song().track_count());
+        let layout = match document.layout(&shown, tab.track, &options, fonts) {
             Ok(layout) => layout,
             Err(error) => {
                 tab.page_info = None;
@@ -200,20 +201,21 @@ impl GuitarScoreApp {
                     ui.scroll_to_rect(target, align);
                 }
             }
+            // What the pointer is on: the beat and string of whichever track's staves.
             let hit = response
                 .interact_pointer_pos()
-                .and_then(|pos| layout.places.hit(to_layout(pos)));
+                .and_then(|pos| layout.hit(to_layout(pos)));
             // A right-click acts on what it hits: the cursor goes there first, unless the
             // click is inside the selection (then the menu acts on the selection).
             if response.secondary_clicked()
-                && let Some(hit) = hit
+                && let Some((track, hit)) = hit
             {
                 let target = Cursor {
+                    track,
                     measure: hit.measure,
                     voice: hit.voice,
                     beat: hit.beat,
                     string: hit.string,
-                    ..cursor
                 };
                 let selected = document.editor().selection().is_some_and(|selection| {
                     selection
@@ -226,25 +228,28 @@ impl GuitarScoreApp {
                 if !selected {
                     document.editor_mut().set_selection(None);
                     tab.selection = None;
+                    tab.track = track.get();
                     document.editor_mut().set_cursor(target);
                 }
             }
+            let several = shown.len() > 1;
             response.context_menu(|ui| {
-                page_menu::with_target(document, |target| {
+                page_menu::with_target(document, several, |target| {
                     page_menu::show(ui, target, &self.keymap, &mut self.view, &mut choices);
                 });
             });
             // A drag selects beats of the voice it started in, across bar lines and system
             // lines; the cursor follows the drag so the keyboard can go on from there.
             if response.drag_started()
-                && let Some(hit) = hit
+                && let Some((track, hit)) = hit
             {
+                tab.track = track.get();
                 let anchor = Cursor {
+                    track,
                     measure: hit.measure,
                     voice: hit.voice,
                     beat: hit.beat,
                     string: hit.string,
-                    ..cursor
                 };
                 tab.drag_anchor = Some(anchor);
                 drag_to = Some(anchor);
@@ -252,7 +257,7 @@ impl GuitarScoreApp {
             if response.dragged()
                 && let Some(anchor) = tab.drag_anchor
                 && let Some(pos) = response.interact_pointer_pos()
-                && let Some(hit) = layout.places.hit_in_voice(to_layout(pos), anchor.voice)
+                && let Some(hit) = layout.hit_in_voice(to_layout(pos), anchor.track, anchor.voice)
             {
                 drag_to = Some(Cursor {
                     measure: hit.measure,
@@ -285,14 +290,17 @@ impl GuitarScoreApp {
         });
         tab.shown_cursor = Some((cursor, revision));
         if let Some(point) = clicked
-            && let Some(hit) = layout.places.hit(point)
+            && let Some((track, hit)) = layout.hit(point)
         {
+            // A click on another track's staves moves the cursor (and the track picker)
+            // there.
+            tab.track = track.get();
             document.editor_mut().set_cursor(Cursor {
+                track,
                 measure: hit.measure,
                 voice: hit.voice,
                 beat: hit.beat,
                 string: hit.string,
-                ..cursor
             });
             // While playing, a click moves playback there too.
             let at = document.editor().cursor().position();

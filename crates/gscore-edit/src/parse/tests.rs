@@ -604,6 +604,14 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
             track,
             bars: Some(4),
         },
+        Command::SetScoreLineBreak {
+            measure: MeasureIndex::new(4),
+            on: true,
+        },
+        Command::SetScoreLineBreak {
+            measure: MeasureIndex::new(2),
+            on: false,
+        },
         Command::SetBarsPerSystem { track, bars: None },
         Command::SetBeatRest { at: at(0, 1, 0, 2) },
         Command::SetTie {

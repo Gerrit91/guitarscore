@@ -106,9 +106,9 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    graces) and take no time. Since 2026-11-03
    section names, tempo changes, repeat signs (with "x3" counts), alternative endings and
    dynamics are drawn, and drum tracks get a percussion staff. Missing everywhere:
-   D.C./D.S./coda and other directions, hairpins, lyrics, chord diagrams, multi-track
-   systems and native printing (M21, AGENTS.md
-   section 9; pages, page setup, breaks and PDF export are live since 2026-11-03), rhythm
+   D.C./D.S./coda and other directions, hairpins, lyrics, chord diagrams and native
+   printing (M21, AGENTS.md section 9; pages, page setup, breaks and PDF export are live
+   since 2026-11-03, multi-track systems since 2026-11-05), rhythm
    under the tab
    (shown in the notation instead). Ornaments that connect notes only look within one
    measure. Voice and piano tracks get no notation (no tuning). Text widths are estimated for non-digits; no PNG output (`rsvg-convert` works).

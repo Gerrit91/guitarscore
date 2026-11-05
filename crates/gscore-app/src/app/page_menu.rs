@@ -125,6 +125,7 @@ pub(super) fn section(
 /// here, while a menu is open.
 pub(super) fn with_target<R>(
     document: &crate::document::Document,
+    several: bool,
     show: impl FnOnce(&MenuTarget<'_>) -> R,
 ) -> R {
     let editor = document.editor();
@@ -137,10 +138,13 @@ pub(super) fn with_target<R>(
         tracks: document.song().track_count(),
         measure: at.measure.get(),
         measures: document.song().measure_count(),
-        system_break: track
-            .as_ref()
-            .and_then(|track| track.measures().nth(at.measure.get()))
-            .map_or(SystemBreak::None, |measure| measure.system_break()),
+        // With several tracks shown, the line breaks are the multitrack layout's.
+        system_break: super::score_view::shown_break(
+            document.song(),
+            at.track,
+            at.measure,
+            several,
+        ),
         bars_per_system: track.and_then(|track| track.bars_per_system()),
     })
 }

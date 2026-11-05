@@ -636,6 +636,22 @@ pub(crate) const SET_BARS_PER_SYSTEM: CommandInfo = CommandInfo {
     params: &[TRACK, BARS],
 };
 
+const ON: ParamInfo = ParamInfo {
+    name: "on",
+    required: true,
+    default: None,
+    help: "true to start a line at the measure, false to remove the break",
+};
+
+pub(crate) const SET_SCORE_LINE_BREAK: CommandInfo = CommandInfo {
+    id: "set_score_line_break",
+    aliases: &[],
+    label: "Set a line break of all tracks",
+    help: "Starts a new line at the measure (not the first) when every track is shown \
+           together, or removes that break; each track's own breaks stay.",
+    params: &[MEASURE, ON],
+};
+
 pub(crate) const SET_TEMPO: CommandInfo = CommandInfo {
     id: "set_tempo",
     aliases: &[],
@@ -842,6 +858,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_PAGE_SETUP,
     SET_SYSTEM_BREAK,
     SET_BARS_PER_SYSTEM,
+    SET_SCORE_LINE_BREAK,
     SET_TEMPO,
     SET_BEAT_REST,
     SET_TIE,

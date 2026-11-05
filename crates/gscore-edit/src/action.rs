@@ -206,6 +206,8 @@ pub enum ActionId {
     ZoomReset,
     /// Switch the window to full screen and back.
     ToggleFullscreen,
+    /// Show every track of the song together, or only the cursor's track again.
+    ToggleMultitrack,
 }
 
 impl ActionId {
@@ -548,6 +550,11 @@ pub const ACTIONS: &[ActionInfo] = &[
         "toggle_fullscreen",
         "Full screen",
     ),
+    info(
+        ActionId::ToggleMultitrack,
+        "toggle_multitrack",
+        "All tracks",
+    ),
 ];
 
 const fn info(action: ActionId, id: &'static str, label: &'static str) -> ActionInfo {
@@ -623,6 +630,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 97, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 98, "one entry per ActionId variant");
     }
 }

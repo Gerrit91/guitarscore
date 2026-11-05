@@ -302,6 +302,10 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             measure: MeasureIndex::new(required_position(args, "measure")?),
             kind: system_break_arg(args)?,
         }),
+        "set_score_line_break" => Ok(Command::SetScoreLineBreak {
+            measure: MeasureIndex::new(required_position(args, "measure")?),
+            on: bool_arg(args, "on")?,
+        }),
         "set_bars_per_system" => Ok(Command::SetBarsPerSystem {
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
             bars: bars_arg(args)?,

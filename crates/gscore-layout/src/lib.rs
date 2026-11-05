@@ -199,8 +199,13 @@ pub fn layout_tracks(
         &mut |_, measure, show, key, prev, ctx| {
             MeasureLayout::new(measure, show, key, prev, ctx).map(Arc::new)
         },
+        &mut |_, column| measure::align(column, &options.spacing),
     )
 }
+
+/// Lines up measure `index` (its layout in each shown track, top to bottom) across the
+/// tracks: [`measure::align`], or a cache of it.
+type AlignSource<'s> = dyn FnMut(usize, &[Arc<MeasureLayout>]) -> Vec<Arc<MeasureLayout>> + 's;
 
 /// Lays out one measure: its track, the measure, whether it shows its time signature, its
 /// key, the key before it, and the context.

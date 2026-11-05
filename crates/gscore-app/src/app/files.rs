@@ -258,7 +258,9 @@ impl GuitarScoreApp {
             .clone()
             .with_page_setup(&song.page_setup())
             .on_pages();
-        if let Err(error) = self.tasks.export_pdf(song, tab.track, options, path, ctx) {
+        // The tracks the score shows, as it shows them.
+        let tracks = tab.shown_tracks();
+        if let Err(error) = self.tasks.export_pdf(song, tracks, options, path, ctx) {
             self.notice = Some(error);
         }
     }

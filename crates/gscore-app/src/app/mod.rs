@@ -30,6 +30,7 @@ mod new_track;
 mod page;
 mod page_menu;
 mod recovery;
+mod score_view;
 mod settings_page;
 mod settings_window;
 mod shape_editor;
@@ -348,6 +349,15 @@ impl GuitarScoreApp {
     /// The shown track of the active tab (0-based).
     pub fn shown_track(&self) -> usize {
         self.tabs.get(self.active).map_or(0, |tab| tab.track)
+    }
+
+    /// The tracks the active tab's score shows, top to bottom (the cursor's track among
+    /// them); empty without a document.
+    pub fn score_tracks(&self) -> Vec<usize> {
+        self.tabs
+            .get(self.active)
+            .map(|tab| tab.shown_tracks())
+            .unwrap_or_default()
     }
 
     /// Sets the active tab's shown track.

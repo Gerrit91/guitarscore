@@ -2539,3 +2539,53 @@ the browser; multi-threaded import (web worker) if opening large files becomes n
 - Not done: `cargo xtask web` writes the smoke screenshots and `worklet-check.html` into
   the site directory (they would be deployed with it); clippy for the wasm target fails on
   older `drop_non_drop` lints in `gscore-session` (CI does not lint wasm).
+
+## 2026-11-05 — M21: multi-track scores and editing across staves
+
+- Owner's test file `testdata/basic/multi_staff.gp` (six tracks: four guitars, bass,
+  drums) with Guitar Pro's pages as the reference.
+- **Layout** (`gscore-layout`): `layout_tracks` (and `LayoutCache::layout_tracks`) stacks
+  every shown track's staves in each system. Each measure is still laid out per track and
+  cached per track; `measure/align.rs` then puts one measure of every track on one time
+  grid (a gap is the larger of what its length asks and what any track's notes there
+  need; a column spanning other tracks' beats keeps its own room) and lines up the key
+  and time signatures and the first beat. The cache keeps the alignment per measure and
+  reuses it while the tracks' layouts are the same (by identity). The top track carries
+  measure numbers, sections, tempo, endings and repeat counts; every track keeps its
+  barlines, repeat signs, dynamics, fermatas, beat text and beat effects. Short names
+  ("el.g…", cut to fit) stand in the left margin as Guitar Pro writes them, one line
+  joins all staves, the header lists each track's name and tuning, and the gap between
+  tracks grows for notes above or below a staff (drum cymbals under a bass tab).
+  `layout_track` is the one-track case of the same code (`score/`), so every single-track
+  golden is unchanged. `Layout::tracks` holds each track's places; `Layout::hit` finds the
+  track and beat under a point.
+- **Multitrack line breaks**: GP7 keeps them apart from each track's (`<Score>`'s
+  `ScoreSystemsLayout`, "4 4 2"); read, written back, compared on save, and used when
+  several tracks are shown (a page break on any shown track applies; a track's bar limit
+  does not). New command `set_score_line_break measure=N on=true|false` with undo,
+  journal, CLI and property test; in the app, Bar › Line break and the palette's break
+  dialog set it while several tracks are shown.
+- **Model**: track edits (add, delete, duplicate, move, and their undo) now renew every
+  measure stamp, since the cache keeps measures per track index (the old test that pinned
+  the opposite was changed); `TrackView::short_name`; `Song::score_line_breaks`.
+- **App**: View › One track / All tracks / Tracks shown (a tick per track; the cursor's
+  track always shown), per tab; action `toggle_multitrack` (no default key). Clicks,
+  right-clicks and drags work on any staff and move the cursor and the track picker there;
+  Up past the top string and Down past the bottom one go to the track shown above or
+  below, at the same time in the bar. PDF export writes the shown tracks.
+- **CLI**: `render --track N` repeats for several tracks; `--all-tracks`.
+- **Bench** (`cargo xtask bench`, release) gains an all-tracks case; on the owner's files:
+  `master.gp` (415 bars, 6 tracks) edit and layout 3.8 ms with every track shown (0.6 ms
+  one track), `battery.gp` (215 bars, 9 tracks) 2.6 ms; within the 16 ms budget.
+- Tests: layout (`test_multitrack.rs`: places per track, stacking, aligned measures and
+  beats, multitrack breaks, hits per track, marks once, cache reuse, errors), goldens
+  `multi_staff.svg` and `multi_staff.all.svg` (owner review pending), model (multitrack
+  breaks with undo, stamps on track edits), command round trip, CLI render and round
+  trip, app (View menu, Up/Down across tracks, Bar menu break with undo, snapshot
+  `multi_staff_all_tracks.png`).
+- Differences from Guitar Pro's pages: our default spacing is wider, so Guitar Pro's
+  "4 4 2" bars per line become 3 per line where 4 do not fit (5 pages instead of 3);
+  later systems keep horizontal short names (Guitar Pro rotates them); no bracket or brace.
+- Open: hiding empty staves, native printing, the bars-per-line limit and the Settings
+  page preview for several tracks, which tracks are shown is not remembered between runs,
+  inserting or deleting a bar does not move the multitrack breaks after it.

@@ -47,9 +47,17 @@ pub(super) struct Tab {
     pub(super) history_stamps: HashMap<u64, SystemTime>,
     /// The new-track popup, while it is open.
     pub(super) new_track: Option<NewTrackDialog>,
+    /// Which tracks the score shows besides the cursor's.
+    pub(super) score: super::score_view::ScoreTracks,
 }
 
 impl Tab {
+    /// The tracks the score shows, top to bottom (the cursor's among them).
+    pub(super) fn shown_tracks(&self) -> Vec<usize> {
+        self.score
+            .tracks(self.track, self.document.song().track_count())
+    }
+
     /// A tab for `document` with the id number `id`, showing its first track and nothing
     /// selected.
     pub(super) fn new(id: u64, document: Document) -> Self {
@@ -67,6 +75,7 @@ impl Tab {
             mixer: MixerState::default(),
             history_stamps: HashMap::new(),
             new_track: None,
+            score: super::score_view::ScoreTracks::default(),
         }
     }
 }
