@@ -222,3 +222,10 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
   automatically (2026-11-05); a browser user cannot choose another SoundFont yet.
 - **Opening imports on the UI thread** after the bytes arrive (no wasm threads). Fine for
   the tested files; a web worker is the escape hatch for very large scores.
+
+39. **Brush/arpeggio timing is GuitarScore-only in GP7.** GP3-5 store a brush's speed but
+    have no place for "ends on the beat"; GP3-5/GP6 store no arpeggio speed or timing
+    either. GP7 keeps all of it in `GuitarScoreBrush`/`GuitarScoreArpeggio` properties
+    (Guitar Pro itself shows the direction and plays its own defaults). An export to an
+    older format therefore reports the lost timing; arpeggio speed and timing are dropped
+    by GP3-5/GP6.

@@ -2823,3 +2823,22 @@ needed for a much larger font); owner listening check.
 - The track panel's Symbol dropdown became a grid of the fifteen symbols: one click
   chooses, like the palette tiles. The selected one is filled with the accent color.
 - Tests: the panel test chooses Banjo and undoes it; snapshots updated.
+
+## 2026-11-05 — Brushes and arpeggios in a dialog
+
+- The brush and arpeggio tiles (and keys) open a dialog instead of toggling directly: the
+  direction (with the engraved sign), **How quick** (1/4 to 1/64) and whether the spread
+  **starts on the beat** or **ends on it** (its last string lands on the beat). OK sets the
+  stroke on every selected beat; Remove clears it; one undo step.
+- Model: `Stroke { direction, speed, on_beat }`; `BeatEffect::BrushStroke` and `Arpeggio`
+  carry it. `BeatView::stroke(kind)` reads it; the direction-only accessors stay for the
+  layout and the dump. The brush's existing GP3-5 speed field is used; the arpeggio's speed
+  and both timings are GuitarScore additions (`GuitarScoreBrush`/`GuitarScoreArpeggio`
+  GPIF properties), so GP7 keeps them and GP3-5 keep the brush speed only.
+- Playback: the spread length is `4/ speed` quarter notes (1/32 for a brush, 1/8 for an
+  arpeggio by default) instead of two fixed constants, and "ends on the beat" moves the
+  roll earlier so the last string lands exactly on the beat.
+- Tests: model round trip of a stroke's speed/timing; playback onset tests for a 16th
+  spread and for an arpeggio ending on the beat; GP7 round trip of both strokes and GP5 of
+  the brush speed; an app test sets 1/16 and "ends on the beat" through the dialog, with a
+  new `brush_dialog` snapshot.

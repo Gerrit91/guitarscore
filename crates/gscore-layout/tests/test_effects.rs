@@ -12,8 +12,8 @@ use gscore_layout::{DrawOp, Fonts, Glyph, Layout, LayoutOptions, layout_track};
 use gscore_model::testing::{TestNote, song_with_notes};
 use gscore_model::{
     AccentKind, BeatEffect, BeatIndex, BeatPosition, Harmonic, HarmonicKind, Legato, MeasureIndex,
-    NoteEffect, SlapKind, SlideKind, Song, StringNumber, StrokeDirection, TrackIndex, TrackStaves,
-    VoiceIndex,
+    NoteEffect, SlapKind, SlideKind, Song, StringNumber, Stroke, StrokeDirection, TrackIndex,
+    TrackStaves, VoiceIndex,
 };
 
 fn at(beat: usize) -> BeatPosition {
@@ -64,7 +64,7 @@ fn effects_song() -> Song {
     beat(
         &mut song,
         0,
-        BeatEffect::BrushStroke(Some(StrokeDirection::Down)),
+        BeatEffect::BrushStroke(Some(Stroke::brush(StrokeDirection::Down))),
     );
     beat(
         &mut song,
@@ -78,7 +78,7 @@ fn effects_song() -> Song {
     beat(
         &mut song,
         7,
-        BeatEffect::BrushStroke(Some(StrokeDirection::Up)),
+        BeatEffect::BrushStroke(Some(Stroke::brush(StrokeDirection::Up))),
     );
     let note = |song: &mut Song, index: usize, on: u8, effect: NoteEffect| {
         let _change = song.set_note_effect(at(index), string(on), effect).unwrap();

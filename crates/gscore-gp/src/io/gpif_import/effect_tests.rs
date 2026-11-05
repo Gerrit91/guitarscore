@@ -366,6 +366,8 @@ fn gp6_whammy_properties_are_imported() {
             float: Some(value),
             flags: None,
             strength: None,
+            duration: None,
+            text: None,
         };
         GpifBeat {
             id: 0,

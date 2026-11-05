@@ -64,6 +64,8 @@ fn beat_vibrato_survives_reading_and_writing() {
         float: None,
         flags: None,
         strength: Some("Wide".to_owned()),
+        duration: None,
+        text: None,
     };
     let beat = GpifBeat {
         id: 0,

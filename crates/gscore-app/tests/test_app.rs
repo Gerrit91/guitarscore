@@ -189,6 +189,33 @@ fn section_titles_sit_in_the_master_row() {
 }
 
 #[test]
+fn the_brush_dialog_sets_speed_and_timing() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    harness.get_by_label("Brush (strum) down").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Brush (strum) down").click();
+    harness.run();
+    harness.snapshot("brush_dialog");
+    harness.get_by_label("Spread over a 1/16 note").click();
+    harness.run();
+    harness.get_by_label("Ends on the beat").click();
+    harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    let document = harness.state().document().unwrap();
+    let at = document.editor().cursor().position();
+    let beat = document.song().beat(at).expect("the cursor is on a beat");
+    assert_eq!(
+        beat.stroke(gscore_model::StrokeKind::Brush),
+        Some(gscore_model::Stroke {
+            direction: gscore_model::StrokeDirection::Down,
+            speed: 16,
+            on_beat: false,
+        })
+    );
+}
+
+#[test]
 fn the_staff_dialogs_match_their_snapshots() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))

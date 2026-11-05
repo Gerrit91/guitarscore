@@ -228,6 +228,14 @@ pub(crate) struct BeatProperty {
     /// Strength of `VibratoWTremBar` ("Slight" or "Wide").
     #[serde(rename = "Strength", default)]
     pub strength: Option<String>,
+    /// GuitarScore addition: a stroke's speed (a note-value denominator) in a
+    /// `GuitarScoreBrush`/`GuitarScoreArpeggio` property.
+    #[serde(rename = "Duration", default)]
+    pub duration: Option<i32>,
+    /// GuitarScore addition: `on` or `before` in the same properties (the stroke's
+    /// timing).
+    #[serde(rename = "Text", default)]
+    pub text: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

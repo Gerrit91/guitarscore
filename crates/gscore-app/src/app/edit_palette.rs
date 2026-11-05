@@ -330,6 +330,10 @@ impl GuitarScoreApp {
             state.effects.open_trill(&snapshot);
         } else if action == ActionId::TremoloOther {
             state.effects.open_tremolo(&snapshot);
+        } else if let Some((kind, direction)) =
+            super::edit_effects::fx_item(action).and_then(|item| item.fx.stroke_target())
+        {
+            state.effects.open_stroke(&snapshot, kind, direction);
         } else if let Some(item) = super::edit_effects::fx_item(action) {
             commands = super::edit_effects::fx_commands(item.fx, &snapshot);
         }

@@ -17,7 +17,7 @@
 
 use std::path::PathBuf;
 
-use gscore_io::{FileFormat, Imported, IoError, import_guitar_pro_from_bytes};
+use gscore_io::{FileFormat, Imported, IoError, export_to_bytes, import_guitar_pro_from_bytes};
 use gscore_model::{
     BeatKind, Duration, InstrumentKind, MeasureIndex, NoteKind, TrackIndex, VoiceIndex,
 };
@@ -256,5 +256,64 @@ fn check_no_panics(inputs: &[Vec<u8>]) {
         internal_panics.len(),
         inputs.len(),
         internal_panics.join("\n")
+    );
+}
+
+#[test]
+fn a_stroke_speed_and_timing_survive_gp7_and_gp5() {
+    use gscore_model::{BeatEffect, BeatPosition, Stroke, StrokeDirection, StrokeKind};
+    let mut imported = import("basic/note_lengths.gp");
+    let beat = imported
+        .song
+        .track(TrackIndex::new(0))
+        .unwrap()
+        .measures()
+        .next()
+        .unwrap()
+        .voices()
+        .next()
+        .unwrap()
+        .beats()
+        .find(|beat| beat.kind() == BeatKind::Normal && beat.notes().next().is_some())
+        .expect("note_lengths has a note in its first bar");
+    let at = BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: VoiceIndex::new(0),
+        beat: beat.index(),
+    };
+    let brush = Stroke {
+        direction: StrokeDirection::Down,
+        speed: 16,
+        on_beat: false,
+    };
+    let arpeggio = Stroke {
+        direction: StrokeDirection::Up,
+        speed: 32,
+        on_beat: true,
+    };
+    let _ = imported
+        .song
+        .set_beat_effect(at, BeatEffect::BrushStroke(Some(brush)))
+        .unwrap();
+    let _ = imported
+        .song
+        .set_beat_effect(at, BeatEffect::Arpeggio(Some(arpeggio)))
+        .unwrap();
+
+    // GP7 keeps both strokes completely.
+    let bytes = export_to_bytes(&imported.song, FileFormat::Gp).unwrap();
+    let reread = import_guitar_pro_from_bytes(&bytes).unwrap().song;
+    let beat = reread.beat(at).expect("the beat is still there");
+    assert_eq!(beat.stroke(StrokeKind::Brush), Some(brush));
+    assert_eq!(beat.stroke(StrokeKind::Arpeggio), Some(arpeggio));
+
+    // GP5 keeps the brush's speed (GP3-5 store it) but has no arpeggio or timing.
+    let bytes = export_to_bytes(&imported.song, FileFormat::Gp5).unwrap();
+    let reread = import_guitar_pro_from_bytes(&bytes).unwrap().song;
+    let beat = reread.beat(at).expect("the beat is still there");
+    assert_eq!(
+        beat.stroke(StrokeKind::Brush).map(|stroke| stroke.speed),
+        Some(16)
     );
 }

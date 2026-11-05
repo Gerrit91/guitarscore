@@ -2,7 +2,8 @@
 
 use crate::effects::{
     AccentKind, BeatEffect, Bend, BendKind, BendPoint, BendShape, Harmonic, HarmonicKind, Legato,
-    NoteEffect, SlapKind, SlideKind, StrokeDirection, Vibrato, Whammy, WhammyShape,
+    NoteEffect, SlapKind, SlideKind, Stroke, StrokeDirection, StrokeKind, Vibrato, Whammy,
+    WhammyShape,
 };
 use crate::interop::from_gp;
 use crate::position::{
@@ -354,10 +355,26 @@ fn pick_stroke_sets_and_clears() {
 #[test]
 fn brush_stroke_sets_and_clears() {
     round_trip_beat(
-        BeatEffect::BrushStroke(Some(StrokeDirection::Up)),
+        BeatEffect::BrushStroke(Some(Stroke::brush(StrokeDirection::Up))),
         |beat| assert_eq!(beat.brush_stroke(), Some(StrokeDirection::Up)),
         |beat| assert_eq!(beat.brush_stroke(), None),
     );
+}
+
+#[test]
+fn a_stroke_keeps_its_speed_and_timing() {
+    let mut song = song_with_note();
+    let stroke = Stroke {
+        direction: StrokeDirection::Down,
+        speed: 16,
+        on_beat: false,
+    };
+    let _ = song
+        .set_beat_effect(at(0), BeatEffect::Arpeggio(Some(stroke)))
+        .unwrap();
+    let beat = only_beat(&song);
+    assert_eq!(beat.stroke(StrokeKind::Arpeggio), Some(stroke));
+    assert_eq!(beat.arpeggio(), Some(StrokeDirection::Down));
 }
 
 #[test]

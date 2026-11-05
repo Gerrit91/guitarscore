@@ -54,7 +54,7 @@ pub use edit::{Change, MAX_SECTION_TITLE_CHARS, MAX_STRINGS, MAX_TRACK_NAME_CHAR
 pub use effects::{
     AccentKind, BEND_MAX_POSITION, BEND_MAX_VALUE, BeatEffect, Bend, BendKind, BendPoint,
     BendShape, Harmonic, HarmonicKind, Legato, MAX_BEND_POINTS, NoteEffect, SlapKind, SlideKind,
-    StrokeDirection, Vibrato, Whammy, WhammyShape,
+    Stroke, StrokeDirection, StrokeKind, Vibrato, Whammy, WhammyShape,
 };
 pub use error::ModelError;
 pub use grace::{Grace, GraceSpeed};

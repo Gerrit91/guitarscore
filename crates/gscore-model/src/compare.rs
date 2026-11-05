@@ -11,7 +11,8 @@ use std::fmt;
 use crate::duration::Duration;
 use crate::dynamics::Dynamic;
 use crate::effects::{
-    AccentKind, Bend, Harmonic, Legato, SlapKind, SlideKind, StrokeDirection, Vibrato, Whammy,
+    AccentKind, Bend, Harmonic, Legato, SlapKind, SlideKind, Stroke, StrokeDirection, StrokeKind,
+    Vibrato, Whammy,
 };
 use crate::error::ModelError;
 use crate::grace::Grace;
@@ -176,13 +177,13 @@ struct BeatContent {
     grace: bool,
     duration: Result<Duration, ModelError>,
     pick_stroke: Option<StrokeDirection>,
-    brush_stroke: Option<StrokeDirection>,
+    brush_stroke: Option<Stroke>,
     slap: Option<SlapKind>,
     fade: Option<Fade>,
     whammy_bar: Option<Whammy>,
     legato: Option<Legato>,
     vibrato: Option<Vibrato>,
-    arpeggio: Option<StrokeDirection>,
+    arpeggio: Option<Stroke>,
     dead_slapped: bool,
     rasgueado: bool,
     text: String,
@@ -257,13 +258,13 @@ fn beats(voice: Option<VoiceView<'_>>) -> Vec<BeatContent> {
                 grace: beat.is_grace(),
                 duration: beat.duration(),
                 pick_stroke: beat.pick_stroke(),
-                brush_stroke: beat.brush_stroke(),
+                brush_stroke: beat.stroke(StrokeKind::Brush),
                 slap: beat.slap(),
                 fade: beat.fade(),
                 whammy_bar: beat.whammy_bar(),
                 legato: beat.legato(),
                 vibrato: beat.vibrato(),
-                arpeggio: beat.arpeggio(),
+                arpeggio: beat.stroke(StrokeKind::Arpeggio),
                 dead_slapped: beat.is_dead_slapped(),
                 rasgueado: beat.has_rasgueado(),
                 text: beat.text().to_owned(),

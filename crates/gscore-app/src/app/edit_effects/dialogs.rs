@@ -2,13 +2,13 @@
 //! picking's speed, chosen by clicking engraved signs.
 
 use egui::{Margin, Pos2, RichText, vec2};
-use gscore_model::{Finger, Hand, TremoloSpeed, Trill, TrillSpeed};
+use gscore_model::{Finger, Hand, Stroke, StrokeDirection, TremoloSpeed, Trill, TrillSpeed};
 
 use super::super::harmonic_editor::{buttons, keys};
 use super::super::shape_editor::Outcome;
 use super::super::staff_widgets::{choice, stepper};
 use super::super::style;
-use super::super::tile_faces::{lettering, music_glyph};
+use super::super::tile_faces::{self, Face, lettering, music_glyph};
 
 /// Width of a dialog's content.
 const WIDTH: f32 = 460.0;
@@ -353,5 +353,205 @@ impl TremoloEditor {
             TremoloSpeed::ThirtySecond => "\u{E222}",
         };
         music_glyph(ui.painter(), rect.center(), sign, 40.0, tokens.text);
+    }
+}
+
+/// Which spread chord the stroke dialog edits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::app) enum StrokeEditorKind {
+    /// A brush (strum).
+    Brush,
+    /// A rolled chord (arpeggio).
+    Arpeggio,
+}
+
+impl StrokeEditorKind {
+    /// The window title and the Remove button's text.
+    fn title(self) -> (&'static str, &'static str) {
+        match self {
+            StrokeEditorKind::Brush => ("Brush", "No brush"),
+            StrokeEditorKind::Arpeggio => ("Arpeggio", "No arpeggio"),
+        }
+    }
+}
+
+/// The note values a stroke can be spread over.
+const STROKE_SPEEDS: [(u8, &str); 5] = [
+    (4, "1/4"),
+    (8, "1/8"),
+    (16, "1/16"),
+    (32, "1/32"),
+    (64, "1/64"),
+];
+
+/// The open brush or arpeggio dialog.
+#[derive(Debug, Clone)]
+pub(super) struct StrokeEditor {
+    pos: Option<Pos2>,
+    kind: StrokeEditorKind,
+    direction: StrokeDirection,
+    speed: u8,
+    on_beat: bool,
+}
+
+impl StrokeEditor {
+    /// A dialog on `current`, or on `kind`'s defaults in `direction`.
+    pub(super) fn new(
+        kind: StrokeEditorKind,
+        current: Option<Stroke>,
+        direction: StrokeDirection,
+    ) -> Self {
+        let stroke = current.unwrap_or(match kind {
+            StrokeEditorKind::Brush => Stroke::brush(direction),
+            StrokeEditorKind::Arpeggio => Stroke::arpeggio(direction),
+        });
+        StrokeEditor {
+            pos: None,
+            kind,
+            direction: stroke.direction,
+            speed: stroke.speed,
+            on_beat: stroke.on_beat,
+        }
+    }
+
+    /// The stroke as chosen.
+    pub(super) fn stroke(&self) -> Stroke {
+        Stroke {
+            direction: self.direction,
+            speed: self.speed,
+            on_beat: self.on_beat,
+        }
+    }
+
+    /// The kind of spread chord this dialog edits.
+    pub(super) fn kind(&self) -> StrokeEditorKind {
+        self.kind
+    }
+
+    /// Shows the window.
+    pub(super) fn show(&mut self, ctx: &egui::Context) -> Outcome {
+        let (title, remove) = self.kind.title();
+        let size = vec2(WIDTH + 32.0, 400.0);
+        let pos = *self
+            .pos
+            .get_or_insert_with(|| style::centered_window_pos(ctx, size));
+        let mut outcome = Outcome::Open;
+        egui::Window::new(title)
+            .title_bar(false)
+            .collapsible(false)
+            .resizable(false)
+            .current_pos(pos)
+            .frame(style::window_frame(ctx))
+            .show(ctx, |ui| {
+                if style::window_title_bar(ui, title, &mut self.pos) {
+                    outcome = Outcome::Cancel;
+                }
+                egui::Frame::new()
+                    .inner_margin(Margin::symmetric(16, 12))
+                    .show(ui, |ui| {
+                        ui.set_width(WIDTH);
+                        ui.label(
+                            RichText::new(
+                                "How quick the strings are struck, and whether the first \
+                                 string starts on the beat or the last one lands on it.",
+                            )
+                            .weak(),
+                        );
+                        ui.add_space(6.0);
+                        self.directions(ui);
+                        ui.add_space(8.0);
+                        ui.label(RichText::new("How quick").strong());
+                        ui.horizontal_wrapped(|ui| {
+                            for (speed, label) in STROKE_SPEEDS {
+                                let selected = self.speed == speed;
+                                let response = ui.add(egui::Button::selectable(selected, label));
+                                // A distinct accessible name: "1/16" is also a palette
+                                // note length.
+                                response.widget_info(|| {
+                                    egui::WidgetInfo::selected(
+                                        egui::Role::Button,
+                                        true,
+                                        selected,
+                                        format!("Spread over a {label} note"),
+                                    )
+                                });
+                                if response
+                                    .on_hover_text(format!(
+                                        "Spread the strings over a {label} note"
+                                    ))
+                                    .clicked()
+                                {
+                                    self.speed = speed;
+                                }
+                            }
+                        });
+                        ui.add_space(8.0);
+                        self.timing(ui);
+                        ui.add_space(6.0);
+                        ui.separator();
+                        ui.add_space(4.0);
+                        buttons(ui, &mut outcome, remove, None);
+                        keys(ui, &mut outcome);
+                    });
+            });
+        outcome
+    }
+
+    /// Down or up, with the engraved sign.
+    fn directions(&mut self, ui: &mut egui::Ui) {
+        for (direction, name, detail) in [
+            (
+                StrokeDirection::Down,
+                "Down",
+                "From the lowest string up to the highest.",
+            ),
+            (
+                StrokeDirection::Up,
+                "Up",
+                "From the highest string down to the lowest.",
+            ),
+        ] {
+            let up = direction == StrokeDirection::Up;
+            if choice(
+                ui,
+                self.direction == direction,
+                name,
+                detail,
+                move |painter, rect, ink| {
+                    let tile = egui::Rect::from_center_size(rect.center(), vec2(27.0, 32.0));
+                    tile_faces::paint_face(painter, tile, Face::Arpeggio { up }, ink);
+                },
+            )
+            .clicked()
+            {
+                self.direction = direction;
+            }
+        }
+    }
+
+    /// Start on the beat, or fall so the last string lands on it.
+    fn timing(&mut self, ui: &mut egui::Ui) {
+        if choice(
+            ui,
+            self.on_beat,
+            "Starts on the beat",
+            "The first string is struck on the beat; the rest follow.",
+            |_, _, _| {},
+        )
+        .clicked()
+        {
+            self.on_beat = true;
+        }
+        if choice(
+            ui,
+            !self.on_beat,
+            "Ends on the beat",
+            "The spread falls before the beat, so its last string lands on it.",
+            |_, _, _| {},
+        )
+        .clicked()
+        {
+            self.on_beat = false;
+        }
     }
 }

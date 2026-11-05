@@ -3,20 +3,17 @@
 //! softer and slapping and popping louder, a fade-in swells from silence over the note,
 //! and a note reached by a hammer-on, pull-off or beat-level legato is not picked (softer).
 
-use gscore_model::{BeatView, Fade, SlapKind, StrokeDirection};
+use gscore_model::{BeatView, Fade, SlapKind, Stroke, StrokeDirection, StrokeKind};
 
-use crate::effects::{scale, spread};
+use crate::effects::{scale, spread, spread_with_offset};
 use crate::event::{Channel, MidiEvent, controller};
 use crate::sounding::Sounding;
 use crate::tempo::PPQ;
 
 /// A quarter note in ticks.
 const QUARTER: u64 = PPQ as u64;
-/// A pick stroke strikes a chord's strings within a 128th note; a brush stroke spreads
-/// them over a 32nd (Guitar Pro's default), an arpeggio (rolled chord) over an eighth.
+/// A pick stroke strikes a chord's strings within a 128th note.
 const PICK_STROKE_TICKS: u64 = QUARTER / 32;
-const BRUSH_TICKS: u64 = QUARTER / 8;
-const ARPEGGIO_TICKS: u64 = QUARTER / 2;
 /// Velocity shares (percent): an upstroke, tapping, slapping, popping, and a note reached
 /// by legato instead of a pick.
 const UPSTROKE_PERCENT: u32 = 90;
@@ -47,16 +44,24 @@ pub(crate) fn shape_beat(chord: &mut [Sounding], beat: &BeatView<'_>) {
         note.fade = note.fade.or(fade);
         note.rasgueado |= beat.has_rasgueado();
     }
-    // An arpeggio rolls the chord widest; then a brush stroke; then a pick stroke.
-    if let Some(direction) = beat.arpeggio() {
-        spread(chord, direction, ARPEGGIO_TICKS);
-    } else {
-        match (beat.brush_stroke(), beat.pick_stroke()) {
-            (Some(direction), _) => spread(chord, direction, BRUSH_TICKS),
-            (None, Some(direction)) => spread(chord, direction, PICK_STROKE_TICKS),
-            (None, None) => {}
-        }
+    // An arpeggio rolls the chord; then a brush stroke; then a pick stroke.
+    if let Some(arpeggio) = beat.stroke(StrokeKind::Arpeggio) {
+        spread_stroke(chord, arpeggio);
+    } else if let Some(brush) = beat.stroke(StrokeKind::Brush) {
+        spread_stroke(chord, brush);
+    } else if let Some(direction) = beat.pick_stroke() {
+        spread(chord, direction, PICK_STROKE_TICKS);
     }
+}
+
+/// Spreads a brush or arpeggio over its own speed, either starting on the beat or ending
+/// on it.
+fn spread_stroke(chord: &mut [Sounding], stroke: Stroke) {
+    let total = QUARTER
+        .checked_mul(4)
+        .and_then(|quarter| quarter.checked_div(u64::from(stroke.speed.max(1))))
+        .unwrap_or(QUARTER);
+    spread_with_offset(chord, stroke.direction, total, !stroke.on_beat);
 }
 
 /// A note reached by a hammer-on, pull-off or legato: no pick attack, so softer.
