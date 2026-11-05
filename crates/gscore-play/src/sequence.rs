@@ -142,6 +142,10 @@ impl Sequence {
         tempo_changes.extend(collected.tempo_changes);
         if metronome {
             for span in &measures {
+                // Free time has no metronome, as in Guitar Pro.
+                if song.free_time(span.measure) == Some(true) {
+                    continue;
+                }
                 events.extend(crate::click::click_events_at(*span, volume));
             }
         }
