@@ -80,6 +80,7 @@ fn beat_vibrato_survives_reading_and_writing() {
         legato: None,
         free_text: None,
         ottavia: None,
+        chord: None,
         arpeggio: None,
         dead_slapped: None,
         properties: Some(BeatPropertiesWrapper {
@@ -137,6 +138,7 @@ fn beat_legato_survives_reading_and_writing() {
         }),
         free_text: None,
         ottavia: None,
+        chord: None,
         arpeggio: None,
         dead_slapped: None,
         properties: None,

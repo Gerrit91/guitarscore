@@ -74,7 +74,9 @@ pub use position::{
 };
 pub use song::Song;
 pub use style::{Clef, KeySignature, Section, SimileMark, TrackColor, TrackStaves};
-pub use techniques::{Fade, Finger, Hand, MAX_BEAT_TEXT_CHARS, TremoloSpeed, Trill, TrillSpeed};
+pub use techniques::{
+    ChordDiagram, Fade, Finger, Hand, MAX_BEAT_TEXT_CHARS, TremoloSpeed, Trill, TrillSpeed,
+};
 pub use views::{
     BeatKind, BeatView, MeasureView, NoteKind, NoteView, StringTuning, TrackView, VoiceView,
 };

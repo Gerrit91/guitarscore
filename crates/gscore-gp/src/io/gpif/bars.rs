@@ -179,6 +179,9 @@ pub(crate) struct Beat {
     /// GP7's octave sign on the beat: `8va`, `8vb`, `15ma` or `15mb`.
     #[serde(rename = "Ottavia", default)]
     pub ottavia: Option<String>,
+    /// A chord diagram attached to the beat (its id in the track's diagram collection).
+    #[serde(rename = "Chord", default)]
+    pub chord: Option<String>,
     /// GuitarScore addition: a rolled chord's direction (`Up` or `Down`).
     #[serde(rename = "Arpeggio", default)]
     pub arpeggio: Option<String>,
@@ -348,6 +351,45 @@ pub(crate) struct Property {
     #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
     #[serde(rename = "Direction", default)]
     pub direction: Option<String>,
+    /// GuitarScore addition: a chord-diagram collection's items.
+    #[serde(rename = "Items", default)]
+    pub items: Option<DiagramItems>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct DiagramItems {
+    #[serde(rename = "Item", default)]
+    pub items: Vec<DiagramItem>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct DiagramItem {
+    #[serde(rename = "@id", default)]
+    pub id: i32,
+    #[serde(rename = "@name", default)]
+    pub name: String,
+    #[serde(rename = "Diagram", default)]
+    pub diagram: Option<Diagram>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct Diagram {
+    #[serde(rename = "@stringCount", default)]
+    pub string_count: i32,
+    #[serde(rename = "@fretCount", default)]
+    pub fret_count: i32,
+    #[serde(rename = "@baseFret", default)]
+    pub base_fret: i32,
+    #[serde(rename = "Fret", default)]
+    pub frets: Vec<DiagramFret>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct DiagramFret {
+    #[serde(rename = "@string", default)]
+    pub string: i32,
+    #[serde(rename = "@fret", default)]
+    pub fret: i32,
 }
 
 #[expect(

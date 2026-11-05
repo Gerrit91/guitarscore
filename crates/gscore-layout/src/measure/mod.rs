@@ -137,6 +137,8 @@ struct Column {
     tuplet: Option<(u8, u8)>,
     /// The octave sign written at this column, if any.
     octave: Option<gscore_model::OctaveSign>,
+    /// The chord diagram written at this column, if any.
+    chord: Option<gscore_model::ChordDiagram>,
     /// The model beats that start here, as `(voice, beat)`.
     beats: Vec<(VoiceIndex, BeatIndex)>,
     /// Guitar Pro's beat text, written above the staff at this column.
@@ -159,6 +161,7 @@ struct ColumnData {
     beat: u64,
     tuplet: Option<(u8, u8)>,
     octave: Option<gscore_model::OctaveSign>,
+    chord: Option<gscore_model::ChordDiagram>,
     beats: Vec<(VoiceIndex, BeatIndex)>,
     text: Option<String>,
 }
@@ -257,6 +260,7 @@ impl MeasureLayout {
                 .filter(|beat| beat.kind() != gscore_model::BeatKind::Empty)
                 .find_map(|beat| beat.note_value().ok()?.tuplet());
             data.octave = plain.iter().find_map(BeatView::octave);
+            data.chord = plain.iter().find_map(BeatView::chord_diagram);
             if let Some(notation) = &ctx.notation {
                 data.notation = notation::column_items(beats, notation, key)?;
             }
@@ -323,6 +327,7 @@ impl MeasureLayout {
                     beat: 0,
                     tuplet: None,
                     octave: None,
+                    chord: None,
                     beats: Vec::new(),
                     text: None,
                 },
@@ -457,6 +462,7 @@ impl MeasureLayout {
                     beat: data.beat,
                     tuplet: data.tuplet,
                     octave: data.octave,
+                    chord: data.chord,
                     beats: data.beats,
                     text: data.text,
                     dynamic,

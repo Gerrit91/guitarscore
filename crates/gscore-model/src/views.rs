@@ -353,6 +353,14 @@ impl<'a> BeatView<'a> {
         self.inner.grace
     }
 
+    /// The chord diagram shown at this beat, if any.
+    pub fn chord_diagram(&self) -> Option<crate::techniques::ChordDiagram> {
+        self.inner
+            .chord_diagram
+            .as_ref()
+            .map(crate::techniques::ChordDiagram::from_gp)
+    }
+
     /// The octave sign on this beat, if any.
     pub fn octave(&self) -> Option<crate::effects::OctaveSign> {
         crate::effects::OctaveSign::from_gp(&self.inner.octave)

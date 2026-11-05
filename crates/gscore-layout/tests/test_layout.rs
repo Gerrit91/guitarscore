@@ -502,3 +502,34 @@ fn octave_signs_are_read_and_drawn() {
         assert!(texts.contains(&sign), "missing {sign:?}: {texts:?}");
     }
 }
+
+/// The chord diagram of the staff file is read and drawn with its name and shape.
+#[test]
+fn chord_diagrams_are_read_and_drawn() {
+    let song = common::open("basic/staff.gp");
+    let diagram = song
+        .track(TrackIndex::new(0))
+        .unwrap()
+        .measures()
+        .flat_map(|measure| {
+            measure
+                .voices()
+                .flat_map(|voice| voice.beats())
+                .filter_map(|beat| beat.chord_diagram())
+        })
+        .next()
+        .expect("the file has a chord diagram");
+    assert_eq!(diagram.name, "Gb7/#11");
+    assert_eq!(diagram.string_count, 6);
+    assert!(!diagram.frets.is_empty());
+    let layout = common::layout(&song, 0);
+    let texts: Vec<&str> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(texts.contains(&"Gb7/#11"), "{texts:?}");
+}

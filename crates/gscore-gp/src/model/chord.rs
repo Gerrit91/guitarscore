@@ -39,6 +39,21 @@ pub struct Barre {
     pub end: i8,
 }
 
+/// A chord diagram (a chord shape with its frets) as Guitar Pro stores it beside a beat.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ChordDiagram {
+    /// The chord's name ("Gb7/#11").
+    pub name: String,
+    /// Number of strings the diagram shows.
+    pub string_count: u8,
+    /// Number of frets the diagram shows.
+    pub fret_count: u8,
+    /// The fret at the top of the diagram (0 means the nut).
+    pub base_fret: u8,
+    /// A fret per string: `(string, fret)`; string 0 is the lowest string in the file.
+    pub frets: Vec<(u8, i8)>,
+}
+
 pub const SHARP_NOTES: [&str; 12] = [
     "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
 ];

@@ -14,6 +14,7 @@ use crate::io::primitive::{
 };
 use crate::model::{
     beat::{Beat as SongBeat, LegatoEffect, Voice as SongVoice},
+    chord::ChordDiagram,
     effects::*,
     enums::*,
     headers::{Marker, MeasureHeader},
@@ -30,6 +31,59 @@ pub(crate) trait SongGpifOps {
 }
 
 mod beats;
+
+/// The chord diagrams of a GP7 track's staves, by their id.
+fn extract_diagrams(track: &Track) -> HashMap<i32, ChordDiagram> {
+    let mut diagrams = HashMap::new();
+    let mut properties = Vec::new();
+    if let Some(props) = &track.properties {
+        properties.push(&props.properties);
+    }
+    if let Some(staves) = &track.staves {
+        for staff in &staves.staves {
+            if let Some(props) = &staff.properties {
+                properties.push(&props.properties);
+            }
+        }
+    }
+    for props in properties {
+        for property in props {
+            if property.name != "DiagramCollection" {
+                continue;
+            }
+            let Some(items) = &property.items else {
+                continue;
+            };
+            for item in &items.items {
+                let Some(diagram) = &item.diagram else {
+                    continue;
+                };
+                let frets = diagram
+                    .frets
+                    .iter()
+                    .filter_map(|fret| {
+                        Some((
+                            u8::try_from(fret.string).ok()?,
+                            i8::try_from(fret.fret).ok()?,
+                        ))
+                    })
+                    .collect();
+                diagrams.insert(
+                    item.id,
+                    ChordDiagram {
+                        name: item.name.clone(),
+                        string_count: u8::try_from(diagram.string_count).unwrap_or(0),
+                        fret_count: u8::try_from(diagram.fret_count).unwrap_or(0),
+                        base_fret: u8::try_from(diagram.base_fret).unwrap_or(0),
+                        frets,
+                    },
+                );
+            }
+        }
+    }
+    diagrams
+}
+
 #[cfg(test)]
 mod display_tests;
 #[cfg(test)]
@@ -325,6 +379,7 @@ impl SongGpifOps for Song {
                 capo = extract_capo(&props.properties);
                 track.symbol = extract_symbol(&props.properties);
             }
+            let diagrams = extract_diagrams(g_track);
             if (track.strings.is_empty() || capo.is_none())
                 && let Some(staves) = &g_track.staves
             {
@@ -471,12 +526,19 @@ impl SongGpifOps for Song {
 
                             for &bid in &beat_ids {
                                 if let Some(g_beat) = beats_map.get(&bid) {
-                                    let s_beat = convert_beat(
+                                    let mut s_beat = convert_beat(
                                         g_beat,
                                         &rhythms_map,
                                         &notes_map,
                                         &mut current_velocity,
                                     );
+                                    if let Some(id) = g_beat
+                                        .chord
+                                        .as_deref()
+                                        .and_then(|id| id.trim().parse::<i32>().ok())
+                                    {
+                                        s_beat.chord_diagram = diagrams.get(&id).cloned();
+                                    }
                                     s_voice.beats.push(s_beat);
                                 }
                             }

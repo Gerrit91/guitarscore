@@ -27,6 +27,7 @@ pub(super) fn note_with(property: &str) -> Note {
                 label: None,
                 text: None,
                 direction: None,
+                items: None,
             }],
         },
         tie: None,
@@ -56,6 +57,7 @@ fn beat() -> GpifBeat {
         legato: None,
         free_text: None,
         ottavia: None,
+        chord: None,
         arpeggio: None,
         dead_slapped: None,
         properties: None,
@@ -232,6 +234,7 @@ fn harmonic_fret_is_read_before_the_harmonic_type() {
         label: None,
         text: None,
         direction: None,
+        items: None,
     });
     let song_note = super::convert_note(&note, 80, false, false);
     let harmonic = song_note.effect.harmonic.expect("harmonic imported");
@@ -261,6 +264,7 @@ fn whammy_bar_is_imported() {
         legato: None,
         free_text: None,
         ottavia: None,
+        chord: None,
         arpeggio: None,
         dead_slapped: None,
         properties: None,
@@ -383,7 +387,8 @@ fn gp6_whammy_properties_are_imported() {
             wah: None,
             legato: None,
             free_text: None,
-        ottavia: None,
+            ottavia: None,
+        chord: None,
             arpeggio: None,
             dead_slapped: None,
             properties: Some(BeatPropertiesWrapper {
