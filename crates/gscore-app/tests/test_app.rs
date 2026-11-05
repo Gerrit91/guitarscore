@@ -1500,6 +1500,73 @@ fn a_count_in_plays_one_bar_then_the_song_and_the_metronome_stays_live() {
 }
 
 #[test]
+fn an_interrupted_count_in_starts_again_where_the_cursor_is_now() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("count-in-again");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    harness.state_mut().set_count_in(true);
+    cursor_to_measure(&mut harness, 2);
+    harness.get_by_label("Play").click();
+    let started = step_until(&mut harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    });
+    assert!(started, "neither played nor failed");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+    // Half way into the count-in: pause, move the cursor, play again.
+    assert!(step_until(&mut harness, 5, |app| {
+        app.playback().metronome_level() > 0.0
+    }));
+    std::thread::sleep(Duration::from_millis(1100));
+    harness.step();
+    assert!(harness.state().playback().count_in_pending());
+    harness.get_by_label("Pause").click();
+    harness.run();
+    cursor_to_measure(&mut harness, 0);
+    harness.get_by_label("Play").click();
+    harness.run();
+    // A whole new count-in for the new place, not the rest of the old one.
+    assert!(harness.state().playback().count_in_pending());
+    assert_eq!(harness.state().playback().current_measure(), Some(1));
+    assert!(
+        step_until(&mut harness, 10, |app| {
+            app.playback().state() == gscore_play::PlayState::Playing
+                && !app.playback().count_in_pending()
+        }),
+        "the count-in did not lead into the song"
+    );
+    assert_eq!(harness.state().playback().current_measure(), Some(1));
+
+    // A click on the score while the song plays counts in again, then plays from there.
+    let song = harness.state().document().unwrap().song().clone();
+    let at = gscore_model::BeatPosition {
+        track: gscore_model::TrackIndex::new(0),
+        measure: gscore_model::MeasureIndex::new(3),
+        voice: gscore_model::VoiceIndex::new(0),
+        beat: gscore_model::BeatIndex::new(0),
+    };
+    harness
+        .state_mut()
+        .playback_mut()
+        .jump_to(&song, at)
+        .unwrap();
+    harness.step();
+    assert!(harness.state().playback().count_in_pending());
+    assert_eq!(harness.state().playback().current_measure(), Some(4));
+    assert!(
+        step_until(&mut harness, 10, |app| !app.playback().count_in_pending()),
+        "the second count-in did not lead into the song"
+    );
+    assert_eq!(harness.state().playback().current_measure(), Some(4));
+    harness.state_mut().playback_mut().stop().unwrap();
+}
+
+#[test]
 fn the_player_moves_by_bar_and_to_the_score_ends() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     let measure = |harness: &Harness<'static, GuitarScoreApp>| {

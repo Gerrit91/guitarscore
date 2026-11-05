@@ -3040,3 +3040,12 @@ needed for a much larger font); owner listening check.
   count-in and with the metronome on. The count-in follows the metronome volume and clicks
   whether or not the metronome is on.
 - **Track panel**: a "Sound" section, a placeholder for now ("Coming soon!").
+- **Selection while playing**: a selection is not drawn during playback (it could cover the
+  playing note); it stays selected, so a loop still plays it, and shows again on pause or
+  stop.
+- **Count-in** rework: the count-in bar and the song are one sequence (`gscore_play::lead_in`),
+  so the song follows the last click exactly and the playing cursor starts with the music
+  (before, the song was started when a frame noticed the clicks had ended, a little late,
+  and the cursor caught up). An interrupted count-in starts again from its first click at
+  the cursor's new place instead of finishing the old bar, and a click on the score or the
+  grid while playing counts in again there when the count-in is on.

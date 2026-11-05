@@ -248,15 +248,9 @@ impl GuitarScoreApp {
         }
     }
 
-    /// While playing, continues playback at the first beat of `track`, `measure`.
+    /// While playing, continues playback at the first beat of `track`, `measure` (after a
+    /// new count-in when it is on).
     fn jump_playback_to(&mut self, track: usize, measure: usize) {
-        if self.playback.count_in_pending() {
-            // A count-in for the old place is pointless now.
-            if let Err(error) = self.playback.stop() {
-                self.notice = Some(error);
-            }
-            return;
-        }
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };

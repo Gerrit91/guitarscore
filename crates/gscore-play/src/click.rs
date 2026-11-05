@@ -102,6 +102,77 @@ pub fn count_in(song: &Song, at: BeatPosition, volume: f32) -> Result<Sequence, 
     })
 }
 
+/// The count-in `clicks` and the song's `sequence` from `start` (a tick of it) as one
+/// sequence, so the song follows the last click without a gap. The song's setup
+/// (programs, volumes) comes first; its events from `start` on follow the clicks, moved by
+/// the clicks' length minus `start` (a tick `t >= start` of the song plays at
+/// `t - start + clicks.end`). The clicks keep their own tempo, then the song's tempo at
+/// `start` and its later changes take over.
+pub fn lead_in(sequence: &Sequence, clicks: &Sequence, start: u64) -> Sequence {
+    let bar = clicks.end;
+    let start = start.min(sequence.end);
+    let moved = |tick: u64| tick.saturating_sub(start).saturating_add(bar);
+    let is_setup = |event: &TimedEvent| event.tick == 0 && !event.event.is_note();
+    let mut events: Vec<TimedEvent> = sequence
+        .events
+        .iter()
+        .filter(|event| is_setup(event))
+        .copied()
+        .collect();
+    events.extend(
+        clicks
+            .events
+            .iter()
+            .filter(|event| event.tick < bar)
+            .copied(),
+    );
+    events.extend(
+        sequence
+            .events
+            .iter()
+            .filter(|event| event.tick >= start && !is_setup(event))
+            .map(|event| TimedEvent {
+                tick: moved(event.tick),
+                ..*event
+            }),
+    );
+    // The clicks' tempo, then the song's at `start` and after it.
+    let song_points = sequence.tempo.points();
+    let at_start = song_points
+        .iter()
+        .take_while(|(tick, _)| *tick <= start)
+        .last()
+        .or_else(|| song_points.first())
+        .map(|&(_, rate)| rate);
+    let mut points: Vec<(u64, u32)> = clicks.tempo.points().first().copied().into_iter().collect();
+    points.extend(at_start.map(|rate| (bar, rate)));
+    points.extend(
+        song_points
+            .iter()
+            .filter(|(tick, _)| *tick > start)
+            .map(|&(tick, rate)| (moved(tick), rate)),
+    );
+    let tempo = TempoMap::from_points(points).unwrap_or_else(|| clicks.tempo.clone());
+    Sequence {
+        tracks: sequence.tracks.clone(),
+        events,
+        tempo,
+        measures: sequence
+            .measures
+            .iter()
+            .filter(|span| span.start >= start)
+            .map(|span| MeasureSpan {
+                start: moved(span.start),
+                end: moved(span.end),
+                ..*span
+            })
+            .collect(),
+        end: moved(sequence.end),
+        skipped_notes: sequence.skipped_notes,
+        degraded_pitch_bends: sequence.degraded_pitch_bends,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]
@@ -162,6 +233,51 @@ mod tests {
             .count();
         assert_eq!(clicks, 16, "four clicks and their offs in each of two bars");
         assert_eq!(clicked.events.len(), plain.events.len() + clicks);
+    }
+
+    #[test]
+    fn the_song_follows_its_count_in_without_a_gap() {
+        let song = testing::song(&[GUITAR_6], 3).unwrap();
+        let at = |measure: usize| BeatPosition {
+            track: TrackIndex::new(0),
+            measure: MeasureIndex::new(measure),
+            voice: VoiceIndex::new(0),
+            beat: BeatIndex::new(0),
+        };
+        let sequence = Sequence::new(&song, None).unwrap();
+        let clicks = count_in(&song, at(1), 1.0).unwrap();
+        let bar = clicks.end;
+        let start = sequence.tick_of(&song, at(1)).unwrap();
+        let joined = lead_in(&sequence, &clicks, start);
+        // The clicks fill the first bar; the song's second bar starts right after it.
+        let notes = |sequence: &Sequence, track: usize| -> Vec<u64> {
+            sequence
+                .events
+                .iter()
+                .filter(|event| {
+                    event.track == track && matches!(event.event, MidiEvent::NoteOn { .. })
+                })
+                .map(|event| event.tick)
+                .collect()
+        };
+        assert!(notes(&joined, CLICK_TRACK).iter().all(|&tick| tick < bar));
+        let from_start: Vec<u64> = notes(&sequence, 0)
+            .into_iter()
+            .filter(|&tick| tick >= start)
+            .map(|tick| tick - start + bar)
+            .collect();
+        assert_eq!(notes(&joined, 0), from_start);
+        assert_eq!(joined.end, sequence.end - start + bar);
+        // The song's setup still comes first.
+        assert!(
+            joined
+                .events
+                .iter()
+                .take_while(|e| e.tick == 0)
+                .any(|e| !e.event.is_note())
+        );
+        // One continuous clock: the song starts exactly one bar of clicks in.
+        assert_eq!(joined.tempo.micros_at(bar), clicks.micros());
     }
 
     #[test]

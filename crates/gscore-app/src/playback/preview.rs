@@ -64,6 +64,7 @@ impl Playback {
         self.preview_sequence = Some(excerpt);
         // The song's sequence is no longer loaded: the next play loads it again.
         self.sequence = None;
+        self.lead = None;
         self.preview = Some(rest);
         Ok(())
     }

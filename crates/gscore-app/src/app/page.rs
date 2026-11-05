@@ -61,6 +61,12 @@ fn screen_turn(column: Rect, visible: Rect, room: f32) -> Option<(Rect, Option<A
     Some((target, Some(Align::Min)))
 }
 
+/// The selection drawn on the page: none while playing, as it would cover the playing
+/// note. It stays selected (a loop plays it) and shows again once playback pauses or stops.
+fn shown_selection(selection: Option<Selection>, playing: bool) -> Option<Selection> {
+    selection.filter(|_| !playing)
+}
+
 /// Where side-by-side pages scroll to show the cursor `column` on `page`: the whole page
 /// when it fits in `visible`; else the page's left part with the column's line at the top
 /// (`headroom` above it), as the vertical view turns over, so the column never ends up
@@ -187,7 +193,8 @@ impl GuitarScoreApp {
         // view, it goes to the top. Pages side by side turn page by page, and the
         // horizontal screen screen by screen (`screen_turn`).
         let turn_pages = playing && score_view.turns_pages();
-        let in_selection = document.editor().selection().is_some_and(|selection| {
+        let shown_selection = shown_selection(document.editor().selection(), playing);
+        let in_selection = shown_selection.is_some_and(|selection| {
             selection
                 .positions(document.song())
                 .contains(&cursor.position())
@@ -247,7 +254,7 @@ impl GuitarScoreApp {
             // A position on the screen as a point of the layout.
             let to_layout = |pos: egui::Pos2| arrangement.layout_point((pos - origin) / scale);
             // The selection: one solid band per system line it touches.
-            if let Some(selection) = document.editor().selection() {
+            if let Some(selection) = shown_selection {
                 for band in
                     selection_bands(&layout.places, document.song(), selection, cursor.track)
                 {
@@ -550,7 +557,7 @@ mod tests {
     use gscore_edit::{BeatSpot, Selection};
     use gscore_layout::{BeatPlace, MeasurePlace, Places, SystemPlace};
 
-    use super::{cursor_scroll, page_scroll, screen_turn};
+    use super::{cursor_scroll, page_scroll, screen_turn, shown_selection};
     use egui::Rect;
 
     #[test]
@@ -573,6 +580,16 @@ mod tests {
         let (target, align) = cursor_scroll(column(-400.0), visible, true, 30.0).unwrap();
         assert!((target.top() + 430.0).abs() < 1e-3);
         assert_eq!(align, Some(egui::Align::TOP));
+    }
+
+    #[test]
+    fn the_selection_is_hidden_while_playing() {
+        let selection = Some(Selection::Measures {
+            anchor: MeasureIndex::new(0),
+            focus: MeasureIndex::new(1),
+        });
+        assert_eq!(shown_selection(selection, false), selection);
+        assert_eq!(shown_selection(selection, true), None);
     }
 
     #[test]
