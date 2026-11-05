@@ -198,6 +198,25 @@ impl PaletteSnapshot {
     }
 }
 
+/// The cursor and selection the palette shows: the playing cursor is ignored, so the
+/// palette stays on the note chosen before playback started.
+fn palette_position(
+    playback: &crate::playback::Playback,
+    tab: &super::tab::Tab,
+) -> (Cursor, Option<Selection>) {
+    let current = || {
+        (
+            tab.document.editor().cursor(),
+            tab.document.editor().selection(),
+        )
+    };
+    if playback.state() == gscore_play::PlayState::Playing {
+        tab.palette_anchor.unwrap_or_else(current)
+    } else {
+        current()
+    }
+}
+
 impl GuitarScoreApp {
     /// The left panel: the edit palette.
     pub(super) fn edit_palette(&mut self, ui: &mut egui::Ui) {
@@ -206,8 +225,7 @@ impl GuitarScoreApp {
         };
         let several = tab.shown_tracks().len() > 1;
         let document = &tab.document;
-        let cursor = document.editor().cursor();
-        let selection = document.editor().selection();
+        let (cursor, selection) = palette_position(&self.playback, tab);
         let mut snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
         // With several tracks shown, the line breaks are the multitrack layout's.
         snapshot.system_break =
@@ -262,11 +280,8 @@ impl GuitarScoreApp {
             return;
         };
         let document = &tab.document;
-        let snapshot = PaletteSnapshot::of(
-            document.song(),
-            document.editor().cursor(),
-            document.editor().selection(),
-        );
+        let (cursor, selection) = palette_position(&self.playback, tab);
+        let snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
         let state = &mut tab.edit_palette;
         let value = match action {
             ActionId::NoteWhole => Some(1),
@@ -373,11 +388,8 @@ impl GuitarScoreApp {
             return;
         };
         let document = &tab.document;
-        let snapshot = PaletteSnapshot::of(
-            document.song(),
-            document.editor().cursor(),
-            document.editor().selection(),
-        );
+        let (cursor, selection) = palette_position(&self.playback, tab);
+        let snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
         let mut commands = Vec::new();
         let mut trial = Vec::new();
         tab.edit_palette.effects.show_editors(
@@ -398,6 +410,7 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let (cursor, selection) = palette_position(&self.playback, tab);
         let state = &mut tab.edit_palette;
         let Some(dialog) = &mut state.tuplet_dialog else {
             return;
@@ -414,11 +427,7 @@ impl GuitarScoreApp {
         state.tuplet_dialog = None;
         state.tuplet = tuplet;
         let document = &tab.document;
-        let snapshot = PaletteSnapshot::of(
-            document.song(),
-            document.editor().cursor(),
-            document.editor().selection(),
-        );
+        let snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
         let mut commands = Vec::new();
         apply_tuplet(state, &snapshot, &mut commands);
         let duration = state.duration();

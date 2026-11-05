@@ -35,6 +35,10 @@ pub(super) struct Tab {
     pub(super) edit_palette: EditPaletteState,
     /// Where a drag on the page started, while selecting beats.
     pub(super) drag_anchor: Option<Cursor>,
+    /// The cursor and selection the edit palette showed when playback started. While the
+    /// song plays, the palette keeps showing those notes instead of following the playing
+    /// cursor, whose constantly changing tiles are distracting.
+    pub(super) palette_anchor: Option<(Cursor, Option<gscore_edit::Selection>)>,
     /// The cursor and revision the view last scrolled to, to scroll only on a change.
     pub(super) shown_cursor: Option<(Cursor, u64)>,
     /// In the page view: the cursor's page and the page count (1-based), for the status bar.
@@ -69,6 +73,7 @@ impl Tab {
             track_panel: TrackPanelState::default(),
             edit_palette: EditPaletteState::default(),
             drag_anchor: None,
+            palette_anchor: None,
             shown_cursor: None,
             page_info: None,
             renaming: None,

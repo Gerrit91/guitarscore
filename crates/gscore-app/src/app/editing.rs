@@ -443,6 +443,9 @@ impl GuitarScoreApp {
         if let Err(error) = self.playback.stop() {
             self.notice = Some(error);
         }
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.palette_anchor = None;
+        }
     }
 
     /// Starts the song when its count-in bar has finished.
@@ -615,8 +618,22 @@ impl GuitarScoreApp {
     /// Starts playback of the open song at the cursor, or pauses it. Pausing leaves the
     /// cursor on the last played beat.
     pub fn play_pause(&mut self) {
-        if self.playback.state() == PlayState::Playing {
+        let already_playing = self.playback.state() == PlayState::Playing;
+        if already_playing {
             self.follow_playback();
+        }
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            if already_playing {
+                // Paused: the palette follows the cursor again.
+                tab.palette_anchor = None;
+            } else {
+                // Starting (or continuing after a count-in): remember what the palette
+                // showed so its tiles stay on the note chosen before playback.
+                tab.palette_anchor = Some((
+                    tab.document.editor().cursor(),
+                    tab.document.editor().selection(),
+                ));
+            }
         }
         // Pausing then playing resumes at the cursor; a fresh start plays from the
         // selection's first note when there is a selection.
