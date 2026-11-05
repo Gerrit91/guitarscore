@@ -1,6 +1,9 @@
 # Realistic guitar sound: physical modelling
 
-Design note for M22 (owner, 2026-11-03). Status: idea, nothing built yet.
+Design note for M22 (owner, 2026-11-03). Status: the current milestone (2026-11-06), nothing
+built yet. Owner's decisions (2026-11-06): the playback sequence comes first (step 0), then
+the engine; distorted and clean electric, bass and acoustic are all aimed at full quality,
+none left rough.
 
 ## Why
 

@@ -1,109 +1,132 @@
 # Architecture Overview
 
-GuitarScore follows a layered architecture pattern:
+GuitarScore is a Cargo workspace of small crates in layers. A crate may depend only on
+crates in lower layers; `cargo xtask layers` enforces this with the table in
+`xtask/src/layers.rs` (the directory tree and the rules are in AGENTS.md section 5).
 
-```
-guitarscore/
-  Cargo.toml                 # workspace, [workspace.lints]
-  rust-toolchain.toml        # pin a stable toolchain
-  clippy.toml
-  CLAUDE.md
-  THIRD_PARTY.md
-  docs/                      # architecture.md, development.md, parity.md, gaps.md, devlog.md
-  testdata/                  # owner's own test tabs; testdata/corrupt/ for broken files
-  corpus/                    # gitignored: owner's larger private collection of GP files (opt-in tests)
-  assets/fonts/              # SMuFL fonts + metadata, text font
-  xtask/                     # project tasks: layers, corpus, ci
-  crates/
-    gscore-gp/                # L0: Guitar Pro song data + reading/writing GP3-5, GPX, GP7+ (derived from guitarpro, MIT)
-    gscore-model/             # L1: document model (wraps gscore-gp's song), positions, queries, invariants
-    gscore-io/                # L2: GP files <-> model: format detection, limits, catch_unwind (bytes in, bytes out)
-    gscore-layout/            # L2: model -> positioned draw ops. No GUI imports.
-    gscore-play/              # L2: sequencer, MIDI events, channel allocator, Player trait. No device crates.
-    gscore-edit/              # L3: cursor, selection, commands, undo/redo, keymap
-    gscore-audio/             # L3: output backends (midir, cpal, rustysynth) implementing Player
-    gscore-session/           # L4: open document, recovery journal, autosave, safe-save orchestration
-    gscore-cli/               # L5: headless tool (info, dump, render, commands, edit, convert, roundtrip-check)
-    gscore-app/               # L5: egui/eframe application shell (thin); produces the `guitarscore` binary
-```
+| Layer | Crate | Job |
+|---|---|---|
+| 0 | `gscore-version` | the build version baked in at compile time |
+| 0 | `gscore-gp` | Guitar Pro song data, reading and writing GP3-5, GPX and GP7 (derived from `guitarpro`, MIT; changes in `docs/guitarpro.md`) |
+| 1 | `gscore-model` | the document model: wraps the Guitar Pro song with views, positions, checked edits, issues and invariants |
+| 2 | `gscore-io` | bytes to model and back: format detection, size limits, `catch_unwind` around the reader |
+| 2 | `gscore-layout` | model to positioned draw operations: pages, systems, notation and tab; SVG and PDF output |
+| 2 | `gscore-play` | the sequencer: model to timed MIDI events, the metronome, SMF export, the `Player` trait |
+| 3 | `gscore-edit` | cursor, selection, clipboard, commands with undo and redo, the keymap |
+| 3 | `gscore-audio` | `Player` backends: MIDI port (`midir`), SoundFont synthesizer (`rustysynth` + `cpal`), the browser worklet; the tuner |
+| 4 | `gscore-session` | opening, safe save and export, the recovery journal, autosave, settings files |
+| 4 | `gscore-worklet` | the synthesizer compiled into the browser's AudioWorklet |
+| 5 | `gscore-cli` | the headless tool |
+| 5 | `gscore-app` | the egui/eframe application, desktop and browser |
 
-## Dependency Restrictions
+Dependency restrictions: only `gscore-app` may use egui, eframe, winit or rfd; only
+`gscore-audio` may use `cpal`, `midir` or `rustysynth`; only `gscore-model` and `gscore-io`
+may use `gscore-gp`. The crates up to `gscore-edit`, plus `gscore-audio` and
+`gscore-worklet`, build for `wasm32-unknown-unknown` (checked by `cargo xtask layers`).
 
-- Only `gscore-app` may use egui, eframe, winit, or rfd
-- Only `gscore-audio` may use `cpal`, `midir`, or `rustysynth`
-- Nothing below `gscore-app` may use a GUI crate
+## Model (`gscore-model`)
+
+`Song` wraps `gscore_gp::Song` and is the only way to the Guitar Pro types. Reading goes
+through views (`TrackView`, `MeasureView`, `BeatView`, `NoteView`) addressed by typed
+positions (`TrackIndex`, `MeasureIndex`, `VoiceIndex`, `BeatIndex`, `BeatPosition`).
+Writing goes through checked methods (in `edit/`) that validate first and return a
+`Change` that can be reverted, so every command is transactional. Each measure carries a
+stamp that changes when it is edited; layout caches by it. `issues` lists problems such as
+unfilled measures; `compare` finds differences between two songs (used to verify a save).
 
 ## Layout (`gscore-layout`)
 
 Layout is a pure function of the song, the settings and the font metrics:
-`layout_track(song, track, options, fonts) -> Layout { width, height, ops: Vec<DrawOp> }`.
-Coordinates are in staff spaces (y down); colors are `ColorToken`s that a `Theme` (light,
-dark) maps to RGB. Glyphs are referred to by SMuFL name (`Glyph`); the renderer resolves the
-code point. Engraving values (line thicknesses, glyph boxes and advances) come from the
-bundled Bravura metadata, read once with `MusicFont::bravura()`.
-
-The steps:
-
-Tracks with a tuning get standard notation above the tab (`notation`: spelling and clef,
-chords and accidentals per measure, noteheads/stems/flags/dots/rests, beams and ties),
-sharing the tab's columns so a note and its fret number line up.
+`layout_track(song, track, options, fonts)` and `layout_tracks(...)` (several tracks in one
+score) return a `Layout { width, height, pages, ops: Vec<DrawOp>, places }`. Coordinates
+are in staff spaces (y down); colors are `ColorToken`s that a `Theme` (light, dark) maps to
+RGB. Glyphs are referred to by SMuFL name (`Glyph`); engraving values come from the bundled
+Bravura metadata (`MusicFont`).
 
 1. `header`: title block, credits, tuning, tempo mark.
-2. `measure`: each measure on its own. Beats of all voices are merged into columns by
-   start time; each column gets space by the length until the next column (a quarter gets
-   `Spacing::quarter`, each doubling multiplies by `doubling_ratio`), but never so little
-   that fret numbers collide. A `MeasureLayout` does not depend on its position, so it is
-   the unit to cache per measure and document revision for incremental relayout (still
-   open: the app lays out the whole track again after an edit).
-3. `system`: greedy line breaking; every line but the last is justified by stretching the
-   columns (not the clef, time signatures or leads); the last only if it is at least 75%
-   full.
-4. Drawing: staff lines first, then clef, measure content (masks behind fret numbers so the
-   staff line does not run through them) and barlines.
+2. `measure`: each measure on its own, for every staff the track shows (standard notation,
+   tab, slash notation, a percussion staff for drums). Beats of all voices are merged into
+   columns by start time and spaced by length; `notation` spells pitches, places heads,
+   stems, beams, ties and accidentals; `ornaments` and `marks` draw techniques, dynamics,
+   repeats, sections and tempo. A `MeasureLayout` does not depend on its position, so
+   `LayoutCache` keeps it per measure stamp: an edit lays out only what changed.
+3. `measure::align`: with several tracks, one time grid per bar, so beats line up.
+4. `system` and `score`: line breaking (automatic, bars per line, or the file's breaks),
+   justification, the staves of each track stacked in a system.
+5. `pages`: systems flow onto pages with the song's page setup (paper, margins, score
+   size, header and footer), or onto one endless surface for the screen views.
 
-`svg::to_svg` writes the operations as SVG for golden tests and `gscore-cli render`; the
-app paints the same operations with egui. Besides the operations, a `Layout` carries
-`Places`: where each system, measure and beat column is. The app draws the cursor and
-turns clicks into beats and strings with it, without looking into the draw operations.
+`svg::to_svg` and `pdf::to_pdf` (fonts embedded as subsets) write the operations; the app
+paints the same operations with egui. `Places` records where each system, measure and
+beat column is, so the app draws the cursor and turns clicks into positions without
+looking into the draw operations.
 
-## Interactive editing (`gscore-edit`)
+## Editing (`gscore-edit`)
 
-The M4 command layer (`Command`, `Editor` with undo/redo) is driven from the keyboard by:
+- `Command`: every edit, with an id, parameters, `apply` and its undo (the model's
+  `Change`). Commands write themselves as text lines, which the recovery journal stores and
+  `gscore-cli edit` reads (`parse`); `info` lists them for `gscore-cli commands`.
+- `Editor`: applies commands with undo and redo, memory-capped history.
+- `Cursor` and `Selection`: where the user is (track, measure, voice, beat, string) and
+  what is selected (beats in one voice, or whole measures); the clipboard copies and pastes
+  either.
+- `ActionId` and `Keymap`: what a key asks for, by typed character or key name; the
+  built-in keymap is a text file, the user's overrides live in the settings.
+- `TabEditor`: owns the `Editor`, cursor and selection, turns actions into commands, and
+  hands playback and saving back to the app as requests.
 
-- `Cursor`: track, measure, voice, beat and string; plain data, moves only read the song,
-  `clamp` pulls it back into a song that changed.
-- `ActionId`/`Action`: what a key asks for at the cursor (`cursor_left`, `enter_fret`,
-  `duration_shorter`, `undo`, `play_pause`, ...); the ids are the keymap's.
-- `Keymap`: typed characters and key names (with modifiers) to action ids, parsed from a
-  text file; `DEFAULT_KEYMAP` is the built-in file. Characters ignore Shift unless Ctrl or
-  Alt is held, so a binding works on every layout.
-- `TabEditor`: owns the `Editor` and the cursor, turns actions into commands, remembers
-  the cursor of each edit for undo/redo, and joins two quick fret digits into one undo step.
-  Time comes in as milliseconds from the caller (no clock in core crates). Playback and
-  saving come back as `Outcome::Request` for the app.
+## Playback (`gscore-play`, `gscore-audio`)
+
+`gscore-play` turns a song into a `Sequence`: timed MIDI events per track, with the tempo
+map and the played order of measures (repeats, endings). `timeline` and `order` walk the
+song; `build` collects the sounding notes with their techniques (`sounding`, `effects`,
+`strokes`, `graces`, `swing`, `pitch` for bends and slides on borrowed channels) and emits
+the events; `click` adds the metronome and the count-in (joined to the song by `lead_in`);
+`smf` writes a MIDI file; `wire` encodes a sequence for the browser worklet. The
+`Scheduler` walks a sequence in time for any backend.
+
+`gscore-audio` plays a sequence behind the `Player` trait: `MidiOutPlayer` to a MIDI port,
+`SynthPlayer` on a thread of its own with `SynthEngine` (a SoundFont synthesizer plus the
+metronome's own `click` voice; `render` never allocates or blocks), `WebPlayer` through the
+AudioWorklet (`gscore-worklet` runs the same engine there). `TunerPlayer` plays the tuner's
+reference tone. Milestone M22 adds a modelled guitar engine next to the SoundFont one
+(`docs/guitar-modelling.md`).
+
+## Session (`gscore-session`)
+
+`open` reads a file with a size cap and imports it; `save` is the safe save (temporary
+file, atomic rename, `.bak`, read back and compare); `export` writes other formats and lists
+what they drop; `recovery` keeps the journal of commands and periodic snapshots on a thread
+of its own and finds sessions to restore after a crash; `config` and `web` keep settings
+and the keymap (files on the desktop, `localStorage` in the browser); `crash_report` writes
+panic reports locally.
 
 ## The app (`gscore-app`)
 
-A thin eframe/egui shell (wgpu renderer) that holds state and delegates:
+A thin eframe/egui shell (wgpu renderer) that holds state and delegates; the same crate
+builds for the desktop and the browser.
 
-- `state`: `ViewState` (theme, zoom, track): plain data, no widgets, unit-tested.
-- `tasks`: the file dialogs, opening and saving run on background threads and report
-  through a channel polled once per frame (AGENTS.md rule 9); a panicking job still reports
-  back.
-- `document`: the `TabEditor`, the saved revision (for "changed") and the layouts, cached
-  per track and editor revision; layout runs inside `catch_unwind`.
-- `keys`: egui's key and text events to keymap combos (characters from text events, named
-  keys and Ctrl combinations from key events, clipboard events back to Ctrl+C/X/V, nothing
-  while an input method composes).
-- `canvas`: paints `DrawOp`s (staff spaces times zoom), culling what is off screen; text
-  and glyphs are placed by their baseline as layout specifies.
-- `fonts`: Noto Sans (also the UI font), Noto Sans Bold and Bravura, compiled in.
-- `app`: `bars` (menus, toolbar, status bar, notices), `page` (page view, cursor, clicks),
-  `editing` (keys to actions, before any widget sees them), `files` (open, save, the
-  unsaved-changes and lossy-save questions); drawing the page is wrapped in
-  `catch_unwind` so a bug shows a notice instead of closing the window.
+- `state`, `settings`: view state and settings as plain serializable data.
+- `document`: one open song: its `TabEditor`, the saved revision, the layout cache and
+  the recovery journal; layout runs inside `catch_unwind`.
+- `tasks`: file dialogs, opening, saving and exporting on background threads, reported
+  back through a channel polled once per frame.
+- `playback`: the app's side of the player (output choice, metronome, count-in, loop,
+  previews of a single beat).
+- `keys`: egui's key and text events to keymap combinations.
+- `canvas`: paints `DrawOp`s, culling what is off screen.
+- `app/`: the window. `tab`, `tab_bar` (one tab per open song), `title_bar`, `toolbar`,
+  `bars` (menus and status bar), `page` and `score_view` (the five score views, cursor,
+  clicks, scrolling while playing), `edit_palette`, `edit_staff`, `edit_effects`,
+  `edit_dynamics` and `tiles` (the left palette), `track_panel` (right panel), `grid`
+  (song grid and mixer), `settings_window`, and the dialogs (tuning, tuner, bend and
+  whammy editors, grace notes, tuplets, history, shortcuts, new song and track).
+  `editing` turns keys into actions before any widget sees them; drawing is wrapped in
+  `catch_unwind`, so a bug shows a notice instead of closing the window.
 
-The keymap file is found and read by `gscore_session::load_user_keymap` (config
-directory, size cap, fallback to the built-in keymap with the problem described).
+## The command-line tool (`gscore-cli`)
 
-Opening a file (`gscore_session::open`: capped read, then import) is shared with the CLI.
+`info`, `dump` (ASCII tab), `render` (SVG or PDF), `midi`, `play`, `ports`, `convert`,
+`edit` and `commands`, `bench`, `keymap`, `legend` and `gui`; `roundtrip-check` is hidden.
+It shares opening, saving and the command parser with the app, so the whole pipeline can
+be tested without a window.

@@ -65,7 +65,7 @@ A malformed file, a bad command parameter, a corrupt settings file, an odd keyst
 - **Pick work in this order:** crashes and data-loss risks, then the current milestone, then `docs/gaps.md`, then parity items that are cheap because the building blocks already exist.
 - **Verify UI changes visually.** Render offscreen to PNG with the snapshot example (no window, no focus stealing) and look at the image. Compare tablature layout against the MuseScore reference (section 5).
 - **Everything automatable is a command or CLI subcommand.** `gscore-cli` provides headless `info`, `dump` (ASCII tab), `render` (SVG/PDF), `midi`, `play`, `convert`, `edit`, `bench` and `roundtrip-check`, so agents and tests can exercise the whole pipeline without the GUI. A JSON control channel for driving the running app may follow later; design the command layer so it is possible.
-- **Project tasks live in `xtask`** (`cargo xtask layers | corpus | ci | ...`), not in ad-hoc shell scripts.
+- **Project tasks live in `xtask`** (`cargo xtask ci | layers | bench | web`), not in ad-hoc shell scripts.
 - **Parallel agents:** use separate target dirs (`CARGO_TARGET_DIR=target/agent-<name>`), put new commands in a new module, keep every `Cargo.toml` valid at all times (write manifests atomically: temp file, then `mv`), make small surgical edits to shared files, and re-read before editing them.
 - Ask the owner before irreversible or architectural decisions; write a short design note for anything that affects several crates.
 - **Branches:** work on a feature branch in the main checkout, never commit on `main`
@@ -100,26 +100,31 @@ Cargo workspace. Layers are listed from lowest to highest; **a crate may depend 
 ```
 guitarscore/
   Cargo.toml                 # workspace, [workspace.lints]
-  rust-toolchain.toml        # pin a stable toolchain
-  clippy.toml
-  CLAUDE.md
-  THIRD_PARTY.md
-  docs/                      # architecture.md, development.md, parity.md, gaps.md, devlog.md
-  testdata/                  # owner's own test tabs; testdata/corrupt/ for broken files
-  corpus/                    # gitignored: owner's larger private collection of GP files (opt-in tests)
-  assets/fonts/              # SMuFL fonts + metadata, text font
-  xtask/                     # project tasks: layers, corpus, ci
+  rust-toolchain.toml        # pinned toolchain (with rustfmt, clippy, the wasm target)
+  clippy.toml, kittest.toml  # lint options for tests; snapshot tolerance
+  AGENTS.md, CLAUDE.md, THIRD_PARTY.md, LICENSE, README.md
+  docs/                      # architecture, development, usage, web, parity, gaps, devlog,
+                             # guitarpro (the vendored reader's changes), guitar-modelling
+  testdata/                  # owner's own test songs with Guitar Pro's PDF and MIDI export;
+                             # testdata/corrupt/ for broken files
+  corpus/                    # gitignored: the owner's larger private collection
+  assets/                    # fonts/ (Bravura, Noto Sans), soundfonts/ (licenses only)
+  packaging/                 # desktop file and app icon (AppImage)
+  web/, docker/, Dockerfile  # the browser build's page, worklet and service worker; nginx
+  xtask/                     # project tasks: layers, ci, bench, web
   crates/
+    gscore-version/           # L0: the build version baked in at compile time
     gscore-gp/                # L0: Guitar Pro song data + reading/writing GP3-5, GPX, GP7+ (derived from guitarpro, MIT)
-    gscore-model/             # L1: document model (wraps gscore-gp's song), positions, queries, invariants
+    gscore-model/             # L1: document model (wraps gscore-gp's song), positions, queries, edits, invariants
     gscore-io/                # L2: GP files <-> model: format detection, limits, catch_unwind (bytes in, bytes out; no file system)
-    gscore-layout/            # L2: model -> positioned draw ops. No GUI imports.
-    gscore-play/              # L2: sequencer, MIDI events, channel allocator, Player trait. No device crates.
-    gscore-edit/              # L3: cursor, selection, commands, undo/redo, keymap
-    gscore-audio/             # L3: output backends (midir, cpal, rustysynth) implementing Player
-    gscore-session/           # L4: open document, recovery journal, autosave, safe-save orchestration
-    gscore-cli/               # L5: headless tool (info, dump, render, convert, roundtrip-check)
-    gscore-app/               # L5: egui/eframe application shell (thin); produces the `guitarscore` binary
+    gscore-layout/            # L2: model -> positioned draw ops (pages, systems, notation, tab), SVG and PDF. No GUI imports.
+    gscore-play/              # L2: sequencer, MIDI events, channel allocator, metronome, SMF export, Player trait. No device crates.
+    gscore-edit/              # L3: cursor, selection, clipboard, commands, undo/redo, keymap
+    gscore-audio/             # L3: output backends (midir, cpal, rustysynth) implementing Player; the tuner
+    gscore-session/           # L4: open, safe save and export, recovery journal, autosave, settings files
+    gscore-worklet/           # L4: the browser's AudioWorklet synthesizer (wasm only)
+    gscore-cli/               # L5: headless tool (info, dump, render, midi, play, convert, edit, bench, ...)
+    gscore-app/               # L5: egui/eframe application (desktop and browser); the `guitarscore` binary
 ```
 
 Dependency restrictions enforced by the layers check: only `gscore-app` may use egui, eframe, winit, or rfd; only `gscore-audio` may use `cpal`, `midir`, or `rustysynth`; nothing below `gscore-app` may use a GUI crate; only `gscore-model` and `gscore-io` may use `gscore-gp` (and only `gscore-io` may use `gscore_model::interop`).
@@ -139,17 +144,17 @@ Dependency restrictions enforced by the layers check: only `gscore-app` may use 
    - Dead keys and IME composition must never be interpreted as commands; in note-entry mode ignore composition events.
    - Do not bind keys with AltGr, and avoid browser-reserved combinations (new tab, close tab, and similar) in case a web build happens.
    - The keymap loader reports conflicts and unknown command ids as errors shown to the user, never as panics, and falls back to the default keymap.
-8. **Playback behind a trait.** `gscore-play` defines the `Player` trait (load song, play, pause, seek, stop, tempo scale); `gscore-audio` implements it. See section 8 for backend order.
+8. **Playback behind a trait.** `gscore-play` defines the `Player` trait (load a sequence, play, pause, seek, stop, tempo scale, live events, replace); `gscore-audio` implements it for a MIDI port, the native synthesizer and the browser's worklet. See section 8.
 9. **Audio thread rules** (internal synth). The audio callback must not allocate, wait on locks, do I/O, or panic. Send events through a bounded lock-free queue or channel.
 10. **MIDI channel allocation.** `ChannelAllocator` in `gscore-play`, not in the model. Default: one channel per track; drums on channel 10 (index 9, General MIDI). Notes needing independent pitch bend or slide borrow a free channel temporarily (copy program, volume, pan; reset bend afterward; release). If channels run out, degrade gracefully instead of failing. Verify the internal synth's channel support (expected 16) before designing around more.
 
-### Portability (groundwork for a later web build)
-A browser (WebAssembly) build is not a current goal, but the groundwork is cheap now and painful to retrofit later:
-- **The core crates must compile for `wasm32-unknown-unknown`:** `gscore-gp`, `gscore-model`, `gscore-io`, `gscore-layout`, `gscore-play`, and `gscore-edit`. `cargo xtask layers` also runs `cargo check --target wasm32-unknown-unknown` on them.
+### Portability (the browser build)
+A browser (WebAssembly) build exists since 2026-11-04 (`docs/web.md`). These rules keep it working:
+- **The core crates must compile for `wasm32-unknown-unknown`:** `gscore-gp`, `gscore-model`, `gscore-io`, `gscore-layout`, `gscore-play`, and `gscore-edit`; so must `gscore-audio` and `gscore-worklet` (the browser's synthesizer). `cargo xtask layers` runs `cargo check --target wasm32-unknown-unknown` on them.
 - In those crates, **no direct use of `std::fs`, `std::thread`, `std::time::Instant`, or `std::time::SystemTime`** (the time types panic on that target as far as we know; verify). Pass such capabilities in through small traits (for example `Clock`, `Storage`, `BackgroundRunner`) implemented in `gscore-session` or `gscore-app`.
 - **`gscore-io` works on bytes, not paths:** bytes in, `Song` out, and `Song` in, bytes out. File system work (safe-save, backups, recovery journal files) belongs to `gscore-session`.
 - **Do not rely on `catch_unwind` in core logic.** On `wasm32-unknown-unknown` a panic aborts the instance by default, so the never-panic lints and rules in section 2 are the primary defense; containment is only a native safety net.
-- If a web build happens later, expect: a file picker for open and a download for save, browser storage for the recovery journal and settings, the internal synth (not MIDI output) for sound, and a smaller feature set than the desktop app.
+- The browser build opens with a file picker and saves with a download, keeps settings in browser storage, plays through the internal synth in an AudioWorklet (no MIDI output), and has a smaller feature set than the desktop app (`docs/gaps.md`).
 
 ### Notation fonts (SMuFL) and visual quality
 - Use **SMuFL-compliant fonts** (for example Bravura, or Leland as used by MuseScore). Check each font's license (typically SIL OFL) before bundling.
@@ -168,27 +173,32 @@ A browser (WebAssembly) build is not a current goal, but the groundwork is cheap
 
 ## 6. Testing and definition of done
 
-A task is done only when all of these pass:
+A task is done only when `cargo xtask ci` passes. It runs:
 
 ```
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo xtask layers
+cargo xtask layers        # dependency graph, lints, std usage, wasm checks
 ```
 
 Also, when relevant:
-- commands added or changed: `cargo test -p gscore-edit --test panic_hunt`
-- importers, exporters, `gscore-gp`, or `gscore-model` touched: `cargo test --workspace --features corpus` (opt-in tests over `corpus/` and `testdata/`; plain `cargo test` skips them, and with the feature on a missing corpus fails with a clear message)
-- hot paths touched: run the benchmarks and record numbers in the devlog
+- commands added or changed: `cargo test -p gscore-edit --test panic_hunt` (part of the
+  workspace tests, worth running on its own while working)
+- importers, exporters, `gscore-gp`, or `gscore-model` touched: check the owner's files in
+  `corpus/` by hand (`gscore-cli info`, `render`, `midi`); automated corpus tests
+  (`cargo xtask corpus`) are not built yet
+- hot paths touched: `cargo xtask bench` and record the numbers in the devlog
+- the browser build touched: `cargo xtask web --smoke`
 
 Required kinds of tests (in addition to the stability tests in section 2):
 - **Model:** unit tests for invariants (beat durations fill measures, valid fret and string ranges).
 - **Commands:** apply then undo must equal the original song. Write one shared helper and use it in every command's tests.
 - **Import:** parse each file in `testdata/` and compare against expected summaries (track count, measure count, note counts, tempo). The owner compares against Guitar Pro manually and records the expected values.
 - **Round trip:** load, save to GP, load again; the musical content must be equal, and unsupported features must be reported, not silently dropped.
-- **Layout:** render `DrawOp`s to **SVG** and compare against golden files in `crates/gscore-layout/tests/golden/`. Update goldens only with the owner's approval of the visual change.
-- **Playback:** convert a small song to MIDI events and assert timings and notes. Support exporting a `.mid` file so results can be checked in any other player.
+- **Layout:** render `DrawOp`s to **SVG** and compare against golden files in `crates/gscore-layout/tests/golden/` (`GSCORE_UPDATE_GOLDEN=1` rewrites them). Update goldens only with the owner's approval of the visual change.
+- **App:** snapshot tests with `egui_kittest` in `crates/gscore-app/tests/snapshots/` (`UPDATE_SNAPSHOTS=1` rewrites them; `kittest.toml` sets the tolerance); look at a changed snapshot before accepting it.
+- **Playback:** convert a small song to MIDI events and assert timings and notes; the `.mid` files Guitar Pro exported in `testdata/` are the reference.
 
 ## 7. Workflow spec
 
@@ -316,7 +326,7 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
   negative frets (`Ballad.gp`).
 - Second staves (a piano's or synth's bass staff); lyrics (read, shown, edited).
 - Beat text colliding with high notes in the notation.
-- Fuzzing with `cargo-fuzz`, a JSON control channel, a fretboard view, MusicXML import
+- Automated corpus tests (`cargo xtask corpus`), fuzzing with `cargo-fuzz`, a JSON control channel, a fretboard view, MusicXML import
   and export.
 
 ## 10. Dependency rules
