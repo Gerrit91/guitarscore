@@ -39,6 +39,7 @@ mod strokes;
 mod swing;
 mod tempo;
 mod timeline;
+mod wire;
 
 pub use channels::ChannelAllocator;
 pub use click::count_in;
@@ -49,6 +50,7 @@ pub use sequence::{MeasureSpan, Sequence, SequenceTrack, TimedEvent, sound_event
 pub use smf::{SmfError, to_smf};
 pub use tempo::{PPQ, TempoMap, micros_per_quarter};
 pub use timeline::{Timeline, tempo_at};
+pub use wire::{decode_sequence, encode_sequence};
 
 // The integration tests sequence the owner's files with `gscore-io`; this marks the
 // test-only dependency for the library test target's unused-dependency check.

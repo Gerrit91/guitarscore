@@ -2483,3 +2483,35 @@ lifeless):
 - Open (older layout design): the rows above the staff (beat text, fermata, sections) are
   at a fixed height, so a high note's ornament can touch them (bar 7 of
   `advanced_ornaments`: "Left hand tap" and the circled T).
+## 2026-11-04 — Browser (wasm) build and AudioWorklet player
+
+Landed:
+- `cargo xtask web [--smoke]`: builds `gscore-app` for `wasm32-unknown-unknown` with
+  WebGL2 (`--no-default-features --features web`), runs wasm-bindgen, optionally wasm-opt,
+  and writes the static site to `dist/web` (`index.html`, `guitarscore.js`,
+  `guitarscore_bg.wasm`, `assets/`, `manifest.json`, `sw.js`). Sizes: 13.5 MiB raw,
+  5.4 MiB gzip, 3.0 MiB brotli with `wasm-opt -Oz`; 16.1 MiB raw without it.
+- Platform split in `gscore-app`: desktop entry in `main.rs`, browser entry in `web.rs`
+  (eframe `WebRunner`, glow). `rfd` dialogs are async in the browser; open reads checked
+  bytes and imports with `gscore_session::open_bytes`, save uses the new
+  `gscore_session::save_bytes` plus the browser's download handle. Drag and drop reads
+  `DroppedFile::bytes_async`. `web-time` replaces `Instant`; threads are avoided (imports
+  run on the UI thread after the bytes arrive).
+- `gscore-session/src/web.rs`: settings and shortcuts in `localStorage`, with size caps and
+  the same fallback-with-problem behaviour as files; the recovery journal is still
+  file-based and is not written in the browser (gap).
+- `gscore-audio`: `cpal`/`midir` are `cfg`-gated to native; `web_player` creates the
+  AudioWorklet and sends commands. New `gscore-worklet` crate (L4, cdylib) wraps
+  `SynthEngine` with wasm-bindgen; `gscore-play::wire` is a checked binary sequence format
+  (round-trip and damaged-message tests). The main thread compiles the worklet wasm and
+  sends the `WebAssembly.Module`; the worklet defines UTF-8 globals, uses `initSync`, and
+  renders stereo blocks. A site-level `assets/soundfonts/default.sf2` is optional.
+- `cargo xtask layers` now also compiles `gscore-audio` and `gscore-worklet` for wasm.
+- Smoke test: `--smoke` serves the site and drives headless Chromium over a dependency-free
+  DevTools client (`xtask/src/cdp.rs`), checking the app marker and the worklet port, with
+  screenshots. `worklet-check.html` is built into the site for that check.
+- Docs: `docs/web.md`.
+
+Open: browser recovery journal/autosave; SoundFont picker in the browser; PDF export in
+the browser; multi-threaded import (web worker) if opening large files becomes noticeable;
+`xtask web --smoke` needs Chromium and Python 3.

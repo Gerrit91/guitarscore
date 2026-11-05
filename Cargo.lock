@@ -1130,6 +1130,7 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "egui_glow",
+ "glow",
  "glutin",
  "glutin-winit",
  "image",
@@ -1737,9 +1738,14 @@ dependencies = [
  "gscore-session",
  "gscore-version",
  "image",
+ "js-sys",
  "rfd",
  "serde",
  "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time",
 ]
 
 [[package]]
@@ -1750,8 +1756,12 @@ dependencies = [
  "gscore-audio",
  "gscore-model",
  "gscore-play",
+ "js-sys",
  "midir",
  "rustysynth",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -1833,11 +1843,21 @@ dependencies = [
  "gscore-model",
  "serde",
  "serde_json",
+ "web-sys",
 ]
 
 [[package]]
 name = "gscore-version"
 version = "0.1.0"
+
+[[package]]
+name = "gscore-worklet"
+version = "0.1.0"
+dependencies = [
+ "gscore-audio",
+ "gscore-play",
+ "wasm-bindgen",
+]
 
 [[package]]
 name = "guillotiere"

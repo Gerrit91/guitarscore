@@ -6,20 +6,30 @@
 //! slow or failing device never blocks editing (AGENTS.md section 2 and section 5,
 //! decision 9). If output fails, playback stops with an error and editing continues.
 
+// Native device backends. In a browser, `gscore-audio`'s synth engine is compiled into an
+// AudioWorklet (see `docs/web.md`) and there is no MIDI port list.
+#[cfg(not(target_arch = "wasm32"))]
 mod midi_out;
 mod soundfont;
 mod synth;
+#[cfg(not(target_arch = "wasm32"))]
 mod synth_player;
 #[cfg(feature = "test-support")]
 pub mod testing;
 mod transport;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub use midi_out::{MidiOutPlayer, midi_output_ports};
 pub use soundfont::{
     SOUNDFONT_ENV, available_soundfonts, available_soundfonts_in, find_soundfont, find_soundfont_in,
 };
 pub use synth::{BLOCK, SoundBank, SynthEngine};
+#[cfg(not(target_arch = "wasm32"))]
 pub use synth_player::SynthPlayer;
+#[cfg(target_arch = "wasm32")]
+mod web_player;
+#[cfg(target_arch = "wasm32")]
+pub use web_player::WebPlayer;
 
 // The integration test builds songs with `gscore-model`'s test support; this marks the
 // test-only dependency for the library test target's unused-dependency check.

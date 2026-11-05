@@ -12,6 +12,18 @@ mod playback;
 mod settings;
 mod state;
 mod tasks;
+#[cfg(target_arch = "wasm32")]
+pub mod web;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use std::time::Instant;
+/// A clock that also works in a browser: `std::time::Instant` panics on
+/// `wasm32-unknown-unknown`, `web_time::Instant` uses `performance.now()` there.
+#[cfg(target_arch = "wasm32")]
+pub(crate) use web_time::Instant;
+// Native uses `std::time::Instant`; the dependency is still declared for the wasm build.
+#[cfg(not(target_arch = "wasm32"))]
+use web_time as _;
 
 pub use app::GuitarScoreApp;
 pub use document::{Document, GridData};

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#181a1f" />
+    <title>GuitarScore</title>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" href="assets/icon.png" type="image/png" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #181a1f;
+      }
+      #guitarscore {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        outline: none;
+        touch-action: none;
+      }
+      #loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        align-items: center;
+        justify-content: center;
+        color: #d8dade;
+        font: 15px/1.5 system-ui, sans-serif;
+        background: #181a1f;
+        transition: opacity 150ms ease-out;
+      }
+      #loading.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #loading .title {
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      #status {
+        max-width: 42em;
+        padding: 0 1em;
+        color: #f0a35e;
+        white-space: pre-wrap;
+        text-align: center;
+      }
+      noscript {
+        color: #d8dade;
+        font: 15px/1.5 system-ui, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="guitarscore" tabindex="0" aria-label="GuitarScore score editor"></canvas>
+    <div id="loading">
+      <div class="title">GuitarScore</div>
+      <div>Loading the editor…</div>
+      <div id="status"></div>
+    </div>
+    <noscript>GuitarScore needs JavaScript and WebAssembly.</noscript>
+    <script type="module">
+      import init from "./guitarscore.js";
+
+      const loading = document.getElementById("loading");
+      const status = document.getElementById("status");
+      const showError = (error) => {
+        status.textContent = String(error);
+        loading.classList.remove("hidden");
+      };
+
+      window.addEventListener("error", (event) => {
+        if (event.message) showError(event.message);
+      });
+      window.addEventListener("unhandledrejection", (event) => {
+        showError(event.reason ?? "the editor failed to start");
+      });
+
+      try {
+        await init();
+        // The Rust side sets this once eframe's runner is up.
+        if (document.body.dataset.guitarscoreReady === "true") {
+          loading.classList.add("hidden");
+        } else {
+          const observer = new MutationObserver(() => {
+            if (document.body.dataset.guitarscoreReady === "true") {
+              loading.classList.add("hidden");
+              observer.disconnect();
+            }
+          });
+          observer.observe(document.body, { attributes: true, attributeFilter: ["data-guitarscore-ready"] });
+        }
+      } catch (error) {
+        showError(error);
+      }
+
+      // Installable app / offline use. Registration is optional: a plain HTTP server or a
+      // file:// copy still runs the editor.
+      if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+        navigator.serviceWorker.register("./sw.js").catch(() => {});
+      }
+    </script>
+  </body>
+</html>

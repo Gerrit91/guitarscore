@@ -296,7 +296,10 @@ impl GuitarScoreApp {
         let was_opening = self.tasks.open_progress().is_some();
         for event in self.tasks.poll() {
             match event {
-                Event::Picked(Some(path)) => self.open(path, ctx),
+                Event::Picked(Some(picked)) => {
+                    let path = self.tasks.remember_picked(&picked);
+                    self.open(path, ctx);
+                }
                 Event::Picked(None) => {}
                 Event::Opened { path, result } => match result {
                     Ok(opened) => {
@@ -324,26 +327,28 @@ impl GuitarScoreApp {
                 },
                 Event::FoundRecoverable(sessions) => self.found_recoverable(sessions),
                 Event::Recovered { session, result } => self.recovered(&session, result),
-                Event::PickedSave(Some(path)) => {
-                    let path = if path.extension().is_some_and(|e| e == "gp") {
-                        path
+                Event::PickedSave(Some(picked)) => {
+                    self.tasks.arm_save(&picked);
+                    let path = if picked.path.extension().is_some_and(|e| e == "gp") {
+                        picked.path
                     } else {
-                        path.with_extension("gp")
+                        picked.path.with_extension("gp")
                     };
                     self.start_save(path, false, ctx);
                 }
-                Event::PickedSoundFont(Some(path)) => self.playback.use_soundfont(path),
+                Event::PickedSoundFont(Some(picked)) => self.playback.use_soundfont(picked.path),
                 Event::PickedSoundFont(None) => {}
                 // Cancelled: whatever was waiting for the save does not happen.
                 Event::PickedSave(None) => self.abandon_save(),
-                Event::PickedPdf(Some(path)) => {
-                    let path = if path
+                Event::PickedPdf(Some(picked)) => {
+                    let path = if picked
+                        .path
                         .extension()
                         .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
                     {
-                        path
+                        picked.path
                     } else {
-                        path.with_extension("pdf")
+                        picked.path.with_extension("pdf")
                     };
                     self.start_pdf_export(path, ctx);
                 }

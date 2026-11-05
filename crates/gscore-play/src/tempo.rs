@@ -52,6 +52,22 @@ impl TempoMap {
         &self.points
     }
 
+    /// A map from decoded points: non-empty, starting at tick 0, in tick order, with a
+    /// positive rate. `None` if they are not (a damaged message).
+    pub(crate) fn from_points(points: Vec<(u64, u32)>) -> Option<Self> {
+        let first = points.first()?;
+        if first.0 != 0 || first.1 == 0 {
+            return None;
+        }
+        if points.windows(2).any(|pair| match pair {
+            [a, b] => a.0 >= b.0,
+            _ => true,
+        }) {
+            return None;
+        }
+        Some(TempoMap { points })
+    }
+
     /// The time of `tick` in microseconds from the start.
     pub fn micros_at(&self, tick: u64) -> u64 {
         let mut micros: u64 = 0;

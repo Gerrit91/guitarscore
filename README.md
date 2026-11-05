@@ -124,6 +124,8 @@ cargo build
 cargo xtask ci   # everything a change must pass: fmt, clippy, tests, layer and wasm checks
 cargo gui testdata/basic/note_lengths.gp      # build and start the app (a cargo alias)
 gscore-cli gui testdata/basic/note_lengths.gp # start the built app from the command line
+cargo xtask web                                # the browser build in dist/web (docs/web.md)
+cargo xtask web --smoke                        # also check it in headless Chromium
 ```
 
 The app renders with wgpu (Vulkan, Metal or DirectX 12). Its snapshot tests render

@@ -122,7 +122,9 @@ pub struct GuitarScoreApp {
     about: Option<about::AboutWindow>,
     /// What the app remembers between runs.
     settings: Settings,
-    /// Where the settings are stored (`None` keeps them only in memory).
+    /// Where the settings are stored (`None` keeps them only in memory; a browser keeps
+    /// them in its own storage instead).
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     settings_path: Option<PathBuf>,
     /// Panel sizes, as last drawn, for the next run.
     panel_sizes: PanelSizes,
@@ -268,19 +270,43 @@ impl GuitarScoreApp {
             .clone()
             .or_else(|| settings.open_files.first().cloned());
         settings.store_shortcuts(&self.keymap);
+        // A browser cannot reopen a local path: there is nothing to restore at the next
+        // start, and recent entries could not be opened either (the user picks the file
+        // again).
+        #[cfg(target_arch = "wasm32")]
+        {
+            settings.open_files.clear();
+            settings.active_file = None;
+            settings.last_file = None;
+            settings.recent_files.clear();
+            settings.window = None;
+            settings.keymap_path = None;
+            settings.soundfont_path = None;
+        }
         settings
     }
 
-    /// Writes the settings to their file, if there is one. Errors go to the notice bar.
+    /// Writes the settings where this platform keeps them (a JSON file on the desktop,
+    /// `localStorage` in a browser). Errors go to the notice bar.
     pub fn save_settings(&mut self) {
-        let Some(path) = self.settings_path.clone() else {
-            return;
-        };
         let settings = self.settings();
-        if let Err(error) = gscore_session::save_json(&path, &settings) {
-            self.notice = Some(error);
-        } else {
-            self.settings = settings;
+        #[cfg(target_arch = "wasm32")]
+        {
+            match gscore_session::save_web_json(gscore_session::WebKey::SETTINGS, &settings) {
+                Ok(()) => self.settings = settings,
+                Err(error) => self.notice = Some(error),
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let Some(path) = self.settings_path.clone() else {
+                return;
+            };
+            if let Err(error) = gscore_session::save_json(&path, &settings) {
+                self.notice = Some(error);
+            } else {
+                self.settings = settings;
+            }
         }
     }
 
@@ -397,6 +423,15 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Saves the settings and closes the tabs (on the desktop, their recovery folders).
+    fn finish_exit(&mut self) {
+        self.save_settings();
+        // A normal exit (unsaved changes were asked about): the recovery folders go.
+        for tab in self.tabs.drain(..) {
+            tab.document.close(true);
+        }
+    }
+
     fn apply_title(&mut self, ctx: &egui::Context) {
         let title = self.document().map_or_else(
             || "GuitarScore".to_owned(),
@@ -423,6 +458,14 @@ impl eframe::App for GuitarScoreApp {
         }
         self.handle_events(&ctx);
         // A file dropped on the window opens like File > Open (asking about unsaved work).
+        // A browser drop is read asynchronously; a native one is a path to read.
+        #[cfg(target_arch = "wasm32")]
+        if let Some(file) = ctx.input(|input| input.raw.dropped_files.first().cloned())
+            && let Err(error) = self.tasks.open_dropped(file, &ctx)
+        {
+            self.notice = Some(error);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = ctx.input(|input| {
             input
                 .raw
@@ -603,12 +646,15 @@ impl eframe::App for GuitarScoreApp {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn on_exit(&mut self) {
-        self.save_settings();
-        // A normal exit (unsaved changes were asked about): the recovery folders go.
-        for tab in self.tabs.drain(..) {
-            tab.document.close(true);
-        }
+        self.finish_exit();
+    }
+
+    // The browser renderer hands the glow context to `on_exit`; it is not needed.
+    #[cfg(target_arch = "wasm32")]
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.finish_exit();
     }
 }
 

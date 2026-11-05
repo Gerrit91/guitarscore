@@ -31,7 +31,12 @@ impl std::fmt::Debug for AboutWindow {
 
 /// The app icon as a texture, or `None` if the embedded PNG cannot be read.
 fn icon_texture(ctx: &egui::Context) -> Option<egui::TextureHandle> {
-    let icon = eframe::icon_data::from_png_bytes(crate::APP_ICON).ok()?;
+    #[cfg(not(target_arch = "wasm32"))]
+    let icon = Some(eframe::icon_data::from_png_bytes(crate::APP_ICON).ok()?);
+    // eframe's PNG icon reader is native only; the browser needs no window icon.
+    #[cfg(target_arch = "wasm32")]
+    let icon: Option<egui::IconData> = None;
+    let icon = icon?;
     let size = [
         usize::try_from(icon.width).ok()?,
         usize::try_from(icon.height).ok()?,

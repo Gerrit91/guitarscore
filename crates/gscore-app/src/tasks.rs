@@ -2,6 +2,8 @@
 //! reading and importing a file, and saving one. Each job runs on its own thread and reports back through a
 //! channel that the UI polls once per frame.
 
+#[cfg(target_arch = "wasm32")]
+use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -17,13 +19,15 @@ use gscore_session::{
 #[derive(Debug)]
 pub(crate) enum Event {
     /// The open dialog closed; `None` if it was cancelled.
-    Picked(Option<PathBuf>),
+    Picked(Option<Picked>),
     /// The SoundFont dialog closed; `None` if it was cancelled.
-    PickedSoundFont(Option<PathBuf>),
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    PickedSoundFont(Option<Picked>),
     /// The save dialog closed; `None` if it was cancelled.
-    PickedSave(Option<PathBuf>),
+    PickedSave(Option<Picked>),
     /// The PDF export dialog closed; `None` if it was cancelled.
-    PickedPdf(Option<PathBuf>),
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    PickedPdf(Option<Picked>),
     /// A PDF export finished (a message for the status bar) or failed (why).
     Exported(Result<String, String>),
     /// A save finished or failed.
@@ -54,6 +58,28 @@ pub(crate) enum Event {
     },
     /// A job panicked (the panic hook wrote a crash report); the message says which.
     Failed(String),
+}
+
+/// A file the user picked. A browser hands the bytes over with the name (there is no
+/// path), so they travel together; a native dialog gives only a path, and the open reads
+/// the file in the background.
+#[derive(Debug)]
+pub(crate) struct Picked {
+    /// The path (native) or file name (browser).
+    pub(crate) path: PathBuf,
+    /// The file's bytes, when the picker already read them (browser).
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) bytes: Vec<u8>,
+    /// The writable handle of a browser save dialog (writing downloads the file).
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) save_handle: Option<rfd::FileHandle>,
+}
+
+impl Picked {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn from_path(path: PathBuf) -> Self {
+        Picked { path }
+    }
 }
 
 /// An opened file.
@@ -94,6 +120,7 @@ pub(crate) struct OpenProgress {
 }
 
 impl OpenProgress {
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     fn set(&self, done: u64, total: u64) {
         self.total.store(total, Ordering::Relaxed);
         self.done.store(done, Ordering::Relaxed);
@@ -120,6 +147,7 @@ impl OpenProgress {
         self.cancel.store(true, Ordering::Relaxed);
     }
 
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     fn cancelled(&self) -> bool {
         self.cancel.load(Ordering::Relaxed)
     }
@@ -138,6 +166,14 @@ pub(crate) struct Tasks {
     open_path: Option<PathBuf>,
     /// The user cancelled the running open; its result is dropped.
     open_cancelled: bool,
+    /// Browsers hand over a picked file's bytes with its name; they wait here until the
+    /// open that `open` starts runs.
+    #[cfg(target_arch = "wasm32")]
+    picked_bytes: HashMap<PathBuf, Vec<u8>>,
+    /// The writable handle of a browser save dialog: the download happens when the save
+    /// writes to it.
+    #[cfg(target_arch = "wasm32")]
+    save_file: Option<rfd::FileHandle>,
 }
 
 impl Default for Tasks {
@@ -150,6 +186,10 @@ impl Default for Tasks {
             open: None,
             open_path: None,
             open_cancelled: false,
+            #[cfg(target_arch = "wasm32")]
+            picked_bytes: HashMap::new(),
+            #[cfg(target_arch = "wasm32")]
+            save_file: None,
         }
     }
 }
@@ -165,6 +205,7 @@ impl Tasks {
 
     /// Reads and imports `path` in the background.
     /// With `recovery`, the document's edits are journaled in that directory.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn open(
         &mut self,
         path: PathBuf,
@@ -207,6 +248,111 @@ impl Tasks {
             self.open_path = None;
         }
         spawned
+    }
+
+    /// Imports a file the browser already read. A wasm instance cannot block on a thread,
+    /// so the import runs here; it is the one step that briefly holds the UI.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn open(
+        &mut self,
+        path: PathBuf,
+        _recovery: Option<PathBuf>,
+        _options: RecoveryOptions,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        let Some(bytes) = self.picked_bytes.remove(&path) else {
+            return Err(format!(
+                "cannot read {}: in the browser, choose the file again",
+                path.display()
+            ));
+        };
+        self.open_bytes(path, bytes, ctx)
+    }
+
+    /// Imports bytes read by a browser drop or picker.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn open_bytes(
+        &mut self,
+        path: PathBuf,
+        bytes: Vec<u8>,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        let source = path.clone();
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            gscore_session::open_bytes(&source, bytes).map(|(imported, _)| Opened {
+                song: Box::new(imported.song),
+                format: imported.format,
+                journal: Ok(None),
+            })
+        }))
+        .map(|result| result.map_err(|error| error.to_string()))
+        .unwrap_or_else(|_| {
+            Err("the open failed unexpectedly; a crash report was written".to_owned())
+        });
+        self.deliver(Event::Opened { path, result }, ctx);
+        Ok(())
+    }
+
+    /// Remembers a picked file's bytes until the open starts (a browser picker always
+    /// hands them over; native pickers give only a path) and returns its path.
+    pub(crate) fn remember_picked(&mut self, picked: &Picked) -> PathBuf {
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.picked_bytes
+                .insert(picked.path.clone(), picked.bytes.clone());
+        }
+        picked.path.clone()
+    }
+
+    /// Reads a dropped browser file and opens it.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn open_dropped(
+        &mut self,
+        file: egui::DroppedFileHandle,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        let path = file.path().to_path_buf();
+        let sender = self.sender.clone();
+        let ctx = ctx.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let event = match file.bytes_async().await {
+                Ok(bytes) => match catch_unwind(AssertUnwindSafe(|| {
+                    gscore_session::open_bytes(&path, bytes).map(|(imported, _)| Opened {
+                        song: Box::new(imported.song),
+                        format: imported.format,
+                        journal: Ok(None),
+                    })
+                })) {
+                    Ok(Ok(opened)) => Event::Opened {
+                        path,
+                        result: Ok(opened),
+                    },
+                    Ok(Err(error)) => Event::Opened {
+                        path,
+                        result: Err(error.to_string()),
+                    },
+                    Err(_) => Event::Failed(
+                        "the open failed unexpectedly; a crash report was written".to_owned(),
+                    ),
+                },
+                Err(error) => Event::Opened {
+                    path,
+                    result: Err(error),
+                },
+            };
+            let _ = sender.send(event);
+            ctx.request_repaint();
+        });
+        self.running = self.running.saturating_add(1);
+        Ok(())
+    }
+
+    /// Hands an event to the UI as if a background job had finished.
+    #[cfg(target_arch = "wasm32")]
+    fn deliver(&mut self, event: Event, ctx: &egui::Context) {
+        let _ = self.sender.send(event);
+        self.running = self.running.saturating_add(1);
+        ctx.request_repaint();
     }
 
     /// The open that is running, for its progress bar.
@@ -264,7 +410,7 @@ impl Tasks {
                 .and_then(|(journal, count)| {
                     // Wait (on this background thread) until the new journal has every
                     // edit on disk before the old copy goes.
-                    let started = std::time::Instant::now();
+                    let started = crate::Instant::now();
                     while journal.written() < count && journal.error().is_none() {
                         if started.elapsed() > std::time::Duration::from_secs(10) {
                             return Err("the new recovery journal is not written".to_owned());
@@ -286,28 +432,33 @@ impl Tasks {
     }
 
     /// Shows the file dialog in the background.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn pick_file(&mut self, ctx: &egui::Context) -> Result<(), String> {
         self.spawn("file dialog", ctx, || {
             let picked = rfd::FileDialog::new()
                 .set_title("Open a Guitar Pro file")
                 .add_filter("Guitar Pro", EXTENSIONS)
-                .pick_file();
+                .pick_file()
+                .map(Picked::from_path);
             Event::Picked(picked)
         })
     }
 
     /// Shows the dialog choosing a SoundFont for the synthesizer in the background.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn pick_soundfont(&mut self, ctx: &egui::Context) -> Result<(), String> {
         self.spawn("SoundFont dialog", ctx, || {
             let picked = rfd::FileDialog::new()
                 .set_title("Choose a SoundFont for the built-in synthesizer")
                 .add_filter("SoundFont 2", &["sf2"])
-                .pick_file();
+                .pick_file()
+                .map(Picked::from_path);
             Event::PickedSoundFont(picked)
         })
     }
 
     /// Shows the save dialog in the background, suggesting `name`.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn pick_save_file(
         &mut self,
         name: String,
@@ -318,12 +469,14 @@ impl Tasks {
                 .set_title("Save as Guitar Pro 7 (.gp)")
                 .add_filter("Guitar Pro 7", &["gp"])
                 .set_file_name(name)
-                .save_file();
+                .save_file()
+                .map(Picked::from_path);
             Event::PickedSave(picked)
         })
     }
 
     /// Shows the PDF export dialog in the background, suggesting `name`.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn pick_pdf_file(
         &mut self,
         name: String,
@@ -334,9 +487,107 @@ impl Tasks {
                 .set_title("Export as PDF")
                 .add_filter("PDF", &["pdf"])
                 .set_file_name(name)
-                .save_file();
+                .save_file()
+                .map(Picked::from_path);
             Event::PickedPdf(picked)
         })
+    }
+
+    /// The browser's open dialog. The bytes arrive with the picker's answer, so the open
+    /// does not have to read anything later.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn pick_file(&mut self, ctx: &egui::Context) -> Result<(), String> {
+        let sender = self.sender.clone();
+        let repaint = ctx.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let handle = rfd::AsyncFileDialog::new()
+                .set_title("Open a Guitar Pro file")
+                .add_filter("Guitar Pro", EXTENSIONS)
+                .pick_file()
+                .await;
+            let event = match handle {
+                Some(handle) => {
+                    let name = handle.file_name();
+                    match read_web_file(&handle).await {
+                        Ok(bytes) => Event::Picked(Some(Picked {
+                            path: PathBuf::from(name),
+                            bytes,
+                            save_handle: None,
+                        })),
+                        Err(error) => Event::Failed(format!("cannot read {name}: {error}")),
+                    }
+                }
+                None => Event::Picked(None),
+            };
+            let _ = sender.send(event);
+            repaint.request_repaint();
+        });
+        self.running = self.running.saturating_add(1);
+        Ok(())
+    }
+
+    /// The browser's SoundFont dialog (not offered yet: the worklet's SoundFont handling
+    /// is still being built).
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn pick_soundfont(&mut self, _ctx: &egui::Context) -> Result<(), String> {
+        Err("choosing a SoundFont is not available in the browser build yet".to_owned())
+    }
+
+    /// The browser's save dialog: it returns a writable handle, and writing to it downloads
+    /// the file. The handle travels with the event and waits for the save that follows.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn pick_save_file(
+        &mut self,
+        name: String,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        let sender = self.sender.clone();
+        let repaint = ctx.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let handle = rfd::AsyncFileDialog::new()
+                .set_title("Save as Guitar Pro 7 (.gp)")
+                .add_filter("Guitar Pro 7", &["gp"])
+                .set_file_name(name)
+                .save_file()
+                .await;
+            let event = match handle {
+                Some(handle) => {
+                    let name = handle.file_name();
+                    Event::PickedSave(Some(Picked {
+                        path: PathBuf::from(&name),
+                        bytes: Vec::new(),
+                        save_handle: Some(handle),
+                    }))
+                }
+                None => Event::PickedSave(None),
+            };
+            let _ = sender.send(event);
+            repaint.request_repaint();
+        });
+        self.running = self.running.saturating_add(1);
+        Ok(())
+    }
+
+    /// Keeps the writable handle of a browser save dialog until the save writes to it.
+    pub(crate) fn arm_save(&mut self, picked: &Picked) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.save_file = picked.save_handle.clone();
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = picked;
+        }
+    }
+
+    /// PDF export in the browser is not built yet.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn pick_pdf_file(
+        &mut self,
+        _name: String,
+        _ctx: &egui::Context,
+    ) -> Result<(), String> {
+        Err("PDF export is not available in the browser build yet".to_owned())
     }
 
     /// Lays out `track` of `song` on pages with `options` and writes it to `path` as PDF,
@@ -357,6 +608,7 @@ impl Tasks {
 
     /// Saves `song` (editor `revision`) to `path` as `.gp` in the background, with the
     /// safe-save procedure of `gscore-session`.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn save(
         &mut self,
         song: Song,
@@ -407,6 +659,62 @@ impl Tasks {
         })
     }
 
+    /// Saves `song` by downloading it: the bytes are built in memory (the same read-back
+    /// and loss check as a file save), then written to the browser's save handle.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn save(
+        &mut self,
+        song: Song,
+        path: PathBuf,
+        revision: u64,
+        allow_losses: bool,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        let handle = self
+            .save_file
+            .take()
+            .ok_or_else(|| "the save dialog was not answered; try Save again".to_owned())?;
+        let sender = self.sender.clone();
+        let repaint = ctx.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let options = SaveOptions {
+                format: FileFormat::Gp,
+                allow_losses,
+            };
+            let name = path.file_name().map_or_else(
+                || "song.gp".to_owned(),
+                |name| name.to_string_lossy().into_owned(),
+            );
+            let result = match gscore_session::save_bytes(&song, options) {
+                Ok((bytes, losses)) => match handle.write(&bytes).await {
+                    Ok(()) => {
+                        let mut message = format!("Saved {name}");
+                        if !losses.is_empty() {
+                            message.push_str(&format!(
+                                "; {} detail(s) could not be kept",
+                                losses.len()
+                            ));
+                        }
+                        Ok(message)
+                    }
+                    Err(error) => Err(SaveFailure::Other(format!("cannot write {name}: {error}"))),
+                },
+                Err(SaveError::Losses(losses)) => Err(SaveFailure::Losses(
+                    losses.iter().map(ToString::to_string).collect(),
+                )),
+                Err(error) => Err(SaveFailure::Other(error.to_string())),
+            };
+            let _ = sender.send(Event::Saved {
+                path,
+                revision,
+                result,
+            });
+            repaint.request_repaint();
+        });
+        self.running = self.running.saturating_add(1);
+        Ok(())
+    }
+
     /// The events of jobs that finished since the last call. A cancelled open's result is
     /// dropped here.
     pub(crate) fn poll(&mut self) -> Vec<Event> {
@@ -430,6 +738,7 @@ impl Tasks {
         events
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn spawn(
         &mut self,
         name: &str,
@@ -452,6 +761,36 @@ impl Tasks {
         self.running = self.running.saturating_add(1);
         Ok(())
     }
+
+    /// A wasm instance has no threads: the job runs here and reports through the same
+    /// channel on the next poll. (It is used only by the recovery and PDF jobs, which the
+    /// browser build does not start.)
+    #[cfg(target_arch = "wasm32")]
+    fn spawn(
+        &mut self,
+        name: &str,
+        ctx: &egui::Context,
+        job: impl FnOnce() -> Event + 'static,
+    ) -> Result<(), String> {
+        let failed = format!("the {name} failed unexpectedly; a crash report was written");
+        let event = catch_unwind(AssertUnwindSafe(job)).unwrap_or(Event::Failed(failed));
+        self.deliver(event, ctx);
+        Ok(())
+    }
+}
+
+/// Reads a file the browser's picker returned, without the panic on I/O that rfd's own
+/// `FileHandle::read` has.
+#[cfg(target_arch = "wasm32")]
+async fn read_web_file(handle: &rfd::FileHandle) -> Result<Vec<u8>, String> {
+    let promise = handle.inner().array_buffer();
+    let buffer = wasm_bindgen_futures::JsFuture::from(promise)
+        .await
+        .map_err(|_| "the browser could not read the file".to_owned())?;
+    let array = js_sys::Uint8Array::new(&buffer);
+    let mut bytes = vec![0_u8; array.length() as usize];
+    array.copy_to(&mut bytes);
+    Ok(bytes)
 }
 
 /// The work of [`Tasks::export_pdf`]: the status message, or why it failed.

@@ -24,6 +24,7 @@ pub(crate) const LAYERS: &[(&str, u8)] = &[
     ("gscore-play", 2),
     ("gscore-edit", 3),
     ("gscore-audio", 3),
+    ("gscore-worklet", 4),
     ("gscore-session", 4),
     ("gscore-cli", 5),
     ("gscore-app", 5),
@@ -38,6 +39,10 @@ pub(crate) const WASM_CRATES: &[&str] = &[
     "gscore-play",
     "gscore-edit",
 ];
+
+/// Crates the browser build compiles too, without the fs/thread ban (device crates are
+/// `cfg`-gated there): the synth and its effects, and the AudioWorklet wrapper.
+pub(crate) const WASM_AUDIO_CRATES: &[&str] = &["gscore-audio", "gscore-worklet"];
 
 /// Workspace members that are tools, not part of the layered application.
 const TOOLS: &[&str] = &["xtask"];
@@ -87,7 +92,10 @@ pub(crate) fn run(root: &Path, skip_wasm: bool) -> TaskResult {
     }
     println!("layers: dependency graph, lints and std usage OK");
 
-    wasm::check(root, WASM_CRATES, skip_wasm)
+    wasm::check(root, WASM_CRATES, skip_wasm)?;
+    // The desktop device crates are `cfg`-gated out, so the synth (and every effect it
+    // sequences) must also build for the AudioWorklet.
+    wasm::check(root, WASM_AUDIO_CRATES, skip_wasm)
 }
 
 fn layer_of(name: &str) -> Option<u8> {

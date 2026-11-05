@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>GuitarScore audio worklet check</title>
+  </head>
+  <body data-worklet-check="running">
+    <!-- Loaded by `cargo xtask web --smoke`: proves the AudioWorklet module, its second
+         wasm instance and the message port work in a real browser, without needing a
+         user gesture for sound. -->
+    <p id="status">checking…</p>
+    <script type="module">
+      const state = document.getElementById("status");
+      const fail = (error) => {
+        document.body.dataset.workletCheck = "failed";
+        state.textContent = String(error);
+      };
+      window.addEventListener("error", (event) => fail(event.message));
+      window.addEventListener("unhandledrejection", (event) => fail(event.reason));
+
+      // An empty song: magic, no events, one tempo point, end at tick 0.
+      function emptySequence() {
+        const bytes = new Uint8Array(32);
+        const view = new DataView(bytes.buffer);
+        bytes.set([0x47, 0x53, 0x51, 0x31], 0); // "GSQ1"
+        view.setUint32(4, 0, true); // events
+        view.setUint32(8, 1, true); // tempo points
+        view.setBigUint64(12, 0n, true); // tick 0
+        view.setUint32(20, 500000, true); // 120 BPM
+        view.setBigUint64(24, 0n, true); // end
+        return bytes;
+      }
+
+      try {
+        document.body.dataset.step = "start";
+        if (!("AudioWorkletNode" in globalThis)) throw new Error("no AudioWorklet in this browser");
+        const context = new AudioContext();
+        // Headless browsers start the context suspended; the module loads either way, but
+        // resuming keeps every browser happy (do not wait for it: a silent device may never
+        // resolve the promise).
+        context.resume().catch(() => {});
+        await context.audioWorklet.addModule("./worklet.js");
+        document.body.dataset.step = "module";
+        state.textContent = "module loaded";
+        const node = new AudioWorkletNode(context, "gscore-synth", {
+          numberOfInputs: 0,
+          numberOfOutputs: 1,
+          outputChannelCount: [2],
+        });
+        document.body.dataset.step = "node";
+        const bytes = emptySequence();
+        // An AudioWorklet cannot fetch its own wasm: compile it here and send the module.
+        const response = await fetch("./worklet_synth_bg.wasm");
+        if (!response.ok) throw new Error(`cannot fetch the synthesizer module (${response.status})`);
+        const module = await WebAssembly.compile(await response.arrayBuffer());
+        node.port.postMessage({ type: "module", module });
+        node.onprocessorerror = () => fail("the worklet processor failed");
+        node.port.onmessage = (event) => {
+          const message = event.data;
+          if (message.type === "ready") {
+            // The module and its second wasm instance are up. (Headless Chromium may keep
+            // the audio context suspended, so rendering is not required here.)
+            document.body.dataset.workletCheck = "ok";
+            state.textContent = "worklet ready";
+            node.port.postMessage({ type: "sequence", bytes: bytes.buffer });
+            node.port.postMessage({ type: "command", name: "play" });
+          } else if (message.type === "error") {
+            fail(message.message);
+          }
+        };
+        node.connect(context.destination);
+        // A silent device may never render; say so instead of waiting forever.
+        setTimeout(() => {
+          if (document.body.dataset.workletCheck === "running") {
+            fail("the worklet never answered on its port");
+          }
+        }, 8000);
+      } catch (error) {
+        fail(error);
+      }
+    </script>
+  </body>
+</html>

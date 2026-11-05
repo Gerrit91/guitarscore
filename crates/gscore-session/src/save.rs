@@ -121,18 +121,7 @@ impl std::error::Error for SaveError {
 
 /// Saves `song` to `path` (see the module docs for the steps).
 pub fn save(song: &Song, path: &Path, options: SaveOptions) -> Result<SaveReport, SaveError> {
-    if !SAVE_FORMATS.contains(&options.format) {
-        return Err(SaveError::UnsupportedFormat(options.format));
-    }
-    let bytes = export_to_bytes(song, options.format).map_err(SaveError::Export)?;
-    let reread = import_guitar_pro_from_bytes(&bytes).map_err(SaveError::Reread)?;
-    let mut losses = differences(song, &reread.song);
-    // Color, mute, solo, volume, pan and the program are not part of the musical
-    // comparison; the format must keep them too, or the user is told before writing.
-    losses.extend(settings_differences(song, &reread.song));
-    if !losses.is_empty() && !options.allow_losses {
-        return Err(SaveError::Losses(losses));
-    }
+    let (bytes, losses) = save_bytes(song, options)?;
 
     let temp = sibling(path, |name| {
         let mut temp = OsString::from(".");
@@ -176,6 +165,28 @@ pub fn save(song: &Song, path: &Path, options: SaveOptions) -> Result<SaveReport
         backup,
         losses,
     })
+}
+
+/// The steps of a save that do not touch the disk: serialize, read back and compare, and
+/// refuse or report losses. Returns the bytes to write (or download, in a browser) and what
+/// the format could not keep.
+pub fn save_bytes(
+    song: &Song,
+    options: SaveOptions,
+) -> Result<(Vec<u8>, Vec<Difference>), SaveError> {
+    if !SAVE_FORMATS.contains(&options.format) {
+        return Err(SaveError::UnsupportedFormat(options.format));
+    }
+    let bytes = export_to_bytes(song, options.format).map_err(SaveError::Export)?;
+    let reread = import_guitar_pro_from_bytes(&bytes).map_err(SaveError::Reread)?;
+    let mut losses = differences(song, &reread.song);
+    // Color, mute, solo, volume, pan and the program are not part of the musical
+    // comparison; the format must keep them too, or the user is told before writing.
+    losses.extend(settings_differences(song, &reread.song));
+    if !losses.is_empty() && !options.allow_losses {
+        return Err(SaveError::Losses(losses));
+    }
+    Ok((bytes, losses))
 }
 
 /// The backup path of `path`: the file name with `.bak` appended (`song.gp.bak`).

@@ -52,6 +52,11 @@ impl SoundBank {
         })
     }
 
+    /// Reads a SoundFont from bytes (a browser fetch or the file a user picked).
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, PlayError> {
+        SoundBank::read(&mut &bytes[..])
+    }
+
     /// Reads a SoundFont from `reader`.
     pub fn read(reader: &mut impl Read) -> Result<Self, PlayError> {
         let font = SoundFont::new(reader)
@@ -153,6 +158,16 @@ impl SynthEngine {
         let _ = self.apply(Command::TempoScale(scale));
     }
 
+    /// Swaps in a rebuilt sequence where playback is (a live mixer change).
+    pub fn replace(&mut self, sequence: Arc<Sequence>) {
+        let _ = self.apply(Command::Replace(sequence));
+    }
+
+    /// Sends one MIDI message now (a live mixer change).
+    pub fn send_event(&mut self, event: MidiEvent) {
+        let _ = self.apply(Command::Send(event));
+    }
+
     /// The current position in ticks.
     pub fn position(&self) -> u64 {
         self.transport.position()
@@ -228,6 +243,7 @@ impl SynthEngine {
     }
 
     /// Stops playing where it is, after the output failed.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // the worklet stops via `stop`
     pub(crate) fn fail(&mut self) {
         self.transport.fail(&mut SynthSink(&mut self.synth));
     }

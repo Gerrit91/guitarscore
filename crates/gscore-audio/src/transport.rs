@@ -11,6 +11,7 @@ use gscore_play::{MidiEvent, PlayState, Scheduler, Sequence};
 
 /// A command for a backend.
 #[derive(Debug)]
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))] // `Quit` ends the MIDI thread.
 pub(crate) enum Command {
     Load(Arc<Sequence>),
     Play,

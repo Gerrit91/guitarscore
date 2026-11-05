@@ -210,3 +210,15 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    undo step and one usually long journal line (its nested commands are percent-encoded;
    pasted notes list only the effects they have). If a part of a batch fails, the parts
    before it are reverted; a failing revert there is ignored (it has not been seen).
+
+## Browser build (2026-11-04)
+
+- **No recovery journal in the browser.** Settings and shortcuts live in `localStorage`,
+  but a crash loses unsaved edits: the journal is still file-based. The browser needs a
+  storage-backed journal and autosave (IndexedDB for the base song and snapshots) before
+  the web build is as safe as the desktop.
+- **No PDF export in the browser.** The dialog and download path are not wired up.
+- **No SoundFont picker in the browser.** `assets/soundfonts/default.sf2` is loaded when a
+  site provides it; otherwise playback is silent. Bundling a licensed GM SoundFont is M19.
+- **Opening imports on the UI thread** after the bytes arrive (no wasm threads). Fine for
+  the tested files; a web worker is the escape hatch for very large scores.
