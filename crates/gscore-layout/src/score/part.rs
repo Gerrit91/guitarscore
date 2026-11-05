@@ -139,6 +139,15 @@ impl<'a> Part<'a> {
             })
     }
 
+    /// Whether any of `measures` holds a note (a staff that is only rests is empty).
+    pub(super) fn has_notes(&self, measures: std::ops::Range<usize>) -> bool {
+        self.measures
+            .get(measures)
+            .unwrap_or_default()
+            .iter()
+            .any(|measure| measure.has_notes())
+    }
+
     /// The name written in the margin before each system: the short name (else the
     /// name), cut with "…" to fit `room`; empty when not even one letter fits.
     pub(super) fn margin_name(&self, room: f32) -> String {

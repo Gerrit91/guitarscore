@@ -20,6 +20,7 @@ use self::part::Part;
 use crate::draw::{ColorToken, DrawOp, Point, Rect, TextAnchor, TextFont};
 use crate::marks::{self, Rows};
 use crate::measure::MeasureLayout;
+use crate::options::EmptyStaves;
 use crate::pages::{PageDecor, place_systems};
 use crate::system::{Breaks, MeasureWidth, break_systems};
 use crate::{
@@ -165,10 +166,45 @@ pub(crate) fn layout_with(
                 .map(usize::from),
         },
     );
-    // Per system, the rows above each track's staves.
-    let rows: Vec<Vec<Rows>> = plans
+    // Per system, which tracks are drawn: all, unless empty staves are hidden; then a
+    // track without a note in the system's bars is left out, except on the first system
+    // and the primary track (the cursor's, which must stay reachable).
+    let shown: Vec<Vec<bool>> = plans
         .iter()
         .map(|plan| {
+            parts
+                .iter()
+                .map(|part| {
+                    let keep = match options.empty_staves {
+                        EmptyStaves::Shown => true,
+                        EmptyStaves::Hidden => false,
+                        EmptyStaves::HiddenButPrimary => part.track == primary,
+                    };
+                    keep || !multi
+                        || plan.measures.start == 0
+                        || part.has_notes(plan.measures.clone())
+                })
+                .collect()
+        })
+        .collect();
+    let first_shown = |system: usize| {
+        shown
+            .get(system)
+            .and_then(|shown| shown.iter().position(|&on| on))
+            .unwrap_or(0)
+    };
+    let last_shown = |system: usize| {
+        shown
+            .get(system)
+            .and_then(|shown| shown.iter().rposition(|&on| on))
+            .unwrap_or(0)
+    };
+    // Per system, the rows above each track's staves; the topmost shown track carries the
+    // system's own marks.
+    let rows: Vec<Vec<Rows>> = plans
+        .iter()
+        .enumerate()
+        .map(|(system, plan)| {
             parts
                 .iter()
                 .enumerate()
@@ -177,7 +213,7 @@ pub(crate) fn layout_with(
                         part.marks.get(plan.measures.clone()).unwrap_or_default(),
                         part.ctx.notation.is_some(),
                         part.show_tab,
-                        index == 0,
+                        index == first_shown(system),
                     )
                 })
                 .collect()
@@ -186,29 +222,39 @@ pub(crate) fn layout_with(
     // Per system and track: the room above its staves (its rows; for a track below the
     // top one also its notes that reach above the staff) and below them before the next
     // track (more when a notation staff is lowest and its notes hang below it).
-    let rooms: Vec<Vec<(f32, f32)>> = plans
+    // A track not shown takes no room.
+    let rooms: Vec<Vec<Option<(f32, f32)>>> = plans
         .iter()
         .zip(&rows)
-        .map(|(plan, rows)| {
+        .enumerate()
+        .map(|(system, (plan, rows))| {
             parts
                 .iter()
                 .zip(rows)
                 .enumerate()
                 .map(|(index, (part, rows))| {
+                    let on = shown
+                        .get(system)
+                        .and_then(|shown| shown.get(index))
+                        .copied()
+                        .unwrap_or(true);
+                    if !on {
+                        return None;
+                    }
                     let (reach_above, reach_below) = part.reach(plan.measures.clone());
-                    let above = if index == 0 {
+                    let above = if index == first_shown(system) {
                         rows.height()
                     } else {
                         rows.height().max(reach_above)
                     };
-                    let below = if index.saturating_add(1) == parts.len() {
+                    let below = if index == last_shown(system) {
                         0.0
                     } else if part.show_tab {
                         TRACK_GAP
                     } else {
                         TRACK_GAP + reach_below
                     };
-                    (above, below)
+                    Some((above, below))
                 })
                 .collect()
         })
@@ -219,7 +265,9 @@ pub(crate) fn layout_with(
             rooms
                 .iter()
                 .zip(&parts)
-                .map(|((above, below), part)| above + part.staves_height + below)
+                .filter_map(|(room, part)| {
+                    room.map(|(above, below)| above + part.staves_height + below)
+                })
                 .sum()
         })
         .collect();
@@ -253,11 +301,17 @@ pub(crate) fn layout_with(
                 .and_then(|rows| rows.get(part_index))
                 .copied()
                 .unwrap_or_default();
-            let (above, below) = rooms
+            let Some((above, below)) = rooms
                 .get(index)
                 .and_then(|rooms| rooms.get(part_index))
                 .copied()
-                .unwrap_or_default();
+                .unwrap_or(Some((0.0, 0.0)))
+            else {
+                // Hidden in this system: it keeps a place without measures, so its
+                // system numbers stay in step with the other tracks'.
+                drawn.skip(y);
+                continue;
+            };
             let top = y + above;
             system_top.get_or_insert(top);
             let system = System {
@@ -268,7 +322,7 @@ pub(crate) fn layout_with(
                 x,
                 top,
                 rows: part_rows,
-                numbers: part_index == 0,
+                numbers: part_index == first_shown(index),
                 key: keys.get(plan.measures.start).copied().unwrap_or_default(),
                 last_measure: count,
             };

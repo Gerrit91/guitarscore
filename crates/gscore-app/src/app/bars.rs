@@ -159,6 +159,30 @@ impl GuitarScoreApp {
                     self.view.set_zoom(1.0);
                 }
                 ui.separator();
+                // The whole interface: Ctrl+Shift with +, - and 0 (read in
+                // `interface_zoom_keys`, not from the keymap).
+                if ui
+                    .button("Larger interface")
+                    .on_hover_text("Menus, panels and icons larger (ctrl+shift++)")
+                    .clicked()
+                {
+                    self.view.interface_larger();
+                }
+                if ui
+                    .button("Smaller interface")
+                    .on_hover_text("Menus, panels and icons smaller (ctrl+shift+-)")
+                    .clicked()
+                {
+                    self.view.interface_smaller();
+                }
+                if ui
+                    .button("Normal interface size")
+                    .on_hover_text("ctrl+shift+0")
+                    .clicked()
+                {
+                    self.view.set_interface_zoom(1.0);
+                }
+                ui.separator();
                 if self.action_button(ui, ActionId::ToggleFullscreen, true) {
                     self.perform_action(
                         gscore_edit::Action::Plain(ActionId::ToggleFullscreen),

@@ -4,7 +4,9 @@
 use std::path::Path;
 
 use clap::ValueEnum;
-use gscore_layout::{Fonts, LayoutOptions, PdfFonts, Theme, layout_tracks, to_pdf, to_svg};
+use gscore_layout::{
+    EmptyStaves, Fonts, LayoutOptions, PdfFonts, Theme, layout_tracks, to_pdf, to_svg,
+};
 use gscore_model::TrackIndex;
 
 use crate::CliError;
@@ -34,6 +36,7 @@ pub(crate) fn run(
     output: &Path,
     tracks: &[usize],
     all: bool,
+    hide_empty_staves: bool,
     theme: ThemeArg,
 ) -> Result<String, CliError> {
     // Only ever write an .svg or a .pdf, so a typo cannot overwrite the song itself.
@@ -78,6 +81,14 @@ pub(crate) fn run(
             .on_pages()
     } else {
         LayoutOptions::default()
+    };
+    let options = LayoutOptions {
+        empty_staves: if hide_empty_staves {
+            EmptyStaves::Hidden
+        } else {
+            EmptyStaves::Shown
+        },
+        ..options
     };
     let layout = layout_tracks(&imported.song, &indices, first, &options, &fonts)
         .map_err(|e| CliError::Failed(format!("{}: {e}", input.display())))?;

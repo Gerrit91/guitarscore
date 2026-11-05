@@ -139,6 +139,10 @@ enum Command {
         /// Draw every track of the song together
         #[arg(long, conflicts_with = "tracks")]
         all_tracks: bool,
+        /// With several tracks, leave a track out of a line where it has no note (the
+        /// first line shows every track)
+        #[arg(long)]
+        hide_empty_staves: bool,
         /// Color theme
         #[arg(long, value_enum, default_value = "light")]
         theme: render::ThemeArg,
@@ -319,8 +323,16 @@ where
             output,
             tracks,
             all_tracks,
+            hide_empty_staves,
             theme,
-        } => render::run(&file, &output, &tracks, all_tracks, theme),
+        } => render::run(
+            &file,
+            &output,
+            &tracks,
+            all_tracks,
+            hide_empty_staves,
+            theme,
+        ),
         Command::Convert {
             file,
             output,

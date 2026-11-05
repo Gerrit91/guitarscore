@@ -148,6 +148,8 @@ pub struct Settings {
     pub theme: crate::state::ThemeChoice,
     /// Zoom factor; 1 is normal.
     pub zoom: f32,
+    /// Size of the whole interface (menus, panels, icons); 1 is normal.
+    pub interface_zoom: f32,
     /// Whether the song grid (bottom panel) is shown.
     pub show_track_grid: bool,
     /// Whether the bottom panel shows the mixer instead of the measure grid.
@@ -158,6 +160,8 @@ pub struct Settings {
     pub show_edit_panel: bool,
     /// Whether the score is shown on pages (else one endless page).
     pub page_view: bool,
+    /// With several tracks shown, whether empty staves are left out of a line.
+    pub hide_empty_staves: bool,
     /// Height the song grid was dragged to; `None`: it follows the number of tracks. (The
     /// key is new: the old `grid_height_chosen` held whatever the panel happened to be.)
     pub grid_height_chosen: Option<f32>,
@@ -205,11 +209,13 @@ impl Default for Settings {
         Settings {
             theme: crate::state::ThemeChoice::Light,
             zoom: 1.0,
+            interface_zoom: 1.0,
             show_track_grid: true,
             grid_mixer: false,
             show_track_panel: true,
             show_edit_panel: true,
             page_view: true,
+            hide_empty_staves: false,
             grid_height_chosen: None,
             mixer_height_chosen: None,
             track_panel_width: None,
@@ -245,22 +251,26 @@ impl Settings {
     pub fn update_from_view(&mut self, view: &ViewState) {
         self.theme = view.theme;
         self.zoom = view.zoom();
+        self.interface_zoom = view.interface_zoom();
         self.show_track_grid = view.show_track_grid;
         self.grid_mixer = view.grid_mixer;
         self.show_track_panel = view.show_track_panel;
         self.show_edit_panel = view.show_edit_panel;
         self.page_view = view.page_view;
+        self.hide_empty_staves = view.hide_empty_staves;
     }
 
     /// Applies the stored theme, zoom and panel visibility to `view`.
     pub fn apply_to_view(&self, view: &mut ViewState) {
         view.theme = self.theme;
         view.set_zoom(self.zoom);
+        view.set_interface_zoom(self.interface_zoom);
         view.show_track_grid = self.show_track_grid;
         view.grid_mixer = self.grid_mixer;
         view.show_track_panel = self.show_track_panel;
         view.show_edit_panel = self.show_edit_panel;
         view.page_view = self.page_view;
+        view.hide_empty_staves = self.hide_empty_staves;
     }
 
     /// Puts `path` first in the recent files, without duplicates.
@@ -331,6 +341,9 @@ impl Settings {
             self.zoom = 1.0;
         }
         self.zoom = self.zoom.clamp(ZOOM_RANGE.0, ZOOM_RANGE.1);
+        let mut view = ViewState::default();
+        view.set_interface_zoom(self.interface_zoom);
+        self.interface_zoom = view.interface_zoom();
         if let Some(height) = self.grid_height_chosen
             && !(height.is_finite() && height > 0.0)
         {

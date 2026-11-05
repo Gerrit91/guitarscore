@@ -42,6 +42,17 @@ pub(super) struct Drawn {
 }
 
 impl Drawn {
+    /// A system the track is not drawn in (an empty staff hidden): a place at `y` without
+    /// measures, which no click can hit.
+    pub(super) fn skip(&mut self, y: f32) {
+        self.places.systems.push(SystemPlace {
+            top: y,
+            tab_top: y,
+            string_spacing: 0.0,
+            strings: 1,
+        });
+    }
+
     pub(super) fn new(count: usize) -> Self {
         Drawn {
             places: Places::default(),
@@ -263,8 +274,13 @@ pub(super) fn draw_barline_ties(part: &Part<'_>, drawn: &Drawn, ops: &mut Vec<Dr
         ) else {
             continue;
         };
-        let same_system = places.measures.get(index).map(|place| place.system)
-            == places.measures.get(next).map(|place| place.system);
+        // Measures of systems where the track is hidden have no place (nor tops).
+        let system = |measure: usize| {
+            places
+                .measure(gscore_model::MeasureIndex::new(measure))
+                .map(|place| place.system)
+        };
+        let same_system = system(index) == system(next);
         measure::draw_barline_ties(
             origin,
             origin_x,

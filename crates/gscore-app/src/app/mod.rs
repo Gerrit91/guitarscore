@@ -82,6 +82,8 @@ pub struct GuitarScoreApp {
     status: Option<String>,
     /// The theme applied to egui's own widgets, to apply a change once.
     applied_theme: Option<ThemeChoice>,
+    /// The interface size applied to egui, to apply a change once.
+    applied_interface_zoom: Option<f32>,
     /// The window title last sent, to send a change once.
     applied_title: String,
     playback: Playback,
@@ -177,6 +179,10 @@ impl GuitarScoreApp {
     ) -> Self {
         crate::fonts::install(ctx);
         style::install(ctx);
+        // egui's own Ctrl+-/Ctrl+=/Ctrl+0 zoom the whole interface, and part of them reached
+        // it past the score's zoom keys. The app handles both: Ctrl zooms the score,
+        // Ctrl+Shift the interface (`interface_zoom_keys`).
+        ctx.options_mut(|options| options.zoom_with_keyboard = false);
         settings.sanitize();
         // What to open at startup: a file from the command line, or the tabs that were open
         // last time (each skipped if it is no longer there).
@@ -213,6 +219,7 @@ impl GuitarScoreApp {
             notice: None,
             status: None,
             applied_theme: None,
+            applied_interface_zoom: None,
             applied_title: String::new(),
             playback: Playback::default(),
             keymap,
@@ -427,6 +434,11 @@ impl GuitarScoreApp {
     fn apply_theme(&mut self, ctx: &egui::Context) {
         // The chrome stays dark; the score's theme only changes how the page is drawn,
         // which reads `view.theme` every frame. A change needs one more frame.
+        let interface = self.view.interface_zoom();
+        if self.applied_interface_zoom != Some(interface) {
+            ctx.set_zoom_factor(interface);
+            self.applied_interface_zoom = Some(interface);
+        }
         if self.applied_theme != Some(self.view.theme) {
             ctx.request_repaint();
             self.applied_theme = Some(self.view.theme);
@@ -493,6 +505,7 @@ impl eframe::App for GuitarScoreApp {
         self.handle_close_request(&ctx);
         self.apply_theme(&ctx);
         // Keys first, before any widget sees them (a focused button would take Space).
+        self.interface_zoom_keys(&ctx);
         self.handle_keys(&ctx);
         // A count-in that has finished starts the song it was counting in.
         self.poll_count_in();

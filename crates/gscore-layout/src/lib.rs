@@ -57,7 +57,7 @@ pub use error::LayoutError;
 pub use glyph::{Digit, Flag, Glyph};
 use gscore_model::VoiceIndex;
 pub use metrics::{EngravingDefaults, GlyphBox, MusicFont, TextMetrics};
-pub use options::{LayoutOptions, Spacing};
+pub use options::{EmptyStaves, LayoutOptions, Spacing};
 pub use pdf::{PdfFonts, to_pdf};
 pub use place::{BeatPlace, Hit, MeasurePlace, Places, SystemPlace};
 pub use svg::to_svg;

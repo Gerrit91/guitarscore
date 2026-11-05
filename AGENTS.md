@@ -325,8 +325,11 @@ panels that fill it.
   breaks and bars per line, pages side by side when zoomed out, PDF export (app and CLI).
   Progress (2026-11-05): multi-track systems (View › All tracks or a chosen set, beats
   aligned, GP7's multitrack line breaks read, edited and saved) and editing across staves
-  (clicks, drags, Up/Down onto the next track); open: native printing, hiding empty
-  staves, a bracket or brace, rotated names on later pages.
+  (clicks, drags, Up/Down onto the next track), hiding empty staves (View menu, PDF,
+  `render --hide-empty-staves`). Moved to the backlog by the owner (2026-11-05): native
+  printing, a bracket or brace, rotated names on later pages, the bars-per-line limit and
+  the Settings preview for several tracks, remembering the shown tracks, moving the
+  multitrack breaks when bars are inserted or deleted.
   - **Page setup:** paper size (A4, Letter, custom) and orientation, margins, score size
     (staff space), header and footer contents. Read from and written to the Guitar Pro
     file (`gscore-gp` already reads `PageSetup`, including the `%title%`, `%N%/%P%`
