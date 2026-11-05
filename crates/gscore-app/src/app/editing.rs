@@ -652,6 +652,25 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Slows down or speeds up playback (0.5 to 1.2 of the written tempo).
+    pub fn set_playback_speed(&mut self, speed: f32) {
+        if let Err(error) = self.playback.set_speed(speed) {
+            self.notice = Some(error);
+            return;
+        }
+        self.settings.playback_speed = self.playback.speed();
+    }
+
+    /// Sets the speed trainer's settings (stored with the app settings).
+    pub fn set_speed_trainer(&mut self, trainer: crate::playback::SpeedTrainer) {
+        self.playback.set_trainer(trainer);
+        let trainer = self.playback.trainer();
+        self.settings.speed_trainer_enabled = trainer.enabled;
+        self.settings.speed_trainer_every = trainer.every;
+        self.settings.speed_trainer_step = trainer.step;
+        self.settings.speed_trainer_target = trainer.target;
+    }
+
     /// Does what the editor asked the app for.
     pub(super) fn request(&mut self, request: Request, ctx: &egui::Context) {
         match request {

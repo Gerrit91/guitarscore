@@ -204,6 +204,16 @@ pub struct Settings {
     pub count_in_bars: u8,
     /// Whether a looped selection is counted in again each time it starts over.
     pub count_in_loops: bool,
+    /// Playback speed relative to the written tempo (0.5 to 1.2).
+    pub playback_speed: f32,
+    /// Whether the speed trainer raises the speed after every few loop passes.
+    pub speed_trainer_enabled: bool,
+    /// Loop passes between two speed steps.
+    pub speed_trainer_every: u8,
+    /// How much faster each step is, in percent.
+    pub speed_trainer_step: u8,
+    /// The top speed the trainer works up to (1.0, 1.1 or 1.2).
+    pub speed_trainer_target: f32,
     /// The SoundFont chosen for the built-in synthesizer, if any.
     pub soundfont_path: Option<PathBuf>,
     /// Whether playback prefers the built-in synthesizer over MIDI output.
@@ -247,6 +257,11 @@ impl Default for Settings {
             click_sound: gscore_play::ClickSound::default().id().to_owned(),
             count_in_bars: 1,
             count_in_loops: false,
+            playback_speed: 1.0,
+            speed_trainer_enabled: false,
+            speed_trainer_every: 2,
+            speed_trainer_step: 5,
+            speed_trainer_target: 1.0,
             soundfont_path: None,
             prefer_synth: true,
             midi_port: None,
@@ -400,6 +415,25 @@ impl Settings {
         } else {
             1.0
         };
+        self.playback_speed = if self.playback_speed.is_finite() {
+            self.playback_speed.clamp(
+                crate::playback::SPEED_RANGE.0,
+                crate::playback::SPEED_RANGE.1,
+            )
+        } else {
+            1.0
+        };
+        let mut trainer = crate::playback::SpeedTrainer {
+            enabled: self.speed_trainer_enabled,
+            every: self.speed_trainer_every,
+            step: self.speed_trainer_step,
+            target: self.speed_trainer_target,
+        };
+        trainer.sanitize();
+        self.speed_trainer_enabled = trainer.enabled;
+        self.speed_trainer_every = trainer.every;
+        self.speed_trainer_step = trainer.step;
+        self.speed_trainer_target = trainer.target;
         self.recent_files.truncate(MAX_RECENT_FILES);
         self.open_files.truncate(MAX_OPEN_FILES);
         // A hostile or broken file cannot make the keymap huge.

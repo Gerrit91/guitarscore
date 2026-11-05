@@ -318,6 +318,8 @@ impl GuitarScoreApp {
                 toggle_loop = true;
             }
             self.position_readout(ui);
+            ui.add_space(4.0);
+            self.speed_control(ui);
         });
         if to_start {
             self.go_to_start();
@@ -374,6 +376,38 @@ impl GuitarScoreApp {
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
         ui.min_rect().right() - start
+    }
+
+    /// The playback speed (50 % to 120 % of the written tempo), and whether the speed
+    /// trainer is on.
+    fn speed_control(&mut self, ui: &mut egui::Ui) {
+        let mut speed = self.playback.speed();
+        let chosen = speed;
+        let trainer = self.playback.trainer();
+        let response = egui::ComboBox::from_id_salt("playback_speed")
+            .selected_text(format!("{:.0} %", speed * 100.0))
+            .width(66.0)
+            .show_ui(ui, |ui| {
+                for choice in crate::playback::SPEED_CHOICES {
+                    ui.selectable_value(&mut speed, choice, format!("{:.0} %", choice * 100.0));
+                }
+            })
+            .response;
+        ui.ctx()
+            .accesskit_node_builder(response.id, |node| node.set_label("Playback speed"));
+        let mut tip = "Playback speed; the written tempo stays as it is".to_owned();
+        if trainer.enabled {
+            tip.push_str(&format!(
+                "\nSpeed trainer: +{} % every {} passes, up to {:.0} %",
+                trainer.step,
+                trainer.every,
+                trainer.target * 100.0
+            ));
+        }
+        response.on_hover_text(tip);
+        if (speed - chosen).abs() > f32::EPSILON {
+            self.set_playback_speed(speed);
+        }
     }
 
     /// The time (or the selection's time), the measure being played (or the cursor's), how

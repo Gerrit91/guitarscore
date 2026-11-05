@@ -261,6 +261,13 @@ impl GuitarScoreApp {
         );
         app.playback.set_count_in_bars(app.settings.count_in_bars);
         app.playback.set_count_in_loops(app.settings.count_in_loops);
+        let _ = app.playback.set_speed(app.settings.playback_speed);
+        app.playback.set_trainer(crate::playback::SpeedTrainer {
+            enabled: app.settings.speed_trainer_enabled,
+            every: app.settings.speed_trainer_every,
+            step: app.settings.speed_trainer_step,
+            target: app.settings.speed_trainer_target,
+        });
         app.restore_tabs(startup_files, startup_active, ctx);
         app
     }
@@ -278,6 +285,12 @@ impl GuitarScoreApp {
         settings.click_sound = self.playback.click_sound().id().to_owned();
         settings.count_in_bars = self.playback.count_in_bars();
         settings.count_in_loops = self.playback.count_in_loops();
+        settings.playback_speed = self.playback.speed();
+        let trainer = self.playback.trainer();
+        settings.speed_trainer_enabled = trainer.enabled;
+        settings.speed_trainer_every = trainer.every;
+        settings.speed_trainer_step = trainer.step;
+        settings.speed_trainer_target = trainer.target;
         settings.soundfont_path = self.playback.soundfont().map(std::path::Path::to_path_buf);
         settings.prefer_synth = matches!(self.playback.output(), Output::Synth(_));
         settings.midi_port = self.playback.port().map(str::to_owned);
