@@ -69,6 +69,9 @@
     <script type="module">
       import init from "./guitarscore.js";
 
+      // Used by the browser smoke test to measure download + SoundFont load.
+      globalThis.__guitarscoreStarted = performance.now();
+
       const loading = document.getElementById("loading");
       const status = document.getElementById("status");
       const showError = (error) => {

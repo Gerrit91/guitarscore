@@ -71,6 +71,7 @@ web-sys = { version = "0.3", features = [
     "HtmlElement",
     "MessageEvent",
     "MessagePort",
+    "Performance",
     "Response",
     "Storage",
     "Url",

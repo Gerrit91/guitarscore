@@ -133,6 +133,9 @@ pub struct GuitarScoreApp {
     panel_sizes: PanelSizes,
     /// The window's last position and size.
     last_window: Option<WindowState>,
+    /// The browser's SoundFont state last written to the page (`loaded` or `error: …`).
+    #[cfg(target_arch = "wasm32")]
+    browser_sound: Option<String>,
 }
 
 /// Panel sizes the app remembers: the song grid's height and the track panel's width.
@@ -244,6 +247,8 @@ impl GuitarScoreApp {
             settings_path,
             panel_sizes,
             last_window,
+            #[cfg(target_arch = "wasm32")]
+            browser_sound: None,
         };
         app.restore_tabs(startup_files, startup_active, ctx);
         app
@@ -445,6 +450,57 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Writes the SoundFont's state to the page, so the smoke test can wait for it.
+    #[cfg(target_arch = "wasm32")]
+    fn mark_browser_sound(&mut self, ctx: &egui::Context) {
+        if self.playback.is_loading() {
+            // Report the download's progress too, so a stuck one is visible in the page.
+            if let Some((done, total)) = self.playback.load_progress()
+                && total > 0
+                && let Some(window) = web_sys::window()
+                && let Some(document) = window.document()
+                && let Some(body) = document.body()
+            {
+                let percent =
+                    u16::try_from(done.saturating_mul(100).checked_div(total).unwrap_or(0))
+                        .unwrap_or(0)
+                        .min(100);
+                let _ = body.set_attribute("data-guitarscore-sound-progress", &percent.to_string());
+            }
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+            return;
+        }
+        let value = match self.playback.browser_error() {
+            Some(error) => format!("error: {error}"),
+            None => "loaded".to_owned(),
+        };
+        if self.browser_sound.as_deref() == Some(value.as_str()) {
+            return;
+        }
+        if let Some(window) = web_sys::window()
+            && let Some(document) = window.document()
+            && let Some(body) = document.body()
+        {
+            // A failure to set a debug attribute must not affect the editor.
+            let _ = body.set_attribute("data-guitarscore-sound", &value);
+            // How long the page took from its script starting to the SoundFont being
+            // ready: the build's smoke test reports it (download plus worklet parse).
+            if value == "loaded"
+                && let Some(started) = js_sys::Reflect::get(
+                    window.as_ref(),
+                    &wasm_bindgen::JsValue::from_str("__guitarscoreStarted"),
+                )
+                .ok()
+                .and_then(|value| value.as_f64())
+                && let Some(performance) = window.performance()
+            {
+                let millis = (performance.now() - started).max(0.0).round();
+                let _ = body.set_attribute("data-guitarscore-sound-ms", &format!("{millis:.0}"));
+            }
+        }
+        self.browser_sound = Some(value);
+    }
+
     /// Saves the settings and closes the tabs (on the desktop, their recovery folders).
     fn finish_exit(&mut self) {
         self.save_settings();
@@ -479,6 +535,8 @@ impl eframe::App for GuitarScoreApp {
             self.last_window = Some(window);
         }
         self.handle_events(&ctx);
+        #[cfg(target_arch = "wasm32")]
+        self.mark_browser_sound(&ctx);
         // The page asks before it is left while a song has unsaved edits: the browser
         // build has no recovery journal yet.
         #[cfg(target_arch = "wasm32")]

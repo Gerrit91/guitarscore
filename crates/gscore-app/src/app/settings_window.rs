@@ -13,6 +13,7 @@ use gscore_model::{MAX_TEMPO, SONG_TEXT_FIELDS, SongInfo, SongTextField};
 use super::GuitarScoreApp;
 use super::settings_page::{PageDraft, PagePreview, page_tab};
 use super::style;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::playback::Output;
 use crate::state::ThemeChoice;
 
@@ -71,6 +72,7 @@ impl SettingsWindow {
 /// background thread (never on the UI thread): once when the Audio I/O tab is first shown,
 /// and again on "Search again".
 #[derive(Debug, Default)]
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 struct SoundFontScan {
     /// What the last search found.
     found: Vec<PathBuf>,
@@ -80,6 +82,7 @@ struct SoundFontScan {
     started: bool,
 }
 
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 impl SoundFontScan {
     /// Starts the first search, and takes in a finished one.
     fn poll(&mut self, ctx: &egui::Context) {
@@ -282,146 +285,178 @@ impl GuitarScoreApp {
 
     /// The audio I/O tab: the output, a SoundFont for the synthesizer, and MIDI ports.
     fn audio_tab(&mut self, ui: &mut Ui, soundfonts: &mut SoundFontScan) {
-        soundfonts.poll(ui.ctx());
-        ui.heading("Output");
-        let current = self.playback.soundfont().map(std::path::Path::to_path_buf);
-        let mut available = soundfonts.found.clone();
-        if let Some(current) = &current
-            && !available.contains(current)
+        // A browser has no MIDI ports and no folders to search: the site ships one
+        // SoundFont and the synthesizer is the only output.
+        #[cfg(target_arch = "wasm32")]
         {
-            available.insert(0, current.clone());
-        }
-        let synth = matches!(self.playback.output(), Output::Synth(_));
-        let chosen = current.clone().or_else(|| available.first().cloned());
-        if ui
-            .add_enabled(
-                chosen.is_some(),
-                egui::RadioButton::new(synth, "Synthesizer"),
-            )
-            .clicked()
-            && let Some(soundfont) = chosen.clone()
-        {
-            self.playback.use_soundfont(soundfont);
-        }
-        if ui.radio(!synth, "MIDI").clicked() {
-            self.playback.choose_output(Output::Midi(None));
-        }
-        if synth {
+            let _ = soundfonts;
+            ui.heading("Output");
+            ui.label("Synthesizer");
             ui.horizontal(|ui| {
                 ui.label("SoundFont");
-                let selected = current
-                    .as_deref()
-                    .and_then(std::path::Path::file_name)
-                    .map_or_else(
-                        || "Choose…".to_owned(),
-                        |name| name.to_string_lossy().into_owned(),
-                    );
-                let mut pick = None;
-                let response = egui::ComboBox::from_id_salt("settings_soundfont")
-                    .selected_text(selected)
-                    .width(280.0)
-                    .show_ui(ui, |ui| {
-                        for path in &available {
-                            let name = path.file_name().map_or_else(
-                                || path.display().to_string(),
-                                |name| name.to_string_lossy().into_owned(),
-                            );
-                            let is_current = current.as_deref() == Some(path.as_path());
-                            if ui
-                                .selectable_label(is_current, name)
-                                .on_hover_text(path.display().to_string())
-                                .clicked()
-                            {
-                                pick = Some(path.clone());
-                                ui.close();
+                ui.label(
+                    RichText::new(format!(
+                        "{} (bundled with this site)",
+                        crate::BROWSER_SOUNDFONT_NAME
+                    ))
+                    .weak(),
+                );
+            });
+            if let Some(name) = self.playback.soundfont_name()
+                && name != crate::BROWSER_SOUNDFONT_NAME
+            {
+                ui.label(RichText::new(name).weak());
+            }
+            if let Some(error) = self.playback.new_error() {
+                self.notice = Some(error);
+            }
+            ui.separator();
+            ui.heading("Input");
+            ui.label(RichText::new("MIDI inputs (a keyboard or guitar) come later.").weak());
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            soundfonts.poll(ui.ctx());
+            ui.heading("Output");
+            let current = self.playback.soundfont().map(std::path::Path::to_path_buf);
+            let mut available = soundfonts.found.clone();
+            if let Some(current) = &current
+                && !available.contains(current)
+            {
+                available.insert(0, current.clone());
+            }
+            let synth = matches!(self.playback.output(), Output::Synth(_));
+            let chosen = current.clone().or_else(|| available.first().cloned());
+            if ui
+                .add_enabled(
+                    chosen.is_some(),
+                    egui::RadioButton::new(synth, "Synthesizer"),
+                )
+                .clicked()
+                && let Some(soundfont) = chosen.clone()
+            {
+                self.playback.use_soundfont(soundfont);
+            }
+            if ui.radio(!synth, "MIDI").clicked() {
+                self.playback.choose_output(Output::Midi(None));
+            }
+            if synth {
+                ui.horizontal(|ui| {
+                    ui.label("SoundFont");
+                    let selected = current
+                        .as_deref()
+                        .and_then(std::path::Path::file_name)
+                        .map_or_else(
+                            || "Choose…".to_owned(),
+                            |name| name.to_string_lossy().into_owned(),
+                        );
+                    let mut pick = None;
+                    let response = egui::ComboBox::from_id_salt("settings_soundfont")
+                        .selected_text(selected)
+                        .width(280.0)
+                        .show_ui(ui, |ui| {
+                            for path in &available {
+                                let name = path.file_name().map_or_else(
+                                    || path.display().to_string(),
+                                    |name| name.to_string_lossy().into_owned(),
+                                );
+                                let is_current = current.as_deref() == Some(path.as_path());
+                                if ui
+                                    .selectable_label(is_current, name)
+                                    .on_hover_text(path.display().to_string())
+                                    .clicked()
+                                {
+                                    pick = Some(path.clone());
+                                    ui.close();
+                                }
                             }
-                        }
-                        if soundfonts.searching() {
-                            ui.label("Searching…");
-                        } else if available.is_empty() {
-                            ui.label("No SoundFont files found");
-                        }
-                    });
-                ui.ctx()
-                    .accesskit_node_builder(response.response.id, |node| {
-                        node.set_label("SoundFont file");
-                    });
-                if ui.button("Choose SoundFont…").clicked()
+                            if soundfonts.searching() {
+                                ui.label("Searching…");
+                            } else if available.is_empty() {
+                                ui.label("No SoundFont files found");
+                            }
+                        });
+                    ui.ctx()
+                        .accesskit_node_builder(response.response.id, |node| {
+                            node.set_label("SoundFont file");
+                        });
+                    if ui.button("Choose SoundFont…").clicked()
+                        && let Err(error) = self.tasks.pick_soundfont(ui.ctx())
+                    {
+                        self.notice = Some(error);
+                    }
+                    if ui
+                        .add_enabled(!soundfonts.searching(), egui::Button::new("Search again"))
+                        .on_hover_text("Look for new SoundFont files in the usual folders")
+                        .clicked()
+                    {
+                        soundfonts.start(ui.ctx());
+                    }
+                    if let Some(path) = pick {
+                        self.playback.use_soundfont(path);
+                    }
+                });
+                // The full path directly under the dropdown.
+                if let Some(soundfont) = &current {
+                    ui.label(RichText::new(soundfont.display().to_string()).weak());
+                } else {
+                    ui.label(RichText::new("No SoundFont chosen").weak());
+                }
+            } else {
+                if chosen.is_none()
+                    && ui.button("Choose SoundFont…").clicked()
                     && let Err(error) = self.tasks.pick_soundfont(ui.ctx())
                 {
                     self.notice = Some(error);
                 }
-                if ui
-                    .add_enabled(!soundfonts.searching(), egui::Button::new("Search again"))
-                    .on_hover_text("Look for new SoundFont files in the usual folders")
-                    .clicked()
-                {
-                    soundfonts.start(ui.ctx());
-                }
-                if let Some(path) = pick {
-                    self.playback.use_soundfont(path);
-                }
-            });
-            // The full path directly under the dropdown.
-            if let Some(soundfont) = &current {
-                ui.label(RichText::new(soundfont.display().to_string()).weak());
-            } else {
-                ui.label(RichText::new("No SoundFont chosen").weak());
-            }
-        } else {
-            if chosen.is_none()
-                && ui.button("Choose SoundFont…").clicked()
-                && let Err(error) = self.tasks.pick_soundfont(ui.ctx())
-            {
-                self.notice = Some(error);
-            }
-            ui.horizontal(|ui| {
-                let mut chosen_port = None;
-                let response = egui::ComboBox::from_id_salt("settings_midi_port")
-                    .selected_text(
-                        self.playback
-                            .port()
-                            .map_or_else(|| "Automatic port".to_owned(), str::to_owned),
-                    )
-                    .show_ui(ui, |ui| {
-                        if ui
-                            .selectable_label(self.playback.port().is_none(), "Automatic port")
-                            .clicked()
-                        {
-                            chosen_port = Some(None);
-                        }
-                        for port in self.playback.ports() {
+                ui.horizontal(|ui| {
+                    let mut chosen_port = None;
+                    let response = egui::ComboBox::from_id_salt("settings_midi_port")
+                        .selected_text(
+                            self.playback
+                                .port()
+                                .map_or_else(|| "Automatic port".to_owned(), str::to_owned),
+                        )
+                        .show_ui(ui, |ui| {
                             if ui
-                                .selectable_label(
-                                    self.playback.port() == Some(port),
-                                    format!("MIDI: {port}"),
-                                )
+                                .selectable_label(self.playback.port().is_none(), "Automatic port")
                                 .clicked()
                             {
-                                chosen_port = Some(Some(port.clone()));
+                                chosen_port = Some(None);
                             }
-                        }
-                    });
-                ui.ctx()
-                    .accesskit_node_builder(response.response.id, |node| {
-                        node.set_label("MIDI port");
-                    });
-                if let Some(port) = chosen_port {
-                    self.playback.choose_port(port);
-                }
-                if ui.button("Refresh ports").clicked()
-                    && let Err(error) = self.playback.refresh_ports()
-                {
-                    self.notice = Some(error);
-                }
-            });
+                            for port in self.playback.ports() {
+                                if ui
+                                    .selectable_label(
+                                        self.playback.port() == Some(port),
+                                        format!("MIDI: {port}"),
+                                    )
+                                    .clicked()
+                                {
+                                    chosen_port = Some(Some(port.clone()));
+                                }
+                            }
+                        });
+                    ui.ctx()
+                        .accesskit_node_builder(response.response.id, |node| {
+                            node.set_label("MIDI port");
+                        });
+                    if let Some(port) = chosen_port {
+                        self.playback.choose_port(port);
+                    }
+                    if ui.button("Refresh ports").clicked()
+                        && let Err(error) = self.playback.refresh_ports()
+                    {
+                        self.notice = Some(error);
+                    }
+                });
+            }
+            if let Some(error) = self.playback.new_error() {
+                self.notice = Some(error);
+            }
+            ui.separator();
+            ui.heading("Input");
+            ui.label(RichText::new("MIDI inputs (a keyboard or guitar) come later.").weak());
         }
-        if let Some(error) = self.playback.new_error() {
-            self.notice = Some(error);
-        }
-        ui.separator();
-        ui.heading("Input");
-        ui.label(RichText::new("MIDI inputs (a keyboard or guitar) come later.").weak());
     }
 
     /// The editor tab: theme, keymap file and autosave interval.

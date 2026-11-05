@@ -23,8 +23,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{AudioContext, AudioWorkletNode, MessageEvent, MessagePort};
 
-/// Where the site can put a SoundFont for the browser synth.
-const SOUNDFONT_URL: &str = "assets/soundfonts/default.sf2";
+use crate::web_soundfont;
 
 /// What the worklet reports back.
 #[derive(Debug)]
@@ -34,11 +33,15 @@ struct Shared {
     error: RefCell<Option<String>>,
     /// The SoundFont is still being fetched or loaded into the worklet.
     loading: Cell<bool>,
+    /// Bytes downloaded and the announced size, for the toolbar's bar.
+    progress: Cell<Option<(u64, u64)>>,
+    /// The manifest's name for the loaded font.
+    soundfont_name: RefCell<Option<String>>,
     /// The node must stay alive, or the browser disconnects it.
     node: RefCell<Option<AudioWorkletNode>>,
     port: RefCell<Option<MessagePort>>,
-    /// Messages sent before the worklet was ready.
-    queue: RefCell<Vec<JsValue>>,
+    /// Messages sent before the worklet was ready, with the buffers to transfer.
+    queue: RefCell<Vec<(JsValue, Option<js_sys::Array>)>>,
 }
 
 impl Default for Shared {
@@ -48,6 +51,8 @@ impl Default for Shared {
             state: RefCell::new(PlayState::Stopped),
             error: RefCell::new(None),
             loading: Cell::new(true),
+            progress: Cell::new(None),
+            soundfont_name: RefCell::new(None),
             node: RefCell::new(None),
             port: RefCell::new(None),
             queue: RefCell::new(Vec::new()),
@@ -63,11 +68,20 @@ impl Shared {
     }
 
     fn post(&self, message: JsValue) {
+        self.post_with_transfer(message, None);
+    }
+
+    /// Posts `message`, moving `transfer` instead of copying it (a 30 MB SoundFont).
+    fn post_with_transfer(&self, message: JsValue, transfer: Option<js_sys::Array>) {
         match self.port.borrow().as_ref() {
             Some(port) => {
-                let _ = port.post_message(&message);
+                if let Some(transfer) = transfer {
+                    let _ = port.post_message_with_transferable(&message, transfer.as_ref());
+                } else {
+                    let _ = port.post_message(&message);
+                }
             }
-            None => self.queue.borrow_mut().push(message),
+            None => self.queue.borrow_mut().push((message, transfer)),
         }
     }
 }
@@ -105,6 +119,16 @@ impl WebPlayer {
     /// worklet). Commands sent meanwhile take effect once it is loaded.
     pub fn is_loading(&self) -> bool {
         self.shared.loading.get()
+    }
+
+    /// Bytes downloaded and the announced size, while the SoundFont loads.
+    pub fn load_progress(&self) -> Option<(u64, u64)> {
+        self.shared.progress.get()
+    }
+
+    /// The loaded SoundFont's name, for the About window.
+    pub fn soundfont_name(&self) -> Option<String> {
+        self.shared.soundfont_name.borrow().clone()
     }
 
     /// A short description of the audio output, for the toolbar.
@@ -184,8 +208,12 @@ fn start_worklet(context: AudioContext, shared: Rc<Shared>) {
                     return Ok(());
                 }
             }
-            for message in shared.queue.borrow_mut().drain(..) {
-                let _ = port.post_message(&message);
+            for (message, transfer) in shared.queue.borrow_mut().drain(..) {
+                if let Some(transfer) = transfer {
+                    let _ = port.post_message_with_transferable(&message, transfer.as_ref());
+                } else {
+                    let _ = port.post_message(&message);
+                }
             }
             Ok::<(), String>(())
         }
@@ -227,31 +255,20 @@ async fn load_worklet_module() -> Result<JsValue, String> {
     Ok(message.into())
 }
 
-/// Fetches the site's SoundFont and hands it to the worklet, which answers `loaded`.
+/// Fetches the site's SoundFont (with progress) and hands it to the worklet, which
+/// answers `loaded`. The bytes are transferred, not copied: a structured clone would copy
+/// 30 MB on the UI thread.
 async fn fetch_soundfont(shared: &Shared) -> Result<(), String> {
-    let missing = || {
-        format!(
-            "no SoundFont on this site ({SOUNDFONT_URL}): the browser build cannot play \
-             sound yet; editing works"
-        )
-    };
-    let window = web_sys::window().ok_or_else(|| "there is no browser window".to_owned())?;
-    let response = JsFuture::from(window.fetch_with_str(SOUNDFONT_URL))
-        .await
-        .map_err(|_| missing())?;
-    let response: web_sys::Response = response.unchecked_into();
-    if !response.ok() {
-        return Err(missing());
-    }
-    let buffer = response
-        .array_buffer()
-        .map_err(|_| "cannot read the SoundFont".to_owned())?;
-    let buffer = JsFuture::from(buffer)
-        .await
-        .map_err(|_| "cannot read the SoundFont".to_owned())?;
+    let loaded = web_soundfont::download(|done, total| {
+        shared.progress.set(Some((done, total)));
+    })
+    .await?;
+    *shared.soundfont_name.borrow_mut() = Some(loaded.name.clone());
+    let array = js_sys::Uint8Array::from(&loaded.bytes[..]);
+    let buffer = array.buffer();
     let message = object("soundfont");
     set(&message, "bytes", &buffer);
-    shared.post(message.into());
+    shared.post_with_transfer(message.into(), Some(js_sys::Array::of1(&buffer)));
     Ok(())
 }
 
@@ -277,7 +294,12 @@ fn handle_message(shared: &Shared, data: JsValue) {
                 _ => PlayState::Stopped,
             };
         }
-        Some("loaded") => shared.loading.set(false),
+        Some("loaded") => {
+            shared.loading.set(false);
+            if let Some((_, total)) = shared.progress.get() {
+                shared.progress.set(Some((total, total)));
+            }
+        }
         Some("error") => {
             let message = get(object, "message")
                 .and_then(|value| value.as_string())

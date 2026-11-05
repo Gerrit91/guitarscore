@@ -46,9 +46,22 @@ pub enum Output {
 
 impl Default for Output {
     fn default() -> Self {
-        Output::Midi(None)
+        // A browser has no MIDI ports; the site ships (or its owner chose) a SoundFont for
+        // the built-in synthesizer, so that is the output. The path is only a label there.
+        #[cfg(target_arch = "wasm32")]
+        {
+            Output::Synth(PathBuf::from(BROWSER_SOUNDFONT_NAME))
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Output::Midi(None)
+        }
     }
 }
+
+/// The bundled browser SoundFont's name, as the toolbar and the settings show it.
+#[cfg(target_arch = "wasm32")]
+pub const BROWSER_SOUNDFONT_NAME: &str = "GeneralUser GS 2.0.3";
 
 /// The connected player.
 #[derive(Debug)]
@@ -184,6 +197,54 @@ impl Playback {
     /// The SoundFont the built-in synthesizer uses when chosen.
     pub fn soundfont(&self) -> Option<&Path> {
         self.soundfont.as_deref()
+    }
+
+    /// Downloaded and announced SoundFont bytes, while the browser loads it.
+    pub fn load_progress(&self) -> Option<(u64, u64)> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            match &self.player {
+                Some(Active::Web(player)) => player.load_progress(),
+                _ => None,
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            None
+        }
+    }
+
+    /// Why the browser's audio output failed, if it did (not consumed like `new_error`).
+    pub fn browser_error(&self) -> Option<String> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            match &self.player {
+                Some(Active::Web(player)) => player.error(),
+                _ => None,
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            None
+        }
+    }
+
+    /// The loaded browser SoundFont's name, if it is known.
+    pub fn soundfont_name(&self) -> Option<String> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            match &self.player {
+                Some(Active::Web(player)) => player.soundfont_name(),
+                _ => None,
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.soundfont
+                .as_deref()
+                .and_then(|path| path.file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+        }
     }
 
     /// Whether the metronome clicks on every beat.

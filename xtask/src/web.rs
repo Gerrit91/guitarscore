@@ -414,6 +414,32 @@ fn run_headless(browser: &std::ffi::OsString, out: &Path, port: u16) -> TaskResu
     }
     browser.screenshot(&out.join("smoke.png"))?;
 
+    // The bundled SoundFont must download and be accepted by the worklet, or the page
+    // says why. This is where a wrong manifest, a failed download or a broken RIFF file
+    // shows up in CI.
+    let sound = "new Promise((resolve) => { const started = Date.now(); \
+                  const poll = () => { const value = document.body.dataset.guitarscoreSound; \
+                  if (value === 'loaded') return resolve('ok'); \
+                  if (value) return resolve(value); \
+                  if (Date.now() - started > 45000) return resolve('timeout; progress=' + \
+                    (document.body.dataset.guitarscoreSoundProgress || 'none')); \
+                  setTimeout(poll, 100); }; poll(); })";
+    let started = Instant::now();
+    let result = browser.eval(sound)?;
+    if result != "ok" {
+        return Err(format!(
+            "the browser's SoundFont did not load: {result}{}",
+            console_log(browser.events())
+        ));
+    }
+    let millis = browser
+        .eval("document.body.dataset.guitarscoreSoundMs || 'unknown'")
+        .unwrap_or_else(|_| "unknown".to_owned());
+    println!(
+        "web: SoundFont loaded in {millis} ms from page start ({:.1} s after the editor marker)",
+        started.elapsed().as_secs_f32()
+    );
+
     // The audio worklet page: its module and second wasm instance must load, and the
     // message port must answer, in a real browser.
     let worklet = "new Promise((resolve) => { const started = Date.now(); \

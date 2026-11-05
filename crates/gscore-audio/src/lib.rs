@@ -29,6 +29,8 @@ pub use synth_player::SynthPlayer;
 #[cfg(target_arch = "wasm32")]
 mod web_player;
 #[cfg(target_arch = "wasm32")]
+mod web_soundfont;
+#[cfg(target_arch = "wasm32")]
 pub use web_player::WebPlayer;
 
 // The integration test builds songs with `gscore-model`'s test support; this marks the

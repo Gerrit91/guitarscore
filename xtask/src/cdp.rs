@@ -60,6 +60,11 @@ impl Browser {
         self.page.evaluate(expression)
     }
 
+    /// Evaluates `expression` in the current page (no navigation).
+    pub(crate) fn eval(&mut self, expression: &str) -> Result<String, String> {
+        self.page.evaluate(expression)
+    }
+
     /// The browser's console messages and exceptions, for a failure report.
     pub(crate) fn events(&self) -> &[String] {
         &self.page.events
@@ -123,7 +128,7 @@ impl Page {
         let message = format!("{{\"id\":{id},\"method\":\"{method}\",\"params\":{params}}}");
         self.send_text(&message)?;
         let expected = format!("\"id\":{id}");
-        let deadline = Instant::now() + Duration::from_secs(45);
+        let deadline = Instant::now() + Duration::from_secs(120);
         while Instant::now() < deadline {
             let text = self.receive_text()?;
             if text.contains(&expected) {
@@ -261,7 +266,7 @@ fn connect_websocket(port: u16, url: &str) -> Result<Page, String> {
     let mut socket = TcpStream::connect(("127.0.0.1", port))
         .map_err(|e| format!("cannot connect to the browser: {e}"))?;
     socket
-        .set_read_timeout(Some(Duration::from_secs(45)))
+        .set_read_timeout(Some(Duration::from_secs(120)))
         .map_err(|e| format!("cannot set a browser timeout: {e}"))?;
     let request = format!(
         "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nUpgrade: websocket\r\n\
