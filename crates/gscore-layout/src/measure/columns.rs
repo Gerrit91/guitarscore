@@ -212,6 +212,7 @@ pub(super) fn column_items(
         graces: Vec::new(),
         grace_width: 0.0,
         beat: 0,
+        tuplet: None,
         beats: Vec::new(),
         text,
     })

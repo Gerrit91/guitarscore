@@ -253,6 +253,11 @@ impl MeasureLayout {
                     }
                 }
             }
+            // Without a notation staff, the tab carries the tuplet numbers itself: a
+            // triplet must be visible there too, not only in the standard notation.
+            if tops.notation.is_none() {
+                self.draw_tab_tuplets(&xs, right, top, ops);
+            }
         }
         // The highest point of each column's notation, so marks above the staff clear it.
         let mut ceilings = vec![f32::MAX; self.columns.len()];
@@ -351,6 +356,63 @@ impl MeasureLayout {
         self.draw_column_ornaments(&xs, right, &vec![top; xs.len()], ctx, ops);
         self.draw_legato(&xs, top, ops);
         self.draw_under_staff(&xs, right, top, ctx, ops);
+    }
+
+    /// Tuplet brackets above a tab staff that has no notation staff to carry them: one
+    /// number per beat's group, over the columns it spans.
+    fn draw_tab_tuplets(&self, xs: &[f32], right: f32, top: f32, ops: &mut Vec<DrawOp>) {
+        let mut index = 0;
+        while index < self.columns.len() {
+            let Some(column) = self.columns.get(index) else {
+                break;
+            };
+            let Some((enters, _)) = column.tuplet else {
+                index = index.saturating_add(1);
+                continue;
+            };
+            let beat = column.beat;
+            let start = xs.get(index).copied().unwrap_or(right);
+            // The columns of this beat that share the tuplet.
+            let mut end = index;
+            while self
+                .columns
+                .get(end.saturating_add(1))
+                .is_some_and(|next| next.beat == beat && next.tuplet == column.tuplet)
+            {
+                end = end.saturating_add(1);
+            }
+            let last = xs.get(end).copied().unwrap_or(start);
+            let bracket = (start - 0.5, last + 0.5);
+            let line_y = top - 1.0;
+            let hook = 0.25;
+            ops.push(DrawOp::Line {
+                from: Point::new(bracket.0, line_y + hook),
+                to: Point::new(bracket.0, line_y),
+                thickness: 0.08,
+                color: ColorToken::Notation,
+            });
+            ops.push(DrawOp::Line {
+                from: Point::new(bracket.0, line_y),
+                to: Point::new(bracket.1, line_y),
+                thickness: 0.08,
+                color: ColorToken::Notation,
+            });
+            ops.push(DrawOp::Line {
+                from: Point::new(bracket.1, line_y),
+                to: Point::new(bracket.1, line_y + hook),
+                thickness: 0.08,
+                color: ColorToken::Notation,
+            });
+            ops.push(DrawOp::Text {
+                text: enters.to_string(),
+                at: Point::new((bracket.0 + bracket.1) / 2.0, line_y - 0.35),
+                size: 0.9,
+                font: TextFont::Regular,
+                anchor: TextAnchor::Middle,
+                color: ColorToken::Notation,
+            });
+            index = end.saturating_add(1);
+        }
     }
 
     /// Slurs and lines between one note and the next one on the same string.

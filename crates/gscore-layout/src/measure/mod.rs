@@ -116,6 +116,9 @@ struct Column {
     main_left: f32,
     /// The beat this column starts in (beams join notes within one beat).
     beat: u64,
+    /// The tuplet this column belongs to (`enters:times`), if any. The tab staff shows it
+    /// when no notation staff is there to carry it.
+    tuplet: Option<(u8, u8)>,
     /// The model beats that start here, as `(voice, beat)`.
     beats: Vec<(VoiceIndex, BeatIndex)>,
     /// Guitar Pro's beat text, written above the staff at this column.
@@ -135,6 +138,7 @@ struct ColumnData {
     graces: Vec<Grace>,
     grace_width: f32,
     beat: u64,
+    tuplet: Option<(u8, u8)>,
     beats: Vec<(VoiceIndex, BeatIndex)>,
     text: Option<String>,
 }
@@ -209,6 +213,12 @@ impl MeasureLayout {
             let length = next.checked_sub(*onset).map_or(0.0, as_f64);
             let plain: Vec<BeatView<'_>> = beats.iter().map(|&(_, beat)| beat).collect();
             let mut data = column_items(&plain, ctx, column_index == 0)?;
+            // The shortest tuplet of the beats starting here; all normal beats of one
+            // tuplet share it.
+            data.tuplet = plain
+                .iter()
+                .filter(|beat| beat.kind() != gscore_model::BeatKind::Empty)
+                .find_map(|beat| beat.note_value().ok()?.tuplet());
             if let Some(notation) = &ctx.notation {
                 data.notation = notation::column_items(beats, notation, key)?;
             }
@@ -269,6 +279,7 @@ impl MeasureLayout {
                     graces: Vec::new(),
                     grace_width: 0.0,
                     beat: 0,
+                    tuplet: None,
                     beats: Vec::new(),
                     text: None,
                 },
@@ -400,6 +411,7 @@ impl MeasureLayout {
                     grace_width: data.grace_width,
                     main_left: extents.get(i).map_or(0.0, |(main, _, _)| *main),
                     beat: data.beat,
+                    tuplet: data.tuplet,
                     beats: data.beats,
                     text: data.text,
                     dynamic,

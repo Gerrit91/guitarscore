@@ -4,6 +4,8 @@
 #![allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 #![allow(unused_crate_dependencies)]
 
+mod common;
+
 use gscore_layout::{ColorToken, DrawOp, Fonts, Layout, LayoutOptions, layout_track};
 use gscore_model::testing::{self, GUITAR_6};
 use gscore_model::{Fret, MeasureIndex, Song, StringNumber, TrackIndex, TrackStaves};
@@ -65,4 +67,25 @@ fn each_choice_shows_its_staves() {
     assert_eq!(system.strings, 6);
     let both_system = &both.places.systems[0];
     assert!(system.tab_bottom() < both_system.tab_top);
+}
+
+/// A tab-only staff still shows the tuplets the notation staff would carry.
+#[test]
+fn tab_only_shows_tuplet_numbers() {
+    let song = common::open("basic/note_lengths.gp");
+    let layout = common::layout_tab_only(&song, 0);
+    let texts: Vec<&str> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    for tuplet in ["3", "5", "6", "7"] {
+        assert!(
+            texts.contains(&tuplet),
+            "missing tuplet {tuplet:?} in the tab: {texts:?}"
+        );
+    }
 }
