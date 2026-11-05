@@ -85,10 +85,12 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    or 60 s). SIGTERM and system shutdown rely on the journal, not on a final snapshot.
    Only commands are wrapped in `catch_unwind` and panic-tested; layout and drawing are
    contained since M6, without an injection test.
-8. **Little test data.** Three songs (`steel_guitar_dadgad`, `note_lengths`, `ornaments`)
-   as GP7, GPX and GP5, with import, `info` and `dump` reference tests and
-   truncation/byte-flip robustness — still only one track and one voice per song. No
-   GP3/GP4 files, and no real fuzzer (cargo-fuzz; deferred to "Later" by the owner).
+8. **Little test data.** Four songs (`steel_guitar_dadgad`, `note_lengths`, `ornaments`,
+   and `staff` with clef changes, free time, simile marks, octave signs and a chord diagram)
+   as GP7, GPX and GP5 (the newest only as GP7/GPX/GP5 where Guitar Pro exported it), with
+   import, `info` and `dump` reference tests and truncation/byte-flip robustness — still
+   only one track and one voice per song, except `multi_staff`. No GP3/GP4 files, and no
+   real fuzzer (cargo-fuzz; deferred to "Later" by the owner).
 9. **Layout is a first version (M5).** `gscore-layout` draws one track as standard
    notation above tablature (as Guitar Pro does), on one endless page, with the tab's
    ornaments, line breaking and justification. Notation: clef (treble, bass for basses),
@@ -100,9 +102,11 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    within a measure and across barlines (split into fragments at a line break) and tuplet
    numbers. Up to four voices are written: with two or more the first points its stems up and
    the rest down, and a notehead that would sit on the first voice's position moves right.
-   Missing in notation: tuplet groups spanning several beats (each beat's beam gets its own
-   number), articulations and ornaments on the notation staff (they stay on the
-   tab), harmonic diamonds (harmonics are written at their sounding pitch). Grace notes are
+   Clefs can change per measure (GP6/GP7 store them; GP3-5 files keep the clef derived from
+   the instrument), and free time, bar-repetition (simile) marks, octave signs and chord
+   diagrams are drawn. Missing in notation: tuplet groups spanning several beats (each
+   beat's beam gets its own number), articulations and ornaments on the notation staff (they
+   stay on the tab), harmonic diamonds (harmonics are written at their sounding pitch). Grace notes are
    drawn as cue-sized heads (own accidentals and ledger lines, slashed eighth flag) and
    smaller fret numbers before their note (GP6/GP7 grace beats and GP3-5 attached
    graces) and take no time. Since 2026-11-03
@@ -112,7 +116,7 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    printing (M21, AGENTS.md section 9; pages, page setup, breaks and PDF export are live
    since 2026-11-03, multi-track systems since 2026-11-05), rhythm
    under the tab
-   (shown in the notation instead). Ornaments that connect notes only look within one
+   (shown in the notation instead), though tuplet numbers are repeated on a tab-only staff. Ornaments that connect notes only look within one
    measure. Voice and piano tracks get no notation (no tuning). Text widths are estimated for non-digits; no PNG output (`rsvg-convert` works).
 10. **The app edits one voice at a cursor (M8, first version).** It opens files in the
    background, shows one track's page, edits voice 1 from the keyboard (keymap file) or
@@ -123,7 +127,8 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
    `ctrl+=`/`ctrl+-`/`ctrl+0`, has a settings window, and the cursor follows playback and
    scrolls with it. Since M14 it has a left edit palette, beat and measure selection with
    copy/cut/paste, voice 2 entry, effect editing, tempo/time/key signatures and section
-   markers. Missing: a multi-page view, chord diagrams and lyrics, and
+   markers. Five score views are live (page vertical, page horizontal, page grid, screen
+   vertical and screen horizontal). Missing: lyrics and
    a beat selection that crosses tracks. Undo back to the saved state still
    counts as "changed". `clear_note`,
    `previous_measure` and `next_measure` have no default key yet (owner's decision; they

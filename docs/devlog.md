@@ -2936,3 +2936,29 @@ needed for a much larger font); owner listening check.
   margin included.
 - Test: the track panel test checks that the full-width tuning button keeps its right
   edge while a name is edited and after a long name is entered.
+
+## 2026-11-05 — Staff test file, slash notation, five views, metronome volume
+
+- **Tuplets no longer change note values.** The dot and tuplet tiles changed every
+  selected beat to the palette's value, so taking a triplet off a previously eighth note
+  left a quarter. They now keep each beat's written value and change only its dots or
+  tuplet; a tab-only staff repeats the tuplet numbers (3, 5, 6, 7) it used to hide.
+- **Legato slides** draw only their slur and "sl."; the shift-slide's straight line no
+  longer crosses it. Golden SVGs updated.
+- **Slash notation** is a third per-track staff (GP7 `PartConfiguration` bit 2, saved and
+  loaded): rhythm slashes with stems, beams, rests and tuplets, combinable with notation
+  and tab. The track panel has three icon switches and always leaves one on.
+- **Five score views** (View menu, saved in settings, old `page_view` read as either page
+  vertical or screen vertical): page vertical, page horizontal, page grid, screen vertical
+  and screen horizontal (the score is laid out on one line and scrolls right).
+- **Metronome volume** is a knob in the mixer view only; it scales the click velocities
+  (0 is silent) and is saved in the settings. The grid view has no knob.
+- **The edit palette** stays on the cursor and selection from when playback started,
+  instead of following the playing cursor.
+- **`testdata/basic/staff.gp`** now drives tests for clef changes (treble, bass, alto,
+  tenor), free time (parenthesized signature and "Free time"), simile marks (simple and
+  both halves of a double), octave signs (8va/8vb/15ma/15mb), chord diagrams (name and
+  shape), repeats, alternative endings, key changes and time signatures. Clefs, ottava and
+  simile marks are written back; chord diagrams are read and drawn but not yet written.
+- Tests: `cargo test --workspace`, clippy `-D warnings`, `cargo xtask layers`; the app
+  snapshots were regenerated for the three staff icons.
