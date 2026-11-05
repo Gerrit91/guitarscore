@@ -5,6 +5,7 @@
 
 mod config;
 mod crash_report;
+mod export;
 mod open;
 mod recovery;
 mod save;
@@ -16,6 +17,7 @@ pub use config::{
     default_settings_path, load_json, load_keymap, load_user_keymap, save_json,
 };
 pub use crash_report::{default_crash_dir, install_panic_hook};
+pub use export::{ExportReport, export};
 pub use gscore_io::FileFormat;
 pub use open::{OpenError, open, open_bytes, open_with_bytes, open_with_progress};
 pub use recovery::{

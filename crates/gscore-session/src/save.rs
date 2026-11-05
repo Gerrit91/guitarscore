@@ -199,7 +199,7 @@ pub fn backup_path(path: &Path) -> Result<PathBuf, SaveError> {
 }
 
 /// A file in the same directory as `path`, named by `rename` from `path`'s file name.
-fn sibling(
+pub(crate) fn sibling(
     path: &Path,
     rename: impl FnOnce(&std::ffi::OsStr) -> OsString,
 ) -> Result<PathBuf, SaveError> {

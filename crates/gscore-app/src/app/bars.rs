@@ -80,11 +80,32 @@ impl GuitarScoreApp {
                 {
                     self.save_as(ui.ctx());
                 }
-                if ui
-                    .add_enabled(has_document, egui::Button::new("Export PDF…"))
-                    .clicked()
-                {
-                    self.ask_export_pdf(ui.ctx());
+                let mut export = None;
+                ui.add_enabled_ui(has_document, |ui| {
+                    ui.menu_button("Export", |ui| {
+                        for format in crate::export::ExportFormat::ALL {
+                            let mut entry = ui.button(format.label());
+                            if let Some(tip) = format.loses_details() {
+                                entry = entry.on_hover_text(tip);
+                            }
+                            if entry.clicked() {
+                                export = Some(format);
+                                ui.close();
+                            }
+                        }
+                        ui.separator();
+                        ui.label(
+                            egui::RichText::new(
+                                "PDF shows the pages as the score is set up; MIDI plays every \
+                                 track. Older Guitar Pro versions keep less of the song.",
+                            )
+                            .small()
+                            .weak(),
+                        );
+                    });
+                });
+                if let Some(format) = export {
+                    self.ask_export(format, ui.ctx());
                 }
                 ui.separator();
                 if ui.button("Settings…").clicked() {

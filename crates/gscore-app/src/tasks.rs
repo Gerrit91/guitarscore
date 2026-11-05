@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use gscore_model::Song;
+use gscore_play::{Sequence, to_smf};
 use gscore_session::{
     FileFormat, FoundSession, Journal, Recovered, RecoveryOptions, SaveError, SaveOptions,
 };
@@ -25,10 +26,15 @@ pub(crate) enum Event {
     PickedSoundFont(Option<Picked>),
     /// The save dialog closed; `None` if it was cancelled.
     PickedSave(Option<Picked>),
-    /// The PDF export dialog closed; `None` if it was cancelled.
+    /// The export dialog closed; `None` if it was cancelled.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-    PickedPdf(Option<Picked>),
-    /// A PDF export finished (a message for the status bar) or failed (why).
+    PickedExport {
+        /// The chosen export format.
+        format: crate::export::ExportFormat,
+        /// The file the user chose.
+        picked: Option<Picked>,
+    },
+    /// An export finished (a message for the status bar) or failed (why).
     Exported(Result<String, String>),
     /// A save finished or failed.
     Saved {
@@ -466,21 +472,23 @@ impl Tasks {
         })
     }
 
-    /// Shows the PDF export dialog in the background, suggesting `name`.
+    /// Shows the export dialog in the background, suggesting `name` and offering
+    /// `format`'s file type.
     #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn pick_pdf_file(
+    pub(crate) fn pick_export_file(
         &mut self,
+        format: crate::export::ExportFormat,
         name: String,
         ctx: &egui::Context,
     ) -> Result<(), String> {
         self.spawn("export dialog", ctx, move || {
             let picked = rfd::FileDialog::new()
-                .set_title("Export as PDF")
-                .add_filter("PDF", &["pdf"])
+                .set_title(format!("Export as {}", format.label()))
+                .add_filter(format.label(), &[format.extension()])
                 .set_file_name(name)
                 .save_file()
                 .map(Picked::from_path);
-            Event::PickedPdf(picked)
+            Event::PickedExport { format, picked }
         })
     }
 
@@ -541,14 +549,15 @@ impl Tasks {
         Ok(())
     }
 
-    /// PDF export in the browser is not built yet.
+    /// Exporting is not available in the browser build yet.
     #[cfg(target_arch = "wasm32")]
-    pub(crate) fn pick_pdf_file(
+    pub(crate) fn pick_export_file(
         &mut self,
+        _format: crate::export::ExportFormat,
         _name: String,
         _ctx: &egui::Context,
     ) -> Result<(), String> {
-        Err("PDF export is not available in the browser build yet".to_owned())
+        Err("exporting files is not available in the browser build yet".to_owned())
     }
 
     /// Lays out `tracks` of `song` together (one track, or several stacked in every
@@ -564,6 +573,31 @@ impl Tasks {
     ) -> Result<(), String> {
         self.spawn("PDF export", ctx, move || {
             Event::Exported(export_pdf(&song, &tracks, &options, &path))
+        })
+    }
+
+    /// Converts `song` to a Guitar Pro file of `format` at `path`, in the background.
+    pub(crate) fn export_score(
+        &mut self,
+        song: Song,
+        format: FileFormat,
+        path: PathBuf,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        self.spawn("score export", ctx, move || {
+            Event::Exported(export_score(&song, format, &path))
+        })
+    }
+
+    /// Writes every track of `song` as a Standard MIDI File at `path`, in the background.
+    pub(crate) fn export_midi(
+        &mut self,
+        song: Song,
+        path: PathBuf,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        self.spawn("MIDI export", ctx, move || {
+            Event::Exported(export_midi(&song, &path))
         })
     }
 
@@ -826,6 +860,45 @@ fn export_pdf(
     Ok(format!(
         "Exported {name} ({pages} page{})",
         if pages == 1 { "" } else { "s" }
+    ))
+}
+
+/// The work of [`Tasks::export_score`]: the status message, or why it failed.
+fn export_score(song: &Song, format: FileFormat, path: &std::path::Path) -> Result<String, String> {
+    let report = gscore_session::export(song, path, format).map_err(|e| e.to_string())?;
+    let name = path.file_name().map_or_else(
+        || "export".to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    Ok(match report.losses.len() {
+        0 => format!("Exported {name}"),
+        count => format!(
+            "Exported {name}; {count} detail{} of the song {} not kept by this format",
+            if count == 1 { "" } else { "s" },
+            if count == 1 { "was" } else { "were" }
+        ),
+    })
+}
+
+/// The work of [`Tasks::export_midi`]: the status message, or why it failed.
+fn export_midi(song: &Song, path: &std::path::Path) -> Result<String, String> {
+    let sequence = Sequence::new(song, None).map_err(|e| e.to_string())?;
+    let bytes = to_smf(&sequence, song.title()).map_err(|e| e.to_string())?;
+    std::fs::write(path, &bytes).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    let name = path.file_name().map_or_else(
+        || "export.mid".to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    Ok(format!(
+        "Exported {name} ({} track{}, {} measure{})",
+        sequence.tracks.len(),
+        if sequence.tracks.len() == 1 { "" } else { "s" },
+        sequence.measures.len(),
+        if sequence.measures.len() == 1 {
+            ""
+        } else {
+            "s"
+        }
     ))
 }
 

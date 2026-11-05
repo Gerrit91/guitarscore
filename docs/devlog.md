@@ -2682,3 +2682,20 @@ needed for a much larger font); owner listening check.
   `:latest`. Checked locally: image 176 MB, wasm served as `application/wasm` with gzip,
   the SoundFont cached for a year, everything else revalidated. The workflow job itself
   is untested until the next pre-release.
+
+## 2026-11-05 — File › Export: MIDI, GP7/GP6/GP5/GP4/GP3 and PDF together
+
+- The single "Export PDF…" entry became a File › Export submenu: PDF (the printed score),
+  MIDI, Guitar Pro 7 (`.gp`), Guitar Pro 6 (`.gpx`), 5 (`.gp5`), 4 (`.gp4`) and 3
+  (`.gp3`). The app had no MIDI export at all; the CLI's `midi` subcommand already did.
+- MIDI export builds the same `Sequence` playback uses (all tracks, tempo changes,
+  repeats, techniques) and writes a format-1 SMF in the background; the status bar says
+  how many tracks and measures went in.
+- Score export goes through the new `gscore_session::export`: serialize with
+  `gscore_io`, read the bytes back in memory to list what the target format drops, then
+  write next to the target and move it into place (no half file). Older GP versions warn
+  in the menu and the status bar reports how many details they could not keep; files that
+  cannot be read back at all are an error, not a silent conversion.
+- Tests: `gscore-session::export` writes and replaces a GP3/GP4 file, reports no losses
+  for an empty song and never leaves a temporary file; `ExportFormat` keeps the menu's
+  extensions unique and maps the score entries to their `FileFormat`.

@@ -232,8 +232,8 @@ impl GuitarScoreApp {
         }
     }
 
-    /// Asks where to export the shown track as PDF.
-    pub(super) fn ask_export_pdf(&mut self, ctx: &egui::Context) {
+    /// Asks where to export the active tab, in `format`.
+    pub(super) fn ask_export(&mut self, format: crate::export::ExportFormat, ctx: &egui::Context) {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
@@ -241,8 +241,47 @@ impl GuitarScoreApp {
             || "Untitled".to_owned(),
             |s| s.to_string_lossy().into_owned(),
         );
-        if let Err(error) = self.tasks.pick_pdf_file(format!("{stem}.pdf"), ctx) {
+        let name = format!("{stem}.{}", format.extension());
+        if let Err(error) = self.tasks.pick_export_file(format, name, ctx) {
             self.notice = Some(error);
+        }
+    }
+
+    /// Starts the export of the active tab in `format` to `path`, in the background.
+    fn start_export(
+        &mut self,
+        format: crate::export::ExportFormat,
+        path: PathBuf,
+        ctx: &egui::Context,
+    ) {
+        use crate::export::ExportFormat;
+        match format {
+            ExportFormat::Pdf => self.start_pdf_export(path, ctx),
+            ExportFormat::Midi => {
+                let Some(tab) = self.tabs.get(self.active) else {
+                    return;
+                };
+                let song = tab.document.song().clone();
+                if let Err(error) = self.tasks.export_midi(song, path, ctx) {
+                    self.notice = Some(error);
+                }
+            }
+            ExportFormat::Gp
+            | ExportFormat::Gpx
+            | ExportFormat::Gp5
+            | ExportFormat::Gp4
+            | ExportFormat::Gp3 => {
+                let Some(tab) = self.tabs.get(self.active) else {
+                    return;
+                };
+                let song = tab.document.song().clone();
+                let Some(file_format) = format.score_format() else {
+                    return;
+                };
+                if let Err(error) = self.tasks.export_score(song, file_format, path, ctx) {
+                    self.notice = Some(error);
+                }
+            }
         }
     }
 
@@ -350,19 +389,20 @@ impl GuitarScoreApp {
                 Event::PickedSoundFont(None) => {}
                 // Cancelled: whatever was waiting for the save does not happen.
                 Event::PickedSave(None) => self.abandon_save(),
-                Event::PickedPdf(Some(picked)) => {
-                    let path = if picked
-                        .path
-                        .extension()
-                        .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
-                    {
-                        picked.path
-                    } else {
-                        picked.path.with_extension("pdf")
-                    };
-                    self.start_pdf_export(path, ctx);
+                Event::PickedExport { format, picked } => {
+                    if let Some(picked) = picked {
+                        let path = if picked
+                            .path
+                            .extension()
+                            .is_some_and(|e| e.eq_ignore_ascii_case(format.extension()))
+                        {
+                            picked.path
+                        } else {
+                            picked.path.with_extension(format.extension())
+                        };
+                        self.start_export(format, path, ctx);
+                    }
                 }
-                Event::PickedPdf(None) => {}
                 Event::Exported(Ok(message)) => self.status = Some(message),
                 Event::Exported(Err(error)) => {
                     self.notice = Some(format!("Not exported: {error}"));
