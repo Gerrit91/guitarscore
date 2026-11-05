@@ -261,4 +261,31 @@ mod tests {
         assert_eq!(ThemeChoice::Dark.palette().name, "dark");
         assert_eq!(ThemeChoice::Light.palette().name, "light");
     }
+
+    #[test]
+    fn the_five_views_split_into_pages_and_screens() {
+        assert_eq!(ScoreView::PageVertical.label(), "Page view (vertical)");
+        let pages: Vec<ScoreView> = ScoreView::ALL
+            .into_iter()
+            .filter(|view| view.on_pages())
+            .collect();
+        assert_eq!(
+            pages,
+            [
+                ScoreView::PageVertical,
+                ScoreView::PageHorizontal,
+                ScoreView::PageGrid
+            ]
+        );
+        assert!(ScoreView::PageHorizontal.pages_side_by_side());
+        assert!(ScoreView::PageGrid.pages_side_by_side());
+        assert!(!ScoreView::PageVertical.pages_side_by_side());
+        assert_eq!(
+            ScoreView::ALL
+                .into_iter()
+                .filter(|view| view.single_line())
+                .collect::<Vec<_>>(),
+            [ScoreView::ScreenHorizontal]
+        );
+    }
 }
