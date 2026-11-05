@@ -64,10 +64,14 @@ A malformed file, a bad command parameter, a corrupt settings file, an odd keyst
 - **Devlog:** after each task, append a terse entry to `docs/devlog.md` (what landed, numbers, what is still open). Keep `docs/gaps.md` (ranked known shortfalls) and `docs/parity.md` (checklist of Guitar Pro features: live, partial, missing) up to date when your work changes them, with the date.
 - **Pick work in this order:** crashes and data-loss risks, then the current milestone, then `docs/gaps.md`, then parity items that are cheap because the building blocks already exist.
 - **Verify UI changes visually.** Render offscreen to PNG with the snapshot example (no window, no focus stealing) and look at the image. Compare tablature layout against the MuseScore reference (section 5).
-- **Everything automatable is a command or CLI subcommand.** `gscore-cli` provides headless `info`, `dump` (ASCII tab), `render` (SVG/PNG), `convert`, and `roundtrip-check`, so agents and tests can exercise the whole pipeline without the GUI. A JSON control channel for driving the running app may follow later; design the command layer so it is possible.
-- **Project tasks live in `xtask`** (`cargo xtask layers | corpus | ci | ...`), not in ad-hoc shell scripts.
+- **Everything automatable is a command or CLI subcommand.** `gscore-cli` provides headless `info`, `dump` (ASCII tab), `render` (SVG/PDF), `midi`, `play`, `convert`, `edit`, `bench` and `roundtrip-check`, so agents and tests can exercise the whole pipeline without the GUI. A JSON control channel for driving the running app may follow later; design the command layer so it is possible.
+- **Project tasks live in `xtask`** (`cargo xtask ci | layers | bench | web`), not in ad-hoc shell scripts.
 - **Parallel agents:** use separate target dirs (`CARGO_TARGET_DIR=target/agent-<name>`), put new commands in a new module, keep every `Cargo.toml` valid at all times (write manifests atomically: temp file, then `mv`), make small surgical edits to shared files, and re-read before editing them.
 - Ask the owner before irreversible or architectural decisions; write a short design note for anything that affects several crates.
+- **Branches:** work on a feature branch in the main checkout, never commit on `main`
+  (check the branch right before each commit; the owner may have merged meanwhile).
+  Commit only when the checks in section 6 pass. The owner pushes, opens pull requests
+  and merges; agents do not.
 
 ## 4. Code quality
 
@@ -96,26 +100,31 @@ Cargo workspace. Layers are listed from lowest to highest; **a crate may depend 
 ```
 guitarscore/
   Cargo.toml                 # workspace, [workspace.lints]
-  rust-toolchain.toml        # pin a stable toolchain
-  clippy.toml
-  CLAUDE.md
-  THIRD_PARTY.md
-  docs/                      # architecture.md, development.md, parity.md, gaps.md, devlog.md
-  testdata/                  # owner's own test tabs; testdata/corrupt/ for broken files
-  corpus/                    # gitignored: owner's larger private collection of GP files (opt-in tests)
-  assets/fonts/              # SMuFL fonts + metadata, text font
-  xtask/                     # project tasks: layers, corpus, ci
+  rust-toolchain.toml        # pinned toolchain (with rustfmt, clippy, the wasm target)
+  clippy.toml, kittest.toml  # lint options for tests; snapshot tolerance
+  AGENTS.md, CLAUDE.md, THIRD_PARTY.md, LICENSE, README.md
+  docs/                      # architecture, development, usage, web, parity, gaps, devlog,
+                             # guitarpro (the vendored reader's changes), guitar-modelling
+  testdata/                  # owner's own test songs with Guitar Pro's PDF and MIDI export;
+                             # testdata/corrupt/ for broken files
+  corpus/                    # gitignored: the owner's larger private collection
+  assets/                    # fonts/ (Bravura, Noto Sans), soundfonts/ (licenses only)
+  packaging/                 # desktop file and app icon (AppImage)
+  web/, docker/, Dockerfile  # the browser build's page, worklet and service worker; nginx
+  xtask/                     # project tasks: layers, ci, bench, web
   crates/
+    gscore-version/           # L0: the build version baked in at compile time
     gscore-gp/                # L0: Guitar Pro song data + reading/writing GP3-5, GPX, GP7+ (derived from guitarpro, MIT)
-    gscore-model/             # L1: document model (wraps gscore-gp's song), positions, queries, invariants
+    gscore-model/             # L1: document model (wraps gscore-gp's song), positions, queries, edits, invariants
     gscore-io/                # L2: GP files <-> model: format detection, limits, catch_unwind (bytes in, bytes out; no file system)
-    gscore-layout/            # L2: model -> positioned draw ops. No GUI imports.
-    gscore-play/              # L2: sequencer, MIDI events, channel allocator, Player trait. No device crates.
-    gscore-edit/              # L3: cursor, selection, commands, undo/redo, keymap
-    gscore-audio/             # L3: output backends (midir, cpal, rustysynth) implementing Player
-    gscore-session/           # L4: open document, recovery journal, autosave, safe-save orchestration
-    gscore-cli/               # L5: headless tool (info, dump, render, convert, roundtrip-check)
-    gscore-app/               # L5: egui/eframe application shell (thin); produces the `guitarscore` binary
+    gscore-layout/            # L2: model -> positioned draw ops (pages, systems, notation, tab), SVG and PDF. No GUI imports.
+    gscore-play/              # L2: sequencer, MIDI events, channel allocator, metronome, SMF export, Player trait. No device crates.
+    gscore-edit/              # L3: cursor, selection, clipboard, commands, undo/redo, keymap
+    gscore-audio/             # L3: output backends (midir, cpal, rustysynth) implementing Player; the tuner
+    gscore-session/           # L4: open, safe save and export, recovery journal, autosave, settings files
+    gscore-worklet/           # L4: the browser's AudioWorklet synthesizer (wasm only)
+    gscore-cli/               # L5: headless tool (info, dump, render, midi, play, convert, edit, bench, ...)
+    gscore-app/               # L5: egui/eframe application (desktop and browser); the `guitarscore` binary
 ```
 
 Dependency restrictions enforced by the layers check: only `gscore-app` may use egui, eframe, winit, or rfd; only `gscore-audio` may use `cpal`, `midir`, or `rustysynth`; nothing below `gscore-app` may use a GUI crate; only `gscore-model` and `gscore-io` may use `gscore-gp` (and only `gscore-io` may use `gscore_model::interop`).
@@ -135,17 +144,17 @@ Dependency restrictions enforced by the layers check: only `gscore-app` may use 
    - Dead keys and IME composition must never be interpreted as commands; in note-entry mode ignore composition events.
    - Do not bind keys with AltGr, and avoid browser-reserved combinations (new tab, close tab, and similar) in case a web build happens.
    - The keymap loader reports conflicts and unknown command ids as errors shown to the user, never as panics, and falls back to the default keymap.
-8. **Playback behind a trait.** `gscore-play` defines the `Player` trait (load song, play, pause, seek, stop, tempo scale); `gscore-audio` implements it. See section 8 for backend order.
+8. **Playback behind a trait.** `gscore-play` defines the `Player` trait (load a sequence, play, pause, seek, stop, tempo scale, live events, replace); `gscore-audio` implements it for a MIDI port, the native synthesizer and the browser's worklet. See section 8.
 9. **Audio thread rules** (internal synth). The audio callback must not allocate, wait on locks, do I/O, or panic. Send events through a bounded lock-free queue or channel.
 10. **MIDI channel allocation.** `ChannelAllocator` in `gscore-play`, not in the model. Default: one channel per track; drums on channel 10 (index 9, General MIDI). Notes needing independent pitch bend or slide borrow a free channel temporarily (copy program, volume, pan; reset bend afterward; release). If channels run out, degrade gracefully instead of failing. Verify the internal synth's channel support (expected 16) before designing around more.
 
-### Portability (groundwork for a later web build)
-A browser (WebAssembly) build is not a current goal, but the groundwork is cheap now and painful to retrofit later:
-- **The core crates must compile for `wasm32-unknown-unknown`:** `gscore-gp`, `gscore-model`, `gscore-io`, `gscore-layout`, `gscore-play`, and `gscore-edit`. `cargo xtask layers` also runs `cargo check --target wasm32-unknown-unknown` on them.
+### Portability (the browser build)
+A browser (WebAssembly) build exists since 2026-11-04 (`docs/web.md`). These rules keep it working:
+- **The core crates must compile for `wasm32-unknown-unknown`:** `gscore-gp`, `gscore-model`, `gscore-io`, `gscore-layout`, `gscore-play`, and `gscore-edit`; so must `gscore-audio` and `gscore-worklet` (the browser's synthesizer). `cargo xtask layers` runs `cargo check --target wasm32-unknown-unknown` on them.
 - In those crates, **no direct use of `std::fs`, `std::thread`, `std::time::Instant`, or `std::time::SystemTime`** (the time types panic on that target as far as we know; verify). Pass such capabilities in through small traits (for example `Clock`, `Storage`, `BackgroundRunner`) implemented in `gscore-session` or `gscore-app`.
 - **`gscore-io` works on bytes, not paths:** bytes in, `Song` out, and `Song` in, bytes out. File system work (safe-save, backups, recovery journal files) belongs to `gscore-session`.
 - **Do not rely on `catch_unwind` in core logic.** On `wasm32-unknown-unknown` a panic aborts the instance by default, so the never-panic lints and rules in section 2 are the primary defense; containment is only a native safety net.
-- If a web build happens later, expect: a file picker for open and a download for save, browser storage for the recovery journal and settings, the internal synth (not MIDI output) for sound, and a smaller feature set than the desktop app.
+- The browser build opens with a file picker and saves with a download, keeps settings in browser storage, plays through the internal synth in an AudioWorklet (no MIDI output), and has a smaller feature set than the desktop app (`docs/gaps.md`).
 
 ### Notation fonts (SMuFL) and visual quality
 - Use **SMuFL-compliant fonts** (for example Bravura, or Leland as used by MuseScore). Check each font's license (typically SIL OFL) before bundling.
@@ -164,27 +173,32 @@ A browser (WebAssembly) build is not a current goal, but the groundwork is cheap
 
 ## 6. Testing and definition of done
 
-A task is done only when all of these pass:
+A task is done only when `cargo xtask ci` passes. It runs:
 
 ```
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo xtask layers
+cargo xtask layers        # dependency graph, lints, std usage, wasm checks
 ```
 
 Also, when relevant:
-- commands added or changed: `cargo test -p gscore-edit --test panic_hunt`
-- importers, exporters, `gscore-gp`, or `gscore-model` touched: `cargo test --workspace --features corpus` (opt-in tests over `corpus/` and `testdata/`; plain `cargo test` skips them, and with the feature on a missing corpus fails with a clear message)
-- hot paths touched: run the benchmarks and record numbers in the devlog
+- commands added or changed: `cargo test -p gscore-edit --test panic_hunt` (part of the
+  workspace tests, worth running on its own while working)
+- importers, exporters, `gscore-gp`, or `gscore-model` touched: check the owner's files in
+  `corpus/` by hand (`gscore-cli info`, `render`, `midi`); automated corpus tests
+  (`cargo xtask corpus`) are not built yet
+- hot paths touched: `cargo xtask bench` and record the numbers in the devlog
+- the browser build touched: `cargo xtask web --smoke`
 
 Required kinds of tests (in addition to the stability tests in section 2):
 - **Model:** unit tests for invariants (beat durations fill measures, valid fret and string ranges).
 - **Commands:** apply then undo must equal the original song. Write one shared helper and use it in every command's tests.
 - **Import:** parse each file in `testdata/` and compare against expected summaries (track count, measure count, note counts, tempo). The owner compares against Guitar Pro manually and records the expected values.
 - **Round trip:** load, save to GP, load again; the musical content must be equal, and unsupported features must be reported, not silently dropped.
-- **Layout:** render `DrawOp`s to **SVG** and compare against golden files in `crates/gscore-layout/tests/golden/`. Update goldens only with the owner's approval of the visual change.
-- **Playback:** convert a small song to MIDI events and assert timings and notes. Support exporting a `.mid` file so results can be checked in any other player.
+- **Layout:** render `DrawOp`s to **SVG** and compare against golden files in `crates/gscore-layout/tests/golden/` (`GSCORE_UPDATE_GOLDEN=1` rewrites them). Update goldens only with the owner's approval of the visual change.
+- **App:** snapshot tests with `egui_kittest` in `crates/gscore-app/tests/snapshots/` (`UPDATE_SNAPSHOTS=1` rewrites them; `kittest.toml` sets the tolerance); look at a changed snapshot before accepting it.
+- **Playback:** convert a small song to MIDI events and assert timings and notes; the `.mid` files Guitar Pro exported in `testdata/` are the reference.
 
 ## 7. Workflow spec
 
@@ -201,221 +215,119 @@ This is the heart of the project. List the actions you do constantly in Guitar P
 | `copy` / `cut` / `paste` | on selection (beats or bars) | ctrl+c, ctrl+x, ctrl+v | |
 | `undo` / `redo` | there history should not be limited and ideally persisted | ctrl+z / ctrl+y | |
 | `play_pause` / `stop` | Starts / stops the playback | space | |
-| `clear_note` | remove the note on the cursor's string | | added in M8, unbound |
-| `previous_measure` / `next_measure` | cursor to the first beat of the previous/next bar | | added in M8, unbound |
-| `save` | save the file | ctrl+s (proposed) | added in M8; the key is a proposal |
+| `clear_note` | remove the note on the cursor's string | | unbound |
+| `previous_measure` / `next_measure` | cursor to the first beat of the previous/next bar | | unbound |
+| `save` | save the file | ctrl+s | |
 | `edit_beat_text` | text written above the current beat | t | the dialog's text field takes the keyboard at once (Guitar Pro's shortcut) |
 
 ## 8. Sound plan
 
-Strictly in this order; each stage plugs in behind the `Player` trait:
+Each stage plugs in behind the `Player` trait:
 
-1. **MIDI output** (`midir`): send events to any MIDI port, so the user can route to an external synth (for example FluidSynth). Plus `.mid` export. This is the first playback milestone.
-2. **Internal synth:** `cpal` for audio output plus `rustysynth` (pure-Rust SoundFont synthesizer) for sound without external setup. Verify the current state of both crates before starting.
-3. **Real sound libraries** (only if stages 1 and 2 go well): SFZ-based sampled instruments with technique-to-articulation mapping, possibly plugin hosting (CLAP, LV2) in a separate process, which also isolates plugin crashes. Write a design note first.
-4. **Physically modelled guitars** (owner, 2026-11-03; chosen over stage 3 as the way to RSE-like sound): a pure-Rust string model (digital waveguide) that plays every technique, with body, pickup, amp and cabinet stages. The SoundFont synth stays for drums, other instruments and as the fallback. Design note: `docs/guitar-modelling.md`; milestone M22.
+1. **MIDI output** (`midir`) and `.mid` export. Done (M7).
+2. **Internal synth:** `cpal` + `rustysynth` (SoundFont) for sound without external setup;
+   also in the browser as an AudioWorklet. Done (M9, browser 2026-11-04). It stays for
+   drums, other instruments and as the fallback.
+3. ~~Sampled libraries (SFZ) or plugin hosting~~: set aside (owner, 2026-11-03) in favour
+   of stage 4.
+4. **Physically modelled guitars and basses:** a pure-Rust string model (digital
+   waveguide) that plays every technique, with pickup, amp, cabinet and body stages.
+   Design note: `docs/guitar-modelling.md`; milestone M22, the current one.
 
 ## 9. Milestones (one at a time; stop and summarize after each)
 
-Headless editing and saving come before the UI (owner decision, 2026-11-01): the core
-functionality is built and tested through the CLI first, and the UI later drives the same
-command layer.
+Headless editing and saving came before the UI (owner decision, 2026-11-01): features are
+built and tested through the command layer and the CLI first, and the UI drives the same
+commands. Details of every step are in `docs/devlog.md`; known shortfalls in
+`docs/gaps.md`; feature status against Guitar Pro in `docs/parity.md`.
 
-- **M0:** workspace, toolchain pin, `[workspace.lints]`, `clippy.toml`, `xtask layers` (including the wasm check on the core crates), the commands in section 6, an empty devlog.
-- **M1:** `gscore-model` wrapper with tests.
-- **M2:** `gscore-io` import via `gscore-gp` (with `catch_unwind` containment), `gscore-cli` `info`, `dump` (ASCII tab) and `roundtrip-check`, corrupt-file and damaged-input tests. (The decision gate on using the crate's model directly and on vendoring it was settled early; see section 5, decision 1. Fuzzing with `cargo-fuzz` is deferred to "Later".)
-- **M3:** save to GP with safe-save (temporary file and atomic rename, `.bak`, re-read and compare) and round-trip verification, warnings before saving to an older format, `gscore-cli convert`.
-- **M4:** headless editing: checked editing methods on the model, the command registry in `gscore-edit` (id, label, `enabled`, parameters, `apply`, `undo`; transactional) with the shared apply-then-undo test helper, `panic_hunt` and property tests, and the CLI on top of it: `gscore-cli commands` (lists command ids and parameters) and `gscore-cli edit <in> -o <out>` with `-c "<command> key=value ..."` or `--script <file>` (positions 1-based). Script files double as regression tests.
-- **M5:** `gscore-layout` headless layout for one track's tab staff, SVG golden tests, SMuFL font loading and metadata, comparison against MuseScore output.
-- **M6:** `gscore-app` read-only egui view drawing the `DrawOp`s, with light and dark theme, plus the offscreen snapshot example.
-- **M7:** MIDI output playback and `.mid` export (moved before interactive editing by the owner, 2026-11-01: sound first, for a first usable version).
-- **M8:** interactive editing in the app: cursor, keyboard entry and undo/redo through the M4 commands, driven by the keymap file (tested on QWERTY, QWERTZ, and AZERTY layouts), **and `gscore-session` with the recovery journal and crash recovery**.
-- **M9:** internal synth playback (`rustysynth` + `cpal`, SoundFont found or chosen; done 2026-11-02).
+### Done
 
-Planned (owner's list of 2026-11-02, extended). Order: speed and safety first, because every
-UI feature below triggers edits on the whole song; then the window's structure, then the
-panels that fill it.
+- **M0** (2026-11-01): workspace, toolchain pin, workspace lints, `xtask layers` with the
+  wasm check, CI.
+- **M1** (2026-11-01): `gscore-model` wraps the Guitar Pro song model.
+- **M2** (2026-11-01): import of GP3-5, GPX and GP7 through `gscore-io` (with
+  `catch_unwind`); `gscore-cli info`, `dump`, `roundtrip-check`; the `guitarpro` crate
+  vendored and integrated as `gscore-gp`.
+- **M3** (2026-11-01): safe save as GP7 (atomic, `.bak`, read back and compare).
+- **M4** (2026-11-01): commands with undo in `gscore-edit`, `panic_hunt`,
+  `gscore-cli commands` and `edit`.
+- **M5, M6** (2026-11-01): headless layout (tab and standard notation, SMuFL, SVG goldens)
+  and the egui app with light and dark themes and the snapshot example.
+- **M7** (2026-11-01): MIDI output and `.mid` export; bends and slides on borrowed channels.
+- **M8** (2026-11-01): keyboard editing in the app through the keymap.
+- **M9** (2026-11-02): internal SoundFont synthesizer.
+- **M10** (2026-11-02): performance budgets (16 ms per edit, 2 s to open) and
+  `cargo xtask bench`.
+- **M11** (2026-11-02): recovery journal, crash recovery, autosave.
+- **M12-M16** (2026-11-02 to 11-03): app shell and settings, track and song grid with the
+  mixer, edit palette with selection and every effect, track panel, app design.
+- **M17** (2026-11-03 to 11-05): layout polish: bends and whammy, repeats and endings,
+  dynamics, grace notes, voices, drum notation, chord diagrams, clefs, free time, bar
+  repeats, octave signs, slash notation.
+- **M21** (2026-11-03 to 11-05): pages and page setup, breaks, multi-track systems with
+  editing across staves, five score views, PDF export.
+- Pulled forward from M18-M20 and done: play from a selection and loop it, count-in (1-4
+  bars, also before each loop pass) and metronome with its own click, every technique
+  played (vibrato, let ring, palm mute, grace notes, trills, whammy, swing, strokes),
+  export to MIDI and GP7/GP6/GP5/GP4/GP3, the browser build, release packages (Linux
+  tarball and AppImage, Windows, macOS) with a bundled SoundFont.
+- **Release v0.1.0** (2026-11-06).
 
-- **M10: Performance.** Long songs must stay instant to edit. (Done 2026-11-02: see the
-  devlog; `cargo xtask bench` checks the budgets.)
-  - Per-region edits: copy and validate only the touched measures instead of the whole song
-    (now about 3.6 ms per edit on `DrDr.gp`).
-  - Layout cache per measure (and per system): an edit lays out only what changed and
-    re-breaks lines from there (now about 15 ms for 236 measures).
-  - Performance budgets (section 11 open question): key-to-screen under one frame (16 ms)
-    on a 500-measure, 16-track song in release; opening such a file under 2 s.
-  - A benchmark command (`cargo xtask bench`) on the owner's largest files, run before and
-    after each milestone; results in the devlog.
-  - Undo history capped by memory, not only by entry count.
-- **M11: Recovery.** The recovery journal and autosave deferred from M8 (contribution rule
-  5: recovery before new features): journal of commands, recovery offer after a crash,
-  autosave, persisted undo history. (Done 2026-11-02, see the devlog.)
-- **M12: App shell and styling.** The frame the panels plug into.
-  - Docked panels (bottom, left, right), each shown or hidden from the View menu and a
-    context menu, sizes and visibility remembered between runs.
-  - Progress bar while a song opens (and while a SoundFont loads), cancellable.
-  - Settings window with tabs:
-    - Song: title, artist, album, author, copyright, notes, tempo.
-    - Page layout: music and text fonts, font sizes, staff spacing, page size and margins.
-    - Audio and MIDI (I/O): output (synthesizer, MIDI port, audio device), SoundFont,
-      later inputs (MIDI keyboard or guitar input for note entry).
-    - Editor: keymap file, theme, autosave interval.
-  - Settings stored in `~/.config/guitarscore/` (with `gscore-session`), like the keymap.
-  - General styling: a consistent look (spacing, typography, icons, colors) in light and
-    dark; icons bundled with their licence (`THIRD_PARTY.md`); toolbar tooltips with keys.
-  - Recent files, drag and drop to open, window size and position remembered, zoom keys.
-  - Playback and the cursor (important to the owner): select a note and start playback
-    from it (done early, 2026-11-02: Play starts at the cursor's beat, at its measure's
-    first pass; still to do: from the first note of a selection). During playback the cursor advances beat by beat to the note being
-    played (across repeats and track switches), and the view scrolls with it; pausing or
-    stopping leaves the cursor on the last played note, so play continues from there.
-- **M13: Track and song grid (bottom panel).**
-  - One row per track: track color, instrument symbol, name.
-  - Right-click on a track: add, delete, duplicate, rename, move up/down, edit (opens the
-    track panel). All of these as `gscore-edit` commands with undo.
-  - Volume slider and pan knob per track, plus mute and solo, applied to playback live.
-  - A colored matrix: one column per measure, a filled square where the track has notes;
-    clicking a square moves the cursor to that track and measure.
-  - Measure numbers, section markers and repeats above the matrix; the playing measure
-    highlighted during playback; selecting a range of measures for copy/paste and looping.
-- **M14: Edit palette (left panel).**
-  - Note durations (whole to 64th), dots, triplets and other tuplets, rests, ties; the
-    chosen duration stays selected for the next notes.
-  - A matrix of effects and ornaments (bends, slides, hammer-on/pull-off, vibrato, palm
-    mute, let ring, harmonics, dead and ghost notes, accents, staccato, tapping, whammy,
-    grace notes, trills, tremolo picking, strokes); a click applies it to the selected
-    note(s) or beat(s) and shows its state there.
-  - Needs the model's effect setters and `gscore-edit` commands for every effect (each
-    with apply-then-undo tests), plus bend and whammy editors (curve with points).
-  - Tempo, time signature and key signature changes at the cursor; section markers.
-  - Selection (beats, measures, across tracks) with copy, cut and paste; voice 2 entry.
-- **M15: Track panel (right panel).** Track name, instrument (General MIDI program, drum
-  kit), color, tuning and capo, string count, and sound (SoundFont preset); changes are
-  commands with undo and are heard at once.
-- **M16: App design.** Make the app around the score look professional (owner,
-  2026-11-02: the score looks good, the app around it looks amateur). Adapt ideas from
-  MuseScore 4's design, not its code or icons (GPL): our own colors, icons and layout.
-  - One set of design tokens for both themes: surfaces in layers (window, panels, raised
-    controls, the canvas behind the page), one accent color, text and separator colors,
-    spacing on a 4-pixel grid, rounding.
-  - The page floats on a canvas with a soft shadow.
-  - Toolbar in groups (file, edit, zoom, transport with position and tempo, output and
-    track); no stray labels; consistent icon buttons with tooltips and keys.
-  - Docked panels with a title bar (and a close button); content in collapsible, titled
-    sections.
-  - Edit palette: note values, dots, rests and techniques as tiles with music-font glyphs
-    or drawn icons instead of text like "1/4" and "no dots".
-  - Track panel and settings as property sheets: aligned label column, grouped sections.
-  - Song grid and status bar restyled to match.
-- **M17: Layout polish.** Remaining layout issues and effects.
-  - Whammy bar (dips, dives, curves with values).
-  - Bends drawn properly: bend-and-release, pre-bend, curves with all points and values
-    (needs the full bend shape in the model, docs/gaps.md #4).
-  - Repeats and alternative endings, tempo changes, section markers, key signatures, ties
-    across barlines, the second voice, grace notes, rhythm under the tab, chord diagrams,
-    lyrics.
-  - Drum notation.
-  - Pages, multi-track systems and printing moved to their own milestone, M21.
-- **M21: Pages, multi-track scores and print** (owner, 2026-11-03: missing completely and
-  important; comes next, before the rest of M18, and before M19 and M20, since a release
-  without printing is not useful). Numbered M21 to keep the earlier numbers stable.
-  The endless page stays as a second view, switched in the View menu (owner, 2026-11-03).
-  Progress (2026-11-03): everything but the multi-track systems, editing across staves
-  and native printing: page setup from and to the GP file with a Page layout tab, pages
-  with page numbers, copyright and running header, vertical justification, line and page
-  breaks and bars per line, pages side by side when zoomed out, PDF export (app and CLI).
-  Progress (2026-11-05): multi-track systems (View › All tracks or a chosen set, beats
-  aligned, GP7's multitrack line breaks read, edited and saved) and editing across staves
-  (clicks, drags, Up/Down onto the next track), hiding empty staves (View menu, PDF,
-  `render --hide-empty-staves`). Moved to the backlog by the owner (2026-11-05): native
-  printing, a bracket or brace, rotated names on later pages, the bars-per-line limit and
-  the Settings preview for several tracks, remembering the shown tracks, moving the
-  multitrack breaks when bars are inserted or deleted.
-  - **Page setup:** paper size (A4, Letter, custom) and orientation, margins, score size
-    (staff space), header and footer contents. Read from and written to the Guitar Pro
-    file (`gscore-gp` already reads `PageSetup`, including the `%title%`, `%N%/%P%`
-    templates; nothing uses it yet), edited as commands with undo in a Page layout tab of
-    the settings window (planned in M12, not built), defaults in the app settings.
-  - **Pagination:** systems flow onto pages; the first page carries the title block, later
-    pages a running header; footers with page numbers ("Page 2/5") and copyright. Systems
-    are spread to fill a page (vertical justification), the last page is not stretched.
-    Breaks: automatic, a fixed number of bars per system, and manual system and page breaks
-    per bar (Guitar Pro stores line breaks; keep them on save).
-  - **Multi-track systems:** choose what a score shows: one track (as now), all tracks, or
-    a chosen set (a "view" kept with the document, like Guitar Pro's multitrack mode).
-    Every shown track's staves (notation, tab or both, per track as in the track panel)
-    stacked in one system: shared barlines through the system, a bracket or brace,
-    track names at the start of the first system and short names after, empty staves
-    optionally hidden, a drum track on its percussion staff. Columns aligned across all
-    tracks (one time grid per bar from every shown track's rhythms), so beats line up.
-  - **Editing across staves:** the cursor, selection, page clicks and keyboard work on any
-    staff of the system (Up/Down past the outer string moves to the next staff and track);
-    the track picker and grid still choose the cursor's track; playback follows across
-    pages.
-  - **Views in the app:** the page view (pages one below the other, or side by side when
-    zoomed out) next to today's endless view; scrolling to the cursor across pages; page
-    count and current page in the status bar.
-  - **Output:** export to PDF (vector, fonts embedded and subset: Bravura and Noto Sans are
-    SIL OFL, which allows embedding), PNG and SVG per page; `gscore-cli render` gains
-    `--pdf`, page and track selection. PDF export comes first (owner, 2026-11-03), written
-    with `pdf-writer` + `subsetter`; Print in the File menu follows later (section 11).
-  - **Performance:** keep the per-measure layout cache and the 16 ms budget (section 11)
-    with all tracks of `DrDr.gp` shown: cache the cross-track time grid per bar, re-break
-    systems and re-paginate only from the changed system on; `cargo xtask bench` gains a
-    multi-track and a pagination case. Exporting a long score runs in the background with
-    progress and cancel.
-  - **Tests:** golden SVGs per page (one-page and multi-page songs, multi-track systems,
-    breaks, header/footer templates), PDF structure tests (page count, fonts embedded,
-    page size, text extractable), page-setup round trip through GP7, `panic_hunt` on page
-    setup and break commands, app snapshots of the page view. Needs multi-track test files
-    made with Guitar Pro in `testdata/` (all current ones are single-track), with Guitar
-    Pro's own PDF of each for comparison, like `testdata/basic/*.pdf`.
-  - **Done when:** a multi-track song opens as a paginated score that looks like Guitar
-    Pro's print preview, prints, and exports a PDF that opens correctly in common viewers
-    (Evince, Firefox, Acrobat) with the same pages.
-- **M18: Playback polish.**
-  - Play from a selection and loop it, count-in, metronome, speed slider.
-  - Remaining techniques: vibrato, let ring, palm mute, grace notes, trills, whammy,
-    D.C./D.S./coda, swing.
-  - A playback sequence that keeps the string, fret and techniques per note (instead of
-    plain MIDI events), with the MIDI events derived from it; the base for M22.
-  - One MIDI channel per string, so bends, slides and vibrato on one string do not bend
-    the others; palm mutes and dead notes on GM 28 (Muted Guitar), harmonics on GM 31.
-  - Export the song as audio (WAV) with the internal synthesizer.
-- **M19: Bundled SoundFonts.** Ship ready-to-use General MIDI SoundFonts so nobody has to
-  install a synthesizer.
-  - Choose by licence (MIT, CC0 or similar; flag anything else) and size (a small default
-    in the repo or the release, a larger high-quality one as an optional download).
-  - Licence file next to each and a row in `THIRD_PARTY.md`; `.sf2` only unless `.sf3`
-    support is added.
-  - The app picks the bundled one when none is installed; a quality check by ear for
-    guitars, basses and drums.
-- **M20: Release.** Packages for Linux (AppImage or Flatpak), Windows and macOS (with the
-  macOS file-dialog fix, docs/gaps.md #10), the name check from section 11, a user guide,
-  a public test-file set.
-- **M22: Modelled guitar sound** (owner, 2026-11-03: without playback comparable to
-  Guitar Pro's RSE nobody will use the program for composing; reference for "good enough"
-  is AAS Strum, which is fully modelled). Design note: `docs/guitar-modelling.md`.
-  - Builds on the M18 playback sequence with strings and techniques.
-  - String engine behind the `Player` trait: digital waveguide per string with exact
-    tuning, loss filter and dispersion; bends, slides, vibrato, hammer-ons, pull-offs,
-    palm mute, dead notes, harmonics, let ring and strokes played by the model itself.
-    Bass guitar on the same engine.
-  - Electric guitar: pickup position, amp and cabinet impulse response.
-  - Acoustic guitar: commuted synthesis body, string coupling, two vibration directions,
-    pick attack; then noises and strum feel.
-  - Per track: engine (SoundFont or modelled) and model, as commands with undo; drums and
-    other instruments stay on the SoundFont synth.
-  - Pure Rust, wasm-clean, `render` never allocates or blocks; impulse responses with
-    licenses in `THIRD_PARTY.md`. Faust only for prototypes, its library licenses checked
-    before any generated code is committed.
+### Current
+
+- **M22: Modelled guitar sound** (owner, 2026-11-03, made urgent 2026-11-06: the band's
+  songs sound bad on General MIDI; without playback comparable to Guitar Pro's RSE nobody
+  will compose with the program. Reference for "good enough": AAS Strum, which is fully
+  modelled). Design note: `docs/guitar-modelling.md`. Order decided by the owner
+  (2026-11-06): **the playback sequence first**, then the engine, with **all sounds at
+  full quality** (distorted and clean electric, bass, acoustic), none left rough.
+  - Step 0, the playback sequence: per-note events with track, string, fret, pitch,
+    start, end, and every technique as it changes over time (bend and whammy curves,
+    slides, vibrato, damping, hammer-on and pull-off without a new pluck, harmonics,
+    strokes). The MIDI and SoundFont path is derived from it, so both engines play the
+    same notes. Takes over M18's "one MIDI channel per string".
+  - The string engine behind the `Player` trait: digital waveguide per string with exact
+    tuning, loss filter and dispersion; every technique played by the model. Bass on the
+    same engine.
+  - Electric guitar: pickup position, amp (clean to high gain), cabinet. Acoustic guitar:
+    commuted-synthesis body, string coupling, two vibration directions, pick attack.
+    Then noises and strum feel.
+  - Per track: engine (SoundFont or modelled) and model, as commands with undo; drums
+    and other instruments stay on the SoundFont synth.
+  - Pure Rust, wasm-clean, `render` never allocates or blocks; impulse responses (if any)
+    with licenses in `THIRD_PARTY.md`. Faust only for prototypes, its library licenses
+    checked before any generated code is committed.
   - Tests: deterministic rendering, pitch within a few cents, decay and bend targets, no
     NaN, clipping or allocation in `render`, `panic_hunt` over parameters; a real-time
     budget for a 16-track song in `cargo xtask bench`.
   - **Done when:** the owner judges electric, acoustic and bass playback comparable to
     RSE for composing, on reference passages covering every technique.
-- **Later:** fuzzing with `cargo-fuzz`, GP3/4/5 writing, JSON control channel, sound
-  libraries (section 8, stage 3), a fretboard view, MusicXML import and export, a web build.
+
+### Still open from earlier milestones
+
+- **M18 (playback):** a speed slider, export to audio (WAV), fermatas and
+  D.C./D.S./coda in playback; previous/next bar during a count-in should count in again
+  instead of stopping.
+- **M19 (SoundFonts):** a quality check by ear of the bundled FluidR3 GM (desktop) and
+  GeneralUser GS (browser); a smaller default for the source build.
+- **M20 (release):** signing and notarizing (Windows, macOS), the macOS file-dialog fix
+  (`docs/gaps.md`), the name check (section 11), a user guide, a public test-file set,
+  the real app icon (placeholder for now).
+- **M21 backlog** (owner, 2026-11-05): native printing, a bracket or brace, rotated names
+  on later pages, the bars-per-line limit and the Settings preview for several tracks,
+  remembering the shown tracks, moving multitrack breaks when bars are inserted or
+  deleted.
+
+### Backlog
+
+- Pitched tracks without strings (voice, synth, piano, strings): notes keep their own
+  pitch (GP7's `Midi`/`ConcertPitch`), standard notation only, no "?" for leftover
+  negative frets (`Ballad.gp`).
+- Second staves (a piano's or synth's bass staff); lyrics (read, shown, edited).
+- Beat text colliding with high notes in the notation.
+- Automated corpus tests (`cargo xtask corpus`), fuzzing with `cargo-fuzz`, a JSON control channel, a fretboard view, MusicXML import
+  and export.
 
 ## 10. Dependency rules
 
@@ -423,18 +335,17 @@ panels that fill it.
 - Allowed licenses by default: MIT, Apache-2.0, BSD, ISC. **Flag GPL, LGPL, and anything else** before use.
 - Avoid C/C++ dependencies unless the owner agrees. System audio libraries needed by `cpal` (for example ALSA development headers on Linux) are acceptable; document them in the README.
 
-## 11. Open questions
+## 11. Open questions and decisions
 
-- The repository license is MIT
-- ~~Which SMuFL font(s) to bundle first, and which text font for fret numbers.~~ **Decided (2026-11-01):** Bravura (with its metadata) as the music font, Noto Sans as the text font, both SIL OFL 1.1 in `assets/fonts/`.
-- When (and whether) to ship a browser build. The groundwork rules in section 5 ("Portability") apply from the start either way; the web build itself is a later goal.
-- ~~Performance budgets (latency, large-score layout time).~~ **Decided (M10, 2026-11-02):**
-  from a key press to the new layout within 16 ms, opening a file within 2 s, in release
-  builds; `cargo xtask bench` checks them on the owner's files.
-- Name availability checks for GuitarScore (GitHub, crates.io, domain) before the first public release.
-- ~~PDF writer for M21.~~ **Decided (2026-11-03):** `pdf-writer` + `subsetter` (Typst
-  project; MIT/Apache-2.0, pure Rust, build for wasm). The page content is written from the
-  `DrawOp`s; fonts are embedded as subsets.
-- ~~How to print (M21).~~ **Decided (2026-11-03):** PDF export first; printing happens from
-  a PDF viewer. Native printing (through the PDF: the XDG print portal on Linux, the print
-  verb on Windows, `NSPrintOperation` on macOS) is a later step of M21 or after it.
+Open:
+- Name availability for GuitarScore (GitHub, crates.io, domain) before wider publicity.
+
+Decided:
+- The repository license is MIT.
+- Bravura (with its metadata) as the music font, Noto Sans as the text font, both SIL OFL
+  1.1 in `assets/fonts/` (2026-11-01).
+- Performance budgets: from a key press to the new layout within 16 ms, opening a file
+  within 2 s, in release builds; `cargo xtask bench` checks them (M10, 2026-11-02).
+- PDF writing with `pdf-writer` + `subsetter` (MIT/Apache-2.0, pure Rust); printing
+  happens from a PDF viewer, native printing later (2026-11-03).
+- A browser build exists (2026-11-04); the portability rules in section 5 keep it working.

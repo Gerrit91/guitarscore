@@ -260,3 +260,16 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     `BeatStroke` gains `on_beat` (default true) and `BeatEffects` gains `arpeggio_speed` and
     `arpeggio_on_beat`. GP3-5 keep the brush speed but not the timing, and no arpeggio
     speed/timing; the loss is reported by the export comparison (`differences`).
+40. Slash notation (`src/io/gpx/part_configuration.rs`, `src/io/gpif_import/helpers.rs`,
+    `src/io/gpif_import/mod.rs`, `src/io/gpif_export/mod.rs`, 2026-11-05): bit 2 of a
+    track's `PartConfiguration` flags is its slash staff, read into
+    `TrackSettings::slash` and written back, with or without notation (Guitar Pro's print of
+    `testdata/basic/staff.gp` shows notation, tab and slash for flags `0x07`). A
+    `GuitarScoreSlash` track property carries the same switch; the flags win when a file
+    has both.
+41. Bars per staff (`src/io/gpif_import/mod.rs`, 2026-11-05): a GPIF master bar lists one
+    bar per staff, not per track. A track with two staves (a piano's or synth's treble and
+    bass) took two places, and every later track read its neighbour's bars (`Ballad.gp`:
+    "Vocal ALEX" showed "Vocal SAMIR"). Each track now reads its first staff's bar; a
+    missing entry is an empty bar so later bars stay in place. The second staff itself is
+    not read yet. Test `a_track_with_two_staves_does_not_shift_the_tracks_after_it`.

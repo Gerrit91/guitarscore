@@ -27,24 +27,22 @@ does it (`mesa-vulkan-drivers` on Debian/Ubuntu, `vulkan-swrast` on Arch, plus
 ## Workspace Structure
 
 The workspace is layered; a crate may only depend on crates in lower layers
-(`cargo xtask layers` enforces this, using the table in `xtask/src/layers.rs`):
+(`cargo xtask layers` enforces this, using the table in `xtask/src/layers.rs`). What each
+crate does is in `docs/architecture.md`:
 
-0. `gscore-gp`: Guitar Pro song data and reading/writing (derived from guitarpro)
-1. `gscore-model`: document model wrapping the Guitar Pro song: views, positions, checks
-2. `gscore-io`, `gscore-layout`, `gscore-play`: file entry point, layout, playback
+0. `gscore-version`, `gscore-gp`: build version; Guitar Pro song data and reading/writing
+1. `gscore-model`: document model wrapping the Guitar Pro song
+2. `gscore-io`, `gscore-layout`, `gscore-play`: file entry point, layout, sequencer
 3. `gscore-edit`, `gscore-audio`: editing commands, audio output
-4. `gscore-session`: open document, crash reports, recovery, autosave
-5. `gscore-cli`, `gscore-app`: command-line tool, desktop application
-
-`gscore-play` and `gscore-audio` are empty until their milestone (AGENTS.md section 9); the
-other crates contain code.
+4. `gscore-session`, `gscore-worklet`: files, recovery and settings; the browser's synth
+5. `gscore-cli`, `gscore-app`: command-line tool, desktop and browser application
 
 ## Coding Standards
 
 - Follow Rust idioms and best practices
 - Prefer small, focused crates with well-defined APIs
 - Avoid "big ball of mud" architecture
-- The core crates (`gscore-gp` up to `gscore-edit`) must compile for `wasm32-unknown-unknown`
+- The core crates (`gscore-gp` up to `gscore-edit`), `gscore-audio` and `gscore-worklet` must compile for `wasm32-unknown-unknown`
 - Never panic in non-test code
 
 ## Testing Requirements
@@ -79,8 +77,8 @@ in the devlog.
 - `gscore-cli commands` lists the editing commands; `gscore-cli edit ... --script <file>`
   applies a script of them. `crates/gscore-cli/tests/scripts/` holds scripts that are also
   regression tests (one edits a test file, one undoes everything back to the input).
-- `gscore-cli render <file> -o out.svg [--track N] [--theme light|dark]` draws a track's
-  tablature. `GSCORE_UPDATE_GOLDEN=1 cargo test -p gscore-layout --test test_golden`
+- `gscore-cli render <file> -o out.svg [--track N] [--all-tracks] [--theme light|dark]`
+  draws the score as SVG, or as PDF pages when the output ends in `.pdf`. `GSCORE_UPDATE_GOLDEN=1 cargo test -p gscore-layout --test test_golden`
   regenerates the SVG references in `crates/gscore-layout/tests/golden/` (the owner reviews
   visual changes before they are committed).
 

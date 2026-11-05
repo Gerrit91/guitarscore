@@ -55,7 +55,9 @@ fn run(args: &[String]) -> TaskResult {
         "ci" => ci(&root, parse_skip_wasm(rest)?),
         "bench" => bench(&root, rest),
         "web" => web::run(&root, rest),
-        "corpus" => Err("`corpus` is not implemented yet (planned for M2)".to_owned()),
+        "corpus" => {
+            Err("`corpus` is not implemented yet (backlog, AGENTS.md section 9)".to_owned())
+        }
         "help" | "--help" | "-h" => {
             println!("{USAGE}");
             Ok(())

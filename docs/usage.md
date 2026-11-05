@@ -55,7 +55,13 @@ gscore-cli play testdata/basic/note_lengths.gp --port FLUID
 ```
 
 Bends and slides use a borrowed MIDI channel per note, so a bend does not move the rest of
-the chord. Remaining technique limits are in `docs/gaps.md` (#11).
+the chord. What playback does not do yet is in `docs/gaps.md`.
+
+The metronome and the count-in are switched in the toolbar; Settings › Metronome sets the
+click's volume and sound, the count-in's length (1 to 4 bars) and whether a loop is counted
+in again each time it starts over. The built-in synthesizer plays its own click; a MIDI
+output gets General MIDI's metronome notes. Play with a selection plays it; with Loop on,
+it repeats the selected bars.
 
 ## Command line
 
@@ -95,9 +101,10 @@ D |--0-------------------------||
 - **`convert`:** saves a file as Guitar Pro 7+ (`.gp`). The song is checked before
   anything is written, the previous file is kept as `.bak`, and the new file replaces it
   atomically.
-- **`edit`:** headless editing with undo/redo: set frets, change beat lengths,
-  insert/delete beats and measures, from `-c` commands or a script. `gscore-cli commands`
-  lists them. Every successful edit still round-trips through the GP7 writer.
+- **`edit`:** headless editing with every command the app uses (notes, durations,
+  effects, bars, tracks, signatures, page setup, ...), from `-c` commands or a script.
+  `gscore-cli commands` lists them. Every successful edit still round-trips through the
+  GP7 writer.
 - **`render`:** a track's score as SVG (`--track N`, repeated for several tracks in one
   score, or `--all-tracks`, with `--hide-empty-staves`; `--theme dark`), using the bundled
   Bravura and Noto Sans fonts by name (see `docs/development.md` for viewing it), or as a
