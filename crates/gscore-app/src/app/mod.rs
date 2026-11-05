@@ -470,8 +470,10 @@ impl GuitarScoreApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
             return;
         }
+        // A player that never started (the browser refused audio) has loaded nothing.
         let value = match self.playback.browser_error() {
             Some(error) => format!("error: {error}"),
+            None if !self.playback.is_connected() => "error: no audio output".to_owned(),
             None => "loaded".to_owned(),
         };
         if self.browser_sound.as_deref() == Some(value.as_str()) {

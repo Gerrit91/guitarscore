@@ -205,11 +205,15 @@ fn run(path: &Path, commands: Receiver<Command>, quit: &Receiver<()>, shared: &A
         *lock(&shared.bank) = Some(bank.name().to_owned());
         open_stream(&bank, commands, retired_sender, shared)
     });
-    shared.loading.store(false, Ordering::Release);
+    // The error first: whoever sees loading end must also see why it failed.
     let _stream = match stream {
-        Ok(stream) => stream,
+        Ok(stream) => {
+            shared.loading.store(false, Ordering::Release);
+            stream
+        }
         Err(error) => {
             *lock(&shared.error) = Some(error.to_string());
+            shared.loading.store(false, Ordering::Release);
             return;
         }
     };

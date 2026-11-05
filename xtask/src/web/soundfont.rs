@@ -48,7 +48,7 @@ pub(crate) fn install(root: &Path, out: &Path, source: &Source) -> TaskResult {
             println!("web: --no-soundfont: the site has no SoundFont and playback is silent");
             return Ok(());
         }
-        Source::Local(path) => local(root, path, &dir)?,
+        Source::Local(path) => local(path, &dir)?,
         Source::Bundled => bundled(root, &dir)?,
     };
     let hash = sha256::hex(&bytes);
@@ -77,7 +77,7 @@ pub(crate) fn report_size(out: &Path) {
 }
 
 /// A local file the owner chose.
-fn local(root: &Path, path: &Path, dir: &Path) -> Result<(String, String, Vec<u8>), String> {
+fn local(path: &Path, dir: &Path) -> Result<(String, String, Vec<u8>), String> {
     let bytes = std::fs::read(path)
         .map_err(|e| format!("cannot read the SoundFont {}: {e}", path.display()))?;
     let size = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
@@ -103,7 +103,11 @@ fn local(root: &Path, path: &Path, dir: &Path) -> Result<(String, String, Vec<u8
         .unwrap_or_else(|| "SoundFont".to_owned());
     std::fs::write(dir.join(&name), &bytes)
         .map_err(|e| format!("cannot write the SoundFont into the site: {e}"))?;
-    copy_license(root, dir)?;
+    // Not GeneralUser GS's license: whoever chose this file brings its own terms.
+    println!(
+        "web: {} is not the bundled font: add its license to the site yourself",
+        path.display()
+    );
     Ok((name, display, bytes))
 }
 

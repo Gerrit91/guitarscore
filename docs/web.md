@@ -30,7 +30,8 @@ size-optimised. `--debug` builds without optimisations, `--out DIR` writes elsew
 The site ships GeneralUser GS 2.0.3 (about 30.8 MiB, GeneralUser GS License v2.0). The
 first build downloads it from the upstream repository at a pinned commit into
 `target/web-soundfont/` and verifies its size and SHA-256 every time; later builds reuse the
-cache. `--soundfont PATH` ships another `.sf2` (its size and RIFF header are checked), and
+cache. `--soundfont PATH` ships another `.sf2` (its size and RIFF header are checked; its
+license is yours to add to the site, GeneralUser GS's is not copied for it), and
 `--no-soundfont` builds a silent site and says so. Nothing from the upstream repository is
 committed except the license text.
 

@@ -264,8 +264,7 @@ async fn fetch_soundfont(shared: &Shared) -> Result<(), String> {
     })
     .await?;
     *shared.soundfont_name.borrow_mut() = Some(loaded.name.clone());
-    let array = js_sys::Uint8Array::from(&loaded.bytes[..]);
-    let buffer = array.buffer();
+    let buffer = loaded.bytes.buffer();
     let message = object("soundfont");
     set(&message, "bytes", &buffer);
     shared.post_with_transfer(message.into(), Some(js_sys::Array::of1(&buffer)));

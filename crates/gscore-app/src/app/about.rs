@@ -110,9 +110,15 @@ fn about_text(ui: &mut egui::Ui, soundfont: Option<&str>) {
         "https://github.com/Gerrit91/guitarscore",
     );
     ui.label(RichText::new("MIT license").weak());
+    // The bundled font's license; a font a site brings itself is only named.
     #[cfg(target_arch = "wasm32")]
     if let Some(name) = soundfont {
-        ui.label(RichText::new(format!("{name} — GeneralUser GS License v2.0")).weak());
+        let text = if name.starts_with("GeneralUser GS") {
+            format!("{name} — GeneralUser GS License v2.0")
+        } else {
+            format!("SoundFont: {name}")
+        };
+        ui.label(RichText::new(text).weak());
     }
     #[cfg(not(target_arch = "wasm32"))]
     let _ = soundfont;

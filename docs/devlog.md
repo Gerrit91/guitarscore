@@ -2651,3 +2651,25 @@ Landed:
 Open: choosing another SoundFont in the browser; the worklet parses 30 MB on the audio
 thread at startup (measured under 1 s; acceptable, but a worker-side parse would be
 needed for a much larger font); owner listening check.
+
+## 2026-11-05 — Review of the browser SoundFont
+
+- Reviewed the cheaper model's `web-soundfont` work (rebased onto main as
+  `web-soundfont-review`; only the devlog conflicted). It follows the handoff: pinned and
+  hashed download at build time, automatic load with progress, transfer to the worklet,
+  its own service-worker cache, an audible-note smoke test, credits.
+- Fixed: the downloaded font was copied chunk by chunk into the app's wasm memory and
+  then back out for the worklet, which grew the memory by 30 MB for good (wasm memory
+  never shrinks); the chunks are now joined as a JavaScript array and transferred.
+  `--soundfont PATH` copied GeneralUser GS's license next to someone else's font; it no
+  longer does (the build says to add the font's own license). The About window gave any
+  font GeneralUser's license, and the toolbar named the bundled font even when the site's
+  manifest names another; both use the manifest's name now. The smoke-test marker said
+  `loaded` when the audio output never started. The Audio tab was one function with the
+  whole desktop code re-indented in a `cfg` block; now a desktop and a browser function,
+  the desktop one unchanged from main.
+- Also fixed an older race in the desktop synthesizer: it cleared "loading" before it
+  stored the error of a broken SoundFont, so for a moment a failed font looked loaded
+  (`the_player_reports_a_bad_soundfont_without_blocking` failed now and then).
+- Checked: `cargo xtask ci`; `cargo xtask web --smoke` (font loaded 0.6 s after page start
+  locally, worklet RMS 0.0074). The owner's listening check of GeneralUser GS is still open.

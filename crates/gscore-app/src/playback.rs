@@ -534,7 +534,15 @@ impl Playback {
     /// A short description of the chosen output, for the toolbar.
     pub fn output_label(&self) -> String {
         match &self.output {
-            Output::Synth(path) => format!("Synthesizer ({})", file_name(path)),
+            // In a browser, the name the site's manifest gives once it is known.
+            Output::Synth(path) => format!(
+                "Synthesizer ({})",
+                if cfg!(target_arch = "wasm32") {
+                    self.soundfont_name().unwrap_or_else(|| file_name(path))
+                } else {
+                    file_name(path)
+                }
+            ),
             Output::Midi(port) => match self.connected_port().or(port.as_deref()) {
                 Some(port) => format!("MIDI: {port}"),
                 None => "MIDI (automatic)".to_owned(),

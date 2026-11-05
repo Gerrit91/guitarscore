@@ -6,7 +6,9 @@
 //! without either, playback has no sound and says so.
 //!
 //! The body is read as a stream so the toolbar can show real progress: a 30 MB font over a
-//! slow connection must not look stuck.
+//! slow connection must not look stuck. The chunks stay JavaScript arrays and are joined
+//! there: copied into the app's wasm memory, the font would grow it by 30 MB for good
+//! (wasm memory never shrinks), only to be copied out again for the worklet.
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -21,8 +23,8 @@ const MAX_SOUNDFONT_BYTES: u64 = 64 * 1024 * 1024;
 
 /// A downloaded SoundFont and what the manifest called it.
 pub(crate) struct Loaded {
-    /// The file's bytes.
-    pub(crate) bytes: Vec<u8>,
+    /// The file's bytes, in a JavaScript array whose buffer can be transferred.
+    pub(crate) bytes: js_sys::Uint8Array,
     /// The name to show ("GeneralUser GS 2.0.3"), or "SoundFont".
     pub(crate) name: String,
 }
@@ -96,7 +98,7 @@ async fn read_body(
     response: &Response,
     total: u64,
     progress: &mut impl FnMut(u64, u64),
-) -> Result<Vec<u8>, String> {
+) -> Result<js_sys::Uint8Array, String> {
     let Some(body) = response.body() else {
         return Err("the SoundFont response has no body".to_owned());
     };
@@ -104,7 +106,8 @@ async fn read_body(
         .get_reader()
         .dyn_into()
         .map_err(|_| "cannot read the SoundFont stream".to_owned())?;
-    let mut bytes: Vec<u8> = Vec::new();
+    let chunks = js_sys::Array::new();
+    let mut length: u32 = 0;
     loop {
         let chunk = JsFuture::from(reader.read())
             .await
@@ -123,20 +126,23 @@ async fn read_body(
         let array: js_sys::Uint8Array = value
             .dyn_into()
             .map_err(|_| "the SoundFont download sent nonsense".to_owned())?;
-        let length = usize::try_from(array.length()).unwrap_or(0);
-        let start = bytes.len();
-        let end = start.saturating_add(length);
-        if u64::try_from(end).unwrap_or(u64::MAX) > MAX_SOUNDFONT_BYTES {
+        length = length.saturating_add(array.length());
+        if u64::from(length) > MAX_SOUNDFONT_BYTES {
             return Err("the SoundFont is too large".to_owned());
         }
-        bytes.resize(end, 0);
-        if let Some(slice) = bytes.get_mut(start..end) {
-            array.copy_to(slice);
-        }
-        progress(u64::try_from(end).unwrap_or(u64::MAX), total);
+        chunks.push(&array);
+        progress(u64::from(length), total);
     }
-    if bytes.is_empty() {
+    if length == 0 {
         return Err("the SoundFont is empty".to_owned());
+    }
+    // One array of the whole file, joined on the JavaScript side.
+    let bytes = js_sys::Uint8Array::new_with_length(length);
+    let mut offset: u32 = 0;
+    for chunk in chunks.iter() {
+        let chunk: js_sys::Uint8Array = chunk.unchecked_into();
+        bytes.set(&chunk, offset);
+        offset = offset.saturating_add(chunk.length());
     }
     Ok(bytes)
 }
