@@ -437,6 +437,23 @@ pub fn song_with_repeats(
     Song::from_inner(inner)
 }
 
+/// A 4/4 guitar song of `count` measures with navigation signs at the given measures.
+pub fn song_with_directions(
+    count: usize,
+    marks: &[(usize, crate::marks::Direction)],
+) -> Result<Song, ModelError> {
+    let song = song(&[GUITAR_6], count)?;
+    let mut inner = song.inner().clone();
+    for &(measure, direction) in marks {
+        let header = inner
+            .measure_headers
+            .get_mut(measure)
+            .ok_or_else(|| ModelError::Invalid(format!("no measure {measure} for a direction")))?;
+        header.direction = Some(direction.to_gp());
+    }
+    Song::from_inner(inner)
+}
+
 /// Four quarter-note rests.
 fn quarter_rests() -> Vec<Beat> {
     (0..4)

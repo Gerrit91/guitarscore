@@ -350,6 +350,31 @@ impl Direction {
             GpDirectionSign::DaDoubleCoda => Direction::DaDoubleCoda,
         }
     }
+
+    /// Guitar Pro's direction-sign field.
+    pub(crate) fn to_gp(self) -> GpDirectionSign {
+        match self {
+            Direction::Coda => GpDirectionSign::Coda,
+            Direction::DoubleCoda => GpDirectionSign::DoubleCoda,
+            Direction::Segno => GpDirectionSign::Segno,
+            Direction::SegnoSegno => GpDirectionSign::SegnoSegno,
+            Direction::Fine => GpDirectionSign::Fine,
+            Direction::DaCapo => GpDirectionSign::DaCapo,
+            Direction::DaCapoAlCoda => GpDirectionSign::DaCapoAlCoda,
+            Direction::DaCapoAlDoubleCoda => GpDirectionSign::DaCapoAlDoubleCoda,
+            Direction::DaCapoAlFine => GpDirectionSign::DaCapoAlFine,
+            Direction::DaSegno => GpDirectionSign::DaSegno,
+            Direction::DaSegnoAlCoda => GpDirectionSign::DaSegnoAlCoda,
+            Direction::DaSegnoAlDoubleCoda => GpDirectionSign::DaSegnoAlDoubleCoda,
+            Direction::DaSegnoAlFine => GpDirectionSign::DaSegnoAlFine,
+            Direction::DaSegnoSegno => GpDirectionSign::DaSegnoSegno,
+            Direction::DaSegnoSegnoAlCoda => GpDirectionSign::DaSegnoSegnoAlCoda,
+            Direction::DaSegnoSegnoAlDoubleCoda => GpDirectionSign::DaSegnoSegnoAlDoubleCoda,
+            Direction::DaSegnoSegnoAlFine => GpDirectionSign::DaSegnoSegnoAlFine,
+            Direction::DaCoda => GpDirectionSign::DaCoda,
+            Direction::DaDoubleCoda => GpDirectionSign::DaDoubleCoda,
+        }
+    }
 }
 
 #[cfg(test)]
