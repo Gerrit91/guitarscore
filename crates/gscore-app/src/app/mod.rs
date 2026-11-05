@@ -46,6 +46,7 @@ mod tiles;
 mod title_bar;
 mod toolbar;
 mod track_panel;
+mod tuner;
 mod tuplet_dialog;
 
 use std::collections::VecDeque;
@@ -123,6 +124,8 @@ pub struct GuitarScoreApp {
     settings_window: Option<settings_window::SettingsWindow>,
     /// The About window, while it is open.
     about: Option<about::AboutWindow>,
+    /// The tuner window, while it is open.
+    tuner: Option<tuner::TunerState>,
     /// What the app remembers between runs.
     settings: Settings,
     /// Where the settings are stored (`None` keeps them only in memory; a browser keeps
@@ -243,6 +246,7 @@ impl GuitarScoreApp {
             startup_active: None,
             settings_window: None,
             about: None,
+            tuner: None,
             settings,
             settings_path,
             panel_sizes,
@@ -719,6 +723,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_history(&ctx);
         self.show_new_track_dialog(&ctx);
         self.show_about(&ctx);
+        self.show_tuner(&ctx);
         self.show_shape_editors(&ctx);
         self.show_staff_dialogs(&ctx);
         self.show_tuplet_dialog(&ctx);

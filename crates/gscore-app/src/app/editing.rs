@@ -58,6 +58,7 @@ impl GuitarScoreApp {
             || self.dialog.is_some()
             || self.settings_window.is_some()
             || self.shortcuts.is_some()
+            || self.tuner.is_some()
             || tab.is_some_and(|tab| tab.new_track.is_some())
             || tab.is_some_and(|tab| tab.edit_palette.staff.is_open())
             || tab.is_some_and(|tab| tab.edit_palette.is_editing())

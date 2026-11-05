@@ -153,6 +153,11 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.get_by_label("Rename track").click();
     harness.run();
     harness.snapshot("rename_track_dialog");
+    harness.get_by_label("Cancel").click();
+    harness.run();
+    harness.get_by_label("Tuner").click();
+    harness.run();
+    harness.snapshot("tuner_dialog");
 }
 
 #[test]

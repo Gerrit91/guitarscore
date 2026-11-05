@@ -2765,3 +2765,18 @@ needed for a much larger font); owner listening check.
   Enter. A new pencil icon (`Icon::Rename`) is drawn like the other toolbar icons.
 - Tests: the panel test renames through the button; a snapshot (`rename_track_dialog`)
   covers the window; the string-tuning test drives the new tuning dialog.
+
+## 2026-11-05 — A tuner with a sine reference tone
+
+- A tuning-fork button left of Settings opens the **Tuner**: a drawn headstock and tuning
+  fork, the chosen note's name and frequency (A4 = 440 Hz by default), a picker over C1 to
+  C8, the shown track's open strings as quick choices, and Play/Stop (Space toggles too).
+- The tone is a new `gscore_audio::TunerPlayer`: a 12 ms faded sine at 0.25 of full scale
+  on the default device. Like the synthesizer it opens the device on its own thread, its
+  stream lives in a worker thread, and the audio callback only reads two atomics (the
+  frequency and whether it should sound), so it never allocates, locks or blocks. A device
+  failure is reported in the window; editing goes on. Closing the window fades it out and
+  detaches the worker (never waiting for a device on the UI thread). The browser build has
+  a stub that says the tuner is not available there yet.
+- Tests: the note-to-frequency mapping (A4, the octave, the low E) and the audible-range
+  guard; a new `tuner_dialog` snapshot covers the window and the picture.

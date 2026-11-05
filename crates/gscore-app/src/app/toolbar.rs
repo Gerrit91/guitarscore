@@ -66,6 +66,9 @@ impl GuitarScoreApp {
                 if icons::button(ui, Icon::Settings, "Settings", "Settings…").clicked() {
                     self.open_settings_window();
                 }
+                if icons::button(ui, Icon::Tuner, "Tuner", "Tuner: a reference tone…").clicked() {
+                    self.open_tuner();
+                }
                 if icons::button(ui, Icon::History, "History", "Edit history…").clicked() {
                     self.open_history();
                 }
