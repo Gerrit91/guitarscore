@@ -3064,3 +3064,5 @@ needed for a much larger font); owner listening check.
   selection is counted in again each time it starts over. All are saved in the settings.
   The sound reaches the synthesizer as controller 3 on the percussion channel (undefined in
   General MIDI), so the desktop and browser synthesizers both follow it.
+- **Looping a note selection** starts at the first bar of the loop (after the count-in, if
+  on), like every later pass, instead of at the first selected note.

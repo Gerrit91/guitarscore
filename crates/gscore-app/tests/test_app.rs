@@ -1796,6 +1796,48 @@ fn a_loop_is_counted_in_again_each_time_it_starts_over() {
 }
 
 #[test]
+fn a_looped_note_selection_starts_at_its_first_bar() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("loop-notes");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    harness.state_mut().set_count_in(true);
+    // The third and fourth beat of the fourth bar (quarter notes), looped.
+    let spot = |beat: usize| gscore_edit::BeatSpot {
+        measure: gscore_model::MeasureIndex::new(3),
+        beat: gscore_model::BeatIndex::new(beat),
+    };
+    let document = harness.state_mut().document_mut().unwrap();
+    document
+        .editor_mut()
+        .set_selection(Some(gscore_edit::Selection::Beats {
+            track: gscore_model::TrackIndex::new(0),
+            voice: gscore_model::VoiceIndex::new(0),
+            anchor: spot(2),
+            focus: spot(3),
+        }));
+    harness.run();
+    harness.state_mut().set_loop_selection(true);
+    harness.get_by_label("Play").click();
+    let started = step_until(&mut harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    });
+    assert!(started, "neither played nor failed");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+    // While counting in, the readout shows the bar's start, not the selected note.
+    let bar = u64::from(gscore_play::PPQ).saturating_mul(4);
+    assert!(harness.state().playback().count_in_pending());
+    assert_eq!(harness.state().playback().position(), bar.saturating_mul(3));
+    assert_eq!(harness.state().playback().current_measure(), Some(4));
+    harness.state_mut().playback_mut().stop().unwrap();
+}
+
+#[test]
 fn shortcuts_can_be_changed_and_reverted_from_the_editor() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("File").click();

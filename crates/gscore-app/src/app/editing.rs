@@ -659,6 +659,22 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Where a loop starts: the first beat of its first bar, while looping is on. A loop
+    /// plays whole bars, so its first pass starts there too, not at the first selected note.
+    fn loop_start(&self) -> Option<BeatPosition> {
+        if !self.playback.loop_selection() {
+            return None;
+        }
+        let tab = self.tabs.get(self.active)?;
+        let measures = tab.loop_measures()?;
+        Some(BeatPosition {
+            track: tab.document.editor().cursor().track,
+            measure: MeasureIndex::new(measures.start()),
+            voice: VoiceIndex::new(0),
+            beat: BeatIndex::new(0),
+        })
+    }
+
     /// Starts playback of the open song at the cursor, or pauses it. Pausing leaves the
     /// cursor on the last played beat.
     pub fn play_pause(&mut self) {
@@ -684,7 +700,7 @@ impl GuitarScoreApp {
         let started = if self.playback.state() == PlayState::Paused {
             None
         } else {
-            self.selection_start()
+            self.loop_start().or_else(|| self.selection_start())
         };
         let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
             return;
