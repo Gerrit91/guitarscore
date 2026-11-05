@@ -76,6 +76,10 @@ impl EditPaletteState {
 pub(super) struct PaletteSnapshot {
     pub(super) cursor: Cursor,
     pub(super) beats: Vec<BeatPosition>,
+    /// Each beat's written note value, in the order of `beats` (`None` for a missing beat).
+    /// Dot and tuplet choices change this value instead of the palette's, so toggling a
+    /// tuplet on and off leaves the notes as they were.
+    pub(super) beat_values: Vec<Option<NoteValue>>,
     /// The selected beats without notes (rests and empty beats).
     pub(super) silent_beats: Vec<BeatPosition>,
     pub(super) measure: MeasureIndex,
@@ -147,6 +151,10 @@ impl PaletteSnapshot {
             }
         }
         let dynamics = DynamicsSnapshot::of(song, &beats);
+        let beat_values = beats
+            .iter()
+            .map(|at| song.beat(*at).and_then(|beat| beat.note_value().ok()))
+            .collect();
         let measure_view = track.and_then(|track| track.measure(measure));
         let silent_beats = beats
             .iter()
@@ -159,6 +167,7 @@ impl PaletteSnapshot {
         PaletteSnapshot {
             cursor,
             beats,
+            beat_values,
             silent_beats,
             measure,
             tempo: song
@@ -272,41 +281,45 @@ impl GuitarScoreApp {
         let length = match (value, action) {
             (Some(value), _) => {
                 state.value = value;
-                true
+                Some(LengthChange::Value)
             }
             (None, ActionId::ToggleDot) => {
                 toggle_dots(state, 1);
-                true
+                Some(LengthChange::Dots)
             }
             (None, ActionId::ToggleDoubleDot) => {
                 toggle_dots(state, 2);
-                true
+                Some(LengthChange::Dots)
             }
             (None, ActionId::TupletThree) => {
                 toggle_tuplet(state, (3, 2));
-                true
+                Some(LengthChange::Tuplet)
             }
             (None, ActionId::TupletFive) => {
                 toggle_tuplet(state, (5, 4));
-                true
+                Some(LengthChange::Tuplet)
             }
             (None, ActionId::TupletSeven) => {
                 toggle_tuplet(state, (7, 4));
-                true
+                Some(LengthChange::Tuplet)
             }
             (None, ActionId::TupletSix) => {
                 toggle_tuplet(state, (6, 4));
-                true
+                Some(LengthChange::Tuplet)
             }
             (None, ActionId::TupletOther) => {
                 state.tuplet_dialog = Some(TupletDialog::new(state.tuplet));
-                false
+                None
             }
-            _ => false,
+            _ => None,
         };
         let mut commands = Vec::new();
-        if length {
-            apply_duration(state, &snapshot, &mut commands);
+        if let Some(change) = length {
+            match change {
+                LengthChange::Value => apply_duration(state, &snapshot, &mut commands),
+                LengthChange::Dots => apply_dots(state, &snapshot, &mut commands),
+                LengthChange::Tuplet => apply_tuplet(state, &snapshot, &mut commands),
+            }
         } else if action == ActionId::MakeRest {
             commands = rest_commands(state, &snapshot);
         } else if action == ActionId::ToggleTie {
@@ -407,7 +420,7 @@ impl GuitarScoreApp {
             document.editor().selection(),
         );
         let mut commands = Vec::new();
-        apply_duration(state, &snapshot, &mut commands);
+        apply_tuplet(state, &snapshot, &mut commands);
         let duration = state.duration();
         self.apply_commands(commands);
         if let Some(duration) = duration
@@ -538,7 +551,7 @@ fn note_length(
             let tip = format!("{tip}{}", hint(action));
             if tiles::tile(ui, face, state.dots == dots, true, label, &tip).clicked() {
                 toggle_dots(state, dots);
-                apply_duration(state, snapshot, commands);
+                apply_dots(state, snapshot, commands);
             }
         }
         ui.add_space(6.0);
@@ -557,7 +570,7 @@ fn note_length(
             };
             if tiles::wide_tile(ui, face, on, true, &label, &tip).clicked() {
                 toggle_tuplet(state, (enters, times));
-                apply_duration(state, snapshot, commands);
+                apply_tuplet(state, snapshot, commands);
             }
         }
         // Any other tuplet: the tile shows it when one is chosen, else "n:m".
@@ -781,6 +794,17 @@ fn beat_buttons(
     }
 }
 
+/// How a note-length choice changes the selected beats.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LengthChange {
+    /// The chosen note value replaces every selected beat's value.
+    Value,
+    /// Dots are added or removed, keeping each beat's value.
+    Dots,
+    /// A tuplet is added or removed, keeping each beat's value.
+    Tuplet,
+}
+
 /// Commands that set the chosen length on every selected beat.
 fn apply_duration(
     state: &EditPaletteState,
@@ -791,6 +815,49 @@ fn apply_duration(
         return;
     };
     for at in &snapshot.beats {
+        commands.push(Command::SetDuration { at: *at, duration });
+    }
+}
+
+/// Commands that change only the dots of the selected beats, keeping every beat's own note
+/// value (a dotted quarter stays a quarter when the dot is removed). Beats the palette
+/// entered itself fall back to its value.
+fn apply_dots(state: &EditPaletteState, snapshot: &PaletteSnapshot, commands: &mut Vec<Command>) {
+    let fallback = NoteValue::new(state.value, state.dots, state.tuplet).ok();
+    for (index, at) in snapshot.beats.iter().enumerate() {
+        let base = snapshot
+            .beat_values
+            .get(index)
+            .copied()
+            .flatten()
+            .or(fallback);
+        let Some(base) = base else {
+            continue;
+        };
+        let Ok(duration) = NoteValue::new(base.value(), state.dots, base.tuplet()) else {
+            continue;
+        };
+        commands.push(Command::SetDuration { at: *at, duration });
+    }
+}
+
+/// Commands that add or remove the palette's tuplet on the selected beats, keeping every
+/// beat's own written value, so taking a triplet off restores the original notes.
+fn apply_tuplet(state: &EditPaletteState, snapshot: &PaletteSnapshot, commands: &mut Vec<Command>) {
+    let fallback = NoteValue::new(state.value, state.dots, state.tuplet).ok();
+    for (index, at) in snapshot.beats.iter().enumerate() {
+        let base = snapshot
+            .beat_values
+            .get(index)
+            .copied()
+            .flatten()
+            .or(fallback);
+        let Some(base) = base else {
+            continue;
+        };
+        let Ok(duration) = NoteValue::new(base.value(), base.dots(), state.tuplet) else {
+            continue;
+        };
         commands.push(Command::SetDuration { at: *at, duration });
     }
 }

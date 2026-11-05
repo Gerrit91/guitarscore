@@ -1288,6 +1288,17 @@ fn the_sextuplet_tile_and_the_tuplet_dialog_set_the_beats_tuplet() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
     type_char(&mut harness, "5", Modifiers::NONE);
     harness.run();
+    // An eighth note, so taking a tuplet off again must leave an eighth note: the tuplet
+    // choice changes the tuplet only, not the written value.
+    harness.get_by_label("1/8").click();
+    harness.run();
+    let value_at_cursor = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let cursor = document.editor().cursor();
+        let beat = document.song().beat(cursor.position()).unwrap();
+        beat.note_value().unwrap().value()
+    };
+    assert_eq!(value_at_cursor(&harness), 8);
     let tuplet_at_cursor = |harness: &Harness<'static, GuitarScoreApp>| {
         let document = harness.state().document().unwrap();
         let cursor = document.editor().cursor();
@@ -1297,6 +1308,7 @@ fn the_sextuplet_tile_and_the_tuplet_dialog_set_the_beats_tuplet() {
     harness.get_by_label("Sextuplet").click();
     harness.run();
     assert_eq!(tuplet_at_cursor(&harness), Some((6, 4)));
+    assert_eq!(value_at_cursor(&harness), 8, "the written value is kept");
     // The dialog opens on the current tuplet; a common one is a click away.
     harness.get_by_label("Tuplet…").click();
     harness.run();
@@ -1321,4 +1333,9 @@ fn the_sextuplet_tile_and_the_tuplet_dialog_set_the_beats_tuplet() {
     harness.get_by_label("Remove").click();
     harness.run();
     assert_eq!(tuplet_at_cursor(&harness), None);
+    assert_eq!(
+        value_at_cursor(&harness),
+        8,
+        "removing the tuplet restores the original note value"
+    );
 }
