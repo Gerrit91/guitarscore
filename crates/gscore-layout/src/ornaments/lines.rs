@@ -50,39 +50,41 @@ pub(crate) fn draw_link(
     }
     let y = top + ctx.staff.line_y(origin.line);
     if let Some(slide) = origin.marks.direct_slide() {
-        // The line slants the way the pitch goes, crossing the string line, as in
-        // Guitar Pro's tablature.
-        let descending = matches!((origin.fret, target.fret), (Some(a), Some(b)) if b < a);
-        let rise = if descending {
-            SLIDE_SLANT
-        } else {
-            -SLIDE_SLANT
-        };
-        ops.push(DrawOp::Line {
-            from: Point::new(from_x, y - rise),
-            to: Point::new(to_x, y + rise),
-            thickness: LINE_THICKNESS,
-            color: ColorToken::Notation,
-        });
         if slide == SlideKind::LegatoSlideTo {
-            {
-                draw_slur(
-                    from_x,
-                    y,
-                    to_x,
-                    top + ctx.staff.line_y(target.line),
-                    -SLUR_CURVE,
-                    ops,
-                );
-                ops.push(DrawOp::Text {
-                    text: "sl.".to_owned(),
-                    at: Point::new((from_x + to_x) / 2.0, y - SLUR_CURVE - 0.3),
-                    size: 0.9,
-                    font: TextFont::Regular,
-                    anchor: TextAnchor::Middle,
-                    color: ColorToken::Annotation,
-                });
-            }
+            // A legato slide is written as the slur alone (with "sl."), as Guitar Pro does.
+            // Drawing the shift-slide's straight line through it as well made the two
+            // lines clash.
+            draw_slur(
+                from_x,
+                y,
+                to_x,
+                top + ctx.staff.line_y(target.line),
+                -SLUR_CURVE,
+                ops,
+            );
+            ops.push(DrawOp::Text {
+                text: "sl.".to_owned(),
+                at: Point::new((from_x + to_x) / 2.0, y - SLUR_CURVE - 0.3),
+                size: 0.9,
+                font: TextFont::Regular,
+                anchor: TextAnchor::Middle,
+                color: ColorToken::Annotation,
+            });
+        } else {
+            // A shift slide is a line slanting the way the pitch goes, crossing the string
+            // line, as in Guitar Pro's tablature.
+            let descending = matches!((origin.fret, target.fret), (Some(a), Some(b)) if b < a);
+            let rise = if descending {
+                SLIDE_SLANT
+            } else {
+                -SLIDE_SLANT
+            };
+            ops.push(DrawOp::Line {
+                from: Point::new(from_x, y - rise),
+                to: Point::new(to_x, y + rise),
+                thickness: LINE_THICKNESS,
+                color: ColorToken::Notation,
+            });
         }
     } else if origin.marks.hammer {
         // A pull-off and a hammer-on are both written as a slur; the direction follows
