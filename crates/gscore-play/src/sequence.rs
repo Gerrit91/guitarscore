@@ -101,6 +101,17 @@ impl Sequence {
         tracks: Option<&[TrackIndex]>,
         metronome: bool,
     ) -> Result<Self, ModelError> {
+        Self::with_metronome_volume(song, tracks, metronome, 1.0)
+    }
+
+    /// Like [`Sequence::with_metronome`], with the clicks' volume (0 to 1). At 0 the
+    /// metronome is silent even though its switch is on.
+    pub fn with_metronome_volume(
+        song: &Song,
+        tracks: Option<&[TrackIndex]>,
+        metronome: bool,
+        volume: f32,
+    ) -> Result<Self, ModelError> {
         // When each played measure starts, by its time signature.
         let (measures, tick) = crate::timeline::measure_spans(song)?;
 
@@ -131,7 +142,7 @@ impl Sequence {
         tempo_changes.extend(collected.tempo_changes);
         if metronome {
             for span in &measures {
-                events.extend(crate::click::click_events(*span));
+                events.extend(crate::click::click_events_at(*span, volume));
             }
         }
         events.sort_by_key(|e| (e.tick, rank(&e.event)));

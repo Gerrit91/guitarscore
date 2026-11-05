@@ -196,6 +196,8 @@ pub struct Settings {
     pub audition_notes: bool,
     /// Seconds between recovery snapshots; 0 means only by edit count.
     pub autosave_seconds: u64,
+    /// The metronome's volume, 0 to 1.
+    pub metronome_volume: f32,
     /// The SoundFont chosen for the built-in synthesizer, if any.
     pub soundfont_path: Option<PathBuf>,
     /// Whether playback prefers the built-in synthesizer over MIDI output.
@@ -235,6 +237,7 @@ impl Default for Settings {
             shortcut_overrides: Vec::new(),
             audition_notes: true,
             autosave_seconds: DEFAULT_AUTOSAVE_SECONDS,
+            metronome_volume: 1.0,
             soundfont_path: None,
             prefer_synth: true,
             midi_port: None,
@@ -379,6 +382,11 @@ impl Settings {
         if self.autosave_seconds > 24 * 60 * 60 {
             self.autosave_seconds = DEFAULT_AUTOSAVE_SECONDS;
         }
+        self.metronome_volume = if self.metronome_volume.is_finite() {
+            self.metronome_volume.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
         self.recent_files.truncate(MAX_RECENT_FILES);
         self.open_files.truncate(MAX_OPEN_FILES);
         // A hostile or broken file cannot make the keymap huge.

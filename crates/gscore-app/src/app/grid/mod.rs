@@ -77,6 +77,8 @@ pub(super) enum GridAction {
     Rename { track: usize },
     /// Show a track in the track panel.
     ShowTrack { track: usize },
+    /// Set the metronome's click volume (0 to 1).
+    SetMetronomeVolume(f32),
 }
 
 /// The rename window's state.
@@ -122,6 +124,7 @@ impl GuitarScoreApp {
                 selection: tab.selection,
                 shown_track: tab.track,
                 mixer: self.view.grid_mixer,
+                metronome_volume: self.playback.metronome_volume(),
             },
             &levels,
             &mut tab.mixer,
@@ -208,6 +211,7 @@ impl GuitarScoreApp {
                 }
                 self.view.show_track_panel = true;
             }
+            GridAction::SetMetronomeVolume(volume) => self.set_metronome_volume(volume),
         }
     }
 
@@ -382,6 +386,7 @@ pub(super) struct GridView {
     selection: Option<MeasureSelection>,
     shown_track: usize,
     mixer: bool,
+    metronome_volume: f32,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -397,7 +402,15 @@ fn draw(
 ) {
     if view.mixer {
         bar::header(ui, rows, view, actions);
-        strips::strips(ui, rows, master, levels, mixer_state, actions);
+        strips::strips(
+            ui,
+            rows,
+            master,
+            levels,
+            view.metronome_volume,
+            mixer_state,
+            actions,
+        );
         return;
     }
     egui::ScrollArea::vertical()

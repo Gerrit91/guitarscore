@@ -254,6 +254,8 @@ impl GuitarScoreApp {
             #[cfg(target_arch = "wasm32")]
             browser_sound: None,
         };
+        app.playback
+            .store_metronome_volume(app.settings.metronome_volume);
         app.restore_tabs(startup_files, startup_active, ctx);
         app
     }
@@ -267,6 +269,7 @@ impl GuitarScoreApp {
         settings.track_panel_width = self.panel_sizes.track_panel;
         settings.edit_panel_width = self.panel_sizes.edit_panel;
         settings.window = self.last_window;
+        settings.metronome_volume = self.playback.metronome_volume();
         settings.soundfont_path = self.playback.soundfont().map(std::path::Path::to_path_buf);
         settings.prefer_synth = matches!(self.playback.output(), Output::Synth(_));
         settings.midi_port = self.playback.port().map(str::to_owned);

@@ -54,6 +54,7 @@ pub(super) fn strips(
     rows: &[TrackRow],
     master: MasterMix,
     levels: &[f32],
+    metronome_volume: f32,
     state: &mut MixerState,
     actions: &mut Vec<GridAction>,
 ) {
@@ -89,6 +90,7 @@ pub(super) fn strips(
                     state,
                     actions,
                 );
+                metronome_strip(ui, metronome_volume, height, actions);
             });
         });
 }
@@ -264,6 +266,58 @@ fn master_strip(
         bottom,
         "Master",
         "All tracks",
+        gscore_model::InstrumentSymbol::Other,
+        visuals.selection.bg_fill,
+    );
+}
+
+/// The metronome's own strip: only its click volume (the switch stays in the toolbar).
+fn metronome_strip(ui: &mut egui::Ui, volume: f32, height: f32, actions: &mut Vec<GridAction>) {
+    let (rect, _) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::hover());
+    let visuals = ui.visuals().clone();
+    ui.painter().line_segment(
+        [rect.left_top(), rect.left_bottom()],
+        Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
+    );
+    let inner = rect.shrink2(vec2(8.0, 6.0));
+    let (top, fader_area, bottom) = layout(inner);
+    let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
+    let value = (volume.clamp(0.0, 1.0) * 127.0).round();
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let value = value as u8;
+    let knob_rect = Rect::from_center_size(
+        pos2(top.center().x, top.top() + KNOB_SIZE / 2.0 + 2.0),
+        vec2(KNOB_SIZE, KNOB_SIZE),
+    );
+    let knob = mixer::send_knob(
+        &mut strip,
+        knob_rect,
+        value,
+        ("metronome", usize::MAX),
+        "Metronome volume",
+        "Metronome volume",
+        127,
+    );
+    strip.painter().text(
+        pos2(knob_rect.center().x, knob_rect.bottom() + 2.0),
+        Align2::CENTER_TOP,
+        "Click",
+        FontId::proportional(8.0),
+        strip.visuals().weak_text_color(),
+    );
+    if knob.boundary {
+        actions.push(GridAction::BreakMerge);
+    }
+    if let Some((value, _)) = knob.change {
+        actions.push(GridAction::SetMetronomeVolume(f32::from(value) / 127.0));
+    }
+    // The lower part is empty, as for the master's fader row.
+    let _ = fader_area;
+    labels(
+        &mut strip,
+        bottom,
+        "Metronome",
+        "Click volume",
         gscore_model::InstrumentSymbol::Other,
         visuals.selection.bg_fill,
     );

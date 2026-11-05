@@ -23,6 +23,19 @@ const CLICK_LENGTH: u64 = (PPQ as u64) / 8;
 
 /// The clicks of one played measure: one per beat of its time signature, the first accented.
 pub(crate) fn click_events(span: MeasureSpan) -> Vec<TimedEvent> {
+    click_events_at(span, 1.0)
+}
+
+/// The clicks of one measure at `volume` (0 to 1, scaling their velocity); 0 is silent.
+pub(crate) fn click_events_at(span: MeasureSpan, volume: f32) -> Vec<TimedEvent> {
+    if !(volume.is_finite() && volume > 0.0) {
+        return Vec::new();
+    }
+    let scale = volume.min(1.0);
+    let velocity = |base: u8| {
+        let scaled = f32::from(base) * scale;
+        u8::try_from(scaled.round().clamp(0.0, 127.0) as u32).unwrap_or(base)
+    };
     let whole = u64::from(PPQ).saturating_mul(4);
     let beat = whole
         .checked_div(u64::from(span.signature.denominator()))
@@ -32,9 +45,9 @@ pub(crate) fn click_events(span: MeasureSpan) -> Vec<TimedEvent> {
     for index in 0..count {
         let tick = span.start.saturating_add(beat.saturating_mul(index));
         let (key, velocity) = if index == 0 {
-            (ACCENT_KEY, ACCENT_VELOCITY)
+            (ACCENT_KEY, velocity(ACCENT_VELOCITY))
         } else {
-            (CLICK_KEY, CLICK_VELOCITY)
+            (CLICK_KEY, velocity(CLICK_VELOCITY))
         };
         events.push(TimedEvent {
             tick,
@@ -116,6 +129,24 @@ mod tests {
             events[2].event,
             MidiEvent::NoteOn { key: CLICK_KEY, .. }
         ));
+    }
+
+    #[test]
+    fn the_click_volume_scales_the_velocities_and_zero_is_silent() {
+        let (measures, _) =
+            crate::timeline::measure_spans(&testing::song(&[GUITAR_6], 1).unwrap()).unwrap();
+        let full = click_events(measures[0]);
+        let quiet = click_events_at(measures[0], 0.5);
+        assert_eq!(quiet.len(), full.len());
+        for (loud, soft) in full.iter().zip(&quiet) {
+            match (loud.event, soft.event) {
+                (MidiEvent::NoteOn { velocity: a, .. }, MidiEvent::NoteOn { velocity: b, .. }) => {
+                    assert!(b < a && b > 0)
+                }
+                _ => {}
+            }
+        }
+        assert!(click_events_at(measures[0], 0.0).is_empty());
     }
 
     #[test]

@@ -596,6 +596,17 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Sets the metronome's volume (0 to 1), heard at once while playing.
+    pub fn set_metronome_volume(&mut self, volume: f32) {
+        let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
+            self.playback.store_metronome_volume(volume);
+            return;
+        };
+        if let Err(error) = self.playback.set_metronome_volume(document.song(), volume) {
+            self.notice = Some(error);
+        }
+    }
+
     /// Turns the one-bar count-in on or off.
     pub fn set_count_in(&mut self, enabled: bool) {
         let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {

@@ -111,7 +111,7 @@ impl Active {
 }
 
 /// The app's playback state.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Playback {
     /// MIDI output ports, as last listed.
     ports: Vec<String>,
@@ -130,6 +130,8 @@ pub struct Playback {
     paused_at: Option<BeatPosition>,
     /// Whether the metronome clicks on every beat while playing.
     metronome: bool,
+    /// The metronome's volume, 0 to 1 (1 is full).
+    metronome_volume: f32,
     /// Whether one bar of clicks is played before playback starts.
     count_in: bool,
     /// While the count-in plays: where the song starts when it ends.
@@ -150,6 +152,31 @@ pub struct Playback {
     /// A beat to play once the synthesizer has loaded its SoundFont (it was chosen while
     /// it loaded).
     pending_preview: Option<Arc<Sequence>>,
+}
+
+impl Default for Playback {
+    fn default() -> Self {
+        Playback {
+            ports: Vec::new(),
+            output: Output::default(),
+            soundfont: None,
+            player: None,
+            sequence: None,
+            reported: None,
+            paused_at: None,
+            metronome: false,
+            metronome_volume: 1.0,
+            count_in: false,
+            count_in_from: None,
+            count_in_start: None,
+            count_in_sequence: None,
+            loop_selection: false,
+            audition: None,
+            preview: None,
+            preview_sequence: None,
+            pending_preview: None,
+        }
+    }
 }
 
 impl Playback {
@@ -250,6 +277,35 @@ impl Playback {
     /// Whether the metronome clicks on every beat.
     pub fn metronome(&self) -> bool {
         self.metronome
+    }
+
+    /// The metronome's volume, 0 to 1.
+    pub fn metronome_volume(&self) -> f32 {
+        self.metronome_volume
+    }
+
+    /// Sets the metronome's volume without rebuilding a sequence (used when the settings
+    /// load, before any song is open).
+    pub fn store_metronome_volume(&mut self, volume: f32) {
+        self.metronome_volume = if volume.is_finite() {
+            volume.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+    }
+
+    /// Sets the metronome's volume (0 to 1), heard at once while playing.
+    pub fn set_metronome_volume(&mut self, song: &Song, volume: f32) -> Result<(), String> {
+        let volume = if volume.is_finite() {
+            volume.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        if (self.metronome_volume - volume).abs() < f32::EPSILON {
+            return Ok(());
+        }
+        self.metronome_volume = volume;
+        self.rebuild_sequence(song)
     }
 
     /// Whether one bar of clicks is played before playback starts.
@@ -697,9 +753,9 @@ impl Playback {
         Ok(())
     }
 
-    /// Builds the song's sequence with the current metronome setting.
+    /// Builds the song's sequence with the current metronome setting and volume.
     fn build_sequence(&self, song: &Song) -> Result<Arc<Sequence>, String> {
-        Sequence::with_metronome(song, None, self.metronome)
+        Sequence::with_metronome_volume(song, None, self.metronome, self.metronome_volume)
             .map(Arc::new)
             .map_err(|e| e.to_string())
     }
