@@ -2908,3 +2908,20 @@ needed for a much larger font); owner listening check.
   shows every symbol at 18, 24 and 64 px on light and dark.
 - Derived symbols: GM programs 24 and 25 (nylon and steel string) and instrument names
   with "acoustic", "nylon" or "steel" now get the acoustic guitar; 26-31 stay electric.
+
+## 2026-11-05 — Dynamics clear the notes they span; CI snapshot tolerance
+
+- A dynamic under low notes ran into them: it only avoided the lowest head of its own
+  column, while a mark like `fff` spans the neighbouring notes and their accidentals,
+  and where the fixed gap above the tab ran out it was pulled back up into the notes.
+  Now each column knows its lowest ink (`MeasureLayout::column_depth`: notehead, accent
+  or staccato below it, accidental, a stem pointing down), a dynamic goes below the
+  deepest column its glyph spans, and the gap between notation and tab grows in a system
+  that needs it (for its dynamics, or for notes hanging lower than the gap allows) instead
+  of being the same everywhere. Other systems keep the usual gap.
+- Test: alternating `f`/`fff` under low eighths with accidentals; no dynamic's box
+  touches any other glyph, and every one stays above the tab. Golden SVGs: the
+  eight-string example gets one space more above its tab, three dynamics of
+  `multi_staff` move a fraction of a space lower.
+- CI: GitHub's software renderer failed every app snapshot by 1-3 antialiased pixels;
+  `kittest.toml` now allows 10 (a real change fails hundreds).

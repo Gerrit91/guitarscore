@@ -389,8 +389,6 @@ impl MeasureLayout {
         self.columns.iter().map(|c| (c.dynamic, c.tempo))
     }
 
-    /// The lowest notehead's staff position in column `index` of the notation staff, lower
-    /// by the room an accent or staccato dot below it takes.
     /// How far the notation reaches above its staff's top line and below its bottom line
     /// (noteheads, ledger lines and stems), in staff spaces; 0 within the staff.
     pub(crate) fn notation_reach(&self) -> (f32, f32) {
@@ -424,6 +422,56 @@ impl MeasureLayout {
         (above, below)
     }
 
+    /// How far below the notation staff's bottom line the lowest ink of column `index`
+    /// goes, in staff spaces (negative inside the staff): its lowest notehead (with an
+    /// accent or staccato dot below it) or the end of a stem pointing down. `None` for a
+    /// column without notes.
+    pub(crate) fn column_depth(&self, index: usize) -> Option<f32> {
+        const STEM: f32 = 3.5;
+        const HEAD: f32 = 0.5;
+        const ACCIDENTAL: f32 = 1.4;
+        let head = self
+            .lowest_head(index)
+            .map(|position| -(position as f32) / 2.0 + HEAD);
+        let stem = self
+            .columns
+            .get(index)?
+            .notation
+            .iter()
+            .flatten()
+            .filter_map(|item| match item {
+                NotationItem::Chord(chord) if !chord.stem_up() && chord.value >= 2 => chord
+                    .heads
+                    .first()
+                    .map(|low| -(low.position as f32) / 2.0 + STEM),
+                _ => None,
+            })
+            .reduce(f32::max);
+        // A sharp or natural hangs well below its note's head.
+        let accidental = self
+            .columns
+            .get(index)?
+            .notation
+            .iter()
+            .flatten()
+            .filter_map(|item| match item {
+                NotationItem::Chord(chord) => chord
+                    .heads
+                    .iter()
+                    .filter(|head| head.accidental.is_some())
+                    .map(|head| -(head.position as f32) / 2.0 + ACCIDENTAL)
+                    .reduce(f32::max),
+                NotationItem::Rest { .. } => None,
+            })
+            .reduce(f32::max);
+        [head, stem, accidental]
+            .into_iter()
+            .flatten()
+            .reduce(f32::max)
+    }
+
+    /// The lowest notehead's staff position in column `index` of the notation staff, lower
+    /// by the room an accent or staccato dot below it takes.
     pub(crate) fn lowest_head(&self, index: usize) -> Option<i32> {
         self.columns
             .get(index)?

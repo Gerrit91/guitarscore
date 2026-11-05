@@ -76,7 +76,7 @@ pub(super) fn draw_part(
     let show_tab = part.show_tab;
     let rows = system.rows;
     let top = system.top;
-    let tab_top = top + part.tab_offset;
+    let tab_top = top + part.tab_offset(system.plan_measures.clone());
     let tops = Tops {
         tab: tab_top,
         notation: ctx.notation.map(|_| top),

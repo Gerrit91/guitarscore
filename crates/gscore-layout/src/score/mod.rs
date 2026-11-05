@@ -261,12 +261,15 @@ pub(crate) fn layout_with(
         .collect();
     let heights: Vec<f32> = rooms
         .iter()
-        .map(|rooms| {
+        .zip(&plans)
+        .map(|(rooms, plan)| {
             rooms
                 .iter()
                 .zip(&parts)
                 .filter_map(|(room, part)| {
-                    room.map(|(above, below)| above + part.staves_height + below)
+                    room.map(|(above, below)| {
+                        above + part.staves_height(plan.measures.clone()) + below
+                    })
                 })
                 .sum()
         })
@@ -332,7 +335,7 @@ pub(crate) fn layout_with(
                     text: name.clone(),
                     at: Point::new(
                         left - NAME_GAP,
-                        top + part.staves_height / 2.0 + NAME_SIZE * 0.35,
+                        top + part.staves_height(plan.measures.clone()) / 2.0 + NAME_SIZE * 0.35,
                     ),
                     size: NAME_SIZE,
                     font: TextFont::Regular,
@@ -340,7 +343,7 @@ pub(crate) fn layout_with(
                     color: ColorToken::Annotation,
                 });
             }
-            bottom = top + part.staves_height;
+            bottom = top + part.staves_height(plan.measures.clone());
             y = bottom + below;
         }
         // One line joins the staves of all tracks at the system's start.
