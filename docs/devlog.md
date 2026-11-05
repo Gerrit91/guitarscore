@@ -3066,3 +3066,6 @@ needed for a much larger font); owner listening check.
   General MIDI), so the desktop and browser synthesizers both follow it.
 - **Looping a note selection** starts at the first bar of the loop (after the count-in, if
   on), like every later pass, instead of at the first selected note.
+- **Free time over several bars** is marked once: "Free time" and the parenthesized time
+  signature on the run's first bar only (each bar keeps its dashed barline), and no time
+  signature after the run, as Guitar Pro prints it.

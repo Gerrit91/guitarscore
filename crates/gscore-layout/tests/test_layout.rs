@@ -453,6 +453,42 @@ fn free_time_is_written_over_its_measure() {
     );
 }
 
+/// A run of free-time bars is marked once, where it starts: the bars after it repeat
+/// neither "Free time" nor the time signature (each keeps its dashed barline).
+#[test]
+fn a_run_of_free_time_bars_is_marked_once() {
+    use gscore_model::MeasureIndex;
+    let count = |song: &Song| {
+        let layout = common::layout(song, 0);
+        let labels = layout
+            .ops
+            .iter()
+            .filter(|op| matches!(op, DrawOp::Text { text, .. } if text == "Free time"))
+            .count();
+        let digits = layout
+            .ops
+            .iter()
+            .filter(|op| {
+                matches!(
+                    op,
+                    DrawOp::Glyph {
+                        glyph: Glyph::TimeSigDigit(_),
+                        ..
+                    }
+                )
+            })
+            .count();
+        (labels, digits)
+    };
+    let mut song = common::open("basic/staff.gp");
+    let alone = count(&song);
+    // Bar 7 is free; bar 8 joins it.
+    let _ = song.set_free_time(MeasureIndex::new(7), true).unwrap();
+    let run = count(&song);
+    assert_eq!(run.0, 1, "one label for the run");
+    assert_eq!(run.1, alone.1, "no second time signature inside the run");
+}
+
 /// Bar repetitions are read and drawn: the staff file repeats measures 9 to 11.
 #[test]
 fn simile_marks_are_read_and_drawn() {
