@@ -499,11 +499,12 @@ fn a_stroke_uses_its_own_speed() {
 
 #[test]
 fn a_stroke_can_end_on_the_beat() {
-    // The chord is on the second beat, so there is room before it.
+    // A short chord on the second half note, so there is room before it; the roll is
+    // longer than the chord's notes, which must not hold its last string back.
     let mut song = testing::song_with_notes(&[
         (2, &[TestNote::new(1, 0)]),
         (
-            2,
+            16,
             &[
                 TestNote::new(6, 3),
                 TestNote::new(5, 2),
@@ -522,10 +523,36 @@ fn a_stroke_can_end_on_the_beat() {
         .unwrap();
     let ons = note_ons(&Sequence::new(&song, None).unwrap());
     let beat = 2 * u64::from(PPQ);
-    let last = ons.iter().map(|&(tick, ..)| tick).max().unwrap();
+    let chord: Vec<u64> = ons
+        .iter()
+        .map(|&(tick, ..)| tick)
+        .filter(|&tick| tick > 0)
+        .collect();
+    assert_eq!(chord.len(), 3, "{ons:?}");
+    let last = chord.iter().copied().max().unwrap();
     assert_eq!(last, beat, "the last string lands on the beat: {ons:?}");
-    let first = ons.iter().map(|&(tick, ..)| tick).min().unwrap();
-    assert!(first < beat, "the first string falls before it: {ons:?}");
+    let first = chord.iter().copied().min().unwrap();
+    assert_eq!(
+        first,
+        beat - u64::from(PPQ) / 2,
+        "the first string falls an eighth before it: {ons:?}"
+    );
+}
+
+#[test]
+fn a_stroke_ending_on_the_first_beat_of_the_song_has_no_room_and_lands_together() {
+    let mut song = chord_song();
+    let stroke = Stroke {
+        direction: StrokeDirection::Up,
+        speed: 8,
+        on_beat: false,
+    };
+    let _ = song
+        .set_beat_effect(at(0), BeatEffect::Arpeggio(Some(stroke)))
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&song, None).unwrap());
+    assert_eq!(ons.len(), 3, "{ons:?}");
+    assert!(ons.iter().all(|&(tick, ..)| tick == 0), "{ons:?}");
 }
 
 #[test]

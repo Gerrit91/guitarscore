@@ -12,6 +12,7 @@ use gscore_model::{
 
 use crate::channels::ChannelAllocator;
 use crate::curve::Curve;
+use crate::drums;
 use crate::effects;
 use crate::event::{MidiEvent, controller};
 use crate::graces;
@@ -221,7 +222,13 @@ pub(crate) fn collect(
                             track: number,
                             channel,
                             play_channel: channel,
-                            key: pitch.get(),
+                            // A drum note's number is Guitar Pro's articulation; play the
+                            // General MIDI sound it stands for.
+                            key: if sound.percussion {
+                                drums::drum_key(pitch.get())
+                            } else {
+                                pitch.get()
+                            },
                             velocity,
                             start,
                             end,

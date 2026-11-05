@@ -25,6 +25,7 @@ mod build;
 mod channels;
 mod click;
 mod curve;
+mod drums;
 mod effects;
 mod event;
 mod excerpt;

@@ -23,7 +23,9 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
 3. **GP6 instrument not read.** GP6 stores only an instrument id (`<Instrument
    ref="s-gtr6"/>`), no type or name; such tracks count as string instruments unless they
    are percussion. (The GP6 tuning order, unverified before, is now covered by the GPX
-   test file.)
+   test file.) GP6 drum notes are not read either: GP6 writes a drum note as a drum
+   element and variation instead of a MIDI number, so `multi_staff.gpx`'s drums import
+   as key 0 and play nothing (its `.gp` twin plays like Guitar Pro's MIDI export).
 4. **Complex bends are simplified** (later, with owner test data). The GPIF reader and
    writer keep the three-point shape (origin, middle, destination), so bend-and-release
    survives import and saving since M3 (214 notes in the owner's files were dropped

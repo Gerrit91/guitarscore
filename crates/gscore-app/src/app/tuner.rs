@@ -1,11 +1,12 @@
 //! The tuner: a reference tone (a sine wave) for tuning a guitar by ear.
 //!
-//! The window shows a drawn headstock and tuning fork, the chosen note and its frequency,
+//! The window shows the tone as a wave (denser for higher notes, moving while it sounds),
+//! the chosen note and its frequency,
 //! a note picker, the shown track's open strings as quick choices, and Play/Stop. The tone
 //! comes from `gscore_audio::TunerPlayer` on the default output device; the rest of the app
 //! keeps working while it sounds.
 
-use egui::{Align, Layout, Margin, Pos2, RichText, Sense, Shape, Stroke, vec2};
+use egui::{Align, Layout, Margin, Pos2, RichText, Sense, Stroke, vec2};
 use gscore_model::{Pitch, TrackIndex};
 
 use super::GuitarScoreApp;
@@ -130,7 +131,11 @@ impl GuitarScoreApp {
                     .inner_margin(Margin::symmetric(16, 12))
                     .show(ui, |ui| {
                         ui.set_width(WIDTH);
-                        picture(ui);
+                        let playing = tuner
+                            .player
+                            .as_ref()
+                            .is_some_and(|player| player.is_playing());
+                        picture(ui, tuner.note, playing);
                         ui.add_space(8.0);
                         ui.vertical_centered(|ui| {
                             ui.label(
@@ -199,7 +204,11 @@ impl GuitarScoreApp {
                                 for (number, pitch) in &strings {
                                     let label = format!("{number}: {}", note_name(*pitch));
                                     if ui
-                                        .add(egui::Button::new(label).small())
+                                        .add(
+                                            egui::Button::new(label)
+                                                .small()
+                                                .selected(tuner.note == *pitch),
+                                        )
                                         .on_hover_text(format!(
                                             "{} — {:.2} Hz",
                                             note_name(*pitch),
@@ -220,10 +229,6 @@ impl GuitarScoreApp {
                         ui.add_space(6.0);
                         ui.separator();
                         ui.add_space(4.0);
-                        let playing = tuner
-                            .player
-                            .as_ref()
-                            .is_some_and(|player| player.is_playing());
                         ui.allocate_ui_with_layout(
                             vec2(ui.available_width(), 30.0),
                             Layout::right_to_left(Align::Center),
@@ -249,10 +254,12 @@ impl GuitarScoreApp {
                             },
                         );
                         if outcome == Outcome::Open {
+                            // A focused button already takes Space as its click.
+                            let focused = ui.memory(|memory| memory.focused().is_some());
                             ui.input(|input| {
                                 if input.key_pressed(egui::Key::Escape) {
                                     outcome = Outcome::Cancel;
-                                } else if input.key_pressed(egui::Key::Space) {
+                                } else if input.key_pressed(egui::Key::Space) && !focused {
                                     request = Some(if playing {
                                         ToneRequest::Stop
                                     } else {
@@ -285,6 +292,14 @@ impl GuitarScoreApp {
 
 /// Plays `note`: starts the tone generator the first time, retunes it afterwards.
 fn start_or_retune(tuner: &mut TunerState, note: u8) {
+    // A device that failed (unplugged, busy) is opened again on the next Play.
+    if tuner
+        .player
+        .as_ref()
+        .is_some_and(|player| player.error().is_some())
+    {
+        tuner.player = None;
+    }
     if tuner.player.is_none() {
         match gscore_audio::TunerPlayer::start() {
             Ok(player) => tuner.player = Some(player),
@@ -303,89 +318,60 @@ fn start_or_retune(tuner: &mut TunerState, note: u8) {
     }
 }
 
-/// A drawn headstock and tuning fork, so the window reads as a tuner at a glance.
-fn picture(ui: &mut egui::Ui) {
+/// How many cycles of the wave the picture shows for `note`: one and a half at the
+/// lowest note up to nine at the highest, evenly per octave, so a higher note reads as a
+/// denser wave.
+fn cycles(note: u8) -> f32 {
+    let span = f32::from(HIGHEST_NOTE - LOWEST_NOTE);
+    let t = (f32::from(note.clamp(LOWEST_NOTE, HIGHEST_NOTE) - LOWEST_NOTE) / span).clamp(0.0, 1.0);
+    1.5 + t * 7.5
+}
+
+/// The picture: the reference tone as a sine wave across the panel. Its density follows
+/// the pitch; while the tone sounds it is drawn in the accent color and moves, silent it
+/// rests in a muted gray. It fades out at both ends.
+fn picture(ui: &mut egui::Ui, note: u8, playing: bool) {
     let tokens = style::tokens(ui);
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 120.0), Sense::hover());
-    let painter = ui.painter();
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 104.0), Sense::hover());
+    let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 8.0, tokens.control);
-    let weak = tokens.text_weak.gamma_multiply(0.35);
-    let line = Stroke::new(1.4, tokens.text_weak);
+    let inner = rect.shrink2(vec2(18.0, 16.0));
+    let mid = inner.center().y;
+    painter.line_segment(
+        [
+            egui::pos2(inner.left(), mid),
+            egui::pos2(inner.right(), mid),
+        ],
+        Stroke::new(1.0, tokens.line),
+    );
 
-    // The headstock, on the left: a trapezoid narrowing upward.
-    let head = egui::Rect::from_center_size(
-        egui::pos2(rect.left() + rect.width() * 0.28, rect.center().y - 6.0),
-        vec2(rect.width() * 0.22, 62.0),
-    );
-    let corners = vec![
-        egui::pos2(head.center().x - head.width() * 0.34, head.top()),
-        egui::pos2(head.center().x + head.width() * 0.34, head.top()),
-        egui::pos2(head.center().x + head.width() * 0.5, head.bottom()),
-        egui::pos2(head.center().x - head.width() * 0.5, head.bottom()),
-    ];
-    painter.add(Shape::convex_polygon(corners.clone(), weak, line));
-    // Six pegs, three a side, and the strings running down from the nut.
-    for index in 0..3 {
-        let y = head.top() + 10.0 + index as f32 * 18.0;
-        for side in [-1.0_f32, 1.0] {
-            let x = head.center().x + side * (head.width() * 0.42);
-            painter.circle_filled(egui::pos2(x, y), 3.5, tokens.text_weak);
-        }
-    }
-    for string in 0..6 {
-        let x = head.left() + head.width() * (0.12 + string as f32 * 0.15);
-        let thickness = 1.0 + string as f32 * 0.35;
-        painter.line_segment(
-            [
-                egui::pos2(x, head.bottom()),
-                egui::pos2(x, rect.bottom() - 10.0),
-            ],
-            Stroke::new(thickness, tokens.text_weak),
-        );
-    }
-
-    // The tuning fork, on the right, with the waves it makes.
-    let fork = egui::pos2(rect.left() + rect.width() * 0.72, rect.center().y + 6.0);
-    let accent = tokens.accent;
-    let fork_stroke = Stroke::new(2.6, accent);
-    let prong = 26.0;
-    painter.line_segment(
-        [fork + vec2(-12.0, -prong), fork + vec2(-12.0, 4.0)],
-        fork_stroke,
-    );
-    painter.line_segment(
-        [fork + vec2(12.0, -prong), fork + vec2(12.0, 4.0)],
-        fork_stroke,
-    );
-    painter.add(Shape::line(
-        (0..=8)
-            .map(|step| {
-                let t = std::f32::consts::PI * step as f32 / 8.0;
-                fork + vec2(-t.cos() * 12.0, 4.0 + t.sin() * 6.0)
-            })
-            .collect::<Vec<_>>(),
-        fork_stroke,
-    ));
-    painter.line_segment(
-        [fork + vec2(0.0, 10.0), fork + vec2(0.0, 36.0)],
-        fork_stroke,
-    );
-    painter.line_segment(
-        [fork + vec2(-10.0, 36.0), fork + vec2(10.0, 36.0)],
-        fork_stroke,
-    );
-    for (radius, alpha) in [(22.0_f32, 0.7_f32), (34.0, 0.4), (46.0, 0.2)] {
-        let arc: Vec<_> = (0..=10)
-            .map(|step| {
-                let t = std::f32::consts::PI * (step as f32 / 10.0) - std::f32::consts::FRAC_PI_2;
-                fork + vec2(t.cos() * radius, t.sin() * radius)
-            })
-            .collect();
-        painter.add(Shape::line(
-            arc,
-            Stroke::new(1.6, accent.gamma_multiply(alpha)),
-        ));
-    }
+    let (color, amplitude, phase) = if playing {
+        // A slow drift, the same for every pitch: it says "sounding", it is not the tone.
+        let time = ui.input(|input| input.time) as f32;
+        ui.ctx().request_repaint();
+        (tokens.accent, inner.height() / 2.0, time * 0.8)
+    } else {
+        (tokens.text_weak, inner.height() * 0.32, 0.0)
+    };
+    let cycles = cycles(note);
+    let steps = 240;
+    let point = |step: usize| {
+        let t = step as f32 / steps as f32;
+        let angle = std::f32::consts::TAU * (t * cycles - phase);
+        egui::pos2(
+            inner.left() + t * inner.width(),
+            mid - angle.sin() * amplitude,
+        )
+    };
+    let points: Vec<_> = (0..=steps).map(point).collect();
+    // Fade in and out over the outer fifth on each side.
+    let (left, width) = (inner.left(), inner.width().max(1.0));
+    let stroke = egui::epaint::PathStroke::new_uv(2.0, move |_, pos| {
+        let t = ((pos.x - left) / width).clamp(0.0, 1.0);
+        let edge = (t.min(1.0 - t) / 0.2).clamp(0.0, 1.0);
+        color.gamma_multiply(edge * edge * (3.0 - 2.0 * edge))
+    });
+    painter.add(egui::epaint::PathShape::line(points, stroke));
 }
 
 #[cfg(test)]
@@ -399,6 +385,13 @@ mod tests {
         assert!((frequency(57) - 220.0).abs() < 0.001);
         // The guitar's open low E.
         assert!((frequency(40) - 82.41).abs() < 0.02);
+    }
+
+    #[test]
+    fn the_wave_gets_denser_with_the_pitch() {
+        assert!((cycles(LOWEST_NOTE) - 1.5).abs() < 0.001);
+        assert!((cycles(HIGHEST_NOTE) - 9.0).abs() < 0.001);
+        assert!(cycles(40) < cycles(64) && cycles(64) < cycles(CONCERT_A_NOTE + 12));
     }
 
     #[test]

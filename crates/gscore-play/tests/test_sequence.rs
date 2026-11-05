@@ -992,3 +992,64 @@ fn the_setup_sends_each_tracks_reverb_and_chorus() {
         );
     }
 }
+
+/// Each melodic track's program (from its first program change), in track order. The
+/// drum channel is left out: Guitar Pro sends kit 0 there, we send no program for drums.
+fn programs(smf: &Smf) -> Vec<u8> {
+    smf.tracks
+        .iter()
+        .filter_map(|track| {
+            track
+                .iter()
+                .find(|(_, status, _)| status & 0xF0 == 0xC0 && status & 0x0F != 9)
+                .map(|(_, _, data)| data[0])
+        })
+        .collect()
+}
+
+#[test]
+fn the_exported_midi_file_matches_guitar_pros_for_every_reference() {
+    // What File › Export › MIDI writes, read back, against Guitar Pro's own export.
+    for name in [
+        "steel_guitar_dadgad",
+        "note_lengths",
+        "ornaments",
+        "advanced_ornaments",
+        "multi_staff",
+    ] {
+        for extension in ["gp", "gpx"] {
+            // GP6 drum notes (element and variation) are not read yet: docs/gaps.md.
+            if name == "multi_staff" && extension == "gpx" {
+                continue;
+            }
+            let song = open(&format!("basic/{name}.{extension}"));
+            let name = format!("{name}.{extension}");
+            let sequence = Sequence::new(&song, None).unwrap();
+            let ours = parse_smf(&to_smf(&sequence, song.title()).unwrap());
+            let theirs = parse_smf(
+                &std::fs::read(testdata(&format!(
+                    "basic/{}.mid",
+                    name.split('.').next().unwrap_or_default()
+                )))
+                .unwrap(),
+            );
+            assert_eq!(programs(&ours), programs(&theirs), "{name}: programs");
+            if name.starts_with("advanced_ornaments") {
+                // We play pick slides, trills and tremolo picking as extra notes where Guitar
+                // Pro bends one note, so every note of theirs must be among ours; and we strum
+                // brushes and pick strokes (here over up to an eighth, 240 of 480 ticks) where
+                // Guitar Pro's export strikes the chord at once.
+                let ours = note_starts(&ours);
+                for (tick, key) in note_starts(&theirs) {
+                    assert!(
+                        ours.iter()
+                            .any(|&(t, k)| k == key && t >= tick && t - tick <= 240),
+                        "{name}: Guitar Pro's {key} at {tick} is missing"
+                    );
+                }
+            } else {
+                assert_same_notes(&note_starts(&ours), &note_starts(&theirs), &name);
+            }
+        }
+    }
+}

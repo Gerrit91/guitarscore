@@ -2866,3 +2866,29 @@ needed for a much larger font); owner listening check.
   tremolo and fingering tiles).
 - Tests: the preset-color test opens the color picker first; new `symbol_picker` and
   `color_picker` snapshots; snapshots updated.
+
+## 2026-11-05 — Review: MIDI export against Guitar Pro, stroke timing, tuner picture
+
+- MIDI export is now checked against Guitar Pro's own `.mid` export for every reference
+  in `testdata/basic` (`.gp` and `.gpx`): same notes (within a tick) and programs. Two
+  differences are on purpose and allowed for: we play pick slides, trills and tremolo
+  picking as notes where Guitar Pro bends one, and we strum brushes and pick strokes where
+  its export strikes the chord at once; we also send no program change on the drum
+  channel.
+- The check found a playback bug: Guitar Pro 7 stores a drum note as an articulation
+  number, and 44 of them (half-open hi-hat 92, ride edge 93, chokes, cowbell and conga
+  variants, ...) are not General MIDI sounds. They played as the wrong sound or nothing;
+  `gscore-play/src/drums.rs` maps them as Guitar Pro's drum kit does, for main notes and
+  flams. GP6 drum notes are not read at all yet (`docs/gaps.md`).
+- MIDI export wrote only the tracks that were audible: a muted track, or every track but
+  the soloed one, was missing from the file. It now writes every track.
+- A brush or arpeggio that ends on the beat did not land on it when its notes were shorter
+  than the spread (the onsets were clamped to the note length), nor on the first beat of
+  the song (no room before it: the spread was cut at tick 0 and the strings landed after
+  the beat). Starting earlier only lengthens a note, so nothing is clamped now, and with no
+  room before the beat the spread shrinks to what there is.
+- The tuner shows the tone as a sine wave instead of the headstock and tuning fork:
+  denser for higher notes, in the accent color and moving while it sounds, gray at rest,
+  fading out at both ends. The open-string buttons show which one is chosen; Space no
+  longer toggles the tone a second time when a button has focus; Play opens the audio
+  device again after it failed instead of keeping the broken one.

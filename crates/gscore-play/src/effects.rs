@@ -99,6 +99,17 @@ pub(crate) fn spread_with_offset(
         order.reverse();
     }
     let gaps = u64::try_from(count.saturating_sub(1)).unwrap_or(1).max(1);
+    // A roll ending on the beat needs room before it: at the very start of the song it is
+    // squeezed into what there is, so the last string still lands on the beat.
+    let total = if before {
+        chord
+            .iter()
+            .map(|note| note.start)
+            .min()
+            .map_or(0, |start| total.min(start))
+    } else {
+        total
+    };
     for (position, index) in order.into_iter().enumerate() {
         let Some(note) = chord.get_mut(index) else {
             continue;
@@ -107,11 +118,12 @@ pub(crate) fn spread_with_offset(
             .saturating_mul(u64::try_from(position).unwrap_or(0))
             .checked_div(gaps)
             .unwrap_or(0);
-        // Never past the note's end.
-        let delay = delay.min(note.end.saturating_sub(note.start).saturating_sub(1));
         note.start = if before {
+            // Starting earlier only lengthens the note, so nothing is clamped here.
             note.start.saturating_sub(total).saturating_add(delay)
         } else {
+            // Never past the note's end.
+            let delay = delay.min(note.end.saturating_sub(note.start).saturating_sub(1));
             note.start.saturating_add(delay)
         };
     }

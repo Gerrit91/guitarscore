@@ -882,7 +882,19 @@ fn export_score(song: &Song, format: FileFormat, path: &std::path::Path) -> Resu
 
 /// The work of [`Tasks::export_midi`]: the status message, or why it failed.
 fn export_midi(song: &Song, path: &std::path::Path) -> Result<String, String> {
-    let sequence = Sequence::new(song, None).map_err(|e| e.to_string())?;
+    // Every track goes into the file: muting and soloing are for listening in the app, and
+    // a sequence would leave muted (or unsoloed) tracks out.
+    let mut song = song.clone();
+    for index in 0..song.track_count() {
+        let track = gscore_model::TrackIndex::new(index);
+        let _ = song
+            .set_track_mute(track, false)
+            .map_err(|e| e.to_string())?;
+        let _ = song
+            .set_track_solo(track, false)
+            .map_err(|e| e.to_string())?;
+    }
+    let sequence = Sequence::new(&song, None).map_err(|e| e.to_string())?;
     let bytes = to_smf(&sequence, song.title()).map_err(|e| e.to_string())?;
     std::fs::write(path, &bytes).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
     let name = path.file_name().map_or_else(
@@ -928,6 +940,27 @@ mod tests {
         );
         let left: Vec<_> = std::fs::read_dir(&dir).unwrap().collect();
         assert_eq!(left.len(), 1, "only the exported file, no temporary one");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_midi_export_keeps_muted_and_unsoloed_tracks() {
+        use gscore_model::testing::{BASS_4, GUITAR_6, song};
+        let dir = std::env::temp_dir().join(format!("gscore-midi-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut song = song(&[GUITAR_6, BASS_4, GUITAR_6], 2).unwrap();
+        let _ = song
+            .set_track_mute(gscore_model::TrackIndex::new(0), true)
+            .unwrap();
+        let _ = song
+            .set_track_solo(gscore_model::TrackIndex::new(1), true)
+            .unwrap();
+        let path = dir.join("song.mid");
+        let message = export_midi(&song, &path).unwrap();
+        assert!(message.contains("3 tracks"), "{message}");
+        let bytes = std::fs::read(&path).unwrap();
+        // The header counts the conductor track and the three tracks.
+        assert_eq!(bytes.get(10..12), Some(&[0, 4][..]));
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
