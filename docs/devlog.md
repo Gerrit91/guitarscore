@@ -3074,3 +3074,17 @@ needed for a much larger font); owner listening check.
   synth's second staff pushed each later track onto its neighbour's bars, so "Vocal ALEX"
   showed "Vocal SAMIR"'s part (and a bass clef). A second staff itself is not read yet,
   and pitched tracks without strings still lack notation (`docs/gaps.md` #2).
+
+## 2026-11-06 — v0.1.0 released; AGENTS.md and gaps tidied; M22 is next
+
+- v0.1.0 is tagged (owner). AGENTS.md section 9 now lists the finished milestones in one
+  line each, M22 as the current milestone (owner: playback sequence first, then all
+  sounds at full quality), what is still open from M18-M21, and a backlog with the points
+  found since (pitched tracks without strings, second staves, lyrics, beat-text
+  collisions). The sound plan (section 8) marks stages 1-2 done and stage 3 set aside;
+  decided questions moved to a "Decided" list; a branch rule joined the working
+  agreements (feature branches only, check the branch before each commit, the owner
+  merges).
+- `docs/gaps.md` rewritten as a short list of current shortfalls (17 items in five
+  groups); the history of each item stays in this devlog. CLAUDE.md's branch note
+  updated.
