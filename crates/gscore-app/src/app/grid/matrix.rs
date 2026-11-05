@@ -8,10 +8,7 @@ use crate::document::GridData;
 use crate::state::MeasureSelection;
 
 use super::rows::{TrackRow, color32};
-use super::{
-    CELL_PADDING, GridAction, GridView, MEASURE_WIDTH, ROW_HEIGHT, RULER_HEIGHT,
-    SECTION_TITLE_MEASURES,
-};
+use super::{CELL_PADDING, GridAction, GridView, MEASURE_WIDTH, ROW_HEIGHT, RULER_HEIGHT};
 
 /// The measure matrix: ruler with numbers, sections and repeats, then one row per track.
 pub(super) fn matrix(
@@ -157,11 +154,13 @@ pub(super) fn matrix(
         }
     }
 
-    // Sections, repeats and alternative endings in the ruler.
+    // Sections, repeats and alternative endings in the ruler. The section title itself
+    // goes into the master row below the tracks, where nothing collides with it.
     for measure in first_measure..last_measure {
         let x = rect.left() + measure as f32 * MEASURE_WIDTH;
         if let Some(Some(section)) = grid.sections.get(measure) {
             let color = color32(section.color);
+            // The line above the ruler's bottom edge marks where the section starts.
             painter.line_segment(
                 [
                     pos2(x, rect.top() + RULER_HEIGHT - 3.0),
@@ -169,25 +168,6 @@ pub(super) fn matrix(
                 ],
                 Stroke::new(2.0, color),
             );
-            // Clip the title to the measures before the next section, so two markers
-            // never write over each other.
-            let next = (measure.saturating_add(1)..view.measure_count)
-                .find(|&index| grid.sections.get(index).is_some_and(Option::is_some))
-                .unwrap_or(view.measure_count);
-            let room = next.saturating_sub(measure) as f32 * MEASURE_WIDTH;
-            if room >= MEASURE_WIDTH * SECTION_TITLE_MEASURES {
-                let clip = Rect::from_min_max(
-                    pos2(x, rect.top()),
-                    pos2(x + room, rect.top() + RULER_HEIGHT),
-                );
-                painter.with_clip_rect(clip).text(
-                    pos2(x + 2.0, rect.top() + RULER_HEIGHT - 6.0),
-                    Align2::LEFT_BOTTOM,
-                    &section.title,
-                    FontId::proportional(9.0),
-                    color,
-                );
-            }
         }
         if let Some(repeat) = grid.repeats.get(measure) {
             let y = rect.top() + RULER_HEIGHT - 6.0;
@@ -227,6 +207,54 @@ pub(super) fn matrix(
                     visuals.weak_text_color(),
                 );
             }
+        }
+    }
+
+    // Section titles in the master row, below every track: there they have the whole
+    // width of their section and no measure number or repeat sign to collide with.
+    let master_top = rect.top() + RULER_HEIGHT + rows.len() as f32 * ROW_HEIGHT;
+    for measure in first_measure..last_measure {
+        let Some(Some(section)) = grid.sections.get(measure) else {
+            continue;
+        };
+        let x = rect.left() + measure as f32 * MEASURE_WIDTH;
+        let color = color32(section.color);
+        // Clip the title to the measures before the next section, so two markers never
+        // write over each other.
+        let next = (measure.saturating_add(1)..view.measure_count)
+            .find(|&index| grid.sections.get(index).is_some_and(Option::is_some))
+            .unwrap_or(view.measure_count);
+        let room = next.saturating_sub(measure) as f32 * MEASURE_WIDTH;
+        // The title may run into the empty area after the last measure; it stops at the
+        // next section's marker.
+        let end_x = if next >= view.measure_count {
+            rect.right()
+        } else {
+            x + room
+        };
+        painter.line_segment(
+            [pos2(x, master_top), pos2(x, master_top + ROW_HEIGHT - 2.0)],
+            Stroke::new(2.0, color),
+        );
+        painter.line_segment(
+            [
+                pos2(x, master_top + ROW_HEIGHT - 2.0),
+                pos2(x + room, master_top + ROW_HEIGHT - 2.0),
+            ],
+            Stroke::new(1.5, color),
+        );
+        if end_x - x >= MEASURE_WIDTH {
+            let clip = Rect::from_min_max(
+                pos2(x + 3.0, master_top),
+                pos2(end_x - 2.0, master_top + ROW_HEIGHT),
+            );
+            painter.with_clip_rect(clip).text(
+                pos2(x + 4.0, master_top + ROW_HEIGHT / 2.0),
+                Align2::LEFT_CENTER,
+                &section.title,
+                FontId::proportional(10.0),
+                color,
+            );
         }
     }
 

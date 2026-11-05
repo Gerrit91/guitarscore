@@ -2780,3 +2780,13 @@ needed for a much larger font); owner listening check.
   a stub that says the tuner is not available there yet.
 - Tests: the note-to-frequency mapping (A4, the octave, the low E) and the audible-range
   guard; a new `tuner_dialog` snapshot covers the window and the picture.
+
+## 2026-11-05 — Section titles in the grid's master row
+
+- Section titles used to sit at the bottom of the ruler, where repeat signs (`|:`, `:|`),
+  alternative-ending labels and the repeat count (`×2`) are drawn too, so a marker could
+  clip into them. They now go into the master row below all tracks, clipped at the next
+  section's marker and free to run into the room after the last measure. The ruler keeps
+  only the colored start line, which still lines up with the measure.
+- Tests: a new `grid_section_title` snapshot adds a "Chorus" section and shows it in the
+  master row under its measure, clear of the number.

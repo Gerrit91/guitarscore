@@ -55,8 +55,6 @@ pub(crate) fn opening_height(tracks: usize) -> f32 {
 pub(super) const MEASURE_WIDTH: f32 = ROW_HEIGHT;
 /// Padding inside a matrix square: none, the squares touch.
 pub(super) const CELL_PADDING: f32 = 0.0;
-/// Room a section title needs before it is drawn (three measures).
-pub(super) const SECTION_TITLE_MEASURES: f32 = 3.0;
 
 /// What the grid asks the app to do after drawing.
 #[derive(Debug)]

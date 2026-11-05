@@ -161,6 +161,34 @@ fn the_track_dialogs_match_their_snapshots() {
 }
 
 #[test]
+fn section_titles_sit_in_the_master_row() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .wgpu()
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/steel_guitar_dadgad.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness.get_by_label("Section").click();
+    harness.run();
+    harness.get_by_label("Section title").click();
+    harness.get_by_label("Section title").type_text("Chorus");
+    harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    harness.snapshot("grid_section_title");
+}
+
+#[test]
 fn the_staff_dialogs_match_their_snapshots() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))
