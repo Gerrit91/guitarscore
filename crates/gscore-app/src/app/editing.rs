@@ -495,12 +495,6 @@ impl GuitarScoreApp {
     /// the player there too. `at_end` seeks to the very end of the score instead of the
     /// measure's start.
     fn goto_measure(&mut self, measure: usize, at_end: bool) {
-        if self.playback.count_in_pending() {
-            // A count-in for the old place makes no sense now.
-            if let Err(error) = self.playback.stop() {
-                self.notice = Some(error);
-            }
-        }
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
@@ -535,6 +529,14 @@ impl GuitarScoreApp {
             voice: at.voice,
             beat: at.beat,
         };
+        // A count-in is playing for the old place: count in again where the cursor went,
+        // instead of stopping playback.
+        if self.playback.count_in_pending() {
+            if let Err(error) = self.playback.jump_to(document.song(), target) {
+                self.notice = Some(error);
+            }
+            return;
+        }
         let Some(sequence) = self.playback.sequence().cloned() else {
             return;
         };

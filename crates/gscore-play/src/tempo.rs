@@ -86,12 +86,6 @@ impl TempoMap {
         }
     }
 
-    /// A map from decoded points: non-empty, starting at tick 0, in tick order, with a
-    /// positive rate. `None` if they are not (a damaged message).
-    pub(crate) fn from_points(points: Vec<(u64, u32)>) -> Option<Self> {
-        Self::from_parts(points, Vec::new())
-    }
-
     /// A map from decoded points and pauses, both checked; `None` if they are damaged.
     pub(crate) fn from_parts(points: Vec<(u64, u32)>, pauses: Vec<(u64, u64)>) -> Option<Self> {
         let first = points.first()?;
