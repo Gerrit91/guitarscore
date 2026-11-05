@@ -2753,3 +2753,15 @@ needed for a much larger font); owner listening check.
 - Tests: the panel test drives the capo and string count through the dialog; a new
   snapshot (`tuning_dialog`) covers the layout; preset/default tuning lengths are unit
   tested.
+
+## 2026-11-05 — A visible rename button; rename dialog in the common layout
+
+- Clicking the track's name already edited it in place, but nothing said so. The track
+  panel header now has a pencil button ("Rename track") next to the name; it opens the
+  same rename window the grid's context menu uses. The in-place edit stays.
+- The rename window used egui's default frame, title bar and button row, unlike every
+  other dialog. It now uses `style::window_frame` with the custom title bar, a hint line,
+  a full-width field focused at once, and Cancel / accent Rename buttons, with Escape and
+  Enter. A new pencil icon (`Icon::Rename`) is drawn like the other toolbar icons.
+- Tests: the panel test renames through the button; a snapshot (`rename_track_dialog`)
+  covers the window; the string-tuning test drives the new tuning dialog.

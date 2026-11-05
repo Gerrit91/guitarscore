@@ -128,7 +128,7 @@ fn the_page_matches_its_snapshot_in_both_themes() {
 }
 
 #[test]
-fn the_tuning_dialog_matches_its_snapshot() {
+fn the_track_dialogs_match_their_snapshots() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))
         .wgpu()
@@ -148,6 +148,11 @@ fn the_tuning_dialog_matches_its_snapshot() {
     harness.get_by_label("Tuning: DADGAD…").click();
     harness.run();
     harness.snapshot("tuning_dialog");
+    harness.get_by_label("Cancel").click();
+    harness.run();
+    harness.get_by_label("Rename track").click();
+    harness.run();
+    harness.snapshot("rename_track_dialog");
 }
 
 #[test]
@@ -651,6 +656,18 @@ fn the_track_panel_edits_the_shown_track() {
     harness.key_press(egui::Key::Escape);
     harness.run();
     assert_eq!(first_track(&harness).name(), "Steel Guitar Lead");
+
+    // The rename button is another way in, with the same window.
+    harness.get_by_label("Rename track").click();
+    harness.run();
+    harness.get_by_label("Track name").click();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.run();
+    harness.get_by_label("Track name").type_text("Renamed");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(first_track(&harness).name(), "Renamed");
 }
 
 /// Runs frames until background jobs are done and the UI stops repainting. It steps first,

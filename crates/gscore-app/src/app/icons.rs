@@ -70,6 +70,8 @@ pub(crate) enum Icon {
     PanelBottom,
     /// The right panel.
     PanelRight,
+    /// Rename (a pencil).
+    Rename,
 }
 
 /// A square icon button with a tooltip and an accessibility label.
@@ -456,6 +458,25 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             let half = size * 0.42;
             painter.line_segment([center - vec2(half, 0.0), center + vec2(half, 0.0)], stroke);
             painter.line_segment([center - vec2(0.0, half), center + vec2(0.0, half)], stroke);
+        }
+        Icon::Rename => {
+            // A pencil: a thin body from the lower left to the upper right, and its tip.
+            let tip_at = center + vec2(-size * 0.34, size * 0.34);
+            let end = center + vec2(size * 0.32, -size * 0.34);
+            let direction = (end - tip_at).normalized();
+            let across = vec2(-direction.y, direction.x) * (size * 0.09);
+            painter.line_segment([tip_at + across, end + across], stroke);
+            painter.line_segment([tip_at - across, end - across], stroke);
+            painter.line_segment([end - across, end + across], stroke);
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    tip_at + across,
+                    tip_at - across,
+                    tip_at - direction * (size * 0.18),
+                ],
+                stroke.color,
+                Stroke::NONE,
+            ));
         }
         Icon::MoveUp | Icon::MoveDown => {
             // Drawn pointing up, mirrored for down.

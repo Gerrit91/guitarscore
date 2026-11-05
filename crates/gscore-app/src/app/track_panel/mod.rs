@@ -13,6 +13,7 @@ use gscore_model::{
 };
 
 use super::GuitarScoreApp;
+use super::icons::{self, Icon};
 use super::instrument;
 use super::style;
 
@@ -160,6 +161,7 @@ impl GuitarScoreApp {
             return;
         };
         let state = &mut tab.track_panel;
+        let mut rename_requested = false;
         egui::Frame::new()
             .inner_margin(egui::Margin::symmetric(12, 10))
             .show(ui, |ui| {
@@ -233,8 +235,22 @@ impl GuitarScoreApp {
                             state.editing = true;
                         }
                     }
+                    if !state.editing
+                        && icons::button(ui, Icon::Rename, "Rename track", "Rename this track")
+                            .clicked()
+                    {
+                        rename_requested = true;
+                    }
                 });
             });
+        if rename_requested && let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.renaming = Some(super::grid::RenameTrack {
+                track: index,
+                name: snapshot.name.clone(),
+                focused: false,
+                pos: None,
+            });
+        }
         let rect = ui.max_rect();
         ui.painter().hline(
             rect.x_range(),
