@@ -2892,3 +2892,19 @@ needed for a much larger font); owner listening check.
   fading out at both ends. The open-string buttons show which one is chosen; Space no
   longer toggles the tone a second time when a button has focus; Play opens the audio
   device again after it failed instead of keeping the broken one.
+
+## 2026-11-05 — Instrument symbols redrawn
+
+- All fifteen symbols are redrawn as flat one-color silhouettes in one shape language:
+  the guitars, bass, ukulele and banjo lie on the same diagonal (head up to the right,
+  scaled to the box's diagonal), each with one distinguishing feature: horns and a solid
+  body (electric), an outline with a soundhole (acoustic), a longer neck and four pegs
+  (bass), a small outline (ukulele), a round rim with a bridge (banjo). Drums are a
+  snare with crossed sticks; piano a keyboard; organ pipes with tapered feet; synth a
+  panel with knobs over keys; trumpet, saxophone, flute, a microphone, a violin with its
+  bow, and two beamed eighths for "other".
+- A `Pen` in `instrument.rs` draws in the symbol's own turned coordinates, so the shapes
+  are written once and stay crisp from 18 px up. The new `instrument_symbols` snapshot
+  shows every symbol at 18, 24 and 64 px on light and dark.
+- Derived symbols: GM programs 24 and 25 (nylon and steel string) and instrument names
+  with "acoustic", "nylon" or "steel" now get the acoustic guitar; 26-31 stay electric.
