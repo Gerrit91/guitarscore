@@ -63,6 +63,8 @@ pub enum Glyph {
     GClef,
     /// Bass clef (`fClef`).
     FClef,
+    /// Alto and tenor clef (`cClef`).
+    CClef,
     /// Whole-note head (`noteheadWhole`).
     NoteheadWhole,
     /// Half-note head (`noteheadHalf`).
@@ -209,6 +211,7 @@ impl Glyph {
             Glyph::Tremolo3,
             Glyph::GClef,
             Glyph::FClef,
+            Glyph::CClef,
             Glyph::NoteheadWhole,
             Glyph::NoteheadHalf,
             Glyph::NoteheadBlack,
@@ -283,6 +286,7 @@ impl Glyph {
             Glyph::Tremolo3 => "tremolo3",
             Glyph::GClef => "gClef",
             Glyph::FClef => "fClef",
+            Glyph::CClef => "cClef",
             Glyph::NoteheadWhole => "noteheadWhole",
             Glyph::NoteheadHalf => "noteheadHalf",
             Glyph::NoteheadBlack => "noteheadBlack",
@@ -362,6 +366,7 @@ impl Glyph {
             Glyph::Tremolo3 => 0xE222,
             Glyph::GClef => 0xE050,
             Glyph::FClef => 0xE062,
+            Glyph::CClef => 0xE05C,
             Glyph::NoteheadWhole => 0xE0A2,
             Glyph::NoteheadHalf => 0xE0A3,
             Glyph::NoteheadBlack => 0xE0A4,

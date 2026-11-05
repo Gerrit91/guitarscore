@@ -190,6 +190,7 @@ impl MeasureLayout {
         x: f32,
         tops: Tops,
         stretch: f32,
+        first_in_system: bool,
         ctx: &Context<'_>,
         ops: &mut Vec<DrawOp>,
     ) {
@@ -206,6 +207,15 @@ impl MeasureLayout {
             });
         }
         let mut signature_x = x;
+        // A clef change is written before the key signature. On a system's first measure
+        // the system-start clef already shows it.
+        if self.clef_change
+            && !first_in_system
+            && let Some(notation_top) = tops.notation
+        {
+            notation::draw_clef_change(signature_x, notation_top, self.clef, ops);
+            signature_x += self.clef_width;
+        }
         if let Some(key_signature) = &self.key_signature {
             key_signature.draw_at(signature_x, tops.notation.unwrap_or(top), ctx, ops);
             signature_x += key_signature.width;

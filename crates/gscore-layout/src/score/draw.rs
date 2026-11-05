@@ -28,6 +28,8 @@ pub(super) struct System {
     pub(super) numbers: bool,
     /// The key at the system's start.
     pub(super) key: i8,
+    /// The clef of the notation staff at the system's start.
+    pub(super) clef: notation::Clef,
     /// How many measures the score has (the last one ends with a final barline).
     pub(super) last_measure: usize,
 }
@@ -148,7 +150,14 @@ pub(super) fn draw_part(
         if let Some(slot) = drawn.measure_tops.get_mut(index) {
             *slot = Some(tops);
         }
-        measure.draw(content_x, tops, system.stretch, ctx, &mut content);
+        measure.draw(
+            content_x,
+            tops,
+            system.stretch,
+            offset == 0,
+            ctx,
+            &mut content,
+        );
         x = content_x + measure.width(system.stretch) + after;
         marks::draw(
             marks::Placed {
@@ -230,12 +239,12 @@ pub(super) fn draw_part(
             ops,
         );
     }
-    if let (Some(notation), Some(notation_top)) = (ctx.notation, tops.notation) {
+    if let (Some(_), Some(notation_top)) = (ctx.notation, tops.notation) {
         notation_staff.draw_lines(notation_top, left, x, font, ops);
         notation::draw_staff_start(
             left,
             notation_top,
-            notation.clef,
+            system.clef,
             key,
             key_drawn_by_measure,
             ctx,

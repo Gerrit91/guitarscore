@@ -215,6 +215,14 @@ impl<'a> MeasureView<'a> {
         })
     }
 
+    /// The clef this measure's standard-notation staff is written in, if the file stored
+    /// one (GP6/GP7 do; GP3-5 do not, and the layout derives it from the instrument).
+    pub fn clef(&self) -> Option<crate::style::Clef> {
+        self.inner
+            .has_clef
+            .then(|| crate::style::Clef::from_gp(&self.inner.clef))
+    }
+
     /// All voices, in order.
     pub fn voices(&self) -> impl ExactSizeIterator<Item = VoiceView<'a>> + use<'a> {
         self.inner

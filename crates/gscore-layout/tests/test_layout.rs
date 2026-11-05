@@ -412,3 +412,24 @@ fn notation_adds_a_five_line_staff_and_one_notehead_per_note() {
     let bass = common::layout(&testing::song(&[BASS_4], 1).unwrap(), 0);
     assert_eq!(glyphs(&bass, Glyph::FClef), 1);
 }
+
+/// The staff test file changes clefs through the score: treble, bass, alto, tenor, treble.
+#[test]
+fn clef_changes_are_read_and_drawn() {
+    let song = common::open("basic/staff.gp");
+    let layout = common::layout(&song, 0);
+    let count = |wanted: Glyph| {
+        layout
+            .ops
+            .iter()
+            .filter(|op| matches!(op, DrawOp::Glyph { glyph, .. } if *glyph == wanted))
+            .count()
+    };
+    assert!(count(Glyph::GClef) >= 1, "treble clef");
+    assert!(count(Glyph::FClef) >= 1, "bass clef change");
+    assert!(
+        count(Glyph::CClef) >= 2,
+        "alto and tenor clef changes (got {})",
+        count(Glyph::CClef)
+    );
+}

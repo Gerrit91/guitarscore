@@ -450,6 +450,13 @@ impl SongGpifOps for Song {
 
                 if let Some(bar) = bars_map.get(&bar_id) {
                     measure.simile_mark = bar.simile_mark.clone();
+                    measure.has_clef = bar.clef.is_some();
+                    measure.clef = match bar.clef.as_deref() {
+                        Some("F4") => MeasureClef::Bass,
+                        Some("C4") => MeasureClef::Alto,
+                        Some("C3") => MeasureClef::Tenor,
+                        _ => MeasureClef::Treble,
+                    };
                     let voice_ids = parse_ids(&bar.voices);
                     measure.voices.clear();
 

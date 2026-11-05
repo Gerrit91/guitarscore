@@ -140,12 +140,16 @@ pub(crate) fn spell_in_key(midi: u8, key: i8) -> Spelled {
 
 /// The clef of a notation staff. Guitar and bass music is written an octave above where
 /// it sounds, as Guitar Pro and most guitar notation do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Clef {
     /// Treble clef: guitars.
     Treble,
     /// Bass clef: basses.
     Bass,
+    /// Alto clef: C on the middle line.
+    Alto,
+    /// Tenor clef: C on the fourth line from the bottom.
+    Tenor,
     /// Percussion clef: drum kits, whose notes are placed by [`super::drums`].
     Percussion,
 }
@@ -162,6 +166,10 @@ const TREBLE_SHARPS: [i32; 7] = [8, 5, 9, 6, 3, 7, 4];
 const TREBLE_FLATS: [i32; 7] = [4, 7, 3, 6, 2, 5, 1];
 const BASS_SHARPS: [i32; 7] = [6, 3, 7, 4, 1, 5, 2];
 const BASS_FLATS: [i32; 7] = [2, 5, 1, 4, 0, 3, -1];
+const ALTO_SHARPS: [i32; 7] = [7, 4, 8, 5, 2, 6, 3];
+const ALTO_FLATS: [i32; 7] = [3, 6, 2, 5, 1, 4, 0];
+const TENOR_SHARPS: [i32; 7] = [9, 6, 10, 7, 4, 8, 5];
+const TENOR_FLATS: [i32; 7] = [5, 8, 4, 7, 3, 6, 2];
 
 impl Clef {
     /// The clef for a track whose lowest open string sounds at `lowest`.
@@ -179,6 +187,9 @@ impl Clef {
             // Drums are not placed by pitch; treble positions are a harmless fallback.
             Clef::Treble | Clef::Percussion => 4 * 7 + 2,
             Clef::Bass => 2 * 7 + 4,
+            // C4 sits on the middle line (alto) or the fourth line (tenor).
+            Clef::Alto => 4 * 7 + 0 - 4,
+            Clef::Tenor => 4 * 7 + 0 - 6,
         }
     }
 
@@ -188,6 +199,8 @@ impl Clef {
         match self {
             Clef::Treble => (Glyph::GClef, 2),
             Clef::Bass => (Glyph::FClef, 6),
+            Clef::Alto => (Glyph::CClef, 4),
+            Clef::Tenor => (Glyph::CClef, 6),
             Clef::Percussion => (Glyph::PercussionClef, 4),
         }
     }
@@ -230,6 +243,10 @@ impl Clef {
             Clef::Treble => &TREBLE_FLATS,
             Clef::Bass if key > 0 => &BASS_SHARPS,
             Clef::Bass => &BASS_FLATS,
+            Clef::Alto if key > 0 => &ALTO_SHARPS,
+            Clef::Alto => &ALTO_FLATS,
+            Clef::Tenor if key > 0 => &TENOR_SHARPS,
+            Clef::Tenor => &TENOR_FLATS,
             Clef::Percussion => return Vec::new(),
         };
         letters

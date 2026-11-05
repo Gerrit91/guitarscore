@@ -23,7 +23,7 @@ use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point};
 use crate::error::LayoutError;
 use crate::glyph::Glyph;
-use crate::notation::{self, KeySigLayout, NotationItem};
+use crate::notation::{self, KeySigLayout, Notation, NotationItem};
 use crate::ornaments::{self, ColumnMarks, Fret};
 
 use columns::{as_f64, beat_length, beat_starts, column_items};
@@ -70,6 +70,12 @@ pub(crate) struct Tops {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct MeasureLayout {
     index: MeasureIndex,
+    /// The clef this measure's notation staff uses.
+    clef: notation::Clef,
+    /// Whether the measure starts with a clef change (drawn before its key signature).
+    clef_change: bool,
+    /// Room the clef change takes, including the gaps around it.
+    clef_width: f32,
     /// The key signature when it changes here (or starts the score), on the staff that
     /// carries it.
     key_signature: Option<KeySigLayout>,
@@ -174,14 +180,29 @@ impl MeasureLayout {
 
     /// Lays out `measure` in `key`, which `previous` differs from when the key signature
     /// changes here; `show_time_signature` when it starts the piece or changes the time
-    /// signature.
+    /// signature. `clef` is the clef in effect here and `previous_clef` the one before, so
+    /// a change is written at the measure's start.
     pub(crate) fn new(
         measure: MeasureView<'_>,
         show_time_signature: bool,
         key: i8,
         previous_key: Option<i8>,
+        clef: notation::Clef,
+        previous_clef: Option<notation::Clef>,
         ctx: &Context<'_>,
     ) -> Result<Self, LayoutError> {
+        // The staff's items and key signature are laid out in this measure's clef.
+        let local;
+        let ctx = match ctx.notation {
+            Some(notation) => {
+                local = Context {
+                    notation: Some(Notation { clef, ..notation }),
+                    ..*ctx
+                };
+                &local
+            }
+            None => ctx,
+        };
         let signature = measure.time_signature()?;
         let time_signature = show_time_signature.then(|| TimeSigLayout::new(signature, ctx));
         // The key signature goes on the notation staff; a tab-only score shows it on the
@@ -430,8 +451,20 @@ impl MeasureLayout {
             })
             .collect();
 
+        let pitched = ctx
+            .notation
+            .is_some_and(|notation| notation.clef != notation::Clef::Percussion);
+        let clef_change = pitched && previous_clef.is_some_and(|previous| previous != clef);
+        let clef_width = if clef_change {
+            notation::clef_change_width(clef, ctx)
+        } else {
+            0.0
+        };
         Ok(MeasureLayout {
             index: measure.index(),
+            clef,
+            clef_change,
+            clef_width,
             key_signature,
             time_signature,
             signature_pad: 0.0,
@@ -460,6 +493,11 @@ impl MeasureLayout {
         })
     }
 
+    /// The clef of this measure's notation staff.
+    pub(crate) fn clef(&self) -> notation::Clef {
+        self.clef
+    }
+
     /// Whether the measure carries a key signature (a change, or the score's first).
     pub(crate) fn has_key_signature(&self) -> bool {
         self.key_signature.is_some()
@@ -480,7 +518,8 @@ impl MeasureLayout {
 
     /// The width that does not stretch: key and time signature, and the lead.
     pub(crate) fn fixed_width(&self) -> f32 {
-        self.key_signature.as_ref().map_or(0.0, |k| k.width)
+        self.clef_width
+            + self.key_signature.as_ref().map_or(0.0, |k| k.width)
             + self.signature_pad
             + self.time_signature.as_ref().map_or(0.0, |t| t.width)
             + self.lead

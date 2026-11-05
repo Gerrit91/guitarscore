@@ -18,6 +18,9 @@ pub struct Measure {
     pub track_index: usize,
     pub header_index: usize,
     pub clef: MeasureClef,
+    /// GuitarScore addition: whether the file stored a clef for this measure (GP6/GP7 do;
+    /// GP3-5 store none, so the clef is derived from the instrument there).
+    pub has_clef: bool,
     /// Max voice count is 2
     pub voices: Vec<Voice>,
     pub line_break: LineBreak,
@@ -36,6 +39,7 @@ impl Default for Measure {
             track_index: 0,
             header_index: 0,
             clef: MeasureClef::Treble,
+            has_clef: false,
             voices: Vec::with_capacity(2),
             line_break: LineBreak::None,
             simile_mark: None,

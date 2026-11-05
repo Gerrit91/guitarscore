@@ -28,8 +28,15 @@ struct TrackKey {
 }
 
 /// A measure's cache entry: its stamp, whether the time signature is shown, the key and
-/// the key before.
-type Entry = (u64, bool, i8, Option<i8>);
+/// the key before, and the clef and the clef before.
+type Entry = (
+    u64,
+    bool,
+    i8,
+    Option<i8>,
+    crate::notation::Clef,
+    Option<crate::notation::Clef>,
+);
 
 /// One measure lined up across tracks: from these layouts, this result.
 type Aligned = (Vec<Arc<MeasureLayout>>, Vec<Arc<MeasureLayout>>);
@@ -110,15 +117,30 @@ impl LayoutCache {
             primary,
             options,
             fonts,
-            &mut |track, measure, show, key, previous_key, ctx| {
-                let entry = (song.measure_stamp(measure.index()), show, key, previous_key);
+            &mut |track, measure, show, key, previous_key, clef, previous_clef, ctx| {
+                let entry = (
+                    song.measure_stamp(measure.index()),
+                    show,
+                    key,
+                    previous_key,
+                    clef,
+                    previous_clef,
+                );
                 let cached = old.get(&track).and_then(|measures| measures.get(&entry));
                 let layout = match cached {
                     Some(cached) if cached.index() == measure.index() => Arc::clone(cached),
                     Some(cached) => Arc::new(cached.moved_to(measure.index())),
                     None => {
                         laid_out = laid_out.saturating_add(1);
-                        Arc::new(MeasureLayout::new(measure, show, key, previous_key, ctx)?)
+                        Arc::new(MeasureLayout::new(
+                            measure,
+                            show,
+                            key,
+                            previous_key,
+                            clef,
+                            previous_clef,
+                            ctx,
+                        )?)
                     }
                 };
                 if let Some((_, measures)) = kept.get_mut(&track) {

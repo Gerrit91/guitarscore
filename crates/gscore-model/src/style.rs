@@ -40,6 +40,32 @@ impl TrackColor {
     }
 }
 
+/// A clef on the standard-notation staff.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Clef {
+    /// Treble clef (G clef): guitars.
+    #[default]
+    Treble,
+    /// Bass clef (F clef).
+    Bass,
+    /// Alto clef (C clef on the middle line).
+    Alto,
+    /// Tenor clef (C clef on the fourth line from the bottom).
+    Tenor,
+}
+
+impl Clef {
+    /// The clef `clef` as Guitar Pro stores it.
+    pub fn from_gp(clef: &gscore_gp::MeasureClef) -> Self {
+        match clef {
+            gscore_gp::MeasureClef::Bass => Clef::Bass,
+            gscore_gp::MeasureClef::Alto => Clef::Alto,
+            gscore_gp::MeasureClef::Tenor => Clef::Tenor,
+            gscore_gp::MeasureClef::Treble => Clef::Treble,
+        }
+    }
+}
+
 /// A measure's key signature: how many sharps or flats, and whether it is minor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeySignature {

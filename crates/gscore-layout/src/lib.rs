@@ -198,8 +198,8 @@ pub fn layout_tracks(
         primary,
         options,
         fonts,
-        &mut |_, measure, show, key, prev, ctx| {
-            MeasureLayout::new(measure, show, key, prev, ctx).map(Arc::new)
+        &mut |_, measure, show, key, prev, clef, previous_clef, ctx| {
+            MeasureLayout::new(measure, show, key, prev, clef, previous_clef, ctx).map(Arc::new)
         },
         &mut |_, column| measure::align(column, &options.spacing),
     )
@@ -217,6 +217,8 @@ type MeasureSource<'s> = dyn FnMut(
         bool,
         i8,
         Option<i8>,
+        notation::Clef,
+        Option<notation::Clef>,
         &Context<'_>,
     ) -> Result<Arc<MeasureLayout>, LayoutError>
     + 's;

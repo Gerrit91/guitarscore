@@ -166,6 +166,7 @@ mod tests {
         let breaks = Breaks {
             forced: &forced,
             max_measures: None,
+            single_line: false,
         };
         assert_eq!(
             ranges(&break_systems(&widths, 32.0, &PREFIX, breaks)),
@@ -174,6 +175,7 @@ mod tests {
         let limited = Breaks {
             forced: &forced,
             max_measures: Some(3),
+            single_line: false,
         };
         assert_eq!(
             ranges(&break_systems(&widths, 32.0, &PREFIX, limited)),
@@ -184,6 +186,7 @@ mod tests {
         let odd = Breaks {
             forced: &first,
             max_measures: Some(0),
+            single_line: false,
         };
         assert_eq!(
             ranges(&break_systems(&widths[..3], 32.0, &PREFIX, odd)),

@@ -180,6 +180,23 @@ pub(crate) fn draw_tie_curve(
     });
 }
 
+/// Room a clef change takes at a measure start: the clef and the gap after it.
+pub(crate) fn clef_change_width(clef: Clef, ctx: &Context<'_>) -> f32 {
+    let (glyph, _) = clef.glyph();
+    CLEF_GAPS.0 + ctx.fonts.music.advance(glyph) + CLEF_GAPS.1
+}
+
+/// Draws a clef change at a measure start whose left edge is `x`.
+pub(crate) fn draw_clef_change(x: f32, top: f32, clef: Clef, ops: &mut Vec<DrawOp>) {
+    let (glyph, position) = clef.glyph();
+    ops.push(DrawOp::Glyph {
+        glyph,
+        at: Point::new(x + CLEF_GAPS.0, y_of(top, position)),
+        scale: 1.0,
+        color: ColorToken::Notation,
+    });
+}
+
 /// Room from a system start to where a key signature starts: the clef and the gap after it.
 pub(crate) fn key_start_width(clef: Clef, ctx: &Context<'_>) -> f32 {
     let (glyph, _) = clef.glyph();

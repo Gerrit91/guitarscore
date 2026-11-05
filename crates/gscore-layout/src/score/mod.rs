@@ -329,6 +329,10 @@ pub(crate) fn layout_with(
                 rows: part_rows,
                 numbers: part_index == first_shown(index),
                 key: keys.get(plan.measures.start).copied().unwrap_or_default(),
+                clef: part
+                    .measures
+                    .get(plan.measures.start)
+                    .map_or(crate::notation::Clef::Treble, |measure| measure.clef()),
                 last_measure: count,
             };
             draw_part(part, &system, drawn, &mut ops);

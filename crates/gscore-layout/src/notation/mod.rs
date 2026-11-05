@@ -28,8 +28,9 @@ use gscore_model::{
 };
 
 pub(crate) use draw::{
-    BeamPlan, KeySigLayout, draw_measure, draw_staff_start, draw_tab_staff_start, draw_tie_curve,
-    key_start_width, ledger_positions, prefix_width, tab_prefix_width, y_of,
+    BeamPlan, KeySigLayout, clef_change_width, draw_clef_change, draw_measure, draw_staff_start,
+    draw_tab_staff_start, draw_tie_curve, key_start_width, ledger_positions, prefix_width,
+    tab_prefix_width, y_of,
 };
 pub(crate) use marks::draw_arrow;
 pub(crate) use pitch::{Alter, Clef};
@@ -56,6 +57,16 @@ pub(crate) const DOT_GAP: f32 = 0.3;
 /// The notation staff's geometry.
 pub(crate) fn staff() -> Staff {
     Staff::new(LINES, LINE_SPACING)
+}
+
+/// The layout clef for a model clef.
+pub(crate) fn clef_of(clef: gscore_model::Clef) -> Clef {
+    match clef {
+        gscore_model::Clef::Treble => Clef::Treble,
+        gscore_model::Clef::Bass => Clef::Bass,
+        gscore_model::Clef::Alto => Clef::Alto,
+        gscore_model::Clef::Tenor => Clef::Tenor,
+    }
 }
 
 /// Notation settings of a track: its clef and where its notes' pitches come from.

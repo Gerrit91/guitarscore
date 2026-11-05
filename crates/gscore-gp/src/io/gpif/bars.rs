@@ -115,7 +115,6 @@ pub(crate) struct Bar {
     pub id: i32,
     #[serde(rename = "Voices", default)]
     pub voices: String,
-    #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
     #[serde(rename = "Clef", default)]
     pub clef: Option<String>,
     #[serde(rename = "SimileMark", default)]

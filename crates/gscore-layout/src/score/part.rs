@@ -9,7 +9,7 @@ use gscore_model::{Song, TrackIndex, TrackView};
 use super::NAME_SIZE;
 use crate::marks::MeasureMarks;
 use crate::measure::MeasureLayout;
-use crate::notation::{self, Notation};
+use crate::notation::{self, Clef, Notation};
 use crate::staff::Staff;
 use crate::{Context, Fonts, LayoutError, LayoutOptions, MeasureSource};
 
@@ -65,20 +65,31 @@ impl<'a> Part<'a> {
         let mut measures = Vec::with_capacity(view.measures().len());
         let mut previous_signature = None;
         let mut previous_key = None;
+        let mut previous_clef = None;
         for measure in view.measures() {
             let signature = measure.time_signature()?;
             let show = previous_signature != Some(signature);
             let key = song.key_signature(measure.index()).map_or(0, |key| key.key);
+            let clef = match ctx.notation {
+                Some(notation) if notation.clef != Clef::Percussion => {
+                    measure.clef().map_or(notation.clef, notation::clef_of)
+                }
+                Some(notation) => notation.clef,
+                None => Clef::Treble,
+            };
             measures.push(measure_layout(
                 track,
                 measure,
                 show,
                 key,
                 previous_key,
+                clef,
+                previous_clef,
                 &ctx,
             )?);
             previous_signature = Some(signature);
             previous_key = Some(key);
+            previous_clef = Some(clef);
         }
         let notation_staff = notation::staff();
         // With notation, the tab sits below the notation staff and the gap between them.
@@ -161,11 +172,15 @@ impl<'a> Part<'a> {
             .measures
             .get(index)
             .is_some_and(|measure| measure.has_key_signature());
-        let notation_prefix = ctx.notation.map_or(0.0, |notation| {
+        let clef = self
+            .measures
+            .get(index)
+            .map_or(Clef::Treble, |measure| measure.clef());
+        let notation_prefix = ctx.notation.map_or(0.0, |_| {
             if drawn_by_measure {
-                notation::key_start_width(notation.clef, ctx)
+                notation::key_start_width(clef, ctx)
             } else {
-                notation::prefix_width(notation.clef, key, false, ctx)
+                notation::prefix_width(clef, key, false, ctx)
             }
         });
         let tab_prefix = if self.show_tab {
@@ -179,9 +194,7 @@ impl<'a> Part<'a> {
             0.0
         };
         let slash_prefix = if self.show_slash && !self.show_tab && ctx.notation.is_none() {
-            let clef = ctx
-                .notation
-                .map_or(notation::Clef::Treble, |notation| notation.clef);
+            let clef = ctx.notation.map_or(Clef::Treble, |notation| notation.clef);
             if drawn_by_measure {
                 notation::key_start_width(clef, ctx)
             } else {
