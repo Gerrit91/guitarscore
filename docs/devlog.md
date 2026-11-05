@@ -2673,3 +2673,12 @@ needed for a much larger font); owner listening check.
   (`the_player_reports_a_bad_soundfont_without_blocking` failed now and then).
 - Checked: `cargo xtask ci`; `cargo xtask web --smoke` (font loaded 0.6 s after page start
   locally, worklet RMS 0.0074). The owner's listening check of GeneralUser GS is still open.
+
+## 2026-11-05 — Browser build in an nginx image
+
+- `Dockerfile` (nginx:1.29-alpine) copies `dist/web` and `docker/nginx.conf`; it builds
+  nothing (owner: build in GitHub Actions, copy the artifacts). The release workflow's new
+  `web` job runs `cargo xtask web` and pushes `ghcr.io/<owner>/<repo>-web:<tag>` and
+  `:latest`. Checked locally: image 176 MB, wasm served as `application/wasm` with gzip,
+  the SoundFont cached for a year, everything else revalidated. The workflow job itself
+  is untested until the next pre-release.

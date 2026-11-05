@@ -1,0 +1,4 @@
+# The image needs only the built site and the nginx config.
+*
+!dist/web
+!docker/nginx.conf

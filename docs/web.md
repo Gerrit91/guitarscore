@@ -102,3 +102,19 @@ not wait for wasm and AudioWorklet loading). It checks:
   and saves `smoke-worklet.png`.
 
 It needs Chromium and Python 3 (`http.server`), not a display.
+
+## Docker
+
+The `Dockerfile` puts a built site into nginx; it builds nothing itself:
+
+```bash
+cargo xtask web
+docker build -t guitarscore-web .
+docker run --rm -p 8080:80 guitarscore-web     # http://localhost:8080
+```
+
+`docker/nginx.conf` serves `.wasm` as `application/wasm`, gzips the app, makes the
+browser revalidate everything except the SoundFont (whose versioned name is cached for a
+year). The release workflow builds the site and pushes the image to
+`ghcr.io/<owner>/<repo>-web` with the release tag and `latest`. Audio needs a secure
+context: serve it over HTTPS (or `localhost`).
