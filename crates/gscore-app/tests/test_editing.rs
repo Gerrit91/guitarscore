@@ -922,25 +922,52 @@ fn the_score_and_the_menu_bar_edit_bars_and_tracks() {
 }
 
 #[test]
-fn the_view_menu_switches_between_pages_and_the_endless_page() {
+fn the_view_menu_switches_between_the_five_score_views() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
-    assert!(harness.state().view().page_view, "pages by default");
+    assert_eq!(
+        harness.state().view().score_view,
+        gscore_app::ScoreView::PageVertical,
+        "pages by default"
+    );
     harness.get_by_label("Page 1 of 1");
     harness.get_by_label("View").click();
     harness.run();
-    harness.get_by_label("Endless view").click();
+    harness.get_by_label("Screen view (vertical)").click();
     harness.run();
-    assert!(!harness.state().view().page_view);
+    assert_eq!(
+        harness.state().view().score_view,
+        gscore_app::ScoreView::ScreenVertical
+    );
     assert!(harness.query_by_label("Page 1 of 1").is_none());
-    assert!(
-        !harness.state().settings().page_view,
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Page grid").click();
+    harness.run();
+    assert_eq!(
+        harness.state().view().score_view,
+        gscore_app::ScoreView::PageGrid
+    );
+    assert_eq!(
+        harness.state().settings().score_view,
+        gscore_app::ScoreView::PageGrid,
         "remembered in the settings"
     );
     harness.get_by_label("View").click();
     harness.run();
-    harness.get_by_label("Page view").click();
+    harness.get_by_label("Screen view (horizontal)").click();
     harness.run();
-    assert!(harness.state().view().page_view);
+    assert_eq!(
+        harness.state().view().score_view,
+        gscore_app::ScoreView::ScreenHorizontal
+    );
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Page view (vertical)").click();
+    harness.run();
+    assert_eq!(
+        harness.state().view().score_view,
+        gscore_app::ScoreView::PageVertical
+    );
 }
 
 #[test]

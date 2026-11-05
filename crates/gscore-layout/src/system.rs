@@ -37,6 +37,8 @@ pub(crate) struct Breaks<'a> {
     pub(crate) forced: &'a [bool],
     /// At most this many measures on a line.
     pub(crate) max_measures: Option<usize>,
+    /// Put every measure on one line, however wide it gets.
+    pub(crate) single_line: bool,
 }
 
 /// Breaks measures into systems of at most `line_width`, each starting with the prefix of
@@ -51,6 +53,12 @@ pub(crate) fn break_systems(
     breaks: Breaks<'_>,
 ) -> Vec<SystemPlan> {
     let prefix_at = |index: usize| prefixes.get(index).copied().unwrap_or_default();
+    if breaks.single_line && !widths.is_empty() {
+        return vec![SystemPlan {
+            measures: 0..widths.len(),
+            stretch: 1.0,
+        }];
+    }
     let mut plans = Vec::new();
     let mut start = 0;
     let mut used = prefix_at(0);

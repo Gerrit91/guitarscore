@@ -23,6 +23,64 @@ impl ThemeChoice {
     }
 }
 
+/// How the score fills the window: on printed pages (stacked, side by side or in a grid),
+/// or on one endless surface (vertically, or all on one line to scroll right).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum ScoreView {
+    /// Printed pages, one below the other.
+    #[default]
+    PageVertical,
+    /// Printed pages in one row, scrolling to the right.
+    PageHorizontal,
+    /// As many pages side by side as fit, then the next row.
+    PageGrid,
+    /// No pages: the score fills the window and scrolls down.
+    ScreenVertical,
+    /// No pages: the whole score on one line, scrolling to the right.
+    ScreenHorizontal,
+}
+
+impl ScoreView {
+    /// Every choice, in menu order.
+    pub const ALL: [ScoreView; 5] = [
+        ScoreView::PageVertical,
+        ScoreView::PageHorizontal,
+        ScoreView::PageGrid,
+        ScoreView::ScreenVertical,
+        ScoreView::ScreenHorizontal,
+    ];
+
+    /// Whether the score is laid out on printed pages.
+    pub fn on_pages(self) -> bool {
+        matches!(
+            self,
+            ScoreView::PageVertical | ScoreView::PageHorizontal | ScoreView::PageGrid
+        )
+    }
+
+    /// Whether pages sit beside each other instead of below each other.
+    pub fn pages_side_by_side(self) -> bool {
+        matches!(self, ScoreView::PageHorizontal | ScoreView::PageGrid)
+    }
+
+    /// Whether the whole score is one line that scrolls to the right.
+    pub fn single_line(self) -> bool {
+        self == ScoreView::ScreenHorizontal
+    }
+
+    /// A label for the View menu.
+    pub fn label(self) -> &'static str {
+        match self {
+            ScoreView::PageVertical => "Page view (vertical)",
+            ScoreView::PageHorizontal => "Page view (horizontal)",
+            ScoreView::PageGrid => "Page grid",
+            ScoreView::ScreenVertical => "Screen view (vertical)",
+            ScoreView::ScreenHorizontal => "Screen view (horizontal)",
+        }
+    }
+}
+
 /// Smallest and largest zoom factor.
 pub const ZOOM_RANGE: (f32, f32) = (0.25, 4.0);
 /// Factor of one zoom step.
@@ -93,8 +151,8 @@ pub struct ViewState {
     pub show_track_panel: bool,
     /// Whether the edit palette (the left panel) is shown.
     pub show_edit_panel: bool,
-    /// Whether the score is shown on separate pages (as printed) instead of one endless page.
-    pub page_view: bool,
+    /// How the score is shown: pages or one endless surface, vertical or horizontal.
+    pub score_view: ScoreView,
     /// With several tracks shown, whether a track is left out of a line where it has no
     /// note (the cursor's track always stays).
     pub hide_empty_staves: bool,
@@ -110,7 +168,7 @@ impl Default for ViewState {
             grid_mixer: false,
             show_track_panel: true,
             show_edit_panel: true,
-            page_view: true,
+            score_view: ScoreView::PageVertical,
             hide_empty_staves: false,
         }
     }

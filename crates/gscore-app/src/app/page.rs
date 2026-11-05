@@ -12,6 +12,7 @@ use gscore_play::PlayState;
 use super::GuitarScoreApp;
 use super::page_menu::{self, MenuChoice};
 use crate::canvas::{self, Arrangement, POINTS_PER_SPACE};
+use crate::state::ScoreView;
 
 /// How strongly the selection color is laid over the page: the shade the cursor's band and
 /// the selection made together, used for the whole selection.
@@ -71,10 +72,15 @@ impl GuitarScoreApp {
             .options
             .clone()
             .with_page_setup(&document.song().page_setup());
-        let options = if self.view.page_view {
+        let score_view = self.view.score_view;
+        let options = if score_view.on_pages() {
             options.on_pages()
         } else {
             options
+        };
+        let options = gscore_layout::LayoutOptions {
+            single_line: score_view.single_line(),
+            ..options
         };
         // Empty staves may be left out, but never the cursor's: it must stay editable.
         let options = gscore_layout::LayoutOptions {
@@ -97,7 +103,7 @@ impl GuitarScoreApp {
         let cursor = document.editor().cursor();
         let revision = document.editor().revision();
         // The cursor's page, for the status bar.
-        tab.page_info = self.view.page_view.then(|| {
+        tab.page_info = score_view.on_pages().then(|| {
             let y = layout
                 .places
                 .column_rect(cursor.measure, cursor.voice, cursor.beat)
@@ -132,14 +138,18 @@ impl GuitarScoreApp {
             tab.selection = None;
         }
         let scroll_to_cursor = tab.shown_cursor != Some((cursor, revision));
-        let page_view = self.view.page_view;
         ScrollArea::both().auto_shrink(false).show(ui, |ui| {
             let available = ui.available_width();
-            // Zoomed out, as many pages side by side as fit.
-            let arrangement = if page_view {
-                Arrangement::fitting(&layout, available - 2.0 * PAGE_MARGIN, zoom)
-            } else {
-                Arrangement::new(&layout, 1)
+            let arrangement = match score_view {
+                ScoreView::PageHorizontal => Arrangement::new(&layout, layout.pages.len()),
+                // Zoomed out, as many pages side by side as fit.
+                ScoreView::PageGrid => {
+                    Arrangement::fitting(&layout, available - 2.0 * PAGE_MARGIN, zoom)
+                }
+                // One page, endless surface, or one horizontal line.
+                ScoreView::PageVertical
+                | ScoreView::ScreenVertical
+                | ScoreView::ScreenHorizontal => Arrangement::new(&layout, 1),
             };
             let page = canvas::page_size(&layout, &arrangement, zoom);
             let size = egui::vec2(

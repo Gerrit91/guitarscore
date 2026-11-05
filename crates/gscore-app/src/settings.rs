@@ -158,8 +158,12 @@ pub struct Settings {
     pub show_track_panel: bool,
     /// Whether the edit palette (left panel) is shown.
     pub show_edit_panel: bool,
-    /// Whether the score is shown on pages (else one endless page).
-    pub page_view: bool,
+    /// How the score fills the window: pages or an endless surface, vertical or horizontal.
+    pub score_view: crate::state::ScoreView,
+    /// The old on/off page switch from settings files written before the view modes. Only
+    /// read; `None` once this version has saved the file.
+    #[serde(rename = "page_view", default, skip_serializing_if = "Option::is_none")]
+    pub legacy_page_view: Option<bool>,
     /// With several tracks shown, whether empty staves are left out of a line.
     pub hide_empty_staves: bool,
     /// Height the song grid was dragged to; `None`: it follows the number of tracks. (The
@@ -214,7 +218,8 @@ impl Default for Settings {
             grid_mixer: false,
             show_track_panel: true,
             show_edit_panel: true,
-            page_view: true,
+            score_view: crate::state::ScoreView::PageVertical,
+            legacy_page_view: None,
             hide_empty_staves: false,
             grid_height_chosen: None,
             mixer_height_chosen: None,
@@ -256,7 +261,8 @@ impl Settings {
         self.grid_mixer = view.grid_mixer;
         self.show_track_panel = view.show_track_panel;
         self.show_edit_panel = view.show_edit_panel;
-        self.page_view = view.page_view;
+        self.score_view = view.score_view;
+        self.legacy_page_view = None;
         self.hide_empty_staves = view.hide_empty_staves;
     }
 
@@ -269,7 +275,10 @@ impl Settings {
         view.grid_mixer = self.grid_mixer;
         view.show_track_panel = self.show_track_panel;
         view.show_edit_panel = self.show_edit_panel;
-        view.page_view = self.page_view;
+        view.score_view = match self.legacy_page_view {
+            Some(false) => crate::state::ScoreView::ScreenVertical,
+            _ => self.score_view,
+        };
         view.hide_empty_staves = self.hide_empty_staves;
     }
 

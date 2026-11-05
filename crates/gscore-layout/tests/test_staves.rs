@@ -121,3 +121,27 @@ fn slash_notation_is_a_staff_of_its_own_and_combines() {
     assert!(fret_numbers(&all) > 0);
     assert!(all.height > tab_and_slash.height, "notation adds a staff");
 }
+
+/// The horizontal screen view puts every measure on one line and widens the page to it.
+#[test]
+fn a_single_line_layout_is_wider_than_the_page() {
+    let song = common::open("basic/note_lengths.gp");
+    let fonts = Fonts::bundled().unwrap();
+    let endless = |single_line| {
+        let options = LayoutOptions {
+            single_line,
+            ..LayoutOptions::default()
+        };
+        layout_track(&song, TrackIndex::new(0), &options, &fonts).unwrap()
+    };
+    let broken = endless(false);
+    let one_line = endless(true);
+    assert!(broken.places.systems.len() > 1, "the score wraps normally");
+    assert_eq!(one_line.places.systems.len(), 1, "everything on one line");
+    assert!(
+        one_line.width > broken.width,
+        "the line is as wide as the whole score: {} vs {}",
+        one_line.width,
+        broken.width
+    );
+}
