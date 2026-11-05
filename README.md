@@ -21,6 +21,11 @@ built never to lose your work.
 - **The whole score.** Notation and tab, all techniques with their own editors, several
   tracks on one page, real pages or one endless page, light and dark.
 
+## Installation
+
+Builds for Linux, Windows and macOS are attached to
+[GitHub Releases](https://github.com/Gerrit91/guitarscore/releases). 
+
 ## Status
 
 Early and in active development: it edits real songs today, but it is not yet a complete
@@ -28,11 +33,9 @@ Guitar Pro replacement. [`docs/parity.md`](docs/parity.md) tracks every Guitar P
 feature, [`docs/gaps.md`](docs/gaps.md) the known shortfalls. Bug reports with a file
 that misbehaves are especially welcome.
 
-## Getting started
+## Development 
 
-Builds for Linux, Windows and macOS are attached to
-[GitHub Releases](https://github.com/Gerrit91/guitarscore/releases). To build from
-source, install Rust with [rustup](https://rustup.rs) (on Linux also the ALSA development
+To build from source, install Rust with [rustup](https://rustup.rs) (on Linux also the ALSA development
 files: `alsa-lib` or `libasound2-dev`), then:
 
 ```bash
