@@ -388,7 +388,7 @@ fn gp6_whammy_properties_are_imported() {
             legato: None,
             free_text: None,
             ottavia: None,
-        chord: None,
+            chord: None,
             arpeggio: None,
             dead_slapped: None,
             properties: Some(BeatPropertiesWrapper {
