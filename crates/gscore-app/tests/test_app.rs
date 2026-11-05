@@ -1803,6 +1803,10 @@ fn a_new_track_asks_for_name_color_and_symbol() {
 #[test]
 fn the_grid_switches_to_a_mixer_view() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    assert!(
+        harness.query_by_label("Metronome volume").is_none(),
+        "the grid view has no metronome knob"
+    );
     harness.get_by_label("Mixer view").click();
     harness.run();
     assert!(harness.state().view().grid_mixer);
@@ -1813,6 +1817,22 @@ fn the_grid_switches_to_a_mixer_view() {
     harness.get_by_label("Pan Master");
     harness.get_by_label("Mute Steel Guitar");
     harness.get_by_label("Solo Steel Guitar");
+    // The metronome has its volume knob in the mixer, and only there.
+    let knob = harness.get_by_label("Metronome volume");
+    let start = knob.rect().center();
+    harness.hover_at(start);
+    harness.drag_at(start);
+    harness.run();
+    for step in 1..=4 {
+        harness.hover_at(start - egui::vec2(8.0 * step as f32, 0.0));
+        harness.run();
+    }
+    harness.drop_at(start - egui::vec2(32.0, 0.0));
+    harness.run();
+    assert!(
+        harness.state().playback().metronome_volume() < 1.0,
+        "the knob turns the click volume down"
+    );
 
     // Mute and solo are live from the mixer too.
     let muted = |harness: &Harness<'static, GuitarScoreApp>| {
