@@ -2853,3 +2853,16 @@ needed for a much larger font); owner listening check.
   the rename window or the tuning dialog is open, not only for the other dialogs, so a
   stray key no longer edits the song behind them.
 - Tests: one test opens About, Settings, History and New song and closes each with Escape.
+
+## 2026-11-05 — The header is the track's property strip
+
+- The first line of the track panel is now interactive: the color bar opens a **color
+  picker** (the presets and the custom picker, moved out of the Appearance section), the
+  instrument icon opens the **symbol picker** (the grid, instead of a row of fifteen
+  symbols in the panel), and the name still edits in place (with the pencil button as the
+  second way). The Appearance section keeps only the staves.
+- Every tile that opens a dialog now uses `tiles::dialog_tile`, so the corner mark also
+  appears on brushes and arpeggios (and stays on the bend, whammy, harmonic, grace, trill,
+  tremolo and fingering tiles).
+- Tests: the preset-color test opens the color picker first; new `symbol_picker` and
+  `color_picker` snapshots; snapshots updated.

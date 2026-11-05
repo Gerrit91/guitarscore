@@ -759,20 +759,26 @@ impl EffectsState {
                         )
                     };
                     let on = is_on_for_targets(item.fx, snapshot);
-                    if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
-                        // These tiles open a dialog; the others toggle the effect.
-                        let opens = item.fx.stroke_target().is_some()
-                            || matches!(
-                                item.fx,
-                                Fx::Bend
-                                    | Fx::Whammy
-                                    | Fx::AnyHarmonic
-                                    | Fx::Grace
-                                    | Fx::Trill
-                                    | Fx::Tremolo
-                                    | Fx::FingerLeft
-                                    | Fx::FingerRight
-                            );
+                    // These tiles open a dialog; the others toggle the effect. The dialog
+                    // tiles carry the corner mark.
+                    let opens = item.fx.stroke_target().is_some()
+                        || matches!(
+                            item.fx,
+                            Fx::Bend
+                                | Fx::Whammy
+                                | Fx::AnyHarmonic
+                                | Fx::Grace
+                                | Fx::Trill
+                                | Fx::Tremolo
+                                | Fx::FingerLeft
+                                | Fx::FingerRight
+                        );
+                    let response = if opens {
+                        tiles::dialog_tile(ui, item.face, on, enabled, label, &tip)
+                    } else {
+                        tiles::tile(ui, item.face, on, enabled, label, &tip)
+                    };
+                    if response.clicked() {
                         if opens {
                             open = Some(item.fx);
                         } else {

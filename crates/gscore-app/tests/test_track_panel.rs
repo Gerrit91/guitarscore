@@ -54,6 +54,8 @@ fn a_preset_color_and_the_staves_are_one_click_each() {
     let track = TrackIndex::new(0);
     let before = song(&harness).track(track).unwrap().color();
 
+    harness.get_by_label("Track color").click();
+    harness.run();
     harness.get_by_label("Color Blue").click();
     harness.run();
     assert_eq!(

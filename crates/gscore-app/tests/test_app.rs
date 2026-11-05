@@ -211,6 +211,16 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.get_by_label("Tuner").click();
     harness.run();
     harness.snapshot("tuner_dialog");
+    harness.get_by_label("Close").click();
+    harness.run();
+    harness.get_by_label("Instrument symbol").click();
+    harness.run();
+    harness.snapshot("symbol_picker");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    harness.get_by_label("Track color").click();
+    harness.run();
+    harness.snapshot("color_picker");
 }
 
 #[test]
@@ -734,6 +744,8 @@ fn the_track_panel_edits_the_shown_track() {
 
     // The instrument symbol is a grid of clickable symbols; one click chooses it.
     assert_eq!(first_track(&harness).symbol(), None);
+    harness.get_by_label("Instrument symbol").click();
+    harness.run();
     harness.get_by_label("Banjo").click();
     harness.run();
     assert_eq!(

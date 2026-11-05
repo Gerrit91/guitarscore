@@ -105,7 +105,6 @@ impl GuitarScoreApp {
                     tuning::button(ui, &snapshot, &mut open_tuning);
                 });
                 style::section(ui, "track_look", "Appearance", |ui| {
-                    look::color(ui, index, &snapshot, &mut commands);
                     look::staves(ui, index, &snapshot, &mut commands);
                 });
             });
@@ -173,23 +172,64 @@ impl GuitarScoreApp {
             .inner_margin(egui::Margin::symmetric(12, 10))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    let (swatch, _) =
-                        ui.allocate_exact_size(egui::vec2(6.0, 22.0), egui::Sense::hover());
+                    let (swatch, swatch_response) =
+                        ui.allocate_exact_size(egui::vec2(8.0, 22.0), egui::Sense::click());
                     let (red, green, blue) = snapshot.color.parts();
                     ui.painter().rect_filled(
                         swatch,
                         2.0,
                         egui::Color32::from_rgb(red, green, blue),
                     );
-                    let (icon, response) =
-                        ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::hover());
+                    ui.ctx().accesskit_node_builder(swatch_response.id, |node| {
+                        node.set_label("Track color");
+                        node.set_role(egui::Role::Button);
+                    });
+                    swatch_response
+                        .clone()
+                        .on_hover_text("Track color — click to change")
+                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+                    egui::Popup::menu(&swatch_response).show(|ui| {
+                        ui.set_min_width(230.0);
+                        if look::color(ui, index, snapshot, commands) {
+                            ui.close();
+                        }
+                    });
+
+                    let (icon, icon_response) =
+                        ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::click());
                     instrument::paint(
                         ui.painter(),
                         icon.shrink(2.0),
                         snapshot.instrument,
                         tokens.text,
                     );
-                    response.on_hover_text(snapshot.instrument.name());
+                    ui.ctx().accesskit_node_builder(icon_response.id, |node| {
+                        node.set_label("Instrument symbol");
+                        node.set_role(egui::Role::Button);
+                    });
+                    icon_response
+                        .clone()
+                        .on_hover_text(format!(
+                            "{} — click to choose the symbol",
+                            snapshot.instrument.name()
+                        ))
+                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+                    let mut chosen = None;
+                    egui::Popup::menu(&icon_response).show(|ui| {
+                        chosen = symbol_picker(ui, snapshot.instrument);
+                        if chosen.is_some() {
+                            ui.close();
+                        }
+                    });
+                    if let Some(symbol) = chosen {
+                        commands.push((
+                            Command::SetTrackSymbol {
+                                track: TrackIndex::new(index),
+                                symbol,
+                            },
+                            false,
+                        ));
+                    }
                     if state.editing {
                         let response = ui.add(
                             egui::TextEdit::singleline(&mut state.name)
@@ -267,6 +307,41 @@ impl GuitarScoreApp {
     }
 }
 
+/// The grid of instrument symbols, for the picker under the header's instrument icon.
+fn symbol_picker(ui: &mut egui::Ui, current: InstrumentSymbol) -> Option<InstrumentSymbol> {
+    let mut chosen = None;
+    ui.set_min_width(230.0);
+    ui.set_max_width(230.0);
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = egui::vec2(2.0, 3.0);
+        for candidate in InstrumentSymbol::ALL {
+            let (rect, response) =
+                ui.allocate_exact_size(egui::vec2(32.0, 30.0), egui::Sense::click());
+            response.widget_info(|| {
+                egui::WidgetInfo::selected(
+                    egui::Role::Button,
+                    true,
+                    candidate == current,
+                    candidate.name(),
+                )
+            });
+            let tokens = style::tokens(ui);
+            let on = candidate == current;
+            if on {
+                ui.painter().rect_filled(rect, 4.0, tokens.accent);
+            } else if response.hovered() {
+                ui.painter().rect_filled(rect, 4.0, tokens.control_hover);
+            }
+            let ink = if on { tokens.on_accent } else { tokens.text };
+            instrument::paint(ui.painter(), rect.shrink(4.0), candidate, ink);
+            if response.on_hover_text(candidate.name()).clicked() {
+                chosen = Some(candidate);
+            }
+        }
+    });
+    chosen
+}
+
 /// The instrument: what kind of track it is, and whether it is a drum kit.
 fn instrument(
     ui: &mut egui::Ui,
@@ -286,53 +361,6 @@ fn instrument(
             label.on_hover_text(name);
         }
     });
-    // The symbol shown for the track (the grid, the tab and this panel): click one.
-    ui.label(RichText::new("Symbol").color(style::tokens(ui).text_weak))
-        .on_hover_text(
-            "The symbol the track is shown with. It is only the symbol: the sound comes \
-             from the preset.",
-        );
-    let mut symbol = snapshot.instrument;
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = egui::vec2(2.0, 3.0);
-        for candidate in InstrumentSymbol::ALL {
-            let (rect, response) =
-                ui.allocate_exact_size(egui::vec2(32.0, 30.0), egui::Sense::click());
-            response.widget_info(|| {
-                egui::WidgetInfo::selected(
-                    egui::Role::Button,
-                    true,
-                    candidate == snapshot.instrument,
-                    candidate.name(),
-                )
-            });
-            let tokens = style::tokens(ui);
-            let chosen = candidate == snapshot.instrument;
-            if chosen {
-                ui.painter().rect_filled(rect, 4.0, tokens.accent);
-            } else if response.hovered() {
-                ui.painter().rect_filled(rect, 4.0, tokens.control_hover);
-            }
-            let ink = if chosen {
-                tokens.on_accent
-            } else {
-                tokens.text
-            };
-            instrument::paint(ui.painter(), rect.shrink(4.0), candidate, ink);
-            if response.on_hover_text(candidate.name()).clicked() {
-                symbol = candidate;
-            }
-        }
-    });
-    if symbol != snapshot.instrument {
-        commands.push((
-            Command::SetTrackSymbol {
-                track: TrackIndex::new(index),
-                symbol,
-            },
-            false,
-        ));
-    }
     let mut drums = snapshot.percussion;
     if ui.checkbox(&mut drums, "Drum kit").changed() && drums != snapshot.percussion {
         commands.push((

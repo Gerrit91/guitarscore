@@ -13,11 +13,13 @@ pub(super) fn color(
     index: usize,
     snapshot: &TrackPanel,
     commands: &mut Vec<(Command, bool)>,
-) {
+) -> bool {
     let track = TrackIndex::new(index);
+    let mut chosen = false;
     ui.label(egui::RichText::new("Color").color(style::tokens(ui).text_weak));
     if let Some(color) = swatches::presets(ui, snapshot.color) {
         commands.push((Command::SetTrackColor { track, color }, false));
+        chosen = true;
     }
     // Any other color.
     let (red, green, blue) = snapshot.color.parts();
@@ -27,7 +29,7 @@ pub(super) fn color(
         ui.label("Custom");
         let response = ui.color_edit_button_srgb(&mut rgb);
         ui.ctx()
-            .accesskit_node_builder(response.id, |node| node.set_label("Track color"));
+            .accesskit_node_builder(response.id, |node| node.set_label("Custom track color"));
         changed = response.changed();
         dragged = response.dragged();
     });
@@ -37,6 +39,7 @@ pub(super) fn color(
         // A color-picker drag is one undo step, like a slider drag.
         commands.push((Command::SetTrackColor { track, color }, dragged));
     }
+    chosen
 }
 
 /// Notes and tabs, tabs only, or notes only.
