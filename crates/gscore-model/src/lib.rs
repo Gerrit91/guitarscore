@@ -60,7 +60,7 @@ pub use error::ModelError;
 pub use grace::{Grace, GraceSpeed};
 pub use instrument::{InstrumentKind, InstrumentSymbol, program_name};
 pub use issues::{Issue, IssueKind};
-pub use marks::{Feel, Fermata};
+pub use marks::{Direction, Feel, Fermata};
 pub use metadata::{
     MAX_SONG_NOTES_CHARS, MAX_SONG_TEXT_CHARS, MAX_TEMPO, SONG_TEXT_FIELDS, SongInfo, SongTextField,
 };

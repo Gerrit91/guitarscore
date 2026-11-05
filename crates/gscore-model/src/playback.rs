@@ -192,6 +192,16 @@ impl Song {
             .map(|(kind, _)| crate::marks::Fermata::from_gp(kind))
     }
 
+    /// The navigation sign at `measure` (a coda, segno, fine or D.C./D.S. direction), or
+    /// `None` if it has none or there is no such measure.
+    pub fn direction(&self, measure: MeasureIndex) -> Option<crate::marks::Direction> {
+        let header = self.inner().measure_headers.get(measure.get())?;
+        header
+            .direction
+            .as_ref()
+            .map(crate::marks::Direction::from_gp)
+    }
+
     /// The tempo (beats per minute) set at the start of `measure` (GP6 and later store tempo
     /// changes per measure), if any.
     pub fn tempo_change(&self, measure: MeasureIndex) -> Option<u32> {
@@ -408,6 +418,7 @@ mod tests {
         gp.measure_headers[1].repeat_close = 2;
         gp.measure_headers[1].repeat_alternative = 0b10;
         gp.measure_headers[1].tempo = 140;
+        gp.measure_headers[1].direction = Some(gscore_gp::DirectionSign::DaCapoAlCoda);
         let song = from_gp(gp).unwrap();
         assert_eq!(
             song.repeat(MeasureIndex::new(0)).unwrap(),
@@ -422,5 +433,10 @@ mod tests {
         assert_eq!(song.tempo_change(MeasureIndex::new(0)), None);
         assert_eq!(song.tempo_change(MeasureIndex::new(1)), Some(140));
         assert_eq!(song.repeat(MeasureIndex::new(2)), None);
+        assert_eq!(
+            song.direction(MeasureIndex::new(1)),
+            Some(crate::marks::Direction::DaCapoAlCoda)
+        );
+        assert_eq!(song.direction(MeasureIndex::new(0)), None);
     }
 }
