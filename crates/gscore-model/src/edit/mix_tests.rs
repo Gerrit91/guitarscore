@@ -171,3 +171,32 @@ fn a_clef_change_is_set_and_undone() {
     );
     assert!(differences(&before, &song).is_empty());
 }
+
+#[test]
+fn a_bar_repetition_mark_is_set_and_undone() {
+    use crate::style::SimileMark;
+    let mut song = song();
+    let track = TrackIndex::new(0);
+    let before = song.clone();
+    let change = song
+        .set_simile_mark(track, MeasureIndex::new(0), Some(SimileMark::Simple))
+        .unwrap();
+    assert_eq!(
+        song.track(track)
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .simile_mark(),
+        Some(SimileMark::Simple)
+    );
+    song.revert(&change).unwrap();
+    assert_eq!(
+        song.track(track)
+            .unwrap()
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .simile_mark(),
+        None
+    );
+    assert!(differences(&before, &song).is_empty());
+}

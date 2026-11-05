@@ -90,6 +90,10 @@ pub(super) struct PaletteSnapshot {
     pub(super) clef: gscore_model::Clef,
     /// Whether the cursor's measure is in free time.
     pub(super) free_time: bool,
+    /// The cursor measure's bar-repetition (simile) mark.
+    pub(super) simile: Option<gscore_model::SimileMark>,
+    /// How many measures the song has (for the two-bar repetition pair).
+    pub(super) measure_count: usize,
     pub(super) section: Option<gscore_model::Section>,
     /// The measure's repeat signs, double barline, break and bars-per-line limit.
     pub(super) repeat: Repeat,
@@ -184,6 +188,10 @@ impl PaletteSnapshot {
                 .and_then(|measure| measure.clef())
                 .unwrap_or(gscore_model::Clef::Treble),
             free_time: song.free_time(measure).unwrap_or(false),
+            simile: track
+                .and_then(|track| track.measure(measure))
+                .and_then(|measure| measure.simile_mark()),
+            measure_count: song.measure_count(),
             section: song.section(measure),
             repeat: song.repeat(measure).unwrap_or_default(),
             double_bar: song.double_bar(measure).unwrap_or(false),
@@ -249,8 +257,13 @@ impl GuitarScoreApp {
                 ui.spacing_mut().item_spacing.y = 6.0;
                 let keymap = &self.keymap;
                 let hint = |action: ActionId| key_hint(keymap, action);
-                let beat_text =
-                    edit_staff::section(ui, &mut tab.edit_palette.staff, &snapshot, &hint);
+                let beat_text = edit_staff::section(
+                    ui,
+                    &mut tab.edit_palette.staff,
+                    &snapshot,
+                    &hint,
+                    &mut commands,
+                );
                 if beat_text == Some(ActionId::EditBeatText) {
                     tab.edit_palette.effects.open_beat_text(&snapshot);
                 }

@@ -96,6 +96,12 @@ pub(crate) enum Face<'a> {
     Swing,
     /// A fermata.
     Fermata,
+    /// Free time: a dotted line (no strict meter or metronome).
+    FreeTime,
+    /// A one-bar repetition: a slash and a dot.
+    SimileSingle,
+    /// A two-bar repetition: two slashes.
+    SimileDouble,
 }
 
 /// The music font at `size`.
@@ -407,6 +413,25 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
             );
         }
         Face::Fermata => music_glyph(painter, at(0.0, 4.0), "\u{E4C0}", 30.0, ink),
+        Face::FreeTime => {
+            let stroke = Stroke::new(2.0, ink);
+            for step in 0..5 {
+                let x = -12.0 + step as f32 * 6.0;
+                painter.line_segment([at(x, 3.0), at(x + 3.0, 3.0)], stroke);
+            }
+        }
+        Face::SimileSingle => {
+            let stroke = Stroke::new(2.2, ink);
+            painter.line_segment([at(-7.0, 9.0), at(4.0, -5.0)], stroke);
+            painter.circle_filled(at(8.0, 8.0), 1.8, ink);
+        }
+        Face::SimileDouble => {
+            let stroke = Stroke::new(2.2, ink);
+            for dx in [-9.0, 1.0] {
+                painter.line_segment([at(dx, 9.0), at(dx + 11.0, -5.0)], stroke);
+            }
+            painter.circle_filled(at(9.0, 8.0), 1.8, ink);
+        }
     }
 }
 

@@ -23,7 +23,6 @@ pub(super) enum Dialog {
     Time,
     Key,
     Clef,
-    FreeTime,
     Section,
     RepeatStart,
     RepeatEnd,
@@ -56,7 +55,6 @@ pub(super) struct StaffState {
     pub(super) key: i8,
     pub(super) minor: bool,
     pub(super) clef: Clef,
-    pub(super) free_time: bool,
     pub(super) section_title: String,
     pub(super) section_color: TrackColor,
     pub(super) repeat_start: bool,
@@ -88,7 +86,6 @@ impl Default for StaffState {
             key: 0,
             minor: false,
             clef: Clef::Treble,
-            free_time: false,
             section_title: String::new(),
             section_color: Section::DEFAULT_COLOR,
             repeat_start: false,
@@ -141,7 +138,6 @@ impl StaffState {
         self.key = key;
         self.minor = minor;
         self.clef = snapshot.clef;
-        self.free_time = snapshot.free_time;
         self.section_title = snapshot
             .section
             .as_ref()
@@ -266,10 +262,6 @@ impl StaffState {
                 measure: target.measure,
                 clef: self.clef,
             },
-            Dialog::FreeTime => Command::SetFreeTime {
-                measure: target.measure,
-                free_time: self.free_time,
-            },
             Dialog::Section => {
                 let title = self.section_title.trim();
                 if title.is_empty() {
@@ -332,6 +324,7 @@ pub(super) fn section(
     state: &mut StaffState,
     snapshot: &PaletteSnapshot,
     hint: &dyn Fn(ActionId) -> String,
+    commands: &mut Vec<Command>,
 ) -> Option<ActionId> {
     let mut action = None;
     style::section(ui, "staff", "Staff", |ui| {
@@ -363,19 +356,12 @@ pub(super) fn section(
                     Dialog::Clef,
                     Face::GlyphMore {
                         text: "\u{E050}",
-                        size: 30.0,
-                        baseline: 9.0,
+                        size: 23.0,
+                        baseline: 6.0,
                     },
                     "Clef",
                     "Set the clef of the notation staff",
                     snapshot.clef != Clef::Treble,
-                ),
-                (
-                    Dialog::FreeTime,
-                    Face::TextMore("free"),
-                    "Free time",
-                    "No metronome for this bar",
-                    snapshot.free_time,
                 ),
                 (
                     Dialog::Section,
@@ -445,6 +431,86 @@ pub(super) fn section(
                 if tiles::dialog_tile(ui, face, on, true, label, tip).clicked() {
                     state.open_dialog(dialog, snapshot);
                 }
+            }
+            // Bar repetitions are switches too: a one-bar repeat, or the two halves of a
+            // two-bar repeat as one pair.
+            let single_on = snapshot.simile == Some(gscore_model::SimileMark::Simple);
+            if tiles::dialog_tile(
+                ui,
+                Face::SimileSingle,
+                single_on,
+                true,
+                "Bar repeat",
+                "Repeat the previous bar",
+            )
+            .clicked()
+            {
+                commands.push(Command::SetSimileMark {
+                    track: snapshot.cursor.track,
+                    measure: snapshot.measure,
+                    mark: (!single_on).then_some(gscore_model::SimileMark::Simple),
+                });
+            }
+            let double_on = matches!(
+                snapshot.simile,
+                Some(
+                    gscore_model::SimileMark::FirstOfDouble
+                        | gscore_model::SimileMark::SecondOfDouble
+                )
+            );
+            let pair_fits = snapshot.measure.get().saturating_add(1) < snapshot.measure_count;
+            let double = tiles::dialog_tile(
+                ui,
+                Face::SimileDouble,
+                double_on,
+                pair_fits || double_on,
+                "Double bar repeat",
+                "Repeat the previous two bars (the current and the next bar)",
+            );
+            if double.clicked() {
+                let mut parts = Vec::new();
+                let (start, end) = match snapshot.simile {
+                    Some(gscore_model::SimileMark::SecondOfDouble) => (
+                        MeasureIndex::new(snapshot.measure.get().saturating_sub(1)),
+                        snapshot.measure,
+                    ),
+                    _ => (
+                        snapshot.measure,
+                        MeasureIndex::new(snapshot.measure.get().saturating_add(1)),
+                    ),
+                };
+                let mark = |measure, mark| Command::SetSimileMark {
+                    track: snapshot.cursor.track,
+                    measure,
+                    mark,
+                };
+                if double_on {
+                    parts.push(mark(start, None));
+                    parts.push(mark(end, None));
+                } else if pair_fits {
+                    parts.push(mark(start, Some(gscore_model::SimileMark::FirstOfDouble)));
+                    parts.push(mark(end, Some(gscore_model::SimileMark::SecondOfDouble)));
+                }
+                if !parts.is_empty() {
+                    commands.push(Command::Batch { commands: parts });
+                }
+            }
+            // Free time is a switch, not a dialog: one click turns the metronome off (or
+            // back on) for this bar.
+            if tiles::dialog_tile(
+                ui,
+                Face::FreeTime,
+                snapshot.free_time,
+                true,
+                "Free time",
+                "No metronome for this bar",
+            )
+            .clicked()
+            {
+                commands.push(Command::SetFreeTime {
+                    measure: snapshot.measure,
+                    free_time: !snapshot.free_time,
+                });
             }
             // Beat text has its own editor rather than a staff dialog, but it is a dialog
             // tile like the others (and lives here, next to the other bar-level marks).

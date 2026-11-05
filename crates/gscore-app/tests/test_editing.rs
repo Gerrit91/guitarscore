@@ -1400,12 +1400,10 @@ fn clefs_and_free_time_are_edited_from_the_staff_tiles() {
     };
     assert_eq!(clef(), Some(gscore_model::Clef::Bass));
 
+    // Free time is a switch tile: one click, no dialog.
     harness.get_by_label("Free time").scroll_to_me();
     harness.run();
     harness.get_by_label("Free time").click();
-    harness.run();
-    harness.get_by_label("Free time bar").click();
-    harness.get_by_label("OK").click();
     harness.run();
     assert_eq!(
         harness
@@ -1434,4 +1432,56 @@ fn clefs_and_free_time_are_edited_from_the_staff_tiles() {
             .free_time(measure),
         Some(false)
     );
+}
+
+#[test]
+fn bar_repetitions_are_switch_tiles() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    let measure = MeasureIndex::new(1);
+    {
+        let document = harness.state_mut().document_mut().unwrap();
+        let mut cursor = document.editor().cursor();
+        cursor.measure = measure;
+        document.editor_mut().set_cursor(cursor);
+    }
+    harness.run();
+    let simile = |harness: &Harness<'static, GuitarScoreApp>, measure: MeasureIndex| {
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .track(TrackIndex::new(0))
+            .unwrap()
+            .measure(measure)
+            .unwrap()
+            .simile_mark()
+    };
+
+    harness.get_by_label("Bar repeat").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Bar repeat").click();
+    harness.run();
+    assert_eq!(
+        simile(&harness, measure),
+        Some(gscore_model::SimileMark::Simple)
+    );
+    harness.get_by_label("Bar repeat").click();
+    harness.run();
+    assert_eq!(simile(&harness, measure), None);
+
+    harness.get_by_label("Double bar repeat").click();
+    harness.run();
+    assert_eq!(
+        simile(&harness, measure),
+        Some(gscore_model::SimileMark::FirstOfDouble)
+    );
+    assert_eq!(
+        simile(&harness, MeasureIndex::new(2)),
+        Some(gscore_model::SimileMark::SecondOfDouble)
+    );
+    harness.get_by_label("Double bar repeat").click();
+    harness.run();
+    assert_eq!(simile(&harness, measure), None);
+    assert_eq!(simile(&harness, MeasureIndex::new(2)), None);
 }

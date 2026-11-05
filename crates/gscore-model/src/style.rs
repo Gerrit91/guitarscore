@@ -62,6 +62,35 @@ impl SimileMark {
             _ => None,
         }
     }
+
+    /// The value Guitar Pro stores for this mark.
+    pub fn to_gp(self) -> &'static str {
+        match self {
+            SimileMark::Simple => "Simple",
+            SimileMark::FirstOfDouble => "FirstOfDouble",
+            SimileMark::SecondOfDouble => "SecondOfDouble",
+        }
+    }
+
+    /// The id the command language uses.
+    pub fn id(self) -> &'static str {
+        match self {
+            SimileMark::Simple => "simple",
+            SimileMark::FirstOfDouble => "first_of_double",
+            SimileMark::SecondOfDouble => "second_of_double",
+        }
+    }
+
+    /// The mark named by `id`.
+    pub fn from_id(id: &str) -> Option<Self> {
+        [
+            SimileMark::Simple,
+            SimileMark::FirstOfDouble,
+            SimileMark::SecondOfDouble,
+        ]
+        .into_iter()
+        .find(|mark| mark.id() == id)
+    }
 }
 
 /// A clef on the standard-notation staff.

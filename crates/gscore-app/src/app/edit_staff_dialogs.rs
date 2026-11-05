@@ -17,7 +17,6 @@ pub(super) fn title(dialog: Dialog) -> &'static str {
         Dialog::Time => "Time signature",
         Dialog::Key => "Key signature",
         Dialog::Clef => "Clef",
-        Dialog::FreeTime => "Free time",
         Dialog::Section => "Section",
         Dialog::RepeatStart => "Start repeat",
         Dialog::RepeatEnd => "End repeat",
@@ -99,24 +98,6 @@ pub(super) fn body(ui: &mut egui::Ui, state: &mut StaffState, target: Target) {
                 "The clef holds from this bar until the next clef change. Guitar Pro stores \
                  it per bar and track.",
             );
-        }
-        Dialog::FreeTime => {
-            for (on, name, detail) in [
-                (
-                    false,
-                    "Normal time",
-                    "The metronome clicks on every beat of this bar.",
-                ),
-                (
-                    true,
-                    "Free time bar",
-                    "No metronome; the time signature is shown in parentheses.",
-                ),
-            ] {
-                if choice(ui, state.free_time == on, name, detail, |_, _, _| {}).clicked() {
-                    state.free_time = on;
-                }
-            }
         }
         Dialog::Section => staff_pickers::section(ui, state),
         Dialog::RepeatStart => {

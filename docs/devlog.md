@@ -2978,3 +2978,12 @@ needed for a much larger font); owner listening check.
   scroll just enough to show the playing column. Only the printed vertical page view still
   turns over line by line, so the page or screen no longer slides partly out of view when
   the music wraps.
+
+## 2026-11-05 — Bar-repetition tiles; free time as a switch
+
+- The Staff palette has **Bar repeat** and **Double bar repeat** icons. The first toggles a
+  one-bar (simple) simile mark; the second sets the two halves of a two-bar repetition on
+  the current and next bar as one undoable batch, and clears the pair again when clicked.
+  Backed by `set_simile_mark` (parse, panic-hunt and model/UI tests).
+- Free time is now a one-click switch tile with a dotted-line icon instead of a dialog; the
+  clef tile's glyph was shrunk to fit its tile.

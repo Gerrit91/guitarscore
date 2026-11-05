@@ -302,6 +302,13 @@ const CLEF: ParamInfo = ParamInfo {
     help: "treble, bass, alto or tenor",
 };
 
+const SIMILE_MARK: ParamInfo = ParamInfo {
+    name: "mark",
+    required: true,
+    default: None,
+    help: "none, simple, first_of_double or second_of_double",
+};
+
 const FREE_TIME: ParamInfo = ParamInfo {
     name: "free_time",
     required: true,
@@ -832,6 +839,14 @@ pub(crate) const SET_FREE_TIME: CommandInfo = CommandInfo {
     params: &[MEASURE, FREE_TIME],
 };
 
+pub(crate) const SET_SIMILE_MARK: CommandInfo = CommandInfo {
+    id: "set_simile_mark",
+    aliases: &["set_bar_repeat"],
+    label: "Set a bar-repetition mark",
+    help: "Repeats the previous bar (simple) or, in a pair, the previous two bars.",
+    params: &[TRACK, MEASURE, SIMILE_MARK],
+};
+
 pub(crate) const SET_NOTE_EFFECT: CommandInfo = CommandInfo {
     id: "set_note_effect",
     aliases: &[],
@@ -925,6 +940,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_FERMATA,
     SET_CLEF,
     SET_FREE_TIME,
+    SET_SIMILE_MARK,
     SET_NOTE_EFFECT,
     SET_BEAT_EFFECT,
     BATCH,

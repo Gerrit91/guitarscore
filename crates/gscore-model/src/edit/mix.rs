@@ -55,6 +55,26 @@ impl Song {
         })
     }
 
+    /// Sets or clears a measure's bar-repetition (simile) mark.
+    pub fn set_simile_mark(
+        &mut self,
+        track: TrackIndex,
+        measure: crate::position::MeasureIndex,
+        mark: Option<crate::style::SimileMark>,
+    ) -> Result<Change, ModelError> {
+        self.edit_measure(track, measure, |m| {
+            let previous = m.simile_mark.clone();
+            m.simile_mark = mark.map(|mark| mark.to_gp().to_owned());
+            Ok(Change {
+                kind: ChangeKind::SimileMark {
+                    track,
+                    measure,
+                    previous,
+                },
+            })
+        })
+    }
+
     /// Sets the master volume (0-127; [`crate::MASTER_UNITY`] leaves every track as loud as
     /// it is).
     pub fn set_master_volume(&mut self, volume: u8) -> Result<Change, ModelError> {

@@ -262,6 +262,12 @@ enum ChangeKind {
         measure: MeasureIndex,
         previous: (crate::style::Clef, bool),
     },
+    /// A measure's bar-repetition (simile) mark changed; `previous` is its stored value.
+    SimileMark {
+        track: TrackIndex,
+        measure: MeasureIndex,
+        previous: Option<String>,
+    },
     /// A track's notation, tab and slash switches changed; `previous` is
     /// `(notation, tablature, slash)`.
     TrackStaves {
@@ -356,7 +362,8 @@ impl Change {
             | ChangeKind::DoubleBar { .. }
             | ChangeKind::Feel { .. }
             | ChangeKind::FreeTime { .. }
-            | ChangeKind::Clef { .. } => 0,
+            | ChangeKind::Clef { .. }
+            | ChangeKind::SimileMark { .. } => 0,
             ChangeKind::Fermata { previous, .. } => previous
                 .iter()
                 .map(|(kind, offset)| kind.len().saturating_add(offset.len()))
@@ -899,6 +906,14 @@ impl Song {
             } => self.edit_measure(*track, *measure, |m| {
                 m.clef = previous.0.to_gp();
                 m.has_clef = previous.1;
+                Ok(())
+            }),
+            ChangeKind::SimileMark {
+                track,
+                measure,
+                previous,
+            } => self.edit_measure(*track, *measure, |m| {
+                m.simile_mark.clone_from(previous);
                 Ok(())
             }),
             ChangeKind::TrackStaves { at, previous } => {
