@@ -27,6 +27,9 @@ impl ThemeChoice {
 pub const ZOOM_RANGE: (f32, f32) = (0.25, 4.0);
 /// Factor of one zoom step.
 const ZOOM_STEP: f32 = 1.25;
+/// Smallest and largest size of the whole interface (menus, panels, icons), and one step.
+pub(crate) const INTERFACE_ZOOM_RANGE: (f32, f32) = (0.5, 2.0);
+const INTERFACE_ZOOM_STEP: f32 = 1.1;
 
 /// A range of measures selected in the song grid: from `anchor` to `focus`, inclusive and
 /// in either direction.
@@ -80,6 +83,8 @@ pub struct ViewState {
     pub theme: ThemeChoice,
     /// Zoom factor; 1.0 is the normal size.
     zoom: f32,
+    /// The size of the whole interface (menus, panels, icons); 1.0 is the normal size.
+    interface_zoom: f32,
     /// Whether the track and song grid (the bottom panel) is shown.
     pub show_track_grid: bool,
     /// Whether the bottom panel shows the mixer instead of the measure grid.
@@ -97,6 +102,7 @@ impl Default for ViewState {
         ViewState {
             theme: ThemeChoice::Light,
             zoom: 1.0,
+            interface_zoom: 1.0,
             show_track_grid: true,
             grid_mixer: false,
             show_track_panel: true,
@@ -107,6 +113,31 @@ impl Default for ViewState {
 }
 
 impl ViewState {
+    /// The size of the whole interface.
+    pub fn interface_zoom(&self) -> f32 {
+        self.interface_zoom
+    }
+
+    /// Sets the size of the whole interface, clamped to [`INTERFACE_ZOOM_RANGE`];
+    /// nonsense values reset it to 1.
+    pub fn set_interface_zoom(&mut self, zoom: f32) {
+        self.interface_zoom = if zoom.is_finite() {
+            zoom.clamp(INTERFACE_ZOOM_RANGE.0, INTERFACE_ZOOM_RANGE.1)
+        } else {
+            1.0
+        };
+    }
+
+    /// The whole interface one step larger.
+    pub fn interface_larger(&mut self) {
+        self.set_interface_zoom(self.interface_zoom * INTERFACE_ZOOM_STEP);
+    }
+
+    /// The whole interface one step smaller.
+    pub fn interface_smaller(&mut self) {
+        self.set_interface_zoom(self.interface_zoom / INTERFACE_ZOOM_STEP);
+    }
+
     /// The zoom factor.
     pub fn zoom(&self) -> f32 {
         self.zoom

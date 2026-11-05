@@ -755,6 +755,45 @@ fn ctrl_equals_zooms_and_ctrl_zero_resets() {
 }
 
 #[test]
+fn ctrl_zooms_the_score_and_ctrl_shift_the_interface() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let interface = |harness: &Harness<'static, GuitarScoreApp>| harness.ctx.zoom_factor();
+    // Ctrl+- shrinks the score only (egui's own interface zoom is off).
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Minus);
+    harness.run();
+    assert!((harness.state().view().zoom() - 0.8).abs() < 1e-4);
+    assert!(
+        (interface(&harness) - 1.0).abs() < 1e-4,
+        "the interface stays"
+    );
+    // Ctrl+Shift+- and Ctrl+Shift++ size the interface, not the score.
+    let both = egui::Modifiers::COMMAND | egui::Modifiers::SHIFT;
+    harness.key_press_modifiers(both, egui::Key::Minus);
+    harness.run();
+    assert!(interface(&harness) < 0.95, "{}", interface(&harness));
+    assert!(
+        (harness.state().view().zoom() - 0.8).abs() < 1e-4,
+        "the score stays"
+    );
+    harness.key_press_modifiers(both, egui::Key::Plus);
+    harness.key_press_modifiers(both, egui::Key::Plus);
+    harness.run();
+    assert!(interface(&harness) > 1.05, "{}", interface(&harness));
+    assert!(
+        (harness.state().settings().interface_zoom - interface(&harness)).abs() < 1e-4,
+        "remembered in the settings"
+    );
+    // Ctrl+0 resets the score, Ctrl+Shift+0 the interface.
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num0);
+    harness.run();
+    assert!((harness.state().view().zoom() - 1.0).abs() < 1e-4);
+    assert!(interface(&harness) > 1.05);
+    harness.key_press_modifiers(both, egui::Key::Num0);
+    harness.run();
+    assert!((interface(&harness) - 1.0).abs() < 1e-4);
+}
+
+#[test]
 fn the_edit_palette_sets_lengths_effects_and_the_measure_header() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
 

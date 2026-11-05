@@ -148,6 +148,8 @@ pub struct Settings {
     pub theme: crate::state::ThemeChoice,
     /// Zoom factor; 1 is normal.
     pub zoom: f32,
+    /// Size of the whole interface (menus, panels, icons); 1 is normal.
+    pub interface_zoom: f32,
     /// Whether the song grid (bottom panel) is shown.
     pub show_track_grid: bool,
     /// Whether the bottom panel shows the mixer instead of the measure grid.
@@ -205,6 +207,7 @@ impl Default for Settings {
         Settings {
             theme: crate::state::ThemeChoice::Light,
             zoom: 1.0,
+            interface_zoom: 1.0,
             show_track_grid: true,
             grid_mixer: false,
             show_track_panel: true,
@@ -245,6 +248,7 @@ impl Settings {
     pub fn update_from_view(&mut self, view: &ViewState) {
         self.theme = view.theme;
         self.zoom = view.zoom();
+        self.interface_zoom = view.interface_zoom();
         self.show_track_grid = view.show_track_grid;
         self.grid_mixer = view.grid_mixer;
         self.show_track_panel = view.show_track_panel;
@@ -256,6 +260,7 @@ impl Settings {
     pub fn apply_to_view(&self, view: &mut ViewState) {
         view.theme = self.theme;
         view.set_zoom(self.zoom);
+        view.set_interface_zoom(self.interface_zoom);
         view.show_track_grid = self.show_track_grid;
         view.grid_mixer = self.grid_mixer;
         view.show_track_panel = self.show_track_panel;
@@ -331,6 +336,9 @@ impl Settings {
             self.zoom = 1.0;
         }
         self.zoom = self.zoom.clamp(ZOOM_RANGE.0, ZOOM_RANGE.1);
+        let mut view = ViewState::default();
+        view.set_interface_zoom(self.interface_zoom);
+        self.interface_zoom = view.interface_zoom();
         if let Some(height) = self.grid_height_chosen
             && !(height.is_finite() && height > 0.0)
         {

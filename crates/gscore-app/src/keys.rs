@@ -62,6 +62,11 @@ impl KeyReader {
                 if !modifiers.command {
                     return None;
                 }
+                // egui names the minus key with the typographic minus sign (U+2212); the
+                // keymap binds the ASCII `-` the key types (`ctrl+-` zooms out).
+                if *key == egui::Key::Minus {
+                    return Some(KeyCombo::new(Key::Char('-'), mods));
+                }
                 let mut chars = key.symbol_or_name().chars();
                 match (chars.next(), chars.next()) {
                     (Some(c), None) => Some(KeyCombo::new(Key::Char(c), mods)),
@@ -141,6 +146,16 @@ mod tests {
             repeat: false,
             modifiers,
         }
+    }
+
+    #[test]
+    fn ctrl_minus_is_the_ascii_minus_the_keymap_binds() {
+        // egui names the key with U+2212; `ctrl+-` must still match.
+        let mut reader = KeyReader::default();
+        assert_eq!(
+            reader.combo(&key(egui::Key::Minus, egui::Modifiers::COMMAND)),
+            Some(KeyCombo::parse("ctrl+-").unwrap())
+        );
     }
 
     #[test]

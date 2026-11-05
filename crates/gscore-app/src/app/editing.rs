@@ -84,6 +84,44 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Ctrl+Shift with +, - or 0: the whole interface (menus, panels, icons) larger,
+    /// smaller or back to its normal size. Ctrl alone zooms only the score (keymap). Read
+    /// from the key events directly: the keymap binds typed characters, and Shift changes
+    /// the character (`+` is Shift+= on QWERTY, Shift++ is `*` on QWERTZ), so the key
+    /// position decides too. Works with or without an open song.
+    pub(super) fn interface_zoom_keys(&mut self, ctx: &egui::Context) {
+        let view = &mut self.view;
+        let mut changed = false;
+        ctx.input_mut(|input| {
+            input.events.retain(|event| {
+                let egui::Event::Key {
+                    key,
+                    physical_key,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } = event
+                else {
+                    return true;
+                };
+                if !(modifiers.command && modifiers.shift) {
+                    return true;
+                }
+                match interface_zoom_step(*key, *physical_key) {
+                    Some(InterfaceZoom::Larger) => view.interface_larger(),
+                    Some(InterfaceZoom::Smaller) => view.interface_smaller(),
+                    Some(InterfaceZoom::Reset) => view.set_interface_zoom(1.0),
+                    None => return true,
+                }
+                changed = true;
+                false
+            });
+        });
+        if changed {
+            ctx.request_repaint();
+        }
+    }
+
     /// Runs `action` at the cursor (from a key or a menu).
     pub(crate) fn perform_action(&mut self, action: Action, ctx: &egui::Context) {
         // Palette actions run like a click on their tile.
@@ -600,5 +638,69 @@ pub(super) fn preview_target(command: &Command) -> Option<BeatPosition> {
         | Command::SetDeadNote { at, .. } => Some(*at),
         Command::Batch { commands } => commands.iter().find_map(preview_target),
         _ => None,
+    }
+}
+
+/// A change of the interface size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InterfaceZoom {
+    Larger,
+    Smaller,
+    Reset,
+}
+
+/// What Ctrl+Shift with `key` (the character, or the key position when the character has
+/// no name) at `physical` (the key position, named as on a US keyboard) does to the
+/// interface size. The 0 key resets (Shift+0 is `=` on QWERTZ, so the position counts
+/// first); the minus key, or QWERTZ's minus at the US `/` position, shrinks; plus or
+/// equals, or QWERTZ's plus at the US `]` position, enlarges.
+fn interface_zoom_step(key: egui::Key, physical: Option<egui::Key>) -> Option<InterfaceZoom> {
+    use egui::Key as K;
+    let at = |position: K| physical == Some(position);
+    if at(K::Num0) || key == K::Num0 {
+        Some(InterfaceZoom::Reset)
+    } else if at(K::Minus) || at(K::Slash) || key == K::Minus {
+        Some(InterfaceZoom::Smaller)
+    } else if matches!(key, K::Plus | K::Equals) || at(K::Equals) || at(K::CloseBracket) {
+        Some(InterfaceZoom::Larger)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod interface_zoom_tests {
+    use super::{InterfaceZoom, interface_zoom_step};
+    use egui::Key as K;
+
+    #[test]
+    fn plus_minus_and_zero_size_the_interface_on_qwerty_and_qwertz() {
+        // QWERTY: Shift+= types `+`, Shift+- types `_` (no key name: the position).
+        assert_eq!(
+            interface_zoom_step(K::Plus, Some(K::Equals)),
+            Some(InterfaceZoom::Larger)
+        );
+        assert_eq!(
+            interface_zoom_step(K::Minus, Some(K::Minus)),
+            Some(InterfaceZoom::Smaller)
+        );
+        assert_eq!(
+            interface_zoom_step(K::Num0, Some(K::Num0)),
+            Some(InterfaceZoom::Reset)
+        );
+        // QWERTZ: + sits at the US `]`, - at the US `/`, and Shift+0 types `=`.
+        assert_eq!(
+            interface_zoom_step(K::CloseBracket, Some(K::CloseBracket)),
+            Some(InterfaceZoom::Larger)
+        );
+        assert_eq!(
+            interface_zoom_step(K::Slash, Some(K::Slash)),
+            Some(InterfaceZoom::Smaller)
+        );
+        assert_eq!(
+            interface_zoom_step(K::Equals, Some(K::Num0)),
+            Some(InterfaceZoom::Reset)
+        );
+        assert_eq!(interface_zoom_step(K::A, Some(K::A)), None);
     }
 }
