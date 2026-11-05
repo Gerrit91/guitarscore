@@ -201,6 +201,14 @@ impl WriteGpifInGpifStringOrder for Song {
                     escape_xml(symbol)
                 ));
             }
+            // GuitarScore addition: the slash-notation switch (GP7's PartConfiguration
+            // bit only means its alternative staff style, so keep this separately).
+            if track.settings.slash {
+                xml.push_str(&format!(
+                    "<Property name=\"{}\"><Number>1</Number></Property>",
+                    gpif_import::SLASH_PROPERTY
+                ));
+            }
             // GuitarScore addition: the capo fret (GP6/GP7 store it as a staff property).
             xml.push_str(&format!(
                 "<Property name=\"CapoFret\"><Fret>{}</Fret></Property>",

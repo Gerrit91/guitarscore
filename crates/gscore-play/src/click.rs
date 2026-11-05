@@ -139,11 +139,10 @@ mod tests {
         let quiet = click_events_at(measures[0], 0.5);
         assert_eq!(quiet.len(), full.len());
         for (loud, soft) in full.iter().zip(&quiet) {
-            match (loud.event, soft.event) {
-                (MidiEvent::NoteOn { velocity: a, .. }, MidiEvent::NoteOn { velocity: b, .. }) => {
-                    assert!(b < a && b > 0)
-                }
-                _ => {}
+            if let (MidiEvent::NoteOn { velocity: a, .. }, MidiEvent::NoteOn { velocity: b, .. }) =
+                (loud.event, soft.event)
+            {
+                assert!(b < a && b > 0);
             }
         }
         assert!(click_events_at(measures[0], 0.0).is_empty());

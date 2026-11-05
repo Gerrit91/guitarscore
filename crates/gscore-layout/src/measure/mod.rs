@@ -194,6 +194,7 @@ impl MeasureLayout {
     /// changes here; `show_time_signature` when it starts the piece or changes the time
     /// signature. `clef` is the clef in effect here and `previous_clef` the one before, so
     /// a change is written at the measure's start.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         measure: MeasureView<'_>,
         show_time_signature: bool,

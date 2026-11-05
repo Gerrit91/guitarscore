@@ -103,8 +103,8 @@ use beats::convert_beat;
 pub(crate) use beats::{convert_trills, flip_note_strings, tremolo_text};
 use helpers::*;
 pub(crate) use helpers::{
-    CHORUS_PROPERTY, REVERB_PROPERTY, SYMBOL_PROPERTY, build_note_bend, build_whammy_effect,
-    extract_symbol,
+    CHORUS_PROPERTY, REVERB_PROPERTY, SLASH_PROPERTY, SYMBOL_PROPERTY, build_note_bend,
+    build_whammy_effect, extract_symbol,
 };
 use notes::convert_note;
 pub(crate) use notes::finger_name;
@@ -378,8 +378,20 @@ impl SongGpifOps for Song {
                 track.tuning_label = extract_tuning_label(&props.properties);
                 capo = extract_capo(&props.properties);
                 track.symbol = extract_symbol(&props.properties);
+                if let Some(slash) = extract_slash(&props.properties) {
+                    track.settings.slash = slash;
+                }
             }
             let diagrams = extract_diagrams(g_track);
+            if let Some(staves) = &g_track.staves
+                && let Some(props) = staves
+                    .staves
+                    .first()
+                    .and_then(|staff| staff.properties.as_ref())
+                && let Some(slash) = extract_slash(&props.properties)
+            {
+                track.settings.slash = slash;
+            }
             if (track.strings.is_empty() || capo.is_none())
                 && let Some(staves) = &g_track.staves
             {

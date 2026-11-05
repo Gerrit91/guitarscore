@@ -656,7 +656,8 @@ fn draw_chord_diagram(
     let width = (strings.saturating_sub(1)) as f32 * 0.9;
     let height = frets as f32 * 0.8;
     let left = x - width / 2.0;
-    let name_y = top - 1.0;
+    // Above the staff and clear of the measure number at the staff's top.
+    let name_y = top - 7.0;
     ops.push(DrawOp::Text {
         text: chord.name.clone(),
         at: Point::new(x, name_y),
@@ -665,7 +666,7 @@ fn draw_chord_diagram(
         anchor: TextAnchor::Middle,
         color: ColorToken::Annotation,
     });
-    let grid_top = name_y - height - 0.9;
+    let grid_top = top - 6.0;
     // Strings (vertical) and frets (horizontal).
     for string in 0..strings {
         let sx = left + string as f32 * 0.9;

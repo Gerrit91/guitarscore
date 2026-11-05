@@ -188,8 +188,8 @@ impl Clef {
             Clef::Treble | Clef::Percussion => 4 * 7 + 2,
             Clef::Bass => 2 * 7 + 4,
             // C4 sits on the middle line (alto) or the fourth line (tenor).
-            Clef::Alto => 4 * 7 + 0 - 4,
-            Clef::Tenor => 4 * 7 + 0 - 6,
+            Clef::Alto => 4 * 7 - 4,
+            Clef::Tenor => 4 * 7 - 6,
         }
     }
 

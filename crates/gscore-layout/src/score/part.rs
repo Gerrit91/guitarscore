@@ -68,7 +68,9 @@ impl<'a> Part<'a> {
         let mut previous_clef = None;
         for measure in view.measures() {
             let signature = measure.time_signature()?;
-            let show = previous_signature != Some(signature);
+            let free_time = song.free_time(measure.index()).unwrap_or(false);
+            // Free time shows its signature in parentheses even when it did not change.
+            let show = previous_signature != Some(signature) || free_time;
             let key = song.key_signature(measure.index()).map_or(0, |key| key.key);
             let clef = match ctx.notation {
                 Some(notation) if notation.clef != Clef::Percussion => {
@@ -81,7 +83,7 @@ impl<'a> Part<'a> {
                 track,
                 measure,
                 show,
-                song.free_time(measure.index()).unwrap_or(false),
+                free_time,
                 key,
                 previous_key,
                 clef,

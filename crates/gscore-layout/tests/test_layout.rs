@@ -586,7 +586,7 @@ fn time_signature_changes_are_laid_out() {
     use gscore_model::{MeasureIndex, TimeSignature};
     let mut song = testing::song(&[GUITAR_6], 2).unwrap();
     let signature = TimeSignature::new(3, 8).unwrap();
-    song.set_time_signature(MeasureIndex::new(1), 3, 8).unwrap();
+    let _change = song.set_time_signature(MeasureIndex::new(1), 3, 8).unwrap();
     let track = song.track(TrackIndex::new(0)).unwrap();
     assert_eq!(
         track
