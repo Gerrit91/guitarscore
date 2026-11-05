@@ -431,6 +431,23 @@ pub(crate) const SET_TRACK_COLOR: CommandInfo = CommandInfo {
     params: &[TRACK, COLOR],
 };
 
+const SYMBOL: ParamInfo = ParamInfo {
+    name: "symbol",
+    required: true,
+    default: None,
+    help: "Instrument symbol: electricGuitar, acousticGuitar, electricBass, drumKit, \
+           acousticPiano, organ, padSynthesizer, voice, violin, trumpet, saxophone, flute, \
+           banjo, ukulele or other",
+};
+
+pub(crate) const SET_TRACK_SYMBOL: CommandInfo = CommandInfo {
+    id: "set_track_symbol",
+    aliases: &[],
+    label: "Set the track symbol",
+    help: "Sets the instrument symbol the track is shown with (independent of its sound).",
+    params: &[TRACK, SYMBOL],
+};
+
 pub(crate) const SET_TRACK_VOLUME: CommandInfo = CommandInfo {
     id: "set_track_volume",
     aliases: &[],
@@ -840,6 +857,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     MOVE_TRACK,
     RENAME_TRACK,
     SET_TRACK_COLOR,
+    SET_TRACK_SYMBOL,
     SET_TRACK_VOLUME,
     SET_TRACK_PAN,
     SET_TRACK_REVERB,

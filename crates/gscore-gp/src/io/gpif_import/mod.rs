@@ -48,7 +48,10 @@ mod vibrato_tests;
 use beats::convert_beat;
 pub(crate) use beats::{convert_trills, flip_note_strings, tremolo_text};
 use helpers::*;
-pub(crate) use helpers::{CHORUS_PROPERTY, REVERB_PROPERTY, build_note_bend, build_whammy_effect};
+pub(crate) use helpers::{
+    CHORUS_PROPERTY, REVERB_PROPERTY, SYMBOL_PROPERTY, build_note_bend, build_whammy_effect,
+    extract_symbol,
+};
 use notes::convert_note;
 pub(crate) use notes::finger_name;
 
@@ -320,6 +323,7 @@ impl SongGpifOps for Song {
                 track.strings = extract_tuning(&props.properties);
                 track.tuning_label = extract_tuning_label(&props.properties);
                 capo = extract_capo(&props.properties);
+                track.symbol = extract_symbol(&props.properties);
             }
             if (track.strings.is_empty() || capo.is_none())
                 && let Some(staves) = &g_track.staves

@@ -243,3 +243,10 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     writer folds grace beats and leaves out those that cannot be folded
     (`Song::with_attached_graces`). The GPIF reader stored every grace length as 1; the
     folded length is the beat's value. Tests in `model/grace.rs`.
+38. The track's instrument symbol (`src/model/track.rs`, `src/io/gpif/bars.rs`,
+    `src/io/gpif_import/mod.rs`, `src/io/gpif_export/mod.rs`, 2026-11-05): the app lets
+    the user choose which instrument symbol a track shows, independent of the played
+    sound, so it needs a place in the file. `Track` gains `symbol`, written as the GPIF
+    track property `GuitarScoreSymbol` with a `<Text>` value and read back by
+    `extract_symbol`. GP3-5 and the legacy formats drop it (their import leaves `None`).
+    A round-trip test checks that it survives and that the instrument type is unchanged.

@@ -492,6 +492,10 @@ fn every_track_command_edits_and_undoes() {
             track: TrackIndex::new(0),
             color: TrackColor::new(0x00FF00),
         },
+        Command::SetTrackSymbol {
+            track: TrackIndex::new(0),
+            symbol: gscore_model::InstrumentSymbol::Banjo,
+        },
         Command::SetTrackVolume {
             track: TrackIndex::new(0),
             volume: 30,

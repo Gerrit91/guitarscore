@@ -58,7 +58,7 @@ pub use effects::{
 };
 pub use error::ModelError;
 pub use grace::{Grace, GraceSpeed};
-pub use instrument::{InstrumentKind, program_name};
+pub use instrument::{InstrumentKind, InstrumentSymbol, program_name};
 pub use issues::{Issue, IssueKind};
 pub use marks::{Feel, Fermata};
 pub use metadata::{

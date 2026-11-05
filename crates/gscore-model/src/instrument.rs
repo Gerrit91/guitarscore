@@ -11,6 +11,129 @@ pub enum InstrumentKind {
     Other,
 }
 
+/// The symbol the app draws for a track: which instrument the user picked for it.
+///
+/// It is a display choice, not the played sound (the General MIDI program stays separate),
+/// and it is kept in the file as the track's `GuitarScoreSymbol` property. Without one,
+/// the app derives a symbol from the instrument type and the program.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum InstrumentSymbol {
+    /// An electric guitar.
+    ElectricGuitar,
+    /// An acoustic (steel-string) guitar.
+    AcousticGuitar,
+    /// An electric or acoustic bass.
+    Bass,
+    /// A drum kit.
+    Drums,
+    /// A piano.
+    Piano,
+    /// A pipe or drawbar organ.
+    Organ,
+    /// A synthesizer.
+    Synth,
+    /// A singer's microphone.
+    Voice,
+    /// A violin (or another bowed string instrument).
+    Violin,
+    /// A trumpet (or another brass instrument).
+    Trumpet,
+    /// A saxophone.
+    Saxophone,
+    /// A flute (or another wind instrument).
+    Flute,
+    /// A banjo.
+    Banjo,
+    /// A ukulele.
+    Ukulele,
+    /// Anything else.
+    Other,
+}
+
+impl InstrumentSymbol {
+    /// Every symbol the track panel offers, in menu order.
+    pub const ALL: [InstrumentSymbol; 15] = [
+        InstrumentSymbol::ElectricGuitar,
+        InstrumentSymbol::AcousticGuitar,
+        InstrumentSymbol::Bass,
+        InstrumentSymbol::Drums,
+        InstrumentSymbol::Piano,
+        InstrumentSymbol::Organ,
+        InstrumentSymbol::Synth,
+        InstrumentSymbol::Voice,
+        InstrumentSymbol::Violin,
+        InstrumentSymbol::Trumpet,
+        InstrumentSymbol::Saxophone,
+        InstrumentSymbol::Flute,
+        InstrumentSymbol::Banjo,
+        InstrumentSymbol::Ukulele,
+        InstrumentSymbol::Other,
+    ];
+
+    /// The id stored in the file (the GP7 instrument type where one fits).
+    pub fn id(self) -> &'static str {
+        match self {
+            InstrumentSymbol::ElectricGuitar => "electricGuitar",
+            InstrumentSymbol::AcousticGuitar => "acousticGuitar",
+            InstrumentSymbol::Bass => "electricBass",
+            InstrumentSymbol::Drums => "drumKit",
+            InstrumentSymbol::Piano => "acousticPiano",
+            InstrumentSymbol::Organ => "organ",
+            InstrumentSymbol::Synth => "padSynthesizer",
+            InstrumentSymbol::Voice => "voice",
+            InstrumentSymbol::Violin => "violin",
+            InstrumentSymbol::Trumpet => "trumpet",
+            InstrumentSymbol::Saxophone => "saxophone",
+            InstrumentSymbol::Flute => "flute",
+            InstrumentSymbol::Banjo => "banjo",
+            InstrumentSymbol::Ukulele => "ukulele",
+            InstrumentSymbol::Other => "other",
+        }
+    }
+
+    /// The symbol stored under `id`, if this version knows it.
+    pub fn from_id(id: &str) -> Option<InstrumentSymbol> {
+        InstrumentSymbol::ALL
+            .into_iter()
+            .find(|symbol| symbol.id() == id)
+    }
+
+    /// What the track panel and screen readers call it.
+    pub fn name(self) -> &'static str {
+        match self {
+            InstrumentSymbol::ElectricGuitar => "Electric guitar",
+            InstrumentSymbol::AcousticGuitar => "Acoustic guitar",
+            InstrumentSymbol::Bass => "Bass",
+            InstrumentSymbol::Drums => "Drums",
+            InstrumentSymbol::Piano => "Piano",
+            InstrumentSymbol::Organ => "Organ",
+            InstrumentSymbol::Synth => "Synthesizer",
+            InstrumentSymbol::Voice => "Voice",
+            InstrumentSymbol::Violin => "Violin",
+            InstrumentSymbol::Trumpet => "Trumpet",
+            InstrumentSymbol::Saxophone => "Saxophone",
+            InstrumentSymbol::Flute => "Flute",
+            InstrumentSymbol::Banjo => "Banjo",
+            InstrumentSymbol::Ukulele => "Ukulele",
+            InstrumentSymbol::Other => "Other instrument",
+        }
+    }
+
+    /// The broad kind the symbol belongs to, for deciding whether a tuning applies.
+    pub fn kind(self) -> InstrumentKind {
+        match self {
+            InstrumentSymbol::ElectricGuitar
+            | InstrumentSymbol::AcousticGuitar
+            | InstrumentSymbol::Bass
+            | InstrumentSymbol::Violin
+            | InstrumentSymbol::Banjo
+            | InstrumentSymbol::Ukulele => InstrumentKind::Strings,
+            InstrumentSymbol::Drums => InstrumentKind::Drums,
+            _ => InstrumentKind::Other,
+        }
+    }
+}
+
 /// Last words of GP7 instrument type ids that mean a string instrument
 /// (`electricGuitar`, `acousticBass`, `banjo`, ...).
 const STRING_INSTRUMENTS: &[&str] = &["guitar", "bass", "banjo", "ukulele", "mandolin"];
@@ -78,5 +201,16 @@ mod tests {
         assert_eq!(classify(Some("drumKit"), true), InstrumentKind::Drums);
         assert_eq!(classify(None, true), InstrumentKind::Drums);
         assert_eq!(classify(None, false), InstrumentKind::Strings);
+    }
+
+    #[test]
+    fn every_symbol_id_is_unique_and_reads_back() {
+        let mut ids = Vec::new();
+        for symbol in InstrumentSymbol::ALL {
+            assert!(!ids.contains(&symbol.id()), "{symbol:?}");
+            ids.push(symbol.id());
+            assert_eq!(InstrumentSymbol::from_id(symbol.id()), Some(symbol));
+        }
+        assert_eq!(InstrumentSymbol::from_id("not a symbol"), None);
     }
 }

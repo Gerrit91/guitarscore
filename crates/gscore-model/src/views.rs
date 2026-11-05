@@ -10,7 +10,7 @@ use gscore_gp::{BeatStatus, NoteType};
 use crate::duration::{Duration, NoteValue, TimeSignature};
 use crate::error::ModelError;
 use crate::grace::Grace;
-use crate::instrument::{self, InstrumentKind};
+use crate::instrument::{self, InstrumentKind, InstrumentSymbol};
 use crate::position::{BeatIndex, Fret, MeasureIndex, Pitch, StringNumber, TrackIndex, VoiceIndex};
 
 /// One string of a track and the pitch it is tuned to.
@@ -74,6 +74,15 @@ impl<'a> TrackView<'a> {
     /// (GP7 and later).
     pub fn instrument_name(&self) -> Option<&'a str> {
         self.inner.instrument_name.as_deref()
+    }
+
+    /// The symbol the user chose for this track, if one was chosen (see
+    /// [`InstrumentSymbol`]); otherwise the app derives one.
+    pub fn symbol(&self) -> Option<InstrumentSymbol> {
+        self.inner
+            .symbol
+            .as_deref()
+            .and_then(InstrumentSymbol::from_id)
     }
 
     /// The tuning, from string 1 (highest) down, or `None` if the track has none: it is

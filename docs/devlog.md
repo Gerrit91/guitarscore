@@ -2717,3 +2717,22 @@ needed for a much larger font); owner listening check.
   dialog.
 - Tests: the app snapshots of the staff dialogs and the page updated (the corner marks and
   the moved tile), the keymap still parses (`t` and `T` are distinct bindings).
+
+## 2026-11-05 — A chosen instrument symbol per track
+
+- The track panel's Instrument section gained **Symbol**: a menu of fifteen symbols
+  (electric and acoustic guitar, bass, drums, piano, organ, synthesizer, voice, violin,
+  trumpet, saxophone, flute, banjo, ukulele, other), each drawn with the painter like the
+  toolbar icons. The icon shows next to the menu, in the panel header, in the song grid
+  and in the mixer; the symbol is only the picture, the preset still decides the sound.
+- Until now the icon was *derived* from the General MIDI program and the GP7 instrument
+  name, which is still the fallback when no symbol is chosen (`instrument::derived`).
+- Unusually for the model, the symbol is stored separately from `instrument_type`: that
+  type also decides whether a track has a tuning and tablature, so choosing a violin icon
+  on a guitar track must not turn its tab into "other". `Track` gains `symbol`, written as
+  the GPIF property `GuitarScoreSymbol` and read back (`docs/guitarpro.md` change 38);
+  GP3-5 export drops it, like other GuitarScore-only data.
+- `Command::SetTrackSymbol` (`set_track_symbol track=… symbol=…`) with apply-then-undo
+  coverage, a `panic_hunt` value and `settings_differences` so a test notices the change.
+- Tests: symbol ids are unique and round-trip; a chosen symbol wins over the derived one;
+  GPIF write/read keeps it and leaves the instrument type alone; the app snapshots updated.

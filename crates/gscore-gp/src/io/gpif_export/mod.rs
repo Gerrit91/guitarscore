@@ -193,6 +193,14 @@ impl WriteGpifInGpifStringOrder for Song {
                     ));
                 }
             }
+            // GuitarScore addition: the app's instrument symbol, when the user chose one.
+            if let Some(symbol) = track.symbol.as_deref() {
+                xml.push_str(&format!(
+                    "<Property name=\"{}\"><Text>{}</Text></Property>",
+                    gpif_import::SYMBOL_PROPERTY,
+                    escape_xml(symbol)
+                ));
+            }
             // GuitarScore addition: the capo fret (GP6/GP7 store it as a staff property).
             xml.push_str(&format!(
                 "<Property name=\"CapoFret\"><Fret>{}</Fret></Property>",

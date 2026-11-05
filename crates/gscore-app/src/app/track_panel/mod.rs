@@ -8,12 +8,12 @@ mod tuning;
 use egui::RichText;
 use gscore_edit::Command;
 use gscore_model::{
-    InstrumentKind, Song, StringTuning, TrackColor, TrackIndex, TrackSound, TrackStaves, TrackView,
-    program_name,
+    InstrumentKind, InstrumentSymbol, Song, StringTuning, TrackColor, TrackIndex, TrackSound,
+    TrackStaves, TrackView, program_name,
 };
 
 use super::GuitarScoreApp;
-use super::instrument::Instrument;
+use super::instrument;
 use super::style;
 
 /// What the track panel keeps between frames: which track it showed, and the name being
@@ -42,7 +42,7 @@ struct TrackPanel {
     string_count: usize,
     percussion: bool,
     staves: TrackStaves,
-    instrument: Instrument,
+    instrument: InstrumentSymbol,
 }
 
 impl TrackPanel {
@@ -59,7 +59,7 @@ impl TrackPanel {
             string_count: track.string_count(),
             percussion: track.is_percussion(),
             staves: track.staves(),
-            instrument: Instrument::of(track, song.track_sound(track.index())),
+            instrument: instrument::derived(track, song.track_sound(track.index())),
         }
     }
 }
@@ -133,9 +133,12 @@ impl GuitarScoreApp {
                     );
                     let (icon, response) =
                         ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::hover());
-                    snapshot
-                        .instrument
-                        .paint(ui.painter(), icon.shrink(2.0), tokens.text);
+                    instrument::paint(
+                        ui.painter(),
+                        icon.shrink(2.0),
+                        snapshot.instrument,
+                        tokens.text,
+                    );
                     response.on_hover_text(snapshot.instrument.name());
                     if state.editing {
                         let response = ui.add(
@@ -219,6 +222,52 @@ fn instrument(
             label.on_hover_text(name);
         }
     });
+    // The symbol shown for the track (the grid, the tab and this panel).
+    let mut symbol = snapshot.instrument;
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Symbol").color(style::tokens(ui).text_weak));
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+        instrument::paint(ui.painter(), rect, symbol, style::tokens(ui).text);
+        let combo = egui::ComboBox::from_id_salt("track_symbol")
+            .selected_text(symbol.name())
+            .width(ui.available_width())
+            .show_ui(ui, |ui| {
+                for candidate in InstrumentSymbol::ALL {
+                    let chosen = ui
+                        .horizontal(|ui| {
+                            let (icon, _) = ui
+                                .allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+                            instrument::paint(
+                                ui.painter(),
+                                icon,
+                                candidate,
+                                ui.visuals().text_color(),
+                            );
+                            ui.selectable_value(&mut symbol, candidate, candidate.name())
+                        })
+                        .inner;
+                    if chosen.clicked() {
+                        ui.close();
+                    }
+                }
+            });
+        ui.ctx().accesskit_node_builder(combo.response.id, |node| {
+            node.set_label("Instrument symbol");
+        });
+        combo.response.on_hover_text(
+            "The symbol the track is shown with. It is only the symbol: the sound comes \
+             from the preset.",
+        );
+    });
+    if symbol != snapshot.instrument {
+        commands.push((
+            Command::SetTrackSymbol {
+                track: TrackIndex::new(index),
+                symbol,
+            },
+            false,
+        ));
+    }
     let mut drums = snapshot.percussion;
     if ui.checkbox(&mut drums, "Drum kit").changed() && drums != snapshot.percussion {
         commands.push((

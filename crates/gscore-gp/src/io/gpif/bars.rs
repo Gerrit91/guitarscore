@@ -332,6 +332,9 @@ pub(crate) struct Property {
     /// GuitarScore addition: user-given name of a tuning (empty for presets).
     #[serde(rename = "Label", default)]
     pub label: Option<String>,
+    /// GuitarScore addition: a text value (the track's symbol, when it is a string).
+    #[serde(rename = "Text", default)]
+    pub text: Option<String>,
     #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
     #[serde(rename = "Direction", default)]
     pub direction: Option<String>,
