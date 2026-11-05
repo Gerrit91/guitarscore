@@ -72,6 +72,31 @@ pub(crate) fn line_break(kind: SystemBreak) -> LineBreak {
     }
 }
 
+/// Line starts as Guitar Pro's systems layout, the bars of each line (`"4 4 2"`); `None`
+/// without a break.
+fn systems_layout(breaks: &[bool]) -> Option<String> {
+    let starts: Vec<usize> = breaks
+        .iter()
+        .enumerate()
+        .filter(|&(index, &on)| index > 0 && on)
+        .map(|(index, _)| index)
+        .collect();
+    if starts.is_empty() {
+        return None;
+    }
+    let mut from = 0_usize;
+    let counts: Vec<String> = starts
+        .into_iter()
+        .chain(std::iter::once(breaks.len()))
+        .map(|start| {
+            let count = start.saturating_sub(from);
+            from = start;
+            count.to_string()
+        })
+        .collect();
+    Some(counts.join(" "))
+}
+
 pub(crate) fn system_break(value: &LineBreak) -> SystemBreak {
     match value {
         LineBreak::Break => SystemBreak::Line,
@@ -81,6 +106,60 @@ pub(crate) fn system_break(value: &LineBreak) -> SystemBreak {
 }
 
 impl Song {
+    /// Where lines start when every track is shown together (Guitar Pro's multitrack
+    /// layout, kept apart from each track's own breaks): one entry per measure, `true` where
+    /// a new line starts. Without such a layout (or past its end) nothing is forced.
+    pub fn score_line_breaks(&self) -> Vec<bool> {
+        let count = self.measure_count();
+        let mut breaks = vec![false; count];
+        let mut at = 0_usize;
+        let layout = self
+            .inner()
+            .score_systems_layout
+            .as_deref()
+            .unwrap_or_default();
+        for bars in layout.split_whitespace() {
+            let Some(bars) = bars.parse::<usize>().ok().filter(|bars| *bars > 0) else {
+                break;
+            };
+            at = at.saturating_add(bars);
+            match breaks.get_mut(at) {
+                Some(slot) => *slot = true,
+                None => break,
+            }
+        }
+        breaks
+    }
+
+    /// Starts a new line at `measure` (not the first) when every track is shown together,
+    /// or removes that break; each track's own breaks stay as they are. Undone like any
+    /// edit.
+    pub fn set_score_line_break(
+        &mut self,
+        measure: MeasureIndex,
+        on: bool,
+    ) -> Result<Change, ModelError> {
+        if measure.get() >= self.measure_count() {
+            return Err(ModelError::Invalid(format!("{measure}: no such measure")));
+        }
+        if measure.get() == 0 && on {
+            return Err(ModelError::Invalid(
+                "the first measure always starts the score".to_owned(),
+            ));
+        }
+        let mut breaks = self.score_line_breaks();
+        if let Some(slot) = breaks.get_mut(measure.get()) {
+            *slot = on;
+        }
+        let layout = systems_layout(&breaks);
+        self.edit_metadata(|inner| {
+            let previous = std::mem::replace(&mut inner.score_systems_layout, layout);
+            Ok(Change {
+                kind: ChangeKind::ScoreLineBreaks { previous },
+            })
+        })
+    }
+
     /// How the song is printed, with odd values from a file moved into range.
     pub fn page_setup(&self) -> PageSetup {
         load(&self.inner().page_setup).sanitized()

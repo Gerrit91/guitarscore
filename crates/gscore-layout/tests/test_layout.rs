@@ -138,7 +138,10 @@ fn every_test_file_lays_out_on_the_page_with_one_fret_number_per_note() {
             let layout = common::layout(&song, track);
             let what = format!("{file} track {}", track + 1);
             assert_on_page(&layout, &what);
-            assert_eq!(fret_numbers(&layout), shown_notes(&song, track), "{what}");
+            // A drum kit is written on a percussion staff, without fret numbers.
+            let drums = song.track(TrackIndex::new(track)).unwrap().is_percussion();
+            let expected = if drums { 0 } else { shown_notes(&song, track) };
+            assert_eq!(fret_numbers(&layout), expected, "{what}");
             assert_eq!(
                 layout,
                 common::layout(&song, track),

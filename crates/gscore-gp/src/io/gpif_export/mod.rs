@@ -71,6 +71,19 @@ impl WriteGpifInGpifStringOrder for Song {
         ));
         let notices = self.notice.join("\n");
         xml.push_str(&format!("<Notices>{}</Notices>", escape_xml(&notices)));
+        // The multitrack view's bars per line, as the file had them.
+        if let Some(default) = &self.score_systems_default {
+            xml.push_str(&format!(
+                "<ScoreSystemsDefaultLayout>{}</ScoreSystemsDefaultLayout>",
+                escape_xml(default)
+            ));
+        }
+        if let Some(layout) = &self.score_systems_layout {
+            xml.push_str(&format!(
+                "<ScoreSystemsLayout>{}</ScoreSystemsLayout>",
+                escape_xml(layout)
+            ));
+        }
         xml.push_str("</Score>");
 
         // MasterTrack

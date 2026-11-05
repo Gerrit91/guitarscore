@@ -74,10 +74,14 @@ impl Lines<'_> {
     }
 }
 
-/// Draws the header for `track` of `song` and returns where it ends (y).
+/// Gap between two tracks' blocks of name and tuning.
+const BLOCK_GAP: f32 = 3.0;
+
+/// Draws the header for `tracks` of `song` and returns where it ends (y). One track gets
+/// its tuning on one line; several get a block each (name, then tuning), side by side.
 pub(crate) fn draw(
     song: &Song,
-    track: TrackView<'_>,
+    tracks: &[TrackView<'_>],
     ctx: &Context<'_>,
     ops: &mut Vec<DrawOp>,
 ) -> Result<f32, LayoutError> {
@@ -107,8 +111,13 @@ pub(crate) fn draw(
         lines.push(&credit, right, &CREDIT);
     }
     lines.y += INFO.size;
-    if let Some(tuning) = tuning_text(track)? {
-        lines.push(&tuning, left, &INFO);
+    match tracks {
+        [track] => {
+            if let Some(tuning) = tuning_text(*track)? {
+                lines.push(&tuning, left, &INFO);
+            }
+        }
+        _ => track_blocks(tracks, &mut lines, left, right, ctx)?,
     }
 
     // Tempo mark: a quarter note, then "= 120". The note's stem reaches above the text, so
@@ -127,6 +136,73 @@ pub(crate) fn draw(
         color: ColorToken::Annotation,
     });
     Ok(y)
+}
+
+/// Each track's name with its tuning below, in blocks from left to right that wrap onto
+/// another row when the line is full.
+fn track_blocks(
+    tracks: &[TrackView<'_>],
+    lines: &mut Lines<'_>,
+    left: f32,
+    right: f32,
+    ctx: &Context<'_>,
+) -> Result<(), LayoutError> {
+    let mut blocks = Vec::with_capacity(tracks.len());
+    for track in tracks {
+        let mut block = vec![track.name().trim().to_owned()];
+        if let Some(tuning) = block_tuning(*track)? {
+            block.push(tuning);
+        }
+        let width = block
+            .iter()
+            .map(|line| ctx.fonts.text.width(line, INFO.size))
+            .fold(0.0_f32, f32::max);
+        blocks.push((block, width));
+    }
+    let line_height = INFO.size * LINE_HEIGHT;
+    let row_top = lines.y;
+    let mut x = left;
+    let mut top = row_top;
+    let mut tallest = 0_usize;
+    for (block, width) in blocks {
+        if x > left && x + width > right {
+            top += tallest as f32 * line_height;
+            x = left;
+            tallest = 0;
+        }
+        for (row, text) in block.iter().enumerate() {
+            lines.ops.push(DrawOp::Text {
+                text: text.clone(),
+                at: Point::new(x, top + (row as f32 + 1.0) * line_height),
+                size: INFO.size,
+                font: INFO.font,
+                anchor: INFO.anchor,
+                color: INFO.color,
+            });
+        }
+        tallest = tallest.max(block.len());
+        x += width + BLOCK_GAP;
+    }
+    lines.y = top + tallest as f32 * line_height;
+    Ok(())
+}
+
+/// A tuning for a track's block: its name ("Drop D"), or its notes lowest string first;
+/// `None` for a track without one (drums).
+fn block_tuning(track: TrackView<'_>) -> Result<Option<String>, LayoutError> {
+    if track.is_percussion() {
+        return Ok(None);
+    }
+    let Some(strings) = track.tuning()? else {
+        return Ok(None);
+    };
+    Ok(Some(match track.tuning_name()? {
+        Some(name) => name,
+        None => {
+            let notes: Vec<&str> = strings.iter().rev().map(|s| s.pitch.note_name()).collect();
+            notes.join(" ")
+        }
+    }))
 }
 
 /// "Words & Music by X" when one person wrote both, otherwise one line per role.

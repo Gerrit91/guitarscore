@@ -551,19 +551,19 @@ impl Tasks {
         Err("PDF export is not available in the browser build yet".to_owned())
     }
 
-    /// Lays out `track` of `song` on pages with `options` and writes it to `path` as PDF,
-    /// in the background. The file is written next to `path` first and then moved there,
+    /// Lays out `tracks` of `song` together (one track, or several stacked in every
+    /// system) on pages with `options` and writes them to `path` as PDF, in the background. The file is written next to `path` first and then moved there,
     /// so a failed export never leaves half a file.
     pub(crate) fn export_pdf(
         &mut self,
         song: Song,
-        track: usize,
+        tracks: Vec<usize>,
         options: gscore_layout::LayoutOptions,
         path: PathBuf,
         ctx: &egui::Context,
     ) -> Result<(), String> {
         self.spawn("PDF export", ctx, move || {
-            Event::Exported(export_pdf(&song, track, &options, &path))
+            Event::Exported(export_pdf(&song, &tracks, &options, &path))
         })
     }
 
@@ -788,14 +788,21 @@ async fn read_web_file(handle: &rfd::FileHandle) -> Result<Vec<u8>, String> {
 /// The work of [`Tasks::export_pdf`]: the status message, or why it failed.
 fn export_pdf(
     song: &Song,
-    track: usize,
+    tracks: &[usize],
     options: &gscore_layout::LayoutOptions,
     path: &std::path::Path,
 ) -> Result<String, String> {
     let fonts = gscore_layout::Fonts::bundled().map_err(|e| e.to_string())?;
-    let layout =
-        gscore_layout::layout_track(song, gscore_model::TrackIndex::new(track), options, &fonts)
-            .map_err(|e| e.to_string())?;
+    let indices: Vec<gscore_model::TrackIndex> = tracks
+        .iter()
+        .copied()
+        .map(gscore_model::TrackIndex::new)
+        .collect();
+    let first = *indices
+        .first()
+        .ok_or_else(|| "there is no track to export".to_owned())?;
+    let layout = gscore_layout::layout_tracks(song, &indices, first, options, &fonts)
+        .map_err(|e| e.to_string())?;
     let pdf = gscore_layout::to_pdf(
         &layout,
         &gscore_layout::Theme::LIGHT,
@@ -835,14 +842,15 @@ mod tests {
             .with_page_setup(&song.page_setup())
             .on_pages();
         let path = dir.join("song.pdf");
-        let message = export_pdf(&song, 0, &options, &path).unwrap();
+        let message = export_pdf(&song, &[0], &options, &path).unwrap();
         assert!(message.contains("pages"), "{message}");
         assert!(std::fs::read(&path).unwrap().starts_with(b"%PDF-"));
 
         let missing = dir.join("no such folder").join("song.pdf");
-        assert!(export_pdf(&song, 0, &options, &missing).is_err());
+        assert!(export_pdf(&song, &[0], &options, &missing).is_err());
+        assert!(export_pdf(&song, &[], &options, &dir.join("none.pdf")).is_err());
         assert!(
-            export_pdf(&song, 9, &options, &dir.join("other.pdf")).is_err(),
+            export_pdf(&song, &[9], &options, &dir.join("other.pdf")).is_err(),
             "no track 10"
         );
         let left: Vec<_> = std::fs::read_dir(&dir).unwrap().collect();

@@ -130,6 +130,9 @@ enum ChangeKind {
         measure: MeasureIndex,
         previous: gscore_gp::LineBreak,
     },
+    /// The line breaks of all tracks shown together changed; `previous` is the systems
+    /// layout before.
+    ScoreLineBreaks { previous: Option<String> },
     /// A track's bars-per-line limit changed.
     BarsPerSystem {
         track: TrackIndex,
@@ -348,6 +351,7 @@ impl Change {
             | ChangeKind::SystemBreak { .. }
             | ChangeKind::BarsPerSystem { .. }
             | ChangeKind::TrackMix { .. } => 0,
+            ChangeKind::ScoreLineBreaks { previous } => previous.as_ref().map_or(0, String::len),
             ChangeKind::PageSetup { .. } => size_of::<gscore_gp::page::PageSetup>(),
         };
         base.saturating_add(extra)
@@ -587,6 +591,10 @@ impl Song {
             }),
             ChangeKind::PageSetup { previous } => self.edit_metadata(|inner| {
                 inner.page_setup.clone_from(previous);
+                Ok(())
+            }),
+            ChangeKind::ScoreLineBreaks { previous } => self.edit_metadata(|inner| {
+                inner.score_systems_layout = previous.clone();
                 Ok(())
             }),
             ChangeKind::SystemBreak {

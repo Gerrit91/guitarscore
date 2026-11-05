@@ -1,7 +1,6 @@
 //! The open document: the song being edited (through a [`TabEditor`]), where it came from,
 //! whether it has unsaved changes, its layouts, and its recovery journal.
 
-use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -12,12 +11,22 @@ use gscore_model::{MeasureIndex, Repeat, Section, Song, TrackIndex};
 use gscore_play::Timeline;
 use gscore_session::{FileFormat, Journal};
 
-/// One track's layout: the revision and options it shows, and the measure cache that
-/// makes the next layout after an edit cheap.
+/// The layout last shown (its tracks, primary track, revision and options), and the
+/// measure cache (per track) that makes the next layout after an edit cheap.
 #[derive(Debug, Default)]
-struct TrackLayout {
-    shown: Option<(u64, LayoutOptions, Result<Arc<Layout>, String>)>,
+struct Layouts {
+    shown: Option<Shown>,
     cache: LayoutCache,
+}
+
+/// What a layout shows, and the layout.
+#[derive(Debug)]
+struct Shown {
+    tracks: Vec<usize>,
+    primary: usize,
+    revision: u64,
+    options: LayoutOptions,
+    layout: Result<Arc<Layout>, String>,
 }
 
 /// What the song grid shows: which measures have notes (one row per track), and the
@@ -44,9 +53,9 @@ pub struct Document {
     editor: TabEditor,
     /// The editor revision last saved (or opened).
     saved_revision: u64,
-    /// Layouts by track. An edit makes them stale; the shown track is laid out again on
-    /// the next frame, reusing every measure that did not change.
-    layouts: HashMap<usize, TrackLayout>,
+    /// The shown layout and the measure cache. An edit makes the layout stale; it is laid
+    /// out again on the next frame, reusing every measure that did not change.
+    layouts: Layouts,
     /// The song grid's squares and markers, with the revision they show.
     grid: Option<(u64, Arc<GridData>)>,
     /// The song's played measures and tempo, with the revision they show, for the time
@@ -122,7 +131,7 @@ impl Document {
             reopenable,
             saved_revision: editor.revision(),
             editor,
-            layouts: HashMap::new(),
+            layouts: Layouts::default(),
             grid: None,
             timeline: None,
             journal,
@@ -245,7 +254,7 @@ impl Document {
     /// Drops the cached track layouts. Call after an edit that changes the score or the
     /// track order (the layout cache is keyed by track index).
     pub fn forget_layouts(&mut self) {
-        self.layouts.clear();
+        self.layouts = Layouts::default();
     }
 
     /// What the song grid shows for the current revision, computed once per revision.
@@ -297,37 +306,48 @@ impl Document {
         timeline
     }
 
-    /// The layout of `track` for the current revision. A panic inside layout is contained
-    /// and shown as an error (the panic hook has already written a crash report).
+    /// The layout of `tracks` (top to bottom; their places are `primary`'s) for the
+    /// current revision. A panic inside layout is contained and shown as an error (the
+    /// panic hook has already written a crash report).
     pub fn layout(
         &mut self,
-        track: usize,
+        tracks: &[usize],
+        primary: usize,
         options: &LayoutOptions,
         fonts: &Fonts,
     ) -> Result<Arc<Layout>, String> {
         let revision = self.editor.revision();
-        let entry = self.layouts.entry(track).or_default();
-        if let Some((shown, shown_options, layout)) = &entry.shown
-            && *shown == revision
-            && shown_options == options
+        let layouts = &mut self.layouts;
+        if let Some(shown) = &layouts.shown
+            && shown.revision == revision
+            && shown.primary == primary
+            && shown.tracks == tracks
+            && &shown.options == options
         {
-            return layout.clone();
+            return shown.layout.clone();
         }
         let song = self.editor.song();
-        let cache = &mut entry.cache;
+        let cache = &mut layouts.cache;
+        let indices: Vec<TrackIndex> = tracks.iter().copied().map(TrackIndex::new).collect();
         let laid_out = catch_unwind(AssertUnwindSafe(|| {
-            cache.layout(song, TrackIndex::new(track), options, fonts)
+            cache.layout_tracks(song, &indices, TrackIndex::new(primary), options, fonts)
         }));
         let layout = match laid_out {
             Ok(Ok(layout)) => Ok(Arc::new(layout)),
             Ok(Err(error)) => Err(error.to_string()),
             Err(_) => {
                 // The cache may be half updated: start it afresh.
-                entry.cache = LayoutCache::default();
+                layouts.cache = LayoutCache::default();
                 Err("drawing this track failed unexpectedly; a crash report was written".to_owned())
             }
         };
-        entry.shown = Some((revision, options.clone(), layout.clone()));
+        layouts.shown = Some(Shown {
+            tracks: tracks.to_vec(),
+            primary,
+            revision,
+            options: options.clone(),
+            layout: layout.clone(),
+        });
         layout
     }
 }

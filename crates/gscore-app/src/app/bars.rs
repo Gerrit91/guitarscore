@@ -147,6 +147,8 @@ impl GuitarScoreApp {
                 ui.radio_value(&mut self.view.page_view, true, "Page view");
                 ui.radio_value(&mut self.view.page_view, false, "Endless view");
                 ui.separator();
+                self.score_view_menu(ui);
+                ui.separator();
                 if ui.button("Zoom in").clicked() {
                     self.view.zoom_in();
                 }
@@ -173,8 +175,9 @@ impl GuitarScoreApp {
             ] {
                 ui.add_enabled_ui(self.document().is_some(), |ui| {
                     ui.menu_button(title, |ui| {
-                        if let Some(document) = self.document() {
-                            page_menu::with_target(document, |target| {
+                        if let Some(tab) = self.tabs.get(self.active) {
+                            let several = tab.shown_tracks().len() > 1;
+                            page_menu::with_target(&tab.document, several, |target| {
                                 page_menu::section(ui, section, target, &self.keymap, &mut choices);
                             });
                         }

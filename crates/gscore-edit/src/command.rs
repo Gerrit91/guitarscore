@@ -18,7 +18,7 @@ use crate::info::{
     SET_TRACK_SOLO, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_VOLUME,
     UNDO,
 };
-use crate::info::{SET_BARS_PER_SYSTEM, SET_PAGE_SETUP, SET_SYSTEM_BREAK};
+use crate::info::{SET_BARS_PER_SYSTEM, SET_PAGE_SETUP, SET_SCORE_LINE_BREAK, SET_SYSTEM_BREAK};
 
 /// One edit, with every parameter already checked for syntax and range.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -214,6 +214,14 @@ pub enum Command {
         measure: MeasureIndex,
         /// The break.
         kind: SystemBreak,
+    },
+    /// Start a new line at a measure when all tracks are shown together (Guitar Pro's
+    /// multitrack layout), or remove that break.
+    SetScoreLineBreak {
+        /// The measure (not the first, for a break).
+        measure: MeasureIndex,
+        /// Whether a line starts there.
+        on: bool,
     },
     /// Limit how many bars a line of a track holds (`None`: as many as fit).
     SetBarsPerSystem {
@@ -494,6 +502,9 @@ impl Command {
                 one(measure.get()),
                 crate::parse::system_break_id(*kind)
             ),
+            Command::SetScoreLineBreak { measure, on } => {
+                format!("{id} measure={} on={on}", one(measure.get()))
+            }
             Command::SetBarsPerSystem { track, bars } => format!(
                 "{id} track={} bars={}",
                 one(track.get()),
@@ -661,6 +672,7 @@ impl Command {
             Command::SetPageSetup { .. } => &SET_PAGE_SETUP,
             Command::SetSystemBreak { .. } => &SET_SYSTEM_BREAK,
             Command::SetBarsPerSystem { .. } => &SET_BARS_PER_SYSTEM,
+            Command::SetScoreLineBreak { .. } => &SET_SCORE_LINE_BREAK,
             Command::SetTempo { .. } => &SET_TEMPO,
             Command::SetBeatRest { .. } => &SET_BEAT_REST,
             Command::SetTie { .. } => &SET_TIE,
@@ -823,6 +835,7 @@ impl Command {
             | Command::SetPageSetup { .. }
             | Command::SetSystemBreak { .. }
             | Command::SetBarsPerSystem { .. }
+            | Command::SetScoreLineBreak { .. }
             | Command::SetTrackStaves { .. }
             | Command::SetSection { .. }
             | Command::ClearSection { .. }
@@ -979,6 +992,9 @@ impl Command {
                     && measure.get() < song.measure_count()
                     && (measure.get() > 0 || *kind == SystemBreak::None)
             }
+            Command::SetScoreLineBreak { measure, on } => {
+                measure.get() < song.measure_count() && (measure.get() > 0 || !*on)
+            }
             Command::SetBarsPerSystem { track, bars } => {
                 track.get() < song.track_count()
                     && bars.is_none_or(|bars| (1..=MAX_BARS_PER_SYSTEM).contains(&bars))
@@ -1097,6 +1113,7 @@ impl Command {
                 kind,
             } => song.set_system_break(*track, *measure, *kind),
             Command::SetBarsPerSystem { track, bars } => song.set_bars_per_system(*track, *bars),
+            Command::SetScoreLineBreak { measure, on } => song.set_score_line_break(*measure, *on),
             Command::SetTempo { tempo } => song.set_tempo(*tempo),
             Command::SetBeatRest { at } => song.set_beat_rest(*at),
             Command::SetTie { at, string, tie } => song.set_note_tie(*at, *string, *tie),

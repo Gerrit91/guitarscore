@@ -189,10 +189,14 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let several = tab.shown_tracks().len() > 1;
         let document = &tab.document;
         let cursor = document.editor().cursor();
         let selection = document.editor().selection();
-        let snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
+        let mut snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
+        // With several tracks shown, the line breaks are the multitrack layout's.
+        snapshot.system_break =
+            super::score_view::shown_break(document.song(), cursor.track, cursor.measure, several);
 
         let mut commands: Vec<Command> = Vec::new();
         // A beat to play although nothing changed (its dynamic chosen again).

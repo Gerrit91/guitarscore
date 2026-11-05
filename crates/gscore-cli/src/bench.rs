@@ -6,7 +6,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use gscore_edit::{Command, Editor};
-use gscore_layout::{Fonts, LayoutCache, LayoutOptions, layout_track};
+use gscore_layout::{Fonts, LayoutCache, LayoutOptions, layout_track, layout_tracks};
 use gscore_model::{
     BeatIndex, BeatKind, BeatPosition, Fret, MeasureIndex, Song, StringNumber, TrackIndex,
     VoiceIndex,
@@ -188,6 +188,33 @@ fn bench_file(
         ms(relayout)
     ));
     measured.key_to_screen = Some(relayout);
+
+    // Every track shown together (the multitrack view): the full layout, and an edit with
+    // the layout after it, which must keep the same budget.
+    let tracks: Vec<TrackIndex> = editor.song().tracks().map(|t| t.index()).collect();
+    if tracks.len() > 1 {
+        let all = median(|| {
+            let _ = layout_tracks(editor.song(), &tracks, track, options, fonts);
+        });
+        out.push_str(&format!(
+            "  layout (all {} tracks)    {}\n",
+            tracks.len(),
+            ms(all)
+        ));
+        let mut cache = LayoutCache::default();
+        let _ = cache.layout_tracks(editor.song(), &tracks, track, options, fonts);
+        let relayout_all = median(|| {
+            fret = (fret + 1) % 24;
+            let Ok(fret) = Fret::new(fret) else { return };
+            let _ = editor.execute(Command::SetFret { at, string, fret });
+            let _ = cache.layout_tracks(editor.song(), &tracks, track, options, fonts);
+        });
+        out.push_str(&format!(
+            "  edit and layout, all     {}  (key to screen, every track shown)\n",
+            ms(relayout_all)
+        ));
+        measured.key_to_screen = Some(relayout.max(relayout_all));
+    }
     Ok((out, measured))
 }
 

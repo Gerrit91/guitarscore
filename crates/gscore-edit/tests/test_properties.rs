@@ -67,7 +67,7 @@ fn random_command(rng: &mut Rng, song: &Song) -> Command {
     let any_track = TrackIndex::new(track);
     let pitch = Pitch::new(u8::try_from(rng.below(128)).unwrap_or(0)).unwrap();
     let field = SONG_TEXT_FIELDS[rng.below(SONG_TEXT_FIELDS.len())];
-    match rng.below(17) {
+    match rng.below(18) {
         0 => Command::SetFret { at, string, fret },
         1 => Command::ClearNote { at, string },
         2 => Command::SetDuration { at, duration },
@@ -123,6 +123,10 @@ fn random_command(rng: &mut Rng, song: &Song) -> Command {
                 scale_percent: u16::try_from(rng.below(250)).unwrap_or(100),
                 ..gscore_model::PageSetup::default()
             },
+        },
+        16 => Command::SetScoreLineBreak {
+            measure: MeasureIndex::new(measure),
+            on: rng.below(2) == 0,
         },
         _ => Command::SetTempo {
             tempo: u32::try_from(rng.below(1000).saturating_add(1)).unwrap_or(120),

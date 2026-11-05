@@ -806,7 +806,7 @@ fn settings_differences_name_what_a_save_may_not_keep() {
 }
 
 #[test]
-fn track_edits_keep_measure_stamps_and_leave_the_layout_cache_to_the_track_key() {
+fn renaming_keeps_measure_stamps_but_moving_a_track_renews_them() {
     let mut song = three_measures();
     let before = stamps(&song);
 
@@ -814,15 +814,21 @@ fn track_edits_keep_measure_stamps_and_leave_the_layout_cache_to_the_track_key()
     let renamed = song.rename_track(TrackIndex::new(0), "Lead").unwrap();
     assert_eq!(stamps(&song), before, "a rename keeps the layout cache");
 
-    // Moving a track changes its index, which is part of the app's per-track layout key;
-    // the measures themselves did not change.
+    // After a move a track index names another track, and a layout cache keeps measures
+    // per track index (several tracks are laid out together): every stamp is renewed.
     let moved = song
         .move_track(TrackIndex::new(1), TrackIndex::new(0))
         .unwrap();
-    assert_eq!(stamps(&song), before, "a move does not relayout measures");
+    let after_move = stamps(&song);
+    assert!(
+        after_move.iter().all(|stamp| !before.contains(stamp)),
+        "a move renews the stamps"
+    );
 
+    // Undo is a track edit too: new stamps again, never the old ones.
     song.revert(&moved).unwrap();
     song.revert(&renamed).unwrap();
     assert_eq!(song.track(TrackIndex::new(0)).unwrap().name(), "Guitar");
-    assert_eq!(stamps(&song), before);
+    let undone = stamps(&song);
+    assert!(undone.iter().all(|stamp| !after_move.contains(stamp)));
 }

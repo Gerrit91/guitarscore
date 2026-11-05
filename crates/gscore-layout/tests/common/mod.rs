@@ -18,7 +18,7 @@ use gscore_model::{
 };
 
 /// Every file in `testdata/basic` that Guitar Pro exported.
-pub(crate) const TESTDATA: [&str; 12] = [
+pub(crate) const TESTDATA: [&str; 14] = [
     "basic/steel_guitar_dadgad.gp",
     "basic/steel_guitar_dadgad.gpx",
     "basic/steel_guitar_dadgad.gp5",
@@ -31,6 +31,8 @@ pub(crate) const TESTDATA: [&str; 12] = [
     "basic/advanced_ornaments.gp",
     "basic/advanced_ornaments.gpx",
     "basic/advanced_ornaments.gp5",
+    "basic/multi_staff.gp",
+    "basic/multi_staff.gpx",
 ];
 
 pub(crate) fn crate_dir() -> PathBuf {

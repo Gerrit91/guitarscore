@@ -124,6 +124,11 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        if action == Action::Plain(ActionId::ToggleMultitrack) {
+            tab.score.toggle_all();
+            ctx.request_repaint();
+            return;
+        }
         let document = &mut tab.document;
         // egui's input time, in milliseconds since the app started: enough to tell
         // whether a second fret digit follows quickly.
@@ -179,10 +184,38 @@ impl GuitarScoreApp {
                 ctx.request_repaint();
             }
             Ok(Outcome::Moved) => ctx.request_repaint(),
-            Ok(Outcome::Nothing) => {}
+            Ok(Outcome::Nothing) => {
+                // Up past the top string or down past the bottom one: on to the track
+                // shown above or below, when several are shown.
+                let step = match action {
+                    Action::Plain(ActionId::CursorUpString) => Some(-1),
+                    Action::Plain(ActionId::CursorDownString) => Some(1),
+                    _ => None,
+                };
+                if let Some(step) = step {
+                    self.cursor_to_neighbour_track(step);
+                    ctx.request_repaint();
+                }
+            }
             Ok(Outcome::Request(request)) => self.request(request, ctx),
             Err(error) => self.notice = Some(error.to_string()),
         }
+    }
+
+    /// Moves the cursor to the track shown above (`step` -1, onto its bottom string) or
+    /// below (`step` 1, onto its top string), at the same time in the measure.
+    fn cursor_to_neighbour_track(&mut self, step: isize) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let count = tab.document.song().track_count();
+        let Some(next) = tab.score.neighbour(tab.track, count, step) else {
+            return;
+        };
+        let from = tab.document.editor().cursor();
+        let to = super::score_view::cursor_in_track(tab.document.song(), from, next, step > 0);
+        tab.track = next;
+        tab.document.editor_mut().set_cursor(to);
     }
 
     /// Plays a draft effect without applying it: `commands` run on a copy of the song (no
@@ -317,7 +350,10 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        // With several tracks shown, line breaks are the multitrack layout's.
+        let several = tab.shown_tracks().len() > 1;
         let document = &mut tab.document;
+        let command = super::score_view::for_score(command, document.song(), several);
         let effect = EditEffect::of(&command);
         let layout_changed = command.changes_layout();
         let result = document.editor_mut().execute_command_merged(command, merge);

@@ -323,7 +323,8 @@ impl TabEditor {
             ActionId::ZoomIn
             | ActionId::ZoomOut
             | ActionId::ZoomReset
-            | ActionId::ToggleFullscreen => Ok(Outcome::Nothing),
+            | ActionId::ToggleFullscreen
+            | ActionId::ToggleMultitrack => Ok(Outcome::Nothing),
             // Palette actions: the app runs them like a click on the palette tile.
             ActionId::NoteWhole
             | ActionId::NoteHalf

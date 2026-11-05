@@ -44,6 +44,12 @@ impl<'a> TrackView<'a> {
         &self.inner.name
     }
 
+    /// The short name Guitar Pro writes before the systems after the first ("el.guit.");
+    /// may be empty (GP3-5 have none).
+    pub fn short_name(&self) -> &'a str {
+        &self.inner.short_name
+    }
+
     /// At most this many bars on a line of the page; `None` for as many as fit.
     pub fn bars_per_system(&self) -> Option<u8> {
         self.inner

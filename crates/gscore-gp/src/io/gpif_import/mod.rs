@@ -79,6 +79,16 @@ impl SongGpifOps for Song {
         self.copyright = gpif.score.copyright.clone();
         self.instructions = gpif.score.instructions.clone();
         // Notices
+        self.score_systems_layout = gpif
+            .score
+            .score_systems_layout
+            .clone()
+            .filter(|layout| !layout.trim().is_empty());
+        self.score_systems_default = gpif
+            .score
+            .score_systems_default
+            .clone()
+            .filter(|layout| !layout.trim().is_empty());
         if !gpif.score.notices.is_empty() {
             self.notice = gpif.score.notices.lines().map(|l| l.to_string()).collect();
         }

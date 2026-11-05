@@ -24,6 +24,8 @@ fn every_format_round_trips_without_differences() {
         "basic/steel_guitar_dadgad.gpx",
         "basic/steel_guitar_dadgad.gp5",
         "basic/advanced_ornaments.gp",
+        // Six tracks, and Guitar Pro's line breaks for all tracks shown together.
+        "basic/multi_staff.gp",
     ] {
         let out = roundtrip(file, &[]).unwrap_or_else(|e| panic!("{file}: {e}"));
         assert!(out.starts_with("Round trip OK"), "{file}: {out}");
