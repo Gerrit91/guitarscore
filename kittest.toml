@@ -1,0 +1,7 @@
+# Snapshot tolerance for egui_kittest (found from each crate's directory upwards).
+#
+# CI renders with a software GPU, which antialiases a few edge pixels differently from a
+# desktop GPU: the GitHub runs failed with 1-3 pixels past the 0.6 threshold and a few
+# hundred faint differences below it. A real change to the picture fails hundreds of
+# pixels, so a handful are allowed.
+max_failed_pixels = 10
