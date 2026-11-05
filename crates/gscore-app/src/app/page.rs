@@ -47,6 +47,31 @@ fn cursor_scroll(
     Some((line, Some(Align::TOP)))
 }
 
+/// Where side-by-side pages scroll to show the cursor `column` on `page`: the whole page
+/// when it fits in `visible`; else the page's left part with the column's line at the top
+/// (`headroom` above it), as the vertical view turns over, so the column never ends up
+/// above or below the view. `None` when the column is already in view on its page.
+fn page_scroll(
+    page: Rect,
+    column: Rect,
+    visible: Rect,
+    headroom: f32,
+) -> Option<(Rect, Option<Align>)> {
+    let fits = page.height() <= visible.height() && page.width() <= visible.width();
+    if fits {
+        return (!visible.contains_rect(page)).then_some((page, None));
+    }
+    if visible.contains_rect(column) {
+        return None;
+    }
+    let right = page.right().min(page.left() + visible.width());
+    let target = Rect::from_min_max(
+        egui::pos2(page.left(), column.top() - headroom),
+        egui::pos2(right, column.bottom()),
+    );
+    Some((target, Some(Align::TOP)))
+}
+
 impl GuitarScoreApp {
     /// The page, scrollable, centered horizontally.
     pub(super) fn page_view(&mut self, ui: &mut egui::Ui) {
@@ -247,8 +272,14 @@ impl GuitarScoreApp {
                             .map_or(0.0, |rect| rect.origin.y);
                         if let Some(page) =
                             layout.pages.iter().rev().find(|page| page.origin.y <= y)
+                            && let Some((target, align)) = page_scroll(
+                                to_screen(*page),
+                                column,
+                                ui.clip_rect(),
+                                TURN_HEADROOM * scale,
+                            )
                         {
-                            ui.scroll_to_rect(to_screen(*page), None);
+                            ui.scroll_to_rect(target, align);
                         }
                     } else if let Some((target, align)) =
                         cursor_scroll(column, ui.clip_rect(), turn_pages, TURN_HEADROOM * scale)
@@ -487,7 +518,7 @@ mod tests {
     use gscore_edit::{BeatSpot, Selection};
     use gscore_layout::{BeatPlace, MeasurePlace, Places, SystemPlace};
 
-    use super::cursor_scroll;
+    use super::{cursor_scroll, page_scroll};
     use egui::Rect;
 
     #[test]
@@ -510,6 +541,41 @@ mod tests {
         let (target, align) = cursor_scroll(column(-400.0), visible, true, 30.0).unwrap();
         assert!((target.top() + 430.0).abs() < 1e-3);
         assert_eq!(align, Some(egui::Align::TOP));
+    }
+
+    #[test]
+    fn side_by_side_pages_keep_the_playing_line_in_view() {
+        let visible = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1600.0, 600.0));
+        let page = |left: f32| Rect::from_min_size(egui::pos2(left, 0.0), egui::vec2(700.0, 990.0));
+        let column =
+            |left: f32, top: f32| Rect::from_min_size(egui::pos2(left, top), egui::vec2(4.0, 80.0));
+        // The page is taller than the view: the playing line is shown, not the page's top
+        // or bottom wherever the last page left the view.
+        let (target, align) = page_scroll(page(1500.0), column(1600.0, 60.0), visible, 30.0)
+            .expect("the next page is out of view");
+        assert_eq!(align, Some(egui::Align::TOP));
+        assert!(
+            (target.top() - 30.0).abs() < 1e-3,
+            "the line goes to the top"
+        );
+        assert!(
+            (target.left() - 1500.0).abs() < 1e-3,
+            "the page's left edge"
+        );
+        // A line further down the same page, already visible: the view stays.
+        assert_eq!(
+            page_scroll(page(0.0), column(100.0, 400.0), visible, 30.0),
+            None
+        );
+        // Below the view: turned over, that line to the top.
+        let (target, _) = page_scroll(page(0.0), column(100.0, 700.0), visible, 30.0).unwrap();
+        assert!((target.top() - 670.0).abs() < 1e-3);
+        // A page that fits is shown whole.
+        let small = Rect::from_min_size(egui::pos2(1700.0, 0.0), egui::vec2(700.0, 500.0));
+        assert_eq!(
+            page_scroll(small, column(1800.0, 60.0), visible, 30.0),
+            Some((small, None))
+        );
     }
     use gscore_model::testing::{self, GUITAR_6};
     use gscore_model::{BeatIndex, MeasureIndex, TrackIndex, VoiceIndex};

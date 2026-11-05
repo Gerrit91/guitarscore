@@ -3019,3 +3019,7 @@ needed for a much larger font); owner listening check.
   instead of doubling the rest's length.
 - **Mixer**: the metronome strip has a fader and level field like the others and a
   metronome symbol; the master strip shows a small waveform. New `mixer_view` snapshot.
+- **Side-by-side page views while playing**: a page taller than the window no longer leaves
+  the playing line out of view after turning to the next page. A page that fits is still
+  shown whole; a taller one is scrolled to with the playing line at the top, as the
+  vertical view turns over.
