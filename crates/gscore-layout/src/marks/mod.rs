@@ -36,11 +36,15 @@ const TAB_BEAT_ROW: f32 = 3.8;
 /// from (the tab's lanes are measured from its top line).
 const ORNAMENT_BAND: f32 = 3.6;
 pub(crate) const LANES_DROP: f32 = 1.0;
-/// Dynamics: at least this far below the notation staff's bottom line, this far below the
-/// lowest notehead, and this far above the tab staff below it (all to the baseline).
+/// Dynamics: their baseline at least this far below the notation staff's bottom line, their
+/// top this far below the lowest ink of every note they span, and their baseline this far
+/// above the tab staff below them (the gap between the staves grows for that).
 const DYNAMIC_BELOW_STAFF: f32 = 3.2;
-const DYNAMIC_BELOW_HEAD: f32 = 2.6;
-const DYNAMIC_ABOVE_TAB: f32 = 2.6;
+const DYNAMIC_CLEARANCE: f32 = 0.6;
+pub(crate) const DYNAMIC_ABOVE_TAB: f32 = 2.2;
+/// A column's ink reaches this far left of its x (accidentals) and right of it (the head).
+const COLUMN_LEFT_REACH: f32 = 1.8;
+const COLUMN_RIGHT_REACH: f32 = 0.8;
 /// Below a tab staff: the first annotation lane and the gap between lanes (as the P.M. and
 /// let ring rows use), plus a little more for the dynamic's height.
 const TAB_FIRST_LANE: f32 = 2.2;
@@ -382,7 +386,7 @@ fn draw_dynamics(
         let Some(&x) = xs.get(column) else {
             continue;
         };
-        let y = dynamic_baseline(placed.layout, column, tops, ctx);
+        let y = dynamic_baseline(placed.layout, column, dynamic, xs, tops, ctx);
         let glyph = Glyph::Dynamic(dynamic);
         let bbox = ctx.fonts.music.bbox(glyph);
         ops.push(DrawOp::Glyph {
@@ -394,18 +398,67 @@ fn draw_dynamics(
     }
 }
 
-/// Where a dynamic under `column` goes: below the notation staff (clear of low notes and
-/// of the tab below), or below the tab and its P.M./let ring rows when there is no notation.
-fn dynamic_baseline(layout: &MeasureLayout, column: usize, tops: Tops, ctx: &Context<'_>) -> f32 {
+/// How far below the notation staff's bottom line the baseline of `dynamic` under
+/// `column` goes (columns at `xs`): below the lowest ink of every column the mark spans,
+/// accidentals and downward stems included, and at least [`DYNAMIC_BELOW_STAFF`].
+fn dynamic_depth(
+    layout: &MeasureLayout,
+    column: usize,
+    dynamic: Dynamic,
+    xs: &[f32],
+    ctx: &Context<'_>,
+) -> f32 {
+    let bbox = ctx.fonts.music.bbox(Glyph::Dynamic(dynamic));
+    let Some(&x) = xs.get(column) else {
+        return DYNAMIC_BELOW_STAFF;
+    };
+    let half = (bbox.x_max - bbox.x_min) / 2.0;
+    let (left, right) = (x - half, x + half);
+    let deepest = xs
+        .iter()
+        .enumerate()
+        .filter(|&(_, &at)| at + COLUMN_RIGHT_REACH > left && at - COLUMN_LEFT_REACH < right)
+        .filter_map(|(index, _)| layout.column_depth(index))
+        .fold(f32::MIN, f32::max);
+    DYNAMIC_BELOW_STAFF.max(deepest + DYNAMIC_CLEARANCE + bbox.y_max)
+}
+
+/// The deepest dynamic baseline of a measure below its notation staff (0 without
+/// dynamics), at the measure's natural spacing: a system stretched wider only moves its
+/// columns apart, so this is what the gap above the tab must leave room for.
+pub(crate) fn dynamics_depth(
+    layout: &MeasureLayout,
+    marks: &MeasureMarks,
+    ctx: &Context<'_>,
+) -> f32 {
+    if ctx.notation.is_none() {
+        return 0.0;
+    }
+    let (xs, _) = layout.column_positions(0.0, 1.0);
+    marks
+        .dynamics
+        .iter()
+        .map(|&(column, dynamic)| dynamic_depth(layout, column, dynamic, &xs, ctx))
+        .fold(0.0, f32::max)
+}
+
+/// Where a dynamic under `column` goes: below the notation staff, clear of every note it
+/// spans (the system leaves room for it above the tab), or below the tab and its P.M./let
+/// ring rows when there is no notation.
+fn dynamic_baseline(
+    layout: &MeasureLayout,
+    column: usize,
+    dynamic: Dynamic,
+    xs: &[f32],
+    tops: Tops,
+    ctx: &Context<'_>,
+) -> f32 {
     match tops.notation {
         Some(notation_top) => {
             let bottom = notation_top + crate::notation::staff().height();
-            let below_head = layout.lowest_head(column).map_or(f32::MIN, |position| {
-                notation_top + 4.0 - position as f32 * 0.5 + DYNAMIC_BELOW_HEAD
-            });
-            let y = (bottom + DYNAMIC_BELOW_STAFF).max(below_head);
+            let y = bottom + dynamic_depth(layout, column, dynamic, xs, ctx);
             if tops.show_tab {
-                y.min(tops.tab - DYNAMIC_ABOVE_TAB)
+                y
             } else {
                 // Without a tab, the P.M. and let ring rows are under the notation staff.
                 y + layout.under_staff_lanes() as f32 * TAB_LANE_GAP

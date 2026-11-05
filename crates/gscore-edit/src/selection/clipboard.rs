@@ -3,7 +3,7 @@
 
 use gscore_model::{
     BeatEffect, BeatKind, BeatView, Dynamic, Fade, Fret, Hand, MeasureIndex, NoteEffect, NoteKind,
-    NoteValue, NoteView, Section, SlideKind, StringNumber, TimeSignature,
+    NoteValue, NoteView, Section, SlideKind, StringNumber, StrokeKind, TimeSignature,
 };
 
 use super::paste::{paste_beats, paste_measures};
@@ -291,12 +291,12 @@ fn note_effects(note: &NoteView<'_>) -> Vec<NoteEffect> {
 fn beat_effects(beat: &BeatView<'_>) -> Vec<BeatEffect> {
     vec![
         BeatEffect::PickStroke(beat.pick_stroke()),
-        BeatEffect::BrushStroke(beat.brush_stroke()),
+        BeatEffect::BrushStroke(beat.stroke(StrokeKind::Brush)),
         BeatEffect::Slap(beat.slap()),
         BeatEffect::FadeIn(beat.fade() == Some(Fade::In)),
         BeatEffect::FadeOut(beat.fade() == Some(Fade::Out)),
         BeatEffect::VolumeSwell(beat.fade() == Some(Fade::Swell)),
-        BeatEffect::Arpeggio(beat.arpeggio()),
+        BeatEffect::Arpeggio(beat.stroke(StrokeKind::Arpeggio)),
         BeatEffect::DeadSlapped(beat.is_dead_slapped()),
         BeatEffect::Rasgueado(beat.has_rasgueado()),
         BeatEffect::Whammy(beat.whammy_shape()),

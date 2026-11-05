@@ -20,3 +20,8 @@ opencode.jsonc
 
 # Build artifacts
 dist/
+
+# Snapshot test leftovers (egui_kittest writes these next to a mismatching golden)
+crates/gscore-app/tests/snapshots/*.diff.png
+crates/gscore-app/tests/snapshots/*.new.png
+crates/gscore-app/tests/snapshots/*.old.png

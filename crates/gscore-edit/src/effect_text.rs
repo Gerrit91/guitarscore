@@ -4,7 +4,8 @@
 use crate::technique_text;
 use gscore_model::{
     AccentKind, BeatEffect, BendKind, BendPoint, BendShape, Fret, Grace, GraceSpeed, Harmonic,
-    HarmonicKind, Legato, NoteEffect, SlapKind, SlideKind, StrokeDirection, Vibrato, WhammyShape,
+    HarmonicKind, Legato, NoteEffect, SlapKind, SlideKind, Stroke, StrokeDirection, Vibrato,
+    WhammyShape,
 };
 
 /// How a note effect is written: its id and its value.
@@ -111,7 +112,7 @@ fn parse_grace(value: &str) -> Result<Option<Grace>, String> {
 pub(crate) fn beat_effect_text(effect: &BeatEffect) -> (&'static str, String) {
     match effect {
         BeatEffect::PickStroke(stroke) => ("pick_stroke", stroke_text(*stroke).to_owned()),
-        BeatEffect::BrushStroke(stroke) => ("brush_stroke", stroke_text(*stroke).to_owned()),
+        BeatEffect::BrushStroke(stroke) => ("brush_stroke", stroke_value_text(*stroke)),
         BeatEffect::Slap(None) => ("slap", "none".to_owned()),
         BeatEffect::Slap(Some(slap)) => ("slap", slap_id(*slap).to_owned()),
         BeatEffect::FadeIn(on) => ("fade_in", on.to_string()),
@@ -130,7 +131,7 @@ pub(crate) fn beat_effect_text(effect: &BeatEffect) -> (&'static str, String) {
         ),
         BeatEffect::Vibrato(None) => ("vibrato", "none".to_owned()),
         BeatEffect::Vibrato(Some(vibrato)) => ("vibrato", vibrato_id(*vibrato).to_owned()),
-        BeatEffect::Arpeggio(stroke) => ("arpeggio", stroke_text(*stroke).to_owned()),
+        BeatEffect::Arpeggio(stroke) => ("arpeggio", stroke_value_text(*stroke)),
         BeatEffect::DeadSlapped(on) => ("dead_slapped", on.to_string()),
         BeatEffect::Rasgueado(on) => ("rasgueado", on.to_string()),
         BeatEffect::FadeOut(on) => ("fade_out", on.to_string()),
@@ -181,7 +182,7 @@ pub(crate) fn parse_note_effect(id: &str, value: &str) -> Result<NoteEffect, Str
 pub(crate) fn parse_beat_effect(id: &str, value: &str) -> Result<BeatEffect, String> {
     Ok(match id {
         "pick_stroke" => BeatEffect::PickStroke(parse_stroke(value)?),
-        "brush_stroke" => BeatEffect::BrushStroke(parse_stroke(value)?),
+        "brush_stroke" => BeatEffect::BrushStroke(parse_stroke_value(value, Stroke::BRUSH_SPEED)?),
         "slap" => BeatEffect::Slap(match value {
             "none" => None,
             "tapping" => Some(SlapKind::Tapping),
@@ -192,7 +193,7 @@ pub(crate) fn parse_beat_effect(id: &str, value: &str) -> Result<BeatEffect, Str
         "fade_in" => BeatEffect::FadeIn(boolean(value)?),
         "fade_out" => BeatEffect::FadeOut(boolean(value)?),
         "volume_swell" => BeatEffect::VolumeSwell(boolean(value)?),
-        "arpeggio" => BeatEffect::Arpeggio(parse_stroke(value)?),
+        "arpeggio" => BeatEffect::Arpeggio(parse_stroke_value(value, Stroke::ARPEGGIO_SPEED)?),
         "dead_slapped" => BeatEffect::DeadSlapped(boolean(value)?),
         "rasgueado" => BeatEffect::Rasgueado(boolean(value)?),
         "whammy" => BeatEffect::Whammy(match value {
@@ -363,6 +364,65 @@ fn stroke_text(stroke: Option<StrokeDirection>) -> &'static str {
         Some(StrokeDirection::Up) => "up",
         Some(StrokeDirection::Down) => "down",
     }
+}
+
+fn strike_direction_id(direction: StrokeDirection) -> &'static str {
+    match direction {
+        StrokeDirection::Up => "up",
+        StrokeDirection::Down => "down",
+    }
+}
+
+/// A brush or arpeggio as `direction:speed:timing` (`down:32:on`, `up:8:before`), or
+/// `none`.
+fn stroke_value_text(stroke: Option<Stroke>) -> String {
+    match stroke {
+        None => "none".to_owned(),
+        Some(stroke) => format!(
+            "{}:{}:{}",
+            strike_direction_id(stroke.direction),
+            stroke.speed,
+            if stroke.on_beat { "on" } else { "before" }
+        ),
+    }
+}
+
+/// Reads [`stroke_value_text`]; the old form without speed or timing (`up`, `down`) stays
+/// valid and takes `default_speed`, starting on the beat.
+fn parse_stroke_value(value: &str, default_speed: u8) -> Result<Option<Stroke>, String> {
+    const FORM: &str = "stroke: up, down or none, or direction:speed:on|before";
+    if value == "none" {
+        return Ok(None);
+    }
+    let mut parts = value.split(':');
+    let direction = match parts.next() {
+        Some("up") => StrokeDirection::Up,
+        Some("down") => StrokeDirection::Down,
+        _ => return Err(FORM.to_owned()),
+    };
+    let Some(speed) = parts.next() else {
+        return Ok(Some(Stroke {
+            direction,
+            speed: default_speed,
+            on_beat: true,
+        }));
+    };
+    let speed: u8 = speed.parse().map_err(|_| FORM.to_owned())?;
+    let on_beat = match parts.next() {
+        Some("on") => true,
+        Some("before") => false,
+        _ => return Err(FORM.to_owned()),
+    };
+    if parts.next().is_some() {
+        return Err(FORM.to_owned());
+    }
+    let stroke = Stroke {
+        direction,
+        speed,
+        on_beat,
+    };
+    stroke.validate().map_err(|error| error.to_string())?;
+    Ok(Some(stroke))
 }
 
 fn parse_stroke(value: &str) -> Result<Option<StrokeDirection>, String> {

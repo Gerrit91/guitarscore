@@ -22,6 +22,64 @@ pub enum StrokeDirection {
     Down,
 }
 
+/// Which kind of spread chord: a brush (strum) or a rolled chord (arpeggio).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StrokeKind {
+    /// A brush (strum).
+    Brush,
+    /// A rolled chord (arpeggio).
+    Arpeggio,
+}
+
+/// A brush or arpeggio: its direction, how long the chord is spread and when it lands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stroke {
+    /// Which way the strings are struck.
+    pub direction: StrokeDirection,
+    /// How quick the spread is: the denominator of a note value (8 = over an eighth note).
+    pub speed: u8,
+    /// The first string starts on the beat (`true`), or the last one lands on it
+    /// (`false`: the spread falls before the beat).
+    pub on_beat: bool,
+}
+
+impl Stroke {
+    /// The default speed of a brush stroke (a 32nd note).
+    pub const BRUSH_SPEED: u8 = 32;
+    /// The default speed of an arpeggio (an eighth note).
+    pub const ARPEGGIO_SPEED: u8 = 8;
+
+    /// A brush with the default speed and timing.
+    pub fn brush(direction: StrokeDirection) -> Self {
+        Stroke {
+            direction,
+            speed: Self::BRUSH_SPEED,
+            on_beat: true,
+        }
+    }
+
+    /// An arpeggio with the default speed and timing.
+    pub fn arpeggio(direction: StrokeDirection) -> Self {
+        Stroke {
+            direction,
+            speed: Self::ARPEGGIO_SPEED,
+            on_beat: true,
+        }
+    }
+
+    /// Checks that the speed is a note value this editor knows.
+    pub fn validate(&self) -> Result<(), ModelError> {
+        if matches!(self.speed, 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128) {
+            Ok(())
+        } else {
+            Err(ModelError::Invalid(format!(
+                "{} is not a note value a stroke can take",
+                self.speed
+            )))
+        }
+    }
+}
+
 /// A tapping or slap technique played on a whole beat.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlapKind {
@@ -307,7 +365,7 @@ pub enum BeatEffect {
     /// The pick stroke direction; `None` removes it.
     PickStroke(Option<StrokeDirection>),
     /// The brush (strum) direction; `None` removes it.
-    BrushStroke(Option<StrokeDirection>),
+    BrushStroke(Option<Stroke>),
     /// Tapping, slap or pop; `None` removes it.
     Slap(Option<SlapKind>),
     /// A fade-in.
@@ -319,7 +377,7 @@ pub enum BeatEffect {
     /// The beat's own vibrato width; `None` removes it.
     Vibrato(Option<Vibrato>),
     /// A rolled chord (arpeggio) and its direction; `None` removes it.
-    Arpeggio(Option<StrokeDirection>),
+    Arpeggio(Option<Stroke>),
     /// A dead slapped beat (a slap on muted strings instead of the notes).
     DeadSlapped(bool),
     /// A rasgueado.
@@ -399,6 +457,9 @@ impl BeatEffect {
     pub fn validate(&self) -> Result<(), ModelError> {
         match self {
             BeatEffect::Whammy(Some(shape)) => shape.validate(),
+            BeatEffect::BrushStroke(Some(stroke)) | BeatEffect::Arpeggio(Some(stroke)) => {
+                stroke.validate()
+            }
             _ => Ok(()),
         }
     }
@@ -410,9 +471,14 @@ impl BeatEffect {
             BeatEffect::PickStroke(direction) => {
                 effects.pick_stroke = stroke_to_gp(*direction);
             }
-            BeatEffect::BrushStroke(direction) => {
-                effects.stroke.direction = stroke_to_gp(*direction);
-            }
+            BeatEffect::BrushStroke(stroke) => match stroke {
+                Some(stroke) => {
+                    effects.stroke.direction = stroke_to_gp(Some(stroke.direction));
+                    effects.stroke.value = u16::from(stroke.speed);
+                    effects.stroke.on_beat = stroke.on_beat;
+                }
+                None => effects.stroke = gscore_gp::BeatStroke::default(),
+            },
             BeatEffect::Slap(slap) => {
                 effects.slap_effect = match slap {
                     Some(SlapKind::Tapping) => SlapEffect::Tapping,
@@ -424,7 +490,18 @@ impl BeatEffect {
             BeatEffect::FadeIn(on) => techniques::set_fade(effects, Fade::In, *on),
             BeatEffect::FadeOut(on) => techniques::set_fade(effects, Fade::Out, *on),
             BeatEffect::VolumeSwell(on) => techniques::set_fade(effects, Fade::Swell, *on),
-            BeatEffect::Arpeggio(direction) => effects.arpeggio = stroke_to_gp(*direction),
+            BeatEffect::Arpeggio(stroke) => match stroke {
+                Some(stroke) => {
+                    effects.arpeggio = stroke_to_gp(Some(stroke.direction));
+                    effects.arpeggio_speed = u16::from(stroke.speed);
+                    effects.arpeggio_on_beat = stroke.on_beat;
+                }
+                None => {
+                    effects.arpeggio = BeatStrokeDirection::None;
+                    effects.arpeggio_speed = 0;
+                    effects.arpeggio_on_beat = true;
+                }
+            },
             BeatEffect::DeadSlapped(on) => effects.dead_slapped = *on,
             BeatEffect::Rasgueado(on) => effects.has_rasgueado = *on,
             BeatEffect::Whammy(shape) => {
@@ -458,6 +535,15 @@ fn stroke_to_gp(direction: Option<StrokeDirection>) -> BeatStrokeDirection {
         Some(StrokeDirection::Down) => BeatStrokeDirection::Down,
         None => BeatStrokeDirection::None,
     }
+}
+
+/// A stored stroke speed as a note value, or `default` when the file had none or a value
+/// this editor does not know.
+fn valid_speed(value: u16, default: u8) -> u8 {
+    u8::try_from(value)
+        .ok()
+        .filter(|value| matches!(value, 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128))
+        .unwrap_or(default)
 }
 
 /// Adds or removes one slide type, keeping the others, and checks the resulting list.
@@ -611,11 +697,35 @@ impl BeatView<'_> {
 
     /// The brush stroke (strum direction) on this beat, if any.
     pub fn brush_stroke(&self) -> Option<StrokeDirection> {
-        match self.inner.effect.stroke.direction {
-            BeatStrokeDirection::Up => Some(StrokeDirection::Up),
-            BeatStrokeDirection::Down => Some(StrokeDirection::Down),
-            BeatStrokeDirection::None => None,
-        }
+        self.stroke(StrokeKind::Brush)
+            .map(|stroke| stroke.direction)
+    }
+
+    /// The brush or arpeggio with its direction, speed and timing, if the beat has one.
+    pub fn stroke(&self, kind: StrokeKind) -> Option<Stroke> {
+        let direction = match kind {
+            StrokeKind::Brush => {
+                techniques::direction_from_gp(&self.inner.effect.stroke.direction)?
+            }
+            StrokeKind::Arpeggio => techniques::direction_from_gp(&self.inner.effect.arpeggio)?,
+        };
+        let (speed, default, on_beat) = match kind {
+            StrokeKind::Brush => (
+                self.inner.effect.stroke.value,
+                Stroke::BRUSH_SPEED,
+                self.inner.effect.stroke.on_beat,
+            ),
+            StrokeKind::Arpeggio => (
+                self.inner.effect.arpeggio_speed,
+                Stroke::ARPEGGIO_SPEED,
+                self.inner.effect.arpeggio_on_beat,
+            ),
+        };
+        Some(Stroke {
+            direction,
+            speed: valid_speed(speed, default),
+            on_beat,
+        })
     }
 
     /// The tapping or slap technique on this beat, if any.

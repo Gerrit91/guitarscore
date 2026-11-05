@@ -37,6 +37,15 @@ pub(crate) fn tremolo_speed(text: &str) -> Option<u16> {
     }
 }
 
+/// A stroke speed from a GuitarScore property, clamped to the note values a stroke may
+/// use; `default` when the value is missing or hostile.
+fn stroke_speed(value: Option<i32>, default: u16) -> u16 {
+    value
+        .and_then(|value| u16::try_from(value).ok())
+        .filter(|value| matches!(value, 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128))
+        .unwrap_or(default)
+}
+
 /// The GPIF tremolo picking speed of a note value (8, 16 or 32; others round to 16).
 pub(crate) fn tremolo_text(value: u16) -> &'static str {
     match value {
@@ -187,7 +196,23 @@ pub(super) fn convert_beat(
                             "Up" => BeatStrokeDirection::Up,
                             _ => BeatStrokeDirection::None,
                         };
-                        s_beat.effect.stroke.value = DURATION_EIGHTH as u16;
+                        s_beat.effect.stroke.value = DURATION_THIRTY_SECOND as u16;
+                    }
+                }
+                // GuitarScore additions: the brush's speed and timing, next to the
+                // standard Brush direction above.
+                "GuitarScoreBrush" => {
+                    s_beat.effect.stroke.value =
+                        stroke_speed(bp.duration, DURATION_THIRTY_SECOND as u16);
+                    if let Some(text) = &bp.text {
+                        s_beat.effect.stroke.on_beat = text != "before";
+                    }
+                }
+                "GuitarScoreArpeggio" => {
+                    s_beat.effect.arpeggio_speed =
+                        stroke_speed(bp.duration, DURATION_EIGHTH as u16);
+                    if let Some(text) = &bp.text {
+                        s_beat.effect.arpeggio_on_beat = text != "before";
                     }
                 }
                 "Rasgueado" => {

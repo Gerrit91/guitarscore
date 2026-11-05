@@ -6,6 +6,7 @@
 mod app;
 mod canvas;
 mod document;
+mod export;
 mod fonts;
 mod keys;
 mod playback;

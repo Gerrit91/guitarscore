@@ -14,7 +14,7 @@
 use gscore_model::testing::{self, TestNote};
 use gscore_model::{
     AccentKind, BeatEffect, BeatIndex, BeatPosition, BendKind, BendPoint, BendShape, Fret, Grace,
-    GraceSpeed, MeasureIndex, NoteEffect, SlideKind, Song, StringNumber, StrokeDirection,
+    GraceSpeed, MeasureIndex, NoteEffect, SlideKind, Song, StringNumber, Stroke, StrokeDirection,
     TrackIndex, TremoloSpeed, Trill, TrillSpeed, Vibrato, VoiceIndex, WhammyShape,
 };
 use gscore_play::{MidiEvent, PPQ, Sequence, controller};
@@ -144,7 +144,10 @@ fn a_brush_stroke_spreads_the_chord() {
     )])
     .unwrap();
     let _ = song
-        .set_beat_effect(at(0), BeatEffect::BrushStroke(Some(StrokeDirection::Down)))
+        .set_beat_effect(
+            at(0),
+            BeatEffect::BrushStroke(Some(Stroke::brush(StrokeDirection::Down))),
+        )
         .unwrap();
     let ons = note_ons(&Sequence::new(&song, None).unwrap());
     let ticks: Vec<u64> = ons.iter().map(|&(tick, ..)| tick).collect();
@@ -466,13 +469,90 @@ fn a_fade_in_swells_on_its_own_channel() {
 fn an_arpeggio_rolls_the_chord_over_an_eighth() {
     let mut song = chord_song();
     let _ = song
-        .set_beat_effect(at(0), BeatEffect::Arpeggio(Some(StrokeDirection::Down)))
+        .set_beat_effect(
+            at(0),
+            BeatEffect::Arpeggio(Some(Stroke::arpeggio(StrokeDirection::Down))),
+        )
         .unwrap();
     let ons = note_ons(&Sequence::new(&song, None).unwrap());
     let last = ons.iter().map(|&(tick, ..)| tick).max().unwrap();
     assert!(last > 0 && last <= u64::from(PPQ) / 2, "{ons:?}");
     let first = ons.iter().min_by_key(|on| on.0).unwrap();
     assert_eq!(first.1, 43, "a roll down starts on the low E string");
+}
+
+#[test]
+fn a_stroke_uses_its_own_speed() {
+    let mut song = chord_song();
+    let stroke = Stroke {
+        direction: StrokeDirection::Down,
+        speed: 16,
+        on_beat: true,
+    };
+    let _ = song
+        .set_beat_effect(at(0), BeatEffect::BrushStroke(Some(stroke)))
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&song, None).unwrap());
+    let last = ons.iter().map(|&(tick, ..)| tick).max().unwrap();
+    assert_eq!(last, u64::from(PPQ) / 4, "a 16th-note spread: {ons:?}");
+}
+
+#[test]
+fn a_stroke_can_end_on_the_beat() {
+    // A short chord on the second half note, so there is room before it; the roll is
+    // longer than the chord's notes, which must not hold its last string back.
+    let mut song = testing::song_with_notes(&[
+        (2, &[TestNote::new(1, 0)]),
+        (
+            16,
+            &[
+                TestNote::new(6, 3),
+                TestNote::new(5, 2),
+                TestNote::new(1, 3),
+            ],
+        ),
+    ])
+    .unwrap();
+    let stroke = Stroke {
+        direction: StrokeDirection::Down,
+        speed: 8,
+        on_beat: false,
+    };
+    let _ = song
+        .set_beat_effect(at(1), BeatEffect::Arpeggio(Some(stroke)))
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&song, None).unwrap());
+    let beat = 2 * u64::from(PPQ);
+    let chord: Vec<u64> = ons
+        .iter()
+        .map(|&(tick, ..)| tick)
+        .filter(|&tick| tick > 0)
+        .collect();
+    assert_eq!(chord.len(), 3, "{ons:?}");
+    let last = chord.iter().copied().max().unwrap();
+    assert_eq!(last, beat, "the last string lands on the beat: {ons:?}");
+    let first = chord.iter().copied().min().unwrap();
+    assert_eq!(
+        first,
+        beat - u64::from(PPQ) / 2,
+        "the first string falls an eighth before it: {ons:?}"
+    );
+}
+
+#[test]
+fn a_stroke_ending_on_the_first_beat_of_the_song_has_no_room_and_lands_together() {
+    let mut song = chord_song();
+    let stroke = Stroke {
+        direction: StrokeDirection::Up,
+        speed: 8,
+        on_beat: false,
+    };
+    let _ = song
+        .set_beat_effect(at(0), BeatEffect::Arpeggio(Some(stroke)))
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&song, None).unwrap());
+    assert_eq!(ons.len(), 3, "{ons:?}");
+    assert!(ons.iter().all(|&(tick, ..)| tick == 0), "{ons:?}");
 }
 
 #[test]
@@ -709,8 +789,8 @@ fn a_hammered_note_and_a_legato_beat_are_not_picked() {
 #[test]
 fn a_beat_excerpt_keeps_brush_arpeggio_and_rasgueado_spreads() {
     for effect in [
-        BeatEffect::BrushStroke(Some(StrokeDirection::Down)),
-        BeatEffect::Arpeggio(Some(StrokeDirection::Down)),
+        BeatEffect::BrushStroke(Some(Stroke::brush(StrokeDirection::Down))),
+        BeatEffect::Arpeggio(Some(Stroke::arpeggio(StrokeDirection::Down))),
         BeatEffect::Rasgueado(true),
     ] {
         let mut song = chord_song();

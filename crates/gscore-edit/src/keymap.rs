@@ -93,7 +93,8 @@ d = toggle_pick_down
 u = toggle_pick_up
 D = toggle_brush_down
 U = toggle_brush_up
-t = toggle_tapping
+t = edit_beat_text
+T = toggle_tapping
 < = toggle_fade_in
 w = toggle_whammy
 

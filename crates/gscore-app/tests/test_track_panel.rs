@@ -54,6 +54,8 @@ fn a_preset_color_and_the_staves_are_one_click_each() {
     let track = TrackIndex::new(0);
     let before = song(&harness).track(track).unwrap().color();
 
+    harness.get_by_label("Track color").click();
+    harness.run();
     harness.get_by_label("Color Blue").click();
     harness.run();
     assert_eq!(
@@ -92,9 +94,13 @@ fn strings_are_tuned_by_note_name() {
     };
     // DADGAD: string 1 is D4, shown by its name.
     assert_eq!(pitch(&harness), "D4");
+    harness.get_by_label("Tuning: DADGAD…").click();
+    harness.run();
     harness.get_by_label("String 1 note");
     // The first "+" is string 1's: a semitone up.
     harness.get_all_by_label("+").next().unwrap().click();
+    harness.run();
+    harness.get_by_label("OK").click();
     harness.run();
     assert_eq!(pitch(&harness), "D#4");
 }

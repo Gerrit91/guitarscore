@@ -4,8 +4,8 @@
 use egui::{Align2, Color32, FontId, Response, Sense, vec2};
 
 use super::style;
-use super::tile_faces::paint_face;
 pub(crate) use super::tile_faces::{Face, music_glyph};
+use super::tile_faces::{more_corner, paint_face};
 
 /// The size of a tile.
 pub(crate) const TILE: egui::Vec2 = egui::Vec2::new(27.0, 32.0);
@@ -19,7 +19,20 @@ pub(crate) fn tile(
     label: &str,
     tip: &str,
 ) -> Response {
-    sized_tile(ui, TILE, face, selected, enabled, label, tip)
+    sized_tile(ui, TILE, face, selected, enabled, label, tip, false)
+}
+
+/// A [`tile`] that opens a dialog: a small corner triangle says so, like the technique
+/// tiles with their own editor.
+pub(crate) fn dialog_tile(
+    ui: &mut egui::Ui,
+    face: Face<'_>,
+    selected: bool,
+    enabled: bool,
+    label: &str,
+    tip: &str,
+) -> Response {
+    sized_tile(ui, TILE, face, selected, enabled, label, tip, true)
 }
 
 /// A [`tile`] wider than the others, for signs that need the room (tuplet brackets).
@@ -32,9 +45,10 @@ pub(crate) fn wide_tile(
     tip: &str,
 ) -> Response {
     let size = vec2(TILE.x * 1.5, TILE.y);
-    sized_tile(ui, size, face, selected, enabled, label, tip)
+    sized_tile(ui, size, face, selected, enabled, label, tip, false)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn sized_tile(
     ui: &mut egui::Ui,
     size: egui::Vec2,
@@ -43,6 +57,7 @@ fn sized_tile(
     enabled: bool,
     label: &str,
     tip: &str,
+    more: bool,
 ) -> Response {
     let sense = if enabled {
         Sense::click()
@@ -70,6 +85,9 @@ fn sized_tile(
     let painter = ui.painter();
     painter.rect_filled(rect, 4.0, fill);
     paint_face(painter, rect, face, ink);
+    if more {
+        more_corner(painter, rect, ink);
+    }
     response.on_hover_text(tip)
 }
 

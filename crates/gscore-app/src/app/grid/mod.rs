@@ -5,10 +5,13 @@
 //! copy/paste and looping later); the measure being played is highlighted. Track commands
 //! go through `gscore-edit`, so every change can be undone.
 
+use egui::{Align, Layout, Margin, RichText, vec2};
 use gscore_edit::Command;
 use gscore_model::TrackIndex;
 
 use super::GuitarScoreApp;
+use super::shape_editor::Outcome;
+use super::style;
 use crate::document::GridData;
 use crate::state::MeasureSelection;
 
@@ -52,8 +55,6 @@ pub(crate) fn opening_height(tracks: usize) -> f32 {
 pub(super) const MEASURE_WIDTH: f32 = ROW_HEIGHT;
 /// Padding inside a matrix square: none, the squares touch.
 pub(super) const CELL_PADDING: f32 = 0.0;
-/// Room a section title needs before it is drawn (three measures).
-pub(super) const SECTION_TITLE_MEASURES: f32 = 3.0;
 
 /// What the grid asks the app to do after drawing.
 #[derive(Debug)]
@@ -87,6 +88,8 @@ pub(super) struct RenameTrack {
     pub name: String,
     /// Whether the text field has been focused yet.
     pub focused: bool,
+    /// Where the window sits (remembered while it is open).
+    pub pos: Option<egui::Pos2>,
 }
 
 impl GuitarScoreApp {
@@ -195,6 +198,7 @@ impl GuitarScoreApp {
                         track,
                         name,
                         focused: false,
+                        pos: None,
                     });
                 }
             }
@@ -261,7 +265,8 @@ impl GuitarScoreApp {
         }
     }
 
-    /// The rename window: a text field and Rename/Cancel.
+    /// The rename window, in the same layout as the other dialogs: a title bar, a hint, the
+    /// name field (focused at once) and Cancel/Rename.
     pub(super) fn show_rename_window(&mut self, ctx: &egui::Context) {
         let Some(mut rename) = self
             .tabs
@@ -270,47 +275,99 @@ impl GuitarScoreApp {
         else {
             return;
         };
-        let mut open = true;
-        let mut apply = false;
-        let mut cancel = false;
-        egui::Window::new("Rename track")
+        let title = "Rename track";
+        let width = 420.0;
+        let size = vec2(width + 32.0, 230.0);
+        let pos = *rename
+            .pos
+            .get_or_insert_with(|| style::centered_window_pos(ctx, size));
+        let mut outcome = Outcome::Open;
+        egui::Window::new(title)
+            .title_bar(false)
             .collapsible(false)
             .resizable(false)
-            .open(&mut open)
+            .current_pos(pos)
+            .frame(style::window_frame(ctx))
             .show(ctx, |ui| {
-                let response =
-                    ui.add(egui::TextEdit::singleline(&mut rename.name).hint_text("Track name"));
-                ui.ctx()
-                    .accesskit_node_builder(response.id, |node| node.set_label("Track name"));
-                if !rename.focused {
-                    response.request_focus();
-                    rename.focused = true;
+                if style::window_title_bar(ui, title, &mut rename.pos) {
+                    outcome = Outcome::Cancel;
                 }
-                if response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
-                    apply = true;
-                }
-                ui.horizontal(|ui| {
-                    if ui.button("Rename").clicked() {
-                        apply = true;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        cancel = true;
-                    }
-                });
+                egui::Frame::new()
+                    .inner_margin(Margin::symmetric(16, 12))
+                    .show(ui, |ui| {
+                        ui.set_width(width);
+                        ui.label(
+                            RichText::new(
+                                "The name shown in the track panel, the song grid and the score.",
+                            )
+                            .weak(),
+                        );
+                        ui.add_space(6.0);
+                        let response = ui.add(
+                            egui::TextEdit::singleline(&mut rename.name)
+                                .hint_text("Track name")
+                                .desired_width(width),
+                        );
+                        ui.ctx().accesskit_node_builder(response.id, |node| {
+                            node.set_label("Track name");
+                        });
+                        if !rename.focused {
+                            response.request_focus();
+                            rename.focused = true;
+                        }
+                        ui.add_space(6.0);
+                        ui.separator();
+                        ui.add_space(4.0);
+                        ui.allocate_ui_with_layout(
+                            vec2(ui.available_width(), 30.0),
+                            Layout::right_to_left(Align::Center),
+                            |ui| {
+                                let button =
+                                    |text: &str| egui::Button::new(text).min_size(vec2(84.0, 28.0));
+                                if ui.add(button("Cancel")).clicked() {
+                                    outcome = Outcome::Cancel;
+                                }
+                                let tokens = style::tokens(ui);
+                                let ok = egui::Button::new(
+                                    RichText::new("Rename").color(tokens.on_accent),
+                                )
+                                .fill(tokens.accent)
+                                .min_size(vec2(84.0, 28.0));
+                                if ui.add_enabled(!rename.name.trim().is_empty(), ok).clicked() {
+                                    outcome = Outcome::Apply;
+                                }
+                            },
+                        );
+                        if outcome == Outcome::Open {
+                            ui.input(|input| {
+                                if input.key_pressed(egui::Key::Escape) {
+                                    outcome = Outcome::Cancel;
+                                } else if input.key_pressed(egui::Key::Enter)
+                                    && !rename.name.trim().is_empty()
+                                {
+                                    outcome = Outcome::Apply;
+                                }
+                            });
+                        }
+                    });
             });
-        if apply && !rename.name.is_empty() {
-            self.apply_command(
-                Command::RenameTrack {
-                    track: TrackIndex::new(rename.track),
-                    name: rename.name,
-                },
-                false,
-            );
-        } else if !cancel
-            && open
-            && let Some(tab) = self.tabs.get_mut(self.active)
-        {
-            tab.renaming = Some(rename);
+        match outcome {
+            Outcome::Apply => {
+                let name = rename.name.trim().to_owned();
+                self.apply_command(
+                    Command::RenameTrack {
+                        track: TrackIndex::new(rename.track),
+                        name,
+                    },
+                    false,
+                );
+            }
+            Outcome::Cancel => {}
+            Outcome::Open | Outcome::Remove | Outcome::Listen => {
+                if let Some(tab) = self.tabs.get_mut(self.active) {
+                    tab.renaming = Some(rename);
+                }
+            }
         }
     }
 }

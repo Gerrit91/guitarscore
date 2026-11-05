@@ -18,8 +18,8 @@ use gscore_edit::{Command, EditError, Editor};
 use gscore_model::{
     AccentKind, BeatEffect, BeatKind, BendKind, BendPoint, BendShape, Duration, Dynamic, Fret,
     Harmonic, HarmonicKind, Legato, MeasureIndex, NoteEffect, NoteValue, Pitch, SlapKind,
-    SlideKind, SongTextField, StringNumber, StrokeDirection, TimeSignature, TrackColor, TrackIndex,
-    Vibrato, WhammyShape, differences, testing,
+    SlideKind, SongTextField, StringNumber, Stroke, StrokeDirection, TimeSignature, TrackColor,
+    TrackIndex, Vibrato, WhammyShape, differences, testing,
 };
 
 fn string(number: u8) -> StringNumber {
@@ -492,6 +492,10 @@ fn every_track_command_edits_and_undoes() {
             track: TrackIndex::new(0),
             color: TrackColor::new(0x00FF00),
         },
+        Command::SetTrackSymbol {
+            track: TrackIndex::new(0),
+            symbol: gscore_model::InstrumentSymbol::Banjo,
+        },
         Command::SetTrackVolume {
             track: TrackIndex::new(0),
             volume: 30,
@@ -717,7 +721,7 @@ fn note_and_beat_effects_edit_and_undo() {
     }
     let beat_effects = [
         BeatEffect::PickStroke(Some(StrokeDirection::Down)),
-        BeatEffect::BrushStroke(Some(StrokeDirection::Up)),
+        BeatEffect::BrushStroke(Some(Stroke::brush(StrokeDirection::Up))),
         BeatEffect::Slap(Some(SlapKind::Tapping)),
         BeatEffect::FadeIn(true),
         BeatEffect::Vibrato(Some(Vibrato::Slight)),

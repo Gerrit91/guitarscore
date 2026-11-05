@@ -147,8 +147,9 @@ pub(super) fn build_beat_xml(
     let has_pick = !matches!(beat.effect.pick_stroke, BeatStrokeDirection::None);
     let has_rasg = beat.effect.has_rasgueado;
     let has_vibrato = beat.effect.vibrato;
+    let has_arpeggio = !matches!(beat.effect.arpeggio, BeatStrokeDirection::None);
 
-    if has_brush || has_pick || has_rasg || has_vibrato {
+    if has_brush || has_pick || has_rasg || has_vibrato || has_arpeggio {
         bxml.push_str("<Properties>");
         if has_brush {
             let dir = if matches!(beat.effect.stroke.direction, BeatStrokeDirection::Down) {
@@ -158,6 +159,40 @@ pub(super) fn build_beat_xml(
             };
             bxml.push_str(&format!(
                 "<Property name=\"Brush\"><Direction>{dir}</Direction></Property>"
+            ));
+            // GuitarScore addition: the strum's speed and timing (Guitar Pro keeps only
+            // the direction).
+            let speed = if beat.effect.stroke.value == 0 {
+                32
+            } else {
+                beat.effect.stroke.value
+            };
+            let timing = if beat.effect.stroke.on_beat {
+                "on"
+            } else {
+                "before"
+            };
+            bxml.push_str(&format!(
+                "<Property name=\"GuitarScoreBrush\"><Duration>{speed}</Duration>\
+                 <Text>{timing}</Text></Property>"
+            ));
+        }
+        if has_arpeggio {
+            // GuitarScore addition: a rolled chord's speed and timing, next to the
+            // standard Arpeggio direction written above.
+            let speed = if beat.effect.arpeggio_speed == 0 {
+                8
+            } else {
+                beat.effect.arpeggio_speed
+            };
+            let timing = if beat.effect.arpeggio_on_beat {
+                "on"
+            } else {
+                "before"
+            };
+            bxml.push_str(&format!(
+                "<Property name=\"GuitarScoreArpeggio\"><Duration>{speed}</Duration>\
+                 <Text>{timing}</Text></Property>"
             ));
         }
         if has_pick {

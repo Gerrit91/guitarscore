@@ -312,6 +312,20 @@ pub(super) fn extract_sends(properties: &[Property]) -> (Option<i8>, Option<i8>)
     (send(REVERB_PROPERTY), send(CHORUS_PROPERTY))
 }
 
+/// GuitarScore addition: the track's symbol id, if the file stores one.
+pub(crate) fn extract_symbol(properties: &[Property]) -> Option<String> {
+    properties
+        .iter()
+        .find(|p| p.name == SYMBOL_PROPERTY)
+        .and_then(|p| p.text.as_deref())
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_owned)
+}
+
+/// The track property holding the app's instrument symbol (a GuitarScore addition).
+pub(crate) const SYMBOL_PROPERTY: &str = "GuitarScoreSymbol";
+
 /// The track property holding the reverb send (a GuitarScore addition).
 pub(crate) const REVERB_PROPERTY: &str = "GuitarScoreReverb";
 /// The track property holding the chorus send (a GuitarScore addition).

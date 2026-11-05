@@ -99,6 +99,11 @@ enum ChangeKind {
     TrackRenamed { at: TrackIndex, previous: String },
     /// A track's color changed.
     TrackColor { at: TrackIndex, previous: i32 },
+    /// The instrument symbol drawn for a track changed.
+    TrackSymbol {
+        at: TrackIndex,
+        previous: Option<String>,
+    },
     /// A track's mute or solo flag changed.
     TrackFlag {
         at: TrackIndex,
@@ -287,6 +292,7 @@ impl Change {
                 size_of::<GpMeasureHeader>().saturating_add(measures.iter().map(measure_size).sum())
             }
             ChangeKind::TrackRenamed { previous, .. } => previous.len(),
+            ChangeKind::TrackSymbol { previous, .. } => previous.as_ref().map_or(0, String::len),
             ChangeKind::TrackRemoved { track, .. } => track_size(track),
             ChangeKind::TrackProgram { previous, .. } => previous.map_or(0, |_| size_of::<i32>()),
             ChangeKind::TrackDrums {
@@ -559,6 +565,10 @@ impl Song {
             }),
             ChangeKind::TrackColor { at, previous } => self.edit_track_settings(|inner| {
                 track_mut(inner, *at)?.color = *previous;
+                Ok(())
+            }),
+            ChangeKind::TrackSymbol { at, previous } => self.edit_track_settings(|inner| {
+                track_mut(inner, *at)?.symbol.clone_from(previous);
                 Ok(())
             }),
             ChangeKind::TrackFlag { at, flag, previous } => self.edit_track_settings(|inner| {

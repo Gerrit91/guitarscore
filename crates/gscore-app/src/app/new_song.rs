@@ -55,54 +55,53 @@ impl GuitarScoreApp {
                 if style::window_title_bar(ui, "New song", &mut dialog.pos) {
                     close = true;
                 }
-                egui::Frame::new()
-                    .inner_margin(Margin::symmetric(16, 12))
-                    .show(ui, |ui| {
-                        ui.label(egui::RichText::new("Title").weak());
-                        let response = ui.add(
-                            egui::TextEdit::singleline(&mut dialog.title)
-                                .hint_text("Title")
-                                .desired_width(f32::INFINITY),
-                        );
-                        ui.ctx().accesskit_node_builder(response.id, |node| {
-                            node.set_label("New song title");
-                        });
-                        if !dialog.focused {
-                            response.request_focus();
-                            dialog.focused = true;
-                        }
-                        if response.lost_focus()
-                            && ui.input(|input| input.key_pressed(egui::Key::Enter))
-                        {
-                            create = true;
-                        }
-
-                        ui.add_space(8.0);
-                        ui.label(egui::RichText::new("Tempo").weak());
-                        let response = ui.add(
-                            egui::DragValue::new(&mut dialog.tempo)
-                                .range(1..=MAX_TEMPO)
-                                .suffix(" BPM"),
-                        );
-                        ui.ctx()
-                            .accesskit_node_builder(response.id, |node| node.set_label("Tempo"));
-                        if response.lost_focus()
-                            && ui.input(|input| input.key_pressed(egui::Key::Enter))
-                        {
-                            create = true;
-                        }
-
-                        ui.add_space(10.0);
-                        ui.separator();
-                        ui.horizontal(|ui| {
-                            if ui.button("Create").clicked() {
-                                create = true;
-                            }
-                            if ui.button("Cancel").clicked() {
-                                close = true;
-                            }
-                        });
+                let escape = style::dialog_body(ui, Margin::symmetric(16, 12), |ui| {
+                    ui.label(egui::RichText::new("Title").weak());
+                    let response = ui.add(
+                        egui::TextEdit::singleline(&mut dialog.title)
+                            .hint_text("Title")
+                            .desired_width(f32::INFINITY),
+                    );
+                    ui.ctx().accesskit_node_builder(response.id, |node| {
+                        node.set_label("New song title");
                     });
+                    if !dialog.focused {
+                        response.request_focus();
+                        dialog.focused = true;
+                    }
+                    if response.lost_focus()
+                        && ui.input(|input| input.key_pressed(egui::Key::Enter))
+                    {
+                        create = true;
+                    }
+
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new("Tempo").weak());
+                    let response = ui.add(
+                        egui::DragValue::new(&mut dialog.tempo)
+                            .range(1..=MAX_TEMPO)
+                            .suffix(" BPM"),
+                    );
+                    ui.ctx()
+                        .accesskit_node_builder(response.id, |node| node.set_label("Tempo"));
+                    if response.lost_focus()
+                        && ui.input(|input| input.key_pressed(egui::Key::Enter))
+                    {
+                        create = true;
+                    }
+
+                    ui.add_space(10.0);
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        if ui.button("Create").clicked() {
+                            create = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            close = true;
+                        }
+                    });
+                });
+                close |= escape;
             });
         if create {
             let title = dialog.title.trim().to_owned();

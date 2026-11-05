@@ -8,7 +8,7 @@ use gscore_model::{MASTER_UNITY, MasterMix, TrackIndex};
 use super::mixer::{self, FLOOR_DB, TRACK_UNITY, db_value, volume_from_db};
 use super::rows::TrackRow;
 use super::{GridAction, ROW_HEIGHT};
-use crate::app::instrument::Instrument;
+use crate::app::instrument;
 
 /// One strip's width.
 const STRIP_WIDTH: f32 = 124.0;
@@ -264,7 +264,7 @@ fn master_strip(
         bottom,
         "Master",
         "All tracks",
-        Instrument::Other,
+        gscore_model::InstrumentSymbol::Other,
         visuals.selection.bg_fill,
     );
 }
@@ -811,7 +811,7 @@ fn labels(
     bottom: Rect,
     name: &str,
     preset: &str,
-    instrument: Instrument,
+    instrument: gscore_model::InstrumentSymbol,
     color: Color32,
 ) {
     let visuals = ui.visuals().clone();
@@ -837,7 +837,7 @@ fn labels(
         pos2(preset_rect.left(), preset_rect.center().y - 5.0),
         vec2(10.0, 10.0),
     );
-    instrument.paint(ui.painter(), icon, visuals.weak_text_color());
+    instrument::paint(ui.painter(), icon, instrument, visuals.weak_text_color());
     let text_rect =
         Rect::from_min_max(pos2(icon.right() + 3.0, preset_rect.top()), preset_rect.max);
     ui.painter().with_clip_rect(text_rect).text(

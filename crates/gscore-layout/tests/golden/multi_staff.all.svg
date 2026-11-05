@@ -1330,7 +1330,7 @@
 <text x="55.62" y="348.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
 <text x="57.1" y="347.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="augmentationDot">&#xE1E7;</text>
 <line x1="56.74" y1="352.2" x2="56.74" y2="344.87" stroke="#101010" stroke-width="0.12"/>
-<text x="23.92" y="354.97" font-family="Bravura" font-size="4" fill="#101010" data-glyph="dynamicForte">&#xE522;</text>
+<text x="23.92" y="355.25" font-family="Bravura" font-size="4" fill="#101010" data-glyph="dynamicForte">&#xE522;</text>
 <line x1="16.42" y1="359.37" x2="16.42" y2="366.87" stroke="#303030" stroke-width="0.5"/>
 <line x1="17.15" y1="359.37" x2="17.15" y2="366.87" stroke="#303030" stroke-width="0.16"/>
 <text x="17.39" y="361.62" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
@@ -1702,7 +1702,7 @@
 <text x="60.13" y="409.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="flag8thUp">&#xE240;</text>
 <text x="62.8" y="415.72" font-family="Bravura" font-size="4" fill="#101010" data-glyph="rest8th">&#xE4E6;</text>
 <rect x="53.05" y="409.87" width="3.75" height="0.5" fill="#101010"/>
-<text x="23.92" y="421.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="dynamicForte">&#xE522;</text>
+<text x="23.92" y="421.65" font-family="Bravura" font-size="4" fill="#101010" data-glyph="dynamicForte">&#xE522;</text>
 <line x1="16.42" y1="413.87" x2="16.42" y2="417.87" stroke="#303030" stroke-width="0.5"/>
 <line x1="17.15" y1="413.87" x2="17.15" y2="417.87" stroke="#303030" stroke-width="0.16"/>
 <text x="17.39" y="415.37" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
@@ -2635,7 +2635,7 @@
 <rect x="53.97" y="692.17" width="3.58" height="0.5" fill="#101010"/>
 <text x="48.44" y="701.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="dynamicMF">&#xE52D;</text>
 <text x="52.55" y="701.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="dynamicFF">&#xE52F;</text>
-<text x="55.36" y="701.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="dynamicMF">&#xE52D;</text>
+<text x="55.36" y="701.39" font-family="Bravura" font-size="4" fill="#101010" data-glyph="dynamicMF">&#xE52D;</text>
 <line x1="60.34" y1="694.17" x2="60.34" y2="698.17" stroke="#303030" stroke-width="0.16"/>
 <text x="61.51" y="695.17" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
 <text x="61.51" y="697.17" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>

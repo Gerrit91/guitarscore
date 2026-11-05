@@ -13,6 +13,7 @@ use gscore_gp::{MidiChannel, Song as GpSong};
 
 use super::{Change, ChangeKind, track_mut};
 use crate::error::ModelError;
+use crate::instrument::InstrumentSymbol;
 use crate::position::TrackIndex;
 use crate::song::Song;
 use crate::style::TrackColor;
@@ -79,6 +80,16 @@ impl Song {
         color: TrackColor,
     ) -> Result<Change, ModelError> {
         set_color(self, at, color)
+    }
+
+    /// Sets the symbol the app draws for the track (an instrument icon); `None` derives it
+    /// from the instrument again.
+    pub fn set_track_symbol(
+        &mut self,
+        at: TrackIndex,
+        symbol: Option<InstrumentSymbol>,
+    ) -> Result<Change, ModelError> {
+        set_symbol(self, at, symbol)
     }
 
     /// Sets the track's channel volume (0-127).
@@ -263,6 +274,22 @@ pub(super) fn set_color(
         track.color = color.rgb() as i32;
         Ok(Change {
             kind: ChangeKind::TrackColor { at, previous },
+        })
+    })
+}
+
+/// Sets (or clears) the stored instrument symbol.
+pub(super) fn set_symbol(
+    song: &mut Song,
+    at: TrackIndex,
+    symbol: Option<InstrumentSymbol>,
+) -> Result<Change, ModelError> {
+    song.edit_track_settings(|inner| {
+        let track = track_mut(inner, at)?;
+        let previous = track.symbol.clone();
+        track.symbol = symbol.map(|symbol| symbol.id().to_owned());
+        Ok(Change {
+            kind: ChangeKind::TrackSymbol { at, previous },
         })
     })
 }

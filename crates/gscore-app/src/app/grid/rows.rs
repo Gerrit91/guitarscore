@@ -5,7 +5,7 @@ use gscore_edit::Command;
 use gscore_model::{MasterMix, TrackColor, TrackIndex, TrackSound};
 
 use super::{GridAction, GridView, ROW_HEIGHT, RULER_HEIGHT, TRACK_COLUMN, bar, mixer};
-use crate::app::instrument::Instrument;
+use crate::app::instrument;
 use crate::document::Document;
 
 /// What a track row shows; a snapshot taken before drawing so the song is not borrowed
@@ -16,7 +16,7 @@ pub(super) struct TrackRow {
     pub(super) muted: bool,
     pub(super) soloed: bool,
     /// The instrument family, shown as an icon.
-    pub(super) instrument: Instrument,
+    pub(super) instrument: gscore_model::InstrumentSymbol,
     /// The instrument preset's name, for the mixer strip.
     pub(super) preset: String,
     /// The track's volume and pan, for the mixer strips.
@@ -40,7 +40,7 @@ pub(super) fn track_rows(document: &Document) -> Vec<TrackRow> {
             color: track.color(),
             muted: track.is_muted(),
             soloed: track.is_soloed(),
-            instrument: Instrument::of(&track, document.song().track_sound(track.index())),
+            instrument: instrument::derived(&track, document.song().track_sound(track.index())),
             preset: document.song().track_sound(track.index()).map_or_else(
                 || "No sound".to_owned(),
                 |sound| {
@@ -160,7 +160,7 @@ fn track_header(
         pos2(swatch.right() + 13.0, rect.center().y),
         vec2(14.0, 14.0),
     );
-    row.instrument.paint(&painter, icon, visuals.text_color());
+    instrument::paint(&painter, icon, row.instrument, visuals.text_color());
     let name_rect = Rect::from_min_max(
         pos2(swatch.right() + 28.0, rect.top()),
         pos2(mixer::controls_rect(rect).left() - 4.0, rect.bottom()),

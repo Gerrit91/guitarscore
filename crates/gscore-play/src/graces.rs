@@ -47,6 +47,16 @@ pub(crate) fn length(bpm: u32, value: u16) -> u64 {
     written.max(floor)
 }
 
+/// The key a grace note of `pitch` plays: a drum flam's articulation becomes its General
+/// MIDI sound, like the main note's.
+fn key(view: &TrackView<'_>, pitch: u8) -> u8 {
+    if view.is_percussion() {
+        crate::drums::drum_key(pitch)
+    } else {
+        pitch
+    }
+}
+
 /// The grace notes of `beat`: the notes of the grace beats before it (GP6/GP7), then the
 /// grace notes attached to its own notes (GP3-5). Counts notes whose pitch cannot be
 /// worked out in `skipped`.
@@ -62,7 +72,7 @@ pub(crate) fn gather(
         for note in grace_beat.notes() {
             match (view.sounding_pitch(&note), note.string()) {
                 (Ok(pitch), Ok(string)) => graces.push(Grace {
-                    key: pitch.get(),
+                    key: key(view, pitch.get()),
                     velocity: soften(note.velocity(), note.kind() == NoteKind::Dead),
                     string: string.get(),
                     on_beat: note.grace().is_some_and(|grace| grace.on_beat),
@@ -83,7 +93,7 @@ pub(crate) fn gather(
             .or_else(|| view.sounding_pitch(&note).ok());
         match pitch {
             Some(pitch) => graces.push(Grace {
-                key: pitch.get(),
+                key: key(view, pitch.get()),
                 velocity: soften(note.velocity(), grace.dead),
                 string: string.map_or(0, |string| string.get()),
                 on_beat: grace.on_beat,

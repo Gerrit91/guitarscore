@@ -37,6 +37,10 @@ pub struct BeatStroke {
     pub direction: BeatStrokeDirection,
     pub value: u16,
     pub swap: bool,
+    /// GuitarScore addition: the strum starts on the beat (`true`) or its last note lands
+    /// on it (`false`). GPIF keeps it in a GuitarScore property; GP3-5 have no place for
+    /// it and read back the default (`true`).
+    pub on_beat: bool,
 }
 
 impl Default for BeatStroke {
@@ -45,6 +49,7 @@ impl Default for BeatStroke {
             direction: BeatStrokeDirection::None,
             value: 0,
             swap: false,
+            on_beat: true,
         }
     }
 }
@@ -109,6 +114,12 @@ pub struct BeatEffects {
     /// GuitarScore addition: GPIF's `Arpeggio` direction (a rolled chord, apart from the
     /// brush stroke). GP3-5 have none.
     pub arpeggio: BeatStrokeDirection,
+    /// GuitarScore addition: how long an arpeggio is spread, as a note-value denominator
+    /// (8 = over an eighth note); 0 uses the app's default.
+    pub arpeggio_speed: u16,
+    /// GuitarScore addition: the arpeggio starts on the beat (`true`) or its last note
+    /// lands on it (`false`).
+    pub arpeggio_on_beat: bool,
     /// GuitarScore addition: GPIF's `DeadSlapped` (a percussive slap on muted strings,
     /// a beat without notes). GP3-5 have none.
     pub dead_slapped: bool,
@@ -133,6 +144,8 @@ impl Default for BeatEffects {
             wide_vibrato: false,
             legato: LegatoEffect::default(),
             arpeggio: BeatStrokeDirection::None,
+            arpeggio_speed: 0,
+            arpeggio_on_beat: true,
             dead_slapped: false,
             fade_out: false,
             volume_swell: false,
@@ -165,6 +178,8 @@ impl BeatEffects {
             && self.slap_effect == d.slap_effect
             && self.legato == d.legato
             && self.arpeggio == d.arpeggio
+            && self.arpeggio_speed == d.arpeggio_speed
+            && self.arpeggio_on_beat == d.arpeggio_on_beat
             && self.dead_slapped == d.dead_slapped
             && self.fade_out == d.fade_out
             && self.volume_swell == d.volume_swell

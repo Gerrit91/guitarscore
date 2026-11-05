@@ -84,6 +84,10 @@ pub struct Track {
     /// lines out by width alone. GP7 files keep it in a GuitarScore attribute of the track
     /// (`gsBarsPerSystem`).
     pub bars_per_system: Option<u8>,
+    /// GuitarScore addition: the symbol the app draws for the track (`electricGuitar`,
+    /// `drums`, `piano`, ...), independent of the instrument's sound. GP7 files keep it as
+    /// a track property (`GuitarScoreSymbol`); older formats drop it.
+    pub symbol: Option<String>,
 }
 
 impl Default for Track {
@@ -117,6 +121,7 @@ impl Default for Track {
             instrument_name: None,
             tuning_label: None,
             bars_per_system: None,
+            symbol: None,
         }
     }
 }

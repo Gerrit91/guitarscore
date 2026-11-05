@@ -25,6 +25,7 @@ pub(super) fn note_with(property: &str) -> Note {
                 htype: None,
                 pitches: None,
                 label: None,
+                text: None,
                 direction: None,
             }],
         },
@@ -228,6 +229,7 @@ fn harmonic_fret_is_read_before_the_harmonic_type() {
         htype: Some("Pinch".to_owned()),
         pitches: None,
         label: None,
+        text: None,
         direction: None,
     });
     let song_note = super::convert_note(&note, 80, false, false);
@@ -364,6 +366,8 @@ fn gp6_whammy_properties_are_imported() {
             float: Some(value),
             flags: None,
             strength: None,
+            duration: None,
+            text: None,
         };
         GpifBeat {
             id: 0,

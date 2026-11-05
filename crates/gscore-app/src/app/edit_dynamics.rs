@@ -16,13 +16,11 @@ pub(super) struct DynamicsSnapshot {
     targets: Vec<(BeatPosition, Dynamic)>,
     /// Their dynamic, if they all share one.
     shared: Option<Dynamic>,
-    /// The dynamic in effect at the cursor (its beat's own, or the last one before it).
-    in_effect: Dynamic,
 }
 
 impl DynamicsSnapshot {
-    /// The dynamics of `beats` (the selection, or the cursor's beat) and at `cursor`.
-    pub(super) fn of(song: &Song, beats: &[BeatPosition], cursor: BeatPosition) -> Self {
+    /// The dynamics of `beats` (the selection, or the cursor's beat).
+    pub(super) fn of(song: &Song, beats: &[BeatPosition]) -> Self {
         let targets: Vec<(BeatPosition, Dynamic)> = beats
             .iter()
             .filter_map(|at| Some((*at, song.beat(*at)?.dynamic()?)))
@@ -31,11 +29,7 @@ impl DynamicsSnapshot {
             .first()
             .map(|(_, first)| *first)
             .filter(|first| targets.iter().all(|(_, d)| d == first));
-        DynamicsSnapshot {
-            targets,
-            shared,
-            in_effect: song.dynamic_at(cursor),
-        }
+        DynamicsSnapshot { targets, shared }
     }
 
     /// The commands that give every target `dynamic` (none for beats that have it).
@@ -101,14 +95,6 @@ pub(super) fn section(
                 }
             }
         });
-        let note = format!(
-            "In effect here: {} ({})",
-            dynamics.in_effect.id(),
-            dynamics.in_effect.name()
-        );
-        ui.label(egui::RichText::new(note).color(style::tokens(ui).text_weak));
-        ui.add_space(4.0);
-        ui.label(egui::RichText::new("Fades").color(style::tokens(ui).text_weak));
         super::edit_effects::fade_tiles(ui, snapshot, hint, commands);
     });
 }
@@ -140,13 +126,12 @@ mod tests {
                 .unwrap();
         }
         let _ = song.set_dynamic(at(2), Dynamic::P).unwrap();
-        let snapshot = DynamicsSnapshot::of(&song, &[at(0), at(1), at(2)], at(0));
+        let snapshot = DynamicsSnapshot::of(&song, &[at(0), at(1), at(2)]);
         assert_eq!(
             snapshot.targets,
             [(at(0), Dynamic::Mf), (at(2), Dynamic::P)]
         );
         assert_eq!(snapshot.shared, None, "mf and p");
-        assert_eq!(snapshot.in_effect, Dynamic::Mf);
         // The beat that is already piano needs no command.
         assert_eq!(
             snapshot.commands(Dynamic::P),
@@ -155,8 +140,7 @@ mod tests {
                 dynamic: Dynamic::P
             }]
         );
-        let rest_only = DynamicsSnapshot::of(&song, &[at(1)], at(1));
+        let rest_only = DynamicsSnapshot::of(&song, &[at(1)]);
         assert!(rest_only.targets.is_empty());
-        assert_eq!(rest_only.in_effect, Dynamic::Mf);
     }
 }

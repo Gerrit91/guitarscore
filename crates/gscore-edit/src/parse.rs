@@ -232,6 +232,10 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
             color: color_arg(args)?,
         }),
+        "set_track_symbol" => Ok(Command::SetTrackSymbol {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            symbol: symbol_arg(args)?,
+        }),
         "set_track_volume" => Ok(Command::SetTrackVolume {
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
             volume: midi_value_arg(args, "volume")?,
@@ -846,6 +850,17 @@ fn endings_arg(args: &mut Args) -> Result<u8, ParseError> {
 fn color_arg(args: &mut Args) -> Result<gscore_model::TrackColor, ParseError> {
     let text = args.required("color")?;
     parse_color(args.command, "color", &text)
+}
+
+/// An instrument symbol by its stored id ("electricGuitar", "drums", ...).
+fn symbol_arg(args: &mut Args) -> Result<gscore_model::InstrumentSymbol, ParseError> {
+    let text = args.required("symbol")?;
+    gscore_model::InstrumentSymbol::from_id(&text).ok_or_else(|| ParseError::BadValue {
+        command: args.command.to_owned(),
+        parameter: "symbol".to_owned(),
+        value: text,
+        expected: "an instrument symbol id (see `gscore-cli commands`)",
+    })
 }
 
 /// A section color, or the default when the parameter is omitted.

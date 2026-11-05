@@ -2682,3 +2682,257 @@ needed for a much larger font); owner listening check.
   `:latest`. Checked locally: image 176 MB, wasm served as `application/wasm` with gzip,
   the SoundFont cached for a year, everything else revalidated. The workflow job itself
   is untested until the next pre-release.
+
+## 2026-11-05 — File › Export: MIDI, GP7/GP6/GP5/GP4/GP3 and PDF together
+
+- The single "Export PDF…" entry became a File › Export submenu: PDF (the printed score),
+  MIDI, Guitar Pro 7 (`.gp`), Guitar Pro 6 (`.gpx`), 5 (`.gp5`), 4 (`.gp4`) and 3
+  (`.gp3`). The app had no MIDI export at all; the CLI's `midi` subcommand already did.
+- MIDI export builds the same `Sequence` playback uses (all tracks, tempo changes,
+  repeats, techniques) and writes a format-1 SMF in the background; the status bar says
+  how many tracks and measures went in.
+- Score export goes through the new `gscore_session::export`: serialize with
+  `gscore_io`, read the bytes back in memory to list what the target format drops, then
+  write next to the target and move it into place (no half file). Older GP versions warn
+  in the menu and the status bar reports how many details they could not keep; files that
+  cannot be read back at all are an error, not a silent conversion.
+- Tests: `gscore-session::export` writes and replaces a GP3/GP4 file, reports no losses
+  for an empty song and never leaves a temporary file; `ExportFormat` keeps the menu's
+  extensions unique and maps the score entries to their `FileFormat`.
+
+## 2026-11-05 — Dialog indicator on every dialog tile; beat text in Staff
+
+- The small corner triangle that the technique tiles use for "this opens a dialog" now
+  marks every tile that opens one: all twelve Staff tiles (tempo, time and key signature,
+  section, repeats, endings, swing, fermata, barline, break, bars per line) and beat text.
+  `tiles::dialog_tile` draws it; faces themselves are unchanged, so dialog choice rows
+  (which reuse `paint_face`) stay clean.
+- Beat text moved from Note input to the Staff section: it is a bar-level mark that opens
+  a dialog, like its neighbours. `t` opens it (as in Guitar Pro); tapping moved to
+  `shift+t` (`T`), since `t` used to be tapping. The dialog focuses its text field in the
+  first frame, so typing continues straight away and Enter still applies. Escape cancels.
+- The score keys are now also held back while a palette effect editor is open (bend,
+  whammy, harmonic, grace, trill, tremolo, beat text, fingering), not only while a staff
+  dialog is: with the text field unfocused, `r` or `x` used to edit the score behind the
+  dialog.
+- Tests: the app snapshots of the staff dialogs and the page updated (the corner marks and
+  the moved tile), the keymap still parses (`t` and `T` are distinct bindings).
+
+## 2026-11-05 — A chosen instrument symbol per track
+
+- The track panel's Instrument section gained **Symbol**: a menu of fifteen symbols
+  (electric and acoustic guitar, bass, drums, piano, organ, synthesizer, voice, violin,
+  trumpet, saxophone, flute, banjo, ukulele, other), each drawn with the painter like the
+  toolbar icons. The icon shows next to the menu, in the panel header, in the song grid
+  and in the mixer; the symbol is only the picture, the preset still decides the sound.
+- Until now the icon was *derived* from the General MIDI program and the GP7 instrument
+  name, which is still the fallback when no symbol is chosen (`instrument::derived`).
+- Unusually for the model, the symbol is stored separately from `instrument_type`: that
+  type also decides whether a track has a tuning and tablature, so choosing a violin icon
+  on a guitar track must not turn its tab into "other". `Track` gains `symbol`, written as
+  the GPIF property `GuitarScoreSymbol` and read back (`docs/guitarpro.md` change 38);
+  GP3-5 export drops it, like other GuitarScore-only data.
+- `Command::SetTrackSymbol` (`set_track_symbol track=… symbol=…`) with apply-then-undo
+  coverage, a `panic_hunt` value and `settings_differences` so a test notices the change.
+- Tests: symbol ids are unique and round-trip; a chosen symbol wins over the derived one;
+  GPIF write/read keeps it and leaves the instrument type alone; the app snapshots updated.
+
+## 2026-11-05 — Tuning in its own dialog
+
+- The track panel's inline string list (one note menu per string, plus count and capo) did
+  not read as a tuning and made the panel long. It is now a **Tuning…** button under the
+  preset (disabled for tracks that are not string instruments), showing the current
+  tuning's name.
+- The dialog shows the strings as a headstock (string 1, the highest, at the top; lower
+  strings drawn thicker), one note menu and − / + per string, a **Common tuning** menu
+  with sixteen presets across 4 to 8 strings (E/Eb/D standard, Drop D, double drop D,
+  DADGAD, Open C/D/G, B standard, Drop A, the 4/5-string bass tunings), the string count,
+  the capo, and Reset to standard. OK turns the whole draft into one `Command::Batch`, so
+  it is one undo step. A string count that would remove strings carrying notes is refused
+  with the model's message and the dialog stays open.
+- Tests: the panel test drives the capo and string count through the dialog; a new
+  snapshot (`tuning_dialog`) covers the layout; preset/default tuning lengths are unit
+  tested.
+
+## 2026-11-05 — A visible rename button; rename dialog in the common layout
+
+- Clicking the track's name already edited it in place, but nothing said so. The track
+  panel header now has a pencil button ("Rename track") next to the name; it opens the
+  same rename window the grid's context menu uses. The in-place edit stays.
+- The rename window used egui's default frame, title bar and button row, unlike every
+  other dialog. It now uses `style::window_frame` with the custom title bar, a hint line,
+  a full-width field focused at once, and Cancel / accent Rename buttons, with Escape and
+  Enter. A new pencil icon (`Icon::Rename`) is drawn like the other toolbar icons.
+- Tests: the panel test renames through the button; a snapshot (`rename_track_dialog`)
+  covers the window; the string-tuning test drives the new tuning dialog.
+
+## 2026-11-05 — A tuner with a sine reference tone
+
+- A tuning-fork button left of Settings opens the **Tuner**: a drawn headstock and tuning
+  fork, the chosen note's name and frequency (A4 = 440 Hz by default), a picker over C1 to
+  C8, the shown track's open strings as quick choices, and Play/Stop (Space toggles too).
+- The tone is a new `gscore_audio::TunerPlayer`: a 12 ms faded sine at 0.25 of full scale
+  on the default device. Like the synthesizer it opens the device on its own thread, its
+  stream lives in a worker thread, and the audio callback only reads two atomics (the
+  frequency and whether it should sound), so it never allocates, locks or blocks. A device
+  failure is reported in the window; editing goes on. Closing the window fades it out and
+  detaches the worker (never waiting for a device on the UI thread). The browser build has
+  a stub that says the tuner is not available there yet.
+- Tests: the note-to-frequency mapping (A4, the octave, the low E) and the audible-range
+  guard; a new `tuner_dialog` snapshot covers the window and the picture.
+
+## 2026-11-05 — Section titles in the grid's master row
+
+- Section titles used to sit at the bottom of the ruler, where repeat signs (`|:`, `:|`),
+  alternative-ending labels and the repeat count (`×2`) are drawn too, so a marker could
+  clip into them. They now go into the master row below all tracks, clipped at the next
+  section's marker and free to run into the room after the last measure. The ruler keeps
+  only the colored start line, which still lines up with the measure.
+- Tests: a new `grid_section_title` snapshot adds a "Chorus" section and shows it in the
+  master row under its measure, clear of the number.
+
+## 2026-11-05 — Dynamics palette without the status line
+
+- The Dynamics section no longer prints "In effect here: mf (mezzo-forte)" or the "Fades"
+  caption. The highlighted dynamic tile already says what the selection has, and the
+  hairpin tiles below read as fades on their own. `DynamicsSnapshot` no longer computes the
+  cursor's dynamic; its test drops that assertion. Snapshots updated.
+
+## 2026-11-05 — Tuner: the Stop button and semitone buttons
+
+- Stop did nothing: it cleared the pending note instead of telling the player to stop. The
+  window now passes a `ToneRequest` (play or stop) and acts on both.
+- Small − / + buttons beside the note move it a semitone, clamped to the picker's C1–C8.
+- Tests: the semitone step and its clamping at both ends.
+
+## 2026-11-05 — Export menu width
+
+- The Export submenu no longer carries a long explanation under the formats: it stretched
+  the menu to that line's width. The entries say enough, and the older formats still
+  explain their losses in a tooltip.
+
+## 2026-11-05 — Larger toolbar icons
+
+- The toolbar's icon buttons draw their glyphs larger (a 3.5 px shrink instead of 6) while
+  keeping the same layout size. Making the buttons themselves wider pushed the zoom group
+  under the player at a 1000 px window; the panel's icon buttons keep the compact size.
+- Snapshots updated.
+
+## 2026-11-05 — Instrument symbols as a grid
+
+- The track panel's Symbol dropdown became a grid of the fifteen symbols: one click
+  chooses, like the palette tiles. The selected one is filled with the accent color.
+- Tests: the panel test chooses Banjo and undoes it; snapshots updated.
+
+## 2026-11-05 — Brushes and arpeggios in a dialog
+
+- The brush and arpeggio tiles (and keys) open a dialog instead of toggling directly: the
+  direction (with the engraved sign), **How quick** (1/4 to 1/64) and whether the spread
+  **starts on the beat** or **ends on it** (its last string lands on the beat). OK sets the
+  stroke on every selected beat; Remove clears it; one undo step.
+- Model: `Stroke { direction, speed, on_beat }`; `BeatEffect::BrushStroke` and `Arpeggio`
+  carry it. `BeatView::stroke(kind)` reads it; the direction-only accessors stay for the
+  layout and the dump. The brush's existing GP3-5 speed field is used; the arpeggio's speed
+  and both timings are GuitarScore additions (`GuitarScoreBrush`/`GuitarScoreArpeggio`
+  GPIF properties), so GP7 keeps them and GP3-5 keep the brush speed only.
+- Playback: the spread length is `4/ speed` quarter notes (1/32 for a brush, 1/8 for an
+  arpeggio by default) instead of two fixed constants, and "ends on the beat" moves the
+  roll earlier so the last string lands exactly on the beat.
+- Tests: model round trip of a stroke's speed/timing; playback onset tests for a 16th
+  spread and for an arpeggio ending on the beat; GP7 round trip of both strokes and GP5 of
+  the brush speed; an app test sets 1/16 and "ends on the beat" through the dialog, with a
+  new `brush_dialog` snapshot.
+
+## 2026-11-05 — Every dialog closes with Escape
+
+- The windows had grown different habits: About, History, Settings and New song ignored
+  Escape. They share `style::dialog_body` now: the standard inner frame and margins, and
+  "Escape closes me". Shortcuts (which has its own filter field and key capture) closes on
+  Escape too, after an active capture has been cancelled by the first press.
+- Shared modal behaviour: the score's keys are held back while About, History, New song,
+  the rename window or the tuning dialog is open, not only for the other dialogs, so a
+  stray key no longer edits the song behind them.
+- Tests: one test opens About, Settings, History and New song and closes each with Escape.
+
+## 2026-11-05 — The header is the track's property strip
+
+- The first line of the track panel is now interactive: the color bar opens a **color
+  picker** (the presets and the custom picker, moved out of the Appearance section), the
+  instrument icon opens the **symbol picker** (the grid, instead of a row of fifteen
+  symbols in the panel), and the name still edits in place (with the pencil button as the
+  second way). The Appearance section keeps only the staves.
+- Every tile that opens a dialog now uses `tiles::dialog_tile`, so the corner mark also
+  appears on brushes and arpeggios (and stays on the bend, whammy, harmonic, grace, trill,
+  tremolo and fingering tiles).
+- Tests: the preset-color test opens the color picker first; new `symbol_picker` and
+  `color_picker` snapshots; snapshots updated.
+
+## 2026-11-05 — Review: MIDI export against Guitar Pro, stroke timing, tuner picture
+
+- MIDI export is now checked against Guitar Pro's own `.mid` export for every reference
+  in `testdata/basic` (`.gp` and `.gpx`): same notes (within a tick) and programs. Two
+  differences are on purpose and allowed for: we play pick slides, trills and tremolo
+  picking as notes where Guitar Pro bends one, and we strum brushes and pick strokes where
+  its export strikes the chord at once; we also send no program change on the drum
+  channel.
+- The check found a playback bug: Guitar Pro 7 stores a drum note as an articulation
+  number, and 44 of them (half-open hi-hat 92, ride edge 93, chokes, cowbell and conga
+  variants, ...) are not General MIDI sounds. They played as the wrong sound or nothing;
+  `gscore-play/src/drums.rs` maps them as Guitar Pro's drum kit does, for main notes and
+  flams. GP6 drum notes are not read at all yet (`docs/gaps.md`).
+- MIDI export wrote only the tracks that were audible: a muted track, or every track but
+  the soloed one, was missing from the file. It now writes every track.
+- A brush or arpeggio that ends on the beat did not land on it when its notes were shorter
+  than the spread (the onsets were clamped to the note length), nor on the first beat of
+  the song (no room before it: the spread was cut at tick 0 and the strings landed after
+  the beat). Starting earlier only lengthens a note, so nothing is clamped now, and with no
+  room before the beat the spread shrinks to what there is.
+- The tuner shows the tone as a sine wave instead of the headstock and tuning fork:
+  denser for higher notes, in the accent color and moving while it sounds, gray at rest,
+  fading out at both ends. The open-string buttons show which one is chosen; Space no
+  longer toggles the tone a second time when a button has focus; Play opens the audio
+  device again after it failed instead of keeping the broken one.
+
+## 2026-11-05 — Instrument symbols redrawn
+
+- All fifteen symbols are redrawn as flat one-color silhouettes in one shape language:
+  the guitars, bass, ukulele and banjo lie on the same diagonal (head up to the right,
+  scaled to the box's diagonal), each with one distinguishing feature: horns and a solid
+  body (electric), an outline with a soundhole (acoustic), a longer neck and four pegs
+  (bass), a small outline (ukulele), a round rim with a bridge (banjo). Drums are a
+  snare with crossed sticks; piano a keyboard; organ pipes with tapered feet; synth a
+  panel with knobs over keys; trumpet, saxophone, flute, a microphone, a violin with its
+  bow, and two beamed eighths for "other".
+- A `Pen` in `instrument.rs` draws in the symbol's own turned coordinates, so the shapes
+  are written once and stay crisp from 18 px up. The new `instrument_symbols` snapshot
+  shows every symbol at 18, 24 and 64 px on light and dark.
+- Derived symbols: GM programs 24 and 25 (nylon and steel string) and instrument names
+  with "acoustic", "nylon" or "steel" now get the acoustic guitar; 26-31 stay electric.
+
+## 2026-11-05 — Dynamics clear the notes they span; CI snapshot tolerance
+
+- A dynamic under low notes ran into them: it only avoided the lowest head of its own
+  column, while a mark like `fff` spans the neighbouring notes and their accidentals,
+  and where the fixed gap above the tab ran out it was pulled back up into the notes.
+  Now each column knows its lowest ink (`MeasureLayout::column_depth`: notehead, accent
+  or staccato below it, accidental, a stem pointing down), a dynamic goes below the
+  deepest column its glyph spans, and the gap between notation and tab grows in a system
+  that needs it (for its dynamics, or for notes hanging lower than the gap allows) instead
+  of being the same everywhere. Other systems keep the usual gap.
+- Test: alternating `f`/`fff` under low eighths with accidentals; no dynamic's box
+  touches any other glyph, and every one stays above the tab. Golden SVGs: the
+  eight-string example gets one space more above its tab, three dynamics of
+  `multi_staff` move a fraction of a space lower.
+- CI: GitHub's software renderer failed every app snapshot by 1-3 antialiased pixels;
+  `kittest.toml` now allows 10 (a real change fails hundreds).
+
+## 2026-11-05 — A long track name no longer widens the track panel
+
+- After renaming a track to a long name the track panel grew: the name label was
+  shortened to all the width left, and the rename button after it stuck out by its own
+  width, which an egui side panel answers by growing (987 to 1019 px in the test). The
+  rename button now takes its place at the header's right edge first and the name is
+  shortened to what remains; the in-place name field is sized to the room left, its
+  margin included.
+- Test: the track panel test checks that the full-width tuning button keeps its right
+  edge while a name is edited and after a long name is entered.

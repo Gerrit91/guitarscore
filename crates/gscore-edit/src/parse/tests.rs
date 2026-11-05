@@ -146,6 +146,13 @@ fn parses_every_command_and_fills_defaults() {
             },
         ),
         (
+            "set_track_symbol track=2 symbol=banjo",
+            Command::SetTrackSymbol {
+                track: TrackIndex::new(1),
+                symbol: gscore_model::InstrumentSymbol::Banjo,
+            },
+        ),
+        (
             "set_track_staves track=2 staves=tab",
             Command::SetTrackStaves {
                 track: TrackIndex::new(1),
@@ -549,6 +556,10 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
         Command::SetTrackColor {
             track,
             color: gscore_model::TrackColor::new(0x00_0a_bc),
+        },
+        Command::SetTrackSymbol {
+            track,
+            symbol: gscore_model::InstrumentSymbol::Saxophone,
         },
         Command::SetTrackVolume { track, volume: 127 },
         Command::SetTrackPan { track, pan: 0 },

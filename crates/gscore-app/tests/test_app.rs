@@ -93,6 +93,59 @@ fn the_view_menu_switches_the_theme_and_the_toolbar_zooms() {
 }
 
 #[test]
+fn escape_closes_the_shared_windows() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    // About
+    harness.get_by_label("Help").click();
+    harness.run();
+    harness.get_by_label("About GuitarScore").click();
+    harness.run();
+    harness.get_by_label("GuitarScore icon");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert!(
+        harness.query_by_label("GuitarScore icon").is_none(),
+        "Escape closes About"
+    );
+
+    // Settings
+    harness.get_by_label("Settings").click();
+    harness.run();
+    harness.get_by_label("Page layout");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert!(
+        harness.query_by_label("Page layout").is_none(),
+        "Escape closes Settings"
+    );
+
+    // History
+    harness.get_by_label("History").click();
+    harness.run();
+    harness.get_by_label_contains("Newest first");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert!(
+        harness.query_by_label_contains("Newest first").is_none(),
+        "Escape closes History"
+    );
+
+    // New song (the song behind it stays)
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("New").click();
+    harness.run();
+    harness.get_by_label("New song title");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert!(
+        harness.query_by_label("New song title").is_none(),
+        "Escape closes New song"
+    );
+    assert!(harness.state().document().is_some());
+}
+
+#[test]
 fn help_about_shows_the_version() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("Help").click();
@@ -125,6 +178,104 @@ fn the_page_matches_its_snapshot_in_both_themes() {
     harness.state_mut().view_mut().theme = ThemeChoice::Dark;
     harness.run();
     harness.snapshot("steel_guitar_dadgad_dark");
+}
+
+#[test]
+fn the_track_dialogs_match_their_snapshots() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .wgpu()
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/steel_guitar_dadgad.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness.get_by_label("Tuning: DADGAD…").click();
+    harness.run();
+    harness.snapshot("tuning_dialog");
+    harness.get_by_label("Cancel").click();
+    harness.run();
+    harness.get_by_label("Rename track").click();
+    harness.run();
+    harness.snapshot("rename_track_dialog");
+    harness.get_by_label("Cancel").click();
+    harness.run();
+    harness.get_by_label("Tuner").click();
+    harness.run();
+    harness.snapshot("tuner_dialog");
+    harness.get_by_label("Close").click();
+    harness.run();
+    harness.get_by_label("Instrument symbol").click();
+    harness.run();
+    harness.snapshot("symbol_picker");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    harness.get_by_label("Track color").click();
+    harness.run();
+    harness.snapshot("color_picker");
+}
+
+#[test]
+fn section_titles_sit_in_the_master_row() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .wgpu()
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/steel_guitar_dadgad.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness.get_by_label("Section").click();
+    harness.run();
+    harness.get_by_label("Section title").click();
+    harness.get_by_label("Section title").type_text("Chorus");
+    harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    harness.snapshot("grid_section_title");
+}
+
+#[test]
+fn the_brush_dialog_sets_speed_and_timing() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    harness.get_by_label("Brush (strum) down").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Brush (strum) down").click();
+    harness.run();
+    harness.snapshot("brush_dialog");
+    harness.get_by_label("Spread over a 1/16 note").click();
+    harness.run();
+    harness.get_by_label("Ends on the beat").click();
+    harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    let document = harness.state().document().unwrap();
+    let at = document.editor().cursor().position();
+    let beat = document.song().beat(at).expect("the cursor is on a beat");
+    assert_eq!(
+        beat.stroke(gscore_model::StrokeKind::Brush),
+        Some(gscore_model::Stroke {
+            direction: gscore_model::StrokeDirection::Down,
+            speed: 16,
+            on_beat: false,
+        })
+    );
 }
 
 #[test]
@@ -591,23 +742,45 @@ fn the_track_panel_edits_the_shown_track() {
     harness.run();
     assert!(!first_track(&harness).is_percussion());
 
-    // The capo and the string count (the label text and the spin button share a name).
+    // The instrument symbol is a grid of clickable symbols; one click chooses it.
+    assert_eq!(first_track(&harness).symbol(), None);
+    harness.get_by_label("Instrument symbol").click();
+    harness.run();
+    harness.get_by_label("Banjo").click();
+    harness.run();
+    assert_eq!(
+        first_track(&harness).symbol(),
+        Some(gscore_model::InstrumentSymbol::Banjo)
+    );
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+    harness.run();
+    assert_eq!(first_track(&harness).symbol(), None);
+
+    // The capo and the string count live in the tuning dialog.
+    harness.get_by_label("Tuning: DADGAD…").click();
+    harness.run();
     harness
         .get_all_by_role_and_label(egui::Role::SpinButton, "Capo")
         .next()
         .unwrap()
         .increment_accesskit();
     harness.run();
-    assert_eq!(first_track(&harness).capo().unwrap(), 1);
     harness
         .get_all_by_role_and_label(egui::Role::SpinButton, "Strings")
         .next()
         .unwrap()
         .increment_accesskit();
     harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(first_track(&harness).capo().unwrap(), 1);
     assert_eq!(first_track(&harness).string_count(), 7);
 
     // A rename in place: click the name, type, Enter. One step too.
+    let panel_right = |harness: &Harness<'_, GuitarScoreApp>| {
+        harness.get_by_label_contains("Tuning:").rect().right()
+    };
+    let before = panel_right(&harness);
     harness.get_by_label("Edit track name").click();
     harness.run();
     harness.get_by_label("Name field").click();
@@ -624,6 +797,39 @@ fn the_track_panel_edits_the_shown_track() {
     harness.key_press(egui::Key::Escape);
     harness.run();
     assert_eq!(first_track(&harness).name(), "Steel Guitar Lead");
+
+    // The rename button is another way in, with the same window.
+    harness.get_by_label("Rename track").click();
+    harness.run();
+    harness.get_by_label("Track name").click();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.run();
+    harness.get_by_label("Track name").type_text("Renamed");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(first_track(&harness).name(), "Renamed");
+
+    // Neither editing a name nor a name too long for the header widens the panel (the
+    // full-width tuning button keeps its right edge): the name is shortened instead.
+    harness.get_by_label("Edit track name").click();
+    harness.run();
+    assert!(
+        (panel_right(&harness) - before).abs() < 0.5,
+        "while editing"
+    );
+    harness
+        .get_by_label("Name field")
+        .type_text(" with a name much longer than the header");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert!(first_track(&harness).name().ends_with("than the header"));
+    assert!(
+        (panel_right(&harness) - before).abs() < 0.5,
+        "the panel grew from {before} to {}",
+        panel_right(&harness)
+    );
 }
 
 /// Runs frames until background jobs are done and the UI stops repainting. It steps first,

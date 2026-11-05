@@ -243,3 +243,20 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     writer folds grace beats and leaves out those that cannot be folded
     (`Song::with_attached_graces`). The GPIF reader stored every grace length as 1; the
     folded length is the beat's value. Tests in `model/grace.rs`.
+38. The track's instrument symbol (`src/model/track.rs`, `src/io/gpif/bars.rs`,
+    `src/io/gpif_import/mod.rs`, `src/io/gpif_export/mod.rs`, 2026-11-05): the app lets
+    the user choose which instrument symbol a track shows, independent of the played
+    sound, so it needs a place in the file. `Track` gains `symbol`, written as the GPIF
+    track property `GuitarScoreSymbol` with a `<Text>` value and read back by
+    `extract_symbol`. GP3-5 and the legacy formats drop it (their import leaves `None`).
+    A round-trip test checks that it survives and that the instrument type is unchanged.
+39. Brush and arpeggio speed and timing (`src/model/beat.rs`, `src/io/gpif_import/beats.rs`,
+    `src/io/gpif_export/beats.rs`, 2026-11-05): GP3-5 already store a brush stroke's speed
+    (`BeatStroke::value`, a note-value denominator), and the model now uses it instead of a
+    fixed 32nd. GPIF has only the Brush direction and the `<Arpeggio>` direction, so the
+    speed and the "starts/ends on the beat" timing are written as GuitarScore properties:
+    `GuitarScoreBrush` and `GuitarScoreArpeggio`, each with `<Duration>` and `<Text>`
+    (`on`/`before`). They are read back on import; Guitar Pro ignores the extra properties.
+    `BeatStroke` gains `on_beat` (default true) and `BeatEffects` gains `arpeggio_speed` and
+    `arpeggio_on_beat`. GP3-5 keep the brush speed but not the timing, and no arpeggio
+    speed/timing; the loss is reported by the export comparison (`differences`).

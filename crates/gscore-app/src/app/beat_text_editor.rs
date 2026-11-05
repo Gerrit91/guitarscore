@@ -16,6 +16,9 @@ const WIDTH: f32 = 460.0;
 pub(super) struct BeatTextEditor {
     pos: Option<Pos2>,
     text: String,
+    /// The text field has been focused yet (it takes the keyboard as soon as the dialog
+    /// opens, so typing continues without a click).
+    focused: bool,
 }
 
 impl BeatTextEditor {
@@ -24,6 +27,7 @@ impl BeatTextEditor {
         BeatTextEditor {
             pos: None,
             text: current.to_owned(),
+            focused: false,
         }
     }
 
@@ -62,12 +66,18 @@ impl BeatTextEditor {
                             .weak(),
                         );
                         ui.add_space(4.0);
-                        ui.add(
+                        let response = ui.add(
                             egui::TextEdit::singleline(&mut self.text)
                                 .hint_text("Text above the beat")
                                 .char_limit(MAX_BEAT_TEXT_CHARS)
+                                .cursor_at_end(true)
                                 .desired_width(WIDTH),
                         );
+                        // The dialog is opened to type: take the keyboard at once.
+                        if !self.focused {
+                            response.request_focus();
+                            self.focused = true;
+                        }
                         ui.add_space(6.0);
                         ui.separator();
                         ui.add_space(4.0);

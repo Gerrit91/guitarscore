@@ -21,11 +21,14 @@ pub(super) struct Part<'a> {
     pub(super) show_tab: bool,
     pub(super) measures: Vec<Arc<MeasureLayout>>,
     pub(super) marks: Vec<MeasureMarks>,
-    /// From the top staff's top line to the tab's (0 without notation).
-    pub(super) tab_offset: f32,
-    /// From the top staff's top line to the lowest staff's bottom line.
-    pub(super) staves_height: f32,
+    /// From the top staff's top line to the tab's at the least (0 without notation): the
+    /// gap between the staves grows in a system whose low notes or dynamics need it.
+    tab_offset: f32,
 }
+
+/// Room between the lowest note of the notation staff and the tab's top line, for what
+/// is written just above the tab (bends, the tab's own marks).
+const NOTES_ABOVE_TAB: f32 = 2.0;
 
 impl<'a> Part<'a> {
     pub(super) fn new(
@@ -78,11 +81,6 @@ impl<'a> Part<'a> {
         } else {
             0.0
         };
-        let staves_height = if show_tab {
-            tab_offset + ctx.staff.height()
-        } else {
-            notation_staff.height()
-        };
         Ok(Part {
             track,
             view,
@@ -91,8 +89,43 @@ impl<'a> Part<'a> {
             measures,
             marks: Vec::new(),
             tab_offset,
-            staves_height,
         })
+    }
+
+    /// From the top staff's top line to the tab's in a system of `measures`: the gap
+    /// between notation and tab is the options' gap, or more where the notes hang lower or
+    /// a dynamic under them needs room above the tab.
+    pub(super) fn tab_offset(&self, measures: std::ops::Range<usize>) -> f32 {
+        if self.ctx.notation.is_none() || !self.show_tab {
+            return self.tab_offset;
+        }
+        let notation_height = notation::staff().height();
+        let gap = self.tab_offset - notation_height;
+        let layouts = self.measures.get(measures.clone()).unwrap_or_default();
+        let marks = self.marks.get(measures).unwrap_or_default();
+        let needed = layouts
+            .iter()
+            .enumerate()
+            .map(|(index, layout)| {
+                let notes = layout.notation_reach().1 + NOTES_ABOVE_TAB;
+                let dynamics = marks.get(index).map_or(0.0, |marks| {
+                    crate::marks::dynamics_depth(layout, marks, &self.ctx)
+                        + crate::marks::DYNAMIC_ABOVE_TAB
+                });
+                notes.max(dynamics)
+            })
+            .fold(gap, f32::max);
+        notation_height + needed
+    }
+
+    /// From the top staff's top line to the lowest staff's bottom line, in a system of
+    /// `measures`.
+    pub(super) fn staves_height(&self, measures: std::ops::Range<usize>) -> f32 {
+        if self.show_tab {
+            self.tab_offset(measures) + self.ctx.staff.height()
+        } else {
+            notation::staff().height()
+        }
     }
 
     /// The room a system starting with measure `index` needs before its first measure:

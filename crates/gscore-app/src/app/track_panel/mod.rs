@@ -8,12 +8,13 @@ mod tuning;
 use egui::RichText;
 use gscore_edit::Command;
 use gscore_model::{
-    InstrumentKind, Song, StringTuning, TrackColor, TrackIndex, TrackSound, TrackStaves, TrackView,
-    program_name,
+    InstrumentKind, InstrumentSymbol, Song, StringTuning, TrackColor, TrackIndex, TrackSound,
+    TrackStaves, TrackView, program_name,
 };
 
 use super::GuitarScoreApp;
-use super::instrument::Instrument;
+use super::icons::{self, Icon};
+use super::instrument;
 use super::style;
 
 /// What the track panel keeps between frames: which track it showed, and the name being
@@ -26,6 +27,15 @@ pub(super) struct TrackPanelState {
     name: String,
     /// Whether the name is being edited in place.
     editing: bool,
+    /// The tuning dialog, while it is open.
+    tuning: Option<tuning::TuningDialog>,
+}
+
+impl TrackPanelState {
+    /// Whether the tuning dialog is open.
+    pub(super) fn tuning_open(&self) -> bool {
+        self.tuning.is_some()
+    }
 }
 
 /// A snapshot of the shown track, taken before drawing so the song is not borrowed while
@@ -42,7 +52,7 @@ struct TrackPanel {
     string_count: usize,
     percussion: bool,
     staves: TrackStaves,
-    instrument: Instrument,
+    instrument: InstrumentSymbol,
 }
 
 impl TrackPanel {
@@ -59,7 +69,7 @@ impl TrackPanel {
             string_count: track.string_count(),
             percussion: track.is_percussion(),
             staves: track.staves(),
-            instrument: Instrument::of(track, song.track_sound(track.index())),
+            instrument: instrument::derived(track, song.track_sound(track.index())),
         }
     }
 }
@@ -83,6 +93,7 @@ impl GuitarScoreApp {
         }
 
         let mut commands: Vec<(Command, bool)> = Vec::new();
+        let mut open_tuning = false;
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -91,17 +102,54 @@ impl GuitarScoreApp {
                 style::section(ui, "track_instrument", "Instrument", |ui| {
                     instrument(ui, index, &snapshot, &mut commands);
                     sound(ui, index, &snapshot, &mut commands);
+                    tuning::button(ui, &snapshot, &mut open_tuning);
                 });
                 style::section(ui, "track_look", "Appearance", |ui| {
-                    look::color(ui, index, &snapshot, &mut commands);
                     look::staves(ui, index, &snapshot, &mut commands);
-                });
-                style::section(ui, "track_tuning", "Tuning", |ui| {
-                    tuning::tuning(ui, index, &snapshot, &mut commands);
                 });
             });
         for (command, merge) in commands {
             self.apply_command(command, merge);
+        }
+        if open_tuning && let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.track_panel.tuning = Some(tuning::TuningDialog::of(index, &snapshot));
+        }
+    }
+
+    /// The tuning dialog, while it is open.
+    pub(super) fn show_tuning_dialog(&mut self, ctx: &egui::Context) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let Some(mut dialog) = tab.track_panel.tuning.take() else {
+            return;
+        };
+        let mut outcome = dialog.show(ctx);
+        if outcome == tuning::Outcome::Apply {
+            let track = TrackIndex::new(dialog.track());
+            let song = &tab.document.song();
+            // The strings that would go must carry no notes; the model says whether.
+            if dialog.strings() != song.track(track).map_or(0, |track| track.string_count())
+                && let Err(error) = song.check_track_strings(track, dialog.strings())
+            {
+                dialog.set_error(Some(error.to_string()));
+                outcome = tuning::Outcome::Open;
+            } else {
+                dialog.set_error(None);
+            }
+        }
+        match outcome {
+            tuning::Outcome::Apply => {
+                let commands = dialog.commands();
+                self.apply_commands(commands);
+            }
+            tuning::Outcome::Cancel => {}
+            tuning::Outcome::Remove | tuning::Outcome::Listen => {
+                tab.track_panel.tuning = Some(dialog);
+            }
+            tuning::Outcome::Open => {
+                tab.track_panel.tuning = Some(dialog);
+            }
         }
     }
 
@@ -119,30 +167,80 @@ impl GuitarScoreApp {
             return;
         };
         let state = &mut tab.track_panel;
+        let mut rename_requested = false;
         egui::Frame::new()
             .inner_margin(egui::Margin::symmetric(12, 10))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    let (swatch, _) =
-                        ui.allocate_exact_size(egui::vec2(6.0, 22.0), egui::Sense::hover());
+                    let (swatch, swatch_response) =
+                        ui.allocate_exact_size(egui::vec2(8.0, 22.0), egui::Sense::click());
                     let (red, green, blue) = snapshot.color.parts();
                     ui.painter().rect_filled(
                         swatch,
                         2.0,
                         egui::Color32::from_rgb(red, green, blue),
                     );
-                    let (icon, response) =
-                        ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::hover());
-                    snapshot
-                        .instrument
-                        .paint(ui.painter(), icon.shrink(2.0), tokens.text);
-                    response.on_hover_text(snapshot.instrument.name());
+                    ui.ctx().accesskit_node_builder(swatch_response.id, |node| {
+                        node.set_label("Track color");
+                        node.set_role(egui::Role::Button);
+                    });
+                    swatch_response
+                        .clone()
+                        .on_hover_text("Track color — click to change")
+                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+                    egui::Popup::menu(&swatch_response).show(|ui| {
+                        ui.set_min_width(230.0);
+                        if look::color(ui, index, snapshot, commands) {
+                            ui.close();
+                        }
+                    });
+
+                    let (icon, icon_response) =
+                        ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::click());
+                    instrument::paint(
+                        ui.painter(),
+                        icon.shrink(2.0),
+                        snapshot.instrument,
+                        tokens.text,
+                    );
+                    ui.ctx().accesskit_node_builder(icon_response.id, |node| {
+                        node.set_label("Instrument symbol");
+                        node.set_role(egui::Role::Button);
+                    });
+                    icon_response
+                        .clone()
+                        .on_hover_text(format!(
+                            "{} — click to choose the symbol",
+                            snapshot.instrument.name()
+                        ))
+                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+                    let mut chosen = None;
+                    egui::Popup::menu(&icon_response).show(|ui| {
+                        chosen = symbol_picker(ui, snapshot.instrument);
+                        if chosen.is_some() {
+                            ui.close();
+                        }
+                    });
+                    if let Some(symbol) = chosen {
+                        commands.push((
+                            Command::SetTrackSymbol {
+                                track: TrackIndex::new(index),
+                                symbol,
+                            },
+                            false,
+                        ));
+                    }
                     if state.editing {
+                        // The field fills the room left in the header, its own margin
+                        // included: a wider field would widen the whole panel.
+                        let margin = egui::Margin::symmetric(4, 2);
+                        let width = (ui.available_width() - margin.sum().x).max(40.0);
                         let response = ui.add(
                             egui::TextEdit::singleline(&mut state.name)
                                 .hint_text("Track name")
                                 .font(egui::TextStyle::Heading)
-                                .desired_width(f32::INFINITY),
+                                .margin(margin)
+                                .desired_width(width),
                         );
                         ui.ctx().accesskit_node_builder(response.id, |node| {
                             node.set_label("Name field");
@@ -169,28 +267,54 @@ impl GuitarScoreApp {
                             }
                         }
                     } else {
-                        let response = ui
-                            .add(
-                                egui::Label::new(
-                                    RichText::new(&snapshot.name)
-                                        .text_style(egui::TextStyle::Heading)
-                                        .color(tokens.text),
-                                )
-                                .truncate()
-                                .sense(egui::Sense::click()),
-                            )
-                            .on_hover_text("Click to rename")
-                            .on_hover_cursor(egui::CursorIcon::Text);
-                        response.widget_info(|| {
-                            egui::WidgetInfo::labeled(egui::Role::Button, true, "Edit track name")
+                        // The rename button takes its place at the right first, so a long
+                        // name is shortened to the room left instead of widening the panel.
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if icons::button(ui, Icon::Rename, "Rename track", "Rename this track")
+                                .clicked()
+                            {
+                                rename_requested = true;
+                            }
+                            ui.with_layout(
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    let response = ui
+                                        .add(
+                                            egui::Label::new(
+                                                RichText::new(&snapshot.name)
+                                                    .text_style(egui::TextStyle::Heading)
+                                                    .color(tokens.text),
+                                            )
+                                            .truncate()
+                                            .sense(egui::Sense::click()),
+                                        )
+                                        .on_hover_text("Click to rename")
+                                        .on_hover_cursor(egui::CursorIcon::Text);
+                                    response.widget_info(|| {
+                                        egui::WidgetInfo::labeled(
+                                            egui::Role::Button,
+                                            true,
+                                            "Edit track name",
+                                        )
+                                    });
+                                    if response.clicked() {
+                                        state.name.clone_from(&snapshot.name);
+                                        state.editing = true;
+                                    }
+                                },
+                            );
                         });
-                        if response.clicked() {
-                            state.name.clone_from(&snapshot.name);
-                            state.editing = true;
-                        }
                     }
                 });
             });
+        if rename_requested && let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.renaming = Some(super::grid::RenameTrack {
+                track: index,
+                name: snapshot.name.clone(),
+                focused: false,
+                pos: None,
+            });
+        }
         let rect = ui.max_rect();
         ui.painter().hline(
             rect.x_range(),
@@ -198,6 +322,41 @@ impl GuitarScoreApp {
             egui::Stroke::new(1.0, tokens.line),
         );
     }
+}
+
+/// The grid of instrument symbols, for the picker under the header's instrument icon.
+fn symbol_picker(ui: &mut egui::Ui, current: InstrumentSymbol) -> Option<InstrumentSymbol> {
+    let mut chosen = None;
+    ui.set_min_width(230.0);
+    ui.set_max_width(230.0);
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = egui::vec2(2.0, 3.0);
+        for candidate in InstrumentSymbol::ALL {
+            let (rect, response) =
+                ui.allocate_exact_size(egui::vec2(32.0, 30.0), egui::Sense::click());
+            response.widget_info(|| {
+                egui::WidgetInfo::selected(
+                    egui::Role::Button,
+                    true,
+                    candidate == current,
+                    candidate.name(),
+                )
+            });
+            let tokens = style::tokens(ui);
+            let on = candidate == current;
+            if on {
+                ui.painter().rect_filled(rect, 4.0, tokens.accent);
+            } else if response.hovered() {
+                ui.painter().rect_filled(rect, 4.0, tokens.control_hover);
+            }
+            let ink = if on { tokens.on_accent } else { tokens.text };
+            instrument::paint(ui.painter(), rect.shrink(4.0), candidate, ink);
+            if response.on_hover_text(candidate.name()).clicked() {
+                chosen = Some(candidate);
+            }
+        }
+    });
+    chosen
 }
 
 /// The instrument: what kind of track it is, and whether it is a drum kit.

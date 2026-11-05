@@ -78,6 +78,17 @@ pub(crate) fn shape_note(sounding: &mut Sounding, note: &NoteView<'_>) {
 /// Spreads a chord's onsets over `total` ticks for a pick or brush stroke: a down stroke
 /// from the lowest string (the highest string number), an up stroke from the highest.
 pub(crate) fn spread(chord: &mut [Sounding], direction: StrokeDirection, total: u64) {
+    spread_with_offset(chord, direction, total, false);
+}
+
+/// Like [`spread`], but with `before` the whole roll is moved earlier so that its last
+/// note lands on the beat (the spread "falls" on the beat) instead of starting on it.
+pub(crate) fn spread_with_offset(
+    chord: &mut [Sounding],
+    direction: StrokeDirection,
+    total: u64,
+    before: bool,
+) {
     let count = chord.len();
     if count < 2 {
         return;
@@ -88,6 +99,17 @@ pub(crate) fn spread(chord: &mut [Sounding], direction: StrokeDirection, total: 
         order.reverse();
     }
     let gaps = u64::try_from(count.saturating_sub(1)).unwrap_or(1).max(1);
+    // A roll ending on the beat needs room before it: at the very start of the song it is
+    // squeezed into what there is, so the last string still lands on the beat.
+    let total = if before {
+        chord
+            .iter()
+            .map(|note| note.start)
+            .min()
+            .map_or(0, |start| total.min(start))
+    } else {
+        total
+    };
     for (position, index) in order.into_iter().enumerate() {
         let Some(note) = chord.get_mut(index) else {
             continue;
@@ -96,9 +118,14 @@ pub(crate) fn spread(chord: &mut [Sounding], direction: StrokeDirection, total: 
             .saturating_mul(u64::try_from(position).unwrap_or(0))
             .checked_div(gaps)
             .unwrap_or(0);
-        // Never past the note's end.
-        let delay = delay.min(note.end.saturating_sub(note.start).saturating_sub(1));
-        note.start = note.start.saturating_add(delay);
+        note.start = if before {
+            // Starting earlier only lengthens the note, so nothing is clamped here.
+            note.start.saturating_sub(total).saturating_add(delay)
+        } else {
+            // Never past the note's end.
+            let delay = delay.min(note.end.saturating_sub(note.start).saturating_sub(1));
+            note.start.saturating_add(delay)
+        };
     }
 }
 

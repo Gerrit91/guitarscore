@@ -204,6 +204,7 @@ This is the heart of the project. List the actions you do constantly in Guitar P
 | `clear_note` | remove the note on the cursor's string | | added in M8, unbound |
 | `previous_measure` / `next_measure` | cursor to the first beat of the previous/next bar | | added in M8, unbound |
 | `save` | save the file | ctrl+s (proposed) | added in M8; the key is a proposal |
+| `edit_beat_text` | text written above the current beat | t | the dialog's text field takes the keyboard at once (Guitar Pro's shortcut) |
 
 ## 8. Sound plan
 

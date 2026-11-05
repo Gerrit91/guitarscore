@@ -9,8 +9,8 @@ use egui::vec2;
 use gscore_edit::{ActionId, Command};
 use gscore_model::{
     AccentKind, BeatEffect, BeatView, BendKind, BendPoint, BendShape, Fade, Finger, Grace, Hand,
-    Harmonic, HarmonicKind, Legato, NoteEffect, NoteView, SlapKind, SlideKind, StrokeDirection,
-    TremoloSpeed, Trill, TrillSpeed, Vibrato, WhammyShape,
+    Harmonic, HarmonicKind, Legato, NoteEffect, NoteView, SlapKind, SlideKind, Stroke,
+    StrokeDirection, StrokeKind, TremoloSpeed, Trill, TrillSpeed, Vibrato, WhammyShape,
 };
 
 use super::beat_text_editor::BeatTextEditor;
@@ -77,8 +77,8 @@ impl NoteState {
 #[derive(Debug, Clone)]
 pub(super) struct BeatState {
     pick: Option<StrokeDirection>,
-    brush: Option<StrokeDirection>,
-    arpeggio: Option<StrokeDirection>,
+    brush: Option<Stroke>,
+    arpeggio: Option<Stroke>,
     slap: Option<SlapKind>,
     fade: Option<Fade>,
     dead_slapped: bool,
@@ -92,8 +92,8 @@ impl BeatState {
     pub(super) fn of(beat: &BeatView<'_>) -> Self {
         BeatState {
             pick: beat.pick_stroke(),
-            brush: beat.brush_stroke(),
-            arpeggio: beat.arpeggio(),
+            brush: beat.stroke(StrokeKind::Brush),
+            arpeggio: beat.stroke(StrokeKind::Arpeggio),
             slap: beat.slap(),
             fade: beat.fade(),
             dead_slapped: beat.is_dead_slapped(),
@@ -117,6 +117,8 @@ pub(super) struct EffectsState {
     beat_text: Option<BeatTextEditor>,
     finger_left: Option<dialogs::FingerEditor>,
     finger_right: Option<dialogs::FingerEditor>,
+    /// The brush or arpeggio dialog, while it is open.
+    stroke: Option<dialogs::StrokeEditor>,
 }
 
 /// What an effect tile (or its key) does.
@@ -182,6 +184,17 @@ impl Fx {
                 | Fx::FingerLeft
                 | Fx::FingerRight
         )
+    }
+}
+
+impl Fx {
+    /// The brush or arpeggio dialog this effect opens, with the direction to start at.
+    pub(super) fn stroke_target(self) -> Option<(dialogs::StrokeEditorKind, StrokeDirection)> {
+        match self {
+            Fx::Brush(direction) => Some((dialogs::StrokeEditorKind::Brush, direction)),
+            Fx::Arpeggio(direction) => Some((dialogs::StrokeEditorKind::Arpeggio, direction)),
+            _ => None,
+        }
     }
 }
 
@@ -546,8 +559,12 @@ fn is_on(fx: Fx, note: Option<&NoteState>, beat: &BeatState) -> bool {
         Fx::AnyHarmonic => note.is_some_and(|n| n.harmonic.is_some()),
         Fx::Grace => note.is_some_and(|n| n.grace.is_some()),
         Fx::Pick(direction) => beat.pick == Some(direction),
-        Fx::Brush(direction) => beat.brush == Some(direction),
-        Fx::Arpeggio(direction) => beat.arpeggio == Some(direction),
+        Fx::Brush(direction) => beat
+            .brush
+            .is_some_and(|stroke| stroke.direction == direction),
+        Fx::Arpeggio(direction) => beat
+            .arpeggio
+            .is_some_and(|stroke| stroke.direction == direction),
         Fx::Slap(kind) => beat.slap == Some(kind),
         Fx::FadeIn => beat.fade == Some(Fade::In),
         Fx::FadeOut => beat.fade == Some(Fade::Out),
@@ -660,7 +677,7 @@ pub(super) fn fx_commands(fx: Fx, snapshot: &PaletteSnapshot) -> Vec<Command> {
             apply_beat(
                 &mut commands,
                 beats,
-                BeatEffect::BrushStroke((!on).then_some(direction)),
+                BeatEffect::BrushStroke((!on).then_some(Stroke::brush(direction))),
             );
         }
         Fx::Slap(kind) => apply_beat(
@@ -674,7 +691,7 @@ pub(super) fn fx_commands(fx: Fx, snapshot: &PaletteSnapshot) -> Vec<Command> {
         Fx::Arpeggio(direction) => apply_beat(
             &mut commands,
             beats,
-            BeatEffect::Arpeggio((!on).then_some(direction)),
+            BeatEffect::Arpeggio((!on).then_some(Stroke::arpeggio(direction))),
         ),
         Fx::DeadSlapped => apply_beat(&mut commands, beats, BeatEffect::DeadSlapped(!on)),
         Fx::Rasgueado => apply_beat(&mut commands, beats, BeatEffect::Rasgueado(!on)),
@@ -742,9 +759,10 @@ impl EffectsState {
                         )
                     };
                     let on = is_on_for_targets(item.fx, snapshot);
-                    if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
-                        // These tiles open a dialog; the others toggle the effect.
-                        let opens = matches!(
+                    // These tiles open a dialog; the others toggle the effect. The dialog
+                    // tiles carry the corner mark.
+                    let opens = item.fx.stroke_target().is_some()
+                        || matches!(
                             item.fx,
                             Fx::Bend
                                 | Fx::Whammy
@@ -755,6 +773,12 @@ impl EffectsState {
                                 | Fx::FingerLeft
                                 | Fx::FingerRight
                         );
+                    let response = if opens {
+                        tiles::dialog_tile(ui, item.face, on, enabled, label, &tip)
+                    } else {
+                        tiles::tile(ui, item.face, on, enabled, label, &tip)
+                    };
+                    if response.clicked() {
                         if opens {
                             open = Some(item.fx);
                         } else {
@@ -799,6 +823,11 @@ impl EffectsState {
             Some(Fx::Tremolo) => self.open_tremolo(snapshot),
             Some(Fx::FingerLeft) => self.open_finger(snapshot, Hand::Left),
             Some(Fx::FingerRight) => self.open_finger(snapshot, Hand::Right),
+            Some(fx) if fx.stroke_target().is_some() => {
+                if let Some((kind, direction)) = fx.stroke_target() {
+                    self.open_stroke(snapshot, kind, direction);
+                }
+            }
             _ => {}
         }
     }

@@ -23,7 +23,9 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
 3. **GP6 instrument not read.** GP6 stores only an instrument id (`<Instrument
    ref="s-gtr6"/>`), no type or name; such tracks count as string instruments unless they
    are percussion. (The GP6 tuning order, unverified before, is now covered by the GPX
-   test file.)
+   test file.) GP6 drum notes are not read either: GP6 writes a drum note as a drum
+   element and variation instead of a MIDI number, so `multi_staff.gpx`'s drums import
+   as key 0 and play nothing (its `.gp` twin plays like Guitar Pro's MIDI export).
 4. **Complex bends are simplified** (later, with owner test data). The GPIF reader and
    writer keep the three-point shape (origin, middle, destination), so bend-and-release
    survives import and saving since M3 (214 notes in the owner's files were dropped
@@ -222,3 +224,10 @@ Ranked known shortfalls, most important first. Updated 2026-11-02 (M13: track an
   automatically (2026-11-05); a browser user cannot choose another SoundFont yet.
 - **Opening imports on the UI thread** after the bytes arrive (no wasm threads). Fine for
   the tested files; a web worker is the escape hatch for very large scores.
+
+39. **Brush/arpeggio timing is GuitarScore-only in GP7.** GP3-5 store a brush's speed but
+    have no place for "ends on the beat"; GP3-5/GP6 store no arpeggio speed or timing
+    either. GP7 keeps all of it in `GuitarScoreBrush`/`GuitarScoreArpeggio` properties
+    (Guitar Pro itself shows the direction and plays its own defaults). An export to an
+    older format therefore reports the lost timing; arpeggio speed and timing are dropped
+    by GP3-5/GP6.

@@ -3,24 +3,26 @@
 
 use egui::{Margin, RichText, Sense, vec2};
 use gscore_edit::Command;
-use gscore_model::{TrackColor, TrackIndex};
+use gscore_model::{InstrumentSymbol, TrackColor, TrackIndex};
 
 use super::GuitarScoreApp;
-use super::instrument::Instrument;
+use super::instrument;
 use super::style;
 use super::swatches;
 
 /// The popup's default size.
 const DIALOG_SIZE: egui::Vec2 = vec2(450.0, 330.0);
 
-/// The instruments that can be chosen.
-const SYMBOLS: [Instrument; 6] = [
-    Instrument::Guitar,
-    Instrument::Bass,
-    Instrument::Drums,
-    Instrument::Keyboard,
-    Instrument::Voice,
-    Instrument::Other,
+/// The instruments a new track can start with.
+const SYMBOLS: [InstrumentSymbol; 8] = [
+    InstrumentSymbol::ElectricGuitar,
+    InstrumentSymbol::AcousticGuitar,
+    InstrumentSymbol::Bass,
+    InstrumentSymbol::Drums,
+    InstrumentSymbol::Piano,
+    InstrumentSymbol::Voice,
+    InstrumentSymbol::Violin,
+    InstrumentSymbol::Other,
 ];
 
 /// The open new-track dialog.
@@ -30,7 +32,7 @@ pub(super) struct NewTrackDialog {
     pub(super) at: usize,
     name: String,
     color: TrackColor,
-    instrument: Instrument,
+    instrument: InstrumentSymbol,
     /// Whether the name field has been focused yet.
     focused: bool,
     /// Where the popup is; `None` until it is centered on its first frame.
@@ -64,9 +66,9 @@ impl GuitarScoreApp {
             .and_then(|index| {
                 let track = TrackIndex::new(index);
                 song.track(track)
-                    .map(|view| Instrument::of(&view, song.track_sound(track)))
+                    .map(|view| instrument::derived(&view, song.track_sound(track)))
             })
-            .unwrap_or(Instrument::Other);
+            .unwrap_or(InstrumentSymbol::Other);
         let mut number = 1_usize;
         let name = loop {
             let candidate = format!("Track {number}");
@@ -161,9 +163,10 @@ impl GuitarScoreApp {
                                         },
                                     );
                                 }
-                                instrument.paint(
+                                instrument::paint(
                                     ui.painter(),
                                     rect.shrink2(vec2(12.0, 8.0)),
+                                    instrument,
                                     ui.visuals().text_color(),
                                 );
                                 if response.on_hover_text(instrument.name()).clicked() {
@@ -242,8 +245,12 @@ impl GuitarScoreApp {
                 track,
                 color: dialog.color,
             },
+            Command::SetTrackSymbol {
+                track,
+                symbol: dialog.instrument,
+            },
         ];
-        if dialog.instrument == Instrument::Drums {
+        if dialog.instrument == InstrumentSymbol::Drums {
             commands.push(Command::SetTrackDrums { track, drums: true });
         } else {
             commands.push(Command::SetTrackDrums {
@@ -274,15 +281,23 @@ impl GuitarScoreApp {
     }
 }
 
-/// The General MIDI program that shows `instrument`'s symbol.
-fn program_for(instrument: Instrument) -> Option<u8> {
-    Some(match instrument {
-        Instrument::Guitar => 25,
-        Instrument::Bass => 33,
-        Instrument::Drums => return None,
-        Instrument::Keyboard => 0,
-        Instrument::Voice => 52,
-        // A violin program, outside the guitar/bass/keyboard/voice families.
-        Instrument::Other => 40,
+/// The General MIDI program that goes with `symbol`.
+fn program_for(symbol: InstrumentSymbol) -> Option<u8> {
+    Some(match symbol {
+        InstrumentSymbol::ElectricGuitar => 25,
+        InstrumentSymbol::AcousticGuitar => 24,
+        InstrumentSymbol::Bass => 33,
+        InstrumentSymbol::Drums => return None,
+        InstrumentSymbol::Piano => 0,
+        InstrumentSymbol::Organ => 16,
+        InstrumentSymbol::Synth => 80,
+        InstrumentSymbol::Voice => 52,
+        InstrumentSymbol::Violin => 40,
+        InstrumentSymbol::Trumpet => 56,
+        InstrumentSymbol::Saxophone => 65,
+        InstrumentSymbol::Flute => 73,
+        InstrumentSymbol::Banjo => 105,
+        InstrumentSymbol::Ukulele => 24,
+        InstrumentSymbol::Other => 40,
     })
 }

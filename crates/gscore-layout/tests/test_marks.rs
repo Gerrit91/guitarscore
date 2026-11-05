@@ -250,3 +250,96 @@ fn repeats_and_endings_are_drawn() {
         .count();
     assert_eq!(thick, 6);
 }
+
+/// Every glyph's box on the page: `(glyph, left, top, right, bottom)`.
+fn glyph_boxes(layout: &Layout) -> Vec<(Glyph, f32, f32, f32, f32)> {
+    let fonts = Fonts::bundled().unwrap();
+    layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Glyph {
+                glyph, at, scale, ..
+            } => {
+                let b = fonts.music.bbox(*glyph);
+                Some((
+                    *glyph,
+                    at.x + b.x_min * scale,
+                    at.y - b.y_max * scale,
+                    at.x + b.x_max * scale,
+                    at.y - b.y_min * scale,
+                ))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn dynamics_under_low_notes_clear_every_note_they_span_and_the_tab() {
+    use gscore_model::testing::TestNote;
+    // Eighths low on the guitar (ledger lines below the staff), some with accidentals,
+    // their dynamic changing from note to note: forte, fortississimo, forte, ...
+    let low: [&[TestNote]; 8] = [
+        &[TestNote::new(6, 2), TestNote::new(5, 2)],
+        &[TestNote::new(6, 1)],
+        &[TestNote::new(6, 2)],
+        &[TestNote::new(6, 0)],
+        &[TestNote::new(6, 2), TestNote::new(5, 2)],
+        &[TestNote::new(6, 1)],
+        &[TestNote::new(6, 2)],
+        &[TestNote::new(6, 4), TestNote::new(5, 4)],
+    ];
+    let beats: Vec<(u16, &[TestNote])> = low.iter().map(|notes| (8, *notes)).collect();
+    let mut song = testing::song_with_notes(&beats).unwrap();
+    for beat in 0..8 {
+        let dynamic = if beat % 2 == 0 {
+            Dynamic::F
+        } else {
+            Dynamic::Fff
+        };
+        let _ = song.set_dynamic(at(0, beat), dynamic).unwrap();
+    }
+    let laid_out = layout(&song);
+    let boxes = glyph_boxes(&laid_out);
+    let dynamics: Vec<_> = boxes
+        .iter()
+        .filter(|b| matches!(b.0, Glyph::Dynamic(_)))
+        .collect();
+    assert_eq!(dynamics.len(), 8, "every change is written");
+    for dynamic in &dynamics {
+        for other in boxes.iter().filter(|b| !matches!(b.0, Glyph::Dynamic(_))) {
+            let apart = dynamic.3 <= other.1
+                || other.3 <= dynamic.1
+                || dynamic.4 <= other.2
+                || other.4 <= dynamic.2;
+            assert!(apart, "{dynamic:?} overlaps {other:?}");
+        }
+    }
+    // The tab's top line: the sixth staff line from the top (below the notation's five;
+    // ledger lines are short and left out).
+    let mut lines: Vec<f32> = laid_out
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Line {
+                from, to, color, ..
+            } if *color == ColorToken::Staff
+                && (from.y - to.y).abs() < 0.01
+                && to.x - from.x > 10.0 =>
+            {
+                Some(from.y)
+            }
+            _ => None,
+        })
+        .collect();
+    lines.sort_by(f32::total_cmp);
+    lines.dedup_by(|a, b| (*a - *b).abs() < 0.01);
+    let tab_top = lines[5];
+    for dynamic in &dynamics {
+        assert!(
+            dynamic.4 < tab_top - 0.5,
+            "{dynamic:?} reaches the tab at {tab_top}"
+        );
+    }
+}

@@ -1,7 +1,7 @@
 //! Small monochrome icons drawn with the painter (GuitarScore's own work, no third-party
 //! assets or fonts): toolbar actions, so the app does not depend on an icon set.
 
-use egui::{Color32, Painter, Pos2, Rect, Response, Sense, Stroke, Vec2, vec2};
+use egui::{Color32, Painter, Pos2, Rect, Response, Sense, Shape, Stroke, Vec2, pos2, vec2};
 
 /// The icons the app draws.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,11 +70,37 @@ pub(crate) enum Icon {
     PanelBottom,
     /// The right panel.
     PanelRight,
+    /// Rename (a pencil).
+    Rename,
+    /// A tuner (a tuning fork).
+    Tuner,
 }
+
+/// The size of the compact icon buttons in the panels and the toolbar.
+const BUTTON: Vec2 = vec2(26.0, 22.0);
+/// How much the toolbar's icons are shrunk inside their button: less than the panels', so
+/// the drawing is a little larger without making the toolbar wider (a wider toolbar pushes
+/// the side groups into the player at narrow window sizes).
+const TOOLBAR_SHRINK: f32 = 3.5;
 
 /// A square icon button with a tooltip and an accessibility label.
 pub(crate) fn button(ui: &mut egui::Ui, icon: Icon, label: &str, tip: &str) -> Response {
-    let size = vec2(26.0, 22.0);
+    sized_button(ui, icon, label, tip, BUTTON, 6.0)
+}
+
+/// A [`button`] for the toolbar, with a larger drawn icon but the same layout size.
+pub(crate) fn toolbar_button(ui: &mut egui::Ui, icon: Icon, label: &str, tip: &str) -> Response {
+    sized_button(ui, icon, label, tip, BUTTON, TOOLBAR_SHRINK)
+}
+
+fn sized_button(
+    ui: &mut egui::Ui,
+    icon: Icon,
+    label: &str,
+    tip: &str,
+    size: Vec2,
+    shrink: f32,
+) -> Response {
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     ui.ctx().accesskit_node_builder(response.id, |node| {
         node.set_label(label);
@@ -86,7 +112,7 @@ pub(crate) fn button(ui: &mut egui::Ui, icon: Icon, label: &str, tip: &str) -> R
     }
     paint(
         ui.painter(),
-        rect.shrink(6.0),
+        rect.shrink(shrink),
         visuals.fg_stroke.color,
         icon,
     );
@@ -94,6 +120,7 @@ pub(crate) fn button(ui: &mut egui::Ui, icon: Icon, label: &str, tip: &str) -> R
 }
 
 /// An icon button that shows whether something is on (a panel shown): highlighted while on.
+/// The panel toggles live in the toolbar, so they draw the larger icon.
 pub(crate) fn toggle_button(
     ui: &mut egui::Ui,
     icon: Icon,
@@ -101,7 +128,18 @@ pub(crate) fn toggle_button(
     tip: &str,
     on: bool,
 ) -> Response {
-    let size = vec2(26.0, 22.0);
+    sized_toggle(ui, icon, label, tip, on, BUTTON, TOOLBAR_SHRINK)
+}
+
+fn sized_toggle(
+    ui: &mut egui::Ui,
+    icon: Icon,
+    label: &str,
+    tip: &str,
+    on: bool,
+    size: Vec2,
+    shrink: f32,
+) -> Response {
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, on, label));
     let visuals = ui.style().interact(&response);
@@ -116,7 +154,7 @@ pub(crate) fn toggle_button(
     }
     paint(
         ui.painter(),
-        rect.shrink(6.0),
+        rect.shrink(shrink),
         visuals.fg_stroke.color,
         icon,
     );
@@ -131,7 +169,7 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
     match icon {
         Icon::Play => {
             let half = size * 0.45;
-            painter.add(egui::Shape::convex_polygon(
+            painter.add(Shape::convex_polygon(
                 vec![
                     center + vec2(-half * 0.7, -half),
                     center + vec2(half, 0.0),
@@ -165,13 +203,13 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             // A full-height metronome, then a small play sign: click a bar, then start.
             paint_metronome(
                 painter,
-                egui::pos2(rect.left() + size * 0.45, center.y),
+                pos2(rect.left() + size * 0.45, center.y),
                 size,
                 color,
             );
             paint_triangle(
                 painter,
-                egui::pos2(rect.right() - size * 0.16, center.y + size * 0.1),
+                pos2(rect.right() - size * 0.16, center.y + size * 0.1),
                 size * 0.17,
                 true,
                 color,
@@ -189,14 +227,14 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             let x = rect.left() + size * 0.22;
             painter.line_segment(
                 [
-                    egui::pos2(x, rect.top() + size * 0.1),
-                    egui::pos2(x, rect.bottom() - size * 0.1),
+                    pos2(x, rect.top() + size * 0.1),
+                    pos2(x, rect.bottom() - size * 0.1),
                 ],
                 stroke,
             );
             paint_triangle(
                 painter,
-                egui::pos2(rect.left() + size * 0.6, center.y),
+                pos2(rect.left() + size * 0.6, center.y),
                 size * 0.3,
                 false,
                 color,
@@ -227,7 +265,7 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
         Icon::ToEnd => {
             paint_triangle(
                 painter,
-                egui::pos2(rect.right() - size * 0.6, center.y),
+                pos2(rect.right() - size * 0.6, center.y),
                 size * 0.3,
                 true,
                 color,
@@ -235,8 +273,8 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             let x = rect.right() - size * 0.22;
             painter.line_segment(
                 [
-                    egui::pos2(x, rect.top() + size * 0.1),
-                    egui::pos2(x, rect.bottom() - size * 0.1),
+                    pos2(x, rect.top() + size * 0.1),
+                    pos2(x, rect.bottom() - size * 0.1),
                 ],
                 stroke,
             );
@@ -246,24 +284,24 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             // the top and the label at the bottom. Square, whatever the button's shape.
             let body = Rect::from_center_size(center, Vec2::splat(size)).shrink(0.75);
             let notch = size * 0.22;
-            painter.add(egui::Shape::closed_line(
+            painter.add(Shape::closed_line(
                 vec![
                     body.left_top(),
-                    egui::pos2(body.right() - notch, body.top()),
-                    egui::pos2(body.right(), body.top() + notch),
+                    pos2(body.right() - notch, body.top()),
+                    pos2(body.right(), body.top() + notch),
                     body.right_bottom(),
                     body.left_bottom(),
                 ],
                 stroke,
             ));
             let shutter = Rect::from_min_max(
-                egui::pos2(body.left() + size * 0.24, body.top()),
-                egui::pos2(body.right() - size * 0.3, body.top() + size * 0.3),
+                pos2(body.left() + size * 0.24, body.top()),
+                pos2(body.right() - size * 0.3, body.top() + size * 0.3),
             );
             painter.rect_filled(shutter, 0.0, color);
             let label = Rect::from_min_max(
-                egui::pos2(body.left() + size * 0.26, body.top() + size * 0.58),
-                egui::pos2(body.right() - size * 0.26, body.bottom() - size * 0.22),
+                pos2(body.left() + size * 0.26, body.top() + size * 0.58),
+                pos2(body.right() - size * 0.26, body.bottom() - size * 0.22),
             );
             painter.rect_filled(label, 0.5, color);
         }
@@ -271,17 +309,17 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             // A page with a folded corner and a plus on it.
             let page = Rect::from_center_size(center, vec2(size * 0.8, size)).shrink(0.75);
             let fold = size * 0.28;
-            painter.add(egui::Shape::closed_line(
+            painter.add(Shape::closed_line(
                 vec![
                     page.left_top(),
-                    egui::pos2(page.right() - fold, page.top()),
-                    egui::pos2(page.right(), page.top() + fold),
+                    pos2(page.right() - fold, page.top()),
+                    pos2(page.right(), page.top() + fold),
                     page.right_bottom(),
                     page.left_bottom(),
                 ],
                 stroke,
             ));
-            let plus = egui::pos2(page.center().x, page.center().y + size * 0.1);
+            let plus = pos2(page.center().x, page.center().y + size * 0.1);
             let arm = size * 0.2;
             painter.line_segment([plus - vec2(arm, 0.0), plus + vec2(arm, 0.0)], stroke);
             painter.line_segment([plus - vec2(0.0, arm), plus + vec2(0.0, arm)], stroke);
@@ -310,12 +348,12 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             let arc: Vec<Pos2> = (0..=24)
                 .map(|step| point(start - sweep * step as f32 / 24.0))
                 .collect();
-            painter.add(egui::Shape::line(arc, stroke));
+            painter.add(Shape::line(arc, stroke));
             let end = start - sweep;
             let tip = point(end);
             let along = vec2(end.sin(), -end.cos());
             let out = vec2(end.cos(), end.sin());
-            painter.add(egui::Shape::convex_polygon(
+            painter.add(Shape::convex_polygon(
                 vec![
                     tip + along * size * 0.2,
                     tip - out * size * 0.17 - along * size * 0.04,
@@ -332,8 +370,8 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 let x = center.x + offset * size;
                 painter.line_segment(
                     [
-                        egui::pos2(x, rect.top() + size * 0.12),
-                        egui::pos2(x, rect.bottom() - size * 0.12),
+                        pos2(x, rect.top() + size * 0.12),
+                        pos2(x, rect.bottom() - size * 0.12),
                     ],
                     stroke,
                 );
@@ -343,7 +381,7 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                     _ => rect.top() + size * 0.46,
                 };
                 painter.rect_filled(
-                    Rect::from_center_size(egui::pos2(x, knob_y), vec2(size * 0.24, size * 0.1)),
+                    Rect::from_center_size(pos2(x, knob_y), vec2(size * 0.24, size * 0.1)),
                     1.0,
                     color,
                 );
@@ -355,15 +393,15 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             painter.rect_stroke(square, 1.0, stroke, egui::StrokeKind::Inside);
             painter.line_segment(
                 [
-                    egui::pos2(center.x, square.top()),
-                    egui::pos2(center.x, square.bottom()),
+                    pos2(center.x, square.top()),
+                    pos2(center.x, square.bottom()),
                 ],
                 stroke,
             );
             painter.line_segment(
                 [
-                    egui::pos2(square.left(), center.y),
-                    egui::pos2(square.right(), center.y),
+                    pos2(square.left(), center.y),
+                    pos2(square.right(), center.y),
                 ],
                 stroke,
             );
@@ -373,12 +411,12 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             let width = (size * 1.25).min(rect.width());
             let area = Rect::from_center_size(center, vec2(width, size));
             let at = |x: f32, y: f32| {
-                egui::pos2(
+                pos2(
                     area.left() + area.width() * x,
                     area.top() + area.height() * y,
                 )
             };
-            painter.add(egui::Shape::line(
+            painter.add(Shape::line(
                 vec![
                     at(0.06, 0.9),
                     at(0.06, 0.1),
@@ -389,7 +427,7 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 ],
                 stroke,
             ));
-            painter.add(egui::Shape::closed_line(
+            painter.add(Shape::closed_line(
                 vec![at(0.06, 0.9), at(0.24, 0.44), at(0.98, 0.44), at(0.8, 0.9)],
                 stroke,
             ));
@@ -457,6 +495,60 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             painter.line_segment([center - vec2(half, 0.0), center + vec2(half, 0.0)], stroke);
             painter.line_segment([center - vec2(0.0, half), center + vec2(0.0, half)], stroke);
         }
+        Icon::Rename => {
+            // A pencil: a thin body from the lower left to the upper right, and its tip.
+            let tip_at = center + vec2(-size * 0.34, size * 0.34);
+            let end = center + vec2(size * 0.32, -size * 0.34);
+            let direction = (end - tip_at).normalized();
+            let across = vec2(-direction.y, direction.x) * (size * 0.09);
+            painter.line_segment([tip_at + across, end + across], stroke);
+            painter.line_segment([tip_at - across, end - across], stroke);
+            painter.line_segment([end - across, end + across], stroke);
+            painter.add(Shape::convex_polygon(
+                vec![
+                    tip_at + across,
+                    tip_at - across,
+                    tip_at - direction * (size * 0.18),
+                ],
+                stroke.color,
+                Stroke::NONE,
+            ));
+        }
+        Icon::Tuner => {
+            // A tuning fork: two prongs, the U where they meet, a stem and a base.
+            let half = size * 0.24;
+            let top = center.y - size * 0.44;
+            let bend = center.y + size * 0.02;
+            painter.line_segment(
+                [pos2(center.x - half, top), pos2(center.x - half, bend)],
+                stroke,
+            );
+            painter.line_segment(
+                [pos2(center.x + half, top), pos2(center.x + half, bend)],
+                stroke,
+            );
+            let u: Vec<_> = (0..=10)
+                .map(|step| {
+                    let t = std::f32::consts::PI * step as f32 / 10.0;
+                    pos2(center.x - t.cos() * half, bend + t.sin() * half * 0.55)
+                })
+                .collect();
+            painter.add(Shape::line(u, stroke));
+            painter.line_segment(
+                [
+                    pos2(center.x, bend + half * 0.55),
+                    pos2(center.x, center.y + size * 0.32),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    pos2(center.x - size * 0.14, center.y + size * 0.32),
+                    pos2(center.x + size * 0.14, center.y + size * 0.32),
+                ],
+                stroke,
+            );
+        }
         Icon::MoveUp | Icon::MoveDown => {
             // Drawn pointing up, mirrored for down.
             let sign = if matches!(icon, Icon::MoveUp) {
@@ -477,7 +569,7 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
         Icon::WindowMinimize => {
             let y = center.y + size * 0.1;
             painter.line_segment(
-                [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
+                [pos2(rect.left(), y), pos2(rect.right(), y)],
                 Stroke::new(1.0, color),
             );
         }
@@ -528,14 +620,14 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             let part = match icon {
                 Icon::PanelLeft => Rect::from_min_max(
                     frame.min,
-                    egui::pos2(frame.left() + frame.width() * 0.32, frame.bottom()),
+                    pos2(frame.left() + frame.width() * 0.32, frame.bottom()),
                 ),
                 Icon::PanelRight => Rect::from_min_max(
-                    egui::pos2(frame.right() - frame.width() * 0.32, frame.top()),
+                    pos2(frame.right() - frame.width() * 0.32, frame.top()),
                     frame.max,
                 ),
                 _ => Rect::from_min_max(
-                    egui::pos2(frame.left(), frame.bottom() - frame.height() * 0.38),
+                    pos2(frame.left(), frame.bottom() - frame.height() * 0.38),
                     frame.max,
                 ),
             };
@@ -551,18 +643,18 @@ fn paint_metronome(painter: &Painter, center: Pos2, size: f32, color: Color32) {
     let top = center.y - size * 0.44;
     let half_bottom = size * 0.36;
     let half_top = size * 0.16;
-    painter.add(egui::Shape::closed_line(
+    painter.add(Shape::closed_line(
         vec![
-            egui::pos2(center.x - half_bottom, bottom),
-            egui::pos2(center.x - half_top, top),
-            egui::pos2(center.x + half_top, top),
-            egui::pos2(center.x + half_bottom, bottom),
+            pos2(center.x - half_bottom, bottom),
+            pos2(center.x - half_top, top),
+            pos2(center.x + half_top, top),
+            pos2(center.x + half_bottom, bottom),
         ],
         stroke,
     ));
     // The pendulum leans right from the foot, with a small weight on it.
-    let foot = egui::pos2(center.x, bottom - size * 0.12);
-    let end = egui::pos2(center.x + size * 0.34, top + size * 0.08);
+    let foot = pos2(center.x, bottom - size * 0.12);
+    let end = pos2(center.x + size * 0.34, top + size * 0.08);
     painter.line_segment([foot, end], Stroke::new(1.2, color));
     let weight = foot + (end - foot) * 0.62;
     painter.circle_filled(weight, size * 0.1, color);
@@ -590,11 +682,11 @@ fn paint_arc_arrow(
             center + Vec2::angled(angle) * radius
         })
         .collect();
-    painter.add(egui::Shape::line(points, Stroke::new(1.5, color)));
+    painter.add(Shape::line(points, Stroke::new(1.5, color)));
     let radial = Vec2::angled(to);
     let tangent = Vec2::new(-radial.y, radial.x) * sign;
     let base = center + radial * radius - tangent * (head * 0.55);
-    painter.add(egui::Shape::convex_polygon(
+    painter.add(Shape::convex_polygon(
         vec![
             base + tangent * head,
             base + radial * (head * 0.5),
@@ -608,7 +700,7 @@ fn paint_arc_arrow(
 /// A filled triangle centered on `center`; `right` points it right, else left.
 fn paint_triangle(painter: &Painter, center: Pos2, half: f32, right: bool, color: Color32) {
     let direction = if right { 1.0 } else { -1.0 };
-    painter.add(egui::Shape::convex_polygon(
+    painter.add(Shape::convex_polygon(
         vec![
             center + vec2(-direction * half, -half),
             center + vec2(direction * half, 0.0),

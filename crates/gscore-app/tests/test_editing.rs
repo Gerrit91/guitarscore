@@ -355,9 +355,13 @@ fn the_advanced_effect_tiles_edit_the_note_and_beat() {
     };
 
     click(&mut harness, "Arpeggio down");
+    harness.get_by_label("OK").click();
+    harness.run();
     assert_eq!(arpeggio(&harness), Some(StrokeDirection::Down));
     click(&mut harness, "Arpeggio down");
-    assert_eq!(arpeggio(&harness), None, "the second click removes it");
+    harness.get_by_label("Remove").click();
+    harness.run();
+    assert_eq!(arpeggio(&harness), None, "Remove clears it");
     click(&mut harness, "Dead slapped");
     assert!(beat_flag(&harness, |beat| beat.is_dead_slapped()));
     click(&mut harness, "Rasgueado");

@@ -5,7 +5,7 @@
 //! so every change is undoable and recorded in the recovery journal.
 
 use egui::{Align, Layout, Margin, RichText, vec2};
-use gscore_edit::Command;
+use gscore_edit::{ActionId, Command};
 use gscore_model::{
     Feel, Fermata, MeasureIndex, Repeat, Section, SystemBreak, TrackColor, TrackIndex,
 };
@@ -308,8 +308,15 @@ enum Outcome {
     Cancel,
 }
 
-/// The Staff section: icon tiles, each opening a dialog.
-pub(super) fn section(ui: &mut egui::Ui, state: &mut StaffState, snapshot: &PaletteSnapshot) {
+/// The Staff section: icon tiles, each opening a dialog. Returns the palette action of a
+/// tile that has no staff dialog of its own (the beat text editor is one of the effects).
+pub(super) fn section(
+    ui: &mut egui::Ui,
+    state: &mut StaffState,
+    snapshot: &PaletteSnapshot,
+    hint: &dyn Fn(ActionId) -> String,
+) -> Option<ActionId> {
+    let mut action = None;
     style::section(ui, "staff", "Staff", |ui| {
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = vec2(2.0, 3.0);
@@ -400,10 +407,28 @@ pub(super) fn section(ui: &mut egui::Ui, state: &mut StaffState, snapshot: &Pale
                 ),
             ];
             for (dialog, face, label, tip, on) in items {
-                if tiles::tile(ui, face, on, true, label, tip).clicked() {
+                if tiles::dialog_tile(ui, face, on, true, label, tip).clicked() {
                     state.open_dialog(dialog, snapshot);
                 }
             }
+            // Beat text has its own editor rather than a staff dialog, but it is a dialog
+            // tile like the others (and lives here, next to the other bar-level marks).
+            let tip = format!(
+                "Beat text: text written above the beat, like Guitar Pro's beat text{}",
+                hint(ActionId::EditBeatText)
+            );
+            let beat_text = tiles::dialog_tile(
+                ui,
+                Face::BeatText,
+                !snapshot.beat_text.is_empty(),
+                true,
+                "Beat text…",
+                &tip,
+            );
+            if beat_text.clicked() {
+                action = Some(ActionId::EditBeatText);
+            }
         });
     });
+    action
 }

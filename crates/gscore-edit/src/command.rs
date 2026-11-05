@@ -2,9 +2,9 @@
 
 use gscore_model::{
     BeatEffect, BeatKind, BeatPosition, BeatView, Change, Dynamic, Feel, Fermata, Fret,
-    MAX_BARS_PER_SYSTEM, MAX_SECTION_TITLE_CHARS, MAX_TEMPO, MeasureIndex, ModelError, NoteEffect,
-    NoteValue, PageSetup, Pitch, Repeat, Song, SongTextField, StringNumber, SystemBreak,
-    TimeSignature, TrackColor, TrackIndex, TrackStaves,
+    InstrumentSymbol, MAX_BARS_PER_SYSTEM, MAX_SECTION_TITLE_CHARS, MAX_TEMPO, MeasureIndex,
+    ModelError, NoteEffect, NoteValue, PageSetup, Pitch, Repeat, Song, SongTextField, StringNumber,
+    SystemBreak, TimeSignature, TrackColor, TrackIndex, TrackStaves,
 };
 
 use crate::info::{
@@ -15,8 +15,8 @@ use crate::info::{
     SET_MASTER_VOLUME, SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_REPEAT, SET_SECTION, SET_SONG_TEXT,
     SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_CHORUS, SET_TRACK_COLOR,
     SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_REVERB,
-    SET_TRACK_SOLO, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_VOLUME,
-    UNDO,
+    SET_TRACK_SOLO, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_SYMBOL,
+    SET_TRACK_VOLUME, UNDO,
 };
 use crate::info::{SET_BARS_PER_SYSTEM, SET_PAGE_SETUP, SET_SCORE_LINE_BREAK, SET_SYSTEM_BREAK};
 
@@ -103,6 +103,13 @@ pub enum Command {
         track: TrackIndex,
         /// The new color.
         color: TrackColor,
+    },
+    /// Set the symbol the app draws for the track (an instrument icon).
+    SetTrackSymbol {
+        /// The track.
+        track: TrackIndex,
+        /// The instrument symbol.
+        symbol: InstrumentSymbol,
     },
     /// Set the track's volume (0-127).
     SetTrackVolume {
@@ -427,6 +434,9 @@ impl Command {
             Command::SetTrackColor { track, color } => {
                 format!("{id} track={} color={:06x}", one(track.get()), color.rgb())
             }
+            Command::SetTrackSymbol { track, symbol } => {
+                format!("{id} track={} symbol={}", one(track.get()), symbol.id())
+            }
             Command::SetTrackVolume { track, volume } => {
                 format!("{id} track={} volume={volume}", one(track.get()))
             }
@@ -654,6 +664,7 @@ impl Command {
             Command::MoveTrack { .. } => &MOVE_TRACK,
             Command::RenameTrack { .. } => &RENAME_TRACK,
             Command::SetTrackColor { .. } => &SET_TRACK_COLOR,
+            Command::SetTrackSymbol { .. } => &SET_TRACK_SYMBOL,
             Command::SetTrackVolume { .. } => &SET_TRACK_VOLUME,
             Command::SetTrackPan { .. } => &SET_TRACK_PAN,
             Command::SetTrackReverb { .. } => &SET_TRACK_REVERB,
@@ -831,6 +842,7 @@ impl Command {
         match self {
             Command::RenameTrack { .. }
             | Command::SetTrackColor { .. }
+            | Command::SetTrackSymbol { .. }
             | Command::SetSongText { .. }
             | Command::SetPageSetup { .. }
             | Command::SetSystemBreak { .. }
@@ -958,6 +970,7 @@ impl Command {
                     && name.chars().count() <= gscore_model::MAX_TRACK_NAME_CHARS
             }
             Command::SetTrackColor { track, .. }
+            | Command::SetTrackSymbol { track, .. }
             | Command::SetTrackVolume { track, .. }
             | Command::SetTrackPan { track, .. }
             | Command::SetTrackReverb { track, .. }
@@ -1087,6 +1100,9 @@ impl Command {
             Command::MoveTrack { from, to } => song.move_track(*from, *to),
             Command::RenameTrack { track, name } => song.rename_track(*track, name),
             Command::SetTrackColor { track, color } => song.set_track_color(*track, *color),
+            Command::SetTrackSymbol { track, symbol } => {
+                song.set_track_symbol(*track, Some(*symbol))
+            }
             Command::SetTrackVolume { track, volume } => song.set_track_volume(*track, *volume),
             Command::SetTrackPan { track, pan } => song.set_track_pan(*track, *pan),
             Command::SetTrackReverb { track, reverb } => song.set_track_reverb(*track, *reverb),

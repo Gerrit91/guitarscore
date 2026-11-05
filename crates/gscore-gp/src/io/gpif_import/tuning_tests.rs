@@ -187,6 +187,19 @@ fn instrument_and_tuning_label_survive_writing() {
 }
 
 #[test]
+fn a_chosen_symbol_survives_writing_and_reading() {
+    let mut song = Song::default();
+    song.read_gpif(&gpif_with_staff_tuning("38 45 50 55 57 62"));
+    song.tracks[0].symbol = Some("banjo".to_owned());
+    let bytes = song.write_gp().expect("write");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("reread");
+    assert_eq!(reread.tracks[0].symbol.as_deref(), Some("banjo"));
+    // The instrument itself is unchanged: the symbol is only a display choice.
+    assert_ne!(reread.tracks[0].instrument_type.as_deref(), Some("banjo"));
+}
+
+#[test]
 fn capo_fret_is_read_and_written() {
     // GP7 stores the capo as a staff property; GP6 keeps it on the track.
     let xml = "<GPIF><Score></Score><MasterTrack></MasterTrack><Tracks><Track id=\"0\">\

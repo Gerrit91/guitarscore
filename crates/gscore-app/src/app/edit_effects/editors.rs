@@ -3,14 +3,16 @@
 //! note or beat, showing them, and turning OK, Remove and Listen into commands.
 
 use gscore_edit::Command;
-use gscore_model::{BeatEffect, BendKind, BendShape, Hand, NoteEffect, WhammyShape};
+use gscore_model::{
+    BeatEffect, BendKind, BendShape, Hand, NoteEffect, StrokeDirection, WhammyShape,
+};
 
 use super::super::beat_text_editor::BeatTextEditor;
 use super::super::edit_palette::PaletteSnapshot;
 use super::super::grace_editor::GraceEditor;
 use super::super::harmonic_editor::HarmonicEditor;
 use super::super::shape_editor::{Outcome, ShapeEditor, ShapeTarget};
-use super::dialogs::{FingerEditor, TremoloEditor, TrillEditor};
+use super::dialogs::{FingerEditor, StrokeEditor, StrokeEditorKind, TremoloEditor, TrillEditor};
 use super::{EffectsState, apply_beat, apply_note, default_bend, default_whammy};
 use crate::settings::{Settings, ShapePreset};
 
@@ -58,6 +60,7 @@ impl EffectsState {
             || self.beat_text.is_some()
             || self.finger_left.is_some()
             || self.finger_right.is_some()
+            || self.stroke.is_some()
     }
 
     /// Shows the open bend or whammy editor; OK and Remove turn into commands for the
@@ -80,6 +83,54 @@ impl EffectsState {
         self.show_beat_text(ctx, snapshot, commands);
         self.show_finger(ctx, snapshot, commands, Hand::Left);
         self.show_finger(ctx, snapshot, commands, Hand::Right);
+        self.show_stroke(ctx, snapshot, commands);
+    }
+
+    /// Opens the brush or arpeggio dialog on the cursor beat's stroke (or on `kind`'s
+    /// defaults in `direction`). Nothing changes until OK.
+    pub(in crate::app) fn open_stroke(
+        &mut self,
+        snapshot: &PaletteSnapshot,
+        kind: StrokeEditorKind,
+        direction: StrokeDirection,
+    ) {
+        let current = snapshot
+            .beat_state
+            .as_ref()
+            .or(snapshot.beat_states.first())
+            .and_then(|beat| match kind {
+                StrokeEditorKind::Brush => beat.brush,
+                StrokeEditorKind::Arpeggio => beat.arpeggio,
+            });
+        self.stroke = Some(StrokeEditor::new(kind, current, direction));
+    }
+
+    fn show_stroke(
+        &mut self,
+        ctx: &egui::Context,
+        snapshot: &PaletteSnapshot,
+        commands: &mut Vec<Command>,
+    ) {
+        let Some(editor) = &mut self.stroke else {
+            return;
+        };
+        let kind = editor.kind();
+        let effect = match editor.show(ctx) {
+            Outcome::Open => return,
+            Outcome::Apply => Some(match kind {
+                StrokeEditorKind::Brush => BeatEffect::BrushStroke(Some(editor.stroke())),
+                StrokeEditorKind::Arpeggio => BeatEffect::Arpeggio(Some(editor.stroke())),
+            }),
+            Outcome::Remove => Some(match kind {
+                StrokeEditorKind::Brush => BeatEffect::BrushStroke(None),
+                StrokeEditorKind::Arpeggio => BeatEffect::Arpeggio(None),
+            }),
+            Outcome::Cancel | Outcome::Listen => None,
+        };
+        if let Some(effect) = effect {
+            apply_beat(commands, &snapshot.beats, effect);
+        }
+        self.stroke = None;
     }
 
     /// Opens the fingering dialog for one hand on the cursor note's finger.

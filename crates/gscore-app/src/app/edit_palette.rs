@@ -64,6 +64,12 @@ impl EditPaletteState {
     fn duration(&self) -> Option<NoteValue> {
         NoteValue::new(self.value, self.dots, self.tuplet).ok()
     }
+
+    /// Whether one of the palette's effect dialogs is open (the bend, whammy, harmonic,
+    /// grace, trill, tremolo, beat text or fingering editor).
+    pub(super) fn is_editing(&self) -> bool {
+        self.effects.is_editing()
+    }
 }
 
 /// The song data the palette shows, taken before the widgets run.
@@ -140,7 +146,7 @@ impl PaletteSnapshot {
                 }
             }
         }
-        let dynamics = DynamicsSnapshot::of(song, &beats, cursor.position());
+        let dynamics = DynamicsSnapshot::of(song, &beats);
         let measure_view = track.and_then(|track| track.measure(measure));
         let silent_beats = beats
             .iter()
@@ -207,7 +213,11 @@ impl GuitarScoreApp {
                 ui.spacing_mut().item_spacing.y = 6.0;
                 let keymap = &self.keymap;
                 let hint = |action: ActionId| key_hint(keymap, action);
-                edit_staff::section(ui, &mut tab.edit_palette.staff, &snapshot);
+                let beat_text =
+                    edit_staff::section(ui, &mut tab.edit_palette.staff, &snapshot, &hint);
+                if beat_text == Some(ActionId::EditBeatText) {
+                    tab.edit_palette.effects.open_beat_text(&snapshot);
+                }
                 style::section(ui, "note_input", "Note input", |ui| {
                     note_length(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
                     beat_buttons(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
@@ -320,6 +330,10 @@ impl GuitarScoreApp {
             state.effects.open_trill(&snapshot);
         } else if action == ActionId::TremoloOther {
             state.effects.open_tremolo(&snapshot);
+        } else if let Some((kind, direction)) =
+            super::edit_effects::fx_item(action).and_then(|item| item.fx.stroke_target())
+        {
+            state.effects.open_stroke(&snapshot, kind, direction);
         } else if let Some(item) = super::edit_effects::fx_item(action) {
             commands = super::edit_effects::fx_commands(item.fx, &snapshot);
         }
@@ -741,21 +755,6 @@ fn beat_buttons(
         );
         if tie_beat.clicked() {
             commands.extend(tie_beat_commands(snapshot));
-        }
-        let tip = format!(
-            "Beat text: text written above the beat, like Guitar Pro's beat text{}",
-            hint(ActionId::EditBeatText)
-        );
-        let beat_text = tiles::tile(
-            ui,
-            Face::BeatText,
-            !snapshot.beat_text.is_empty(),
-            true,
-            "Beat text…",
-            &tip,
-        );
-        if beat_text.clicked() {
-            state.effects.open_beat_text(snapshot);
         }
     });
     ui.add_space(2.0);
