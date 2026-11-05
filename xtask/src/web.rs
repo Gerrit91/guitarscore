@@ -18,6 +18,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+mod soundfont;
+
 use crate::{TaskResult, cmd};
 
 /// Where the build goes unless `--out` says otherwise.
@@ -40,11 +42,13 @@ pub(crate) fn run(root: &Path, args: &[String]) -> TaskResult {
     let worklet = build_worklet(root, &options)?;
     bindgen(&worklet, &out, "worklet_synth")?;
     copy_shell(root, &out)?;
+    soundfont::install(root, &out, &options.soundfont)?;
     stamp_service_worker(&out)?;
     if !options.no_wasm_opt {
         optimise(&out.join("guitarscore_bg.wasm"))?;
     }
     report_sizes(&out)?;
+    soundfont::report_size(&out);
     if options.smoke {
         smoke(&out)?;
     }
@@ -63,6 +67,8 @@ struct Options {
     no_wasm_opt: bool,
     /// Open the result in a headless browser and check that it starts.
     smoke: bool,
+    /// Which SoundFont the site ships.
+    soundfont: soundfont::Source,
 }
 
 impl Options {
@@ -72,6 +78,7 @@ impl Options {
             debug: false,
             no_wasm_opt: false,
             smoke: false,
+            soundfont: soundfont::Source::Bundled,
         };
         let mut rest = args.iter();
         while let Some(arg) = rest.next() {
@@ -85,10 +92,26 @@ impl Options {
                 "--debug" => options.debug = true,
                 "--no-wasm-opt" => options.no_wasm_opt = true,
                 "--smoke" => options.smoke = true,
+                "--soundfont" => {
+                    let Some(value) = rest.next() else {
+                        return Err("--soundfont needs a .sf2 file".to_owned());
+                    };
+                    if matches!(options.soundfont, soundfont::Source::None) {
+                        return Err("--soundfont and --no-soundfont cannot be combined".to_owned());
+                    }
+                    options.soundfont = soundfont::Source::Local(PathBuf::from(value));
+                }
+                "--no-soundfont" => {
+                    if matches!(options.soundfont, soundfont::Source::Local(_)) {
+                        return Err("--soundfont and --no-soundfont cannot be combined".to_owned());
+                    }
+                    options.soundfont = soundfont::Source::None;
+                }
                 other => {
                     return Err(format!(
                         "unexpected argument `{other}`\n\nusage: cargo xtask web \
-                         [--out DIR] [--debug] [--no-wasm-opt] [--smoke]"
+                         [--out DIR] [--debug] [--no-wasm-opt] [--smoke] \
+                         [--soundfont PATH | --no-soundfont]"
                     ));
                 }
             }
@@ -312,7 +335,7 @@ fn report_sizes(out: &Path) -> Result<(), String> {
 /// The size of `path` after `program` compresses it to stdout, or 0 if the program is
 /// missing. The file is the compressor's argument, so a full stdout pipe cannot deadlock
 /// the writer.
-fn compressed_size(program: &str, args: &[&str], path: &Path) -> Result<u64, String> {
+pub(crate) fn compressed_size(program: &str, args: &[&str], path: &Path) -> Result<u64, String> {
     let Some(program) = which(&[program]) else {
         return Ok(0);
     };

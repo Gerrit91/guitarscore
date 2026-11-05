@@ -3,6 +3,7 @@
 mod cdp;
 mod cmd;
 mod layers;
+mod sha256;
 mod source_scan;
 mod wasm;
 mod web;
@@ -21,10 +22,12 @@ Tasks:
                         performance budgets. Files: the arguments, else GSCORE_BENCH_FILES
                         (separated by ':'), else the files in testdata/basic
   web [--out DIR] [--debug] [--no-wasm-opt] [--smoke]
+      [--soundfont PATH | --no-soundfont]
                         Build the browser app (WebAssembly) and assemble the static site
                         (index.html, guitarscore.js, guitarscore_bg.wasm, assets/,
-                        manifest.json, sw.js) in dist/web; --smoke checks it in headless
-                        Chromium and saves a screenshot
+                        manifest.json, sw.js) in dist/web. Ships GeneralUser GS 2.0.3
+                        (downloaded once, checked) unless --soundfont PATH or
+                        --no-soundfont is given; --smoke checks it in headless Chromium
   corpus                Run the opt-in corpus tests (not implemented yet)";
 
 /// Error type of every task: a message for the person running it.
