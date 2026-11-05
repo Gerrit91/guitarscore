@@ -287,6 +287,30 @@ impl MeasureLayout {
                 self.draw_tab_tuplets(&xs, right, top, ops);
             }
         }
+        // Octave signs go over or under the staff that carries the notes.
+        let octave_top = tops.notation.unwrap_or(top);
+        let octave_height = if tops.notation.is_some() {
+            notation::staff().height()
+        } else {
+            ctx.staff.height()
+        };
+        for (index, column) in self.columns.iter().enumerate() {
+            let Some(octave) = column.octave else {
+                continue;
+            };
+            let Some(&at) = xs.get(index) else {
+                continue;
+            };
+            draw_octave(
+                at,
+                span_end(index),
+                octave_top,
+                octave_height,
+                octave,
+                ctx,
+                ops,
+            );
+        }
         // The slash-notation staff: the same rhythm, written as slashes.
         if let Some(slash_top) = tops.slash {
             let voices = self
@@ -611,6 +635,46 @@ impl MeasureLayout {
 }
 
 /// A large cross across a staff for a dead slapped beat, centered on `x`.
+/// An octave sign over or under the tab staff: "8va", "8vb", "15ma" or "15mb" and a line
+/// to the end of the column's space.
+fn draw_octave(
+    x: f32,
+    end: f32,
+    top: f32,
+    staff_height: f32,
+    octave: gscore_model::OctaveSign,
+    ctx: &Context<'_>,
+    ops: &mut Vec<DrawOp>,
+) {
+    let below = octave.below();
+    let y = if below {
+        top + staff_height + 1.3
+    } else {
+        top - 1.5
+    };
+    let label = octave.label();
+    ops.push(DrawOp::Text {
+        text: label.to_owned(),
+        at: Point::new(x, y),
+        size: 0.9,
+        font: TextFont::Regular,
+        anchor: TextAnchor::Start,
+        color: ColorToken::Annotation,
+    });
+    let width = ctx.fonts.text.width(label, 0.9);
+    let line_y = if below { y - 0.9 } else { y + 0.35 };
+    let from = x + width + 0.25;
+    let to = end.max(from);
+    if to > from {
+        ops.push(DrawOp::Line {
+            from: Point::new(from, line_y),
+            to: Point::new(to, line_y),
+            thickness: 0.08,
+            color: ColorToken::Annotation,
+        });
+    }
+}
+
 /// Guitar Pro's bar-repetition sign: one or two slashes through the middle of the staff,
 /// with a dot marking which half of a repeated pair it is.
 fn draw_simile(center: f32, middle: f32, simile: gscore_model::SimileMark, ops: &mut Vec<DrawOp>) {

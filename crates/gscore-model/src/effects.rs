@@ -149,6 +149,51 @@ pub enum Vibrato {
     Wide,
 }
 
+/// An octave sign over or under a beat: play (and write) it an octave or two higher or
+/// lower.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OctaveSign {
+    /// "8va": one octave higher.
+    Ottava,
+    /// "8vb": one octave lower.
+    OttavaBassa,
+    /// "15ma": two octaves higher.
+    Quindicesima,
+    /// "15mb": two octaves lower.
+    QuindicesimaBassa,
+}
+
+impl OctaveSign {
+    /// The sign named by Guitar Pro's value, if any.
+    pub fn from_gp(octave: &gscore_gp::Octave) -> Option<Self> {
+        match octave {
+            gscore_gp::Octave::Ottava => Some(OctaveSign::Ottava),
+            gscore_gp::Octave::OttavaBassa => Some(OctaveSign::OttavaBassa),
+            gscore_gp::Octave::Quindicesima => Some(OctaveSign::Quindicesima),
+            gscore_gp::Octave::QuindicesimaBassa => Some(OctaveSign::QuindicesimaBassa),
+            gscore_gp::Octave::None => None,
+        }
+    }
+
+    /// The text written over the staff ("8va", "15mb", ...).
+    pub fn label(self) -> &'static str {
+        match self {
+            OctaveSign::Ottava => "8va",
+            OctaveSign::OttavaBassa => "8vb",
+            OctaveSign::Quindicesima => "15ma",
+            OctaveSign::QuindicesimaBassa => "15mb",
+        }
+    }
+
+    /// Whether the sign hangs below the staff.
+    pub fn below(self) -> bool {
+        matches!(
+            self,
+            OctaveSign::OttavaBassa | OctaveSign::QuindicesimaBassa
+        )
+    }
+}
+
 /// A legato run written over one or more beats (not a slide or a hammer-on).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Legato {

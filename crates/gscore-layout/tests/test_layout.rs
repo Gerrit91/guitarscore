@@ -484,3 +484,21 @@ fn simile_marks_are_read_and_drawn() {
         "one simple mark and two double marks: {slashes}"
     );
 }
+
+/// Octave signs are read from the file and written over/under the staff.
+#[test]
+fn octave_signs_are_read_and_drawn() {
+    let song = common::open("basic/staff.gp");
+    let layout = common::layout(&song, 0);
+    let texts: Vec<&str> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    for sign in ["8va", "8vb", "15ma", "15mb"] {
+        assert!(texts.contains(&sign), "missing {sign:?}: {texts:?}");
+    }
+}

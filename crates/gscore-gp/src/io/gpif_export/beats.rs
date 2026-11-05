@@ -81,6 +81,18 @@ pub(super) fn build_beat_xml(
         bxml.push_str(&format!("<FreeText>{}</FreeText>", escape_xml(&beat.text)));
     }
 
+    // Octave sign
+    let ottavia = match beat.octave {
+        Octave::Ottava => Some("8va"),
+        Octave::OttavaBassa => Some("8vb"),
+        Octave::Quindicesima => Some("15ma"),
+        Octave::QuindicesimaBassa => Some("15mb"),
+        Octave::None => None,
+    };
+    if let Some(ottavia) = ottavia {
+        bxml.push_str(&format!("<Ottavia>{ottavia}</Ottavia>"));
+    }
+
     // Fade in, fade out, volume swell (one of them).
     if beat.effect.fade_in {
         bxml.push_str("<Fadding>FadeIn</Fadding>");

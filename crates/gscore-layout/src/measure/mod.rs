@@ -135,6 +135,8 @@ struct Column {
     /// The tuplet this column belongs to (`enters:times`), if any. The tab staff shows it
     /// when no notation staff is there to carry it.
     tuplet: Option<(u8, u8)>,
+    /// The octave sign written at this column, if any.
+    octave: Option<gscore_model::OctaveSign>,
     /// The model beats that start here, as `(voice, beat)`.
     beats: Vec<(VoiceIndex, BeatIndex)>,
     /// Guitar Pro's beat text, written above the staff at this column.
@@ -156,6 +158,7 @@ struct ColumnData {
     grace_width: f32,
     beat: u64,
     tuplet: Option<(u8, u8)>,
+    octave: Option<gscore_model::OctaveSign>,
     beats: Vec<(VoiceIndex, BeatIndex)>,
     text: Option<String>,
 }
@@ -253,6 +256,7 @@ impl MeasureLayout {
                 .iter()
                 .filter(|beat| beat.kind() != gscore_model::BeatKind::Empty)
                 .find_map(|beat| beat.note_value().ok()?.tuplet());
+            data.octave = plain.iter().find_map(BeatView::octave);
             if let Some(notation) = &ctx.notation {
                 data.notation = notation::column_items(beats, notation, key)?;
             }
@@ -318,6 +322,7 @@ impl MeasureLayout {
                     grace_width: 0.0,
                     beat: 0,
                     tuplet: None,
+                    octave: None,
                     beats: Vec::new(),
                     text: None,
                 },
@@ -451,6 +456,7 @@ impl MeasureLayout {
                     main_left: extents.get(i).map_or(0.0, |(main, _, _)| *main),
                     beat: data.beat,
                     tuplet: data.tuplet,
+                    octave: data.octave,
                     beats: data.beats,
                     text: data.text,
                     dynamic,

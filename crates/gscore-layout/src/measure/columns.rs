@@ -214,6 +214,7 @@ pub(super) fn column_items(
         grace_width: 0.0,
         beat: 0,
         tuplet: None,
+        octave: None,
         beats: Vec::new(),
         text,
     })

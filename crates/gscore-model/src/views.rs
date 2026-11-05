@@ -353,6 +353,11 @@ impl<'a> BeatView<'a> {
         self.inner.grace
     }
 
+    /// The octave sign on this beat, if any.
+    pub fn octave(&self) -> Option<crate::effects::OctaveSign> {
+        crate::effects::OctaveSign::from_gp(&self.inner.octave)
+    }
+
     /// The notes of this beat (at most one per string).
     pub fn notes(&self) -> impl ExactSizeIterator<Item = NoteView<'a>> + use<'a> {
         self.inner.notes.iter().map(NoteView::new)

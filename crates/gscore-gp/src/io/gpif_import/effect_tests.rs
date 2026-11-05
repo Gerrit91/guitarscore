@@ -55,6 +55,7 @@ fn beat() -> GpifBeat {
         wah: None,
         legato: None,
         free_text: None,
+        ottavia: None,
         arpeggio: None,
         dead_slapped: None,
         properties: None,
@@ -259,6 +260,7 @@ fn whammy_bar_is_imported() {
         wah: None,
         legato: None,
         free_text: None,
+        ottavia: None,
         arpeggio: None,
         dead_slapped: None,
         properties: None,
@@ -381,6 +383,7 @@ fn gp6_whammy_properties_are_imported() {
             wah: None,
             legato: None,
             free_text: None,
+        ottavia: None,
             arpeggio: None,
             dead_slapped: None,
             properties: Some(BeatPropertiesWrapper {
