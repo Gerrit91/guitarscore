@@ -231,11 +231,16 @@ impl GuitarScoreApp {
                         ));
                     }
                     if state.editing {
+                        // The field fills the room left in the header, its own margin
+                        // included: a wider field would widen the whole panel.
+                        let margin = egui::Margin::symmetric(4, 2);
+                        let width = (ui.available_width() - margin.sum().x).max(40.0);
                         let response = ui.add(
                             egui::TextEdit::singleline(&mut state.name)
                                 .hint_text("Track name")
                                 .font(egui::TextStyle::Heading)
-                                .desired_width(f32::INFINITY),
+                                .margin(margin)
+                                .desired_width(width),
                         );
                         ui.ctx().accesskit_node_builder(response.id, |node| {
                             node.set_label("Name field");
@@ -262,31 +267,43 @@ impl GuitarScoreApp {
                             }
                         }
                     } else {
-                        let response = ui
-                            .add(
-                                egui::Label::new(
-                                    RichText::new(&snapshot.name)
-                                        .text_style(egui::TextStyle::Heading)
-                                        .color(tokens.text),
-                                )
-                                .truncate()
-                                .sense(egui::Sense::click()),
-                            )
-                            .on_hover_text("Click to rename")
-                            .on_hover_cursor(egui::CursorIcon::Text);
-                        response.widget_info(|| {
-                            egui::WidgetInfo::labeled(egui::Role::Button, true, "Edit track name")
+                        // The rename button takes its place at the right first, so a long
+                        // name is shortened to the room left instead of widening the panel.
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if icons::button(ui, Icon::Rename, "Rename track", "Rename this track")
+                                .clicked()
+                            {
+                                rename_requested = true;
+                            }
+                            ui.with_layout(
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    let response = ui
+                                        .add(
+                                            egui::Label::new(
+                                                RichText::new(&snapshot.name)
+                                                    .text_style(egui::TextStyle::Heading)
+                                                    .color(tokens.text),
+                                            )
+                                            .truncate()
+                                            .sense(egui::Sense::click()),
+                                        )
+                                        .on_hover_text("Click to rename")
+                                        .on_hover_cursor(egui::CursorIcon::Text);
+                                    response.widget_info(|| {
+                                        egui::WidgetInfo::labeled(
+                                            egui::Role::Button,
+                                            true,
+                                            "Edit track name",
+                                        )
+                                    });
+                                    if response.clicked() {
+                                        state.name.clone_from(&snapshot.name);
+                                        state.editing = true;
+                                    }
+                                },
+                            );
                         });
-                        if response.clicked() {
-                            state.name.clone_from(&snapshot.name);
-                            state.editing = true;
-                        }
-                    }
-                    if !state.editing
-                        && icons::button(ui, Icon::Rename, "Rename track", "Rename this track")
-                            .clicked()
-                    {
-                        rename_requested = true;
                     }
                 });
             });

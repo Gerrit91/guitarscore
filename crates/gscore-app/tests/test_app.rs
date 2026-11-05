@@ -777,6 +777,10 @@ fn the_track_panel_edits_the_shown_track() {
     assert_eq!(first_track(&harness).string_count(), 7);
 
     // A rename in place: click the name, type, Enter. One step too.
+    let panel_right = |harness: &Harness<'_, GuitarScoreApp>| {
+        harness.get_by_label_contains("Tuning:").rect().right()
+    };
+    let before = panel_right(&harness);
     harness.get_by_label("Edit track name").click();
     harness.run();
     harness.get_by_label("Name field").click();
@@ -805,6 +809,27 @@ fn the_track_panel_edits_the_shown_track() {
     harness.key_press(egui::Key::Enter);
     harness.run();
     assert_eq!(first_track(&harness).name(), "Renamed");
+
+    // Neither editing a name nor a name too long for the header widens the panel (the
+    // full-width tuning button keeps its right edge): the name is shortened instead.
+    harness.get_by_label("Edit track name").click();
+    harness.run();
+    assert!(
+        (panel_right(&harness) - before).abs() < 0.5,
+        "while editing"
+    );
+    harness
+        .get_by_label("Name field")
+        .type_text(" with a name much longer than the header");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert!(first_track(&harness).name().ends_with("than the header"));
+    assert!(
+        (panel_right(&harness) - before).abs() < 0.5,
+        "the panel grew from {before} to {}",
+        panel_right(&harness)
+    );
 }
 
 /// Runs frames until background jobs are done and the UI stops repainting. It steps first,

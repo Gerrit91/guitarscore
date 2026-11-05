@@ -2925,3 +2925,14 @@ needed for a much larger font); owner listening check.
   `multi_staff` move a fraction of a space lower.
 - CI: GitHub's software renderer failed every app snapshot by 1-3 antialiased pixels;
   `kittest.toml` now allows 10 (a real change fails hundreds).
+
+## 2026-11-05 — A long track name no longer widens the track panel
+
+- After renaming a track to a long name the track panel grew: the name label was
+  shortened to all the width left, and the rename button after it stuck out by its own
+  width, which an egui side panel answers by growing (987 to 1019 px in the test). The
+  rename button now takes its place at the header's right edge first and the name is
+  shortened to what remains; the in-place name field is sized to the room left, its
+  margin included.
+- Test: the track panel test checks that the full-width tuning button keeps its right
+  edge while a name is edited and after a long name is entered.
