@@ -22,6 +22,15 @@ const HIGHEST_NOTE: u8 = 108;
 const CONCERT_A: f32 = 440.0;
 const CONCERT_A_NOTE: u8 = 69;
 
+/// What the window asks the tone player to do after it is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ToneRequest {
+    /// Play (or retune to) this note.
+    Play(u8),
+    /// Silence the tone.
+    Stop,
+}
+
 /// The open tuner.
 #[derive(Debug)]
 pub(super) struct TunerState {
@@ -56,6 +65,14 @@ pub(super) fn frequency(note: u8) -> f32 {
 /// The note name of a MIDI note ("A4", "E2").
 fn note_name(note: u8) -> String {
     Pitch::new(note).map_or_else(|_| "?".to_owned(), |pitch| pitch.to_string())
+}
+
+/// `note` moved by `step` semitones, clamped to the picker's range.
+fn semitone(note: u8, step: i8) -> u8 {
+    let moved = i16::from(note).saturating_add(i16::from(step));
+    let low = i16::from(LOWEST_NOTE);
+    let high = i16::from(HIGHEST_NOTE);
+    u8::try_from(moved.clamp(low, high)).unwrap_or(note)
 }
 
 impl GuitarScoreApp {
@@ -98,7 +115,7 @@ impl GuitarScoreApp {
             .pos
             .get_or_insert_with(|| style::centered_window_pos(ctx, size));
         let mut outcome = Outcome::Open;
-        let mut play = None;
+        let mut request = None;
         egui::Window::new(title)
             .title_bar(false)
             .collapsible(false)
@@ -129,12 +146,19 @@ impl GuitarScoreApp {
                             );
                         });
                         ui.add_space(8.0);
+                        let mut note = tuner.note;
                         ui.horizontal(|ui| {
                             ui.label(RichText::new("Note").color(style::tokens(ui).text_weak));
-                            let mut note = tuner.note;
+                            if ui
+                                .add_enabled(note > LOWEST_NOTE, egui::Button::new("−"))
+                                .on_hover_text("A semitone lower")
+                                .clicked()
+                            {
+                                note = semitone(note, -1);
+                            }
                             let combo = egui::ComboBox::from_id_salt("tuner_note")
                                 .selected_text(note_name(note))
-                                .width(WIDTH - 90.0)
+                                .width(WIDTH - 140.0)
                                 .show_ui(ui, |ui| {
                                     for candidate in (LOWEST_NOTE..=HIGHEST_NOTE).rev() {
                                         ui.selectable_value(
@@ -151,11 +175,18 @@ impl GuitarScoreApp {
                             ui.ctx().accesskit_node_builder(combo.response.id, |node| {
                                 node.set_label("Note to play");
                             });
-                            if note != tuner.note {
-                                tuner.note = note;
-                                play = Some(note);
+                            if ui
+                                .add_enabled(note < HIGHEST_NOTE, egui::Button::new("+"))
+                                .on_hover_text("A semitone higher")
+                                .clicked()
+                            {
+                                note = semitone(note, 1);
                             }
                         });
+                        if note != tuner.note {
+                            tuner.note = note;
+                            request = Some(ToneRequest::Play(note));
+                        }
                         if !strings.is_empty() {
                             ui.add_space(4.0);
                             ui.label(
@@ -177,7 +208,7 @@ impl GuitarScoreApp {
                                         .clicked()
                                     {
                                         tuner.note = *pitch;
-                                        play = Some(*pitch);
+                                        request = Some(ToneRequest::Play(*pitch));
                                     }
                                 }
                             });
@@ -209,7 +240,11 @@ impl GuitarScoreApp {
                                         .fill(tokens.accent)
                                         .min_size(vec2(96.0, 28.0));
                                 if ui.add(tone).clicked() {
-                                    play = if playing { None } else { Some(tuner.note) };
+                                    request = Some(if playing {
+                                        ToneRequest::Stop
+                                    } else {
+                                        ToneRequest::Play(tuner.note)
+                                    });
                                 }
                             },
                         );
@@ -218,14 +253,24 @@ impl GuitarScoreApp {
                                 if input.key_pressed(egui::Key::Escape) {
                                     outcome = Outcome::Cancel;
                                 } else if input.key_pressed(egui::Key::Space) {
-                                    play = if playing { None } else { Some(tuner.note) };
+                                    request = Some(if playing {
+                                        ToneRequest::Stop
+                                    } else {
+                                        ToneRequest::Play(tuner.note)
+                                    });
                                 }
                             });
                         }
                     });
             });
-        if let Some(note) = play {
-            start_or_retune(&mut tuner, note);
+        match request {
+            Some(ToneRequest::Play(note)) => start_or_retune(&mut tuner, note),
+            Some(ToneRequest::Stop) => {
+                if let Some(player) = &tuner.player {
+                    player.stop();
+                }
+            }
+            None => {}
         }
         match outcome {
             Outcome::Cancel | Outcome::Apply | Outcome::Remove | Outcome::Listen => {
@@ -354,5 +399,13 @@ mod tests {
         assert!((frequency(57) - 220.0).abs() < 0.001);
         // The guitar's open low E.
         assert!((frequency(40) - 82.41).abs() < 0.02);
+    }
+
+    #[test]
+    fn the_semitone_buttons_stop_at_the_picker_ends() {
+        assert_eq!(semitone(69, 1), 70);
+        assert_eq!(semitone(69, -1), 68);
+        assert_eq!(semitone(LOWEST_NOTE, -1), LOWEST_NOTE);
+        assert_eq!(semitone(HIGHEST_NOTE, 1), HIGHEST_NOTE);
     }
 }

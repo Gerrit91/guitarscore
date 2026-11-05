@@ -2797,3 +2797,10 @@ needed for a much larger font); owner listening check.
   caption. The highlighted dynamic tile already says what the selection has, and the
   hairpin tiles below read as fades on their own. `DynamicsSnapshot` no longer computes the
   cursor's dynamic; its test drops that assertion. Snapshots updated.
+
+## 2026-11-05 — Tuner: the Stop button and semitone buttons
+
+- Stop did nothing: it cleared the pending note instead of telling the player to stop. The
+  window now passes a `ToneRequest` (play or stop) and acts on both.
+- Small − / + buttons beside the note move it a semitone, clamped to the picker's C1–C8.
+- Tests: the semitone step and its clamping at both ends.
