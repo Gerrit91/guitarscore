@@ -140,6 +140,11 @@ impl GuitarScoreApp {
         let mut drag_to: Option<Cursor> = None;
         let mut choices: Vec<MenuChoice> = Vec::new();
         let playing = self.playback.state() == PlayState::Playing;
+        // Only the printed page view turns over line by line while playing. The screen
+        // views (and pages shown side by side) keep their position and scroll just enough
+        // to show the playing column, so the view does not slide out from under the user
+        // when the music wraps.
+        let turn_pages = playing && score_view.turns_pages();
         let in_selection = document.editor().selection().is_some_and(|selection| {
             selection
                 .positions(document.song())
@@ -231,11 +236,25 @@ impl GuitarScoreApp {
                 // the rest; the selection's one shade covers it already.
                 let column_band = (!in_selection).then_some(column);
                 canvas::paint_cursor(&painter, column_band, string, theme);
-                if scroll_to_cursor
-                    && let Some((target, align)) =
-                        cursor_scroll(column, ui.clip_rect(), playing, TURN_HEADROOM * scale)
-                {
-                    ui.scroll_to_rect(target, align);
+                if scroll_to_cursor {
+                    if score_view.pages_side_by_side() {
+                        // Side-by-side pages follow page by page: bring the whole page
+                        // into view instead of sliding a line to the top and cutting the
+                        // page's top and bottom off.
+                        let y = layout
+                            .places
+                            .column_rect(cursor.measure, cursor.voice, cursor.beat)
+                            .map_or(0.0, |rect| rect.origin.y);
+                        if let Some(page) =
+                            layout.pages.iter().rev().find(|page| page.origin.y <= y)
+                        {
+                            ui.scroll_to_rect(to_screen(*page), None);
+                        }
+                    } else if let Some((target, align)) =
+                        cursor_scroll(column, ui.clip_rect(), turn_pages, TURN_HEADROOM * scale)
+                    {
+                        ui.scroll_to_rect(target, align);
+                    }
                 }
             }
             // What the pointer is on: the beat and string of whichever track's staves.

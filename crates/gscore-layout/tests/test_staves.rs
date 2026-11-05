@@ -108,7 +108,7 @@ fn slash_notation_is_a_staff_of_its_own_and_combines() {
     );
     assert!(
         slash.ops.iter().any(
-            |op| matches!(op, DrawOp::Line { thickness, .. } if (*thickness - 0.18).abs() < 1e-6)
+            |op| matches!(op, DrawOp::Line { thickness, .. } if (*thickness - 0.24).abs() < 1e-6)
         ),
         "a rhythm slash is drawn"
     );

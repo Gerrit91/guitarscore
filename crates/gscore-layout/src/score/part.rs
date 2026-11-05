@@ -196,7 +196,10 @@ impl<'a> Part<'a> {
         } else {
             0.0
         };
-        let slash_prefix = if self.show_slash && !self.show_tab && ctx.notation.is_none() {
+        // A slash staff also starts with a clef and key signature, whether or not a tab
+        // staff is shown beside it; its prefix must be part of the room before the first
+        // measure (a repeat sign there would otherwise run into the clef).
+        let slash_prefix = if self.show_slash && ctx.notation.is_none() {
             let clef = ctx.notation.map_or(Clef::Treble, |notation| notation.clef);
             if drawn_by_measure {
                 notation::key_start_width(clef, ctx)

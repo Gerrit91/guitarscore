@@ -69,6 +69,13 @@ impl ScoreView {
         self == ScoreView::ScreenHorizontal
     }
 
+    /// Whether playback turns the view over line by line. Only the printed page view
+    /// does; the others keep their position and scroll just enough to show the playing
+    /// column.
+    pub fn turns_pages(self) -> bool {
+        self == ScoreView::PageVertical
+    }
+
     /// A label for the View menu.
     pub fn label(self) -> &'static str {
         match self {
@@ -286,6 +293,13 @@ mod tests {
                 .filter(|view| view.single_line())
                 .collect::<Vec<_>>(),
             [ScoreView::ScreenHorizontal]
+        );
+        assert_eq!(
+            ScoreView::ALL
+                .into_iter()
+                .filter(|view| view.turns_pages())
+                .collect::<Vec<_>>(),
+            [ScoreView::PageVertical]
         );
     }
 }

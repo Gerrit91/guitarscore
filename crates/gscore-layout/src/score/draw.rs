@@ -263,15 +263,24 @@ pub(super) fn draw_part(
             thickness: thin,
             color: ColorToken::Barline,
         });
-    } else {
+    } else if show_tab {
         ctx.staff.draw_start_line(left, tab_top, font, ops);
+    } else if let Some(slash_top) = tops.slash {
+        // Slash notation alone: the start line must be as tall as its five-line staff,
+        // not the tab staff it stands in for.
+        notation_staff.draw_start_line(left, slash_top, font, ops);
     }
     if let Some(slash_top) = tops.slash {
         notation_staff.draw_lines(slash_top, left, x, font, ops);
-        let clef = ctx
-            .notation
-            .map_or(notation::Clef::Treble, |notation| notation.clef);
-        notation::draw_staff_start(left, slash_top, clef, key, key_drawn_by_measure, ctx, ops);
+        notation::draw_staff_start(
+            left,
+            slash_top,
+            system.clef,
+            key,
+            key_drawn_by_measure,
+            ctx,
+            ops,
+        );
     }
     ops.append(&mut content);
 }

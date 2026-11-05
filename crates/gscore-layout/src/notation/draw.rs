@@ -21,6 +21,9 @@ const LEDGER_BELOW: i32 = -2;
 const LEDGER_ABOVE: i32 = 10;
 /// Space between the system start and the clef, and after the clef.
 const CLEF_GAPS: (f32, f32) = (0.6, 1.0);
+/// Half the length of a rhythm slash along its stroke, and the stroke's thickness.
+const SLASH_HALF: f32 = 0.55;
+const SLASH_THICKNESS: f32 = 0.24;
 /// Space between a clef and a key signature, and between a key signature and the first
 /// measure.
 pub(crate) const KEY_GAPS: (f32, f32) = (0.3, 0.6);
@@ -501,6 +504,17 @@ fn free_end(chord: &Chord, up: bool, top: f32) -> f32 {
 
 /// The stem's x and its end at the noteheads, from the notehead's stem anchors.
 fn stem_for(chord: &Chord, x: f32, up: bool, top: f32, ctx: &Context<'_>) -> Stem {
+    if chord.slash {
+        // The stem leaves the slash at its upper or lower end, not through its middle.
+        let y = y_of(top, MIDDLE);
+        let half = SLASH_HALF;
+        return Stem {
+            up,
+            x: x + half,
+            from: if up { y - half } else { y + half },
+            to: 0.0,
+        };
+    }
     let font = &ctx.fonts.music;
     let glyph = chord
         .heads
@@ -533,13 +547,12 @@ fn stem_for(chord: &Chord, x: f32, up: bool, top: f32, ctx: &Context<'_>) -> Ste
 /// Noteheads (seconds side by side), ledger lines, accidentals and dots.
 fn draw_heads(x: f32, chord: &Chord, up: bool, top: f32, ctx: &Context<'_>, ops: &mut Vec<DrawOp>) {
     if chord.slash {
-        // Rhythm slash: a short stroke through the middle line, regardless of pitch.
+        // Rhythm slash: a thick stroke centered on the middle line, regardless of pitch.
         let y = y_of(top, MIDDLE);
-        let half = 0.55;
         ops.push(DrawOp::Line {
-            from: Point::new(x - half, y + half),
-            to: Point::new(x + half, y - half),
-            thickness: 0.18,
+            from: Point::new(x - SLASH_HALF, y + SLASH_HALF),
+            to: Point::new(x + SLASH_HALF, y - SLASH_HALF),
+            thickness: SLASH_THICKNESS,
             color: ColorToken::Notation,
         });
         return;
