@@ -72,7 +72,7 @@ impl ScoreView {
     /// Whether playback turns the view over when the playing line leaves it: that line
     /// goes to the top, so what follows fills the view. The vertical views do (the printed
     /// pages and the endless screen); side-by-side pages turn page by page, and the one
-    /// line of the horizontal screen scrolls just enough to show the playing column.
+    /// line of the horizontal screen a screen at a time.
     pub fn turns_pages(self) -> bool {
         matches!(self, ScoreView::PageVertical | ScoreView::ScreenVertical)
     }

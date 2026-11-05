@@ -47,6 +47,20 @@ fn cursor_scroll(
     Some((line, Some(Align::TOP)))
 }
 
+/// How the horizontal screen (one endless line) turns over while playing: nothing moves
+/// until the playing `column` leaves `visible`; then it goes to the left edge with `room`
+/// points before it, so the next screenful follows. The view keeps its height.
+fn screen_turn(column: Rect, visible: Rect, room: f32) -> Option<(Rect, Option<Align>)> {
+    if visible.x_range().contains(column.left()) && visible.x_range().contains(column.right()) {
+        return None;
+    }
+    let target = Rect::from_min_max(
+        egui::pos2(column.left() - room, visible.top()),
+        egui::pos2(column.right(), visible.bottom()),
+    );
+    Some((target, Some(Align::Min)))
+}
+
 /// Where side-by-side pages scroll to show the cursor `column` on `page`: the whole page
 /// when it fits in `visible`; else the page's left part with the column's line at the top
 /// (`headroom` above it), as the vertical view turns over, so the column never ends up
@@ -170,8 +184,8 @@ impl GuitarScoreApp {
         let mut choices: Vec<MenuChoice> = Vec::new();
         let playing = self.playback.state() == PlayState::Playing;
         // The vertical views turn over while playing: once the playing line leaves the
-        // view, it goes to the top. Pages side by side turn page by page; the horizontal
-        // screen scrolls just enough to show the playing column.
+        // view, it goes to the top. Pages side by side turn page by page, and the
+        // horizontal screen screen by screen (`screen_turn`).
         let turn_pages = playing && score_view.turns_pages();
         let in_selection = document.editor().selection().is_some_and(|selection| {
             selection
@@ -290,6 +304,12 @@ impl GuitarScoreApp {
                                 ui.clip_rect(),
                                 TURN_HEADROOM * scale,
                             )
+                        {
+                            ui.scroll_to_rect(target, align);
+                        }
+                    } else if playing && score_view.single_line() {
+                        if let Some((target, align)) =
+                            screen_turn(column, ui.clip_rect(), TURN_HEADROOM * scale)
                         {
                             ui.scroll_to_rect(target, align);
                         }
@@ -530,7 +550,7 @@ mod tests {
     use gscore_edit::{BeatSpot, Selection};
     use gscore_layout::{BeatPlace, MeasurePlace, Places, SystemPlace};
 
-    use super::{cursor_scroll, page_scroll};
+    use super::{cursor_scroll, page_scroll, screen_turn};
     use egui::Rect;
 
     #[test]
@@ -553,6 +573,24 @@ mod tests {
         let (target, align) = cursor_scroll(column(-400.0), visible, true, 30.0).unwrap();
         assert!((target.top() + 430.0).abs() < 1e-3);
         assert_eq!(align, Some(egui::Align::TOP));
+    }
+
+    #[test]
+    fn the_horizontal_screen_turns_over_a_screen_at_a_time() {
+        let visible = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
+        let column =
+            |left: f32| Rect::from_min_size(egui::pos2(left, 100.0), egui::vec2(4.0, 80.0));
+        // On screen: the view stays, however far right the column has moved.
+        assert_eq!(screen_turn(column(790.0), visible, 50.0), None);
+        // Off the right edge: it goes to the left edge, room before it, height kept.
+        let (target, align) = screen_turn(column(798.0), visible, 50.0).unwrap();
+        assert_eq!(align, Some(egui::Align::Min));
+        assert!((target.left() - 748.0).abs() < 1e-3);
+        assert!((target.top() - visible.top()).abs() < 1e-3);
+        assert!((target.bottom() - visible.bottom()).abs() < 1e-3);
+        // A repeat jumps back left of the view: the same.
+        let (target, _) = screen_turn(column(-500.0), visible, 50.0).unwrap();
+        assert!((target.left() + 550.0).abs() < 1e-3);
     }
 
     #[test]

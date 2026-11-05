@@ -3030,3 +3030,6 @@ needed for a much larger font); owner listening check.
   vertical screen fits the room between the panels exactly (it was a margin wider and
   scrolled sideways), and the space around the score grew from 24 to 32 points so the
   panels' shadows stay clear of it. New `screen_view` snapshot.
+- **Horizontal screen view while playing** turns over a screen at a time: once the playing
+  column leaves the view, it goes to the left edge (with a little room before it) instead
+  of the view creeping along bar by bar.
