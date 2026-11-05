@@ -419,6 +419,24 @@ impl MeasureLayout {
         })
     }
 
+    /// Whether any column holds a note (a fret number, a notehead or a grace note), not
+    /// only rests.
+    pub(crate) fn has_notes(&self) -> bool {
+        self.columns.iter().any(|column| {
+            !column.graces.is_empty()
+                || column
+                    .items
+                    .iter()
+                    .any(|item| matches!(item, Item::Fret(_)))
+                || column
+                    .notation
+                    .iter()
+                    .flatten()
+                    .any(|item| matches!(item, NotationItem::Chord(_)))
+                || column.marks.dead_slapped
+        })
+    }
+
     /// Whether the measure carries a key signature (a change, or the score's first).
     pub(crate) fn has_key_signature(&self) -> bool {
         self.key_signature.is_some()

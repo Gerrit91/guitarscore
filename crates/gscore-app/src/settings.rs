@@ -160,6 +160,8 @@ pub struct Settings {
     pub show_edit_panel: bool,
     /// Whether the score is shown on pages (else one endless page).
     pub page_view: bool,
+    /// With several tracks shown, whether empty staves are left out of a line.
+    pub hide_empty_staves: bool,
     /// Height the song grid was dragged to; `None`: it follows the number of tracks. (The
     /// key is new: the old `grid_height_chosen` held whatever the panel happened to be.)
     pub grid_height_chosen: Option<f32>,
@@ -213,6 +215,7 @@ impl Default for Settings {
             show_track_panel: true,
             show_edit_panel: true,
             page_view: true,
+            hide_empty_staves: false,
             grid_height_chosen: None,
             mixer_height_chosen: None,
             track_panel_width: None,
@@ -254,6 +257,7 @@ impl Settings {
         self.show_track_panel = view.show_track_panel;
         self.show_edit_panel = view.show_edit_panel;
         self.page_view = view.page_view;
+        self.hide_empty_staves = view.hide_empty_staves;
     }
 
     /// Applies the stored theme, zoom and panel visibility to `view`.
@@ -266,6 +270,7 @@ impl Settings {
         view.show_track_panel = self.show_track_panel;
         view.show_edit_panel = self.show_edit_panel;
         view.page_view = self.page_view;
+        view.hide_empty_staves = self.hide_empty_staves;
     }
 
     /// Puts `path` first in the recent files, without duplicates.

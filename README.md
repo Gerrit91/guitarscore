@@ -206,7 +206,7 @@ D |--0-------------------------||
   insert/delete beats and measures, from `-c` commands or a script. `gscore-cli commands`
   lists them. Every successful edit still round-trips through the GP7 writer.
 - **`render`:** a track's score as SVG (`--track N`, repeated for several tracks in one
-  score, or `--all-tracks`; `--theme dark`), using the bundled
+  score, or `--all-tracks`, with `--hide-empty-staves`; `--theme dark`), using the bundled
   Bravura and Noto Sans fonts by name (see `docs/development.md` for viewing it), or as a
   PDF on pages with the song's page setup and the fonts embedded when the output ends in
   `.pdf`.

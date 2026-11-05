@@ -258,6 +258,15 @@ impl GuitarScoreApp {
             .clone()
             .with_page_setup(&song.page_setup())
             .on_pages();
+        // Printed, every empty staff may go (there is no cursor to keep).
+        let options = gscore_layout::LayoutOptions {
+            empty_staves: if self.view.hide_empty_staves {
+                gscore_layout::EmptyStaves::Hidden
+            } else {
+                gscore_layout::EmptyStaves::Shown
+            },
+            ..options
+        };
         // The tracks the score shows, as it shows them.
         let tracks = tab.shown_tracks();
         if let Err(error) = self.tasks.export_pdf(song, tracks, options, path, ctx) {

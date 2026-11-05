@@ -38,6 +38,22 @@ pub struct LayoutOptions {
     pub notation: bool,
     /// Space between the notation staff's bottom line and the tab's top line.
     pub notation_gap: f32,
+    /// With several tracks: whether a track is left out of a system where it has no note.
+    pub empty_staves: EmptyStaves,
+}
+
+/// With several tracks shown, what happens to a track's staves in a system where it has
+/// no note. The first system always shows every track, as Guitar Pro does.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum EmptyStaves {
+    /// Every track's staves are drawn in every system.
+    #[default]
+    Shown,
+    /// An empty track is left out (for printing).
+    Hidden,
+    /// An empty track is left out, but never the primary track (the cursor's, which an
+    /// editor must still reach).
+    HiddenButPrimary,
 }
 
 /// How much horizontal space a beat gets, depending on how long it lasts.
@@ -119,6 +135,8 @@ impl LayoutOptions {
             page_numbers: page.page_numbers,
             copyright: page.copyright,
             running_header: page.running_header,
+            // Which systems a track is drawn in does not change a measure.
+            empty_staves: page.empty_staves,
             ..self.clone()
         }
     }
@@ -151,6 +169,7 @@ impl Default for LayoutOptions {
             system_gap: 6.0,
             notation: true,
             notation_gap: 8.0,
+            empty_staves: EmptyStaves::Shown,
         }
     }
 }

@@ -95,6 +95,9 @@ pub struct ViewState {
     pub show_edit_panel: bool,
     /// Whether the score is shown on separate pages (as printed) instead of one endless page.
     pub page_view: bool,
+    /// With several tracks shown, whether a track is left out of a line where it has no
+    /// note (the cursor's track always stays).
+    pub hide_empty_staves: bool,
 }
 
 impl Default for ViewState {
@@ -108,6 +111,7 @@ impl Default for ViewState {
             show_track_panel: true,
             show_edit_panel: true,
             page_view: true,
+            hide_empty_staves: false,
         }
     }
 }

@@ -15,7 +15,8 @@
 mod common;
 
 use gscore_layout::{
-    DrawOp, Fonts, Layout, LayoutCache, LayoutOptions, Point, layout_track, layout_tracks,
+    DrawOp, EmptyStaves, Fonts, Layout, LayoutCache, LayoutOptions, Point, layout_track,
+    layout_tracks,
 };
 use gscore_model::{MeasureIndex, Song, TrackIndex};
 
@@ -201,4 +202,80 @@ fn a_missing_track_or_none_is_an_error() {
     assert!(layout_tracks(&song, &[], TrackIndex::new(0), &options, &fonts).is_err());
     let missing = [TrackIndex::new(0), TrackIndex::new(99)];
     assert!(layout_tracks(&song, &missing, TrackIndex::new(0), &options, &fonts).is_err());
+}
+
+/// How many of each system's tracks are drawn: tracks with measure places there.
+fn drawn_per_system(layout: &Layout) -> Vec<usize> {
+    let systems = layout.tracks[0].places.systems.len();
+    (0..systems)
+        .map(|system| {
+            layout
+                .tracks
+                .iter()
+                .filter(|t| t.places.measures.iter().any(|m| m.system == system))
+                .count()
+        })
+        .collect()
+}
+
+#[test]
+fn empty_staves_are_left_out_after_the_first_system() {
+    let song = common::open("basic/multi_staff.gp");
+    let fonts = Fonts::bundled().unwrap();
+    let tracks = all_tracks(&song);
+    let shown = layout_all(&song, &LayoutOptions::default());
+    let hidden_options = LayoutOptions {
+        empty_staves: EmptyStaves::Hidden,
+        ..LayoutOptions::default()
+    };
+    let hidden = layout_tracks(&song, &tracks, tracks[0], &hidden_options, &fonts).unwrap();
+    assert!(drawn_per_system(&shown).iter().all(|&count| count == 6));
+    let counts = drawn_per_system(&hidden);
+    // The first system shows every track; bars 5-8 have no clean or rhythm guitar.
+    assert_eq!(counts[0], 6);
+    assert!(counts.iter().any(|&count| count < 6), "{counts:?}");
+    assert!(hidden.height < shown.height, "hiding saves room");
+    // Every track keeps one place per system, so system numbers stay in step.
+    for track in &hidden.tracks {
+        assert_eq!(track.places.systems.len(), counts.len());
+    }
+    // The system's marks go to the topmost track still drawn.
+    let sections = hidden
+        .ops
+        .iter()
+        .filter(|op| matches!(op, DrawOp::Text { text, .. } if text == "Opening Theme"))
+        .count();
+    assert_eq!(sections, 1);
+    // A point where a hidden track would be finds a drawn one.
+    let bar5 = MeasureIndex::new(4);
+    let clean = hidden.places_of(tracks[0]).unwrap();
+    assert!(
+        clean.measure(bar5).is_none(),
+        "the clean guitar is hidden at bar 5"
+    );
+    let crunch = hidden.places_of(tracks[2]).unwrap();
+    let place = crunch.measure(bar5).unwrap();
+    let system = &crunch.systems[place.system];
+    let (track, _) = hidden
+        .hit(Point::new(place.content, system.tab_bottom()))
+        .unwrap();
+    assert_eq!(track, tracks[2]);
+}
+
+#[test]
+fn the_primary_track_is_kept_when_asked() {
+    let song = common::open("basic/multi_staff.gp");
+    let fonts = Fonts::bundled().unwrap();
+    let tracks = all_tracks(&song);
+    let options = LayoutOptions {
+        empty_staves: EmptyStaves::HiddenButPrimary,
+        ..LayoutOptions::default()
+    };
+    let layout = layout_tracks(&song, &tracks, tracks[0], &options, &fonts).unwrap();
+    // The cursor's track (the clean guitar) has every measure, even its empty ones.
+    assert_eq!(layout.places.measures.len(), song.measure_count());
+    assert!(layout.places.measure(MeasureIndex::new(4)).is_some());
+    // Another empty track is still left out.
+    let rhythm = layout.places_of(tracks[1]).unwrap();
+    assert!(rhythm.measure(MeasureIndex::new(4)).is_none());
 }

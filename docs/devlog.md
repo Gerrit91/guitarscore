@@ -2589,3 +2589,28 @@ the browser; multi-threaded import (web worker) if opening large files becomes n
 - Open: hiding empty staves, native printing, the bars-per-line limit and the Settings
   page preview for several tracks, which tracks are shown is not remembered between runs,
   inserting or deleting a bar does not move the multitrack breaks after it.
+
+## 2026-11-05 — Hiding empty staves; score zoom and interface zoom apart
+
+- Owner: hiding empty staves next; the other open M21 points go to the backlog (AGENTS.md
+  M21). Ctrl+- shrank the whole interface while Ctrl++ zoomed only the score.
+- **Empty staves** (`LayoutOptions::empty_staves`: `Shown`, `Hidden`,
+  `HiddenButPrimary`): with several tracks, a track without a note in a system's bars is
+  left out of that system; the first system shows every track (as Guitar Pro); the
+  topmost drawn track takes the system's marks and measure numbers. A hidden track keeps
+  an empty place per system (system numbers stay in step; nothing hits it; ties into a
+  hidden bar are skipped). View › Hide empty staves (remembered) keeps the cursor's track
+  in the app, so it stays editable; PDF export and `render --hide-empty-staves` hide every
+  empty staff. On `multi_staff.gp` the empty guitars drop out of every line after the
+  first.
+- **Zoom**: the cause was egui's built-in keyboard zoom of the whole interface, plus our
+  key reader passing egui's name of the minus key (U+2212 `−`), so `ctrl+-` never matched
+  the keymap and egui shrank everything, while `ctrl++` matched and zoomed the score. Now
+  egui's keyboard zoom is off; `ctrl+=`/`ctrl++`, `ctrl+-` and `ctrl+0` zoom only the
+  score; Ctrl+Shift with +, - and 0 make the interface larger, smaller or normal (read
+  from the key event with its position, since Shift changes the character: `+` is
+  Shift+= on QWERTY, Shift+0 is `=` on QWERTZ), also in the View menu; the interface size
+  is remembered in the settings.
+- Tests: layout (systems with tracks left out, marks on the topmost drawn track, hits,
+  the primary track kept), app (View menu option, Ctrl vs Ctrl+Shift zoom and the
+  settings), key reader (Ctrl+minus), the zoom key table for QWERTY and QWERTZ.

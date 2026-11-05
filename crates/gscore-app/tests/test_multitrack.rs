@@ -159,3 +159,21 @@ fn the_bar_menu_sets_the_multitrack_line_breaks_when_all_tracks_are_shown() {
     harness.run();
     assert!(!breaks(&harness)[2], "undone");
 }
+
+#[test]
+fn empty_staves_can_be_hidden_from_the_view_menu() {
+    let mut harness = app_with_multi_staff();
+    view_menu(&mut harness, "All tracks");
+    assert!(!harness.state().view().hide_empty_staves);
+    view_menu(&mut harness, "Hide empty staves");
+    assert!(harness.state().view().hide_empty_staves);
+    assert!(
+        harness.state().settings().hide_empty_staves,
+        "remembered in the settings"
+    );
+    assert_eq!(harness.state().notice(), None, "the score lays out");
+    // The cursor's track stays reachable: moving it down to a bar where the clean guitar
+    // has nothing still works.
+    press(&mut harness, Key::ArrowRight, 40);
+    assert_eq!(cursor(&harness).0, 0);
+}

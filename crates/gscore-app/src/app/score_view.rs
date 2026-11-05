@@ -108,6 +108,14 @@ impl super::GuitarScoreApp {
             tab.score = ScoreTracks::All;
             ui.close();
         }
+        ui.checkbox(&mut self.view.hide_empty_staves, "Hide empty staves")
+            .on_hover_text(
+                "With several tracks: leave a track out of a line where it plays nothing \
+                 (the first line and the cursor's track always show)",
+            );
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
         ui.menu_button("Tracks shown", |ui| {
             let names: Vec<String> = tab
                 .document
