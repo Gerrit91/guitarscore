@@ -27,6 +27,59 @@ pub(crate) fn flip_note_strings(tracks: &mut [SongTrack]) {
     }
 }
 
+/// The note value (8, 16 or 32) of a GPIF tremolo picking speed.
+pub(crate) fn tremolo_speed(text: &str) -> Option<u16> {
+    match text {
+        "1/2" => Some(8),
+        "1/4" => Some(16),
+        "1/8" => Some(32),
+        _ => None,
+    }
+}
+
+/// The GPIF tremolo picking speed of a note value (8, 16 or 32; others round to 16).
+pub(crate) fn tremolo_text(value: u16) -> &'static str {
+    match value {
+        0..=8 => "1/2",
+        9..=16 => "1/4",
+        _ => "1/8",
+    }
+}
+
+/// GuitarScore fix: GPIF stores a trill's other note as a MIDI pitch, the legacy model as
+/// a fret on the note's string. Converts every trill of `tracks` (strings in legacy order,
+/// 1 = highest): to frets on import, back to pitches (`to_pitch`) on export. The capo is
+/// part of the pitch.
+pub(crate) fn convert_trills(tracks: &mut [SongTrack], to_pitch: bool) {
+    for track in tracks {
+        let capo = track.offset;
+        let tuning: Vec<(i8, i8)> = track.strings.clone();
+        for measure in &mut track.measures {
+            for voice in &mut measure.voices {
+                for beat in &mut voice.beats {
+                    for note in &mut beat.notes {
+                        let Some(trill) = note.effect.trill.as_mut() else {
+                            continue;
+                        };
+                        let Some(&(_, open)) =
+                            tuning.iter().find(|(number, _)| *number == note.string)
+                        else {
+                            continue;
+                        };
+                        let base = i32::from(open).saturating_add(capo);
+                        let value = if to_pitch {
+                            i32::from(trill.fret).saturating_add(base)
+                        } else {
+                            i32::from(trill.fret).saturating_sub(base)
+                        };
+                        trill.fret = low_i8(value.clamp(0, 127));
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub(super) fn convert_beat(
     g_beat: &Beat,
     rhythms_map: &HashMap<i32, &Rhythm>,
@@ -68,12 +121,21 @@ pub(super) fn convert_beat(
         s_beat.text = text.clone();
     }
 
-    // Fade in
-    if let Some(fadding) = &g_beat.fadding
-        && fadding == "FadeIn"
-    {
-        s_beat.effect.fade_in = true;
+    // Fade in, and (GuitarScore addition) fade out and volume swell.
+    match g_beat.fadding.as_deref() {
+        Some("FadeIn") => s_beat.effect.fade_in = true,
+        Some("FadeOut") => s_beat.effect.fade_out = true,
+        Some("VolumeSwell") => s_beat.effect.volume_swell = true,
+        _ => {}
     }
+
+    // GuitarScore addition: a rolled chord, and a dead slapped beat.
+    s_beat.effect.arpeggio = match g_beat.arpeggio.as_deref() {
+        Some("Down") => BeatStrokeDirection::Down,
+        Some("Up") => BeatStrokeDirection::Up,
+        _ => BeatStrokeDirection::None,
+    };
+    s_beat.effect.dead_slapped = g_beat.dead_slapped.is_some();
 
     // Beat-level legato (a slur over a run of notes, not a slide or a hammer-on).
     if let Some(legato) = &g_beat.legato {
@@ -101,11 +163,15 @@ pub(super) fn convert_beat(
             whammy.destination_offset,
         );
     } else if let Some(tremolo_str) = &g_beat.tremolo
+        && tremolo_speed(tremolo_str).is_none()
         && let Ok(val) = tremolo_str.parse::<f64>()
         && val != 0.0
     {
         s_beat.effect.tremolo_bar = Some(build_bend_effect(0.0, val));
     }
+    // GuitarScore fix: GP6/GP7 write tremolo picking as the beat's `<Tremolo>` speed
+    // ("1/2", "1/4", "1/8": eighths, sixteenths, 32nds); it is a note effect here.
+    let tremolo_picking = g_beat.tremolo.as_deref().and_then(tremolo_speed);
 
     // Beat properties
     let mut whammy_origin: Option<f64> = None;
@@ -171,8 +237,16 @@ pub(super) fn convert_beat(
 
             for &nid in &note_ids {
                 if let Some(g_note) = notes_map.get(&nid) {
-                    let s_note =
+                    let mut s_note =
                         convert_note(g_note, *current_velocity, is_grace_beat, grace_on_beat);
+                    if let Some(value) = tremolo_picking {
+                        s_note.effect.tremolo_picking = Some(TremoloPickingEffect {
+                            duration: Duration {
+                                value,
+                                ..Duration::default()
+                            },
+                        });
+                    }
                     s_beat.notes.push(s_note);
                 }
             }

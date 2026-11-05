@@ -683,8 +683,11 @@ fn note_and_beat_effects_edit_and_undo() {
         NoteEffect::PalmMute(true),
         NoteEffect::LetRing(true),
         NoteEffect::Staccato(true),
-        NoteEffect::Trill(true),
-        NoteEffect::TremoloPicking(true),
+        NoteEffect::Trill(Some(gscore_model::Trill {
+            fret: Some(4),
+            speed: gscore_model::TrillSpeed::ThirtySecond,
+        })),
+        NoteEffect::TremoloPicking(Some(gscore_model::TremoloSpeed::Eighth)),
         NoteEffect::Accent(Some(AccentKind::Heavy)),
         NoteEffect::Vibrato(Some(Vibrato::Wide)),
         NoteEffect::Harmonic(Some(Harmonic {

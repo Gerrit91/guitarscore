@@ -2355,3 +2355,131 @@ lifeless):
   from here); Windows `.exe` and macOS `.app` icons (both packages are plain archives so
   far); the rest of M20 (macOS file-dialog fix, name check, user guide, public test
   files, signing).
+
+## 2026-11-04 — Beat effects and notation articulations drawn and played
+
+- Owner: the "Strokes and beat" effects were neither drawn nor played, and some symbols
+  were missing on the notation staff.
+- Drawn: pick strokes (down and up bow signs), tapping, slapping and popping (`T`, `S`,
+  `P`, as Guitar Pro writes them) and fade-ins (an opening hairpin) in a row of their own
+  above the top staff, reserved like the fermata row (`marks::Rows`); with notation it sits
+  above the notation staff and rises over a high note in its column. Brush strokes get a
+  vertical arrow beside the chord on the tab and on the notation staff, pointing the way the
+  palette tile does.
+- Notation staff (it showed no ornaments before): accents, heavy accents and staccato
+  opposite the stem (staccato in a space), ghost notes in parentheses, natural harmonics
+  as diamond heads, tremolo picking as strokes through the stem, slurs for hammer-ons,
+  pull-offs, legato slides and beat-level legato, lines for shift and legato slides, and
+  short lines for slides into and out of a note (`notation/marks.rs`). With notation
+  shown, accents, staccato and tremolo are written there only, as in Guitar Pro; tab-only
+  keeps them on the tab. A dynamic below a low note clears its accent.
+- A notation-only staff now also shows what lived only on the tab: trill, "PH", vibrato
+  and the whammy line in a band above it, P.M. and let ring below it (the dynamics move
+  below those rows). Bends are still drawn on the tab only.
+- New glyphs (`articAccent*`, `articStaccato*`, `articMarcato*`, `stringsDownBow`,
+  `stringsUpBow`, `noteheadDiamondWhite`, `noteheadParenthesis*`), and a test that every
+  glyph's code point is the named glyph in the bundled Bravura (font advance against the
+  metadata's).
+- Played (`gscore-play/src/strokes.rs`): a pick stroke strikes a chord string by string
+  within a 128th note in its direction, an upstroke at 90%; tapping 85%, slapping 115%,
+  popping 125%; a fade-in swells its notes' expression from 0 to full over the note on a
+  borrowed channel; a note reached by a hammer-on, pull-off or beat-level legato is not
+  picked (80%). The beat preview (Listen) plays them too. The crate doc listed the whammy
+  bar as unplayed; it has been played for a while.
+- Golden: `ornaments.svg` regenerated (the notation staff gains the slurs, slides, accents,
+  staccato, ghost parentheses, legato slur and harmonic diamond; it now matches Guitar
+  Pro's export of that file much more closely). Tests: `gscore-layout/tests/test_effects.rs`
+  (tab, notation and notation-only), new playback tests in `gscore-play/tests/test_effects.rs`.
+- Open: trills are still not played; artificial, pinch, tapped and semi harmonics keep a
+  normal head on the notation staff (their text stays on the tab); bends on a notation-only
+  staff; a dynamic under a chord with a down-stem beam can touch the beam (older).
+
+## 2026-11-04 — Advanced ornaments: drawn, played and in the palette
+
+- Owner: everything in `testdata/basic/advanced_ornaments.gp` must be read, written, drawn,
+  played and editable from the palette, with Guitar Pro's `advanced_ornaments#1.png` as the
+  reference.
+- Brush and arpeggio arrows: a roll down is drawn as an arrow pointing **up**, as Guitar Pro
+  does; the brush arrow is on the tab only (the notation keeps it only when the tab is
+  hidden), and the two brush palette tiles were swapped to match.
+- Layout (`gscore-layout`): Guitar Pro's beat text in a new row above the staff; `(7)` for
+  a tie carried into a measure's first column; tuplet brackets with `n:m` (a number over a
+  beam when the group is exactly one beam group, otherwise a bracket, including rests);
+  a large cross instead of the rest/notes of a dead slapped beat; `P.S.` and a scrape
+  wiggle for pick slides; a circled T and a small arc for left-hand taps; fingering signs
+  left of the heads; circled string numbers above or below the staff; wavy arpeggio arrows
+  on both staves; `rasg.`; `H`/`P` and slurs for grace-note hammers; `tr` on both staves
+  and the trilled fret as `2 (4)` on the tab; tremolo picking with one to three strokes
+  by speed (under the tab number and through the notation stem); fade-in, fade-out and
+  volume-swell hairpins. The model's `Grace` gained `hammer`; `NoteMarks`, `ColumnMarks`,
+  `ChordMarks`, `Head` and `Rows` carry the new state. New modules `ornaments/symbols.rs`,
+  `measure/grace_marks.rs` and `notation/tuplets.rs` keep the files from growing further.
+- Playback (`gscore-play`): arpeggios spread over an eighth; rasgueados strike three times;
+  a dead slapped beat plays short muted hits on every string; a pick slide is a quick run of
+  muted notes to the next note; trills alternate with the trilled fret at 16th/32nd/64th
+  speed; tremolo picking uses its speed (8th/16th/32nd) instead of always 32nds; fade-out
+  and swell ramp expression; left-hand taps and grace-note hammers are played as legato
+  (softer). The crate doc no longer lists trills as unplayed.
+- Palette (`gscore-app`): tiles for left-hand tap, string number, the two pick slides, both
+  arpeggio directions, dead slapped, `rasg.`, fade out and volume swell. The trill and
+  tremolo tiles show a corner triangle; a click on the sign toggles the default, a click on
+  the corner opens a small engraved dialog (`edit_effects/dialogs.rs`) for the trill fret
+  and speed or the tremolo speed. New actions and menu entries; no default keys.
+- Tests: `advanced_ornaments` is in the layout testdata and golden lists
+  (`tests/golden/advanced_ornaments.svg`, owner review pending); GPIF import tests for the
+  new beat and note fields, pick-slide flags, trill pitch conversion and grace hammers;
+  `.gp` round trip without losses; playback tests for every new effect and the whole file;
+  a palette test clicking the new tiles. `note_lengths.svg` and `ornaments.svg` were
+  regenerated (tuplet brackets instead of per-beam numbers, beat text, trill/tremolo
+  changes; owner review pending).
+- Open: `edit_effects.rs` (835 lines) and `notation/draw.rs` (655) are past the ~400-line
+  guideline and should be split in a later cleanup; the fade hairpins sit above the
+  notation staff with the other beat effects (Guitar Pro prints them above the tab); the
+  beat effects' row placement is otherwise unchanged from the previous entry.
+
+## 2026-11-04 — Tie beat, beat text, fingerings and the last ornament fixes
+
+- A dead slapped beat no longer draws a rest behind its large cross on the notation staff:
+  the rest suppression moved before the beat-kind match in `notation::beat_item`.
+- Fades moved from "Strokes and beat" to **Dynamics**: fade in, fade out and volume swell
+  are dynamics markings; the dynamics section now ends with a "Fades" row. Every tile that
+  opens a dialog (bend, whammy, harmonic, grace, trill, tremolo, fingering, beat text) now
+  shows the corner triangle, and the whole tile opens the dialog (the tiny corner alone was
+  too hard to hit).
+- New **Tie beat** tile: `set_beat_tie` in the model ties every note of a beat to the note
+  on its string in the previous beat (also across a barline), so a chord continues as one;
+  `Command::SetBeatTie`, `gscore-cli` support, undo and `panic_hunt` coverage. The tile is
+  highlighted when the whole beat is already tied.
+- New **Beat text** tile and dialog: Guitar Pro's beat text, separate from a section title.
+  `Song::set_beat_text` + `ChangeKind::BeatText`, `Command::SetBeatText`, the
+  `set_beat_text` CLI command, an undoable app dialog, and a text row already drawn above
+  the staff.
+- **Fingering** tiles and dialogs: one for the left hand (0-4, t) and one for the right
+  hand (p i m a c), opening a small dialog that picks the finger by clicking its engraved
+  sign; Remove clears it. Both apply to the selected notes through the existing
+  `NoteEffect::Finger`.
+- Pick slides now follow the pitch change between the two notes on the **notation** staff
+  (a wavy, slightly slanted scrape) instead of a horizontal line; the tab keeps its
+  string-line wiggle. New `ornaments::symbols::draw_slanted_wiggle`.
+- Fixed a `panic_hunt` hang: `previous_beat` searched every index down from a hostile
+  `beat=18446744073709551615`, now it stops at the voice's beat count.
+- Tests: model tests for whole-beat ties and beat text (with undo), command round-trip
+  cases, a palette test for the tie-beat, beat-text and left-hand-fingering tiles, and the
+  regenerated layout/app snapshots. `cargo xtask ci` is green.
+
+## 2026-11-04 — Review of the advanced-ornament commits
+
+- Grace notes: the command language lost a grace note's hammer-on (`grace_text` never
+  wrote it, `parse_grace` always read `false`), so a journal replay or a pasted command
+  dropped it. The form is now `fret:speed:timing[:dead][:hammer]`.
+- Rasgueado playback: the extra strikes were copies of the whole note shifted later, so
+  each strike overlapped the next on the same key and the last one rang past the beat into
+  the next note (strings are cut to one note before the rasgueados are added). Each strike
+  now ends where the next begins and the last keeps the note's end; a note too short for
+  three strikes is struck once.
+- Palette: the pick slide down and up tiles had the same face; the wiggle now slants with
+  the direction. The beat text dialog read its text before the frame's input. Removed a
+  duplicated `Fx::on_note` wrapper.
+- Open (older layout design): the rows above the staff (beat text, fermata, sections) are
+  at a fixed height, so a high note's ornament can touch them (bar 7 of
+  `advanced_ornaments`: "Left hand tap" and the circled T).

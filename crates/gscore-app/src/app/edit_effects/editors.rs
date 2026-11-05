@@ -3,12 +3,14 @@
 //! note or beat, showing them, and turning OK, Remove and Listen into commands.
 
 use gscore_edit::Command;
-use gscore_model::{BeatEffect, BendKind, BendShape, NoteEffect, WhammyShape};
+use gscore_model::{BeatEffect, BendKind, BendShape, Hand, NoteEffect, WhammyShape};
 
+use super::super::beat_text_editor::BeatTextEditor;
 use super::super::edit_palette::PaletteSnapshot;
 use super::super::grace_editor::GraceEditor;
 use super::super::harmonic_editor::HarmonicEditor;
 use super::super::shape_editor::{Outcome, ShapeEditor, ShapeTarget};
+use super::dialogs::{FingerEditor, TremoloEditor, TrillEditor};
 use super::{EffectsState, apply_beat, apply_note, default_bend, default_whammy};
 use crate::settings::{Settings, ShapePreset};
 
@@ -51,6 +53,11 @@ impl EffectsState {
             || self.whammy.is_some()
             || self.harmonic.is_some()
             || self.grace.is_some()
+            || self.trill.is_some()
+            || self.tremolo.is_some()
+            || self.beat_text.is_some()
+            || self.finger_left.is_some()
+            || self.finger_right.is_some()
     }
 
     /// Shows the open bend or whammy editor; OK and Remove turn into commands for the
@@ -68,6 +75,157 @@ impl EffectsState {
         self.show_whammy(ctx, snapshot, &mut settings.whammy_presets, commands, trial);
         self.show_harmonic(ctx, snapshot, song, commands, trial);
         self.show_grace(ctx, snapshot, commands, trial);
+        self.show_trill(ctx, snapshot, commands);
+        self.show_tremolo(ctx, snapshot, commands);
+        self.show_beat_text(ctx, snapshot, commands);
+        self.show_finger(ctx, snapshot, commands, Hand::Left);
+        self.show_finger(ctx, snapshot, commands, Hand::Right);
+    }
+
+    /// Opens the fingering dialog for one hand on the cursor note's finger.
+    pub(in crate::app) fn open_finger(&mut self, snapshot: &PaletteSnapshot, hand: Hand) {
+        let Some(note) = snapshot
+            .note_state
+            .as_ref()
+            .or(snapshot.target_states.first())
+        else {
+            return;
+        };
+        let current = match hand {
+            Hand::Left => note.finger_left,
+            Hand::Right => note.finger_right,
+        };
+        let editor = FingerEditor::new(hand, current);
+        match hand {
+            Hand::Left => self.finger_left = Some(editor),
+            Hand::Right => self.finger_right = Some(editor),
+        }
+    }
+
+    fn show_finger(
+        &mut self,
+        ctx: &egui::Context,
+        snapshot: &PaletteSnapshot,
+        commands: &mut Vec<Command>,
+        hand: Hand,
+    ) {
+        let editor = match hand {
+            Hand::Left => &mut self.finger_left,
+            Hand::Right => &mut self.finger_right,
+        };
+        let Some(editor) = editor else {
+            return;
+        };
+        let effect = match editor.show(ctx) {
+            Outcome::Open => return,
+            Outcome::Apply => Some(NoteEffect::Finger(hand, editor.finger())),
+            Outcome::Remove => Some(NoteEffect::Finger(hand, None)),
+            Outcome::Cancel | Outcome::Listen => None,
+        };
+        if let Some(effect) = effect {
+            apply_note(commands, &snapshot.note_targets, effect);
+        }
+        match hand {
+            Hand::Left => self.finger_left = None,
+            Hand::Right => self.finger_right = None,
+        }
+    }
+
+    /// Opens the beat text dialog on the cursor beat's text.
+    pub(in crate::app) fn open_beat_text(&mut self, snapshot: &PaletteSnapshot) {
+        self.beat_text = Some(BeatTextEditor::new(&snapshot.beat_text));
+    }
+
+    fn show_beat_text(
+        &mut self,
+        ctx: &egui::Context,
+        snapshot: &PaletteSnapshot,
+        commands: &mut Vec<Command>,
+    ) {
+        let Some(editor) = &mut self.beat_text else {
+            return;
+        };
+        let outcome = editor.show(ctx);
+        match outcome {
+            Outcome::Open => return,
+            Outcome::Apply => commands.push(Command::SetBeatText {
+                at: snapshot.cursor.position(),
+                text: editor.text().to_owned(),
+            }),
+            Outcome::Remove => commands.push(Command::SetBeatText {
+                at: snapshot.cursor.position(),
+                text: String::new(),
+            }),
+            Outcome::Cancel | Outcome::Listen => {}
+        }
+        self.beat_text = None;
+    }
+
+    /// Opens the trill dialog on the cursor note's trill (or the first selected note's),
+    /// or on two frets above the note.
+    pub(in crate::app) fn open_trill(&mut self, snapshot: &PaletteSnapshot) {
+        let Some(note) = snapshot
+            .note_state
+            .as_ref()
+            .or(snapshot.target_states.first())
+        else {
+            return;
+        };
+        self.trill = Some(TrillEditor::new(note.trill, note.fret));
+    }
+
+    fn show_trill(
+        &mut self,
+        ctx: &egui::Context,
+        snapshot: &PaletteSnapshot,
+        commands: &mut Vec<Command>,
+    ) {
+        let Some(editor) = &mut self.trill else {
+            return;
+        };
+        let effect = match editor.show(ctx) {
+            Outcome::Open => return,
+            Outcome::Apply => Some(NoteEffect::Trill(Some(editor.trill()))),
+            Outcome::Remove => Some(NoteEffect::Trill(None)),
+            Outcome::Cancel | Outcome::Listen => None,
+        };
+        if let Some(effect) = effect {
+            apply_note(commands, &snapshot.note_targets, effect);
+        }
+        self.trill = None;
+    }
+
+    /// Opens the tremolo dialog on the cursor note's speed (or the first selected note's).
+    pub(in crate::app) fn open_tremolo(&mut self, snapshot: &PaletteSnapshot) {
+        let Some(note) = snapshot
+            .note_state
+            .as_ref()
+            .or(snapshot.target_states.first())
+        else {
+            return;
+        };
+        self.tremolo = Some(TremoloEditor::new(note.tremolo_picking));
+    }
+
+    fn show_tremolo(
+        &mut self,
+        ctx: &egui::Context,
+        snapshot: &PaletteSnapshot,
+        commands: &mut Vec<Command>,
+    ) {
+        let Some(editor) = &mut self.tremolo else {
+            return;
+        };
+        let effect = match editor.show(ctx) {
+            Outcome::Open => return,
+            Outcome::Apply => Some(NoteEffect::TremoloPicking(Some(editor.speed()))),
+            Outcome::Remove => Some(NoteEffect::TremoloPicking(None)),
+            Outcome::Cancel | Outcome::Listen => None,
+        };
+        if let Some(effect) = effect {
+            apply_note(commands, &snapshot.note_targets, effect);
+        }
+        self.tremolo = None;
     }
 
     /// Opens the grace note dialog on the cursor note's grace note (or the first selected

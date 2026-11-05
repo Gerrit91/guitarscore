@@ -17,7 +17,10 @@ use egui::{Event, Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use gscore_app::{GuitarScoreApp, MeasureSelection};
-use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, StringNumber, TrackIndex, VoiceIndex};
+use gscore_model::{
+    BeatIndex, BeatPosition, Fade, Finger, Hand, MeasureIndex, NoteView, StringNumber,
+    StrokeDirection, TrackIndex, VoiceIndex,
+};
 
 fn testdata(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -313,6 +316,125 @@ fn a_second_click_on_a_technique_removes_it_even_off_the_cursor_string() {
     harness.get_by_label("Palm mute").click_accesskit();
     harness.run();
     assert!(!palm_muted(&harness), "the second click removes it");
+}
+
+#[test]
+fn the_advanced_effect_tiles_edit_the_note_and_beat() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    let click = |harness: &mut Harness<'static, GuitarScoreApp>, label: &str| {
+        harness.get_by_label(label).scroll_to_me();
+        harness.run();
+        harness.get_by_label(label).click_accesskit();
+        harness.run();
+    };
+    let arpeggio = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let at = document.editor().cursor().position();
+        document.song().beat(at).unwrap().arpeggio()
+    };
+    let beat_flag = |harness: &Harness<'static, GuitarScoreApp>,
+                     test: fn(&gscore_model::BeatView<'_>) -> bool| {
+        let document = harness.state().document().unwrap();
+        let at = document.editor().cursor().position();
+        test(&document.song().beat(at).unwrap())
+    };
+    let fade = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let at = document.editor().cursor().position();
+        document.song().beat(at).unwrap().fade()
+    };
+    let note_flag = |harness: &Harness<'static, GuitarScoreApp>,
+                     test: fn(&NoteView<'_>) -> bool| {
+        let document = harness.state().document().unwrap();
+        let cursor = document.editor().cursor();
+        let beat = document.song().beat(cursor.position()).unwrap();
+        beat.notes()
+            .find(|note| note.string().unwrap().get() == cursor.string)
+            .is_some_and(|note| test(&note))
+    };
+
+    click(&mut harness, "Arpeggio down");
+    assert_eq!(arpeggio(&harness), Some(StrokeDirection::Down));
+    click(&mut harness, "Arpeggio down");
+    assert_eq!(arpeggio(&harness), None, "the second click removes it");
+    click(&mut harness, "Dead slapped");
+    assert!(beat_flag(&harness, |beat| beat.is_dead_slapped()));
+    click(&mut harness, "Rasgueado");
+    assert!(beat_flag(&harness, |beat| beat.has_rasgueado()));
+    click(&mut harness, "Left-hand tap");
+    assert!(note_flag(&harness, |note| note.is_left_hand_tapped()));
+    click(&mut harness, "String number");
+    assert!(note_flag(&harness, |note| note.shows_string_number()));
+    click(&mut harness, "Fade out");
+    assert_eq!(fade(&harness), Some(Fade::Out));
+    click(&mut harness, "Volume swell");
+    assert_eq!(fade(&harness), Some(Fade::Swell));
+    // The trill and tremolo tiles open their dialogs, like the bend and grace tiles.
+    click(&mut harness, "Trill");
+    click(&mut harness, "OK");
+    assert!(note_flag(&harness, |note| note.trill().is_some()));
+    click(&mut harness, "Tremolo picking");
+    click(&mut harness, "OK");
+    assert!(note_flag(&harness, |note| note.tremolo_speed().is_some()));
+}
+
+#[test]
+fn the_tie_beat_text_and_fingering_tiles_work() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    press(&mut harness, Key::ArrowRight);
+    type_char(&mut harness, "5", Modifiers::NONE);
+    harness.run();
+
+    let note_kind = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        let cursor = document.editor().cursor();
+        let beat = document.song().beat(cursor.position()).unwrap();
+        beat.notes()
+            .find(|note| note.string().unwrap().get() == cursor.string)
+            .map(|note| note.kind())
+            .unwrap()
+    };
+    harness.get_by_label("Tie beat").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Tie beat").click_accesskit();
+    harness.run();
+    assert_eq!(note_kind(&harness), gscore_model::NoteKind::Tie);
+
+    // The fingering tile opens a dialog; choosing a finger and OK sets it.
+    let finger = |harness: &Harness<'static, GuitarScoreApp>, hand: Hand| {
+        let document = harness.state().document().unwrap();
+        let cursor = document.editor().cursor();
+        let beat = document.song().beat(cursor.position()).unwrap();
+        beat.notes()
+            .find(|note| note.string().unwrap().get() == cursor.string)
+            .and_then(|note| note.finger(hand))
+    };
+    harness.get_by_label("Left-hand fingering…").scroll_to_me();
+    harness.run();
+    harness
+        .get_by_label("Left-hand fingering…")
+        .click_accesskit();
+    harness.run();
+    harness.get_by_label("Little").click_accesskit();
+    harness.run();
+    harness.get_by_label("OK").click_accesskit();
+    harness.run();
+    assert_eq!(finger(&harness, Hand::Left), Some(Finger::Little));
+
+    // The beat text tile opens its dialog; Cancel leaves the beat unchanged.
+    harness.get_by_label("Beat text…").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Beat text…").click_accesskit();
+    harness.run();
+    harness.get_by_label("Beat text");
+    harness.get_by_label("Cancel").click_accesskit();
+    harness.run();
+    assert!(
+        harness.query_by_label("Beat text").is_none(),
+        "the dialog closed"
+    );
 }
 
 #[test]
@@ -1144,6 +1266,7 @@ fn shift_g_opens_the_grace_note_dialog_and_ok_sets_the_chosen_speed() {
             speed: gscore_model::GraceSpeed::Slow,
             on_beat: true,
             dead: false,
+            hammer: false,
         })
     );
     // The palette tile reopens the dialog on it; Remove takes the grace note off.

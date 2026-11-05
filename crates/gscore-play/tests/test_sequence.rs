@@ -427,6 +427,7 @@ fn every_note_on_has_a_later_note_off() {
         "basic/steel_guitar_dadgad.gp5",
         "basic/note_lengths.gpx",
         "basic/ornaments.gp",
+        "basic/advanced_ornaments.gp",
     ] {
         let sequence = Sequence::new(&open(file), None).unwrap();
         let mut open_notes = std::collections::HashMap::new();
@@ -559,6 +560,20 @@ fn the_midi_file_reads_back_with_the_same_notes() {
     assert_eq!(u32::from(smf.ppq), PPQ);
     assert_eq!(smf.tracks.len(), 2, "conductor plus one track");
     assert_eq!(note_starts(&smf), our_note_starts(&sequence));
+}
+
+#[test]
+fn the_advanced_ornaments_play_all_their_repeats_and_hits() {
+    let sequence = Sequence::new(&open("basic/advanced_ornaments.gp"), None).unwrap();
+    let note_ons = sequence
+        .events
+        .iter()
+        .filter(|event| matches!(event.event, MidiEvent::NoteOn { .. }))
+        .count();
+    // The file writes 82 notes; trills, tremolo picking, the rasgueado, the pick slides and
+    // the dead slapped beat all add more.
+    assert!(note_ons > 82, "{note_ons} note-ons");
+    assert_eq!(sequence.degraded_pitch_bends, 0);
 }
 
 #[test]

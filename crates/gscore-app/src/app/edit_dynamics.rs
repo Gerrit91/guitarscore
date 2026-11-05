@@ -2,9 +2,10 @@
 //! beats that have notes (one `set_dynamic` each, a batch for several); notes entered
 //! afterwards take the dynamic in effect, as in Guitar Pro.
 
-use gscore_edit::Command;
+use gscore_edit::{ActionId, Command};
 use gscore_model::{BeatPosition, Dynamic, Song};
 
+use super::edit_palette::PaletteSnapshot;
 use super::style;
 use super::tiles::{self, Face};
 
@@ -66,12 +67,14 @@ fn glyph(dynamic: Dynamic) -> &'static str {
 /// of them, so it is still played.
 pub(super) fn section(
     ui: &mut egui::Ui,
-    snapshot: &DynamicsSnapshot,
+    snapshot: &PaletteSnapshot,
+    hint: &dyn Fn(ActionId) -> String,
     commands: &mut Vec<Command>,
     heard: &mut Option<BeatPosition>,
 ) {
+    let dynamics = &snapshot.dynamics;
     style::section(ui, "dynamics", "Dynamics", |ui| {
-        let enabled = !snapshot.targets.is_empty();
+        let enabled = !dynamics.targets.is_empty();
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(2.0, 3.0);
             for dynamic in Dynamic::ALL {
@@ -88,11 +91,11 @@ pub(super) fn section(
                 if !enabled {
                     tip.push_str("\nPut the cursor on a note first.");
                 }
-                let on = enabled && snapshot.shared == Some(dynamic);
+                let on = enabled && dynamics.shared == Some(dynamic);
                 if tiles::tile(ui, face, on, enabled, &label, &tip).clicked() {
-                    let changes = snapshot.commands(dynamic);
+                    let changes = dynamics.commands(dynamic);
                     if changes.is_empty() {
-                        *heard = snapshot.targets.first().map(|&(at, _)| at);
+                        *heard = dynamics.targets.first().map(|&(at, _)| at);
                     }
                     commands.extend(changes);
                 }
@@ -100,10 +103,13 @@ pub(super) fn section(
         });
         let note = format!(
             "In effect here: {} ({})",
-            snapshot.in_effect.id(),
-            snapshot.in_effect.name()
+            dynamics.in_effect.id(),
+            dynamics.in_effect.name()
         );
         ui.label(egui::RichText::new(note).color(style::tokens(ui).text_weak));
+        ui.add_space(4.0);
+        ui.label(egui::RichText::new("Fades").color(style::tokens(ui).text_weak));
+        super::edit_effects::fade_tiles(ui, snapshot, hint, commands);
     });
 }
 

@@ -5,12 +5,12 @@
 
 use gscore_gp::{
     BeatStrokeDirection, BendEffect as GpBendEffect, BendPoint as GpBendPoint, BendType,
-    Duration as GpDuration, HarmonicEffect as GpHarmonicEffect, HarmonicType, LegatoEffect,
-    SlapEffect, SlideType, TremoloPickingEffect, TrillEffect,
+    HarmonicEffect as GpHarmonicEffect, HarmonicType, LegatoEffect, SlapEffect, SlideType,
 };
 
 use crate::error::ModelError;
 use crate::grace::Grace;
+use crate::techniques::{self, Fade, Finger, Hand, TremoloSpeed, Trill};
 use crate::views::{BeatView, NoteView};
 
 /// The direction of a pick or brush stroke.
@@ -48,6 +48,10 @@ pub enum SlideKind {
     OutDownwards,
     /// Slide out upwards, to no particular note.
     OutUpwards,
+    /// A pick slide (pick scrape) down the strings.
+    PickSlideDown,
+    /// A pick slide (pick scrape) up the strings.
+    PickSlideUp,
 }
 
 /// What a bend does to the pitch.
@@ -141,7 +145,7 @@ pub const BEND_MAX_VALUE: i8 = 48;
 pub const MAX_BEND_POINTS: usize = 16;
 
 /// Most slides one note may carry (there is one slide type per entry).
-const MAX_SLIDES: usize = 6;
+const MAX_SLIDES: usize = 8;
 
 /// One point of a bend or whammy shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -281,10 +285,16 @@ pub enum NoteEffect {
     LetRing(bool),
     /// A staccato mark.
     Staccato(bool),
-    /// A trill.
-    Trill(bool),
-    /// Tremolo picking.
-    TremoloPicking(bool),
+    /// A trill with its other fret and speed; `None` removes it.
+    Trill(Option<Trill>),
+    /// Tremolo picking and its speed; `None` removes it.
+    TremoloPicking(Option<TremoloSpeed>),
+    /// A left-hand tap (the fretting hand hammers the note on, no pick).
+    LeftHandTap(bool),
+    /// Write the note's string number (a circled number).
+    StringNumber(bool),
+    /// The finger of one hand; `None` removes it.
+    Finger(Hand, Option<Finger>),
     /// The note's vibrato width; `None` removes it.
     Vibrato(Option<Vibrato>),
     /// The grace note before (or on) the note; `None` removes it.
@@ -308,6 +318,16 @@ pub enum BeatEffect {
     Legato(Option<Legato>),
     /// The beat's own vibrato width; `None` removes it.
     Vibrato(Option<Vibrato>),
+    /// A rolled chord (arpeggio) and its direction; `None` removes it.
+    Arpeggio(Option<StrokeDirection>),
+    /// A dead slapped beat (a slap on muted strings instead of the notes).
+    DeadSlapped(bool),
+    /// A rasgueado.
+    Rasgueado(bool),
+    /// A fade out (switching it on removes a fade-in or volume swell).
+    FadeOut(bool),
+    /// A volume swell, in and out again (switching it on removes the other fades).
+    VolumeSwell(bool),
 }
 
 impl NoteEffect {
@@ -345,30 +365,23 @@ impl NoteEffect {
             NoteEffect::PalmMute(on) => note.effect.palm_mute = *on,
             NoteEffect::LetRing(on) => note.effect.let_ring = *on,
             NoteEffect::Staccato(on) => note.effect.staccato = *on,
-            NoteEffect::Trill(on) => {
-                note.effect.trill = if *on {
-                    let fret = i8::try_from(note.value.saturating_add(2)).map_err(|_| {
-                        ModelError::Invalid(format!(
-                            "the trill fret of a note on fret {} does not fit",
-                            note.value
-                        ))
-                    })?;
-                    Some(TrillEffect {
-                        fret,
-                        duration: short_duration(),
-                    })
-                } else {
-                    None
+            NoteEffect::Trill(trill) => {
+                note.effect.trill = match trill {
+                    Some(trill) => Some(techniques::trill_to_gp(*trill, note.value)?),
+                    None => None,
                 };
             }
-            NoteEffect::TremoloPicking(on) => {
-                note.effect.tremolo_picking = if *on {
-                    Some(TremoloPickingEffect {
-                        duration: short_duration(),
-                    })
-                } else {
-                    None
-                };
+            NoteEffect::TremoloPicking(speed) => {
+                note.effect.tremolo_picking = speed.map(techniques::tremolo_to_gp);
+            }
+            NoteEffect::LeftHandTap(on) => note.effect.left_hand_tapped = *on,
+            NoteEffect::StringNumber(on) => note.effect.show_string_number = *on,
+            NoteEffect::Finger(hand, finger) => {
+                let finger = techniques::finger_to_gp(*finger);
+                match hand {
+                    Hand::Left => note.effect.left_hand_finger = finger,
+                    Hand::Right => note.effect.right_hand_finger = finger,
+                }
             }
             NoteEffect::Vibrato(vibrato) => {
                 note.effect.vibrato = vibrato.is_some();
@@ -408,7 +421,12 @@ impl BeatEffect {
                     None => SlapEffect::None,
                 };
             }
-            BeatEffect::FadeIn(on) => effects.fade_in = *on,
+            BeatEffect::FadeIn(on) => techniques::set_fade(effects, Fade::In, *on),
+            BeatEffect::FadeOut(on) => techniques::set_fade(effects, Fade::Out, *on),
+            BeatEffect::VolumeSwell(on) => techniques::set_fade(effects, Fade::Swell, *on),
+            BeatEffect::Arpeggio(direction) => effects.arpeggio = stroke_to_gp(*direction),
+            BeatEffect::DeadSlapped(on) => effects.dead_slapped = *on,
+            BeatEffect::Rasgueado(on) => effects.has_rasgueado = *on,
             BeatEffect::Whammy(shape) => {
                 effects.tremolo_bar = match shape {
                     Some(shape) => Some(whammy_to_gp(shape)?),
@@ -451,6 +469,8 @@ fn toggle_slide(slides: &mut Vec<SlideType>, kind: SlideKind, on: bool) -> Resul
         SlideKind::LegatoSlideTo => SlideType::LegatoSlideTo,
         SlideKind::OutDownwards => SlideType::OutDownwards,
         SlideKind::OutUpwards => SlideType::OutUpWards,
+        SlideKind::PickSlideDown => SlideType::PickSlideDown,
+        SlideKind::PickSlideUp => SlideType::PickSlideUp,
     };
     if on {
         if !slides.contains(&slide) {
@@ -577,15 +597,6 @@ fn harmonic_to_gp(harmonic: Harmonic, fret: i16) -> Result<GpHarmonicEffect, Mod
         fret: offset,
         ..GpHarmonicEffect::default()
     })
-}
-
-/// The short note value Guitar Pro stores for a trill's or tremolo picking's speed (a
-/// sixteenth note).
-fn short_duration() -> GpDuration {
-    GpDuration {
-        value: 16,
-        ..GpDuration::default()
-    }
 }
 
 impl BeatView<'_> {
@@ -743,6 +754,8 @@ impl NoteView<'_> {
                 SlideType::LegatoSlideTo => Some(SlideKind::LegatoSlideTo),
                 SlideType::OutDownwards => Some(SlideKind::OutDownwards),
                 SlideType::OutUpWards => Some(SlideKind::OutUpwards),
+                SlideType::PickSlideDown => Some(SlideKind::PickSlideDown),
+                SlideType::PickSlideUp => Some(SlideKind::PickSlideUp),
                 SlideType::None => None,
             })
     }

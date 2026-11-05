@@ -6,29 +6,37 @@
 //! lines, stems, flags, beams, dots, rests, ties, tuplet numbers). All voices are written:
 //! when two share the staff the first points its stems up and the others down, and a voice
 //! whose notehead would sit on the first voice's position moves right. Grace notes are small
-//! heads with a slash before their main note. Articulations and other ornaments on the
-//! notation staff are not drawn yet (they live on the tab). Drum tracks get a percussion
-//! staff instead: each drum sound has its own place and notehead ([`drums`]) and stems point
-//! up.
+//! heads with a slash before their main note. The notes' articulations sit by the heads
+//! ([`marks`]): accents and staccato opposite the stem, ghost notes in parentheses, natural
+//! harmonics as diamonds, tremolo picking as strokes through the stem, slurs for hammer-ons
+//! and legato, lines for slides, and an arrow before a brushed chord. Drum tracks get a
+//! percussion staff instead: each drum sound has its own place and notehead ([`drums`]) and
+//! stems point up.
 
 mod beams;
 mod draw;
 mod drums;
+mod marks;
 mod pitch;
+mod tuplets;
 
 use std::collections::HashMap;
 
-use gscore_model::{BeatKind, BeatView, NoteKind, TrackView};
+use gscore_model::{
+    AccentKind, BeatKind, BeatView, Hand, HarmonicKind, NoteKind, SlideKind, StrokeDirection,
+    TrackView, TremoloSpeed,
+};
 
 pub(crate) use draw::{
     BeamPlan, KeySigLayout, draw_measure, draw_staff_start, draw_tab_staff_start, draw_tie_curve,
     key_start_width, ledger_positions, prefix_width, tab_prefix_width, y_of,
 };
+pub(crate) use marks::draw_arrow;
 pub(crate) use pitch::{Alter, Clef};
 
+use crate::Context;
 use crate::error::LayoutError;
 use crate::glyph::Glyph;
-use crate::metrics::MusicFont;
 use crate::staff::Staff;
 
 /// Lines of a notation staff.
@@ -39,6 +47,9 @@ pub(crate) const LINE_SPACING: f32 = 1.0;
 pub(crate) const MIDDLE: i32 = 4;
 /// Space between an accidental and its notehead.
 const ACCIDENTAL_GAP: f32 = 0.25;
+/// Fingering signs left of a notehead: their size and the gap to the head.
+const FINGER_SIZE: f32 = 0.9;
+const FINGER_GAP: f32 = 0.12;
 /// Space between a notehead and its first dot, and between dots.
 pub(crate) const DOT_GAP: f32 = 0.3;
 
@@ -87,7 +98,18 @@ pub(crate) enum NotationItem {
         glyph: Glyph,
         /// Augmentation dots.
         dots: u8,
+        /// The tuplet the rest belongs to, if any.
+        tuplet: Option<Tuplet>,
     },
+}
+
+/// A tuplet: `enters` notes in the time of `times`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Tuplet {
+    /// How many notes the group has.
+    pub(crate) enters: u8,
+    /// How many of the normal notes they take the time of.
+    pub(crate) times: u8,
 }
 
 /// Notes of one beat, written on one stem.
@@ -99,10 +121,34 @@ pub(crate) struct Chord {
     pub(crate) value: u16,
     /// Augmentation dots.
     pub(crate) dots: u8,
-    /// The tuplet's number of notes (3 for a triplet), if any.
-    pub(crate) tuplet: Option<u8>,
+    /// The tuplet this chord belongs to, if any.
+    pub(crate) tuplet: Option<Tuplet>,
     /// A fixed stem direction (up for drums); `None` decides by the noteheads.
     pub(crate) stem_up: Option<bool>,
+    /// Articulations and beat effects written by the chord.
+    pub(crate) marks: ChordMarks,
+}
+
+/// What a chord shows besides its heads.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct ChordMarks {
+    /// The strongest accent of its notes.
+    pub(crate) accent: Option<AccentKind>,
+    /// A staccato dot (any note staccato).
+    pub(crate) staccato: bool,
+    /// Tremolo picking (the fastest note's speed): strokes through the stem.
+    pub(crate) tremolo: Option<TremoloSpeed>,
+    /// A trill: `tr` above the chord.
+    pub(crate) trill: bool,
+    /// A left-hand tap: a circled T above the chord.
+    pub(crate) tap: bool,
+    /// A brush stroke: an arrow before the chord.
+    pub(crate) brush: Option<StrokeDirection>,
+    /// A rolled chord: a wavy arrow before the chord.
+    pub(crate) arpeggio: Option<StrokeDirection>,
+    /// The beat starts or continues a beat-level legato slur.
+    pub(crate) legato_origin: bool,
+    pub(crate) legato_destination: bool,
 }
 
 /// One notehead.
@@ -121,6 +167,47 @@ pub(crate) struct Head {
     pub(crate) dead: bool,
     /// A notehead other than the note value's (drum sounds).
     pub(crate) glyph: Option<Glyph>,
+    /// The string the note is played on: slurs and slides join heads on one string.
+    pub(crate) string: Option<u8>,
+    /// A ghost note: the head in parentheses.
+    pub(crate) ghost: bool,
+    /// A natural harmonic: a diamond head.
+    pub(crate) harmonic: bool,
+    /// A hammer-on or pull-off to the next note on the string.
+    pub(crate) hammer: bool,
+    /// The note's slides.
+    pub(crate) slides: Vec<SlideKind>,
+    /// Left-hand and right-hand fingering signs, written left of the head.
+    pub(crate) finger_left: Option<&'static str>,
+    pub(crate) finger_right: Option<&'static str>,
+    /// The string number, written as a circled digit, if the score asks for it.
+    pub(crate) string_number: Option<u8>,
+    /// The note starts a pick slide along the string.
+    pub(crate) pick_slide: bool,
+}
+
+impl Head {
+    /// A head on the middle line with nothing else set, to fill in.
+    fn plain() -> Self {
+        Head {
+            position: MIDDLE,
+            step: 0,
+            alter: Alter::Natural,
+            accidental: None,
+            tied: false,
+            dead: false,
+            glyph: None,
+            string: None,
+            ghost: false,
+            harmonic: false,
+            hammer: false,
+            slides: Vec::new(),
+            finger_left: None,
+            finger_right: None,
+            string_number: None,
+            pick_slide: false,
+        }
+    }
 }
 
 impl Chord {
@@ -131,6 +218,9 @@ impl Chord {
         }
         if head.dead {
             return Glyph::NoteheadX;
+        }
+        if head.harmonic {
+            return Glyph::NoteheadHarmonic;
         }
         match self.value {
             1 => Glyph::NoteheadWhole,
@@ -207,15 +297,31 @@ fn beat_item(
     notation: &Notation<'_>,
     key: i8,
 ) -> Result<Option<NotationItem>, LayoutError> {
+    // A dead slapped beat writes a large cross across the staff instead of a rest or its
+    // notes, whether the file calls the empty beat a rest or a normal beat.
+    if beat.is_dead_slapped() {
+        return Ok(None);
+    }
     let value = beat.note_value()?;
+    let tuplet = value
+        .tuplet()
+        .map(|(enters, times)| Tuplet { enters, times });
     match beat.kind() {
         BeatKind::Rest => Ok(Glyph::rest(value.value()).map(|glyph| NotationItem::Rest {
             glyph,
             dots: value.dots(),
+            tuplet,
         })),
         BeatKind::Empty => Ok(None),
         BeatKind::Normal => {
             let mut heads: Vec<Head> = Vec::new();
+            let mut marks = ChordMarks {
+                brush: beat.brush_stroke(),
+                arpeggio: beat.arpeggio(),
+                legato_origin: beat.legato().is_some_and(|l| l.origin),
+                legato_destination: beat.legato().is_some_and(|l| l.destination),
+                ..ChordMarks::default()
+            };
             for note in beat.notes() {
                 let kind = note.kind();
                 if !matches!(kind, NoteKind::Normal | NoteKind::Tie | NoteKind::Dead) {
@@ -224,6 +330,51 @@ fn beat_item(
                 // Unreadable notes are listed as issues by the model; leave them out here.
                 let Ok(pitch) = notation.track.sounding_pitch(&note) else {
                     continue;
+                };
+                let tie = kind == NoteKind::Tie;
+                if !tie {
+                    marks.accent = match (marks.accent, note.accent()) {
+                        (Some(AccentKind::Heavy), _) | (_, Some(AccentKind::Heavy)) => {
+                            Some(AccentKind::Heavy)
+                        }
+                        (accent, None) => accent,
+                        (_, accent) => accent,
+                    };
+                    marks.staccato |= note.is_staccato();
+                    marks.trill |= note.trill().is_some();
+                    marks.tap |= note.is_left_hand_tapped();
+                    if let Some(speed) = note.tremolo_speed() {
+                        marks.tremolo = Some(
+                            marks
+                                .tremolo
+                                .map_or(speed, |current| max_speed(current, speed)),
+                        );
+                    }
+                }
+                let string = note.string().ok().map(|s| s.get());
+                let pitched = notation.clef != Clef::Percussion;
+                let link = |mut head: Head| {
+                    head.string = string;
+                    head.ghost = note.is_ghost();
+                    head.harmonic = pitched
+                        && note
+                            .harmonic()
+                            .is_some_and(|h| h.kind == HarmonicKind::Natural);
+                    head.hammer = pitched && note.is_hammer();
+                    head.slides = if pitched {
+                        note.slides().collect()
+                    } else {
+                        Vec::new()
+                    };
+                    if pitched {
+                        head.finger_left = note.finger(Hand::Left).map(|f| f.sign(Hand::Left));
+                        head.finger_right = note.finger(Hand::Right).map(|f| f.sign(Hand::Right));
+                        head.string_number = note.shows_string_number().then_some(string).flatten();
+                        head.pick_slide = note.slides().any(|slide| {
+                            matches!(slide, SlideKind::PickSlideDown | SlideKind::PickSlideUp)
+                        });
+                    }
+                    head
                 };
                 let head = if notation.clef == Clef::Percussion {
                     // A drum's "pitch" is the sound; it has a place, never an accidental.
@@ -236,6 +387,7 @@ fn beat_item(
                         tied: kind == NoteKind::Tie,
                         dead: false,
                         glyph: drum.head.glyph(),
+                        ..Head::plain()
                     }
                 } else {
                     let (spelled, position) = notation.clef.place(pitch.get(), key);
@@ -246,9 +398,10 @@ fn beat_item(
                         accidental: None,
                         tied: kind == NoteKind::Tie,
                         dead: kind == NoteKind::Dead,
-                        glyph: None,
+                        ..Head::plain()
                     }
                 };
+                let head = link(head);
                 // Two sounds on one place share a head only when they look the same.
                 if heads
                     .iter()
@@ -266,7 +419,7 @@ fn beat_item(
                 heads,
                 value: value.value(),
                 dots: value.dots(),
-                tuplet: value.tuplet().map(|(enters, _)| enters),
+                tuplet,
                 // A second (or further) voice points its stems down, as engravers do.
                 stem_up: if notation.clef == Clef::Percussion {
                     Some(true)
@@ -275,6 +428,7 @@ fn beat_item(
                 } else {
                     None
                 },
+                marks,
             })))
         }
     }
@@ -326,11 +480,17 @@ pub(crate) fn beamed_columns<'i>(
         .collect()
 }
 
+/// The faster of two tremolo speeds.
+fn max_speed(a: TremoloSpeed, b: TremoloSpeed) -> TremoloSpeed {
+    if a.strokes() >= b.strokes() { a } else { b }
+}
+
 /// Room an item needs left and right of its column's center line; `beamed` chords have no
 /// flag.
-pub(crate) fn extent(item: &NotationItem, beamed: bool, font: &MusicFont) -> (f32, f32) {
+pub(crate) fn extent(item: &NotationItem, beamed: bool, ctx: &Context<'_>) -> (f32, f32) {
+    let font = &ctx.fonts.music;
     match item {
-        NotationItem::Rest { glyph, dots } => {
+        NotationItem::Rest { glyph, dots, .. } => {
             let bbox = font.bbox(*glyph);
             let half = (bbox.x_max - bbox.x_min) / 2.0;
             let dots = f32::from(*dots) * (font.advance(Glyph::AugmentationDot) + DOT_GAP);
@@ -357,7 +517,48 @@ pub(crate) fn extent(item: &NotationItem, beamed: bool, font: &MusicFont) -> (f3
             } else {
                 0.0
             };
-            (half + accidental, half + second + dots.max(flag))
+            let paren = if chord.heads.iter().any(|h| h.ghost) {
+                draw::paren_room(font)
+            } else {
+                0.0
+            };
+            let slides = |kinds: [SlideKind; 2]| {
+                if chord
+                    .heads
+                    .iter()
+                    .any(|h| h.slides.iter().any(|s| kinds.contains(s)))
+                {
+                    marks::SLIDE_ROOM
+                } else {
+                    0.0
+                }
+            };
+            let slide_in = slides([SlideKind::IntoFromBelow, SlideKind::IntoFromAbove]);
+            let slide_out = slides([SlideKind::OutDownwards, SlideKind::OutUpwards]);
+            let brush = if chord.marks.brush.is_some() {
+                marks::BRUSH_ROOM
+            } else {
+                0.0
+            };
+            let arpeggio = if chord.marks.arpeggio.is_some() {
+                marks::ARPEGGIO_ROOM
+            } else {
+                0.0
+            };
+            let finger = |sign: Option<&'static str>| -> f32 {
+                sign.map_or(0.0, |sign| {
+                    ctx.fonts.text.width(sign, FINGER_SIZE) + FINGER_GAP
+                })
+            };
+            let fingers = chord
+                .heads
+                .iter()
+                .map(|head| finger(head.finger_left) + finger(head.finger_right))
+                .fold(0.0, f32::max);
+            (
+                half + paren + accidental + slide_in.max(brush).max(arpeggio) + fingers,
+                half + second + paren + dots.max(flag) + slide_out,
+            )
         }
     }
 }
@@ -372,10 +573,8 @@ mod tests {
             position: step - 30,
             step,
             alter,
-            accidental: None,
             tied,
-            dead: false,
-            glyph: None,
+            ..Head::plain()
         }
     }
 
@@ -386,6 +585,7 @@ mod tests {
             dots: 0,
             tuplet: None,
             stem_up: None,
+            marks: ChordMarks::default(),
         })
     }
 
@@ -460,6 +660,7 @@ mod tests {
             dots: 0,
             tuplet: None,
             stem_up: None,
+            marks: ChordMarks::default(),
         };
         let h = c.heads[0].clone();
         assert_eq!(c.head_glyph(&h), Glyph::NoteheadWhole);

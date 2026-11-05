@@ -35,6 +35,7 @@ mod playback;
 mod position;
 mod song;
 mod style;
+mod techniques;
 #[cfg(feature = "test-support")]
 pub mod testing;
 mod tuning;
@@ -73,6 +74,7 @@ pub use position::{
 };
 pub use song::Song;
 pub use style::{KeySignature, Section, TrackColor, TrackStaves};
+pub use techniques::{Fade, Finger, Hand, MAX_BEAT_TEXT_CHARS, TremoloSpeed, Trill, TrillSpeed};
 pub use views::{
     BeatKind, BeatView, MeasureView, NoteKind, NoteView, StringTuning, TrackView, VoiceView,
 };

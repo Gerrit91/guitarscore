@@ -611,6 +611,14 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
             string,
             tie: true,
         },
+        Command::SetBeatTie {
+            at: at(0, 2, 0, 3),
+            tie: true,
+        },
+        Command::SetBeatText {
+            at: at(0, 2, 0, 3),
+            text: "let ring".to_owned(),
+        },
         Command::SetDeadNote {
             at: at(0, 2, 0, 3),
             string,
@@ -694,6 +702,7 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
                 speed: GraceSpeed::Slow,
                 on_beat: true,
                 dead: true,
+                hammer: true,
             })),
         },
         Command::SetNoteEffect {

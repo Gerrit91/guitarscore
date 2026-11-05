@@ -2,8 +2,8 @@
 //! into commands (see `paste.rs`) that run as one batch.
 
 use gscore_model::{
-    BeatEffect, BeatKind, BeatView, Dynamic, Fret, MeasureIndex, NoteEffect, NoteKind, NoteValue,
-    NoteView, Section, SlideKind, StringNumber, TimeSignature,
+    BeatEffect, BeatKind, BeatView, Dynamic, Fade, Fret, Hand, MeasureIndex, NoteEffect, NoteKind,
+    NoteValue, NoteView, Section, SlideKind, StringNumber, TimeSignature,
 };
 
 use super::paste::{paste_beats, paste_measures};
@@ -250,13 +250,15 @@ fn beat_clip(beat: &BeatView<'_>) -> Result<Option<BeatClip>, EditError> {
 }
 
 /// Every slide the model knows, so a paste can clear the ones the source lacks.
-const SLIDES: [SlideKind; 6] = [
+const SLIDES: [SlideKind; 8] = [
     SlideKind::IntoFromAbove,
     SlideKind::IntoFromBelow,
     SlideKind::ShiftSlideTo,
     SlideKind::LegatoSlideTo,
     SlideKind::OutDownwards,
     SlideKind::OutUpwards,
+    SlideKind::PickSlideDown,
+    SlideKind::PickSlideUp,
 ];
 
 /// Every note effect, set to its copied state.
@@ -267,8 +269,12 @@ fn note_effects(note: &NoteView<'_>) -> Vec<NoteEffect> {
         NoteEffect::PalmMute(note.is_palm_muted()),
         NoteEffect::LetRing(note.is_let_ring()),
         NoteEffect::Staccato(note.is_staccato()),
-        NoteEffect::Trill(note.has_trill()),
-        NoteEffect::TremoloPicking(note.has_tremolo_picking()),
+        NoteEffect::Trill(note.trill()),
+        NoteEffect::TremoloPicking(note.tremolo_speed()),
+        NoteEffect::LeftHandTap(note.is_left_hand_tapped()),
+        NoteEffect::StringNumber(note.shows_string_number()),
+        NoteEffect::Finger(Hand::Left, note.finger(Hand::Left)),
+        NoteEffect::Finger(Hand::Right, note.finger(Hand::Right)),
         NoteEffect::Accent(note.accent()),
         NoteEffect::Vibrato(note.vibrato()),
         NoteEffect::Harmonic(note.harmonic()),
@@ -287,7 +293,12 @@ fn beat_effects(beat: &BeatView<'_>) -> Vec<BeatEffect> {
         BeatEffect::PickStroke(beat.pick_stroke()),
         BeatEffect::BrushStroke(beat.brush_stroke()),
         BeatEffect::Slap(beat.slap()),
-        BeatEffect::FadeIn(beat.has_fade_in()),
+        BeatEffect::FadeIn(beat.fade() == Some(Fade::In)),
+        BeatEffect::FadeOut(beat.fade() == Some(Fade::Out)),
+        BeatEffect::VolumeSwell(beat.fade() == Some(Fade::Swell)),
+        BeatEffect::Arpeggio(beat.arpeggio()),
+        BeatEffect::DeadSlapped(beat.is_dead_slapped()),
+        BeatEffect::Rasgueado(beat.has_rasgueado()),
         BeatEffect::Whammy(beat.whammy_shape()),
         BeatEffect::Legato(beat.legato()),
         BeatEffect::Vibrato(beat.vibrato()),

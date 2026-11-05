@@ -43,9 +43,13 @@ pub(super) struct Grace {
     pub(super) line: Option<usize>,
     /// The fret number (or `x`) for the tab.
     pub(super) text: String,
+    /// The fret, when the model can read one (for the H/P of a hammer-on).
+    pub(super) fret: Option<u8>,
     pub(super) dead: bool,
     /// Played on the beat (an appoggiatura, without a slash).
     pub(super) on_beat: bool,
+    /// Played with a hammer-on or pull-off into the main note.
+    pub(super) hammer: bool,
 }
 
 /// A grace note from a GP6/GP7 grace beat: the note itself carries string and fret.
@@ -60,19 +64,21 @@ pub(super) fn from_note(note: NoteView<'_>, ctx: &Context<'_>, key: i8) -> Optio
         let pitch = notation.track.sounding_pitch(&note).ok()?;
         Some(notation.clef.place_grace(pitch.get(), key))
     });
+    let fret = note.fret().ok().map(|fret| fret.get());
     let text = if dead {
         "x".to_owned()
     } else {
-        note.fret()
-            .map_or_else(|_| UNREADABLE.to_owned(), |fret| fret.get().to_string())
+        fret.map_or_else(|| UNREADABLE.to_owned(), |fret| fret.to_string())
     };
     Some(grace(
         ctx,
         string.get(),
         placed,
         text,
+        fret,
         dead,
         effect.is_some_and(|grace| grace.on_beat),
+        effect.is_some_and(|grace| grace.hammer),
     ))
 }
 
@@ -105,18 +111,23 @@ pub(super) fn from_effect(
         string.get(),
         placed,
         text,
+        Some(effect.fret.get()),
         effect.dead,
         effect.on_beat,
+        effect.hammer,
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn grace(
     ctx: &Context<'_>,
     string: u8,
     placed: Option<(i32, Option<Glyph>)>,
     text: String,
+    fret: Option<u8>,
     dead: bool,
     on_beat: bool,
+    hammer: bool,
 ) -> Grace {
     let line = usize::from(string).saturating_sub(1);
     Grace {
@@ -125,8 +136,10 @@ fn grace(
         accidental: placed.and_then(|(_, accidental)| accidental),
         line: (line < ctx.staff.lines()).then_some(line),
         text,
+        fret,
         dead,
         on_beat,
+        hammer,
     }
 }
 
@@ -208,7 +221,7 @@ fn tab_size(ctx: &Context<'_>) -> f32 {
     ctx.options.fret_size * TAB_SCALE
 }
 
-fn tab_width(grace: &Grace, ctx: &Context<'_>) -> f32 {
+pub(super) fn tab_width(grace: &Grace, ctx: &Context<'_>) -> f32 {
     ctx.fonts.text.width(&grace.text, tab_size(ctx))
 }
 
@@ -240,6 +253,7 @@ pub(super) fn draw(x: f32, column: &Column, tops: Tops, ctx: &Context<'_>, ops: 
                 }
             }
         }
+        super::grace_marks::draw_hammer(center, x, tops, column, &notes, ctx, ops);
         at += size.width();
     }
 }

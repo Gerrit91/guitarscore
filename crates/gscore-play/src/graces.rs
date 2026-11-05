@@ -28,6 +28,8 @@ pub(crate) struct Grace {
     pub(crate) on_beat: bool,
     /// The written value: 64, 32 or 16 (another value counts as a 32nd).
     pub(crate) value: u16,
+    /// The main note is reached with a hammer-on (so it is not picked).
+    pub(crate) hammer: bool,
 }
 
 /// How long a grace note of written `value` (64, 32 or 16) sounds at `bpm`: its value,
@@ -65,6 +67,7 @@ pub(crate) fn gather(
                     string: string.get(),
                     on_beat: note.grace().is_some_and(|grace| grace.on_beat),
                     value,
+                    hammer: note.grace().is_some_and(|grace| grace.hammer),
                 }),
                 _ => *skipped = skipped.saturating_add(1),
             }
@@ -85,6 +88,7 @@ pub(crate) fn gather(
                 string: string.map_or(0, |string| string.get()),
                 on_beat: grace.on_beat,
                 value: u16::from(grace.speed.value()),
+                hammer: grace.hammer,
             }),
             None => *skipped = skipped.saturating_add(1),
         }
@@ -163,12 +167,16 @@ fn sounding(
         shape: None,
         vibrato: None,
         let_ring: false,
-        tremolo: false,
+        tremolo: None,
+        trill: None,
+        pick_slide: None,
+        rasgueado: false,
         // Grace notes belong to their beat: an excerpt of the beat plays them too.
         onset,
         damp: false,
         bend_curve: None,
         whammy: None,
+        fade: None,
     }
 }
 
@@ -187,6 +195,7 @@ mod tests {
             string,
             on_beat,
             value: 32,
+            hammer: false,
         }
     }
 

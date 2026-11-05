@@ -73,7 +73,13 @@ const TECHNIQUES: &[ActionId] = &[
     ActionId::ToggleVibrato,
     ActionId::ToggleWideVibrato,
     ActionId::ToggleTrill,
+    ActionId::TrillOther,
     ActionId::ToggleTremoloPicking,
+    ActionId::TremoloOther,
+    ActionId::ToggleLeftHandTap,
+    ActionId::ToggleStringNumber,
+    ActionId::EditLeftFinger,
+    ActionId::EditRightFinger,
 ];
 
 const SLIDES: &[ActionId] = &[
@@ -83,6 +89,8 @@ const SLIDES: &[ActionId] = &[
     ActionId::ToggleSlideInAbove,
     ActionId::ToggleSlideOutDown,
     ActionId::ToggleSlideOutUp,
+    ActionId::TogglePickSlideDown,
+    ActionId::TogglePickSlideUp,
 ];
 
 const HARMONICS: &[ActionId] = &[
@@ -265,7 +273,9 @@ impl Menu<'_> {
             }
         });
         ui.separator();
-        self.action(ui, ActionId::ToggleTie, None, beats);
+        self.action(ui, ActionId::ToggleTie, None, notes);
+        self.action(ui, ActionId::TieBeat, Some("Tie beat"), beats);
+        self.action(ui, ActionId::EditBeatText, Some("Beat text…"), beats);
         self.action(ui, ActionId::MakeRest, Some("Make rest"), beats);
         self.action(ui, ActionId::ClearNote, Some("Delete note"), notes);
         ui.separator();

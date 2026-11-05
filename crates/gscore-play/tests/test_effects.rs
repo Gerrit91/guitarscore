@@ -13,8 +13,9 @@
 
 use gscore_model::testing::{self, TestNote};
 use gscore_model::{
-    AccentKind, BeatEffect, BeatIndex, BeatPosition, BendKind, BendPoint, BendShape, MeasureIndex,
-    NoteEffect, Song, StringNumber, StrokeDirection, TrackIndex, Vibrato, VoiceIndex, WhammyShape,
+    AccentKind, BeatEffect, BeatIndex, BeatPosition, BendKind, BendPoint, BendShape, Fret, Grace,
+    GraceSpeed, MeasureIndex, NoteEffect, SlideKind, Song, StringNumber, StrokeDirection,
+    TrackIndex, TremoloSpeed, Trill, TrillSpeed, Vibrato, VoiceIndex, WhammyShape,
 };
 use gscore_play::{MidiEvent, PPQ, Sequence, controller};
 
@@ -296,7 +297,7 @@ fn an_excerpt_of_a_tied_beat_strikes_its_notes() {
     // A half note tied into the next: the second beat alone still sounds.
     let mut song = two_beats();
     let _ = song
-        .set_note(at(1), string(6), gscore_model::Fret::new(3).unwrap())
+        .set_note(at(1), string(6), Fret::new(3).unwrap())
         .unwrap();
     let _ = song.set_note_tie(at(1), string(6), true).unwrap();
     let full = note_ons(&Sequence::new(&song, None).unwrap());
@@ -350,4 +351,377 @@ fn sequence_channels_bent(sequence: &Sequence) -> gscore_play::Channel {
             _ => None,
         })
         .unwrap()
+}
+
+/// A chord of three strings as one whole note.
+fn chord_song() -> Song {
+    testing::song_with_notes(&[(
+        1,
+        &[
+            TestNote::new(6, 3),
+            TestNote::new(5, 2),
+            TestNote::new(1, 3),
+        ],
+    )])
+    .unwrap()
+}
+
+#[test]
+fn a_pick_stroke_strikes_the_chord_quickly_in_its_direction() {
+    let plain = note_ons(&Sequence::new(&chord_song(), None).unwrap());
+    let stroke = |direction| {
+        let mut song = chord_song();
+        let _ = song
+            .set_beat_effect(at(0), BeatEffect::PickStroke(Some(direction)))
+            .unwrap();
+        note_ons(&Sequence::new(&song, None).unwrap())
+    };
+    let first_key = |ons: &[(u64, u8, u8)]| ons.iter().min_by_key(|on| on.0).unwrap().1;
+    let down = stroke(StrokeDirection::Down);
+    let up = stroke(StrokeDirection::Up);
+    // A downstroke starts on the low E string (G2, key 43), an upstroke on the high one.
+    assert_eq!(first_key(&down), 43);
+    assert_eq!(first_key(&up), 67);
+    for ons in [&down, &up] {
+        let last = ons.iter().map(|on| on.0).max().unwrap();
+        assert!(last > 0 && last <= u64::from(PPQ) / 32, "{ons:?}");
+    }
+    assert!(
+        up.iter().all(|on| on.2 < plain[0].2),
+        "an upstroke is softer"
+    );
+    assert!(down.iter().all(|on| on.2 == plain[0].2));
+}
+
+#[test]
+fn tapping_is_softer_and_slapping_and_popping_louder() {
+    let plain = note_ons(&Sequence::new(&two_beats(), None).unwrap())[0].2;
+    let velocity = |kind| {
+        let mut song = two_beats();
+        let _ = song
+            .set_beat_effect(at(0), BeatEffect::Slap(Some(kind)))
+            .unwrap();
+        note_ons(&Sequence::new(&song, None).unwrap())[0].2
+    };
+    let tap = velocity(gscore_model::SlapKind::Tapping);
+    let slap = velocity(gscore_model::SlapKind::Slapping);
+    let pop = velocity(gscore_model::SlapKind::Popping);
+    assert!(
+        tap < plain && plain < slap && slap < pop,
+        "{tap} {plain} {slap} {pop}"
+    );
+}
+
+#[test]
+fn a_fade_in_swells_on_its_own_channel() {
+    let mut song = two_beats();
+    let _ = song
+        .set_beat_effect(at(0), BeatEffect::FadeIn(true))
+        .unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let base = sequence.tracks[0].channel;
+    let faded = sequence
+        .events
+        .iter()
+        .find_map(|event| match event.event {
+            MidiEvent::NoteOn {
+                channel, key: 43, ..
+            } => Some(channel),
+            _ => None,
+        })
+        .unwrap();
+    assert_ne!(faded, base, "the fade-in plays on a borrowed channel");
+    let expression: Vec<(u64, u8)> = sequence
+        .events
+        .iter()
+        .filter_map(|event| match event.event {
+            MidiEvent::Control {
+                channel,
+                controller: controller::EXPRESSION,
+                value,
+            } if channel == faded => Some((event.tick, value)),
+            _ => None,
+        })
+        .collect();
+    // The last value at the note's start is silence, then it rises to full over the half
+    // note.
+    let at_start = expression
+        .iter()
+        .rev()
+        .find(|(tick, _)| *tick == 0)
+        .unwrap();
+    assert_eq!(at_start.1, 0, "{expression:?}");
+    let half = 2 * u64::from(PPQ);
+    assert!(
+        expression
+            .iter()
+            .any(|&(tick, value)| tick == half && value == 127)
+    );
+    // The next note, without a fade-in, is at full volume on the track's channel.
+    let next = note_ons(&sequence)[1];
+    assert_eq!(next.0, half);
+}
+
+#[test]
+fn an_arpeggio_rolls_the_chord_over_an_eighth() {
+    let mut song = chord_song();
+    let _ = song
+        .set_beat_effect(at(0), BeatEffect::Arpeggio(Some(StrokeDirection::Down)))
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&song, None).unwrap());
+    let last = ons.iter().map(|&(tick, ..)| tick).max().unwrap();
+    assert!(last > 0 && last <= u64::from(PPQ) / 2, "{ons:?}");
+    let first = ons.iter().min_by_key(|on| on.0).unwrap();
+    assert_eq!(first.1, 43, "a roll down starts on the low E string");
+}
+
+#[test]
+fn a_rasgueado_strikes_the_chord_three_times_softer_each_time() {
+    let mut song = chord_song();
+    let _ = song
+        .set_beat_effect(at(0), BeatEffect::Rasgueado(true))
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&song, None).unwrap());
+    assert_eq!(ons.len(), 9, "three strings struck three times");
+    let mut ticks: Vec<u64> = ons.iter().map(|&(tick, ..)| tick).collect();
+    ticks.sort_unstable();
+    ticks.dedup();
+    assert_eq!(ticks.len(), 3, "{ticks:?}");
+    assert!(ticks[2] <= u64::from(PPQ) / 8, "{ticks:?}");
+    let soft = |tick: u64| ons.iter().find(|on| on.0 == tick).unwrap().2;
+    assert!(soft(ticks[2]) < soft(ticks[1]) && soft(ticks[1]) < soft(ticks[0]));
+    // Each strike stops before the next one on its string, and none rings past the beat.
+    let sequence = Sequence::new(&song, None).unwrap();
+    let offs = note_offs(&sequence);
+    for &(tick, key, _) in &ons {
+        let off = offs
+            .iter()
+            .filter(|&&(off, k)| k == key && off > tick)
+            .map(|&(off, _)| off)
+            .min()
+            .unwrap();
+        let next_on = ons
+            .iter()
+            .filter(|&&(on, k, _)| k == key && on > tick)
+            .map(|&(on, ..)| on)
+            .min();
+        if let Some(next_on) = next_on {
+            assert!(
+                off <= next_on,
+                "{key}: off {off} after the next strike {next_on}"
+            );
+        }
+        assert!(off <= 4 * u64::from(PPQ), "{key} rings past its whole note");
+    }
+}
+
+#[test]
+fn a_dead_slapped_beat_hits_every_string_shortly_and_softly() {
+    let mut song = testing::song_with_notes(&[(1, &[TestNote::new(6, 3)])]).unwrap();
+    let _ = song
+        .set_beat_effect(at(0), BeatEffect::DeadSlapped(true))
+        .unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let ons = note_ons(&sequence);
+    assert_eq!(ons.len(), 6, "one muted hit per string");
+    let offs = note_offs(&sequence);
+    for (tick, key, velocity) in &ons {
+        assert_eq!(*tick, 0);
+        assert_eq!(*velocity, 70);
+        let off = offs.iter().find(|&&(_, k)| k == *key).unwrap().0;
+        assert!(off <= u64::from(PPQ) / 4, "{key} lasts too long");
+    }
+}
+
+#[test]
+fn a_pick_slide_scrapes_to_the_next_note() {
+    let mut song =
+        testing::song_with_notes(&[(4, &[TestNote::new(3, 12)]), (4, &[TestNote::new(3, 7)])])
+            .unwrap();
+    let _ = song
+        .set_note_effect(
+            at(0),
+            string(3),
+            NoteEffect::Slide(SlideKind::PickSlideDown, true),
+        )
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&song, None).unwrap());
+    // The slide replaces its note with six scraping notes, then the next note plays.
+    assert_eq!(ons.len(), 7, "{ons:?}");
+    let scrape: Vec<u8> = ons
+        .iter()
+        .filter(|&&(tick, ..)| tick < u64::from(PPQ) / 2)
+        .map(|&(_, key, _)| key)
+        .collect();
+    assert_eq!(scrape.len(), 6);
+    assert!(
+        scrape.windows(2).all(|pair| pair[0] >= pair[1]),
+        "it scrapes downwards: {scrape:?}"
+    );
+    assert!(scrape.first() > scrape.last());
+}
+
+#[test]
+fn a_trill_alternates_with_its_fret_at_its_speed() {
+    let mut song = testing::song_with_notes(&[(2, &[TestNote::new(3, 2)])]).unwrap();
+    let _ = song
+        .set_note_effect(
+            at(0),
+            string(3),
+            NoteEffect::Trill(Some(Trill {
+                fret: Some(4),
+                speed: TrillSpeed::ThirtySecond,
+            })),
+        )
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&song, None).unwrap());
+    // A half note at 32nds is sixteen notes, alternating between the note and its trill.
+    assert_eq!(ons.len(), 16, "{ons:?}");
+    let keys: Vec<u8> = ons.iter().map(|&(_, key, _)| key).collect();
+    assert!(keys[0] != keys[1]);
+    for pair in keys.windows(2) {
+        assert_ne!(pair[0], pair[1], "the trill alternates");
+    }
+}
+
+#[test]
+fn tremolo_picking_repeats_at_its_speed() {
+    let repeats = |speed| {
+        let mut song = testing::song_with_notes(&[(4, &[TestNote::new(3, 2)])]).unwrap();
+        let _ = song
+            .set_note_effect(at(0), string(3), NoteEffect::TremoloPicking(Some(speed)))
+            .unwrap();
+        note_ons(&Sequence::new(&song, None).unwrap()).len()
+    };
+    assert_eq!(repeats(TremoloSpeed::Eighth), 2);
+    assert_eq!(repeats(TremoloSpeed::Sixteenth), 4);
+    assert_eq!(repeats(TremoloSpeed::ThirtySecond), 8);
+}
+
+#[test]
+fn a_fade_out_and_a_swell_ramp_the_expression() {
+    let expression = |effect| {
+        let mut song = two_beats();
+        let _ = song.set_beat_effect(at(0), effect).unwrap();
+        let sequence = Sequence::new(&song, None).unwrap();
+        let base = sequence.tracks[0].channel;
+        let channel = sequence
+            .events
+            .iter()
+            .find_map(|event| match event.event {
+                MidiEvent::NoteOn {
+                    channel, key: 43, ..
+                } if channel != base => Some(channel),
+                _ => None,
+            })
+            .unwrap();
+        let values: Vec<(u64, u8)> = sequence
+            .events
+            .iter()
+            .filter_map(|event| match event.event {
+                MidiEvent::Control {
+                    channel: c,
+                    controller: controller::EXPRESSION,
+                    value,
+                } if c == channel => Some((event.tick, value)),
+                _ => None,
+            })
+            .collect();
+        values
+    };
+    // The channel setup also writes an expression at tick 0; the fade's own value is the
+    // last one there.
+    let at_start = |values: &[(u64, u8)]| {
+        values
+            .iter()
+            .rev()
+            .find(|&&(tick, _)| tick == 0)
+            .map(|&(_, value)| value)
+    };
+    let out = expression(BeatEffect::FadeOut(true));
+    assert_eq!(at_start(&out), Some(127));
+    assert_eq!(out.last().map(|&(_, value)| value), Some(0));
+    let swell = expression(BeatEffect::VolumeSwell(true));
+    assert_eq!(at_start(&swell), Some(0));
+    assert_eq!(swell.last().map(|&(_, value)| value), Some(0));
+    assert!(swell.iter().any(|&(_, value)| value == 127), "{swell:?}");
+}
+
+#[test]
+fn left_hand_taps_and_grace_hammers_are_softer() {
+    let plain = note_ons(&Sequence::new(&two_beats(), None).unwrap())[0].2;
+    let mut tapped = two_beats();
+    let _ = tapped
+        .set_note_effect(at(0), string(6), NoteEffect::LeftHandTap(true))
+        .unwrap();
+    assert!(note_ons(&Sequence::new(&tapped, None).unwrap())[0].2 < plain);
+
+    let mut hammered = two_beats();
+    let grace = Grace {
+        fret: Fret::new(1).unwrap(),
+        speed: GraceSpeed::Normal,
+        on_beat: false,
+        dead: false,
+        hammer: true,
+    };
+    let _ = hammered
+        .set_note_effect(at(0), string(6), NoteEffect::Grace(Some(grace)))
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&hammered, None).unwrap());
+    let main = ons.iter().find(|&&(_, key, _)| key == 43).unwrap();
+    assert!(main.2 < plain, "the hammered main note is softer: {ons:?}");
+}
+
+#[test]
+fn a_hammered_note_and_a_legato_beat_are_not_picked() {
+    let same_string = || {
+        testing::song_with_notes(&[
+            (4, &[TestNote::new(3, 2)]),
+            (4, &[TestNote::new(3, 4)]),
+            (4, &[TestNote::new(3, 5)]),
+        ])
+        .unwrap()
+    };
+    let plain = note_ons(&Sequence::new(&same_string(), None).unwrap());
+    let mut song = same_string();
+    let _ = song
+        .set_note_effect(at(0), string(3), NoteEffect::Hammer(true))
+        .unwrap();
+    let ons = note_ons(&Sequence::new(&song, None).unwrap());
+    assert_eq!(ons[0].2, plain[0].2, "the origin is picked");
+    assert!(ons[1].2 < plain[1].2, "the hammered note is softer");
+    assert_eq!(ons[2].2, plain[2].2, "the one after is picked again");
+
+    let mut song = same_string();
+    let legato = |origin, destination| {
+        BeatEffect::Legato(Some(gscore_model::Legato {
+            origin,
+            destination,
+        }))
+    };
+    let _ = song.set_beat_effect(at(0), legato(true, false)).unwrap();
+    let _ = song.set_beat_effect(at(1), legato(false, true)).unwrap();
+    let ons = note_ons(&Sequence::new(&song, None).unwrap());
+    assert_eq!(ons[0].2, plain[0].2);
+    assert!(ons[1].2 < plain[1].2);
+}
+
+#[test]
+fn a_beat_excerpt_keeps_brush_arpeggio_and_rasgueado_spreads() {
+    for effect in [
+        BeatEffect::BrushStroke(Some(StrokeDirection::Down)),
+        BeatEffect::Arpeggio(Some(StrokeDirection::Down)),
+        BeatEffect::Rasgueado(true),
+    ] {
+        let mut song = chord_song();
+        let _ = song.set_beat_effect(at(0), effect.clone()).unwrap();
+        let excerpt = Sequence::beat_excerpt(&song, at(0)).unwrap().unwrap();
+        let ons = note_ons(&excerpt);
+        assert!(
+            ons.len() >= 3,
+            "{effect:?}: the excerpt keeps the chord: {ons:?}"
+        );
+        let last = ons.iter().map(|on| on.0).max().unwrap();
+        assert!(last > 0, "{effect:?}: the chord is spread: {ons:?}");
+    }
 }

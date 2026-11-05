@@ -5,6 +5,32 @@
 
 use super::*;
 
+/// A GPIF finger name as the legacy model's fingering.
+fn parse_finger(name: &str) -> Option<Fingering> {
+    Some(match name {
+        "P" => Fingering::Thumb,
+        "I" => Fingering::Index,
+        "M" => Fingering::Middle,
+        "A" => Fingering::Annular,
+        "C" => Fingering::Little,
+        "Open" => Fingering::OpenString,
+        _ => return None,
+    })
+}
+
+/// The GPIF name of a finger, if it has one.
+pub(crate) fn finger_name(finger: &Fingering) -> Option<&'static str> {
+    Some(match finger {
+        Fingering::Thumb => "P",
+        Fingering::Index => "I",
+        Fingering::Middle => "M",
+        Fingering::Annular => "A",
+        Fingering::Little => "C",
+        Fingering::OpenString => "Open",
+        Fingering::Open | Fingering::Unknown(_) => return None,
+    })
+}
+
 pub(super) fn convert_note(
     g_note: &Note,
     velocity: i16,
@@ -77,6 +103,9 @@ pub(super) fn convert_note(
                 s_note.effect.hammer = true;
             }
             "HopoDestination" => {}
+            // GuitarScore additions.
+            "LeftHandTapped" => s_note.effect.left_hand_tapped = true,
+            "ShowStringNumber" => s_note.effect.show_string_number = true,
             "Dead" | "Muted" if prop.enable.is_some() => {
                 s_note.kind = NoteType::Dead;
             }
@@ -136,6 +165,14 @@ pub(super) fn convert_note(
         if (accent & 0x04) != 0 {
             s_note.effect.heavy_accentuated_note = true;
         }
+    }
+
+    // GuitarScore addition: fingering.
+    if let Some(finger) = g_note.left_fingering.as_deref().and_then(parse_finger) {
+        s_note.effect.left_hand_finger = finger;
+    }
+    if let Some(finger) = g_note.right_fingering.as_deref().and_then(parse_finger) {
+        s_note.effect.right_hand_finger = finger;
     }
 
     // Ornament

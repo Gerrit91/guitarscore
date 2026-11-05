@@ -737,7 +737,7 @@ fn differences_include_note_and_beat_effects() {
         .map(ToString::to_string)
         .collect();
     assert_eq!(text.len(), 3, "{text:?}");
-    assert!(text[0].ends_with("fade in false became true"), "{text:?}");
+    assert!(text[0].ends_with("fade None became Some(In)"), "{text:?}");
     assert!(
         text[1].contains("beat 1, string 2: bend None became Some"),
         "{text:?}"

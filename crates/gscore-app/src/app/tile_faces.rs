@@ -19,6 +19,8 @@ pub(crate) enum Face<'a> {
     },
     /// A short abbreviation in bold ("P.M.", "A.H.").
     Text(&'a str),
+    /// A short abbreviation whose tile opens a dialog.
+    TextMore(&'a str),
     /// A word in bold italic, as a score writes it ("tap", "let ring" on two lines).
     Word(&'a str),
     /// A tuplet bracket around its number in the music font's tuplet digits ("3",
@@ -31,16 +33,39 @@ pub(crate) enum Face<'a> {
     },
     /// A tie: an engraved arc under two noteheads.
     Tie,
+    /// A whole beat tied: two stacked noteheads on each side under one arc.
+    BeatTie,
+    /// Text above a beat: a "T" under a line.
+    BeatText,
     /// A slur over a short line (a beat-level legato run).
     Slur,
     /// A hammer-on or pull-off: an "H" under a slur.
     Hammer,
-    /// A bend: a curve rising to an arrow.
-    Bend,
-    /// A whammy dip: down and back up.
-    Whammy,
+    /// A bend whose tile opens the bend editor.
+    BendMore,
+    /// A whammy dip whose tile opens the whammy editor.
+    WhammyMore,
     /// A fade-in hairpin ("<").
     Hairpin,
+    /// A fade-out hairpin (">").
+    HairpinOut,
+    /// A volume swell ("<>").
+    HairpinSwell,
+    /// Text inside a circle ("T", "6"): the left-hand tap and the string number.
+    CircledText(&'a str),
+    /// A dead slapped beat: a large cross.
+    DeadSlap,
+    /// An arpeggio: a wavy vertical line with an arrowhead, up for a roll down and down
+    /// for a roll up (as Guitar Pro writes them).
+    Arpeggio { up: bool },
+    /// A pick slide: an "x" and the scrape's wiggle, slanting down or up with the slide.
+    PickSlide { down: bool },
+    /// A music glyph with the corner triangle of a tile that opens a dialog.
+    GlyphMore {
+        text: &'a str,
+        size: f32,
+        baseline: f32,
+    },
     /// A slide: a line from `from` to `to`, each -1 (low), 0 (the note) or 1 (high), with
     /// a dot for the note at the end that is 0.
     Slide { from: i8, to: i8 },
@@ -96,7 +121,14 @@ pub(crate) fn music_glyph(painter: &Painter, at: Pos2, text: &str, size: f32, in
 }
 
 /// Paints bold text centered on `at`, slanted when `italic`; several lines stack.
-fn lettering(painter: &Painter, at: Pos2, text: &str, size: f32, italic: bool, ink: Color32) {
+pub(crate) fn lettering(
+    painter: &Painter,
+    at: Pos2,
+    text: &str,
+    size: f32,
+    italic: bool,
+    ink: Color32,
+) {
     let mut job = LayoutJob::default();
     job.append(
         text,
@@ -158,6 +190,10 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
             baseline,
         } => music_glyph(painter, at(0.0, baseline), text, size, ink),
         Face::Text(text) => lettering(painter, c, text, 10.5, false, ink),
+        Face::TextMore(text) => {
+            lettering(painter, c, text, 10.5, false, ink);
+            more_corner(painter, rect, ink);
+        }
         Face::Word(text) => {
             let size = if text.contains('\n') { 9.5 } else { 11.0 };
             lettering(painter, c, text, size, true, ink);
@@ -174,6 +210,20 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
             let points = crescent(at(-8.0, 7.0), at(8.0, 7.0), 4.0, 1.6);
             fill_crescent(painter, &points, ink);
         }
+        Face::BeatTie => {
+            // Two chords, each a pair of stacked heads, joined by one tie.
+            for dx in [-6.0, 7.0] {
+                for dy in [-3.0, 5.0] {
+                    music_glyph(painter, at(dx, dy), "\u{ECA5}", 16.0, ink);
+                }
+            }
+            let points = crescent(at(-7.0, 10.0), at(8.0, 10.0), 4.0, 1.4);
+            fill_crescent(painter, &points, ink);
+        }
+        Face::BeatText => {
+            painter.line_segment([at(-8.0, -9.0), at(8.0, -9.0)], Stroke::new(1.5, ink));
+            lettering(painter, at(0.0, 2.0), "T", 16.0, false, ink);
+        }
         Face::Slur => {
             let points = crescent(at(-9.0, 5.0), at(9.0, 5.0), -10.0, 2.0);
             fill_crescent(painter, &points, ink);
@@ -183,39 +233,98 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
             fill_crescent(painter, &points, ink);
             lettering(painter, at(0.0, 4.0), "H", 12.0, false, ink);
         }
-        Face::Bend => {
-            // Like the score's bend: a quarter ellipse that leaves level and rises straight
-            // into the base of a solid arrowhead.
-            const QUARTER_ELLIPSE: f32 = 0.552_284_8;
-            let start = at(-8.0, 8.0);
-            let tip = at(5.0, -10.0);
-            let base = tip + vec2(0.0, 7.0);
-            painter.add(egui::epaint::CubicBezierShape::from_points_stroke(
-                [
-                    start,
-                    egui::pos2(start.x + (base.x - start.x) * QUARTER_ELLIPSE, start.y),
-                    egui::pos2(base.x, base.y + (start.y - base.y) * QUARTER_ELLIPSE),
-                    base,
-                ],
-                false,
-                Color32::TRANSPARENT,
-                Stroke::new(1.8, ink),
-            ));
-            painter.add(Shape::convex_polygon(
-                vec![tip, base + vec2(4.0, 0.5), base + vec2(-4.0, 0.5)],
-                ink,
-                Stroke::NONE,
-            ));
+        Face::BendMore => {
+            paint_bend(painter, rect, ink);
+            more_corner(painter, rect, ink);
         }
-        Face::Whammy => {
-            let points = vec![at(-10.0, -4.0), at(-5.0, -4.0), at(0.0, 6.0), at(5.0, -4.0)];
-            painter.add(Shape::line(points, Stroke::new(1.8, ink)));
-            painter.line_segment([at(5.0, -4.0), at(10.0, -4.0)], Stroke::new(1.8, ink));
+        Face::WhammyMore => {
+            paint_whammy(painter, rect, ink);
+            more_corner(painter, rect, ink);
         }
         Face::Hairpin => {
             let stroke = Stroke::new(1.6, ink);
             painter.line_segment([at(-9.0, 0.0), at(9.0, -6.0)], stroke);
             painter.line_segment([at(-9.0, 0.0), at(9.0, 6.0)], stroke);
+        }
+        Face::HairpinOut => {
+            let stroke = Stroke::new(1.6, ink);
+            painter.line_segment([at(-9.0, -6.0), at(9.0, 0.0)], stroke);
+            painter.line_segment([at(-9.0, 6.0), at(9.0, 0.0)], stroke);
+        }
+        Face::HairpinSwell => {
+            let stroke = Stroke::new(1.6, ink);
+            painter.line_segment([at(-10.0, 0.0), at(-1.0, -6.0)], stroke);
+            painter.line_segment([at(-10.0, 0.0), at(-1.0, 6.0)], stroke);
+            painter.line_segment([at(-1.0, -6.0), at(10.0, 0.0)], stroke);
+            painter.line_segment([at(-1.0, 6.0), at(10.0, 0.0)], stroke);
+        }
+        Face::CircledText(text) => {
+            painter.circle_stroke(c, 9.5, Stroke::new(1.4, ink));
+            lettering(painter, c, text, 12.0, false, ink);
+        }
+        Face::DeadSlap => {
+            let stroke = Stroke::new(2.4, ink);
+            painter.line_segment([at(-9.0, -11.0), at(9.0, 11.0)], stroke);
+            painter.line_segment([at(-9.0, 11.0), at(9.0, -11.0)], stroke);
+        }
+        Face::Arpeggio { up } => {
+            let stroke = Stroke::new(1.6, ink);
+            let x = c.x;
+            let (top, bottom) = (c.y - 11.0, c.y + 8.0);
+            // A zigzag line, then the arrowhead at the pointing end.
+            let step = (bottom - top) / 6.0;
+            let mut points = Vec::with_capacity(7);
+            for step_index in 0..6 {
+                let y = top + step * step_index as f32;
+                points.push(egui::pos2(
+                    if step_index % 2 == 0 {
+                        x - 2.0
+                    } else {
+                        x + 2.0
+                    },
+                    y,
+                ));
+            }
+            painter.add(Shape::line(points, stroke));
+            let tip = if up {
+                egui::pos2(x, top - 4.0)
+            } else {
+                egui::pos2(x, bottom + 4.0)
+            };
+            let base = if up {
+                egui::pos2(x, top)
+            } else {
+                egui::pos2(x, bottom)
+            };
+            painter.add(Shape::convex_polygon(
+                vec![tip, base + vec2(4.0, 0.0), base + vec2(-4.0, 0.0)],
+                ink,
+                Stroke::NONE,
+            ));
+        }
+        Face::PickSlide { down } => {
+            lettering(painter, at(-6.0, 1.0), "x", 14.0, false, ink);
+            // Screen y grows downwards: a slide down falls to the right.
+            let slant = if down { 6.0 } else { -6.0 };
+            let stroke = Stroke::new(1.5, ink);
+            let (left, right) = (at(-1.0, 0.0), at(10.0, 0.0));
+            let mut points = Vec::with_capacity(9);
+            for step in 0..9 {
+                let t = step as f32 / 8.0;
+                points.push(egui::pos2(
+                    left.x + (right.x - left.x) * t,
+                    left.y + slant * (t - 0.5) + if step % 2 == 0 { -2.5 } else { 2.5 },
+                ));
+            }
+            painter.add(Shape::line(points, stroke));
+        }
+        Face::GlyphMore {
+            text,
+            size,
+            baseline,
+        } => {
+            music_glyph(painter, at(0.0, baseline), text, size, ink);
+            more_corner(painter, rect, ink);
         }
         Face::Slide { from, to } => {
             let y = |level: i8| c.y - 6.0 * f32::from(level);
@@ -382,11 +491,52 @@ pub(crate) fn tuplet_bracket(
         );
     }
     if more {
-        let corner = rect.right_bottom() - vec2(2.0, 2.0);
-        painter.add(Shape::convex_polygon(
-            vec![corner, corner - vec2(6.0, 0.0), corner - vec2(0.0, 6.0)],
-            ink,
-            Stroke::NONE,
-        ));
+        more_corner(painter, rect, ink);
     }
+}
+
+/// A bend: a quarter ellipse that leaves level and rises straight into the base of a solid
+/// arrowhead, like the score's bend.
+fn paint_bend(painter: &Painter, rect: Rect, ink: Color32) {
+    const QUARTER_ELLIPSE: f32 = 0.552_284_8;
+    let c = rect.center();
+    let at = |dx: f32, dy: f32| egui::pos2(c.x + dx, c.y + dy);
+    let start = at(-8.0, 8.0);
+    let tip = at(5.0, -10.0);
+    let base = tip + vec2(0.0, 7.0);
+    painter.add(egui::epaint::CubicBezierShape::from_points_stroke(
+        [
+            start,
+            egui::pos2(start.x + (base.x - start.x) * QUARTER_ELLIPSE, start.y),
+            egui::pos2(base.x, base.y + (start.y - base.y) * QUARTER_ELLIPSE),
+            base,
+        ],
+        false,
+        Color32::TRANSPARENT,
+        Stroke::new(1.8, ink),
+    ));
+    painter.add(Shape::convex_polygon(
+        vec![tip, base + vec2(4.0, 0.5), base + vec2(-4.0, 0.5)],
+        ink,
+        Stroke::NONE,
+    ));
+}
+
+/// A whammy dip: down and back up.
+fn paint_whammy(painter: &Painter, rect: Rect, ink: Color32) {
+    let c = rect.center();
+    let at = |dx: f32, dy: f32| egui::pos2(c.x + dx, c.y + dy);
+    let points = vec![at(-10.0, -4.0), at(-5.0, -4.0), at(0.0, 6.0), at(5.0, -4.0)];
+    painter.add(Shape::line(points, Stroke::new(1.8, ink)));
+    painter.line_segment([at(5.0, -4.0), at(10.0, -4.0)], Stroke::new(1.8, ink));
+}
+
+/// The small triangle in a tile's bottom right corner that says it opens a dialog.
+fn more_corner(painter: &Painter, rect: Rect, ink: Color32) {
+    let corner = rect.right_bottom() - vec2(2.0, 2.0);
+    painter.add(Shape::convex_polygon(
+        vec![corner, corner - vec2(6.0, 0.0), corner - vec2(0.0, 6.0)],
+        ink,
+        Stroke::NONE,
+    ));
 }

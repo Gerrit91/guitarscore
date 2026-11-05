@@ -55,7 +55,9 @@ pub enum Glyph {
     Tuplet3,
     /// The trill ornament (`ornamentTrill`).
     Trill,
-    /// Three tremolo strokes (`tremolo3`).
+    /// One to three tremolo strokes (`tremolo1`..`tremolo3`).
+    Tremolo1,
+    Tremolo2,
     Tremolo3,
     /// Treble clef (`gClef`).
     GClef,
@@ -91,6 +93,25 @@ pub enum Glyph {
     Natural,
     /// The flag of an unbeamed eighth or shorter note (`flag8thUp` ... `flag128thDown`).
     Flag(Flag),
+    /// Accent above and below a note (`articAccentAbove`, `articAccentBelow`).
+    AccentAbove,
+    AccentBelow,
+    /// Staccato dot above and below a note (`articStaccatoAbove`, `articStaccatoBelow`).
+    StaccatoAbove,
+    StaccatoBelow,
+    /// Heavy accent (marcato) above and below a note (`articMarcatoAbove`,
+    /// `articMarcatoBelow`).
+    MarcatoAbove,
+    MarcatoBelow,
+    /// Down and up pick strokes (`stringsDownBow`, `stringsUpBow`).
+    DownStroke,
+    UpStroke,
+    /// Hollow diamond head of a natural harmonic (`noteheadDiamondWhite`).
+    NoteheadHarmonic,
+    /// Parentheses around a ghost note's head (`noteheadParenthesisLeft`,
+    /// `noteheadParenthesisRight`).
+    ParenthesisLeft,
+    ParenthesisRight,
 }
 
 /// A flag: how many beams it stands for (1 for an eighth, up to 5 for a 128th) and
@@ -183,6 +204,8 @@ impl Glyph {
             Glyph::TextEnd16th,
             Glyph::Tuplet3,
             Glyph::Trill,
+            Glyph::Tremolo1,
+            Glyph::Tremolo2,
             Glyph::Tremolo3,
             Glyph::GClef,
             Glyph::FClef,
@@ -198,6 +221,17 @@ impl Glyph {
             Glyph::Sharp,
             Glyph::Flat,
             Glyph::Natural,
+            Glyph::AccentAbove,
+            Glyph::AccentBelow,
+            Glyph::StaccatoAbove,
+            Glyph::StaccatoBelow,
+            Glyph::MarcatoAbove,
+            Glyph::MarcatoBelow,
+            Glyph::DownStroke,
+            Glyph::UpStroke,
+            Glyph::NoteheadHarmonic,
+            Glyph::ParenthesisLeft,
+            Glyph::ParenthesisRight,
         ]
         .into_iter()
         .chain(digits)
@@ -244,6 +278,8 @@ impl Glyph {
             Glyph::TextEnd16th => "textBlackNoteFrac16thLongStem",
             Glyph::Tuplet3 => "tuplet3",
             Glyph::Trill => "ornamentTrill",
+            Glyph::Tremolo1 => "tremolo1",
+            Glyph::Tremolo2 => "tremolo2",
             Glyph::Tremolo3 => "tremolo3",
             Glyph::GClef => "gClef",
             Glyph::FClef => "fClef",
@@ -280,6 +316,17 @@ impl Glyph {
                 .get(usize::from(flag.index()))
                 .copied()
                 .unwrap_or("flag8thUp"),
+            Glyph::AccentAbove => "articAccentAbove",
+            Glyph::AccentBelow => "articAccentBelow",
+            Glyph::StaccatoAbove => "articStaccatoAbove",
+            Glyph::StaccatoBelow => "articStaccatoBelow",
+            Glyph::MarcatoAbove => "articMarcatoAbove",
+            Glyph::MarcatoBelow => "articMarcatoBelow",
+            Glyph::DownStroke => "stringsDownBow",
+            Glyph::UpStroke => "stringsUpBow",
+            Glyph::NoteheadHarmonic => "noteheadDiamondWhite",
+            Glyph::ParenthesisLeft => "noteheadParenthesisLeft",
+            Glyph::ParenthesisRight => "noteheadParenthesisRight",
         }
     }
 
@@ -310,6 +357,8 @@ impl Glyph {
             Glyph::TextEnd16th => 0xE1F5,
             Glyph::Tuplet3 => 0xE883,
             Glyph::Trill => 0xE566,
+            Glyph::Tremolo1 => 0xE220,
+            Glyph::Tremolo2 => 0xE221,
             Glyph::Tremolo3 => 0xE222,
             Glyph::GClef => 0xE050,
             Glyph::FClef => 0xE062,
@@ -343,6 +392,17 @@ impl Glyph {
             Glyph::Flat => 0xE260,
             Glyph::Natural => 0xE261,
             Glyph::Flag(flag) => FLAG_FIRST.saturating_add(u32::from(flag.index())),
+            Glyph::AccentAbove => 0xE4A0,
+            Glyph::AccentBelow => 0xE4A1,
+            Glyph::StaccatoAbove => 0xE4A2,
+            Glyph::StaccatoBelow => 0xE4A3,
+            Glyph::MarcatoAbove => 0xE4AC,
+            Glyph::MarcatoBelow => 0xE4AD,
+            Glyph::DownStroke => 0xE610,
+            Glyph::UpStroke => 0xE612,
+            Glyph::NoteheadHarmonic => 0xE0DD,
+            Glyph::ParenthesisLeft => 0xE0F5,
+            Glyph::ParenthesisRight => 0xE0F6,
         };
         // All codes above are in the Private Use Area, which is valid `char` range.
         char::from_u32(code).unwrap_or(char::REPLACEMENT_CHARACTER)

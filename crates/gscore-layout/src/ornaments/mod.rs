@@ -5,18 +5,33 @@
 //! legato slides, a slanted line for a shift slide, slashes at the fret for slides in and
 //! out, wiggles above the staff for vibrato, angle brackets for harmonics, and `P.M.` /
 //! `let ring` rows below the staff. Bend arrows and the whammy-bar line rise above the staff.
+//! Beat effects ([`beat`]) have a lane of their own above those: pick strokes, tapping,
+//! slapping and popping, and fade-ins; a brushed chord gets an arrow beside its numbers.
 //!
 //! This module holds what a note remembers about its ornaments; [`draw`] paints it.
 
+mod beat;
 mod lines;
 mod notes;
+mod symbols;
+
+pub(crate) use beat::{
+    ARPEGGIO_ROOM, BRUSH_ROOM, TAB_BEAT_LANE, draw_beat_marks, draw_tab_arpeggio, draw_tab_brush,
+};
 
 pub(crate) use lines::{
-    draw_legato_run, draw_link, draw_tie, draw_tie_fragment, draw_under_staff_run, draw_whammy,
+    draw_legato_run, draw_link, draw_pick_slide, draw_tie, draw_tie_fragment, draw_under_staff_run,
+    draw_whammy,
 };
 pub(crate) use notes::draw_vibrato;
+pub(crate) use symbols::{
+    CIRCLE_RADIUS, draw_arrowhead, draw_circled_symbol, draw_slanted_wiggle, draw_vertical_wiggle,
+};
 
-use gscore_model::{AccentKind, Bend, Harmonic, HarmonicKind, SlideKind, Vibrato, WhammyShape};
+use gscore_model::{
+    AccentKind, Bend, Fade, Harmonic, HarmonicKind, SlapKind, SlideKind, StrokeDirection,
+    TremoloSpeed, Trill, Vibrato, WhammyShape,
+};
 
 /// Thickness of slurs, slides and arrows.
 const LINE_THICKNESS: f32 = 0.15;
@@ -36,10 +51,19 @@ pub(crate) struct NoteMarks {
     pub(crate) accent: Option<AccentKind>,
     /// A staccato dot.
     pub(crate) staccato: bool,
-    /// A trill.
-    pub(crate) trill: bool,
-    /// Tremolo picking.
-    pub(crate) tremolo_picking: bool,
+    /// A trill with its other fret and speed.
+    pub(crate) trill: Option<Trill>,
+    /// Tremolo picking and how fast it repeats.
+    pub(crate) tremolo: Option<TremoloSpeed>,
+    /// A pick slide along the string (the note is usually muted).
+    pub(crate) pick_slide: Option<SlideKind>,
+    /// The note is tapped with the fretting hand.
+    pub(crate) left_hand_tap: bool,
+    /// The string number is written as a circled digit.
+    pub(crate) string_number: Option<u8>,
+    /// Left-hand and right-hand fingering signs.
+    pub(crate) finger_left: Option<&'static str>,
+    pub(crate) finger_right: Option<&'static str>,
     /// Palm mute (an under-staff row).
     pub(crate) palm_mute: bool,
     /// Let ring (an under-staff row).
@@ -56,8 +80,13 @@ impl NoteMarks {
             harmonic: None,
             accent: None,
             staccato: false,
-            trill: false,
-            tremolo_picking: false,
+            trill: None,
+            tremolo: None,
+            pick_slide: None,
+            left_hand_tap: false,
+            string_number: None,
+            finger_left: None,
+            finger_right: None,
             palm_mute: false,
             let_ring: false,
         }
@@ -87,11 +116,15 @@ impl NoteMarks {
         self.slides.contains(&SlideKind::OutUpwards)
     }
 
-    /// Extra room the slashes before and after the number need.
+    /// Extra room the slashes before and after the number need, and the arc of a
+    /// left-hand tap before it.
     fn extra_width(&self) -> f32 {
         let left = self.slides_in_from_above() || self.slides_in_from_below();
         let right = self.slides_out_downwards() || self.slides_out_upwards();
-        let left = if left { SLASH_REACH + SLASH_GAP } else { 0.0 };
+        let mut left = if left { SLASH_REACH + SLASH_GAP } else { 0.0 };
+        if self.left_hand_tap {
+            left += TAP_ARC_ROOM;
+        }
         let right = if right { SLASH_REACH + SLASH_GAP } else { 0.0 };
         left + right
     }
@@ -101,6 +134,8 @@ impl NoteMarks {
 const SLASH_REACH: f32 = 0.45;
 /// Gap between a fret number and its slide slash.
 const SLASH_GAP: f32 = 0.2;
+/// Room the small arc left of a left-hand-tapped fret number takes.
+const TAP_ARC_ROOM: f32 = 0.4;
 /// Extra room around a fret number's mask, horizontally and vertically.
 pub(crate) const MASK_PAD: (f32, f32) = (0.15, 0.2);
 
@@ -118,14 +153,16 @@ pub(crate) struct Fret {
     /// The fret number, when the model can read one; used to tell a hammer-on from a
     /// pull-off.
     pub(crate) fret: Option<u8>,
-    /// A tie continuation: it reserves its column for the tie curve but shows no number.
+    /// A tie continuation: it reserves its column for the tie curve. In a measure's first
+    /// column Guitar Pro writes the tied fret in parentheses (`(7)`); elsewhere it is empty.
     pub(crate) tie_destination: bool,
 }
 
 impl Fret {
-    /// Half the space the note needs, including its mask and slide slashes.
+    /// Half the space the note needs, including its mask and slide slashes. An empty tie
+    /// continuation needs none; one that shows `(7)` needs its own.
     pub(crate) fn half_width(&self) -> f32 {
-        if self.tie_destination {
+        if self.tie_destination && self.text.is_empty() {
             return 0.0;
         }
         self.width / 2.0 + MASK_PAD.0 + self.marks.extra_width() / 2.0
@@ -143,6 +180,27 @@ pub(crate) struct ColumnMarks {
     pub(crate) whammy: Option<WhammyShape>,
     /// The widest vibrato of the beat or its notes; drawn once per column.
     pub(crate) vibrato: Option<Vibrato>,
+    /// A pick stroke.
+    pub(crate) pick: Option<StrokeDirection>,
+    /// A brush stroke over the chord.
+    pub(crate) brush: Option<StrokeDirection>,
+    /// Tapping, slapping or popping.
+    pub(crate) slap: Option<SlapKind>,
+    /// A fade in, out or swell.
+    pub(crate) fade: Option<Fade>,
+    /// A rasgueado (a flamenco roll of the fingers).
+    pub(crate) rasgueado: bool,
+    /// A rolled chord (arpeggio) and its direction.
+    pub(crate) arpeggio: Option<StrokeDirection>,
+    /// A dead slapped beat: a large cross instead of its notes.
+    pub(crate) dead_slapped: bool,
+}
+
+impl ColumnMarks {
+    /// Whether the column has a mark in the beat lane.
+    pub(crate) fn has_beat_lane(&self) -> bool {
+        self.pick.is_some() || self.slap.is_some() || self.fade.is_some() || self.rasgueado
+    }
 }
 
 impl ColumnMarks {
@@ -169,6 +227,10 @@ pub(crate) fn fret_text(base: &str, marks: &NoteMarks) -> String {
                 format!("{text} <{}>", node_text(harmonic.node))
             }
         };
+    }
+    // Guitar Pro writes the trilled fret small in parentheses after the tab number.
+    if let Some(fret) = marks.trill.and_then(|trill| trill.fret) {
+        text = format!("{text} ({fret})");
     }
     text
 }

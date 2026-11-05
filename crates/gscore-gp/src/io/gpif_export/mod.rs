@@ -33,6 +33,7 @@ impl SongGpifExportOps for Song {
     fn write_gpif_xml(&self) -> GpResult<String> {
         // GuitarScore fix: GPIF numbers strings from the lowest; convert a copy.
         let mut flipped = self.clone();
+        gpif_import::convert_trills(&mut flipped.tracks, true);
         gpif_import::flip_note_strings(&mut flipped.tracks);
         flipped.write_gpif_xml_in_gpif_string_order()
     }

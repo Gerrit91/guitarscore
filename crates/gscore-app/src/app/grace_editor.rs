@@ -55,6 +55,8 @@ pub(super) struct GraceEditor {
     speed: GraceSpeed,
     on_beat: bool,
     dead: bool,
+    /// A hammer-on or pull-off into the main note (kept as it is).
+    hammer: bool,
     /// The main note's fret, for the quick choices around it.
     main_fret: u8,
 }
@@ -77,6 +79,7 @@ impl GraceEditor {
             speed: grace.speed,
             on_beat: grace.on_beat,
             dead: grace.dead,
+            hammer: grace.hammer,
             main_fret,
         }
     }
@@ -88,6 +91,7 @@ impl GraceEditor {
             speed: self.speed,
             on_beat: self.on_beat,
             dead: self.dead,
+            hammer: self.hammer,
         }
     }
 
@@ -248,6 +252,7 @@ mod tests {
             speed: GraceSpeed::Slow,
             on_beat: true,
             dead: true,
+            hammer: true,
         };
         assert_eq!(GraceEditor::new(Some(current), 7).grace(), current);
     }

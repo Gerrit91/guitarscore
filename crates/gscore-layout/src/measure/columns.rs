@@ -3,7 +3,9 @@
 
 use std::collections::BTreeMap;
 
-use gscore_model::{BeatKind, BeatView, Duration, MeasureView, NoteKind, TimeSignature};
+use gscore_model::{
+    BeatKind, BeatView, Duration, Hand, MeasureView, NoteKind, SlideKind, TimeSignature,
+};
 
 use super::{ColumnData, Item, UNREADABLE};
 use crate::Context;
@@ -68,10 +70,12 @@ pub(super) fn beat_starts<'a>(
     })
 }
 
-/// The fret numbers of a column's beats; a rest if no beat has notes.
+/// The fret numbers of a column's beats; a rest if no beat has notes. `first_column` marks
+/// the measure's first column, where a tie carried across a barline writes `(7)`.
 pub(super) fn column_items(
     beats: &[BeatView<'_>],
     ctx: &Context<'_>,
+    first_column: bool,
 ) -> Result<ColumnData, LayoutError> {
     let mut items = Vec::new();
     let mut marks = ColumnMarks::default();
@@ -84,8 +88,20 @@ pub(super) fn column_items(
             marks.whammy = beat.whammy_shape();
         }
         marks.add_vibrato(beat.vibrato());
+        if beat.kind() == BeatKind::Normal {
+            marks.pick = marks.pick.or(beat.pick_stroke());
+            marks.brush = marks.brush.or(beat.brush_stroke());
+            marks.slap = marks.slap.or(beat.slap());
+            marks.fade = marks.fade.or(beat.fade());
+            marks.arpeggio = marks.arpeggio.or(beat.arpeggio());
+            marks.rasgueado |= beat.has_rasgueado();
+        }
+        marks.dead_slapped |= beat.is_dead_slapped();
     }
-    for beat in beats.iter().filter(|b| b.kind() == BeatKind::Normal) {
+    for beat in beats
+        .iter()
+        .filter(|b| b.kind() == BeatKind::Normal && !b.is_dead_slapped())
+    {
         for note in beat.notes() {
             // A fret the model cannot read (it lists those as issues) is shown as `?`, so
             // one odd note does not hide the whole track.
@@ -98,7 +114,15 @@ pub(super) fn column_items(
             // and a curve marks the tie. Its column stays so the curve has an endpoint.
             let (base, tie_destination) = match note.kind() {
                 NoteKind::Normal => (fret(), false),
-                NoteKind::Tie => (String::new(), true),
+                // A tie carried into a measure writes its fret in parentheses in the
+                // measure's first column; within the measure it stays hidden.
+                NoteKind::Tie => {
+                    if first_column {
+                        (format!("({})", fret()), true)
+                    } else {
+                        (String::new(), true)
+                    }
+                }
                 NoteKind::Dead => ("x".to_owned(), false),
                 NoteKind::Rest | NoteKind::Unknown => continue,
             };
@@ -113,10 +137,11 @@ pub(super) fn column_items(
                 continue;
             };
             if tie_destination {
+                let width = ctx.fonts.text.width(&base, ctx.options.fret_size);
                 items.push(Item::Fret(Fret {
                     line,
-                    text: String::new(),
-                    width: 0.0,
+                    text: base,
+                    width,
                     marks: NoteMarks::new(),
                     fret: fret_value,
                     tie_destination: true,
@@ -131,8 +156,18 @@ pub(super) fn column_items(
             marks.add_vibrato(note.vibrato());
             note_marks.accent = note.accent();
             note_marks.staccato = note.is_staccato();
-            note_marks.trill = note.has_trill();
-            note_marks.tremolo_picking = note.has_tremolo_picking();
+            note_marks.trill = note.trill();
+            note_marks.tremolo = note.tremolo_speed();
+            note_marks.pick_slide = note
+                .slides()
+                .find(|slide| matches!(slide, SlideKind::PickSlideDown | SlideKind::PickSlideUp));
+            note_marks.left_hand_tap = note.is_left_hand_tapped();
+            note_marks.string_number = note
+                .shows_string_number()
+                .then(|| note.string().ok().map(|s| s.get()))
+                .flatten();
+            note_marks.finger_left = note.finger(Hand::Left).map(|f| f.sign(Hand::Left));
+            note_marks.finger_right = note.finger(Hand::Right).map(|f| f.sign(Hand::Right));
             note_marks.palm_mute = note.is_palm_muted();
             note_marks.let_ring = note.is_let_ring();
             let mut text = ornaments::fret_text(&base, &note_marks);
@@ -150,8 +185,10 @@ pub(super) fn column_items(
             }));
         }
     }
-    // With notation shown, rests are written there only, as in Guitar Pro.
+    // With notation shown, rests are written there only, as in Guitar Pro. A dead slapped
+    // beat writes a large cross instead of any rest.
     if items.is_empty()
+        && !marks.dead_slapped
         && ctx.notation.is_none()
         && let Some(rest) = beats.iter().find(|b| b.kind() == BeatKind::Rest)
     {
@@ -163,6 +200,11 @@ pub(super) fn column_items(
             });
         }
     }
+    let text = beats
+        .iter()
+        .map(|beat| beat.text().trim())
+        .find(|text| !text.is_empty())
+        .map(str::to_owned);
     Ok(ColumnData {
         items,
         marks,
@@ -171,6 +213,7 @@ pub(super) fn column_items(
         grace_width: 0.0,
         beat: 0,
         beats: Vec::new(),
+        text,
     })
 }
 

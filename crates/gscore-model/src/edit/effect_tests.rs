@@ -295,7 +295,10 @@ fn staccato_toggles() {
 #[test]
 fn trill_toggles() {
     round_trip_note(
-        NoteEffect::Trill(true),
+        NoteEffect::Trill(Some(crate::Trill {
+            fret: Some(4),
+            speed: crate::TrillSpeed::ThirtySecond,
+        })),
         |note| assert!(note.has_trill()),
         |note| assert!(!note.has_trill()),
     );
@@ -304,7 +307,7 @@ fn trill_toggles() {
 #[test]
 fn tremolo_picking_toggles() {
     round_trip_note(
-        NoteEffect::TremoloPicking(true),
+        NoteEffect::TremoloPicking(Some(crate::TremoloSpeed::Eighth)),
         |note| assert!(note.has_tremolo_picking()),
         |note| assert!(!note.has_tremolo_picking()),
     );
@@ -603,6 +606,7 @@ fn a_grace_note_is_set_changed_and_removed() {
         speed: GraceSpeed::Slow,
         on_beat: true,
         dead: false,
+        hammer: false,
     };
     round_trip_note(
         NoteEffect::Grace(Some(slow)),

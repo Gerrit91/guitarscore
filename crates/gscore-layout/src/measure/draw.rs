@@ -5,7 +5,9 @@
 
 use gscore_model::Dynamic;
 
-use super::{Column, Item, MEASURE_NUMBER_RISE, MeasureLayout, Tops};
+use super::effects::LANE_CLEARANCE;
+use super::{Column, DEAD_SLAP_HALF, Item, MEASURE_NUMBER_RISE, MeasureLayout, Tops};
+
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
 use crate::notation::{self, BeamPlan, Chord, Head, NotationItem};
@@ -223,6 +225,21 @@ impl MeasureLayout {
         let (xs, right) = self.column_positions(x, stretch);
         // Where each column's space ends: the next column, or the end of the measure.
         let span_end = |index: usize| xs.get(index.saturating_add(1)).copied().unwrap_or(right);
+        // A dead slapped beat is a large cross across each staff instead of its notes.
+        for (index, column) in self.columns.iter().enumerate() {
+            if !column.marks.dead_slapped {
+                continue;
+            }
+            let Some(&at) = xs.get(index) else {
+                continue;
+            };
+            if tops.show_tab {
+                draw_dead_slap(at, top, ctx.staff.height(), ops);
+            }
+            if let Some(notation_top) = tops.notation {
+                draw_dead_slap(at, notation_top, notation::staff().height(), ops);
+            }
+        }
         if tops.show_tab {
             for (index, column) in self.columns.iter().enumerate() {
                 let at = xs.get(index).copied().unwrap_or(right);
@@ -237,6 +254,8 @@ impl MeasureLayout {
                 }
             }
         }
+        // The highest point of each column's notation, so marks above the staff clear it.
+        let mut ceilings = vec![f32::MAX; self.columns.len()];
         if let Some(notation_top) = tops.notation {
             let voices = self
                 .columns
@@ -245,25 +264,35 @@ impl MeasureLayout {
                 .max()
                 .unwrap_or(0);
             for voice in 0..voices {
-                let placed: Vec<BeamPlan<'_>> = self
+                let (indices, placed): (Vec<usize>, Vec<BeamPlan<'_>>) = self
                     .columns
                     .iter()
                     .zip(&xs)
-                    .filter_map(|(column, &x)| {
+                    .enumerate()
+                    .filter_map(|(index, (column, &x))| {
                         let item = column.notation.get(voice)?.as_ref()?;
                         let shift = if voice > 0 {
                             column.notation_offset
                         } else {
                             0.0
                         };
-                        Some(BeamPlan {
-                            x: x + shift,
-                            item,
-                            beat: column.beat,
-                        })
+                        Some((
+                            index,
+                            BeamPlan {
+                                x: x + shift,
+                                item,
+                                beat: column.beat,
+                            },
+                        ))
                     })
-                    .collect();
-                notation::draw_measure(&placed, notation_top, ctx, ops);
+                    .unzip();
+                let highest =
+                    notation::draw_measure(&placed, notation_top, !tops.show_tab, ctx, ops);
+                for (index, y) in indices.into_iter().zip(highest) {
+                    if let Some(slot) = ceilings.get_mut(index) {
+                        *slot = slot.min(y);
+                    }
+                }
             }
         }
         // Grace notes sit just left of their column's main note, on both staves.
@@ -272,8 +301,31 @@ impl MeasureLayout {
                 super::graces::draw(at, column, tops, ctx, ops);
             }
         }
-        // Everything below belongs to the tab staff.
+        // Without a tab, the ornaments that live above and below it go above and below
+        // the notation staff instead (the notation draws its own slurs and slides).
+        self.draw_beat_effects(&xs, right, &ceilings, tops, ctx, ops);
         if !tops.show_tab {
+            if let Some(notation_top) = tops.notation {
+                // Each column's lanes rise over its high notes.
+                let lanes: Vec<f32> = ceilings
+                    .iter()
+                    .map(|&ceiling| tops.lanes.min(ceiling + LANE_CLEARANCE))
+                    .collect();
+                for (index, column) in self.columns.iter().enumerate() {
+                    let (Some(&at), Some(&lane)) = (xs.get(index), lanes.get(index)) else {
+                        continue;
+                    };
+                    for item in &column.items {
+                        if let Item::Fret(fret) = item {
+                            fret.draw_lane_marks(at, lane, ctx, ops);
+                        }
+                    }
+                }
+                self.draw_column_ornaments(&xs, right, &lanes, ctx, ops);
+                // The rows below line up with the notation staff's bottom line.
+                let under = notation_top + notation::staff().height() - ctx.staff.height();
+                self.draw_under_staff(&xs, right, under, ctx, ops);
+            }
             return;
         }
         self.draw_links(&xs, top, ctx, ops);
@@ -281,13 +333,22 @@ impl MeasureLayout {
             let Some(&at) = xs.get(index) else {
                 continue;
             };
-            if let Some(whammy) = &column.marks.whammy {
-                ornaments::draw_whammy(at, span_end(index), top, whammy, ctx, ops);
+            if let Some(direction) = column.marks.brush {
+                let frets = column.items.iter().filter_map(|item| match item {
+                    Item::Fret(fret) => Some(fret),
+                    Item::Rest { .. } => None,
+                });
+                ornaments::draw_tab_brush(at, frets, top, direction, ctx, ops);
             }
-            if let Some(vibrato) = column.marks.vibrato {
-                ornaments::draw_vibrato(at, span_end(index), top, vibrato, ops);
+            if let Some(direction) = column.marks.arpeggio {
+                let frets = column.items.iter().filter_map(|item| match item {
+                    Item::Fret(fret) => Some(fret),
+                    Item::Rest { .. } => None,
+                });
+                ornaments::draw_tab_arpeggio(at, frets, top, direction, ctx, ops);
             }
         }
+        self.draw_column_ornaments(&xs, right, &vec![top; xs.len()], ctx, ops);
         self.draw_legato(&xs, top, ops);
         self.draw_under_staff(&xs, right, top, ctx, ops);
     }
@@ -314,34 +375,12 @@ impl MeasureLayout {
                 };
                 if target.tie_destination {
                     ornaments::draw_tie(at, target_x, top, origin, target, ctx, ops);
+                } else if origin.marks.pick_slide.is_some() {
+                    ornaments::draw_pick_slide(at, target_x, top, origin, target, ctx, ops);
                 } else if origin.marks.hammer || origin.marks.direct_slide().is_some() {
                     ornaments::draw_link(at, target_x, top, origin, target, ctx, ops);
                 }
             }
-        }
-    }
-
-    /// One slur over each contiguous beat-level legato run.
-    fn draw_legato(&self, xs: &[f32], top: f32, ops: &mut Vec<DrawOp>) {
-        let active =
-            |column: &Column| column.marks.legato_origin || column.marks.legato_destination;
-        let mut index = 0;
-        while let Some(column) = self.columns.get(index) {
-            if !active(column) {
-                index = index.saturating_add(1);
-                continue;
-            }
-            let start = index;
-            let mut end = index;
-            while self.columns.get(end.saturating_add(1)).is_some_and(active) {
-                end = end.saturating_add(1);
-            }
-            if let (Some(&start_x), Some(&end_x)) = (xs.get(start), xs.get(end)) {
-                let next = xs.get(end.saturating_add(1)).copied();
-                let run_end = next.map_or(end_x, |next| (end_x + next) / 2.0);
-                ornaments::draw_legato_run(start_x, run_end, top, ops);
-            }
-            index = end.saturating_add(1);
         }
     }
 
@@ -350,7 +389,8 @@ impl MeasureLayout {
         self.columns.iter().map(|c| (c.dynamic, c.tempo))
     }
 
-    /// The lowest notehead's staff position in column `index` of the notation staff.
+    /// The lowest notehead's staff position in column `index` of the notation staff, lower
+    /// by the room an accent or staccato dot below it takes.
     pub(crate) fn lowest_head(&self, index: usize) -> Option<i32> {
         self.columns
             .get(index)?
@@ -358,100 +398,37 @@ impl MeasureLayout {
             .iter()
             .flatten()
             .filter_map(|item| match item {
-                NotationItem::Chord(chord) => chord.heads.first().map(|head| head.position),
+                NotationItem::Chord(chord) => chord.heads.first().map(|head| {
+                    // Marks go below a chord whose stem points up.
+                    let below = chord.stem_up();
+                    let accent = if below && chord.marks.accent.is_some() {
+                        3
+                    } else {
+                        0
+                    };
+                    let dot = if below && chord.marks.staccato { 2 } else { 0 };
+                    head.position.saturating_sub(accent).saturating_sub(dot)
+                }),
                 NotationItem::Rest { .. } => None,
             })
             .min()
     }
-
-    /// How many rows of marks (palm mute, let ring) this measure has below the tab staff.
-    pub(crate) fn under_staff_lanes(&self) -> usize {
-        [UnderRow::PalmMute, UnderRow::LetRing]
-            .into_iter()
-            .filter(|row| self.columns.iter().any(|column| row.matches(column)))
-            .count()
-    }
-
-    /// Palm-mute and let-ring rows below the staff.
-    fn draw_under_staff(
-        &self,
-        xs: &[f32],
-        right: f32,
-        top: f32,
-        ctx: &Context<'_>,
-        ops: &mut Vec<DrawOp>,
-    ) {
-        let mut lane = 0;
-        for row in [UnderRow::PalmMute, UnderRow::LetRing] {
-            // Only rows that occur in this measure take a lane, so a measure with let ring
-            // alone keeps it close to the staff.
-            if !self.columns.iter().any(|column| row.matches(column)) {
-                continue;
-            }
-            let mut index = 0;
-            while let Some(column) = self.columns.get(index) {
-                if !row.matches(column) {
-                    index = index.saturating_add(1);
-                    continue;
-                }
-                let start = index;
-                let mut end = index;
-                while self
-                    .columns
-                    .get(end.saturating_add(1))
-                    .is_some_and(|column| row.matches(column))
-                {
-                    end = end.saturating_add(1);
-                }
-                if let Some(&start_x) = xs.get(start) {
-                    let end_x = xs
-                        .get(end.saturating_add(1))
-                        .copied()
-                        .map_or(right, |next| {
-                            (next + xs.get(end).copied().unwrap_or(next)) / 2.0
-                        });
-                    ornaments::draw_under_staff_run(
-                        start_x - 0.7,
-                        end_x,
-                        row.label(),
-                        lane,
-                        top,
-                        ctx,
-                        ops,
-                    );
-                }
-                index = end.saturating_add(1);
-            }
-            lane = lane.saturating_add(1);
-        }
-    }
 }
 
-/// A row of marks below the staff.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum UnderRow {
-    PalmMute,
-    LetRing,
-}
-
-impl UnderRow {
-    fn label(self) -> &'static str {
-        match self {
-            UnderRow::PalmMute => "P.M.",
-            UnderRow::LetRing => "let ring",
-        }
-    }
-
-    fn matches(self, column: &Column) -> bool {
-        column.items.iter().any(|item| {
-            let Item::Fret(fret) = item else {
-                return false;
-            };
-            match self {
-                UnderRow::PalmMute => fret.marks.palm_mute,
-                UnderRow::LetRing => fret.marks.let_ring,
-            }
-        })
+/// A large cross across a staff for a dead slapped beat, centered on `x`.
+fn draw_dead_slap(x: f32, top: f32, height: f32, ops: &mut Vec<DrawOp>) {
+    let (left, right) = (x - DEAD_SLAP_HALF, x + DEAD_SLAP_HALF);
+    let (high, low) = (top - 0.3, top + height + 0.3);
+    for (from, to) in [
+        (Point::new(left, high), Point::new(right, low)),
+        (Point::new(left, low), Point::new(right, high)),
+    ] {
+        ops.push(DrawOp::Line {
+            from,
+            to,
+            thickness: 0.22,
+            color: ColorToken::Notation,
+        });
     }
 }
 

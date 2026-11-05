@@ -318,6 +318,15 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             let tie = bool_arg(args, "tie")?;
             Ok(Command::SetTie { at, string, tie })
         }
+        "set_beat_tie" => {
+            let at = position(args)?;
+            let tie = bool_arg(args, "tie")?;
+            Ok(Command::SetBeatTie { at, tie })
+        }
+        "set_beat_text" => Ok(Command::SetBeatText {
+            at: position(args)?,
+            text: text_arg(args, "text")?,
+        }),
         "set_dead_note" => {
             let at = position(args)?;
             let string = string_arg(args)?;

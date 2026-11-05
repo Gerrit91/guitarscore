@@ -94,6 +94,14 @@ pub enum ActionId {
     MakeRest,
     /// Palette: Tie.
     ToggleTie,
+    /// Palette: tie the whole beat to the previous one.
+    TieBeat,
+    /// Palette: text written above the beat (opens the beat text dialog).
+    EditBeatText,
+    /// Palette: left-hand fingering (opens the fingering dialog).
+    EditLeftFinger,
+    /// Palette: right-hand fingering (opens the fingering dialog).
+    EditRightFinger,
     /// Palette: Dead note.
     ToggleDeadNote,
     /// Palette: Ghost note.
@@ -160,12 +168,36 @@ pub enum ActionId {
     TogglePopping,
     /// Palette: Fade in.
     ToggleFadeIn,
+    /// Palette: Fade out.
+    ToggleFadeOut,
+    /// Palette: Volume swell (in and out again).
+    ToggleVolumeSwell,
     /// Palette: Whammy bar.
     ToggleWhammy,
     /// Palette: Legato (beat slur).
     ToggleLegato,
     /// Palette: Beat vibrato.
     ToggleBeatVibrato,
+    /// Palette: Arpeggio (rolled chord) down.
+    ToggleArpeggioDown,
+    /// Palette: Arpeggio (rolled chord) up.
+    ToggleArpeggioUp,
+    /// Palette: Dead slapped beat.
+    ToggleDeadSlapped,
+    /// Palette: Rasgueado.
+    ToggleRasgueado,
+    /// Palette: Left-hand tap.
+    ToggleLeftHandTap,
+    /// Palette: Circled string number.
+    ToggleStringNumber,
+    /// Palette: Pick slide down.
+    TogglePickSlideDown,
+    /// Palette: Pick slide up.
+    TogglePickSlideUp,
+    /// Palette: Trill with a fret and speed (opens the trill dialog).
+    TrillOther,
+    /// Palette: Tremolo picking at a chosen speed (opens the tremolo dialog).
+    TremoloOther,
     /// Zoom in.
     ZoomIn,
     /// Zoom out.
@@ -198,6 +230,10 @@ impl ActionId {
                 | ActionId::TupletOther
                 | ActionId::MakeRest
                 | ActionId::ToggleTie
+                | ActionId::TieBeat
+                | ActionId::EditBeatText
+                | ActionId::EditLeftFinger
+                | ActionId::EditRightFinger
                 | ActionId::ToggleDeadNote
                 | ActionId::ToggleGhostNote
                 | ActionId::ToggleHammer
@@ -231,9 +267,21 @@ impl ActionId {
                 | ActionId::ToggleSlapping
                 | ActionId::TogglePopping
                 | ActionId::ToggleFadeIn
+                | ActionId::ToggleFadeOut
+                | ActionId::ToggleVolumeSwell
                 | ActionId::ToggleWhammy
                 | ActionId::ToggleLegato
                 | ActionId::ToggleBeatVibrato
+                | ActionId::ToggleArpeggioDown
+                | ActionId::ToggleArpeggioUp
+                | ActionId::ToggleDeadSlapped
+                | ActionId::ToggleRasgueado
+                | ActionId::ToggleLeftHandTap
+                | ActionId::ToggleStringNumber
+                | ActionId::TogglePickSlideDown
+                | ActionId::TogglePickSlideUp
+                | ActionId::TrillOther
+                | ActionId::TremoloOther
         )
     }
 }
@@ -320,6 +368,18 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::TupletOther, "tuplet_other", "Tuplet…"),
     info(ActionId::MakeRest, "make_rest", "Rest"),
     info(ActionId::ToggleTie, "toggle_tie", "Tie"),
+    info(ActionId::TieBeat, "tie_beat", "Tie beat"),
+    info(ActionId::EditBeatText, "edit_beat_text", "Beat text…"),
+    info(
+        ActionId::EditLeftFinger,
+        "edit_left_finger",
+        "Left-hand fingering…",
+    ),
+    info(
+        ActionId::EditRightFinger,
+        "edit_right_finger",
+        "Right-hand fingering…",
+    ),
     info(ActionId::ToggleDeadNote, "toggle_dead_note", "Dead note"),
     info(ActionId::ToggleGhostNote, "toggle_ghost_note", "Ghost note"),
     info(
@@ -425,6 +485,12 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::ToggleSlapping, "toggle_slapping", "Slap"),
     info(ActionId::TogglePopping, "toggle_popping", "Pop"),
     info(ActionId::ToggleFadeIn, "toggle_fade_in", "Fade in"),
+    info(ActionId::ToggleFadeOut, "toggle_fade_out", "Fade out"),
+    info(
+        ActionId::ToggleVolumeSwell,
+        "toggle_volume_swell",
+        "Volume swell",
+    ),
     info(ActionId::ToggleWhammy, "toggle_whammy", "Whammy bar"),
     info(
         ActionId::ToggleLegato,
@@ -436,6 +502,44 @@ pub const ACTIONS: &[ActionInfo] = &[
         "toggle_beat_vibrato",
         "Beat vibrato",
     ),
+    info(
+        ActionId::ToggleArpeggioDown,
+        "toggle_arpeggio_down",
+        "Arpeggio down",
+    ),
+    info(
+        ActionId::ToggleArpeggioUp,
+        "toggle_arpeggio_up",
+        "Arpeggio up",
+    ),
+    info(
+        ActionId::ToggleDeadSlapped,
+        "toggle_dead_slapped",
+        "Dead slapped",
+    ),
+    info(ActionId::ToggleRasgueado, "toggle_rasgueado", "Rasgueado"),
+    info(
+        ActionId::ToggleLeftHandTap,
+        "toggle_left_hand_tap",
+        "Left-hand tap",
+    ),
+    info(
+        ActionId::ToggleStringNumber,
+        "toggle_string_number",
+        "String number",
+    ),
+    info(
+        ActionId::TogglePickSlideDown,
+        "toggle_pick_slide_down",
+        "Pick slide down",
+    ),
+    info(
+        ActionId::TogglePickSlideUp,
+        "toggle_pick_slide_up",
+        "Pick slide up",
+    ),
+    info(ActionId::TrillOther, "trill_other", "Trill…"),
+    info(ActionId::TremoloOther, "tremolo_other", "Tremolo…"),
     info(ActionId::ZoomIn, "zoom_in", "Zoom in"),
     info(ActionId::ZoomOut, "zoom_out", "Zoom out"),
     info(ActionId::ZoomReset, "zoom_reset", "Actual size"),
@@ -519,6 +623,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 81, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 97, "one entry per ActionId variant");
     }
 }

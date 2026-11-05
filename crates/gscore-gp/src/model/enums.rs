@@ -284,6 +284,10 @@ pub enum SlideType {
     LegatoSlideTo,
     OutDownwards,
     OutUpWards,
+    /// GuitarScore addition: GPIF's pick slides (pick scrapes) down and up the strings
+    /// (slide flags 64 and 128). GP3-5 have none; they are not written there.
+    PickSlideDown,
+    PickSlideUp,
 }
 
 /// An enumeration of all supported note types.
@@ -313,6 +317,9 @@ pub enum Fingering {
     Annular,
     /// Little finger.
     Little,
+    /// GuitarScore addition: GPIF's left-hand `Open`, the note on the open string written
+    /// with finger `0`. GP3-5 have no such value; it is written there as no fingering.
+    OpenString,
 
     Unknown(i8),
 }

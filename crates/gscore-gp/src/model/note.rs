@@ -58,6 +58,10 @@ pub struct NoteEffect {
     pub wide_vibrato: bool,
     /// Ornament type from GPIF (GP6/GP7)
     pub ornament: Option<String>,
+    /// GuitarScore addition: GPIF's `LeftHandTapped` (a left-hand tap, no pick).
+    pub left_hand_tapped: bool,
+    /// GuitarScore addition: GPIF's `ShowStringNumber` (the string's circled number).
+    pub show_string_number: bool,
 }
 
 impl Default for NoteEffect {
@@ -81,6 +85,8 @@ impl Default for NoteEffect {
             vibrato: false,
             wide_vibrato: false,
             ornament: None,
+            left_hand_tapped: false,
+            show_string_number: false,
         }
     }
 }
@@ -117,6 +123,8 @@ impl NoteEffect {
             && self.palm_mute == d.palm_mute
             && self.staccato == d.staccato
             && self.let_ring == d.let_ring
+            && self.left_hand_tapped == d.left_hand_tapped
+            && self.show_string_number == d.show_string_number
     }
     pub fn is_fingering(&self) -> bool {
         self.left_hand_finger != Fingering::Open || self.right_hand_finger != Fingering::Open

@@ -55,7 +55,12 @@ fn svg(song: &Song, theme: &Theme) -> String {
 
 #[test]
 fn owner_files_match_their_golden_svg() {
-    for name in ["steel_guitar_dadgad", "note_lengths", "ornaments"] {
+    for name in [
+        "steel_guitar_dadgad",
+        "note_lengths",
+        "ornaments",
+        "advanced_ornaments",
+    ] {
         let song = common::open(&format!("basic/{name}.gp"));
         check(name, &svg(&song, &Theme::LIGHT));
     }

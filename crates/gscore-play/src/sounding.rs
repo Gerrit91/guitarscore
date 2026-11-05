@@ -4,7 +4,7 @@
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, VecDeque};
 
-use gscore_model::{SlideKind, Vibrato};
+use gscore_model::{Fade, SlideKind, StrokeDirection, TremoloSpeed, TrillSpeed, Vibrato};
 
 use crate::curve::Curve;
 use crate::event::Channel;
@@ -48,8 +48,14 @@ pub(super) struct Sounding {
     pub(super) vibrato: Option<Vibrato>,
     /// Whether the note rings on until the next note on its string.
     pub(super) let_ring: bool,
-    /// Whether the note is played as fast repeated picks.
-    pub(super) tremolo: bool,
+    /// How fast the note is played as repeated picks, if it is tremolo picked.
+    pub(super) tremolo: Option<TremoloSpeed>,
+    /// The note's trill: the other key and how fast it alternates.
+    pub(super) trill: Option<(u8, TrillSpeed)>,
+    /// A pick slide along the string and its direction.
+    pub(super) pick_slide: Option<StrokeDirection>,
+    /// The beat is played as a rasgueado, repeated by [`crate::effects::rasgueados`].
+    pub(super) rasgueado: bool,
     /// Where its beat starts (a brush stroke may delay the note itself).
     pub(super) onset: u64,
     /// Whether the note stops dead at its end (staccato, palm mute) instead of fading
@@ -59,6 +65,9 @@ pub(super) struct Sounding {
     /// The bend's drawn curve, and the beat's whammy curve, if any.
     pub(super) bend_curve: Option<Curve>,
     pub(super) whammy: Option<Curve>,
+    /// A fade in, out or swell: it plays on a borrowed channel whose expression follows
+    /// the fade over the note.
+    pub(super) fade: Option<Fade>,
 }
 
 /// Which slide of a note the sequencer plays.
@@ -208,7 +217,7 @@ pub(super) fn assign_pitch_channels(notes: &mut [Sounding], free: Vec<Channel>) 
     let mut order: Vec<usize> = notes
         .iter()
         .enumerate()
-        .filter(|(_, note)| note.shape.is_some() || note.damp)
+        .filter(|(_, note)| note.shape.is_some() || note.damp || note.fade.is_some())
         .map(|(index, _)| index)
         .collect();
     order.sort_by_key(|&index| {

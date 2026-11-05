@@ -1,9 +1,9 @@
 //! How note and beat effects change what is played: ghost notes and accents change the
 //! velocity, staccato and palm mute shorten the note, let ring holds it to the next note on
-//! its string, tremolo picking repeats it, a brush stroke spreads the chord, and vibrato
-//! shakes the pitch.
+//! its string, tremolo picking repeats it, and vibrato shakes the pitch. A stroke spreads
+//! a chord ([`spread`]; the beat effects themselves are in `strokes`).
 
-use gscore_model::{AccentKind, NoteView, StrokeDirection, Vibrato};
+use gscore_model::{AccentKind, NoteView, StrokeDirection, TremoloSpeed, TrillSpeed, Vibrato};
 
 use crate::pitch::{PitchShape, Wave};
 use crate::sounding::Sounding;
@@ -22,10 +22,21 @@ const PALM_MUTE_TICKS: u64 = QUARTER / 2;
 const STACCATO_TICKS: u64 = QUARTER / 2;
 /// A let-ring note holds at most this long past its own end when no note follows.
 const LET_RING_TICKS: u64 = 4 * QUARTER;
-/// Tremolo picking repeats the note every 32nd note.
-const TREMOLO_TICKS: u64 = QUARTER / 8;
-/// A brush stroke spreads the chord over this long (a 32nd note, as Guitar Pro's default).
-const BRUSH_TICKS: u64 = QUARTER / 8;
+/// How long one repeated pick or trill note lasts: a 64th, 32nd or 16th (a trill's or
+/// tremolo's note value).
+const SIXTY_FOURTH: u64 = QUARTER / 16;
+const THIRTY_SECOND: u64 = QUARTER / 8;
+const SIXTEENTH: u64 = QUARTER / 4;
+/// A pick slide runs over an eighth note at most.
+const PICK_SLIDE_TICKS: u64 = QUARTER / 2;
+/// How many notes a pick slide scrapes through.
+const PICK_SLIDE_NOTES: u64 = 6;
+/// A rasgueado has three quick strikes; each is this far after the one before.
+const RASGUEADO_STRIKES: u64 = 3;
+const RASGUEADO_STEP: u64 = SIXTY_FOURTH;
+/// Velocity shares of the later rasgueado strikes (percent).
+const RASGUEADO_SECOND_PERCENT: u32 = 85;
+const RASGUEADO_THIRD_PERCENT: u32 = 70;
 /// Vibrato: how far the pitch swings (cents) and one swing's length, slight and wide.
 const SLIGHT_DEPTH_CENTS: u16 = 50;
 const WIDE_DEPTH_CENTS: u16 = 100;
@@ -33,7 +44,7 @@ const SLIGHT_PERIOD: u64 = QUARTER / 3;
 const WIDE_PERIOD: u64 = QUARTER / 2;
 
 /// `velocity` scaled to `percent`, kept within MIDI's 1 to 127.
-fn scale(velocity: u8, percent: u32) -> u8 {
+pub(crate) fn scale(velocity: u8, percent: u32) -> u8 {
     let scaled = u32::from(velocity).saturating_mul(percent) / 100;
     u8::try_from(scaled.clamp(1, 127)).unwrap_or(127)
 }
@@ -64,9 +75,9 @@ pub(crate) fn shape_note(sounding: &mut Sounding, note: &NoteView<'_>) {
     }
 }
 
-/// Spreads a chord's onsets for a brush stroke: a down stroke from the lowest string (the
-/// highest string number), an up stroke from the highest.
-pub(crate) fn brush(chord: &mut [Sounding], direction: StrokeDirection) {
+/// Spreads a chord's onsets over `total` ticks for a pick or brush stroke: a down stroke
+/// from the lowest string (the highest string number), an up stroke from the highest.
+pub(crate) fn spread(chord: &mut [Sounding], direction: StrokeDirection, total: u64) {
     let count = chord.len();
     if count < 2 {
         return;
@@ -81,7 +92,7 @@ pub(crate) fn brush(chord: &mut [Sounding], direction: StrokeDirection) {
         let Some(note) = chord.get_mut(index) else {
             continue;
         };
-        let delay = BRUSH_TICKS
+        let delay = total
             .saturating_mul(u64::try_from(position).unwrap_or(0))
             .checked_div(gaps)
             .unwrap_or(0);
@@ -157,22 +168,46 @@ pub(crate) fn let_ring(notes: &mut [Sounding]) {
     }
 }
 
-/// Replaces tremolo-picked notes by repeated 32nd notes over their length.
+/// The duration of one repeated pick at `speed`.
+fn tremolo_ticks(speed: TremoloSpeed) -> u64 {
+    match speed {
+        TremoloSpeed::Eighth => QUARTER / 2,
+        TremoloSpeed::Sixteenth => SIXTEENTH,
+        TremoloSpeed::ThirtySecond => THIRTY_SECOND,
+    }
+}
+
+/// The duration of one trill note at `speed`.
+fn trill_ticks(speed: TrillSpeed) -> u64 {
+    match speed {
+        TrillSpeed::Sixteenth => SIXTEENTH,
+        TrillSpeed::ThirtySecond => THIRTY_SECOND,
+        TrillSpeed::SixtyFourth => SIXTY_FOURTH,
+    }
+}
+
+/// Replaces tremolo-picked notes by repeated notes at their speed over their length.
 pub(crate) fn tremolo_picking(notes: Vec<Sounding>) -> Vec<Sounding> {
     let mut out = Vec::with_capacity(notes.len());
     for note in notes {
-        if !note.tremolo || note.end.saturating_sub(note.start) <= TREMOLO_TICKS {
+        let Some(speed) = note.tremolo else {
+            out.push(note);
+            continue;
+        };
+        let step = tremolo_ticks(speed);
+        if note.end.saturating_sub(note.start) <= step {
             out.push(note);
             continue;
         }
         let mut start = note.start;
         while start < note.end {
-            let end = start.saturating_add(TREMOLO_TICKS).min(note.end);
+            let end = start.saturating_add(step).min(note.end);
             out.push(Sounding {
                 start,
                 end,
-                tremolo: false,
-                // Only the first pick carries a slide or bend.
+                tremolo: None,
+                // Only the first pick carries a slide, a bend or a fade.
+                fade: note.fade.filter(|_| start == note.start),
                 slide: if start == note.start {
                     note.slide
                 } else {
@@ -188,6 +223,190 @@ pub(crate) fn tremolo_picking(notes: Vec<Sounding>) -> Vec<Sounding> {
             });
             start = end;
         }
+    }
+    out
+}
+
+/// Replaces trilled notes by notes alternating with the trill key at the trill's speed.
+pub(crate) fn trills(notes: Vec<Sounding>) -> Vec<Sounding> {
+    let mut out = Vec::with_capacity(notes.len());
+    for note in notes {
+        let Some((other_key, speed)) = note.trill else {
+            out.push(note);
+            continue;
+        };
+        let step = trill_ticks(speed);
+        if note.end.saturating_sub(note.start) <= step {
+            out.push(note);
+            continue;
+        }
+        let mut start = note.start;
+        let mut alternate = false;
+        while start < note.end {
+            let end = start.saturating_add(step).min(note.end);
+            out.push(Sounding {
+                start,
+                end,
+                key: if alternate { other_key } else { note.key },
+                trill: None,
+                // Only the first note carries the note's slide, bend or fade.
+                fade: note.fade.filter(|_| start == note.start),
+                slide: if start == note.start {
+                    note.slide
+                } else {
+                    None
+                },
+                bend: if start == note.start { note.bend } else { None },
+                bend_curve: if start == note.start {
+                    note.bend_curve
+                } else {
+                    None
+                },
+                ..note
+            });
+            alternate = !alternate;
+            start = end;
+        }
+    }
+    out
+}
+
+/// Replaces a pick-slide note by a quick run of muted notes scraping to the next note on
+/// its string (or a fixed span when there is none), in the slide's direction.
+pub(crate) fn pick_slides(notes: Vec<Sounding>) -> Vec<Sounding> {
+    // The next note on each (track, string), by start, to know where the scrape goes.
+    let mut order: Vec<usize> = (0..notes.len()).collect();
+    order.sort_by_key(|&index| {
+        notes
+            .get(index)
+            .map_or((0, 0, 0), |note| (note.track, note.string, note.start))
+    });
+    let mut next: Vec<Option<(u8, u64)>> = vec![None; notes.len()];
+    for pair in order.windows(2) {
+        let [this, next_index] = pair else {
+            continue;
+        };
+        let (Some(&this_note), Some(&next_note)) = (notes.get(*this), notes.get(*next_index))
+        else {
+            continue;
+        };
+        if (this_note.track, this_note.string) == (next_note.track, next_note.string)
+            && let Some(slot) = next.get_mut(*this)
+        {
+            *slot = Some((next_note.key, next_note.start));
+        }
+    }
+    let mut out = Vec::with_capacity(notes.len());
+    for (index, note) in notes.iter().enumerate() {
+        let Some(direction) = note.pick_slide else {
+            out.push(*note);
+            continue;
+        };
+        let (target, next_start) = next.get(index).copied().flatten().unwrap_or_else(|| {
+            // No next note: scrape a whole octave in the slide's direction.
+            let target = match direction {
+                StrokeDirection::Up => note.key.saturating_add(12),
+                StrokeDirection::Down => note.key.saturating_sub(12),
+            };
+            (target, note.start.saturating_add(PICK_SLIDE_TICKS))
+        });
+        // The scrape runs over an eighth at most, but stops at the next note.
+        let run_end = note
+            .start
+            .saturating_add(PICK_SLIDE_TICKS)
+            .min(next_start)
+            .max(note.start.saturating_add(1));
+        let step = run_end
+            .saturating_sub(note.start)
+            .checked_div(PICK_SLIDE_NOTES.max(1))
+            .unwrap_or(1)
+            .max(1);
+        let last = PICK_SLIDE_NOTES.saturating_sub(1).max(1);
+        let from = i32::from(note.key);
+        let to = i32::from(target);
+        let span = to.saturating_sub(from);
+        for step_index in 0..PICK_SLIDE_NOTES {
+            let offset = i32::try_from(step_index).unwrap_or(0);
+            let divisor = i32::try_from(last).unwrap_or(1);
+            let key = from.saturating_add(
+                span.saturating_mul(offset)
+                    .checked_div(divisor)
+                    .unwrap_or(0),
+            );
+            let key = u8::try_from(key.clamp(0, 127)).unwrap_or(note.key);
+            let start = note
+                .start
+                .saturating_add(step.saturating_mul(step_index))
+                .min(run_end.saturating_sub(1));
+            out.push(Sounding {
+                start,
+                end: start.saturating_add(step).min(run_end),
+                key,
+                velocity: scale(note.velocity, 85),
+                pick_slide: None,
+                damp: true,
+                ..*note
+            });
+        }
+    }
+    out
+}
+
+/// Adds two more quick strikes to a rasgueado beat, softer than the first.
+pub(crate) fn rasgueados(notes: Vec<Sounding>) -> Vec<Sounding> {
+    let mut out = Vec::with_capacity(notes.len());
+    let mut index = 0;
+    while let Some(note) = notes.get(index) {
+        if !note.rasgueado {
+            out.push(*note);
+            index = index.saturating_add(1);
+            continue;
+        }
+        // The whole beat shares its onset.
+        let onset = note.onset;
+        let start = index;
+        let mut end = index;
+        while notes
+            .get(end)
+            .is_some_and(|other| other.rasgueado && other.onset == onset)
+        {
+            end = end.saturating_add(1);
+        }
+        let chord = notes.get(start..end).unwrap_or_default();
+        for note in chord {
+            // Each strike sounds until the next one on its string; the last one keeps the
+            // note's end, so nothing rings into the next note (strings were already cut to
+            // one note at a time). A note too short for the strikes is struck once.
+            let room = note.end.saturating_sub(note.start);
+            let strikes = if room > RASGUEADO_STEP.saturating_mul(RASGUEADO_STRIKES) {
+                RASGUEADO_STRIKES
+            } else {
+                1
+            };
+            for strike in 0..strikes {
+                let percent = match strike {
+                    0 => 100,
+                    1 => RASGUEADO_SECOND_PERCENT,
+                    _ => RASGUEADO_THIRD_PERCENT,
+                };
+                let start = note
+                    .start
+                    .saturating_add(RASGUEADO_STEP.saturating_mul(strike));
+                let end = if strike.saturating_add(1) < strikes {
+                    start.saturating_add(RASGUEADO_STEP)
+                } else {
+                    note.end
+                };
+                out.push(Sounding {
+                    start,
+                    end,
+                    velocity: scale(note.velocity, percent),
+                    rasgueado: false,
+                    ..*note
+                });
+            }
+        }
+        index = end;
     }
     out
 }
@@ -216,11 +435,12 @@ pub(crate) fn apply_vibrato(notes: &mut [Sounding]) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::event::Channel;
 
-    fn note(string: u8, start: u64, end: u64) -> Sounding {
+    /// A plain note for the tests.
+    pub(crate) fn note(string: u8, start: u64, end: u64) -> Sounding {
         let channel = Channel::new(0).unwrap();
         Sounding {
             track: 0,
@@ -236,11 +456,15 @@ mod tests {
             shape: None,
             vibrato: None,
             let_ring: false,
-            tremolo: false,
+            tremolo: None,
+            trill: None,
+            pick_slide: None,
+            rasgueado: false,
             onset: start,
             damp: false,
             bend_curve: None,
             whammy: None,
+            fade: None,
         }
     }
 
@@ -254,10 +478,10 @@ mod tests {
     #[test]
     fn a_down_brush_starts_on_the_lowest_string() {
         let mut chord = [note(1, 0, 960), note(6, 0, 960), note(3, 0, 960)];
-        brush(&mut chord, StrokeDirection::Down);
+        spread(&mut chord, StrokeDirection::Down, 120);
         assert_eq!(chord[1].start, 0);
         assert!(chord[2].start > 0 && chord[2].start < chord[0].start);
-        assert_eq!(chord[0].start, BRUSH_TICKS);
+        assert_eq!(chord[0].start, 120);
     }
 
     #[test]
@@ -280,12 +504,16 @@ mod tests {
     }
 
     #[test]
-    fn tremolo_picking_repeats_the_note() {
+    fn tremolo_picking_repeats_the_note_at_its_speed() {
         let mut long = note(1, 0, QUARTER);
-        long.tremolo = true;
+        long.tremolo = Some(TremoloSpeed::ThirtySecond);
         let picks = tremolo_picking(vec![long]);
         assert_eq!(picks.len(), 8);
         assert_eq!(picks[7].end, QUARTER);
+
+        let mut eighth = note(1, 0, QUARTER);
+        eighth.tremolo = Some(TremoloSpeed::Eighth);
+        assert_eq!(tremolo_picking(vec![eighth]).len(), 2);
     }
 
     #[test]
