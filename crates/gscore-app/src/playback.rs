@@ -211,6 +211,8 @@ pub struct Playback {
     metronome: bool,
     /// Whether guitar and bass tracks are played by the modelled strings.
     modelled_guitars: bool,
+    /// What plays the tracks the user chose for (by track index), over the default.
+    track_engines: Vec<(usize, gscore_play::TrackEngine)>,
     /// The sample rate asked of the device; `None`: its own.
     sample_rate: Option<u32>,
     /// How each kind of modelled string sounds.
@@ -266,6 +268,7 @@ impl Default for Playback {
             paused_at: None,
             metronome: false,
             modelled_guitars: false,
+            track_engines: Vec::new(),
             sample_rate: None,
             string_sounds: crate::settings::StringSounds::default(),
             string_chains: crate::chain_settings::StringChains::default(),
@@ -1193,13 +1196,49 @@ impl Playback {
         Ok(sequence)
     }
 
-    /// `sequence` with the engines chosen in the settings.
+    /// `sequence` with the engines chosen: the settings' default for guitar and bass
+    /// tracks, then each track's own choice (modelled strings only for string tracks).
     pub(crate) fn engines(&self, sequence: Sequence) -> Sequence {
-        if self.modelled_guitars {
+        let mut sequence = if self.modelled_guitars {
             sequence.with_modelled_guitars()
         } else {
             sequence
+        };
+        if !self.track_engines.is_empty() {
+            let performance = Arc::make_mut(&mut sequence.performance);
+            for track in &mut performance.tracks {
+                let chosen = self
+                    .track_engines
+                    .iter()
+                    .find(|(index, _)| *index == track.track.get())
+                    .map(|&(_, engine)| engine);
+                let strings =
+                    track.kind == gscore_model::InstrumentKind::Strings && !track.sound.percussion;
+                match chosen {
+                    Some(engine @ gscore_play::TrackEngine::Modelled(_)) if strings => {
+                        track.engine = engine;
+                    }
+                    Some(gscore_play::TrackEngine::SoundFont) => {
+                        track.engine = gscore_play::TrackEngine::SoundFont;
+                    }
+                    _ => {}
+                }
+            }
         }
+        sequence
+    }
+
+    /// The tracks' own engine choices (by track index); a change is heard at once.
+    pub fn set_track_engines(
+        &mut self,
+        song: &Song,
+        engines: Vec<(usize, gscore_play::TrackEngine)>,
+    ) -> Result<(), String> {
+        if self.track_engines == engines {
+            return Ok(());
+        }
+        self.track_engines = engines;
+        self.rebuild_sequence(song)
     }
 
     /// Swaps in a sequence rebuilt with the current settings at the position playback is,
@@ -1493,6 +1532,39 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    #[test]
+    fn a_track_can_be_played_by_another_kind_of_string_or_the_soundfont() {
+        use gscore_play::{StringKind, TrackEngine};
+        let song = gscore_model::testing::song_with_notes(&[(
+            1,
+            &[gscore_model::testing::TestNote::new(3, 2)],
+        )])
+        .unwrap();
+        let mut playback = Playback::default();
+        let engine = |playback: &mut Playback| {
+            playback.build_sequence(&song).unwrap().performance.tracks[0].engine
+        };
+        // A steel-guitar preset, played by nylon strings.
+        playback
+            .set_track_engines(&song, vec![(0, TrackEngine::Modelled(StringKind::Nylon))])
+            .unwrap();
+        assert_eq!(
+            engine(&mut playback),
+            TrackEngine::Modelled(StringKind::Nylon)
+        );
+        // With modelled guitars on, the SoundFont can still be chosen for it.
+        playback.set_modelled_guitars(&song, true).unwrap();
+        playback
+            .set_track_engines(&song, vec![(0, TrackEngine::SoundFont)])
+            .unwrap();
+        assert_eq!(engine(&mut playback), TrackEngine::SoundFont);
+        playback.set_track_engines(&song, Vec::new()).unwrap();
+        assert_eq!(
+            engine(&mut playback),
+            TrackEngine::Modelled(StringKind::Steel)
+        );
+    }
 
     #[test]
     fn only_offered_sample_rates_are_kept() {

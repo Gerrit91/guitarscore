@@ -97,9 +97,8 @@ impl GuitarScoreApp {
 
         let mut commands: Vec<(Command, bool)> = Vec::new();
         let mut open_tuning = false;
-        let mut open_sound = None;
-        let mut modelled = self.playback.modelled_guitars();
-        let modelled_before = modelled;
+        let mut open_sound = false;
+        let player = self.track_player(index);
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -114,17 +113,14 @@ impl GuitarScoreApp {
                     look::staves(ui, index, &snapshot, &mut commands);
                 });
                 style::section(ui, "track_sound", "Sound", |ui| {
-                    string_sound(ui, &snapshot, &mut modelled, &mut open_sound);
+                    sound_chain(ui, player.as_ref(), &mut open_sound);
                 });
             });
         for (command, merge) in commands {
             self.apply_command(command, merge);
         }
-        if modelled != modelled_before {
-            self.set_modelled_guitars(modelled);
-        }
-        if let Some(kind) = open_sound {
-            self.open_sound_chain(kind);
+        if open_sound {
+            self.open_sound_chain(index);
         }
         if open_tuning && let Some(tab) = self.tabs.get_mut(self.active) {
             tab.track_panel.tuning = Some(tuning::TuningDialog::of(index, &snapshot));
@@ -405,46 +401,35 @@ fn instrument(
     }
 }
 
-/// The modelled strings for a guitar or bass track: the switch (for every guitar and bass)
-/// and the button that opens the String sound dialog on this track's kind of string.
-fn string_sound(
+/// What plays the track (the SoundFont or modelled strings) and the button that opens its
+/// Sound chain window, where the choice is made.
+fn sound_chain(
     ui: &mut egui::Ui,
-    snapshot: &TrackPanel,
-    modelled: &mut bool,
-    open: &mut Option<gscore_play::StringKind>,
+    player: Option<&crate::app::track_engine::TrackPlayer>,
+    open: &mut bool,
 ) {
-    let kind = snapshot
-        .sound
-        .filter(|_| snapshot.kind == InstrumentKind::Strings && !snapshot.percussion)
-        .and_then(|sound| gscore_play::StringKind::for_program(sound.program));
-    let Some(kind) = kind else {
-        ui.label(
-            RichText::new("The SoundFont plays this track").color(style::tokens(ui).text_weak),
-        );
+    let Some(player) = player else {
         return;
     };
-    ui.checkbox(modelled, "Modelled strings").on_hover_text(
-        "Play every guitar and bass track with physically modelled strings instead of the \
-         SoundFont (built-in synthesizer, experimental)",
-    );
+    let played_by = match player.engine {
+        gscore_play::TrackEngine::Modelled(kind) => {
+            format!("Modelled: {}", crate::app::string_sound::kind_name(kind))
+        }
+        gscore_play::TrackEngine::SoundFont => "SoundFont".to_owned(),
+    };
     ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(crate::app::string_sound::kind_name(kind))
-                .color(style::tokens(ui).text_weak),
-        );
+        ui.label(RichText::new("Played by").color(style::tokens(ui).text_weak));
+        ui.label(played_by);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let button = icons::toolbar_button(
                 ui,
                 Icon::StringSound,
                 "Sound chain",
-                &format!(
-                    "Sound chain: the {} strings and the effects after them (body, room, \
-                     reverb)",
-                    crate::app::string_sound::kind_name(kind).to_lowercase()
-                ),
+                "Sound chain: what plays this track (SoundFont or modelled strings), the \
+                 strings' sound and the effects after them",
             );
             if button.clicked() {
-                *open = Some(kind);
+                *open = true;
             }
         });
     });

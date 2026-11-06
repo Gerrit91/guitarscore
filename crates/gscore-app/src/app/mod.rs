@@ -41,6 +41,7 @@ mod sound_chain;
 mod staff_pickers;
 mod staff_widgets;
 mod string_sound;
+mod string_sound_window;
 mod style;
 mod swatches;
 mod tab;
@@ -49,6 +50,7 @@ mod tile_faces;
 mod tiles;
 mod title_bar;
 mod toolbar;
+mod track_engine;
 mod track_panel;
 mod tuner;
 mod tuplet_dialog;
@@ -131,7 +133,7 @@ pub struct GuitarScoreApp {
     /// The tuner window, while it is open.
     tuner: Option<tuner::TunerState>,
     /// The String sound dialog, while it is open.
-    string_sound: Option<string_sound::StringSoundDialog>,
+    string_sound: Option<string_sound_window::StringSoundDialog>,
     /// The Sound chain window, while it is open.
     sound_chain: Option<sound_chain::SoundChainWindow>,
     /// What the app remembers between runs.
@@ -617,6 +619,8 @@ impl eframe::App for GuitarScoreApp {
         self.handle_keys(&ctx);
         // A count-in that has finished starts the song it was counting in.
         self.poll_count_in();
+        // Another tab may hold other choices of what plays its tracks.
+        self.sync_track_engines();
         // Keep a loop of the selected measures going; a new selection turns it on.
         self.auto_loop();
         self.poll_loop();

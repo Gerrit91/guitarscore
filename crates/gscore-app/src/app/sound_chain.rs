@@ -10,13 +10,13 @@ use std::path::PathBuf;
 
 use egui::{Align2, FontId, Margin, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2};
 use gscore_guitar::{BLOCKS, knob_ranges};
-use gscore_play::StringKind;
+use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
 use crate::app::string_sound::{kind_name, knob};
 use crate::app::style;
 use crate::chain_settings::{BlockChoice, BlockSetting, ChainSetting};
-use crate::playback::{Heard, STRING_KINDS};
+use crate::playback::Heard;
 
 /// Width of the window's content.
 const WIDTH: f32 = 700.0;
@@ -30,7 +30,8 @@ const SAG: f32 = 7.0;
 /// The window while it is open.
 #[derive(Debug)]
 pub(super) struct SoundChainWindow {
-    kind: StringKind,
+    /// The track it is for (its kind of string decides which chain shows).
+    track: usize,
     /// The selected box: 0 the strings, 1 to 5 the places after them.
     selected: usize,
     pos: Option<Pos2>,
@@ -370,13 +371,13 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
 }
 
 impl GuitarScoreApp {
-    /// Opens the Sound chain window on `kind`.
-    pub(super) fn open_sound_chain(&mut self, kind: StringKind) {
+    /// Opens the Sound chain window for `track`.
+    pub(super) fn open_sound_chain(&mut self, track: usize) {
         match &mut self.sound_chain {
-            Some(window) => window.kind = kind,
+            Some(window) => window.track = track,
             None => {
                 self.sound_chain = Some(SoundChainWindow {
-                    kind,
+                    track,
                     selected: 0,
                     pos: None,
                 });
@@ -409,7 +410,15 @@ impl GuitarScoreApp {
             .pos
             .get_or_insert_with(|| style::centered_window_pos(ctx, size));
         let mut actions = Actions::default();
-        let modelled = self.playback.modelled_guitars();
+        let Some(player) = self.track_player(window.track) else {
+            return;
+        };
+        // The chain of the kind that plays the track; for the SoundFont, the one its
+        // preset stands for (shown, but not heard).
+        let (kind, modelled) = match player.engine {
+            TrackEngine::Modelled(kind) => (kind, true),
+            TrackEngine::SoundFont => (player.preset_kind.unwrap_or(StringKind::Steel), false),
+        };
         egui::Window::new(title)
             .title_bar(false)
             .collapsible(false)
@@ -424,28 +433,19 @@ impl GuitarScoreApp {
                     .inner_margin(Margin::symmetric(16, 12))
                     .show(ui, |ui| {
                         ui.set_width(WIDTH);
-                        ui.horizontal(|ui| {
-                            for kind in STRING_KINDS {
-                                if ui
-                                    .selectable_label(window.kind == kind, kind_name(kind))
-                                    .clicked()
-                                {
-                                    window.kind = kind;
-                                }
-                            }
-                        });
+                        ui.label(RichText::new(format!("{} strings", kind_name(kind))).strong());
                         if !modelled {
                             ui.label(
                                 RichText::new(
-                                    "Guitars and basses play on the SoundFont now: turn on \
-                                     Modelled strings in the track panel to hear the chain.",
+                                    "The SoundFont plays this track: choose modelled strings \
+                                     in the Strings box to hear this chain.",
                                 )
                                 .weak(),
                             );
                         }
-                        let chain = self.playback.string_chains().get(window.kind).clone();
+                        let chain = self.playback.string_chains().get(kind).clone();
                         ui.add_space(4.0);
-                        if let Some(index) = board(ui, window.kind, &chain, window.selected) {
+                        if let Some(index) = board(ui, kind, &chain, window.selected) {
                             window.selected = index;
                             if index == 0 {
                                 actions.open_strings = true;
@@ -492,26 +492,27 @@ impl GuitarScoreApp {
                         });
                     });
             });
-        let kind = window.kind;
         if let Some(chain) = actions.chain {
             self.playback.set_string_chain(kind, chain);
         }
         if actions.open_strings {
-            self.open_string_sound(kind);
+            self.open_string_sound(window.track);
         }
         if let Some(place) = actions.load
             && let Err(error) = self.tasks.pick_impulse(kind, place, ctx)
         {
             self.notice = Some(error);
         }
-        if actions.listen {
+        if actions.listen && modelled {
             match self.playback.play_string_demo(kind) {
                 Ok(Heard::Skipped(why)) => self.notice = Some(format!("Not played: {why}")),
                 Ok(_) => {}
                 Err(error) => self.notice = Some(error),
             }
         }
-        if !actions.close {
+        if actions.close {
+            self.save_settings();
+        } else {
             self.sound_chain = Some(window);
         }
     }

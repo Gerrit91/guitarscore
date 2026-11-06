@@ -280,21 +280,47 @@ fn a_click_in_the_song_grid_while_playing_jumps_there() {
 #[test]
 fn the_sound_section_opens_the_sound_chain_and_the_string_sound_dialog() {
     let mut harness = app_with("basic/note_lengths.gp");
-    // A guitar track: the modelled strings' switch and the Sound chain button; the chain's
-    // first box opens the strings' own dialog.
-    harness.get_by_label("Modelled strings");
+    // The track panel says what plays the track; its button opens the Sound chain, whose
+    // first box opens the strings' window, where the track's player is chosen.
     harness.get_by_label("Sound chain").click();
     harness.run();
     harness.get_by_label("Strings").click();
     harness.run();
-    for knob in ["Pick position", "Roundness", "Brilliance", "Tone"] {
-        assert!(harness.query_all_by_label(knob).next().is_some(), "{knob}");
-    }
-    // Two windows are open now (the chain and the strings): close the strings' first.
-    harness.query_all_by_label("Close").last().unwrap().click();
-    harness.run();
+    assert_eq!(
+        harness.query_all_by_label("Played by").count(),
+        2,
+        "the track panel and the String sound window"
+    );
     assert!(
         harness.query_all_by_label("Brilliance").next().is_none(),
-        "closed"
+        "the SoundFont plays it: no string knobs"
     );
+    harness
+        .query_all_by_label_contains("Nylon guitar")
+        .last()
+        .unwrap()
+        .click();
+    harness.run();
+    for knob in [
+        "Pick position",
+        "Roundness",
+        "Brilliance",
+        "Bridge",
+        "Second vibration",
+    ] {
+        assert!(harness.query_all_by_label(knob).next().is_some(), "{knob}");
+    }
+    harness.get_by_label_contains("Modelled: Nylon guitar");
+    // Back to the SoundFont.
+    harness
+        .query_all_by_label_contains("SoundFont")
+        .last()
+        .unwrap()
+        .click();
+    harness.run();
+    assert!(harness.query_all_by_label("Brilliance").next().is_none());
+    // Two windows are open (the chain and the strings): close the strings' first.
+    harness.query_all_by_label("Close").last().unwrap().click();
+    harness.run();
+    assert_eq!(harness.query_all_by_label("Played by").count(), 1, "closed");
 }

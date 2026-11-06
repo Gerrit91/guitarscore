@@ -1,35 +1,14 @@
-//! The String sound dialog: the knobs of the modelled strings, kind by kind (nylon, steel,
-//! electric, bass). Every change is heard at once (also while the song plays) and kept in
-//! the settings; "Listen" plays a short phrase, "Preset" goes back to the built-in values.
-//! Opened from the track panel's Sound section.
+//! The knobs of the modelled strings, as the String sound window shows them
+//! (`string_sound_window`): strike, string and tone, each explained on hover.
 
 use std::ops::RangeInclusive;
 
-use egui::{Margin, Pos2, RichText, vec2};
+use egui::{RichText, vec2};
 use gscore_guitar::ranges;
 use gscore_play::StringKind;
 
-use super::GuitarScoreApp;
 use crate::app::style;
-use crate::playback::{Heard, STRING_KINDS};
 use crate::settings::StringSound;
-
-/// Width of the dialog's content.
-const WIDTH: f32 = 400.0;
-
-/// The dialog while it is open: which kind of string it shows, and where it was dragged.
-#[derive(Debug)]
-pub(super) struct StringSoundDialog {
-    kind: StringKind,
-    pos: Option<Pos2>,
-}
-
-impl StringSoundDialog {
-    /// The dialog showing `kind`.
-    pub(super) fn of(kind: StringKind) -> Self {
-        StringSoundDialog { kind, pos: None }
-    }
-}
 
 /// The name of `kind` as the dialog shows it.
 pub(super) fn kind_name(kind: StringKind) -> &'static str {
@@ -39,15 +18,6 @@ pub(super) fn kind_name(kind: StringKind) -> &'static str {
         StringKind::Electric => "Electric guitar",
         StringKind::Bass => "Bass",
     }
-}
-
-/// What the user did in the dialog this frame.
-#[derive(Default)]
-struct Actions {
-    close: bool,
-    listen: bool,
-    preset: bool,
-    turn_on: bool,
 }
 
 fn range((low, high): (f32, f32)) -> RangeInclusive<f32> {
@@ -86,7 +56,21 @@ pub(super) fn knob(
 }
 
 /// The knobs of one kind of string. Returns whether any moved.
-fn knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
+pub(super) fn knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
+    let mut changed = false;
+    // Two columns, so the window fits a small screen: the strike and the tone on the
+    // left, the string on the right.
+    ui.columns(2, |columns| {
+        if let [left, right] = columns {
+            changed |= strike_and_tone(left, sound);
+            changed |= string_knobs(right, sound);
+        }
+    });
+    changed
+}
+
+/// The strike's and the tone's knobs. Returns whether any moved.
+fn strike_and_tone(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
     let mut changed = false;
     ui.label(RichText::new("Strike").strong());
     changed |= knob(
@@ -120,6 +104,62 @@ fn knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
          (1), soft. Lower notes sound less synthetic when it is rounder.",
     );
     ui.add_space(4.0);
+    ui.label(RichText::new("Tone").strong());
+    changed |= knob(
+        ui,
+        &mut sound.bridge,
+        ranges::BRIDGE,
+        "Bridge",
+        "",
+        false,
+        "How much of what is heard is the force the string puts on the bridge (or a \
+         magnetic pickup's signal) rather than its swing: 0 full and round, 1 lean in the \
+         lows like a real guitar. Takes away the synth-bass character of low notes.",
+    );
+    changed |= knob(
+        ui,
+        &mut sound.low_cut,
+        ranges::LOW_CUT,
+        "Low cut",
+        " Hz",
+        true,
+        "The body or pickup barely passes the lowest frequencies: below this they are \
+         rolled off.",
+    );
+    changed |= knob(
+        ui,
+        &mut sound.tone,
+        ranges::TONE,
+        "Tone",
+        " Hz",
+        true,
+        "The pickup's or body's tone: overtones above this frequency are rolled off.",
+    );
+    changed |= knob(
+        ui,
+        &mut sound.resonance,
+        ranges::RESONANCE,
+        "Resonance",
+        "",
+        false,
+        "A peak at the tone frequency, like a pickup's resonance: 0.5 flat, 4 a strong \
+         nasal peak.",
+    );
+    changed |= knob(
+        ui,
+        &mut sound.level,
+        ranges::LEVEL,
+        "Level",
+        "",
+        false,
+        "How loud these strings are against the rest of the mix.",
+    );
+    changed
+}
+
+/// The string's knobs. Returns whether any moved.
+fn string_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
+    let mut changed = false;
     ui.label(RichText::new("String").strong());
     changed |= knob(
         ui,
@@ -176,159 +216,25 @@ fn knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
         sound.stiffness_stages = stages.round().clamp(limits.0, limits.1) as u8;
         changed = true;
     }
-    ui.add_space(4.0);
-    ui.label(RichText::new("Tone").strong());
     changed |= knob(
         ui,
-        &mut sound.tone,
-        ranges::TONE,
-        "Tone",
-        " Hz",
-        true,
-        "The pickup's or body's tone: overtones above this frequency are rolled off.",
+        &mut sound.second,
+        ranges::SECOND,
+        "Second vibration",
+        "",
+        false,
+        "A real string also vibrates in a second direction that decays faster; together \
+         they beat and give a long note its living, two-stage decay. 0 is one perfectly \
+         even vibration (more synthetic).",
     );
     changed |= knob(
         ui,
-        &mut sound.resonance,
-        ranges::RESONANCE,
-        "Resonance",
-        "",
+        &mut sound.detune,
+        ranges::DETUNE,
+        "Detune",
+        " ct",
         false,
-        "A peak at the tone frequency, like a pickup's resonance: 0.5 flat, 4 a strong \
-         nasal peak.",
-    );
-    changed |= knob(
-        ui,
-        &mut sound.level,
-        ranges::LEVEL,
-        "Level",
-        "",
-        false,
-        "How loud these strings are against the rest of the mix.",
+        "How far the second vibration is detuned: the speed of the beating.",
     );
     changed
-}
-
-impl GuitarScoreApp {
-    /// Opens the String sound dialog on `kind`.
-    pub(super) fn open_string_sound(&mut self, kind: StringKind) {
-        match &mut self.string_sound {
-            Some(dialog) => dialog.kind = kind,
-            None => self.string_sound = Some(StringSoundDialog::of(kind)),
-        }
-    }
-
-    /// The String sound dialog, while it is open.
-    pub(super) fn show_string_sound(&mut self, ctx: &egui::Context) {
-        let Some(mut dialog) = self.string_sound.take() else {
-            return;
-        };
-        let title = "String sound";
-        let size = vec2(WIDTH + 32.0, 520.0);
-        let pos = *dialog
-            .pos
-            .get_or_insert_with(|| style::centered_window_pos(ctx, size));
-        let mut actions = Actions::default();
-        let mut sound = self.playback.string_sounds().get(dialog.kind);
-        let mut changed = false;
-        let modelled = self.playback.modelled_guitars();
-        egui::Window::new(title)
-            .title_bar(false)
-            .collapsible(false)
-            .resizable(false)
-            .current_pos(pos)
-            .frame(style::window_frame(ctx))
-            .show(ctx, |ui| {
-                if style::window_title_bar(ui, title, &mut dialog.pos) {
-                    actions.close = true;
-                }
-                egui::Frame::new()
-                    .inner_margin(Margin::symmetric(16, 12))
-                    .show(ui, |ui| {
-                        ui.set_width(WIDTH);
-                        ui.horizontal(|ui| {
-                            for kind in STRING_KINDS {
-                                if ui
-                                    .selectable_label(dialog.kind == kind, kind_name(kind))
-                                    .clicked()
-                                {
-                                    dialog.kind = kind;
-                                }
-                            }
-                        });
-                        // A newly chosen kind shows its own knobs from the next frame.
-                        sound = self.playback.string_sounds().get(dialog.kind);
-                        ui.add_space(6.0);
-                        if !modelled {
-                            ui.horizontal_wrapped(|ui| {
-                                ui.label(
-                                    RichText::new("Guitars and basses play on the SoundFont now.")
-                                        .weak(),
-                                );
-                                if ui.small_button("Use modelled strings").clicked() {
-                                    actions.turn_on = true;
-                                }
-                            });
-                            ui.add_space(4.0);
-                        }
-                        changed = knobs(ui, &mut sound);
-                        ui.add_space(6.0);
-                        ui.separator();
-                        ui.horizontal(|ui| {
-                            if ui
-                                .button("Listen")
-                                .on_hover_text("Play a short phrase on these strings")
-                                .clicked()
-                            {
-                                actions.listen = true;
-                            }
-                            if ui
-                                .button("Preset")
-                                .on_hover_text("Back to the built-in sound of this kind")
-                                .clicked()
-                            {
-                                actions.preset = true;
-                            }
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if ui.button("Close").clicked() {
-                                        actions.close = true;
-                                    }
-                                },
-                            );
-                        });
-                        ui.label(
-                            RichText::new(
-                                "Changes are heard at once, also while the song plays, and \
-                                 apply to every track of this kind.",
-                            )
-                            .weak(),
-                        );
-                    });
-            });
-        let kind = dialog.kind;
-        if changed {
-            self.playback.set_string_sound(kind, sound);
-        }
-        if actions.preset {
-            self.playback.set_string_sound(
-                kind,
-                StringSound::from(gscore_audio::default_string_model(kind)),
-            );
-        }
-        if actions.turn_on {
-            self.set_modelled_guitars(true);
-        }
-        if actions.listen {
-            match self.playback.play_string_demo(kind) {
-                Ok(Heard::Skipped(why)) => self.notice = Some(format!("Not played: {why}")),
-                Ok(_) => {}
-                Err(error) => self.notice = Some(error),
-            }
-        }
-        if !actions.close {
-            self.string_sound = Some(dialog);
-        }
-    }
 }

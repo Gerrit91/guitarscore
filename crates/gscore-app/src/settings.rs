@@ -156,6 +156,10 @@ pub struct StringSound {
     pub tone: f32,
     pub resonance: f32,
     pub level: f32,
+    pub bridge: f32,
+    pub low_cut: f32,
+    pub second: f32,
+    pub detune: f32,
 }
 
 impl Default for StringSound {
@@ -180,6 +184,10 @@ impl From<gscore_guitar::StringModel> for StringSound {
             tone: model.tone,
             resonance: model.resonance,
             level: model.level,
+            bridge: model.bridge,
+            low_cut: model.low_cut,
+            second: model.second,
+            detune: model.detune,
         }
     }
 }
@@ -199,10 +207,38 @@ impl StringSound {
             tone: self.tone,
             resonance: self.resonance,
             level: self.level,
+            bridge: self.bridge,
+            low_cut: self.low_cut,
+            second: self.second,
+            detune: self.detune,
         }
         .sanitized()
     }
 }
+
+/// A string sound the user saved under a name (the String sound window's presets).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NamedStringSound {
+    /// The name shown in the preset list.
+    pub name: String,
+    /// The kind of string it is for: `nylon`, `steel`, `electric` or `bass`.
+    pub kind: String,
+    pub sound: StringSound,
+}
+
+/// The settings name of `kind`.
+pub(crate) fn kind_id(kind: gscore_play::StringKind) -> &'static str {
+    match kind {
+        gscore_play::StringKind::Nylon => "nylon",
+        gscore_play::StringKind::Steel => "steel",
+        gscore_play::StringKind::Electric => "electric",
+        gscore_play::StringKind::Bass => "bass",
+    }
+}
+
+/// The most string sound presets kept, and the longest name.
+pub(crate) const MAX_STRING_PRESETS: usize = 100;
+pub(crate) const MAX_STRING_PRESET_NAME: usize = 60;
 
 /// The four kinds of modelled string, as dialed in.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -334,6 +370,8 @@ pub struct Settings {
     pub sample_rate: Option<u32>,
     /// How each kind of modelled string sounds (the "String sound" dialog).
     pub string_sounds: StringSounds,
+    /// String sounds saved under a name.
+    pub string_presets: Vec<NamedStringSound>,
     /// The effect chain after each kind of modelled string (the "Sound chain" window).
     pub string_chains: crate::chain_settings::StringChains,
     /// The MIDI port chosen, if any.
@@ -386,6 +424,7 @@ impl Default for Settings {
             sample_rate: None,
             string_sounds: StringSounds::default(),
             string_chains: crate::chain_settings::StringChains::default(),
+            string_presets: Vec::new(),
             midi_port: None,
             bend_presets: Vec::new(),
             whammy_presets: Vec::new(),

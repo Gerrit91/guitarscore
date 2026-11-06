@@ -26,8 +26,6 @@ use crate::filters::{Biquad, DcBlocker, Noise};
 use crate::model::StringModel;
 use crate::string_loop::{Loop, Tuning};
 
-pub(crate) use crate::string_loop::MAX_STIFFNESS_STAGES as MAX_STAGES;
-
 /// A hammer-on or pull-off reaches its new pitch within this long, in seconds.
 const LEGATO_GLIDE: f32 = 0.002;
 /// How long damping changes take to settle (time constant, seconds).
