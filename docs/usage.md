@@ -63,6 +63,19 @@ in again each time it starts over. The built-in synthesizer plays its own click;
 output gets General MIDI's metronome notes. Play with a selection plays it; with Loop on,
 it repeats the selected bars.
 
+The speed dropdown in the transport slows playback to 50-90 % or speeds it to 110-120 % of
+the written tempo. Settings › Practice also has a speed slider and a speed trainer: with
+Loop on, it raises the speed by a chosen step every few passes, up to 100, 110 or 120 %.
+Previous and next bar during a count-in count in again at the new bar.
+
+File › Export › Audio (WAV) renders the song with the chosen SoundFont (16-bit stereo,
+44.1 kHz); `gscore-cli wav song.gp -o song.wav --soundfont FluidR3_GM.sf2` does the same
+without the window.
+
+The Staff tiles hold Beat text, Lyrics (five lines of syllables under the staff) and the
+technique matrix holds the chord diagram (`Ch`): a dialog sets the name, base fret and a
+fret or `x` per string. Both are drawn in the score and can be edited or removed again.
+
 ## Command line
 
 ```bash

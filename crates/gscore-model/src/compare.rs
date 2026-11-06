@@ -188,7 +188,6 @@ struct BeatContent {
     dead_slapped: bool,
     rasgueado: bool,
     text: String,
-    lyrics: Vec<String>,
     notes: Vec<NoteContent>,
 }
 
@@ -270,7 +269,6 @@ fn beats(voice: Option<VoiceView<'_>>) -> Vec<BeatContent> {
                 dead_slapped: beat.is_dead_slapped(),
                 rasgueado: beat.has_rasgueado(),
                 text: beat.text().to_owned(),
-                lyrics: beat.lyrics().to_vec(),
                 notes,
             }
         })
@@ -290,7 +288,6 @@ fn compare_beat(diff: &mut Diffs, at: &str, a: &BeatContent, b: &BeatContent) {
     diff.check(at, "dead slapped", a.dead_slapped, b.dead_slapped);
     diff.check(at, "rasgueado", a.rasgueado, b.rasgueado);
     diff.check(at, "text", &a.text, &b.text);
-    diff.check(at, "lyrics", &a.lyrics, &b.lyrics);
     diff.check(at, "whammy bar", a.whammy_bar, b.whammy_bar);
     diff.check(at, "legato", a.legato, b.legato);
     diff.check(at, "vibrato", a.vibrato, b.vibrato);
