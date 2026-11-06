@@ -34,7 +34,8 @@ impl Curve {
             .then_some(curve)
     }
 
-    fn points(&self) -> &[(u8, i8)] {
+    /// The points: position 0-12 and quarter tones.
+    pub(crate) fn points(&self) -> &[(u8, i8)] {
         self.points.get(..self.len).unwrap_or_default()
     }
 

@@ -46,6 +46,7 @@ mod swing;
 mod tempo;
 mod timeline;
 mod wire;
+mod wire_notes;
 
 pub use channels::ChannelAllocator;
 pub use click::{

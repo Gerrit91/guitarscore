@@ -118,7 +118,7 @@ guitarscore/
     gscore-model/             # L1: document model (wraps gscore-gp's song), positions, queries, edits, invariants
     gscore-io/                # L2: GP files <-> model: format detection, limits, catch_unwind (bytes in, bytes out; no file system)
     gscore-layout/            # L2: model -> positioned draw ops (pages, systems, notation, tab), SVG and PDF. No GUI imports.
-    gscore-play/              # L2: sequencer, MIDI events, channel allocator, metronome, SMF export, Player trait. No device crates.
+    gscore-play/              # L2: performance (engine-neutral notes), MIDI sequence derived from it, channel allocator, metronome, SMF export, Player trait. No device crates.
     gscore-edit/              # L3: cursor, selection, clipboard, commands, undo/redo, keymap
     gscore-audio/             # L3: output backends (midir, cpal, rustysynth) implementing Player; the tuner
     gscore-session/           # L4: open, safe save and export, recovery journal, autosave, settings files
@@ -286,7 +286,8 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
     start, end, and every technique as it changes over time (bend and whammy curves,
     slides, vibrato, damping, hammer-on and pull-off without a new pluck, harmonics,
     strokes). The MIDI and SoundFont path is derived from it, so both engines play the
-    same notes. Takes over M18's "one MIDI channel per string".
+    same notes. *Done 2026-11-06* (`gscore_play::Performance`; MIDI keeps today's channel
+    borrowing by owner decision, no channel per string).
   - The string engine behind the `Player` trait: digital waveguide per string with exact
     tuning, loss filter and dispersion; every technique played by the model. Bass on the
     same engine.

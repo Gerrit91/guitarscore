@@ -245,3 +245,27 @@ fn an_excerpt_and_a_lead_in_move_their_notes_with_their_events() {
     );
     assert_eq!(led.performance.end, led.end);
 }
+
+/// The browser's worklet receives the performance with the events: every note, technique
+/// and pitch shape arrives as it was sent.
+#[test]
+fn the_performance_travels_to_the_worklet_intact() {
+    for name in ["ornaments", "advanced_ornaments", "multi_staff"] {
+        let sequence = Sequence::new(&open(&format!("basic/{name}.gp")), None).unwrap();
+        let bytes = gscore_play::encode_sequence(&sequence);
+        let decoded = gscore_play::decode_sequence(&bytes).unwrap();
+        assert_eq!(
+            decoded.performance.tracks, sequence.performance.tracks,
+            "{name}"
+        );
+        assert_eq!(
+            decoded.performance.notes, sequence.performance.notes,
+            "{name}"
+        );
+        assert_eq!(decoded.events, sequence.events, "{name}");
+        // A cut anywhere is an error, never a panic.
+        for cut in (0..bytes.len()).step_by(97) {
+            assert!(gscore_play::decode_sequence(&bytes[..cut]).is_err());
+        }
+    }
+}

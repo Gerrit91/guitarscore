@@ -1,14 +1,14 @@
 //! A compact, checked binary form of a [`Sequence`], for handing a song to another wasm
 //! instance (the browser's AudioWorklet, which cannot share the app's memory).
 //!
-//! Only what playback needs travels: the events, the tempo map and the end tick. The
-//! decoding side builds a [`Sequence`] with no track names or measure spans because it
-//! never shows them.
+//! Only what playback needs travels: the events, the tempo map, the end tick and the
+//! performance's tracks and notes (for an engine that plays strings). The decoding side
+//! builds a [`Sequence`] with no measure spans because it never shows them.
 
 use crate::{Channel, MidiEvent, Sequence, TempoMap, TimedEvent};
 
 /// Identifies the format; bump the last digit when the layout changes.
-const MAGIC: &[u8; 4] = b"GSQ2";
+const MAGIC: &[u8; 4] = b"GSQ3";
 /// Caps sized by the input, so a damaged message cannot allocate without bound.
 const MAX_EVENTS: usize = 4_000_000;
 const MAX_TEMPO_POINTS: usize = 65_536;
@@ -39,6 +39,7 @@ pub fn encode_sequence(sequence: &Sequence) -> Vec<u8> {
         put_u64(&mut out, micros);
     }
     put_u64(&mut out, sequence.end);
+    crate::wire_notes::encode_performance(&mut out, &sequence.performance);
     out
 }
 
@@ -81,6 +82,7 @@ pub fn decode_sequence(bytes: &[u8]) -> Result<Sequence, String> {
     let end = reader.u64()?;
     let tempo = TempoMap::from_parts(points, pauses)
         .ok_or_else(|| "the playback sequence has no valid tempo".to_owned())?;
+    let performance = crate::wire_notes::decode_performance(&mut reader, &tempo, end)?;
     Ok(Sequence {
         tracks: Vec::new(),
         events,
@@ -89,7 +91,7 @@ pub fn decode_sequence(bytes: &[u8]) -> Result<Sequence, String> {
         end,
         skipped_notes: 0,
         degraded_pitch_bends: 0,
-        performance: std::sync::Arc::default(),
+        performance: std::sync::Arc::new(performance),
     })
 }
 
@@ -167,30 +169,30 @@ fn decode_event(reader: &mut Reader<'_>) -> Result<MidiEvent, String> {
     }
 }
 
-fn put_u16(out: &mut Vec<u8>, value: u16) {
+pub(crate) fn put_u16(out: &mut Vec<u8>, value: u16) {
     out.extend_from_slice(&value.to_le_bytes());
 }
 
-fn put_u32(out: &mut Vec<u8>, value: u32) {
+pub(crate) fn put_u32(out: &mut Vec<u8>, value: u32) {
     out.extend_from_slice(&value.to_le_bytes());
 }
 
-fn put_u64(out: &mut Vec<u8>, value: u64) {
+pub(crate) fn put_u64(out: &mut Vec<u8>, value: u64) {
     out.extend_from_slice(&value.to_le_bytes());
 }
 
 /// Reads the fields; every read is checked against the end of the message.
-struct Reader<'a> {
+pub(crate) struct Reader<'a> {
     bytes: &'a [u8],
     at: usize,
 }
 
 impl Reader<'_> {
-    fn remaining(&self) -> usize {
+    pub(crate) fn remaining(&self) -> usize {
         self.bytes.len().saturating_sub(self.at)
     }
 
-    fn take(&mut self, count: usize) -> Result<&[u8], String> {
+    pub(crate) fn take(&mut self, count: usize) -> Result<&[u8], String> {
         let end = self
             .at
             .checked_add(count)
@@ -203,7 +205,7 @@ impl Reader<'_> {
         Ok(slice)
     }
 
-    fn u8(&mut self) -> Result<u8, String> {
+    pub(crate) fn u8(&mut self) -> Result<u8, String> {
         let slice = self.take(1)?;
         slice
             .first()
@@ -211,21 +213,21 @@ impl Reader<'_> {
             .ok_or_else(|| "the playback sequence is cut short".to_owned())
     }
 
-    fn u16(&mut self) -> Result<u16, String> {
+    pub(crate) fn u16(&mut self) -> Result<u16, String> {
         let slice = self.take(2)?;
         let mut bytes = [0_u8; 2];
         bytes.copy_from_slice(slice);
         Ok(u16::from_le_bytes(bytes))
     }
 
-    fn u32(&mut self) -> Result<u32, String> {
+    pub(crate) fn u32(&mut self) -> Result<u32, String> {
         let slice = self.take(4)?;
         let mut bytes = [0_u8; 4];
         bytes.copy_from_slice(slice);
         Ok(u32::from_le_bytes(bytes))
     }
 
-    fn u64(&mut self) -> Result<u64, String> {
+    pub(crate) fn u64(&mut self) -> Result<u64, String> {
         let slice = self.take(8)?;
         let mut bytes = [0_u8; 8];
         bytes.copy_from_slice(slice);

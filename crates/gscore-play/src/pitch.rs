@@ -29,16 +29,16 @@ const RAMP_STEPS: u64 = 16;
 /// at any moment; the MIDI path turns it into pitch bend messages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PitchShape {
-    start: i32,
-    target: i32,
-    ramp: u64,
+    pub(crate) start: i32,
+    pub(crate) target: i32,
+    pub(crate) ramp: u64,
     /// A vibrato on top of the movement, if any.
-    vibrato: Option<Wave>,
+    pub(crate) vibrato: Option<Wave>,
     /// The note's bend curve and its beat's whammy curve, added on top, and the note's
     /// length they are spread over (ticks).
-    bend: Option<Curve>,
-    whammy: Option<Curve>,
-    length: u64,
+    pub(crate) bend: Option<Curve>,
+    pub(crate) whammy: Option<Curve>,
+    pub(crate) length: u64,
 }
 
 /// A vibrato: how far the pitch swings either way (cents), how long one swing takes and

@@ -1,7 +1,7 @@
 # Realistic guitar sound: physical modelling
 
-Design note for M22 (owner, 2026-11-03). Status: the current milestone (2026-11-06), nothing
-built yet. Owner's decisions (2026-11-06): the playback sequence comes first (step 0), then
+Design note for M22 (owner, 2026-11-03). Status: the current milestone (2026-11-06); step 0
+(the performance) is done, the engine is next. Owner's decisions (2026-11-06): the playback sequence comes first (step 0), then
 the engine; distorted and clean electric, bass and acoustic are all aimed at full quality,
 none left rough.
 
@@ -86,12 +86,22 @@ described in the literature below:
 
 ## Architecture
 
-- **Sequence first.** `gscore-play` builds a `Sequence` of `MidiEvent`s today, which loses
-  the string, the fret and most techniques. The new engine needs a playback sequence that
-  carries per-string, per-note events: string, pitch, start and end, technique changes
-  over time (bend curves, slides, damping). The MIDI and SoundFont path is then derived
-  from it, so both engines play the same sequence. This step also carries the M18 MIDI
-  improvements (per-string channels).
+- **Sequence first (done 2026-11-06).** `gscore-play` builds a `Performance`: per track
+  the sound, the kind and the sounding pitch of each open string; per note the track,
+  string, fret, key, velocity, start, end and beat onset, the attack (picked, legato,
+  left-hand tap, tapped, slapped, popped, a pick slide's scrape), the stroke direction,
+  palm mute, dead note, harmonic, let ring, a damped end, grace, a fade, and a
+  `PitchShape` for bends, slides, vibrato and whammy (`cents_at(offset)` reads it at any
+  tick). Hammer-ons, pull-offs, legato and a trill's alternations are notes with a legato
+  attack on the same string: the engine changes the string's length without a new pluck.
+  Tremolo picking, rasgueados and strokes are already spread into the strikes a player
+  makes. The `midi` module derives the `Sequence` from it with the channel borrowing of
+  decision 10 (the owner kept it; no channel per string), and the golden events in
+  `crates/gscore-play/tests/golden/` prove the MIDI did not change. Every `Sequence`
+  carries its `Performance` (also excerpts, count-in, lead-in, and the browser's wire
+  form), so a `Player` gets both. Velocities still hold the MIDI path's technique
+  shading (legato softer, slaps louder); an engine that models the attack itself may want
+  the written velocity back, which would be a new field.
 - **Engine.** A new engine behind the `Player` trait (section 8), in `gscore-audio` or a
   new crate (`gscore-model-synth` or similar, decided with the layers check). One voice
   per string per track; a track's voices share a body or amp stage.

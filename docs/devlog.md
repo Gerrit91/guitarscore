@@ -3147,3 +3147,31 @@ needed for a much larger font); owner listening check.
   `gscore_version::VERSION` like the CLI and Help › About.
 - Open: no `--dirty` marker, since the build script does not rerun on working-tree edits
   and the marker would go stale.
+
+## 2026-11-06 — M22 step 0: the performance, and MIDI derived from it
+
+- First, golden files lock what playback sends (`crates/gscore-play/tests/test_golden.rs`,
+  `GSCORE_UPDATE_GOLDEN=1` to regenerate): every testdata song in GP7, GPX and GP5, an
+  excerpt of every beat, the metronome with count-in and lead-in, 16 small songs with one
+  effect each and a crowded-channel song. Only the repository's own files: songs of other
+  bands are under copyright and stay out (owner, 2026-11-06).
+- `gscore_play::Performance` is the engine-neutral form: tracks (sound, instrument kind,
+  open-string pitches with the capo) and notes (string, fret, key, velocity, start, end,
+  onset, `Attack`, stroke direction, palm mute, dead, harmonic, let ring, damped, grace,
+  fade, `PitchShape`). The builder (`build::collect`) no longer touches MIDI channels; the
+  new `midi` module allocates them, borrows channels for moving, damped and fading notes
+  as before, and emits the events. All goldens are unchanged.
+- Trills are a picked note followed by legato fret changes, hammer-ons and legato are
+  legato attacks, left-hand taps their own attack, slaps and pops theirs, a pick slide's
+  steps are scrapes. A natural harmonic keeps its harmonic pitch as the key.
+- `PitchShape` is public with `cents_at(offset)` and `reach_cents()`; the MIDI path still
+  samples it exactly as before.
+- `Sequence` carries `performance: Arc<Performance>` (empty for a count-in), moved with
+  the events by `lead_in` and the excerpt. The worklet's wire format is now `GSQ3` and
+  carries the tracks and notes after the events (checked caps, damaged input is an error).
+- Tests: strings and frets, attacks, trill frets, technique flags, bend and vibrato in
+  cents, note-ons match the performance's notes, excerpt and lead-in timing, wire round
+  trip of three testdata songs.
+- Open: the velocities still contain the MIDI path's technique shading; palm-muted and
+  dead notes are shortened in the performance as the SoundFont path needs them.
+
