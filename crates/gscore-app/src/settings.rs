@@ -321,18 +321,17 @@ impl StringSounds {
     }
 }
 
-/// The mixer's reverb bus: a computed reverb every modelled track sends into with its
-/// mixer reverb amount. Kept in the settings (it is the mixer's, not the song's).
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// The mixer's reverb bus: the reverb every modelled track sends into with its mixer reverb
+/// amount. Kept in the settings (it is the mixer's, not the song's).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ReverbBus {
     /// The bus's level, 0-127 (127 plays it as it comes; the track volumes are the sends).
     pub level: u8,
     pub muted: bool,
-    /// The reverb's size, how quickly its highs die, and its stereo width.
-    pub size: f32,
-    pub damping: f32,
-    pub width: f32,
+    /// What the bus runs: the computed reverb, or a room's impulse response (or nothing).
+    /// Its knobs apply; the mix is always 1 (the bus runs all wet).
+    pub block: crate::chain_settings::BlockSetting,
 }
 
 impl Default for ReverbBus {
@@ -340,30 +339,29 @@ impl Default for ReverbBus {
         ReverbBus {
             level: 127,
             muted: false,
-            size: 0.6,
-            damping: 0.5,
-            width: 1.0,
+            block: crate::chain_settings::BlockSetting::of(
+                crate::chain_settings::BlockChoice::Reverb,
+            ),
         }
     }
 }
 
 impl ReverbBus {
-    /// Every value in its range.
+    /// Every value in its range; a bus is a reverb or a room, never a cabinet or a place
+    /// that holds nothing (empty means it does not run at all).
     pub fn sanitized(mut self) -> Self {
         self.level = self.level.min(127);
-        self.size = fit_knob(self.size, gscore_guitar::knob_ranges::SIZE, 0.6);
-        self.damping = fit_knob(self.damping, gscore_guitar::knob_ranges::DAMPING, 0.5);
-        self.width = fit_knob(self.width, gscore_guitar::knob_ranges::WIDTH, 1.0);
+        if !matches!(
+            self.block.choice,
+            crate::chain_settings::BlockChoice::Empty
+                | crate::chain_settings::BlockChoice::Room
+                | crate::chain_settings::BlockChoice::Reverb
+        ) {
+            self.block =
+                crate::chain_settings::BlockSetting::of(crate::chain_settings::BlockChoice::Reverb);
+        }
+        self.block.mix = 1.0;
         self
-    }
-}
-
-/// `value` within `range`, or `fallback` when it is not a number.
-fn fit_knob(value: f32, (low, high): (f32, f32), fallback: f32) -> f32 {
-    if value.is_finite() {
-        value.clamp(low, high)
-    } else {
-        fallback
     }
 }
 
@@ -697,7 +695,7 @@ impl Settings {
             stored.keys.truncate(MAX_KEYS_PER_ACTION);
             stored.keys.retain(|key| !key.is_empty() && key.len() <= 64);
         }
-        self.reverb_bus = self.reverb_bus.sanitized();
+        self.reverb_bus = std::mem::take(&mut self.reverb_bus).sanitized();
         for presets in [&mut self.bend_presets, &mut self.whammy_presets] {
             presets.retain(ShapePreset::is_valid);
             presets.truncate(MAX_SHAPE_PRESETS);
@@ -719,6 +717,25 @@ impl Settings {
 mod tests {
     use super::*;
     use crate::state::ThemeChoice;
+
+    #[test]
+    fn the_reverb_bus_runs_a_reverb_or_a_room_all_wet() {
+        use crate::chain_settings::BlockChoice;
+
+        let mut bus = ReverbBus::default();
+        assert_eq!(bus.block.choice, BlockChoice::Reverb);
+        // Only a reverb, a room or nothing; a cabinet is not a reverb.
+        bus.block.choice = BlockChoice::Cabinet;
+        assert_eq!(bus.clone().sanitized().block.choice, BlockChoice::Reverb);
+        // All wet, whatever the block says, and the level in its range.
+        bus.block.choice = BlockChoice::Room;
+        bus.block.mix = 0.3;
+        bus.level = 200;
+        let clean = bus.sanitized();
+        assert!((clean.block.mix - 1.0).abs() < 1e-6);
+        assert_eq!(clean.level, 127);
+        assert_eq!(clean.block.choice, BlockChoice::Room);
+    }
 
     #[test]
     fn recent_files_are_unique_and_bounded() {

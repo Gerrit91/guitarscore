@@ -187,7 +187,7 @@ impl Playback {
 impl Playback {
     /// The mixer's reverb bus as it is set.
     pub fn reverb_bus(&self) -> crate::settings::ReverbBus {
-        self.reverb_bus
+        self.reverb_bus.clone()
     }
 
     /// Takes the reverb bus without sending it (when the settings load).
@@ -199,46 +199,69 @@ impl Playback {
     /// knobs, level and mute are sent (so its tail is not cut while a knob turns).
     pub fn set_reverb_bus(&mut self, bus: crate::settings::ReverbBus) {
         self.reverb_bus = bus.sanitized();
-        if self.bus_sent {
+        let structure = (
+            self.reverb_bus.block.choice,
+            self.reverb_bus.block.file.clone(),
+        );
+        if self.bus_sent && self.bus_structure.as_ref() == Some(&structure) {
             self.send_reverb_bus_settings();
         } else {
             self.send_reverb_bus();
         }
     }
 
-    /// The bus's chain: a computed reverb, all wet (the sends decide how much each track
-    /// gives it, the level how much comes back).
-    fn reverb_bus_parts(&self) -> (ChainSpec, [BlockSettings; gscore_guitar::BLOCKS]) {
-        let mut spec = ChainSpec::default();
-        if let Some(slot) = spec.blocks.first_mut() {
-            *slot = Some(BlockKind::Reverb);
-        }
+    /// The bus's chain as it is set: the computed reverb or a room's response, all wet (the
+    /// sends decide how much each track gives it, the fader how much comes back).
+    fn reverb_bus_parts(&mut self) -> (ChainSpec, [BlockSettings; gscore_guitar::BLOCKS]) {
+        let block = self.reverb_bus.block.clone();
         let mut settings = [BlockSettings::default(); gscore_guitar::BLOCKS];
+        let mut block_settings = block.knobs();
+        // An all-wet bus: nothing dry goes through it (the tracks' own signal is the dry).
+        block_settings.reverb.mix = 1.0;
+        block_settings.room.mix = 1.0;
         if let Some(slot) = settings.first_mut() {
-            slot.reverb = gscore_guitar::ReverbKnobs {
-                size: self.reverb_bus.size,
-                damping: self.reverb_bus.damping,
-                width: self.reverb_bus.width,
-                mix: 1.0,
-                ..gscore_guitar::ReverbKnobs::default()
-            };
+            *slot = block_settings;
+        }
+        let mut spec = ChainSpec::default();
+        let prepared = match block.choice {
+            BlockChoice::Empty => None,
+            BlockChoice::Room => block
+                .file
+                .as_ref()
+                .and_then(|file| match self.impulse(file) {
+                    Ok(response) => Some(BlockKind::room(response, block.room_length())),
+                    Err(error) => {
+                        self.chain_notices.push(error);
+                        None
+                    }
+                }),
+            BlockChoice::Reverb | BlockChoice::Cabinet => Some(BlockKind::Reverb),
+        };
+        if let Some(slot) = spec.blocks.first_mut() {
+            *slot = prepared;
         }
         (spec, settings)
     }
 
-    /// Prepares the bus on the synthesizer's thread (once per player).
+    /// Prepares the bus on the synthesizer's thread (once per player, or when what it runs
+    /// changes: another kind of reverb or another impulse response).
     pub(super) fn send_reverb_bus(&mut self) {
         if !self.synth_running() {
             return;
         }
         let (spec, settings) = self.reverb_bus_parts();
+        let structure = (
+            self.reverb_bus.block.choice,
+            self.reverb_bus.block.file.clone(),
+        );
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(super::Active::Synth(player)) = &self.player {
-            let bus = self.reverb_bus;
+            let bus = self.reverb_bus.clone();
             if let Err(error) = player.set_reverb_bus(spec, settings, bus.level, bus.muted) {
                 self.chain_notices.push(error.to_string());
             } else {
                 self.bus_sent = true;
+                self.bus_structure = Some(structure);
             }
         }
         #[cfg(target_arch = "wasm32")]
@@ -250,7 +273,7 @@ impl Playback {
         let (_, settings) = self.reverb_bus_parts();
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(super::Active::Synth(player)) = &self.player {
-            let bus = self.reverb_bus;
+            let bus = self.reverb_bus.clone();
             let _ = player.set_reverb_bus_settings(settings, bus.level, bus.muted);
         }
         #[cfg(target_arch = "wasm32")]
@@ -258,7 +281,7 @@ impl Playback {
     }
 
     /// The bus to render audio export with.
-    pub fn reverb_bus_choice(&self) -> gscore_audio::ReverbBusChoice {
+    pub fn reverb_bus_choice(&mut self) -> gscore_audio::ReverbBusChoice {
         let (spec, settings) = self.reverb_bus_parts();
         gscore_audio::ReverbBusChoice {
             spec,

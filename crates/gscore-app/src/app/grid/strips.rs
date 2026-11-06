@@ -298,50 +298,17 @@ fn reverb_strip(
     let inner = rect.shrink2(vec2(8.0, 6.0));
     let (top, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
-    // The room's three knobs, where a track has its pan and sends.
-    let knob_y = top.top() + KNOB_SIZE / 2.0 + 2.0;
-    let at = |dx: f32| {
-        Rect::from_center_size(
-            pos2(top.center().x + dx, knob_y),
-            vec2(KNOB_SIZE, KNOB_SIZE),
-        )
-    };
-    let to_value = |share: f32| (share.clamp(0.0, 1.0) * 127.0).round() as u8;
-    let from_value = |value: u8| f32::from(value) / 127.0;
-    let mut edited = bus;
-    for (dx, caption, value, set) in [
-        (-KNOB_SPACING, "Size", to_value(bus.size), 0_u8),
-        (0.0, "Damp", to_value(bus.damping), 1),
-        (KNOB_SPACING, "Width", to_value(bus.width), 2),
-    ] {
-        let knob = mixer::send_knob(
-            &mut strip,
-            at(dx),
-            value,
-            ("reverb_bus", usize::from(set)),
-            caption,
-            caption,
-            64,
-        );
-        strip.painter().text(
-            pos2(at(dx).center().x, at(dx).bottom() + 2.0),
-            Align2::CENTER_TOP,
-            caption,
-            FontId::proportional(8.0),
-            strip.visuals().weak_text_color(),
-        );
-        if let Some((value, _)) = knob.change {
-            let share = from_value(value);
-            match set {
-                0 => edited.size = share,
-                1 => edited.damping = share,
-                _ => edited.width = share,
-            }
-            actions.push(GridAction::ReverbBus {
-                bus: edited,
-                commit: false,
-            });
-        }
+    // Where a track has its pan and sends: the way to the bus's own window, which chooses
+    // the reverb (the computed one or a room's impulse response) and holds its knobs.
+    let button = Rect::from_min_size(pos2(top.left(), top.top() + 4.0), vec2(top.width(), 26.0));
+    let response = strip
+        .put(button, egui::Button::new("Edit…").small())
+        .on_hover_text("The bus's reverb: the computed one, or a room's impulse response");
+    strip.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label("Edit the reverb bus");
+    });
+    if response.clicked() {
+        actions.push(GridAction::OpenReverbBus);
     }
     fader(
         &mut strip,
@@ -353,7 +320,7 @@ fn reverb_strip(
         127,
         "Reverb bus level",
         |level, _| {
-            let mut bus = bus;
+            let mut bus = bus.clone();
             bus.level = level;
             actions.push(GridAction::ReverbBus { bus, commit: false });
         },
@@ -371,7 +338,7 @@ fn reverb_strip(
         127,
         "Reverb bus level",
         |level| {
-            let mut bus = bus;
+            let mut bus = bus.clone();
             bus.level = level;
             actions.push(GridAction::ReverbBus { bus, commit: true });
         },
@@ -391,7 +358,7 @@ fn reverb_strip(
         node.set_label("Mute reverb bus");
     });
     if response.clicked() {
-        let mut bus = bus;
+        let mut bus = bus.clone();
         bus.muted = !bus.muted;
         actions.push(GridAction::ReverbBus { bus, commit: true });
     }

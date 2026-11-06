@@ -2306,6 +2306,45 @@ fn the_mixer_has_a_reverb_bus_the_tracks_send_into() {
 }
 
 #[test]
+fn the_reverb_bus_window_chooses_the_reverb() {
+    use gscore_app::chain_settings::BlockChoice;
+
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    harness.get_by_label("Edit the reverb bus").click();
+    harness.run();
+    harness.snapshot("reverb_bus_window");
+    // A computed reverb by default, with its knobs and no mix (the bus runs all wet).
+    assert_eq!(
+        harness.state().playback().reverb_bus().block.choice,
+        BlockChoice::Reverb
+    );
+    for knob in ["Size", "Damping", "Width"] {
+        assert!(harness.query_all_by_label(knob).next().is_some(), "{knob}");
+    }
+    assert!(
+        harness.query_all_by_label("Mix").next().is_none(),
+        "an all-wet bus has no mix"
+    );
+    // It can be turned off, and back on.
+    harness.get_by_label("None").click();
+    harness.run();
+    assert_eq!(
+        harness.state().playback().reverb_bus().block.choice,
+        BlockChoice::Empty
+    );
+    harness.get_by_label("Computed").click();
+    harness.run();
+    assert_eq!(
+        harness.state().playback().reverb_bus().block.choice,
+        BlockChoice::Reverb
+    );
+    // A room is offered too (it asks for its WAV).
+    harness.get_by_label("Room (impulse response)");
+}
+
+#[test]
 fn the_master_rows_mute_and_solo_line_up_with_the_tracks() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
     harness.run();

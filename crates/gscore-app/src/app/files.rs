@@ -410,6 +410,8 @@ impl GuitarScoreApp {
                     path: Some(path),
                 } => self.use_impulse(kind, place, path),
                 Event::PickedImpulse { path: None, .. } => {}
+                Event::PickedBusImpulse(Some(path)) => self.use_bus_impulse(path),
+                Event::PickedBusImpulse(None) => {}
                 // Cancelled: whatever was waiting for the save does not happen.
                 Event::PickedSave(None) => self.abandon_save(),
                 Event::PickedExport { format, picked } => {

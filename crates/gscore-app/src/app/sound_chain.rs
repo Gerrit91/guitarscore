@@ -83,11 +83,11 @@ struct Edited {
 
 /// What the knobs of a block asked for.
 #[derive(Default, Clone, Copy)]
-struct KnobChanges {
+pub(super) struct KnobChanges {
     /// A knob moved: the new values are sent.
-    changed: bool,
+    pub(super) changed: bool,
     /// The room's length knob was let go: the room is built again.
-    rebuild: bool,
+    pub(super) rebuild: bool,
 }
 
 /// The block a box holds, as its two lines of text.
@@ -469,7 +469,7 @@ fn editor(ui: &mut egui::Ui, chain: &ChainSetting, place: usize) -> Edited {
             });
         }
         ui.add_space(4.0);
-        let moved = block_knobs(ui, &mut edited);
+        let moved = block_knobs(ui, &mut edited, false);
         changed |= moved.changed;
         changed |= edited.bypass != block.bypass;
         // A value from a hand-edited settings file comes back within its range.
@@ -490,9 +490,17 @@ fn editor(ui: &mut egui::Ui, chain: &ChainSetting, place: usize) -> Edited {
     }
 }
 
-/// The knobs of the block in `block`.
-fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> KnobChanges {
+/// The knobs of the block in `block`. `all_wet` hides the mix (a bus runs all wet: its
+/// sends decide how much each track gives it).
+pub(super) fn block_knobs(
+    ui: &mut egui::Ui,
+    block: &mut BlockSetting,
+    all_wet: bool,
+) -> KnobChanges {
     let mut moved = KnobChanges::default();
+    if all_wet {
+        block.mix = 1.0;
+    }
     match block.choice {
         BlockChoice::Empty => {}
         BlockChoice::Cabinet | BlockChoice::Room => {
@@ -504,15 +512,17 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> KnobChanges {
                 moved.changed |= changed;
                 moved.rebuild |= released;
             }
-            moved.changed |= knob(
-                ui,
-                &mut block.mix,
-                knob_ranges::MIX,
-                "Mix",
-                "",
-                false,
-                "How much of the convolved sound: 0 dry, 1 only the response.",
-            );
+            if !all_wet {
+                moved.changed |= knob(
+                    ui,
+                    &mut block.mix,
+                    knob_ranges::MIX,
+                    "Mix",
+                    "",
+                    false,
+                    "How much of the convolved sound: 0 dry, 1 only the response.",
+                );
+            }
             moved.changed |= knob(
                 ui,
                 &mut block.gain_db,
@@ -582,15 +592,17 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> KnobChanges {
                 false,
                 "Stereo width: 0 mono, 1 wide.",
             );
-            moved.changed |= knob(
-                ui,
-                &mut block.mix,
-                knob_ranges::MIX,
-                "Mix",
-                "",
-                false,
-                "How much of the room: 0 dry, 1 only the room.",
-            );
+            if !all_wet {
+                moved.changed |= knob(
+                    ui,
+                    &mut block.mix,
+                    knob_ranges::MIX,
+                    "Mix",
+                    "",
+                    false,
+                    "How much of the room: 0 dry, 1 only the room.",
+                );
+            }
             moved.changed |= knob(
                 ui,
                 &mut block.low_cut,

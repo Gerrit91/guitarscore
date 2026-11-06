@@ -79,6 +79,8 @@ pub(super) enum GridAction {
     ShowTrack { track: usize },
     /// Set the metronome's click volume (0 to 1).
     SetMetronomeVolume(f32),
+    /// Open the window of the mixer's reverb bus.
+    OpenReverbBus,
     /// Set the mixer's reverb bus; `commit` writes the settings (a drag or a click ended).
     ReverbBus {
         bus: crate::settings::ReverbBus,
@@ -221,6 +223,7 @@ impl GuitarScoreApp {
                 self.view.show_track_panel = true;
             }
             GridAction::SetMetronomeVolume(volume) => self.set_metronome_volume(volume),
+            GridAction::OpenReverbBus => self.open_reverb_bus_window(),
             GridAction::ReverbBus { bus, commit } => {
                 self.playback.set_reverb_bus(bus);
                 if commit {

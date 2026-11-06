@@ -3349,3 +3349,17 @@ needed for a much larger font); owner listening check.
   grew a little on every repaint (each mouse move). The width is now reserved for the icon
   and capped (90-260 px), so the row fits what it is given. Test: twenty mouse moves leave
   the panel's first label where it was, in both directions.
+
+## 2026-11-06 — The reverb bus opens its own window, with a computed or a recorded room
+
+- The bus strip's **Edit…** button opens the bus's window: **Computed** reverb, **Room
+  (impulse response)** (a WAV, with *Load WAV…*) or **None**, with the block's knobs. The
+  three knobs that used to sit on the strip are in the window now (a recorded room has its
+  own set), and the strip keeps the level, the mute and the way in.
+- `ReverbBus` holds a `BlockSetting` instead of three loose values; it is sanitized to a
+  reverb, a room or nothing (a cabinet is not a reverb) and its mix is always 1, because the
+  bus runs all wet - the tracks' Reverb knobs are the sends, its fader the return.
+- The bus is prepared again when the kind of reverb or the file changes (the player
+  remembers what the running bus was built from); knobs, level and mute go straight to it.
+- Tests: the window's choices turn the bus off and back on, its knobs are there and it has
+  no Mix; the settings' sanitizing; a snapshot of the window.

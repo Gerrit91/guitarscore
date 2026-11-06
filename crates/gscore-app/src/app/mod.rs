@@ -32,6 +32,7 @@ mod new_track;
 mod page;
 mod page_menu;
 mod recovery;
+mod reverb_bus_window;
 mod score_view;
 mod settings_page;
 mod settings_window;
@@ -136,6 +137,8 @@ pub struct GuitarScoreApp {
     string_sound: Option<string_sound_window::StringSoundDialog>,
     /// The Sound chain window, while it is open.
     sound_chain: Option<sound_chain::SoundChainWindow>,
+    /// The reverb bus's window, while it is open.
+    reverb_bus_window: Option<reverb_bus_window::ReverbBusWindow>,
     /// What the app remembers between runs.
     settings: Settings,
     /// Where the settings are stored (`None` keeps them only in memory; a browser keeps
@@ -259,6 +262,7 @@ impl GuitarScoreApp {
             tuner: None,
             string_sound: None,
             sound_chain: None,
+            reverb_bus_window: None,
             settings,
             settings_path,
             panel_sizes,
@@ -277,7 +281,8 @@ impl GuitarScoreApp {
         app.playback.store_string_sounds(app.settings.string_sounds);
         app.playback
             .store_string_chains(app.settings.string_chains.clone());
-        app.playback.store_reverb_bus(app.settings.reverb_bus);
+        app.playback
+            .store_reverb_bus(app.settings.reverb_bus.clone());
         app.playback.set_count_in_bars(app.settings.count_in_bars);
         app.playback.set_count_in_loops(app.settings.count_in_loops);
         let _ = app.playback.set_speed(app.settings.playback_speed);
@@ -770,6 +775,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_rename_window(&ctx);
         self.show_tuning_dialog(&ctx);
         self.show_sound_chain(&ctx);
+        self.show_reverb_bus_window(&ctx);
         self.show_string_sound(&ctx);
         self.show_settings_window(&ctx);
         self.show_shortcuts(&ctx);
