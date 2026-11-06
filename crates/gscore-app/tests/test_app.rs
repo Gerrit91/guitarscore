@@ -148,6 +148,27 @@ fn the_grid_header_stays_while_the_tracks_scroll() {
 }
 
 #[test]
+fn the_track_panel_does_not_grow_by_itself() {
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    let panel = |harness: &Harness<'static, GuitarScoreApp>| {
+        let rect = harness.get_by_label("Preset").rect();
+        (rect.left(), rect.top())
+    };
+    let before = panel(&harness);
+    // A mouse move repaints the window; the panel must keep its size (a width that followed
+    // the panel made it grow a little every frame).
+    for step in 0..20 {
+        harness.hover_at(egui::pos2(300.0 + 10.0 * step as f32, 300.0));
+        harness.run();
+    }
+    let after = panel(&harness);
+    assert!(
+        (after.0 - before.0).abs() < 0.5 && (after.1 - before.1).abs() < 0.5,
+        "the panel grew: {before:?} -> {after:?}"
+    );
+}
+
+#[test]
 fn files_that_cannot_be_opened_give_a_notice_not_a_crash() {
     for (file, expected) in [
         (testdata("basic/no_such_file.gp"), "cannot read"),

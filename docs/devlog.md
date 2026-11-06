@@ -3341,3 +3341,11 @@ needed for a much larger font); owner listening check.
   strings of a kind) and opens the strings' sound, and a chain preset keeps that choice
   (`ChainPreset::engine`), so choosing a preset switches the engine too. The String sound
   window keeps only the knobs.
+
+## 2026-11-06 — The track panel no longer grows by itself
+
+- The Sound section's preset combo took its width from the panel's own width minus a fixed
+  amount, and the stomp box beside it then needed a few pixels more, so the resizable panel
+  grew a little on every repaint (each mouse move). The width is now reserved for the icon
+  and capped (90-260 px), so the row fits what it is given. Test: twenty mouse moves leave
+  the panel's first label where it was, in both directions.

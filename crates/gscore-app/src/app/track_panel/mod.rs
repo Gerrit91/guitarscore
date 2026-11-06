@@ -411,7 +411,9 @@ fn sound(
     let mut program = snapshot.sound.map_or(25, |sound| sound.program);
     ui.horizontal(|ui| {
         ui.label(RichText::new("Preset").color(style::tokens(ui).text_weak));
-        let combo_width = (ui.available_width() - 30.0).max(80.0);
+        // Room for the stomp box to the right; capped, because a width that follows the
+        // panel's own width would make the panel grow a little every frame.
+        let combo_width = (ui.available_width() - 60.0).clamp(90.0, 260.0);
         ui.add_enabled_ui(!snapshot.percussion, |ui| {
             let combo = egui::ComboBox::from_id_salt("track_program")
                 .selected_text(format!("{program}: {}", program_name(program)))
