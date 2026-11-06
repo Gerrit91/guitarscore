@@ -56,6 +56,10 @@ pub(super) struct Tab {
     /// What plays a track when the user chose it (in the Sound chain window) instead of
     /// the default for its preset: by track index.
     pub(super) track_engines: std::collections::BTreeMap<usize, gscore_play::TrackEngine>,
+    /// Each track's own tone (its strings' sound and chain), dialed in for this track only
+    /// in the Sound chain window: by track index. Tracks without one play their kind's
+    /// default.
+    pub(super) track_tones: crate::chain_settings::TrackTones,
     /// Whether the last frame had a selection of more than one beat: a new one turns
     /// Loop on.
     pub(super) had_loop_selection: bool,
@@ -102,6 +106,7 @@ impl Tab {
             new_track: None,
             score: super::score_view::ScoreTracks::default(),
             track_engines: std::collections::BTreeMap::new(),
+            track_tones: crate::chain_settings::TrackTones::new(),
             had_loop_selection: false,
         }
     }

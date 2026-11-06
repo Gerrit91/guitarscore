@@ -242,6 +242,92 @@ fn a_changed_string_model_is_heard_at_once() {
 }
 
 #[test]
+fn two_tracks_of_one_kind_keep_their_own_sound_and_chain() {
+    use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, ChainSpec};
+    // Two steel-string tracks playing the same note (the owner's bug: two electric
+    // tracks shared one sound, so dialing in the second changed the first).
+    let song = testing::song_with_notes_on_tracks(2, &[(1, &[TestNote::new(3, 2)])]).unwrap();
+    let sequence = Arc::new(Sequence::new(&song, None).unwrap().with_modelled_guitars());
+    let silent = gscore_guitar::StringModel {
+        level: 0.0,
+        ..gscore_audio::default_string_model(StringKind::Steel)
+    };
+    let level = |setup: &dyn Fn(&mut SynthEngine)| {
+        let mut engine = SynthEngine::new(&bank(), RATE).unwrap();
+        setup(&mut engine);
+        engine.load(Arc::clone(&sequence));
+        engine.play();
+        rms(seconds(&render(&mut engine, 0.5), 0.1, 0.5))
+    };
+    let both = level(&|_| {});
+    // The second track's own sound is silent: only the first is heard, and a change of the
+    // kind's sound (what tracks without their own play) does not undo it.
+    let first_only = level(&|engine| {
+        engine.set_track_model(1, Some(silent));
+        engine.set_string_model(
+            StringKind::Steel,
+            gscore_audio::default_string_model(StringKind::Steel),
+        );
+    });
+    assert!(
+        first_only > 0.3 * both && first_only < 0.8 * both,
+        "{first_only} of {both}"
+    );
+    // Back to its kind's sound: both again.
+    let again = level(&|engine| {
+        engine.set_track_model(1, Some(silent));
+        engine.set_track_model(1, None);
+    });
+    assert!((again - both).abs() < 0.01 * both, "{again} against {both}");
+    // A chain on the first track only (an amp turned all the way down): the second plays
+    // on unchanged, dry.
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Amp);
+    let mut settings = [BlockSettings::default(); BLOCKS];
+    settings[0].amp.level_db = -24.0;
+    let first_quiet = level(&|engine| {
+        let chain = gscore_audio::prepare_chain(&spec, &settings, RATE);
+        assert!(engine.set_chain(0, chain, settings).is_none());
+    });
+    assert!(
+        first_quiet < 0.9 * both && first_quiet > 0.3 * both,
+        "{first_quiet} of {both}"
+    );
+}
+
+#[test]
+fn a_beat_excerpt_plays_with_its_tracks_tone() {
+    // A beat of the second track heard alone (a palette click) is the excerpt's only
+    // track, yet it keeps the second track's tone, not the first one's.
+    let song = testing::song_with_notes_on_tracks(2, &[(1, &[TestNote::new(3, 2)])]).unwrap();
+    let at = BeatPosition {
+        track: TrackIndex::new(1),
+        measure: MeasureIndex::new(0),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(0),
+    };
+    let excerpt = Arc::new(
+        Sequence::beat_excerpt(&song, at)
+            .unwrap()
+            .unwrap()
+            .with_modelled_guitars(),
+    );
+    let silent = gscore_guitar::StringModel {
+        level: 0.0,
+        ..gscore_audio::default_string_model(StringKind::Steel)
+    };
+    let level = |silenced: usize| {
+        let mut engine = SynthEngine::new(&bank(), RATE).unwrap();
+        engine.set_track_model(silenced, Some(silent));
+        engine.load(Arc::clone(&excerpt));
+        engine.play();
+        rms(seconds(&render(&mut engine, 0.5), 0.1, 0.5))
+    };
+    assert!(level(0) > 0.01, "the first track's tone does not apply");
+    assert!(level(1) < 1e-4, "the second track's does");
+}
+
+#[test]
 fn the_reverb_bus_carries_the_tracks_send() {
     use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, ChainSpec, ReverbKnobs};
     // A palm-muted quarter whose track sends a lot into the reverb (the mixer's knob);
@@ -330,12 +416,9 @@ fn a_room_chain_rings_on_after_a_damped_note() {
             ));
             let mut settings = [BlockSettings::default(); BLOCKS];
             settings[1].room.mix = 0.6;
-            let set = gscore_audio::ChainSet::new(&spec, &settings, RATE, 1);
-            assert!(
-                engine
-                    .set_chain(StringKind::Steel, Some(Box::new(set)))
-                    .is_none()
-            );
+            let chain = gscore_audio::prepare_chain(&spec, &settings, RATE);
+            assert!(chain.is_some());
+            assert!(engine.set_chain(0, chain, settings).is_none());
         }
         engine.load(Arc::clone(&sequence));
         engine.play();

@@ -325,8 +325,8 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
         (harness
             .state()
             .playback()
-            .string_sounds()
-            .get(gscore_play::StringKind::Nylon)
+            .tone(0, gscore_play::StringKind::Nylon)
+            .sound
             .pick_position
             - 0.4)
             .abs()
@@ -362,9 +362,9 @@ fn a_preset_brings_its_kind_of_string_back() {
     harness.get_by_label("Block 1: Reverb");
     harness.get_by_label("Save as…").click();
     harness.run();
-    harness.get_by_label("Preset name").focus();
+    harness.get_by_label("Tone name").focus();
     harness
-        .get_by_label("Preset name")
+        .get_by_label("Tone name")
         .type_text("Natural Steel 1");
     harness.run();
     harness.query_all_by_label("Save").last().unwrap().click();
@@ -382,7 +382,7 @@ fn a_preset_brings_its_kind_of_string_back() {
     // Choosing the steel preset brings back the steel strings and their chain, not just
     // values on the electric ones.
     harness
-        .query_all_by_label("Preset")
+        .query_all_by_label("Tone")
         .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
         .unwrap()
         .click();
@@ -405,8 +405,8 @@ fn a_preset_can_be_saved_over_and_deleted_while_active() {
     harness.run();
     harness.get_by_label("Save as…").click();
     harness.run();
-    harness.get_by_label("Preset name").focus();
-    harness.get_by_label("Preset name").type_text("Room 1");
+    harness.get_by_label("Tone name").focus();
+    harness.get_by_label("Tone name").type_text("Room 1");
     harness.run();
     harness.query_all_by_label("Save").last().unwrap().click();
     harness.run();
@@ -425,7 +425,7 @@ fn a_preset_can_be_saved_over_and_deleted_while_active() {
     assert_eq!(preset_shown(&harness), "Room 1 *");
 
     // Save over it: one preset of that name, with the chain as it is now.
-    harness.get_by_label("Save preset").click();
+    harness.get_by_label("Save tone").click();
     harness.run();
     assert_eq!(preset_shown(&harness), "Room 1");
     let presets = harness.state().settings().string_presets.clone();
@@ -446,7 +446,7 @@ fn a_preset_can_be_saved_over_and_deleted_while_active() {
     );
 
     // And delete it while it is the active one.
-    harness.get_by_label("Delete preset").click();
+    harness.get_by_label("Delete tone").click();
     harness.run();
     assert!(
         harness.state().settings().string_presets.is_empty(),
@@ -458,7 +458,7 @@ fn a_preset_can_be_saved_over_and_deleted_while_active() {
 /// What the Sound chain window's preset list shows./// What the Sound chain window's preset list shows.
 fn preset_shown(harness: &Harness<'_, GuitarScoreApp>) -> String {
     harness
-        .query_all_by_label("Preset")
+        .query_all_by_label("Tone")
         .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
         .and_then(|node| node.value())
         .unwrap_or_default()
@@ -480,8 +480,8 @@ fn a_saved_chain_preset_brings_back_the_whole_chain() {
     // Save the chain (with the string sound it was dialed in with) under a name.
     harness.get_by_label("Save as…").click();
     harness.run();
-    harness.get_by_label("Preset name").focus();
-    harness.get_by_label("Preset name").type_text("Hall 1");
+    harness.get_by_label("Tone name").focus();
+    harness.get_by_label("Tone name").type_text("Hall 1");
     harness.run();
     // The preset's Save (the toolbar has a Save too).
     harness.query_all_by_label("Save").last().unwrap().click();
@@ -519,7 +519,7 @@ fn a_saved_chain_preset_brings_back_the_whole_chain() {
     assert_eq!(preset_shown(&harness), "Built-in");
     // Choosing the preset brings the block back.
     harness
-        .query_all_by_label("Preset")
+        .query_all_by_label("Tone")
         .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
         .unwrap()
         .click();
@@ -541,7 +541,7 @@ fn a_saved_chain_preset_brings_back_the_whole_chain() {
     harness.run();
     harness.get_by_label("Block 1: +");
     harness
-        .query_all_by_label("Preset")
+        .query_all_by_label("Tone")
         .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
         .unwrap()
         .click();
@@ -618,8 +618,8 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
         harness
             .state()
             .playback()
-            .string_chains()
-            .get(*kind)
+            .tone(0, *kind)
+            .chain
             .blocks
             .first()
             .is_some_and(|block| block.choice == BlockChoice::Amp)
@@ -637,8 +637,8 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
     let blocks = harness
         .state()
         .playback()
-        .string_chains()
-        .get(kind)
+        .tone(0, kind)
+        .chain
         .blocks
         .clone();
     assert_eq!(blocks[0].choice, BlockChoice::Drive, "the drive slid back");
@@ -656,11 +656,63 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
     let blocks = harness
         .state()
         .playback()
-        .string_chains()
-        .get(kind)
+        .tone(0, kind)
+        .chain
         .blocks
         .clone();
     assert_eq!(blocks[0].choice, BlockChoice::Amp);
     assert_eq!(blocks[1].choice, BlockChoice::Drive);
     assert_eq!(blocks[2].choice, BlockChoice::Empty);
+}
+
+#[test]
+fn two_guitars_of_one_kind_keep_their_own_tone() {
+    // The owner's report: dialing in a second electric guitar changed the first one too
+    // (one sound and chain per kind of string). Each track now has its own tone.
+    let mut harness = app_with("basic/multi_staff.gp");
+    let dial = |harness: &mut Harness<'static, GuitarScoreApp>, track: usize, value: &str| {
+        harness.state_mut().set_shown_track(track);
+        harness.run();
+        harness.get_by_label("Sound chain").click();
+        harness.run();
+        harness.get_by_label("Block 0: MIDI").click();
+        harness.run();
+        harness.get_by_label("PM Synthesis").click();
+        harness.run();
+        harness.get_by_label("Pick position value").click();
+        harness.run();
+        harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+        harness.get_by_label("Pick position value").type_text(value);
+        harness.run();
+        harness.key_press(egui::Key::Enter);
+        harness.run();
+        harness.get_by_label("Close").click();
+        harness.run();
+    };
+    let pick = |harness: &Harness<'static, GuitarScoreApp>, track: usize| {
+        harness
+            .state()
+            .playback()
+            .tone(track, gscore_play::StringKind::Electric)
+            .sound
+            .pick_position
+    };
+    let untouched = pick(&harness, 1);
+    dial(&mut harness, 0, "0.4");
+    dial(&mut harness, 2, "0.2");
+    assert!(
+        (pick(&harness, 0) - 0.4).abs() < 1e-6,
+        "{}",
+        pick(&harness, 0)
+    );
+    assert!(
+        (pick(&harness, 2) - 0.2).abs() < 1e-6,
+        "{}",
+        pick(&harness, 2)
+    );
+    assert_eq!(
+        pick(&harness, 1),
+        untouched,
+        "a third guitar is not touched"
+    );
 }

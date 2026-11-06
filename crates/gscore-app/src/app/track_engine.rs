@@ -1,12 +1,14 @@
 //! What plays a track: the SoundFont, or modelled strings of a kind. By default a guitar
 //! or bass track's preset decides (with the Settings' switch for modelled guitars); the
 //! user can choose for each track in the Sound chain window. The choice is kept with the
-//! open document (by track index) and sent to playback every frame it changes.
+//! open document (by track index) and sent to playback every frame it changes; so is each
+//! track's own tone (the sound of its strings and its chain).
 
 use gscore_model::{InstrumentKind, TrackIndex};
 use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
+use crate::chain_settings::Tone;
 
 /// What plays a track, and why.
 #[derive(Debug, Clone, PartialEq)]
@@ -65,6 +67,43 @@ impl GuitarScoreApp {
             tab.track_engines.insert(track, engine);
         }
         self.sync_track_engines();
+    }
+
+    /// The name of `track` of the open document (empty without one).
+    pub(super) fn track_name(&self, track: usize) -> String {
+        self.tabs
+            .get(self.active)
+            .and_then(|tab| tab.document.song().track(TrackIndex::new(track)))
+            .map(|view| view.name().to_owned())
+            .unwrap_or_default()
+    }
+
+    /// The tone `track` of the open document plays as `kind`: its own, or the kind's
+    /// default.
+    pub(super) fn track_tone(&self, track: usize, kind: StringKind) -> Tone {
+        let sounds = self.playback.string_sounds();
+        let defaults = (&sounds, self.playback.string_chains());
+        match self.tabs.get(self.active) {
+            Some(tab) => crate::playback::tone_of(&tab.track_tones, defaults, track, kind),
+            None => crate::playback::tone_of(&Default::default(), defaults, track, kind),
+        }
+    }
+
+    /// Gives `track` of the open document its own tone (no other track changes), heard at
+    /// once.
+    pub(super) fn set_track_tone(&mut self, track: usize, tone: Tone) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        tab.track_tones.insert(track, tone);
+        self.sync_track_tones();
+    }
+
+    /// Hands the open document's tones to playback (only what changed is sent).
+    pub(super) fn sync_track_tones(&mut self) {
+        if let Some(tab) = self.tabs.get(self.active) {
+            self.playback.set_track_tones(&tab.track_tones);
+        }
     }
 
     /// Hands the open document's engine choices to playback (a change rebuilds the

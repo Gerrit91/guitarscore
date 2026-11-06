@@ -1,54 +1,158 @@
-//! The effect chains of the modelled strings in playback: kept per kind of string, their
-//! impulse responses read from disk once and cached, and sent to the synthesizer. A new
-//! block or file prepares the chain again (on the synthesizer's own thread); a knob only
-//! sends its value, so a reverb's tail is not cut while it is turned.
+//! The tones of the modelled tracks in playback: each track's own tone (the sound of its
+//! strings and its effect chain) or, without one, its kind's default from the settings.
+//! What the synthesizer has been given is remembered per track (by the song's track index,
+//! which a beat excerpt keeps too), so a change sends only what differs: a new block or file prepares that track's chain
+//! again (on the synthesizer's own thread); a knob only sends its value, so a reverb's
+//! tail is not cut while it is turned. Impulse responses are read from disk once.
 
 use std::path::Path;
 use std::sync::Arc;
 
-use gscore_guitar::{BlockKind, BlockSettings, ChainSpec, ImpulseResponse};
-use gscore_play::{Sequence, StringKind};
+use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, ChainSpec, ImpulseResponse, StringModel};
+use gscore_play::{Sequence, StringKind, TrackEngine};
 
-use super::{Playback, STRING_KINDS};
-use crate::chain_settings::{BlockChoice, ChainSetting, StringChains};
+use super::Playback;
+use crate::chain_settings::{BlockChoice, ChainSetting, StringChains, Tone, TrackTones};
+use crate::settings::{StringSound, StringSounds};
 
-/// The place of `kind` in per-kind arrays.
-fn kind_index(kind: StringKind) -> usize {
-    STRING_KINDS
+/// A modelled track of the loaded sequence: the song's track it plays (as the
+/// synthesizer knows its tone) and its kind of string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct ToneTarget {
+    track: usize,
+    kind: StringKind,
+}
+
+/// What the synthesizer was given for one track.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct SentTone {
+    /// The track's own string sound (`None`: its kind's).
+    sound: Option<StringSound>,
+    chain: ChainSetting,
+}
+
+/// The tone `track` plays as `kind`: its own if it was dialed in on that kind, otherwise
+/// the kind's default.
+pub(crate) fn tone_of(
+    tones: &TrackTones,
+    defaults: (&StringSounds, &StringChains),
+    track: usize,
+    kind: StringKind,
+) -> Tone {
+    tones
+        .get(&track)
+        .filter(|tone| tone.kind == kind)
+        .cloned()
+        .unwrap_or_else(|| Tone {
+            kind,
+            sound: defaults.0.get(kind),
+            chain: defaults.1.get(kind).clone(),
+        })
+}
+
+/// The modelled tracks of `sequence`.
+fn targets(sequence: &Sequence) -> Vec<ToneTarget> {
+    sequence
+        .performance
+        .tracks
         .iter()
-        .position(|&known| known == kind)
-        .unwrap_or(0)
+        .filter_map(|track| match track.engine {
+            TrackEngine::Modelled(kind) => Some(ToneTarget {
+                track: track.track.get(),
+                kind,
+            }),
+            TrackEngine::SoundFont => None,
+        })
+        .collect()
+}
+
+/// The tones to render an audio export with: each track's own (with the kind it is for)
+/// and each kind's default, resolved against the export's sequence once it is built.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ExportTones {
+    own: Vec<(
+        usize,
+        StringKind,
+        StringModel,
+        ChainSpec,
+        [BlockSettings; BLOCKS],
+    )>,
+    defaults: Vec<(StringKind, ChainSpec, [BlockSettings; BLOCKS])>,
+}
+
+impl ExportTones {
+    /// The own string models and the chains of `sequence`'s modelled tracks, by the song's
+    /// track index.
+    pub(crate) fn resolve(
+        &self,
+        sequence: &Sequence,
+    ) -> (Vec<(usize, StringModel)>, Vec<gscore_audio::ChainChoice>) {
+        let mut models = Vec::new();
+        let mut chains = Vec::new();
+        for target in targets(sequence) {
+            let own = self
+                .own
+                .iter()
+                .find(|(track, kind, ..)| *track == target.track && *kind == target.kind);
+            let chain = match own {
+                Some((_, _, model, spec, knobs)) => {
+                    models.push((target.track, *model));
+                    Some((spec.clone(), *knobs))
+                }
+                None => self
+                    .defaults
+                    .iter()
+                    .find(|(kind, ..)| *kind == target.kind)
+                    .map(|(_, spec, knobs)| (spec.clone(), *knobs)),
+            };
+            if let Some((spec, knobs)) = chain
+                && !gscore_audio::chain_is_empty(&spec)
+            {
+                chains.push((target.track, spec, knobs));
+            }
+        }
+        (models, chains)
+    }
 }
 
 impl Playback {
-    /// The chains as they are set.
+    /// Each kind's default chain (what a track without a tone of its own plays).
     pub fn string_chains(&self) -> &StringChains {
         &self.string_chains
     }
 
-    /// Takes the chains without sending them (when the settings load).
+    /// Takes the default chains without sending them (when the settings load).
     pub fn store_string_chains(&mut self, chains: StringChains) {
         self.string_chains = chains;
     }
 
-    /// Sets the chain of `kind`, heard at once: prepared again if a block or a file
-    /// changed, otherwise only the knob values are sent.
-    pub fn set_string_chain(&mut self, kind: StringKind, chain: ChainSetting) {
-        let same = self.string_chains.get(kind).same_structure(&chain);
-        self.string_chains.set(kind, chain);
-        if same {
-            self.send_chain_knobs(kind);
-        } else {
-            self.send_chain(kind);
-        }
+    /// The tone `track` of the open song plays as `kind`.
+    pub fn tone(&self, track: usize, kind: StringKind) -> Tone {
+        tone_of(
+            &self.tones,
+            (&self.string_sounds, &self.string_chains),
+            track,
+            kind,
+        )
     }
 
-    /// Prepares the chain of `kind` again with the blocks as they are set now, for a change
+    /// The open song's own tones (each track's; the others play their kind's default),
+    /// heard at once: only what changed is sent.
+    pub fn set_track_tones(&mut self, tones: &TrackTones) {
+        if &self.tones == tones {
+            return;
+        }
+        self.tones = tones.clone();
+        self.send_tones();
+    }
+
+    /// Prepares `track`'s chain again with the blocks as they are set now, for a change
     /// that alters a prepared response rather than a knob value: a room's length. The
     /// window calls it when the length knob is let go, so a drag does not rebuild the room
     /// on every step (each rebuilding resamples the whole tail).
-    pub fn rebuild_chain(&mut self, kind: StringKind) {
-        self.send_chain(kind);
+    pub fn rebuild_chain(&mut self, track: usize) {
+        self.sent_tones.remove(&track);
+        self.send_tones();
     }
 
     /// Reads the impulse response at `path` (once; later calls use the copy read).
@@ -68,10 +172,9 @@ impl Playback {
         Ok(response)
     }
 
-    /// The engine's chain of `kind`: its blocks (an impulse response that cannot be read
-    /// leaves its place empty, and says why once) and their knobs.
-    fn chain_spec(&mut self, kind: StringKind) -> ChainSpec {
-        let setting = self.string_chains.get(kind).clone();
+    /// The engine's chain for `setting`: its blocks (an impulse response that cannot be
+    /// read leaves its place empty, and says why once).
+    fn chain_spec(&mut self, setting: &ChainSetting) -> ChainSpec {
         let mut spec = ChainSpec::default();
         for (place, block) in spec.blocks.iter_mut().zip(&setting.blocks) {
             *place = match (block.choice, &block.file) {
@@ -95,42 +198,8 @@ impl Playback {
         spec
     }
 
-    /// Sends the chain of `kind` to a running synthesizer, to be prepared there.
-    pub(super) fn send_chain(&mut self, kind: StringKind) {
-        if !self.synth_running() {
-            return;
-        }
-        let spec = self.chain_spec(kind);
-        let knobs = self.string_chains.get(kind).knobs();
-        let tracks = self
-            .chain_tracks
-            .get(kind_index(kind))
-            .copied()
-            .unwrap_or(1)
-            .max(1);
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(super::Active::Synth(player)) = &self.player
-            && let Err(error) = player.set_chain(kind, spec, knobs, tracks)
-        {
-            self.chain_notices.push(error.to_string());
-        }
-        #[cfg(target_arch = "wasm32")]
-        let _ = (spec, knobs, tracks);
-    }
-
-    /// Sends the knob values of `kind`'s chain to a running synthesizer.
-    fn send_chain_knobs(&mut self, kind: StringKind) {
-        let knobs = self.string_chains.get(kind).knobs();
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(super::Active::Synth(player)) = &self.player {
-            let _ = player.set_chain_settings(kind, knobs);
-        }
-        #[cfg(target_arch = "wasm32")]
-        let _ = knobs;
-    }
-
-    /// Whether the built-in synthesizer is connected (the chains play only there).
-    fn synth_running(&self) -> bool {
+    /// Whether the built-in synthesizer is connected (the tones play only there).
+    pub(super) fn synth_running(&self) -> bool {
         #[cfg(not(target_arch = "wasm32"))]
         {
             matches!(self.player, Some(super::Active::Synth(_)))
@@ -141,43 +210,119 @@ impl Playback {
         }
     }
 
-    /// Makes sure the synthesizer's chains are made for as many tracks of each kind as
-    /// `sequence` plays (they are only ever made for more, never fewer).
+    /// Follows the sequence the synthesizer has loaded: its modelled tracks get their
+    /// tones (only what differs from what they had is sent).
     pub(super) fn sync_chains(&mut self, sequence: &Sequence) {
         if !self.bus_sent {
             self.send_reverb_bus();
         }
-        for kind in STRING_KINDS {
-            let needed = gscore_audio::tracks_of_kind(sequence, kind);
-            let index = kind_index(kind);
-            let made = self.chain_tracks.get(index).copied().unwrap_or(1);
-            if needed > made {
-                if let Some(slot) = self.chain_tracks.get_mut(index) {
-                    *slot = needed;
-                }
-                let empty = self
-                    .string_chains
-                    .get(kind)
-                    .blocks
-                    .iter()
-                    .all(|block| block.choice == BlockChoice::Empty);
-                if !empty {
-                    self.send_chain(kind);
-                }
+        self.tone_targets = targets(sequence);
+        self.send_tones();
+    }
+
+    /// Forgets what the synthesizer was given (a new one starts with nothing).
+    pub(super) fn forget_sent_tones(&mut self) {
+        self.sent_tones.clear();
+    }
+
+    /// Sends each modelled track of the loaded sequence what differs between its tone and
+    /// what it was last given.
+    fn send_tones(&mut self) {
+        if !self.synth_running() {
+            return;
+        }
+        for target in self.tone_targets.clone() {
+            let tone = self.tone(target.track, target.kind);
+            let own = self
+                .tones
+                .get(&target.track)
+                .is_some_and(|own| own.kind == target.kind);
+            let wanted = SentTone {
+                sound: own.then_some(tone.sound),
+                chain: tone.chain,
+            };
+            let sent = self.sent_tones.get(&target.track).cloned();
+            if sent.as_ref() == Some(&wanted) {
+                continue;
             }
+            if sent.as_ref().map(|sent| sent.sound) != Some(wanted.sound) {
+                self.send_track_model(target.track, wanted.sound);
+            }
+            match &sent {
+                Some(sent) if sent.chain.same_structure(&wanted.chain) => {
+                    self.send_chain_knobs(target.track, &wanted.chain);
+                }
+                _ => self.send_chain(target.track, &wanted.chain),
+            }
+            self.sent_tones.insert(target.track, wanted);
         }
     }
 
-    /// The chains to render audio export with (the ones with blocks).
-    pub fn chain_choices(&mut self) -> Vec<gscore_audio::ChainChoice> {
-        STRING_KINDS
+    /// Gives `track` its own string sound (`None`: its kind's).
+    fn send_track_model(&mut self, track: usize, sound: Option<StringSound>) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(super::Active::Synth(player)) = &self.player
+            && let Err(error) = player.set_track_model(track, sound.map(|sound| sound.model()))
+        {
+            self.chain_notices.push(error.to_string());
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = (track, sound);
+    }
+
+    /// Sends the chain `setting` for `track`, to be prepared on the synthesizer's thread.
+    fn send_chain(&mut self, track: usize, setting: &ChainSetting) {
+        let spec = self.chain_spec(setting);
+        let knobs = setting.knobs();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(super::Active::Synth(player)) = &self.player
+            && let Err(error) = player.set_chain(track, spec, knobs)
+        {
+            self.chain_notices.push(error.to_string());
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = (track, spec, knobs);
+    }
+
+    /// Sends the knob values of `setting` for `track`.
+    fn send_chain_knobs(&mut self, track: usize, setting: &ChainSetting) {
+        let knobs = setting.knobs();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(super::Active::Synth(player)) = &self.player {
+            let _ = player.set_chain_settings(track, knobs);
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = (track, knobs);
+    }
+
+    /// The tones to render audio export with.
+    pub(crate) fn export_tones(&mut self) -> ExportTones {
+        let own: Vec<(usize, Tone)> = self
+            .tones
             .iter()
-            .filter_map(|&kind| {
-                let spec = self.chain_spec(kind);
-                (!gscore_audio::ChainSet::is_empty(&spec))
-                    .then(|| (kind, spec, self.string_chains.get(kind).knobs()))
+            .map(|(&track, tone)| (track, tone.clone()))
+            .collect();
+        let own = own
+            .into_iter()
+            .map(|(track, tone)| {
+                let spec = self.chain_spec(&tone.chain);
+                (
+                    track,
+                    tone.kind,
+                    tone.sound.model(),
+                    spec,
+                    tone.chain.knobs(),
+                )
             })
-            .collect()
+            .collect();
+        let defaults = super::STRING_KINDS
+            .iter()
+            .map(|&kind| {
+                let chain = self.string_chains.get(kind).clone();
+                (kind, self.chain_spec(&chain), chain.knobs())
+            })
+            .collect();
+        ExportTones { own, defaults }
     }
 
     /// A message about the chains, once.
@@ -214,9 +359,9 @@ impl Playback {
 
     /// The bus's chain as it is set: the computed reverb or a room's response, all wet (the
     /// sends decide how much each track gives it, the fader how much comes back).
-    fn reverb_bus_parts(&mut self) -> (ChainSpec, [BlockSettings; gscore_guitar::BLOCKS]) {
+    fn reverb_bus_parts(&mut self) -> (ChainSpec, [BlockSettings; BLOCKS]) {
         let block = self.reverb_bus.block.clone();
-        let mut settings = [BlockSettings::default(); gscore_guitar::BLOCKS];
+        let mut settings = [BlockSettings::default(); BLOCKS];
         let mut block_settings = block.knobs();
         // An all-wet bus: nothing dry goes through it (the tracks' own signal is the dry).
         block_settings.reverb.mix = 1.0;
@@ -360,11 +505,51 @@ mod tests {
         // An amp needs no file.
         chain.blocks[3] = BlockSetting::of(BlockChoice::Amp);
         chain.blocks[4] = BlockSetting::of(BlockChoice::Drive);
-        playback.set_string_chain(StringKind::Steel, chain);
-        let choices = playback.chain_choices();
-        assert_eq!(choices.len(), 1, "only the steel strings have a chain");
-        let (kind, spec, _) = &choices[0];
-        assert_eq!(*kind, StringKind::Steel);
+        // Three steel-string tracks: the second has its own tone with this chain, the
+        // first one dialed in on nylon strings (so on steel it plays steel's default), the
+        // third none. Only the second gets a chain, and only it its own sound.
+        let mut sound = playback.string_sounds().get(StringKind::Steel);
+        sound.level *= 0.5;
+        let mut tones = TrackTones::new();
+        tones.insert(
+            1,
+            Tone {
+                kind: StringKind::Steel,
+                sound,
+                chain,
+            },
+        );
+        tones.insert(
+            0,
+            Tone {
+                kind: StringKind::Nylon,
+                sound,
+                chain: ChainSetting::default(),
+            },
+        );
+        playback.set_track_tones(&tones);
+        assert_eq!(playback.tone(1, StringKind::Steel).sound, sound);
+        assert_eq!(
+            playback.tone(0, StringKind::Steel),
+            playback.tone(2, StringKind::Steel),
+            "a tone of another kind does not play on steel"
+        );
+        let song = gscore_model::testing::song_with_notes_on_tracks(
+            3,
+            &[(1, &[gscore_model::testing::TestNote::new(3, 2)])],
+        )
+        .unwrap();
+        let sequence = super::super::with_engines(
+            Sequence::new(&song, None).unwrap(),
+            false,
+            &[0, 1, 2].map(|track| (track, TrackEngine::Modelled(StringKind::Steel))),
+        );
+        let (models, choices) = playback.export_tones().resolve(&sequence);
+        assert_eq!(models.len(), 1, "{models:?}");
+        assert_eq!(models[0].0, 1);
+        assert_eq!(choices.len(), 1, "only the second track has a chain");
+        let (track, spec, _) = &choices[0];
+        assert_eq!(*track, 1);
         assert!(matches!(spec.blocks[0], Some(BlockKind::Impulse(_))));
         assert!(
             spec.blocks[1].is_none(),

@@ -276,7 +276,8 @@ impl GuitarScoreApp {
                     modelled: self.playback.modelled_guitars(),
                     sample_rate: self.playback.sample_rate(),
                     models: self.playback.string_models(),
-                    chains: self.playback.chain_choices(),
+                    engines: self.playback.track_engines(),
+                    tones: self.playback.export_tones(),
                     bus: Some(self.playback.reverb_bus_choice()),
                 };
                 if let Err(error) = self.tasks.export_wav(song, path, audio, ctx) {
@@ -405,10 +406,11 @@ impl GuitarScoreApp {
                 Event::PickedSoundFont(Some(picked)) => self.playback.use_soundfont(picked.path),
                 Event::PickedSoundFont(None) => {}
                 Event::PickedImpulse {
+                    track,
                     kind,
                     place,
                     path: Some(path),
-                } => self.use_impulse(kind, place, path),
+                } => self.use_impulse(track, kind, place, path),
                 Event::PickedImpulse { path: None, .. } => {}
                 Event::PickedBusImpulse(Some(path)) => self.use_bus_impulse(path),
                 Event::PickedBusImpulse(None) => {}

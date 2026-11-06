@@ -12,7 +12,6 @@ use std::sync::Arc;
 
 use gscore_guitar::{BLOCKS, BlockSettings, Chain, StringModel};
 
-use crate::chains::ChainSet;
 use gscore_play::{Channel, MidiEvent, PlayError, PlayState, Sequence, StringKind, TimedEvent};
 use rustysynth::{SoundFont, Synthesizer, SynthesizerSettings};
 
@@ -26,7 +25,7 @@ pub(crate) enum Retired {
     Sequence(Arc<Sequence>),
     // Only held until it is dropped elsewhere.
     #[allow(dead_code)]
-    Chain(Box<ChainSet>),
+    Chain(Box<Chain>),
     #[allow(dead_code)]
     ReverbBus(Box<Chain>),
 }
@@ -265,20 +264,27 @@ impl SynthEngine {
         self.guitars.set_model(kind, model);
     }
 
-    /// Gives the strings of `kind` the effect chain `chain` (`None`: none), heard at once.
-    /// Returns the chain it replaces, to be freed elsewhere when this runs in an audio
-    /// callback.
-    pub fn set_chain(
-        &mut self,
-        kind: StringKind,
-        chain: Option<Box<ChainSet>>,
-    ) -> Option<Box<ChainSet>> {
-        self.guitars.set_chain(kind, chain)
+    /// Gives `track` (an index of the song's tracks) its own string model (`None`:
+    /// its kind's again), heard at once.
+    pub fn set_track_model(&mut self, track: usize, model: Option<StringModel>) {
+        self.guitars.set_track_model(track, model);
     }
 
-    /// New knob values for the effect chain of `kind`, heard at once.
-    pub fn set_chain_settings(&mut self, kind: StringKind, settings: [BlockSettings; BLOCKS]) {
-        self.guitars.set_chain_settings(kind, settings);
+    /// Gives `track` the effect chain `chain` (`None`: none, see
+    /// [`crate::prepare_chain`]) with the knob values `settings`, heard at once. Returns
+    /// the chain it replaces, to be freed elsewhere when this runs in an audio callback.
+    pub fn set_chain(
+        &mut self,
+        track: usize,
+        chain: Option<Box<Chain>>,
+        settings: [BlockSettings; BLOCKS],
+    ) -> Option<Box<Chain>> {
+        self.guitars.set_chain(track, chain, settings)
+    }
+
+    /// New knob values for the effect chain of `track`, heard at once.
+    pub fn set_chain_settings(&mut self, track: usize, settings: [BlockSettings; BLOCKS]) {
+        self.guitars.set_chain_settings(track, settings);
     }
 
     /// Gives the tracks a reverb bus (`None`: none), a prepared chain that runs all wet.
@@ -306,11 +312,15 @@ impl SynthEngine {
                 self.set_string_model(kind, model);
                 return None;
             }
-            Command::Chain(kind, chain) => {
-                return self.set_chain(kind, chain).map(Retired::Chain);
+            Command::TrackModel(track, model) => {
+                self.set_track_model(track, model);
+                return None;
             }
-            Command::ChainSettings(kind, settings) => {
-                self.set_chain_settings(kind, settings);
+            Command::Chain(track, chain, settings) => {
+                return self.set_chain(track, chain, *settings).map(Retired::Chain);
+            }
+            Command::ChainSettings(track, settings) => {
+                self.set_chain_settings(track, settings);
                 return None;
             }
             Command::ReverbBus(chain) => {

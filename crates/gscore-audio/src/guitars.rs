@@ -17,7 +17,7 @@ use gscore_guitar::{
 };
 use gscore_play::{Attack, Fade, Performance, PlayedNote, Sequence, StringKind, TrackEngine};
 
-use crate::chains::ChainSet;
+use crate::chains::TrackTones;
 use crate::synth::BLOCK;
 
 /// How many tracks the modelled strings play at once; further modelled tracks stay on
@@ -34,9 +34,10 @@ const LOWEST: f32 = 16.0;
 struct Slot {
     /// The track's index in the sequence (and its performance).
     track: usize,
+    /// The song's track it plays (an excerpt's only track is still the song's track it
+    /// came from): its tone is that track's.
+    tone: usize,
     kind: StringKind,
-    /// Which instance of its kind's chain it runs through (the n-th track of that kind).
-    instance: usize,
 }
 
 /// The modelled guitars of one synth engine.
@@ -45,11 +46,11 @@ pub(crate) struct Guitars {
     /// The note each voice plays now, if any.
     playing: Vec<Option<PlayedNote>>,
     slots: [Option<Slot>; SLOTS],
-    /// How each kind of string sounds (nylon, steel, electric, bass).
+    /// How each kind of string sounds (nylon, steel, electric, bass) on a track without a
+    /// string model of its own.
     models: [StringModel; 4],
-    /// The effect chain of each kind, if it has one, and its knob values.
-    chains: [Option<Box<ChainSet>>; 4],
-    chain_settings: [[BlockSettings; BLOCKS]; 4],
+    /// Each track's own string model and effect chain.
+    tones: TrackTones,
     /// The reverb bus every modelled track sends into (a computed reverb, all wet), its
     /// knob values, and its level (-127 to 127; 127 plays it as it comes) and mute.
     reverb_bus: Option<Box<Chain>>,
@@ -156,8 +157,7 @@ impl Guitars {
             resync: true,
             mono: [0.0; BLOCK],
             wet: [[0.0; BLOCK]; 2],
-            chains: [None, None, None, None],
-            chain_settings: [[BlockSettings::default(); BLOCKS]; 4],
+            tones: TrackTones::new(),
             reverb_bus: None,
             bus_mix: (127, false),
             bus_in: [0.0; BLOCK],
@@ -171,59 +171,66 @@ impl Guitars {
         self.slots.iter().flatten().any(|slot| slot.track == track)
     }
 
-    /// Makes the strings of `kind` sound as `model`, at once for those sounding.
+    /// The string model `slot`'s track plays with: its own, or its kind's.
+    fn model_for(&self, slot: Slot) -> StringModel {
+        self.tones.model(slot.tone).unwrap_or_else(|| {
+            self.models
+                .get(kind_index(slot.kind))
+                .copied()
+                .unwrap_or_else(|| default_model(slot.kind))
+        })
+    }
+
+    /// Gives the voices of every slot that `matches` the model its track plays with now.
+    fn refresh_models(&mut self, matches: impl Fn(Slot) -> bool) {
+        for index in 0..SLOTS {
+            let Some(slot) = self.slots.get(index).copied().flatten() else {
+                continue;
+            };
+            if !matches(slot) {
+                continue;
+            }
+            let model = self.model_for(slot);
+            let first = index.saturating_mul(STRINGS);
+            for voice in self
+                .voices
+                .get_mut(first..first.saturating_add(STRINGS))
+                .unwrap_or_default()
+            {
+                voice.set_model(model);
+            }
+        }
+    }
+
+    /// Makes the strings of `kind` sound as `model` on the tracks without a model of their
+    /// own, at once for those sounding.
     pub(crate) fn set_model(&mut self, kind: StringKind, model: StringModel) {
         if let Some(slot) = self.models.get_mut(kind_index(kind)) {
             *slot = model;
         }
-        for (index, slot) in self.slots.iter().enumerate() {
-            if slot.is_some_and(|slot| slot.kind == kind) {
-                let first = index.saturating_mul(STRINGS);
-                for voice in self
-                    .voices
-                    .get_mut(first..first.saturating_add(STRINGS))
-                    .unwrap_or_default()
-                {
-                    voice.set_model(model);
-                }
-            }
-        }
+        self.refresh_models(|slot| slot.kind == kind);
     }
 
-    /// Gives `kind` the effect chain `chain` (`None`: none), with the knob values it has.
-    /// Returns the chain it replaces, to be freed off the audio thread.
+    /// Gives `track` its own string model (`None`: its kind's again), at once.
+    pub(crate) fn set_track_model(&mut self, track: usize, model: Option<StringModel>) {
+        self.tones.set_model(track, model);
+        self.refresh_models(|slot| slot.tone == track);
+    }
+
+    /// Gives `track` the effect chain `chain` (`None`: none) with `settings`. Returns the
+    /// chain it replaces, to be freed off the audio thread.
     pub(crate) fn set_chain(
         &mut self,
-        kind: StringKind,
-        chain: Option<Box<ChainSet>>,
-    ) -> Option<Box<ChainSet>> {
-        let index = kind_index(kind);
-        let mut chain = chain;
-        if let (Some(chain), Some(settings)) = (&mut chain, self.chain_settings.get(index)) {
-            for instance in &mut chain.instances {
-                instance.set_settings(settings);
-            }
-        }
-        self.chains
-            .get_mut(index)
-            .and_then(|slot| std::mem::replace(slot, chain))
+        track: usize,
+        chain: Option<Box<Chain>>,
+        settings: [BlockSettings; BLOCKS],
+    ) -> Option<Box<Chain>> {
+        self.tones.set_chain(track, chain, settings)
     }
 
-    /// New knob values for the chain of `kind`, heard at once.
-    pub(crate) fn set_chain_settings(
-        &mut self,
-        kind: StringKind,
-        settings: [BlockSettings; BLOCKS],
-    ) {
-        let index = kind_index(kind);
-        if let Some(slot) = self.chain_settings.get_mut(index) {
-            *slot = settings;
-        }
-        if let Some(Some(chain)) = self.chains.get_mut(index) {
-            for instance in &mut chain.instances {
-                instance.set_settings(&settings);
-            }
-        }
+    /// New knob values for the chain of `track`, heard at once.
+    pub(crate) fn set_chain_settings(&mut self, track: usize, settings: [BlockSettings; BLOCKS]) {
+        self.tones.set_settings(track, settings);
     }
 
     /// Gives the reverb bus `chain` (`None`: none) with its knob values. Returns the chain
@@ -285,30 +292,24 @@ impl Guitars {
                 .filter_map(|(track, entry)| match entry.engine {
                     TrackEngine::Modelled(kind) => Some(Slot {
                         track,
+                        tone: entry.track.get(),
                         kind,
-                        instance: 0,
                     }),
                     TrackEngine::SoundFont => None,
                 });
-        let mut counts = [0_usize; 4];
-        for (place, mut slot) in slots.iter_mut().zip(modelled) {
-            if let Some(count) = counts.get_mut(kind_index(slot.kind)) {
-                slot.instance = *count;
-                *count = count.saturating_add(1);
-            }
+        for (place, slot) in slots.iter_mut().zip(modelled) {
             *place = Some(slot);
         }
         for (index, (old, new)) in self.slots.iter().zip(&slots).enumerate() {
             if old == new {
                 continue;
             }
+            let model = new.map(|slot| self.model_for(slot));
             let first = index.saturating_mul(STRINGS);
             for string in first..first.saturating_add(STRINGS) {
                 if let Some(voice) = self.voices.get_mut(string) {
                     voice.silence();
-                    if let Some(slot) = new
-                        && let Some(&model) = self.models.get(kind_index(slot.kind))
-                    {
+                    if let Some(model) = model {
                         voice.set_model(model);
                     }
                 }
@@ -430,12 +431,8 @@ impl Guitars {
                 .voices
                 .get_mut(first..first.saturating_add(STRINGS))
                 .unwrap_or_default();
-            // The track's chain instance; a track past the instances made plays dry.
-            let chain = self
-                .chains
-                .get_mut(kind_index(slot.kind))
-                .and_then(Option::as_mut)
-                .and_then(|chain| chain.instances.get_mut(slot.instance));
+            // The track's own chain; a track without one plays dry.
+            let chain = self.tones.chain(slot.tone);
             let sounding = voices.iter().any(StringVoice::is_sounding);
             if !sounding && !chain.as_ref().is_some_and(|chain| chain.ringing()) {
                 continue;

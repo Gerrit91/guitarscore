@@ -16,6 +16,8 @@ use gscore_model::{
     BeatIndex, BeatPosition, MeasureIndex, NoteKind, Song, StringNumber, TrackIndex, VoiceIndex,
 };
 mod chains;
+
+pub(crate) use chains::{ExportTones, tone_of};
 mod demo;
 mod preview;
 
@@ -215,18 +217,23 @@ pub struct Playback {
     track_engines: Vec<(usize, gscore_play::TrackEngine)>,
     /// The sample rate asked of the device; `None`: its own.
     sample_rate: Option<u32>,
-    /// How each kind of modelled string sounds.
+    /// How each kind of modelled string sounds on a track without a tone of its own.
     string_sounds: crate::settings::StringSounds,
-    /// The effect chain after each kind of string, the impulse responses read so far (by
-    /// file), and how many tracks of each kind the synthesizer's chains are made for.
+    /// The effect chain after each kind of string on a track without a tone of its own.
     string_chains: crate::chain_settings::StringChains,
+    /// The open song's tracks' own tones (by track index).
+    tones: crate::chain_settings::TrackTones,
+    /// The modelled tracks of the sequence the synthesizer has, and what each place of it
+    /// was given (see `chains`).
+    tone_targets: Vec<chains::ToneTarget>,
+    sent_tones: std::collections::BTreeMap<usize, chains::SentTone>,
     /// The mixer's reverb bus (a computed reverb, all wet) and whether it was prepared.
     reverb_bus: crate::settings::ReverbBus,
     /// Whether the bus was prepared, and what it runs (another kind or file re-prepares).
     bus_sent: bool,
     bus_structure: Option<(crate::chain_settings::BlockChoice, Option<PathBuf>)>,
+    /// The impulse responses read so far (by file).
     impulses: std::collections::HashMap<PathBuf, Arc<gscore_guitar::ImpulseResponse>>,
-    chain_tracks: [usize; 4],
     /// Messages about the chains (an impulse response that cannot be read), shown once.
     chain_notices: Vec<String>,
     /// The metronome's volume, 0 to 1 (1 is full).
@@ -277,11 +284,13 @@ impl Default for Playback {
             sample_rate: None,
             string_sounds: crate::settings::StringSounds::default(),
             string_chains: crate::chain_settings::StringChains::default(),
+            tones: crate::chain_settings::TrackTones::new(),
+            tone_targets: Vec::new(),
+            sent_tones: std::collections::BTreeMap::new(),
             reverb_bus: crate::settings::ReverbBus::default(),
             bus_sent: false,
             bus_structure: None,
             impulses: std::collections::HashMap::new(),
-            chain_tracks: [1; 4],
             chain_notices: Vec::new(),
             metronome_volume: 1.0,
             click_sound: ClickSound::default(),
@@ -452,7 +461,7 @@ impl Playback {
         self.rebuild_sequence(song)
     }
 
-    /// How the modelled strings sound, kind by kind.
+    /// How the modelled strings sound, kind by kind, on tracks without a tone of their own.
     pub fn string_sounds(&self) -> crate::settings::StringSounds {
         self.string_sounds
     }
@@ -465,7 +474,8 @@ impl Playback {
             .collect()
     }
 
-    /// Makes the modelled strings of `kind` sound as `sound`, heard at once while playing.
+    /// Makes the modelled strings of `kind` sound as `sound` on tracks without a tone of
+    /// their own (the kind's default), heard at once while playing.
     pub fn set_string_sound(
         &mut self,
         kind: gscore_play::StringKind,
@@ -749,12 +759,12 @@ impl Playback {
             };
             self.player = Some(active);
             self.sequence = None;
-            // A new synthesizer starts with the presets: give it the dialed-in sounds and
-            // the chains.
+            // A new synthesizer starts with the presets: give it each kind's default sound;
+            // the tracks' tones follow with the first sequence it loads.
             for kind in STRING_KINDS {
                 self.send_string_model(kind);
-                self.send_chain(kind);
             }
+            self.forget_sent_tones();
             // The reverb bus too (a new synthesizer starts without one).
             self.bus_sent = false;
             self.bus_structure = None;
@@ -1211,33 +1221,12 @@ impl Playback {
     /// `sequence` with the engines chosen: the settings' default for guitar and bass
     /// tracks, then each track's own choice (modelled strings only for string tracks).
     pub(crate) fn engines(&self, sequence: Sequence) -> Sequence {
-        let mut sequence = if self.modelled_guitars {
-            sequence.with_modelled_guitars()
-        } else {
-            sequence
-        };
-        if !self.track_engines.is_empty() {
-            let performance = Arc::make_mut(&mut sequence.performance);
-            for track in &mut performance.tracks {
-                let chosen = self
-                    .track_engines
-                    .iter()
-                    .find(|(index, _)| *index == track.track.get())
-                    .map(|&(_, engine)| engine);
-                let strings =
-                    track.kind == gscore_model::InstrumentKind::Strings && !track.sound.percussion;
-                match chosen {
-                    Some(engine @ gscore_play::TrackEngine::Modelled(_)) if strings => {
-                        track.engine = engine;
-                    }
-                    Some(gscore_play::TrackEngine::SoundFont) => {
-                        track.engine = gscore_play::TrackEngine::SoundFont;
-                    }
-                    _ => {}
-                }
-            }
-        }
-        sequence
+        with_engines(sequence, self.modelled_guitars, &self.track_engines)
+    }
+
+    /// The tracks' own engine choices (by track index).
+    pub(crate) fn track_engines(&self) -> Vec<(usize, gscore_play::TrackEngine)> {
+        self.track_engines.clone()
     }
 
     /// The tracks' own engine choices (by track index); a change is heard at once.
@@ -1537,6 +1526,43 @@ fn file_name(path: &Path) -> String {
         || path.display().to_string(),
         |n| n.to_string_lossy().into_owned(),
     )
+}
+
+/// `sequence` with its engines: modelled strings for guitar and bass tracks when
+/// `modelled`, then each track's own choice in `engines` (by track index; modelled strings
+/// only for string tracks).
+pub(crate) fn with_engines(
+    sequence: Sequence,
+    modelled: bool,
+    engines: &[(usize, gscore_play::TrackEngine)],
+) -> Sequence {
+    let mut sequence = if modelled {
+        sequence.with_modelled_guitars()
+    } else {
+        sequence
+    };
+    if engines.is_empty() {
+        return sequence;
+    }
+    let performance = Arc::make_mut(&mut sequence.performance);
+    for track in &mut performance.tracks {
+        let chosen = engines
+            .iter()
+            .find(|(index, _)| *index == track.track.get())
+            .map(|&(_, engine)| engine);
+        let strings =
+            track.kind == gscore_model::InstrumentKind::Strings && !track.sound.percussion;
+        match chosen {
+            Some(engine @ gscore_play::TrackEngine::Modelled(_)) if strings => {
+                track.engine = engine;
+            }
+            Some(gscore_play::TrackEngine::SoundFont) => {
+                track.engine = gscore_play::TrackEngine::SoundFont;
+            }
+            _ => {}
+        }
+    }
+    sequence
 }
 
 #[cfg(test)]

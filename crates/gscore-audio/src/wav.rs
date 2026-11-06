@@ -5,7 +5,7 @@ use std::io::Write;
 
 use gscore_guitar::{BLOCKS, BlockSettings, ChainSpec, StringModel};
 
-use crate::chains::ChainSet;
+use crate::chains::{chain_is_empty, prepare_chain};
 use gscore_play::{PlayError, Sequence, StringKind};
 
 use crate::synth::{BLOCK, SoundBank, SynthEngine};
@@ -41,11 +41,12 @@ pub fn write_wav_at(
     bank: &SoundBank,
     sample_rate: u32,
 ) -> Result<WavInfo, PlayError> {
-    write_wav_with(writer, sequence, bank, sample_rate, &[], &[], None)
+    write_wav_with(writer, sequence, bank, sample_rate, &[], &[], &[], None)
 }
 
-/// An effect chain to render with: the kind of string, its blocks and their knobs.
-pub type ChainChoice = (StringKind, ChainSpec, [BlockSettings; BLOCKS]);
+/// An effect chain to render with: the track (its index in the song), its blocks and their
+/// knobs.
+pub type ChainChoice = (usize, ChainSpec, [BlockSettings; BLOCKS]);
 
 /// The mixer's reverb bus to render with: an all-wet chain, its knobs and its level.
 #[derive(Debug, Clone)]
@@ -58,7 +59,8 @@ pub struct ReverbBusChoice {
 }
 
 /// Like [`write_wav_at`], with the modelled strings of each listed kind sounding as its
-/// model (the others keep their presets) through its effect chain (the others have none).
+/// model (the others keep their presets), each listed track with its own model, and each
+/// listed track through its effect chain (the others have none).
 #[allow(clippy::too_many_arguments)]
 pub fn write_wav_with(
     mut writer: impl Write,
@@ -66,6 +68,7 @@ pub fn write_wav_with(
     bank: &SoundBank,
     sample_rate: u32,
     models: &[(StringKind, StringModel)],
+    track_models: &[(usize, StringModel)],
     chains: &[ChainChoice],
     bus: Option<&ReverbBusChoice>,
 ) -> Result<WavInfo, PlayError> {
@@ -80,15 +83,16 @@ pub fn write_wav_with(
     for &(kind, model) in models {
         engine.set_string_model(kind, model);
     }
-    for (kind, spec, settings) in chains {
-        let tracks = crate::chains::tracks_of_kind(sequence, *kind);
-        if tracks > 0 && !ChainSet::is_empty(spec) {
-            let chain = ChainSet::new(spec, settings, sample_rate, tracks);
-            let _ = engine.set_chain(*kind, Some(Box::new(chain)));
+    for &(track, model) in track_models {
+        engine.set_track_model(track, Some(model));
+    }
+    for (track, spec, settings) in chains {
+        if let Some(chain) = prepare_chain(spec, settings, sample_rate) {
+            let _ = engine.set_chain(*track, Some(chain), *settings);
         }
     }
     if let Some(bus) = bus
-        && !ChainSet::is_empty(&bus.spec)
+        && !chain_is_empty(&bus.spec)
     {
         let chain = bus.spec.prepare(sample_rate).instance(&bus.settings);
         engine.set_reverb_bus(Some(Box::new(chain)));

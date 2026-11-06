@@ -640,8 +640,9 @@ impl eframe::App for GuitarScoreApp {
         self.handle_keys(&ctx);
         // A count-in that has finished starts the song it was counting in.
         self.poll_count_in();
-        // Another tab may hold other choices of what plays its tracks.
+        // Another tab may hold other choices of what plays its tracks, and other tones.
         self.sync_track_engines();
+        self.sync_track_tones();
         // Keep a loop of the selected measures going; a new selection turns it on.
         self.auto_loop();
         self.poll_loop();

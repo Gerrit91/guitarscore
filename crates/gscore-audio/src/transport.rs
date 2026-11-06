@@ -9,7 +9,6 @@ use std::sync::Arc;
 
 use gscore_guitar::{BLOCKS, BlockSettings, StringModel};
 
-use crate::chains::ChainSet;
 use gscore_play::{MidiEvent, PlayState, Scheduler, Sequence, StringKind, TimedEvent};
 
 /// A command for a backend.
@@ -32,14 +31,20 @@ pub(crate) enum Command {
     Replace(Arc<Sequence>),
     /// Ends the backend (the transport itself ignores it).
     Quit,
-    /// Changes how the modelled strings of one kind sound (the synth engine carries it
-    /// out; the transport and MIDI output ignore it).
+    /// Changes how the modelled strings of one kind sound on tracks without a sound of
+    /// their own (the synth engine carries it out; the transport and MIDI output ignore it).
     StringModel(StringKind, StringModel),
-    /// Gives the strings of one kind a prepared effect chain (`None`: none); the synth
-    /// engine carries it out.
-    Chain(StringKind, Option<Box<ChainSet>>),
-    /// New knob values for one kind's chain.
-    ChainSettings(StringKind, [BlockSettings; BLOCKS]),
+    /// Gives one track (by index) its own string model (`None`: its kind's again).
+    TrackModel(usize, Option<StringModel>),
+    /// Gives one track a prepared effect chain (`None`: none) with its knob values; the
+    /// synth engine carries it out.
+    Chain(
+        usize,
+        Option<Box<gscore_guitar::Chain>>,
+        Box<[BlockSettings; BLOCKS]>,
+    ),
+    /// New knob values for one track's chain.
+    ChainSettings(usize, [BlockSettings; BLOCKS]),
     /// Gives the modelled tracks a prepared reverb bus (`None`: none), which every track
     /// sends into with its mixer reverb amount.
     ReverbBus(Option<Box<gscore_guitar::Chain>>),
@@ -163,6 +168,7 @@ impl Transport {
             }
             Command::Quit
             | Command::StringModel(..)
+            | Command::TrackModel(..)
             | Command::Chain(..)
             | Command::ChainSettings(..)
             | Command::ReverbBus(..)

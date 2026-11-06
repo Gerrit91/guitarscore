@@ -316,6 +316,19 @@ impl StringChains {
     }
 }
 
+/// A track's own tone: the sound of its strings and its chain, dialed in on one kind of
+/// string. On another kind (the track switched to other strings) that kind's default
+/// tone plays instead, until one is dialed in there.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tone {
+    pub kind: StringKind,
+    pub sound: crate::settings::StringSound,
+    pub chain: ChainSetting,
+}
+
+/// Every track's own tone, by track index (tracks without one play their kind's default).
+pub type TrackTones = std::collections::BTreeMap<usize, Tone>;
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]

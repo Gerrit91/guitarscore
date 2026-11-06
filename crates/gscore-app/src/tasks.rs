@@ -26,10 +26,11 @@ pub(crate) enum Event {
     PickedSoundFont(Option<Picked>),
     /// The save dialog closed; `None` if it was cancelled.
     PickedSave(Option<Picked>),
-    /// The impulse response dialog closed (for place `place` of `kind`'s chain); `None`
-    /// if it was cancelled.
+    /// The impulse response dialog closed (for place `place` of `track`'s chain as `kind`);
+    /// `None` if it was cancelled.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     PickedImpulse {
+        track: usize,
         kind: gscore_play::StringKind,
         place: usize,
         path: Option<PathBuf>,
@@ -470,6 +471,7 @@ impl Tasks {
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn pick_impulse(
         &mut self,
+        track: usize,
         kind: gscore_play::StringKind,
         place: usize,
         ctx: &egui::Context,
@@ -479,7 +481,12 @@ impl Tasks {
                 .set_title("Choose an impulse response (WAV)")
                 .add_filter("WAV audio", &["wav"])
                 .pick_file();
-            Event::PickedImpulse { kind, place, path }
+            Event::PickedImpulse {
+                track,
+                kind,
+                place,
+                path,
+            }
         })
     }
 
@@ -505,6 +512,7 @@ impl Tasks {
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn pick_impulse(
         &mut self,
+        _track: usize,
         _kind: gscore_play::StringKind,
         _place: usize,
         _ctx: &egui::Context,
@@ -1002,8 +1010,12 @@ pub(crate) struct AudioExport {
     pub(crate) soundfont: Option<PathBuf>,
     pub(crate) modelled: bool,
     pub(crate) sample_rate: Option<u32>,
+    /// Each kind's default string model.
     pub(crate) models: Vec<(gscore_play::StringKind, gscore_guitar::StringModel)>,
-    pub(crate) chains: Vec<gscore_audio::ChainChoice>,
+    /// What the user chose to play each track (by track index), as in playback.
+    pub(crate) engines: Vec<(usize, gscore_play::TrackEngine)>,
+    /// The tracks' own tones and each kind's default chain.
+    pub(crate) tones: crate::playback::ExportTones,
     /// The mixer's reverb bus, rendered as it is set.
     pub(crate) bus: Option<gscore_audio::ReverbBusChoice>,
 }
@@ -1027,10 +1039,12 @@ fn export_wav(song: &Song, path: &std::path::Path, audio: &AudioExport) -> Resul
             .set_track_solo(track, false)
             .map_err(|e| e.to_string())?;
     }
-    let mut sequence = Sequence::new(&song, None).map_err(|e| e.to_string())?;
-    if audio.modelled {
-        sequence = sequence.with_modelled_guitars();
-    }
+    let sequence = crate::playback::with_engines(
+        Sequence::new(&song, None).map_err(|e| e.to_string())?,
+        audio.modelled,
+        &audio.engines,
+    );
+    let (track_models, chains) = audio.tones.resolve(&sequence);
     let temp = path.with_extension("wav.part");
     let written = std::fs::File::create(&temp)
         .map_err(|e| format!("cannot write {}: {e}", temp.display()))
@@ -1043,7 +1057,8 @@ fn export_wav(song: &Song, path: &std::path::Path, audio: &AudioExport) -> Resul
                 &bank,
                 rate,
                 &audio.models,
-                &audio.chains,
+                &track_models,
+                &chains,
                 audio.bus.as_ref(),
             )
             .and_then(|info| {

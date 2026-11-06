@@ -22,7 +22,7 @@ use gscore_play::{MidiEvent, PlayError, PlayState, Player, Sequence};
 use gscore_guitar::{BLOCKS, BlockSettings, ChainSpec};
 use gscore_play::StringKind;
 
-use crate::chains::ChainSet;
+use crate::chains::prepare_chain;
 use crate::synth::{Retired, SoundBank, SynthEngine};
 use crate::transport::Command;
 
@@ -87,10 +87,9 @@ fn decode(state: u8) -> PlayState {
 /// An effect chain to prepare on the synth's thread (it knows the device's rate).
 #[derive(Debug)]
 struct ChainRequest {
-    kind: StringKind,
+    track: usize,
     spec: ChainSpec,
     settings: [BlockSettings; BLOCKS],
-    tracks: usize,
 }
 
 /// The reverb bus to prepare on the synth's thread.
@@ -236,36 +235,44 @@ impl SynthPlayer {
         self.send(Command::StringModel(kind, model))
     }
 
-    /// Gives the strings of `kind` the effect chain `spec` with `settings`, for `tracks`
-    /// tracks of that kind. The chain (impulse responses resampled and transformed) is
-    /// prepared on the synth's own thread and then heard; an empty chain removes it.
+    /// Gives `track` (an index of the song's tracks) its own string model (`None`: its
+    /// kind's again), heard at once.
+    pub fn set_track_model(
+        &self,
+        track: usize,
+        model: Option<gscore_guitar::StringModel>,
+    ) -> Result<(), PlayError> {
+        self.send(Command::TrackModel(track, model))
+    }
+
+    /// Gives `track` the effect chain `spec` with `settings`. The chain (impulse responses
+    /// resampled and transformed) is prepared on the synth's own thread and then heard; an
+    /// empty chain removes it.
     pub fn set_chain(
         &self,
-        kind: StringKind,
+        track: usize,
         spec: ChainSpec,
         settings: [BlockSettings; BLOCKS],
-        tracks: usize,
     ) -> Result<(), PlayError> {
         if let Some(error) = self.error() {
             return Err(PlayError::Device(error));
         }
         self.chains
             .try_send(ChainRequest {
-                kind,
+                track,
                 spec,
                 settings,
-                tracks,
             })
             .map_err(|_| PlayError::Device("the synthesizer is not keeping up".to_owned()))
     }
 
-    /// New knob values for the effect chain of `kind`, heard at once.
+    /// New knob values for the effect chain of `track`, heard at once.
     pub fn set_chain_settings(
         &self,
-        kind: StringKind,
+        track: usize,
         settings: [BlockSettings; BLOCKS],
     ) -> Result<(), PlayError> {
-        self.send(Command::ChainSettings(kind, settings))
+        self.send(Command::ChainSettings(track, settings))
     }
 
     /// Gives the modelled tracks the reverb bus `spec` (a chain that runs all wet), prepared
@@ -394,18 +401,15 @@ fn run(
         // Prepare chains as they are asked for (the newest request of a kind wins).
         match house.chains.recv_timeout(HOUSEKEEPING) {
             Ok(request) => {
-                let chain = (!ChainSet::is_empty(&request.spec)).then(|| {
-                    Box::new(ChainSet::new(
-                        &request.spec,
-                        &request.settings,
-                        rate,
-                        request.tracks,
-                    ))
-                });
+                let chain = prepare_chain(&request.spec, &request.settings, rate);
                 // Waits for room in the queue: this thread may.
                 if house
                     .commands
-                    .send(Command::Chain(request.kind, chain))
+                    .send(Command::Chain(
+                        request.track,
+                        chain,
+                        Box::new(request.settings),
+                    ))
                     .is_err()
                 {
                     break;
@@ -423,8 +427,7 @@ fn run(
         }
         // The reverb bus, prepared the same way (one instance, shared by the tracks).
         if let Ok(request) = house.bus.try_recv() {
-            let chain = (!ChainSet::is_empty(&request.spec))
-                .then(|| Box::new(request.spec.prepare(rate).instance(&request.settings)));
+            let chain = prepare_chain(&request.spec, &request.settings, rate);
             if house.commands.send(Command::ReverbBus(chain)).is_err() {
                 break;
             }

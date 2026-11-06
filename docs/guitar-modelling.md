@@ -231,11 +231,17 @@ described in the literature below:
 - **Impulse responses:** WAV, 16/24/32-bit PCM or 32/64-bit float, up to two channels,
   read defensively, capped at 6 s, scaled to unit energy, resampled linearly to the
   engine's rate. No responses ship with the program (licenses); the user loads their own.
-- **Real time:** a new block or file prepares the chain on the synth's own thread (which
-  knows the device rate), one instance per track of that kind (a 6 s stereo room needs
-  about 9 MB per instance), and swaps it into the callback; the old one is freed on that
-  thread. Knob values go straight to the callback, so tails are not cut while a knob
-  turns. A tail counts as over after 0.5 s of silence. WAV export uses the same chains.
+- **Real time:** a new block or file prepares the track's chain on the synth's own thread
+  (which knows the device rate; a 6 s stereo room needs about 9 MB) and swaps it into the
+  callback with its knob values; the old one is freed on that thread. Knob values go
+  straight to the callback, so tails are not cut while a knob turns. A tail counts as over
+  after 0.5 s of silence. WAV export uses the same chains.
+- **Per track** (2026-11-06, see Tones): the engine keeps a string model and a chain per
+  track (`gscore-audio::chains::TrackTones`, room for 64 tracks made with the engine), by
+  the song's track index, which a one-track beat excerpt keeps; the kind's model is the
+  fallback. Playback remembers what each track was given and sends only what differs
+  (a model, a new chain, or knob values). Export applies the tracks' engine choices too
+  (it used to apply only the global switch).
 - **Longer (or shorter) rooms** (`ImpulseResponse::lengthened`, committed 2026-11-06): the
   decay time is measured from the energy decay curve (fitted -5 to -25 dB); the recording
   keeps its start under an envelope that turns its decay into the new one, and where it
@@ -244,8 +250,31 @@ described in the literature below:
   Room block's *Length* knob sets the factor (0.5-4). Because it changes the response
   itself, not a value the audio thread can take, the room is built again when the knob is
   let go (a click or an arrow key applies at once), not on every step of a drag.
-- **Not yet:** the browser build has no chains (no file dialog, no message for them);
-  chains are per kind of string, kept in the settings, not per track in the document.
+- **Not yet:** the browser build has no chains (no file dialog, no message for them). A
+  track's own tone lives with the open tab by track index (like its engine choice): it
+  is not saved yet, and moving, deleting or inserting a track does not carry it along.
+  Both are fixed by keeping tones on the track in the song and in the GP7 file (Tones,
+  next step). The built-in tones per track preset do not exist yet: each kind's default
+  from the settings plays.
+
+## Tones (owner's decision, 2026-11-06)
+
+- **A tone** is what a modelled track sounds like: what plays it (MIDI or PM synthesis,
+  the kind of string), the sound of its strings and its effect chain. Called *Tone* in
+  the program, so it is not mistaken for the track's *preset* (its General MIDI program).
+- **Every track preset ships with a default tone for physical modelling** (built-in,
+  designed by the owner): 29 Overdriven Guitar and 30 Distortion Guitar each start from
+  their own. Until a preset has one, its kind of string's default plays.
+- **Per track:** a track's tone can be changed for that track alone; no other track
+  changes, even one with the same preset or kind of string.
+- **Saved tones:** the user can save tones under a name (their library, in our format)
+  and use them on other tracks.
+- **In the song file:** a track's own tone is saved inside the GP7 file (a ZIP), as an
+  entry of ours next to `Content/score.gpif`, so people who use GuitarScore exchange their
+  tweaks with the song. Impulse responses are referenced by name and checksum, not
+  embedded. Guitar Pro most likely drops the entry when it saves the file again: we live
+  with that, and users share their tone presets themselves. GP3-5 and GPX have no room
+  for it.
 
 ## Faust
 

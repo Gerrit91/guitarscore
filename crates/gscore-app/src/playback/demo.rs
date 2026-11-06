@@ -92,7 +92,7 @@ const BASS_PHRASE: [Step; 9] = [
 ];
 
 /// The phrase for `kind`, ready to play.
-pub(super) fn phrase(kind: StringKind) -> Sequence {
+pub(super) fn phrase(kind: StringKind, track: usize) -> Sequence {
     let (strings, steps, program): (&[u8], &[Step], u8) = match kind {
         StringKind::Bass => (&BASS, &BASS_PHRASE, 33),
         StringKind::Nylon => (&GUITAR, &GUITAR_PHRASE, 24),
@@ -142,7 +142,8 @@ pub(super) fn phrase(kind: StringKind) -> Sequence {
         .saturating_add(tick(4.0));
     let mut performance = Performance {
         tracks: vec![PerformanceTrack {
-            track: TrackIndex::new(0),
+            // Played as this track of the song, so it is heard with that track's tone.
+            track: TrackIndex::new(track),
             name: "String sound".to_owned(),
             sound: TrackSound {
                 program,
@@ -176,7 +177,7 @@ mod tests {
     #[test]
     fn every_kind_has_a_phrase_on_its_strings() {
         for kind in crate::playback::STRING_KINDS {
-            let sequence = phrase(kind);
+            let sequence = phrase(kind, 0);
             let performance = &sequence.performance;
             assert_eq!(performance.tracks[0].engine, TrackEngine::Modelled(kind));
             assert!(performance.notes.len() >= 9);

@@ -3518,3 +3518,27 @@ needed for a much larger font); owner listening check.
   place; an app test drags a block past another and back with the mouse
   (`drag_box` in `test_track_panel.rs`) and checks the chain in the playback; snapshot
   `sound_chain_dragging` of the frame while the block hangs at the mouse.
+
+## 2026-11-06 — Each track has its own tone
+
+- Owner's report: dialing in a 30: Distortion Guitar track, then a 29: Overdriven Guitar
+  track, gave the first one the second's sound. The string sound and the chain were kept
+  per kind of string (both are electric), not per track.
+- Now each track has its own tone (the sound of its strings and its chain), changed for
+  that track alone. A track without one plays its kind's default (the settings' values,
+  so earlier dialed-in sounds become the default for new tracks). A tone belongs to the
+  kind it was dialed in on; on other strings that kind's default plays.
+- Engine (`gscore-audio`): a string model and a chain per track, by the song's track index
+  (a beat excerpt or the Listen phrase keeps it, so they sound like their track); a new
+  chain brings its own knob values (it used to take those kept for the chain it replaced).
+  Playback sends only what differs per track. Export applies the tracks' engine choices and
+  tones.
+- Words: the chain window's saved presets are now **Tones** ("Tone", "Save as…", "Tone
+  name"); its title names the track (the MIDI box shows the GM preset). Owner's decision
+  on tones written down in `docs/guitar-modelling.md` (Tones).
+- Not yet: tones are not saved with the song, and do not follow a moved or deleted track
+  (as the engine choice does not); both come with keeping tones in the song and the GP7
+  file.
+- Tests: two tracks of one kind keep their own sound and chain (engine), a beat excerpt
+  plays with its track's tone, export resolves own tones and kinds, and the owner's steps in
+  the app (two electric tracks dialed in one after the other).
