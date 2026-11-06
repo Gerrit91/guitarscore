@@ -76,6 +76,9 @@ pub struct ReverbKnobs {
     pub width: f32,
     /// The share of reverb, 0 dry to 1 only the room.
     pub mix: f32,
+    /// Low cut and high cut of the reverb's sound (not the dry guitar), in Hz.
+    pub low_cut: f32,
+    pub high_cut: f32,
 }
 
 impl Default for ReverbKnobs {
@@ -85,6 +88,8 @@ impl Default for ReverbKnobs {
             damping: 0.5,
             width: 1.0,
             mix: 0.2,
+            low_cut: 150.0,
+            high_cut: 7_000.0,
         }
     }
 }
@@ -172,6 +177,8 @@ impl BlockSettings {
                 damping: fit(self.reverb.damping, knob_ranges::DAMPING, r.damping),
                 width: fit(self.reverb.width, knob_ranges::WIDTH, r.width),
                 mix: fit(self.reverb.mix, knob_ranges::MIX, r.mix),
+                low_cut: fit(self.reverb.low_cut, knob_ranges::LOW_CUT, r.low_cut),
+                high_cut: fit(self.reverb.high_cut, knob_ranges::HIGH_CUT, r.high_cut),
             },
         }
     }
@@ -235,7 +242,10 @@ impl PreparedChain {
                 at: 0,
                 cuts: [[Biquad::default(); 2]; 2],
             })),
-            Some(PreparedBlock::Reverb) => Block::Reverb(Box::new(Reverb::new(self.sample_rate))),
+            Some(PreparedBlock::Reverb) => Block::Reverb(Box::new(ReverbBlock {
+                reverb: Reverb::new(self.sample_rate),
+                cuts: [[Biquad::default(); 2]; 2],
+            })),
         });
         let mut chain = Chain {
             rate,
@@ -265,7 +275,14 @@ enum Block {
     Empty,
     Impulse(Box<ImpulseBlock>),
     Room(Box<ImpulseBlock>),
-    Reverb(Box<Reverb>),
+    Reverb(Box<ReverbBlock>),
+}
+
+/// The computed reverb and the cut filters on its sound, left and right.
+#[derive(Debug)]
+struct ReverbBlock {
+    reverb: Reverb,
+    cuts: [[Biquad; 2]; 2],
 }
 
 /// One track's chain.
@@ -288,17 +305,22 @@ impl Chain {
             .zip(settings)
         {
             let new = new.sanitized();
-            let (impulse, cuts) = match block {
-                Block::Impulse(impulse) => {
-                    (Some(impulse), (new.impulse.low_cut, new.impulse.high_cut))
-                }
-                Block::Room(room) => (Some(room), (new.room.low_cut, new.room.high_cut)),
-                Block::Empty | Block::Reverb(_) => (None, (0.0, 0.0)),
+            let (filters, cuts) = match block {
+                Block::Impulse(impulse) => (
+                    Some(&mut impulse.cuts),
+                    (new.impulse.low_cut, new.impulse.high_cut),
+                ),
+                Block::Room(room) => (Some(&mut room.cuts), (new.room.low_cut, new.room.high_cut)),
+                Block::Reverb(reverb) => (
+                    Some(&mut reverb.cuts),
+                    (new.reverb.low_cut, new.reverb.high_cut),
+                ),
+                Block::Empty => (None, (0.0, 0.0)),
             };
-            if let Some(impulse) = impulse {
+            if let Some(filters) = filters {
                 let low = Biquad::highpass(self.rate, cuts.0, CUT_Q);
                 let high = Biquad::lowpass(self.rate, cuts.1, CUT_Q);
-                for [low_cut, high_cut] in &mut impulse.cuts {
+                for [low_cut, high_cut] in filters {
                     *low_cut = low_cut.retuned(low);
                     *high_cut = high_cut.retuned(high);
                 }
@@ -329,7 +351,12 @@ impl Chain {
                         filter.reset();
                     }
                 }
-                Block::Reverb(reverb) => reverb.clear(),
+                Block::Reverb(reverb) => {
+                    reverb.reverb.clear();
+                    for filter in reverb.cuts.iter_mut().flatten() {
+                        filter.reset();
+                    }
+                }
             }
         }
         self.quiet = usize::MAX;
@@ -408,10 +435,15 @@ impl Chain {
                         room.at = (at.saturating_add(1)) % PARTITION;
                         stereo = true;
                     }
-                    Block::Reverb(reverb) => {
+                    Block::Reverb(block) => {
                         let knobs = settings.reverb;
                         let (wet_l, wet_r) =
-                            reverb.process(signal[0], signal[1], knobs.size, knobs.damping);
+                            block
+                                .reverb
+                                .process(signal[0], signal[1], knobs.size, knobs.damping);
+                        let [[low_l, high_l], [low_r, high_r]] = &mut block.cuts;
+                        let wet_l = high_l.process(low_l.process(wet_l));
+                        let wet_r = high_r.process(low_r.process(wet_r));
                         // Width blends the sides: 1 keeps them apart, 0 makes them one.
                         let a = 0.5 + 0.5 * knobs.width;
                         let b = 0.5 - 0.5 * knobs.width;

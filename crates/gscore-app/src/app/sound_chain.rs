@@ -305,7 +305,8 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
                 "Low cut",
                 " Hz",
                 true,
-                "Takes away the lows below this frequency (boom, rumble).",
+                "Takes away the lows below this frequency (boom, rumble); on a room, only \
+                 from the room's sound.",
             );
             changed |= knob(
                 ui,
@@ -314,7 +315,8 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
                 "High cut",
                 " Hz",
                 true,
-                "Takes away the highs above this frequency (fizz, hiss).",
+                "Takes away the highs above this frequency (fizz, hiss); on a room, only \
+                 from the room's sound.",
             );
             if block.choice == BlockChoice::Room {
                 changed |= knob(
@@ -364,6 +366,26 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
                 "",
                 false,
                 "How much of the room: 0 dry, 1 only the room.",
+            );
+            changed |= knob(
+                ui,
+                &mut block.low_cut,
+                knob_ranges::LOW_CUT,
+                "Low cut",
+                " Hz",
+                true,
+                "Takes the lows out of the reverb (not the dry guitar): keeps it from \
+                 booming and muddying the bass.",
+            );
+            changed |= knob(
+                ui,
+                &mut block.high_cut,
+                knob_ranges::HIGH_CUT,
+                "High cut",
+                " Hz",
+                true,
+                "Takes the highs out of the reverb (not the dry guitar): a darker, more \
+                 distant room.",
             );
         }
     }

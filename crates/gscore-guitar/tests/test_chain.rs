@@ -212,3 +212,36 @@ fn gscore_guitar_chain_all_blocks() -> gscore_guitar::Chain {
     knobs[2].reverb.mix = 0.4;
     spec.prepare(RATE).instance(&knobs)
 }
+
+#[test]
+fn the_reverbs_high_cut_darkens_only_the_reverb() {
+    // Noise into a reverb that is all reverb, with a high cut at 20 kHz and at 1.5 kHz.
+    let highs = |high_cut: f32| {
+        let mut spec = ChainSpec::default();
+        spec.blocks[0] = Some(BlockKind::Reverb);
+        let mut knobs = settings();
+        knobs[0].reverb.mix = 1.0;
+        knobs[0].reverb.low_cut = 20.0;
+        knobs[0].reverb.high_cut = high_cut;
+        let mut chain = spec.prepare(RATE).instance(&knobs);
+        let mut state = 7_u32;
+        let input: Vec<f32> = (0..48_000)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                (state as f32 / u32::MAX as f32) - 0.5
+            })
+            .collect();
+        let (mut left, mut right) = (vec![0.0; 48_000], vec![0.0; 48_000]);
+        chain.process(&input, &mut left, &mut right);
+        // The sample-to-sample change: large for bright sound, small for dark.
+        let change: f32 = left
+            .windows(2)
+            .map(|pair| (pair[1] - pair[0]).powi(2))
+            .sum();
+        let level: f32 = left.iter().map(|x| x * x).sum();
+        change / level.max(1e-12)
+    };
+    assert!(highs(1_500.0) < 0.5 * highs(20_000.0));
+}

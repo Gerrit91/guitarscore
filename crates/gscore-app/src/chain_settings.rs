@@ -78,7 +78,13 @@ impl BlockSetting {
             }
             BlockChoice::Reverb => {
                 let reverb = ReverbKnobs::default();
-                (reverb.mix, 0.0, 40.0, 12_000.0, reverb.width)
+                (
+                    reverb.mix,
+                    0.0,
+                    reverb.low_cut,
+                    reverb.high_cut,
+                    reverb.width,
+                )
             }
             BlockChoice::Cabinet | BlockChoice::Empty => {
                 let impulse = ImpulseKnobs::default();
@@ -128,6 +134,8 @@ impl BlockSetting {
                 damping: self.damping,
                 width: self.width,
                 mix: self.mix,
+                low_cut: self.low_cut,
+                high_cut: self.high_cut,
             },
         }
         .sanitized()
