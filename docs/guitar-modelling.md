@@ -1,7 +1,7 @@
 # Realistic guitar sound: physical modelling
 
 Design note for M22 (owner, 2026-11-03). Status: the current milestone (2026-11-06); step 0
-(the performance) is done, the engine is next. Owner's decisions (2026-11-06): the playback sequence comes first (step 0), then
+(the performance) is done, step 1 (the string engine) has a first version to listen to. Owner's decisions (2026-11-06): the playback sequence comes first (step 0), then
 the engine; distorted and clean electric, bass and acoustic are all aimed at full quality,
 none left rough.
 
@@ -120,6 +120,35 @@ described in the literature below:
 - **CPU.** A string voice is cheap (one delay line and a few filters); convolution for
   bodies and cabinets is the main cost. Budget: a 16-track song plays in real time on the
   owner's machine with headroom; checked by `cargo xtask bench`.
+
+## The string engine (step 1, first version 2026-11-06)
+
+- **Crate `gscore-guitar`** (layer 2, no dependencies, wasm-clean). `StringVoice` is a
+  single delay loop: a ring buffer read at a fractional delay (third-order Lagrange), a
+  one-pole loss filter and up to four stiffness allpasses. The delay is one period minus
+  the filters' phase delay at the fundamental, recomputed every block, so every model is
+  in tune (tests: within 2 cents from B0 to E6 at 44.1, 48 and 96 kHz). The output is taken
+  where the wave leaves the line, so a dead note's single trip is heard.
+- **Pluck:** a pulse split at the pick position (zero mean, so its harmonics have the
+  pick position's comb), its edges rounded by hardness and velocity, with deterministic
+  pick noise. A pick on a sounding string leaves 35 % of the vibration and adds the new
+  strike. A legato attack on a sounding string glides the delay to the new pitch in 2 ms
+  with a light finger tap; on a silent string it is a soft pluck.
+- **Damping** moves the 60 dB decay time and loss darkness (settling in 4 ms): ringing
+  (the model's sustain, falling with pitch), palm muted 0.18 s, released 0.3 s, damped
+  0.04 s, dead 0.015 s.
+- **Presets** (`GuitarModel`): nylon, steel, electric, bass; chosen by the track's General
+  MIDI program (24 nylon, 25 steel, 26-31 electric, 32-39 bass) through
+  `PerformanceTrack::engine`.
+- **In the synth engine** (`gscore-audio::guitars`): 16 tracks x 8 string voices are made
+  with the engine. Notes start at the block they are due (as MIDI events do), pitch
+  shapes and fades are applied per block, tracks are mixed with their volume and pan. The
+  SoundFont gets no note-ons or bends of a modelled track. 96 ringing strings take about
+  57 ms per second of audio (budget 250 ms, `cargo xtask bench`).
+- **Not yet:** pickup, amp and cabinet (step 2), body, coupling and two polarizations
+  (step 3), noises and feel (step 4). Everything is one generic string model now: the
+  electric preset has no amp, so distorted parts sound clean. Harmonics play the
+  harmonic's pitch with a purer pluck rather than damping at a node.
 
 ## Faust
 

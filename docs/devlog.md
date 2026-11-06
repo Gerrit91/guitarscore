@@ -3175,3 +3175,28 @@ needed for a much larger font); owner listening check.
 - Open: the velocities still contain the MIDI path's technique shading; palm-muted and
   dead notes are shortened in the performance as the SoundFont path needs them.
 
+## 2026-11-06 — M22 step 1: the modelled strings, first version
+
+- New crate `gscore-guitar` (see `docs/guitar-modelling.md`, "The string engine"):
+  `StringVoice`, a digital waveguide in tune within 2 cents everywhere, with pluck,
+  legato, bend, palm mute, dead notes, release and damping; presets nylon, steel,
+  electric, bass. Tests: tuning over the range and at three sample rates, decays, palm
+  mute and dead notes, a bend and a hammer-on reaching their pitch (the hammer-on keeping
+  the string's energy), determinism, a parameter hunt (NaN and infinities in every input),
+  and no allocation while playing (`stats_alloc`, a dev-dependency only; owner OK).
+- `PerformanceTrack::engine` (`SoundFont` or `Modelled(StringKind)`),
+  `Performance::model_guitars`, `Sequence::with_modelled_guitars`, and
+  `Performance::by_start` (built off the audio thread). Both on the wire.
+- `SynthEngine` plays modelled tracks with a pool of 16 x 8 voices; their MIDI note-ons
+  and bends do not reach the SoundFont (note-offs do, so switching while playing leaves no
+  stuck note). Stop, pause, seek and load silence the strings.
+- Listening: Settings › Audio I/O "Modelled guitars and basses (experimental)" (playback,
+  palette previews, WAV export), `gscore-cli play/wav --modelled`. On the testdata songs
+  the strings come out about as loud as FluidR3 (RMS), with higher pick peaks, no clipping.
+- Owner's requests: a sample rate setting (automatic or 44.1/48/88.2/96 kHz, falling back
+  to the device's with a notice; WAV export follows it) and an "Audio CPU" meter at the
+  bottom right of the status bar (the callback's render time over the buffer time).
+- `cargo xtask bench`: one second of 16 tracks x 6 ringing strings in 57 ms (budget 250).
+- Open: the owner's listening check; amp and cabinet next (step 2); the browser shows no
+  CPU meter (the worklet has no clock to measure with).
+

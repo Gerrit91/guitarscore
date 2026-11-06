@@ -119,6 +119,7 @@ guitarscore/
     gscore-io/                # L2: GP files <-> model: format detection, limits, catch_unwind (bytes in, bytes out; no file system)
     gscore-layout/            # L2: model -> positioned draw ops (pages, systems, notation, tab), SVG and PDF. No GUI imports.
     gscore-play/              # L2: performance (engine-neutral notes), MIDI sequence derived from it, channel allocator, metronome, SMF export, Player trait. No device crates.
+    gscore-guitar/            # L2: modelled strings (digital waveguides, M22); no dependencies, render never allocates.
     gscore-edit/              # L3: cursor, selection, clipboard, commands, undo/redo, keymap
     gscore-audio/             # L3: output backends (midir, cpal, rustysynth) implementing Player; the tuner
     gscore-session/           # L4: open, safe save and export, recovery journal, autosave, settings files
@@ -290,7 +291,9 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
     borrowing by owner decision, no channel per string).
   - The string engine behind the `Player` trait: digital waveguide per string with exact
     tuning, loss filter and dispersion; every technique played by the model. Bass on the
-    same engine.
+    same engine. *First version 2026-11-06* (`gscore-guitar`, played by `SynthEngine` for
+    tracks whose engine is `Modelled`; Settings › Audio I/O "Modelled guitars and basses
+    (experimental)", `gscore-cli wav --modelled`); waiting for the owner's ear.
   - Electric guitar: pickup position, amp (clean to high gain), cabinet. Acoustic guitar:
     commuted-synthesis body, string coupling, two vibration directions, pick attack.
     Then noises and strum feel.
