@@ -2257,6 +2257,34 @@ fn the_grid_switches_to_a_mixer_view() {
 }
 
 #[test]
+fn the_mixer_has_a_reverb_bus_the_tracks_send_into() {
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    harness.get_by_label("Reverb bus level");
+    // Its fader turns the return down (the tracks' Reverb knobs are the sends).
+    let fader = harness.get_by_label("Reverb bus level").rect();
+    let start = fader.center();
+    harness.hover_at(start);
+    harness.drag_at(start);
+    harness.run();
+    for step in 1..=4 {
+        harness.hover_at(start + egui::vec2(0.0, 8.0 * step as f32));
+        harness.run();
+    }
+    harness.drop_at(start + egui::vec2(0.0, 32.0));
+    harness.run();
+    assert!(
+        harness.state().playback().reverb_bus().level < 127,
+        "the fader turned the return down"
+    );
+    // And its mute.
+    harness.get_by_label("Mute reverb bus").click();
+    harness.run();
+    assert!(harness.state().playback().reverb_bus().muted);
+}
+
+#[test]
 fn the_master_rows_mute_and_solo_line_up_with_the_tracks() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
     harness.run();

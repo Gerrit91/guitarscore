@@ -321,6 +321,52 @@ impl StringSounds {
     }
 }
 
+/// The mixer's reverb bus: a computed reverb every modelled track sends into with its
+/// mixer reverb amount. Kept in the settings (it is the mixer's, not the song's).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ReverbBus {
+    /// The bus's level, 0-127 (127 plays it as it comes; the track volumes are the sends).
+    pub level: u8,
+    pub muted: bool,
+    /// The reverb's size, how quickly its highs die, and its stereo width.
+    pub size: f32,
+    pub damping: f32,
+    pub width: f32,
+}
+
+impl Default for ReverbBus {
+    fn default() -> Self {
+        ReverbBus {
+            level: 127,
+            muted: false,
+            size: 0.6,
+            damping: 0.5,
+            width: 1.0,
+        }
+    }
+}
+
+impl ReverbBus {
+    /// Every value in its range.
+    pub fn sanitized(mut self) -> Self {
+        self.level = self.level.min(127);
+        self.size = fit_knob(self.size, gscore_guitar::knob_ranges::SIZE, 0.6);
+        self.damping = fit_knob(self.damping, gscore_guitar::knob_ranges::DAMPING, 0.5);
+        self.width = fit_knob(self.width, gscore_guitar::knob_ranges::WIDTH, 1.0);
+        self
+    }
+}
+
+/// `value` within `range`, or `fallback` when it is not a number.
+fn fit_knob(value: f32, (low, high): (f32, f32), fallback: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(low, high)
+    } else {
+        fallback
+    }
+}
+
 /// Everything the app remembers between runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -411,6 +457,8 @@ pub struct Settings {
     pub string_presets: Vec<ChainPreset>,
     /// The effect chain after each kind of modelled string (the "Sound chain" window).
     pub string_chains: crate::chain_settings::StringChains,
+    /// The mixer's reverb bus.
+    pub reverb_bus: ReverbBus,
     /// The MIDI port chosen, if any.
     pub midi_port: Option<String>,
     /// Bend shapes saved as presets in the bend editor.
@@ -461,6 +509,7 @@ impl Default for Settings {
             sample_rate: None,
             string_sounds: StringSounds::default(),
             string_chains: crate::chain_settings::StringChains::default(),
+            reverb_bus: ReverbBus::default(),
             string_presets: Vec::new(),
             midi_port: None,
             bend_presets: Vec::new(),
@@ -648,6 +697,7 @@ impl Settings {
             stored.keys.truncate(MAX_KEYS_PER_ACTION);
             stored.keys.retain(|key| !key.is_empty() && key.len() <= 64);
         }
+        self.reverb_bus = self.reverb_bus.sanitized();
         for presets in [&mut self.bend_presets, &mut self.whammy_presets] {
             presets.retain(ShapePreset::is_valid);
             presets.truncate(MAX_SHAPE_PRESETS);

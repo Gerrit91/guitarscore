@@ -242,6 +242,61 @@ fn a_changed_string_model_is_heard_at_once() {
 }
 
 #[test]
+fn the_reverb_bus_carries_the_tracks_send() {
+    use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, ChainSpec, ReverbKnobs};
+    // A palm-muted quarter whose track sends a lot into the reverb (the mixer's knob);
+    // the strings alone are silent soon after.
+    let mut song = testing::song_with_notes(&[(4, &[TestNote::new(3, 2)]), (2, &[])]).unwrap();
+    let at = BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(0),
+    };
+    let _ = song
+        .set_note_effect(
+            at,
+            StringNumber::new(3).unwrap(),
+            NoteEffect::PalmMute(true),
+        )
+        .unwrap();
+    let _ = song.set_track_reverb(TrackIndex::new(0), 120).unwrap();
+    let sequence = Arc::new(Sequence::new(&song, None).unwrap().with_modelled_guitars());
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Reverb);
+    let mut settings = [BlockSettings::default(); BLOCKS];
+    settings[0].reverb = ReverbKnobs {
+        size: 0.8,
+        damping: 0.3,
+        mix: 1.0,
+        ..ReverbKnobs::default()
+    };
+    // `None`: no bus; otherwise its level and mute (the track's send comes from the song).
+    let tail = |bus: Option<(u8, bool)>| {
+        let mut engine = SynthEngine::new(&bank(), RATE).unwrap();
+        if let Some((level, muted)) = bus {
+            let chain = spec.prepare(RATE).instance(&settings);
+            engine.set_reverb_bus(Some(Box::new(chain)));
+            engine.set_reverb_bus_settings(settings, level, muted);
+        }
+        engine.load(Arc::clone(&sequence));
+        engine.play();
+        let out = render(&mut engine, 1.4);
+        rms(seconds(&out, 0.9, 1.4))
+    };
+    let (dry, wet, quieter, muted) = (
+        tail(None),
+        tail(Some((127, false))),
+        tail(Some((64, false))),
+        tail(Some((127, true))),
+    );
+    assert!(dry < 1e-4, "the strings alone are silent: {dry}");
+    assert!(wet > 10.0 * dry.max(1e-6), "the bus rings on: {wet}");
+    assert!(quieter < 0.7 * wet, "the level scales it: {quieter} {wet}");
+    assert!(muted < 1e-4, "muted: nothing comes back: {muted}");
+}
+
+#[test]
 fn a_room_chain_rings_on_after_a_damped_note() {
     use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, ChainSpec, ImpulseResponse};
     // A palm-muted quarter: the strings alone are silent soon after.

@@ -93,6 +93,15 @@ struct ChainRequest {
     tracks: usize,
 }
 
+/// The reverb bus to prepare on the synth's thread.
+#[derive(Debug)]
+struct BusRequest {
+    spec: ChainSpec,
+    settings: [BlockSettings; BLOCKS],
+    level: u8,
+    muted: bool,
+}
+
 /// Plays sequences with a SoundFont on the default audio output.
 #[derive(Debug)]
 pub struct SynthPlayer {
@@ -100,6 +109,8 @@ pub struct SynthPlayer {
     commands: SyncSender<Command>,
     /// Chains to prepare off the audio thread.
     chains: SyncSender<ChainRequest>,
+    /// The reverb bus to prepare off the audio thread.
+    bus: SyncSender<BusRequest>,
     shared: Arc<Shared>,
     /// Dropping it ends the thread (and the stream).
     quit: Option<SyncSender<()>>,
@@ -120,6 +131,7 @@ impl SynthPlayer {
     pub fn start_at(soundfont: &Path, sample_rate: Option<u32>) -> Result<Self, PlayError> {
         let (commands, receiver) = mpsc::sync_channel(QUEUE);
         let (chains, chain_requests) = mpsc::sync_channel(QUEUE);
+        let (bus, bus_requests) = mpsc::sync_channel(QUEUE);
         let (quit, quit_receiver) = mpsc::sync_channel(1);
         let chain_commands = commands.clone();
         let shared = Arc::new(Shared::default());
@@ -136,6 +148,7 @@ impl SynthPlayer {
                     &Housekeeping {
                         quit: quit_receiver,
                         chains: chain_requests,
+                        bus: bus_requests,
                         commands: chain_commands,
                     },
                     &thread_shared,
@@ -146,6 +159,7 @@ impl SynthPlayer {
             soundfont: soundfont.to_path_buf(),
             commands,
             chains,
+            bus,
             shared,
             quit: Some(quit),
             thread: Some(thread),
@@ -253,12 +267,46 @@ impl SynthPlayer {
     ) -> Result<(), PlayError> {
         self.send(Command::ChainSettings(kind, settings))
     }
+
+    /// Gives the modelled tracks the reverb bus `spec` (a chain that runs all wet), prepared
+    /// on the synth's own thread with `settings`, at `level` (0-127, 127 unity) and muted or
+    /// not.
+    pub fn set_reverb_bus(
+        &self,
+        spec: ChainSpec,
+        settings: [BlockSettings; BLOCKS],
+        level: u8,
+        muted: bool,
+    ) -> Result<(), PlayError> {
+        if let Some(error) = self.error() {
+            return Err(PlayError::Device(error));
+        }
+        self.bus
+            .try_send(BusRequest {
+                spec,
+                settings,
+                level,
+                muted,
+            })
+            .map_err(|_| PlayError::Device("the synthesizer is not keeping up".to_owned()))
+    }
+
+    /// New knob values, level and mute for the reverb bus, heard at once.
+    pub fn set_reverb_bus_settings(
+        &self,
+        settings: [BlockSettings; BLOCKS],
+        level: u8,
+        muted: bool,
+    ) -> Result<(), PlayError> {
+        self.send(Command::ReverbBusSettings(settings, level, muted))
+    }
 }
 
 /// What the synth's thread looks after besides the stream.
 struct Housekeeping {
     quit: Receiver<()>,
     chains: Receiver<ChainRequest>,
+    bus: Receiver<BusRequest>,
     commands: SyncSender<Command>,
 }
 
@@ -371,6 +419,25 @@ fn run(
                 ) {
                     break;
                 }
+            }
+        }
+        // The reverb bus, prepared the same way (one instance, shared by the tracks).
+        if let Ok(request) = house.bus.try_recv() {
+            let chain = (!ChainSet::is_empty(&request.spec))
+                .then(|| Box::new(request.spec.prepare(rate).instance(&request.settings)));
+            if house.commands.send(Command::ReverbBus(chain)).is_err() {
+                break;
+            }
+            if house
+                .commands
+                .send(Command::ReverbBusSettings(
+                    request.settings,
+                    request.level,
+                    request.muted,
+                ))
+                .is_err()
+            {
+                break;
             }
         }
         while retired.try_recv().is_ok() {}

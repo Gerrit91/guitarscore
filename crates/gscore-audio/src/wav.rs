@@ -41,14 +41,25 @@ pub fn write_wav_at(
     bank: &SoundBank,
     sample_rate: u32,
 ) -> Result<WavInfo, PlayError> {
-    write_wav_with(writer, sequence, bank, sample_rate, &[], &[])
+    write_wav_with(writer, sequence, bank, sample_rate, &[], &[], None)
 }
 
 /// An effect chain to render with: the kind of string, its blocks and their knobs.
 pub type ChainChoice = (StringKind, ChainSpec, [BlockSettings; BLOCKS]);
 
+/// The mixer's reverb bus to render with: an all-wet chain, its knobs and its level.
+#[derive(Debug, Clone)]
+pub struct ReverbBusChoice {
+    pub spec: ChainSpec,
+    pub settings: [BlockSettings; BLOCKS],
+    /// 0-127, 127 unity.
+    pub level: u8,
+    pub muted: bool,
+}
+
 /// Like [`write_wav_at`], with the modelled strings of each listed kind sounding as its
 /// model (the others keep their presets) through its effect chain (the others have none).
+#[allow(clippy::too_many_arguments)]
 pub fn write_wav_with(
     mut writer: impl Write,
     sequence: &Sequence,
@@ -56,6 +67,7 @@ pub fn write_wav_with(
     sample_rate: u32,
     models: &[(StringKind, StringModel)],
     chains: &[ChainChoice],
+    bus: Option<&ReverbBusChoice>,
 ) -> Result<WavInfo, PlayError> {
     let frames = frames_for(sequence, sample_rate)?;
     let data_bytes = frames
@@ -74,6 +86,13 @@ pub fn write_wav_with(
             let chain = ChainSet::new(spec, settings, sample_rate, tracks);
             let _ = engine.set_chain(*kind, Some(Box::new(chain)));
         }
+    }
+    if let Some(bus) = bus
+        && !ChainSet::is_empty(&bus.spec)
+    {
+        let chain = bus.spec.prepare(sample_rate).instance(&bus.settings);
+        engine.set_reverb_bus(Some(Box::new(chain)));
+        engine.set_reverb_bus_settings(bus.settings, bus.level, bus.muted);
     }
     engine.load(std::sync::Arc::new(sequence.clone()));
     engine.play();

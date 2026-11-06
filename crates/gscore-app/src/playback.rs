@@ -220,6 +220,9 @@ pub struct Playback {
     /// The effect chain after each kind of string, the impulse responses read so far (by
     /// file), and how many tracks of each kind the synthesizer's chains are made for.
     string_chains: crate::chain_settings::StringChains,
+    /// The mixer's reverb bus (a computed reverb, all wet) and whether it was prepared.
+    reverb_bus: crate::settings::ReverbBus,
+    bus_sent: bool,
     impulses: std::collections::HashMap<PathBuf, Arc<gscore_guitar::ImpulseResponse>>,
     chain_tracks: [usize; 4],
     /// Messages about the chains (an impulse response that cannot be read), shown once.
@@ -272,6 +275,8 @@ impl Default for Playback {
             sample_rate: None,
             string_sounds: crate::settings::StringSounds::default(),
             string_chains: crate::chain_settings::StringChains::default(),
+            reverb_bus: crate::settings::ReverbBus::default(),
+            bus_sent: false,
             impulses: std::collections::HashMap::new(),
             chain_tracks: [1; 4],
             chain_notices: Vec::new(),
@@ -747,6 +752,9 @@ impl Playback {
                 self.send_string_model(kind);
                 self.send_chain(kind);
             }
+            // The reverb bus too (a new synthesizer starts without one).
+            self.bus_sent = false;
+            self.send_reverb_bus();
         }
         Ok(())
     }

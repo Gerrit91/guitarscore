@@ -10,7 +10,7 @@ use std::io::{BufReader, Read};
 use std::path::Path;
 use std::sync::Arc;
 
-use gscore_guitar::{BLOCKS, BlockSettings, StringModel};
+use gscore_guitar::{BLOCKS, BlockSettings, Chain, StringModel};
 
 use crate::chains::ChainSet;
 use gscore_play::{Channel, MidiEvent, PlayError, PlayState, Sequence, StringKind, TimedEvent};
@@ -27,6 +27,8 @@ pub(crate) enum Retired {
     // Only held until it is dropped elsewhere.
     #[allow(dead_code)]
     Chain(Box<ChainSet>),
+    #[allow(dead_code)]
+    ReverbBus(Box<Chain>),
 }
 
 /// Frames rendered between two looks at the schedule.
@@ -279,6 +281,23 @@ impl SynthEngine {
         self.guitars.set_chain_settings(kind, settings);
     }
 
+    /// Gives the tracks a reverb bus (`None`: none), a prepared chain that runs all wet.
+    /// Returns the one it replaces, to be freed elsewhere.
+    pub fn set_reverb_bus(&mut self, chain: Option<Box<Chain>>) -> Option<Box<Chain>> {
+        self.guitars
+            .set_reverb_bus(chain, [BlockSettings::default(); BLOCKS])
+    }
+
+    /// New knob values, level and mute for the reverb bus, heard at once.
+    pub fn set_reverb_bus_settings(
+        &mut self,
+        settings: [BlockSettings; BLOCKS],
+        level: u8,
+        muted: bool,
+    ) {
+        self.guitars.set_reverb_bus_settings(settings, level, muted);
+    }
+
     /// Carries out a player command now. What it replaces comes back, to be freed off
     /// the audio thread.
     pub(crate) fn apply(&mut self, command: Command) -> Option<Retired> {
@@ -292,6 +311,13 @@ impl SynthEngine {
             }
             Command::ChainSettings(kind, settings) => {
                 self.set_chain_settings(kind, settings);
+                return None;
+            }
+            Command::ReverbBus(chain) => {
+                return self.set_reverb_bus(chain).map(Retired::ReverbBus);
+            }
+            Command::ReverbBusSettings(settings, level, muted) => {
+                self.set_reverb_bus_settings(settings, level, muted);
                 return None;
             }
             _ => {}

@@ -983,6 +983,8 @@ pub(crate) struct AudioExport {
     pub(crate) sample_rate: Option<u32>,
     pub(crate) models: Vec<(gscore_play::StringKind, gscore_guitar::StringModel)>,
     pub(crate) chains: Vec<gscore_audio::ChainChoice>,
+    /// The mixer's reverb bus, rendered as it is set.
+    pub(crate) bus: Option<gscore_audio::ReverbBusChoice>,
 }
 
 /// The work of [`Tasks::export_wav`]: the status message, or why it failed.
@@ -1021,6 +1023,7 @@ fn export_wav(song: &Song, path: &std::path::Path, audio: &AudioExport) -> Resul
                 rate,
                 &audio.models,
                 &audio.chains,
+                audio.bus.as_ref(),
             )
             .and_then(|info| {
                 std::io::Write::flush(&mut writer)

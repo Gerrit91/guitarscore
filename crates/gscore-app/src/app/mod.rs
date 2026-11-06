@@ -277,6 +277,7 @@ impl GuitarScoreApp {
         app.playback.store_string_sounds(app.settings.string_sounds);
         app.playback
             .store_string_chains(app.settings.string_chains.clone());
+        app.playback.store_reverb_bus(app.settings.reverb_bus);
         app.playback.set_count_in_bars(app.settings.count_in_bars);
         app.playback.set_count_in_loops(app.settings.count_in_loops);
         let _ = app.playback.set_speed(app.settings.playback_speed);
@@ -294,6 +295,7 @@ impl GuitarScoreApp {
     pub fn settings(&self) -> Settings {
         let mut settings = self.settings.clone();
         settings.update_from_view(&self.view);
+        settings.reverb_bus = self.playback.reverb_bus();
         settings.grid_height_chosen = self.panel_sizes.grid;
         settings.mixer_height_chosen = self.panel_sizes.mixer;
         settings.track_panel_width = self.panel_sizes.track_panel;

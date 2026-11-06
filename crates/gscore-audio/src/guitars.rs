@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use gscore_guitar::{
-    Attack as StrikeKind, BLOCKS, BlockSettings, GuitarModel, Pluck, Release, StringModel,
+    Attack as StrikeKind, BLOCKS, BlockSettings, Chain, GuitarModel, Pluck, Release, StringModel,
     StringVoice, frequency,
 };
 use gscore_play::{Attack, Fade, Performance, PlayedNote, Sequence, StringKind, TrackEngine};
@@ -50,6 +50,13 @@ pub(crate) struct Guitars {
     /// The effect chain of each kind, if it has one, and its knob values.
     chains: [Option<Box<ChainSet>>; 4],
     chain_settings: [[BlockSettings; BLOCKS]; 4],
+    /// The reverb bus every modelled track sends into (a computed reverb, all wet), its
+    /// knob values, and its level (-127 to 127; 127 plays it as it comes) and mute.
+    reverb_bus: Option<Box<Chain>>,
+    bus_mix: (u8, bool),
+    /// The bus's input (mono: the sends summed) and its output of one block.
+    bus_in: [f32; BLOCK],
+    bus_out: [[f32; BLOCK]; 2],
     /// The sequence the slots were set up for (by address; the transport owns it).
     sequence: usize,
     /// The next entry of the performance's `by_start` to start.
@@ -151,6 +158,10 @@ impl Guitars {
             wet: [[0.0; BLOCK]; 2],
             chains: [None, None, None, None],
             chain_settings: [[BlockSettings::default(); BLOCKS]; 4],
+            reverb_bus: None,
+            bus_mix: (127, false),
+            bus_in: [0.0; BLOCK],
+            bus_out: [[0.0; BLOCK]; 2],
         }
     }
 
@@ -212,6 +223,33 @@ impl Guitars {
             for instance in &mut chain.instances {
                 instance.set_settings(&settings);
             }
+        }
+    }
+
+    /// Gives the reverb bus `chain` (`None`: none) with its knob values. Returns the chain
+    /// it replaces, to be freed off the audio thread.
+    pub(crate) fn set_reverb_bus(
+        &mut self,
+        chain: Option<Box<Chain>>,
+        settings: [BlockSettings; BLOCKS],
+    ) -> Option<Box<Chain>> {
+        let mut chain = chain;
+        if let Some(chain) = &mut chain {
+            chain.set_settings(&settings);
+        }
+        std::mem::replace(&mut self.reverb_bus, chain)
+    }
+
+    /// New knob values, level and mute for the reverb bus, heard at once.
+    pub(crate) fn set_reverb_bus_settings(
+        &mut self,
+        settings: [BlockSettings; BLOCKS],
+        level: u8,
+        muted: bool,
+    ) {
+        self.bus_mix = (level.min(127), muted);
+        if let Some(bus) = &mut self.reverb_bus {
+            bus.set_settings(&settings);
         }
     }
 
@@ -380,6 +418,9 @@ impl Guitars {
 
     fn mix(&mut self, performance: Option<&Performance>, left: &mut [f32], right: &mut [f32]) {
         let frames = left.len().min(right.len()).min(BLOCK);
+        if let Some(input) = self.bus_in.get_mut(..frames) {
+            input.fill(0.0);
+        }
         for (slot_index, slot) in self.slots.iter().enumerate() {
             let Some(slot) = slot else {
                 continue;
@@ -423,15 +464,63 @@ impl Guitars {
             let gain = volume_gain(volume);
             // The pan works as a balance once the chain has made the track stereo.
             let (to_left, to_right) = pan_gains(pan);
-            for (((l, r), wl), wr) in left
+            // The track's reverb send (the mixer's Reverb knob) goes into the bus after
+            // its fader and pan, as a mixing desk sends; a mono sum is enough for the
+            // room, which makes it stereo again.
+            let send = if self.reverb_bus.is_some() {
+                f32::from(sound.map_or(0, |sound| sound.reverb).min(127)) / 127.0
+            } else {
+                0.0
+            };
+            let bus_in = self.bus_in.get_mut(..frames).unwrap_or_default();
+            for ((((l, r), wl), wr), bus) in left
                 .iter_mut()
                 .zip(right.iter_mut())
                 .zip(wet_left.iter())
                 .zip(wet_right.iter())
+                .zip(bus_in.iter_mut())
             {
-                *l += wl * gain * to_left;
-                *r += wr * gain * to_right;
+                let (l_dry, r_dry) = (wl * gain * to_left, wr * gain * to_right);
+                *l += l_dry;
+                *r += r_dry;
+                if send > 0.0 {
+                    *bus += 0.5 * (l_dry + r_dry) * send;
+                }
             }
+        }
+        self.mix_reverb_bus(left, right, frames);
+    }
+
+    /// Runs the reverb bus (which rings on after the sends stop) and adds it to the mix.
+    fn mix_reverb_bus(&mut self, left: &mut [f32], right: &mut [f32], frames: usize) {
+        let Some(bus) = &mut self.reverb_bus else {
+            return;
+        };
+        let (level, muted) = self.bus_mix;
+        let input = self.bus_in.get(..frames).unwrap_or_default();
+        let sent = input.iter().any(|sample| sample.abs() > 1e-9);
+        // Silent and its tail over: nothing to do (and it may rest).
+        if !sent && !bus.ringing() {
+            return;
+        }
+        let [out_left, out_right] = &mut self.bus_out;
+        let (out_left, out_right) = (
+            out_left.get_mut(..frames).unwrap_or_default(),
+            out_right.get_mut(..frames).unwrap_or_default(),
+        );
+        bus.process(input, out_left, out_right);
+        if muted {
+            return;
+        }
+        let gain = volume_gain(level);
+        for (((l, r), bl), br) in left
+            .iter_mut()
+            .zip(right.iter_mut())
+            .zip(out_left.iter())
+            .zip(out_right.iter())
+        {
+            *l += bl * gain;
+            *r += br * gain;
         }
     }
 }

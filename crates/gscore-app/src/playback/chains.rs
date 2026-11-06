@@ -6,7 +6,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use gscore_guitar::{BlockKind, ChainSpec, ImpulseResponse};
+use gscore_guitar::{BlockKind, BlockSettings, ChainSpec, ImpulseResponse};
 use gscore_play::{Sequence, StringKind};
 
 use super::{Playback, STRING_KINDS};
@@ -142,6 +142,9 @@ impl Playback {
     /// Makes sure the synthesizer's chains are made for as many tracks of each kind as
     /// `sequence` plays (they are only ever made for more, never fewer).
     pub(super) fn sync_chains(&mut self, sequence: &Sequence) {
+        if !self.bus_sent {
+            self.send_reverb_bus();
+        }
         for kind in STRING_KINDS {
             let needed = gscore_audio::tracks_of_kind(sequence, kind);
             let index = kind_index(kind);
@@ -178,6 +181,91 @@ impl Playback {
     /// A message about the chains, once.
     pub(super) fn chain_notice(&mut self) -> Option<String> {
         (!self.chain_notices.is_empty()).then(|| self.chain_notices.remove(0))
+    }
+}
+
+impl Playback {
+    /// The mixer's reverb bus as it is set.
+    pub fn reverb_bus(&self) -> crate::settings::ReverbBus {
+        self.reverb_bus
+    }
+
+    /// Takes the reverb bus without sending it (when the settings load).
+    pub fn store_reverb_bus(&mut self, bus: crate::settings::ReverbBus) {
+        self.reverb_bus = bus.sanitized();
+    }
+
+    /// Sets the reverb bus, heard at once: prepared the first time, otherwise only its
+    /// knobs, level and mute are sent (so its tail is not cut while a knob turns).
+    pub fn set_reverb_bus(&mut self, bus: crate::settings::ReverbBus) {
+        self.reverb_bus = bus.sanitized();
+        if self.bus_sent {
+            self.send_reverb_bus_settings();
+        } else {
+            self.send_reverb_bus();
+        }
+    }
+
+    /// The bus's chain: a computed reverb, all wet (the sends decide how much each track
+    /// gives it, the level how much comes back).
+    fn reverb_bus_parts(&self) -> (ChainSpec, [BlockSettings; gscore_guitar::BLOCKS]) {
+        let mut spec = ChainSpec::default();
+        if let Some(slot) = spec.blocks.first_mut() {
+            *slot = Some(BlockKind::Reverb);
+        }
+        let mut settings = [BlockSettings::default(); gscore_guitar::BLOCKS];
+        if let Some(slot) = settings.first_mut() {
+            slot.reverb = gscore_guitar::ReverbKnobs {
+                size: self.reverb_bus.size,
+                damping: self.reverb_bus.damping,
+                width: self.reverb_bus.width,
+                mix: 1.0,
+                ..gscore_guitar::ReverbKnobs::default()
+            };
+        }
+        (spec, settings)
+    }
+
+    /// Prepares the bus on the synthesizer's thread (once per player).
+    pub(super) fn send_reverb_bus(&mut self) {
+        if !self.synth_running() {
+            return;
+        }
+        let (spec, settings) = self.reverb_bus_parts();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(super::Active::Synth(player)) = &self.player {
+            let bus = self.reverb_bus;
+            if let Err(error) = player.set_reverb_bus(spec, settings, bus.level, bus.muted) {
+                self.chain_notices.push(error.to_string());
+            } else {
+                self.bus_sent = true;
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = (spec, settings);
+    }
+
+    /// New knob values, level and mute for a running synthesizer.
+    fn send_reverb_bus_settings(&mut self) {
+        let (_, settings) = self.reverb_bus_parts();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(super::Active::Synth(player)) = &self.player {
+            let bus = self.reverb_bus;
+            let _ = player.set_reverb_bus_settings(settings, bus.level, bus.muted);
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = settings;
+    }
+
+    /// The bus to render audio export with.
+    pub fn reverb_bus_choice(&self) -> gscore_audio::ReverbBusChoice {
+        let (spec, settings) = self.reverb_bus_parts();
+        gscore_audio::ReverbBusChoice {
+            spec,
+            settings,
+            level: self.reverb_bus.level,
+            muted: self.reverb_bus.muted,
+        }
     }
 }
 

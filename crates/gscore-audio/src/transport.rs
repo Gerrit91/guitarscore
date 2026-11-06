@@ -40,6 +40,11 @@ pub(crate) enum Command {
     Chain(StringKind, Option<Box<ChainSet>>),
     /// New knob values for one kind's chain.
     ChainSettings(StringKind, [BlockSettings; BLOCKS]),
+    /// Gives the modelled tracks a prepared reverb bus (`None`: none), which every track
+    /// sends into with its mixer reverb amount.
+    ReverbBus(Option<Box<gscore_guitar::Chain>>),
+    /// New knob values, level and mute for the reverb bus.
+    ReverbBusSettings([BlockSettings; BLOCKS], u8, bool),
 }
 
 /// Where a transport's events go.
@@ -159,7 +164,9 @@ impl Transport {
             Command::Quit
             | Command::StringModel(..)
             | Command::Chain(..)
-            | Command::ChainSettings(..) => {}
+            | Command::ChainSettings(..)
+            | Command::ReverbBus(..)
+            | Command::ReverbBusSettings(..) => {}
         }
         None
     }

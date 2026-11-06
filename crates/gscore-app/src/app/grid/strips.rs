@@ -5,6 +5,8 @@ use egui::{Align2, Color32, FontId, Rect, RichText, Sense, Stroke, UiBuilder, po
 use gscore_edit::Command;
 use gscore_model::{MASTER_UNITY, MasterMix, TrackIndex};
 
+use crate::settings::ReverbBus;
+
 use super::mixer::{self, FLOOR_DB, TRACK_UNITY, db_value, volume_from_db};
 use super::rows::TrackRow;
 use super::{GridAction, ROW_HEIGHT};
@@ -49,10 +51,12 @@ pub(crate) struct MixerState {
 }
 
 /// The mixer strips, tracks then master.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn strips(
     ui: &mut egui::Ui,
     rows: &[TrackRow],
     master: MasterMix,
+    bus: ReverbBus,
     levels: &[f32],
     metronome: (f32, f32),
     state: &mut MixerState,
@@ -78,6 +82,7 @@ pub(super) fn strips(
                         actions,
                     );
                 }
+                reverb_strip(ui, bus, height, state, actions);
                 let master_level = levels.iter().copied().fold(0.0_f32, f32::max);
                 master_strip(
                     ui,
@@ -270,6 +275,134 @@ fn master_strip(
         Symbol::Waveform,
         visuals.selection.bg_fill,
         !all_muted,
+    );
+}
+
+/// The reverb bus: the tracks send their mixer reverb amount into it, and its level (and
+/// mute) decide how much of its tail goes into the mix. Its knobs are the room's.
+fn reverb_strip(
+    ui: &mut egui::Ui,
+    bus: ReverbBus,
+    height: f32,
+    state: &mut MixerState,
+    actions: &mut Vec<GridAction>,
+) {
+    /// The id of the bus's controls (the master's is `usize::MAX`).
+    const REVERB: usize = usize::MAX - 2;
+    let (rect, _) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::hover());
+    let visuals = ui.visuals().clone();
+    ui.painter().line_segment(
+        [rect.left_top(), rect.left_bottom()],
+        Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
+    );
+    let inner = rect.shrink2(vec2(8.0, 6.0));
+    let (top, fader_area, bottom) = layout(inner);
+    let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
+    // The room's three knobs, where a track has its pan and sends.
+    let knob_y = top.top() + KNOB_SIZE / 2.0 + 2.0;
+    let at = |dx: f32| {
+        Rect::from_center_size(
+            pos2(top.center().x + dx, knob_y),
+            vec2(KNOB_SIZE, KNOB_SIZE),
+        )
+    };
+    let to_value = |share: f32| (share.clamp(0.0, 1.0) * 127.0).round() as u8;
+    let from_value = |value: u8| f32::from(value) / 127.0;
+    let mut edited = bus;
+    for (dx, caption, value, set) in [
+        (-KNOB_SPACING, "Size", to_value(bus.size), 0_u8),
+        (0.0, "Damp", to_value(bus.damping), 1),
+        (KNOB_SPACING, "Width", to_value(bus.width), 2),
+    ] {
+        let knob = mixer::send_knob(
+            &mut strip,
+            at(dx),
+            value,
+            ("reverb_bus", usize::from(set)),
+            caption,
+            caption,
+            64,
+        );
+        strip.painter().text(
+            pos2(at(dx).center().x, at(dx).bottom() + 2.0),
+            Align2::CENTER_TOP,
+            caption,
+            FontId::proportional(8.0),
+            strip.visuals().weak_text_color(),
+        );
+        if let Some((value, _)) = knob.change {
+            let share = from_value(value);
+            match set {
+                0 => edited.size = share,
+                1 => edited.damping = share,
+                _ => edited.width = share,
+            }
+            actions.push(GridAction::ReverbBus {
+                bus: edited,
+                commit: false,
+            });
+        }
+    }
+    fader(
+        &mut strip,
+        fader_area,
+        REVERB,
+        bus.level,
+        64,
+        0.0,
+        127,
+        "Reverb bus level",
+        |level, _| {
+            let mut bus = bus;
+            bus.level = level;
+            actions.push(GridAction::ReverbBus { bus, commit: false });
+        },
+    );
+    let db_rect = Rect::from_min_size(
+        pos2(bottom.left(), bottom.top()),
+        vec2(bottom.width(), 16.0),
+    );
+    db_field(
+        &mut strip,
+        db_rect,
+        state,
+        REVERB,
+        bus.level,
+        127,
+        "Reverb bus level",
+        |level| {
+            let mut bus = bus;
+            bus.level = level;
+            actions.push(GridAction::ReverbBus { bus, commit: true });
+        },
+    );
+    let buttons = Rect::from_min_size(
+        pos2(bottom.left(), bottom.top() + 18.0),
+        vec2(bottom.width(), 20.0),
+    );
+    let response = strip
+        .put(buttons, style::mute_button(bus.muted))
+        .on_hover_text(if bus.muted {
+            "The reverb bus is muted: click to hear it again"
+        } else {
+            "Mute the reverb bus (its tail keeps running)"
+        });
+    strip.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label("Mute reverb bus");
+    });
+    if response.clicked() {
+        let mut bus = bus;
+        bus.muted = !bus.muted;
+        actions.push(GridAction::ReverbBus { bus, commit: true });
+    }
+    labels(
+        &mut strip,
+        bottom,
+        "Reverb",
+        "Mixer bus",
+        Symbol::Waveform,
+        visuals.selection.bg_fill,
+        !bus.muted,
     );
 }
 

@@ -3315,3 +3315,29 @@ needed for a much larger font); owner listening check.
   stores the new length.
 - Open: the length is applied per kind of string (all its tracks), like every other chain
   setting; the computed Reverb has its own size instead.
+
+## 2026-11-06 — A reverb bus in the mixer; the engine is chosen in the chain window
+
+- The mixer has a **Reverb** strip between the tracks and the master: a computed reverb that
+  every modelled track sends into, its own level (a fader with dB, stored in the settings)
+  and a mute. The **send** is the track's own Reverb knob (MIDI CC 91), now heard on the
+  modelled strings too: post-fader, post-pan, summed mono, the room making it stereo again.
+  The bus runs all wet (its reverb's mix is 1), so the sends alone decide how much each
+  track gives it and nothing is counted twice. The SoundFont keeps its own reverb (its CCs
+  go to rustysynth), so the bus is the modelled tracks'.
+- Per track, the chain already had its own instance, so a track's reverb amount is now its
+  own while the room's sound is still shared by the kind of string.
+- Engine: `Guitars` keeps the bus chain, the sends and its level/mute, runs it after the
+  tracks (it rings on after the sends stop, and a muted bus keeps its tail running);
+  `SynthEngine::set_reverb_bus` / `set_reverb_bus_settings`; the player prepares it on the
+  synth's thread like a chain and re-sends it with a new player; WAV export renders it too
+  (`ReverbBusChoice`).
+- Tests: a palm-muted note whose track sends 120 into the bus rings on after the strings
+  are silent, a lower level is quieter and a muted bus gives nothing back; the mixer test
+  turns the fader down and mutes the bus; snapshots of the mixer with the new strip.
+- Also in this change: the track panel's **Preset** (the synth program) moved to its Sound
+  section, with a small **stomp box** beside it that opens the Sound chain; the **Played
+  by** row is gone. The chain window's first box chooses the engine (MIDI synth or modelled
+  strings of a kind) and opens the strings' sound, and a chain preset keeps that choice
+  (`ChainPreset::engine`), so choosing a preset switches the engine too. The String sound
+  window keeps only the knobs.

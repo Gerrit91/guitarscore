@@ -79,6 +79,11 @@ pub(super) enum GridAction {
     ShowTrack { track: usize },
     /// Set the metronome's click volume (0 to 1).
     SetMetronomeVolume(f32),
+    /// Set the mixer's reverb bus; `commit` writes the settings (a drag or a click ended).
+    ReverbBus {
+        bus: crate::settings::ReverbBus,
+        commit: bool,
+    },
 }
 
 /// The rename window's state.
@@ -116,6 +121,7 @@ impl GuitarScoreApp {
             &rows,
             master,
             &grid,
+            self.playback.reverb_bus(),
             GridView {
                 measure_count,
                 cursor_measure: cursor.measure.get(),
@@ -215,6 +221,12 @@ impl GuitarScoreApp {
                 self.view.show_track_panel = true;
             }
             GridAction::SetMetronomeVolume(volume) => self.set_metronome_volume(volume),
+            GridAction::ReverbBus { bus, commit } => {
+                self.playback.set_reverb_bus(bus);
+                if commit {
+                    self.save_settings();
+                }
+            }
         }
     }
 
@@ -393,6 +405,7 @@ fn draw(
     rows: &[TrackRow],
     master: gscore_model::MasterMix,
     grid: &GridData,
+    bus: crate::settings::ReverbBus,
     view: GridView,
     levels: &[f32],
     mixer_state: &mut MixerState,
@@ -404,6 +417,7 @@ fn draw(
             ui,
             rows,
             master,
+            bus,
             levels,
             view.metronome,
             mixer_state,

@@ -50,7 +50,9 @@ pub use web_player::WebPlayer;
 pub use tuner::TunerPlayer;
 #[cfg(target_arch = "wasm32")]
 pub use tuner_web::TunerPlayer;
-pub use wav::{ChainChoice, WAV_SAMPLE_RATE, WavInfo, write_wav, write_wav_at, write_wav_with};
+pub use wav::{
+    ChainChoice, ReverbBusChoice, WAV_SAMPLE_RATE, WavInfo, write_wav, write_wav_at, write_wav_with,
+};
 
 /// The preset string model of `kind`, before the user turns any knob.
 pub fn default_string_model(kind: gscore_play::StringKind) -> gscore_guitar::StringModel {

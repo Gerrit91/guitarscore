@@ -277,6 +277,7 @@ impl GuitarScoreApp {
                     sample_rate: self.playback.sample_rate(),
                     models: self.playback.string_models(),
                     chains: self.playback.chain_choices(),
+                    bus: Some(self.playback.reverb_bus_choice()),
                 };
                 if let Err(error) = self.tasks.export_wav(song, path, audio, ctx) {
                     self.notice = Some(error);
