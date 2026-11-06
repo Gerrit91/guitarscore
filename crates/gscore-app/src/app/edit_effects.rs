@@ -123,6 +123,19 @@ pub(super) struct EffectsState {
     finger_right: Option<dialogs::FingerEditor>,
     /// The brush or arpeggio dialog, while it is open.
     stroke: Option<dialogs::StrokeEditor>,
+    /// What the lyrics dialog asks of the score this frame.
+    lyrics_preview: Option<LyricsPreview>,
+}
+
+/// What the lyrics dialog asks of the score: it shows what is typed at once.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum LyricsPreview {
+    /// Show this line as typed (merged into the line's undo step).
+    Show(Command),
+    /// The dialog closed with Apply: the next edit is a new undo step.
+    Done,
+    /// The dialog was cancelled: undo back to this depth.
+    Revert(usize),
 }
 
 /// What an effect tile (or its key) does.

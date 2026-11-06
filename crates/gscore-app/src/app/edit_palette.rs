@@ -15,7 +15,7 @@ use gscore_model::{
 
 use super::GuitarScoreApp;
 use super::edit_dynamics::{self, DynamicsSnapshot};
-use super::edit_effects::{BeatState, EffectsState, NoteState};
+use super::edit_effects::{BeatState, EffectsState, LyricsPreview, NoteState};
 use super::edit_staff::{self, StaffState};
 use super::style;
 use super::tiles::{self, Face};
@@ -462,6 +462,45 @@ impl GuitarScoreApp {
         );
         self.apply_commands(commands);
         self.listen_to(&trial);
+        self.show_lyrics_preview();
+    }
+
+    /// Shows the lyrics dialog's text in the score as it is typed, one undo step per line;
+    /// Cancel takes the dialog's changes back.
+    fn show_lyrics_preview(&mut self) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let Some(preview) = tab.edit_palette.effects.take_lyrics_preview() else {
+            return;
+        };
+        match preview {
+            LyricsPreview::Show(command) => {
+                let depth = tab.document.editor().undo_depth();
+                tab.edit_palette.effects.note_lyrics_undo_start(depth);
+                let closing = !tab.edit_palette.effects.lyrics_open();
+                self.apply_command(command, true);
+                if closing && let Some(tab) = self.tabs.get_mut(self.active) {
+                    tab.document.editor_mut().break_merge();
+                }
+            }
+            LyricsPreview::Done => tab.document.editor_mut().break_merge(),
+            LyricsPreview::Revert(depth) => {
+                // Only the dialog's own steps, newest first: an edit made meanwhile stays.
+                while self.tabs.get(self.active).is_some_and(|tab| {
+                    tab.document.editor().undo_depth() > depth
+                        && matches!(
+                            tab.document.editor().last_command(),
+                            Some(Command::SetLyricLine { .. })
+                        )
+                }) {
+                    self.apply_command(Command::Undo, false);
+                }
+                if let Some(tab) = self.tabs.get_mut(self.active) {
+                    tab.document.editor_mut().break_merge();
+                }
+            }
+        }
     }
 
     /// The tuplet dialog, while it is open. OK sets the palette's tuplet and the length of

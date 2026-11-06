@@ -94,6 +94,7 @@ u = toggle_pick_up
 D = toggle_brush_down
 U = toggle_brush_up
 t = edit_beat_text
+L = edit_lyrics
 T = toggle_tapping
 < = toggle_fade_in
 w = toggle_whammy

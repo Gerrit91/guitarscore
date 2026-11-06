@@ -72,9 +72,13 @@ File › Export › Audio (WAV) renders the song with the chosen SoundFont (16-b
 44.1 kHz); `gscore-cli wav song.gp -o song.wav --soundfont FluidR3_GM.sf2` does the same
 without the window.
 
-The Staff tiles hold Beat text, Lyrics (five lines of syllables under the staff) and the
-technique matrix holds the chord diagram (`Ch`): a dialog sets the name, base fret and a
-fret or `x` per string. Both are drawn in the score and can be edited or removed again.
+The Staff tiles hold Beat text and Lyrics (Shift+L): five lines of syllables, written
+under the notation staff (above the tab when both are shown). Spaces separate syllables,
+Tab skips a beat, a `+` puts two words on one beat (`in+the`) and `[text]` is hidden.
+What is typed shows in the score at once, as one undo step per line; Cancel takes it back.
+The technique matrix holds the chord diagram (`Ch`): a dialog sets the name, base fret
+and a fret or `x` per string. Both are drawn in the score and can be edited or removed
+again.
 
 ## Command line
 

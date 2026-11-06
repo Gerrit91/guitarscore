@@ -368,7 +368,19 @@ pub(crate) fn restore_line(
     previous_track: u8,
     previous_beats: &[(BeatPosition, Vec<String>)],
 ) {
+    // The edit (or several merged into one undo step) may have written syllables on any
+    // beat of the lyric track: clear them all, then put back every beat that had lyrics.
+    let track = song.lyric_track();
     let lyrics = song.inner_mut();
+    if let Some(gp_track) = lyrics.tracks.get_mut(track.get()) {
+        for measure in &mut gp_track.measures {
+            for voice in &mut measure.voices {
+                for beat in &mut voice.beats {
+                    beat.lyrics.clear();
+                }
+            }
+        }
+    }
     lyrics.lyrics.track_choice = previous_track;
     match previous {
         Some((start, text)) => set_line(&mut lyrics.lyrics, line, *start, text),
@@ -450,7 +462,10 @@ fn place_tokens(
             let Some(token) = next.next() else {
                 break;
             };
-            placed.push((measure, beat.index(), token));
+            // An empty syllable (a tab) leaves the beat without one.
+            if !token.is_empty() {
+                placed.push((measure, beat.index(), token));
+            }
         }
         if next.len() == 0 {
             break;
@@ -474,7 +489,21 @@ pub(crate) fn lyric_tokens(text: &str) -> Vec<String> {
     }
     let mut tokens = Vec::new();
     let mut current = String::new();
-    for word in visible.split_whitespace() {
+    // A tab skips a beat: an empty syllable. Other white space only separates.
+    for word in visible.split_inclusive('\t').flat_map(|piece| {
+        let skip = piece.ends_with('\t');
+        piece
+            .split_whitespace()
+            .map(Some)
+            .chain(skip.then_some(None))
+    }) {
+        let Some(word) = word else {
+            if !current.is_empty() {
+                tokens.push(std::mem::take(&mut current));
+            }
+            tokens.push(String::new());
+            continue;
+        };
         // `a+b` and `a+ b` put both words on one beat, with a space between them.
         let join_next = word.ends_with('+');
         for (index, part) in word.split('+').filter(|part| !part.is_empty()).enumerate() {
@@ -527,6 +556,11 @@ mod tests {
     fn syllables_are_split_placed_and_hidden_text_is_left_out() {
         assert_eq!(lyric_tokens("Hel+lo [hidden] world"), ["Hel lo", "world"]);
         assert_eq!(lyric_tokens("in+ the dark"), ["in the", "dark"]);
+        assert_eq!(
+            lyric_tokens("one\t\ttwo three"),
+            ["one", "", "", "two", "three"]
+        );
+        assert_eq!(lyric_tokens("one \t two"), ["one", "", "two"]);
         assert_eq!(lyric_tokens("one  two\nthree"), ["one", "two", "three"]);
         assert_eq!(lyric_tokens("[only hidden]"), Vec::<String>::new());
 
@@ -742,5 +776,35 @@ mod tests {
         );
         // Both lines are still listed.
         assert_eq!(song.lyric_lines().len(), 2);
+    }
+
+    #[test]
+    fn a_tab_leaves_a_beat_without_a_syllable() {
+        let mut song = song_of(1);
+        let _change = song
+            .set_lyric_line(0, MeasureIndex::new(0), "one\ttwo three")
+            .unwrap();
+        assert_eq!(
+            placed(&song),
+            [
+                (0, 0, 0, "one".to_owned()),
+                (0, 2, 0, "two".to_owned()),
+                (0, 3, 0, "three".to_owned())
+            ]
+        );
+    }
+
+    #[test]
+    fn undo_after_merged_edits_restores_every_beat() {
+        // The lyrics dialog merges what is typed into one step: undo must also clear the
+        // beats the later edits wrote, not only those of the first.
+        let mut song = song_of(2);
+        let first = song.set_lyric_line(0, MeasureIndex::new(0), "a").unwrap();
+        let _later = song
+            .set_lyric_line(0, MeasureIndex::new(0), "a b c d e f")
+            .unwrap();
+        song.revert(&first).unwrap();
+        assert!(placed(&song).is_empty(), "{:?}", placed(&song));
+        assert!(song.lyric_lines().is_empty());
     }
 }

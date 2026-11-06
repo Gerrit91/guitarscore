@@ -15,7 +15,7 @@ use super::super::harmonic_editor::HarmonicEditor;
 use super::super::lyrics_editor::LyricsEditor;
 use super::super::shape_editor::{Outcome, ShapeEditor, ShapeTarget};
 use super::dialogs::{FingerEditor, StrokeEditor, StrokeEditorKind, TremoloEditor, TrillEditor};
-use super::{EffectsState, apply_beat, apply_note, default_bend, default_whammy};
+use super::{EffectsState, LyricsPreview, apply_beat, apply_note, default_bend, default_whammy};
 use crate::settings::{Settings, ShapePreset};
 
 impl EffectsState {
@@ -240,21 +240,55 @@ impl EffectsState {
             return;
         };
         let outcome = editor.show(ctx);
+        let show = |editor: &LyricsEditor| Command::SetLyricLine {
+            line: editor.line(),
+            start: gscore_model::MeasureIndex::new(editor.start()),
+            text: editor.text().to_owned(),
+        };
         match outcome {
-            Outcome::Open => return,
-            Outcome::Apply => commands.push(Command::SetLyricLine {
-                line: editor.line(),
-                start: gscore_model::MeasureIndex::new(editor.start()),
-                text: editor.text().to_owned(),
-            }),
+            Outcome::Open => {
+                // What is typed shows in the score at once.
+                if editor.take_change() {
+                    self.lyrics_preview = Some(LyricsPreview::Show(show(editor)));
+                }
+                return;
+            }
+            Outcome::Apply => {
+                if editor.take_change() {
+                    self.lyrics_preview = Some(LyricsPreview::Show(show(editor)));
+                } else {
+                    self.lyrics_preview = Some(LyricsPreview::Done);
+                }
+            }
             Outcome::Remove => commands.push(Command::SetLyricLine {
                 line: editor.line(),
                 start: gscore_model::MeasureIndex::new(editor.start()),
                 text: String::new(),
             }),
-            Outcome::Cancel | Outcome::Listen => {}
+            Outcome::Cancel | Outcome::Listen => {
+                if let Some(depth) = editor.undo_start() {
+                    self.lyrics_preview = Some(LyricsPreview::Revert(depth));
+                }
+            }
         }
         self.lyrics = None;
+    }
+
+    /// What the lyrics dialog asks of the score this frame, if anything.
+    pub(in crate::app) fn take_lyrics_preview(&mut self) -> Option<LyricsPreview> {
+        self.lyrics_preview.take()
+    }
+
+    /// Whether the lyrics dialog is open.
+    pub(in crate::app) fn lyrics_open(&self) -> bool {
+        self.lyrics.is_some()
+    }
+
+    /// Remembers the undo depth before the lyrics dialog's first change in the score.
+    pub(in crate::app) fn note_lyrics_undo_start(&mut self, depth: usize) {
+        if let Some(editor) = &mut self.lyrics {
+            editor.note_undo_start(depth);
+        }
     }
 
     /// Opens the beat text dialog on the cursor beat's text.

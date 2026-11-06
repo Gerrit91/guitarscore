@@ -489,6 +489,51 @@ fn the_lyrics_and_chord_diagram_dialogs_create_them() {
 }
 
 #[test]
+fn lyrics_show_in_the_score_while_typed_and_cancel_takes_them_back() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    let syllables = |harness: &Harness<'static, GuitarScoreApp>| {
+        let song = harness.state().document().unwrap().song();
+        song.lyric_syllables(TrackIndex::new(0))
+            .iter()
+            .map(|syllable| syllable.text.clone())
+            .collect::<Vec<_>>()
+    };
+    let depth = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness.state().document().unwrap().editor().undo_depth()
+    };
+    let before = depth(&harness);
+    // Shift+L opens the dialog.
+    type_char(&mut harness, "L", Modifiers::SHIFT);
+    harness.get_by_label("Lyric text").click();
+    harness.run();
+    harness.get_by_label("Lyric text").type_text("one two");
+    harness.run();
+    // In the score before Apply, as one undo step.
+    assert_eq!(syllables(&harness), ["one", "two"]);
+    assert_eq!(depth(&harness), before + 1);
+    harness.get_by_label("Lyric text").type_text(" three");
+    harness.run();
+    assert_eq!(syllables(&harness), ["one", "two", "three"]);
+    assert_eq!(depth(&harness), before + 1);
+    // Cancel takes it all back.
+    harness.get_by_label("Cancel").click_accesskit();
+    harness.run();
+    assert!(syllables(&harness).is_empty());
+    assert_eq!(depth(&harness), before);
+
+    // Apply keeps it, in one step; a new dialog starts a new step.
+    type_char(&mut harness, "L", Modifiers::SHIFT);
+    harness.get_by_label("Lyric text").click();
+    harness.run();
+    harness.get_by_label("Lyric text").type_text("la");
+    harness.run();
+    harness.get_by_label("Apply").click_accesskit();
+    harness.run();
+    assert_eq!(syllables(&harness), ["la"]);
+    assert_eq!(depth(&harness), before + 1);
+}
+
+#[test]
 fn the_player_tells_whether_the_bar_is_full() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
     harness.run();

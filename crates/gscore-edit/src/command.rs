@@ -1013,6 +1013,12 @@ impl Command {
                 Command::SetSongText { .. } | Command::SetTempo { .. },
                 Command::SetSongText { .. } | Command::SetTempo { .. },
             ) => true,
+            // Typing in the lyrics dialog (shown in the score as it is typed) is one step
+            // per line.
+            (
+                Command::SetLyricLine { line: first, .. },
+                Command::SetLyricLine { line: second, .. },
+            ) => first == second,
             _ => false,
         }
     }
