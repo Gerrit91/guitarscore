@@ -10,7 +10,6 @@ use std::path::PathBuf;
 
 use egui::{Align2, FontId, Margin, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2};
 use gscore_guitar::{BLOCKS, knob_ranges};
-use gscore_model::TrackIndex;
 use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
@@ -18,7 +17,7 @@ use crate::app::string_sound::{kind_name, knob, knob_response};
 use crate::app::style;
 use crate::app::track_engine::TrackPlayer;
 use crate::chain_settings::{BlockChoice, BlockSetting, ChainSetting};
-use crate::playback::{Heard, STRING_KINDS};
+use crate::playback::Heard;
 use crate::settings::{
     ChainPreset, MAX_STRING_PRESET_NAME, MAX_STRING_PRESETS, StringSound, engine_from_id,
     engine_id, kind_id,
@@ -122,11 +121,18 @@ fn short(text: &str, chars: usize) -> String {
     cut
 }
 
-/// The first box: what plays the track - the internal synth (the SoundFont) or modelled
-/// strings of a kind - and, for modelled strings, the way to their sound knobs.
+/// The first box: what plays the track - the internal synth (MIDI) or physical modelling
+/// (modelled strings). The kind of string is chosen in their sound window, which a click on
+/// the first box opens.
 fn strings_editor(ui: &mut egui::Ui, player: &TrackPlayer, actions: &mut Actions) {
     ui.label(RichText::new("Played by").strong());
     ui.horizontal_wrapped(|ui| {
+        // PM keeps the kind it had (or the one the track's preset stands for).
+        let modelled_kind = match player.engine {
+            TrackEngine::Modelled(kind) => Some(kind),
+            TrackEngine::SoundFont => player.preset_kind,
+        };
+        let pm = TrackEngine::Modelled(modelled_kind.unwrap_or(StringKind::Steel));
         let mut choice = |ui: &mut egui::Ui, engine: TrackEngine, label: &str, enabled: bool| {
             let mut text = label.to_owned();
             if engine == player.default {
@@ -141,35 +147,42 @@ fn strings_editor(ui: &mut egui::Ui, player: &TrackPlayer, actions: &mut Actions
                     TrackEngine::SoundFont => {
                         "The internal synth plays the track with the SoundFont (General MIDI)"
                     }
-                    TrackEngine::Modelled(_) => "Modelled strings of this kind play the track",
+                    TrackEngine::Modelled(_) => {
+                        "Physical modelling: the strings are synthesized and played through \
+                         the chain"
+                    }
                 });
             if response.clicked() {
                 actions.engine = Some(engine);
             }
         };
         choice(ui, TrackEngine::SoundFont, "MIDI synth", true);
-        for kind in STRING_KINDS {
-            choice(
-                ui,
-                TrackEngine::Modelled(kind),
-                kind_name(kind),
-                player.strings,
-            );
-        }
+        choice(ui, pm, "PM Synthesis", player.strings);
     });
     if !player.strings {
         ui.label(
             RichText::new("Only string instruments can be played by modelled strings.").weak(),
         );
     }
-    if matches!(player.engine, TrackEngine::Modelled(_))
-        && ui
-            .button("String sound…")
-            .on_hover_text("The pick, sustain and tone of these strings")
-            .clicked()
-    {
-        actions.open_strings = true;
-    }
+}
+
+/// The preset the sound and the chain are now: a saved one, the built-in one, or changed.
+fn preset_name(
+    kind: StringKind,
+    sound: &StringSound,
+    chain: &ChainSetting,
+    presets: &[ChainPreset],
+) -> String {
+    presets
+        .iter()
+        .find(|preset| preset.sound == *sound && preset.chain == *chain)
+        .map(|preset| preset.name.clone())
+        .or_else(|| {
+            (StringSound::from(gscore_audio::default_string_model(kind)) == *sound
+                && *chain == ChainSetting::default())
+            .then(|| "Built-in".to_owned())
+        })
+        .unwrap_or_else(|| "Changed".to_owned())
 }
 
 /// The chain presets of `kind`: the built-in sound, the saved ones, saving and deleting.
@@ -185,17 +198,8 @@ fn preset_row(
 ) {
     ui.horizontal(|ui| {
         ui.label(RichText::new("Preset").color(style::tokens(ui).text_weak));
-        // Which preset the sound is now: a saved one, the built-in one, or changed.
         let built_in = || StringSound::from(gscore_audio::default_string_model(kind));
-        let current = presets
-            .iter()
-            .find(|preset| preset.sound == *sound && preset.chain == *chain)
-            .map(|preset| preset.name.clone())
-            .or_else(|| {
-                (built_in() == *sound && *chain == ChainSetting::default())
-                    .then(|| "Built-in".to_owned())
-            })
-            .unwrap_or_else(|| "Changed".to_owned());
+        let current = preset_name(kind, sound, chain, presets);
         let response = egui::ComboBox::from_id_salt("sound_chain_preset")
             .selected_text(current.clone())
             .show_ui(ui, |ui| {
@@ -277,7 +281,7 @@ struct BoardActions {
 /// The board: the boxes, the cables between them and, under each block, its mute.
 fn board(
     ui: &mut egui::Ui,
-    kind: StringKind,
+    player: &TrackPlayer,
     chain: &ChainSetting,
     selected: usize,
 ) -> BoardActions {
@@ -311,7 +315,8 @@ fn board(
                 Sense::click(),
             )
             .on_hover_text(if index == 0 {
-                "The strings: click to dial in pick, sustain and tone"
+                "What plays the track: click for its sound (the pick, sustain, tone of the \
+                 strings)"
             } else {
                 "Click to choose or adjust this block"
             });
@@ -319,15 +324,21 @@ fn board(
             .checked_sub(1)
             .and_then(|place| chain.blocks.get(place));
         let (title, detail) = match block {
-            None => ("Strings".to_owned(), kind_name(kind).to_owned()),
+            None => match player.engine {
+                TrackEngine::Modelled(kind) => ("Strings".to_owned(), kind_name(kind).to_owned()),
+                TrackEngine::SoundFont => (
+                    "MIDI".to_owned(),
+                    format!(
+                        "{}: {}",
+                        player.program,
+                        gscore_model::program_name(player.program)
+                    ),
+                ),
+            },
             Some(block) => box_text(block),
         };
         ui.ctx().accesskit_node_builder(response.id, |node| {
-            node.set_label(if index == 0 {
-                "Strings".to_owned()
-            } else {
-                format!("Block {index}: {title}")
-            });
+            node.set_label(format!("Block {index}: {title}"));
             node.set_role(egui::Role::Button);
         });
         let empty = block.is_some_and(|block| block.choice == BlockChoice::Empty);
@@ -698,17 +709,6 @@ impl GuitarScoreApp {
             TrackEngine::Modelled(kind) => (kind, true),
             TrackEngine::SoundFont => (player.preset_kind.unwrap_or(StringKind::Steel), false),
         };
-        // Which track's sound this is: several can share a kind of string, and with it a
-        // chain, so the window says whose sound it is editing.
-        let track_name = self
-            .tabs
-            .get(self.active)
-            .and_then(|tab| tab.document.song().track(TrackIndex::new(window.track)))
-            .map_or_else(
-                || format!("Track {}", window.track.saturating_add(1)),
-                |track| track.name().to_owned(),
-            );
-        let title = format!("Sound chain — {track_name}");
         let presets: Vec<ChainPreset> = self
             .settings
             .string_presets
@@ -716,6 +716,16 @@ impl GuitarScoreApp {
             .filter(|preset| preset.kind == kind_id(kind))
             .cloned()
             .collect();
+        // The title says which preset the chain is; the board follows straight away.
+        let title = format!(
+            "Sound chain — Preset: {}",
+            preset_name(
+                kind,
+                &self.playback.string_sounds().get(kind),
+                self.playback.string_chains().get(kind),
+                &presets
+            )
+        );
         egui::Window::new(&title)
             .title_bar(false)
             .collapsible(false)
@@ -730,46 +740,16 @@ impl GuitarScoreApp {
                     .inner_margin(Margin::symmetric(16, 12))
                     .show(ui, |ui| {
                         ui.set_width(WIDTH);
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                RichText::new(format!(
-                                    "{track_name} · {} strings",
-                                    kind_name(kind)
-                                ))
-                                .strong(),
-                            );
-                            ui.label(
-                                RichText::new(format!(
-                                    "(track {})",
-                                    window.track.saturating_add(1)
-                                ))
-                                .weak(),
-                            );
-                        });
-                        if !modelled {
-                            ui.label(
-                                RichText::new(
-                                    "The SoundFont plays this track: choose modelled strings \
-                                     in the Strings box to hear this chain.",
-                                )
-                                .weak(),
-                            );
-                        }
                         let chain = self.playback.string_chains().get(kind).clone();
                         let sound = self.playback.string_sounds().get(kind);
-                        preset_row(
-                            ui,
-                            kind,
-                            &sound,
-                            &chain,
-                            &presets,
-                            &mut window,
-                            &mut actions,
-                        );
-                        ui.add_space(4.0);
-                        let board = board(ui, kind, &chain, window.selected);
+                        let board = board(ui, &player, &chain, window.selected);
                         if let Some(index) = board.select {
                             window.selected = index;
+                            // The first box opens the strings' sound (only when modelled
+                            // strings play the track; a MIDI box has none).
+                            if index == 0 && modelled {
+                                actions.open_strings = true;
+                            }
                         }
                         if let Some(place) = board.bypass
                             && let Some(block) = chain.blocks.get(place)
@@ -795,6 +775,18 @@ impl GuitarScoreApp {
                             }
                         }
                         ui.add_space(6.0);
+                        ui.separator();
+                        // The preset: which one this is, another one, and saving it.
+                        preset_row(
+                            ui,
+                            kind,
+                            &sound,
+                            &chain,
+                            &presets,
+                            &mut window,
+                            &mut actions,
+                        );
+                        ui.add_space(4.0);
                         ui.separator();
                         ui.horizontal(|ui| {
                             if ui

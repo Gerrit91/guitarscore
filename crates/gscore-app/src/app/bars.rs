@@ -151,6 +151,14 @@ impl GuitarScoreApp {
                 ui.checkbox(&mut self.view.show_track_grid, "Track grid");
                 ui.checkbox(&mut self.view.show_track_panel, "Track panel");
                 ui.checkbox(&mut self.view.show_edit_panel, "Edit palette");
+                if ui
+                    .button("Reset panel sizes")
+                    .on_hover_text("The side panels and the song grid go back to their usual sizes")
+                    .clicked()
+                {
+                    self.reset_panel_sizes();
+                    ui.close();
+                }
                 ui.separator();
                 ui.radio_value(&mut self.view.theme, ThemeChoice::Light, "Light score");
                 ui.radio_value(&mut self.view.theme, ThemeChoice::Dark, "Dark score");

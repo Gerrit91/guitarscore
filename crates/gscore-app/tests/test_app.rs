@@ -148,6 +148,50 @@ fn the_grid_header_stays_while_the_tracks_scroll() {
 }
 
 #[test]
+fn a_stored_panel_size_cannot_cover_the_window() {
+    // A width saved while a bug grew the panel (or a hand-edited one) must not hide the
+    // window: the panels keep room for the score.
+    for width in [5000.0_f32, f32::INFINITY, f32::NAN] {
+        let settings = Settings {
+            track_panel_width: Some(width),
+            edit_panel_width: Some(width),
+            ..Settings::default()
+        };
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1000.0, 700.0))
+            .build_eframe(|cc| {
+                GuitarScoreApp::with_settings(
+                    &cc.egui_ctx,
+                    Some(testdata("basic/note_lengths.gp")),
+                    Keymap::default(),
+                    None,
+                    settings.clone(),
+                    None,
+                )
+            });
+        let started = Instant::now();
+        while harness.state().is_busy() {
+            assert!(started.elapsed() < Duration::from_secs(30), "timed out");
+            harness.step();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        harness.run();
+        // The track panel's first control is in the right half, and the palette's one in
+        // the left half: the score has the middle.
+        let track_panel = harness.get_by_label("Preset").rect().left();
+        assert!(
+            track_panel > 500.0,
+            "a stored width of {width} pushed the track panel to {track_panel}"
+        );
+        let palette = harness.get_by_label("Tie beat").rect().right();
+        assert!(
+            palette < 500.0,
+            "a stored width of {width} pushed the edit palette to {palette}"
+        );
+    }
+}
+
+#[test]
 fn the_track_panel_does_not_grow_by_itself() {
     let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
     let panel = |harness: &Harness<'static, GuitarScoreApp>| {
@@ -337,7 +381,12 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.run();
     harness.get_by_label("Block 2: Reverb");
     harness.snapshot("sound_chain_window");
-    harness.get_by_label("Strings").click();
+    // The strings' own window (their box opens it once PM synthesis plays the track).
+    harness.get_by_label("Block 0: MIDI").click();
+    harness.run();
+    harness.get_by_label("PM Synthesis").click();
+    harness.run();
+    harness.get_by_label("Block 0: Strings").click();
     harness.run();
     // The steel guitar played by modelled strings, to show its knobs.
     harness

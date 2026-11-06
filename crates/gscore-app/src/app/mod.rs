@@ -154,6 +154,16 @@ pub struct GuitarScoreApp {
     browser_sound: Option<String>,
 }
 
+/// A side panel's width: the remembered one (or `default`), in 200..`room`, whatever a
+/// stored - or hand-edited - value says.
+fn panel_width(stored: Option<f32>, default: f32, room: f32) -> f32 {
+    let room = room.max(200.0);
+    match stored {
+        Some(width) if width.is_finite() => width.clamp(200.0, room),
+        _ => default.clamp(200.0, room),
+    }
+}
+
 /// Panel sizes the app remembers: the song grid's height and the track panel's width.
 #[derive(Debug, Clone, Copy, Default)]
 struct PanelSizes {
@@ -358,6 +368,13 @@ impl GuitarScoreApp {
 
     /// Writes the settings where this platform keeps them (a JSON file on the desktop,
     /// `localStorage` in a browser). Errors go to the notice bar.
+    /// Puts the side panels and the song grid back to their usual sizes (the way out of a
+    /// layout a stored size made unusable).
+    pub(super) fn reset_panel_sizes(&mut self) {
+        self.panel_sizes = PanelSizes::default();
+        self.save_settings();
+    }
+
     pub fn save_settings(&mut self) {
         let settings = self.settings();
         #[cfg(target_arch = "wasm32")]
@@ -725,10 +742,19 @@ impl eframe::App for GuitarScoreApp {
             egui::Panel::top("notice").show(ui, |ui| self.notice_bar(ui));
         }
         if self.view.show_track_panel && self.document().is_some() {
+            // Never wider than leaves the edit palette and the score their room: a stored
+            // width (or a broken one) must not cover the window and put the edge out of
+            // reach.
+            let width = panel_width(
+                self.panel_sizes.track_panel,
+                280.0,
+                (ui.available_width() - 500.0).max(200.0),
+            );
             let panel = egui::Panel::right("track_panel")
                 .resizable(true)
                 .min_size(200.0)
-                .default_size(self.panel_sizes.track_panel.unwrap_or(260.0))
+                .max_size(width)
+                .default_size(width)
                 .frame(style::panel_frame(&ctx))
                 .show(ui, |ui| {
                     self.track_panel(ui);
@@ -736,10 +762,16 @@ impl eframe::App for GuitarScoreApp {
             self.panel_sizes.track_panel = Some(panel.response.rect.width());
         }
         if self.view.show_edit_panel && self.document().is_some() {
+            let width = panel_width(
+                self.panel_sizes.edit_panel,
+                250.0,
+                (ui.available_width() - 300.0).max(200.0),
+            );
             let panel = egui::Panel::left("edit_palette")
                 .resizable(true)
                 .min_size(200.0)
-                .default_size(self.panel_sizes.edit_panel.unwrap_or(250.0))
+                .max_size(width)
+                .default_size(width)
                 .frame(style::panel_frame(&ctx))
                 .show(ui, |ui| {
                     self.edit_palette(ui);

@@ -3363,3 +3363,19 @@ needed for a much larger font); owner listening check.
   remembers what the running bus was built from); knobs, level and mute go straight to it.
 - Tests: the window's choices turn the bus off and back on, its knobs are there and it has
   no Mix; the settings' sanitizing; a snapshot of the window.
+
+## 2026-11-06 — The sound chain window says the preset, not the track; the track panel cannot cover the window
+
+- The window's title is **"Sound chain — Preset: …"** (a saved preset, Built-in or Changed); the
+  track name and the explanatory line are gone, so the board follows the title directly, and
+  the preset list with Save as… came down to the bottom, above Listen/Close.
+- The first box is what plays the track: **MIDI** (with the synth's preset) or **Strings**.
+  The engine options are two now, **MIDI synth** and **PM Synthesis**; the kind of string
+  moved to the String sound window, which a click on the Strings box opens (the extra button
+  is gone). The two boxes' names are also their accessibility labels ("Block 0: MIDI").
+- The track panel (and the edit palette) can no longer take the window over: the width is
+  clamped so the score and the other panel keep their room, a stored or hand-edited size is
+  fitted (non-finite ones mean "not chosen"), and **View › Reset panel sizes** puts them back
+  without editing the settings file. This is the way out of a window covered by a panel a
+  saved size had grown. Tests: 5000 px, infinity and NaN stored widths leave both panels in
+  their halves.

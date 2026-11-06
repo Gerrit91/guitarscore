@@ -9,9 +9,9 @@ use gscore_model::program_name;
 use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
-use crate::app::string_sound::knobs;
+use crate::app::string_sound::{kind_name, knobs};
 use crate::app::style;
-use crate::playback::Heard;
+use crate::playback::{Heard, STRING_KINDS};
 
 /// Width of the window's content.
 const WIDTH: f32 = 780.0;
@@ -29,6 +29,8 @@ pub(super) struct StringSoundDialog {
 struct Actions {
     close: bool,
     listen: bool,
+    /// Another kind of modelled string plays the track.
+    engine: Option<TrackEngine>,
     sound: Option<crate::settings::StringSound>,
 }
 
@@ -76,6 +78,29 @@ impl GuitarScoreApp {
                     .inner_margin(Margin::symmetric(16, 12))
                     .show(ui, |ui| {
                         ui.set_width(WIDTH);
+                        if let Some(kind) = kind {
+                            // Which strings: the chain window picks the engine, the kind of
+                            // string is chosen here, where its knobs are.
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    RichText::new("Strings").color(style::tokens(ui).text_weak),
+                                );
+                                for candidate in STRING_KINDS {
+                                    let selected = candidate == kind;
+                                    if ui
+                                        .add(egui::Button::selectable(
+                                            selected,
+                                            kind_name(candidate),
+                                        ))
+                                        .clicked()
+                                        && !selected
+                                    {
+                                        actions.engine = Some(TrackEngine::Modelled(candidate));
+                                    }
+                                }
+                            });
+                            ui.add_space(4.0);
+                        }
                         match kind {
                             None => {
                                 ui.label(
@@ -137,6 +162,9 @@ impl GuitarScoreApp {
         kind: Option<StringKind>,
         actions: Actions,
     ) {
+        if let Some(engine) = actions.engine {
+            self.set_track_engine(dialog.track, engine);
+        }
         if let (Some(kind), Some(sound)) = (kind, actions.sound) {
             self.playback.set_string_sound(kind, sound);
         }

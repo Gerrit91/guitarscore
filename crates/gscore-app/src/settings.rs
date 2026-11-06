@@ -273,6 +273,16 @@ pub(crate) fn kind_id(kind: gscore_play::StringKind) -> &'static str {
     }
 }
 
+/// The range a remembered panel width may have, and of the song grid's height.
+const PANEL_WIDTH_RANGE: (f32, f32) = (200.0, 1200.0);
+const GRID_HEIGHT_RANGE: (f32, f32) = (72.0, 2000.0);
+
+/// A remembered size within `range`; anything that is not a number means "not chosen".
+fn fit_panel(size: Option<f32>, (low, high): (f32, f32)) -> Option<f32> {
+    size.filter(|size| size.is_finite())
+        .map(|size| size.clamp(low, high))
+}
+
 /// The most string sound presets kept, and the longest name.
 pub(crate) const MAX_STRING_PRESETS: usize = 100;
 pub(crate) const MAX_STRING_PRESET_NAME: usize = 60;
@@ -696,6 +706,11 @@ impl Settings {
             stored.keys.retain(|key| !key.is_empty() && key.len() <= 64);
         }
         self.reverb_bus = std::mem::take(&mut self.reverb_bus).sanitized();
+        // Panel sizes: a broken or huge value must not take the window over.
+        self.track_panel_width = fit_panel(self.track_panel_width, PANEL_WIDTH_RANGE);
+        self.edit_panel_width = fit_panel(self.edit_panel_width, PANEL_WIDTH_RANGE);
+        self.grid_height_chosen = fit_panel(self.grid_height_chosen, GRID_HEIGHT_RANGE);
+        self.mixer_height_chosen = fit_panel(self.mixer_height_chosen, GRID_HEIGHT_RANGE);
         for presets in [&mut self.bend_presets, &mut self.whammy_presets] {
             presets.retain(ShapePreset::is_valid);
             presets.truncate(MAX_SHAPE_PRESETS);

@@ -283,19 +283,22 @@ fn the_sound_section_opens_the_sound_chain_and_the_string_sound_dialog() {
     // The track panel's Sound section opens the Sound chain with its stomp box.
     harness.get_by_label("Sound chain").click();
     harness.run();
-    // The first box says what plays the track; a Guitar Pro file starts on the SoundFont.
-    harness.get_by_label("Strings").click();
+    // The first box is what plays the track; a Guitar Pro file starts on the MIDI synth.
+    harness.get_by_label("Block 0: MIDI").click();
     harness.run();
     harness.get_by_label("Played by");
     harness.snapshot("sound_chain_strings");
+    harness.get_by_label("PM Synthesis").click();
+    harness.run();
     assert!(
         harness.query_all_by_label("Brilliance").next().is_none(),
-        "the SoundFont plays it: no string knobs"
+        "not yet"
     );
-    // Choose modelled nylon strings, then their sound.
-    harness.get_by_label("Nylon guitar").click();
+    // The strings' box now opens their sound window, which chooses the kind of string.
+    harness.get_by_label("Block 0: Strings").click();
     harness.run();
-    harness.get_by_label("String sound…").click();
+    harness.get_by_label("Strings");
+    harness.get_by_label("Nylon guitar").click();
     harness.run();
     for knob in [
         "Pick position",
