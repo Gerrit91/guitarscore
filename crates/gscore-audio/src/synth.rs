@@ -301,9 +301,11 @@ struct SynthSink<'a>(&'a mut Synthesizer, &'a mut ClickVoice, &'a mut Guitars);
 
 impl Sink for SynthSink<'_> {
     fn send_timed(&mut self, event: &TimedEvent) {
+        // Note-offs still go through: a note the SoundFont began before the track was
+        // given to the strings (switched while playing) must end.
         let note = matches!(
             event.event,
-            MidiEvent::NoteOn { .. } | MidiEvent::NoteOff { .. } | MidiEvent::PitchBend { .. }
+            MidiEvent::NoteOn { .. } | MidiEvent::PitchBend { .. }
         );
         if note && self.2.plays(event.track) {
             return;

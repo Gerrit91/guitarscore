@@ -272,7 +272,8 @@ impl GuitarScoreApp {
                 };
                 let song = tab.document.song().clone();
                 let soundfont = self.playback.soundfont().map(Path::to_path_buf);
-                if let Err(error) = self.tasks.export_wav(song, path, soundfont, ctx) {
+                let modelled = self.playback.modelled_guitars();
+                if let Err(error) = self.tasks.export_wav(song, path, soundfont, modelled, ctx) {
                     self.notice = Some(error);
                 }
             }

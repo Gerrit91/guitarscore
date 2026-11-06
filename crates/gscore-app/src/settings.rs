@@ -218,6 +218,9 @@ pub struct Settings {
     pub soundfont_path: Option<PathBuf>,
     /// Whether playback prefers the built-in synthesizer over MIDI output.
     pub prefer_synth: bool,
+    /// Whether the built-in synthesizer plays guitar and bass tracks with the modelled
+    /// strings instead of the SoundFont (experimental, M22).
+    pub modelled_guitars: bool,
     /// The MIDI port chosen, if any.
     pub midi_port: Option<String>,
     /// Bend shapes saved as presets in the bend editor.
@@ -264,6 +267,7 @@ impl Default for Settings {
             speed_trainer_target: 1.0,
             soundfont_path: None,
             prefer_synth: true,
+            modelled_guitars: false,
             midi_port: None,
             bend_presets: Vec::new(),
             whammy_presets: Vec::new(),

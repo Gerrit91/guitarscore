@@ -106,6 +106,9 @@ enum Command {
         /// The SoundFont (.sf2) to render with
         #[arg(long, value_name = "FILE")]
         soundfont: Option<PathBuf>,
+        /// Play guitar and bass tracks with the modelled strings (experimental, M22)
+        #[arg(long)]
+        modelled: bool,
     },
     /// List the MIDI output ports `play` can use
     Ports,
@@ -135,6 +138,9 @@ enum Command {
         /// Speed factor: 0.5 is half speed, 2 double speed
         #[arg(long, default_value_t = 1.0)]
         speed: f32,
+        /// Play guitar and bass tracks with the modelled strings (experimental, M22)
+        #[arg(long)]
+        modelled: bool,
     },
     /// Draw a score of one or more tracks as an SVG image or a PDF
     ///
@@ -376,7 +382,8 @@ where
             output,
             tracks,
             soundfont,
-        } => play::export_wav(&file, &output, &tracks, soundfont),
+            modelled,
+        } => play::export_wav(&file, &output, &tracks, soundfont, modelled),
         Command::Ports => play::ports(),
         Command::Play {
             file,
@@ -385,6 +392,7 @@ where
             from,
             tracks,
             speed,
+            modelled,
         } => play::play(
             &file,
             &play::Options {
@@ -393,6 +401,7 @@ where
                 from,
                 tracks: &tracks,
                 speed,
+                modelled,
             },
         ),
         Command::Bench { files, check } => bench::run(&files, check),

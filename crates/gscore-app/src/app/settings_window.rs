@@ -426,6 +426,7 @@ impl GuitarScoreApp {
         if let Some(error) = self.playback.new_error() {
             self.notice = Some(error);
         }
+        self.guitar_sound(ui);
         ui.separator();
         ui.heading("Input");
         ui.label(RichText::new("MIDI inputs (a keyboard or guitar) come later.").weak());
@@ -450,9 +451,30 @@ impl GuitarScoreApp {
         if let Some(error) = self.playback.new_error() {
             self.notice = Some(error);
         }
+        self.guitar_sound(ui);
         ui.separator();
         ui.heading("Input");
         ui.label(RichText::new("MIDI inputs (a keyboard or guitar) come later.").weak());
+    }
+
+    /// The choice between the SoundFont and the modelled strings for guitars and basses.
+    fn guitar_sound(&mut self, ui: &mut Ui) {
+        ui.add_space(4.0);
+        let mut modelled = self.playback.modelled_guitars();
+        if ui
+            .checkbox(&mut modelled, "Modelled guitars and basses (experimental)")
+            .changed()
+        {
+            self.set_modelled_guitars(modelled);
+        }
+        ui.label(
+            RichText::new(
+                "The built-in synthesizer plays guitar and bass tracks with physically \
+                 modelled strings instead of the SoundFont; drums and other instruments keep \
+                 the SoundFont. Also used for audio export. MIDI output is unchanged.",
+            )
+            .weak(),
+        );
     }
 
     /// The editor tab: theme, keymap file and autosave interval.

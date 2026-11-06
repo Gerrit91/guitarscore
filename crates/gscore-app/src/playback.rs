@@ -197,6 +197,8 @@ pub struct Playback {
     paused_at: Option<BeatPosition>,
     /// Whether the metronome clicks on every beat while playing.
     metronome: bool,
+    /// Whether guitar and bass tracks are played by the modelled strings.
+    modelled_guitars: bool,
     /// The metronome's volume, 0 to 1 (1 is full).
     metronome_volume: f32,
     /// The built-in synthesizer's click sound.
@@ -240,6 +242,7 @@ impl Default for Playback {
             reported: None,
             paused_at: None,
             metronome: false,
+            modelled_guitars: false,
             metronome_volume: 1.0,
             click_sound: ClickSound::default(),
             count_in_bars: 1,
@@ -407,6 +410,26 @@ impl Playback {
         }
         self.click_sound = sound;
         self.rebuild_sequence(song)
+    }
+
+    /// Whether guitar and bass tracks are played by the modelled strings.
+    pub fn modelled_guitars(&self) -> bool {
+        self.modelled_guitars
+    }
+
+    /// Plays guitar and bass tracks with the modelled strings (or the SoundFont again),
+    /// heard at once while playing.
+    pub fn set_modelled_guitars(&mut self, song: &Song, modelled: bool) -> Result<(), String> {
+        if self.modelled_guitars == modelled {
+            return Ok(());
+        }
+        self.modelled_guitars = modelled;
+        self.rebuild_sequence(song)
+    }
+
+    /// Like [`Self::set_modelled_guitars`] without rebuilding (when the settings load).
+    pub fn store_modelled_guitars(&mut self, modelled: bool) {
+        self.modelled_guitars = modelled;
     }
 
     /// Chooses the click sound without rebuilding a sequence (when the settings load).
@@ -1045,8 +1068,18 @@ impl Playback {
     /// Builds the song's sequence with the current metronome setting and volume.
     fn build_sequence(&self, song: &Song) -> Result<Arc<Sequence>, String> {
         Sequence::with_click(song, None, self.metronome.then(|| self.click()))
+            .map(|sequence| self.engines(sequence))
             .map(Arc::new)
             .map_err(|e| e.to_string())
+    }
+
+    /// `sequence` with the engines chosen in the settings.
+    pub(crate) fn engines(&self, sequence: Sequence) -> Sequence {
+        if self.modelled_guitars {
+            sequence.with_modelled_guitars()
+        } else {
+            sequence
+        }
     }
 
     /// Swaps in a sequence rebuilt with the current settings at the position playback is,
@@ -1330,6 +1363,26 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    #[test]
+    fn the_modelled_guitars_setting_chooses_the_engine_of_guitar_tracks() {
+        let song = gscore_model::testing::song_with_notes(&[(
+            1,
+            &[gscore_model::testing::TestNote::new(3, 2)],
+        )])
+        .unwrap();
+        let mut playback = Playback::default();
+        let engine = |playback: &Playback| {
+            playback.build_sequence(&song).unwrap().performance.tracks[0].engine
+        };
+        assert_eq!(engine(&playback), gscore_play::TrackEngine::SoundFont);
+        playback.set_modelled_guitars(&song, true).unwrap();
+        assert!(playback.modelled_guitars());
+        assert!(matches!(
+            engine(&playback),
+            gscore_play::TrackEngine::Modelled(_)
+        ));
+    }
 
     #[test]
     fn the_speed_is_clamped_and_kept_between_plays() {

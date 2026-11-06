@@ -608,17 +608,18 @@ impl Tasks {
         song: Song,
         path: PathBuf,
         soundfont: Option<PathBuf>,
+        modelled: bool,
         ctx: &egui::Context,
     ) -> Result<(), String> {
         #[cfg(target_arch = "wasm32")]
         {
-            let _ = (song, path, soundfont, ctx);
+            let _ = (song, path, soundfont, modelled, ctx);
             Err("exporting audio is not available in the browser build yet".to_owned())
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
             self.spawn("WAV export", ctx, move || {
-                Event::Exported(export_wav(&song, &path, soundfont))
+                Event::Exported(export_wav(&song, &path, soundfont, modelled))
             })
         }
     }
@@ -941,6 +942,7 @@ fn export_wav(
     song: &Song,
     path: &std::path::Path,
     soundfont: Option<PathBuf>,
+    modelled: bool,
 ) -> Result<String, String> {
     let soundfont = soundfont
         .or_else(gscore_audio::find_soundfont)
@@ -957,7 +959,10 @@ fn export_wav(
             .set_track_solo(track, false)
             .map_err(|e| e.to_string())?;
     }
-    let sequence = Sequence::new(&song, None).map_err(|e| e.to_string())?;
+    let mut sequence = Sequence::new(&song, None).map_err(|e| e.to_string())?;
+    if modelled {
+        sequence = sequence.with_modelled_guitars();
+    }
     let temp = path.with_extension("wav.part");
     let written = std::fs::File::create(&temp)
         .map_err(|e| format!("cannot write {}: {e}", temp.display()))
@@ -1060,7 +1065,7 @@ mod tests {
         let song =
             song_with_notes(&[(4, &[TestNote::new(1, 5)]), (4, &[]), (4, &[]), (4, &[])]).unwrap();
         let path = dir.join("song.wav");
-        let message = export_wav(&song, &path, Some(soundfont.clone())).unwrap();
+        let message = export_wav(&song, &path, Some(soundfont.clone()), false).unwrap();
         assert!(message.contains("song.wav"), "{message}");
         let bytes = std::fs::read(&path).unwrap();
         assert_eq!(bytes.get(0..4), Some(&b"RIFF"[..]));
@@ -1068,7 +1073,7 @@ mod tests {
 
         // A SoundFont that is not there fails without leaving a file behind.
         let missing = dir.join("missing.wav");
-        assert!(export_wav(&song, &missing, Some(dir.join("none.sf2"))).is_err());
+        assert!(export_wav(&song, &missing, Some(dir.join("none.sf2")), false).is_err());
         assert!(!missing.exists());
         let temp_files = std::fs::read_dir(&dir)
             .unwrap()

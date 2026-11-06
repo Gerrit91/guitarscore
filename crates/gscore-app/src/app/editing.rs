@@ -737,6 +737,20 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Plays guitar and bass tracks with the modelled strings, or with the SoundFont.
+    pub fn set_modelled_guitars(&mut self, modelled: bool) {
+        let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
+            self.playback.store_modelled_guitars(modelled);
+            return;
+        };
+        if let Err(error) = self
+            .playback
+            .set_modelled_guitars(document.song(), modelled)
+        {
+            self.notice = Some(error);
+        }
+    }
+
     /// Slows down or speeds up playback (0.5 to 1.2 of the written tempo).
     pub fn set_playback_speed(&mut self, speed: f32) {
         if let Err(error) = self.playback.set_speed(speed) {

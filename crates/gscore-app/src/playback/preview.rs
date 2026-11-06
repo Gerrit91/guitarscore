@@ -41,6 +41,7 @@ impl Playback {
         if let Some(error) = self.error() {
             return Ok(Heard::Skipped(error));
         }
+        let excerpt = self.engines(excerpt);
         if self.is_loading() {
             // The first click starts the synthesizer: play the beat once it is ready.
             self.pending_preview = Some(Arc::new(excerpt));
