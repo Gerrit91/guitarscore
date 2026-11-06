@@ -500,10 +500,13 @@ fn the_lyrics_and_chord_diagram_dialogs_create_them() {
         ["one", "two"]
     );
 
-    // Chord diagram: the default six-string shape, written above the beat.
+    // Chord diagram: it starts from the beat's notes (fret 5 on the highest string), and
+    // a click on the drawn grid adds a finger (its middle: the fourth string, fret 3).
     harness.get_by_label("Chord diagram…").scroll_to_me();
     harness.run();
     harness.get_by_label("Chord diagram…").click_accesskit();
+    harness.run();
+    harness.get_by_label("Chord diagram grid").click();
     harness.run();
     harness.get_by_label("Apply").click_accesskit();
     harness.run();
@@ -514,8 +517,10 @@ fn the_lyrics_and_chord_diagram_dialogs_create_them() {
         .beat(cursor.position())
         .and_then(|beat| beat.chord_diagram())
         .expect("the beat has a chord diagram");
-    assert_eq!(chord.name, "C");
-    assert_eq!(chord.frets.len(), 6);
+    assert_eq!(chord.name, "Chord");
+    assert_eq!(chord.frets.len(), 6, "the track's six strings");
+    assert!(chord.frets.contains(&(5, 5)), "{:?}", chord.frets);
+    assert!(chord.frets.contains(&(3, 3)), "{:?}", chord.frets);
 }
 
 #[test]

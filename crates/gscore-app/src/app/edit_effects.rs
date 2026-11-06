@@ -462,7 +462,7 @@ const BEAT_ITEMS: &[FxItem] = &[
     item(ActionId::ToggleDeadSlapped, Face::DeadSlap, Fx::DeadSlapped),
     item(
         ActionId::EditChordDiagram,
-        Face::TextMore("Ch"),
+        Face::ChordGrid,
         Fx::ChordDiagram,
     ),
     item(

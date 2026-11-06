@@ -25,6 +25,8 @@ pub(crate) enum Face<'a> {
     Word(&'a str),
     /// A fingering sign in large bold italic ("1", "m"), for the fingering windows.
     Finger(&'a str),
+    /// A small chord diagram (its tile opens the chord diagram dialog).
+    ChordGrid,
     /// An octave sign as the score writes it: the number, then the raised suffix ("8" and
     /// "va").
     Octave { number: &'a str, suffix: &'a str },
@@ -279,6 +281,28 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
         }
         Face::WhammyMore => {
             paint_whammy(painter, rect, ink);
+            more_corner(painter, rect, ink);
+        }
+        Face::ChordGrid => {
+            // Five strings of a short grid with a thick nut and three fingers, like the
+            // diagram the score draws (a C shape), and the dialog corner.
+            let thin = Stroke::new(1.0, ink);
+            let (left, top, gap, fret) = (-8.0, -8.0, 4.0, 4.5);
+            for string in 0..5 {
+                let x = left + string as f32 * gap;
+                painter.line_segment([at(x, top), at(x, top + 3.0 * fret)], thin);
+            }
+            painter.line_segment(
+                [at(left, top), at(left + 4.0 * gap, top)],
+                Stroke::new(2.2, ink),
+            );
+            for row in 1..=3 {
+                let y = top + row as f32 * fret;
+                painter.line_segment([at(left, y), at(left + 4.0 * gap, y)], thin);
+            }
+            for (string, row) in [(1.0, 2.5), (2.0, 1.5), (4.0, 0.5)] {
+                painter.circle_filled(at(left + string * gap, top + row * fret), 1.9, ink);
+            }
             more_corner(painter, rect, ink);
         }
         Face::Hairpin => {

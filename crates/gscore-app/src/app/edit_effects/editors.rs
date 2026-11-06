@@ -236,7 +236,11 @@ impl EffectsState {
         if snapshot.beats.is_empty() {
             return;
         }
-        self.chord = Some(ChordEditor::new(snapshot.chord.as_ref()));
+        self.chord = Some(ChordEditor::new(
+            snapshot.chord.as_ref(),
+            snapshot.string_count,
+            &snapshot.beat_shape,
+        ));
     }
 
     fn show_chord(

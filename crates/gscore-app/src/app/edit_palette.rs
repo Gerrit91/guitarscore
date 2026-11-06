@@ -126,6 +126,10 @@ pub(super) struct PaletteSnapshot {
     pub(super) beat_text: String,
     /// The cursor beat's chord diagram, if it has one.
     pub(super) chord: Option<gscore_model::ChordDiagram>,
+    /// The track's string count, and the cursor beat's frets as a chord shape (lowest
+    /// string first, -1 where it has no note), for the chord diagram dialog.
+    pub(super) string_count: usize,
+    pub(super) beat_shape: Vec<i8>,
     /// The lyrics lines of the song, for the lyrics dialog.
     pub(super) lyric_lines: Vec<gscore_model::LyricLine>,
     /// How many measures the song has (for the lyrics dialog's start).
@@ -166,6 +170,23 @@ impl PaletteSnapshot {
         let chord = beat
             .as_ref()
             .and_then(gscore_model::BeatView::chord_diagram);
+        let string_count = track.map_or(6, |track| track.string_count()).max(1);
+        let mut beat_shape = vec![-1_i8; string_count];
+        if let Some(beat) = &beat {
+            for note in beat.notes() {
+                let (Ok(string), Ok(fret)) = (note.string(), note.fret()) else {
+                    continue;
+                };
+                // String 1 is the highest; a diagram starts at the lowest.
+                let index = string_count.checked_sub(usize::from(string.get()));
+                if let (Some(slot), Ok(fret)) = (
+                    index.and_then(|index| beat_shape.get_mut(index)),
+                    i8::try_from(fret.get()),
+                ) {
+                    *slot = fret;
+                }
+            }
+        }
         let lyric_lines = song.lyric_lines();
         let measure_count = song.measure_count();
         let mut note_targets = Vec::new();
@@ -242,6 +263,8 @@ impl PaletteSnapshot {
             beat_tie,
             beat_text,
             chord,
+            string_count,
+            beat_shape,
             lyric_lines,
             measure_count,
             note_state,
