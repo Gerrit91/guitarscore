@@ -3432,3 +3432,11 @@ needed for a much larger font); owner listening check.
   screen.
 - Test: a steel preset with a reverb block, dialed in on an electric track, comes back as
   steel strings with the block after choosing it.
+
+## 2026-11-06 — A chain block's box and editor, tidied
+
+- The editor no longer repeats the bypass as a checkbox (the mute under the block does it,
+  and its menu offers it too) and drops the "right-click to remove" hint; it shows just the
+  block's name and its knobs.
+- A cabinet or body block reads "Cab" on the board - "Cabinet / body" was cut off at the
+  box's width; the menu that offers it keeps the full name.

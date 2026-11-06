@@ -107,10 +107,11 @@ fn box_text(block: &BlockSetting) -> (String, String) {
                 |name| name.to_string_lossy().into_owned(),
             ),
     };
-    let title = if block.choice == BlockChoice::Empty {
-        "+".to_owned()
-    } else {
-        block.choice.label().to_owned()
+    let title = match block.choice {
+        BlockChoice::Empty => "+".to_owned(),
+        // "Cabinet / body" does not fit a box.
+        BlockChoice::Cabinet => "Cab".to_owned(),
+        other => other.label().to_owned(),
     };
     (title, detail)
 }
@@ -550,16 +551,7 @@ fn editor(ui: &mut egui::Ui, chain: &ChainSetting, place: usize) -> Edited {
                 .weak(),
         );
     } else {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(block.choice.label()).strong());
-            ui.checkbox(&mut edited.bypass, "Bypass")
-                .on_hover_text("Let the sound pass this block unchanged");
-            ui.label(
-                RichText::new("Right-click the block to remove it")
-                    .weak()
-                    .small(),
-            );
-        });
+        ui.label(RichText::new(block.choice.label()).strong());
         if block.choice.uses_file() {
             ui.horizontal(|ui| {
                 let name = block.file.as_ref().map_or_else(
@@ -575,7 +567,6 @@ fn editor(ui: &mut egui::Ui, chain: &ChainSetting, place: usize) -> Edited {
         ui.add_space(4.0);
         let moved = block_knobs(ui, &mut edited, false);
         changed |= moved.changed;
-        changed |= edited.bypass != block.bypass;
         // A value from a hand-edited settings file comes back within its range.
         changed |= edited.length != block.length;
         rebuild = moved.rebuild;
