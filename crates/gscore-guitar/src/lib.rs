@@ -16,7 +16,7 @@ mod filters;
 mod model;
 mod string;
 
-pub use model::{GuitarModel, StringModel};
+pub use model::{GuitarModel, StringModel, ranges};
 pub use string::{Attack, Pluck, Release, StringVoice};
 
 /// The frequency of MIDI note `key` plus `cents`, in Hz (A4 = note 69 = 440 Hz).

@@ -299,7 +299,10 @@ fn no_parameters_make_nan_or_runaway_output() {
         let model = StringModel {
             sustain: random.wild(),
             sustain_exponent: random.wild(),
-            darkness: random.wild(),
+            brilliance: random.wild(),
+            softness: random.wild(),
+            tone: random.wild(),
+            resonance: random.wild(),
             stiffness: random.wild(),
             stiffness_stages: (random.next() * 10.0) as usize,
             pick_position: random.wild(),
@@ -347,4 +350,39 @@ fn no_parameters_make_nan_or_runaway_output() {
             }
         }
     }
+}
+
+/// The power at `frequency` (a windowed DFT bin).
+fn power_at(samples: &[f32], frequency: f32) -> f64 {
+    let n = samples.len() as f64;
+    let w = std::f64::consts::TAU * f64::from(frequency) / f64::from(RATE);
+    let (mut re, mut im) = (0.0, 0.0);
+    for (i, &x) in samples.iter().enumerate() {
+        let hann = 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / n).cos();
+        re += f64::from(x) * hann * (w * i as f64).cos();
+        im += f64::from(x) * hann * (w * i as f64).sin();
+    }
+    re * re + im * im
+}
+
+#[test]
+fn the_highs_of_a_low_note_fade_as_fast_as_a_high_notes() {
+    // How many dB the harmonic `n` of `key` loses between 0.03 and 0.4 seconds; both
+    // harmonics below lie at 1.98 kHz.
+    let fall = |key: u8, n: f32| {
+        let f = frequency(key, 0.0) * n;
+        let mut voice = StringVoice::new(RATE, 20.0, GuitarModel::Electric.strings());
+        voice.pluck(pick(frequency(key, 0.0)));
+        let out = render(&mut voice, 0.6, |_| {});
+        let early = power_at(seconds(&out, 0.03, 0.13), f);
+        let late = power_at(seconds(&out, 0.4, 0.5), f);
+        10.0 * (early / late.max(1e-30)).log10()
+    };
+    let (low, high) = (fall(40, 24.0), fall(64, 6.0));
+    // The electric's brilliance is 0.8 s: about 28 dB in 0.37 s.
+    assert!(low > 15.0, "the low E's highs fade: {low:.1} dB");
+    assert!(
+        (low / high - 1.0).abs() < 0.5,
+        "the same rate on both strings: low {low:.1} dB, high {high:.1} dB"
+    );
 }

@@ -19,7 +19,8 @@ use std::f32::consts::TAU;
 
 use crate::delay::{DelayLine, MIN_DELAY};
 use crate::filters::{
-    Allpass, DcBlocker, Noise, OnePole, allpass_delay, one_pole_delay, one_pole_gain,
+    Allpass, Biquad, DcBlocker, Noise, OnePole, allpass_delay, one_pole_delay, one_pole_for_ratio,
+    one_pole_gain,
 };
 use crate::model::StringModel;
 
@@ -33,6 +34,12 @@ const DAMPING_SETTLE: f32 = 0.004;
 const SILENCE: f32 = 1e-5;
 /// What is left of a vibrating string when the pick strikes it again.
 const PICK_CONTACT: f32 = 0.35;
+/// The frequency the high decay time ([`StringModel::brilliance`]) is measured at, Hz.
+const BRILLIANCE_AT: f32 = 2_000.0;
+/// The strike's brightness: hardness 0 rounds it above this many Hz, hardness 1 above
+/// [`HARDEST`].
+const SOFTEST: f32 = 400.0;
+const HARDEST: f32 = 12_000.0;
 
 /// How a note is set going.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -97,6 +104,8 @@ pub struct StringVoice {
     loss: OnePole,
     stiffness: [Allpass; MAX_STIFFNESS_STAGES],
     dc: DcBlocker,
+    /// The pickup's or body's tone on the output.
+    tone: Biquad,
     noise: Noise,
     /// The note's frequency and the bend on top of it (cents).
     frequency: f32,
@@ -107,9 +116,14 @@ pub struct StringVoice {
     delay_target: f32,
     delay_step: f32,
     glide_left: usize,
-    /// Damping now and where it is going: the 60 dB decay time and the loss coefficient.
+    /// Damping now and where it is going: the 60 dB decay times of the fundamental and of
+    /// the harmonics around 2 kHz.
     damping: Damping,
     decay: f32,
+    high_decay: f32,
+    /// The loss filter last designed, and for which pitch and decay times (the design is
+    /// a search, so it is only redone when one of them changes).
+    design: (f32, f32, f32),
     darkness: f32,
     /// The output gain (a fade) now and where it goes.
     level: f32,
@@ -142,6 +156,7 @@ impl StringVoice {
             loss: OnePole::default(),
             stiffness: [Allpass::default(); MAX_STIFFNESS_STAGES],
             dc: DcBlocker::new(sample_rate),
+            tone: Biquad::lowpass(sample_rate, model.tone, model.resonance),
             noise: Noise::new(0x9E37_79B9),
             frequency: 110.0,
             bend: 0.0,
@@ -152,7 +167,9 @@ impl StringVoice {
             glide_left: 0,
             damping: Damping::Released,
             decay: model.sustain_at(110.0),
-            darkness: model.darkness,
+            high_decay: model.brilliance,
+            design: (0.0, 0.0, 0.0),
+            darkness: 0.0,
             level: 1.0,
             level_target: 1.0,
             peak: 0.0,
@@ -166,6 +183,13 @@ impl StringVoice {
     pub fn set_model(&mut self, model: StringModel) {
         self.model = model.sanitized();
         self.set_stiffness();
+        self.tone = self.tone.retuned(Biquad::lowpass(
+            self.sample_rate,
+            self.model.tone,
+            self.model.resonance,
+        ));
+        // The loss filter follows on the next block.
+        self.design = (0.0, 0.0, 0.0);
     }
 
     /// Whether the string still sounds.
@@ -291,7 +315,8 @@ impl StringVoice {
             }
             self.line.push(y);
             self.level += level_step;
-            let out_sample = self.dc.process(tap) * self.level * self.model.level;
+            let out_sample =
+                self.tone.process(self.dc.process(tap)) * self.level * self.model.level;
             peak = peak.max(out_sample.abs());
             *sample += out_sample;
         }
@@ -310,6 +335,7 @@ impl StringVoice {
             stage.reset();
         }
         self.dc.reset();
+        self.tone.reset();
         self.peak = 0.0;
         self.sounding = false;
     }
@@ -324,14 +350,15 @@ impl StringVoice {
         }
     }
 
-    /// The 60 dB decay time and loss coefficient of `damping` at the current pitch.
+    /// The 60 dB decay times (fundamental, harmonics around 2 kHz) of `damping` at the
+    /// current pitch.
     fn damping_values(&self, damping: Damping) -> (f32, f32) {
         match damping {
-            Damping::Ringing => (self.model.sustain_at(self.frequency), self.model.darkness),
-            Damping::PalmMuted => (0.18, 0.6),
-            Damping::Released => (0.3, 0.45),
-            Damping::Damped => (0.04, 0.6),
-            Damping::Dead => (0.015, 0.7),
+            Damping::Ringing => (self.model.sustain_at(self.frequency), self.model.brilliance),
+            Damping::PalmMuted => (0.18, 0.03),
+            Damping::Released => (0.3, 0.06),
+            Damping::Damped => (0.04, 0.01),
+            Damping::Dead => (0.015, 0.005),
         }
     }
 
@@ -339,20 +366,28 @@ impl StringVoice {
     fn set_damping(&mut self, damping: Damping, now: bool) {
         self.damping = damping;
         if now {
-            let (decay, darkness) = self.damping_values(damping);
+            let (decay, high_decay) = self.damping_values(damping);
             self.decay = decay;
-            self.darkness = darkness;
+            self.high_decay = high_decay;
         }
     }
 
     /// Moves the damping toward its target over `samples`.
     fn settle(&mut self, samples: usize) {
-        let (decay, darkness) = self.damping_values(self.damping);
+        let (decay, high_decay) = self.damping_values(self.damping);
         let share = 1.0 - (-(samples as f32) / (DAMPING_SETTLE * self.sample_rate)).exp();
-        // Decay times move on a log scale, so long and short meet evenly.
-        let log = self.decay.ln() + (decay.ln() - self.decay.ln()) * share;
-        self.decay = log.exp();
-        self.darkness += (darkness - self.darkness) * share;
+        // Decay times move on a log scale, so long and short meet evenly; they snap to
+        // the target once close, so the loss filter is not designed again and again.
+        let glide = |now: f32, target: f32| {
+            let next = (now.ln() + (target.ln() - now.ln()) * share).exp();
+            if (next / target - 1.0).abs() < 0.01 {
+                target
+            } else {
+                next
+            }
+        };
+        self.decay = glide(self.decay.max(1e-4), decay);
+        self.high_decay = glide(self.high_decay.max(1e-4), high_decay);
     }
 
     /// Recomputes the loop for the current pitch and damping; the delay glides to its new
@@ -360,11 +395,25 @@ impl StringVoice {
     fn update(&mut self, glide: usize) {
         let frequency = (self.frequency * (self.bend / 1200.0).exp2()).max(8.0);
         let w = (TAU * frequency / self.sample_rate).min(3.0);
-        let darkness = self.darkness.clamp(0.0, 0.95);
+        // The loop's gain per period that decays 60 dB in `decay` seconds, for the
+        // fundamental and for the harmonics around 2 kHz: the loss filter takes the highs
+        // down at their own rate, the same on every string (a low string goes round its
+        // loop less often, so a fixed filter would let its highs ring far too long).
+        let per_period = |decay: f32| 10.0_f32.powf(-3.0 / (decay.max(0.002) * frequency));
+        let key = (frequency, self.decay, self.high_decay);
+        if key != self.design {
+            self.design = key;
+            let high = (TAU * BRILLIANCE_AT / self.sample_rate).min(3.0);
+            let ratio = per_period(self.high_decay) / per_period(self.decay);
+            self.darkness = if high > w * 1.2 {
+                one_pole_for_ratio(w, high, ratio)
+            } else {
+                0.0
+            };
+        }
+        let darkness = self.darkness.clamp(0.0, 0.995);
         self.loss.a = darkness;
-        // The loop's gain per period that decays 60 dB in `decay` seconds.
-        let per_period = 10.0_f32.powf(-3.0 / (self.decay.max(0.005) * frequency));
-        self.gain = (per_period / one_pole_gain(darkness, w)).min(0.999_95);
+        self.gain = (per_period(self.decay) / one_pole_gain(darkness, w)).min(0.999_95);
         let stages = self.model.stiffness_stages.min(MAX_STIFFNESS_STAGES) as f32;
         let filters = one_pole_delay(darkness, w) + stages * allpass_delay(self.model.stiffness, w);
         let target =
@@ -379,20 +428,32 @@ impl StringVoice {
         }
     }
 
-    /// Adds one period of excitation to the string: the picking hand's strike at the pick
-    /// position (a pulse whose edges `hardness` rounds), with `noise` mixed in, after
-    /// scaling what vibrates by `contact`.
+    /// Adds one period of excitation to the string, after scaling what vibrates by
+    /// `contact`: the picking hand's strike at the pick position, a blend of a sharp pulse
+    /// and a rounded triangle (the model's softness), rounded above a frequency set by
+    /// `hardness` (0 to 1), with `noise` mixed in.
     fn excite(&mut self, amplitude: f32, hardness: f32, contact: f32, noise: f32) {
         let period = (self.delay_target.round() as usize).max(2);
         let split = self.model.pick_position;
         let after = -split / (1.0 - split);
+        let softness = self.model.softness;
+        let cutoff = SOFTEST * (HARDEST / SOFTEST).powf(hardness.clamp(0.0, 1.0));
+        let rounding = 1.0 - (-TAU * cutoff / self.sample_rate).exp();
         let mut smooth = 0.0_f32;
         let mut source = self.noise;
         self.line.reshape(period, |position, old| {
             let x = position as f32 / period as f32;
+            // Both shapes have no offset: the pulse's two levels balance, the triangle
+            // (the string's shape when the pick lets go) is centred.
             let pulse = if x < split { 1.0 } else { after };
-            let raw = pulse * (1.0 - noise) + source.next() * noise;
-            smooth += (raw - smooth) * hardness;
+            let triangle = if x < split {
+                x / split
+            } else {
+                (1.0 - x) / (1.0 - split)
+            };
+            let shape = pulse * (1.0 - softness) + (2.0 * triangle - 1.0) * softness;
+            let raw = shape * (1.0 - noise) + source.next() * noise;
+            smooth += (raw - smooth) * rounding;
             old * contact + smooth * amplitude
         });
         self.noise = source;
