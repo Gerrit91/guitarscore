@@ -115,6 +115,12 @@ pub(super) struct PaletteSnapshot {
     pub(super) beat_tie: Option<bool>,
     /// The cursor beat's text, if it has one.
     pub(super) beat_text: String,
+    /// The cursor beat's chord diagram, if it has one.
+    pub(super) chord: Option<gscore_model::ChordDiagram>,
+    /// The lyrics lines of the song, for the lyrics dialog.
+    pub(super) lyric_lines: Vec<gscore_model::LyricLine>,
+    /// How many measures the song has (for the lyrics dialog's start).
+    pub(super) measure_count: usize,
     /// The cursor note's effects, and the cursor beat's.
     pub(super) note_state: Option<NoteState>,
     pub(super) beat_state: Option<BeatState>,
@@ -148,6 +154,11 @@ impl PaletteSnapshot {
             .as_ref()
             .map(|beat| beat.text().to_owned())
             .unwrap_or_default();
+        let chord = beat
+            .as_ref()
+            .and_then(gscore_model::BeatView::chord_diagram);
+        let lyric_lines = song.lyric_lines();
+        let measure_count = song.measure_count();
         let mut note_targets = Vec::new();
         let mut target_states = Vec::new();
         let mut beat_states = Vec::new();
@@ -221,6 +232,9 @@ impl PaletteSnapshot {
                 .is_some_and(|note| note.kind() == gscore_model::NoteKind::Tie),
             beat_tie,
             beat_text,
+            chord,
+            lyric_lines,
+            measure_count,
             note_state,
             beat_state,
             note_targets,
@@ -283,6 +297,8 @@ impl GuitarScoreApp {
                 );
                 if beat_text == Some(ActionId::EditBeatText) {
                     tab.edit_palette.effects.open_beat_text(&snapshot);
+                } else if beat_text == Some(ActionId::EditLyrics) {
+                    tab.edit_palette.effects.open_lyrics(&snapshot);
                 }
                 style::section(ui, "note_input", "Note input", |ui| {
                     note_length(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
@@ -383,6 +399,10 @@ impl GuitarScoreApp {
             commands = tie_beat_commands(&snapshot);
         } else if action == ActionId::EditBeatText {
             state.effects.open_beat_text(&snapshot);
+        } else if action == ActionId::EditLyrics {
+            state.effects.open_lyrics(&snapshot);
+        } else if action == ActionId::EditChordDiagram {
+            state.effects.open_chord(&snapshot);
         } else if action == ActionId::EditLeftFinger {
             state.effects.open_finger(&snapshot, Hand::Left);
         } else if action == ActionId::EditRightFinger {

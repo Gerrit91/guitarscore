@@ -287,6 +287,11 @@ impl BeatView<'_> {
     pub fn text(&self) -> &str {
         &self.inner.text
     }
+
+    /// The lyric syllables on this beat, one per line (GP6/GP7 store lyrics here).
+    pub fn lyrics(&self) -> &[String] {
+        &self.inner.lyrics
+    }
 }
 
 impl NoteView<'_> {
@@ -348,6 +353,66 @@ impl ChordDiagram {
             fret_count: diagram.fret_count,
             base_fret: diagram.base_fret,
             frets: diagram.frets.clone(),
+        }
+    }
+
+    /// The diagram as a Guitar Pro file stores it.
+    pub(crate) fn to_gp(&self) -> gscore_gp::ChordDiagram {
+        gscore_gp::ChordDiagram {
+            name: self.name.clone(),
+            string_count: self.string_count,
+            fret_count: self.fret_count,
+            base_fret: self.base_fret,
+            frets: self.frets.clone(),
+        }
+    }
+
+    /// Checks that the diagram is usable: a short name, one to twelve strings and frets
+    /// and a fret on every shown string.
+    pub fn validate(&self) -> Result<(), ModelError> {
+        const MAX_NAME: usize = 64;
+        const MAX_STRINGS: u8 = 12;
+        const MAX_FRETS: u8 = 12;
+        const MAX_FRET: i8 = 24;
+        const MAX_BASE_FRET: u8 = 24;
+        if self.name.chars().count() > MAX_NAME {
+            return Err(ModelError::Invalid(format!(
+                "the chord name is longer than {MAX_NAME} characters"
+            )));
+        }
+        if !(1..=MAX_STRINGS).contains(&self.string_count) {
+            return Err(ModelError::Invalid(format!(
+                "a chord diagram shows 1 to {MAX_STRINGS} strings"
+            )));
+        }
+        if !(1..=MAX_FRETS).contains(&self.fret_count) {
+            return Err(ModelError::Invalid(format!(
+                "a chord diagram shows 1 to {MAX_FRETS} frets"
+            )));
+        }
+        if self.base_fret > MAX_BASE_FRET {
+            return Err(ModelError::Invalid(format!(
+                "a chord diagram cannot start above fret {MAX_FRET}"
+            )));
+        }
+        for &(string, fret) in &self.frets {
+            if string >= self.string_count || !(-1..=MAX_FRET).contains(&fret) {
+                return Err(ModelError::Invalid(
+                    "a chord diagram has a fret outside its grid".to_owned(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// A new six-string diagram with no fingerings yet.
+    pub fn new(name: impl Into<String>) -> Self {
+        ChordDiagram {
+            name: name.into(),
+            string_count: 6,
+            fret_count: 5,
+            base_fret: 0,
+            frets: (0..6).map(|string| (string, -1)).collect(),
         }
     }
 }

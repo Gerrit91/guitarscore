@@ -8,9 +8,11 @@ use gscore_model::{
 };
 
 use super::super::beat_text_editor::BeatTextEditor;
+use super::super::chord_editor::ChordEditor;
 use super::super::edit_palette::PaletteSnapshot;
 use super::super::grace_editor::GraceEditor;
 use super::super::harmonic_editor::HarmonicEditor;
+use super::super::lyrics_editor::LyricsEditor;
 use super::super::shape_editor::{Outcome, ShapeEditor, ShapeTarget};
 use super::dialogs::{FingerEditor, StrokeEditor, StrokeEditorKind, TremoloEditor, TrillEditor};
 use super::{EffectsState, apply_beat, apply_note, default_bend, default_whammy};
@@ -58,6 +60,8 @@ impl EffectsState {
             || self.trill.is_some()
             || self.tremolo.is_some()
             || self.beat_text.is_some()
+            || self.chord.is_some()
+            || self.lyrics.is_some()
             || self.finger_left.is_some()
             || self.finger_right.is_some()
             || self.stroke.is_some()
@@ -81,6 +85,8 @@ impl EffectsState {
         self.show_trill(ctx, snapshot, commands);
         self.show_tremolo(ctx, snapshot, commands);
         self.show_beat_text(ctx, snapshot, commands);
+        self.show_chord(ctx, snapshot, commands);
+        self.show_lyrics(ctx, snapshot, commands);
         self.show_finger(ctx, snapshot, commands, Hand::Left);
         self.show_finger(ctx, snapshot, commands, Hand::Right);
         self.show_stroke(ctx, snapshot, commands);
@@ -180,6 +186,75 @@ impl EffectsState {
             Hand::Left => self.finger_left = None,
             Hand::Right => self.finger_right = None,
         }
+    }
+
+    /// Opens the chord diagram dialog on the cursor beat's diagram, or on an empty one.
+    pub(in crate::app) fn open_chord(&mut self, snapshot: &PaletteSnapshot) {
+        if snapshot.beats.is_empty() {
+            return;
+        }
+        self.chord = Some(ChordEditor::new(snapshot.chord.as_ref()));
+    }
+
+    fn show_chord(
+        &mut self,
+        ctx: &egui::Context,
+        snapshot: &PaletteSnapshot,
+        commands: &mut Vec<Command>,
+    ) {
+        let Some(editor) = &mut self.chord else {
+            return;
+        };
+        let outcome = editor.show(ctx, snapshot.chord.is_some());
+        match outcome {
+            Outcome::Open => return,
+            Outcome::Apply => commands.push(Command::SetChordDiagram {
+                at: snapshot.cursor.position(),
+                diagram: Some(editor.diagram()),
+            }),
+            Outcome::Remove => commands.push(Command::SetChordDiagram {
+                at: snapshot.cursor.position(),
+                diagram: None,
+            }),
+            Outcome::Cancel | Outcome::Listen => {}
+        }
+        self.chord = None;
+    }
+
+    /// Opens the lyrics dialog on the cursor's measure.
+    pub(in crate::app) fn open_lyrics(&mut self, snapshot: &PaletteSnapshot) {
+        self.lyrics = Some(LyricsEditor::new(
+            snapshot.lyric_lines.clone(),
+            snapshot.measure.get(),
+            snapshot.measure_count,
+        ));
+    }
+
+    fn show_lyrics(
+        &mut self,
+        ctx: &egui::Context,
+        _snapshot: &PaletteSnapshot,
+        commands: &mut Vec<Command>,
+    ) {
+        let Some(editor) = &mut self.lyrics else {
+            return;
+        };
+        let outcome = editor.show(ctx);
+        match outcome {
+            Outcome::Open => return,
+            Outcome::Apply => commands.push(Command::SetLyricLine {
+                line: editor.line(),
+                start: gscore_model::MeasureIndex::new(editor.start()),
+                text: editor.text().to_owned(),
+            }),
+            Outcome::Remove => commands.push(Command::SetLyricLine {
+                line: editor.line(),
+                start: gscore_model::MeasureIndex::new(editor.start()),
+                text: String::new(),
+            }),
+            Outcome::Cancel | Outcome::Listen => {}
+        }
+        self.lyrics = None;
     }
 
     /// Opens the beat text dialog on the cursor beat's text.

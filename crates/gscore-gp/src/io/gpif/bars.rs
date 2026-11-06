@@ -176,6 +176,9 @@ pub(crate) struct Beat {
     pub legato: Option<LegatoInfo>,
     #[serde(rename = "FreeText", default)]
     pub free_text: Option<String>,
+    /// GP7 lyric syllables on the beat, one element per line (repeated `<Lyrics>`).
+    #[serde(rename = "Lyrics", default)]
+    pub lyrics: Vec<String>,
     /// GP7's octave sign on the beat: `8va`, `8vb`, `15ma` or `15mb`.
     #[serde(rename = "Ottavia", default)]
     pub ottavia: Option<String>,

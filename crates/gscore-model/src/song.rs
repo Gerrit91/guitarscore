@@ -40,6 +40,12 @@ impl Song {
         &self.inner
     }
 
+    /// The wrapped data for an edit that cannot leave the song inconsistent (metadata,
+    /// lyrics); prefer [`Song::edit_metadata`] in new code.
+    pub(crate) fn inner_mut(&mut self) -> &mut gscore_gp::Song {
+        &mut self.inner
+    }
+
     /// A new score: one six-string guitar track with a single 4/4 measure of rests, ready
     /// for note entry.
     pub fn new_score() -> Result<Self, ModelError> {

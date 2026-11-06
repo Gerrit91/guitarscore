@@ -202,6 +202,9 @@ pub struct Beat {
     pub grace: bool,
     /// The chord diagram shown at this beat (GuitarScore addition; GP7's `<Chord>`).
     pub chord_diagram: Option<ChordDiagram>,
+    /// GuitarScore addition: the lyric syllables written on this beat, one per lyric line
+    /// (GP6/GP7's repeated `<Lyrics>`; GP3-5 keep them per measure instead).
+    pub lyrics: Vec<String>,
 }
 
 impl Default for Beat {
@@ -217,6 +220,7 @@ impl Default for Beat {
             status: BeatStatus::Normal,
             grace: false,
             chord_diagram: None,
+            lyrics: Vec::new(),
         }
     }
 }

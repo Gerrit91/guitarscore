@@ -1,22 +1,22 @@
 //! The command enum: what an edit is, whether it can run, and how it applies.
 
 use gscore_model::{
-    BeatEffect, BeatKind, BeatPosition, BeatView, Change, Clef, Dynamic, Feel, Fermata, Fret,
-    InstrumentSymbol, MAX_BARS_PER_SYSTEM, MAX_SECTION_TITLE_CHARS, MAX_TEMPO, MeasureIndex,
-    ModelError, NoteEffect, NoteValue, PageSetup, Pitch, Repeat, SimileMark, Song, SongTextField,
-    StringNumber, SystemBreak, TimeSignature, TrackColor, TrackIndex, TrackStaves,
+    BeatEffect, BeatKind, BeatPosition, BeatView, Change, ChordDiagram, Clef, Dynamic, Feel,
+    Fermata, Fret, InstrumentSymbol, MAX_BARS_PER_SYSTEM, MAX_SECTION_TITLE_CHARS, MAX_TEMPO,
+    MeasureIndex, ModelError, NoteEffect, NoteValue, PageSetup, Pitch, Repeat, SimileMark, Song,
+    SongTextField, StringNumber, SystemBreak, TimeSignature, TrackColor, TrackIndex, TrackStaves,
 };
 
 use crate::info::{
     BATCH, CLEAR_NOTE, CLEAR_SECTION, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_TRACK,
     DUPLICATE_TRACK, INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO, RENAME_TRACK,
-    SET_BEAT_EFFECT, SET_BEAT_REST, SET_BEAT_TEXT, SET_BEAT_TIE, SET_CLEF, SET_DEAD_NOTE,
-    SET_DOUBLE_BAR, SET_DURATION, SET_DYNAMIC, SET_FEEL, SET_FERMATA, SET_FREE_TIME, SET_FRET,
-    SET_KEY_SIGNATURE, SET_MASTER_PAN, SET_MASTER_VOLUME, SET_MEASURE_TEMPO, SET_NOTE_EFFECT,
-    SET_REPEAT, SET_SECTION, SET_SIMILE_MARK, SET_SONG_TEXT, SET_TEMPO, SET_TIE,
-    SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_CHORUS, SET_TRACK_COLOR, SET_TRACK_DRUMS,
-    SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_REVERB, SET_TRACK_SOLO,
-    SET_TRACK_STAVES, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_SYMBOL,
+    SET_BEAT_EFFECT, SET_BEAT_REST, SET_BEAT_TEXT, SET_BEAT_TIE, SET_CHORD_DIAGRAM, SET_CLEF,
+    SET_DEAD_NOTE, SET_DOUBLE_BAR, SET_DURATION, SET_DYNAMIC, SET_FEEL, SET_FERMATA, SET_FREE_TIME,
+    SET_FRET, SET_KEY_SIGNATURE, SET_LYRIC_LINE, SET_MASTER_PAN, SET_MASTER_VOLUME,
+    SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_REPEAT, SET_SECTION, SET_SIMILE_MARK, SET_SONG_TEXT,
+    SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_CHORUS, SET_TRACK_COLOR,
+    SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_REVERB,
+    SET_TRACK_SOLO, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS, SET_TRACK_SYMBOL,
     SET_TRACK_VOLUME, UNDO,
 };
 use crate::info::{SET_BARS_PER_SYSTEM, SET_PAGE_SETUP, SET_SCORE_LINE_BREAK, SET_SYSTEM_BREAK};
@@ -295,6 +295,22 @@ pub enum Command {
         /// The new text.
         text: String,
     },
+    /// Set one lyric line: where its text starts and the text (an empty text removes it).
+    SetLyricLine {
+        /// The line, 0 to 4 (the first is 1 in the command line).
+        line: u8,
+        /// The measure the first syllable starts at.
+        start: MeasureIndex,
+        /// The syllables, separated by spaces.
+        text: String,
+    },
+    /// Set the chord diagram shown at a beat; `None` removes it.
+    SetChordDiagram {
+        /// The beat.
+        at: BeatPosition,
+        /// The diagram, or `None` to remove it.
+        diagram: Option<ChordDiagram>,
+    },
     /// Set the tempo a measure starts at.
     SetMeasureTempo {
         /// The measure.
@@ -555,6 +571,27 @@ impl Command {
             Command::SetBeatText { at: p, text } => {
                 format!("{id} {} text={}", at(p), crate::parse::encode_text(text))
             }
+            Command::SetLyricLine { line, start, text } => format!(
+                "{id} line={} measure={} text={}",
+                line.saturating_add(1),
+                one(start.get()),
+                crate::parse::encode_text(text)
+            ),
+            Command::SetChordDiagram { at: p, diagram } => match diagram {
+                Some(diagram) => format!(
+                    "{id} {} name={} base={} frets={}",
+                    at(p),
+                    crate::parse::encode_text(&diagram.name),
+                    diagram.base_fret,
+                    diagram
+                        .frets
+                        .iter()
+                        .map(|(_, fret)| fret.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ),
+                None => format!("{id} {}", at(p)),
+            },
             Command::SetDeadNote {
                 at: p,
                 string,
@@ -738,6 +775,8 @@ impl Command {
             Command::SetTie { .. } => &SET_TIE,
             Command::SetBeatTie { .. } => &SET_BEAT_TIE,
             Command::SetBeatText { .. } => &SET_BEAT_TEXT,
+            Command::SetLyricLine { .. } => &SET_LYRIC_LINE,
+            Command::SetChordDiagram { .. } => &SET_CHORD_DIAGRAM,
             Command::SetDeadNote { .. } => &SET_DEAD_NOTE,
             Command::SetDynamic { .. } => &SET_DYNAMIC,
             Command::SetMeasureTempo { .. } => &SET_MEASURE_TEMPO,
@@ -832,7 +871,9 @@ impl Command {
             | Command::SetFermata { .. }
             | Command::SetClef { .. }
             | Command::SetFreeTime { .. }
-            | Command::SetSimileMark { .. } => true,
+            | Command::SetSimileMark { .. }
+            | Command::SetLyricLine { .. }
+            | Command::SetChordDiagram { .. } => true,
             Command::Batch { commands } => commands.iter().any(Command::changes_layout),
             _ => false,
         }
@@ -1083,6 +1124,14 @@ impl Command {
                 song.beat(*at).is_some()
                     && text.chars().count() <= gscore_model::MAX_BEAT_TEXT_CHARS
             }
+            Command::SetLyricLine { line, start, text } => {
+                *line < gscore_model::LYRIC_LINES
+                    && text.chars().count() <= gscore_model::MAX_LYRIC_LINE_CHARS
+                    && (text.is_empty() || start.get() < song.measure_count())
+            }
+            Command::SetChordDiagram { at, diagram } => {
+                song.beat(*at).is_some() && diagram.as_ref().is_none_or(|d| d.validate().is_ok())
+            }
             Command::SetMeasureTempo { measure, tempo } => {
                 measure.get() < song.measure_count() && (1..=MAX_TEMPO).contains(tempo)
             }
@@ -1203,6 +1252,10 @@ impl Command {
             Command::SetTie { at, string, tie } => song.set_note_tie(*at, *string, *tie),
             Command::SetBeatTie { at, tie } => song.set_beat_tie(*at, *tie),
             Command::SetBeatText { at, text } => song.set_beat_text(*at, text),
+            Command::SetLyricLine { line, start, text } => song.set_lyric_line(*line, *start, text),
+            Command::SetChordDiagram { at, diagram } => {
+                song.set_chord_diagram(*at, diagram.as_ref())
+            }
             Command::SetDeadNote { at, string, dead } => song.set_note_dead(*at, *string, *dead),
             Command::SetDynamic { at, dynamic } => song.set_dynamic(*at, *dynamic),
             Command::SetMeasureTempo { measure, tempo } => song.set_measure_tempo(*measure, *tempo),

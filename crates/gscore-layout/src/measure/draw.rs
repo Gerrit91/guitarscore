@@ -160,6 +160,16 @@ impl MeasureLayout {
         (xs, cursor)
     }
 
+    /// Where each column starts and which beat it belongs to, for lyrics.
+    pub(crate) fn lyric_columns(&self, x: f32, stretch: f32) -> Vec<(u64, f32)> {
+        let (xs, _) = self.column_positions(x, stretch);
+        self.columns
+            .iter()
+            .zip(xs)
+            .map(|(column, x)| (column.beat, x))
+            .collect()
+    }
+
     /// Where the measure's beats are, for the cursor and clicks.
     pub(crate) fn place(&self, x: f32, stretch: f32, system: usize) -> MeasurePlace {
         let (xs, right) = self.column_positions(x, stretch);

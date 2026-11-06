@@ -3098,3 +3098,35 @@ needed for a much larger font); owner listening check.
   metronome, count-in and loop; `docs/parity.md` playback row and milestones;
   `docs/guitarpro.md` changes 40 (slash bit) and 41 (bars per staff);
   `docs/guitar-modelling.md` status and the owner's M22 decisions.
+
+## 2026-11-06 — M18 finished (speed, WAV, directions, fermatas); lyrics, fingerings and chord diagrams
+
+- **Playback directions**: `playback_order` follows D.C., D.S., coda, double coda and fine
+  after unrolling repeats. Each jump happens once, `to coda` only after an "al coda"
+  return, and Fine only when the return asks for it. `Song::direction` exposes the sign.
+- **Fermatas** hold the end of their measure in real time without moving a tick: a
+  `TempoMap` pause (carried through the browser's wire format) keeps note ticks and MIDI
+  export unchanged. Very short to very long hold 1/4 to 3 quarter notes.
+- **Speed**: the transport has a 50-120 % dropdown (also a slider in Settings › Practice).
+  A speed trainer raises it by a chosen step every N loop passes up to 100, 110 or 120 %;
+  both are stored in the settings. Previous/next bar during a count-in now starts a new
+  count-in at the new bar instead of stopping.
+- **WAV export**: `gscore-audio::write_wav` renders offline with the SoundFont (16-bit
+  stereo, 44.1 kHz, two-second tail), `File › Export › Audio (WAV)` writes it in the
+  background, and `gscore-cli wav` does the same without the GUI.
+- **Lyrics**: five lines, parsed into syllables (`[...]` hidden, `+` joining), placed on
+  the beats and drawn under the lowest staff. GP3-5 keep them per measure; GP6/GP7 keep a
+  syllable on each beat, and the model writes both. A Staff-palette "Lyrics…" dialog edits
+  one line (start measure and text) with undo.
+- **Chord diagrams**: a "Ch" tile opens a dialog for the name, base fret and a fret (or x)
+  per string; the diagram is drawn above the beat, edited and removed with undo. GP7
+  export now writes the `DiagramCollection` and each beat's `<Chord>` instead of dropping
+  them.
+- **Fingerings** were already read, drawn and editable from the technique tiles; a test
+  now covers them along with the new dialogs.
+- Tests: directions and their one-shot jumps, fermata time in timeline/sequence (ticks
+  unchanged), speed/trainer unit tests, WAV header/rendering, lyric distribution and GP7
+  round trip, chord grid validation and GP7 round trip, app dialogs. Snapshots updated for
+  the two new palette tiles.
+- Open: directions are not drawn in the score yet (`docs/gaps.md` #11); lyric editing is
+  line-based, not per syllable; WAV export has no progress or cancel.

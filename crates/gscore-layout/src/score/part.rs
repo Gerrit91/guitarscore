@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use gscore_model::{Song, TrackIndex, TrackView};
+use gscore_model::{LyricSyllable, Song, TrackIndex, TrackView};
 
 use super::NAME_SIZE;
 use crate::marks::MeasureMarks;
@@ -23,6 +23,8 @@ pub(super) struct Part<'a> {
     pub(super) show_slash: bool,
     pub(super) measures: Vec<Arc<MeasureLayout>>,
     pub(super) marks: Vec<MeasureMarks>,
+    /// The lyric syllables of each measure, in measure order.
+    pub(super) lyrics: Vec<Vec<LyricSyllable>>,
     /// From the top staff's top line to the tab's at the least (0 without notation): the
     /// gap between the staves grows in a system whose low notes or dynamics need it.
     tab_offset: f32,
@@ -71,6 +73,12 @@ impl<'a> Part<'a> {
             slash,
         };
         let mut measures = Vec::with_capacity(view.measures().len());
+        let mut lyrics: Vec<Vec<LyricSyllable>> = vec![Vec::new(); view.measures().len()];
+        for syllable in song.lyric_syllables(track) {
+            if let Some(slot) = lyrics.get_mut(syllable.measure.get()) {
+                slot.push(syllable);
+            }
+        }
         let mut previous_signature = None;
         let mut previous_key = None;
         let mut previous_clef = None;
@@ -121,6 +129,7 @@ impl<'a> Part<'a> {
             show_slash: slash,
             measures,
             marks: Vec::new(),
+            lyrics,
             tab_offset,
         })
     }
@@ -172,12 +181,33 @@ impl<'a> Part<'a> {
     /// From the top staff's top line to the lowest staff's bottom line, in a system of
     /// `measures`.
     pub(super) fn staves_height(&self, measures: std::ops::Range<usize>) -> f32 {
-        if self.show_tab {
-            self.tab_offset(measures) + self.ctx.staff.height()
+        let staves = if self.show_tab {
+            self.tab_offset(measures.clone()) + self.ctx.staff.height()
         } else if self.ctx.notation.is_some() {
-            self.below_slash(measures) + notation::staff().height()
+            self.below_slash(measures.clone()) + notation::staff().height()
         } else {
             SLASH_HEIGHT
+        };
+        staves + self.lyric_depth(measures)
+    }
+
+    /// The room the lyrics under the lowest staff take in a system of `measures`.
+    fn lyric_depth(&self, measures: std::ops::Range<usize>) -> f32 {
+        const GAP: f32 = 1.1;
+        const LINE: f32 = 1.35;
+        let lines = self
+            .lyrics
+            .get(measures)
+            .unwrap_or_default()
+            .iter()
+            .flatten()
+            .map(|syllable| usize::from(syllable.line).saturating_add(1))
+            .max()
+            .unwrap_or(0);
+        if lines == 0 {
+            0.0
+        } else {
+            GAP + LINE * lines as f32
         }
     }
 

@@ -731,6 +731,56 @@ pub(crate) const SET_BEAT_TEXT: CommandInfo = CommandInfo {
     params: &[TRACK, MEASURE, VOICE, BEAT, TEXT],
 };
 
+pub(crate) const SET_LYRIC_LINE: CommandInfo = CommandInfo {
+    id: "set_lyric_line",
+    aliases: &[],
+    label: "Set a lyric line",
+    help: "Sets one of the five lyric lines: where its text starts and the syllables, \
+           separated by spaces; an empty text removes the line.",
+    params: &[
+        ParamInfo {
+            name: "line",
+            required: true,
+            default: None,
+            help: "Lyric line, 1 to 5",
+        },
+        MEASURE,
+        TEXT,
+    ],
+};
+
+pub(crate) const SET_CHORD_DIAGRAM: CommandInfo = CommandInfo {
+    id: "set_chord_diagram",
+    aliases: &[],
+    label: "Set a chord diagram",
+    help: "Sets the chord shape shown above a beat (name, base fret and a fret or x per \
+           string); without a diagram it is removed.",
+    params: &[
+        TRACK,
+        MEASURE,
+        VOICE,
+        BEAT,
+        ParamInfo {
+            name: "name",
+            required: true,
+            default: None,
+            help: "The chord's name, such as C or Gb7/#11",
+        },
+        ParamInfo {
+            name: "base",
+            required: false,
+            default: Some("0"),
+            help: "The fret at the top of the diagram; 0 shows the nut",
+        },
+        ParamInfo {
+            name: "frets",
+            required: true,
+            default: None,
+            help: "A fret or x per string, lowest string first, separated by commas",
+        },
+    ],
+};
+
 pub(crate) const SET_DEAD_NOTE: CommandInfo = CommandInfo {
     id: "set_dead_note",
     aliases: &[],
@@ -927,6 +977,8 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_TIE,
     SET_BEAT_TIE,
     SET_BEAT_TEXT,
+    SET_LYRIC_LINE,
+    SET_CHORD_DIAGRAM,
     SET_DEAD_NOTE,
     SET_DYNAMIC,
     SET_MEASURE_TEMPO,

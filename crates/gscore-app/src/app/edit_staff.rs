@@ -537,6 +537,23 @@ pub(super) fn section(
                     if beat_text.clicked() {
                         action = Some(ActionId::EditBeatText);
                     }
+                    // Lyrics belong to the song, not the bar; the tile still sits with the
+                    // text they are written under.
+                    let tip = format!(
+                        "Lyrics: five lines of syllables under the staff{}",
+                        hint(ActionId::EditLyrics)
+                    );
+                    let lyrics = tiles::dialog_tile(
+                        ui,
+                        Face::TextMore("Ly"),
+                        !snapshot.lyric_lines.is_empty(),
+                        true,
+                        "Lyrics…",
+                        &tip,
+                    );
+                    if lyrics.clicked() {
+                        action = Some(ActionId::EditLyrics);
+                    }
                 }
             }
             // Bar repetitions are switches: a one-bar repeat, or a two-bar repeat set and

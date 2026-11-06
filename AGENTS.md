@@ -308,7 +308,8 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
 
 - **M18 (playback):** a speed slider, export to audio (WAV), fermatas and
   D.C./D.S./coda in playback; previous/next bar during a count-in should count in again
-  instead of stopping.
+  instead of stopping. *Done 2026-11-06:* speed 50-120 % and a speed trainer, WAV export
+  (desktop and `gscore-cli wav`), fermatas, D.C./D.S./coda/fine, count-in navigation.
 - **M19 (SoundFonts):** a quality check by ear of the bundled FluidR3 GM (desktop) and
   GeneralUser GS (browser); a smaller default for the source build.
 - **M20 (release):** signing and notarizing (Windows, macOS), the macOS file-dialog fix

@@ -98,6 +98,10 @@ pub enum ActionId {
     TieBeat,
     /// Palette: text written above the beat (opens the beat text dialog).
     EditBeatText,
+    /// Palette: lyrics (opens the lyrics dialog).
+    EditLyrics,
+    /// Palette: chord diagram (opens the chord diagram dialog).
+    EditChordDiagram,
     /// Palette: left-hand fingering (opens the fingering dialog).
     EditLeftFinger,
     /// Palette: right-hand fingering (opens the fingering dialog).
@@ -234,6 +238,8 @@ impl ActionId {
                 | ActionId::ToggleTie
                 | ActionId::TieBeat
                 | ActionId::EditBeatText
+                | ActionId::EditLyrics
+                | ActionId::EditChordDiagram
                 | ActionId::EditLeftFinger
                 | ActionId::EditRightFinger
                 | ActionId::ToggleDeadNote
@@ -372,6 +378,12 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::ToggleTie, "toggle_tie", "Tie"),
     info(ActionId::TieBeat, "tie_beat", "Tie beat"),
     info(ActionId::EditBeatText, "edit_beat_text", "Beat text…"),
+    info(ActionId::EditLyrics, "edit_lyrics", "Lyrics…"),
+    info(
+        ActionId::EditChordDiagram,
+        "edit_chord_diagram",
+        "Chord diagram…",
+    ),
     info(
         ActionId::EditLeftFinger,
         "edit_left_finger",
@@ -630,6 +642,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 98, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 100, "one entry per ActionId variant");
     }
 }

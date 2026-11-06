@@ -344,6 +344,8 @@ impl TabEditor {
             | ActionId::ToggleTie
             | ActionId::TieBeat
             | ActionId::EditBeatText
+            | ActionId::EditLyrics
+            | ActionId::EditChordDiagram
             | ActionId::EditLeftFinger
             | ActionId::EditRightFinger
             | ActionId::ToggleDeadNote

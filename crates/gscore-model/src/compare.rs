@@ -4,7 +4,7 @@
 //! tuning), measure time signatures, and every beat (kind, length, beat effects) and note
 //! (string, fret, kind, effects). Placeholder beats and empty voices are ignored, because
 //! formats differ in how many voice slots they store. Not compared: data the model has no
-//! accessors for (lyrics, mix tables, grace notes, fingerings, ...).
+//! accessors for (mix tables, grace notes, ...).
 
 use std::fmt;
 
@@ -69,6 +69,7 @@ pub fn differences(before: &Song, after: &Song) -> Vec<Difference> {
         after.measure_count(),
     );
     diff.check(song, "tracks", before.track_count(), after.track_count());
+    diff.check(song, "lyrics", before.lyric_lines(), after.lyric_lines());
     for (a, b) in before.tracks().zip(after.tracks()) {
         compare_track(&mut diff, &a, &b);
     }
@@ -187,6 +188,7 @@ struct BeatContent {
     dead_slapped: bool,
     rasgueado: bool,
     text: String,
+    lyrics: Vec<String>,
     notes: Vec<NoteContent>,
 }
 
@@ -268,6 +270,7 @@ fn beats(voice: Option<VoiceView<'_>>) -> Vec<BeatContent> {
                 dead_slapped: beat.is_dead_slapped(),
                 rasgueado: beat.has_rasgueado(),
                 text: beat.text().to_owned(),
+                lyrics: beat.lyrics().to_vec(),
                 notes,
             }
         })
@@ -287,6 +290,7 @@ fn compare_beat(diff: &mut Diffs, at: &str, a: &BeatContent, b: &BeatContent) {
     diff.check(at, "dead slapped", a.dead_slapped, b.dead_slapped);
     diff.check(at, "rasgueado", a.rasgueado, b.rasgueado);
     diff.check(at, "text", &a.text, &b.text);
+    diff.check(at, "lyrics", &a.lyrics, &b.lyrics);
     diff.check(at, "whammy bar", a.whammy_bar, b.whammy_bar);
     diff.check(at, "legato", a.legato, b.legato);
     diff.check(at, "vibrato", a.vibrato, b.vibrato);

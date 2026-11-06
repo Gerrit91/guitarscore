@@ -123,6 +123,10 @@ impl WriteGpifInGpifStringOrder for Song {
 
         // Tracks
         xml.push_str("<Tracks>");
+        // The chord diagrams of each track, in one collection per track (GPIF references
+        // them by id from the beats).
+        let track_diagrams: Vec<Vec<ChordDiagram>> =
+            self.tracks.iter().map(collect_diagrams).collect();
         for (t_idx, track) in self.tracks.iter().enumerate() {
             // GuitarScore addition: page breaks, which Guitar Pro does not have.
             let page_breaks: Vec<String> = track
@@ -175,6 +179,26 @@ impl WriteGpifInGpifStringOrder for Song {
                 ));
             }
             xml.push_str("<Properties>");
+            if let Some(diagrams) = track_diagrams.get(t_idx)
+                && !diagrams.is_empty()
+            {
+                xml.push_str("<Property name=\"DiagramCollection\"><Items>");
+                for (id, diagram) in diagrams.iter().enumerate() {
+                    xml.push_str(&format!(
+                        "<Item id=\"{id}\" name=\"{}\"><Diagram stringCount=\"{}\" \
+                         fretCount=\"{}\" baseFret=\"{}\">",
+                        escape_xml(&diagram.name),
+                        diagram.string_count,
+                        diagram.fret_count,
+                        diagram.base_fret
+                    ));
+                    for &(string, fret) in &diagram.frets {
+                        xml.push_str(&format!("<Fret string=\"{string}\" fret=\"{fret}\"/>"));
+                    }
+                    xml.push_str("</Diagram></Item>");
+                }
+                xml.push_str("</Items></Property>");
+            }
             // GuitarScore addition: the channel's reverb and chorus sends. GP7 has no
             // per-track send (its reverb is an RSE effect), so they are written as named
             // properties, and only when set, so untouched songs are written as before.
@@ -337,11 +361,22 @@ impl WriteGpifInGpifStringOrder for Song {
                         let beat_id = next_id(&mut next_beat_id)?;
                         let rhythm_id = next_id(&mut next_rhythm_id)?;
                         beat_ids.push(beat_id);
+                        let chord_id = beat
+                            .chord_diagram
+                            .as_ref()
+                            .and_then(|chord| {
+                                track_diagrams
+                                    .get(t_idx)?
+                                    .iter()
+                                    .position(|candidate| candidate == chord)
+                            })
+                            .and_then(|index| i32::try_from(index).ok());
 
                         let export = build_beat_xml(
                             beat,
                             beat_id,
                             rhythm_id,
+                            chord_id,
                             &mut next_note_id,
                             &mut prev_velocity,
                         )?;
@@ -498,6 +533,24 @@ impl WriteGpifInGpifStringOrder for Song {
         xml.push_str("</GPIF>");
         Ok(xml)
     }
+}
+
+/// The chord diagrams of a track's beats, each once, in beat order.
+fn collect_diagrams(track: &Track) -> Vec<ChordDiagram> {
+    let mut diagrams: Vec<ChordDiagram> = Vec::new();
+    for measure in &track.measures {
+        for voice in &measure.voices {
+            for beat in &voice.beats {
+                let Some(chord) = &beat.chord_diagram else {
+                    continue;
+                };
+                if !diagrams.iter().any(|known| known == chord) {
+                    diagrams.push(chord.clone());
+                }
+            }
+        }
+    }
+    diagrams
 }
 
 /// A MIDI value from the channel table, or `default` when the track has no channel.

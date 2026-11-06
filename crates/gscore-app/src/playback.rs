@@ -489,7 +489,7 @@ impl Playback {
         }
         self.passes = self.passes.saturating_add(1);
         let every = u32::from(self.trainer.every.max(1));
-        if self.passes % every != 0 {
+        if !self.passes.is_multiple_of(every) {
             return Ok(false);
         }
         let target = self.trainer.target.max(SPEED_RANGE.0);

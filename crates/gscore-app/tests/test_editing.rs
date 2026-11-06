@@ -442,6 +442,53 @@ fn the_tie_beat_text_and_fingering_tiles_work() {
 }
 
 #[test]
+fn the_lyrics_and_chord_diagram_dialogs_create_them() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    harness.run();
+
+    // Lyrics: the first line, starting at the cursor's bar.
+    harness.get_by_label("Lyrics…").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Lyrics…").click_accesskit();
+    harness.run();
+    harness.get_by_label("Lyric text").click();
+    harness.run();
+    harness.get_by_label("Lyric text").type_text("one two");
+    harness.run();
+    harness.get_by_label("Apply").click_accesskit();
+    harness.run();
+    let song = harness.state().document().unwrap().song();
+    let lines = song.lyric_lines();
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert_eq!(lines[0].text, "one two");
+    assert_eq!(
+        song.lyric_syllables(TrackIndex::new(0))
+            .iter()
+            .map(|syllable| syllable.text.as_str())
+            .collect::<Vec<_>>(),
+        ["one", "two"]
+    );
+
+    // Chord diagram: the default six-string shape, written above the beat.
+    harness.get_by_label("Chord diagram…").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Chord diagram…").click_accesskit();
+    harness.run();
+    harness.get_by_label("Apply").click_accesskit();
+    harness.run();
+    let document = harness.state().document().unwrap();
+    let cursor = document.editor().cursor();
+    let chord = document
+        .song()
+        .beat(cursor.position())
+        .and_then(|beat| beat.chord_diagram())
+        .expect("the beat has a chord diagram");
+    assert_eq!(chord.name, "C");
+    assert_eq!(chord.frets.len(), 6);
+}
+
+#[test]
 fn the_player_tells_whether_the_bar_is_full() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
     harness.run();

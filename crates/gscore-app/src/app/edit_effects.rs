@@ -14,10 +14,12 @@ use gscore_model::{
 };
 
 use super::beat_text_editor::BeatTextEditor;
+use super::chord_editor::ChordEditor;
 use super::edit_effects::dialogs::{TremoloEditor, TrillEditor};
 use super::edit_palette::PaletteSnapshot;
 use super::grace_editor::GraceEditor;
 use super::harmonic_editor::HarmonicEditor;
+use super::lyrics_editor::LyricsEditor;
 use super::shape_editor::ShapeEditor;
 use super::style;
 use super::tiles::{self, Face};
@@ -115,6 +117,8 @@ pub(super) struct EffectsState {
     trill: Option<TrillEditor>,
     tremolo: Option<TremoloEditor>,
     beat_text: Option<BeatTextEditor>,
+    chord: Option<ChordEditor>,
+    lyrics: Option<LyricsEditor>,
     finger_left: Option<dialogs::FingerEditor>,
     finger_right: Option<dialogs::FingerEditor>,
     /// The brush or arpeggio dialog, while it is open.
@@ -154,6 +158,8 @@ pub(super) enum Fx {
     StringNumber,
     FingerLeft,
     FingerRight,
+    /// The chord diagram editor is beat-level and opens a dialog.
+    ChordDiagram,
     Whammy,
     Legato,
     BeatVibrato(Vibrato),
@@ -435,6 +441,11 @@ const BEAT_ITEMS: &[FxItem] = &[
     ),
     item(ActionId::ToggleDeadSlapped, Face::DeadSlap, Fx::DeadSlapped),
     item(
+        ActionId::EditChordDiagram,
+        Face::TextMore("Ch"),
+        Fx::ChordDiagram,
+    ),
+    item(
         ActionId::ToggleRasgueado,
         Face::Word("rasg."),
         Fx::Rasgueado,
@@ -591,6 +602,7 @@ fn is_on(fx: Fx, note: Option<&NoteState>, beat: &BeatState) -> bool {
         Fx::Whammy => beat.whammy.is_some(),
         Fx::Legato => beat.legato.is_some(),
         Fx::BeatVibrato(kind) => beat.vibrato == Some(kind),
+        Fx::ChordDiagram => false,
     }
 }
 
@@ -598,6 +610,9 @@ fn is_on(fx: Fx, note: Option<&NoteState>, beat: &BeatState) -> bool {
 /// selected beat (beat effects) has it. Then a click takes it off them all; otherwise a
 /// click puts it on them all. Without targets it is off.
 fn is_on_for_targets(fx: Fx, snapshot: &PaletteSnapshot) -> bool {
+    if fx == Fx::ChordDiagram {
+        return snapshot.chord.is_some();
+    }
     let none = no_beat();
     if fx.on_note() {
         !snapshot.target_states.is_empty()
@@ -789,6 +804,7 @@ impl EffectsState {
                                 | Fx::Tremolo
                                 | Fx::FingerLeft
                                 | Fx::FingerRight
+                                | Fx::ChordDiagram
                         );
                     let response = if opens {
                         tiles::dialog_tile(ui, item.face, on, enabled, label, &tip)
@@ -840,6 +856,7 @@ impl EffectsState {
             Some(Fx::Tremolo) => self.open_tremolo(snapshot),
             Some(Fx::FingerLeft) => self.open_finger(snapshot, Hand::Left),
             Some(Fx::FingerRight) => self.open_finger(snapshot, Hand::Right),
+            Some(Fx::ChordDiagram) => self.open_chord(snapshot),
             Some(fx) if fx.stroke_target().is_some() => {
                 if let Some((kind, direction)) = fx.stroke_target() {
                     self.open_stroke(snapshot, kind, direction);

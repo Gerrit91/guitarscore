@@ -16,9 +16,11 @@ in AGENTS.md section 9.
    string and fret: notes below that tuning's lowest string show as "?" and are silent
    (8 of the owner's 59 files leave 18-116 notes out), and such tracks get no notation
    staff (no tuning), only a tab. Guitar Pro shows them as standard notation only.
-3. **Not played yet:** fermatas, D.C./D.S./coda and other directions. Missing controls:
-   a speed slider and export to audio (WAV). Previous/next bar during a count-in stops
-   playback instead of counting in again.
+3. **Playback controls.** Fermatas and D.C./D.S./coda are played now, and a speed
+   dropdown (50-120 %) with a speed trainer, WAV export and count-in navigation are in
+   place. Still open: export to audio is only the SoundFont path (no modelled instruments,
+   see M22), and WAV has no progress or cancel. Previous/next bar during a count-in counts
+   in again (fixed 2026-11-06).
 4. **Player limits.** Pause and resume do not re-trigger notes that were sounding;
    stopping `gscore-cli play --port` with Ctrl+C can leave notes hanging in an external
    synth. The synthesizer always uses the default audio device; `.sf3` SoundFonts are not
@@ -30,8 +32,11 @@ in AGENTS.md section 9.
 5. **Second staves are not read.** A GP7 track with two staves (a piano's or synth's
    treble and bass) keeps its first staff only. The tracks after it read their own bars
    (fixed 2026-11-05; bars are listed per staff, not per track).
-6. **Lyrics and fingerings** are kept in the file but cannot be shown or edited; chord
-   diagrams are read and drawn but cannot be edited.
+6. **Lyrics and fingerings** can be shown and edited: five lyric lines under the tab, per
+   syllable on the beats, and left/right-hand fingerings in the notation. Chord diagrams
+   can be created, shown in the score, edited and removed. Still open: lyric editing is
+   per line for the whole song (not per syllable), and a chord diagram has no drag-and-drop
+   grid yet (the dialog sets each string).
 7. **Older formats lose detail.** File › Export writes GP6, GP5, GP4 and GP3 and reports
    what each drops, but GP3-5 cannot store every duration (a double-dotted 7/16, some
    tuplets), artificial-harmonic frets, GuitarScore's brush and arpeggio timing (kept in
