@@ -42,7 +42,6 @@ mod sound_chain;
 mod staff_pickers;
 mod staff_widgets;
 mod string_sound;
-mod string_sound_window;
 mod style;
 mod swatches;
 mod tab;
@@ -133,8 +132,6 @@ pub struct GuitarScoreApp {
     about: Option<about::AboutWindow>,
     /// The tuner window, while it is open.
     tuner: Option<tuner::TunerState>,
-    /// The String sound dialog, while it is open.
-    string_sound: Option<string_sound_window::StringSoundDialog>,
     /// The Sound chain window, while it is open.
     sound_chain: Option<sound_chain::SoundChainWindow>,
     /// The reverb bus's window, while it is open.
@@ -270,7 +267,6 @@ impl GuitarScoreApp {
             settings_window: None,
             about: None,
             tuner: None,
-            string_sound: None,
             sound_chain: None,
             reverb_bus_window: None,
             settings,
@@ -808,7 +804,6 @@ impl eframe::App for GuitarScoreApp {
         self.show_tuning_dialog(&ctx);
         self.show_sound_chain(&ctx);
         self.show_reverb_bus_window(&ctx);
-        self.show_string_sound(&ctx);
         self.show_settings_window(&ctx);
         self.show_shortcuts(&ctx);
         self.show_history(&ctx);

@@ -3390,3 +3390,17 @@ needed for a much larger font); owner listening check.
   from the tracks' activity and their Reverb knobs, like the tracks' meters), and the bus
   window says who feeds it: tracks played by PM synthesis; SoundFont tracks keep the synth's
   own reverb.
+
+## 2026-11-06 — The strings' sound lives in the chain window; knobs instead of sliders
+
+- The separate String sound window is gone. Selecting the first box on the board shows, in
+  the same window: what plays the track (MIDI synth or PM Synthesis), the kind of string
+  (when modelled) and its sound - strike, string and tone - as round knobs with their value
+  under them and the explanation on hover (drag sideways, double-click for the default;
+  frequencies turn logarithmically).
+- The chain blocks' knobs (size, damping, width, mix, gain, cuts, a room's length) are round
+  knobs too, in one row under the block, in the chain window and in the reverb bus window.
+- The window's title names the track's instrument preset ("Sound chain — Preset: Jazz
+  Electric Gtr", the one the track panel's Preset shows); the saved chain presets are the
+  list at the bottom.
+- A tall window no longer starts over the toolbar (dialogs keep 80 px below the top edge).

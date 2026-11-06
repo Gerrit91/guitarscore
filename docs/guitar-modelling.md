@@ -146,13 +146,14 @@ described in the literature below:
   (round) by the model's softness, rounded above 400 Hz to 12 kHz by hardness and
   velocity. A resonant lowpass on each string's output stands in for the pickup or body
   (tone, resonance) until step 2 and 3 bring the real ones.
-- **Knobs:** every `StringModel` value has a range (`gscore_guitar::ranges`); the app's
-  String sound dialog (track panel › Sound) turns them per kind of string, heard at once
-  (`Command::StringModel`), kept in the settings, used by WAV export.
+- **Knobs:** every `StringModel` value has a range (`gscore_guitar::ranges`); the Sound
+  chain window (track panel › Sound › the stomp box) turns them per kind of string, next
+  to the board, heard at once (`Command::StringModel`), kept in the settings, used by WAV
+  export.
 - **Presets** (`GuitarModel`): nylon, steel (the owner's dialed-in sound), electric,
   bass; chosen by default from the track's General MIDI program (24 nylon, 25 steel, 26-31
-  electric, 32-39 bass) through `PerformanceTrack::engine`, or per track in the String
-  sound window.
+  electric, 32-39 bass) through `PerformanceTrack::engine`, or per track in the Sound
+  chain window.
 - **Two directions of vibration and the bridge** (2026-11-06): each string is two loops,
   the second detuned by a few cents and decaying faster (beating, two-stage decay); the
   output blends the string's swing with the force on the bridge (its change), which
@@ -172,8 +173,9 @@ described in the literature below:
 
 - **The board** (owner's design): per kind of string, six boxes in a fixed row joined by
   cables, like a pedal board; the order cannot change and boxes do not move. The strings
-  come first and cannot be removed (their box opens the String sound dialog); the five
-  places after them hold nothing or a block. Opened from the track panel's Sound section.
+  come first and cannot be removed (their box shows the engine, the kind of string and
+  their sound in the window itself); the five places after them hold nothing or a block.
+  Opened from the track panel's Sound section.
 - **Blocks:** *Cabinet / body*, an impulse response from a WAV file played mono with
   mix, gain, low cut and high cut: what amp modelers call a cab block, and an acoustic
   guitar's body too. *Room*, a room's impulse response (stereo if recorded so): a

@@ -1,4 +1,4 @@
-//! The phrase the String sound dialog plays to try a sound: an open low string, a strummed
+//! The phrase the Sound chain window plays to try a sound: an open low string, a strummed
 //! chord, palm-muted eighths and a hammered lick on a guitar; a walking line with a
 //! muted run on a bass. Made directly as a [`Performance`], so no song is needed.
 

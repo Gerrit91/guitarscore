@@ -1,6 +1,6 @@
 //! What plays a track: the SoundFont, or modelled strings of a kind. By default a guitar
 //! or bass track's preset decides (with the Settings' switch for modelled guitars); the
-//! user can choose for each track in the String sound window. The choice is kept with the
+//! user can choose for each track in the Sound chain window. The choice is kept with the
 //! open document (by track index) and sent to playback every frame it changes.
 
 use gscore_model::{InstrumentKind, TrackIndex};

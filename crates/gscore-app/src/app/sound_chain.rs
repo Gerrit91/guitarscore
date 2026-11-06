@@ -1,10 +1,10 @@
-//! The Sound chain window: the modelled strings and the effects after them, laid out like
-//! a pedal board. Six boxes in a fixed row, joined by cables: the strings first (they
-//! cannot be moved or removed; a click opens the String sound dialog), then five places,
-//! each empty or holding a block (a cabinet or body impulse response, a room impulse
-//! response, the computed reverb). The selected place's choices or knobs show below the
-//! board. One chain per kind of string; every change is heard at once and kept in the
-//! settings.
+//! The Sound chain window: what plays the track and the effects after it, laid out like a
+//! pedal board. Six boxes in a fixed row, joined by cables: what plays the track first
+//! (MIDI synth or PM synthesis; their sound - the kind of string and its knobs - shows in
+//! the same window), then five places, each empty or holding a block (a cabinet or body
+//! impulse response, a room impulse response, the computed reverb). The selected place's
+//! choices or knobs show below the board. One chain per kind of string; every change is
+//! heard at once and kept in the settings.
 
 use std::path::PathBuf;
 
@@ -13,7 +13,7 @@ use gscore_guitar::{BLOCKS, knob_ranges};
 use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
-use crate::app::string_sound::{kind_name, knob, knob_response};
+use crate::app::string_sound::{kind_name, round_knob, sound_knobs};
 use crate::app::style;
 use crate::app::track_engine::TrackPlayer;
 use crate::chain_settings::{BlockChoice, BlockSetting, ChainSetting};
@@ -47,13 +47,14 @@ pub(super) struct SoundChainWindow {
 struct Actions {
     close: bool,
     listen: bool,
-    open_strings: bool,
     load: Option<usize>,
     chain: Option<ChainSetting>,
     /// A room's length moved and its knob was let go: build the room again.
     rebuild: bool,
     /// What plays the track was chosen in the first box.
     engine: Option<TrackEngine>,
+    /// The strings' sound changed (in the first box's editor).
+    sound: Option<StringSound>,
     /// A preset was chosen: its string sound, its chain and what plays the strings.
     preset: Option<ChosenPreset>,
     /// Save the sound and the chain under this name, or delete that preset (its kind of
@@ -124,10 +125,15 @@ fn short(text: &str, chars: usize) -> String {
     cut
 }
 
-/// The first box: what plays the track - the internal synth (MIDI) or physical modelling
-/// (modelled strings). The kind of string is chosen in their sound window, which a click on
-/// the first box opens.
-fn strings_editor(ui: &mut egui::Ui, player: &TrackPlayer, actions: &mut Actions) {
+/// The first box: what plays the track (the internal synth, or physical modelling), the
+/// kind of string and - for modelled strings - their sound, all in this window.
+fn strings_editor(
+    ui: &mut egui::Ui,
+    player: &TrackPlayer,
+    sound: &mut StringSound,
+    actions: &mut Actions,
+) -> bool {
+    let mut changed = false;
     ui.label(RichText::new("Played by").strong());
     ui.horizontal_wrapped(|ui| {
         // PM keeps the kind it had (or the one the track's preset stands for).
@@ -166,7 +172,36 @@ fn strings_editor(ui: &mut egui::Ui, player: &TrackPlayer, actions: &mut Actions
         ui.label(
             RichText::new("Only string instruments can be played by modelled strings.").weak(),
         );
+        return changed;
     }
+    let Some(kind) = (match player.engine {
+        TrackEngine::Modelled(kind) => Some(kind),
+        TrackEngine::SoundFont => None,
+    }) else {
+        return changed;
+    };
+    // Which strings, then their sound: the kind's knobs, right here.
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new("Strings").color(style::tokens(ui).text_weak));
+        for candidate in [
+            StringKind::Nylon,
+            StringKind::Steel,
+            StringKind::Electric,
+            StringKind::Bass,
+        ] {
+            let selected = candidate == kind;
+            if ui
+                .add(egui::Button::selectable(selected, kind_name(candidate)))
+                .clicked()
+                && !selected
+            {
+                actions.engine = Some(TrackEngine::Modelled(candidate));
+            }
+        }
+    });
+    ui.add_space(2.0);
+    changed |= sound_knobs(ui, sound);
+    changed
 }
 
 /// The preset the sound and the chain are now: a saved one, the built-in one, or changed.
@@ -529,8 +564,8 @@ fn editor(ui: &mut egui::Ui, chain: &ChainSetting, place: usize) -> Edited {
     }
 }
 
-/// The knobs of the block in `block`. `all_wet` hides the mix (a bus runs all wet: its
-/// sends decide how much each track gives it).
+/// The knobs of the block in `block`, as round knobs. `all_wet` hides the mix (a bus runs
+/// all wet: its sends decide how much each track gives it).
 pub(super) fn block_knobs(
     ui: &mut egui::Ui,
     block: &mut BlockSetting,
@@ -540,152 +575,167 @@ pub(super) fn block_knobs(
     if all_wet {
         block.mix = 1.0;
     }
-    match block.choice {
-        BlockChoice::Empty => {}
-        BlockChoice::Cabinet | BlockChoice::Room => {
-            // First the room itself: how long it lasts.
-            if block.choice == BlockChoice::Room {
-                // A hand-edited settings file may hold anything; show it in range.
-                block.length = block.room_length();
-                let (changed, released) = length_knob(ui, &mut block.length);
-                moved.changed |= changed;
-                moved.rebuild |= released;
-            }
-            if !all_wet {
-                moved.changed |= knob(
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
+        match block.choice {
+            BlockChoice::Empty => {}
+            BlockChoice::Cabinet | BlockChoice::Room => {
+                // First the room itself: how long it lasts.
+                if block.choice == BlockChoice::Room {
+                    // A hand-edited settings file may hold anything; show it in range.
+                    block.length = block.room_length();
+                    let edit = round_knob(
+                        ui,
+                        &mut block.length,
+                        gscore_guitar::LENGTH_RANGE,
+                        "Length",
+                        "×",
+                        1.0,
+                        true,
+                        "The room's decay time against the recording's: 0.5 half as long, 4 \
+                         four times as long (past the recording, a synthesized tail carries \
+                         it on). Built again when you let go of the knob.",
+                    );
+                    moved.changed |= edit.changed;
+                    moved.rebuild |= edit.released;
+                }
+                if !all_wet {
+                    moved.changed |= round_knob(
+                        ui,
+                        &mut block.mix,
+                        knob_ranges::MIX,
+                        "Mix",
+                        "",
+                        0.25,
+                        false,
+                        "How much of the convolved sound: 0 dry, 1 only the response.",
+                    )
+                    .changed;
+                }
+                moved.changed |= round_knob(
                     ui,
-                    &mut block.mix,
-                    knob_ranges::MIX,
-                    "Mix",
-                    "",
+                    &mut block.gain_db,
+                    knob_ranges::GAIN,
+                    "Gain",
+                    " dB",
+                    0.0,
                     false,
-                    "How much of the convolved sound: 0 dry, 1 only the response.",
-                );
+                    "The level of the convolved sound.",
+                )
+                .changed;
+                moved.changed |= round_knob(
+                    ui,
+                    &mut block.low_cut,
+                    knob_ranges::LOW_CUT,
+                    "Low cut",
+                    " Hz",
+                    120.0,
+                    true,
+                    "Takes away the lows below this frequency (boom, rumble); on a room, \
+                     only from the room's sound.",
+                )
+                .changed;
+                moved.changed |= round_knob(
+                    ui,
+                    &mut block.high_cut,
+                    knob_ranges::HIGH_CUT,
+                    "High cut",
+                    " Hz",
+                    9_000.0,
+                    true,
+                    "Takes away the highs above this frequency (fizz, hiss); on a room, only \
+                     from the room's sound.",
+                )
+                .changed;
+                if block.choice == BlockChoice::Room {
+                    moved.changed |= round_knob(
+                        ui,
+                        &mut block.width,
+                        knob_ranges::WIDTH,
+                        "Width",
+                        "",
+                        1.0,
+                        false,
+                        "Stereo width of the room: 0 mono, 1 as recorded.",
+                    )
+                    .changed;
+                }
             }
-            moved.changed |= knob(
-                ui,
-                &mut block.gain_db,
-                knob_ranges::GAIN,
-                "Gain",
-                " dB",
-                false,
-                "The level of the convolved sound.",
-            );
-            moved.changed |= knob(
-                ui,
-                &mut block.low_cut,
-                knob_ranges::LOW_CUT,
-                "Low cut",
-                " Hz",
-                true,
-                "Takes away the lows below this frequency (boom, rumble); on a room, only \
-                 from the room's sound.",
-            );
-            moved.changed |= knob(
-                ui,
-                &mut block.high_cut,
-                knob_ranges::HIGH_CUT,
-                "High cut",
-                " Hz",
-                true,
-                "Takes away the highs above this frequency (fizz, hiss); on a room, only \
-                 from the room's sound.",
-            );
-            if block.choice == BlockChoice::Room {
-                moved.changed |= knob(
+            BlockChoice::Reverb => {
+                moved.changed |= round_knob(
+                    ui,
+                    &mut block.size,
+                    knob_ranges::SIZE,
+                    "Size",
+                    "",
+                    0.5,
+                    false,
+                    "The room's size: small and short to large and long.",
+                )
+                .changed;
+                moved.changed |= round_knob(
+                    ui,
+                    &mut block.damping,
+                    knob_ranges::DAMPING,
+                    "Damping",
+                    "",
+                    0.5,
+                    false,
+                    "How quickly the room's highs die: 0 bright, 1 dull.",
+                )
+                .changed;
+                moved.changed |= round_knob(
                     ui,
                     &mut block.width,
                     knob_ranges::WIDTH,
                     "Width",
                     "",
+                    1.0,
                     false,
-                    "Stereo width of the room: 0 mono, 1 as recorded.",
-                );
-            }
-        }
-        BlockChoice::Reverb => {
-            moved.changed |= knob(
-                ui,
-                &mut block.size,
-                knob_ranges::SIZE,
-                "Size",
-                "",
-                false,
-                "The room's size: small and short to large and long.",
-            );
-            moved.changed |= knob(
-                ui,
-                &mut block.damping,
-                knob_ranges::DAMPING,
-                "Damping",
-                "",
-                false,
-                "How quickly the room's highs die: 0 bright, 1 dull.",
-            );
-            moved.changed |= knob(
-                ui,
-                &mut block.width,
-                knob_ranges::WIDTH,
-                "Width",
-                "",
-                false,
-                "Stereo width: 0 mono, 1 wide.",
-            );
-            if !all_wet {
-                moved.changed |= knob(
+                    "Stereo width: 0 mono, 1 wide.",
+                )
+                .changed;
+                if !all_wet {
+                    moved.changed |= round_knob(
+                        ui,
+                        &mut block.mix,
+                        knob_ranges::MIX,
+                        "Mix",
+                        "",
+                        0.2,
+                        false,
+                        "How much of the room: 0 dry, 1 only the room.",
+                    )
+                    .changed;
+                }
+                moved.changed |= round_knob(
                     ui,
-                    &mut block.mix,
-                    knob_ranges::MIX,
-                    "Mix",
-                    "",
-                    false,
-                    "How much of the room: 0 dry, 1 only the room.",
-                );
+                    &mut block.low_cut,
+                    knob_ranges::LOW_CUT,
+                    "Low cut",
+                    " Hz",
+                    150.0,
+                    true,
+                    "Takes the lows out of the reverb (not the dry guitar): keeps it from \
+                     booming and muddying the bass.",
+                )
+                .changed;
+                moved.changed |= round_knob(
+                    ui,
+                    &mut block.high_cut,
+                    knob_ranges::HIGH_CUT,
+                    "High cut",
+                    " Hz",
+                    7_000.0,
+                    true,
+                    "Takes the highs out of the reverb (not the dry guitar): a darker, more \
+                     distant room.",
+                )
+                .changed;
             }
-            moved.changed |= knob(
-                ui,
-                &mut block.low_cut,
-                knob_ranges::LOW_CUT,
-                "Low cut",
-                " Hz",
-                true,
-                "Takes the lows out of the reverb (not the dry guitar): keeps it from \
-                 booming and muddying the bass.",
-            );
-            moved.changed |= knob(
-                ui,
-                &mut block.high_cut,
-                knob_ranges::HIGH_CUT,
-                "High cut",
-                " Hz",
-                true,
-                "Takes the highs out of the reverb (not the dry guitar): a darker, more \
-                 distant room.",
-            );
         }
-    }
+    });
     moved
-}
-
-/// The room's length knob: the decay time against the recording's. Returns whether it
-/// moved, and whether the room should be built again — at once for a click on the slider or
-/// an arrow key, at the end of a drag (not on every step, which would rebuild the tail
-/// dozens of times).
-fn length_knob(ui: &mut egui::Ui, length: &mut f32) -> (bool, bool) {
-    let response = knob_response(
-        ui,
-        length,
-        gscore_guitar::LENGTH_RANGE,
-        "Length",
-        "×",
-        true,
-        "The room's decay time against the recording's: 0.5 half as long, 4 four times as \
-         long (past the recording, a synthesized tail carries it on). Built again when you \
-         let go of the knob.",
-    );
-    let changed = response.changed();
-    let settled = changed && !response.dragged();
-    (changed, settled || response.drag_stopped())
 }
 
 impl GuitarScoreApp {
@@ -723,7 +773,7 @@ impl GuitarScoreApp {
         let Some(mut window) = self.sound_chain.take() else {
             return;
         };
-        let size = vec2(WIDTH + 32.0, 470.0);
+        let size = vec2(WIDTH + 32.0, 600.0);
         let pos = *window
             .pos
             .get_or_insert_with(|| style::centered_window_pos(ctx, size));
@@ -741,15 +791,11 @@ impl GuitarScoreApp {
         // switches the track to that kind when it names a modelled engine).
         let mut presets: Vec<ChainPreset> = self.settings.string_presets.clone();
         presets.sort_by_cached_key(|preset| preset.name.to_lowercase());
-        // The title says which preset the chain is; the board follows straight away.
+        // The title names the track's preset (the instrument in the track panel); the
+        // saved chain presets are the list at the bottom. The board follows straight away.
         let title = format!(
             "Sound chain — Preset: {}",
-            preset_name(
-                kind,
-                &self.playback.string_sounds().get(kind),
-                self.playback.string_chains().get(kind),
-                &presets
-            )
+            gscore_model::program_name(player.program)
         );
         egui::Window::new(&title)
             .title_bar(false)
@@ -770,11 +816,6 @@ impl GuitarScoreApp {
                         let board = board(ui, &player, &chain, window.selected);
                         if let Some(index) = board.select {
                             window.selected = index;
-                            // The first box opens the strings' sound (only when modelled
-                            // strings play the track; a MIDI box has none).
-                            if index == 0 && modelled {
-                                actions.open_strings = true;
-                            }
                         }
                         if let Some((place, choice)) = board.fill {
                             let mut changed = chain.clone();
@@ -798,7 +839,12 @@ impl GuitarScoreApp {
                         }
                         ui.separator();
                         match window.selected.checked_sub(1) {
-                            None => strings_editor(ui, &player, &mut actions),
+                            None => {
+                                let mut sound = sound;
+                                if strings_editor(ui, &player, &mut sound, &mut actions) {
+                                    actions.sound = Some(sound);
+                                }
+                            }
                             Some(place) => {
                                 let edited = editor(ui, &chain, place);
                                 if let Some(changed) = edited.chain {
@@ -854,6 +900,9 @@ impl GuitarScoreApp {
         if let Some(engine) = actions.engine {
             self.set_track_engine(window.track, engine);
         }
+        if let Some(sound) = actions.sound {
+            self.playback.set_string_sound(kind, sound);
+        }
         if let Some(chain) = actions.chain {
             self.playback.set_string_chain(kind, chain);
         }
@@ -882,9 +931,6 @@ impl GuitarScoreApp {
                 .string_presets
                 .retain(|preset| !(preset.kind == preset_kind && preset.name == name));
             self.save_settings();
-        }
-        if actions.open_strings {
-            self.open_string_sound(window.track);
         }
         if let Some(place) = actions.load
             && let Err(error) = self.tasks.pick_impulse(kind, place, ctx)

@@ -247,12 +247,14 @@ pub(crate) fn window_frame(ctx: &egui::Context) -> Frame {
         .inner_margin(Margin::same(0))
 }
 
-/// Where a floating window of `size` starts: centered in the app.
+/// Where a floating window of `size` starts: centered in the app, and never so high that
+/// its title bar would sit over the toolbar (a tall window like the Sound chain's).
 pub(crate) fn centered_window_pos(ctx: &egui::Context, size: egui::Vec2) -> egui::Pos2 {
     let screen = ctx.content_rect();
+    let top = (screen.center().y - size.y / 2.0).max(screen.top() + 80.0);
     egui::pos2(
-        screen.center().x - size.x / 2.0,
-        screen.center().y - size.y / 2.0,
+        (screen.center().x - size.x / 2.0).max(screen.left() + 8.0),
+        top,
     )
 }
 

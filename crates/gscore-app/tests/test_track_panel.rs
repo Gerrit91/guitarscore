@@ -278,7 +278,7 @@ fn a_click_in_the_song_grid_while_playing_jumps_there() {
 }
 
 #[test]
-fn the_sound_section_opens_the_sound_chain_and_the_string_sound_dialog() {
+fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
     let mut harness = app_with("basic/note_lengths.gp");
     // The track panel's Sound section opens the Sound chain with its stomp box.
     harness.get_by_label("Sound chain").click();
@@ -287,19 +287,14 @@ fn the_sound_section_opens_the_sound_chain_and_the_string_sound_dialog() {
     harness.get_by_label("Block 0: MIDI").click();
     harness.run();
     harness.get_by_label("Played by");
-    harness.snapshot("sound_chain_strings");
-    harness.get_by_label("PM Synthesis").click();
-    harness.run();
     assert!(
         harness.query_all_by_label("Brilliance").next().is_none(),
-        "not yet"
+        "the SoundFont plays it: no string knobs"
     );
-    // The strings' box now opens their sound window, which chooses the kind of string.
-    harness.get_by_label("Block 0: Strings").click();
+    // Physical modelling brings the kind of string and its knobs into the same window.
+    harness.get_by_label("PM Synthesis").click();
     harness.run();
-    harness.get_by_label("Strings");
-    harness.get_by_label("Nylon guitar").click();
-    harness.run();
+    harness.snapshot("sound_chain_strings");
     for knob in [
         "Pick position",
         "Roundness",
@@ -309,9 +304,9 @@ fn the_sound_section_opens_the_sound_chain_and_the_string_sound_dialog() {
     ] {
         assert!(harness.query_all_by_label(knob).next().is_some(), "{knob}");
     }
-    // Close the strings' window and give the track back to the MIDI synth.
-    harness.get_by_label("Close String sound").click();
+    harness.get_by_label("Nylon guitar").click();
     harness.run();
+    // Back to the MIDI synth: the knobs go.
     harness
         .query_all_by_label_contains("MIDI synth")
         .next()
@@ -321,7 +316,7 @@ fn the_sound_section_opens_the_sound_chain_and_the_string_sound_dialog() {
     assert!(harness.query_all_by_label("Brilliance").next().is_none());
 }
 
-/// What the Sound chain window's preset list shows.
+/// What the Sound chain window's preset list shows./// What the Sound chain window's preset list shows.
 fn preset_shown(harness: &Harness<'_, GuitarScoreApp>) -> String {
     harness
         .query_all_by_label("Preset")
@@ -395,8 +390,6 @@ fn a_saved_chain_preset_brings_back_the_whole_chain() {
     harness.get_by_label("Block 0: Strings").click();
     harness.run();
     harness.get_by_label("Nylon guitar").click();
-    harness.run();
-    harness.get_by_label("Close String sound").click();
     harness.run();
     harness.get_by_label("Block 1: +");
     harness

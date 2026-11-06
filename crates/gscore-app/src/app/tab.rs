@@ -53,7 +53,7 @@ pub(super) struct Tab {
     pub(super) new_track: Option<NewTrackDialog>,
     /// Which tracks the score shows besides the cursor's.
     pub(super) score: super::score_view::ScoreTracks,
-    /// What plays a track when the user chose it (in the String sound window) instead of
+    /// What plays a track when the user chose it (in the Sound chain window) instead of
     /// the default for its preset: by track index.
     pub(super) track_engines: std::collections::BTreeMap<usize, gscore_play::TrackEngine>,
     /// Whether the last frame had a selection of more than one beat: a new one turns

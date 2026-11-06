@@ -459,7 +459,7 @@ pub struct Settings {
     /// The sample rate the built-in synthesizer asks the device for (and WAV export uses);
     /// `None`: the device's own.
     pub sample_rate: Option<u32>,
-    /// How each kind of modelled string sounds (the "String sound" dialog).
+    /// How each kind of modelled string sounds (the Sound chain window's strings).
     pub string_sounds: StringSounds,
     /// Chains (with their string sound) saved under a name, by the Sound chain window.
     pub string_presets: Vec<ChainPreset>,

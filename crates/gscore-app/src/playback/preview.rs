@@ -38,7 +38,7 @@ impl Playback {
         self.hear(excerpt)
     }
 
-    /// Plays the short phrase of the String sound dialog on the modelled strings of
+    /// Plays the short phrase of the Sound chain window on the modelled strings of
     /// `kind`, like a beat preview (not while the song plays).
     pub fn play_string_demo(&mut self, kind: gscore_play::StringKind) -> Result<Heard, String> {
         if self.state() == PlayState::Playing || self.count_in_pending() {

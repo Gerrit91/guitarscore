@@ -388,14 +388,13 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.run();
     harness.get_by_label("Block 0: Strings").click();
     harness.run();
-    // The steel guitar played by modelled strings, to show its knobs.
+    // The steel guitar played by modelled strings, to show its knobs beside the chain.
     harness
         .query_all_by_label_contains("Steel guitar")
         .last()
         .unwrap()
         .click();
     harness.run();
-    harness.snapshot("string_sound_dialog");
 }
 
 #[test]
