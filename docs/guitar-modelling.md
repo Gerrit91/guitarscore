@@ -178,12 +178,15 @@ described in the literature below:
   mix, gain, low cut and high cut: what amp modelers call a cab block, and an acoustic
   guitar's body too. *Room*, a room's impulse response (stereo if recorded so): a
   convolution reverb with mix, gain, cuts and width. *Reverb*, computed after Freeverb
-  (public domain): size, damping, width, mix. Amp blocks come with step 2.
+  (public domain): size, damping, width, mix, and a low and high cut on its sound. Amp blocks come with step 2.
 - **Convolution** (`gscore-guitar::convolver`): an own FFT and partitioned overlap-save in
   three stages (partitions of 128, 1024 and 8192 samples): 128 samples of lag, and long
-  tails cheap. Measured per track and second of audio (release): a 3 s stereo room
-  17.5 ms, a 0.2 s body 9.4 ms, the computed reverb 1 ms. The dry signal is delayed by the
-  lag so a mix does not comb-filter.
+  tails cheap. The two large stages are one block later and spread their frame (a
+  resumable FFT, the multiply-add in slices every 16 samples) over that block; done all
+  at once, a frame took 1.3-1.6 ms inside one 64-sample block (1.33 ms of audio) and long
+  rooms stuttered (owner, Voxengo IRs). Measured per track, release: a 4 s stereo hall
+  about 3 % of a core, worst block 0.13 ms; a 0.2 s body about 1 %; the computed reverb
+  0.1 %. The dry signal is delayed by the lag so a mix does not comb-filter.
 - **Impulse responses:** WAV, 16/24/32-bit PCM or 32/64-bit float, up to two channels,
   read defensively, capped at 6 s, scaled to unit energy, resampled linearly to the
   engine's rate. No responses ship with the program (licenses); the user loads their own.

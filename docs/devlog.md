@@ -3258,3 +3258,18 @@ needed for a much larger font); owner listening check.
   not in the file (owner to decide how to store it); after moving tracks it can point at
   the wrong one.
 
+## 2026-11-06 — Long rooms without stutter; the reverb's cuts
+
+- The owner's test IRs (Voxengo, 39 stereo 44.1 kHz files of 0.02-8 s; license allows use,
+  not redistribution, so they stay out of the repository) stuttered. The average load was
+  low (1.3 % of a core for a 4 s hall) but the long-tail stage did a whole frame in one
+  sample: 1.3-1.6 ms inside one 64-sample block. The large stages now spread their work
+  over an extra block (`Fft::advance`, resumable); worst block 0.13 ms, average about 3 %.
+- The computed reverb got a low cut and a high cut on its sound (the room block had them).
+- Asked whether Guitar Pro files can carry our own data (a track's player): a GP7 file is
+  a ZIP (`Content/score.gpif`, `BinaryStylesheet`, `PartConfiguration`,
+  `LayoutConfiguration`, `Preferences.json`, `VERSION`); an extra entry of ours would be
+  read back by GuitarScore and most likely ignored by Guitar Pro, but probably dropped
+  when Guitar Pro saves the file again. Untested against Guitar Pro itself. GP3-5 and GPX
+  have no such room. Waiting for the owner's decision.
+
