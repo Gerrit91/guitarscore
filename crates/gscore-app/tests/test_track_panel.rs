@@ -324,3 +324,70 @@ fn the_sound_section_opens_the_sound_chain_and_the_string_sound_dialog() {
     harness.run();
     assert_eq!(harness.query_all_by_label("Played by").count(), 1, "closed");
 }
+
+/// What the String sound window's preset list shows.
+fn preset_shown(harness: &Harness<'_, GuitarScoreApp>) -> String {
+    harness
+        .query_all_by_label("Preset")
+        .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
+        .and_then(|node| node.value())
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_saved_string_sound_preset_comes_back() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    harness.get_by_label("Strings").click();
+    harness.run();
+    harness
+        .query_all_by_label_contains("Steel guitar")
+        .last()
+        .unwrap()
+        .click();
+    harness.run();
+    // Save the sound as it is under a name.
+    harness.get_by_label("Save as…").click();
+    harness.run();
+    harness.get_by_label("Preset name").focus();
+    harness
+        .get_by_label("Preset name")
+        .type_text("Natural Steel 1");
+    harness.run();
+    // The preset's Save (the toolbar has a Save too).
+    harness.query_all_by_label("Save").last().unwrap().click();
+    harness.run();
+    let pick = |harness: &Harness<'_, GuitarScoreApp>| {
+        harness
+            .query_all_by_label("Pick position")
+            .find_map(|node| node.accesskit_node().numeric_value())
+            .unwrap_or_default()
+    };
+    let saved = pick(&harness);
+    // Change the pick position (keys on its slider), then choose the preset again.
+    let slider = harness
+        .query_all_by_label("Pick position")
+        .find(|node| node.accesskit_node().numeric_value().is_some())
+        .unwrap();
+    slider.set_value_accesskit(0.4);
+    harness.run();
+    assert!((pick(&harness) - saved).abs() > 1e-6, "the knob moved");
+    assert_eq!(preset_shown(&harness), "Changed");
+    harness
+        .query_all_by_label("Preset")
+        .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
+        .unwrap()
+        .click();
+    harness.run();
+    harness.get_by_label("Natural Steel 1").click();
+    harness.run();
+    harness.run();
+    assert!(
+        (pick(&harness) - saved).abs() < 1e-6,
+        "the preset brought the sound back: {} instead of {saved}",
+        pick(&harness)
+    );
+    // The list says which preset the sound is.
+    assert_eq!(preset_shown(&harness), "Natural Steel 1");
+}

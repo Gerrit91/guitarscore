@@ -113,7 +113,7 @@ impl GuitarScoreApp {
                             }
                             Some(kind) => {
                                 let mut sound = self.playback.string_sounds().get(kind);
-                                preset_row(ui, kind, &presets, &mut dialog, &mut actions);
+                                preset_row(ui, kind, &sound, &presets, &mut dialog, &mut actions);
                                 ui.add_space(4.0);
                                 if knobs(ui, &mut sound) {
                                     actions.sound = Some(sound);
@@ -247,14 +247,23 @@ fn played_by(
 fn preset_row(
     ui: &mut egui::Ui,
     kind: StringKind,
+    sound: &StringSound,
     presets: &[NamedStringSound],
     dialog: &mut StringSoundDialog,
     actions: &mut Actions,
 ) {
     ui.horizontal(|ui| {
         ui.label(RichText::new("Preset").color(style::tokens(ui).text_weak));
+        // Which preset the sound is now: a saved one, the built-in one, or changed.
+        let built_in = StringSound::from(gscore_audio::default_string_model(kind));
+        let current = presets
+            .iter()
+            .find(|preset| preset.sound == *sound)
+            .map(|preset| preset.name.clone())
+            .or_else(|| (built_in == *sound).then(|| "Built-in".to_owned()))
+            .unwrap_or_else(|| "Changed".to_owned());
         let response = egui::ComboBox::from_id_salt("string_sound_preset")
-            .selected_text("Choose…")
+            .selected_text(current.clone())
             .show_ui(ui, |ui| {
                 if ui.selectable_label(false, "Built-in").clicked() {
                     actions.sound =
@@ -267,7 +276,10 @@ fn preset_row(
                 }
             });
         ui.ctx()
-            .accesskit_node_builder(response.response.id, |node| node.set_label("Preset"));
+            .accesskit_node_builder(response.response.id, |node| {
+                node.set_label("Preset");
+                node.set_value(current);
+            });
         match &mut dialog.saving {
             None => {
                 if ui.button("Save as…").clicked() {
