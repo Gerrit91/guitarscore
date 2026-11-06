@@ -3500,3 +3500,21 @@ needed for a much larger font); owner listening check.
   every size and decay; drive: mids distort and lows stay clean, level, silence; drive into
   amp tightens the lows; no allocation with both; settings (old reverbs read); snapshots of
   the drive and the reverb's knobs.
+
+## 2026-11-06 — Blocks dragged along the sound chain
+
+- A block on the board can now be **dragged to another place** with the mouse: the block
+  follows the pointer (painted on a tooltip layer, with its knobs' bypass state), the place
+  it would land in is outlined in the accent, and the place it came from is drawn recessed.
+  Dropping it moves it there and the places in between slide one place toward the old one
+  (`rotate_left`/`rotate_right`, so the order the sound passes the blocks in follows the
+  board). A drop on its own place, or anywhere off the board, changes nothing; Escape
+  cancels (egui's drag payload). The knobs and the impulse response travel with the block.
+  `set_string_chain` sees the new structure and prepares the chain again, so the moved order
+  is heard at once.
+- Empty places and the first box (what plays the track) are not draggable; the mute under
+  each block and the context menu (bypass, remove) work as before.
+- Tests: `move_block` both directions, knobs travel, no move for the same or an off-board
+  place; an app test drags a block past another and back with the mouse
+  (`drag_box` in `test_track_panel.rs`) and checks the chain in the playback; snapshot
+  `sound_chain_dragging` of the frame while the block hangs at the mouse.

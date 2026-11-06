@@ -2,19 +2,21 @@
 //! pedal board. Six boxes in a fixed row, joined by cables: what plays the track first
 //! (MIDI synth or PM synthesis; their sound - the kind of string and its knobs - shows in
 //! the same window), then five places, each empty or holding a block (a cabinet or body
-//! impulse response, a room impulse response, the computed reverb, amp or drive pedal). The selected place's
-//! choices or knobs show below the board. One chain per kind of string; every change is
-//! heard at once and kept in the settings.
+//! impulse response, a room impulse response, the computed reverb, amp or drive pedal). A
+//! block can be dragged to another place, the blocks between sliding one place over, so the
+//! order the sound passes them in is the one the board shows. The selected place's choices
+//! or knobs show below the board. One chain per kind of string; every change is heard at
+//! once and kept in the settings.
 
 use std::path::PathBuf;
 
-use egui::{Align2, FontId, Margin, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2};
+use egui::{Align2, Color32, FontId, Margin, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2};
 use gscore_guitar::{BLOCKS, knob_ranges};
 use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
 use crate::app::string_sound::{kind_name, round_knob, sound_knobs};
-use crate::app::style;
+use crate::app::style::{self, Tokens};
 use crate::app::track_engine::TrackPlayer;
 use crate::chain_settings::{BlockChoice, BlockSetting, ChainSetting};
 use crate::playback::Heard;
@@ -350,6 +352,31 @@ struct BoardActions {
     remove: Option<usize>,
     /// The mute under a place was clicked: its bypass flips.
     bypass: Option<usize>,
+    /// A block was dropped on another place: (from, to), both places (0 to 4).
+    moved: Option<(usize, usize)>,
+}
+
+/// Moves the block at place `from` to place `to`, the places in between sliding one place
+/// toward `from` - the order the sound passes them in follows the board. False when
+/// nothing moves: the same place, or a place off the board.
+fn move_block(blocks: &mut [BlockSetting], from: usize, to: usize) -> bool {
+    if from == to {
+        return false;
+    }
+    let range = if from < to {
+        blocks.get_mut(from..=to)
+    } else {
+        blocks.get_mut(to..=from)
+    };
+    let Some(range) = range else {
+        return false;
+    };
+    if from < to {
+        range.rotate_left(1);
+    } else {
+        range.rotate_right(1);
+    }
+    true
 }
 
 /// What an empty place can hold: the block, the name its menu shows, and what it does.
@@ -385,7 +412,66 @@ fn block_choices() -> [(BlockChoice, &'static str, &'static str); 5] {
     ]
 }
 
-/// The board: the boxes, the cables between them and, under each block, its mute.
+/// What a box on the board shows.
+struct BoxFace<'a> {
+    /// An empty place: just its "+".
+    empty: bool,
+    /// The block passes the sound unchanged: weak text and "off" in the corner.
+    bypassed: bool,
+    title: &'a str,
+    detail: &'a str,
+}
+
+/// One box on the board: its fill and outline, its two lines of text (cut to the box's
+/// width, since an impulse response's file name is often longer, and clipped, so nothing
+/// spills over a neighbour) and, while bypassed, "off" in its corner.
+fn paint_box(
+    painter: &egui::Painter,
+    rect: Rect,
+    face: &BoxFace<'_>,
+    fill: Color32,
+    outline: Stroke,
+    tokens: &Tokens,
+) {
+    painter.rect_filled(rect, 6.0, fill);
+    painter.rect_stroke(rect, 6.0, outline, egui::StrokeKind::Inside);
+    let text = if face.bypassed || face.empty {
+        tokens.text_weak
+    } else {
+        tokens.text
+    };
+    let inside = painter.with_clip_rect(rect.shrink(3.0));
+    let title_size = if face.empty { 22.0 } else { 13.0 };
+    inside.text(
+        rect.center() - vec2(0.0, if face.empty { 0.0 } else { 8.0 }),
+        Align2::CENTER_CENTER,
+        short(face.title, 13),
+        FontId::proportional(title_size),
+        text,
+    );
+    if !face.detail.is_empty() {
+        inside.text(
+            rect.center() + vec2(0.0, 12.0),
+            Align2::CENTER_CENTER,
+            short(face.detail, 12),
+            FontId::proportional(10.0),
+            tokens.text_weak,
+        );
+    }
+    if face.bypassed {
+        painter.text(
+            rect.left_top() + vec2(6.0, 4.0),
+            Align2::LEFT_TOP,
+            "off",
+            FontId::proportional(10.0),
+            tokens.text_weak,
+        );
+    }
+}
+
+/// The board: the boxes, the cables between them and, under each block, its mute. A block
+/// can be dragged to another place; the block follows the mouse and the place it would
+/// land in is outlined, until it is let go there.
 fn board(
     ui: &mut egui::Ui,
     player: &TrackPlayer,
@@ -413,23 +499,43 @@ fn board(
         }
     }
     let mut actions = BoardActions::default();
+    // The box being dragged (0 the strings, 1 to 5 a place), while one is.
+    let dragging = egui::DragAndDrop::payload::<usize>(ui.ctx()).map(|index| *index);
     for index in 0..count {
         let rect = rect_of(index);
-        let response = ui
-            .interact(
-                rect,
-                ui.scope_id().with(("chain_box", index)),
-                Sense::click(),
-            )
-            .on_hover_text(if index == 0 {
-                "What plays the track: click for its sound (the pick, sustain, tone of the \
-                 strings)"
-            } else {
-                "Click to choose or adjust this block"
-            });
         let block = index
             .checked_sub(1)
             .and_then(|place| chain.blocks.get(place));
+        let empty = block.is_some_and(|block| block.choice == BlockChoice::Empty);
+        let bypassed = block.is_some_and(|block| block.bypass);
+        // A block on the board can be dragged to another place; everything else is clicked.
+        let draggable = block.is_some_and(|block| block.choice != BlockChoice::Empty);
+        let sense = if draggable {
+            Sense::click_and_drag()
+        } else {
+            Sense::click()
+        };
+        let mut response = ui
+            .interact(rect, ui.scope_id().with(("chain_box", index)), sense)
+            .on_hover_text(if index == 0 {
+                "What plays the track: click for its sound (the pick, sustain, tone of the \
+                 strings)"
+            } else if draggable {
+                "Click to choose or adjust this block; drag it to another place to move it \
+                 along the chain"
+            } else {
+                "Click to choose or adjust this block"
+            });
+        if draggable {
+            // What is held while the block is dragged; the place it is let go on takes it.
+            response.dnd_set_drag_payload(index);
+            let held = dragging == Some(index);
+            response = response.on_hover_cursor(if held {
+                egui::CursorIcon::Grabbing
+            } else {
+                egui::CursorIcon::Grab
+            });
+        }
         let (title, detail) = match block {
             None => match player.engine {
                 TrackEngine::Modelled(kind) => ("Strings".to_owned(), kind_name(kind).to_owned()),
@@ -448,58 +554,47 @@ fn board(
             node.set_label(format!("Block {index}: {title}"));
             node.set_role(egui::Role::Button);
         });
-        let empty = block.is_some_and(|block| block.choice == BlockChoice::Empty);
-        let bypassed = block.is_some_and(|block| block.bypass);
+        // A place takes a block dragged from another place: it is outlined while the mouse
+        // is over it, and the drop moves the block here.
+        let mut landing = false;
+        if index > 0 {
+            if let Some(from) = response.dnd_hover_payload::<usize>() {
+                landing = *from != index;
+            }
+            if let Some(from) = response.dnd_release_payload::<usize>() {
+                actions.moved = Some((from.saturating_sub(1), index.saturating_sub(1)));
+            }
+        }
         let fill = if index == 0 {
             tokens.control_active
         } else if empty {
+            tokens.panel
+        } else if dragging == Some(index) {
+            // The block itself is on the mouse: its place waits, empty-looking, for a drop.
             tokens.panel
         } else if response.hovered() {
             tokens.control_hover
         } else {
             tokens.control
         };
-        painter.rect_filled(rect, 6.0, fill);
-        let outline = if index == selected {
+        let outline = if landing || index == selected {
             Stroke::new(2.0, tokens.accent)
         } else {
             Stroke::new(1.0, tokens.line)
         };
-        painter.rect_stroke(rect, 6.0, outline, egui::StrokeKind::Inside);
-        let text = if bypassed || empty {
-            tokens.text_weak
-        } else {
-            tokens.text
-        };
-        // The box's text is cut to its width (an impulse response's file name is often
-        // longer) and clipped, so nothing spills over a neighbour.
-        let inside = painter.with_clip_rect(rect.shrink(3.0));
-        let title_size = if empty { 22.0 } else { 13.0 };
-        inside.text(
-            rect.center() - vec2(0.0, if empty { 0.0 } else { 8.0 }),
-            Align2::CENTER_CENTER,
-            short(&title, 13),
-            FontId::proportional(title_size),
-            text,
+        paint_box(
+            &painter,
+            rect,
+            &BoxFace {
+                empty,
+                bypassed,
+                title: &title,
+                detail: &detail,
+            },
+            fill,
+            outline,
+            tokens,
         );
-        if !detail.is_empty() {
-            inside.text(
-                rect.center() + vec2(0.0, 12.0),
-                Align2::CENTER_CENTER,
-                short(&detail, 12),
-                FontId::proportional(10.0),
-                tokens.text_weak,
-            );
-        }
-        if bypassed {
-            painter.text(
-                rect.left_top() + vec2(6.0, 4.0),
-                Align2::LEFT_TOP,
-                "off",
-                FontId::proportional(10.0),
-                tokens.text_weak,
-            );
-        }
         if index == 0 && response.clicked() {
             actions.select = Some(0);
         }
@@ -567,6 +662,30 @@ fn board(
                 actions.bypass = Some(place);
             }
         }
+    }
+    // The block being dragged, at the mouse, above the window.
+    if let Some(index) = dragging
+        && let Some(block) = index
+            .checked_sub(1)
+            .and_then(|place| chain.blocks.get(place))
+        && let Some(pointer) = ui.ctx().pointer_interact_pos()
+    {
+        let layer = egui::LayerId::new(egui::Order::Tooltip, ui.scope_id().with("chain_drag"));
+        let painter = ui.ctx().layer_painter(layer);
+        let (title, detail) = box_text(block);
+        paint_box(
+            &painter,
+            Rect::from_center_size(pointer, BOX),
+            &BoxFace {
+                empty: false,
+                bypassed: block.bypass,
+                title: &title,
+                detail: &detail,
+            },
+            tokens.control_active,
+            Stroke::new(2.0, tokens.accent),
+            tokens,
+        );
     }
     actions
 }
@@ -941,6 +1060,15 @@ impl GuitarScoreApp {
                             }
                             actions.chain = Some(changed);
                         }
+                        // A block dragged to another place: the chain follows the board, so
+                        // the sound passes the blocks in the order shown.
+                        if let Some((from, to)) = board.moved {
+                            let mut changed = chain.clone();
+                            if move_block(&mut changed.blocks, from, to) {
+                                actions.chain = Some(changed);
+                                window.selected = to.saturating_add(1);
+                            }
+                        }
                         ui.separator();
                         match window.selected.checked_sub(1) {
                             None => {
@@ -1054,5 +1182,49 @@ impl GuitarScoreApp {
         } else {
             self.sound_chain = Some(window);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::indexing_slicing, clippy::unwrap_used)]
+
+    use super::*;
+
+    #[test]
+    fn a_block_dragged_to_another_place_slides_the_blocks_between() {
+        let mut chain = ChainSetting::default();
+        chain.blocks[0] = BlockSetting::of(BlockChoice::Drive);
+        chain.blocks[1] = BlockSetting::of(BlockChoice::Amp);
+        chain.blocks[2] = BlockSetting::of(BlockChoice::Reverb);
+        // Toward the end of the chain.
+        let mut later = chain.clone();
+        assert!(move_block(&mut later.blocks, 0, 2));
+        assert_eq!(later.blocks[0].choice, BlockChoice::Amp);
+        assert_eq!(later.blocks[1].choice, BlockChoice::Reverb);
+        assert_eq!(later.blocks[2].choice, BlockChoice::Drive);
+        assert_eq!(later.blocks[3].choice, BlockChoice::Empty);
+        // And toward the strings.
+        let mut earlier = chain.clone();
+        assert!(move_block(&mut earlier.blocks, 2, 0));
+        assert_eq!(earlier.blocks[0].choice, BlockChoice::Reverb);
+        assert_eq!(earlier.blocks[1].choice, BlockChoice::Drive);
+        assert_eq!(earlier.blocks[2].choice, BlockChoice::Amp);
+        // The knobs travel with the block.
+        let mut knobs = chain.clone();
+        knobs.blocks[1].drive = 0.7;
+        assert!(move_block(&mut knobs.blocks, 1, BLOCKS.saturating_sub(1)));
+        assert_eq!(
+            knobs.blocks[BLOCKS.saturating_sub(1)].choice,
+            BlockChoice::Amp
+        );
+        assert_eq!(knobs.blocks[BLOCKS.saturating_sub(1)].drive, 0.7);
+        // Nothing moves for the same place or one off the board.
+        let mut same = chain.clone();
+        assert!(!move_block(&mut same.blocks, 1, 1));
+        assert_eq!(same, chain);
+        let mut off = chain.clone();
+        assert!(!move_block(&mut off.blocks, 1, BLOCKS.saturating_add(3)));
+        assert_eq!(off, chain);
     }
 }

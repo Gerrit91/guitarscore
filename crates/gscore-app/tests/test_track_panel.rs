@@ -552,3 +552,115 @@ fn a_saved_chain_preset_brings_back_the_whole_chain() {
     harness.get_by_label("Block 1: Reverb");
     assert_eq!(preset_shown(&harness), "Hall 1");
 }
+
+/// Drags a block from the box labelled `from` to the box labelled `to`, as the mouse does:
+/// press, move far enough that egui sees a drag and not a click, then let go over `to`.
+/// With `shot`, the frame while the block hangs at the mouse is snapshotted.
+fn drag_box(
+    harness: &mut Harness<'static, GuitarScoreApp>,
+    from: &str,
+    to: &str,
+    shot: Option<&str>,
+) {
+    let from = harness.get_by_label(from).rect().center();
+    let to = harness.get_by_label(to).rect().center();
+    harness.hover_at(from);
+    harness.run();
+    harness.drag_at(from);
+    harness.step();
+    // The drag only starts once the mouse has moved a little with the button down.
+    harness.hover_at(from + egui::vec2(24.0, 0.0));
+    harness.step();
+    harness.hover_at(to);
+    harness.step();
+    if let Some(name) = shot {
+        harness.snapshot(name);
+    }
+    // Released over the target, without taking the cursor away first: the drop is what
+    // egui is asked about on this frame.
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: to,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    harness.run();
+}
+
+#[test]
+fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
+    use gscore_app::chain_settings::BlockChoice;
+    use gscore_play::StringKind;
+
+    let mut harness = app_with("basic/note_lengths.gp");
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    // An amp in the first place and a drive in the second.
+    harness.get_by_label("Block 1: +").click();
+    harness.run();
+    harness.get_by_label("Amp").click();
+    harness.run();
+    harness.get_by_label("Block 2: +").click();
+    harness.run();
+    harness.get_by_label("Drive").click();
+    harness.run();
+    harness.get_by_label("Block 1: Amp");
+    harness.get_by_label("Block 2: Drive");
+    // The chain that took the blocks (the kind of string the track's preset stands for).
+    let kind = [
+        StringKind::Nylon,
+        StringKind::Steel,
+        StringKind::Electric,
+        StringKind::Bass,
+    ]
+    .into_iter()
+    .find(|kind| {
+        harness
+            .state()
+            .playback()
+            .string_chains()
+            .get(*kind)
+            .blocks
+            .first()
+            .is_some_and(|block| block.choice == BlockChoice::Amp)
+    })
+    .expect("the blocks went into one chain");
+
+    // The amp, dragged past the drive into the empty third place: the drive slides back.
+    drag_box(
+        &mut harness,
+        "Block 1: Amp",
+        "Block 3: +",
+        Some("sound_chain_dragging"),
+    );
+    harness.get_by_label("Block 3: Amp");
+    let blocks = harness
+        .state()
+        .playback()
+        .string_chains()
+        .get(kind)
+        .blocks
+        .clone();
+    assert_eq!(blocks[0].choice, BlockChoice::Drive, "the drive slid back");
+    assert_eq!(blocks[1].choice, BlockChoice::Empty);
+    assert_eq!(
+        blocks[2].choice,
+        BlockChoice::Amp,
+        "the amp is where it was let go"
+    );
+    assert_eq!(blocks[3].choice, BlockChoice::Empty);
+
+    // And back toward the strings: the drive and the empty place slide the other way.
+    drag_box(&mut harness, "Block 3: Amp", "Block 1: Drive", None);
+    harness.get_by_label("Block 1: Amp");
+    let blocks = harness
+        .state()
+        .playback()
+        .string_chains()
+        .get(kind)
+        .blocks
+        .clone();
+    assert_eq!(blocks[0].choice, BlockChoice::Amp);
+    assert_eq!(blocks[1].choice, BlockChoice::Drive);
+    assert_eq!(blocks[2].choice, BlockChoice::Empty);
+}
