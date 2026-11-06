@@ -82,6 +82,10 @@ The Staff tiles hold Beat text and Lyrics (Shift+L): five lines of syllables, wr
 under the notation staff (above the tab when both are shown). Spaces separate syllables,
 Tab skips a beat, a `+` puts two words on one beat (`in+the`) and `[text]` is hidden.
 What is typed shows in the score at once, as one undo step per line; Cancel takes it back.
+The L.H. and R.H. tiles open a small fingering window that stays open and always
+shows the cursor note's finger: move through the notes with the arrows and press a
+finger's key (`0`-`4` and `t` for the left hand, `p i m a c` for the right; Backspace
+removes it) or click it. While the window is open those keys set fingers, not frets.
 The technique matrix holds the chord diagram (`Ch`): a dialog sets the name, base fret
 and a fret or `x` per string. Both are drawn in the score and can be edited or removed
 again.

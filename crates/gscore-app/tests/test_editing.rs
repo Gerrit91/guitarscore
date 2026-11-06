@@ -421,11 +421,41 @@ fn the_tie_beat_text_and_fingering_tiles_work() {
         .get_by_label("Left-hand fingering…")
         .click_accesskit();
     harness.run();
+    // A click sets the finger at once; the window stays open, following the cursor.
     harness.get_by_label("Little").click_accesskit();
     harness.run();
-    harness.get_by_label("OK").click_accesskit();
-    harness.run();
     assert_eq!(finger(&harness, Hand::Left), Some(Finger::Little));
+    // Keys: the arrows move to the previous note, a digit fingers it (not a fret).
+    press(&mut harness, Key::ArrowLeft);
+    assert_eq!(finger(&harness, Hand::Left), None);
+    type_char(&mut harness, "2", Modifiers::NONE);
+    harness.run();
+    assert_eq!(finger(&harness, Hand::Left), Some(Finger::Middle));
+    assert_eq!(
+        fret_at_cursor(harness.state(), 1),
+        Some(5),
+        "the fret stays"
+    );
+    // The window shows the cursor note's finger.
+    use egui_kittest::kittest::NodeT as _;
+    assert!(
+        harness.get_by_label("Middle").accesskit_node().toggled()
+            == Some(egui::accesskit::Toggled::True)
+    );
+    press(&mut harness, Key::ArrowRight);
+    assert!(
+        harness.get_by_label("Little").accesskit_node().toggled()
+            == Some(egui::accesskit::Toggled::True)
+    );
+    // Backspace takes the finger off; Escape closes the window.
+    press(&mut harness, Key::Backspace);
+    assert_eq!(finger(&harness, Hand::Left), None);
+    press(&mut harness, Key::Escape);
+    assert!(
+        harness
+            .query_by_label("Close Left-hand fingering")
+            .is_none()
+    );
 
     // The beat text tile opens its dialog; Cancel leaves the beat unchanged.
     harness.get_by_label("Beat text…").scroll_to_me();

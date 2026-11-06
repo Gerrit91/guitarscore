@@ -9,7 +9,7 @@ use super::shape_editor::Outcome;
 use super::tuplet_dialog::TupletDialog;
 use gscore_edit::{ActionId, Command, Cursor, Selection};
 use gscore_model::{
-    BeatIndex, BeatPosition, Feel, Fermata, Hand, MeasureIndex, NoteValue, Repeat, Song,
+    BeatIndex, BeatPosition, Feel, Fermata, Finger, Hand, MeasureIndex, NoteValue, Repeat, Song,
     SystemBreak, VoiceIndex,
 };
 
@@ -65,10 +65,19 @@ impl EditPaletteState {
         NoteValue::new(self.value, self.dots, self.tuplet).ok()
     }
 
-    /// Whether one of the palette's effect dialogs is open (the bend, whammy, harmonic,
-    /// grace, trill, tremolo, beat text or fingering editor).
-    pub(super) fn is_editing(&self) -> bool {
-        self.effects.is_editing()
+    /// The hand whose fingering window is open, if one is.
+    pub(super) fn finger_hand(&self) -> Option<Hand> {
+        self.effects.finger_hand()
+    }
+
+    /// A finger chosen with a key while a fingering window is open.
+    pub(super) fn choose_finger(&mut self, finger: Option<Finger>) {
+        self.effects.choose_finger(finger);
+    }
+
+    /// Whether an open editor takes the keys (the fingering windows do not).
+    pub(super) fn takes_keys(&self) -> bool {
+        self.effects.takes_keys()
     }
 }
 

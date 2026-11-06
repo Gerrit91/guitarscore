@@ -67,7 +67,7 @@ impl GuitarScoreApp {
             || tab.is_some_and(|tab| tab.renaming.is_some())
             || tab.is_some_and(|tab| tab.track_panel.tuning_open())
             || tab.is_some_and(|tab| tab.edit_palette.staff.is_open())
-            || tab.is_some_and(|tab| tab.edit_palette.is_editing())
+            || tab.is_some_and(|tab| tab.edit_palette.takes_keys())
             || ctx.egui_wants_keyboard_input()
             || egui::Popup::is_any_open(ctx)
         {
@@ -76,7 +76,39 @@ impl GuitarScoreApp {
         let events = ctx.input_mut(|input| std::mem::take(&mut input.events));
         let mut kept = Vec::with_capacity(events.len());
         let mut actions = Vec::new();
+        // While a fingering window is open its keys choose the finger (they win over the
+        // keymap: `1` is a finger then, not a fret); everything else, the arrows among
+        // them, works as usual, so the cursor moves on to the next note.
+        let finger_hand = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| tab.edit_palette.finger_hand());
+        let mut finger = None;
         for event in events {
+            if let Some(hand) = finger_hand {
+                let chosen = match &event {
+                    egui::Event::Text(text) => super::edit_effects::finger_key(hand, text),
+                    egui::Event::Key {
+                        key: egui::Key::Backspace | egui::Key::Delete,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } if modifiers.is_none() => Some(None),
+                    _ => None,
+                };
+                if let Some(chosen) = chosen {
+                    finger = Some(chosen);
+                    continue;
+                }
+                // The key press that typed a finger's character is not a command either.
+                if let egui::Event::Key { key, modifiers, .. } = &event
+                    && !modifiers.command
+                    && !modifiers.alt
+                    && key_types_finger(hand, *key)
+                {
+                    continue;
+                }
+            }
             match self.keys.combo(&event).and_then(|c| self.keymap.action(c)) {
                 Some(action) if !without_song || needs_no_song(action) => actions.push(action),
                 _ => kept.push(event),
@@ -87,6 +119,12 @@ impl GuitarScoreApp {
             kept.append(&mut input.events);
             input.events = kept;
         });
+        if let Some(finger) = finger
+            && let Some(tab) = self.tabs.get_mut(self.active)
+        {
+            tab.edit_palette.choose_finger(finger);
+            ctx.request_repaint();
+        }
         for action in actions {
             self.perform_action(action, ctx);
         }
@@ -783,6 +821,13 @@ pub(super) fn preview_target(command: &Command) -> Option<BeatPosition> {
         Command::Batch { commands } => commands.iter().find_map(preview_target),
         _ => None,
     }
+}
+
+/// Whether `key` types one of `hand`'s finger characters (its key event is then no command).
+fn key_types_finger(hand: gscore_model::Hand, key: egui::Key) -> bool {
+    let name = key.name().to_lowercase();
+    super::edit_effects::finger_key(hand, &name).is_some()
+        || matches!(key, egui::Key::Backspace | egui::Key::Delete)
 }
 
 /// Whether `action` works with no song open: files, windows and the view.

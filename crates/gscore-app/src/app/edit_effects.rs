@@ -3,6 +3,7 @@
 //! click to every note or beat in the selection as commands.
 
 mod dialogs;
+pub(in crate::app) use dialogs::finger_key;
 mod editors;
 
 use egui::vec2;
@@ -125,6 +126,8 @@ pub(super) struct EffectsState {
     stroke: Option<dialogs::StrokeEditor>,
     /// What the lyrics dialog asks of the score this frame.
     lyrics_preview: Option<LyricsPreview>,
+    /// A finger chosen with a key while a fingering window is open (`Some(None)`: none).
+    finger_key: Option<Option<Finger>>,
 }
 
 /// What the lyrics dialog asks of the score: it shows what is typed at once.

@@ -4,7 +4,7 @@
 
 use gscore_edit::Command;
 use gscore_model::{
-    BeatEffect, BendKind, BendShape, Hand, NoteEffect, StrokeDirection, WhammyShape,
+    BeatEffect, BendKind, BendShape, Finger, Hand, NoteEffect, StrokeDirection, WhammyShape,
 };
 
 use super::super::beat_text_editor::BeatTextEditor;
@@ -14,7 +14,9 @@ use super::super::grace_editor::GraceEditor;
 use super::super::harmonic_editor::HarmonicEditor;
 use super::super::lyrics_editor::LyricsEditor;
 use super::super::shape_editor::{Outcome, ShapeEditor, ShapeTarget};
-use super::dialogs::{FingerEditor, StrokeEditor, StrokeEditorKind, TremoloEditor, TrillEditor};
+use super::dialogs::{
+    FingerEditor, FingerOutcome, StrokeEditor, StrokeEditorKind, TremoloEditor, TrillEditor,
+};
 use super::{EffectsState, LyricsPreview, apply_beat, apply_note, default_bend, default_whammy};
 use crate::settings::{Settings, ShapePreset};
 
@@ -49,6 +51,21 @@ impl EffectsState {
             .and_then(|beat| beat.whammy.clone());
         let points = shape.map_or_else(default_whammy, |shape| shape.points);
         self.whammy = Some(ShapeEditor::new(ShapeTarget::Whammy, BendKind::Up, points));
+    }
+
+    /// Whether an open editor takes the keys: every one but the fingering windows, which
+    /// let the cursor move through the score while they are open.
+    pub(in crate::app) fn takes_keys(&self) -> bool {
+        self.bend.is_some()
+            || self.whammy.is_some()
+            || self.harmonic.is_some()
+            || self.grace.is_some()
+            || self.trill.is_some()
+            || self.tremolo.is_some()
+            || self.beat_text.is_some()
+            || self.chord.is_some()
+            || self.lyrics.is_some()
+            || self.stroke.is_some()
     }
 
     /// Whether the bend or whammy editor is open.
@@ -139,24 +156,33 @@ impl EffectsState {
         self.stroke = None;
     }
 
-    /// Opens the fingering dialog for one hand on the cursor note's finger.
-    pub(in crate::app) fn open_finger(&mut self, snapshot: &PaletteSnapshot, hand: Hand) {
-        let Some(note) = snapshot
-            .note_state
-            .as_ref()
-            .or(snapshot.target_states.first())
-        else {
-            return;
-        };
-        let current = match hand {
-            Hand::Left => note.finger_left,
-            Hand::Right => note.finger_right,
-        };
-        let editor = FingerEditor::new(hand, current);
+    /// Opens the fingering window for `hand` (closing the other hand's: one at a time, so
+    /// the keys are clear).
+    pub(in crate::app) fn open_finger(&mut self, _snapshot: &PaletteSnapshot, hand: Hand) {
+        let editor = FingerEditor::new(hand);
         match hand {
-            Hand::Left => self.finger_left = Some(editor),
-            Hand::Right => self.finger_right = Some(editor),
+            Hand::Left => {
+                self.finger_right = None;
+                self.finger_left = Some(editor);
+            }
+            Hand::Right => {
+                self.finger_left = None;
+                self.finger_right = Some(editor);
+            }
         }
+    }
+
+    /// The hand whose fingering window is open, if one is.
+    pub(in crate::app) fn finger_hand(&self) -> Option<Hand> {
+        self.finger_left
+            .as_ref()
+            .or(self.finger_right.as_ref())
+            .map(FingerEditor::hand)
+    }
+
+    /// A finger chosen with a key while the fingering window is open.
+    pub(in crate::app) fn choose_finger(&mut self, finger: Option<Finger>) {
+        self.finger_key = Some(finger);
     }
 
     fn show_finger(
@@ -173,18 +199,35 @@ impl EffectsState {
         let Some(editor) = editor else {
             return;
         };
-        let effect = match editor.show(ctx) {
-            Outcome::Open => return,
-            Outcome::Apply => Some(NoteEffect::Finger(hand, editor.finger())),
-            Outcome::Remove => Some(NoteEffect::Finger(hand, None)),
-            Outcome::Cancel | Outcome::Listen => None,
+        // Always the cursor note's finger: the window follows the cursor.
+        let current = snapshot
+            .note_state
+            .as_ref()
+            .or(snapshot.target_states.first())
+            .and_then(|note| match hand {
+                Hand::Left => note.finger_left,
+                Hand::Right => note.finger_right,
+            });
+        let has_note = !snapshot.note_targets.is_empty();
+        let outcome = match (editor.show(ctx, current, has_note), self.finger_key.take()) {
+            (FingerOutcome::Open, Some(finger)) => FingerOutcome::Set(finger),
+            (outcome, _) => outcome,
         };
-        if let Some(effect) = effect {
-            apply_note(commands, &snapshot.note_targets, effect);
-        }
-        match hand {
-            Hand::Left => self.finger_left = None,
-            Hand::Right => self.finger_right = None,
+        match outcome {
+            FingerOutcome::Open => {}
+            FingerOutcome::Set(finger) => {
+                if has_note {
+                    apply_note(
+                        commands,
+                        &snapshot.note_targets,
+                        NoteEffect::Finger(hand, finger),
+                    );
+                }
+            }
+            FingerOutcome::Close => match hand {
+                Hand::Left => self.finger_left = None,
+                Hand::Right => self.finger_right = None,
+            },
         }
     }
 

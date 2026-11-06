@@ -23,6 +23,8 @@ pub(crate) enum Face<'a> {
     TextMore(&'a str),
     /// A word in bold italic, as a score writes it ("tap", "let ring" on two lines).
     Word(&'a str),
+    /// A fingering sign in large bold italic ("1", "m"), for the fingering windows.
+    Finger(&'a str),
     /// A tuplet bracket around its number in the music font's tuplet digits ("3",
     /// "5:4"), or around italic letters ("n:m") when `letters`. `more` adds the corner
     /// triangle of a tile that opens a dialog.
@@ -215,6 +217,7 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
             // The slant leans the ink to the right of the layout box.
             lettering(painter, at(-0.5, 0.0), text, size, true, ink);
         }
+        Face::Finger(text) => lettering(painter, at(-0.5, 0.0), text, 17.0, true, ink),
         Face::TupletBracket {
             text,
             letters,
