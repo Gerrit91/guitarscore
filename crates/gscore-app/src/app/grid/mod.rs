@@ -117,13 +117,30 @@ impl GuitarScoreApp {
         let levels: Vec<f32> = (0..rows.len())
             .map(|index| self.playback.track_level(TrackIndex::new(index)))
             .collect();
+        let bus = self.playback.reverb_bus();
+        // The bus's meter: the loudest send into it, through its own (square-law) level.
+        let bus_level = if bus.muted {
+            0.0
+        } else {
+            let loudest = rows
+                .iter()
+                .enumerate()
+                .map(|(index, row)| {
+                    f32::from(row.reverb.min(127)) / 127.0
+                        * levels.get(index).copied().unwrap_or(0.0)
+                })
+                .fold(0.0_f32, f32::max);
+            let level = f32::from(bus.level.min(127)) / 127.0;
+            loudest * level * level
+        };
         let mut actions = Vec::new();
         draw(
             ui,
             &rows,
             master,
             &grid,
-            self.playback.reverb_bus(),
+            bus,
+            bus_level,
             GridView {
                 measure_count,
                 cursor_measure: cursor.measure.get(),
@@ -409,6 +426,7 @@ fn draw(
     master: gscore_model::MasterMix,
     grid: &GridData,
     bus: crate::settings::ReverbBus,
+    bus_level: f32,
     view: GridView,
     levels: &[f32],
     mixer_state: &mut MixerState,
@@ -421,6 +439,7 @@ fn draw(
             rows,
             master,
             bus,
+            bus_level,
             levels,
             view.metronome,
             mixer_state,

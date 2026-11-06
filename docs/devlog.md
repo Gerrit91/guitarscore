@@ -3379,3 +3379,14 @@ needed for a much larger font); owner listening check.
   without editing the settings file. This is the way out of a window covered by a panel a
   saved size had grown. Tests: 5000 px, infinity and NaN stored widths leave both panels in
   their halves.
+
+## 2026-11-06 — Every preset in the dropdown; the bus shows what reaches it
+
+- The chain preset list is no longer filtered by the kind of string: every preset is shown
+  (by name), and choosing one loads its own kind - the sound and the chain go to that kind,
+  and a preset saved with a modelled engine switches the track to it too (so a nylon preset
+  on an electric track comes back as nylon).
+- The bus strip's meter shows the loudest send into it through its own level (an estimate
+  from the tracks' activity and their Reverb knobs, like the tracks' meters), and the bus
+  window says who feeds it: tracks played by PM synthesis; SoundFont tracks keep the synth's
+  own reverb.

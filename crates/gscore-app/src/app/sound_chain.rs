@@ -56,13 +56,16 @@ struct Actions {
     engine: Option<TrackEngine>,
     /// A preset was chosen: its string sound, its chain and what plays the strings.
     preset: Option<ChosenPreset>,
-    /// Save the sound and the chain under this name, or delete that preset.
+    /// Save the sound and the chain under this name, or delete that preset (its kind of
+    /// string and its name, since names are unique within a kind only).
     save_preset: Option<String>,
-    delete_preset: Option<String>,
+    delete_preset: Option<(String, String)>,
 }
 
 /// A preset chosen in the list: the whole sound it carries.
 struct ChosenPreset {
+    /// The kind of string it was saved for: its sound and chain belong to it.
+    kind: StringKind,
     sound: StringSound,
     chain: ChainSetting,
     /// What plays the strings, when the preset names it (older ones do not).
@@ -205,6 +208,7 @@ fn preset_row(
             .show_ui(ui, |ui| {
                 if ui.selectable_label(false, "Built-in").clicked() {
                     actions.preset = Some(ChosenPreset {
+                        kind,
                         sound: built_in(),
                         chain: ChainSetting::default(),
                         engine: None,
@@ -212,7 +216,12 @@ fn preset_row(
                 }
                 for preset in presets {
                     if ui.selectable_label(false, &preset.name).clicked() {
+                        let preset_kind = match engine_from_id(&preset.kind) {
+                            Some(TrackEngine::Modelled(saved)) => saved,
+                            _ => kind,
+                        };
                         actions.preset = Some(ChosenPreset {
+                            kind: preset_kind,
                             sound: preset.sound,
                             chain: preset.chain.clone(),
                             engine: engine_from_id(&preset.engine),
@@ -238,7 +247,8 @@ fn preset_row(
                     ui.menu_button("Delete…", |ui| {
                         for preset in presets {
                             if ui.button(&preset.name).clicked() {
-                                actions.delete_preset = Some(preset.name.clone());
+                                actions.delete_preset =
+                                    Some((preset.kind.clone(), preset.name.clone()));
                                 ui.close();
                             }
                         }
@@ -709,13 +719,10 @@ impl GuitarScoreApp {
             TrackEngine::Modelled(kind) => (kind, true),
             TrackEngine::SoundFont => (player.preset_kind.unwrap_or(StringKind::Steel), false),
         };
-        let presets: Vec<ChainPreset> = self
-            .settings
-            .string_presets
-            .iter()
-            .filter(|preset| preset.kind == kind_id(kind))
-            .cloned()
-            .collect();
+        // Every preset, whatever kind of string it was saved for (choosing one also
+        // switches the track to that kind when it names a modelled engine).
+        let mut presets: Vec<ChainPreset> = self.settings.string_presets.clone();
+        presets.sort_by_cached_key(|preset| preset.name.to_lowercase());
         // The title says which preset the chain is; the board follows straight away.
         let title = format!(
             "Sound chain — Preset: {}",
@@ -809,8 +816,8 @@ impl GuitarScoreApp {
             });
         // A preset first: it carries both a string sound and a chain.
         if let Some(preset) = actions.preset {
-            self.playback.set_string_sound(kind, preset.sound);
-            self.playback.set_string_chain(kind, preset.chain);
+            self.playback.set_string_sound(preset.kind, preset.sound);
+            self.playback.set_string_chain(preset.kind, preset.chain);
             if let Some(engine) = preset.engine {
                 self.set_track_engine(window.track, engine);
             }
@@ -841,10 +848,10 @@ impl GuitarScoreApp {
             }
             self.save_settings();
         }
-        if let Some(name) = actions.delete_preset {
+        if let Some((preset_kind, name)) = actions.delete_preset {
             self.settings
                 .string_presets
-                .retain(|preset| !(preset.kind == kind_id(kind) && preset.name == name));
+                .retain(|preset| !(preset.kind == preset_kind && preset.name == name));
             self.save_settings();
         }
         if actions.open_strings {

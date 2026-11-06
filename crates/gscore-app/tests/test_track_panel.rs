@@ -385,4 +385,29 @@ fn a_saved_chain_preset_brings_back_the_whole_chain() {
     harness.run();
     harness.get_by_label("Block 1: Reverb");
     assert_eq!(preset_shown(&harness), "Hall 1");
+
+    // Every preset is listed, whatever kind of string it was saved for: switch the track
+    // to another kind and the preset is still there, and choosing it comes back to its own.
+    harness.get_by_label("Block 0: MIDI").click();
+    harness.run();
+    harness.get_by_label("PM Synthesis").click();
+    harness.run();
+    harness.get_by_label("Block 0: Strings").click();
+    harness.run();
+    harness.get_by_label("Nylon guitar").click();
+    harness.run();
+    harness.get_by_label("Close String sound").click();
+    harness.run();
+    harness.get_by_label("Block 1: +");
+    harness
+        .query_all_by_label("Preset")
+        .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
+        .unwrap()
+        .click();
+    harness.run();
+    // The preset of the other kind is in the list, and brings its chain and kind back.
+    harness.get_by_label("Hall 1").click();
+    harness.run();
+    harness.get_by_label("Block 1: Reverb");
+    assert_eq!(preset_shown(&harness), "Hall 1");
 }

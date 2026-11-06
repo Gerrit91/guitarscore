@@ -57,6 +57,8 @@ pub(super) fn strips(
     rows: &[TrackRow],
     master: MasterMix,
     bus: ReverbBus,
+    // How loud the bus's return is right now (estimated from the sends and the tracks).
+    bus_level: f32,
     levels: &[f32],
     metronome: (f32, f32),
     state: &mut MixerState,
@@ -82,7 +84,7 @@ pub(super) fn strips(
                         actions,
                     );
                 }
-                reverb_strip(ui, bus, height, state, actions);
+                reverb_strip(ui, bus, bus_level, height, state, actions);
                 let master_level = levels.iter().copied().fold(0.0_f32, f32::max);
                 master_strip(
                     ui,
@@ -283,6 +285,7 @@ fn master_strip(
 fn reverb_strip(
     ui: &mut egui::Ui,
     bus: ReverbBus,
+    level: f32,
     height: f32,
     state: &mut MixerState,
     actions: &mut Vec<GridAction>,
@@ -316,7 +319,7 @@ fn reverb_strip(
         REVERB,
         bus.level,
         64,
-        0.0,
+        level,
         127,
         "Reverb bus level",
         |level, _| {
@@ -511,7 +514,7 @@ fn knobs(
         reverb,
         ("reverb", index),
         &format!("Reverb {name}"),
-        "Reverb send",
+        "Reverb send (to the reverb bus, for PM synthesis)",
         0,
     );
     caption(ui, reverb_rect, "Reverb");
