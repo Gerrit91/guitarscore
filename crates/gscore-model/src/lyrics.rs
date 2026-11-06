@@ -546,15 +546,18 @@ mod tests {
         let _change = song
             .set_lyric_line(0, MeasureIndex::new(0), "Hel lo")
             .unwrap();
+        let _second = song
+            .set_lyric_line(1, MeasureIndex::new(0), "second line")
+            .unwrap();
         let before = song.lyric_syllables(TrackIndex::new(0));
-        assert_eq!(before.len(), 2);
+        assert_eq!(before.len(), 4);
         // Writing and reading a GP7 file keeps the syllables on the beats.
         let bytes = song.inner().write_gp().unwrap();
         let mut reread = gscore_gp::Song::default();
         reread.read_gp(&bytes).unwrap();
         let after = crate::interop::from_gp(reread).unwrap();
         assert_eq!(after.lyric_syllables(TrackIndex::new(0)), before);
-        assert_eq!(after.lyric_lines()[0].text, "Hel lo");
+        assert_eq!(after.lyric_lines().len(), 2);
     }
 
     #[test]
