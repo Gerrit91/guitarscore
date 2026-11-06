@@ -1725,7 +1725,7 @@ dependencies = [
 
 [[package]]
 name = "gscore-app"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "eframe",
  "egui",
@@ -1750,7 +1750,7 @@ dependencies = [
 
 [[package]]
 name = "gscore-audio"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cpal",
  "gscore-audio",
@@ -1766,7 +1766,7 @@ dependencies = [
 
 [[package]]
 name = "gscore-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "gscore-audio",
@@ -1781,7 +1781,7 @@ dependencies = [
 
 [[package]]
 name = "gscore-edit"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gscore-io",
  "gscore-model",
@@ -1789,7 +1789,7 @@ dependencies = [
 
 [[package]]
 name = "gscore-gp"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "encoding_rs",
  "fraction",
@@ -1801,7 +1801,7 @@ dependencies = [
 
 [[package]]
 name = "gscore-io"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gscore-gp",
  "gscore-model",
@@ -1809,7 +1809,7 @@ dependencies = [
 
 [[package]]
 name = "gscore-layout"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gscore-io",
  "gscore-model",
@@ -1821,14 +1821,14 @@ dependencies = [
 
 [[package]]
 name = "gscore-model"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gscore-gp",
 ]
 
 [[package]]
 name = "gscore-play"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gscore-io",
  "gscore-model",
@@ -1836,11 +1836,12 @@ dependencies = [
 
 [[package]]
 name = "gscore-session"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gscore-edit",
  "gscore-io",
  "gscore-model",
+ "gscore-version",
  "serde",
  "serde_json",
  "web-sys",
@@ -1848,11 +1849,11 @@ dependencies = [
 
 [[package]]
 name = "gscore-version"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "gscore-worklet"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gscore-audio",
  "gscore-play",
@@ -4958,7 +4959,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "zbus"

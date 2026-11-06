@@ -1,6 +1,6 @@
 [package]
 name = "gscore-worklet"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 description = "The browser's AudioWorklet synthesizer: gscore-audio's engine as a wasm module"
 

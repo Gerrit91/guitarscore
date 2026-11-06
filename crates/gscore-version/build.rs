@@ -1,23 +1,32 @@
 //! Records the version at build time.
 //!
 //! A release build sets the `GSCORE_VERSION` variable to the release tag (the release
-//! workflow does this); every other build is a development build, labelled with the crate
-//! version and the short SHA of the commit it came from. The results are published as
-//! `cargo:rustc-env` values, read by `env!` in `lib.rs`.
+//! workflow does this). A local build takes `git describe --tags`, so a build of a tagged
+//! commit reports that tag. Without either (no git, no tags, a shallow clone) the build is
+//! labelled with the crate version and the short SHA. `src/choose.rs` holds the order.
+//! The results are published as `cargo:rustc-env` values, read by `env!` in `lib.rs`.
 
 use std::process::Command;
 
+#[path = "src/choose.rs"]
+mod choose;
+
 fn main() {
     let sha = git_sha();
-    let version = match std::env::var("GSCORE_VERSION") {
-        Ok(tag) if !tag.trim().is_empty() => tag.trim().to_owned(),
-        _ => format!("{}-dev+{sha}", env!("CARGO_PKG_VERSION")),
-    };
+    let release = std::env::var("GSCORE_VERSION").ok();
+    let describe = git(&["describe", "--tags", "--match", "v[0-9]*"]);
+    let version = choose::version(
+        release.as_deref(),
+        describe.as_deref(),
+        env!("CARGO_PKG_VERSION"),
+        &sha,
+    );
     println!("cargo:rustc-env=GSCORE_VERSION_STRING={version}");
     println!("cargo:rustc-env=GSCORE_BUILD_SHA={sha}");
     println!("cargo:rerun-if-env-changed=GSCORE_VERSION");
-    // A new commit or a branch switch must bake in the new SHA: watch git's HEAD, the
-    // branch it points at and the packed refs (where `git gc` moves branch tips).
+    // A new commit, a branch switch or a new tag must bake in the new SHA and describe
+    // output: watch git's HEAD, the branch it points at, the tags folder and the packed
+    // refs (where `git gc` moves branch tips and tags).
     for path in git_paths_to_watch() {
         println!("cargo:rerun-if-changed={path}");
     }
@@ -26,7 +35,11 @@ fn main() {
 /// The files that change when HEAD moves; `git rev-parse --git-path` resolves them for
 /// worktrees too. Empty outside a git checkout.
 fn git_paths_to_watch() -> Vec<String> {
-    let mut names = vec!["HEAD".to_owned(), "packed-refs".to_owned()];
+    let mut names = vec![
+        "HEAD".to_owned(),
+        "packed-refs".to_owned(),
+        "refs/tags".to_owned(),
+    ];
     if let Some(branch) = git(&["symbolic-ref", "-q", "HEAD"]) {
         names.push(branch);
     }

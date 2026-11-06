@@ -1,6 +1,6 @@
 [package]
 name = "gscore-gp"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 description = "Guitar Pro file data and reading/writing (derived from the guitarpro crate, MIT)"
 

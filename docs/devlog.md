@@ -3130,3 +3130,20 @@ needed for a much larger font); owner listening check.
   the two new palette tiles.
 - Open: directions are not drawn in the score yet (`docs/gaps.md` #11); lyric editing is
   line-based, not per syllable; WAV export has no progress or cancel.
+
+## 2026-11-06 — The build version follows git tags
+
+- Tagging `v0.1.1` changed nothing in a local build: `gscore-version` only knew the
+  release workflow's `GSCORE_VERSION` and otherwise printed `<crate version>-dev+<sha>`.
+  Worse, the crate version was `0.1.0` in every crate's own `Cargo.toml`, so the root
+  `[workspace.package] version` was never used. All crates (and xtask) now inherit it with
+  `version.workspace = true`, and it is `0.1.1`.
+- The version is now `GSCORE_VERSION` if set, else `git describe --tags --match 'v[0-9]*'`
+  (`v0.1.1` on the tagged commit, `v0.1.1-3-g1a2b3c4` after it), else
+  `<crate version>-dev+<sha>` (no git, or a shallow CI clone without tags). The order lives
+  in `src/choose.rs`, shared by `build.rs` (`#[path]`) and unit tests in `lib.rs`. The
+  build script also watches `refs/tags`, so a new tag triggers a rebuild of the version.
+- The crash report printed `CARGO_PKG_VERSION` of `gscore-session`; it now uses
+  `gscore_version::VERSION` like the CLI and Help › About.
+- Open: no `--dirty` marker, since the build script does not rerun on working-tree edits
+  and the marker would go stale.
