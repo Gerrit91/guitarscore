@@ -1,0 +1,124 @@
+//! GuitarScore's fork of RustySynth (`vendor/rustysynth`): each MIDI channel rendered
+//! apart, for the mixer. A channel's notes reach only its own output, the outputs added up
+//! are exactly what the synthesizer plays without splitting, and a SoundFont still loads
+//! (the sample data is read without `unsafe` now).
+
+#![allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
+#![allow(unused_crate_dependencies)]
+
+use std::sync::Arc;
+
+use gscore_audio::testing::sine_soundfont;
+use rustysynth::{SoundFont, Synthesizer, SynthesizerSettings};
+
+const RATE: i32 = 48_000;
+const CHANNELS: usize = Synthesizer::CHANNEL_COUNT;
+
+fn font() -> Arc<SoundFont> {
+    let bytes = sine_soundfont("Test Sine");
+    Arc::new(SoundFont::new(&mut bytes.as_slice()).unwrap())
+}
+
+fn synth(split: bool) -> Synthesizer {
+    let mut settings = SynthesizerSettings::new(RATE);
+    settings.enable_reverb_and_chorus = false;
+    settings.split_channels = split;
+    let mut synth = Synthesizer::new(&font(), &settings).unwrap();
+    // Channel 0 plays A3, channel 2 an E4 panned left; channel 1 stays silent.
+    synth.note_on(0, 57, 100);
+    synth.process_midi_message(2, 0xB0, 10, 0);
+    synth.note_on(2, 64, 90);
+    synth
+}
+
+fn energy(samples: &[f32]) -> f32 {
+    samples.iter().map(|x| x * x).sum()
+}
+
+/// `frames` of each channel, rendered in uneven pieces (as the engine's callback asks).
+fn channels(synth: &mut Synthesizer, frames: usize) -> Vec<[Vec<f32>; 2]> {
+    let mut out: Vec<[Vec<f32>; 2]> = (0..CHANNELS)
+        .map(|_| [vec![0.0; frames], vec![0.0; frames]])
+        .collect();
+    let mut at = 0;
+    for piece in [37, 64, 5, 200].iter().cycle() {
+        if at >= frames {
+            break;
+        }
+        let end = (at + piece).min(frames);
+        let (mut lefts, mut rights): (Vec<&mut [f32]>, Vec<&mut [f32]>) = out
+            .iter_mut()
+            .map(|[left, right]| (&mut left[at..end], &mut right[at..end]))
+            .unzip();
+        synth.render_channels(&mut lefts, &mut rights);
+        at = end;
+    }
+    out
+}
+
+#[test]
+fn each_channel_plays_into_its_own_output() {
+    let mut split = synth(true);
+    let out = channels(&mut split, 4_800);
+    assert!(energy(&out[0][0]) > 1.0, "channel 0 sounds");
+    assert!(energy(&out[2][0]) > 1.0, "channel 2 sounds");
+    // Panned hard left: its right side is (nearly) silent.
+    assert!(energy(&out[2][1]) < 0.01 * energy(&out[2][0]));
+    for (channel, [left, right]) in out.iter().enumerate() {
+        if channel != 0 && channel != 2 {
+            assert_eq!(energy(left) + energy(right), 0.0, "channel {channel}");
+        }
+    }
+}
+
+#[test]
+fn the_channels_add_up_to_the_unsplit_synthesizer() {
+    let frames = 4_800;
+    let mut plain = synth(false);
+    let (mut left, mut right) = (vec![0.0_f32; frames], vec![0.0_f32; frames]);
+    plain.render(&mut left, &mut right);
+    let mut split = synth(true);
+    let out = channels(&mut split, frames);
+    for i in 0..frames {
+        let sum_left: f32 = out.iter().map(|[l, _]| l[i]).sum();
+        let sum_right: f32 = out.iter().map(|[_, r]| r[i]).sum();
+        assert!((sum_left - left[i]).abs() < 1e-6, "left {i}");
+        assert!((sum_right - right[i]).abs() < 1e-6, "right {i}");
+    }
+    // `render` on a split synthesizer plays the sum too.
+    let mut split = synth(true);
+    let (mut sum_left, mut sum_right) = (vec![0.0_f32; frames], vec![0.0_f32; frames]);
+    split.render(&mut sum_left, &mut sum_right);
+    assert_eq!(sum_left, left);
+    assert_eq!(sum_right, right);
+}
+
+#[test]
+fn a_synthesizer_that_is_not_split_gives_silent_channels() {
+    let mut plain = synth(false);
+    let out = channels(&mut plain, 256);
+    assert!(out.iter().all(|[l, r]| energy(l) + energy(r) == 0.0));
+}
+
+#[test]
+#[ignore = "needs a SoundFont: GSCORE_SF2=/path/to.sf2 cargo test --release -p gscore-audio --test test_split_channels -- --ignored"]
+fn a_large_soundfont_loads_as_before() {
+    // Prints the load time and a checksum of the sample data, to compare with the
+    // crates.io release (which read the samples with `unsafe`).
+    let path = std::env::var("GSCORE_SF2").unwrap();
+    let start = std::time::Instant::now();
+    let mut file = std::io::BufReader::new(std::fs::File::open(&path).unwrap());
+    let font = SoundFont::new(&mut file).unwrap();
+    let checksum = font.get_wave_data().iter().fold(0_u64, |sum, &s| {
+        sum.wrapping_mul(31).wrapping_add(s as u16 as u64)
+    });
+    println!(
+        "{} samples, checksum {checksum:x}, loaded in {:?}",
+        font.get_wave_data().len(),
+        start.elapsed()
+    );
+}

@@ -1,0 +1,76 @@
+#![allow(dead_code)]
+
+use std::io::Read;
+
+use crate::binary_reader::BinaryReader;
+use crate::error::SoundFontError;
+use crate::four_cc::FourCC;
+use crate::read_counter::ReadCounter;
+
+#[non_exhaustive]
+pub(crate) struct SoundFontSampleData {
+    pub bits_per_sample: i32,
+    pub wave_data: Vec<i16>,
+}
+
+impl SoundFontSampleData {
+    pub(crate) fn new<R: Read>(reader: &mut R) -> Result<Self, SoundFontError> {
+        let chunk_id = BinaryReader::read_four_cc(reader)?;
+        if chunk_id != b"LIST" {
+            return Err(SoundFontError::ListChunkNotFound);
+        }
+
+        let end = BinaryReader::read_u32(reader)? as usize;
+        let reader = &mut ReadCounter::new(reader);
+
+        let list_type = BinaryReader::read_four_cc(reader)?;
+        if list_type != b"sdta" {
+            return Err(SoundFontError::InvalidListChunkType {
+                expected: FourCC::from_bytes(*b"sdta"),
+                actual: list_type,
+            });
+        }
+
+        let mut wave_data: Option<Vec<i16>> = None;
+
+        while reader.bytes_read() < end {
+            let id = BinaryReader::read_four_cc(reader)?;
+            let size = BinaryReader::read_u32(reader)? as usize;
+
+            match id.as_bytes() {
+                b"smpl" => {
+                    if wave_data.is_some() || size % 2 != 0 {
+                        return Err(SoundFontError::InvalidSampleData);
+                    }
+                    wave_data = Some(BinaryReader::read_wave_data(reader, size)?);
+                }
+                b"sm24" => BinaryReader::discard_data(reader, size)?,
+                _ => return Err(SoundFontError::ListContainsUnknownId(id)),
+            }
+        }
+
+        let Some(wave_data) = wave_data else {
+            return Err(SoundFontError::SampleDataNotFound);
+        };
+
+        if wave_data.len() < 2 {
+            return Err(SoundFontError::SampleDataNotFound);
+        }
+
+        // SoundFont3 compressed sample format
+        // GuitarScore fork: the first four bytes without `unsafe` (the samples were read
+        // little-endian, so their little-endian bytes are the file's).
+        let four_cc: Vec<u8> = wave_data[..2]
+            .iter()
+            .flat_map(|sample| sample.to_le_bytes())
+            .collect();
+        if four_cc == b"OggS" {
+            return Err(SoundFontError::UnsupportedSampleFormat);
+        }
+
+        Ok(Self {
+            bits_per_sample: 16,
+            wave_data,
+        })
+    }
+}

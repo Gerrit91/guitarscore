@@ -16,6 +16,9 @@ members = [
     "crates/gscore-app",
     "xtask",
 ]
+# GuitarScore's fork of RustySynth (see vendor/rustysynth/FORK.md): not a workspace
+# member, so the workspace's lints do not apply to foreign code.
+exclude = ["vendor/rustysynth"]
 
 [workspace.package]
 version = "0.1.1"
@@ -65,3 +68,8 @@ unreachable = "deny"
 indexing_slicing = "deny"
 # `arithmetic_side_effects` is enabled per crate (parsing, layout, sequencing)
 # with `#![warn(clippy::arithmetic_side_effects)]` in lib.rs.
+
+# GuitarScore's fork of RustySynth: each MIDI channel rendered apart, for the mixer
+# (vendor/rustysynth/FORK.md).
+[patch.crates-io]
+rustysynth = { path = "vendor/rustysynth" }

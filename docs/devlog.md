@@ -3611,3 +3611,26 @@ needed for a much larger font); owner listening check.
 - Still open: the owner's four tones are seeded into his settings file by hand (they name
   his private impulse responses, so nothing ships); the tones are not in the song file, and
   the impulse responses they name are absolute paths.
+
+## 2026-11-07 — Mixer, step 1: our own fork of RustySynth
+
+- Owner's plan (decided 2026-11-07): a real mixer. Every track a strip (its source, the
+  SoundFont or modelled strings, then its chain, fader and pan after the chain, the song's
+  volume and pan automation moving our fader), post-fader sends to the reverb bus and to a
+  compressor bus (a Comp send per track), the buses into the master, real meters. Chorus
+  becomes a chain block, not a bus. Tracks sharing a MIDI channel get linked strips (one
+  signal: shared meter, fader, pan, sends and chain; mute and solo stay per track), with an
+  Unlink that moves one to a free channel. Later: a track can be played by a hardware
+  synthesizer (MIDI out per track, held back by the audio latency).
+- Step 1, the fork: RustySynth 1.3.8 (MIT, Nobuaki Tanaka) copied to `vendor/rustysynth`
+  and used through `[patch.crates-io]`, outside the workspace (its lints are not ours).
+  `SynthesizerSettings::split_channels` and `Synthesizer::render_channels` render each
+  MIDI channel into its own stereo block (reverb and chorus off in that mode); `render`
+  still plays their sum. Its two `unsafe` uses are gone: the sample data is read in 64 KB
+  chunks and decoded little-endian. Changes listed in `vendor/rustysynth/FORK.md`, licence
+  in `THIRD_PARTY.md`. The engine does not use the split yet (step 2).
+- Checked: FluidR3_GM loads the same 74,098,056 samples (same checksum) in the same time
+  (85-95 ms) as with the crates.io release.
+- Tests (`gscore-audio/tests/test_split_channels.rs`): a channel's notes reach only its
+  output (a pan reaches its side), the channels add up exactly to the unsplit synthesizer,
+  also when rendered in uneven pieces; an ignored test times a large SoundFont.
