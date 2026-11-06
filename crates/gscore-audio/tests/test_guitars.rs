@@ -434,3 +434,51 @@ fn a_room_chain_rings_on_after_a_damped_note() {
          {wet}"
     );
 }
+
+#[test]
+#[ignore = "timing, run in release: cargo test --release -p gscore-audio --test test_guitars -- --ignored"]
+fn a_long_tail_after_stop_costs_what_playing_does() {
+    use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, ChainSpec, ReverbKnobs};
+    let mut song = a3();
+    let _ = song.set_track_reverb(TrackIndex::new(0), 120).unwrap();
+    let sequence = Arc::new(Sequence::new(&song, None).unwrap().with_modelled_guitars());
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Reverb);
+    let mut settings = [BlockSettings::default(); BLOCKS];
+    settings[0].reverb = ReverbKnobs {
+        size: 1.0,
+        decay: 20.0,
+        mix: 0.5,
+        ..ReverbKnobs::default()
+    };
+    let mut engine = SynthEngine::new(&bank(), RATE).unwrap();
+    let chain = gscore_audio::prepare_chain(&spec, &settings, RATE);
+    let _ = engine.set_chain(0, chain, settings);
+    let bus = spec.prepare(RATE).instance(&settings);
+    engine.set_reverb_bus(Some(Box::new(bus)));
+    engine.set_reverb_bus_settings(settings, 127, false);
+    engine.load(Arc::clone(&sequence));
+    engine.play();
+    let mut left = vec![0.0_f32; 512];
+    let mut right = vec![0.0_f32; 512];
+    let seconds_of = |engine: &mut SynthEngine, left: &mut [f32], right: &mut [f32]| {
+        let start = std::time::Instant::now();
+        for _ in 0..(RATE as usize / 512) {
+            engine.render(left, right);
+        }
+        start.elapsed().as_secs_f32() * 100.0
+    };
+    for second in 0..2 {
+        println!(
+            "playing {second}: {:.2} %",
+            seconds_of(&mut engine, &mut left, &mut right)
+        );
+    }
+    engine.stop();
+    for second in 0..30 {
+        println!(
+            "stopped {second}: {:.2} %",
+            seconds_of(&mut engine, &mut left, &mut right)
+        );
+    }
+}

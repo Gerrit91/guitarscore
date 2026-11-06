@@ -107,3 +107,41 @@ fn cost_of_a_reverb() {
     );
     assert!(left.iter().all(|x| x.is_finite()));
 }
+
+#[test]
+#[ignore = "timing, run in release: cargo test --release -p gscore-guitar --test test_reverb -- --ignored"]
+fn cost_of_a_dying_tail() {
+    // A long reverb rings on after the strings stop: each second of the tail must cost
+    // what a second of playing does (no slow tiny numbers as it dies away).
+    // With a drive and an amp before it, as an electric guitar has: their filters keep
+    // running on the silence while the tail rings.
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Drive);
+    spec.blocks[1] = Some(BlockKind::Amp);
+    spec.blocks[2] = Some(BlockKind::Reverb);
+    let mut settings = [BlockSettings::default(); BLOCKS];
+    settings[2].reverb = ReverbKnobs {
+        size: 1.0,
+        decay: 20.0,
+        mix: 1.0,
+        ..ReverbKnobs::default()
+    };
+    let mut chain = spec.prepare(RATE).instance(&settings);
+    let input = chord(1.0);
+    let (mut l, mut r) = ([0.0_f32; BLOCK], [0.0_f32; BLOCK]);
+    for block in input.chunks(BLOCK) {
+        chain.process(block, &mut l, &mut r);
+    }
+    let silence = [0.0_f32; BLOCK];
+    for second in 0..10 {
+        let start = std::time::Instant::now();
+        for _ in 0..(RATE as usize / BLOCK) {
+            chain.process(&silence, &mut l, &mut r);
+        }
+        println!(
+            "second {second}: {:.2} % of a core, ringing {}",
+            start.elapsed().as_secs_f32() * 100.0,
+            chain.ringing()
+        );
+    }
+}

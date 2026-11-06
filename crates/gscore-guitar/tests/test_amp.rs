@@ -232,3 +232,29 @@ fn a_drive_in_front_tightens_the_low_end() {
         low_share(&alone)
     );
 }
+
+#[test]
+fn silence_after_a_note_becomes_exact_zeros() {
+    // A long reverb keeps a drive and an amp running on the silence after the strings
+    // stop. Their filters must come to exactly zero rather than ever tinier numbers, which
+    // the processor handles up to a hundred times slower (half a core per track, owner).
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Drive);
+    spec.blocks[1] = Some(BlockKind::Amp);
+    let mut chain = spec
+        .prepare(RATE)
+        .instance(&[BlockSettings::default(); BLOCKS]);
+    let (mut left, mut right) = ([0.0_f32; BLOCK], [0.0_f32; BLOCK]);
+    for block in power_chord(0.3).chunks(BLOCK) {
+        chain.process(block, &mut left, &mut right);
+    }
+    let silence = [0.0_f32; BLOCK];
+    for _ in 0..(RATE as usize / BLOCK) {
+        chain.process(&silence, &mut left, &mut right);
+    }
+    assert!(
+        left.iter().chain(&right).all(|x| *x == 0.0),
+        "{:?}",
+        &left[..4]
+    );
+}

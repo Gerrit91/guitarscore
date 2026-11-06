@@ -3,6 +3,19 @@
 
 use std::f32::consts::TAU;
 
+/// Below this a filter's output counts as zero: a filter fed silence decays toward ever
+/// tinier numbers, and below about 1e-38 (denormals) the processor takes up to a hundred
+/// times longer for each one. A drive and an amp before a long reverb tail, run on the
+/// silence after the strings stop, took half a core per track that way. 1e-20 is 400 dB
+/// down: nothing anyone hears.
+pub(crate) const FLUSH: f32 = 1e-20;
+
+/// `x`, or exactly zero when it is too small to matter (see [`FLUSH`]).
+#[inline]
+pub(crate) fn flushed(x: f32) -> f32 {
+    if x.abs() < FLUSH { 0.0 } else { x }
+}
+
 /// A one-pole lowpass `y = (1 - a) x + a y[-1]`: the loss filter. A larger `a` damps the
 /// high harmonics faster (a darker, duller string).
 #[derive(Debug, Clone, Copy, Default)]
@@ -13,7 +26,7 @@ pub(crate) struct OnePole {
 
 impl OnePole {
     pub(crate) fn process(&mut self, x: f32) -> f32 {
-        self.state = (1.0 - self.a) * x + self.a * self.state;
+        self.state = flushed((1.0 - self.a) * x + self.a * self.state);
         self.state
     }
 
@@ -45,7 +58,7 @@ pub(crate) struct Allpass {
 
 impl Allpass {
     pub(crate) fn process(&mut self, x: f32) -> f32 {
-        let y = self.c * x + self.x1 - self.c * self.y1;
+        let y = flushed(self.c * x + self.x1 - self.c * self.y1);
         self.x1 = x;
         self.y1 = y;
         y
@@ -216,9 +229,11 @@ impl Biquad {
     }
 
     pub(crate) fn process(&mut self, x: f32) -> f32 {
-        let y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2
-            - self.a1 * self.y1
-            - self.a2 * self.y2;
+        let y = flushed(
+            self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2
+                - self.a1 * self.y1
+                - self.a2 * self.y2,
+        );
         self.x2 = self.x1;
         self.x1 = x;
         self.y2 = self.y1;
@@ -252,7 +267,7 @@ impl DcBlocker {
     }
 
     pub(crate) fn process(&mut self, x: f32) -> f32 {
-        let y = x - self.x1 + self.r * self.y1;
+        let y = flushed(x - self.x1 + self.r * self.y1);
         self.x1 = x;
         self.y1 = y;
         y

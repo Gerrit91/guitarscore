@@ -52,7 +52,7 @@ const EARLY: f32 = 0.35;
 /// The output's level: all wet, a few dB under the strings at any size and decay.
 const OUTPUT: f32 = 0.6;
 /// Below this a sample in the loop counts as zero (no denormals in a dying tail).
-const FLUSH: f32 = 1e-18;
+const FLUSH: f32 = crate::filters::FLUSH;
 
 /// Where each channel's delay sits in its share of a diffusion stage (fixed, so the reverb
 /// is the same every time; spread like a low-discrepancy sequence).
@@ -304,7 +304,7 @@ impl Reverb {
             let Some(shelf) = self.shelf.get_mut(index) else {
                 continue;
             };
-            *shelf = *out + (*shelf - *out) * self.shelf_a;
+            *shelf = crate::filters::flushed(*out + (*shelf - *out) * self.shelf_a);
             *back = *shelf * low + (*out - *shelf) * high;
         }
         householder(&mut feedback);

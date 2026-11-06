@@ -3542,3 +3542,18 @@ needed for a much larger font); owner listening check.
 - Tests: two tracks of one kind keep their own sound and chain (engine), a beat excerpt
   plays with its track's tone, export resolves own tones and kinds, and the owner's steps in
   the app (two electric tracks dialed in one after the other).
+
+## 2026-11-06 — No more stutter while a long reverb dies away
+
+- Owner: stopping with a long reverb tail took 100 % CPU and stuttered. The reverb itself
+  costs the same through its whole tail (1.2 %); the drive and amp before it did not: a
+  long tail keeps the chain running on the silence after the strings stop, and their
+  filters decayed into denormal numbers (below 1e-38), which the processor handles up to a
+  hundred times slower. Measured: half a core per track for a drive, an amp and a 20 s
+  reverb, from the first second after the notes.
+- Every filter in `gscore-guitar` (biquads, one-poles, allpasses, DC blockers, the reverb's
+  damping shelf) now sets outputs below 1e-20 (400 dB down) to exactly zero: 2.4 % through
+  the tail.
+- Tests: after a note and a second of silence, a drive and an amp put out exact zeros
+  (failed before: 2.6e-30); ignored timing tests for the tail with and without blocks in
+  front, and for the whole engine after Stop.
