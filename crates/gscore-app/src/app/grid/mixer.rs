@@ -3,8 +3,6 @@
 
 use egui::{Align2, Color32, FontId, Rect, Sense, Stroke, Vec2, pos2};
 
-use crate::app::style::TOKENS;
-
 /// The x range the mixer controls get in a track row.
 pub(super) fn controls_rect(row: Rect) -> Rect {
     Rect::from_min_max(
@@ -77,32 +75,6 @@ pub(super) fn sounding_color(color: Color32, audible: bool) -> Color32 {
         color
     } else {
         color.gamma_multiply(SILENT_DIM)
-    }
-}
-
-/// A small mute toggle ("M"): an ordinary button at rest, filled red while the track is
-/// muted, so a muted track cannot be overlooked.
-pub(super) fn mute_button(on: bool) -> egui::Button<'static> {
-    toggle_button("M", on, TOKENS.mute, Color32::WHITE)
-}
-
-/// A small solo toggle ("S"): an ordinary button at rest, filled amber while the track is
-/// soloed. The ink is dark, since white on amber is hard to read.
-pub(super) fn solo_button(on: bool) -> egui::Button<'static> {
-    toggle_button("S", on, TOKENS.solo, Color32::from_rgb(0x23, 0x1A, 0x05))
-}
-
-/// A small toggle: no color of its own while off, the whole button filled `tint` with `ink`
-/// text while `on`, so the color alone says what is muted or soloed.
-fn toggle_button(letter: &str, on: bool, tint: Color32, ink: Color32) -> egui::Button<'static> {
-    if on {
-        egui::Button::new(egui::RichText::new(letter).color(ink))
-            .selected(true)
-            .fill(tint)
-            .stroke(Stroke::new(1.0, tint))
-            .small()
-    } else {
-        egui::Button::new(letter).selected(false).small()
     }
 }
 

@@ -5,7 +5,7 @@ use gscore_edit::Command;
 use gscore_model::{MasterMix, TrackColor, TrackIndex, TrackSound};
 
 use super::{GridAction, GridView, ROW_HEIGHT, RULER_HEIGHT, TRACK_COLUMN, bar, mixer};
-use crate::app::instrument;
+use crate::app::{instrument, style};
 use crate::document::Document;
 
 /// What a track row shows; a snapshot taken before drawing so the song is not borrowed
@@ -210,7 +210,7 @@ fn track_header(
     let mute = mixer::mute_rect(rect);
     let solo = mixer::solo_rect(rect);
     if ui
-        .put(mute, mixer::mute_button(row.muted))
+        .put(mute, style::mute_button(row.muted))
         .on_hover_text("Mute this track")
         .clicked()
     {
@@ -223,7 +223,7 @@ fn track_header(
         });
     }
     if ui
-        .put(solo, mixer::solo_button(row.soloed))
+        .put(solo, style::solo_button(row.soloed))
         .on_hover_text("Solo this track")
         .clicked()
     {

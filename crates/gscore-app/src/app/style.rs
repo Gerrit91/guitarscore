@@ -62,6 +62,37 @@ pub(crate) const TOKENS: Tokens = Tokens {
 /// The red behind a window's or tab's close button while it is hovered.
 pub(crate) const CLOSE_RED: Color32 = Color32::from_rgb(0xD9, 0x3A, 0x3A);
 
+/// A small mute toggle ("M"): an ordinary button at rest, filled red while it is on, so a
+/// muted track (or a bypassed block) cannot be overlooked.
+pub(crate) fn mute_button(on: bool) -> egui::Button<'static> {
+    toggle_button("M", on, TOKENS.mute, Color32::WHITE)
+}
+
+/// A small solo toggle ("S"): an ordinary button at rest, filled amber while it is on. The
+/// ink is dark, since white on amber is hard to read.
+pub(crate) fn solo_button(on: bool) -> egui::Button<'static> {
+    toggle_button("S", on, TOKENS.solo, Color32::from_rgb(0x23, 0x1A, 0x05))
+}
+
+/// A small toggle: no color of its own while off, the whole button filled `tint` with `ink`
+/// text while `on`, so the color alone says what it does.
+pub(crate) fn toggle_button(
+    letter: &str,
+    on: bool,
+    tint: Color32,
+    ink: Color32,
+) -> egui::Button<'static> {
+    if on {
+        egui::Button::new(RichText::new(letter).color(ink))
+            .selected(true)
+            .fill(tint)
+            .stroke(Stroke::new(1.0, tint))
+            .small()
+    } else {
+        egui::Button::new(letter).selected(false).small()
+    }
+}
+
 /// The app's tokens (the same in every theme; `ui` keeps call sites uniform).
 pub(crate) fn tokens(_ui: &egui::Ui) -> &'static Tokens {
     &TOKENS

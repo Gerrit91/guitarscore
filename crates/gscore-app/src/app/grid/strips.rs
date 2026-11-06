@@ -8,7 +8,7 @@ use gscore_model::{MASTER_UNITY, MasterMix, TrackIndex};
 use super::mixer::{self, FLOOR_DB, TRACK_UNITY, db_value, volume_from_db};
 use super::rows::TrackRow;
 use super::{GridAction, ROW_HEIGHT};
-use crate::app::{icons, instrument};
+use crate::app::{icons, instrument, style};
 
 /// One strip's width.
 const STRIP_WIDTH: f32 = 124.0;
@@ -775,7 +775,7 @@ fn mute_solo(
         pos2(rect.left() + width + 4.0, rect.top()),
         vec2(width, rect.height()),
     );
-    let mute = ui.put(mute_rect, mixer::mute_button(row.muted));
+    let mute = ui.put(mute_rect, style::mute_button(row.muted));
     ui.ctx().accesskit_node_builder(mute.id, |node| {
         node.set_label(format!("Mute {}", row.name));
     });
@@ -788,7 +788,7 @@ fn mute_solo(
             merge: false,
         });
     }
-    let solo = ui.put(solo_rect, mixer::solo_button(row.soloed));
+    let solo = ui.put(solo_rect, style::solo_button(row.soloed));
     ui.ctx().accesskit_node_builder(solo.id, |node| {
         node.set_label(format!("Solo {}", row.name));
     });
@@ -820,7 +820,7 @@ fn mute_solo_all(
         pos2(rect.left() + width + 4.0, rect.top()),
         vec2(width, rect.height()),
     );
-    let mute = ui.put(mute_rect, mixer::mute_button(all_muted));
+    let mute = ui.put(mute_rect, style::mute_button(all_muted));
     ui.ctx().accesskit_node_builder(mute.id, |node| {
         node.set_label("Mute all");
     });
@@ -838,7 +838,7 @@ fn mute_solo_all(
             merge: false,
         });
     }
-    let solo = ui.put(solo_rect, mixer::solo_button(all_soloed));
+    let solo = ui.put(solo_rect, style::solo_button(all_soloed));
     ui.ctx().accesskit_node_builder(solo.id, |node| {
         node.set_label("Solo all");
     });

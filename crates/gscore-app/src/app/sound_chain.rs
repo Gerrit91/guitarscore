@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use egui::{Align2, FontId, Margin, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2};
 use gscore_guitar::{BLOCKS, knob_ranges};
+use gscore_model::TrackIndex;
 use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
@@ -17,6 +18,9 @@ use crate::app::string_sound::{kind_name, knob, knob_response};
 use crate::app::style;
 use crate::chain_settings::{BlockChoice, BlockSetting, ChainSetting};
 use crate::playback::Heard;
+use crate::settings::{
+    ChainPreset, MAX_STRING_PRESET_NAME, MAX_STRING_PRESETS, StringSound, kind_id,
+};
 
 /// Width of the window's content.
 const WIDTH: f32 = 700.0;
@@ -24,8 +28,6 @@ const WIDTH: f32 = 700.0;
 const BOX: egui::Vec2 = vec2(86.0, 60.0);
 const GAP: f32 = 36.0;
 const BOARD_HEIGHT: f32 = 96.0;
-/// How far a cable sags between two boxes.
-const SAG: f32 = 7.0;
 
 /// The window while it is open.
 #[derive(Debug)]
@@ -35,6 +37,8 @@ pub(super) struct SoundChainWindow {
     /// The selected box: 0 the strings, 1 to 5 the places after them.
     selected: usize,
     pos: Option<Pos2>,
+    /// The name being typed for a new preset, while saving.
+    saving: Option<String>,
 }
 
 /// What the user did this frame.
@@ -47,6 +51,11 @@ struct Actions {
     chain: Option<ChainSetting>,
     /// A room's length moved and its knob was let go: build the room again.
     rebuild: bool,
+    /// A preset was chosen: its string sound and its chain.
+    preset: Option<(StringSound, ChainSetting)>,
+    /// Save the sound and the chain under this name, or delete that preset.
+    save_preset: Option<String>,
+    delete_preset: Option<String>,
 }
 
 /// What editing the selected block asked for.
@@ -101,41 +110,128 @@ fn short(text: &str, chars: usize) -> String {
     cut
 }
 
-/// The board: the boxes and the cables between them. Returns the box clicked, if any.
+/// The chain presets of `kind`: the built-in sound, the saved ones, saving and deleting.
+/// A preset is the whole chain plus the string sound it was saved with.
+fn preset_row(
+    ui: &mut egui::Ui,
+    kind: StringKind,
+    sound: &StringSound,
+    chain: &ChainSetting,
+    presets: &[ChainPreset],
+    window: &mut SoundChainWindow,
+    actions: &mut Actions,
+) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Preset").color(style::tokens(ui).text_weak));
+        // Which preset the sound is now: a saved one, the built-in one, or changed.
+        let built_in = || StringSound::from(gscore_audio::default_string_model(kind));
+        let current = presets
+            .iter()
+            .find(|preset| preset.sound == *sound && preset.chain == *chain)
+            .map(|preset| preset.name.clone())
+            .or_else(|| {
+                (built_in() == *sound && *chain == ChainSetting::default())
+                    .then(|| "Built-in".to_owned())
+            })
+            .unwrap_or_else(|| "Changed".to_owned());
+        let response = egui::ComboBox::from_id_salt("sound_chain_preset")
+            .selected_text(current.clone())
+            .show_ui(ui, |ui| {
+                if ui.selectable_label(false, "Built-in").clicked() {
+                    actions.preset = Some((built_in(), ChainSetting::default()));
+                }
+                for preset in presets {
+                    if ui.selectable_label(false, &preset.name).clicked() {
+                        actions.preset = Some((preset.sound, preset.chain.clone()));
+                    }
+                }
+            });
+        ui.ctx()
+            .accesskit_node_builder(response.response.id, |node| {
+                node.set_label("Preset");
+                node.set_value(current);
+            });
+        match &mut window.saving {
+            None => {
+                if ui
+                    .button("Save as…")
+                    .on_hover_text("Save this chain and its string sound under a name")
+                    .clicked()
+                {
+                    window.saving = Some(String::new());
+                }
+                if !presets.is_empty() {
+                    ui.menu_button("Delete…", |ui| {
+                        for preset in presets {
+                            if ui.button(&preset.name).clicked() {
+                                actions.delete_preset = Some(preset.name.clone());
+                                ui.close();
+                            }
+                        }
+                    });
+                }
+            }
+            Some(name) => {
+                let field = ui.add(
+                    egui::TextEdit::singleline(name)
+                        .char_limit(MAX_STRING_PRESET_NAME)
+                        .hint_text("Name")
+                        .desired_width(140.0),
+                );
+                ui.ctx()
+                    .accesskit_node_builder(field.id, |node| node.set_label("Preset name"));
+                let name_ok = !name.trim().is_empty();
+                let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if ui.add_enabled(name_ok, egui::Button::new("Save")).clicked()
+                    || (enter && name_ok)
+                {
+                    actions.save_preset = Some(name.trim().to_owned());
+                    window.saving = None;
+                } else if ui.button("Cancel").clicked() {
+                    window.saving = None;
+                }
+            }
+        }
+    });
+}
+
+/// What the board asked for.
+#[derive(Default)]
+struct BoardActions {
+    /// The box clicked: 0 the strings, 1 to 5 a place.
+    select: Option<usize>,
+    /// The mute under a place was clicked: its bypass flips.
+    bypass: Option<usize>,
+}
+
+/// The board: the boxes, the cables between them and, under each block, its mute.
 fn board(
     ui: &mut egui::Ui,
     kind: StringKind,
     chain: &ChainSetting,
     selected: usize,
-) -> Option<usize> {
+) -> BoardActions {
     let tokens = style::tokens(ui);
     let (area, _) = ui.allocate_exact_size(vec2(WIDTH, BOARD_HEIGHT), Sense::hover());
     let count = BLOCKS.saturating_add(1);
     let row = BOX.x * count as f32 + GAP * BLOCKS as f32;
     let left = area.left() + (WIDTH - row) / 2.0;
-    let top = area.center().y - BOX.y / 2.0;
+    let top = area.top() + 4.0;
     let rect_of =
         |index: usize| Rect::from_min_size(pos2(left + index as f32 * (BOX.x + GAP), top), BOX);
     let painter = ui.painter_at(area);
-    // Cables first, under the boxes: a sagging line from one box's output jack to the next
+    // Cables first, under the boxes: a straight line from one box's output jack to the next
     // box's input jack.
     let cable = Stroke::new(2.5, tokens.text_weak.gamma_multiply(0.8));
     for index in 0..BLOCKS {
         let from = rect_of(index).right_center();
         let to = rect_of(index.saturating_add(1)).left_center();
-        let points: Vec<Pos2> = (0..=12)
-            .map(|step| {
-                let t = step as f32 / 12.0;
-                let x = from.x + (to.x - from.x) * t;
-                pos2(x, from.y + SAG * 4.0 * t * (1.0 - t))
-            })
-            .collect();
-        painter.add(egui::Shape::line(points, cable));
+        painter.line_segment([from, to], cable);
         for end in [from, to] {
             painter.circle_filled(end, 3.5, tokens.text_weak);
         }
     }
-    let mut clicked = None;
+    let mut actions = BoardActions::default();
     for index in 0..count {
         let rect = rect_of(index);
         let response = ui
@@ -214,10 +310,30 @@ fn board(
             );
         }
         if response.clicked() {
-            clicked = Some(index);
+            actions.select = Some(index);
+        }
+        // Under a block, its mute: the block passes the sound unchanged while it is on.
+        if let Some(place) = index.checked_sub(1) {
+            let mute = Rect::from_center_size(
+                pos2(rect.center().x, rect.bottom() + 12.0),
+                vec2(26.0, 16.0),
+            );
+            let response = ui
+                .put(mute, style::mute_button(bypassed))
+                .on_hover_text(if bypassed {
+                    "This block is bypassed: click to hear it again"
+                } else {
+                    "Bypass this block (let the sound pass it unchanged)"
+                });
+            ui.ctx().accesskit_node_builder(response.id, |node| {
+                node.set_label(format!("Mute block {}", place.saturating_add(1)));
+            });
+            if response.clicked() {
+                actions.bypass = Some(place);
+            }
         }
     }
-    clicked
+    actions
 }
 
 /// The selected place's choices (when empty) or knobs.
@@ -461,6 +577,7 @@ impl GuitarScoreApp {
                     track,
                     selected: 0,
                     pos: None,
+                    saving: None,
                 });
             }
         }
@@ -485,8 +602,7 @@ impl GuitarScoreApp {
         let Some(mut window) = self.sound_chain.take() else {
             return;
         };
-        let title = "Sound chain";
-        let size = vec2(WIDTH + 32.0, 420.0);
+        let size = vec2(WIDTH + 32.0, 470.0);
         let pos = *window
             .pos
             .get_or_insert_with(|| style::centered_window_pos(ctx, size));
@@ -500,21 +616,54 @@ impl GuitarScoreApp {
             TrackEngine::Modelled(kind) => (kind, true),
             TrackEngine::SoundFont => (player.preset_kind.unwrap_or(StringKind::Steel), false),
         };
-        egui::Window::new(title)
+        // Which track's sound this is: several can share a kind of string, and with it a
+        // chain, so the window says whose sound it is editing.
+        let track_name = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| tab.document.song().track(TrackIndex::new(window.track)))
+            .map_or_else(
+                || format!("Track {}", window.track.saturating_add(1)),
+                |track| track.name().to_owned(),
+            );
+        let title = format!("Sound chain — {track_name}");
+        let presets: Vec<ChainPreset> = self
+            .settings
+            .string_presets
+            .iter()
+            .filter(|preset| preset.kind == kind_id(kind))
+            .cloned()
+            .collect();
+        egui::Window::new(&title)
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
             .current_pos(pos)
             .frame(style::window_frame(ctx))
             .show(ctx, |ui| {
-                if style::window_title_bar(ui, title, &mut window.pos) {
+                if style::window_title_bar(ui, &title, &mut window.pos) {
                     actions.close = true;
                 }
                 egui::Frame::new()
                     .inner_margin(Margin::symmetric(16, 12))
                     .show(ui, |ui| {
                         ui.set_width(WIDTH);
-                        ui.label(RichText::new(format!("{} strings", kind_name(kind))).strong());
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(format!(
+                                    "{track_name} · {} strings",
+                                    kind_name(kind)
+                                ))
+                                .strong(),
+                            );
+                            ui.label(
+                                RichText::new(format!(
+                                    "(track {})",
+                                    window.track.saturating_add(1)
+                                ))
+                                .weak(),
+                            );
+                        });
                         if !modelled {
                             ui.label(
                                 RichText::new(
@@ -525,12 +674,32 @@ impl GuitarScoreApp {
                             );
                         }
                         let chain = self.playback.string_chains().get(kind).clone();
+                        let sound = self.playback.string_sounds().get(kind);
+                        preset_row(
+                            ui,
+                            kind,
+                            &sound,
+                            &chain,
+                            &presets,
+                            &mut window,
+                            &mut actions,
+                        );
                         ui.add_space(4.0);
-                        if let Some(index) = board(ui, kind, &chain, window.selected) {
+                        let board = board(ui, kind, &chain, window.selected);
+                        if let Some(index) = board.select {
                             window.selected = index;
                             if index == 0 {
                                 actions.open_strings = true;
                             }
+                        }
+                        if let Some(place) = board.bypass
+                            && let Some(block) = chain.blocks.get(place)
+                        {
+                            let mut changed = chain.clone();
+                            if let Some(slot) = changed.blocks.get_mut(place) {
+                                slot.bypass = !block.bypass;
+                            }
+                            actions.chain = Some(changed);
                         }
                         ui.separator();
                         match window.selected.checked_sub(1) {
@@ -546,8 +715,10 @@ impl GuitarScoreApp {
                             }
                             Some(place) => {
                                 let edited = editor(ui, &chain, place);
-                                actions.chain = edited.chain;
-                                actions.rebuild = edited.rebuild;
+                                if let Some(changed) = edited.chain {
+                                    actions.chain = Some(changed);
+                                }
+                                actions.rebuild |= edited.rebuild;
                                 if edited.load {
                                     actions.load = Some(place);
                                 }
@@ -574,6 +745,11 @@ impl GuitarScoreApp {
                         });
                     });
             });
+        // A preset first: it carries both a string sound and a chain.
+        if let Some((sound, chain)) = actions.preset {
+            self.playback.set_string_sound(kind, sound);
+            self.playback.set_string_chain(kind, chain);
+        }
         if let Some(chain) = actions.chain {
             self.playback.set_string_chain(kind, chain);
         }
@@ -581,6 +757,26 @@ impl GuitarScoreApp {
         // that the knob has been let go (after the new value is stored).
         if actions.rebuild {
             self.playback.rebuild_chain(kind);
+        }
+        if let Some(name) = actions.save_preset {
+            let preset = ChainPreset {
+                name,
+                kind: kind_id(kind).to_owned(),
+                sound: self.playback.string_sounds().get(kind),
+                chain: self.playback.string_chains().get(kind).clone(),
+            };
+            let presets = &mut self.settings.string_presets;
+            presets.retain(|old| !(old.kind == preset.kind && old.name == preset.name));
+            if presets.len() < MAX_STRING_PRESETS {
+                presets.push(preset);
+            }
+            self.save_settings();
+        }
+        if let Some(name) = actions.delete_preset {
+            self.settings
+                .string_presets
+                .retain(|preset| !(preset.kind == kind_id(kind) && preset.name == name));
+            self.save_settings();
         }
         if actions.open_strings {
             self.open_string_sound(window.track);

@@ -1,8 +1,9 @@
 //! The String sound window, for one track: what plays it (the SoundFont, or modelled
 //! strings of a kind: by default what its preset stands for, but any kind can be chosen),
-//! and the knobs of that kind of string, with presets saved under a name. Every change is
-//! heard at once (also while the song plays) and kept in the settings; "Listen" plays a
-//! short phrase. Opened from the Sound chain window's first box.
+//! and the knobs of that kind of string. Every change is heard at once (also while the
+//! song plays) and kept in the settings; "Listen" plays a short phrase. Saved presets (the
+//! string sound with its whole effect chain) live in the Sound chain window, which opens
+//! this one from its first box.
 
 use egui::{Margin, Pos2, RichText, vec2};
 use gscore_model::program_name;
@@ -12,9 +13,6 @@ use super::GuitarScoreApp;
 use crate::app::string_sound::{kind_name, knobs};
 use crate::app::style;
 use crate::playback::{Heard, STRING_KINDS};
-use crate::settings::{
-    MAX_STRING_PRESET_NAME, MAX_STRING_PRESETS, NamedStringSound, StringSound, kind_id,
-};
 
 /// Width of the window's content.
 const WIDTH: f32 = 780.0;
@@ -25,8 +23,6 @@ pub(super) struct StringSoundDialog {
     /// The track it is for.
     track: usize,
     pos: Option<Pos2>,
-    /// The name being typed for a new preset, while saving.
-    saving: Option<String>,
 }
 
 /// What the user did this frame.
@@ -35,9 +31,7 @@ struct Actions {
     close: bool,
     listen: bool,
     engine: Option<TrackEngine>,
-    sound: Option<StringSound>,
-    save: Option<String>,
-    delete: Option<String>,
+    sound: Option<crate::settings::StringSound>,
 }
 
 impl GuitarScoreApp {
@@ -46,11 +40,7 @@ impl GuitarScoreApp {
         match &mut self.string_sound {
             Some(dialog) => dialog.track = track,
             None => {
-                self.string_sound = Some(StringSoundDialog {
-                    track,
-                    pos: None,
-                    saving: None,
-                });
+                self.string_sound = Some(StringSoundDialog { track, pos: None });
             }
         }
     }
@@ -74,14 +64,6 @@ impl GuitarScoreApp {
             TrackEngine::Modelled(kind) => Some(kind),
             TrackEngine::SoundFont => None,
         };
-        let presets: Vec<NamedStringSound> = kind.map_or_else(Vec::new, |kind| {
-            self.settings
-                .string_presets
-                .iter()
-                .filter(|preset| preset.kind == kind_id(kind))
-                .cloned()
-                .collect()
-        });
         egui::Window::new(title)
             .title_bar(false)
             .collapsible(false)
@@ -113,7 +95,6 @@ impl GuitarScoreApp {
                             }
                             Some(kind) => {
                                 let mut sound = self.playback.string_sounds().get(kind);
-                                preset_row(ui, kind, &sound, &presets, &mut dialog, &mut actions);
                                 ui.add_space(4.0);
                                 if knobs(ui, &mut sound) {
                                     actions.sound = Some(sound);
@@ -143,7 +124,8 @@ impl GuitarScoreApp {
                         ui.label(
                             RichText::new(
                                 "Changes are heard at once, also while the song plays. The \
-                                 sound of a kind applies to every track played by it.",
+                                 sound of a kind applies to every track played by it; whole \
+                                 chains are saved as presets in the Sound chain window.",
                             )
                             .weak(),
                         );
@@ -164,25 +146,6 @@ impl GuitarScoreApp {
         }
         if let (Some(kind), Some(sound)) = (kind, actions.sound) {
             self.playback.set_string_sound(kind, sound);
-        }
-        if let (Some(kind), Some(name)) = (kind, actions.save) {
-            let sound = self.playback.string_sounds().get(kind);
-            let presets = &mut self.settings.string_presets;
-            presets.retain(|preset| !(preset.kind == kind_id(kind) && preset.name == name));
-            if presets.len() < MAX_STRING_PRESETS {
-                presets.push(NamedStringSound {
-                    name,
-                    kind: kind_id(kind).to_owned(),
-                    sound,
-                });
-            }
-            self.save_settings();
-        }
-        if let (Some(kind), Some(name)) = (kind, actions.delete) {
-            self.settings
-                .string_presets
-                .retain(|preset| !(preset.kind == kind_id(kind) && preset.name == name));
-            self.save_settings();
         }
         if let Some(kind) = kind.filter(|_| actions.listen) {
             match self.playback.play_string_demo(kind) {
@@ -241,81 +204,4 @@ fn played_by(
             RichText::new("Only string instruments can be played by modelled strings.").weak(),
         );
     }
-}
-
-/// The presets of `kind`: the built-in sound, the saved ones, saving and deleting.
-fn preset_row(
-    ui: &mut egui::Ui,
-    kind: StringKind,
-    sound: &StringSound,
-    presets: &[NamedStringSound],
-    dialog: &mut StringSoundDialog,
-    actions: &mut Actions,
-) {
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("Preset").color(style::tokens(ui).text_weak));
-        // Which preset the sound is now: a saved one, the built-in one, or changed.
-        let built_in = StringSound::from(gscore_audio::default_string_model(kind));
-        let current = presets
-            .iter()
-            .find(|preset| preset.sound == *sound)
-            .map(|preset| preset.name.clone())
-            .or_else(|| (built_in == *sound).then(|| "Built-in".to_owned()))
-            .unwrap_or_else(|| "Changed".to_owned());
-        let response = egui::ComboBox::from_id_salt("string_sound_preset")
-            .selected_text(current.clone())
-            .show_ui(ui, |ui| {
-                if ui.selectable_label(false, "Built-in").clicked() {
-                    actions.sound =
-                        Some(StringSound::from(gscore_audio::default_string_model(kind)));
-                }
-                for preset in presets {
-                    if ui.selectable_label(false, &preset.name).clicked() {
-                        actions.sound = Some(preset.sound);
-                    }
-                }
-            });
-        ui.ctx()
-            .accesskit_node_builder(response.response.id, |node| {
-                node.set_label("Preset");
-                node.set_value(current);
-            });
-        match &mut dialog.saving {
-            None => {
-                if ui.button("Save as…").clicked() {
-                    dialog.saving = Some(String::new());
-                }
-                if !presets.is_empty() {
-                    ui.menu_button("Delete…", |ui| {
-                        for preset in presets {
-                            if ui.button(&preset.name).clicked() {
-                                actions.delete = Some(preset.name.clone());
-                                ui.close();
-                            }
-                        }
-                    });
-                }
-            }
-            Some(name) => {
-                let field = ui.add(
-                    egui::TextEdit::singleline(name)
-                        .char_limit(MAX_STRING_PRESET_NAME)
-                        .hint_text("Name")
-                        .desired_width(140.0),
-                );
-                ui.ctx()
-                    .accesskit_node_builder(field.id, |node| node.set_label("Preset name"));
-                let name_ok = !name.trim().is_empty();
-                let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if ui.add_enabled(name_ok, egui::Button::new("Save")).clicked()
-                    || (enter && name_ok)
-                {
-                    actions.save = Some(name.trim().to_owned());
-                    dialog.saving = None;
-                } else if ui.button("Cancel").clicked() {
-                    dialog.saving = None;
-                }
-            }
-        }
-    });
 }

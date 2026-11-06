@@ -10,6 +10,7 @@ use gscore_model::{MASTER_UNITY, MasterMix, TrackIndex};
 use super::rows::TrackRow;
 use super::{GridAction, GridView, ROW_HEIGHT, RULER_HEIGHT, TRACK_COLUMN, mixer};
 use crate::app::icons::{self, Icon};
+use crate::app::style;
 
 /// The header cell: the "Tracks" title, track actions, and mute/solo for all tracks.
 pub(super) fn header(
@@ -91,8 +92,8 @@ pub(super) fn header(
 /// A small mute or solo toggle like a row's; true when clicked.
 fn toggle(ui: &mut egui::Ui, rect: Rect, which: Toggle, label: &str, on: bool, tip: &str) -> bool {
     let button = match which {
-        Toggle::Mute => mixer::mute_button(on),
-        Toggle::Solo => mixer::solo_button(on),
+        Toggle::Mute => style::mute_button(on),
+        Toggle::Solo => style::solo_button(on),
     };
     let response = ui.put(rect, button).on_hover_text(tip);
     ui.ctx()

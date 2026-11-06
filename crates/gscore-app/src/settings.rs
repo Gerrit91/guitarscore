@@ -216,14 +216,19 @@ impl StringSound {
     }
 }
 
-/// A string sound the user saved under a name (the String sound window's presets).
+/// A chain the user saved under a name (the Sound chain window's presets): the whole effect
+/// chain of a kind of string, and the string sound it was saved with.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct NamedStringSound {
+pub struct ChainPreset {
     /// The name shown in the preset list.
     pub name: String,
     /// The kind of string it is for: `nylon`, `steel`, `electric` or `bass`.
     pub kind: String,
     pub sound: StringSound,
+    /// The five places after the strings (a preset written before the chain was part of it
+    /// has an empty one).
+    #[serde(default)]
+    pub chain: crate::chain_settings::ChainSetting,
 }
 
 /// The settings name of `kind`.
@@ -370,8 +375,8 @@ pub struct Settings {
     pub sample_rate: Option<u32>,
     /// How each kind of modelled string sounds (the "String sound" dialog).
     pub string_sounds: StringSounds,
-    /// String sounds saved under a name.
-    pub string_presets: Vec<NamedStringSound>,
+    /// Chains (with their string sound) saved under a name, by the Sound chain window.
+    pub string_presets: Vec<ChainPreset>,
     /// The effect chain after each kind of modelled string (the "Sound chain" window).
     pub string_chains: crate::chain_settings::StringChains,
     /// The MIDI port chosen, if any.
@@ -615,6 +620,16 @@ impl Settings {
             presets.retain(ShapePreset::is_valid);
             presets.truncate(MAX_SHAPE_PRESETS);
         }
+        // Chain presets: a name and a known kind, most recent one per name.
+        self.string_presets.retain(|preset| {
+            !preset.name.trim().is_empty()
+                && preset.name.len() <= MAX_STRING_PRESET_NAME
+                && matches!(
+                    preset.kind.as_str(),
+                    "nylon" | "steel" | "electric" | "bass"
+                )
+        });
+        self.string_presets.truncate(MAX_STRING_PRESETS);
     }
 }
 
