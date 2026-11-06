@@ -20,6 +20,7 @@ mod impulse;
 mod model;
 mod reverb;
 mod string;
+mod string_loop;
 
 pub use chain::{
     BLOCKS, BlockKind, BlockSettings, Chain, ChainSpec, ImpulseKnobs, PreparedChain, ReverbKnobs,

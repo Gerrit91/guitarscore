@@ -43,6 +43,16 @@ pub struct StringModel {
     pub resonance: f32,
     /// Output level of the string.
     pub level: f32,
+    /// How much of the output is the force on the bridge (the string's velocity, which a
+    /// bridge or a magnetic pickup passes) rather than its swing: 0 full and round, 1 lean
+    /// in the lows like a real guitar.
+    pub bridge: f32,
+    /// The body's or pickup's low cut, in Hz.
+    pub low_cut: f32,
+    /// The second direction of vibration's share (0 off: one perfectly periodic loop).
+    pub second: f32,
+    /// How far the second vibration is detuned, in cents: the beating of a long note.
+    pub detune: f32,
 }
 
 impl GuitarModel {
@@ -57,23 +67,31 @@ impl GuitarModel {
                 stiffness_stages: 1,
                 pick_position: 0.18,
                 hardness: 0.25,
-                softness: 0.75,
+                softness: 0.3,
                 tone: 3_500.0,
                 resonance: 0.7,
                 level: 0.4,
+                bridge: 0.5,
+                low_cut: 70.0,
+                second: 0.4,
+                detune: 1.0,
             },
             GuitarModel::Steel => StringModel {
-                sustain: 5.0,
-                sustain_exponent: 0.5,
-                brilliance: 0.6,
-                stiffness: -0.08,
-                stiffness_stages: 2,
-                pick_position: 0.13,
-                hardness: 0.55,
-                softness: 0.5,
-                tone: 6_000.0,
-                resonance: 0.7,
-                level: 0.35,
+                sustain: 9.0,
+                sustain_exponent: 0.2,
+                brilliance: 1.8,
+                stiffness: -0.5,
+                stiffness_stages: 3,
+                pick_position: 0.2,
+                hardness: 0.9,
+                softness: 0.0,
+                tone: 16_000.0,
+                resonance: 1.8,
+                level: 0.4,
+                bridge: 0.85,
+                low_cut: 110.0,
+                second: 0.5,
+                detune: 1.5,
             },
             GuitarModel::Electric => StringModel {
                 sustain: 8.0,
@@ -83,10 +101,14 @@ impl GuitarModel {
                 stiffness_stages: 2,
                 pick_position: 0.12,
                 hardness: 0.6,
-                softness: 0.45,
+                softness: 0.2,
                 tone: 4_000.0,
                 resonance: 1.3,
                 level: 0.35,
+                bridge: 0.7,
+                low_cut: 60.0,
+                second: 0.4,
+                detune: 1.0,
             },
             GuitarModel::Bass => StringModel {
                 sustain: 7.0,
@@ -96,10 +118,14 @@ impl GuitarModel {
                 stiffness_stages: 3,
                 pick_position: 0.2,
                 hardness: 0.3,
-                softness: 0.65,
+                softness: 0.3,
                 tone: 2_500.0,
                 resonance: 0.9,
                 level: 0.5,
+                bridge: 0.5,
+                low_cut: 30.0,
+                second: 0.3,
+                detune: 0.8,
             },
         }
     }
@@ -122,6 +148,12 @@ pub mod ranges {
     pub const TONE: (f32, f32) = (500.0, 16_000.0);
     pub const RESONANCE: (f32, f32) = (0.5, 4.0);
     pub const LEVEL: (f32, f32) = (0.0, 2.0);
+    pub const BRIDGE: (f32, f32) = (0.0, 1.0);
+    /// Hz.
+    pub const LOW_CUT: (f32, f32) = (20.0, 400.0);
+    pub const SECOND: (f32, f32) = (0.0, 1.0);
+    /// Cents.
+    pub const DETUNE: (f32, f32) = (0.0, 10.0);
 }
 
 impl StringModel {
@@ -153,6 +185,10 @@ impl StringModel {
             tone: fit(self.tone, ranges::TONE, 5_000.0),
             resonance: fit(self.resonance, ranges::RESONANCE, 0.7),
             level: fit(self.level, ranges::LEVEL, 0.35),
+            bridge: fit(self.bridge, ranges::BRIDGE, 0.5),
+            low_cut: fit(self.low_cut, ranges::LOW_CUT, 60.0),
+            second: fit(self.second, ranges::SECOND, 0.4),
+            detune: fit(self.detune, ranges::DETUNE, 1.0),
         }
     }
 }

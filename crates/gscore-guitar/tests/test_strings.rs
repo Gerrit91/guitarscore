@@ -151,9 +151,11 @@ fn a_ringing_note_sustains_and_a_damped_one_stops() {
     let early = rms(seconds(&out, 0.05, 0.15));
     let late = rms(seconds(&out, 1.8, 2.0));
     assert!(early > 0.01, "audible: {early}");
+    // The attack is bright (the bridge passes its highs, which die quickly); what rings
+    // on is the lower partials, well within 40 dB.
     assert!(
-        late > early * 0.1,
-        "an electric string still rings after two seconds"
+        late > early * 0.01,
+        "an electric string still rings after two seconds: {late} against {early}"
     );
     assert!(late < early, "but quieter");
 
@@ -303,6 +305,10 @@ fn no_parameters_make_nan_or_runaway_output() {
             softness: random.wild(),
             tone: random.wild(),
             resonance: random.wild(),
+            bridge: random.wild(),
+            low_cut: random.wild(),
+            second: random.wild(),
+            detune: random.wild(),
             stiffness: random.wild(),
             stiffness_stages: (random.next() * 10.0) as usize,
             pick_position: random.wild(),

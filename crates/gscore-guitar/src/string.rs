@@ -1,31 +1,33 @@
-//! One vibrating string as a digital waveguide (a single delay loop):
+//! One vibrating string as digital waveguides: a loop per direction of vibration (see
+//! `string_loop`), the second slightly detuned and decaying faster, as a real string's
+//! vertical vibration does: together they give the beating and two-stage decay that keep
+//! a long note from sounding like a synthesizer.
 //!
 //! ```text
-//! excitation ──► [ delay line ] ──┬──► [ loss filter ] ──► [ stiffness allpasses ] ──┐
-//!                      ▲           └──► out                                           │
-//!                      └──────────────────────────────────────────────────────────────┘
+//!              ┌──► [ loop: across the top ]  ──┐
+//! excitation ──┤                                ├──► bridge ──► low cut ──► tone ──► out
+//!              └──► [ loop: toward the top ]  ──┘
 //! ```
 //!
-//! The loop's delay sets the pitch: the line's fractional delay plus the phase delay of the
-//! filters at the fundamental equals one period, so the note is in tune whatever the
-//! filters do. Every technique changes parameters of the running loop: a bend, slide or
-//! vibrato changes the delay while the string vibrates, a hammer-on changes it without a new
-//! pluck, damping lowers the loop gain, and a new pluck adds to what is still vibrating.
+//! Each loop is tuned exactly, so the note is in tune whatever its filters do. Every
+//! technique changes parameters of the running loops: a bend, slide or vibrato changes
+//! the delay while the string vibrates, a hammer-on changes it without a new pluck,
+//! damping lowers the loop gain, and a new pluck adds to what is still vibrating. The
+//! output is a blend of the string's swing and the force it puts on the bridge (its
+//! velocity, which a bridge and a magnetic pickup pass): the force carries far less of the
+//! fundamental, as a real guitar's low notes do.
 //!
-//! `render` neither allocates nor blocks: the delay line is made once, long enough for the
-//! lowest pitch the voice is set up for.
+//! `render` neither allocates nor blocks: the delay lines are made once, long enough for
+//! the lowest pitch the voice is set up for.
 
-use std::f32::consts::TAU;
+use std::f32::consts::{PI, TAU};
 
-use crate::delay::{DelayLine, MIN_DELAY};
-use crate::filters::{
-    Allpass, Biquad, DcBlocker, Noise, OnePole, allpass_delay, one_pole_delay, one_pole_for_ratio,
-    one_pole_gain,
-};
+use crate::filters::{Biquad, DcBlocker, Noise};
 use crate::model::StringModel;
+use crate::string_loop::{Loop, Tuning};
 
-/// Most allpass stages for stiffness.
-pub(crate) const MAX_STIFFNESS_STAGES: usize = 4;
+pub(crate) use crate::string_loop::MAX_STIFFNESS_STAGES as MAX_STAGES;
+
 /// A hammer-on or pull-off reaches its new pitch within this long, in seconds.
 const LEGATO_GLIDE: f32 = 0.002;
 /// How long damping changes take to settle (time constant, seconds).
@@ -34,12 +36,17 @@ const DAMPING_SETTLE: f32 = 0.004;
 const SILENCE: f32 = 1e-5;
 /// What is left of a vibrating string when the pick strikes it again.
 const PICK_CONTACT: f32 = 0.35;
-/// The frequency the high decay time ([`StringModel::brilliance`]) is measured at, Hz.
-const BRILLIANCE_AT: f32 = 2_000.0;
 /// The strike's brightness: hardness 0 rounds it above this many Hz, hardness 1 above
 /// [`HARDEST`].
 const SOFTEST: f32 = 400.0;
 const HARDEST: f32 = 12_000.0;
+/// The second vibration's decay against the first's: its fundamental and its highs.
+const SECOND_DECAY: f32 = 0.45;
+const SECOND_HIGH_DECAY: f32 = 0.6;
+/// The bridge force is scaled to the swing's level at this frequency, Hz.
+const BRIDGE_AT: f32 = 1_000.0;
+/// Quality of the low cut (Butterworth).
+const LOW_CUT_Q: f32 = 0.707;
 
 /// How a note is set going.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -100,31 +107,24 @@ enum Damping {
 pub struct StringVoice {
     sample_rate: f32,
     model: StringModel,
-    line: DelayLine,
-    loss: OnePole,
-    stiffness: [Allpass; MAX_STIFFNESS_STAGES],
+    /// The two directions of vibration.
+    loops: [Loop; 2],
     dc: DcBlocker,
-    /// The pickup's or body's tone on the output.
+    /// The bridge's last input, for its force (the swing's change), and the force's scale.
+    last: f32,
+    bridge_scale: f32,
+    /// The body's or pickup's low cut and tone on the output.
+    low_cut: Biquad,
     tone: Biquad,
     noise: Noise,
     /// The note's frequency and the bend on top of it (cents).
     frequency: f32,
     bend: f32,
-    /// The loop gain per sample and the delay line's delay now, and where the delay glides.
-    gain: f32,
-    delay: f32,
-    delay_target: f32,
-    delay_step: f32,
-    glide_left: usize,
     /// Damping now and where it is going: the 60 dB decay times of the fundamental and of
     /// the harmonics around 2 kHz.
     damping: Damping,
     decay: f32,
     high_decay: f32,
-    /// The loss filter last designed, and for which pitch and decay times (the design is
-    /// a search, so it is only redone when one of them changes).
-    design: (f32, f32, f32),
-    darkness: f32,
     /// The output gain (a fade) now and where it goes.
     level: f32,
     level_target: f32,
@@ -148,48 +148,47 @@ impl StringVoice {
             20.0
         };
         let model = model.sanitized();
-        let samples = (sample_rate / lowest).ceil() as usize;
-        let mut voice = StringVoice {
+        // The second vibration may be tuned a little lower than the note.
+        let samples = (sample_rate / lowest * 1.01).ceil() as usize;
+        StringVoice {
             sample_rate,
             model,
-            line: DelayLine::new(samples),
-            loss: OnePole::default(),
-            stiffness: [Allpass::default(); MAX_STIFFNESS_STAGES],
+            loops: [Loop::new(samples), Loop::new(samples)],
             dc: DcBlocker::new(sample_rate),
+            last: 0.0,
+            bridge_scale: 1.0 / (2.0 * (PI * BRIDGE_AT / sample_rate).sin()).max(1e-6),
+            low_cut: Biquad::highpass(sample_rate, model.low_cut, LOW_CUT_Q),
             tone: Biquad::lowpass(sample_rate, model.tone, model.resonance),
             noise: Noise::new(0x9E37_79B9),
             frequency: 110.0,
             bend: 0.0,
-            gain: 0.0,
-            delay: MIN_DELAY,
-            delay_target: MIN_DELAY,
-            delay_step: 0.0,
-            glide_left: 0,
             damping: Damping::Released,
             decay: model.sustain_at(110.0),
             high_decay: model.brilliance,
-            design: (0.0, 0.0, 0.0),
-            darkness: 0.0,
             level: 1.0,
             level_target: 1.0,
             peak: 0.0,
             sounding: false,
-        };
-        voice.set_stiffness();
-        voice
+        }
     }
 
     /// Changes the string model (the vibration goes on).
     pub fn set_model(&mut self, model: StringModel) {
         self.model = model.sanitized();
-        self.set_stiffness();
         self.tone = self.tone.retuned(Biquad::lowpass(
             self.sample_rate,
             self.model.tone,
             self.model.resonance,
         ));
-        // The loss filter follows on the next block.
-        self.design = (0.0, 0.0, 0.0);
+        self.low_cut = self.low_cut.retuned(Biquad::highpass(
+            self.sample_rate,
+            self.model.low_cut,
+            LOW_CUT_Q,
+        ));
+        // The loss filters follow on the next block.
+        for string in &mut self.loops {
+            string.redesign();
+        }
     }
 
     /// Whether the string still sounds.
@@ -231,8 +230,6 @@ impl StringVoice {
         self.set_damping(damping, true);
         self.level = self.level_target;
         self.update(0);
-        self.delay = self.delay_target;
-        self.glide_left = 0;
         let (amplitude, hardness, noise) = match pluck.attack {
             Attack::Pick => (1.0, self.model.hardness, 0.08),
             Attack::Legato => (0.7, self.model.hardness * 0.5, 0.02),
@@ -294,29 +291,32 @@ impl StringVoice {
         self.settle(out.len());
         self.update(out.len());
         let level_step = (self.level_target - self.level) / out.len() as f32;
-        let stages = self.model.stiffness_stages.min(MAX_STIFFNESS_STAGES);
+        let second = self.model.second > 0.0;
+        let bridge = self.model.bridge;
         let mut peak = 0.0_f32;
         for sample in out.iter_mut() {
-            if self.glide_left > 0 {
-                self.delay += self.delay_step;
-                self.glide_left = self.glide_left.saturating_sub(1);
-            }
-            // The output is taken where the wave leaves the line, before this pass's
-            // losses: a dead note's single trip around the loop is still heard.
-            let tap = self.line.read(self.delay);
-            let mut y = self.loss.process(tap) * self.gain;
-            for stage in self.stiffness.iter_mut().take(stages) {
-                y = stage.process(y);
-            }
-            if !y.is_finite() {
+            let [first_loop, second_loop] = &mut self.loops;
+            let Some(mut swing) = first_loop.step() else {
                 // A broken value mutes the string instead of breaking playback.
                 self.mute();
                 return;
+            };
+            if second {
+                let Some(other) = second_loop.step() else {
+                    self.mute();
+                    return;
+                };
+                swing += other;
             }
-            self.line.push(y);
+            let force = (swing - self.last) * self.bridge_scale;
+            self.last = swing;
+            let heard = swing * (1.0 - bridge) + force * bridge;
             self.level += level_step;
-            let out_sample =
-                self.tone.process(self.dc.process(tap)) * self.level * self.model.level;
+            let out_sample = self
+                .tone
+                .process(self.low_cut.process(self.dc.process(heard)))
+                * self.level
+                * self.model.level;
             peak = peak.max(out_sample.abs());
             *sample += out_sample;
         }
@@ -327,27 +327,21 @@ impl StringVoice {
         }
     }
 
-    /// Silence at once, nothing left in the loop.
+    /// Silence at once, nothing left in the loops.
     fn mute(&mut self) {
-        self.line.clear();
-        self.loss.reset();
-        for stage in &mut self.stiffness {
-            stage.reset();
+        for string in &mut self.loops {
+            string.clear();
         }
         self.dc.reset();
+        self.low_cut.reset();
         self.tone.reset();
+        self.last = 0.0;
         self.peak = 0.0;
         self.sounding = false;
     }
 
     fn glide_samples(&self) -> usize {
         (LEGATO_GLIDE * self.sample_rate) as usize
-    }
-
-    fn set_stiffness(&mut self) {
-        for stage in &mut self.stiffness {
-            stage.c = self.model.stiffness;
-        }
     }
 
     /// The 60 dB decay times (fundamental, harmonics around 2 kHz) of `damping` at the
@@ -390,72 +384,62 @@ impl StringVoice {
         self.high_decay = glide(self.high_decay.max(1e-4), high_decay);
     }
 
-    /// Recomputes the loop for the current pitch and damping; the delay glides to its new
-    /// value over `glide` samples (at once if 0).
+    /// Retunes both loops for the current pitch and damping; their delays glide to the new
+    /// values over `glide` samples (at once if 0).
     fn update(&mut self, glide: usize) {
         let frequency = (self.frequency * (self.bend / 1200.0).exp2()).max(8.0);
-        let w = (TAU * frequency / self.sample_rate).min(3.0);
-        // The loop's gain per period that decays 60 dB in `decay` seconds, for the
-        // fundamental and for the harmonics around 2 kHz: the loss filter takes the highs
-        // down at their own rate, the same on every string (a low string goes round its
-        // loop less often, so a fixed filter would let its highs ring far too long).
-        let per_period = |decay: f32| 10.0_f32.powf(-3.0 / (decay.max(0.002) * frequency));
-        let key = (frequency, self.decay, self.high_decay);
-        if key != self.design {
-            self.design = key;
-            let high = (TAU * BRILLIANCE_AT / self.sample_rate).min(3.0);
-            let ratio = per_period(self.high_decay) / per_period(self.decay);
-            self.darkness = if high > w * 1.2 {
-                one_pole_for_ratio(w, high, ratio)
-            } else {
-                0.0
-            };
-        }
-        let darkness = self.darkness.clamp(0.0, 0.995);
-        self.loss.a = darkness;
-        self.gain = (per_period(self.decay) / one_pole_gain(darkness, w)).min(0.999_95);
-        let stages = self.model.stiffness_stages.min(MAX_STIFFNESS_STAGES) as f32;
-        let filters = one_pole_delay(darkness, w) + stages * allpass_delay(self.model.stiffness, w);
-        let target =
-            (self.sample_rate / frequency - filters).clamp(MIN_DELAY, self.line.max_delay());
-        self.delay_target = target;
-        if glide == 0 {
-            self.delay = target;
-            self.glide_left = 0;
-        } else {
-            self.delay_step = (target - self.delay) / glide as f32;
-            self.glide_left = glide;
-        }
+        let first = Tuning {
+            frequency,
+            decay: self.decay,
+            high_decay: self.high_decay,
+            stiffness: self.model.stiffness,
+            stages: self.model.stiffness_stages,
+        };
+        // The second vibration: a little detuned (half each way would move the heard
+        // pitch; the first stays exact), and it gives its energy to the bridge sooner.
+        let second = Tuning {
+            frequency: frequency * (self.model.detune / 1200.0).exp2(),
+            decay: self.decay * SECOND_DECAY,
+            high_decay: self.high_decay * SECOND_HIGH_DECAY,
+            ..first
+        };
+        let [first_loop, second_loop] = &mut self.loops;
+        first_loop.update(self.sample_rate, first, glide);
+        second_loop.update(self.sample_rate, second, glide);
     }
 
     /// Adds one period of excitation to the string, after scaling what vibrates by
     /// `contact`: the picking hand's strike at the pick position, a blend of a sharp pulse
     /// and a rounded triangle (the model's softness), rounded above a frequency set by
-    /// `hardness` (0 to 1), with `noise` mixed in.
+    /// `hardness` (0 to 1), with `noise` mixed in. The second vibration gets its share.
     fn excite(&mut self, amplitude: f32, hardness: f32, contact: f32, noise: f32) {
-        let period = (self.delay_target.round() as usize).max(2);
         let split = self.model.pick_position;
         let after = -split / (1.0 - split);
         let softness = self.model.softness;
         let cutoff = SOFTEST * (HARDEST / SOFTEST).powf(hardness.clamp(0.0, 1.0));
         let rounding = 1.0 - (-TAU * cutoff / self.sample_rate).exp();
-        let mut smooth = 0.0_f32;
+        let shares = [1.0 - 0.5 * self.model.second, self.model.second];
         let mut source = self.noise;
-        self.line.reshape(period, |position, old| {
-            let x = position as f32 / period as f32;
-            // Both shapes have no offset: the pulse's two levels balance, the triangle
-            // (the string's shape when the pick lets go) is centred.
-            let pulse = if x < split { 1.0 } else { after };
-            let triangle = if x < split {
-                x / split
-            } else {
-                (1.0 - x) / (1.0 - split)
-            };
-            let shape = pulse * (1.0 - softness) + (2.0 * triangle - 1.0) * softness;
-            let raw = shape * (1.0 - noise) + source.next() * noise;
-            smooth += (raw - smooth) * rounding;
-            old * contact + smooth * amplitude
-        });
+        for (string, share) in self.loops.iter_mut().zip(shares) {
+            let period = (string.period().round() as usize).max(2);
+            let mut smooth = 0.0_f32;
+            let strength = amplitude * share;
+            string.reshape(period, |position, old| {
+                let x = position as f32 / period as f32;
+                // Both shapes have no offset: the pulse's two levels balance, the triangle
+                // (the string's shape when the pick lets go) is centred.
+                let pulse = if x < split { 1.0 } else { after };
+                let triangle = if x < split {
+                    x / split
+                } else {
+                    (1.0 - x) / (1.0 - split)
+                };
+                let shape = pulse * (1.0 - softness) + (2.0 * triangle - 1.0) * softness;
+                let raw = shape * (1.0 - noise) + source.next() * noise;
+                smooth += (raw - smooth) * rounding;
+                old * contact + smooth * strength
+            });
+        }
         self.noise = source;
         self.peak = self.peak.max(amplitude);
         self.sounding = amplitude > 0.0 || self.sounding;
