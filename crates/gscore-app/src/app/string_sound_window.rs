@@ -1,18 +1,17 @@
-//! The String sound window, for one track: what plays it (the SoundFont, or modelled
-//! strings of a kind: by default what its preset stands for, but any kind can be chosen),
-//! and the knobs of that kind of string. Every change is heard at once (also while the
-//! song plays) and kept in the settings; "Listen" plays a short phrase. Saved presets (the
-//! string sound with its whole effect chain) live in the Sound chain window, which opens
-//! this one from its first box.
+//! The String sound window, for one track: what plays it (chosen in the Sound chain
+//! window's first box) and the knobs of that kind of string. Every change is heard at once
+//! (also while the song plays) and kept in the settings; "Listen" plays a short phrase.
+//! Saved presets (the string sound with its whole effect chain) live in the Sound chain
+//! window, which opens this one.
 
 use egui::{Margin, Pos2, RichText, vec2};
 use gscore_model::program_name;
 use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
-use crate::app::string_sound::{kind_name, knobs};
+use crate::app::string_sound::knobs;
 use crate::app::style;
-use crate::playback::{Heard, STRING_KINDS};
+use crate::playback::Heard;
 
 /// Width of the window's content.
 const WIDTH: f32 = 780.0;
@@ -30,7 +29,6 @@ pub(super) struct StringSoundDialog {
 struct Actions {
     close: bool,
     listen: bool,
-    engine: Option<TrackEngine>,
     sound: Option<crate::settings::StringSound>,
 }
 
@@ -78,15 +76,13 @@ impl GuitarScoreApp {
                     .inner_margin(Margin::symmetric(16, 12))
                     .show(ui, |ui| {
                         ui.set_width(WIDTH);
-                        played_by(ui, &player, &mut actions);
-                        ui.add_space(6.0);
                         match kind {
                             None => {
                                 ui.label(
                                     RichText::new(format!(
                                         "The SoundFont plays this track with preset {}: {}. \
-                                         Choose a kind of string above to play it with \
-                                         modelled strings.",
+                                         Its first box in the Sound chain window chooses \
+                                         modelled strings instead.",
                                         player.program,
                                         program_name(player.program)
                                     ))
@@ -141,9 +137,6 @@ impl GuitarScoreApp {
         kind: Option<StringKind>,
         actions: Actions,
     ) {
-        if let Some(engine) = actions.engine {
-            self.set_track_engine(dialog.track, engine);
-        }
         if let (Some(kind), Some(sound)) = (kind, actions.sound) {
             self.playback.set_string_sound(kind, sound);
         }
@@ -160,48 +153,5 @@ impl GuitarScoreApp {
         } else {
             self.string_sound = Some(dialog);
         }
-    }
-}
-
-/// The row that chooses what plays the track: the SoundFont or a kind of string.
-fn played_by(
-    ui: &mut egui::Ui,
-    player: &crate::app::track_engine::TrackPlayer,
-    actions: &mut Actions,
-) {
-    ui.label(RichText::new("Played by").strong());
-    ui.horizontal_wrapped(|ui| {
-        let mut choice = |ui: &mut egui::Ui, engine: TrackEngine, label: &str, enabled: bool| {
-            let mut text = label.to_owned();
-            if engine == player.default {
-                text.push_str(" (preset)");
-            }
-            let response = ui
-                .add_enabled(
-                    enabled,
-                    egui::Button::selectable(player.engine == engine, text),
-                )
-                .on_hover_text(match engine {
-                    TrackEngine::SoundFont => "The SoundFont plays the track (General MIDI)",
-                    TrackEngine::Modelled(_) => "Modelled strings of this kind play the track",
-                });
-            if response.clicked() {
-                actions.engine = Some(engine);
-            }
-        };
-        choice(ui, TrackEngine::SoundFont, "SoundFont", true);
-        for kind in STRING_KINDS {
-            choice(
-                ui,
-                TrackEngine::Modelled(kind),
-                kind_name(kind),
-                player.strings,
-            );
-        }
-    });
-    if !player.strings {
-        ui.label(
-            RichText::new("Only string instruments can be played by modelled strings.").weak(),
-        );
     }
 }

@@ -98,7 +98,6 @@ impl GuitarScoreApp {
         let mut commands: Vec<(Command, bool)> = Vec::new();
         let mut open_tuning = false;
         let mut open_sound = false;
-        let player = self.track_player(index);
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -106,14 +105,13 @@ impl GuitarScoreApp {
                 self.header_row(ui, index, &snapshot, &mut commands);
                 style::section(ui, "track_instrument", "Instrument", |ui| {
                     instrument(ui, index, &snapshot, &mut commands);
-                    sound(ui, index, &snapshot, &mut commands);
                     tuning::button(ui, &snapshot, &mut open_tuning);
                 });
                 style::section(ui, "track_look", "Appearance", |ui| {
                     look::staves(ui, index, &snapshot, &mut commands);
                 });
                 style::section(ui, "track_sound", "Sound", |ui| {
-                    sound_chain(ui, player.as_ref(), &mut open_sound);
+                    sound(ui, index, &snapshot, &mut commands, &mut open_sound);
                 });
             });
         for (command, merge) in commands {
@@ -401,54 +399,23 @@ fn instrument(
     }
 }
 
-/// What plays the track (the SoundFont or modelled strings) and the button that opens its
-/// Sound chain window, where the choice is made.
-fn sound_chain(
-    ui: &mut egui::Ui,
-    player: Option<&crate::app::track_engine::TrackPlayer>,
-    open: &mut bool,
-) {
-    let Some(player) = player else {
-        return;
-    };
-    let played_by = match player.engine {
-        gscore_play::TrackEngine::Modelled(kind) => {
-            format!("Modelled: {}", crate::app::string_sound::kind_name(kind))
-        }
-        gscore_play::TrackEngine::SoundFont => "SoundFont".to_owned(),
-    };
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("Played by").color(style::tokens(ui).text_weak));
-        ui.label(played_by);
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let button = icons::toolbar_button(
-                ui,
-                Icon::StringSound,
-                "Sound chain",
-                "Sound chain: what plays this track (SoundFont or modelled strings), the \
-                 strings' sound and the effects after them",
-            );
-            if button.clicked() {
-                *open = true;
-            }
-        });
-    });
-}
-
-/// The sound: the General MIDI program, which is the preset the loaded SoundFont plays.
+/// The sound: the General MIDI program the synth plays for the track (its preset), and the
+/// stomp box that opens the track's Sound chain window.
 fn sound(
     ui: &mut egui::Ui,
     index: usize,
     snapshot: &TrackPanel,
     commands: &mut Vec<(Command, bool)>,
+    open: &mut bool,
 ) {
     let mut program = snapshot.sound.map_or(25, |sound| sound.program);
     ui.horizontal(|ui| {
         ui.label(RichText::new("Preset").color(style::tokens(ui).text_weak));
+        let combo_width = (ui.available_width() - 30.0).max(80.0);
         ui.add_enabled_ui(!snapshot.percussion, |ui| {
             let combo = egui::ComboBox::from_id_salt("track_program")
                 .selected_text(format!("{program}: {}", program_name(program)))
-                .width(ui.available_width())
+                .width(combo_width)
                 .show_ui(ui, |ui| {
                     for candidate in 0..=127_u8 {
                         ui.selectable_value(
@@ -466,6 +433,16 @@ fn sound(
                  for this track; a drum kit plays the percussion bank",
             );
         });
+        let button = icons::button(
+            ui,
+            Icon::StompBox,
+            "Sound chain",
+            "Sound chain: what plays this track, the strings' sound and the effects after \
+             them",
+        );
+        if button.clicked() {
+            *open = true;
+        }
     });
     if snapshot.percussion {
         ui.label(RichText::new("A drum kit plays the drum presets").weak());

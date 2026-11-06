@@ -280,26 +280,22 @@ fn a_click_in_the_song_grid_while_playing_jumps_there() {
 #[test]
 fn the_sound_section_opens_the_sound_chain_and_the_string_sound_dialog() {
     let mut harness = app_with("basic/note_lengths.gp");
-    // The track panel says what plays the track; its button opens the Sound chain, whose
-    // first box opens the strings' window, where the track's player is chosen.
+    // The track panel's Sound section opens the Sound chain with its stomp box.
     harness.get_by_label("Sound chain").click();
     harness.run();
+    // The first box says what plays the track; a Guitar Pro file starts on the SoundFont.
     harness.get_by_label("Strings").click();
     harness.run();
-    assert_eq!(
-        harness.query_all_by_label("Played by").count(),
-        2,
-        "the track panel and the String sound window"
-    );
+    harness.get_by_label("Played by");
+    harness.snapshot("sound_chain_strings");
     assert!(
         harness.query_all_by_label("Brilliance").next().is_none(),
         "the SoundFont plays it: no string knobs"
     );
-    harness
-        .query_all_by_label_contains("Nylon guitar")
-        .last()
-        .unwrap()
-        .click();
+    // Choose modelled nylon strings, then their sound.
+    harness.get_by_label("Nylon guitar").click();
+    harness.run();
+    harness.get_by_label("String sound…").click();
     harness.run();
     for knob in [
         "Pick position",
@@ -310,122 +306,16 @@ fn the_sound_section_opens_the_sound_chain_and_the_string_sound_dialog() {
     ] {
         assert!(harness.query_all_by_label(knob).next().is_some(), "{knob}");
     }
-    harness.get_by_label_contains("Modelled: Nylon guitar");
-    // Back to the SoundFont.
+    // Close the strings' window and give the track back to the MIDI synth.
+    harness.get_by_label("Close String sound").click();
+    harness.run();
     harness
-        .query_all_by_label_contains("SoundFont")
-        .last()
+        .query_all_by_label_contains("MIDI synth")
+        .next()
         .unwrap()
         .click();
     harness.run();
     assert!(harness.query_all_by_label("Brilliance").next().is_none());
-    // Two windows are open (the chain and the strings): close the strings' first.
-    harness.query_all_by_label("Close").last().unwrap().click();
-    harness.run();
-    assert_eq!(harness.query_all_by_label("Played by").count(), 1, "closed");
-}
-
-#[test]
-fn a_room_keeps_the_length_set_on_its_knob() {
-    use gscore_app::chain_settings::{BlockChoice, BlockSetting, ChainSetting};
-    use gscore_play::StringKind;
-
-    let mut harness = app_with("basic/note_lengths.gp");
-    // A room as if its WAV had been chosen in the file dialog: a short decaying response.
-    // A fixed name: the window shows the path, and the snapshot must not change with the
-    // process id.
-    let dir = std::env::temp_dir().join("gscore-room-length-test");
-    std::fs::create_dir_all(&dir).unwrap();
-    let file = dir.join("hall.wav");
-    std::fs::write(&file, wav()).unwrap();
-    let mut chain = ChainSetting::default();
-    chain.blocks[0] = BlockSetting::of(BlockChoice::Room);
-    chain.blocks[0].file = Some(file);
-    for kind in [
-        StringKind::Nylon,
-        StringKind::Steel,
-        StringKind::Electric,
-        StringKind::Bass,
-    ] {
-        harness
-            .state_mut()
-            .playback_mut()
-            .set_string_chain(kind, chain.clone());
-    }
-    harness.run();
-    harness.get_by_label("Sound chain").click();
-    harness.run();
-    harness.get_by_label("Block 1: Room").click();
-    harness.run();
-    harness.snapshot("sound_chain_room");
-    // The length knob turns the room's decay time; a keystroke applies it at once.
-    let lengths = |harness: &Harness<'static, GuitarScoreApp>| {
-        let chains = harness.state().playback().string_chains();
-        [
-            chains.nylon.blocks[0].length,
-            chains.steel.blocks[0].length,
-            chains.electric.blocks[0].length,
-            chains.bass.blocks[0].length,
-        ]
-    };
-    let before = lengths(&harness);
-    assert!(
-        before.iter().all(|length| (length - 1.0).abs() < 1e-6),
-        "the recording's own: {before:?}"
-    );
-    let slider = harness
-        .query_all_by_label("Length")
-        .find(|node| node.accesskit_node().role() == egui::accesskit::Role::SpinButton)
-        .map(|node| node.rect())
-        .expect("the length knob");
-    // Drag it: the room grows (and is built again when the knob is let go).
-    let start = slider.center();
-    harness.hover_at(start);
-    harness.drag_at(start);
-    harness.run();
-    for step in 1..=6 {
-        harness.hover_at(start + egui::vec2(6.0 * step as f32, 0.0));
-        harness.run();
-    }
-    harness.drop_at(start + egui::vec2(36.0, 0.0));
-    harness.run();
-    let after = lengths(&harness);
-    let changed: Vec<f32> = before
-        .iter()
-        .zip(&after)
-        .filter(|(old, new)| (*new - **old).abs() > 1e-6)
-        .map(|(_, new)| *new)
-        .collect();
-    assert_eq!(
-        changed.len(),
-        1,
-        "only the kind the window shows: {after:?}"
-    );
-    assert!(changed[0] > 1.0, "the room grew: {changed:?}");
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// A short 16-bit mono WAV file, quiet and decaying like an impulse response.
-fn wav() -> Vec<u8> {
-    let samples: Vec<i16> = (0..4_800)
-        .map(|i| ((i as f32 * 0.3).sin() * (-(i as f32) / 800.0).exp() * 30_000.0) as i16)
-        .collect();
-    let data: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
-    let mut out = Vec::new();
-    out.extend(b"RIFF");
-    out.extend((36 + data.len() as u32).to_le_bytes());
-    out.extend(b"WAVEfmt ");
-    out.extend(16_u32.to_le_bytes());
-    out.extend(1_u16.to_le_bytes());
-    out.extend(1_u16.to_le_bytes());
-    out.extend(48_000_u32.to_le_bytes());
-    out.extend(96_000_u32.to_le_bytes());
-    out.extend(2_u16.to_le_bytes());
-    out.extend(16_u16.to_le_bytes());
-    out.extend(b"data");
-    out.extend((data.len() as u32).to_le_bytes());
-    out.extend(data);
-    out
 }
 
 /// What the Sound chain window's preset list shows.

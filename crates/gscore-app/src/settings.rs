@@ -229,6 +229,38 @@ pub struct ChainPreset {
     /// has an empty one).
     #[serde(default)]
     pub chain: crate::chain_settings::ChainSetting,
+    /// What plays the strings: `soundfont` for the internal synth, or the kind of modelled
+    /// string (`nylon`, `steel`, `electric`, `bass`); empty leaves the track's choice.
+    #[serde(default)]
+    pub engine: String,
+}
+
+/// The settings name of what plays a track.
+pub(crate) fn engine_id(engine: gscore_play::TrackEngine) -> &'static str {
+    match engine {
+        gscore_play::TrackEngine::SoundFont => "soundfont",
+        gscore_play::TrackEngine::Modelled(kind) => kind_id(kind),
+    }
+}
+
+/// The engine an `id` names, if it names one.
+pub(crate) fn engine_from_id(id: &str) -> Option<gscore_play::TrackEngine> {
+    match id {
+        "soundfont" => Some(gscore_play::TrackEngine::SoundFont),
+        "nylon" => Some(gscore_play::TrackEngine::Modelled(
+            gscore_play::StringKind::Nylon,
+        )),
+        "steel" => Some(gscore_play::TrackEngine::Modelled(
+            gscore_play::StringKind::Steel,
+        )),
+        "electric" => Some(gscore_play::TrackEngine::Modelled(
+            gscore_play::StringKind::Electric,
+        )),
+        "bass" => Some(gscore_play::TrackEngine::Modelled(
+            gscore_play::StringKind::Bass,
+        )),
+        _ => None,
+    }
 }
 
 /// The settings name of `kind`.

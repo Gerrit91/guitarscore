@@ -16,10 +16,12 @@ use gscore_play::{StringKind, TrackEngine};
 use super::GuitarScoreApp;
 use crate::app::string_sound::{kind_name, knob, knob_response};
 use crate::app::style;
+use crate::app::track_engine::TrackPlayer;
 use crate::chain_settings::{BlockChoice, BlockSetting, ChainSetting};
-use crate::playback::Heard;
+use crate::playback::{Heard, STRING_KINDS};
 use crate::settings::{
-    ChainPreset, MAX_STRING_PRESET_NAME, MAX_STRING_PRESETS, StringSound, kind_id,
+    ChainPreset, MAX_STRING_PRESET_NAME, MAX_STRING_PRESETS, StringSound, engine_from_id,
+    engine_id, kind_id,
 };
 
 /// Width of the window's content.
@@ -51,11 +53,21 @@ struct Actions {
     chain: Option<ChainSetting>,
     /// A room's length moved and its knob was let go: build the room again.
     rebuild: bool,
-    /// A preset was chosen: its string sound and its chain.
-    preset: Option<(StringSound, ChainSetting)>,
+    /// What plays the track was chosen in the first box.
+    engine: Option<TrackEngine>,
+    /// A preset was chosen: its string sound, its chain and what plays the strings.
+    preset: Option<ChosenPreset>,
     /// Save the sound and the chain under this name, or delete that preset.
     save_preset: Option<String>,
     delete_preset: Option<String>,
+}
+
+/// A preset chosen in the list: the whole sound it carries.
+struct ChosenPreset {
+    sound: StringSound,
+    chain: ChainSetting,
+    /// What plays the strings, when the preset names it (older ones do not).
+    engine: Option<TrackEngine>,
 }
 
 /// What editing the selected block asked for.
@@ -110,6 +122,56 @@ fn short(text: &str, chars: usize) -> String {
     cut
 }
 
+/// The first box: what plays the track - the internal synth (the SoundFont) or modelled
+/// strings of a kind - and, for modelled strings, the way to their sound knobs.
+fn strings_editor(ui: &mut egui::Ui, player: &TrackPlayer, actions: &mut Actions) {
+    ui.label(RichText::new("Played by").strong());
+    ui.horizontal_wrapped(|ui| {
+        let mut choice = |ui: &mut egui::Ui, engine: TrackEngine, label: &str, enabled: bool| {
+            let mut text = label.to_owned();
+            if engine == player.default {
+                text.push_str(" (preset)");
+            }
+            let response = ui
+                .add_enabled(
+                    enabled,
+                    egui::Button::selectable(player.engine == engine, text),
+                )
+                .on_hover_text(match engine {
+                    TrackEngine::SoundFont => {
+                        "The internal synth plays the track with the SoundFont (General MIDI)"
+                    }
+                    TrackEngine::Modelled(_) => "Modelled strings of this kind play the track",
+                });
+            if response.clicked() {
+                actions.engine = Some(engine);
+            }
+        };
+        choice(ui, TrackEngine::SoundFont, "MIDI synth", true);
+        for kind in STRING_KINDS {
+            choice(
+                ui,
+                TrackEngine::Modelled(kind),
+                kind_name(kind),
+                player.strings,
+            );
+        }
+    });
+    if !player.strings {
+        ui.label(
+            RichText::new("Only string instruments can be played by modelled strings.").weak(),
+        );
+    }
+    if matches!(player.engine, TrackEngine::Modelled(_))
+        && ui
+            .button("String sound…")
+            .on_hover_text("The pick, sustain and tone of these strings")
+            .clicked()
+    {
+        actions.open_strings = true;
+    }
+}
+
 /// The chain presets of `kind`: the built-in sound, the saved ones, saving and deleting.
 /// A preset is the whole chain plus the string sound it was saved with.
 fn preset_row(
@@ -138,11 +200,19 @@ fn preset_row(
             .selected_text(current.clone())
             .show_ui(ui, |ui| {
                 if ui.selectable_label(false, "Built-in").clicked() {
-                    actions.preset = Some((built_in(), ChainSetting::default()));
+                    actions.preset = Some(ChosenPreset {
+                        sound: built_in(),
+                        chain: ChainSetting::default(),
+                        engine: None,
+                    });
                 }
                 for preset in presets {
                     if ui.selectable_label(false, &preset.name).clicked() {
-                        actions.preset = Some((preset.sound, preset.chain.clone()));
+                        actions.preset = Some(ChosenPreset {
+                            sound: preset.sound,
+                            chain: preset.chain.clone(),
+                            engine: engine_from_id(&preset.engine),
+                        });
                     }
                 }
             });
@@ -688,9 +758,6 @@ impl GuitarScoreApp {
                         let board = board(ui, kind, &chain, window.selected);
                         if let Some(index) = board.select {
                             window.selected = index;
-                            if index == 0 {
-                                actions.open_strings = true;
-                            }
                         }
                         if let Some(place) = board.bypass
                             && let Some(block) = chain.blocks.get(place)
@@ -703,16 +770,7 @@ impl GuitarScoreApp {
                         }
                         ui.separator();
                         match window.selected.checked_sub(1) {
-                            None => {
-                                ui.label(
-                                    RichText::new(
-                                        "The strings come first. Click them to dial in the \
-                                         pick, sustain and tone; click a place after them to \
-                                         add a block.",
-                                    )
-                                    .weak(),
-                                );
-                            }
+                            None => strings_editor(ui, &player, &mut actions),
                             Some(place) => {
                                 let edited = editor(ui, &chain, place);
                                 if let Some(changed) = edited.chain {
@@ -746,9 +804,15 @@ impl GuitarScoreApp {
                     });
             });
         // A preset first: it carries both a string sound and a chain.
-        if let Some((sound, chain)) = actions.preset {
-            self.playback.set_string_sound(kind, sound);
-            self.playback.set_string_chain(kind, chain);
+        if let Some(preset) = actions.preset {
+            self.playback.set_string_sound(kind, preset.sound);
+            self.playback.set_string_chain(kind, preset.chain);
+            if let Some(engine) = preset.engine {
+                self.set_track_engine(window.track, engine);
+            }
+        }
+        if let Some(engine) = actions.engine {
+            self.set_track_engine(window.track, engine);
         }
         if let Some(chain) = actions.chain {
             self.playback.set_string_chain(kind, chain);
@@ -764,6 +828,7 @@ impl GuitarScoreApp {
                 kind: kind_id(kind).to_owned(),
                 sound: self.playback.string_sounds().get(kind),
                 chain: self.playback.string_chains().get(kind).clone(),
+                engine: engine_id(player.engine).to_owned(),
             };
             let presets = &mut self.settings.string_presets;
             presets.retain(|old| !(old.kind == preset.kind && old.name == preset.name));
