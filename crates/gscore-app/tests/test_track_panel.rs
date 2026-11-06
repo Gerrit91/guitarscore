@@ -393,7 +393,69 @@ fn a_preset_brings_its_kind_of_string_back() {
     assert_eq!(preset_shown(&harness), "Natural Steel 1");
 }
 
-/// What the Sound chain window's preset list shows.
+#[test]
+fn a_preset_can_be_saved_over_and_deleted_while_active() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    // A block, saved under a name.
+    harness.get_by_label("Block 1: +").click();
+    harness.run();
+    harness.get_by_label("Reverb").click();
+    harness.run();
+    harness.get_by_label("Save as…").click();
+    harness.run();
+    harness.get_by_label("Preset name").focus();
+    harness.get_by_label("Preset name").type_text("Room 1");
+    harness.run();
+    harness.query_all_by_label("Save").last().unwrap().click();
+    harness.run();
+    assert_eq!(preset_shown(&harness), "Room 1");
+
+    // Add a second block: the preset is still the one being worked on, now changed.
+    harness.get_by_label("Block 2: +").click();
+    harness.run();
+    // The menu's entry (the selected block's header says Reverb too).
+    harness
+        .query_all_by_label("Reverb")
+        .find(|node| node.accesskit_node().role() == egui::accesskit::Role::Button)
+        .unwrap()
+        .click();
+    harness.run();
+    assert_eq!(preset_shown(&harness), "Room 1 *");
+
+    // Save over it: one preset of that name, with the chain as it is now.
+    harness.get_by_label("Save preset").click();
+    harness.run();
+    assert_eq!(preset_shown(&harness), "Room 1");
+    let presets = harness.state().settings().string_presets.clone();
+    assert_eq!(
+        presets
+            .iter()
+            .filter(|preset| preset.name == "Room 1")
+            .count(),
+        1
+    );
+    assert_eq!(
+        presets
+            .first()
+            .and_then(|preset| preset.chain.blocks.get(1))
+            .map(|block| block.choice),
+        Some(gscore_app::chain_settings::BlockChoice::Reverb),
+        "the saved chain took the block added after it was saved"
+    );
+
+    // And delete it while it is the active one.
+    harness.get_by_label("Delete preset").click();
+    harness.run();
+    assert!(
+        harness.state().settings().string_presets.is_empty(),
+        "the preset is gone"
+    );
+    assert_eq!(preset_shown(&harness), "Changed");
+}
+
+/// What the Sound chain window's preset list shows./// What the Sound chain window's preset list shows.
 fn preset_shown(harness: &Harness<'_, GuitarScoreApp>) -> String {
     harness
         .query_all_by_label("Preset")

@@ -108,29 +108,6 @@ pub(super) fn round_knob(
             *value = new;
             edit.changed = true;
         }
-    } else if response.has_focus() {
-        // The arrow keys turn it a hundredth of its range at a time.
-        let step = ui.input(|input| {
-            let mut step = 0.0;
-            for (key, direction) in [
-                (egui::Key::ArrowRight, 1.0),
-                (egui::Key::ArrowUp, 1.0),
-                (egui::Key::ArrowLeft, -1.0),
-                (egui::Key::ArrowDown, -1.0),
-            ] {
-                if input.key_pressed(key) {
-                    step += direction;
-                }
-            }
-            step
-        });
-        if step != 0.0 {
-            let new = to_value(fraction(*value) + step / 100.0);
-            if (new - *value).abs() > f32::EPSILON {
-                *value = new;
-                edit.changed = true;
-            }
-        }
     }
     if response.drag_stopped() {
         edit.released = true;
@@ -178,6 +155,14 @@ pub(super) fn round_knob(
         ui.ctx().accesskit_node_builder(field.id, |node| {
             node.set_label(format!("{label} value"));
         });
+        eprintln!(
+            "FIELD {} id {:?} focus {} lost {} text {:?}",
+            label,
+            field.id,
+            field.has_focus(),
+            field.lost_focus(),
+            text
+        );
         let had_focus = *focused;
         if !had_focus {
             field.request_focus();

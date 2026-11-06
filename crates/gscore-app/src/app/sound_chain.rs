@@ -40,6 +40,9 @@ pub(super) struct SoundChainWindow {
     pos: Option<Pos2>,
     /// The name being typed for a new preset, while saving.
     saving: Option<String>,
+    /// The preset last chosen or saved (its kind and name), so it can be saved over after
+    /// its knobs were moved.
+    preset: Option<(StringKind, String)>,
 }
 
 /// What the user did this frame.
@@ -201,27 +204,9 @@ fn strings_editor(
     changed
 }
 
-/// The preset the sound and the chain are now: a saved one, the built-in one, or changed.
-fn preset_name(
-    kind: StringKind,
-    sound: &StringSound,
-    chain: &ChainSetting,
-    presets: &[ChainPreset],
-) -> String {
-    presets
-        .iter()
-        .find(|preset| preset.sound == *sound && preset.chain == *chain)
-        .map(|preset| preset.name.clone())
-        .or_else(|| {
-            (StringSound::from(gscore_audio::default_string_model(kind)) == *sound
-                && *chain == ChainSetting::default())
-            .then(|| "Built-in".to_owned())
-        })
-        .unwrap_or_else(|| "Changed".to_owned())
-}
-
-/// The chain presets of `kind`: the built-in sound, the saved ones, saving and deleting.
-/// A preset is the whole chain plus the string sound it was saved with.
+/// The chain presets: the one being worked on, saving it (over it or under a new name),
+/// choosing another and deleting. A preset is the whole chain plus the string sound it was
+/// saved with, and the kind of string it belongs to.
 fn preset_row(
     ui: &mut egui::Ui,
     kind: StringKind,
@@ -234,11 +219,31 @@ fn preset_row(
     ui.horizontal(|ui| {
         ui.label(RichText::new("Preset").color(style::tokens(ui).text_weak));
         let built_in = || StringSound::from(gscore_audio::default_string_model(kind));
-        let current = preset_name(kind, sound, chain, presets);
+        // The preset being worked on: one whose sound and chain match exactly, or the one
+        // last chosen or saved for this kind (its knobs may have moved since).
+        let exact = presets
+            .iter()
+            .find(|preset| preset.sound == *sound && preset.chain == *chain)
+            .map(|preset| preset.name.clone());
+        let remembered = window
+            .preset
+            .as_ref()
+            .filter(|(saved, _)| *saved == kind)
+            .map(|(_, name)| name.clone());
+        let active = exact.clone().or(remembered);
+        let is_built_in = built_in() == *sound && *chain == ChainSetting::default();
+        let shown = match (&exact, &active) {
+            (Some(name), _) => name.clone(),
+            (None, Some(name)) if !is_built_in => format!("{name} *"),
+            (None, _) if is_built_in => "Built-in".to_owned(),
+            (None, Some(name)) => name.clone(),
+            (None, None) => "Changed".to_owned(),
+        };
         let response = egui::ComboBox::from_id_salt("sound_chain_preset")
-            .selected_text(current.clone())
+            .selected_text(shown.clone())
             .show_ui(ui, |ui| {
                 if ui.selectable_label(false, "Built-in").clicked() {
+                    window.preset = None;
                     actions.preset = Some(ChosenPreset {
                         kind: None,
                         sound: built_in(),
@@ -255,6 +260,7 @@ fn preset_row(
                             Some(TrackEngine::Modelled(saved)) => saved,
                             _ => kind,
                         };
+                        window.preset = Some((target, preset.name.clone()));
                         actions.preset = Some(ChosenPreset {
                             kind: Some(target),
                             sound: preset.sound,
@@ -270,27 +276,39 @@ fn preset_row(
         ui.ctx()
             .accesskit_node_builder(response.response.id, |node| {
                 node.set_label("Preset");
-                node.set_value(current);
+                node.set_value(shown);
             });
         match &mut window.saving {
             None => {
+                // Saving over the preset being worked on, and deleting it.
+                if let Some(name) = active.clone() {
+                    let save = ui
+                        .button("Save")
+                        .on_hover_text(format!("Save over \"{name}\" (its knobs as they are now)"));
+                    ui.ctx().accesskit_node_builder(save.id, |node| {
+                        node.set_label("Save preset");
+                    });
+                    if save.clicked() {
+                        actions.save_preset = Some(name.clone());
+                        window.preset = Some((kind, name.clone()));
+                    }
+                    let delete = ui
+                        .button("Delete")
+                        .on_hover_text(format!("Delete \"{name}\""));
+                    ui.ctx().accesskit_node_builder(delete.id, |node| {
+                        node.set_label("Delete preset");
+                    });
+                    if delete.clicked() {
+                        actions.delete_preset = Some((kind_id(kind).to_owned(), name));
+                        window.preset = None;
+                    }
+                }
                 if ui
                     .button("Save as…")
-                    .on_hover_text("Save this chain and its string sound under a name")
+                    .on_hover_text("Save this chain and its string sound under a new name")
                     .clicked()
                 {
                     window.saving = Some(String::new());
-                }
-                if !presets.is_empty() {
-                    ui.menu_button("Delete…", |ui| {
-                        for preset in presets {
-                            if ui.button(&preset.name).clicked() {
-                                actions.delete_preset =
-                                    Some((preset.kind.clone(), preset.name.clone()));
-                                ui.close();
-                            }
-                        }
-                    });
                 }
             }
             Some(name) => {
@@ -298,7 +316,7 @@ fn preset_row(
                     egui::TextEdit::singleline(name)
                         .char_limit(MAX_STRING_PRESET_NAME)
                         .hint_text("Name")
-                        .desired_width(140.0),
+                        .desired_width(120.0),
                 );
                 ui.ctx()
                     .accesskit_node_builder(field.id, |node| node.set_label("Preset name"));
@@ -307,7 +325,9 @@ fn preset_row(
                 if ui.add_enabled(name_ok, egui::Button::new("Save")).clicked()
                     || (enter && name_ok)
                 {
-                    actions.save_preset = Some(name.trim().to_owned());
+                    let name = name.trim().to_owned();
+                    actions.save_preset = Some(name.clone());
+                    window.preset = Some((kind, name));
                     window.saving = None;
                 } else if ui.button("Cancel").clicked() {
                     window.saving = None;
@@ -439,20 +459,23 @@ fn board(
         } else {
             tokens.text
         };
+        // The box's text is cut to its width (an impulse response's file name is often
+        // longer) and clipped, so nothing spills over a neighbour.
+        let inside = painter.with_clip_rect(rect.shrink(3.0));
         let title_size = if empty { 22.0 } else { 13.0 };
-        painter.text(
+        inside.text(
             rect.center() - vec2(0.0, if empty { 0.0 } else { 8.0 }),
             Align2::CENTER_CENTER,
-            short(&title, 14),
+            short(&title, 13),
             FontId::proportional(title_size),
             text,
         );
         if !detail.is_empty() {
-            painter.text(
+            inside.text(
                 rect.center() + vec2(0.0, 12.0),
                 Align2::CENTER_CENTER,
-                short(&detail, 15),
-                FontId::proportional(11.0),
+                short(&detail, 12),
+                FontId::proportional(10.0),
                 tokens.text_weak,
             );
         }
@@ -770,6 +793,7 @@ impl GuitarScoreApp {
                     selected: 0,
                     pos: None,
                     saving: None,
+                    preset: None,
                 });
             }
         }

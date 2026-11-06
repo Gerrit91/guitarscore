@@ -3440,3 +3440,13 @@ needed for a much larger font); owner listening check.
   block's name and its knobs.
 - A cabinet or body block reads "Cab" on the board - "Cabinet / body" was cut off at the
   box's width; the menu that offers it keeps the full name.
+
+## 2026-11-06 — Saving over a preset, deleting it, and a box that never overflows
+
+- A preset being worked on is remembered (not just recognised by its values): move its knobs
+  and the list says "«name» *", with a **Save** button that overwrites it and a **Delete**
+  button for it - no "Save as…" with the same name again. "Save as…" stays for a new name,
+  and the old "Delete…" menu went: select a preset, then Delete.
+- The chain window's box text is cut to the box (an impulse response's file name used to
+  spill over the neighbouring box): 13 characters for the title, 12 for the file's name,
+  smaller detail text, clipped to the box.
