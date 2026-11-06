@@ -119,6 +119,23 @@ impl Biquad {
         }
     }
 
+    /// A highpass at `cutoff` Hz with quality `q` for `sample_rate`.
+    pub(crate) fn highpass(sample_rate: f32, cutoff: f32, q: f32) -> Self {
+        let cutoff = cutoff.clamp(10.0, sample_rate * 0.45);
+        let w = TAU * cutoff / sample_rate;
+        let alpha = w.sin() / (2.0 * q.max(0.1));
+        let cos = w.cos();
+        let a0 = 1.0 + alpha;
+        Biquad {
+            b0: (1.0 + cos) / 2.0 / a0,
+            b1: -(1.0 + cos) / a0,
+            b2: (1.0 + cos) / 2.0 / a0,
+            a1: -2.0 * cos / a0,
+            a2: (1.0 - alpha) / a0,
+            ..Biquad::default()
+        }
+    }
+
     /// The same filter with new coefficients, keeping what it is filtering.
     pub(crate) fn retuned(self, other: Biquad) -> Self {
         Biquad {

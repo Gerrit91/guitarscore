@@ -11,11 +11,21 @@
 
 #![warn(clippy::arithmetic_side_effects)]
 
+mod chain;
+mod convolver;
 mod delay;
+mod fft;
 mod filters;
+mod impulse;
 mod model;
+mod reverb;
 mod string;
 
+pub use chain::{
+    BLOCKS, BlockKind, BlockSettings, Chain, ChainSpec, ImpulseKnobs, PreparedChain, ReverbKnobs,
+    RoomKnobs, knob_ranges,
+};
+pub use impulse::{ImpulseError, ImpulseResponse, MAX_SECONDS};
 pub use model::{GuitarModel, StringModel, ranges};
 pub use string::{Attack, Pluck, Release, StringVoice};
 
