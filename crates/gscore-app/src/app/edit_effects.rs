@@ -487,6 +487,15 @@ const BEAT_ITEMS: &[FxItem] = &[
     ),
     item(ActionId::ToggleLegato, Face::Slur, Fx::Legato),
     item(
+        ActionId::ToggleBeatVibrato,
+        glyph("\u{EAB2}\u{EAB2}\u{EAB2}", 30.0, 3.0),
+        Fx::BeatVibrato(Vibrato::Slight),
+    ),
+];
+
+/// The octave signs: they change where notes are written, so they sit in Note input.
+const OCTAVE_ITEMS: &[FxItem] = &[
+    item(
         ActionId::ToggleOttava,
         Face::Octave {
             number: "8",
@@ -518,12 +527,17 @@ const BEAT_ITEMS: &[FxItem] = &[
         },
         Fx::Octave(OctaveSign::QuindicesimaBassa),
     ),
-    item(
-        ActionId::ToggleBeatVibrato,
-        glyph("\u{EAB2}\u{EAB2}\u{EAB2}", 30.0, 3.0),
-        Fx::BeatVibrato(Vibrato::Slight),
-    ),
 ];
+
+/// The octave sign tiles, at the end of Note input: 8va, 8vb, 15ma and 15mb.
+pub(super) fn octave_tiles(
+    ui: &mut egui::Ui,
+    snapshot: &PaletteSnapshot,
+    hint: &dyn Fn(ActionId) -> String,
+    commands: &mut Vec<Command>,
+) {
+    effect_tiles(ui, OCTAVE_ITEMS, snapshot, hint, commands);
+}
 
 /// The fades: dynamics, so they sit in the dynamics section of the palette.
 const FADE_ITEMS: &[FxItem] = &[
@@ -543,21 +557,32 @@ pub(super) fn fade_tiles(
     hint: &dyn Fn(ActionId) -> String,
     commands: &mut Vec<Command>,
 ) {
-    let enabled = !snapshot.beats.is_empty();
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(2.0, 3.0);
-        for item in FADE_ITEMS {
-            let label = item.action.label();
-            let mut tip = format!("{label}{}", hint(item.action));
-            if !enabled {
-                tip.push_str("\nPut the cursor on a beat first.");
-            }
-            let on = is_on_for_targets(item.fx, snapshot);
-            if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
-                commands.extend(fx_commands(item.fx, snapshot));
-            }
-        }
+        effect_tiles(ui, FADE_ITEMS, snapshot, hint, commands);
     });
+}
+
+/// Beat effect tiles for `items`, in the current row.
+fn effect_tiles(
+    ui: &mut egui::Ui,
+    items: &[FxItem],
+    snapshot: &PaletteSnapshot,
+    hint: &dyn Fn(ActionId) -> String,
+    commands: &mut Vec<Command>,
+) {
+    let enabled = !snapshot.beats.is_empty();
+    for item in items {
+        let label = item.action.label();
+        let mut tip = format!("{label}{}", hint(item.action));
+        if !enabled {
+            tip.push_str("\nPut the cursor on a beat first.");
+        }
+        let on = is_on_for_targets(item.fx, snapshot);
+        if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
+            commands.extend(fx_commands(item.fx, snapshot));
+        }
+    }
 }
 
 /// Every effect tile's face, for the test that they fit their tiles.
@@ -570,6 +595,7 @@ pub(super) fn faces() -> Vec<Face<'static>> {
         HARMONIC_ITEMS,
         BEAT_ITEMS,
         FADE_ITEMS,
+        OCTAVE_ITEMS,
     ]
     .into_iter()
     .flatten()
@@ -586,6 +612,7 @@ pub(super) fn fx_item(action: ActionId) -> Option<&'static FxItem> {
         SLIDE_ITEMS,
         PITCH_ITEMS,
         FADE_ITEMS,
+        OCTAVE_ITEMS,
         BEAT_ITEMS,
     ]
     .into_iter()

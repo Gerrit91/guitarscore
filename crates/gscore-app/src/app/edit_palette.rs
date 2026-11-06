@@ -1003,6 +1003,8 @@ fn beat_buttons(
         if tie_beat.clicked() {
             commands.extend(tie_beat_commands(snapshot));
         }
+        // Octave signs change where the notes are written: the last of Note input.
+        super::edit_effects::octave_tiles(ui, snapshot, hint, commands);
     });
     ui.add_space(2.0);
     let chosen = snapshot.cursor.voice.get();
