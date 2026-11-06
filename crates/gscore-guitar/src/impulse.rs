@@ -49,10 +49,27 @@ impl ImpulseResponse {
 
     /// A response of one or two channels (more are cut to two) at `sample_rate`.
     pub fn from_channels(channels: Vec<Vec<f32>>, sample_rate: u32) -> Result<Self, ImpulseError> {
+        ImpulseResponse::with_limit(channels, sample_rate, MAX_SECONDS)
+    }
+
+    /// Like [`ImpulseResponse::from_channels`] for a lengthened response, which may be
+    /// longer than a file's.
+    pub(crate) fn from_channels_long(
+        channels: Vec<Vec<f32>>,
+        sample_rate: u32,
+    ) -> Result<Self, ImpulseError> {
+        ImpulseResponse::with_limit(channels, sample_rate, crate::tail::MAX_LENGTHENED_SECONDS)
+    }
+
+    fn with_limit(
+        channels: Vec<Vec<f32>>,
+        sample_rate: u32,
+        seconds: f32,
+    ) -> Result<Self, ImpulseError> {
         if !(8_000..=384_000).contains(&sample_rate) {
             return Err(error("the sample rate is not usable"));
         }
-        let keep = (MAX_SECONDS * sample_rate as f32) as usize;
+        let keep = (seconds * sample_rate as f32) as usize;
         let fade = (CUT_FADE * sample_rate as f32) as usize;
         let mut channels: Vec<Vec<f32>> = channels
             .into_iter()

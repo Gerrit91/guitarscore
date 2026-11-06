@@ -21,6 +21,7 @@ mod model;
 mod reverb;
 mod string;
 mod string_loop;
+mod tail;
 
 pub use chain::{
     BLOCKS, BlockKind, BlockSettings, Chain, ChainSpec, ImpulseKnobs, PreparedChain, ReverbKnobs,
@@ -29,6 +30,7 @@ pub use chain::{
 pub use impulse::{ImpulseError, ImpulseResponse, MAX_SECONDS};
 pub use model::{GuitarModel, StringModel, ranges};
 pub use string::{Attack, Pluck, Release, StringVoice};
+pub use tail::{LENGTH_RANGE, MAX_LENGTHENED_SECONDS};
 
 /// The frequency of MIDI note `key` plus `cents`, in Hz (A4 = note 69 = 440 Hz).
 pub fn frequency(key: u8, cents: f32) -> f32 {
