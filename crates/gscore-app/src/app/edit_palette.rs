@@ -130,6 +130,8 @@ pub(super) struct PaletteSnapshot {
     /// string first, -1 where it has no note), for the chord diagram dialog.
     pub(super) string_count: usize,
     pub(super) beat_shape: Vec<i8>,
+    /// The chord the cursor beat's notes make ("Am"), if they make one.
+    pub(super) beat_chord: Option<String>,
     /// The lyrics lines of the song, for the lyrics dialog.
     pub(super) lyric_lines: Vec<gscore_model::LyricLine>,
     /// How many measures the song has (for the lyrics dialog's start).
@@ -187,6 +189,13 @@ impl PaletteSnapshot {
                 }
             }
         }
+        let beat_chord = beat.as_ref().zip(track).and_then(|(beat, track)| {
+            let pitches: Vec<_> = beat
+                .notes()
+                .filter_map(|note| track.sounding_pitch(&note).ok())
+                .collect();
+            gscore_model::chord_name(&pitches)
+        });
         let lyric_lines = song.lyric_lines();
         let measure_count = song.measure_count();
         let mut note_targets = Vec::new();
@@ -265,6 +274,7 @@ impl PaletteSnapshot {
             chord,
             string_count,
             beat_shape,
+            beat_chord,
             lyric_lines,
             measure_count,
             note_state,

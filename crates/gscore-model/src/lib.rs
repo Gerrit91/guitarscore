@@ -18,6 +18,7 @@
 
 #![warn(clippy::arithmetic_side_effects)]
 
+mod chord_name;
 mod compare;
 mod duration;
 mod dynamics;
@@ -48,6 +49,7 @@ mod test_support;
 #[cfg(test)]
 mod tests;
 
+pub use chord_name::chord_name;
 pub use compare::{Difference, differences, settings_differences};
 pub use duration::{Duration, NoteValue, TimeSignature};
 pub use dynamics::Dynamic;

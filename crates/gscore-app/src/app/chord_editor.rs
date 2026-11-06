@@ -43,8 +43,14 @@ enum Spot {
 
 impl ChordEditor {
     /// A dialog on `current`, or on the cursor beat's notes (`beat_shape`, lowest string
-    /// first) when there is no diagram yet; `strings` is the track's string count.
-    pub(super) fn new(current: Option<&ChordDiagram>, strings: usize, beat_shape: &[i8]) -> Self {
+    /// first, and the chord they make, `beat_chord`) when there is no diagram yet;
+    /// `strings` is the track's string count.
+    pub(super) fn new(
+        current: Option<&ChordDiagram>,
+        strings: usize,
+        beat_shape: &[i8],
+        beat_chord: Option<&str>,
+    ) -> Self {
         let strings = strings.clamp(1, MAX_STRINGS);
         match current {
             Some(chord) => {
@@ -75,7 +81,7 @@ impl ChordEditor {
                 };
                 ChordEditor {
                     pos: None,
-                    name: String::new(),
+                    name: beat_chord.unwrap_or_default().to_owned(),
                     base_fret,
                     frets,
                 }
@@ -348,7 +354,7 @@ mod tests {
 
     #[test]
     fn a_new_diagram_keeps_the_name_and_frets() {
-        let mut editor = ChordEditor::new(None, 6, &[]);
+        let mut editor = ChordEditor::new(None, 6, &[], None);
         editor.name = "  Am  ".to_owned();
         editor.frets = vec![-1, 0, 2, 2, 1, 0];
         let diagram = editor.diagram();
@@ -363,20 +369,21 @@ mod tests {
     #[test]
     fn the_diagram_has_the_tracks_strings_and_starts_from_the_beat() {
         // A seven-string track whose beat holds a shape high on the neck.
-        let editor = ChordEditor::new(None, 7, &[-1, 8, 10, 10, 9, 8, -1]);
+        let editor = ChordEditor::new(None, 7, &[-1, 8, 10, 10, 9, 8, -1], Some("Fm"));
         assert_eq!(editor.frets.len(), 7);
         assert_eq!(editor.frets, [-1, 8, 10, 10, 9, 8, -1]);
         assert_eq!(editor.base_fret, 8, "the grid starts at the shape");
+        assert_eq!(editor.name, "Fm", "named from the beat's notes");
         // An existing six-string diagram on a seven-string track gets the seventh string.
-        let six = ChordEditor::new(None, 6, &[0, 2, 2, 1, 0, 0]).diagram();
-        let seven = ChordEditor::new(Some(&six), 7, &[]);
+        let six = ChordEditor::new(None, 6, &[0, 2, 2, 1, 0, 0], None).diagram();
+        let seven = ChordEditor::new(Some(&six), 7, &[], None);
         assert_eq!(seven.frets, [0, 2, 2, 1, 0, 0, -1]);
         assert_eq!(seven.base_fret, 0);
     }
 
     #[test]
     fn clicks_put_fingers_on_and_take_them_off() {
-        let mut editor = ChordEditor::new(None, 6, &[]);
+        let mut editor = ChordEditor::new(None, 6, &[], None);
         assert_eq!(editor.frets, [-1; 6]);
         editor.click(Spot::Fret(1, 3));
         assert_eq!(editor.frets[1], 3);

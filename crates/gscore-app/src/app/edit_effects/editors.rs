@@ -240,6 +240,7 @@ impl EffectsState {
             snapshot.chord.as_ref(),
             snapshot.string_count,
             &snapshot.beat_shape,
+            snapshot.beat_chord.as_deref(),
         ));
     }
 
