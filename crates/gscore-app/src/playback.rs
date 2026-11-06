@@ -38,6 +38,8 @@ struct Audition {
     until: Instant,
 }
 
+pub(crate) use gscore_audio::SAMPLE_RATES;
+
 /// Where playback goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Output {
@@ -199,6 +201,8 @@ pub struct Playback {
     metronome: bool,
     /// Whether guitar and bass tracks are played by the modelled strings.
     modelled_guitars: bool,
+    /// The sample rate asked of the device; `None`: its own.
+    sample_rate: Option<u32>,
     /// The metronome's volume, 0 to 1 (1 is full).
     metronome_volume: f32,
     /// The built-in synthesizer's click sound.
@@ -243,6 +247,7 @@ impl Default for Playback {
             paused_at: None,
             metronome: false,
             modelled_guitars: false,
+            sample_rate: None,
             metronome_volume: 1.0,
             click_sound: ClickSound::default(),
             count_in_bars: 1,
@@ -410,6 +415,50 @@ impl Playback {
         }
         self.click_sound = sound;
         self.rebuild_sequence(song)
+    }
+
+    /// The sample rate chosen for the built-in synthesizer (`None`: the device's own).
+    pub fn sample_rate(&self) -> Option<u32> {
+        self.sample_rate
+    }
+
+    /// Chooses the synthesizer's sample rate; a running synthesizer is restarted at the
+    /// next play (it stops now).
+    pub fn set_sample_rate(&mut self, rate: Option<u32>) {
+        let rate = rate.filter(|rate| SAMPLE_RATES.contains(rate));
+        if rate == self.sample_rate {
+            return;
+        }
+        self.sample_rate = rate;
+        #[cfg(not(target_arch = "wasm32"))]
+        if matches!(self.player, Some(Active::Synth(_))) {
+            if let Some(active) = &mut self.player {
+                let _ = active.player_mut().stop();
+            }
+            self.player = None;
+            self.sequence = None;
+            self.reported = None;
+            self.lead = None;
+        }
+    }
+
+    /// The rate the synthesizer's device plays at, once it runs.
+    pub fn device_sample_rate(&self) -> Option<u32> {
+        match &self.player {
+            #[cfg(not(target_arch = "wasm32"))]
+            Some(Active::Synth(player)) => player.sample_rate(),
+            _ => None,
+        }
+    }
+
+    /// How busy the synthesizer's audio thread is (1: all of each buffer's time), once it
+    /// runs. `None` for MIDI output and in a browser.
+    pub fn audio_load(&self) -> Option<f32> {
+        match &self.player {
+            #[cfg(not(target_arch = "wasm32"))]
+            Some(Active::Synth(player)) => player.audio_load(),
+            _ => None,
+        }
     }
 
     /// Whether guitar and bass tracks are played by the modelled strings.
@@ -611,9 +660,9 @@ impl Playback {
         if self.player.is_none() {
             #[cfg(not(target_arch = "wasm32"))]
             let active = match &self.output {
-                Output::Synth(path) => {
-                    Active::Synth(SynthPlayer::start(path).map_err(|e| e.to_string())?)
-                }
+                Output::Synth(path) => Active::Synth(
+                    SynthPlayer::start_at(path, self.sample_rate).map_err(|e| e.to_string())?,
+                ),
                 Output::Midi(port) => Active::Midi(
                     MidiOutPlayer::connect(port.as_deref()).map_err(|e| e.to_string())?,
                 ),
@@ -1324,6 +1373,13 @@ impl Playback {
 
     /// An output error that has not been reported yet.
     pub fn new_error(&mut self) -> Option<String> {
+        // A notice (the chosen sample rate was not available) is shown like an error, once.
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(Active::Synth(player)) = &self.player
+            && let Some(notice) = player.notice()
+        {
+            return Some(notice);
+        }
         let error = self.error();
         if error == self.reported {
             return None;
@@ -1363,6 +1419,17 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    #[test]
+    fn only_offered_sample_rates_are_kept() {
+        let mut playback = Playback::default();
+        assert_eq!(playback.sample_rate(), None, "the device's own by default");
+        playback.set_sample_rate(Some(96_000));
+        assert_eq!(playback.sample_rate(), Some(96_000));
+        playback.set_sample_rate(Some(12_345));
+        assert_eq!(playback.sample_rate(), None, "an odd rate means automatic");
+        assert_eq!(playback.audio_load(), None, "no synthesizer runs");
+    }
 
     #[test]
     fn the_modelled_guitars_setting_chooses_the_engine_of_guitar_tracks() {

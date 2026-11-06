@@ -9,11 +9,11 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig};
@@ -28,6 +28,9 @@ const QUEUE: usize = 64;
 const RETIRED: usize = 8;
 /// How often the thread frees replaced sequences and checks for the end.
 const HOUSEKEEPING: Duration = Duration::from_millis(100);
+/// How much of the newest callback goes into the smoothed load (the rest is the old
+/// value): about the last quarter second at common buffer sizes.
+const LOAD_SMOOTHING: f32 = 0.05;
 
 /// What the thread and the callback report back.
 #[derive(Debug, Default)]
@@ -41,6 +44,13 @@ struct Shared {
     error: Mutex<Option<String>>,
     device: Mutex<Option<String>>,
     bank: Mutex<Option<String>>,
+    /// The rate the device runs at (0 until it is open).
+    sample_rate: AtomicU32,
+    /// The audio callback's load: the share of each buffer's time spent rendering it,
+    /// smoothed (`f32` bits).
+    load: AtomicU32,
+    /// Something to tell the user that is not an error (the rate chosen was not offered).
+    notice: Mutex<Option<String>>,
 }
 
 impl Shared {
@@ -86,6 +96,13 @@ impl SynthPlayer {
     /// Commands sent meanwhile are carried out once it is ready; failures show in
     /// [`SynthPlayer::error`].
     pub fn start(soundfont: &Path) -> Result<Self, PlayError> {
+        SynthPlayer::start_at(soundfont, None)
+    }
+
+    /// Like [`SynthPlayer::start`], asking the device for `sample_rate` (`None`: its
+    /// default). A rate the device does not offer falls back to its default, and
+    /// [`SynthPlayer::notice`] says so.
+    pub fn start_at(soundfont: &Path, sample_rate: Option<u32>) -> Result<Self, PlayError> {
         let (commands, receiver) = mpsc::sync_channel(QUEUE);
         let (quit, quit_receiver) = mpsc::sync_channel(1);
         let shared = Arc::new(Shared::default());
@@ -94,7 +111,7 @@ impl SynthPlayer {
         let thread_shared = Arc::clone(&shared);
         let thread = std::thread::Builder::new()
             .name("gscore-synth".to_owned())
-            .spawn(move || run(&path, receiver, &quit_receiver, &thread_shared))
+            .spawn(move || run(&path, sample_rate, receiver, &quit_receiver, &thread_shared))
             .map_err(|e| PlayError::Device(format!("cannot start the synthesizer: {e}")))?;
         Ok(SynthPlayer {
             soundfont: soundfont.to_path_buf(),
@@ -118,6 +135,25 @@ impl SynthPlayer {
     /// The audio device's name, once it is open.
     pub fn device(&self) -> Option<String> {
         lock(&self.shared.device).clone()
+    }
+
+    /// The sample rate the device plays at, once it is open.
+    pub fn sample_rate(&self) -> Option<u32> {
+        Some(self.shared.sample_rate.load(Ordering::Acquire)).filter(|&rate| rate > 0)
+    }
+
+    /// How busy the audio callback is: the share of each buffer's playing time spent
+    /// computing it (0.5: half; above 1 the output drops out), smoothed. `None` until the
+    /// device runs.
+    pub fn audio_load(&self) -> Option<f32> {
+        self.sample_rate()?;
+        Some(f32::from_bits(self.shared.load.load(Ordering::Acquire)))
+    }
+
+    /// A message for the user that is not an error, once (the chosen sample rate was not
+    /// available).
+    pub fn notice(&self) -> Option<String> {
+        lock(&self.shared.notice).take()
     }
 
     /// Whether the SoundFont is still loading (or the device opening).
@@ -199,11 +235,17 @@ impl Drop for SynthPlayer {
 
 /// The synth thread: loads, opens the device, then keeps the stream alive and frees what
 /// the callback hands back until the player is dropped.
-fn run(path: &Path, commands: Receiver<Command>, quit: &Receiver<()>, shared: &Arc<Shared>) {
+fn run(
+    path: &Path,
+    sample_rate: Option<u32>,
+    commands: Receiver<Command>,
+    quit: &Receiver<()>,
+    shared: &Arc<Shared>,
+) {
     let (retired_sender, retired) = mpsc::sync_channel::<Arc<Sequence>>(RETIRED);
     let stream = SoundBank::open(path).and_then(|bank| {
         *lock(&shared.bank) = Some(bank.name().to_owned());
-        open_stream(&bank, commands, retired_sender, shared)
+        open_stream(&bank, sample_rate, commands, retired_sender, shared)
     });
     // The error first: whoever sees loading end must also see why it failed.
     let _stream = match stream {
@@ -226,6 +268,7 @@ fn run(path: &Path, commands: Receiver<Command>, quit: &Receiver<()>, shared: &A
 /// Opens the default output device and starts a stream rendering `bank`.
 fn open_stream(
     bank: &SoundBank,
+    sample_rate: Option<u32>,
     commands: Receiver<Command>,
     retired: SyncSender<Arc<Sequence>>,
     shared: &Arc<Shared>,
@@ -238,12 +281,30 @@ fn open_stream(
         .description()
         .map(|d| d.name().to_owned())
         .unwrap_or_else(|_| "the default audio output".to_owned());
-    let supported = device
+    let default = device
         .default_output_config()
         .map_err(|e| PlayError::Device(format!("{name}: {e}")))?;
+    let supported = match sample_rate {
+        None => default,
+        Some(rate) if rate == default.sample_rate() => default,
+        Some(rate) => match at_rate(&device, &default, rate) {
+            Some(config) => config,
+            None => {
+                *lock(&shared.notice) = Some(format!(
+                    "{name} does not play at {} kHz; using {} kHz",
+                    f64::from(rate) / 1000.0,
+                    f64::from(default.sample_rate()) / 1000.0
+                ));
+                default
+            }
+        },
+    };
     let format = supported.sample_format();
     let config: StreamConfig = supported.into();
     let engine = SynthEngine::new(bank, config.sample_rate)?;
+    shared
+        .sample_rate
+        .store(config.sample_rate, Ordering::Release);
     let parts = Parts {
         engine,
         commands,
@@ -268,6 +329,31 @@ fn open_stream(
         .map_err(|e| PlayError::Device(format!("{name}: {e}")))?;
     *lock(&shared.device) = Some(name);
     Ok(stream)
+}
+
+/// A configuration of `device` at `rate`, preferring the default's sample format and
+/// channel count.
+fn at_rate(
+    device: &cpal::Device,
+    default: &cpal::SupportedStreamConfig,
+    rate: u32,
+) -> Option<cpal::SupportedStreamConfig> {
+    let ranges: Vec<cpal::SupportedStreamConfigRange> =
+        device.supported_output_configs().ok()?.collect();
+    let rank = |range: &cpal::SupportedStreamConfigRange| {
+        (
+            range.sample_format() != default.sample_format(),
+            range.channels() != default.channels(),
+        )
+    };
+    let mut fitting: Vec<cpal::SupportedStreamConfigRange> = ranges
+        .into_iter()
+        .filter(|range| (range.min_sample_rate()..=range.max_sample_rate()).contains(&rate))
+        .collect();
+    fitting.sort_by_key(rank);
+    fitting
+        .into_iter()
+        .find_map(|range| range.try_with_sample_rate(rate))
 }
 
 /// Everything the audio callback owns.
@@ -338,10 +424,21 @@ where
     if parts.shared.failed.load(Ordering::Acquire) && parts.engine.state() == PlayState::Playing {
         parts.engine.fail();
     }
+    // Reading the clock neither blocks nor allocates.
+    let started = Instant::now();
     parts
         .engine
         .render_interleaved(data, parts.channels, <T as Sample>::from_sample::<f32>);
+    let spent = started.elapsed().as_secs_f32();
+    let frames = data.len() / parts.channels.max(1);
+    let available = frames as f32 / parts.engine.sample_rate().max(1) as f32;
     let shared = &parts.shared;
+    if available > 0.0 {
+        let now = spent / available;
+        let old = f32::from_bits(shared.load.load(Ordering::Relaxed));
+        let smoothed = old + (now - old) * LOAD_SMOOTHING;
+        shared.load.store(smoothed.to_bits(), Ordering::Release);
+    }
     shared
         .position
         .store(parts.engine.position(), Ordering::Release);

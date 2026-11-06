@@ -34,6 +34,9 @@ pub use soundfont::{
 pub use synth::{BLOCK, SoundBank, SynthEngine};
 #[cfg(not(target_arch = "wasm32"))]
 pub use synth_player::SynthPlayer;
+
+/// The sample rates the settings offer for the built-in synthesizer and audio export.
+pub const SAMPLE_RATES: [u32; 4] = [44_100, 48_000, 88_200, 96_000];
 #[cfg(target_arch = "wasm32")]
 mod web_player;
 #[cfg(target_arch = "wasm32")]

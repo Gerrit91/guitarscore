@@ -263,6 +263,7 @@ impl GuitarScoreApp {
         );
         app.playback
             .store_modelled_guitars(app.settings.modelled_guitars);
+        app.playback.set_sample_rate(app.settings.sample_rate);
         app.playback.set_count_in_bars(app.settings.count_in_bars);
         app.playback.set_count_in_loops(app.settings.count_in_loops);
         let _ = app.playback.set_speed(app.settings.playback_speed);
@@ -298,6 +299,7 @@ impl GuitarScoreApp {
         settings.soundfont_path = self.playback.soundfont().map(std::path::Path::to_path_buf);
         settings.prefer_synth = matches!(self.playback.output(), Output::Synth(_));
         settings.modelled_guitars = self.playback.modelled_guitars();
+        settings.sample_rate = self.playback.sample_rate();
         settings.midi_port = self.playback.port().map(str::to_owned);
         // Remember every tab backed by a real file, and which one was active. Setting the
         // old single-file key too keeps older versions reopening something sensible.

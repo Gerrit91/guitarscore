@@ -221,6 +221,9 @@ pub struct Settings {
     /// Whether the built-in synthesizer plays guitar and bass tracks with the modelled
     /// strings instead of the SoundFont (experimental, M22).
     pub modelled_guitars: bool,
+    /// The sample rate the built-in synthesizer asks the device for (and WAV export uses);
+    /// `None`: the device's own.
+    pub sample_rate: Option<u32>,
     /// The MIDI port chosen, if any.
     pub midi_port: Option<String>,
     /// Bend shapes saved as presets in the bend editor.
@@ -268,6 +271,7 @@ impl Default for Settings {
             soundfont_path: None,
             prefer_synth: true,
             modelled_guitars: false,
+            sample_rate: None,
             midi_port: None,
             bend_presets: Vec::new(),
             whammy_presets: Vec::new(),
@@ -381,6 +385,12 @@ impl Settings {
     /// Makes the loaded values safe: finite zoom and sizes, a sane autosave interval, and
     /// no nonsense window rectangles.
     pub fn sanitize(&mut self) {
+        if self
+            .sample_rate
+            .is_some_and(|rate| !crate::playback::SAMPLE_RATES.contains(&rate))
+        {
+            self.sample_rate = None;
+        }
         if !self.zoom.is_finite() {
             self.zoom = 1.0;
         }
@@ -479,6 +489,19 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn a_sample_rate_not_offered_becomes_automatic() {
+        let mut settings = Settings {
+            sample_rate: Some(1),
+            ..Settings::default()
+        };
+        settings.sanitize();
+        assert_eq!(settings.sample_rate, None);
+        settings.sample_rate = Some(48_000);
+        settings.sanitize();
+        assert_eq!(settings.sample_rate, Some(48_000));
     }
 
     #[test]

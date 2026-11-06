@@ -426,6 +426,7 @@ impl GuitarScoreApp {
         if let Some(error) = self.playback.new_error() {
             self.notice = Some(error);
         }
+        self.sample_rate_choice(ui);
         self.guitar_sound(ui);
         ui.separator();
         ui.heading("Input");
@@ -455,6 +456,45 @@ impl GuitarScoreApp {
         ui.separator();
         ui.heading("Input");
         ui.label(RichText::new("MIDI inputs (a keyboard or guitar) come later.").weak());
+    }
+
+    /// The sample rate of the built-in synthesizer (desktop: the browser sets its own).
+    #[cfg(not(target_arch = "wasm32"))]
+    fn sample_rate_choice(&mut self, ui: &mut Ui) {
+        let label = |rate: Option<u32>| match rate {
+            None => "Automatic (the device's)".to_owned(),
+            Some(rate) => format!("{} kHz", f64::from(rate) / 1000.0),
+        };
+        ui.horizontal(|ui| {
+            ui.label("Sample rate");
+            let current = self.playback.sample_rate();
+            let mut chosen = current;
+            let response = egui::ComboBox::from_id_salt("settings_sample_rate")
+                .selected_text(label(current))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut chosen, None, label(None));
+                    for rate in crate::playback::SAMPLE_RATES {
+                        ui.selectable_value(&mut chosen, Some(rate), label(Some(rate)));
+                    }
+                });
+            ui.ctx()
+                .accesskit_node_builder(response.response.id, |node| {
+                    node.set_label("Sample rate");
+                });
+            if chosen != current {
+                self.playback.set_sample_rate(chosen);
+            }
+            if let Some(rate) = self.playback.device_sample_rate() {
+                ui.label(RichText::new(format!("now {}", label(Some(rate)))).weak());
+            }
+        });
+        ui.label(
+            RichText::new(
+                "For the built-in synthesizer and audio export (automatic exports at \
+                 44.1 kHz). Higher rates cost more CPU. Takes effect at the next play.",
+            )
+            .weak(),
+        );
     }
 
     /// The choice between the SoundFont and the modelled strings for guitars and basses.

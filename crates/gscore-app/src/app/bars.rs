@@ -289,9 +289,20 @@ impl GuitarScoreApp {
                     }
                 }
             }
-            // The open document's counts, page and cursor, on the right.
+            // The audio load in the corner, then the open document's counts, page and
+            // cursor, on the right.
+            let load = self.playback.audio_load();
+            let rate = self.playback.device_sample_rate();
+            if self.document().is_none() && load.is_some() {
+                ui.with_layout(UiLayout::right_to_left(Align::Center), |ui| {
+                    audio_load(ui, load, rate);
+                });
+            }
             if let Some(document) = self.document() {
                 ui.with_layout(UiLayout::right_to_left(Align::Center), |ui| {
+                    if audio_load(ui, load, rate) {
+                        ui.separator();
+                    }
                     let song = document.song();
                     ui.label(format!(
                         "{}, {}",
@@ -354,4 +365,34 @@ fn count(n: usize, noun: &str) -> String {
     } else {
         format!("{n} {noun}s")
     }
+}
+
+/// The built-in synthesizer's audio load (`load`, 1 = all of each buffer's time at `rate`),
+/// if it runs: orange from 70 %, red from 90 %, where playback is close to dropping out.
+/// Returns whether it was shown.
+fn audio_load(ui: &mut egui::Ui, load: Option<f32>, rate: Option<u32>) -> bool {
+    let Some(load) = load.filter(|load| load.is_finite()) else {
+        return false;
+    };
+    let percent = (load * 100.0).round().clamp(0.0, 999.0);
+    let text = egui::RichText::new(format!("Audio CPU {percent:.0} %"));
+    let text = if load >= 0.9 {
+        text.color(ui.visuals().error_fg_color)
+    } else if load >= 0.7 {
+        text.color(ui.visuals().warn_fg_color)
+    } else {
+        text
+    };
+    let rate = rate.map_or_else(String::new, |rate| {
+        format!(" at {} kHz", f64::from(rate) / 1000.0)
+    });
+    ui.label(text).on_hover_text(format!(
+        "How much of each audio buffer's time the built-in synthesizer needs to compute \
+         it{rate}. Near 100 % the sound drops out: use fewer modelled tracks or a lower \
+         sample rate."
+    ));
+    // Keep the number current.
+    ui.ctx()
+        .request_repaint_after(std::time::Duration::from_millis(500));
+    true
 }
