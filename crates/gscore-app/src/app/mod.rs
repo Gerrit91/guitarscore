@@ -599,7 +599,8 @@ impl eframe::App for GuitarScoreApp {
         self.handle_keys(&ctx);
         // A count-in that has finished starts the song it was counting in.
         self.poll_count_in();
-        // Keep a loop of the selected measures going.
+        // Keep a loop of the selected measures going; a new selection turns it on.
+        self.auto_loop();
         self.poll_loop();
         // A beat chosen while the SoundFont loaded plays once it is ready.
         match self.playback.poll_preview() {

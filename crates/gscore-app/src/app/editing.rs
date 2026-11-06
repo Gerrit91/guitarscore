@@ -488,6 +488,19 @@ impl GuitarScoreApp {
         }
     }
 
+    /// A new selection of more than one beat turns Loop on (as Guitar Pro does); turned
+    /// off, it stays off for that selection.
+    pub(super) fn auto_loop(&mut self) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let selected = tab.has_loop_selection();
+        if selected && !tab.had_loop_selection {
+            self.playback.set_loop_selection(true);
+        }
+        tab.had_loop_selection = selected;
+    }
+
     /// Keeps the playing position inside the selected measures when looping is on.
     pub(super) fn poll_loop(&mut self) {
         if !self.playback.loop_selection() {

@@ -53,6 +53,9 @@ pub(super) struct Tab {
     pub(super) new_track: Option<NewTrackDialog>,
     /// Which tracks the score shows besides the cursor's.
     pub(super) score: super::score_view::ScoreTracks,
+    /// Whether the last frame had a selection of more than one beat: a new one turns
+    /// Loop on.
+    pub(super) had_loop_selection: bool,
 }
 
 impl Tab {
@@ -95,6 +98,20 @@ impl Tab {
             history_stamps: HashMap::new(),
             new_track: None,
             score: super::score_view::ScoreTracks::default(),
+            had_loop_selection: false,
+        }
+    }
+
+    /// Whether more than one beat is selected (beats in the score, or bars in the grid or
+    /// the score): what Loop turns on for.
+    pub(super) fn has_loop_selection(&self) -> bool {
+        if self.selection.is_some() {
+            return true;
+        }
+        match self.document.editor().selection() {
+            Some(gscore_edit::Selection::Beats { anchor, focus, .. }) => anchor != focus,
+            Some(gscore_edit::Selection::Measures { .. }) => true,
+            None => false,
         }
     }
 }

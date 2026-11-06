@@ -1653,7 +1653,30 @@ fn a_selection_in_the_score_can_be_looped() {
         .expect("a selection");
     assert!(selection.last_measure() > selection.first_measure());
     assert!(enabled(&harness), "the score's selection can be looped");
+    // A selection of several beats turns Loop on by itself.
+    assert!(harness.state().playback().loop_selection());
+    // Turned off, it stays off while the selection grows.
     harness.get_by_label("Loop selection").click();
+    harness.run();
+    assert!(!harness.state().playback().loop_selection());
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
+    harness.run();
+    assert!(!harness.state().playback().loop_selection());
+    // A new selection turns it on again.
+    harness.key_press(Key::ArrowRight);
+    harness.run();
+    assert!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .editor()
+            .selection()
+            .is_none()
+    );
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
+    harness.run();
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
     harness.run();
     assert!(harness.state().playback().loop_selection());
 }

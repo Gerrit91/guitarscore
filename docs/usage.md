@@ -66,7 +66,8 @@ The metronome and the count-in are switched in the toolbar; Settings › Metrono
 click's volume and sound, the count-in's length (1 to 4 bars) and whether a loop is counted
 in again each time it starts over. The built-in synthesizer plays its own click; a MIDI
 output gets General MIDI's metronome notes. Play with a selection plays it; with Loop on,
-it repeats the selected bars.
+it repeats the selected bars. Selecting more than one beat turns Loop on; click Loop to
+play on past the selection instead.
 
 The speed dropdown in the transport slows playback to 50-90 % or speeds it to 110-120 % of
 the written tempo. The gauge button left of it is the speed trainer: with Loop on, it
