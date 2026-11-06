@@ -926,6 +926,21 @@ fn beat_buttons(
         if tiles::tile(ui, rest, rests, true, "Rest", &tip).clicked() {
             commands.extend(rest_commands(state, snapshot));
         }
+        // A fermata holds the bar's first note: next to the rest, which it often sits on.
+        if tiles::dialog_tile(
+            ui,
+            Face::Fermata,
+            snapshot.fermata.is_some(),
+            true,
+            "Fermata",
+            "Put a fermata on this bar",
+        )
+        .clicked()
+        {
+            state
+                .staff
+                .open_dialog(edit_staff::Dialog::Fermata, snapshot);
+        }
         let tip = format!(
             "Tie the note to the previous one on its string{}",
             hint(ActionId::ToggleTie)

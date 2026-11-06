@@ -116,7 +116,7 @@ impl StaffState {
     }
 
     /// Takes the drafts from `snapshot` and opens `dialog` on the cursor's bar.
-    fn open_dialog(&mut self, dialog: Dialog, snapshot: &PaletteSnapshot) {
+    pub(super) fn open_dialog(&mut self, dialog: Dialog, snapshot: &PaletteSnapshot) {
         self.open = Some(Target {
             dialog,
             measure: snapshot.measure,
@@ -416,6 +416,25 @@ pub(super) fn faces() -> Vec<Face<'static>> {
     ]
 }
 
+/// One tile of the Staff section.
+enum StaffTile<'a> {
+    /// A tile that opens a staff dialog.
+    Dialog {
+        dialog: Dialog,
+        face: Face<'a>,
+        label: &'static str,
+        tip: &'static str,
+        on: bool,
+    },
+    BeatText,
+    Lyrics,
+    DoubleBar,
+    FreeTime,
+    BarRepeat {
+        double: bool,
+    },
+}
+
 /// The Staff section: icon tiles, each opening a dialog. Returns the palette action of a
 /// tile that has no staff dialog of its own (the beat text editor is one of the effects).
 pub(super) fn section(
@@ -429,85 +448,93 @@ pub(super) fn section(
     style::section(ui, "staff", "Staff", |ui| {
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = vec2(2.0, 3.0);
-            let items = [
-                (
+            // The tiles in the order a bar is set up: its signs, its text, its barlines and
+            // repeats, then the page.
+            let dialog = |dialog, face, label, tip, on| StaffTile::Dialog {
+                dialog,
+                face,
+                label,
+                tip,
+                on,
+            };
+            let order = [
+                dialog(
                     Dialog::Clef,
                     CLEF_FACE,
                     "Clef",
                     "Set the clef of the notation staff",
                     snapshot.clef != Clef::Treble,
                 ),
-                (
+                dialog(
                     Dialog::Key,
                     Face::KeySig,
                     "Key signature",
                     "Set the bar's key signature",
                     snapshot.key.is_some_and(|key| key.key != 0 || key.minor),
                 ),
-                (
+                dialog(
                     Dialog::Time,
                     Face::TimeSig,
                     "Time signature",
                     "Set the bar's time signature",
                     false,
                 ),
-                (
+                dialog(
                     Dialog::Tempo,
                     Face::Tempo,
                     "Tempo",
                     "Set the tempo this bar starts at",
                     snapshot.tempo.is_some(),
                 ),
-                (
-                    Dialog::Section,
-                    Face::Section,
-                    "Section",
-                    "Name the section that starts here",
-                    snapshot.section.is_some(),
-                ),
-                (
-                    Dialog::RepeatStart,
-                    Face::RepeatStart,
-                    "Start repeat sign",
-                    "Start a repeat at this bar",
-                    snapshot.repeat.start,
-                ),
-                (
-                    Dialog::RepeatEnd,
-                    Face::RepeatEnd,
-                    "End repeat sign",
-                    "End a repeat at this bar",
-                    snapshot.repeat.end_repeats.is_some(),
-                ),
-                (
-                    Dialog::Endings,
-                    Face::Endings,
-                    "Alternative endings",
-                    "Mark this bar as an alternative ending",
-                    snapshot.repeat.endings != 0,
-                ),
-                (
+                dialog(
                     Dialog::Feel,
                     Face::Swing,
                     "Swing feel",
                     "Set the bar's swing or dotted feel",
                     snapshot.feel != Feel::None,
                 ),
-                (
-                    Dialog::Fermata,
-                    Face::Fermata,
-                    "Fermata",
-                    "Put a fermata on this bar",
-                    snapshot.fermata.is_some(),
+                dialog(
+                    Dialog::Section,
+                    Face::Section,
+                    "Section",
+                    "Name the section that starts here",
+                    snapshot.section.is_some(),
                 ),
-                (
+                StaffTile::BeatText,
+                StaffTile::Lyrics,
+                StaffTile::DoubleBar,
+                StaffTile::FreeTime,
+                dialog(
+                    Dialog::RepeatStart,
+                    Face::RepeatStart,
+                    "Start repeat sign",
+                    "Start a repeat at this bar",
+                    snapshot.repeat.start,
+                ),
+                dialog(
+                    Dialog::RepeatEnd,
+                    Face::RepeatEnd,
+                    "End repeat sign",
+                    "End a repeat at this bar",
+                    snapshot.repeat.end_repeats.is_some(),
+                ),
+                dialog(
+                    Dialog::Endings,
+                    Face::Endings,
+                    "Alternative endings",
+                    "Mark this bar as an alternative ending",
+                    snapshot.repeat.endings != 0,
+                ),
+                StaffTile::BarRepeat { double: false },
+                StaffTile::BarRepeat { double: true },
+                dialog(
                     Dialog::Break,
                     Face::Break,
                     "Break",
                     "Start a new line or page here",
                     snapshot.system_break != SystemBreak::None,
                 ),
-                (
+                dialog(
                     Dialog::Bars,
                     Face::Bars,
                     "Bars per line…",
@@ -515,112 +542,130 @@ pub(super) fn section(
                     snapshot.bars_per_system.is_some(),
                 ),
             ];
-            for (dialog, face, label, tip, on) in items {
-                if tiles::dialog_tile(ui, face, on, true, label, tip).clicked() {
-                    state.open_dialog(dialog, snapshot);
-                }
-                if dialog == Dialog::Section {
-                    // Beat text has its own editor rather than a staff dialog, but it is a dialog
-                    // tile like the others, next to the section's text.
-                    let tip = format!(
-                        "Beat text: text written above the beat, like Guitar Pro's beat text{}",
-                        hint(ActionId::EditBeatText)
-                    );
-                    let beat_text = tiles::dialog_tile(
-                        ui,
-                        Face::BeatText,
-                        !snapshot.beat_text.is_empty(),
-                        true,
-                        "Beat text…",
-                        &tip,
-                    );
-                    if beat_text.clicked() {
-                        action = Some(ActionId::EditBeatText);
-                    }
-                    // Lyrics belong to the song, not the bar; the tile still sits with the
-                    // text they are written under.
-                    let tip = format!(
-                        "Lyrics: five lines of syllables under the staff{}",
-                        hint(ActionId::EditLyrics)
-                    );
-                    let lyrics = tiles::dialog_tile(
-                        ui,
-                        Face::TextMore("Ly"),
-                        !snapshot.lyric_lines.is_empty(),
-                        true,
-                        "Lyrics…",
-                        &tip,
-                    );
-                    if lyrics.clicked() {
-                        action = Some(ActionId::EditLyrics);
-                    }
-                }
-            }
-            // Bar repetitions are switches: a one-bar repeat, or a two-bar repeat set and
-            // cleared as one pair.
             let measure = snapshot.measure.get();
             let mark = snapshot.similes.get(measure).copied().flatten();
-            for (double, face, label, tip) in [
-                (
-                    false,
-                    Face::SimileSingle,
-                    "Bar repeat",
-                    "This bar repeats the bar before it",
-                ),
-                (
-                    true,
-                    Face::SimileDouble,
-                    "Two-bar repeat",
-                    "This bar and the next repeat the two bars before them",
-                ),
-            ] {
-                let on = match mark {
-                    Some(SimileMark::Simple) => !double,
-                    Some(_) => double,
-                    None => false,
-                };
-                let possible = repeat_fits(measure, snapshot.similes.len(), double);
-                if tiles::tile(ui, face, on, on || possible, label, tip).clicked() {
-                    let parts =
-                        repeat_commands(snapshot.cursor.track, &snapshot.similes, measure, double);
-                    if !parts.is_empty() {
-                        commands.push(Command::Batch { commands: parts });
+            for tile in order {
+                match tile {
+                    StaffTile::Dialog {
+                        dialog,
+                        face,
+                        label,
+                        tip,
+                        on,
+                    } => {
+                        if tiles::dialog_tile(ui, face, on, true, label, tip).clicked() {
+                            state.open_dialog(dialog, snapshot);
+                        }
+                    }
+                    StaffTile::BeatText => {
+                        // Beat text has its own editor rather than a staff dialog.
+                        let tip = format!(
+                            "Beat text: text written above the beat, like Guitar Pro's beat \
+                             text{}",
+                            hint(ActionId::EditBeatText)
+                        );
+                        let beat_text = tiles::dialog_tile(
+                            ui,
+                            Face::BeatText,
+                            !snapshot.beat_text.is_empty(),
+                            true,
+                            "Beat text…",
+                            &tip,
+                        );
+                        if beat_text.clicked() {
+                            action = Some(ActionId::EditBeatText);
+                        }
+                    }
+                    StaffTile::Lyrics => {
+                        // Lyrics belong to the song, not the bar; the tile sits with the
+                        // other text.
+                        let tip = format!(
+                            "Lyrics: five lines of syllables under the staff{}",
+                            hint(ActionId::EditLyrics)
+                        );
+                        let lyrics = tiles::dialog_tile(
+                            ui,
+                            Face::TextMore("Ly"),
+                            !snapshot.lyric_lines.is_empty(),
+                            true,
+                            "Lyrics…",
+                            &tip,
+                        );
+                        if lyrics.clicked() {
+                            action = Some(ActionId::EditLyrics);
+                        }
+                    }
+                    StaffTile::DoubleBar => {
+                        // A switch: one click doubles this bar's end barline (or makes it
+                        // single again).
+                        if tiles::tile(
+                            ui,
+                            Face::DoubleBar,
+                            snapshot.double_bar,
+                            true,
+                            "Double barline",
+                            "End this bar with a double barline",
+                        )
+                        .clicked()
+                        {
+                            commands.push(Command::SetDoubleBar {
+                                measure: snapshot.measure,
+                                double_bar: !snapshot.double_bar,
+                            });
+                        }
+                    }
+                    StaffTile::FreeTime => {
+                        // A switch: one click turns the metronome off (or back on) here.
+                        if tiles::tile(
+                            ui,
+                            Face::FreeTime,
+                            snapshot.free_time,
+                            true,
+                            "Free time",
+                            "Free time",
+                        )
+                        .clicked()
+                        {
+                            commands.push(Command::SetFreeTime {
+                                measure: snapshot.measure,
+                                free_time: !snapshot.free_time,
+                            });
+                        }
+                    }
+                    StaffTile::BarRepeat { double } => {
+                        // A one-bar repeat, or a two-bar repeat set and cleared as one pair.
+                        let (face, label, tip) = if double {
+                            (
+                                Face::SimileDouble,
+                                "Two-bar repeat",
+                                "This bar and the next repeat the two bars before them",
+                            )
+                        } else {
+                            (
+                                Face::SimileSingle,
+                                "Bar repeat",
+                                "This bar repeats the bar before it",
+                            )
+                        };
+                        let on = match mark {
+                            Some(SimileMark::Simple) => !double,
+                            Some(_) => double,
+                            None => false,
+                        };
+                        let possible = repeat_fits(measure, snapshot.similes.len(), double);
+                        if tiles::tile(ui, face, on, on || possible, label, tip).clicked() {
+                            let parts = repeat_commands(
+                                snapshot.cursor.track,
+                                &snapshot.similes,
+                                measure,
+                                double,
+                            );
+                            if !parts.is_empty() {
+                                commands.push(Command::Batch { commands: parts });
+                            }
+                        }
                     }
                 }
-            }
-            // A double barline is a switch too: one click doubles this bar's end barline (or
-            // makes it single again).
-            if tiles::tile(
-                ui,
-                Face::DoubleBar,
-                snapshot.double_bar,
-                true,
-                "Double barline",
-                "End this bar with a double barline",
-            )
-            .clicked()
-            {
-                commands.push(Command::SetDoubleBar {
-                    measure: snapshot.measure,
-                    double_bar: !snapshot.double_bar,
-                });
-            }
-            // Free time is a switch, not a dialog: one click turns the metronome off (or
-            // back on) for this bar.
-            if tiles::tile(
-                ui,
-                Face::FreeTime,
-                snapshot.free_time,
-                true,
-                "Free time",
-                "Free time",
-            )
-            .clicked()
-            {
-                commands.push(Command::SetFreeTime {
-                    measure: snapshot.measure,
-                    free_time: !snapshot.free_time,
-                });
             }
         });
     });
