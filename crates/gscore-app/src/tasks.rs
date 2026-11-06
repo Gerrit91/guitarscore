@@ -945,6 +945,7 @@ pub(crate) struct AudioExport {
     pub(crate) modelled: bool,
     pub(crate) sample_rate: Option<u32>,
     pub(crate) models: Vec<(gscore_play::StringKind, gscore_guitar::StringModel)>,
+    pub(crate) chains: Vec<gscore_audio::ChainChoice>,
 }
 
 /// The work of [`Tasks::export_wav`]: the status message, or why it failed.
@@ -976,17 +977,22 @@ fn export_wav(song: &Song, path: &std::path::Path, audio: &AudioExport) -> Resul
         .and_then(|file| {
             let mut writer = std::io::BufWriter::new(file);
             let rate = audio.sample_rate.unwrap_or(gscore_audio::WAV_SAMPLE_RATE);
-            gscore_audio::write_wav_with(&mut writer, &sequence, &bank, rate, &audio.models)
-                .and_then(|info| {
-                    std::io::Write::flush(&mut writer)
-                        .map_err(|e| {
-                            gscore_play::PlayError::Device(format!(
-                                "cannot write the WAV file: {e}"
-                            ))
-                        })
-                        .map(|()| info)
-                })
-                .map_err(|e| e.to_string())
+            gscore_audio::write_wav_with(
+                &mut writer,
+                &sequence,
+                &bank,
+                rate,
+                &audio.models,
+                &audio.chains,
+            )
+            .and_then(|info| {
+                std::io::Write::flush(&mut writer)
+                    .map_err(|e| {
+                        gscore_play::PlayError::Device(format!("cannot write the WAV file: {e}"))
+                    })
+                    .map(|()| info)
+            })
+            .map_err(|e| e.to_string())
         });
     let info = match written {
         Ok(info) => info,

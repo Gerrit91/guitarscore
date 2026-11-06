@@ -3,7 +3,9 @@
 
 use std::io::Write;
 
-use gscore_guitar::StringModel;
+use gscore_guitar::{BLOCKS, BlockSettings, ChainSpec, StringModel};
+
+use crate::chains::ChainSet;
 use gscore_play::{PlayError, Sequence, StringKind};
 
 use crate::synth::{BLOCK, SoundBank, SynthEngine};
@@ -39,17 +41,21 @@ pub fn write_wav_at(
     bank: &SoundBank,
     sample_rate: u32,
 ) -> Result<WavInfo, PlayError> {
-    write_wav_with(writer, sequence, bank, sample_rate, &[])
+    write_wav_with(writer, sequence, bank, sample_rate, &[], &[])
 }
 
+/// An effect chain to render with: the kind of string, its blocks and their knobs.
+pub type ChainChoice = (StringKind, ChainSpec, [BlockSettings; BLOCKS]);
+
 /// Like [`write_wav_at`], with the modelled strings of each listed kind sounding as its
-/// model (the others keep their presets).
+/// model (the others keep their presets) through its effect chain (the others have none).
 pub fn write_wav_with(
     mut writer: impl Write,
     sequence: &Sequence,
     bank: &SoundBank,
     sample_rate: u32,
     models: &[(StringKind, StringModel)],
+    chains: &[ChainChoice],
 ) -> Result<WavInfo, PlayError> {
     let frames = frames_for(sequence, sample_rate)?;
     let data_bytes = frames
@@ -61,6 +67,13 @@ pub fn write_wav_with(
     let mut engine = SynthEngine::new(bank, sample_rate)?;
     for &(kind, model) in models {
         engine.set_string_model(kind, model);
+    }
+    for (kind, spec, settings) in chains {
+        let tracks = crate::chains::tracks_of_kind(sequence, *kind);
+        if tracks > 0 && !ChainSet::is_empty(spec) {
+            let chain = ChainSet::new(spec, settings, sample_rate, tracks);
+            let _ = engine.set_chain(*kind, Some(Box::new(chain)));
+        }
     }
     engine.load(std::sync::Arc::new(sequence.clone()));
     engine.play();

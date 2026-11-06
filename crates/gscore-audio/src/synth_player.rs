@@ -19,7 +19,11 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig};
 use gscore_play::{MidiEvent, PlayError, PlayState, Player, Sequence};
 
-use crate::synth::{SoundBank, SynthEngine};
+use gscore_guitar::{BLOCKS, BlockSettings, ChainSpec};
+use gscore_play::StringKind;
+
+use crate::chains::ChainSet;
+use crate::synth::{Retired, SoundBank, SynthEngine};
 use crate::transport::Command;
 
 /// Commands queued before senders get an error (the callback drains them every few ms).
@@ -80,11 +84,22 @@ fn decode(state: u8) -> PlayState {
     }
 }
 
+/// An effect chain to prepare on the synth's thread (it knows the device's rate).
+#[derive(Debug)]
+struct ChainRequest {
+    kind: StringKind,
+    spec: ChainSpec,
+    settings: [BlockSettings; BLOCKS],
+    tracks: usize,
+}
+
 /// Plays sequences with a SoundFont on the default audio output.
 #[derive(Debug)]
 pub struct SynthPlayer {
     soundfont: PathBuf,
     commands: SyncSender<Command>,
+    /// Chains to prepare off the audio thread.
+    chains: SyncSender<ChainRequest>,
     shared: Arc<Shared>,
     /// Dropping it ends the thread (and the stream).
     quit: Option<SyncSender<()>>,
@@ -104,18 +119,33 @@ impl SynthPlayer {
     /// [`SynthPlayer::notice`] says so.
     pub fn start_at(soundfont: &Path, sample_rate: Option<u32>) -> Result<Self, PlayError> {
         let (commands, receiver) = mpsc::sync_channel(QUEUE);
+        let (chains, chain_requests) = mpsc::sync_channel(QUEUE);
         let (quit, quit_receiver) = mpsc::sync_channel(1);
+        let chain_commands = commands.clone();
         let shared = Arc::new(Shared::default());
         shared.loading.store(true, Ordering::Release);
         let path = soundfont.to_path_buf();
         let thread_shared = Arc::clone(&shared);
         let thread = std::thread::Builder::new()
             .name("gscore-synth".to_owned())
-            .spawn(move || run(&path, sample_rate, receiver, &quit_receiver, &thread_shared))
+            .spawn(move || {
+                run(
+                    &path,
+                    sample_rate,
+                    receiver,
+                    &Housekeeping {
+                        quit: quit_receiver,
+                        chains: chain_requests,
+                        commands: chain_commands,
+                    },
+                    &thread_shared,
+                );
+            })
             .map_err(|e| PlayError::Device(format!("cannot start the synthesizer: {e}")))?;
         Ok(SynthPlayer {
             soundfont: soundfont.to_path_buf(),
             commands,
+            chains,
             shared,
             quit: Some(quit),
             thread: Some(thread),
@@ -186,11 +216,50 @@ impl SynthPlayer {
     /// the SoundFont still loads: the change waits in line).
     pub fn set_string_model(
         &self,
-        kind: gscore_play::StringKind,
+        kind: StringKind,
         model: gscore_guitar::StringModel,
     ) -> Result<(), PlayError> {
         self.send(Command::StringModel(kind, model))
     }
+
+    /// Gives the strings of `kind` the effect chain `spec` with `settings`, for `tracks`
+    /// tracks of that kind. The chain (impulse responses resampled and transformed) is
+    /// prepared on the synth's own thread and then heard; an empty chain removes it.
+    pub fn set_chain(
+        &self,
+        kind: StringKind,
+        spec: ChainSpec,
+        settings: [BlockSettings; BLOCKS],
+        tracks: usize,
+    ) -> Result<(), PlayError> {
+        if let Some(error) = self.error() {
+            return Err(PlayError::Device(error));
+        }
+        self.chains
+            .try_send(ChainRequest {
+                kind,
+                spec,
+                settings,
+                tracks,
+            })
+            .map_err(|_| PlayError::Device("the synthesizer is not keeping up".to_owned()))
+    }
+
+    /// New knob values for the effect chain of `kind`, heard at once.
+    pub fn set_chain_settings(
+        &self,
+        kind: StringKind,
+        settings: [BlockSettings; BLOCKS],
+    ) -> Result<(), PlayError> {
+        self.send(Command::ChainSettings(kind, settings))
+    }
+}
+
+/// What the synth's thread looks after besides the stream.
+struct Housekeeping {
+    quit: Receiver<()>,
+    chains: Receiver<ChainRequest>,
+    commands: SyncSender<Command>,
 }
 
 impl Player for SynthPlayer {
@@ -251,10 +320,10 @@ fn run(
     path: &Path,
     sample_rate: Option<u32>,
     commands: Receiver<Command>,
-    quit: &Receiver<()>,
+    house: &Housekeeping,
     shared: &Arc<Shared>,
 ) {
-    let (retired_sender, retired) = mpsc::sync_channel::<Arc<Sequence>>(RETIRED);
+    let (retired_sender, retired) = mpsc::sync_channel::<Retired>(RETIRED);
     let stream = SoundBank::open(path).and_then(|bank| {
         *lock(&shared.bank) = Some(bank.name().to_owned());
         open_stream(&bank, sample_rate, commands, retired_sender, shared)
@@ -271,8 +340,39 @@ fn run(
             return;
         }
     };
+    let rate = shared.sample_rate.load(Ordering::Acquire);
     // Until the player is dropped (the quit channel closes).
-    while let Err(RecvTimeoutError::Timeout) = quit.recv_timeout(HOUSEKEEPING) {
+    while let Err(mpsc::TryRecvError::Empty) = house.quit.try_recv() {
+        // Prepare chains as they are asked for (the newest request of a kind wins).
+        match house.chains.recv_timeout(HOUSEKEEPING) {
+            Ok(request) => {
+                let chain = (!ChainSet::is_empty(&request.spec)).then(|| {
+                    Box::new(ChainSet::new(
+                        &request.spec,
+                        &request.settings,
+                        rate,
+                        request.tracks,
+                    ))
+                });
+                // Waits for room in the queue: this thread may.
+                if house
+                    .commands
+                    .send(Command::Chain(request.kind, chain))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                if !matches!(
+                    house.quit.recv_timeout(HOUSEKEEPING),
+                    Err(RecvTimeoutError::Timeout)
+                ) {
+                    break;
+                }
+            }
+        }
         while retired.try_recv().is_ok() {}
     }
 }
@@ -282,7 +382,7 @@ fn open_stream(
     bank: &SoundBank,
     sample_rate: Option<u32>,
     commands: Receiver<Command>,
-    retired: SyncSender<Arc<Sequence>>,
+    retired: SyncSender<Retired>,
     shared: &Arc<Shared>,
 ) -> Result<Stream, PlayError> {
     let host = cpal::default_host();
@@ -372,7 +472,7 @@ fn at_rate(
 struct Parts {
     engine: SynthEngine,
     commands: Receiver<Command>,
-    retired: SyncSender<Arc<Sequence>>,
+    retired: SyncSender<Retired>,
     shared: Arc<Shared>,
     channels: usize,
 }

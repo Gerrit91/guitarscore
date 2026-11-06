@@ -12,10 +12,12 @@
 use std::sync::Arc;
 
 use gscore_guitar::{
-    Attack as StrikeKind, GuitarModel, Pluck, Release, StringModel, StringVoice, frequency,
+    Attack as StrikeKind, BLOCKS, BlockSettings, GuitarModel, Pluck, Release, StringModel,
+    StringVoice, frequency,
 };
 use gscore_play::{Attack, Fade, Performance, PlayedNote, Sequence, StringKind, TrackEngine};
 
+use crate::chains::ChainSet;
 use crate::synth::BLOCK;
 
 /// How many tracks the modelled strings play at once; further modelled tracks stay on
@@ -33,6 +35,8 @@ struct Slot {
     /// The track's index in the sequence (and its performance).
     track: usize,
     kind: StringKind,
+    /// Which instance of its kind's chain it runs through (the n-th track of that kind).
+    instance: usize,
 }
 
 /// The modelled guitars of one synth engine.
@@ -43,6 +47,9 @@ pub(crate) struct Guitars {
     slots: [Option<Slot>; SLOTS],
     /// How each kind of string sounds (nylon, steel, electric, bass).
     models: [StringModel; 4],
+    /// The effect chain of each kind, if it has one, and its knob values.
+    chains: [Option<Box<ChainSet>>; 4],
+    chain_settings: [[BlockSettings; BLOCKS]; 4],
     /// The sequence the slots were set up for (by address; the transport owns it).
     sequence: usize,
     /// The next entry of the performance's `by_start` to start.
@@ -50,6 +57,8 @@ pub(crate) struct Guitars {
     /// Whether the cursor must be found again (after a stop, pause, seek or load).
     resync: bool,
     mono: [f32; BLOCK],
+    /// A track's output after its chain.
+    wet: [[f32; BLOCK]; 2],
 }
 
 impl std::fmt::Debug for Guitars {
@@ -139,6 +148,9 @@ impl Guitars {
             cursor: 0,
             resync: true,
             mono: [0.0; BLOCK],
+            wet: [[0.0; BLOCK]; 2],
+            chains: [None, None, None, None],
+            chain_settings: [[BlockSettings::default(); BLOCKS]; 4],
         }
     }
 
@@ -163,6 +175,42 @@ impl Guitars {
                 {
                     voice.set_model(model);
                 }
+            }
+        }
+    }
+
+    /// Gives `kind` the effect chain `chain` (`None`: none), with the knob values it has.
+    /// Returns the chain it replaces, to be freed off the audio thread.
+    pub(crate) fn set_chain(
+        &mut self,
+        kind: StringKind,
+        chain: Option<Box<ChainSet>>,
+    ) -> Option<Box<ChainSet>> {
+        let index = kind_index(kind);
+        let mut chain = chain;
+        if let (Some(chain), Some(settings)) = (&mut chain, self.chain_settings.get(index)) {
+            for instance in &mut chain.instances {
+                instance.set_settings(settings);
+            }
+        }
+        self.chains
+            .get_mut(index)
+            .and_then(|slot| std::mem::replace(slot, chain))
+    }
+
+    /// New knob values for the chain of `kind`, heard at once.
+    pub(crate) fn set_chain_settings(
+        &mut self,
+        kind: StringKind,
+        settings: [BlockSettings; BLOCKS],
+    ) {
+        let index = kind_index(kind);
+        if let Some(slot) = self.chain_settings.get_mut(index) {
+            *slot = settings;
+        }
+        if let Some(Some(chain)) = self.chains.get_mut(index) {
+            for instance in &mut chain.instances {
+                instance.set_settings(&settings);
             }
         }
     }
@@ -197,10 +245,19 @@ impl Guitars {
                 .iter()
                 .enumerate()
                 .filter_map(|(track, entry)| match entry.engine {
-                    TrackEngine::Modelled(kind) => Some(Slot { track, kind }),
+                    TrackEngine::Modelled(kind) => Some(Slot {
+                        track,
+                        kind,
+                        instance: 0,
+                    }),
                     TrackEngine::SoundFont => None,
                 });
-        for (place, slot) in slots.iter_mut().zip(modelled) {
+        let mut counts = [0_usize; 4];
+        for (place, mut slot) in slots.iter_mut().zip(modelled) {
+            if let Some(count) = counts.get_mut(kind_index(slot.kind)) {
+                slot.instance = *count;
+                *count = count.saturating_add(1);
+            }
             *place = Some(slot);
         }
         for (index, (old, new)) in self.slots.iter().zip(&slots).enumerate() {
@@ -332,7 +389,14 @@ impl Guitars {
                 .voices
                 .get_mut(first..first.saturating_add(STRINGS))
                 .unwrap_or_default();
-            if !voices.iter().any(StringVoice::is_sounding) {
+            // The track's chain instance; a track past the instances made plays dry.
+            let chain = self
+                .chains
+                .get_mut(kind_index(slot.kind))
+                .and_then(Option::as_mut)
+                .and_then(|chain| chain.instances.get_mut(slot.instance));
+            let sounding = voices.iter().any(StringVoice::is_sounding);
+            if !sounding && !chain.as_ref().is_some_and(|chain| chain.ringing()) {
                 continue;
             }
             let mono = self.mono.get_mut(..frames).unwrap_or_default();
@@ -340,15 +404,33 @@ impl Guitars {
             for voice in voices {
                 voice.render(mono);
             }
+            let [wet_left, wet_right] = &mut self.wet;
+            let (wet_left, wet_right) = (
+                wet_left.get_mut(..frames).unwrap_or_default(),
+                wet_right.get_mut(..frames).unwrap_or_default(),
+            );
+            match chain {
+                Some(chain) => chain.process(mono, wet_left, wet_right),
+                None => {
+                    wet_left.copy_from_slice(mono);
+                    wet_right.copy_from_slice(mono);
+                }
+            }
             let sound = performance
                 .and_then(|performance| performance.tracks.get(slot.track))
                 .map(|track| track.sound);
             let (volume, pan) = sound.map_or((100, 64), |sound| (sound.volume, sound.pan));
             let gain = volume_gain(volume);
+            // The pan works as a balance once the chain has made the track stereo.
             let (to_left, to_right) = pan_gains(pan);
-            for ((sample, l), r) in mono.iter().zip(left.iter_mut()).zip(right.iter_mut()) {
-                *l += sample * gain * to_left;
-                *r += sample * gain * to_right;
+            for (((l, r), wl), wr) in left
+                .iter_mut()
+                .zip(right.iter_mut())
+                .zip(wet_left.iter())
+                .zip(wet_right.iter())
+            {
+                *l += wl * gain * to_left;
+                *r += wr * gain * to_right;
             }
         }
     }

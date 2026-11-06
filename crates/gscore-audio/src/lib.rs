@@ -11,6 +11,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod midi_out;
 // The metronome's own click (the synth engine plays it in a browser too).
+mod chains;
 mod click;
 mod guitars;
 mod soundfont;
@@ -26,6 +27,7 @@ pub mod tuner;
 mod tuner_web;
 mod wav;
 
+pub use chains::{ChainSet, tracks_of_kind};
 #[cfg(not(target_arch = "wasm32"))]
 pub use midi_out::{MidiOutPlayer, midi_output_ports};
 pub use soundfont::{
@@ -48,7 +50,7 @@ pub use web_player::WebPlayer;
 pub use tuner::TunerPlayer;
 #[cfg(target_arch = "wasm32")]
 pub use tuner_web::TunerPlayer;
-pub use wav::{WAV_SAMPLE_RATE, WavInfo, write_wav, write_wav_at, write_wav_with};
+pub use wav::{ChainChoice, WAV_SAMPLE_RATE, WavInfo, write_wav, write_wav_at, write_wav_with};
 
 /// The preset string model of `kind`, before the user turns any knob.
 pub fn default_string_model(kind: gscore_play::StringKind) -> gscore_guitar::StringModel {

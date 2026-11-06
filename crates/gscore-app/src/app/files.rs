@@ -276,6 +276,7 @@ impl GuitarScoreApp {
                     modelled: self.playback.modelled_guitars(),
                     sample_rate: self.playback.sample_rate(),
                     models: self.playback.string_models(),
+                    chains: Vec::new(),
                 };
                 if let Err(error) = self.tasks.export_wav(song, path, audio, ctx) {
                     self.notice = Some(error);

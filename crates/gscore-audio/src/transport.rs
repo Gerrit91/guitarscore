@@ -7,12 +7,18 @@
 
 use std::sync::Arc;
 
-use gscore_guitar::StringModel;
+use gscore_guitar::{BLOCKS, BlockSettings, StringModel};
+
+use crate::chains::ChainSet;
 use gscore_play::{MidiEvent, PlayState, Scheduler, Sequence, StringKind, TimedEvent};
 
 /// A command for a backend.
 #[derive(Debug)]
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))] // `Quit` ends the MIDI thread.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+// `Quit` ends the MIDI thread.
+// The chain's knob values make one variant large; boxing them would free memory in the
+// audio callback, which is worse than copying a few hundred bytes through the queue.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Command {
     Load(Arc<Sequence>),
     Play,
@@ -29,6 +35,11 @@ pub(crate) enum Command {
     /// Changes how the modelled strings of one kind sound (the synth engine carries it
     /// out; the transport and MIDI output ignore it).
     StringModel(StringKind, StringModel),
+    /// Gives the strings of one kind a prepared effect chain (`None`: none); the synth
+    /// engine carries it out.
+    Chain(StringKind, Option<Box<ChainSet>>),
+    /// New knob values for one kind's chain.
+    ChainSettings(StringKind, [BlockSettings; BLOCKS]),
 }
 
 /// Where a transport's events go.
@@ -145,7 +156,10 @@ impl Transport {
                     s.set_tempo_scale(scale, now);
                 }
             }
-            Command::Quit | Command::StringModel(..) => {}
+            Command::Quit
+            | Command::StringModel(..)
+            | Command::Chain(..)
+            | Command::ChainSettings(..) => {}
         }
         None
     }

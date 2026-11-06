@@ -240,3 +240,52 @@ fn a_changed_string_model_is_heard_at_once() {
         gscore_audio::default_string_model(StringKind::Bass),
     );
 }
+
+#[test]
+fn a_room_chain_rings_on_after_a_damped_note() {
+    use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, ChainSpec, ImpulseResponse};
+    // A palm-muted quarter: the strings alone are silent soon after.
+    let mut song = testing::song_with_notes(&[(4, &[TestNote::new(3, 2)]), (2, &[])]).unwrap();
+    let at = BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(0),
+    };
+    let _ = song
+        .set_note_effect(
+            at,
+            StringNumber::new(3).unwrap(),
+            NoteEffect::PalmMute(true),
+        )
+        .unwrap();
+    let sequence = Arc::new(Sequence::new(&song, None).unwrap().with_modelled_guitars());
+    let tail = |chain: bool| {
+        let mut engine = SynthEngine::new(&bank(), RATE).unwrap();
+        if chain {
+            // A two-second room that decays slowly.
+            let room: Vec<f32> = (0..96_000)
+                .map(|i| ((i * 7919 % 1000) as f32 / 500.0 - 1.0) * (-(i as f32) / 30_000.0).exp())
+                .collect();
+            let mut spec = ChainSpec::default();
+            spec.blocks[1] = Some(BlockKind::Room(Arc::new(
+                ImpulseResponse::from_samples(&room, RATE).unwrap(),
+            )));
+            let mut settings = [BlockSettings::default(); BLOCKS];
+            settings[1].room.mix = 0.6;
+            let set = gscore_audio::ChainSet::new(&spec, &settings, RATE, 1);
+            assert!(
+                engine
+                    .set_chain(StringKind::Steel, Some(Box::new(set)))
+                    .is_none()
+            );
+        }
+        engine.load(Arc::clone(&sequence));
+        engine.play();
+        let out = render(&mut engine, 1.4);
+        rms(seconds(&out, 1.0, 1.4))
+    };
+    let (dry, wet) = (tail(false), tail(true));
+    assert!(dry < 1e-4, "the strings alone are silent: {dry}");
+    assert!(wet > 10.0 * dry.max(1e-6), "the room rings on: {wet}");
+}

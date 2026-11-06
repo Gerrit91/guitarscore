@@ -10,13 +10,24 @@ use std::io::{BufReader, Read};
 use std::path::Path;
 use std::sync::Arc;
 
-use gscore_guitar::StringModel;
+use gscore_guitar::{BLOCKS, BlockSettings, StringModel};
+
+use crate::chains::ChainSet;
 use gscore_play::{Channel, MidiEvent, PlayError, PlayState, Sequence, StringKind, TimedEvent};
 use rustysynth::{SoundFont, Synthesizer, SynthesizerSettings};
 
 use crate::click::ClickVoice;
 use crate::guitars::Guitars;
 use crate::transport::{Command, Sink, Transport};
+
+/// Something the engine no longer uses, handed back so it is freed off the audio thread.
+#[derive(Debug)]
+pub(crate) enum Retired {
+    Sequence(Arc<Sequence>),
+    // Only held until it is dropped elsewhere.
+    #[allow(dead_code)]
+    Chain(Box<ChainSet>),
+}
 
 /// Frames rendered between two looks at the schedule.
 pub const BLOCK: usize = 64;
@@ -139,7 +150,10 @@ impl SynthEngine {
     /// Makes `sequence` the one to play, stopped at its start. Returns the sequence it
     /// replaces, so an audio callback can hand it elsewhere to be freed.
     pub fn load(&mut self, sequence: Arc<Sequence>) -> Option<Arc<Sequence>> {
-        self.apply(Command::Load(sequence))
+        match self.apply(Command::Load(sequence)) {
+            Some(Retired::Sequence(old)) => Some(old),
+            _ => None,
+        }
     }
 
     /// Starts or resumes playing.
@@ -249,18 +263,47 @@ impl SynthEngine {
         self.guitars.set_model(kind, model);
     }
 
-    /// Carries out a player command now.
-    pub(crate) fn apply(&mut self, command: Command) -> Option<Arc<Sequence>> {
-        if let Command::StringModel(kind, model) = command {
-            self.set_string_model(kind, model);
-            return None;
+    /// Gives the strings of `kind` the effect chain `chain` (`None`: none), heard at once.
+    /// Returns the chain it replaces, to be freed elsewhere when this runs in an audio
+    /// callback.
+    pub fn set_chain(
+        &mut self,
+        kind: StringKind,
+        chain: Option<Box<ChainSet>>,
+    ) -> Option<Box<ChainSet>> {
+        self.guitars.set_chain(kind, chain)
+    }
+
+    /// New knob values for the effect chain of `kind`, heard at once.
+    pub fn set_chain_settings(&mut self, kind: StringKind, settings: [BlockSettings; BLOCKS]) {
+        self.guitars.set_chain_settings(kind, settings);
+    }
+
+    /// Carries out a player command now. What it replaces comes back, to be freed off
+    /// the audio thread.
+    pub(crate) fn apply(&mut self, command: Command) -> Option<Retired> {
+        match command {
+            Command::StringModel(kind, model) => {
+                self.set_string_model(kind, model);
+                return None;
+            }
+            Command::Chain(kind, chain) => {
+                return self.set_chain(kind, chain).map(Retired::Chain);
+            }
+            Command::ChainSettings(kind, settings) => {
+                self.set_chain_settings(kind, settings);
+                return None;
+            }
+            _ => {}
         }
         let now = self.now();
-        self.transport.handle(
-            command,
-            now,
-            &mut SynthSink(&mut self.synth, &mut self.click, &mut self.guitars),
-        )
+        self.transport
+            .handle(
+                command,
+                now,
+                &mut SynthSink(&mut self.synth, &mut self.click, &mut self.guitars),
+            )
+            .map(Retired::Sequence)
     }
 
     /// Stops playing where it is, after the output failed.
