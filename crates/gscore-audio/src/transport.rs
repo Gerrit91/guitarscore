@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use gscore_play::{MidiEvent, PlayState, Scheduler, Sequence};
+use gscore_play::{MidiEvent, PlayState, Scheduler, Sequence, TimedEvent};
 
 /// A command for a backend.
 #[derive(Debug)]
@@ -31,6 +31,10 @@ pub(crate) enum Command {
 pub(crate) trait Sink {
     /// Plays one event now.
     fn send(&mut self, event: MidiEvent);
+    /// Plays one event of the sequence now (its track is known).
+    fn send_timed(&mut self, event: &TimedEvent) {
+        self.send(event.event);
+    }
     /// Ends every sounding note and stale pitch bend of `sequence`'s channels, keeping
     /// program, volume and pan (a pause resumes with the same mix).
     fn silence(&mut self, sequence: &Sequence);
@@ -56,6 +60,11 @@ impl Transport {
     /// Playing, paused or stopped.
     pub(crate) fn state(&self) -> PlayState {
         self.state
+    }
+
+    /// The sequence loaded, if any.
+    pub(crate) fn sequence(&self) -> Option<&Arc<Sequence>> {
+        self.scheduler.as_ref().map(Scheduler::sequence)
     }
 
     /// The position in ticks (0 without a sequence).
@@ -146,7 +155,7 @@ impl Transport {
             return;
         };
         for event in s.advance(now) {
-            out.send(event.event);
+            out.send_timed(event);
         }
         if s.finished() {
             self.fail(out);

@@ -12,6 +12,7 @@
 mod midi_out;
 // The metronome's own click (the synth engine plays it in a browser too).
 mod click;
+mod guitars;
 mod soundfont;
 mod synth;
 #[cfg(not(target_arch = "wasm32"))]

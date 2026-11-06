@@ -10,10 +10,11 @@ use std::io::{BufReader, Read};
 use std::path::Path;
 use std::sync::Arc;
 
-use gscore_play::{Channel, MidiEvent, PlayError, PlayState, Sequence};
+use gscore_play::{Channel, MidiEvent, PlayError, PlayState, Sequence, TimedEvent};
 use rustysynth::{SoundFont, Synthesizer, SynthesizerSettings};
 
 use crate::click::ClickVoice;
+use crate::guitars::Guitars;
 use crate::transport::{Command, Sink, Transport};
 
 /// Frames rendered between two looks at the schedule.
@@ -90,6 +91,8 @@ pub struct SynthEngine {
     frames: u64,
     /// The metronome's own click (keys 33 and 34 on the percussion channel).
     click: ClickVoice,
+    /// The modelled strings, for tracks the sequence gives to them.
+    guitars: Guitars,
     /// One block of samples per side, rendered before interleaving.
     left: [f32; BLOCK],
     right: [f32; BLOCK],
@@ -121,6 +124,7 @@ impl SynthEngine {
             sample_rate,
             frames: 0,
             click: ClickVoice::new(sample_rate),
+            guitars: Guitars::new(sample_rate),
             left: [0.0; BLOCK],
             right: [0.0; BLOCK],
         })
@@ -245,15 +249,18 @@ impl SynthEngine {
         self.transport.handle(
             command,
             now,
-            &mut SynthSink(&mut self.synth, &mut self.click),
+            &mut SynthSink(&mut self.synth, &mut self.click, &mut self.guitars),
         )
     }
 
     /// Stops playing where it is, after the output failed.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // the worklet stops via `stop`
     pub(crate) fn fail(&mut self) {
-        self.transport
-            .fail(&mut SynthSink(&mut self.synth, &mut self.click));
+        self.transport.fail(&mut SynthSink(
+            &mut self.synth,
+            &mut self.click,
+            &mut self.guitars,
+        ));
     }
 
     /// The clock: microseconds of rendered audio.
@@ -266,20 +273,44 @@ impl SynthEngine {
     fn render_block(&mut self, frames: usize) {
         let frames = frames.min(BLOCK);
         let now = self.now();
-        self.transport
-            .advance(now, &mut SynthSink(&mut self.synth, &mut self.click));
+        if let Some(sequence) = self.transport.sequence() {
+            self.guitars.follow(sequence);
+        }
+        self.transport.advance(
+            now,
+            &mut SynthSink(&mut self.synth, &mut self.click, &mut self.guitars),
+        );
         if let (Some(l), Some(r)) = (self.left.get_mut(..frames), self.right.get_mut(..frames)) {
             self.synth.render(l, r);
+            self.guitars.render(
+                self.transport.sequence(),
+                self.transport.position(),
+                self.transport.state() == PlayState::Playing,
+                l,
+                r,
+            );
             self.click.add(l, r);
         }
         self.frames = self.frames.saturating_add(frames as u64);
     }
 }
 
-/// Sends events to the synthesizer; the metronome's keys go to its own click.
-struct SynthSink<'a>(&'a mut Synthesizer, &'a mut ClickVoice);
+/// Sends events to the synthesizer; the metronome's keys go to its own click, and the
+/// notes of tracks the modelled strings play go nowhere (the strings play them).
+struct SynthSink<'a>(&'a mut Synthesizer, &'a mut ClickVoice, &'a mut Guitars);
 
 impl Sink for SynthSink<'_> {
+    fn send_timed(&mut self, event: &TimedEvent) {
+        let note = matches!(
+            event.event,
+            MidiEvent::NoteOn { .. } | MidiEvent::NoteOff { .. } | MidiEvent::PitchBend { .. }
+        );
+        if note && self.2.plays(event.track) {
+            return;
+        }
+        self.send(event.event);
+    }
+
     fn send(&mut self, event: MidiEvent) {
         match event {
             MidiEvent::NoteOn {
@@ -333,6 +364,7 @@ impl Sink for SynthSink<'_> {
     }
 
     fn silence(&mut self, _: &Sequence) {
+        self.2.silence();
         // Notes fade out with their release instead of clicking off. Every channel: this
         // allocates nothing, unlike collecting the sequence's channels.
         self.0.note_off_all(false);
