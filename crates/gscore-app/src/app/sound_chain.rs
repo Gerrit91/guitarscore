@@ -284,8 +284,33 @@ fn preset_row(
 struct BoardActions {
     /// The box clicked: 0 the strings, 1 to 5 a place.
     select: Option<usize>,
+    /// An empty box's effect was chosen: the place gets it.
+    fill: Option<(usize, BlockChoice)>,
     /// The mute under a place was clicked: its bypass flips.
     bypass: Option<usize>,
+}
+
+/// What an empty place can hold: the block, the name its menu shows, and what it does.
+fn block_choices() -> [(BlockChoice, &'static str, &'static str); 3] {
+    [
+        (
+            BlockChoice::Cabinet,
+            "Cabinet / body",
+            "An impulse response from a WAV file: an acoustic guitar's body, or a cabinet \
+             after an amp",
+        ),
+        (
+            BlockChoice::Room,
+            "Room",
+            "A room's impulse response from a WAV file (stereo if recorded so): a convolution \
+             reverb",
+        ),
+        (
+            BlockChoice::Reverb,
+            "Reverb",
+            "A computed room reverb, no file needed",
+        ),
+    ]
 }
 
 /// The board: the boxes, the cables between them and, under each block, its mute.
@@ -400,11 +425,28 @@ fn board(
                 tokens.text_weak,
             );
         }
-        if response.clicked() {
-            actions.select = Some(index);
+        if index == 0 && response.clicked() {
+            actions.select = Some(0);
         }
-        // Under a block, its mute: the block passes the sound unchanged while it is on.
         if let Some(place) = index.checked_sub(1) {
+            if empty {
+                // An empty place offers the effects in a menu at the box; the window below
+                // keeps showing what it showed.
+                egui::Popup::menu(&response).show(|ui| {
+                    for (choice, label, tip) in block_choices() {
+                        if ui.button(label).on_hover_text(tip).clicked() {
+                            actions.fill = Some((place, choice));
+                            ui.close();
+                        }
+                    }
+                });
+            } else if response.clicked() {
+                actions.select = Some(index);
+            }
+            // Under a block, its mute: the block passes the sound unchanged while it is on.
+            if empty {
+                continue;
+            }
             let mute = Rect::from_center_size(
                 pos2(rect.center().x, rect.bottom() + 12.0),
                 vec2(26.0, 16.0),
@@ -437,34 +479,10 @@ fn editor(ui: &mut egui::Ui, chain: &ChainSetting, place: usize) -> Edited {
     let mut changed = false;
     let mut rebuild = false;
     if block.choice == BlockChoice::Empty {
-        ui.label(RichText::new("Choose a block for this place").strong());
-        ui.add_space(4.0);
-        let choices = [
-            (
-                BlockChoice::Cabinet,
-                "An impulse response from a WAV file: an acoustic guitar's body, or a \
-                 cabinet after an amp",
-            ),
-            (
-                BlockChoice::Room,
-                "A room's impulse response from a WAV file (stereo if recorded so): a \
-                 convolution reverb",
-            ),
-            (
-                BlockChoice::Reverb,
-                "A computed room reverb, no file needed",
-            ),
-        ];
-        for (choice, explanation) in choices {
-            ui.horizontal(|ui| {
-                if ui.button(choice.label()).clicked() {
-                    edited = BlockSetting::of(choice);
-                    changed = true;
-                    load = choice.uses_file();
-                }
-                ui.label(RichText::new(explanation).weak());
-            });
-        }
+        ui.label(
+            RichText::new("This place is empty: click its box on the board to choose an effect.")
+                .weak(),
+        );
     } else {
         ui.horizontal(|ui| {
             ui.label(RichText::new(block.choice.label()).strong());
@@ -756,6 +774,17 @@ impl GuitarScoreApp {
                             // strings play the track; a MIDI box has none).
                             if index == 0 && modelled {
                                 actions.open_strings = true;
+                            }
+                        }
+                        if let Some((place, choice)) = board.fill {
+                            let mut changed = chain.clone();
+                            if let Some(slot) = changed.blocks.get_mut(place) {
+                                *slot = BlockSetting::of(choice);
+                            }
+                            actions.chain = Some(changed);
+                            window.selected = place.saturating_add(1);
+                            if choice.uses_file() {
+                                actions.load = Some(place);
                             }
                         }
                         if let Some(place) = board.bypass
