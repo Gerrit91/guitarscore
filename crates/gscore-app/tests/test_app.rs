@@ -2233,6 +2233,44 @@ fn a_new_track_asks_for_name_color_and_symbol() {
 }
 
 #[test]
+fn the_loop_button_works_without_a_selection() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    assert!(!harness.state().playback().loop_selection());
+    // Nothing selected: Loop still turns on, and then the whole song repeats.
+    harness.get_by_label("Loop selection").click();
+    harness.run();
+    assert!(
+        harness.state().playback().loop_selection(),
+        "looping the whole song"
+    );
+    harness.get_by_label("Loop selection").click();
+    harness.run();
+    assert!(!harness.state().playback().loop_selection());
+    // With just one beat selected it works too.
+    harness
+        .state_mut()
+        .document_mut()
+        .unwrap()
+        .editor_mut()
+        .set_selection(Some(gscore_edit::Selection::Beats {
+            track: gscore_model::TrackIndex::new(0),
+            voice: gscore_model::VoiceIndex::new(0),
+            anchor: gscore_edit::BeatSpot {
+                measure: gscore_model::MeasureIndex::new(0),
+                beat: gscore_model::BeatIndex::new(0),
+            },
+            focus: gscore_edit::BeatSpot {
+                measure: gscore_model::MeasureIndex::new(0),
+                beat: gscore_model::BeatIndex::new(0),
+            },
+        }));
+    harness.run();
+    harness.get_by_label("Loop selection").click();
+    harness.run();
+    assert!(harness.state().playback().loop_selection());
+}
+
+#[test]
 fn the_grid_switches_to_a_mixer_view() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
     assert!(

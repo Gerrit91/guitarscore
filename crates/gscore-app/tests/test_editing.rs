@@ -1673,7 +1673,8 @@ fn a_selection_in_the_score_can_be_looped() {
             .accesskit_node()
             .is_disabled()
     };
-    assert!(!enabled(&harness), "nothing selected: nothing to loop");
+    // With nothing selected, Loop repeats the whole song.
+    assert!(enabled(&harness), "a song is enough to loop");
     // Select beats in the score until the selection reaches the next bar.
     for _ in 0..6 {
         harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);

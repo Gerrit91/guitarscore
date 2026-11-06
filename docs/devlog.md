@@ -3450,3 +3450,13 @@ needed for a much larger font); owner listening check.
 - The chain window's box text is cut to the box (an impulse response's file name used to
   spill over the neighbouring box): 13 characters for the title, 12 for the file's name,
   smaller detail text, clipped to the box.
+
+## 2026-11-06 — Loop works without a selection: the song repeats
+
+- The Loop button in the transport is always usable in a song now. With nothing (or only a
+  single beat's cursor) selected it turns looping on and plays the whole song again from its
+  start at the end; with bars or beats selected it loops those bars, as before. The "select
+  bars first" disabled hint and the rule that dropped looping when the selection went away
+  are gone (a song without measures keeps it off).
+- Tests: Loop turns on and off with no selection and with a single beat selected; the score
+  selection test now expects the button to be usable without one.
