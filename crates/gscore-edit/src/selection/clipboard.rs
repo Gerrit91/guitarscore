@@ -296,6 +296,7 @@ fn beat_effects(beat: &BeatView<'_>) -> Vec<BeatEffect> {
         BeatEffect::FadeIn(beat.fade() == Some(Fade::In)),
         BeatEffect::FadeOut(beat.fade() == Some(Fade::Out)),
         BeatEffect::VolumeSwell(beat.fade() == Some(Fade::Swell)),
+        BeatEffect::Octave(beat.octave()),
         BeatEffect::Arpeggio(beat.stroke(StrokeKind::Arpeggio)),
         BeatEffect::DeadSlapped(beat.is_dead_slapped()),
         BeatEffect::Rasgueado(beat.has_rasgueado()),

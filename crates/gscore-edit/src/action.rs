@@ -176,6 +176,14 @@ pub enum ActionId {
     ToggleFadeOut,
     /// Palette: Volume swell (in and out again).
     ToggleVolumeSwell,
+    /// Palette: 8va (an octave higher).
+    ToggleOttava,
+    /// Palette: 8vb (an octave lower).
+    ToggleOttavaBassa,
+    /// Palette: 15ma (two octaves higher).
+    ToggleQuindicesima,
+    /// Palette: 15mb (two octaves lower).
+    ToggleQuindicesimaBassa,
     /// Palette: Whammy bar.
     ToggleWhammy,
     /// Palette: Legato (beat slur).
@@ -287,6 +295,10 @@ impl ActionId {
                 | ActionId::ToggleFadeIn
                 | ActionId::ToggleFadeOut
                 | ActionId::ToggleVolumeSwell
+                | ActionId::ToggleOttava
+                | ActionId::ToggleOttavaBassa
+                | ActionId::ToggleQuindicesima
+                | ActionId::ToggleQuindicesimaBassa
                 | ActionId::ToggleWhammy
                 | ActionId::ToggleLegato
                 | ActionId::ToggleBeatVibrato
@@ -515,6 +527,22 @@ pub const ACTIONS: &[ActionInfo] = &[
         "toggle_volume_swell",
         "Volume swell",
     ),
+    info(ActionId::ToggleOttava, "toggle_8va", "8va (an octave up)"),
+    info(
+        ActionId::ToggleOttavaBassa,
+        "toggle_8vb",
+        "8vb (an octave down)",
+    ),
+    info(
+        ActionId::ToggleQuindicesima,
+        "toggle_15ma",
+        "15ma (two octaves up)",
+    ),
+    info(
+        ActionId::ToggleQuindicesimaBassa,
+        "toggle_15mb",
+        "15mb (two octaves down)",
+    ),
     info(ActionId::ToggleWhammy, "toggle_whammy", "Whammy bar"),
     info(
         ActionId::ToggleLegato,
@@ -657,6 +685,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 105, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 109, "one entry per ActionId variant");
     }
 }

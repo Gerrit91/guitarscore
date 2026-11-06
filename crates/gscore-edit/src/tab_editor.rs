@@ -388,6 +388,10 @@ impl TabEditor {
             | ActionId::ToggleFadeIn
             | ActionId::ToggleFadeOut
             | ActionId::ToggleVolumeSwell
+            | ActionId::ToggleOttava
+            | ActionId::ToggleOttavaBassa
+            | ActionId::ToggleQuindicesima
+            | ActionId::ToggleQuindicesimaBassa
             | ActionId::ToggleWhammy
             | ActionId::ToggleLegato
             | ActionId::ToggleBeatVibrato

@@ -10,7 +10,7 @@ use egui::vec2;
 use gscore_edit::{ActionId, Command};
 use gscore_model::{
     AccentKind, BeatEffect, BeatView, BendKind, BendPoint, BendShape, Fade, Finger, Grace, Hand,
-    Harmonic, HarmonicKind, Legato, NoteEffect, NoteView, SlapKind, SlideKind, Stroke,
+    Harmonic, HarmonicKind, Legato, NoteEffect, NoteView, OctaveSign, SlapKind, SlideKind, Stroke,
     StrokeDirection, StrokeKind, TremoloSpeed, Trill, TrillSpeed, Vibrato, WhammyShape,
 };
 
@@ -89,6 +89,7 @@ pub(super) struct BeatState {
     whammy: Option<WhammyShape>,
     legato: Option<Legato>,
     vibrato: Option<Vibrato>,
+    octave: Option<OctaveSign>,
 }
 
 impl BeatState {
@@ -104,6 +105,7 @@ impl BeatState {
             whammy: beat.whammy_shape(),
             legato: beat.legato(),
             vibrato: beat.vibrato(),
+            octave: beat.octave(),
         }
     }
 }
@@ -168,6 +170,8 @@ pub(super) enum Fx {
     FadeIn,
     FadeOut,
     VolumeSwell,
+    /// An octave sign over or under the beat.
+    Octave(OctaveSign),
     DeadSlapped,
     Rasgueado,
     LeftHandTap,
@@ -483,6 +487,38 @@ const BEAT_ITEMS: &[FxItem] = &[
     ),
     item(ActionId::ToggleLegato, Face::Slur, Fx::Legato),
     item(
+        ActionId::ToggleOttava,
+        Face::Octave {
+            number: "8",
+            suffix: "va",
+        },
+        Fx::Octave(OctaveSign::Ottava),
+    ),
+    item(
+        ActionId::ToggleOttavaBassa,
+        Face::Octave {
+            number: "8",
+            suffix: "vb",
+        },
+        Fx::Octave(OctaveSign::OttavaBassa),
+    ),
+    item(
+        ActionId::ToggleQuindicesima,
+        Face::Octave {
+            number: "15",
+            suffix: "ma",
+        },
+        Fx::Octave(OctaveSign::Quindicesima),
+    ),
+    item(
+        ActionId::ToggleQuindicesimaBassa,
+        Face::Octave {
+            number: "15",
+            suffix: "mb",
+        },
+        Fx::Octave(OctaveSign::QuindicesimaBassa),
+    ),
+    item(
         ActionId::ToggleBeatVibrato,
         glyph("\u{EAB2}\u{EAB2}\u{EAB2}", 30.0, 3.0),
         Fx::BeatVibrato(Vibrato::Slight),
@@ -576,6 +612,7 @@ fn no_beat() -> BeatState {
         whammy: None,
         legato: None,
         vibrato: None,
+        octave: None,
     }
 }
 
@@ -613,6 +650,7 @@ fn is_on(fx: Fx, note: Option<&NoteState>, beat: &BeatState) -> bool {
         Fx::FadeIn => beat.fade == Some(Fade::In),
         Fx::FadeOut => beat.fade == Some(Fade::Out),
         Fx::VolumeSwell => beat.fade == Some(Fade::Swell),
+        Fx::Octave(sign) => beat.octave == Some(sign),
         Fx::DeadSlapped => beat.dead_slapped,
         Fx::Rasgueado => beat.rasgueado,
         Fx::Whammy => beat.whammy.is_some(),
@@ -736,6 +774,11 @@ pub(super) fn fx_commands(fx: Fx, snapshot: &PaletteSnapshot) -> Vec<Command> {
         Fx::FadeIn => apply_beat(&mut commands, beats, BeatEffect::FadeIn(!on)),
         Fx::FadeOut => apply_beat(&mut commands, beats, BeatEffect::FadeOut(!on)),
         Fx::VolumeSwell => apply_beat(&mut commands, beats, BeatEffect::VolumeSwell(!on)),
+        Fx::Octave(sign) => apply_beat(
+            &mut commands,
+            beats,
+            BeatEffect::Octave((!on).then_some(sign)),
+        ),
         Fx::Arpeggio(direction) => apply_beat(
             &mut commands,
             beats,

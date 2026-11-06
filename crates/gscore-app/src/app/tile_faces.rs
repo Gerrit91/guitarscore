@@ -25,6 +25,9 @@ pub(crate) enum Face<'a> {
     Word(&'a str),
     /// A fingering sign in large bold italic ("1", "m"), for the fingering windows.
     Finger(&'a str),
+    /// An octave sign as the score writes it: the number, then the raised suffix ("8" and
+    /// "va").
+    Octave { number: &'a str, suffix: &'a str },
     /// A tuplet bracket around its number in the music font's tuplet digits ("3",
     /// "5:4"), or around italic letters ("n:m") when `letters`. `more` adds the corner
     /// triangle of a tile that opens a dialog.
@@ -218,6 +221,23 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
             lettering(painter, at(-0.5, 0.0), text, size, true, ink);
         }
         Face::Finger(text) => lettering(painter, at(-0.5, 0.0), text, 17.0, true, ink),
+        Face::Octave { number, suffix } => {
+            let mut job = LayoutJob::default();
+            // The small suffix aligned to the top of the line reads as raised.
+            let format = |size: f32, valign: egui::Align| TextFormat {
+                font_id: bold(size),
+                color: ink,
+                italics: true,
+                valign,
+                ..TextFormat::default()
+            };
+            job.append(number, 0.0, format(10.0, egui::Align::BOTTOM));
+            job.append(suffix, 0.0, format(6.5, egui::Align::TOP));
+            let galley = painter.layout_job(job);
+            let size = galley.size();
+            // The slant leans the ink to the right of the layout box.
+            painter.galley(c - size / 2.0 - vec2(0.4, 0.0), galley, ink);
+        }
         Face::TupletBracket {
             text,
             letters,

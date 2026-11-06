@@ -4,8 +4,8 @@
 use crate::technique_text;
 use gscore_model::{
     AccentKind, BeatEffect, BendKind, BendPoint, BendShape, Fret, Grace, GraceSpeed, Harmonic,
-    HarmonicKind, Legato, NoteEffect, SlapKind, SlideKind, Stroke, StrokeDirection, Vibrato,
-    WhammyShape,
+    HarmonicKind, Legato, NoteEffect, OctaveSign, SlapKind, SlideKind, Stroke, StrokeDirection,
+    Vibrato, WhammyShape,
 };
 
 /// How a note effect is written: its id and its value.
@@ -136,6 +136,7 @@ pub(crate) fn beat_effect_text(effect: &BeatEffect) -> (&'static str, String) {
         BeatEffect::Rasgueado(on) => ("rasgueado", on.to_string()),
         BeatEffect::FadeOut(on) => ("fade_out", on.to_string()),
         BeatEffect::VolumeSwell(on) => ("volume_swell", on.to_string()),
+        BeatEffect::Octave(sign) => ("octave", sign.map_or("none", OctaveSign::label).to_owned()),
     }
 }
 
@@ -193,6 +194,13 @@ pub(crate) fn parse_beat_effect(id: &str, value: &str) -> Result<BeatEffect, Str
         "fade_in" => BeatEffect::FadeIn(boolean(value)?),
         "fade_out" => BeatEffect::FadeOut(boolean(value)?),
         "volume_swell" => BeatEffect::VolumeSwell(boolean(value)?),
+        "octave" => BeatEffect::Octave(match value {
+            "none" => None,
+            label => Some(
+                OctaveSign::from_label(label)
+                    .ok_or_else(|| "octave: 8va, 8vb, 15ma, 15mb or none".to_owned())?,
+            ),
+        }),
         "arpeggio" => BeatEffect::Arpeggio(parse_stroke_value(value, Stroke::ARPEGGIO_SPEED)?),
         "dead_slapped" => BeatEffect::DeadSlapped(boolean(value)?),
         "rasgueado" => BeatEffect::Rasgueado(boolean(value)?),
