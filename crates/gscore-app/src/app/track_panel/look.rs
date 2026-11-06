@@ -76,8 +76,9 @@ pub(super) fn staves(
         ui.label(egui::RichText::new("Percussion staff").color(style::tokens(ui).text_weak));
         return;
     }
-    // Notation needs a tuning; slash notation does not.
-    let notation_possible = !snapshot.tuning.is_empty();
+    // Notation needs pitches (a tuning, or a voice's stand-in strings); slash notation
+    // does not.
+    let notation_possible = snapshot.has_pitches;
     let staves = snapshot.staves;
     let count = staves.count();
     let track = TrackIndex::new(index);

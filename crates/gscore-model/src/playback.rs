@@ -223,6 +223,15 @@ impl TrackView<'_> {
     /// harmonic's pitch for natural, artificial, tapped and pinch harmonics. On drum tracks
     /// the "fret" is the General MIDI drum sound itself.
     pub fn sounding_pitch(&self, note: &NoteView<'_>) -> Result<Pitch, ModelError> {
+        // Guitar Pro writes a voice or keyboard note below its stand-in string as a
+        // negative fret: the pitch is still the open string's plus the fret.
+        if note.inner.value < 0 && !self.is_percussion() {
+            let open = self.pitch_at(note.string()?, Fret::new(0)?)?;
+            let pitch = i32::from(open.get()).saturating_add(i32::from(note.inner.value));
+            let pitch = u8::try_from(pitch)
+                .map_err(|_| ModelError::Invalid(format!("pitch {pitch} is below MIDI's range")))?;
+            return Pitch::new(pitch);
+        }
         let fret = note.fret()?.get();
         if self.is_percussion() {
             return Pitch::new(fret);
@@ -349,6 +358,23 @@ mod tests {
         gp.tracks[0].offset = -1;
         let song = from_gp(gp).unwrap();
         assert!(song.track(TrackIndex::new(0)).unwrap().capo().is_err());
+    }
+
+    #[test]
+    fn a_voice_note_below_its_stand_in_string_has_a_negative_fret() {
+        // Guitar Pro writes a voice's A1 (33) as fret -7 on the stand-in low E (40).
+        let mut gp = test_song(vec![track(
+            "Vocals",
+            GUITAR_6,
+            vec![measure((4, 4), vec![vec![beat(1, &[(6, -7)])]])],
+        )]);
+        gp.tracks[0].instrument_type = Some("voice".to_owned());
+        let song = from_gp(gp).unwrap();
+        assert_eq!(first_note_pitch(&song).get(), 33);
+        let view = song.track(TrackIndex::new(0)).unwrap();
+        // Not a string instrument, so no tuning is shown, but the notes have pitches.
+        assert!(view.tuning().unwrap().is_none());
+        assert!(view.note_tuning().unwrap().is_some());
     }
 
     #[test]

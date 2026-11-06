@@ -210,9 +210,16 @@ impl<'a> Part<'a> {
             .iter()
             .enumerate()
             .map(|(index, layout)| {
+                // The depth is a dynamic's baseline: its letters hang below it.
+                const DYNAMIC_DESCENT: f32 = 1.0;
                 let dynamics = marks.get(index).map_or(0.0, |marks| {
                     crate::marks::dynamics_depth(layout, marks, &self.ctx)
                 });
+                let dynamics = if dynamics > 0.0 {
+                    dynamics + DYNAMIC_DESCENT
+                } else {
+                    0.0
+                };
                 layout.notation_reach().1.max(dynamics)
             })
             .fold(0.0, f32::max)

@@ -256,6 +256,17 @@ pub fn one_beat_with_raw_notes(notes: &[(i8, i16)]) -> Result<Song, ModelError> 
     Song::from_inner(inner)
 }
 
+/// [`one_beat_with_raw_notes`] on a voice track, as Guitar Pro 7 writes one: its notes are
+/// `(string, fret)` on a stand-in E-standard tuning, the frets possibly negative.
+pub fn voice_with_raw_notes(notes: &[(i8, i16)]) -> Result<Song, ModelError> {
+    let song = one_beat_with_raw_notes(notes)?;
+    let mut inner = song.inner().clone();
+    for track in &mut inner.tracks {
+        track.instrument_type = Some("voice".to_owned());
+    }
+    Song::from_inner(inner)
+}
+
 /// A bend for [`song_with_notes`]: how far it reaches and whether it releases back down.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TestBend {

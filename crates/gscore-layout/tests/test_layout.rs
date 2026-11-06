@@ -673,3 +673,27 @@ fn time_signature_changes_are_laid_out() {
     assert!(digits.contains(&3), "the numerator: {digits:?}");
     assert!(digits.contains(&8), "the denominator: {digits:?}");
 }
+
+/// A voice track has standard notation: Guitar Pro writes its notes on stand-in strings,
+/// negative frets included, which give the pitches.
+#[test]
+fn a_voice_track_is_written_in_standard_notation() {
+    use gscore_layout::Glyph;
+    // A whole note on the stand-in low E, 7 below it (A1), and one 5 above (A2).
+    let song = testing::voice_with_raw_notes(&[(6, -7), (5, 0)]).unwrap();
+    let layout = common::layout(&song, 0);
+    let heads = layout
+        .ops
+        .iter()
+        .filter(|op| {
+            matches!(
+                op,
+                DrawOp::Glyph {
+                    glyph: Glyph::NoteheadWhole,
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(heads, 2, "both notes, the negative fret too");
+}
