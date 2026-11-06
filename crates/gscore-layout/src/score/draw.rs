@@ -174,25 +174,22 @@ pub(super) fn draw_part(
             && !syllables.is_empty()
         {
             let columns = measure.lyric_columns(content_x, system.stretch);
-            let bottom = if show_tab {
-                tab_top + ctx.staff.height()
-            } else if let Some(notation_top) = tops.notation {
-                notation_top + notation_staff.height()
-            } else {
-                tops.slash.unwrap_or(top) + slash_frame.height()
-            };
             for syllable in syllables {
-                let at = columns
+                let Some(at) = columns
                     .iter()
-                    .find(|(beat, _)| *beat == u64::try_from(syllable.beat.get()).unwrap_or(0))
-                    .map_or(content_x, |&(_, x)| x);
+                    .find(|(beat, _)| *beat == syllable.beat)
+                    .map(|&(_, x)| x)
+                else {
+                    continue;
+                };
+                let y = top + part.lyric_baseline(system.plan_measures.clone(), syllable.line);
                 content.push(DrawOp::Text {
                     text: syllable.text.clone(),
-                    at: Point::new(at, bottom + 1.6 + f32::from(syllable.line) * 1.35),
+                    at: Point::new(at, y),
                     size: 1.05,
-                    font: TextFont::Regular,
+                    font: TextFont::Bold,
                     anchor: TextAnchor::Middle,
-                    color: ColorToken::FretNumber,
+                    color: ColorToken::Notation,
                 });
             }
         }

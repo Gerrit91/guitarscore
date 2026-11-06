@@ -227,6 +227,26 @@ pub(crate) struct Track {
     /// instead of in `<GeneralMidi>`.
     #[serde(rename = "Sounds", default)]
     pub sounds: Option<SoundsWrapper>,
+    /// GuitarScore addition: the track's lyric lines as typed (GP6/GP7 `<Lyrics>`; the
+    /// syllables are also on the beats).
+    #[serde(rename = "Lyrics", default)]
+    pub lyrics: Option<TrackLyrics>,
+}
+
+/// GuitarScore addition: `<Lyrics>` of a track, one `<Line>` per lyric line.
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct TrackLyrics {
+    #[serde(rename = "Line", default)]
+    pub lines: Vec<TrackLyricLine>,
+}
+
+/// One lyric line of a track: its text and the bar it starts at (0-based).
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct TrackLyricLine {
+    #[serde(rename = "Text", default)]
+    pub text: String,
+    #[serde(rename = "Offset", default)]
+    pub offset: i32,
 }
 
 /// GuitarScore addition: `<Sounds>` of a GP7 track.

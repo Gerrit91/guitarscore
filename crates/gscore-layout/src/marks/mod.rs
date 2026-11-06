@@ -522,6 +522,24 @@ fn dynamic_baseline(
     }
 }
 
+/// How far under a tab staff's bottom line its own ink reaches: the low fret numbers, the
+/// P.M. and let ring rows, and dynamics when no notation staff carries them.
+pub(crate) fn below_tab_depth(layout: &MeasureLayout, marks: &MeasureMarks, notation: bool) -> f32 {
+    /// Half a fret number hangs below the bottom line.
+    const FRET_HALF: f32 = 0.7;
+    let lanes = layout.under_staff_lanes();
+    let rows = if lanes == 0 {
+        FRET_HALF
+    } else {
+        TAB_FIRST_LANE + (lanes as f32 - 1.0) * TAB_LANE_GAP + 0.4
+    };
+    if notation || marks.dynamics.is_empty() {
+        rows
+    } else {
+        TAB_FIRST_LANE + lanes as f32 * TAB_LANE_GAP + TAB_DYNAMIC_DROP + 0.5
+    }
+}
+
 /// The text over an end repeat that is played more than twice ("x3").
 pub(crate) fn repeat_count(marks: &MeasureMarks) -> Option<String> {
     marks

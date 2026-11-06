@@ -3,7 +3,7 @@
 //! Kept apart from the column layout in the parent module: this file only positions and
 //! paints, while `measure/mod.rs` decides the widths.
 
-use gscore_model::Dynamic;
+use gscore_model::{BeatIndex, Dynamic};
 
 use super::effects::LANE_CLEARANCE;
 use super::{Column, DEAD_SLAP_HALF, Item, MEASURE_NUMBER_RISE, MeasureLayout, Tops};
@@ -159,13 +159,19 @@ impl MeasureLayout {
         (xs, cursor)
     }
 
-    /// Where each column starts and which beat it belongs to, for lyrics.
-    pub(crate) fn lyric_columns(&self, x: f32, stretch: f32) -> Vec<(u64, f32)> {
+    /// Where the first voice's beats are, for lyrics: `(beat, x)`.
+    pub(crate) fn lyric_columns(&self, x: f32, stretch: f32) -> Vec<(BeatIndex, f32)> {
         let (xs, _) = self.column_positions(x, stretch);
         self.columns
             .iter()
             .zip(xs)
-            .map(|(column, x)| (column.beat, x))
+            .flat_map(|(column, x)| {
+                column
+                    .beats
+                    .iter()
+                    .filter(|(voice, _)| voice.get() == 0)
+                    .map(move |&(_, beat)| (beat, x))
+            })
             .collect()
     }
 

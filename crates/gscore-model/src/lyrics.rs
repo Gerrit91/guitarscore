@@ -77,15 +77,17 @@ impl Song {
                 if text.is_empty() {
                     continue;
                 }
+                // Words sharing a beat are joined with `+` in the typed text.
+                let text = text.split_whitespace().collect::<Vec<_>>().join("+");
                 match rebuilt.iter_mut().find(|entry| entry.line == line) {
                     Some(entry) => {
                         entry.text.push(' ');
-                        entry.text.push_str(text);
+                        entry.text.push_str(&text);
                     }
                     None => rebuilt.push(LyricLine {
                         line,
                         start: measure,
-                        text: text.clone(),
+                        text,
                     }),
                 }
             }
@@ -458,7 +460,7 @@ fn place_tokens(
 }
 
 /// The syllables of `text`: words split at whitespace, `[...]` hidden text left out and a
-/// `+` joining the word it follows to the next one.
+/// `+` joining the word it follows to the next one (on one beat, with a space between).
 pub(crate) fn lyric_tokens(text: &str) -> Vec<String> {
     let mut visible = String::with_capacity(text.len());
     let mut depth = 0_u32;
@@ -473,8 +475,14 @@ pub(crate) fn lyric_tokens(text: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current = String::new();
     for word in visible.split_whitespace() {
+        // `a+b` and `a+ b` put both words on one beat, with a space between them.
         let join_next = word.ends_with('+');
-        current.extend(word.chars().filter(|character| *character != '+'));
+        for (index, part) in word.split('+').filter(|part| !part.is_empty()).enumerate() {
+            if index > 0 || !current.is_empty() {
+                current.push(' ');
+            }
+            current.push_str(part);
+        }
         if !join_next && !current.is_empty() {
             tokens.push(std::mem::take(&mut current));
         }
@@ -517,7 +525,8 @@ mod tests {
 
     #[test]
     fn syllables_are_split_placed_and_hidden_text_is_left_out() {
-        assert_eq!(lyric_tokens("Hel+lo [hidden] world"), ["Hello", "world"]);
+        assert_eq!(lyric_tokens("Hel+lo [hidden] world"), ["Hel lo", "world"]);
+        assert_eq!(lyric_tokens("in+ the dark"), ["in the", "dark"]);
         assert_eq!(lyric_tokens("one  two\nthree"), ["one", "two", "three"]);
         assert_eq!(lyric_tokens("[only hidden]"), Vec::<String>::new());
 

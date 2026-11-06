@@ -54,3 +54,29 @@ fn beat_lyrics_are_written_as_guitar_pro_writes_them() {
     reread.read_gp(&bytes).expect("written file reads");
     assert_eq!(lyrics_of_track(&reread, 1), ["a<b", "two"]);
 }
+
+#[test]
+fn typed_lyric_lines_are_read_and_written_with_the_track() {
+    // Guitar Pro keeps the lines as typed on the track, the syllables on the beats.
+    let mut song = song_with_beat_lyrics("<Lyrics><Line><![CDATA[Hel]]></Line></Lyrics>");
+    assert!(
+        song.lyrics.lines.is_empty(),
+        "the test track has empty lines"
+    );
+    song.lyrics.lines = vec![
+        (0, 1, "Hel+lo [hidden] world".to_owned()),
+        (2, 3, "third".to_owned()),
+    ];
+    song.lyrics.track_choice = 1;
+    let bytes = song.write_gp().expect("song writes");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("written file reads");
+    assert_eq!(reread.lyrics.track_choice, 1);
+    assert_eq!(
+        reread.lyrics.lines,
+        [
+            (0, 1, "Hel+lo [hidden] world".to_owned()),
+            (2, 3, "third".to_owned())
+        ]
+    );
+}
