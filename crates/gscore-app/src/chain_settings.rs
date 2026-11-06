@@ -4,7 +4,9 @@
 
 use std::path::PathBuf;
 
-use gscore_guitar::{BLOCKS, BlockSettings, ImpulseKnobs, LENGTH_RANGE, ReverbKnobs, RoomKnobs};
+use gscore_guitar::{
+    AmpKnobs, AmpVoice, BLOCKS, BlockSettings, ImpulseKnobs, LENGTH_RANGE, ReverbKnobs, RoomKnobs,
+};
 use gscore_play::StringKind;
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +22,8 @@ pub enum BlockChoice {
     Room,
     /// The computed reverb.
     Reverb,
+    /// The computed guitar amp.
+    Amp,
 }
 
 impl BlockChoice {
@@ -30,12 +34,46 @@ impl BlockChoice {
             BlockChoice::Cabinet => "Cabinet / body",
             BlockChoice::Room => "Room",
             BlockChoice::Reverb => "Reverb",
+            BlockChoice::Amp => "Amp",
         }
     }
 
     /// Whether it plays an impulse response from a file.
     pub fn uses_file(self) -> bool {
         matches!(self, BlockChoice::Cabinet | BlockChoice::Room)
+    }
+}
+
+/// An amp's voice as the settings file keeps it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AmpVoiceSetting {
+    Clean,
+    #[default]
+    Crunch,
+    Lead,
+}
+
+impl AmpVoiceSetting {
+    /// Every voice, in the order the chain window shows them.
+    pub const ALL: [AmpVoiceSetting; 3] = [
+        AmpVoiceSetting::Clean,
+        AmpVoiceSetting::Crunch,
+        AmpVoiceSetting::Lead,
+    ];
+
+    /// The engine's voice.
+    pub fn voice(self) -> AmpVoice {
+        match self {
+            AmpVoiceSetting::Clean => AmpVoice::Clean,
+            AmpVoiceSetting::Crunch => AmpVoice::Crunch,
+            AmpVoiceSetting::Lead => AmpVoice::Lead,
+        }
+    }
+
+    /// Its name.
+    pub fn label(self) -> &'static str {
+        self.voice().label()
     }
 }
 
@@ -58,6 +96,13 @@ pub struct BlockSetting {
     /// It changes the response itself, so the chain is prepared again when it is set,
     /// not on every step of a drag.
     pub length: f32,
+    /// An amp's voice and knobs (its output level is `gain_db`).
+    pub voice: AmpVoiceSetting,
+    pub drive: f32,
+    pub bass: f32,
+    pub middle: f32,
+    pub treble: f32,
+    pub speaker: f32,
 }
 
 impl Default for BlockSetting {
@@ -90,6 +135,10 @@ impl BlockSetting {
                     reverb.width,
                 )
             }
+            BlockChoice::Amp => {
+                let amp = AmpKnobs::default();
+                (1.0, amp.level_db, 0.0, 0.0, 1.0)
+            }
             BlockChoice::Cabinet | BlockChoice::Empty => {
                 let impulse = ImpulseKnobs::default();
                 (
@@ -102,6 +151,7 @@ impl BlockSetting {
             }
         };
         let reverb = ReverbKnobs::default();
+        let amp = AmpKnobs::default();
         BlockSetting {
             choice,
             file: None,
@@ -114,6 +164,12 @@ impl BlockSetting {
             size: reverb.size,
             damping: reverb.damping,
             length: 1.0,
+            voice: AmpVoiceSetting::default(),
+            drive: amp.gain,
+            bass: amp.bass,
+            middle: amp.mid,
+            treble: amp.treble,
+            speaker: amp.speaker,
         }
     }
 
@@ -151,6 +207,15 @@ impl BlockSetting {
                 mix: self.mix,
                 low_cut: self.low_cut,
                 high_cut: self.high_cut,
+            },
+            amp: AmpKnobs {
+                voice: self.voice.voice(),
+                gain: self.drive,
+                bass: self.bass,
+                mid: self.middle,
+                treble: self.treble,
+                level_db: self.gain_db,
+                speaker: self.speaker,
             },
         }
         .sanitized()
@@ -271,6 +336,26 @@ mod tests {
         let back: StringChains = serde_json::from_str(&older).unwrap();
         assert_eq!(back.steel.blocks[0].length, 1.0);
         assert_eq!(back.steel.blocks[0].file, chains.steel.blocks[0].file);
+    }
+
+    #[test]
+    fn an_amp_keeps_its_voice_and_knobs() {
+        let mut amp = BlockSetting::of(BlockChoice::Amp);
+        assert_eq!(amp.knobs().amp, AmpKnobs::default());
+        amp.voice = AmpVoiceSetting::Lead;
+        amp.drive = 0.8;
+        amp.gain_db = -3.0;
+        // A voice is chosen, not built: the chain is not prepared again.
+        assert!(amp.same_structure(&BlockSetting::of(BlockChoice::Amp)));
+        let knobs = amp.knobs().amp;
+        assert_eq!(knobs.voice, AmpVoice::Lead);
+        assert_eq!((knobs.gain, knobs.level_db), (0.8, -3.0));
+        let mut chains = StringChains::default();
+        chains.electric.blocks[0] = amp;
+        let text = serde_json::to_string(&chains).unwrap();
+        assert!(text.contains("\"voice\":\"lead\""), "{text}");
+        let back: StringChains = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, chains);
     }
 
     #[test]

@@ -381,6 +381,15 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.run();
     harness.get_by_label("Block 2: Reverb");
     harness.snapshot("sound_chain_window");
+    // An amp in the third place, switched to its lead voice.
+    harness.get_by_label("Block 3: +").click();
+    harness.run();
+    harness.get_by_label("Amp").click();
+    harness.run();
+    harness.get_by_label("Lead").click();
+    harness.run();
+    harness.get_by_label("Block 3: Amp");
+    harness.snapshot("sound_chain_amp");
     // The strings' own window (their box opens it once PM synthesis plays the track).
     harness.get_by_label("Block 0: MIDI").click();
     harness.run();

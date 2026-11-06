@@ -1,6 +1,6 @@
 //! The effect chain after the strings: [`BLOCKS`] places in a fixed order, each empty or
 //! holding a block (an impulse response for a cabinet or a body, a room's impulse response,
-//! an algorithmic reverb; amps come later). The signal is mono from the strings and becomes
+//! an algorithmic reverb, a computed amp). The signal is mono from the strings and becomes
 //! stereo at the first block that makes it so (a room or the reverb).
 //!
 //! Two kinds of change: which blocks are where (and which impulse response, or a room's
@@ -10,9 +10,11 @@
 
 use std::sync::Arc;
 
+use crate::amp::Amp;
 use crate::convolver::{Convolver, PARTITION, Spectra};
 use crate::filters::Biquad;
 use crate::impulse::ImpulseResponse;
+use crate::knobs::BlockSettings;
 use crate::reverb::Reverb;
 
 /// The places for blocks after the strings.
@@ -38,6 +40,9 @@ pub enum BlockKind {
     },
     /// A stereo room reverb, computed (no response needed).
     Reverb,
+    /// A guitar amp, computed (see [`crate::AmpKnobs`]): mono, or each side alike once
+    /// the signal is stereo.
+    Amp,
 }
 
 impl BlockKind {
@@ -54,148 +59,6 @@ pub struct ChainSpec {
     pub blocks: [Option<BlockKind>; BLOCKS],
 }
 
-/// The knobs of an impulse response block.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ImpulseKnobs {
-    /// The share of the convolved sound, 0 dry to 1 only the response.
-    pub mix: f32,
-    /// Gain in dB.
-    pub gain_db: f32,
-    /// Low cut and high cut, in Hz.
-    pub low_cut: f32,
-    pub high_cut: f32,
-}
-
-impl Default for ImpulseKnobs {
-    fn default() -> Self {
-        ImpulseKnobs {
-            mix: 1.0,
-            gain_db: 0.0,
-            low_cut: 40.0,
-            high_cut: 12_000.0,
-        }
-    }
-}
-
-/// The knobs of a reverb block.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ReverbKnobs {
-    /// Room size, 0 small to 1 large.
-    pub size: f32,
-    /// How quickly the highs die in the room, 0 bright to 1 dull.
-    pub damping: f32,
-    /// Stereo width, 0 mono to 1 wide.
-    pub width: f32,
-    /// The share of reverb, 0 dry to 1 only the room.
-    pub mix: f32,
-    /// Low cut and high cut of the reverb's sound (not the dry guitar), in Hz.
-    pub low_cut: f32,
-    pub high_cut: f32,
-}
-
-impl Default for ReverbKnobs {
-    fn default() -> Self {
-        ReverbKnobs {
-            size: 0.5,
-            damping: 0.5,
-            width: 1.0,
-            mix: 0.2,
-            low_cut: 150.0,
-            high_cut: 7_000.0,
-        }
-    }
-}
-
-/// The knobs of a room block (a convolution reverb).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RoomKnobs {
-    /// The share of the room, 0 dry to 1 only the room.
-    pub mix: f32,
-    /// Gain of the room's sound in dB.
-    pub gain_db: f32,
-    /// Low cut and high cut of the room's sound, in Hz.
-    pub low_cut: f32,
-    pub high_cut: f32,
-    /// Stereo width of the room, 0 mono to 1 as recorded.
-    pub width: f32,
-}
-
-impl Default for RoomKnobs {
-    fn default() -> Self {
-        RoomKnobs {
-            mix: 0.25,
-            gain_db: 0.0,
-            low_cut: 120.0,
-            high_cut: 9_000.0,
-            width: 1.0,
-        }
-    }
-}
-
-/// The settings of one place: whether it is bypassed and the knobs of every block kind
-/// (the ones for the kind it holds apply).
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub struct BlockSettings {
-    pub bypass: bool,
-    pub impulse: ImpulseKnobs,
-    pub room: RoomKnobs,
-    pub reverb: ReverbKnobs,
-}
-
-/// The knob ranges, for user interfaces and for sanitizing: `(lowest, highest)`.
-pub mod knob_ranges {
-    pub const MIX: (f32, f32) = (0.0, 1.0);
-    /// dB.
-    pub const GAIN: (f32, f32) = (-24.0, 12.0);
-    /// Hz.
-    pub const LOW_CUT: (f32, f32) = (20.0, 600.0);
-    pub const HIGH_CUT: (f32, f32) = (1_500.0, 20_000.0);
-    pub const SIZE: (f32, f32) = (0.0, 1.0);
-    pub const DAMPING: (f32, f32) = (0.0, 1.0);
-    pub const WIDTH: (f32, f32) = (0.0, 1.0);
-}
-
-fn fit(value: f32, (low, high): (f32, f32), fallback: f32) -> f32 {
-    if value.is_finite() {
-        value.clamp(low, high)
-    } else {
-        fallback
-    }
-}
-
-impl BlockSettings {
-    /// Every value in its range.
-    pub fn sanitized(self) -> Self {
-        let i = ImpulseKnobs::default();
-        let room = RoomKnobs::default();
-        let r = ReverbKnobs::default();
-        BlockSettings {
-            bypass: self.bypass,
-            impulse: ImpulseKnobs {
-                mix: fit(self.impulse.mix, knob_ranges::MIX, i.mix),
-                gain_db: fit(self.impulse.gain_db, knob_ranges::GAIN, i.gain_db),
-                low_cut: fit(self.impulse.low_cut, knob_ranges::LOW_CUT, i.low_cut),
-                high_cut: fit(self.impulse.high_cut, knob_ranges::HIGH_CUT, i.high_cut),
-            },
-            room: RoomKnobs {
-                mix: fit(self.room.mix, knob_ranges::MIX, room.mix),
-                gain_db: fit(self.room.gain_db, knob_ranges::GAIN, room.gain_db),
-                low_cut: fit(self.room.low_cut, knob_ranges::LOW_CUT, room.low_cut),
-                high_cut: fit(self.room.high_cut, knob_ranges::HIGH_CUT, room.high_cut),
-                width: fit(self.room.width, knob_ranges::WIDTH, room.width),
-            },
-            reverb: ReverbKnobs {
-                size: fit(self.reverb.size, knob_ranges::SIZE, r.size),
-                damping: fit(self.reverb.damping, knob_ranges::DAMPING, r.damping),
-                width: fit(self.reverb.width, knob_ranges::WIDTH, r.width),
-                mix: fit(self.reverb.mix, knob_ranges::MIX, r.mix),
-                low_cut: fit(self.reverb.low_cut, knob_ranges::LOW_CUT, r.low_cut),
-                high_cut: fit(self.reverb.high_cut, knob_ranges::HIGH_CUT, r.high_cut),
-            },
-        }
-    }
-}
-
 /// A chain spec prepared for one sample rate: the impulse responses' spectra, shared by
 /// every track that plays through it.
 #[derive(Debug, Clone)]
@@ -209,6 +72,7 @@ enum PreparedBlock {
     Impulse(Arc<Spectra>),
     Room([Arc<Spectra>; 2]),
     Reverb,
+    Amp,
 }
 
 impl ChainSpec {
@@ -234,6 +98,7 @@ impl ChainSpec {
                     }))
                 }
                 BlockKind::Reverb => PreparedBlock::Reverb,
+                BlockKind::Amp => PreparedBlock::Amp,
             })
         });
         PreparedChain {
@@ -268,6 +133,9 @@ impl PreparedChain {
                 reverb: Reverb::new(self.sample_rate),
                 cuts: [[Biquad::default(); 2]; 2],
             })),
+            Some(PreparedBlock::Amp) => Block::Amp(Box::new(
+                [(); 2].map(|()| Amp::new(rate, crate::AmpKnobs::default())),
+            )),
         });
         let mut chain = Chain {
             rate,
@@ -298,6 +166,8 @@ enum Block {
     Impulse(Box<ImpulseBlock>),
     Room(Box<ImpulseBlock>),
     Reverb(Box<ReverbBlock>),
+    /// Left and right (the right only once the signal is stereo).
+    Amp(Box<[Amp; 2]>),
 }
 
 /// The computed reverb and the cut filters on its sound, left and right.
@@ -337,6 +207,12 @@ impl Chain {
                     Some(&mut reverb.cuts),
                     (new.reverb.low_cut, new.reverb.high_cut),
                 ),
+                Block::Amp(sides) => {
+                    for side in sides.iter_mut() {
+                        side.set_knobs(new.amp);
+                    }
+                    (None, (0.0, 0.0))
+                }
                 Block::Empty => (None, (0.0, 0.0)),
             };
             if let Some(filters) = filters {
@@ -373,6 +249,11 @@ impl Chain {
                         filter.reset();
                     }
                 }
+                Block::Amp(sides) => {
+                    for side in sides.iter_mut() {
+                        side.reset();
+                    }
+                }
                 Block::Reverb(reverb) => {
                     reverb.reverb.clear();
                     for filter in reverb.cuts.iter_mut().flatten() {
@@ -397,6 +278,15 @@ impl Chain {
                 }
                 match block {
                     Block::Empty => {}
+                    Block::Amp(sides) => {
+                        let [left, right] = &mut **sides;
+                        signal[0] = left.process(signal[0]);
+                        signal[1] = if stereo {
+                            right.process(signal[1])
+                        } else {
+                            signal[0]
+                        };
+                    }
                     Block::Impulse(impulse) => {
                         let knobs = settings.impulse;
                         let gain = 10.0_f32.powf(knobs.gain_db / 20.0);

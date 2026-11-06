@@ -164,9 +164,9 @@ described in the literature below:
   shapes and fades are applied per block, tracks are mixed with their volume and pan. The
   SoundFont gets no note-ons or bends of a modelled track. 96 ringing strings take about
   57 ms per second of audio (budget 250 ms, `cargo xtask bench`).
-- **Not yet:** pickup, amp and cabinet (step 2), body, coupling and two polarizations
-  (step 3), noises and feel (step 4). Everything is one generic string model now: the
-  electric preset has no amp, so distorted parts sound clean. Harmonics play the
+- **Not yet:** pickup position (step 2), body, coupling and two polarizations
+  (step 3), noises and feel (step 4). Everything is one generic string model now; a
+  distorted part sounds distorted once its chain has an Amp block (below). Harmonics play the
   harmonic's pitch with a purer pluck rather than damping at a node.
 
 ## The effect chain (2026-11-06)
@@ -181,7 +181,24 @@ described in the literature below:
   guitar's body too. *Room*, a room's impulse response (stereo if recorded so): a
   convolution reverb with its length (the decay stretched 0.5× to 4×, below), mix, gain,
   cuts and width. *Reverb*, computed after Freeverb
-  (public domain): size, damping, width, mix, and a low and high cut on its sound. Amp blocks come with step 2.
+  (public domain): size, damping, width, mix, and a low and high cut on its sound. *Amp*,
+  computed (below).
+- **Amp** (`gscore-guitar::amp`, 2026-11-06): no capture of a real amp, the parts that
+  make a tube preamp sound as it does. An input pad (the strings come in hot: a power chord
+  picked hard peaks near 4), a low cut before the clipping (*tight*: 40, 90, 160 Hz by
+  voice) and a mid bell (the lead voice pushes 750 Hz by 7 dB, like a boost pedal in
+  front), the Gain knob, then one to three soft-clipping stages, a little lopsided (a
+  tube's bias: even harmonics), each followed by a coupling low cut and a plate high
+  cut. The stages run 4× oversampled (sixth-order Butterworth up and down), so the
+  harmonics they make above half the sample rate do not fold back as fizz (test: a 3 kHz
+  tone clipped hard leaves under 3 % between its harmonics). After them the tone stack
+  (bass shelf 120 Hz, mid bell 700 Hz, treble shelf 3 kHz, ±12 dB each) and a built-in
+  speaker: a closed 4×12 approximated by filters (low cut 75 Hz, 110 Hz resonance, a dip
+  at 450 Hz, presence at 2.4 kHz, fourth-order roll-off at 5 kHz). The Speaker knob blends
+  it out for a cabinet's impulse response in a Cab block after the amp. Voices: *Clean*
+  (one stage, the pad given back so it plays at the strings' level), *Crunch* (two),
+  *Lead* (three); their outputs are trimmed to within about 3 dB of one another on a
+  power chord. About 0.9 % of a core per track (release).
 - **Convolution** (`gscore-guitar::convolver`): an own FFT and partitioned overlap-save in
   three stages (partitions of 128, 1024 and 8192 samples): 128 samples of lag, and long
   tails cheap. The two large stages are one block later and spread their frame (a

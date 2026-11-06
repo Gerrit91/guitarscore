@@ -50,7 +50,7 @@ fn playing_strings_and_running_a_chain_never_allocate() {
     let spec = ChainSpec {
         blocks: [
             Some(BlockKind::Impulse(body)),
-            None,
+            Some(BlockKind::Amp),
             Some(BlockKind::Reverb),
             Some(BlockKind::room(room, 2.0)),
             None,
@@ -65,6 +65,7 @@ fn playing_strings_and_running_a_chain_never_allocate() {
         if round % 100 == 0 {
             knobs[3].room.mix = (round % 300) as f32 / 300.0;
             knobs[2].bypass = round % 200 == 0;
+            knobs[1].amp.gain = (round % 700) as f32 / 700.0;
             chain.set_settings(&knobs);
         }
         let input = block;

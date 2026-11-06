@@ -136,6 +136,74 @@ impl Biquad {
         }
     }
 
+    /// A bell at `centre` Hz, `gain_db` up or down, of quality `q` (RBJ peaking EQ).
+    pub(crate) fn peaking(sample_rate: f32, centre: f32, q: f32, gain_db: f32) -> Self {
+        let centre = centre.clamp(20.0, sample_rate * 0.45);
+        let a = 10.0_f32.powf(gain_db / 40.0);
+        let w = TAU * centre / sample_rate;
+        let alpha = w.sin() / (2.0 * q.max(0.1));
+        let cos = w.cos();
+        let a0 = 1.0 + alpha / a;
+        Biquad {
+            b0: (1.0 + alpha * a) / a0,
+            b1: -2.0 * cos / a0,
+            b2: (1.0 - alpha * a) / a0,
+            a1: -2.0 * cos / a0,
+            a2: (1.0 - alpha / a) / a0,
+            ..Biquad::default()
+        }
+    }
+
+    /// A shelf at `corner` Hz raising or lowering everything below it (`high` false) or
+    /// above it (`high` true) by `gain_db` (RBJ shelves, slope 1).
+    pub(crate) fn shelf(sample_rate: f32, corner: f32, gain_db: f32, high: bool) -> Self {
+        let corner = corner.clamp(20.0, sample_rate * 0.45);
+        let a = 10.0_f32.powf(gain_db / 40.0);
+        let w = TAU * corner / sample_rate;
+        let cos = w.cos();
+        // Slope 1: alpha = sin(w) / 2 * sqrt(2).
+        let alpha = w.sin() / 2.0 * std::f32::consts::SQRT_2;
+        let root = 2.0 * a.sqrt() * alpha;
+        let (p, m) = (a + 1.0, a - 1.0);
+        let (b0, b1, b2, a0, a1, a2) = if high {
+            (
+                a * (p + m * cos + root),
+                -2.0 * a * (m + p * cos),
+                a * (p + m * cos - root),
+                p - m * cos + root,
+                2.0 * (m - p * cos),
+                p - m * cos - root,
+            )
+        } else {
+            (
+                a * (p - m * cos + root),
+                2.0 * a * (m - p * cos),
+                a * (p - m * cos - root),
+                p + m * cos + root,
+                -2.0 * (m + p * cos),
+                p + m * cos - root,
+            )
+        };
+        Biquad {
+            b0: b0 / a0,
+            b1: b1 / a0,
+            b2: b2 / a0,
+            a1: a1 / a0,
+            a2: a2 / a0,
+            ..Biquad::default()
+        }
+    }
+
+    /// The gain at `frequency` Hz for `sample_rate` (for tests and level matching).
+    #[cfg(test)]
+    pub(crate) fn gain_at(&self, sample_rate: f32, frequency: f32) -> f32 {
+        let w = TAU * frequency / sample_rate;
+        let (c1, s1, c2, s2) = (w.cos(), w.sin(), (2.0 * w).cos(), (2.0 * w).sin());
+        let num = (self.b0 + self.b1 * c1 + self.b2 * c2).hypot(self.b1 * s1 + self.b2 * s2);
+        let den = (1.0 + self.a1 * c1 + self.a2 * c2).hypot(self.a1 * s1 + self.a2 * s2);
+        num / den.max(1e-12)
+    }
+
     /// The same filter with new coefficients, keeping what it is filtering.
     pub(crate) fn retuned(self, other: Biquad) -> Self {
         Biquad {

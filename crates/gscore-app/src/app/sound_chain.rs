@@ -2,7 +2,7 @@
 //! pedal board. Six boxes in a fixed row, joined by cables: what plays the track first
 //! (MIDI synth or PM synthesis; their sound - the kind of string and its knobs - shows in
 //! the same window), then five places, each empty or holding a block (a cabinet or body
-//! impulse response, a room impulse response, the computed reverb). The selected place's
+//! impulse response, a room impulse response, the computed reverb, the computed amp). The selected place's
 //! choices or knobs show below the board. One chain per kind of string; every change is
 //! heard at once and kept in the settings.
 
@@ -101,6 +101,7 @@ fn box_text(block: &BlockSetting) -> (String, String) {
     let detail = match block.choice {
         BlockChoice::Empty => String::new(),
         BlockChoice::Reverb => "computed".to_owned(),
+        BlockChoice::Amp => block.voice.label().to_owned(),
         BlockChoice::Cabinet | BlockChoice::Room => block
             .file
             .as_ref()
@@ -351,8 +352,13 @@ struct BoardActions {
 }
 
 /// What an empty place can hold: the block, the name its menu shows, and what it does.
-fn block_choices() -> [(BlockChoice, &'static str, &'static str); 3] {
+fn block_choices() -> [(BlockChoice, &'static str, &'static str); 4] {
     [
+        (
+            BlockChoice::Amp,
+            "Amp",
+            "A computed guitar amp: clean, crunch or lead, with a tone stack and a speaker",
+        ),
         (
             BlockChoice::Cabinet,
             "Cabinet / body",
@@ -623,6 +629,7 @@ pub(super) fn block_knobs(
         ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
         match block.choice {
             BlockChoice::Empty => {}
+            BlockChoice::Amp => moved.changed |= super::amp_knobs::amp_knobs(ui, block),
             BlockChoice::Cabinet | BlockChoice::Room => {
                 // First the room itself: how long it lasts.
                 if block.choice == BlockChoice::Room {

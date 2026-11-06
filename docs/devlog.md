@@ -3460,3 +3460,21 @@ needed for a much larger font); owner listening check.
   are gone (a song without measures keeps it off).
 - Tests: Loop turns on and off with no selection and with a single beat selected; the score
   selection test now expects the button to be usable without one.
+
+## 2026-11-06 — An Amp block in the sound chain
+
+- New block **Amp** (first in the menu of an empty place), computed in `gscore-guitar::amp`:
+  three voices (Clean, Crunch, Lead: one to three soft-clipping stages, lopsided like a
+  tube), run 4× oversampled so hard distortion does not alias; Gain, Bass, Mid, Treble,
+  Speaker (a built-in 4×12, blended out to 0 when a cabinet IR follows in a Cab block) and
+  Level. The box shows "Amp" and the voice. Choosing a voice or turning a knob is heard at
+  once (no rebuild). Saved in the settings as `voice` (`clean`/`crunch`/`lead`), `drive`,
+  `bass`, `middle`, `treble`, `speaker`; Level is the block's `gain_db`.
+- Calibrated on the modelled strings: their output is hot (a power chord peaks near 4), so
+  the amp pads its input; Clean plays at the strings' level, the voices within about 3 dB.
+- Knob types moved from `chain.rs` to `knobs.rs` (the file passed 500 lines).
+- Tests: more gain more harmonics, clean stays clean, little aliasing at 3 kHz, voices about
+  equally loud, silence stays silent, tone stack and speaker responses, a power chord through
+  every voice and gain bounded, distortion squashes the attack, knobs while playing, no tail,
+  no allocation; settings round trip; the playback chain gets the amp. Cost (ignored test):
+  0.9 % of a core per track in release.

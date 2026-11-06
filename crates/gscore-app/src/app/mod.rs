@@ -7,6 +7,7 @@
 
 mod about;
 mod alert;
+mod amp_knobs;
 mod bars;
 mod beat_text_editor;
 mod chord_editor;
