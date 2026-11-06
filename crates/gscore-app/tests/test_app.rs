@@ -64,6 +64,42 @@ fn without_a_file_the_app_explains_how_to_open_one() {
 }
 
 #[test]
+fn a_new_empty_workspace_comes_from_the_tab_strip() {
+    // Short frames: a double click must land within egui's 0.3 s window, and the default
+    // frame is a quarter of a second long.
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .with_step_dt(1.0 / 120.0)
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/steel_guitar_dadgad.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(started.elapsed() < Duration::from_secs(30), "timed out");
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    assert!(harness.state().document().is_some());
+    // The "+" after the tabs opens the empty workspace, without closing the tab.
+    harness.get_by_label("New workspace").click();
+    harness.run();
+    assert!(harness.state().document().is_none(), "nothing active");
+    harness.get_by_label_contains("Open a song");
+    // The tab is still there, and clicking it brings the song back.
+    let tab = harness
+        .query_all_by_label_contains("Tab 1:")
+        .next()
+        .expect("the tab");
+    tab.click();
+    harness.run();
+    assert!(harness.state().document().is_some(), "the tab came back");
+    // The rest of the strip is there for the double click (egui's own detection, as on the
+    // mixer's knobs); a physical double click cannot be replayed reliably here.
+    harness.get_by_label_contains("Empty tab strip");
+}
+
+#[test]
 fn files_that_cannot_be_opened_give_a_notice_not_a_crash() {
     for (file, expected) in [
         (testdata("basic/no_such_file.gp"), "cannot read"),
