@@ -55,7 +55,7 @@ fn range((low, high): (f32, f32)) -> RangeInclusive<f32> {
 }
 
 /// One knob: a labelled slider with its explanation on hover. Returns whether it moved.
-fn knob(
+pub(super) fn knob(
     ui: &mut egui::Ui,
     value: &mut f32,
     limits: (f32, f32),

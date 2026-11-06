@@ -221,6 +221,20 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.get_by_label("Track color").click();
     harness.run();
     harness.snapshot("color_picker");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    // The Sound chain: a reverb in the second place, then the strings' own dialog.
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    harness.get_by_label("Block 2: +").click();
+    harness.run();
+    harness.get_by_label("Reverb").click();
+    harness.run();
+    harness.get_by_label("Block 2: Reverb");
+    harness.snapshot("sound_chain_window");
+    harness.get_by_label("Strings").click();
+    harness.run();
+    harness.snapshot("string_sound_dialog");
 }
 
 #[test]

@@ -5,6 +5,7 @@
 
 mod app;
 mod canvas;
+mod chain_settings;
 mod document;
 mod export;
 mod fonts;

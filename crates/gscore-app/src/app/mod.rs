@@ -37,6 +37,7 @@ mod settings_page;
 mod settings_window;
 mod shape_editor;
 mod shortcuts;
+mod sound_chain;
 mod staff_pickers;
 mod staff_widgets;
 mod string_sound;
@@ -131,6 +132,8 @@ pub struct GuitarScoreApp {
     tuner: Option<tuner::TunerState>,
     /// The String sound dialog, while it is open.
     string_sound: Option<string_sound::StringSoundDialog>,
+    /// The Sound chain window, while it is open.
+    sound_chain: Option<sound_chain::SoundChainWindow>,
     /// What the app remembers between runs.
     settings: Settings,
     /// Where the settings are stored (`None` keeps them only in memory; a browser keeps
@@ -253,6 +256,7 @@ impl GuitarScoreApp {
             about: None,
             tuner: None,
             string_sound: None,
+            sound_chain: None,
             settings,
             settings_path,
             panel_sizes,
@@ -269,6 +273,8 @@ impl GuitarScoreApp {
             .store_modelled_guitars(app.settings.modelled_guitars);
         app.playback.set_sample_rate(app.settings.sample_rate);
         app.playback.store_string_sounds(app.settings.string_sounds);
+        app.playback
+            .store_string_chains(app.settings.string_chains.clone());
         app.playback.set_count_in_bars(app.settings.count_in_bars);
         app.playback.set_count_in_loops(app.settings.count_in_loops);
         let _ = app.playback.set_speed(app.settings.playback_speed);
@@ -306,6 +312,7 @@ impl GuitarScoreApp {
         settings.modelled_guitars = self.playback.modelled_guitars();
         settings.sample_rate = self.playback.sample_rate();
         settings.string_sounds = self.playback.string_sounds();
+        settings.string_chains = self.playback.string_chains().clone();
         settings.midi_port = self.playback.port().map(str::to_owned);
         // Remember every tab backed by a real file, and which one was active. Setting the
         // old single-file key too keeps older versions reopening something sensible.
@@ -756,6 +763,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_new_song_dialog(&ctx);
         self.show_rename_window(&ctx);
         self.show_tuning_dialog(&ctx);
+        self.show_sound_chain(&ctx);
         self.show_string_sound(&ctx);
         self.show_settings_window(&ctx);
         self.show_shortcuts(&ctx);

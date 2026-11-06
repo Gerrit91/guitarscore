@@ -124,7 +124,7 @@ impl GuitarScoreApp {
             self.set_modelled_guitars(modelled);
         }
         if let Some(kind) = open_sound {
-            self.open_string_sound(kind);
+            self.open_sound_chain(kind);
         }
         if open_tuning && let Some(tab) = self.tabs.get_mut(self.active) {
             tab.track_panel.tuning = Some(tuning::TuningDialog::of(index, &snapshot));
@@ -436,9 +436,10 @@ fn string_sound(
             let button = icons::toolbar_button(
                 ui,
                 Icon::StringSound,
-                "String sound",
+                "Sound chain",
                 &format!(
-                    "String sound: dial in the {} strings (pick, sustain, tone)",
+                    "Sound chain: the {} strings and the effects after them (body, room, \
+                     reverb)",
                     crate::app::string_sound::kind_name(kind).to_lowercase()
                 ),
             );

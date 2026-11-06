@@ -334,6 +334,8 @@ pub struct Settings {
     pub sample_rate: Option<u32>,
     /// How each kind of modelled string sounds (the "String sound" dialog).
     pub string_sounds: StringSounds,
+    /// The effect chain after each kind of modelled string (the "Sound chain" window).
+    pub string_chains: crate::chain_settings::StringChains,
     /// The MIDI port chosen, if any.
     pub midi_port: Option<String>,
     /// Bend shapes saved as presets in the bend editor.
@@ -383,6 +385,7 @@ impl Default for Settings {
             modelled_guitars: false,
             sample_rate: None,
             string_sounds: StringSounds::default(),
+            string_chains: crate::chain_settings::StringChains::default(),
             midi_port: None,
             bend_presets: Vec::new(),
             whammy_presets: Vec::new(),

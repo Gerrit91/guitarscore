@@ -26,6 +26,14 @@ pub(crate) enum Event {
     PickedSoundFont(Option<Picked>),
     /// The save dialog closed; `None` if it was cancelled.
     PickedSave(Option<Picked>),
+    /// The impulse response dialog closed (for place `place` of `kind`'s chain); `None`
+    /// if it was cancelled.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    PickedImpulse {
+        kind: gscore_play::StringKind,
+        place: usize,
+        path: Option<PathBuf>,
+    },
     /// The export dialog closed; `None` if it was cancelled.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     PickedExport {
@@ -452,6 +460,35 @@ impl Tasks {
                 .map(Picked::from_path);
             Event::PickedSoundFont(picked)
         })
+    }
+
+    /// Shows the dialog for an impulse response (a WAV file) for place `place` of `kind`'s
+    /// chain, in the background.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn pick_impulse(
+        &mut self,
+        kind: gscore_play::StringKind,
+        place: usize,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        self.spawn("impulse response dialog", ctx, move || {
+            let path = rfd::FileDialog::new()
+                .set_title("Choose an impulse response (WAV)")
+                .add_filter("WAV audio", &["wav"])
+                .pick_file();
+            Event::PickedImpulse { kind, place, path }
+        })
+    }
+
+    /// Choosing an impulse response is not available in the browser build yet.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn pick_impulse(
+        &mut self,
+        _kind: gscore_play::StringKind,
+        _place: usize,
+        _ctx: &egui::Context,
+    ) -> Result<(), String> {
+        Err("loading impulse responses is not available in the browser build yet".to_owned())
     }
 
     /// Shows the save dialog in the background, suggesting `name`.

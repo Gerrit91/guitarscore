@@ -15,6 +15,7 @@ use gscore_audio::{MidiOutPlayer, SynthPlayer, midi_output_ports};
 use gscore_model::{
     BeatIndex, BeatPosition, MeasureIndex, NoteKind, Song, StringNumber, TrackIndex, VoiceIndex,
 };
+mod chains;
 mod demo;
 mod preview;
 
@@ -214,6 +215,13 @@ pub struct Playback {
     sample_rate: Option<u32>,
     /// How each kind of modelled string sounds.
     string_sounds: crate::settings::StringSounds,
+    /// The effect chain after each kind of string, the impulse responses read so far (by
+    /// file), and how many tracks of each kind the synthesizer's chains are made for.
+    string_chains: crate::chain_settings::StringChains,
+    impulses: std::collections::HashMap<PathBuf, Arc<gscore_guitar::ImpulseResponse>>,
+    chain_tracks: [usize; 4],
+    /// Messages about the chains (an impulse response that cannot be read), shown once.
+    chain_notices: Vec<String>,
     /// The metronome's volume, 0 to 1 (1 is full).
     metronome_volume: f32,
     /// The built-in synthesizer's click sound.
@@ -260,6 +268,10 @@ impl Default for Playback {
             modelled_guitars: false,
             sample_rate: None,
             string_sounds: crate::settings::StringSounds::default(),
+            string_chains: crate::chain_settings::StringChains::default(),
+            impulses: std::collections::HashMap::new(),
+            chain_tracks: [1; 4],
+            chain_notices: Vec::new(),
             metronome_volume: 1.0,
             click_sound: ClickSound::default(),
             count_in_bars: 1,
@@ -726,9 +738,11 @@ impl Playback {
             };
             self.player = Some(active);
             self.sequence = None;
-            // A new synthesizer starts with the presets: give it the dialed-in sounds.
+            // A new synthesizer starts with the presets: give it the dialed-in sounds and
+            // the chains.
             for kind in STRING_KINDS {
                 self.send_string_model(kind);
+                self.send_chain(kind);
             }
         }
         Ok(())
@@ -1168,12 +1182,15 @@ impl Playback {
         Ok(())
     }
 
-    /// Builds the song's sequence with the current metronome setting and volume.
-    fn build_sequence(&self, song: &Song) -> Result<Arc<Sequence>, String> {
-        Sequence::with_click(song, None, self.metronome.then(|| self.click()))
+    /// Builds the song's sequence with the current metronome setting and volume (and
+    /// makes sure the synthesizer's chains are made for as many tracks as it has).
+    fn build_sequence(&mut self, song: &Song) -> Result<Arc<Sequence>, String> {
+        let sequence = Sequence::with_click(song, None, self.metronome.then(|| self.click()))
             .map(|sequence| self.engines(sequence))
             .map(Arc::new)
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        self.sync_chains(&sequence);
+        Ok(sequence)
     }
 
     /// `sequence` with the engines chosen in the settings.
@@ -1427,6 +1444,9 @@ impl Playback {
 
     /// An output error that has not been reported yet.
     pub fn new_error(&mut self) -> Option<String> {
+        if let Some(notice) = self.chain_notice() {
+            return Some(notice);
+        }
         // A notice (the chosen sample rate was not available) is shown like an error, once.
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(Active::Synth(player)) = &self.player
@@ -1493,14 +1513,14 @@ mod tests {
         )])
         .unwrap();
         let mut playback = Playback::default();
-        let engine = |playback: &Playback| {
+        let engine = |playback: &mut Playback| {
             playback.build_sequence(&song).unwrap().performance.tracks[0].engine
         };
-        assert_eq!(engine(&playback), gscore_play::TrackEngine::SoundFont);
+        assert_eq!(engine(&mut playback), gscore_play::TrackEngine::SoundFont);
         playback.set_modelled_guitars(&song, true).unwrap();
         assert!(playback.modelled_guitars());
         assert!(matches!(
-            engine(&playback),
+            engine(&mut playback),
             gscore_play::TrackEngine::Modelled(_)
         ));
     }

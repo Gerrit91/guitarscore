@@ -276,7 +276,7 @@ impl GuitarScoreApp {
                     modelled: self.playback.modelled_guitars(),
                     sample_rate: self.playback.sample_rate(),
                     models: self.playback.string_models(),
-                    chains: Vec::new(),
+                    chains: self.playback.chain_choices(),
                 };
                 if let Err(error) = self.tasks.export_wav(song, path, audio, ctx) {
                     self.notice = Some(error);
@@ -403,6 +403,12 @@ impl GuitarScoreApp {
                 }
                 Event::PickedSoundFont(Some(picked)) => self.playback.use_soundfont(picked.path),
                 Event::PickedSoundFont(None) => {}
+                Event::PickedImpulse {
+                    kind,
+                    place,
+                    path: Some(path),
+                } => self.use_impulse(kind, place, path),
+                Event::PickedImpulse { path: None, .. } => {}
                 // Cancelled: whatever was waiting for the save does not happen.
                 Event::PickedSave(None) => self.abandon_save(),
                 Event::PickedExport { format, picked } => {
