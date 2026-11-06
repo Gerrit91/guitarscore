@@ -149,9 +149,15 @@ described in the literature below:
 - **Knobs:** every `StringModel` value has a range (`gscore_guitar::ranges`); the app's
   String sound dialog (track panel › Sound) turns them per kind of string, heard at once
   (`Command::StringModel`), kept in the settings, used by WAV export.
-- **Presets** (`GuitarModel`): nylon, steel, electric, bass; chosen by the track's General
-  MIDI program (24 nylon, 25 steel, 26-31 electric, 32-39 bass) through
-  `PerformanceTrack::engine`.
+- **Presets** (`GuitarModel`): nylon, steel (the owner's dialed-in sound), electric,
+  bass; chosen by default from the track's General MIDI program (24 nylon, 25 steel, 26-31
+  electric, 32-39 bass) through `PerformanceTrack::engine`, or per track in the String
+  sound window.
+- **Two directions of vibration and the bridge** (2026-11-06): each string is two loops,
+  the second detuned by a few cents and decaying faster (beating, two-stage decay); the
+  output blends the string's swing with the force on the bridge (its change), which
+  carries much less of the fundamental, as a bridge or a magnetic pickup does; then a low
+  cut. Without them the low notes sounded like a synthesizer bass (owner).
 - **In the synth engine** (`gscore-audio::guitars`): 16 tracks x 8 string voices are made
   with the engine. Notes start at the block they are due (as MIDI events do), pitch
   shapes and fades are applied per block, tracks are mixed with their volume and pan. The

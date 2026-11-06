@@ -3240,3 +3240,21 @@ needed for a much larger font); owner listening check.
   windows.
 - Details and costs in `docs/guitar-modelling.md`, "The effect chain".
 
+## 2026-11-06 — Less synth bass, presets, and choosing what plays a track
+
+- The owner dialed in a Steel sound (now the built-in Steel preset) and still heard a
+  synth-bass character; roundness made it worse. Measured on low E: the fundamental was
+  the loudest partial throughout (harmonic 4 down 12-14 dB), a nearly sine bottom, where
+  a real steel string's harmonics 2-4 are louder than its fundamental, and a real tone
+  moves (two directions of vibration). Now: a second loop per string (second vibration,
+  detune), the output blended with the force on the bridge (bridge), and a low cut.
+  Harmonics 2-4 gain 4-5 dB against the fundamental at bridge 0.6; the Steel preset uses
+  0.85 and a 110 Hz low cut.
+- String sound window: Played by (SoundFont or any kind of string, default from the
+  preset), named presets per kind in the settings, the four new knobs, two columns.
+  The Sound chain window lost its kind buttons and follows its track. The track panel's
+  Sound section only shows what plays the track and opens the chain.
+- Open: a track's own choice of player is kept with the open document by track index,
+  not in the file (owner to decide how to store it); after moving tracks it can point at
+  the wrong one.
+
