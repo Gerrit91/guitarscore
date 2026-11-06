@@ -3276,10 +3276,10 @@ needed for a much larger font); owner listening check.
 ## 2026-11-06 — Mixer: mute in red, solo in amber, silent tracks recede
 
 - Mute ("M") is red and solo ("S") amber, in the song grid's track column, the master row
-  and the mixer strips: a tinted letter with a faint outline at rest, the whole button
-  filled while engaged (white ink on red, near-black on amber, since white on amber is
-  hard to read). `style::Tokens` gained `mute` and `solo`, so the two states can never be
-  confused with each other or with the blue accent.
+  and the mixer strips: an ordinary button at rest (no color of its own, as the owner
+  asked), the whole button filled while engaged (white ink on red, near-black on amber,
+  since white on amber is hard to read). `style::Tokens` gained `mute` and `solo`, so the
+  two states can never be confused with each other or with the blue accent.
 - `TrackRow::audible`: a track is heard when it is not muted and, if anything is soloed, is
   itself soloed. Silent tracks recede everywhere: the grid's measure squares and the
   track's color swatch, name and instrument icon are darkened (`mixer::sounding_color`,
