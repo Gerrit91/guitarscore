@@ -3,7 +3,8 @@
 
 use std::io::Write;
 
-use gscore_play::{PlayError, Sequence};
+use gscore_guitar::StringModel;
+use gscore_play::{PlayError, Sequence, StringKind};
 
 use crate::synth::{BLOCK, SoundBank, SynthEngine};
 
@@ -33,10 +34,22 @@ pub fn write_wav(
 
 /// Like [`write_wav`] at a chosen sample rate.
 pub fn write_wav_at(
+    writer: impl Write,
+    sequence: &Sequence,
+    bank: &SoundBank,
+    sample_rate: u32,
+) -> Result<WavInfo, PlayError> {
+    write_wav_with(writer, sequence, bank, sample_rate, &[])
+}
+
+/// Like [`write_wav_at`], with the modelled strings of each listed kind sounding as its
+/// model (the others keep their presets).
+pub fn write_wav_with(
     mut writer: impl Write,
     sequence: &Sequence,
     bank: &SoundBank,
     sample_rate: u32,
+    models: &[(StringKind, StringModel)],
 ) -> Result<WavInfo, PlayError> {
     let frames = frames_for(sequence, sample_rate)?;
     let data_bytes = frames
@@ -46,6 +59,9 @@ pub fn write_wav_at(
     write_header(&mut writer, sample_rate, data_bytes)?;
 
     let mut engine = SynthEngine::new(bank, sample_rate)?;
+    for &(kind, model) in models {
+        engine.set_string_model(kind, model);
+    }
     engine.load(std::sync::Arc::new(sequence.clone()));
     engine.play();
     let mut left = [0.0_f32; BLOCK];

@@ -181,6 +181,18 @@ impl SynthPlayer {
     }
 }
 
+impl SynthPlayer {
+    /// Makes the modelled strings of `kind` sound as `model`, heard at once (also while
+    /// the SoundFont still loads: the change waits in line).
+    pub fn set_string_model(
+        &self,
+        kind: gscore_play::StringKind,
+        model: gscore_guitar::StringModel,
+    ) -> Result<(), PlayError> {
+        self.send(Command::StringModel(kind, model))
+    }
+}
+
 impl Player for SynthPlayer {
     fn load(&mut self, sequence: Arc<Sequence>) -> Result<(), PlayError> {
         self.send(Command::Load(sequence))

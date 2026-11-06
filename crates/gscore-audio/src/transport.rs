@@ -7,7 +7,8 @@
 
 use std::sync::Arc;
 
-use gscore_play::{MidiEvent, PlayState, Scheduler, Sequence, TimedEvent};
+use gscore_guitar::StringModel;
+use gscore_play::{MidiEvent, PlayState, Scheduler, Sequence, StringKind, TimedEvent};
 
 /// A command for a backend.
 #[derive(Debug)]
@@ -25,6 +26,9 @@ pub(crate) enum Command {
     Replace(Arc<Sequence>),
     /// Ends the backend (the transport itself ignores it).
     Quit,
+    /// Changes how the modelled strings of one kind sound (the synth engine carries it
+    /// out; the transport and MIDI output ignore it).
+    StringModel(StringKind, StringModel),
 }
 
 /// Where a transport's events go.
@@ -141,7 +145,7 @@ impl Transport {
                     s.set_tempo_scale(scale, now);
                 }
             }
-            Command::Quit => {}
+            Command::Quit | Command::StringModel(..) => {}
         }
         None
     }

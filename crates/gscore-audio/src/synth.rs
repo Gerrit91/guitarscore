@@ -10,7 +10,8 @@ use std::io::{BufReader, Read};
 use std::path::Path;
 use std::sync::Arc;
 
-use gscore_play::{Channel, MidiEvent, PlayError, PlayState, Sequence, TimedEvent};
+use gscore_guitar::StringModel;
+use gscore_play::{Channel, MidiEvent, PlayError, PlayState, Sequence, StringKind, TimedEvent};
 use rustysynth::{SoundFont, Synthesizer, SynthesizerSettings};
 
 use crate::click::ClickVoice;
@@ -243,8 +244,17 @@ impl SynthEngine {
         }
     }
 
+    /// Makes the modelled strings of `kind` sound as `model` (heard at once).
+    pub fn set_string_model(&mut self, kind: StringKind, model: StringModel) {
+        self.guitars.set_model(kind, model);
+    }
+
     /// Carries out a player command now.
     pub(crate) fn apply(&mut self, command: Command) -> Option<Arc<Sequence>> {
+        if let Command::StringModel(kind, model) = command {
+            self.set_string_model(kind, model);
+            return None;
+        }
         let now = self.now();
         self.transport.handle(
             command,

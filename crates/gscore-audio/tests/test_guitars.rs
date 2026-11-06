@@ -214,3 +214,29 @@ fn a_wav_of_a_modelled_song_is_written() {
     let data = &bytes[44..];
     assert!(data.iter().any(|&byte| byte != 0), "not silent");
 }
+
+#[test]
+fn a_changed_string_model_is_heard_at_once() {
+    let mut engine = SynthEngine::new(&bank(), RATE).unwrap();
+    engine.load(Arc::new(
+        Sequence::new(&a3(), None).unwrap().with_modelled_guitars(),
+    ));
+    engine.play();
+    let before = render(&mut engine, 0.3);
+    let silent = gscore_guitar::StringModel {
+        level: 0.0,
+        ..gscore_audio::default_string_model(StringKind::Steel)
+    };
+    engine.set_string_model(StringKind::Steel, silent);
+    let after = render(&mut engine, 0.3);
+    assert!(rms(&before[4_800..]) > 0.01);
+    assert!(
+        rms(&after[4_800..]) < 1e-4,
+        "the level knob took effect while ringing"
+    );
+    // Another kind is not touched.
+    engine.set_string_model(
+        StringKind::Bass,
+        gscore_audio::default_string_model(StringKind::Bass),
+    );
+}

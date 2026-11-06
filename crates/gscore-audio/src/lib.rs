@@ -48,7 +48,12 @@ pub use web_player::WebPlayer;
 pub use tuner::TunerPlayer;
 #[cfg(target_arch = "wasm32")]
 pub use tuner_web::TunerPlayer;
-pub use wav::{WAV_SAMPLE_RATE, WavInfo, write_wav, write_wav_at};
+pub use wav::{WAV_SAMPLE_RATE, WavInfo, write_wav, write_wav_at, write_wav_with};
+
+/// The preset string model of `kind`, before the user turns any knob.
+pub fn default_string_model(kind: gscore_play::StringKind) -> gscore_guitar::StringModel {
+    guitars::default_model(kind)
+}
 
 // The integration test builds songs with `gscore-model`'s test support; this marks the
 // test-only dependency for the library test target's unused-dependency check.

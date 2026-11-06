@@ -11,7 +11,9 @@
 
 use std::sync::Arc;
 
-use gscore_guitar::{Attack as StrikeKind, GuitarModel, Pluck, Release, StringVoice, frequency};
+use gscore_guitar::{
+    Attack as StrikeKind, GuitarModel, Pluck, Release, StringModel, StringVoice, frequency,
+};
 use gscore_play::{Attack, Fade, Performance, PlayedNote, Sequence, StringKind, TrackEngine};
 
 use crate::synth::BLOCK;
@@ -39,6 +41,8 @@ pub(crate) struct Guitars {
     /// The note each voice plays now, if any.
     playing: Vec<Option<PlayedNote>>,
     slots: [Option<Slot>; SLOTS],
+    /// How each kind of string sounds (nylon, steel, electric, bass).
+    models: [StringModel; 4],
     /// The sequence the slots were set up for (by address; the transport owns it).
     sequence: usize,
     /// The next entry of the performance's `by_start` to start.
@@ -55,6 +59,21 @@ impl std::fmt::Debug for Guitars {
             .field("cursor", &self.cursor)
             .finish_non_exhaustive()
     }
+}
+
+/// The place of `kind` in [`Guitars::models`].
+fn kind_index(kind: StringKind) -> usize {
+    match kind {
+        StringKind::Nylon => 0,
+        StringKind::Steel => 1,
+        StringKind::Electric => 2,
+        StringKind::Bass => 3,
+    }
+}
+
+/// The preset of `kind`.
+pub(crate) fn default_model(kind: StringKind) -> StringModel {
+    model_of(kind).strings()
 }
 
 fn model_of(kind: StringKind) -> GuitarModel {
@@ -109,6 +128,13 @@ impl Guitars {
                 .collect(),
             playing: vec![None; count],
             slots: [None; SLOTS],
+            models: [
+                StringKind::Nylon,
+                StringKind::Steel,
+                StringKind::Electric,
+                StringKind::Bass,
+            ]
+            .map(default_model),
             sequence: 0,
             cursor: 0,
             resync: true,
@@ -120,6 +146,25 @@ impl Guitars {
     /// its MIDI notes must not reach the SoundFont.
     pub(crate) fn plays(&self, track: usize) -> bool {
         self.slots.iter().flatten().any(|slot| slot.track == track)
+    }
+
+    /// Makes the strings of `kind` sound as `model`, at once for those sounding.
+    pub(crate) fn set_model(&mut self, kind: StringKind, model: StringModel) {
+        if let Some(slot) = self.models.get_mut(kind_index(kind)) {
+            *slot = model;
+        }
+        for (index, slot) in self.slots.iter().enumerate() {
+            if slot.is_some_and(|slot| slot.kind == kind) {
+                let first = index.saturating_mul(STRINGS);
+                for voice in self
+                    .voices
+                    .get_mut(first..first.saturating_add(STRINGS))
+                    .unwrap_or_default()
+                {
+                    voice.set_model(model);
+                }
+            }
+        }
     }
 
     /// Stops every string quickly (stop, pause, seek, a new sequence).
@@ -166,8 +211,10 @@ impl Guitars {
             for string in first..first.saturating_add(STRINGS) {
                 if let Some(voice) = self.voices.get_mut(string) {
                     voice.silence();
-                    if let Some(slot) = new {
-                        voice.set_model(model_of(slot.kind).strings());
+                    if let Some(slot) = new
+                        && let Some(&model) = self.models.get(kind_index(slot.kind))
+                    {
+                        voice.set_model(model);
                     }
                 }
                 if let Some(note) = self.playing.get_mut(string) {
