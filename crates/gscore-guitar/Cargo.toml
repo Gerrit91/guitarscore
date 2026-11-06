@@ -1,0 +1,10 @@
+[package]
+name = "gscore-guitar"
+version.workspace = true
+edition = "2024"
+description = "Physically modelled guitar and bass strings (digital waveguides)"
+
+[dependencies]
+
+[lints]
+workspace = true
