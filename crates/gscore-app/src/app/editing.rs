@@ -227,6 +227,14 @@ impl GuitarScoreApp {
                     ctx.request_repaint();
                     return;
                 }
+                // Like the window's close button: unsaved changes are asked about first.
+                // A browser tab is closed by the browser.
+                ActionId::Quit => {
+                    if cfg!(not(target_arch = "wasm32")) {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                    return;
+                }
                 _ => {}
             }
         }
@@ -839,6 +847,7 @@ fn needs_no_song(action: Action) -> bool {
                 | ActionId::OpenFile
                 | ActionId::OpenSettings
                 | ActionId::ShowHistory
+                | ActionId::Quit
                 | ActionId::ZoomIn
                 | ActionId::ZoomOut
                 | ActionId::ZoomReset

@@ -2293,4 +2293,9 @@ fn the_view_menu_shows_one_key_per_entry() {
     harness.get_by_label("Zoom in ctrl++");
     harness.get_by_label("Zoom out ctrl+-");
     harness.get_by_label("Actual size ctrl+0");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Quit ctrl+q");
 }

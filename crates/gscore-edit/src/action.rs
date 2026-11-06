@@ -230,6 +230,8 @@ pub enum ActionId {
     SaveAs,
     /// Open the settings window.
     OpenSettings,
+    /// Quit the app (asking about unsaved changes first).
+    Quit,
 }
 
 impl ActionId {
@@ -610,6 +612,7 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::OpenFile, "open_file", "Open…"),
     info(ActionId::SaveAs, "save_as", "Save As…"),
     info(ActionId::OpenSettings, "open_settings", "Settings…"),
+    info(ActionId::Quit, "quit", "Quit"),
 ];
 
 const fn info(action: ActionId, id: &'static str, label: &'static str) -> ActionInfo {
@@ -685,6 +688,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 109, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 110, "one entry per ActionId variant");
     }
 }

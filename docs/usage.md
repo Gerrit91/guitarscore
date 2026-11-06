@@ -22,6 +22,7 @@ has the overview.
 | Ctrl+Shift+S | Save As |
 | Ctrl+N / Ctrl+O | New song / open a file |
 | Ctrl+, | Settings |
+| Ctrl+Q | Quit (asks about unsaved changes) |
 | Shift+H | History |
 | Shift+L | Lyrics |
 | F11 | Full screen |

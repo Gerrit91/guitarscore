@@ -105,7 +105,7 @@ impl GuitarScoreApp {
                 // A browser tab is closed by the browser, not from the page.
                 if cfg!(not(target_arch = "wasm32")) {
                     ui.separator();
-                    if ui.button("Quit").clicked() {
+                    if self.action_button(ui, ActionId::Quit, true) {
                         ui.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 }
