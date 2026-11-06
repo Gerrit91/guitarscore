@@ -3221,3 +3221,22 @@ needed for a much larger font); owner listening check.
 - Open: the browser build does not take the knobs yet (the worklet has no message for
   them); the mixer colours the owner asked for go to another model.
 
+## 2026-11-06 — The sound chain: cabinet, body and room impulse responses, reverb
+
+- Owner's request: an impulse response loader for the acoustic guitar and a way to chain
+  effects, shown as a pedal board (six boxes in a fixed row, cables between them, the
+  strings first and fixed). Also asked: a cab block is an IR loader (yes: one block,
+  "Cabinet / body", with low and high cut); a reverb from a room's impulse response
+  (yes: the "Room" block, a stereo convolution reverb) next to the computed one.
+- `gscore-guitar`: FFT, staged partitioned convolver, WAV impulse responses, Freeverb,
+  `ChainSpec` / `PreparedChain` / `Chain` with `BlockSettings`. Tests: convolution equals
+  direct convolution over every stage, WAV formats and damaged files, a unit response, a
+  stereo room whose tail stops, everything finite, no allocation while running.
+- `gscore-audio`: `ChainSet` (an instance per track of a kind), `SynthPlayer::set_chain`
+  prepared on the synth thread, `set_chain_settings` straight to the callback, chains in
+  WAV export. Test: a room rings on after a palm-muted note.
+- App: the Sound chain window, IR file dialog, chains in the settings, the track panel's
+  button opens the chain (its first box the String sound dialog). Snapshots of both
+  windows.
+- Details and costs in `docs/guitar-modelling.md`, "The effect chain".
+

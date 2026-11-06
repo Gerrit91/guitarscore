@@ -162,6 +162,33 @@ described in the literature below:
   electric preset has no amp, so distorted parts sound clean. Harmonics play the
   harmonic's pitch with a purer pluck rather than damping at a node.
 
+## The effect chain (2026-11-06)
+
+- **The board** (owner's design): per kind of string, six boxes in a fixed row joined by
+  cables, like a pedal board; the order cannot change and boxes do not move. The strings
+  come first and cannot be removed (their box opens the String sound dialog); the five
+  places after them hold nothing or a block. Opened from the track panel's Sound section.
+- **Blocks:** *Cabinet / body*, an impulse response from a WAV file played mono with
+  mix, gain, low cut and high cut: what amp modelers call a cab block, and an acoustic
+  guitar's body too. *Room*, a room's impulse response (stereo if recorded so): a
+  convolution reverb with mix, gain, cuts and width. *Reverb*, computed after Freeverb
+  (public domain): size, damping, width, mix. Amp blocks come with step 2.
+- **Convolution** (`gscore-guitar::convolver`): an own FFT and partitioned overlap-save in
+  three stages (partitions of 128, 1024 and 8192 samples): 128 samples of lag, and long
+  tails cheap. Measured per track and second of audio (release): a 3 s stereo room
+  17.5 ms, a 0.2 s body 9.4 ms, the computed reverb 1 ms. The dry signal is delayed by the
+  lag so a mix does not comb-filter.
+- **Impulse responses:** WAV, 16/24/32-bit PCM or 32/64-bit float, up to two channels,
+  read defensively, capped at 6 s, scaled to unit energy, resampled linearly to the
+  engine's rate. No responses ship with the program (licenses); the user loads their own.
+- **Real time:** a new block or file prepares the chain on the synth's own thread (which
+  knows the device rate), one instance per track of that kind (a 6 s stereo room needs
+  about 9 MB per instance), and swaps it into the callback; the old one is freed on that
+  thread. Knob values go straight to the callback, so tails are not cut while a knob
+  turns. A tail counts as over after 0.5 s of silence. WAV export uses the same chains.
+- **Not yet:** the browser build has no chains (no file dialog, no message for them);
+  chains are per kind of string, kept in the settings, not per track in the document.
+
 ## Faust
 
 Faust (faust.grame.fr, GRAME) is a functional language for signal processing that
