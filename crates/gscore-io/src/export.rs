@@ -14,7 +14,11 @@ use crate::format::FileFormat;
 ///
 /// The Guitar Pro 3-5 writers produce version 3.00, 4.06 and 5.10 files.
 pub fn export_to_bytes(song: &Song, format: FileFormat) -> Result<Vec<u8>, IoError> {
-    let gp = interop::as_gp(song);
+    // GP3-5 keep lyrics per measure and GP6/GP7 per beat; write both representations so a
+    // conversion between them keeps the words.
+    let mut song = song.clone();
+    song.synchronize_lyrics();
+    let gp = interop::as_gp(&song);
     contain(format, "writer", || match format {
         FileFormat::Gp => gp.write_gp(),
         FileFormat::Gpx => gp.write_gpx(),

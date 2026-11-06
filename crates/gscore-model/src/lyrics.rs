@@ -142,6 +142,65 @@ impl Song {
         placed
     }
 
+    /// Copies the lyrics between the two places Guitar Pro keeps them: the per-measure
+    /// lines (GP3-5) and the per-beat syllables (GP6/GP7). Export calls this so a file in
+    /// either format keeps its lyrics in the other.
+    pub fn synchronize_lyrics(&mut self) {
+        let lines = self.lyric_lines();
+        if lines.is_empty() {
+            return;
+        }
+        let track = self.lyric_track();
+        let count = self.measure_count();
+        let mut placed: Vec<(u8, MeasureIndex, BeatIndex, String)> = Vec::new();
+        for entry in &lines {
+            for (measure, beat, text) in
+                place_tokens(self, track, entry.start, lyric_tokens(&entry.text), count)
+            {
+                placed.push((entry.line, measure, beat, text));
+            }
+        }
+        let track_choice = u8::try_from(track.get()).unwrap_or(0);
+        let inner = self.inner_mut();
+        inner.lyrics.lines.clear();
+        for entry in &lines {
+            inner.lyrics.lines.push((
+                entry.line,
+                u16::try_from(entry.start.get().saturating_add(1)).unwrap_or(u16::MAX),
+                entry.text.clone(),
+            ));
+        }
+        inner.lyrics.lines.sort_by_key(|(line, _, _)| *line);
+        inner.lyrics.track_choice = track_choice;
+        let Some(gp_track) = inner.tracks.get_mut(track.get()) else {
+            return;
+        };
+        for measure in &mut gp_track.measures {
+            for voice in &mut measure.voices {
+                for beat in &mut voice.beats {
+                    beat.lyrics.clear();
+                }
+            }
+        }
+        for (line, measure, beat, text) in placed {
+            let Some(beat) = gp_track
+                .measures
+                .get_mut(measure.get())
+                .and_then(|measure| measure.voices.first_mut())
+                .and_then(|voice| voice.beats.get_mut(beat.get()))
+            else {
+                continue;
+            };
+            let line = usize::from(line);
+            if beat.lyrics.len() <= line {
+                beat.lyrics.resize(line.saturating_add(1), String::new());
+            }
+            if let Some(slot) = beat.lyrics.get_mut(line) {
+                *slot = text;
+            }
+        }
+    }
+
     /// Sets one lyric line: where its text starts and the text itself. An empty text
     /// removes the line. The syllables are written to the beats too, so GP6/GP7 keep them.
     /// Returns the change for undo.
@@ -496,5 +555,49 @@ mod tests {
         let after = crate::interop::from_gp(reread).unwrap();
         assert_eq!(after.lyric_syllables(TrackIndex::new(0)), before);
         assert_eq!(after.lyric_lines()[0].text, "Hel lo");
+    }
+
+    #[test]
+    fn legacy_measure_lines_are_copied_to_the_beats_for_gp7() {
+        // A GP3-5 song stores only the five lines, not syllables on the beats.
+        let mut gp = crate::test_support::song(vec![crate::test_support::track(
+            "Guitar",
+            crate::test_support::GUITAR_6,
+            vec![crate::test_support::measure(
+                (4, 4),
+                vec![vec![
+                    crate::test_support::beat(4, &[(1, 5)]),
+                    crate::test_support::beat(4, &[(1, 5)]),
+                    crate::test_support::beat(4, &[(1, 5)]),
+                    crate::test_support::beat(4, &[(1, 5)]),
+                ]],
+            )],
+        )]);
+        gp.lyrics.lines = vec![(0, 1, "one two".to_owned())];
+        let mut song = crate::interop::from_gp(gp).unwrap();
+        assert!(
+            song.beat(BeatPosition {
+                track: TrackIndex::new(0),
+                measure: MeasureIndex::new(0),
+                voice: VoiceIndex::new(0),
+                beat: BeatIndex::new(1),
+            })
+            .unwrap()
+            .lyrics()
+            .is_empty(),
+            "nothing on the beats before the export"
+        );
+        song.synchronize_lyrics();
+        assert_eq!(
+            song.beat(BeatPosition {
+                track: TrackIndex::new(0),
+                measure: MeasureIndex::new(0),
+                voice: VoiceIndex::new(0),
+                beat: BeatIndex::new(1),
+            })
+            .unwrap()
+            .lyrics(),
+            ["two"]
+        );
     }
 }
