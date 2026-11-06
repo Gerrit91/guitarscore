@@ -76,6 +76,8 @@ pub(crate) enum Icon {
     Tuner,
     /// The speed trainer (a speed gauge with its needle turned up).
     SpeedTrainer,
+    /// The String sound dialog: a string pulled aside at the pick point.
+    StringSound,
 }
 
 /// The size of the compact icon buttons in the panels and the toolbar.
@@ -515,6 +517,22 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 stroke.color,
                 Stroke::NONE,
             ));
+        }
+        Icon::StringSound => {
+            // A string between two posts, pulled aside near one end by the pick (a dot).
+            let half = size * 0.46;
+            let base = center.y + size * 0.2;
+            let left = pos2(center.x - half, base);
+            let right = pos2(center.x + half, base);
+            let pick = pos2(center.x - half * 0.45, center.y - size * 0.2);
+            painter.add(Shape::line(vec![left, pick, right], stroke));
+            for x in [left.x, right.x] {
+                painter.line_segment(
+                    [pos2(x, base - size * 0.2), pos2(x, base + size * 0.16)],
+                    stroke,
+                );
+            }
+            painter.circle_filled(pick, size * 0.09, color);
         }
         Icon::Tuner => {
             // A tuning fork: two prongs, the U where they meet, a stem and a base.

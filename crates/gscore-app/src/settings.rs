@@ -140,6 +140,114 @@ impl ShapePreset {
     }
 }
 
+/// One kind of modelled string as the user dialed it in: the knobs of
+/// [`gscore_guitar::StringModel`], kept as plain numbers in the settings file.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StringSound {
+    pub sustain: f32,
+    pub sustain_exponent: f32,
+    pub brilliance: f32,
+    pub stiffness: f32,
+    pub stiffness_stages: u8,
+    pub pick_position: f32,
+    pub hardness: f32,
+    pub softness: f32,
+    pub tone: f32,
+    pub resonance: f32,
+    pub level: f32,
+}
+
+impl Default for StringSound {
+    fn default() -> Self {
+        StringSound::from(gscore_audio::default_string_model(
+            gscore_play::StringKind::Electric,
+        ))
+    }
+}
+
+impl From<gscore_guitar::StringModel> for StringSound {
+    fn from(model: gscore_guitar::StringModel) -> Self {
+        StringSound {
+            sustain: model.sustain,
+            sustain_exponent: model.sustain_exponent,
+            brilliance: model.brilliance,
+            stiffness: model.stiffness,
+            stiffness_stages: u8::try_from(model.stiffness_stages).unwrap_or(0),
+            pick_position: model.pick_position,
+            hardness: model.hardness,
+            softness: model.softness,
+            tone: model.tone,
+            resonance: model.resonance,
+            level: model.level,
+        }
+    }
+}
+
+impl StringSound {
+    /// The model these knobs make, every value in its range.
+    pub fn model(&self) -> gscore_guitar::StringModel {
+        gscore_guitar::StringModel {
+            sustain: self.sustain,
+            sustain_exponent: self.sustain_exponent,
+            brilliance: self.brilliance,
+            stiffness: self.stiffness,
+            stiffness_stages: usize::from(self.stiffness_stages),
+            pick_position: self.pick_position,
+            hardness: self.hardness,
+            softness: self.softness,
+            tone: self.tone,
+            resonance: self.resonance,
+            level: self.level,
+        }
+        .sanitized()
+    }
+}
+
+/// The four kinds of modelled string, as dialed in.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StringSounds {
+    pub nylon: StringSound,
+    pub steel: StringSound,
+    pub electric: StringSound,
+    pub bass: StringSound,
+}
+
+impl Default for StringSounds {
+    fn default() -> Self {
+        let preset = |kind| StringSound::from(gscore_audio::default_string_model(kind));
+        StringSounds {
+            nylon: preset(gscore_play::StringKind::Nylon),
+            steel: preset(gscore_play::StringKind::Steel),
+            electric: preset(gscore_play::StringKind::Electric),
+            bass: preset(gscore_play::StringKind::Bass),
+        }
+    }
+}
+
+impl StringSounds {
+    /// The knobs of `kind`.
+    pub fn get(&self, kind: gscore_play::StringKind) -> StringSound {
+        match kind {
+            gscore_play::StringKind::Nylon => self.nylon,
+            gscore_play::StringKind::Steel => self.steel,
+            gscore_play::StringKind::Electric => self.electric,
+            gscore_play::StringKind::Bass => self.bass,
+        }
+    }
+
+    /// Sets the knobs of `kind`.
+    pub fn set(&mut self, kind: gscore_play::StringKind, sound: StringSound) {
+        match kind {
+            gscore_play::StringKind::Nylon => self.nylon = sound,
+            gscore_play::StringKind::Steel => self.steel = sound,
+            gscore_play::StringKind::Electric => self.electric = sound,
+            gscore_play::StringKind::Bass => self.bass = sound,
+        }
+    }
+}
+
 /// Everything the app remembers between runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -224,6 +332,8 @@ pub struct Settings {
     /// The sample rate the built-in synthesizer asks the device for (and WAV export uses);
     /// `None`: the device's own.
     pub sample_rate: Option<u32>,
+    /// How each kind of modelled string sounds (the "String sound" dialog).
+    pub string_sounds: StringSounds,
     /// The MIDI port chosen, if any.
     pub midi_port: Option<String>,
     /// Bend shapes saved as presets in the bend editor.
@@ -272,6 +382,7 @@ impl Default for Settings {
             prefer_synth: true,
             modelled_guitars: false,
             sample_rate: None,
+            string_sounds: StringSounds::default(),
             midi_port: None,
             bend_presets: Vec::new(),
             whammy_presets: Vec::new(),

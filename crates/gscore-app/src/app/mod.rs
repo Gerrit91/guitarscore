@@ -39,6 +39,7 @@ mod shape_editor;
 mod shortcuts;
 mod staff_pickers;
 mod staff_widgets;
+mod string_sound;
 mod style;
 mod swatches;
 mod tab;
@@ -128,6 +129,8 @@ pub struct GuitarScoreApp {
     about: Option<about::AboutWindow>,
     /// The tuner window, while it is open.
     tuner: Option<tuner::TunerState>,
+    /// The String sound dialog, while it is open.
+    string_sound: Option<string_sound::StringSoundDialog>,
     /// What the app remembers between runs.
     settings: Settings,
     /// Where the settings are stored (`None` keeps them only in memory; a browser keeps
@@ -249,6 +252,7 @@ impl GuitarScoreApp {
             settings_window: None,
             about: None,
             tuner: None,
+            string_sound: None,
             settings,
             settings_path,
             panel_sizes,
@@ -264,6 +268,7 @@ impl GuitarScoreApp {
         app.playback
             .store_modelled_guitars(app.settings.modelled_guitars);
         app.playback.set_sample_rate(app.settings.sample_rate);
+        app.playback.store_string_sounds(app.settings.string_sounds);
         app.playback.set_count_in_bars(app.settings.count_in_bars);
         app.playback.set_count_in_loops(app.settings.count_in_loops);
         let _ = app.playback.set_speed(app.settings.playback_speed);
@@ -300,6 +305,7 @@ impl GuitarScoreApp {
         settings.prefer_synth = matches!(self.playback.output(), Output::Synth(_));
         settings.modelled_guitars = self.playback.modelled_guitars();
         settings.sample_rate = self.playback.sample_rate();
+        settings.string_sounds = self.playback.string_sounds();
         settings.midi_port = self.playback.port().map(str::to_owned);
         // Remember every tab backed by a real file, and which one was active. Setting the
         // old single-file key too keeps older versions reopening something sensible.
@@ -750,6 +756,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_new_song_dialog(&ctx);
         self.show_rename_window(&ctx);
         self.show_tuning_dialog(&ctx);
+        self.show_string_sound(&ctx);
         self.show_settings_window(&ctx);
         self.show_shortcuts(&ctx);
         self.show_history(&ctx);

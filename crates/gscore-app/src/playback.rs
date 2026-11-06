@@ -15,6 +15,7 @@ use gscore_audio::{MidiOutPlayer, SynthPlayer, midi_output_ports};
 use gscore_model::{
     BeatIndex, BeatPosition, MeasureIndex, NoteKind, Song, StringNumber, TrackIndex, VoiceIndex,
 };
+mod demo;
 mod preview;
 
 pub use preview::Heard;
@@ -39,6 +40,14 @@ struct Audition {
 }
 
 pub(crate) use gscore_audio::SAMPLE_RATES;
+
+/// Every kind of modelled string.
+pub(crate) const STRING_KINDS: [gscore_play::StringKind; 4] = [
+    gscore_play::StringKind::Nylon,
+    gscore_play::StringKind::Steel,
+    gscore_play::StringKind::Electric,
+    gscore_play::StringKind::Bass,
+];
 
 /// Where playback goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -203,6 +212,8 @@ pub struct Playback {
     modelled_guitars: bool,
     /// The sample rate asked of the device; `None`: its own.
     sample_rate: Option<u32>,
+    /// How each kind of modelled string sounds.
+    string_sounds: crate::settings::StringSounds,
     /// The metronome's volume, 0 to 1 (1 is full).
     metronome_volume: f32,
     /// The built-in synthesizer's click sound.
@@ -248,6 +259,7 @@ impl Default for Playback {
             metronome: false,
             modelled_guitars: false,
             sample_rate: None,
+            string_sounds: crate::settings::StringSounds::default(),
             metronome_volume: 1.0,
             click_sound: ClickSound::default(),
             count_in_bars: 1,
@@ -415,6 +427,44 @@ impl Playback {
         }
         self.click_sound = sound;
         self.rebuild_sequence(song)
+    }
+
+    /// How the modelled strings sound, kind by kind.
+    pub fn string_sounds(&self) -> crate::settings::StringSounds {
+        self.string_sounds
+    }
+
+    /// The string models to render with, for audio export.
+    pub fn string_models(&self) -> Vec<(gscore_play::StringKind, gscore_guitar::StringModel)> {
+        STRING_KINDS
+            .iter()
+            .map(|&kind| (kind, self.string_sounds.get(kind).model()))
+            .collect()
+    }
+
+    /// Makes the modelled strings of `kind` sound as `sound`, heard at once while playing.
+    pub fn set_string_sound(
+        &mut self,
+        kind: gscore_play::StringKind,
+        sound: crate::settings::StringSound,
+    ) {
+        self.string_sounds.set(kind, sound);
+        self.send_string_model(kind);
+    }
+
+    /// Takes the dialed-in sounds without sending them (when the settings load).
+    pub fn store_string_sounds(&mut self, sounds: crate::settings::StringSounds) {
+        self.string_sounds = sounds;
+    }
+
+    /// Sends the model of `kind` to the running synthesizer, if any.
+    fn send_string_model(&self, kind: gscore_play::StringKind) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(Active::Synth(player)) = &self.player {
+            let _ = player.set_string_model(kind, self.string_sounds.get(kind).model());
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = kind;
     }
 
     /// The sample rate chosen for the built-in synthesizer (`None`: the device's own).
@@ -676,6 +726,10 @@ impl Playback {
             };
             self.player = Some(active);
             self.sequence = None;
+            // A new synthesizer starts with the presets: give it the dialed-in sounds.
+            for kind in STRING_KINDS {
+                self.send_string_model(kind);
+            }
         }
         Ok(())
     }

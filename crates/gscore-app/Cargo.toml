@@ -28,6 +28,7 @@ gscore-layout = { path = "../gscore-layout" }
 gscore-session = { path = "../gscore-session" }
 gscore-play = { path = "../gscore-play" }
 gscore-audio = { path = "../gscore-audio" }
+gscore-guitar = { path = "../gscore-guitar" }
 # GUI. Default features off; the window renderer is a feature of this crate (wgpu for the
 # desktop, glow/WebGL for the browser). Window backends for Linux (Wayland, X11) and
 # accessibility are named.

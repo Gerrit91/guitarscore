@@ -97,6 +97,9 @@ impl GuitarScoreApp {
 
         let mut commands: Vec<(Command, bool)> = Vec::new();
         let mut open_tuning = false;
+        let mut open_sound = None;
+        let mut modelled = self.playback.modelled_guitars();
+        let modelled_before = modelled;
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -111,11 +114,17 @@ impl GuitarScoreApp {
                     look::staves(ui, index, &snapshot, &mut commands);
                 });
                 style::section(ui, "track_sound", "Sound", |ui| {
-                    ui.label(RichText::new("Coming soon!").color(style::tokens(ui).text_weak));
+                    string_sound(ui, &snapshot, &mut modelled, &mut open_sound);
                 });
             });
         for (command, merge) in commands {
             self.apply_command(command, merge);
+        }
+        if modelled != modelled_before {
+            self.set_modelled_guitars(modelled);
+        }
+        if let Some(kind) = open_sound {
+            self.open_string_sound(kind);
         }
         if open_tuning && let Some(tab) = self.tabs.get_mut(self.active) {
             tab.track_panel.tuning = Some(tuning::TuningDialog::of(index, &snapshot));
@@ -394,6 +403,50 @@ fn instrument(
             false,
         ));
     }
+}
+
+/// The modelled strings for a guitar or bass track: the switch (for every guitar and bass)
+/// and the button that opens the String sound dialog on this track's kind of string.
+fn string_sound(
+    ui: &mut egui::Ui,
+    snapshot: &TrackPanel,
+    modelled: &mut bool,
+    open: &mut Option<gscore_play::StringKind>,
+) {
+    let kind = snapshot
+        .sound
+        .filter(|_| snapshot.kind == InstrumentKind::Strings && !snapshot.percussion)
+        .and_then(|sound| gscore_play::StringKind::for_program(sound.program));
+    let Some(kind) = kind else {
+        ui.label(
+            RichText::new("The SoundFont plays this track").color(style::tokens(ui).text_weak),
+        );
+        return;
+    };
+    ui.checkbox(modelled, "Modelled strings").on_hover_text(
+        "Play every guitar and bass track with physically modelled strings instead of the \
+         SoundFont (built-in synthesizer, experimental)",
+    );
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new(crate::app::string_sound::kind_name(kind))
+                .color(style::tokens(ui).text_weak),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let button = icons::toolbar_button(
+                ui,
+                Icon::StringSound,
+                "String sound",
+                &format!(
+                    "String sound: dial in the {} strings (pick, sustain, tone)",
+                    crate::app::string_sound::kind_name(kind).to_lowercase()
+                ),
+            );
+            if button.clicked() {
+                *open = Some(kind);
+            }
+        });
+    });
 }
 
 /// The sound: the General MIDI program, which is the preset the loaded SoundFont plays.

@@ -1732,6 +1732,7 @@ dependencies = [
  "egui_kittest",
  "gscore-audio",
  "gscore-edit",
+ "gscore-guitar",
  "gscore-layout",
  "gscore-model",
  "gscore-play",

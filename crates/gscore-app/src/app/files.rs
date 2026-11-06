@@ -271,13 +271,13 @@ impl GuitarScoreApp {
                     return;
                 };
                 let song = tab.document.song().clone();
-                let soundfont = self.playback.soundfont().map(Path::to_path_buf);
-                let modelled = self.playback.modelled_guitars();
-                let rate = self.playback.sample_rate();
-                if let Err(error) = self
-                    .tasks
-                    .export_wav(song, path, soundfont, modelled, rate, ctx)
-                {
+                let audio = crate::tasks::AudioExport {
+                    soundfont: self.playback.soundfont().map(Path::to_path_buf),
+                    modelled: self.playback.modelled_guitars(),
+                    sample_rate: self.playback.sample_rate(),
+                    models: self.playback.string_models(),
+                };
+                if let Err(error) = self.tasks.export_wav(song, path, audio, ctx) {
                     self.notice = Some(error);
                 }
             }

@@ -278,7 +278,19 @@ fn a_click_in_the_song_grid_while_playing_jumps_there() {
 }
 
 #[test]
-fn the_sound_section_is_a_placeholder_for_now() {
-    let harness = app_with("basic/note_lengths.gp");
-    harness.get_by_label("Coming soon!");
+fn the_sound_section_opens_the_string_sound_dialog() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    // A guitar track: the modelled strings' switch and the String sound button.
+    harness.get_by_label("Modelled strings");
+    harness.get_by_label("String sound").click();
+    harness.run();
+    for knob in ["Pick position", "Roundness", "Brilliance", "Tone"] {
+        assert!(harness.query_all_by_label(knob).next().is_some(), "{knob}");
+    }
+    harness.get_by_label("Close").click();
+    harness.run();
+    assert!(
+        harness.query_all_by_label("Brilliance").next().is_none(),
+        "closed"
+    );
 }

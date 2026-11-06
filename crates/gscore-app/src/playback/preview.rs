@@ -35,6 +35,27 @@ impl Playback {
                 "the beat has no note to play (or its track is muted)".to_owned(),
             ));
         };
+        self.hear(excerpt)
+    }
+
+    /// Plays the short phrase of the String sound dialog on the modelled strings of
+    /// `kind`, like a beat preview (not while the song plays).
+    pub fn play_string_demo(&mut self, kind: gscore_play::StringKind) -> Result<Heard, String> {
+        if self.state() == PlayState::Playing || self.count_in_pending() {
+            return Ok(Heard::Skipped("the song is playing".to_owned()));
+        }
+        if !matches!(self.output, super::Output::Synth(_)) {
+            return Ok(Heard::Skipped(
+                "the modelled strings play on the built-in synthesizer (Settings › Audio I/O)"
+                    .to_owned(),
+            ));
+        }
+        self.hear(super::demo::phrase(kind))
+    }
+
+    /// Plays `excerpt` in place of the song (once the SoundFont has loaded, if it is
+    /// loading).
+    fn hear(&mut self, excerpt: Sequence) -> Result<Heard, String> {
         if let Err(error) = self.connect() {
             return Ok(Heard::Skipped(error));
         }
