@@ -52,7 +52,7 @@ fn playing_strings_and_running_a_chain_never_allocate() {
             Some(BlockKind::Impulse(body)),
             None,
             Some(BlockKind::Reverb),
-            Some(BlockKind::Room(room)),
+            Some(BlockKind::room(room, 2.0)),
             None,
         ],
     };

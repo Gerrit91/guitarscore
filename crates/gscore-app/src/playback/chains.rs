@@ -43,6 +43,14 @@ impl Playback {
         }
     }
 
+    /// Prepares the chain of `kind` again with the blocks as they are set now, for a change
+    /// that alters a prepared response rather than a knob value: a room's length. The
+    /// window calls it when the length knob is let go, so a drag does not rebuild the room
+    /// on every step (each rebuilding resamples the whole tail).
+    pub fn rebuild_chain(&mut self, kind: StringKind) {
+        self.send_chain(kind);
+    }
+
     /// Reads the impulse response at `path` (once; later calls use the copy read).
     pub fn impulse(&mut self, path: &Path) -> Result<Arc<ImpulseResponse>, String> {
         if let Some(response) = self.impulses.get(path) {
@@ -71,7 +79,9 @@ impl Playback {
                 (BlockChoice::Reverb, _) => Some(BlockKind::Reverb),
                 (BlockChoice::Cabinet | BlockChoice::Room, None) => None,
                 (choice, Some(file)) => match self.impulse(file) {
-                    Ok(response) if choice == BlockChoice::Room => Some(BlockKind::Room(response)),
+                    Ok(response) if choice == BlockChoice::Room => {
+                        Some(BlockKind::room(response, block.room_length()))
+                    }
                     Ok(response) => Some(BlockKind::Impulse(response)),
                     Err(error) => {
                         self.chain_notices.push(error);
@@ -224,9 +234,13 @@ mod tests {
 
         let mut chain = ChainSetting::default();
         chain.blocks[0] = BlockSetting::of(BlockChoice::Cabinet);
-        chain.blocks[0].file = Some(file);
+        chain.blocks[0].file = Some(file.clone());
         chain.blocks[1] = BlockSetting::of(BlockChoice::Room);
         chain.blocks[1].file = Some(broken);
+        // A room at three times its recorded length: the chain is prepared with it.
+        chain.blocks[2] = BlockSetting::of(BlockChoice::Room);
+        chain.blocks[2].file = Some(file);
+        chain.blocks[2].length = 3.0;
         playback.set_string_chain(StringKind::Steel, chain);
         let choices = playback.chain_choices();
         assert_eq!(choices.len(), 1, "only the steel strings have a chain");
@@ -236,6 +250,11 @@ mod tests {
         assert!(
             spec.blocks[1].is_none(),
             "a file that cannot be read leaves its place empty"
+        );
+        assert!(
+            matches!(spec.blocks[2], Some(BlockKind::Room { length, .. }) if (length - 3.0).abs() < 1e-6),
+            "{:?}",
+            spec.blocks[2]
         );
         assert!(playback.chain_notice().unwrap().contains("broken.wav"));
         let _ = std::fs::remove_dir_all(&dir);

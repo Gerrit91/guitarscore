@@ -13,7 +13,7 @@ use gscore_guitar::{BLOCKS, knob_ranges};
 use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
-use crate::app::string_sound::{kind_name, knob};
+use crate::app::string_sound::{kind_name, knob, knob_response};
 use crate::app::style;
 use crate::chain_settings::{BlockChoice, BlockSetting, ChainSetting};
 use crate::playback::Heard;
@@ -45,6 +45,28 @@ struct Actions {
     open_strings: bool,
     load: Option<usize>,
     chain: Option<ChainSetting>,
+    /// A room's length moved and its knob was let go: build the room again.
+    rebuild: bool,
+}
+
+/// What editing the selected block asked for.
+#[derive(Default)]
+struct Edited {
+    /// The chain with the edit, when something moved.
+    chain: Option<ChainSetting>,
+    /// Open the file dialog for the impulse response.
+    load: bool,
+    /// The room's length changed: its response must be prepared again.
+    rebuild: bool,
+}
+
+/// What the knobs of a block asked for.
+#[derive(Default, Clone, Copy)]
+struct KnobChanges {
+    /// A knob moved: the new values are sent.
+    changed: bool,
+    /// The room's length knob was let go: the room is built again.
+    rebuild: bool,
 }
 
 /// The block a box holds, as its two lines of text.
@@ -198,15 +220,15 @@ fn board(
     clicked
 }
 
-/// The selected place's choices (when empty) or knobs. Returns the changed chain, if any,
-/// and whether a file should be loaded.
-fn editor(ui: &mut egui::Ui, chain: &ChainSetting, place: usize) -> (Option<ChainSetting>, bool) {
+/// The selected place's choices (when empty) or knobs.
+fn editor(ui: &mut egui::Ui, chain: &ChainSetting, place: usize) -> Edited {
     let Some(block) = chain.blocks.get(place) else {
-        return (None, false);
+        return Edited::default();
     };
     let mut edited = block.clone();
     let mut load = false;
     let mut changed = false;
+    let mut rebuild = false;
     if block.choice == BlockChoice::Empty {
         ui.label(RichText::new("Choose a block for this place").strong());
         ui.add_space(4.0);
@@ -261,26 +283,42 @@ fn editor(ui: &mut egui::Ui, chain: &ChainSetting, place: usize) -> (Option<Chai
             });
         }
         ui.add_space(4.0);
-        changed |= block_knobs(ui, &mut edited);
+        let moved = block_knobs(ui, &mut edited);
+        changed |= moved.changed;
         changed |= edited.bypass != block.bypass;
+        // A value from a hand-edited settings file comes back within its range.
+        changed |= edited.length != block.length;
+        rebuild = moved.rebuild;
     }
-    if !changed {
-        return (None, load);
+    let chain = changed.then(|| {
+        let mut new_chain = chain.clone();
+        if let Some(slot) = new_chain.blocks.get_mut(place) {
+            *slot = edited;
+        }
+        new_chain
+    });
+    Edited {
+        chain,
+        load,
+        rebuild,
     }
-    let mut new_chain = chain.clone();
-    if let Some(slot) = new_chain.blocks.get_mut(place) {
-        *slot = edited;
-    }
-    (Some(new_chain), load)
 }
 
-/// The knobs of the block in `block`. Returns whether any moved.
-fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
-    let mut changed = false;
+/// The knobs of the block in `block`.
+fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> KnobChanges {
+    let mut moved = KnobChanges::default();
     match block.choice {
         BlockChoice::Empty => {}
         BlockChoice::Cabinet | BlockChoice::Room => {
-            changed |= knob(
+            // First the room itself: how long it lasts.
+            if block.choice == BlockChoice::Room {
+                // A hand-edited settings file may hold anything; show it in range.
+                block.length = block.room_length();
+                let (changed, released) = length_knob(ui, &mut block.length);
+                moved.changed |= changed;
+                moved.rebuild |= released;
+            }
+            moved.changed |= knob(
                 ui,
                 &mut block.mix,
                 knob_ranges::MIX,
@@ -289,7 +327,7 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
                 false,
                 "How much of the convolved sound: 0 dry, 1 only the response.",
             );
-            changed |= knob(
+            moved.changed |= knob(
                 ui,
                 &mut block.gain_db,
                 knob_ranges::GAIN,
@@ -298,7 +336,7 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
                 false,
                 "The level of the convolved sound.",
             );
-            changed |= knob(
+            moved.changed |= knob(
                 ui,
                 &mut block.low_cut,
                 knob_ranges::LOW_CUT,
@@ -308,7 +346,7 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
                 "Takes away the lows below this frequency (boom, rumble); on a room, only \
                  from the room's sound.",
             );
-            changed |= knob(
+            moved.changed |= knob(
                 ui,
                 &mut block.high_cut,
                 knob_ranges::HIGH_CUT,
@@ -319,7 +357,7 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
                  from the room's sound.",
             );
             if block.choice == BlockChoice::Room {
-                changed |= knob(
+                moved.changed |= knob(
                     ui,
                     &mut block.width,
                     knob_ranges::WIDTH,
@@ -331,7 +369,7 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
             }
         }
         BlockChoice::Reverb => {
-            changed |= knob(
+            moved.changed |= knob(
                 ui,
                 &mut block.size,
                 knob_ranges::SIZE,
@@ -340,7 +378,7 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
                 false,
                 "The room's size: small and short to large and long.",
             );
-            changed |= knob(
+            moved.changed |= knob(
                 ui,
                 &mut block.damping,
                 knob_ranges::DAMPING,
@@ -349,7 +387,7 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
                 false,
                 "How quickly the room's highs die: 0 bright, 1 dull.",
             );
-            changed |= knob(
+            moved.changed |= knob(
                 ui,
                 &mut block.width,
                 knob_ranges::WIDTH,
@@ -358,7 +396,7 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
                 false,
                 "Stereo width: 0 mono, 1 wide.",
             );
-            changed |= knob(
+            moved.changed |= knob(
                 ui,
                 &mut block.mix,
                 knob_ranges::MIX,
@@ -367,7 +405,7 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
                 false,
                 "How much of the room: 0 dry, 1 only the room.",
             );
-            changed |= knob(
+            moved.changed |= knob(
                 ui,
                 &mut block.low_cut,
                 knob_ranges::LOW_CUT,
@@ -377,7 +415,7 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
                 "Takes the lows out of the reverb (not the dry guitar): keeps it from \
                  booming and muddying the bass.",
             );
-            changed |= knob(
+            moved.changed |= knob(
                 ui,
                 &mut block.high_cut,
                 knob_ranges::HIGH_CUT,
@@ -389,7 +427,28 @@ fn block_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
             );
         }
     }
-    changed
+    moved
+}
+
+/// The room's length knob: the decay time against the recording's. Returns whether it
+/// moved, and whether the room should be built again — at once for a click on the slider or
+/// an arrow key, at the end of a drag (not on every step, which would rebuild the tail
+/// dozens of times).
+fn length_knob(ui: &mut egui::Ui, length: &mut f32) -> (bool, bool) {
+    let response = knob_response(
+        ui,
+        length,
+        gscore_guitar::LENGTH_RANGE,
+        "Length",
+        "×",
+        true,
+        "The room's decay time against the recording's: 0.5 half as long, 4 four times as \
+         long (past the recording, a synthesized tail carries it on). Built again when you \
+         let go of the knob.",
+    );
+    let changed = response.changed();
+    let settled = changed && !response.dragged();
+    (changed, settled || response.drag_stopped())
 }
 
 impl GuitarScoreApp {
@@ -486,9 +545,10 @@ impl GuitarScoreApp {
                                 );
                             }
                             Some(place) => {
-                                let (changed, load) = editor(ui, &chain, place);
-                                actions.chain = changed;
-                                if load {
+                                let edited = editor(ui, &chain, place);
+                                actions.chain = edited.chain;
+                                actions.rebuild = edited.rebuild;
+                                if edited.load {
                                     actions.load = Some(place);
                                 }
                             }
@@ -516,6 +576,11 @@ impl GuitarScoreApp {
             });
         if let Some(chain) = actions.chain {
             self.playback.set_string_chain(kind, chain);
+        }
+        // A room's length changes its prepared response, so the chain is built again now
+        // that the knob has been let go (after the new value is stored).
+        if actions.rebuild {
+            self.playback.rebuild_chain(kind);
         }
         if actions.open_strings {
             self.open_string_sound(window.track);

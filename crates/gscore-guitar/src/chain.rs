@@ -3,10 +3,10 @@
 //! an algorithmic reverb; amps come later). The signal is mono from the strings and becomes
 //! stereo at the first block that makes it so (a room or the reverb).
 //!
-//! Two kinds of change: which blocks are where (and which impulse response) needs new
-//! buffers, so a [`ChainSpec`] is prepared off the audio thread ([`PreparedChain`]) and
-//! swapped in; turning a knob only changes [`BlockSettings`], which are plain values the
-//! audio thread takes at once ([`Chain::set_settings`]).
+//! Two kinds of change: which blocks are where (and which impulse response, or a room's
+//! length) needs new buffers, so a [`ChainSpec`] is prepared off the audio thread
+//! ([`PreparedChain`]) and swapped in; turning a knob only changes [`BlockSettings`], which
+//! are plain values the audio thread takes at once ([`Chain::set_settings`]).
 
 use std::sync::Arc;
 
@@ -30,10 +30,22 @@ const CUT_Q: f32 = 0.707;
 pub enum BlockKind {
     /// An impulse response: a cabinet after an amp, or an acoustic guitar's body (mono).
     Impulse(Arc<ImpulseResponse>),
-    /// A room's impulse response: a convolution reverb (stereo when the response is).
-    Room(Arc<ImpulseResponse>),
+    /// A room's impulse response: a convolution reverb (stereo when the response is),
+    /// its decay stretched by `length` (1 as recorded; see [`BlockKind::room`]).
+    Room {
+        response: Arc<ImpulseResponse>,
+        length: f32,
+    },
     /// A stereo room reverb, computed (no response needed).
     Reverb,
+}
+
+impl BlockKind {
+    /// A room block: `response`'s decay stretched by `length` (clamped to
+    /// [`crate::LENGTH_RANGE`], 1 as recorded), as the Room block's Length knob sets it.
+    pub fn room(response: Arc<ImpulseResponse>, length: f32) -> Self {
+        BlockKind::Room { response, length }
+    }
 }
 
 /// Which block is in each place.
@@ -208,9 +220,19 @@ impl ChainSpec {
                 BlockKind::Impulse(response) => PreparedBlock::Impulse(Arc::new(Spectra::new(
                     &response.mono_at_rate(sample_rate),
                 ))),
-                BlockKind::Room(response) => PreparedBlock::Room([0, 1].map(|side| {
-                    Arc::new(Spectra::new(&response.channel_at_rate(side, sample_rate)))
-                })),
+                BlockKind::Room { response, length } => {
+                    // A length other than the recording's makes a new response, its decay
+                    // stretched (see `ImpulseResponse::lengthened`). That needs a valid
+                    // response, which this one is; should it ever fail, the recording plays
+                    // as it is rather than the place falling silent.
+                    let stretched = ((length - 1.0).abs() >= 1e-3)
+                        .then(|| response.lengthened(length).ok())
+                        .flatten();
+                    let response = stretched.as_ref().unwrap_or(&response);
+                    PreparedBlock::Room([0, 1].map(|side| {
+                        Arc::new(Spectra::new(&response.channel_at_rate(side, sample_rate)))
+                    }))
+                }
                 BlockKind::Reverb => PreparedBlock::Reverb,
             })
         });

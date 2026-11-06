@@ -153,7 +153,7 @@ fn a_room_is_stereo_and_its_tail_rings_on_then_stops() {
             .unwrap(),
     );
     let mut spec = ChainSpec::default();
-    spec.blocks[2] = Some(BlockKind::Room(room));
+    spec.blocks[2] = Some(BlockKind::room(room, 1.0));
     let mut knobs = settings();
     knobs[2].room = RoomKnobs {
         mix: 0.5,
@@ -175,6 +175,52 @@ fn a_room_is_stereo_and_its_tail_rings_on_then_stops() {
     }
     assert!(!chain.ringing(), "and stops in the end");
     assert!(left.iter().all(|x| x.abs() < 1e-5));
+}
+
+#[test]
+fn a_longer_room_rings_on_longer() {
+    // A room recorded down to about -60 dB in 0.7 s; the same recording at three times its
+    // length must still sound where the original has died away.
+    let room = Arc::new(
+        ImpulseResponse::from_channels(vec![decaying(24_000, 0.21), decaying(24_000, 0.53)], RATE)
+            .unwrap(),
+    );
+    let energy_after = |length: f32| {
+        let spec = ChainSpec {
+            blocks: [
+                None,
+                None,
+                Some(BlockKind::room(Arc::clone(&room), length)),
+                None,
+                None,
+            ],
+        };
+        let mut knobs = settings();
+        knobs[2].room = RoomKnobs {
+            mix: 1.0,
+            low_cut: 20.0,
+            high_cut: 20_000.0,
+            ..RoomKnobs::default()
+        };
+        let mut chain = spec.prepare(RATE).instance(&knobs);
+        let count = 48_000 * 2;
+        let mut input = vec![0.0_f32; count];
+        input[0] = 1.0;
+        let (mut left, mut right) = (vec![0.0; count], vec![0.0; count]);
+        chain.process(&input, &mut left, &mut right);
+        // What is left between half a second and a second after the strike.
+        left.get(24_000..48_000)
+            .unwrap_or_default()
+            .iter()
+            .map(|x| x * x)
+            .sum::<f32>()
+    };
+    let recorded = energy_after(1.0);
+    let longer = energy_after(3.0);
+    let shorter = energy_after(0.5);
+    assert!(longer > 50.0 * recorded.max(1e-12), "{longer} {recorded}");
+    // Half as long dies away sooner than the recording.
+    assert!(shorter < recorded);
 }
 
 #[test]
@@ -204,7 +250,7 @@ fn gscore_guitar_chain_all_blocks() -> gscore_guitar::Chain {
             Some(BlockKind::Impulse(body)),
             None,
             Some(BlockKind::Reverb),
-            Some(BlockKind::Room(room)),
+            Some(BlockKind::room(room, 1.0)),
             None,
         ],
     };

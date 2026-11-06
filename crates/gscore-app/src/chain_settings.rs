@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use gscore_guitar::{BLOCKS, BlockSettings, ImpulseKnobs, ReverbKnobs, RoomKnobs};
+use gscore_guitar::{BLOCKS, BlockSettings, ImpulseKnobs, LENGTH_RANGE, ReverbKnobs, RoomKnobs};
 use gscore_play::StringKind;
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +54,10 @@ pub struct BlockSetting {
     pub width: f32,
     pub size: f32,
     pub damping: f32,
+    /// A room's decay time relative to the recording's (`gscore_guitar::LENGTH_RANGE`).
+    /// It changes the response itself, so the chain is prepared again when it is set,
+    /// not on every step of a drag.
+    pub length: f32,
 }
 
 impl Default for BlockSetting {
@@ -109,6 +113,17 @@ impl BlockSetting {
             width,
             size: reverb.size,
             damping: reverb.damping,
+            length: 1.0,
+        }
+    }
+
+    /// A room's decay time within its range, as the engine takes it: 1 is the recording's
+    /// own. A settings file may hold anything, so the value is fitted here.
+    pub fn room_length(&self) -> f32 {
+        if self.length.is_finite() {
+            self.length.clamp(LENGTH_RANGE.0, LENGTH_RANGE.1)
+        } else {
+            1.0
         }
     }
 
@@ -143,6 +158,10 @@ impl BlockSetting {
 
     /// Whether `other` needs the chain prepared again (another block or file), rather
     /// than only new knob values.
+    ///
+    /// A room's `length` is left out on purpose: it changes the prepared response, but is
+    /// applied when the length knob is let go (`Playback::rebuild_chain`) instead of on
+    /// every step of a drag, which would rebuild the room dozens of times.
     pub fn same_structure(&self, other: &BlockSetting) -> bool {
         self.choice == other.choice && (!self.choice.uses_file() || self.file == other.file)
     }
@@ -221,12 +240,37 @@ mod tests {
         let mut knob = chain.clone();
         knob.blocks[0].mix = 0.3;
         assert!(chain.same_structure(&knob));
+        // A room's length rebuilds the response, but is applied when the knob is let go,
+        // so it does not count as a structural change either.
+        let mut room = chain.clone();
+        room.blocks[0] = BlockSetting::of(BlockChoice::Room);
+        room.blocks[0].file = Some(PathBuf::from("hall.wav"));
+        let mut longer = room.clone();
+        longer.blocks[0].length = 2.5;
+        assert!(room.same_structure(&longer));
         let mut file = chain.clone();
         file.blocks[0].file = Some(PathBuf::from("other.wav"));
         assert!(!chain.same_structure(&file));
         let mut moved = chain.clone();
         moved.blocks[1] = BlockSetting::of(BlockChoice::Reverb);
         assert!(!chain.same_structure(&moved));
+    }
+
+    #[test]
+    fn older_chains_take_the_full_length_for_their_rooms() {
+        let mut chains = StringChains::default();
+        let mut room = BlockSetting::of(BlockChoice::Room);
+        room.file = Some(PathBuf::from("/irs/hall.wav"));
+        room.length = 2.5;
+        chains.steel.blocks[0] = room;
+        assert_eq!(chains.steel.blocks[0].length, 2.5, "kept");
+        // Settings written before the knob existed have no `length`: the recording's own.
+        let text = serde_json::to_string(&chains).unwrap();
+        let older = text.replace(",\"length\":2.5", "");
+        assert!(older.len() < text.len(), "the field was there: {text}");
+        let back: StringChains = serde_json::from_str(&older).unwrap();
+        assert_eq!(back.steel.blocks[0].length, 1.0);
+        assert_eq!(back.steel.blocks[0].file, chains.steel.blocks[0].file);
     }
 
     #[test]

@@ -260,17 +260,19 @@ fn a_room_chain_rings_on_after_a_damped_note() {
         )
         .unwrap();
     let sequence = Arc::new(Sequence::new(&song, None).unwrap().with_modelled_guitars());
-    let tail = |chain: bool| {
+    // `None`: no chain; `Some(length)`: the room at that length against the recording's.
+    let tail = |chain: Option<f32>| {
         let mut engine = SynthEngine::new(&bank(), RATE).unwrap();
-        if chain {
+        if let Some(length) = chain {
             // A two-second room that decays slowly.
             let room: Vec<f32> = (0..96_000)
                 .map(|i| ((i * 7919 % 1000) as f32 / 500.0 - 1.0) * (-(i as f32) / 30_000.0).exp())
                 .collect();
             let mut spec = ChainSpec::default();
-            spec.blocks[1] = Some(BlockKind::Room(Arc::new(
-                ImpulseResponse::from_samples(&room, RATE).unwrap(),
-            )));
+            spec.blocks[1] = Some(BlockKind::room(
+                Arc::new(ImpulseResponse::from_samples(&room, RATE).unwrap()),
+                length,
+            ));
             let mut settings = [BlockSettings::default(); BLOCKS];
             settings[1].room.mix = 0.6;
             let set = gscore_audio::ChainSet::new(&spec, &settings, RATE, 1);
@@ -285,7 +287,12 @@ fn a_room_chain_rings_on_after_a_damped_note() {
         let out = render(&mut engine, 1.4);
         rms(seconds(&out, 1.0, 1.4))
     };
-    let (dry, wet) = (tail(false), tail(true));
+    let (dry, wet, longer) = (tail(None), tail(Some(1.0)), tail(Some(4.0)));
     assert!(dry < 1e-4, "the strings alone are silent: {dry}");
     assert!(wet > 10.0 * dry.max(1e-6), "the room rings on: {wet}");
+    assert!(
+        longer > wet,
+        "four times the length still rings on where the recording is gone: {longer} against \
+         {wet}"
+    );
 }

@@ -25,6 +25,7 @@ fn range((low, high): (f32, f32)) -> RangeInclusive<f32> {
 }
 
 /// One knob: a labelled slider with its explanation on hover. Returns whether it moved.
+/// One knob: a label, then its slider. Returns whether the value moved.
 pub(super) fn knob(
     ui: &mut egui::Ui,
     value: &mut f32,
@@ -34,25 +35,37 @@ pub(super) fn knob(
     logarithmic: bool,
     tip: &str,
 ) -> bool {
-    let response = ui
-        .horizontal(|ui| {
-            ui.add_sized(
-                vec2(130.0, 18.0),
-                egui::Label::new(RichText::new(label).color(style::tokens(ui).text_weak)),
-            )
-            .on_hover_text(tip);
-            let slider = egui::Slider::new(value, range(limits))
-                .logarithmic(logarithmic)
-                .suffix(unit)
-                .max_decimals(if logarithmic { 2 } else { 3 });
-            let response = ui.add(slider).on_hover_text(tip);
-            ui.ctx().accesskit_node_builder(response.id, |node| {
-                node.set_label(label);
-            });
-            response
-        })
-        .inner;
-    response.changed()
+    knob_response(ui, value, limits, label, unit, logarithmic, tip).changed()
+}
+
+/// One knob's slider, for callers that also need its drag state (a change that rebuilds
+/// something is applied when the knob is let go rather than while it turns).
+pub(super) fn knob_response(
+    ui: &mut egui::Ui,
+    value: &mut f32,
+    limits: (f32, f32),
+    label: &str,
+    unit: &str,
+    logarithmic: bool,
+    tip: &str,
+) -> egui::Response {
+    ui.horizontal(|ui| {
+        ui.add_sized(
+            vec2(130.0, 18.0),
+            egui::Label::new(RichText::new(label).color(style::tokens(ui).text_weak)),
+        )
+        .on_hover_text(tip);
+        let slider = egui::Slider::new(value, range(limits))
+            .logarithmic(logarithmic)
+            .suffix(unit)
+            .max_decimals(if logarithmic { 2 } else { 3 });
+        let response = ui.add(slider).on_hover_text(tip);
+        ui.ctx().accesskit_node_builder(response.id, |node| {
+            node.set_label(label);
+        });
+        response
+    })
+    .inner
 }
 
 /// The knobs of one kind of string. Returns whether any moved.

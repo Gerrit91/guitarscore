@@ -177,7 +177,8 @@ described in the literature below:
 - **Blocks:** *Cabinet / body*, an impulse response from a WAV file played mono with
   mix, gain, low cut and high cut: what amp modelers call a cab block, and an acoustic
   guitar's body too. *Room*, a room's impulse response (stereo if recorded so): a
-  convolution reverb with mix, gain, cuts and width. *Reverb*, computed after Freeverb
+  convolution reverb with its length (the decay stretched 0.5× to 4×, below), mix, gain,
+  cuts and width. *Reverb*, computed after Freeverb
   (public domain): size, damping, width, mix, and a low and high cut on its sound. Amp blocks come with step 2.
 - **Convolution** (`gscore-guitar::convolver`): an own FFT and partitioned overlap-save in
   three stages (partitions of 128, 1024 and 8192 samples): 128 samples of lag, and long
@@ -195,6 +196,14 @@ described in the literature below:
   about 9 MB per instance), and swaps it into the callback; the old one is freed on that
   thread. Knob values go straight to the callback, so tails are not cut while a knob
   turns. A tail counts as over after 0.5 s of silence. WAV export uses the same chains.
+- **Longer (or shorter) rooms** (`ImpulseResponse::lengthened`, committed 2026-11-06): the
+  decay time is measured from the energy decay curve (fitted -5 to -25 dB); the recording
+  keeps its start under an envelope that turns its decay into the new one, and where it
+  fades out a diffuse noise tail coloured by the late response carries it on, darker as it
+  goes, down to -80 dB, at most 16 s. Deterministic; 30-400 ms to compute per room. The
+  Room block's *Length* knob sets the factor (0.5-4). Because it changes the response
+  itself, not a value the audio thread can take, the room is built again when the knob is
+  let go (a click or an arrow key applies at once), not on every step of a drag.
 - **Not yet:** the browser build has no chains (no file dialog, no message for them);
   chains are per kind of string, kept in the settings, not per track in the document.
 

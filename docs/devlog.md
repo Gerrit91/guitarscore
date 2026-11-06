@@ -3291,3 +3291,27 @@ needed for a much larger font); owner listening check.
 - Open: the page's staves of silent tracks are not dimmed. `gscore-layout` has no opacity
   or "silent" color token, so that needs a design decision (per-op alpha or a parallel
   token set) and would touch every golden.
+
+## 2026-11-06 — The Room block's Length knob
+
+- `BlockKind::Room` now carries the length (`BlockKind::room(response, length)`), and
+  `ChainSpec::prepare` really stretches the response there: the factor is clamped to
+  0.5-4 and 1 plays the recording as it is; if lengthening ever failed, the recording
+  plays unchanged rather than the place going silent. It lives in the block, not in
+  `RoomKnobs`, because it changes the response (new spectra, new buffers), not a value the
+  audio thread can take at once.
+- Sound chain window: the Room block's first knob is *Length* (×0.5 to ×4, log), the
+  recording's own at 1.00×. Because a new response has to be prepared, the room is built
+  again when the knob is let go (a click or an arrow key applies at once) instead of on
+  every step of a drag: `BlockSetting::same_structure` leaves the length out, and the
+  window calls the new `Playback::rebuild_chain`. The prepared value and the stored one
+  therefore only differ while the knob is being dragged.
+- Kept in the settings (`BlockSetting::length`, 1.0 for older files; `room_length()` fits
+  whatever a hand-edited file holds), used by playback and by WAV export, which share
+  `chain_spec`.
+- Tests: a guitar-chain test that a ×3 room still rings where the recording has died away
+  and that a ×0.5 one dies sooner; the spec carries the length; older settings read as
+  1.0; the window's snapshot `sound_chain_room` with the knob at the top, and a drag that
+  stores the new length.
+- Open: the length is applied per kind of string (all its tracks), like every other chain
+  setting; the computed Reverb has its own size instead.
