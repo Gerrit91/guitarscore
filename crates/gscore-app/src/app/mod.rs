@@ -289,6 +289,8 @@ impl GuitarScoreApp {
         app.playback
             .store_string_chains(app.settings.string_chains.clone());
         app.playback
+            .store_preset_tones(app.settings.preset_tones.clone());
+        app.playback
             .store_reverb_bus(app.settings.reverb_bus.clone());
         app.playback.set_count_in_bars(app.settings.count_in_bars);
         app.playback.set_count_in_loops(app.settings.count_in_loops);
@@ -329,6 +331,7 @@ impl GuitarScoreApp {
         settings.sample_rate = self.playback.sample_rate();
         settings.string_sounds = self.playback.string_sounds();
         settings.string_chains = self.playback.string_chains().clone();
+        settings.preset_tones = self.playback.preset_tones().to_vec();
         settings.midi_port = self.playback.port().map(str::to_owned);
         // Remember every tab backed by a real file, and which one was active. Setting the
         // old single-file key too keeps older versions reopening something sensible.
@@ -640,9 +643,8 @@ impl eframe::App for GuitarScoreApp {
         self.handle_keys(&ctx);
         // A count-in that has finished starts the song it was counting in.
         self.poll_count_in();
-        // Another tab may hold other choices of what plays its tracks, and other tones.
+        // Another tab may hold other choices of what plays its tracks.
         self.sync_track_engines();
-        self.sync_track_tones();
         // Keep a loop of the selected measures going; a new selection turns it on.
         self.auto_loop();
         self.poll_loop();

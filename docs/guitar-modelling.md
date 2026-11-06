@@ -265,30 +265,34 @@ described in the literature below:
   itself, not a value the audio thread can take, the room is built again when the knob is
   let go (a click or an arrow key applies at once), not on every step of a drag.
 - **Not yet:** the browser build has no chains (no file dialog, no message for them). A
-  track's own tone lives with the open tab by track index (like its engine choice): it
-  is not saved yet, and moving, deleting or inserting a track does not carry it along.
-  Both are fixed by keeping tones on the track in the song and in the GP7 file (Tones,
-  next step). The built-in tones per track preset do not exist yet: each kind's default
-  from the settings plays.
+  preset's tone is local to this machine (the settings file): it does not travel with the
+  song, and the impulse responses it names are absolute paths. The tones set for presets
+  are kept per machine, which is what the owner wants for his own library.
 
-## Tones (owner's decision, 2026-11-06)
+## Tones (owner's decisions, 2026-11-06 and 2026-11-07)
 
 - **A tone** is what a modelled track sounds like: what plays it (MIDI or PM synthesis,
   the kind of string), the sound of its strings and its effect chain. Called *Tone* in
   the program, so it is not mistaken for the track's *preset* (its General MIDI program).
-- **Every track preset ships with a default tone for physical modelling** (built-in,
-  designed by the owner): 29 Overdriven Guitar and 30 Distortion Guitar each start from
-  their own. Until a preset has one, its kind of string's default plays.
-- **Per track:** a track's tone can be changed for that track alone; no other track
-  changes, even one with the same preset or kind of string.
-- **Saved tones:** the user can save tones under a name (their library, in our format)
-  and use them on other tracks.
-- **In the song file:** a track's own tone is saved inside the GP7 file (a ZIP), as an
-  entry of ours next to `Content/score.gpif`, so people who use GuitarScore exchange their
-  tweaks with the song. Impulse responses are referenced by name and checksum, not
-  embedded. Guitar Pro most likely drops the entry when it saves the file again: we live
-  with that, and users share their tone presets themselves. GP3-5 and GPX have no room
-  for it.
+- **A tone belongs to the track preset, not to the track** (owner, 2026-11-07). The Sound
+  chain window edits the tone of the shown track's preset: every track with that preset,
+  in every song, plays it from then on. This is what fixes the owner's first report
+  (dialing in a 30: Distortion Guitar track changed a 29: Overdriven Guitar track, since
+  both are electric strings): 29 and 30 are different presets, so they have different
+  tones.
+- **Kept locally, in the settings** (`preset_tones`, by General MIDI program, with the
+  kind of string it was dialed in on). Switching the tone row back to **Built-in**
+  forgets the preset's tone; its kind of string's default from the settings plays again.
+  The owner's library became the first four: *Natural Steel 1* for 27 Clean Guitar (so
+  that preset plays steel strings), *Muted Overdriven Guitar* for 28 Muted Guitar,
+  *Metal Guitar 1* for 30 Distortion Guitar and *Clean Bass 1* for 33 Fingered Bass.
+- **Saved tones:** the user can save a tone under a name (their library, in our format)
+  and give it to any preset, in any song.
+- **Not in the song file:** a preset's tone stays this machine's (settings file), so the
+  songs of a band that all use GuitarScore keep their own sounds without carrying data
+  Guitar Pro would drop, and the tones work for every song at once. The price: a tone
+  does not travel with a song, and the impulse responses it names are absolute paths.
+  (This replaces the earlier idea of keeping a tone per track inside the GP7 file.)
 
 ## Faust
 

@@ -17,7 +17,7 @@ use gscore_model::{
 };
 mod chains;
 
-pub(crate) use chains::{ExportTones, tone_of};
+pub(crate) use chains::ExportTones;
 mod demo;
 mod preview;
 
@@ -221,8 +221,8 @@ pub struct Playback {
     string_sounds: crate::settings::StringSounds,
     /// The effect chain after each kind of string on a track without a tone of its own.
     string_chains: crate::chain_settings::StringChains,
-    /// The open song's tracks' own tones (by track index).
-    tones: crate::chain_settings::TrackTones,
+    /// The tones set for track presets (by General MIDI program), local to this machine.
+    preset_tones: Vec<crate::settings::PresetTone>,
     /// The modelled tracks of the sequence the synthesizer has, and what each place of it
     /// was given (see `chains`).
     tone_targets: Vec<chains::ToneTarget>,
@@ -284,7 +284,7 @@ impl Default for Playback {
             sample_rate: None,
             string_sounds: crate::settings::StringSounds::default(),
             string_chains: crate::chain_settings::StringChains::default(),
-            tones: crate::chain_settings::TrackTones::new(),
+            preset_tones: Vec::new(),
             tone_targets: Vec::new(),
             sent_tones: std::collections::BTreeMap::new(),
             reverb_bus: crate::settings::ReverbBus::default(),
@@ -1221,7 +1221,12 @@ impl Playback {
     /// `sequence` with the engines chosen: the settings' default for guitar and bass
     /// tracks, then each track's own choice (modelled strings only for string tracks).
     pub(crate) fn engines(&self, sequence: Sequence) -> Sequence {
-        with_engines(sequence, self.modelled_guitars, &self.track_engines)
+        with_engines(
+            sequence,
+            self.modelled_guitars,
+            &self.track_engines,
+            &self.preset_tones,
+        )
     }
 
     /// The tracks' own engine choices (by track index).
@@ -1535,9 +1540,12 @@ pub(crate) fn with_engines(
     sequence: Sequence,
     modelled: bool,
     engines: &[(usize, gscore_play::TrackEngine)],
+    preset_tones: &[crate::settings::PresetTone],
 ) -> Sequence {
     let mut sequence = if modelled {
-        sequence.with_modelled_guitars()
+        // A preset the user gave a tone of its own plays that tone's kind of string.
+        sequence
+            .with_modelled_guitars_where(|program| chains::preset_kind_of(preset_tones, program))
     } else {
         sequence
     };

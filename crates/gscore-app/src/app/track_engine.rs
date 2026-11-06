@@ -1,8 +1,9 @@
 //! What plays a track: the SoundFont, or modelled strings of a kind. By default a guitar
 //! or bass track's preset decides (with the Settings' switch for modelled guitars); the
 //! user can choose for each track in the Sound chain window. The choice is kept with the
-//! open document (by track index) and sent to playback every frame it changes; so is each
-//! track's own tone (the sound of its strings and its chain).
+//! open document (by track index) and sent to playback every frame it changes. A track's
+//! tone (the sound of its strings and its chain) belongs to its preset, not to the track:
+//! it is kept in the settings, so every track with that preset, in every song, plays it.
 
 use gscore_model::{InstrumentKind, TrackIndex};
 use gscore_play::{StringKind, TrackEngine};
@@ -33,7 +34,9 @@ impl GuitarScoreApp {
         let view = song.track(TrackIndex::new(track))?;
         let sound = song.track_sound(TrackIndex::new(track))?;
         let strings = view.instrument_kind() == InstrumentKind::Strings && !sound.percussion;
-        let preset_kind = StringKind::for_program(sound.program).filter(|_| strings);
+        // The kind its preset's tone was dialed in on (the owner's Clean Guitar plays steel
+        // strings), otherwise its program's family.
+        let preset_kind = self.playback.preset_kind(sound.program).filter(|_| strings);
         let default = match preset_kind {
             Some(kind) if self.playback.modelled_guitars() => TrackEngine::Modelled(kind),
             _ => TrackEngine::SoundFont,
@@ -78,31 +81,43 @@ impl GuitarScoreApp {
             .unwrap_or_default()
     }
 
-    /// The tone `track` of the open document plays as `kind`: its own, or the kind's
+    /// The tone `track` of the open document plays as `kind`: its preset's, or the kind's
     /// default.
     pub(super) fn track_tone(&self, track: usize, kind: StringKind) -> Tone {
-        let sounds = self.playback.string_sounds();
-        let defaults = (&sounds, self.playback.string_chains());
-        match self.tabs.get(self.active) {
-            Some(tab) => crate::playback::tone_of(&tab.track_tones, defaults, track, kind),
-            None => crate::playback::tone_of(&Default::default(), defaults, track, kind),
+        match self.track_player(track) {
+            Some(player) => self.playback.tone(player.program, kind),
+            None => self.playback.default_tone(kind),
         }
     }
 
-    /// Gives `track` of the open document its own tone (no other track changes), heard at
-    /// once.
+    /// Gives the preset `track` belongs to `tone`: every track with that preset, in every
+    /// song, plays it from now on (it is kept in the settings).
     pub(super) fn set_track_tone(&mut self, track: usize, tone: Tone) {
-        let Some(tab) = self.tabs.get_mut(self.active) else {
+        let Some(player) = self.track_player(track) else {
             return;
         };
-        tab.track_tones.insert(track, tone);
-        self.sync_track_tones();
+        let Some(song) = self.document().map(|document| document.song().clone()) else {
+            return;
+        };
+        if let Err(error) = self
+            .playback
+            .set_preset_tone(&song, player.program, Some(tone))
+        {
+            self.notice = Some(error);
+        }
     }
 
-    /// Hands the open document's tones to playback (only what changed is sent).
-    pub(super) fn sync_track_tones(&mut self) {
-        if let Some(tab) = self.tabs.get(self.active) {
-            self.playback.set_track_tones(&tab.track_tones);
+    /// Forgets the tone of the preset `track` belongs to: it plays its built-in default
+    /// again (the kind's sound and chain from the settings).
+    pub(super) fn reset_track_tone(&mut self, track: usize) {
+        let Some(player) = self.track_player(track) else {
+            return;
+        };
+        let Some(song) = self.document().map(|document| document.song().clone()) else {
+            return;
+        };
+        if let Err(error) = self.playback.set_preset_tone(&song, player.program, None) {
+            self.notice = Some(error);
         }
     }
 

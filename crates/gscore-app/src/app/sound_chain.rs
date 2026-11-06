@@ -5,9 +5,10 @@
 //! impulse response, a room impulse response, the computed reverb, amp or drive pedal). A
 //! block can be dragged to another place, the blocks between sliding one place over, so the
 //! order the sound passes them in is the one the board shows. The selected place's choices
-//! or knobs show below the board. What the window shows is the track's own tone (its
-//! kind's default until one is dialed in); every change is this track's alone and heard
-//! at once. Saved tones (the list at the bottom) can be used on any track.
+//! or knobs show below the board. What the window edits is the **tone of the track's
+//! preset** (its General MIDI program): it is kept in the settings, so every track with
+//! that preset, in every song, plays it, and Built-in forgets it (the kind's default
+//! plays). Saved tones (the list at the bottom) can be given to any preset.
 
 use std::path::PathBuf;
 
@@ -43,9 +44,9 @@ pub(super) struct SoundChainWindow {
     pos: Option<Pos2>,
     /// The name being typed for a new preset, while saving.
     saving: Option<String>,
-    /// The preset last chosen or saved (its kind and name), so it can be saved over after
-    /// its knobs were moved.
-    preset: Option<(StringKind, String)>,
+    /// The tone last chosen or saved for the track's preset (its program and name), so it
+    /// can be saved over after its knobs were moved.
+    preset: Option<(u8, String)>,
 }
 
 /// What the user did this frame.
@@ -61,21 +62,24 @@ struct Actions {
     engine: Option<TrackEngine>,
     /// The strings' sound changed (in the first box's editor).
     sound: Option<StringSound>,
-    /// A preset was chosen: its string sound, its chain and what plays the strings.
+    /// A saved tone was chosen for the track's preset: its string sound, its chain and
+    /// what plays the strings.
     preset: Option<ChosenPreset>,
+    /// Back to the built-in tone: the preset's own tone is forgotten.
+    reset_tone: bool,
     /// Save the sound and the chain under this name, or delete that preset (its kind of
     /// string and its name, since names are unique within a kind only).
     save_preset: Option<String>,
     delete_preset: Option<(String, String)>,
 }
 
-/// A preset chosen in the list: the whole sound it carries.
+/// A tone chosen in the list: the whole sound it carries.
 struct ChosenPreset {
-    /// The kind of string the sound belongs to; `None` keeps the kind the window shows.
-    kind: Option<StringKind>,
+    /// The kind of string the sound belongs to.
+    kind: StringKind,
     sound: StringSound,
     chain: ChainSetting,
-    /// What plays the strings, when the preset names it (older ones do not).
+    /// What plays the strings, when the tone names it (older ones do not).
     engine: Option<TrackEngine>,
 }
 
@@ -209,25 +213,34 @@ fn strings_editor(
     changed
 }
 
-/// The saved tones: the one being worked on, saving it (over it or under a new name),
-/// choosing another for this track and deleting. A tone is the whole chain plus the string
+/// The track's preset (its General MIDI program, whose tone the window edits), the kind of
+/// string it shows and that kind's default tone (what Built-in plays).
+#[derive(Debug, Clone)]
+struct ShownPreset {
+    program: u8,
+    kind: StringKind,
+    default: Tone,
+}
+
+/// The saved tones: the one this preset plays, saving it (over it or under a new name),
+/// choosing another for the preset and deleting. A tone is the whole chain plus the string
 /// sound it was saved with, and the kind of string it belongs to. (Called tones so they
 /// are not mistaken for the track's preset, its General MIDI program; the settings still
 /// call them presets.)
 fn preset_row(
     ui: &mut egui::Ui,
-    kind: StringKind,
+    shown: ShownPreset,
     sound: &StringSound,
     chain: &ChainSetting,
     presets: &[ChainPreset],
     window: &mut SoundChainWindow,
     actions: &mut Actions,
 ) {
+    let (program, kind) = (shown.program, shown.kind);
     ui.horizontal(|ui| {
         ui.label(RichText::new("Tone").color(style::tokens(ui).text_weak));
-        let built_in = || StringSound::from(gscore_audio::default_string_model(kind));
-        // The preset being worked on: one whose sound and chain match exactly, or the one
-        // last chosen or saved for this kind (its knobs may have moved since).
+        // The tone being worked on: one whose sound and chain match exactly, or the one
+        // last chosen or saved for this preset (its knobs may have moved since).
         let exact = presets
             .iter()
             .find(|preset| preset.sound == *sound && preset.chain == *chain)
@@ -235,10 +248,10 @@ fn preset_row(
         let remembered = window
             .preset
             .as_ref()
-            .filter(|(saved, _)| *saved == kind)
+            .filter(|(saved, _)| *saved == program)
             .map(|(_, name)| name.clone());
         let active = exact.clone().or(remembered);
-        let is_built_in = built_in() == *sound && *chain == ChainSetting::default();
+        let is_built_in = shown.default.sound == *sound && shown.default.chain == *chain;
         let shown = match (&exact, &active) {
             (Some(name), _) => name.clone(),
             (None, Some(name)) if !is_built_in => format!("{name} *"),
@@ -251,25 +264,20 @@ fn preset_row(
             .show_ui(ui, |ui| {
                 if ui.selectable_label(false, "Built-in").clicked() {
                     window.preset = None;
-                    actions.preset = Some(ChosenPreset {
-                        kind: None,
-                        sound: built_in(),
-                        chain: ChainSetting::default(),
-                        engine: None,
-                    });
+                    actions.reset_tone = true;
                 }
                 for preset in presets {
                     if ui.selectable_label(false, &preset.name).clicked() {
-                        // A preset brings the kind of string it was made for: a modelled
-                        // one plays it, and an older preset (saved before the engine was
+                        // A tone brings the kind of string it was made for: a modelled
+                        // one plays it, and an older tone (saved before the engine was
                         // part of it) was made for the modelled strings of its kind.
                         let target = match engine_from_id(&preset.kind) {
                             Some(TrackEngine::Modelled(saved)) => saved,
                             _ => kind,
                         };
-                        window.preset = Some((target, preset.name.clone()));
+                        window.preset = Some((program, preset.name.clone()));
                         actions.preset = Some(ChosenPreset {
-                            kind: Some(target),
+                            kind: target,
                             sound: preset.sound,
                             chain: preset.chain.clone(),
                             engine: Some(
@@ -280,6 +288,12 @@ fn preset_row(
                     }
                 }
             });
+        response.response.clone().on_hover_text(format!(
+            "The tone this track's preset ({}: {}) plays: every track with that preset, in \
+             every song. Built-in forgets it.",
+            program,
+            gscore_model::program_name(program)
+        ));
         ui.ctx()
             .accesskit_node_builder(response.response.id, |node| {
                 node.set_label("Tone");
@@ -297,7 +311,7 @@ fn preset_row(
                     });
                     if save.clicked() {
                         actions.save_preset = Some(name.clone());
-                        window.preset = Some((kind, name.clone()));
+                        window.preset = Some((program, name.clone()));
                     }
                     let delete = ui
                         .button("Delete")
@@ -337,7 +351,7 @@ fn preset_row(
                 {
                     let name = name.trim().to_owned();
                     actions.save_preset = Some(name.clone());
-                    window.preset = Some((kind, name));
+                    window.preset = Some((program, name));
                     window.saving = None;
                 } else if ui.button("Cancel").clicked() {
                     window.saving = None;
@@ -1021,7 +1035,7 @@ impl GuitarScoreApp {
         // The title names the track (the MIDI box shows its preset, the General MIDI
         // program); the saved tones are the list at the bottom.
         let title = format!("Sound chain — {}", self.track_name(window.track));
-        // This track's tone: its own, or its kind's default until one is dialed in.
+        // This track's tone: its preset's, or its kind's default (the built-in one).
         let tone = self.track_tone(window.track, kind);
         egui::Window::new(&title)
             .title_bar(false)
@@ -1101,10 +1115,14 @@ impl GuitarScoreApp {
                         }
                         ui.add_space(6.0);
                         ui.separator();
-                        // The preset: which one this is, another one, and saving it.
+                        // The tone: which one this preset plays, another one, and saving it.
                         preset_row(
                             ui,
-                            kind,
+                            ShownPreset {
+                                program: player.program,
+                                kind,
+                                default: self.playback.default_tone(kind),
+                            },
                             &sound,
                             &chain,
                             &presets,
@@ -1132,17 +1150,21 @@ impl GuitarScoreApp {
                         });
                     });
             });
-        // Every change is this track's alone. A saved tone first: it carries both a string
-        // sound and a chain (and what plays them).
+        // A tone belongs to the track's preset (its General MIDI program): every track with
+        // that preset, in every song, plays it. Built-in forgets it.
         let track = window.track;
+        let tone_chosen = actions.reset_tone || actions.preset.is_some();
+        if actions.reset_tone {
+            self.reset_track_tone(track);
+        }
+        // A saved tone: it carries both a string sound and a chain (and what plays them).
         if let Some(preset) = actions.preset {
-            let target = preset.kind.unwrap_or(kind);
             self.set_track_tone(
                 track,
                 Tone {
-                    kind: target,
+                    kind: preset.kind,
                     // A tone saved before pickups existed gets its kind's.
-                    sound: preset.sound.for_kind(target),
+                    sound: preset.sound.for_kind(preset.kind),
                     chain: preset.chain,
                 },
             );
@@ -1201,6 +1223,10 @@ impl GuitarScoreApp {
                 Ok(_) => {}
                 Err(error) => self.notice = Some(error),
             }
+        }
+        if tone_chosen {
+            // A preset's tone is kept at once: it is not this song's, but this machine's.
+            self.save_settings();
         }
         if actions.close {
             self.save_settings();

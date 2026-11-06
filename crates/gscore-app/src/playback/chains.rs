@@ -1,5 +1,5 @@
-//! The tones of the modelled tracks in playback: each track's own tone (the sound of its
-//! strings and its effect chain) or, without one, its kind's default from the settings.
+//! The tones of the modelled tracks in playback: the tone its preset (General MIDI
+//! program) has, else its kind's default from the settings.
 //! What the synthesizer has been given is remembered per track (by the song's track index,
 //! which a beat excerpt keeps too), so a change sends only what differs: a new block or file prepares that track's chain
 //! again (on the synthesizer's own thread); a knob only sends its value, so a reverb's
@@ -12,15 +12,17 @@ use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, ChainSpec, ImpulseResponse
 use gscore_play::{Sequence, StringKind, TrackEngine};
 
 use super::Playback;
-use crate::chain_settings::{BlockChoice, ChainSetting, StringChains, Tone, TrackTones};
-use crate::settings::{StringSound, StringSounds};
+use crate::chain_settings::{BlockChoice, ChainSetting, StringChains, Tone};
+use crate::settings::{PresetTone, StringSound};
 
 /// A modelled track of the loaded sequence: the song's track it plays (as the
-/// synthesizer knows its tone) and its kind of string.
+/// synthesizer knows its tone), its preset and its kind of string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct ToneTarget {
     track: usize,
     kind: StringKind,
+    /// The General MIDI program of its preset, whose tone it plays.
+    program: u8,
 }
 
 /// What the synthesizer was given for one track.
@@ -31,23 +33,16 @@ pub(super) struct SentTone {
     chain: ChainSetting,
 }
 
-/// The tone `track` plays as `kind`: its own if it was dialed in on that kind, otherwise
-/// the kind's default.
-pub(crate) fn tone_of(
-    tones: &TrackTones,
-    defaults: (&StringSounds, &StringChains),
-    track: usize,
-    kind: StringKind,
-) -> Tone {
+/// The kind of string the preset `program` starts from: the kind its tone was dialed in on
+/// (the owner's "Natural Steel 1" makes a Clean Guitar play steel strings), otherwise the
+/// family of its program.
+pub(crate) fn preset_kind_of(tones: &[PresetTone], program: u8) -> Option<StringKind> {
     tones
-        .get(&track)
-        .filter(|tone| tone.kind == kind)
-        .cloned()
-        .unwrap_or_else(|| Tone {
-            kind,
-            sound: defaults.0.get(kind),
-            chain: defaults.1.get(kind).clone(),
-        })
+        .iter()
+        .filter(|tone| tone.program == program)
+        .find_map(PresetTone::tone)
+        .map(|tone| tone.kind)
+        .or_else(|| StringKind::for_program(program))
 }
 
 /// The modelled tracks of `sequence`.
@@ -60,18 +55,19 @@ fn targets(sequence: &Sequence) -> Vec<ToneTarget> {
             TrackEngine::Modelled(kind) => Some(ToneTarget {
                 track: track.track.get(),
                 kind,
+                program: track.sound.program,
             }),
             TrackEngine::SoundFont => None,
         })
         .collect()
 }
 
-/// The tones to render an audio export with: each track's own (with the kind it is for)
+/// The tones to render an audio export with: the presets' tones (by General MIDI program)
 /// and each kind's default, resolved against the export's sequence once it is built.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ExportTones {
-    own: Vec<(
-        usize,
+    presets: Vec<(
+        u8,
         StringKind,
         StringModel,
         ChainSpec,
@@ -91,9 +87,9 @@ impl ExportTones {
         let mut chains = Vec::new();
         for target in targets(sequence) {
             let own = self
-                .own
+                .presets
                 .iter()
-                .find(|(track, kind, ..)| *track == target.track && *kind == target.kind);
+                .find(|(program, kind, ..)| *program == target.program && *kind == target.kind);
             let chain = match own {
                 Some((_, _, model, spec, knobs)) => {
                     models.push((target.track, *model));
@@ -126,24 +122,69 @@ impl Playback {
         self.string_chains = chains;
     }
 
-    /// The tone `track` of the open song plays as `kind`.
-    pub fn tone(&self, track: usize, kind: StringKind) -> Tone {
-        tone_of(
-            &self.tones,
-            (&self.string_sounds, &self.string_chains),
-            track,
-            kind,
-        )
+    /// The tones set for track presets (by General MIDI program), local to this machine.
+    pub fn preset_tones(&self) -> &[PresetTone] {
+        &self.preset_tones
     }
 
-    /// The open song's own tones (each track's; the others play their kind's default),
-    /// heard at once: only what changed is sent.
-    pub fn set_track_tones(&mut self, tones: &TrackTones) {
-        if &self.tones == tones {
-            return;
+    /// Takes the preset tones without sending them (when the settings load).
+    pub fn store_preset_tones(&mut self, tones: Vec<PresetTone>) {
+        self.preset_tones = tones;
+    }
+
+    /// The tone of the preset `program`, whatever kind of string it was dialed in on.
+    pub fn preset_tone(&self, program: u8) -> Option<Tone> {
+        self.preset_tones
+            .iter()
+            .filter(|tone| tone.program == program)
+            .find_map(PresetTone::tone)
+    }
+
+    /// The kind of string the preset `program` starts from (its tone's, else its
+    /// program's family).
+    pub fn preset_kind(&self, program: u8) -> Option<StringKind> {
+        preset_kind_of(&self.preset_tones, program)
+    }
+
+    /// The tone a track of preset `program` plays as `kind`: the preset's if it was dialed
+    /// in on that kind of string, otherwise the kind's default.
+    pub fn tone(&self, program: u8, kind: StringKind) -> Tone {
+        self.preset_tone(program)
+            .filter(|tone| tone.kind == kind)
+            .unwrap_or_else(|| self.default_tone(kind))
+    }
+
+    /// The kind's default tone: the sound and chain from the settings (what a preset
+    /// without a tone of its own plays).
+    pub fn default_tone(&self, kind: StringKind) -> Tone {
+        Tone {
+            kind,
+            sound: self.string_sounds.get(kind),
+            chain: self.string_chains.get(kind).clone(),
         }
-        self.tones = tones.clone();
-        self.send_tones();
+    }
+
+    /// Gives the preset `program` a tone of its own (heard at once, and on every track with
+    /// that preset from now on), or forgets it with `None`: the built-in default plays
+    /// again. A tone of another kind of string changes which strings its tracks play, so
+    /// the sequence is built again then.
+    pub fn set_preset_tone(
+        &mut self,
+        song: &gscore_model::Song,
+        program: u8,
+        tone: Option<Tone>,
+    ) -> Result<(), String> {
+        let before = self.preset_kind(program);
+        self.preset_tones.retain(|old| old.program != program);
+        if let Some(tone) = tone {
+            self.preset_tones.push(PresetTone::of(program, &tone));
+        }
+        if self.preset_kind(program) == before {
+            self.send_tones();
+            Ok(())
+        } else {
+            self.rebuild_sequence(song)
+        }
     }
 
     /// Prepares `track`'s chain again with the blocks as they are set now, for a change
@@ -232,10 +273,9 @@ impl Playback {
             return;
         }
         for target in self.tone_targets.clone() {
-            let tone = self.tone(target.track, target.kind);
+            let tone = self.tone(target.program, target.kind);
             let own = self
-                .tones
-                .get(&target.track)
+                .preset_tone(target.program)
                 .is_some_and(|own| own.kind == target.kind);
             let wanted = SentTone {
                 sound: own.then_some(tone.sound),
@@ -297,22 +337,19 @@ impl Playback {
 
     /// The tones to render audio export with.
     pub(crate) fn export_tones(&mut self) -> ExportTones {
-        let own: Vec<(usize, Tone)> = self
-            .tones
+        let preset_tones = self.preset_tones.clone();
+        let presets = preset_tones
             .iter()
-            .map(|(&track, tone)| (track, tone.clone()))
-            .collect();
-        let own = own
-            .into_iter()
-            .map(|(track, tone)| {
+            .filter_map(|preset| {
+                let tone = preset.tone()?;
                 let spec = self.chain_spec(&tone.chain);
-                (
-                    track,
+                Some((
+                    preset.program,
                     tone.kind,
                     tone.sound.model(),
                     spec,
                     tone.chain.knobs(),
-                )
+                ))
             })
             .collect();
         let defaults = super::STRING_KINDS
@@ -322,7 +359,7 @@ impl Playback {
                 (kind, self.chain_spec(&chain), chain.knobs())
             })
             .collect();
-        ExportTones { own, defaults }
+        ExportTones { presets, defaults }
     }
 
     /// A message about the chains, once.
@@ -505,33 +542,34 @@ mod tests {
         // An amp needs no file.
         chain.blocks[3] = BlockSetting::of(BlockChoice::Amp);
         chain.blocks[4] = BlockSetting::of(BlockChoice::Drive);
-        // Three steel-string tracks: the second has its own tone with this chain, the
-        // first one dialed in on nylon strings (so on steel it plays steel's default), the
-        // third none. Only the second gets a chain, and only it its own sound.
+        // Three steel-string tracks whose presets are 27, 28 and 29: 27's preset has this
+        // chain and a sound of its own, 28's was dialed in on nylon strings (so on steel it
+        // plays steel's default), 29's none. Only the first gets a chain, and only it its
+        // own sound.
         let mut sound = playback.string_sounds().get(StringKind::Steel);
         sound.level *= 0.5;
-        let mut tones = TrackTones::new();
-        tones.insert(
-            1,
-            Tone {
-                kind: StringKind::Steel,
-                sound,
-                chain,
-            },
-        );
-        tones.insert(
-            0,
-            Tone {
-                kind: StringKind::Nylon,
-                sound,
-                chain: ChainSetting::default(),
-            },
-        );
-        playback.set_track_tones(&tones);
-        assert_eq!(playback.tone(1, StringKind::Steel).sound, sound);
+        playback.store_preset_tones(vec![
+            PresetTone::of(
+                27,
+                &Tone {
+                    kind: StringKind::Steel,
+                    sound,
+                    chain,
+                },
+            ),
+            PresetTone::of(
+                28,
+                &Tone {
+                    kind: StringKind::Nylon,
+                    sound,
+                    chain: ChainSetting::default(),
+                },
+            ),
+        ]);
+        assert_eq!(playback.tone(27, StringKind::Steel).sound, sound);
         assert_eq!(
-            playback.tone(0, StringKind::Steel),
-            playback.tone(2, StringKind::Steel),
+            playback.tone(28, StringKind::Steel),
+            playback.tone(29, StringKind::Steel),
             "a tone of another kind does not play on steel"
         );
         let song = gscore_model::testing::song_with_notes_on_tracks(
@@ -539,17 +577,25 @@ mod tests {
             &[(1, &[gscore_model::testing::TestNote::new(3, 2)])],
         )
         .unwrap();
+        let mut sequence = Sequence::new(&song, None).unwrap();
+        {
+            let performance = Arc::make_mut(&mut sequence.performance);
+            for (index, track) in performance.tracks.iter_mut().enumerate() {
+                track.sound.program = 27_u8.saturating_add(u8::try_from(index).unwrap_or(0));
+            }
+        }
         let sequence = super::super::with_engines(
-            Sequence::new(&song, None).unwrap(),
+            sequence,
             false,
             &[0, 1, 2].map(|track| (track, TrackEngine::Modelled(StringKind::Steel))),
+            &[],
         );
         let (models, choices) = playback.export_tones().resolve(&sequence);
         assert_eq!(models.len(), 1, "{models:?}");
-        assert_eq!(models[0].0, 1);
-        assert_eq!(choices.len(), 1, "only the second track has a chain");
+        assert_eq!(models[0].0, 0);
+        assert_eq!(choices.len(), 1, "only the first track has a chain");
         let (track, spec, _) = &choices[0];
-        assert_eq!(*track, 1);
+        assert_eq!(*track, 0);
         assert!(matches!(spec.blocks[0], Some(BlockKind::Impulse(_))));
         assert!(
             spec.blocks[1].is_none(),

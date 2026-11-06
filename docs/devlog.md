@@ -3581,3 +3581,33 @@ needed for a much larger font); owner listening check.
   the humbucker's even comb, no pickup changes nothing, a plucked open A through bridge,
   middle and neck pickups (loudness, in tune), older settings, and the window's buttons.
   The amp tests now play fixed strings without a pickup, so they measure the amp alone.
+
+## 2026-11-07 — A tone belongs to the track preset, kept on this machine
+
+- Owner: "my program local overwrites ... are persistent: I change the built-in tone for
+  preset 27, the preset gets stored locally and is associated with preset 27; when I reopen
+  the track or go to another song that is also using preset 27 I hear my custom sound. The
+  custom tone overwrite can be cleaned by switching back to built-in."
+- So a tone is the **preset's**, not the track's: `Settings::preset_tones` (by General MIDI
+  program: the kind of string it was dialed in on, the string sound and the chain). The
+  Sound chain window edits the shown track's preset; every track with that preset, in every
+  song, plays it. **Built-in** in the tone row forgets it (the kind's default plays again).
+  This also fixes the earlier report the other way round: 29 and 30 are different presets,
+  so they keep different tones (two tracks of the *same* preset now share one, by design).
+- The per-track tone map of 2026-11-06 (`Tab::track_tones`, `TrackTones`, `tone_of`) is
+  gone; playback keeps `preset_tones` and resolves a track's tone from its program
+  (`Playback::tone`, `preset_tone`, `preset_kind`, `set_preset_tone`). A preset's tone of
+  another kind of string changes which strings its tracks play, so `with_engines` now
+  derives the default kind per program from the preset tones
+  (`Sequence::with_modelled_guitars_where`), the same answer the window shows.
+- Saving a tone under a name (the library) and deleting it work as before; a library tone
+  is *given* to a preset by choosing it, and "Save" writes the preset's current knobs back
+  over that library tone.
+- Tests: the settings round trip drops a broken tone (unknown kind, program past 127,
+  a second tone for one program), a tone saved before pickups gets its kind's; the app's
+  steps — dialing 27's pick position stores it for preset 27 (not for the kind) and leaves
+  the bass's 33 alone, a 30 track gets its own and 27's stays, and Built-in removes the
+  overwrite from the settings and the sound again.
+- Still open: the owner's four tones are seeded into his settings file by hand (they name
+  his private impulse responses, so nothing ships); the tones are not in the song file, and
+  the impulse responses they name are absolute paths.

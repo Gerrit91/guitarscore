@@ -17,7 +17,7 @@ use gscore_model::{
 
 use crate::click::Click;
 use crate::event::{Channel, MidiEvent, PITCH_BEND_CENTER, controller};
-use crate::performance::Performance;
+use crate::performance::{Performance, StringKind};
 use crate::swing;
 use crate::tempo::{PPQ, TempoMap};
 
@@ -142,8 +142,18 @@ impl Sequence {
 
     /// This sequence with its guitar and bass tracks played by the modelled strings
     /// ([`Performance::model_guitars`]); the MIDI events stay for MIDI output and export.
-    pub fn with_modelled_guitars(mut self) -> Self {
-        Arc::make_mut(&mut self.performance).model_guitars();
+    pub fn with_modelled_guitars(self) -> Self {
+        self.with_modelled_guitars_where(StringKind::for_program)
+    }
+
+    /// The same, the kind of string each preset (General MIDI program) starts from decided
+    /// by `kind_of`: a preset the user gave a tone of its own plays that tone's kind of
+    /// string, the rest their program's family.
+    pub fn with_modelled_guitars_where(
+        mut self,
+        kind_of: impl Fn(u8) -> Option<StringKind>,
+    ) -> Self {
+        Arc::make_mut(&mut self.performance).model_guitars_where(kind_of);
         self
     }
 

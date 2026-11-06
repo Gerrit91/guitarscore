@@ -1014,7 +1014,10 @@ pub(crate) struct AudioExport {
     pub(crate) models: Vec<(gscore_play::StringKind, gscore_guitar::StringModel)>,
     /// What the user chose to play each track (by track index), as in playback.
     pub(crate) engines: Vec<(usize, gscore_play::TrackEngine)>,
-    /// The tracks' own tones and each kind's default chain.
+    /// The tones set for track presets (by program), which decide the strings of their
+    /// tracks and their sound.
+    pub(crate) preset_tones: Vec<crate::settings::PresetTone>,
+    /// The presets' tones and each kind's default chain.
     pub(crate) tones: crate::playback::ExportTones,
     /// The mixer's reverb bus, rendered as it is set.
     pub(crate) bus: Option<gscore_audio::ReverbBusChoice>,
@@ -1043,6 +1046,7 @@ fn export_wav(song: &Song, path: &std::path::Path, audio: &AudioExport) -> Resul
         Sequence::new(&song, None).map_err(|e| e.to_string())?,
         audio.modelled,
         &audio.engines,
+        &audio.preset_tones,
     );
     let (track_models, chains) = audio.tones.resolve(&sequence);
     let temp = path.with_extension("wav.part");

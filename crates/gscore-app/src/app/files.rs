@@ -277,6 +277,7 @@ impl GuitarScoreApp {
                     sample_rate: self.playback.sample_rate(),
                     models: self.playback.string_models(),
                     engines: self.playback.track_engines(),
+                    preset_tones: self.playback.preset_tones().to_vec(),
                     tones: self.playback.export_tones(),
                     bus: Some(self.playback.reverb_bus_choice()),
                 };

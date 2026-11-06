@@ -218,10 +218,16 @@ impl Performance {
     /// Lets the modelled strings play every guitar and bass track (a string instrument
     /// whose General MIDI program is a guitar or a bass); the others stay on the SoundFont.
     pub fn model_guitars(&mut self) {
+        self.model_guitars_where(StringKind::for_program);
+    }
+
+    /// The same, the kind of string each preset starts from decided by `kind_of` (the
+    /// app's per-preset tones, or [`StringKind::for_program`]).
+    pub fn model_guitars_where(&mut self, kind_of: impl Fn(u8) -> Option<StringKind>) {
         for track in &mut self.tracks {
             if track.kind == InstrumentKind::Strings
                 && !track.sound.percussion
-                && let Some(kind) = StringKind::for_program(track.sound.program)
+                && let Some(kind) = kind_of(track.sound.program)
             {
                 track.engine = TrackEngine::Modelled(kind);
             }

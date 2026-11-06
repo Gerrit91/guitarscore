@@ -297,6 +297,44 @@ pub struct ChainPreset {
     pub engine: String,
 }
 
+/// A tone the user set for a track preset (its General MIDI program): what its strings
+/// sound like and the chain after them. Kept in the settings, so it plays on every track
+/// with that preset, in every song; "Built-in" in the Sound chain window removes it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PresetTone {
+    /// The preset's General MIDI program (0 to 127).
+    pub program: u8,
+    /// The kind of string it is for: `nylon`, `steel`, `electric` or `bass`.
+    pub kind: String,
+    pub sound: StringSound,
+    /// The five places after the strings (a tone written before the chain was part of it
+    /// has an empty one).
+    #[serde(default)]
+    pub chain: crate::chain_settings::ChainSetting,
+}
+
+impl PresetTone {
+    /// `tone` as the settings keep it, for the preset `program`.
+    pub fn of(program: u8, tone: &crate::chain_settings::Tone) -> Self {
+        PresetTone {
+            program,
+            kind: kind_id(tone.kind).to_owned(),
+            sound: tone.sound,
+            chain: tone.chain.clone(),
+        }
+    }
+
+    /// The tone it stands for, if its kind is one we know.
+    pub fn tone(&self) -> Option<crate::chain_settings::Tone> {
+        let kind = kind_from_id(&self.kind)?;
+        Some(crate::chain_settings::Tone {
+            kind,
+            sound: self.sound.for_kind(kind),
+            chain: self.chain.clone(),
+        })
+    }
+}
+
 /// The settings name of what plays a track.
 pub(crate) fn engine_id(engine: gscore_play::TrackEngine) -> &'static str {
     match engine {
@@ -335,6 +373,14 @@ pub(crate) fn kind_id(kind: gscore_play::StringKind) -> &'static str {
     }
 }
 
+/// The kind of string an `id` names, if it names one.
+pub(crate) fn kind_from_id(id: &str) -> Option<gscore_play::StringKind> {
+    match engine_from_id(id) {
+        Some(gscore_play::TrackEngine::Modelled(kind)) => Some(kind),
+        _ => None,
+    }
+}
+
 /// The range a remembered panel width may have, and of the song grid's height.
 const PANEL_WIDTH_RANGE: (f32, f32) = (200.0, 1200.0);
 const GRID_HEIGHT_RANGE: (f32, f32) = (72.0, 2000.0);
@@ -348,6 +394,8 @@ fn fit_panel(size: Option<f32>, (low, high): (f32, f32)) -> Option<f32> {
 /// The most string sound presets kept, and the longest name.
 pub(crate) const MAX_STRING_PRESETS: usize = 100;
 pub(crate) const MAX_STRING_PRESET_NAME: usize = 60;
+/// How many track presets (General MIDI programs) there are.
+pub(crate) const MAX_PROGRAMS: u8 = 128;
 
 /// The four kinds of modelled string, as dialed in.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -530,6 +578,9 @@ pub struct Settings {
     pub string_sounds: StringSounds,
     /// Chains (with their string sound) saved under a name, by the Sound chain window.
     pub string_presets: Vec<ChainPreset>,
+    /// The tones set for track presets (by General MIDI program), local to this machine:
+    /// a track whose preset has one plays it, in every song.
+    pub preset_tones: Vec<PresetTone>,
     /// The effect chain after each kind of modelled string (the "Sound chain" window).
     pub string_chains: crate::chain_settings::StringChains,
     /// The mixer's reverb bus.
@@ -586,6 +637,7 @@ impl Default for Settings {
             string_chains: crate::chain_settings::StringChains::default(),
             reverb_bus: ReverbBus::default(),
             string_presets: Vec::new(),
+            preset_tones: Vec::new(),
             midi_port: None,
             bend_presets: Vec::new(),
             whammy_presets: Vec::new(),
@@ -792,6 +844,18 @@ impl Settings {
                 )
         });
         self.string_presets.truncate(MAX_STRING_PRESETS);
+        // Per-preset tones: a program the board has and a known kind, one per program.
+        let mut programs = std::collections::BTreeSet::new();
+        self.preset_tones.retain(|tone| {
+            tone.program < MAX_PROGRAMS
+                && kind_from_id(&tone.kind).is_some()
+                && programs.insert(tone.program)
+        });
+        for tone in &mut self.preset_tones {
+            if let Some(kind) = kind_from_id(&tone.kind) {
+                tone.sound = tone.sound.for_kind(kind);
+            }
+        }
     }
 }
 
@@ -850,6 +914,47 @@ mod tests {
         assert!((clean.block.mix - 1.0).abs() < 1e-6);
         assert_eq!(clean.level, 127);
         assert_eq!(clean.block.choice, BlockChoice::Room);
+    }
+
+    #[test]
+    fn preset_tones_round_trip_and_a_broken_one_is_dropped() {
+        use gscore_play::StringKind;
+
+        let mut settings = Settings::default();
+        // A tone saved before pickups existed: its kind's pickup comes back.
+        let mut sound = settings.string_sounds.get(StringKind::Electric);
+        sound.pickup = PickupSetting::Unset;
+        let tone = |program: u8, kind: &str, sound: StringSound| PresetTone {
+            program,
+            kind: kind.to_owned(),
+            sound,
+            chain: crate::chain_settings::ChainSetting::default(),
+        };
+        settings.preset_tones.push(tone(27, "electric", sound));
+        // A broken settings file: a program past the board, an unknown kind, and a second
+        // tone for one program (the first one is kept).
+        settings.preset_tones.push(tone(200, "electric", sound));
+        settings.preset_tones.push(tone(28, "banjo", sound));
+        settings.preset_tones.push(tone(27, "bass", sound));
+        let text = serde_json::to_string(&settings).unwrap_or_default();
+        let mut back: Settings = serde_json::from_str(&text).unwrap_or_default();
+        back.sanitize();
+        assert_eq!(back.preset_tones.len(), 1, "{:?}", back.preset_tones);
+        let kept = back.preset_tones.first().expect("kept");
+        assert_eq!((kept.program, kept.kind.as_str()), (27, "electric"));
+        let tone = kept.tone().expect("a known kind");
+        assert_eq!(tone.kind, StringKind::Electric);
+        assert_eq!(tone.sound.pickup, PickupSetting::Humbucker);
+        // An older settings file without preset tones reads with none.
+        let mut value: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+        assert!(
+            value
+                .as_object_mut()
+                .and_then(|object| object.remove("preset_tones"))
+                .is_some()
+        );
+        let older: Settings = serde_json::from_value(value).unwrap_or_default();
+        assert!(older.preset_tones.is_empty());
     }
 
     #[test]

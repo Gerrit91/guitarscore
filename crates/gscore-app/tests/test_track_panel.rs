@@ -325,7 +325,7 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
         (harness
             .state()
             .playback()
-            .tone(0, gscore_play::StringKind::Nylon)
+            .tone(26, gscore_play::StringKind::Nylon)
             .sound
             .pick_position
             - 0.4)
@@ -618,7 +618,7 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
         harness
             .state()
             .playback()
-            .tone(0, *kind)
+            .tone(26, *kind)
             .chain
             .blocks
             .first()
@@ -637,7 +637,7 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
     let blocks = harness
         .state()
         .playback()
-        .tone(0, kind)
+        .tone(26, kind)
         .chain
         .blocks
         .clone();
@@ -656,7 +656,7 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
     let blocks = harness
         .state()
         .playback()
-        .tone(0, kind)
+        .tone(26, kind)
         .chain
         .blocks
         .clone();
@@ -666,10 +666,13 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
 }
 
 #[test]
-fn two_guitars_of_one_kind_keep_their_own_tone() {
-    // The owner's report: dialing in a second electric guitar changed the first one too
-    // (one sound and chain per kind of string). Each track now has its own tone.
+fn a_tone_belongs_to_the_track_preset() {
+    // The owner: a tone dialed in for a preset plays on every track with that preset, in
+    // every song (it is kept in the settings), and another preset keeps its own.
+    use gscore_play::StringKind;
+
     let mut harness = app_with("basic/multi_staff.gp");
+    // Dial the pick position of the tone the shown track's preset plays.
     let dial = |harness: &mut Harness<'static, GuitarScoreApp>, track: usize, value: &str| {
         harness.state_mut().set_shown_track(track);
         harness.run();
@@ -695,15 +698,15 @@ fn two_guitars_of_one_kind_keep_their_own_tone() {
         harness.get_by_label("Close").click();
         harness.run();
     };
-    let pick = |harness: &Harness<'static, GuitarScoreApp>, track: usize| {
+    let pick = |harness: &Harness<'static, GuitarScoreApp>, program: u8, kind| {
         harness
             .state()
             .playback()
-            .tone(track, gscore_play::StringKind::Electric)
+            .tone(program, kind)
             .sound
             .pick_position
     };
-    let untouched = pick(&harness, 1);
+    let bass = harness.state().playback().tone(33, StringKind::Bass).sound;
     // An electric guitar's strings with their pickup (a humbucker at the bridge).
     harness.get_by_label("Sound chain").click();
     harness.run();
@@ -717,27 +720,108 @@ fn two_guitars_of_one_kind_keep_their_own_tone() {
     let neck = harness
         .state()
         .playback()
-        .tone(0, gscore_play::StringKind::Electric)
+        .tone(27, StringKind::Electric)
         .sound;
     assert_eq!(neck.model().pickup, gscore_guitar::Pickup::Humbucker);
     assert_eq!(neck.pickup_position, gscore_guitar::pickup_positions::NECK);
     harness.get_by_label("Close").click();
     harness.run();
+
+    // The first guitar's preset (27) gets a tone of its own: preset 27's, from now on.
     dial(&mut harness, 0, "0.4");
-    dial(&mut harness, 2, "0.2");
     assert!(
-        (pick(&harness, 0) - 0.4).abs() < 1e-6,
+        (pick(&harness, 27, StringKind::Electric) - 0.4).abs() < 1e-6,
         "{}",
-        pick(&harness, 0)
+        pick(&harness, 27, StringKind::Electric)
     );
+    // It is kept in the settings for that preset, so every song's 27 plays it.
+    let stored = harness.state().settings().preset_tones.clone();
+    let tone = stored
+        .iter()
+        .find(|tone| tone.program == 27)
+        .expect("kept for preset 27");
     assert!(
-        (pick(&harness, 2) - 0.2).abs() < 1e-6,
-        "{}",
-        pick(&harness, 2)
+        (tone.tone().expect("a known kind").sound.pick_position - 0.4).abs() < 1e-6,
+        "the settings keep it"
+    );
+    // Another preset is not touched: the bass (33) keeps its own tone.
+    assert_eq!(
+        harness.state().playback().tone(33, StringKind::Bass).sound,
+        bass
+    );
+
+    // A guitar on another preset (30) gets its own tone, and 27's stays as it was.
+    harness.state_mut().set_shown_track(2);
+    harness.run();
+    harness.get_by_label("SoundFont preset").click();
+    harness.run();
+    harness
+        .get_by_label("30: Distortion Guitar")
+        .click_accesskit();
+    harness.run();
+    dial(&mut harness, 2, "0.2");
+    assert!((pick(&harness, 30, StringKind::Electric) - 0.2).abs() < 1e-6);
+    assert!(
+        (pick(&harness, 27, StringKind::Electric) - 0.4).abs() < 1e-6,
+        "the first preset keeps its tone"
+    );
+}
+
+#[test]
+fn the_built_in_entry_forgets_a_presets_tone() {
+    // Switching back to Built-in drops the local overwrite: the kind's default plays again.
+    use gscore_play::StringKind;
+
+    let mut harness = app_with("basic/multi_staff.gp");
+    let built_in = harness
+        .state()
+        .playback()
+        .string_sounds()
+        .get(StringKind::Electric);
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    harness.get_by_label("Block 0: MIDI").click();
+    harness.run();
+    harness.get_by_label("PM Synthesis").click();
+    harness.run();
+    harness.get_by_label("Pick position value").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Pick position value").type_text("0.4");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    let changed = harness
+        .state()
+        .playback()
+        .tone(27, StringKind::Electric)
+        .sound;
+    assert_ne!(changed, built_in, "the preset has a tone of its own now");
+    // The tone row offers Built-in: the preset's own tone is forgotten.
+    harness
+        .query_all_by_label("Tone")
+        .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
+        .expect("the tone row")
+        .click();
+    harness.run();
+    harness.get_by_label("Built-in").click();
+    harness.run();
+    assert!(
+        harness
+            .state()
+            .settings()
+            .preset_tones
+            .iter()
+            .all(|tone| tone.program != 27),
+        "the overwrite is gone from the settings"
     );
     assert_eq!(
-        pick(&harness, 1),
-        untouched,
-        "a third guitar is not touched"
+        harness
+            .state()
+            .playback()
+            .tone(27, StringKind::Electric)
+            .sound,
+        built_in,
+        "the built-in tone plays again"
     );
 }
