@@ -100,6 +100,54 @@ fn a_new_empty_workspace_comes_from_the_tab_strip() {
 }
 
 #[test]
+fn the_grid_header_stays_while_the_tracks_scroll() {
+    // A short panel, so the six tracks of the song do not fit.
+    let settings = Settings {
+        grid_height_chosen: Some(150.0),
+        ..Settings::default()
+    };
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .build_eframe(|cc| {
+            GuitarScoreApp::with_settings(
+                &cc.egui_ctx,
+                Some(testdata("basic/multi_staff.gp")),
+                Keymap::default(),
+                None,
+                settings.clone(),
+                None,
+            )
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(started.elapsed() < Duration::from_secs(30), "timed out");
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    let header = harness.get_by_label("Mixer view").rect();
+    let track = harness.get_by_label("Track 1: Clean Guitar").rect();
+    // Wheel down over the matrix: the rows move, the header stays.
+    let grid = harness.get_by_label("Song grid").rect();
+    harness.hover_at(grid.center());
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -220.0),
+        phase: egui::TouchPhase::Move,
+        source: egui::MouseWheelSource::Unknown,
+        modifiers: egui::Modifiers::NONE,
+    });
+    harness.run();
+    let scrolled = harness.get_by_label("Track 1: Clean Guitar").rect();
+    assert!(scrolled.top() < track.top(), "{scrolled:?} {track:?}");
+    let still = harness.get_by_label("Mixer view").rect();
+    assert!(
+        (still.top() - header.top()).abs() < 0.5,
+        "the header stayed: {still:?} {header:?}"
+    );
+}
+
+#[test]
 fn files_that_cannot_be_opened_give_a_notice_not_a_crash() {
     for (file, expected) in [
         (testdata("basic/no_such_file.gp"), "cannot read"),
@@ -1177,7 +1225,8 @@ fn a_measure_selection_is_shared_with_the_editor_for_copy_and_paste() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     // Select the first measure in the grid.
     let rect = harness.get_by_label("Song grid").rect();
-    let pos = rect.left_top() + egui::vec2(24.0 * 0.0 + 12.0, 26.0 + 12.0);
+    // The matrix now starts under the pinned ruler: its rect is the first track row.
+    let pos = rect.left_top() + egui::vec2(24.0 * 0.0 + 12.0, 12.0);
     harness.hover_at(pos);
     harness.drag_at(pos);
     harness.drop_at(pos);
@@ -1210,8 +1259,8 @@ fn the_view_menu_and_the_row_menu_show_the_track_panel() {
 fn clicking_the_song_grid_moves_the_cursor_and_selects_measures() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     let rect = harness.get_by_label("Song grid").rect();
-    // The third measure, first track: 24 px square cells under a 26 px ruler.
-    let pos = rect.left_top() + egui::vec2(24.0 * 2.0 + 12.0, 26.0 + 12.0);
+    // The third measure, first track: 24 px square cells (the ruler is a separate strip).
+    let pos = rect.left_top() + egui::vec2(24.0 * 2.0 + 12.0, 12.0);
     harness.hover_at(pos);
     harness.drag_at(pos);
     harness.drop_at(pos);

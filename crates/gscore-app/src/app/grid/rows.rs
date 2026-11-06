@@ -81,9 +81,28 @@ pub(super) fn track_rows(document: &Document) -> Vec<TrackRow> {
         .collect()
 }
 
-/// The fixed left column: the header with track actions, then color, instrument, name and
-/// mixer for every track, then the master row.
-pub(super) fn headers(
+/// The track column's top line: the track actions and the mixer switch. It stays at the
+/// top while the track rows below scroll.
+pub(super) fn header(
+    ui: &mut egui::Ui,
+    rows: &[TrackRow],
+    view: GridView,
+    actions: &mut Vec<GridAction>,
+) {
+    ui.allocate_ui_with_layout(
+        vec2(TRACK_COLUMN, RULER_HEIGHT),
+        egui::Layout::top_down(egui::Align::Min),
+        |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            ui.spacing_mut().interact_size.y = 16.0;
+            bar::header(ui, rows, view, actions);
+        },
+    );
+}
+
+/// The track column under it: color, instrument, name and mixer for every track, then the
+/// master row.
+pub(super) fn body(
     ui: &mut egui::Ui,
     rows: &[TrackRow],
     master: MasterMix,
@@ -91,7 +110,7 @@ pub(super) fn headers(
     levels: &[f32],
     actions: &mut Vec<GridAction>,
 ) {
-    let height = RULER_HEIGHT + (rows.len() as f32 + 1.0) * ROW_HEIGHT;
+    let height = (rows.len() as f32 + 1.0) * ROW_HEIGHT;
     ui.allocate_ui_with_layout(
         vec2(TRACK_COLUMN, height),
         egui::Layout::top_down(egui::Align::Min),
@@ -101,7 +120,6 @@ pub(super) fn headers(
             // height a slider would reach below its row and push the next row down, out of
             // line with the matrix.
             ui.spacing_mut().interact_size.y = 16.0;
-            bar::header(ui, rows, view, actions);
             for (index, row) in rows.iter().enumerate() {
                 let level = levels.get(index).copied().unwrap_or(0.0);
                 track_header(ui, index, rows.len(), row, view, level, actions);

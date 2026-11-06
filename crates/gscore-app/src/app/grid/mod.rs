@@ -411,15 +411,30 @@ fn draw(
         );
         return;
     }
+    // The top line - the track actions and the mixer switch, beside the measure ruler -
+    // stays put; only the tracks below scroll, however many there are.
+    ui.spacing_mut().item_spacing.y = 0.0;
+    let scroll_id = ui.make_persistent_id("song_grid_x");
+    let scroll_x = ui
+        .ctx()
+        .data(|data| data.get_temp::<f32>(scroll_id))
+        .unwrap_or(0.0);
+    ui.horizontal_top(|ui| {
+        rows::header(ui, rows, view, actions);
+        matrix::ruler(ui, grid, view, scroll_x);
+    });
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             ui.horizontal_top(|ui| {
-                rows::headers(ui, rows, master, view, levels, actions);
-                egui::ScrollArea::horizontal()
+                rows::body(ui, rows, master, view, levels, actions);
+                let scrolled = egui::ScrollArea::horizontal()
                     .id_salt("song_grid")
                     .show(ui, |ui| matrix::matrix(ui, rows, grid, view, actions));
+                ui.ctx().data_mut(|data| {
+                    data.insert_temp(scroll_id, scrolled.state.clamped_offset().x);
+                });
             });
         });
 }
