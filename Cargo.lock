@@ -1772,6 +1772,7 @@ dependencies = [
  "clap",
  "gscore-audio",
  "gscore-edit",
+ "gscore-guitar",
  "gscore-io",
  "gscore-layout",
  "gscore-model",
