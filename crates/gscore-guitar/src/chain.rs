@@ -1,6 +1,6 @@
 //! The effect chain after the strings: [`BLOCKS`] places in a fixed order, each empty or
 //! holding a block (an impulse response for a cabinet or a body, a room's impulse response,
-//! an algorithmic reverb, a computed amp). The signal is mono from the strings and becomes
+//! an algorithmic reverb, a computed amp or overdrive pedal). The signal is mono from the strings and becomes
 //! stereo at the first block that makes it so (a room or the reverb).
 //!
 //! Two kinds of change: which blocks are where (and which impulse response, or a room's
@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use crate::amp::Amp;
 use crate::convolver::{Convolver, PARTITION, Spectra};
+use crate::drive::Drive;
 use crate::filters::Biquad;
 use crate::impulse::ImpulseResponse;
 use crate::knobs::BlockSettings;
@@ -43,6 +44,8 @@ pub enum BlockKind {
     /// A guitar amp, computed (see [`crate::AmpKnobs`]): mono, or each side alike once
     /// the signal is stereo.
     Amp,
+    /// An overdrive pedal, computed (see [`crate::DriveKnobs`]): mono, or each side alike.
+    Drive,
 }
 
 impl BlockKind {
@@ -73,6 +76,7 @@ enum PreparedBlock {
     Room([Arc<Spectra>; 2]),
     Reverb,
     Amp,
+    Drive,
 }
 
 impl ChainSpec {
@@ -99,6 +103,7 @@ impl ChainSpec {
                 }
                 BlockKind::Reverb => PreparedBlock::Reverb,
                 BlockKind::Amp => PreparedBlock::Amp,
+                BlockKind::Drive => PreparedBlock::Drive,
             })
         });
         PreparedChain {
@@ -136,6 +141,9 @@ impl PreparedChain {
             Some(PreparedBlock::Amp) => Block::Amp(Box::new(
                 [(); 2].map(|()| Amp::new(rate, crate::AmpKnobs::default())),
             )),
+            Some(PreparedBlock::Drive) => Block::Drive(Box::new(
+                [(); 2].map(|()| Drive::new(rate, crate::DriveKnobs::default())),
+            )),
         });
         let mut chain = Chain {
             rate,
@@ -168,6 +176,8 @@ enum Block {
     Reverb(Box<ReverbBlock>),
     /// Left and right (the right only once the signal is stereo).
     Amp(Box<[Amp; 2]>),
+    /// Left and right, as an amp's.
+    Drive(Box<[Drive; 2]>),
 }
 
 /// The computed reverb and the cut filters on its sound, left and right.
@@ -203,13 +213,22 @@ impl Chain {
                     (new.impulse.low_cut, new.impulse.high_cut),
                 ),
                 Block::Room(room) => (Some(&mut room.cuts), (new.room.low_cut, new.room.high_cut)),
-                Block::Reverb(reverb) => (
-                    Some(&mut reverb.cuts),
-                    (new.reverb.low_cut, new.reverb.high_cut),
-                ),
+                Block::Reverb(reverb) => {
+                    reverb.reverb.set_knobs(&new.reverb);
+                    (
+                        Some(&mut reverb.cuts),
+                        (new.reverb.low_cut, new.reverb.high_cut),
+                    )
+                }
                 Block::Amp(sides) => {
                     for side in sides.iter_mut() {
                         side.set_knobs(new.amp);
+                    }
+                    (None, (0.0, 0.0))
+                }
+                Block::Drive(sides) => {
+                    for side in sides.iter_mut() {
+                        side.set_knobs(new.drive);
                     }
                     (None, (0.0, 0.0))
                 }
@@ -254,6 +273,11 @@ impl Chain {
                         side.reset();
                     }
                 }
+                Block::Drive(sides) => {
+                    for side in sides.iter_mut() {
+                        side.reset();
+                    }
+                }
                 Block::Reverb(reverb) => {
                     reverb.reverb.clear();
                     for filter in reverb.cuts.iter_mut().flatten() {
@@ -279,6 +303,15 @@ impl Chain {
                 match block {
                     Block::Empty => {}
                     Block::Amp(sides) => {
+                        let [left, right] = &mut **sides;
+                        signal[0] = left.process(signal[0]);
+                        signal[1] = if stereo {
+                            right.process(signal[1])
+                        } else {
+                            signal[0]
+                        };
+                    }
+                    Block::Drive(sides) => {
                         let [left, right] = &mut **sides;
                         signal[0] = left.process(signal[0]);
                         signal[1] = if stereo {
@@ -349,10 +382,7 @@ impl Chain {
                     }
                     Block::Reverb(block) => {
                         let knobs = settings.reverb;
-                        let (wet_l, wet_r) =
-                            block
-                                .reverb
-                                .process(signal[0], signal[1], knobs.size, knobs.damping);
+                        let (wet_l, wet_r) = block.reverb.process(signal[0], signal[1]);
                         let [[low_l, high_l], [low_r, high_r]] = &mut block.cuts;
                         let wet_l = high_l.process(low_l.process(wet_l));
                         let wet_r = high_r.process(low_r.process(wet_r));

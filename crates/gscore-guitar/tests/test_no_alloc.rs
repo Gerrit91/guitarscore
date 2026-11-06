@@ -53,7 +53,7 @@ fn playing_strings_and_running_a_chain_never_allocate() {
             Some(BlockKind::Amp),
             Some(BlockKind::Reverb),
             Some(BlockKind::room(room, 2.0)),
-            None,
+            Some(BlockKind::Drive),
         ],
     };
     let mut knobs = [BlockSettings::default(); BLOCKS];

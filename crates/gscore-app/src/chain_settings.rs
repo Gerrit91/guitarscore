@@ -5,7 +5,8 @@
 use std::path::PathBuf;
 
 use gscore_guitar::{
-    AmpKnobs, AmpVoice, BLOCKS, BlockSettings, ImpulseKnobs, LENGTH_RANGE, ReverbKnobs, RoomKnobs,
+    AmpKnobs, AmpVoice, BLOCKS, BlockSettings, DriveKnobs, ImpulseKnobs, LENGTH_RANGE, ReverbKnobs,
+    RoomKnobs,
 };
 use gscore_play::StringKind;
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,8 @@ pub enum BlockChoice {
     Reverb,
     /// The computed guitar amp.
     Amp,
+    /// The computed overdrive pedal.
+    Drive,
 }
 
 impl BlockChoice {
@@ -35,6 +38,7 @@ impl BlockChoice {
             BlockChoice::Room => "Room",
             BlockChoice::Reverb => "Reverb",
             BlockChoice::Amp => "Amp",
+            BlockChoice::Drive => "Drive",
         }
     }
 
@@ -91,6 +95,10 @@ pub struct BlockSetting {
     pub high_cut: f32,
     pub width: f32,
     pub size: f32,
+    /// A reverb's decay time (s), pre-delay (ms) and modulation.
+    pub decay: f32,
+    pub pre_delay: f32,
+    pub modulation: f32,
     pub damping: f32,
     /// A room's decay time relative to the recording's (`gscore_guitar::LENGTH_RANGE`).
     /// It changes the response itself, so the chain is prepared again when it is set,
@@ -103,6 +111,8 @@ pub struct BlockSetting {
     pub middle: f32,
     pub treble: f32,
     pub speaker: f32,
+    /// A drive pedal's tone (its Drive is `drive`, its level `gain_db`).
+    pub tone: f32,
 }
 
 impl Default for BlockSetting {
@@ -135,10 +145,8 @@ impl BlockSetting {
                     reverb.width,
                 )
             }
-            BlockChoice::Amp => {
-                let amp = AmpKnobs::default();
-                (1.0, amp.level_db, 0.0, 0.0, 1.0)
-            }
+            BlockChoice::Amp => (1.0, AmpKnobs::default().level_db, 0.0, 0.0, 1.0),
+            BlockChoice::Drive => (1.0, DriveKnobs::default().level_db, 0.0, 0.0, 1.0),
             BlockChoice::Cabinet | BlockChoice::Empty => {
                 let impulse = ImpulseKnobs::default();
                 (
@@ -162,14 +170,23 @@ impl BlockSetting {
             high_cut,
             width,
             size: reverb.size,
+            decay: reverb.decay,
+            pre_delay: reverb.pre_delay,
+            modulation: reverb.modulation,
             damping: reverb.damping,
             length: 1.0,
             voice: AmpVoiceSetting::default(),
-            drive: amp.gain,
+            // The amp's Gain, or a drive's Drive.
+            drive: if choice == BlockChoice::Drive {
+                DriveKnobs::default().drive
+            } else {
+                amp.gain
+            },
             bass: amp.bass,
             middle: amp.mid,
             treble: amp.treble,
             speaker: amp.speaker,
+            tone: DriveKnobs::default().tone,
         }
     }
 
@@ -202,6 +219,9 @@ impl BlockSetting {
             },
             reverb: ReverbKnobs {
                 size: self.size,
+                decay: self.decay,
+                pre_delay: self.pre_delay,
+                modulation: self.modulation,
                 damping: self.damping,
                 width: self.width,
                 mix: self.mix,
@@ -216,6 +236,11 @@ impl BlockSetting {
                 treble: self.treble,
                 level_db: self.gain_db,
                 speaker: self.speaker,
+            },
+            drive: DriveKnobs {
+                drive: self.drive,
+                tone: self.tone,
+                level_db: self.gain_db,
             },
         }
         .sanitized()
@@ -356,6 +381,28 @@ mod tests {
         assert!(text.contains("\"voice\":\"lead\""), "{text}");
         let back: StringChains = serde_json::from_str(&text).unwrap();
         assert_eq!(back, chains);
+    }
+
+    #[test]
+    fn a_drive_and_the_reverb_keep_their_knobs_and_old_reverbs_get_the_new_ones() {
+        let drive = BlockSetting::of(BlockChoice::Drive);
+        assert_eq!(drive.knobs().drive, DriveKnobs::default());
+        let reverb = BlockSetting::of(BlockChoice::Reverb);
+        assert_eq!(reverb.knobs().reverb, ReverbKnobs::default());
+        // A reverb saved before decay, pre-delay and modulation existed.
+        let mut chains = StringChains::default();
+        chains.steel.blocks[0] = reverb;
+        let text = serde_json::to_string(&chains).unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let block = &mut value["steel"]["blocks"][0];
+        for field in ["decay", "pre_delay", "modulation"] {
+            assert!(
+                block.as_object_mut().unwrap().remove(field).is_some(),
+                "{field}"
+            );
+        }
+        let back: StringChains = serde_json::from_value(value).unwrap();
+        assert_eq!(back.steel.blocks[0].knobs().reverb, ReverbKnobs::default());
     }
 
     #[test]

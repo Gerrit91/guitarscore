@@ -1,6 +1,7 @@
 //! The amp block on modelled electric strings: a power chord through each voice is loud
 //! but bounded, clean stays close to the strings' own level, the knobs are taken while
-//! it plays, and the chain falls silent once the strings do.
+//! it plays, and the chain falls silent once the strings do. A drive pedal in front
+//! tightens its low end.
 
 #![allow(
     clippy::unwrap_used,
@@ -9,9 +10,11 @@
 )]
 #![allow(unused_crate_dependencies)]
 
+use std::f32::consts::TAU;
+
 use gscore_guitar::{
-    AmpKnobs, AmpVoice, Attack, BLOCKS, BlockKind, BlockSettings, ChainSpec, GuitarModel, Pluck,
-    StringVoice, frequency,
+    AmpKnobs, AmpVoice, Attack, BLOCKS, BlockKind, BlockSettings, ChainSpec, DriveKnobs,
+    GuitarModel, Pluck, StringVoice, frequency,
 };
 
 const RATE: u32 = 48_000;
@@ -172,4 +175,60 @@ fn cost_of_an_amp() {
         spent * 10.0
     );
     assert!(out.iter().all(|x| x.is_finite()));
+}
+
+/// The level of `frequency` in `signal` (one DFT bin).
+fn tone(signal: &[f32], frequency: f32) -> f32 {
+    let (mut re, mut im) = (0.0_f32, 0.0_f32);
+    for (i, x) in signal.iter().enumerate() {
+        let phase = TAU * frequency * i as f32 / RATE as f32;
+        re += x * phase.cos();
+        im += x * phase.sin();
+    }
+    2.0 * re.hypot(im) / signal.len() as f32
+}
+
+#[test]
+fn a_drive_in_front_tightens_the_low_end() {
+    // The metal trick: Drive low, Level up, into the lead voice. The low E's fundamental
+    // makes up less of the sound than through the amp alone.
+    let chord = power_chord(1.0);
+    let lead = AmpKnobs {
+        voice: AmpVoice::Lead,
+        gain: 0.6,
+        speaker: 0.0,
+        ..AmpKnobs::default()
+    };
+    let run = |spec: &ChainSpec, settings: &[BlockSettings; BLOCKS]| {
+        let mut chain = spec.prepare(RATE).instance(settings);
+        let mut out = vec![0.0_f32; chord.len()];
+        let mut right = [0.0_f32; BLOCK];
+        for (i, o) in chord.chunks(BLOCK).zip(out.chunks_mut(BLOCK)) {
+            chain.process(i, o, &mut right[..i.len()]);
+        }
+        out
+    };
+    let low_share = |signal: &[f32]| {
+        let part = &signal[12_000..];
+        tone(part, frequency(40, 0.0)) / rms(part)
+    };
+    let alone = run(&amp_spec(), &settings(lead));
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Drive);
+    spec.blocks[1] = Some(BlockKind::Amp);
+    let mut both = [BlockSettings::default(); BLOCKS];
+    both[0].drive = DriveKnobs {
+        drive: 0.0,
+        tone: 0.6,
+        level_db: 6.0,
+    };
+    both[1].amp = lead;
+    let pushed = run(&spec, &both);
+    assert!(pushed.iter().all(|x| x.is_finite()));
+    assert!(
+        low_share(&pushed) < 0.7 * low_share(&alone),
+        "{} against {}",
+        low_share(&pushed),
+        low_share(&alone)
+    );
 }

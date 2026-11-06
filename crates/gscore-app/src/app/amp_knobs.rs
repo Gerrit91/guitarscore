@@ -1,5 +1,6 @@
-//! The knobs of an amp block in the Sound chain window: its voice, chosen by clicking its
-//! name, then Gain, the tone stack, the speaker and the output level as round knobs.
+//! The knobs of an amp block in the Sound chain window (its voice, chosen by clicking its
+//! name, then Gain, the tone stack, the speaker and the output level as round knobs) and
+//! of a drive pedal.
 
 use egui::{RichText, vec2};
 use gscore_guitar::knob_ranges;
@@ -85,6 +86,45 @@ pub(super) fn amp_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
         0.0,
         false,
         "The amp's output level.",
+    )
+    .changed;
+    changed
+}
+
+/// A drive pedal's knobs; whether anything changed.
+pub(super) fn drive_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
+    let mut changed = round_knob(
+        ui,
+        &mut block.drive,
+        knob_ranges::AMP,
+        "Drive",
+        "",
+        0.3,
+        false,
+        "How hard the pedal clips the mids and highs (the lows pass it clean). In front of a \
+         lead amp keep it low and raise Level: a tight, chugging low end.",
+    )
+    .changed;
+    changed |= round_knob(
+        ui,
+        &mut block.tone,
+        knob_ranges::AMP,
+        "Tone",
+        "",
+        0.5,
+        false,
+        "The pedal's tone: 0 dark, 1 bright.",
+    )
+    .changed;
+    changed |= round_knob(
+        ui,
+        &mut block.gain_db,
+        knob_ranges::LEVEL,
+        "Level",
+        " dB",
+        0.0,
+        false,
+        "The pedal's output: how hard it hits what follows.",
     )
     .changed;
     changed

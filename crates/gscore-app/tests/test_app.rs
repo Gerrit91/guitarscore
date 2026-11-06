@@ -390,6 +390,16 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.run();
     harness.get_by_label("Block 3: Amp");
     harness.snapshot("sound_chain_amp");
+    // A drive in front of it, and the reverb's knobs.
+    harness.get_by_label("Block 1: +").click();
+    harness.run();
+    harness.get_by_label("Drive").click();
+    harness.run();
+    harness.get_by_label("Block 1: Drive");
+    harness.snapshot("sound_chain_drive");
+    harness.get_by_label("Block 2: Reverb").click();
+    harness.run();
+    harness.snapshot("sound_chain_reverb");
     // The strings' own window (their box opens it once PM synthesis plays the track).
     harness.get_by_label("Block 0: MIDI").click();
     harness.run();

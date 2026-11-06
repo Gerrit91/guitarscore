@@ -69,6 +69,21 @@ impl DelayLine {
         h0 * p0 + h1 * p1 + h2 * p2 + h3 * p3
     }
 
+    /// The signal `delay` samples back like [`DelayLine::read`], interpolated linearly:
+    /// cheaper, and a little dull at the top, which a reverb's diffusion does not mind.
+    pub(crate) fn read_linear(&self, delay: f32) -> f32 {
+        let delay = if delay.is_finite() {
+            delay.clamp(1.0, self.max_delay())
+        } else {
+            1.0
+        };
+        let back = delay as usize;
+        let fraction = delay - back as f32;
+        let a = self.at(back);
+        let b = self.at(back.saturating_add(1));
+        a + (b - a) * fraction
+    }
+
     /// Changes the `count` samples to be read next (the newest `count`, oldest first) with
     /// `change(position, old)`: how an excitation is added to the vibrating string.
     pub(crate) fn reshape(&mut self, count: usize, mut change: impl FnMut(usize, f32) -> f32) {

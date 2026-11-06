@@ -2,7 +2,7 @@
 //! pedal board. Six boxes in a fixed row, joined by cables: what plays the track first
 //! (MIDI synth or PM synthesis; their sound - the kind of string and its knobs - shows in
 //! the same window), then five places, each empty or holding a block (a cabinet or body
-//! impulse response, a room impulse response, the computed reverb, the computed amp). The selected place's
+//! impulse response, a room impulse response, the computed reverb, amp or drive pedal). The selected place's
 //! choices or knobs show below the board. One chain per kind of string; every change is
 //! heard at once and kept in the settings.
 
@@ -102,6 +102,7 @@ fn box_text(block: &BlockSetting) -> (String, String) {
         BlockChoice::Empty => String::new(),
         BlockChoice::Reverb => "computed".to_owned(),
         BlockChoice::Amp => block.voice.label().to_owned(),
+        BlockChoice::Drive => "overdrive".to_owned(),
         BlockChoice::Cabinet | BlockChoice::Room => block
             .file
             .as_ref()
@@ -352,8 +353,13 @@ struct BoardActions {
 }
 
 /// What an empty place can hold: the block, the name its menu shows, and what it does.
-fn block_choices() -> [(BlockChoice, &'static str, &'static str); 4] {
+fn block_choices() -> [(BlockChoice, &'static str, &'static str); 5] {
     [
+        (
+            BlockChoice::Drive,
+            "Drive",
+            "An overdrive pedal: in front of an amp it tightens the lows and pushes the mids",
+        ),
         (
             BlockChoice::Amp,
             "Amp",
@@ -374,7 +380,7 @@ fn block_choices() -> [(BlockChoice, &'static str, &'static str); 4] {
         (
             BlockChoice::Reverb,
             "Reverb",
-            "A computed room reverb, no file needed",
+            "A computed reverb, from a small room to a cathedral, no file needed",
         ),
     ]
 }
@@ -630,6 +636,7 @@ pub(super) fn block_knobs(
         match block.choice {
             BlockChoice::Empty => {}
             BlockChoice::Amp => moved.changed |= super::amp_knobs::amp_knobs(ui, block),
+            BlockChoice::Drive => moved.changed |= super::amp_knobs::drive_knobs(ui, block),
             BlockChoice::Cabinet | BlockChoice::Room => {
                 // First the room itself: how long it lasts.
                 if block.choice == BlockChoice::Room {
@@ -721,7 +728,30 @@ pub(super) fn block_knobs(
                     "",
                     0.5,
                     false,
-                    "The room's size: small and short to large and long.",
+                    "The room's size: a small room to a cathedral. How far apart its echoes \
+                     are; how long it rings is Decay.",
+                )
+                .changed;
+                moved.changed |= round_knob(
+                    ui,
+                    &mut block.decay,
+                    knob_ranges::DECAY,
+                    "Decay",
+                    " s",
+                    3.0,
+                    true,
+                    "How long the reverb rings: seconds until it has fallen by 60 dB.",
+                )
+                .changed;
+                moved.changed |= round_knob(
+                    ui,
+                    &mut block.pre_delay,
+                    knob_ranges::PRE_DELAY,
+                    "Pre-delay",
+                    " ms",
+                    20.0,
+                    false,
+                    "The wait before the reverb starts: keeps the notes clear of it.",
                 )
                 .changed;
                 moved.changed |= round_knob(
@@ -732,9 +762,23 @@ pub(super) fn block_knobs(
                     "",
                     0.5,
                     false,
-                    "How quickly the room's highs die: 0 bright, 1 dull.",
+                    "How much sooner the highs die than the lows: 0 bright, 1 dull.",
                 )
                 .changed;
+                moved.changed |= round_knob(
+                    ui,
+                    &mut block.modulation,
+                    knob_ranges::MODULATION,
+                    "Modulation",
+                    "",
+                    0.5,
+                    false,
+                    "How much the tail drifts: 0 still, 1 a lush shimmer. Keeps long tails \
+                     from ringing metallic.",
+                )
+                .changed;
+                // The room above, what comes out of it below.
+                ui.end_row();
                 moved.changed |= round_knob(
                     ui,
                     &mut block.width,

@@ -3478,3 +3478,25 @@ needed for a much larger font); owner listening check.
   every voice and gain bounded, distortion squashes the attack, knobs while playing, no tail,
   no allocation; settings round trip; the playback chain gets the amp. Cost (ignored test):
   0.9 % of a core per track in release.
+
+## 2026-11-06 — A new reverb, and a Drive pedal
+
+- **Reverb** rebuilt (owner did not like the Freeverb copy): a feedback delay network after
+  Geraint Luff's published design (Signalsmith Audio, MIT article; our own code, no
+  dependency, so the browser build keeps working). Four diffusion stages for a dense onset,
+  eight drifting delay lines fed back through a Householder matrix for the tail. New knobs
+  Decay (0.3 to 30 s, exact), Pre-delay (0 to 250 ms) and Modulation (the tail's drift, the
+  shimmer of a big hall); Size now reaches a cathedral; Damping shortens the highs' decay.
+  Size and pre-delay glide while turned. The knobs sit in two rows: the room, then its
+  output. Same block, so saved chains and the reverb bus keep working; reverbs saved before
+  get the new knobs' defaults. A fresh reverb bus is a large hall (size 0.9, 5 s, 30 ms).
+  1.3 % of a core per reverb (release).
+- **Drive**: an overdrive pedal (mid-hump kind): only what lies above 720 Hz is clipped, the
+  lows pass clean; Drive, Tone, Level. In front of the Lead amp with Drive low and Level up
+  it tightens the low end (test).
+- Oversampling shared by the amp and the drive (`gscore-guitar::oversample`).
+- Tests: decay time within 35 %, dense after 100 ms in a cathedral, sides differ, long runs
+  finite and dying, damping darkens, pre-delay waits, matrices keep energy, about as loud at
+  every size and decay; drive: mids distort and lows stay clean, level, silence; drive into
+  amp tightens the lows; no allocation with both; settings (old reverbs read); snapshots of
+  the drive and the reverb's knobs.

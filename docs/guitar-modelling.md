@@ -180,9 +180,9 @@ described in the literature below:
   mix, gain, low cut and high cut: what amp modelers call a cab block, and an acoustic
   guitar's body too. *Room*, a room's impulse response (stereo if recorded so): a
   convolution reverb with its length (the decay stretched 0.5× to 4×, below), mix, gain,
-  cuts and width. *Reverb*, computed after Freeverb
-  (public domain): size, damping, width, mix, and a low and high cut on its sound. *Amp*,
-  computed (below).
+  cuts and width. *Reverb*, computed (below): size,
+  decay, pre-delay, damping, modulation, width, mix, and a low and high cut on its sound.
+  *Amp* and *Drive*, computed (below).
 - **Amp** (`gscore-guitar::amp`, 2026-11-06): no capture of a real amp, the parts that
   make a tube preamp sound as it does. An input pad (the strings come in hot: a power chord
   picked hard peaks near 4), a low cut before the clipping (*tight*: 40, 90, 160 Hz by
@@ -199,6 +199,27 @@ described in the literature below:
   (one stage, the pad given back so it plays at the strings' level), *Crunch* (two),
   *Lead* (three); their outputs are trimmed to within about 3 dB of one another on a
   power chord. About 0.9 % of a core per track (release).
+- **Drive** (`gscore-guitar::drive`): an overdrive pedal after the green mid-hump kind.
+  Only the signal above 720 Hz is driven (6 to 42 dB) into a symmetric soft clip (4×
+  oversampled, smoothed at 6.5 kHz); the lows pass clean beside it, then a tone lowpass
+  (900 Hz to 7 kHz) and Level. In front of the Lead voice with Drive low and Level up,
+  the low E's fundamental is a clearly smaller share of the sound (test): the metal
+  player's tight low end.
+- **Reverb** (`gscore-guitar::reverb`, 2026-11-06, replacing the Freeverb copy the owner
+  did not like): a feedback delay network after Geraint Luff's design for Signalsmith
+  Audio (MIT article; no code taken). Pre-delay up to 250 ms; the stereo signal spread to
+  eight channels; four diffusion stages (each: eight delays spread over its length,
+  shuffle with sign flips, Hadamard mix; lengths doubling up to 0.6 × the room) for a
+  dense onset; a tail of eight delay lines (one to two times the room, 25 to 220 ms by
+  Size) fed back through a Householder matrix. The loop gain per line gives the Decay
+  time exactly (0.3 to 30 s); a shelf at 2.5 kHz in the loop gives the highs a shorter
+  decay (Damping: down to 0.1×). Each tail line drifts by up to 4 ms at its own slow rate
+  (0.11 to 0.83 Hz; Modulation), so long tails shimmer instead of ringing metallic. The
+  diffusion's output also goes out (early part, 0.35). Size and pre-delay glide (80 ms),
+  so turning them while playing does not click. All wet it stays 4-6 dB under the dry
+  strings from a small room to a 30 s cathedral. Allocated once for the largest size
+  (about 1 MB at 48 kHz), 1.3 % of a core per instance (release; linear interpolation
+  in the diffusers, third-order in the drifting tail).
 - **Convolution** (`gscore-guitar::convolver`): an own FFT and partitioned overlap-save in
   three stages (partitions of 128, 1024 and 8192 samples): 128 samples of lag, and long
   tails cheap. The two large stages are one block later and spread their frame (a

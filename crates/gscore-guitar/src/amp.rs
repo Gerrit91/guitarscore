@@ -23,20 +23,15 @@
 //!   a Cab block; it then plays direct, as an amp's line out would.
 
 use crate::filters::{Biquad, DcBlocker};
+use crate::oversample::{FACTOR as OVERSAMPLE, Oversampler};
 
-/// The oversampling factor of the clipping stages.
-const OVERSAMPLE: usize = 4;
-/// The anti-aliasing lowpass (three Butterworth sections: sixth order) on the way up and
-/// on the way down, as a share of the base rate.
-const ALIAS_CUT: f32 = 0.42;
-const BUTTERWORTH_6: [f32; 3] = [0.517_638, std::f32::consts::FRAC_1_SQRT_2, 1.931_852];
 /// The fourth-order Butterworth of the speaker's roll-off.
 const BUTTERWORTH_4: [f32; 2] = [0.541_196, 1.306_563];
 /// At most this many clipping stages.
 const STAGES: usize = 3;
 /// The strings come in hot (a chord picked hard peaks near 4): this brings them to about
 /// the level a pickup gives an amp's input, where the stages start to clip.
-const INPUT_PAD: f32 = 0.15;
+pub(crate) const INPUT_PAD: f32 = 0.15;
 
 /// The character of the amp: how many stages clip, how hard, and how tight.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -159,7 +154,7 @@ impl Default for AmpKnobs {
 }
 
 /// A soft clip (a rational approximation of tanh), reaching ±1 at ±3 and staying there.
-fn soft(x: f32) -> f32 {
+pub(crate) fn soft(x: f32) -> f32 {
     let x = x.clamp(-3.0, 3.0);
     x * (27.0 + x * x) / (27.0 + 9.0 * x * x)
 }
@@ -169,6 +164,27 @@ fn soft(x: f32) -> f32 {
 struct Stage {
     couple: Biquad,
     plate: Biquad,
+}
+
+/// The stages on one sample at the fast rate.
+fn clip(stages: &mut [Stage; STAGES], shape: VoiceShape, x: f32) -> f32 {
+    let mut value = x;
+    let used = shape.stages.min(STAGES);
+    for (index, (stage, gain)) in stages
+        .iter_mut()
+        .zip(shape.stage_gain)
+        .take(used)
+        .enumerate()
+    {
+        let input = if index == 0 {
+            value
+        } else {
+            stage.couple.process(value) * gain
+        };
+        let clipped = soft(input + shape.bias) - soft(shape.bias);
+        value = stage.plate.process(clipped);
+    }
+    value
 }
 
 /// One channel of the amp.
@@ -181,8 +197,7 @@ pub(crate) struct Amp {
     trim: f32,
     tight: Biquad,
     push: Biquad,
-    up: [Biquad; 3],
-    down: [Biquad; 3],
+    oversampler: Oversampler,
     stages: [Stage; STAGES],
     dc: DcBlocker,
     tone: [Biquad; 3],
@@ -200,8 +215,7 @@ impl Amp {
             trim: 1.0,
             tight: Biquad::default(),
             push: Biquad::default(),
-            up: [Biquad::default(); 3],
-            down: [Biquad::default(); 3],
+            oversampler: Oversampler::new(sample_rate.max(1.0)),
             stages: [Stage::default(); STAGES],
             dc: DcBlocker::new(sample_rate),
             tone: [Biquad::default(); 3],
@@ -226,13 +240,6 @@ impl Amp {
         self.push = self
             .push
             .retuned(Biquad::peaking(rate, shape.push.0, 0.7, shape.push.1));
-        let cut = (rate * ALIAS_CUT).min(20_000.0);
-        for (filter, q) in [&mut self.up, &mut self.down]
-            .into_iter()
-            .flat_map(|filters| filters.iter_mut().zip(BUTTERWORTH_6))
-        {
-            *filter = filter.retuned(Biquad::lowpass(fast, cut, q));
-        }
         for stage in &mut self.stages {
             stage.couple = stage.couple.retuned(Biquad::highpass(fast, 30.0, 0.5));
             stage.plate = stage.plate.retuned(Biquad::lowpass(fast, shape.plate, 0.6));
@@ -258,8 +265,6 @@ impl Amp {
     pub(crate) fn reset(&mut self) {
         let filters = [&mut self.tight, &mut self.push]
             .into_iter()
-            .chain(&mut self.up)
-            .chain(&mut self.down)
             .chain(
                 self.stages
                     .iter_mut()
@@ -271,52 +276,16 @@ impl Amp {
             filter.reset();
         }
         self.dc.reset();
-    }
-
-    /// The stages on one sample at the fast rate.
-    fn clip(&mut self, x: f32) -> f32 {
-        let shape = self.shape;
-        let mut value = x;
-        let used = shape.stages.min(STAGES);
-        for (index, (stage, gain)) in self
-            .stages
-            .iter_mut()
-            .zip(shape.stage_gain)
-            .take(used)
-            .enumerate()
-        {
-            let input = if index == 0 {
-                value
-            } else {
-                stage.couple.process(value) * gain
-            };
-            let clipped = soft(input + shape.bias) - soft(shape.bias);
-            value = stage.plate.process(clipped);
-        }
-        value
+        self.oversampler.reset();
     }
 
     /// One sample through the amp.
     pub(crate) fn process(&mut self, x: f32) -> f32 {
         let driven = self.push.process(self.tight.process(x * INPUT_PAD)) * self.drive;
-        let mut out = 0.0;
-        for step in 0..OVERSAMPLE {
-            // Zero-stuffing: one sample in four, four times as loud, then the lowpass.
-            let stuffed = if step == 0 {
-                driven * OVERSAMPLE as f32
-            } else {
-                0.0
-            };
-            let up = self
-                .up
-                .iter_mut()
-                .fold(stuffed, |value, filter| filter.process(value));
-            let clipped = self.clip(up);
-            out = self
-                .down
-                .iter_mut()
-                .fold(clipped, |value, filter| filter.process(value));
-        }
+        let (stages, shape) = (&mut self.stages, self.shape);
+        let out = self
+            .oversampler
+            .run(driven, |value| clip(stages, shape, value));
         let toned = self
             .tone
             .iter_mut()

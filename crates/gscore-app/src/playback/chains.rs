@@ -78,6 +78,7 @@ impl Playback {
                 (BlockChoice::Empty, _) => None,
                 (BlockChoice::Reverb, _) => Some(BlockKind::Reverb),
                 (BlockChoice::Amp, _) => Some(BlockKind::Amp),
+                (BlockChoice::Drive, _) => Some(BlockKind::Drive),
                 (BlockChoice::Cabinet | BlockChoice::Room, None) => None,
                 (choice, Some(file)) => match self.impulse(file) {
                     Ok(response) if choice == BlockChoice::Room => {
@@ -237,7 +238,7 @@ impl Playback {
                     }
                 }),
             // The bus is a reverb: `ReverbBus::sanitized` keeps anything else out.
-            BlockChoice::Reverb | BlockChoice::Cabinet | BlockChoice::Amp => {
+            BlockChoice::Reverb | BlockChoice::Cabinet | BlockChoice::Amp | BlockChoice::Drive => {
                 Some(BlockKind::Reverb)
             }
         };
@@ -358,6 +359,7 @@ mod tests {
         chain.blocks[2].length = 3.0;
         // An amp needs no file.
         chain.blocks[3] = BlockSetting::of(BlockChoice::Amp);
+        chain.blocks[4] = BlockSetting::of(BlockChoice::Drive);
         playback.set_string_chain(StringKind::Steel, chain);
         let choices = playback.chain_choices();
         assert_eq!(choices.len(), 1, "only the steel strings have a chain");
@@ -374,6 +376,7 @@ mod tests {
             spec.blocks[2]
         );
         assert_eq!(spec.blocks[3], Some(BlockKind::Amp));
+        assert_eq!(spec.blocks[4], Some(BlockKind::Drive));
         assert!(playback.chain_notice().unwrap().contains("broken.wav"));
         let _ = std::fs::remove_dir_all(&dir);
     }

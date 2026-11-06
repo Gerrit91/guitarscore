@@ -346,12 +346,16 @@ pub struct ReverbBus {
 
 impl Default for ReverbBus {
     fn default() -> Self {
+        // A large hall: the bus is where the big, shared reverb lives.
+        let mut block =
+            crate::chain_settings::BlockSetting::of(crate::chain_settings::BlockChoice::Reverb);
+        block.size = 0.9;
+        block.decay = 5.0;
+        block.pre_delay = 30.0;
         ReverbBus {
             level: 127,
             muted: false,
-            block: crate::chain_settings::BlockSetting::of(
-                crate::chain_settings::BlockChoice::Reverb,
-            ),
+            block,
         }
     }
 }

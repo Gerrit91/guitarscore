@@ -2,6 +2,7 @@
 //! their ranges.
 
 use crate::amp::AmpKnobs;
+use crate::drive::DriveKnobs;
 
 /// The knobs of an impulse response block.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -29,10 +30,16 @@ impl Default for ImpulseKnobs {
 /// The knobs of a reverb block.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ReverbKnobs {
-    /// Room size, 0 small to 1 large.
+    /// Room size, 0 small to 1 a cathedral.
     pub size: f32,
-    /// How quickly the highs die in the room, 0 bright to 1 dull.
+    /// The decay time: seconds for the tail to fall by 60 dB.
+    pub decay: f32,
+    /// The wait before the reverb starts, in ms.
+    pub pre_delay: f32,
+    /// How much sooner the highs die than the lows, 0 bright to 1 dull.
     pub damping: f32,
+    /// How much the tail's delays drift, 0 still to 1 a lush shimmer.
+    pub modulation: f32,
     /// Stereo width, 0 mono to 1 wide.
     pub width: f32,
     /// The share of reverb, 0 dry to 1 only the room.
@@ -45,8 +52,11 @@ pub struct ReverbKnobs {
 impl Default for ReverbKnobs {
     fn default() -> Self {
         ReverbKnobs {
-            size: 0.5,
-            damping: 0.5,
+            size: 0.6,
+            decay: 3.0,
+            pre_delay: 20.0,
+            damping: 0.4,
+            modulation: 0.5,
             width: 1.0,
             mix: 0.2,
             low_cut: 150.0,
@@ -90,6 +100,7 @@ pub struct BlockSettings {
     pub room: RoomKnobs,
     pub reverb: ReverbKnobs,
     pub amp: AmpKnobs,
+    pub drive: DriveKnobs,
 }
 
 /// The knob ranges, for user interfaces and for sanitizing: `(lowest, highest)`.
@@ -102,10 +113,15 @@ pub mod knob_ranges {
     pub const HIGH_CUT: (f32, f32) = (1_500.0, 20_000.0);
     pub const SIZE: (f32, f32) = (0.0, 1.0);
     pub const DAMPING: (f32, f32) = (0.0, 1.0);
+    /// A reverb's decay time, seconds.
+    pub const DECAY: (f32, f32) = (0.3, 30.0);
+    /// A reverb's pre-delay, ms.
+    pub const PRE_DELAY: (f32, f32) = (0.0, 250.0);
+    pub const MODULATION: (f32, f32) = (0.0, 1.0);
     pub const WIDTH: (f32, f32) = (0.0, 1.0);
-    /// An amp's Gain, Bass, Mid, Treble and Speaker.
+    /// An amp's Gain, Bass, Mid, Treble and Speaker; a drive's Drive and Tone.
     pub const AMP: (f32, f32) = (0.0, 1.0);
-    /// An amp's output level, dB.
+    /// An amp's or a drive's output level, dB.
     pub const LEVEL: (f32, f32) = (-24.0, 12.0);
 }
 
@@ -124,6 +140,7 @@ impl BlockSettings {
         let room = RoomKnobs::default();
         let r = ReverbKnobs::default();
         let a = AmpKnobs::default();
+        let d = DriveKnobs::default();
         let amp = |value: f32, fallback: f32| fit(value, knob_ranges::AMP, fallback);
         BlockSettings {
             bypass: self.bypass,
@@ -142,7 +159,14 @@ impl BlockSettings {
             },
             reverb: ReverbKnobs {
                 size: fit(self.reverb.size, knob_ranges::SIZE, r.size),
+                decay: fit(self.reverb.decay, knob_ranges::DECAY, r.decay),
+                pre_delay: fit(self.reverb.pre_delay, knob_ranges::PRE_DELAY, r.pre_delay),
                 damping: fit(self.reverb.damping, knob_ranges::DAMPING, r.damping),
+                modulation: fit(
+                    self.reverb.modulation,
+                    knob_ranges::MODULATION,
+                    r.modulation,
+                ),
                 width: fit(self.reverb.width, knob_ranges::WIDTH, r.width),
                 mix: fit(self.reverb.mix, knob_ranges::MIX, r.mix),
                 low_cut: fit(self.reverb.low_cut, knob_ranges::LOW_CUT, r.low_cut),
@@ -156,6 +180,11 @@ impl BlockSettings {
                 treble: amp(self.amp.treble, a.treble),
                 level_db: fit(self.amp.level_db, knob_ranges::LEVEL, a.level_db),
                 speaker: amp(self.amp.speaker, a.speaker),
+            },
+            drive: DriveKnobs {
+                drive: amp(self.drive.drive, d.drive),
+                tone: amp(self.drive.tone, d.tone),
+                level_db: fit(self.drive.level_db, knob_ranges::LEVEL, d.level_db),
             },
         }
     }
