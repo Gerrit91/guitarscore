@@ -319,6 +319,7 @@ impl GuitarScoreApp {
             }
             self.position_readout(ui);
             ui.add_space(4.0);
+            self.speed_trainer_button(ui);
             self.speed_control(ui);
         });
         if to_start {
@@ -376,6 +377,30 @@ impl GuitarScoreApp {
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
         ui.min_rect().right() - start
+    }
+
+    /// The speed trainer's button, left of the speed: highlighted while the trainer is
+    /// on; a click opens its settings.
+    fn speed_trainer_button(&mut self, ui: &mut egui::Ui) {
+        let trainer = self.playback.trainer();
+        let response = icons::toggle_button(
+            ui,
+            Icon::SpeedTrainer,
+            "Speed trainer",
+            "Speed trainer: play a loop faster every few passes",
+            trainer.enabled,
+        );
+        let mut changed = trainer;
+        egui::Popup::menu(&response)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| {
+                ui.set_min_width(240.0);
+                ui.set_max_width(240.0);
+                speed_trainer_ui(ui, &mut changed, self.playback.trainer_passes());
+            });
+        if changed != trainer {
+            self.set_speed_trainer(changed);
+        }
     }
 
     /// The playback speed (50 % to 120 % of the written tempo), and whether the speed
@@ -692,6 +717,54 @@ fn paint_cross(painter: &egui::Painter, rect: Rect, ink: egui::Color32) {
     let r = rect.shrink(1.5);
     painter.line_segment([r.left_top(), r.right_bottom()], stroke);
     painter.line_segment([r.right_top(), r.left_bottom()], stroke);
+}
+
+/// The speed trainer's settings: on or off, how often and how much faster, and the top.
+fn speed_trainer_ui(ui: &mut egui::Ui, trainer: &mut crate::playback::SpeedTrainer, passes: u32) {
+    ui.checkbox(&mut trainer.enabled, "Raise the speed while a loop plays");
+    ui.add_enabled_ui(trainer.enabled, |ui| {
+        ui.horizontal(|ui| {
+            ui.label("Every");
+            let every = ui.add(egui::DragValue::new(&mut trainer.every).range(1..=32));
+            ui.ctx()
+                .accesskit_node_builder(every.id, |node| node.set_label("Passes per step"));
+            ui.label(if trainer.every == 1 {
+                "pass:"
+            } else {
+                "passes:"
+            });
+            ui.add(
+                egui::DragValue::new(&mut trainer.step)
+                    .range(1..=20)
+                    .prefix("+")
+                    .suffix(" %"),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label("Up to");
+            let top = egui::ComboBox::from_id_salt("speed_trainer_target")
+                .selected_text(format!("{:.0} %", trainer.target * 100.0))
+                .show_ui(ui, |ui| {
+                    for target in crate::playback::TRAINER_TARGETS {
+                        ui.selectable_value(
+                            &mut trainer.target,
+                            target,
+                            format!("{:.0} %", target * 100.0),
+                        );
+                    }
+                })
+                .response;
+            ui.ctx()
+                .accesskit_node_builder(top.id, |node| node.set_label("Top speed"));
+        });
+        ui.label(
+            RichText::new(format!(
+                "Starts at the speed beside this button. A pass is one round of Loop \
+                 selection. {passes} since the last step."
+            ))
+            .weak(),
+        );
+    });
 }
 
 #[cfg(test)]

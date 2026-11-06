@@ -34,8 +34,6 @@ pub(super) enum SettingsTab {
     Editor,
     /// The metronome's click and the count-in.
     Metronome,
-    /// Playback speed and the speed trainer.
-    Practice,
     /// Output, SoundFont and MIDI ports.
     Audio,
 }
@@ -202,7 +200,6 @@ impl GuitarScoreApp {
                             (SettingsTab::Page, "Page layout"),
                             (SettingsTab::Editor, "Editor"),
                             (SettingsTab::Metronome, "Metronome"),
-                            (SettingsTab::Practice, "Practice"),
                             (SettingsTab::Audio, "Audio I/O"),
                         ] {
                             ui.selectable_value(&mut window.tab, tab, label);
@@ -226,7 +223,6 @@ impl GuitarScoreApp {
                         }
                         SettingsTab::Editor => self.editor_tab(ui),
                         SettingsTab::Metronome => self.metronome_tab(ui),
-                        SettingsTab::Practice => self.practice_tab(ui),
                         SettingsTab::Audio => self.audio_tab(ui, &mut window.soundfonts),
                     }
                 });
@@ -541,86 +537,6 @@ impl GuitarScoreApp {
             )
             .weak(),
         );
-    }
-
-    /// Playback speed and the speed trainer: practise a loop slowly, then faster.
-    fn practice_tab(&mut self, ui: &mut Ui) {
-        ui.heading("Playback speed");
-        let mut percent = self.playback.speed() * 100.0;
-        let response = ui.add(
-            egui::Slider::new(&mut percent, 50.0..=120.0)
-                .step_by(10.0)
-                .suffix(" %"),
-        );
-        ui.ctx()
-            .accesskit_node_builder(response.id, |node| node.set_label("Playback speed"));
-        if (percent - self.playback.speed() * 100.0).abs() > f32::EPSILON {
-            self.set_playback_speed(percent / 100.0);
-        }
-        ui.label(
-            RichText::new(
-                "The song keeps its written tempo; playback only runs faster or slower. \
-                 The same speed is in the toolbar.",
-            )
-            .weak(),
-        );
-
-        ui.separator();
-        ui.heading("Speed trainer");
-        let mut trainer = self.playback.trainer();
-        let before = trainer;
-        if ui
-            .checkbox(
-                &mut trainer.enabled,
-                "Raise the speed while practising a loop",
-            )
-            .changed()
-        {
-            self.set_speed_trainer(trainer);
-            trainer = self.playback.trainer();
-        }
-        ui.add_enabled_ui(trainer.enabled, |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Every");
-                ui.add(egui::DragValue::new(&mut trainer.every).range(1..=32));
-                ui.label("loop pass(es), play");
-                ui.add(
-                    egui::DragValue::new(&mut trainer.step)
-                        .range(1..=20)
-                        .suffix(" %"),
-                );
-                ui.label("faster");
-            });
-            ui.horizontal(|ui| {
-                ui.label("Up to");
-                egui::ComboBox::from_id_salt("speed_trainer_target")
-                    .selected_text(format!("{:.0} %", trainer.target * 100.0))
-                    .show_ui(ui, |ui| {
-                        for target in crate::playback::TRAINER_TARGETS {
-                            ui.selectable_value(
-                                &mut trainer.target,
-                                target,
-                                format!("{:.0} %", target * 100.0),
-                            );
-                        }
-                    });
-            });
-            ui.label(
-                RichText::new(
-                    "A pass is one loop of the selected bars (turn on Loop selection in the \
-                     toolbar). The speed starts at the value above and stops at the chosen top.",
-                )
-                .weak(),
-            );
-            ui.label(format!(
-                "{} pass(es) since the last step; the speed is now {:.0} %.",
-                self.playback.trainer_passes(),
-                self.playback.speed() * 100.0
-            ));
-        });
-        if trainer != before && trainer != self.playback.trainer() {
-            self.set_speed_trainer(trainer);
-        }
     }
 
     fn editor_tab(&mut self, ui: &mut Ui) {

@@ -332,11 +332,23 @@ impl GuitarScoreApp {
         let Some(notice) = self.notice.clone() else {
             return;
         };
-        ui.horizontal(|ui| {
-            ui.colored_label(ui.visuals().error_fg_color, notice);
+        // The button stays at the right edge and a long message wraps, so the button is
+        // never pushed out of the window.
+        ui.with_layout(UiLayout::right_to_left(Align::Center), |ui| {
             if ui.small_button("Dismiss").clicked() {
                 self.notice = None;
             }
+            ui.with_layout(
+                UiLayout::left_to_right(Align::Center).with_main_wrap(true),
+                |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(notice).color(ui.visuals().error_fg_color),
+                        )
+                        .wrap(),
+                    );
+                },
+            );
         });
     }
 }

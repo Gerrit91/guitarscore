@@ -2245,3 +2245,32 @@ fn the_mixer_sets_reverb_and_chorus_with_one_undo_per_drag() {
     harness.run();
     assert_eq!(sends(&harness), (0, 0));
 }
+
+#[test]
+fn dismissing_an_open_error_shows_the_empty_workspace() {
+    let mut harness = app_with(Some(testdata("basic/README.md")));
+    assert!(harness.state().notice().is_some());
+    harness.get_by_label("Dismiss").click();
+    settle(&mut harness);
+    assert_eq!(harness.state().notice(), None);
+    harness.get_by_label("Open a song");
+}
+
+#[test]
+fn the_speed_trainer_button_left_of_the_speed_opens_its_settings() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    assert!(!harness.state().playback().trainer().enabled);
+    let button = harness.get_by_label("Speed trainer").rect();
+    let speed = harness.get_by_label("Playback speed").rect();
+    assert!(
+        button.right() <= speed.left(),
+        "the button sits left of the speed"
+    );
+    harness.get_by_label("Speed trainer").click();
+    settle(&mut harness);
+    harness
+        .get_by_label("Raise the speed while a loop plays")
+        .click();
+    settle(&mut harness);
+    assert!(harness.state().playback().trainer().enabled);
+}
