@@ -568,6 +568,32 @@ fn chord_diagrams_are_read_and_drawn() {
         })
         .collect();
     assert!(texts.contains(&"Gb7/#11"), "{texts:?}");
+    // The diagram has its own row: its grid ends above the beat text of the same system
+    // ("Octaves"), instead of running into it.
+    let baseline = |wanted: &str| {
+        layout
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                DrawOp::Text { text, at, .. } if text == wanted => Some(at.y),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let grid_bottom = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            // The dots are the round polygons (arrowheads have three corners).
+            DrawOp::Polygon { points, .. } if points.len() > 8 => {
+                points.iter().map(|p| p.y).reduce(f32::max)
+            }
+            _ => None,
+        })
+        .reduce(f32::max)
+        .expect("the diagram's dots");
+    assert!(baseline("Gb7/#11") < grid_bottom);
+    assert!(grid_bottom + 1.0 < baseline("Octaves") - 1.0);
 }
 
 /// The staff file's repeats, alternative endings and key change are read and drawn.

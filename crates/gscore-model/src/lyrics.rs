@@ -436,7 +436,8 @@ fn place_tokens(
         for beat in voice.beats() {
             // Like Guitar Pro: no syllable on a rest, a grace note or a beat that only
             // continues tied notes.
-            let tied = beat.notes().len() > 0 && beat.notes().all(|note| note.kind() == NoteKind::Tie);
+            let tied =
+                beat.notes().len() > 0 && beat.notes().all(|note| note.kind() == NoteKind::Tie);
             if beat.kind() == BeatKind::Empty
                 || beat.kind() == BeatKind::Rest
                 || beat.is_grace()
@@ -733,5 +734,4 @@ mod tests {
         // Both lines are still listed.
         assert_eq!(song.lyric_lines().len(), 2);
     }
-
 }

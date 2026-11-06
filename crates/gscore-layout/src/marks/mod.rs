@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use gscore_model::{Dynamic, Feel, Fermata, Repeat, Song};
 
+mod chord;
 mod feel;
 mod text;
 
@@ -83,6 +84,8 @@ pub(crate) struct MeasureMarks {
     pub(crate) lane_ornaments: bool,
     /// Whether a column carries Guitar Pro's beat text.
     pub(crate) beat_text: bool,
+    /// Whether a column carries a chord diagram.
+    pub(crate) chord_diagram: bool,
 }
 
 /// An alternative-ending bracket over one measure.
@@ -144,6 +147,7 @@ pub(crate) fn plan(song: &Song, measures: &[Arc<MeasureLayout>]) -> Vec<MeasureM
                 beat_effects: measure.has_beat_effects(),
                 lane_ornaments: measure.has_lane_ornaments(),
                 beat_text: measure.has_beat_text(),
+                chord_diagram: measure.has_chord_diagram(),
                 ..MeasureMarks::default()
             };
             marks.free_time_starts = marks.free_time && !previous_free;
@@ -209,6 +213,8 @@ pub(crate) struct Rows {
     endings: bool,
     tempo: bool,
     section: bool,
+    /// Chord diagrams, above every other row.
+    chords: bool,
     /// Whether these are the rows over a system's top track: only there go the marks that
     /// belong to the whole system (endings, tempo, sections).
     system: bool,
@@ -229,12 +235,20 @@ impl Rows {
             endings: system && marks.iter().any(|m| m.ending.is_some()),
             tempo: system && marks.iter().any(MeasureMarks::has_tempo),
             section: system && marks.iter().any(|m| m.section.is_some()),
+            chords: marks.iter().any(|m| m.chord_diagram),
         }
     }
 
     /// How much room the rows take above the system.
     pub(crate) fn height(self) -> f32 {
-        let rows = [
+        let rows = self.text_rows();
+        let chords = if self.chords { chord::ROW } else { 0.0 };
+        rows as f32 * ROW_HEIGHT + self.band() + chords
+    }
+
+    /// The number of text rows (everything but the band and the chord diagrams).
+    fn text_rows(self) -> usize {
+        [
             self.beat_text,
             self.fermata,
             self.endings,
@@ -243,8 +257,13 @@ impl Rows {
         ]
         .into_iter()
         .filter(|&row| row)
-        .count();
-        rows as f32 * ROW_HEIGHT + self.band()
+        .count()
+    }
+
+    /// Where the chord diagrams' row ends at the bottom: where the next text row's
+    /// baseline would be.
+    fn chord_bottom(self, top: f32) -> f32 {
+        self.baseline(self.text_rows(), top)
     }
 
     /// The ornament band of a notation staff without a tab, if the system needs it.
@@ -328,6 +347,13 @@ pub(crate) fn draw(
             anchor: TextAnchor::Start,
             color: ColorToken::Annotation,
         });
+    }
+    // Chord diagrams, centered over their column, in the topmost row.
+    for (column, diagram) in placed.layout.chord_diagrams() {
+        let Some(&x) = xs.get(column) else {
+            continue;
+        };
+        chord::draw(x, rows.chord_bottom(top), diagram, ops);
     }
     if let Some(fermata) = marks.fermata {
         let x = xs.first().copied().unwrap_or(placed.content);
