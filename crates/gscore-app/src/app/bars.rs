@@ -367,31 +367,35 @@ fn count(n: usize, noun: &str) -> String {
     }
 }
 
-/// The built-in synthesizer's audio load (`load`, 1 = all of each buffer's time at `rate`),
-/// if it runs: orange from 70 %, red from 90 %, where playback is close to dropping out.
+/// The built-in synthesizer's audio load (`load`, 1 = all of each buffer's time at
+/// `rate`), if it runs: a small green bar filling from the bottom; hovering names it.
 /// Returns whether it was shown.
 fn audio_load(ui: &mut egui::Ui, load: Option<f32>, rate: Option<u32>) -> bool {
     let Some(load) = load.filter(|load| load.is_finite()) else {
         return false;
     };
+    let size = egui::vec2(5.0, 14.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let painter = ui.painter();
+    painter.rect_filled(rect, 1.0, ui.visuals().extreme_bg_color);
+    let share = load.clamp(0.0, 1.0);
+    let filled = egui::Rect::from_min_max(
+        egui::pos2(rect.left(), rect.bottom() - rect.height() * share),
+        rect.right_bottom(),
+    );
+    painter.rect_filled(filled, 1.0, egui::Color32::from_rgb(0x4C, 0xAF, 0x50));
     let percent = (load * 100.0).round().clamp(0.0, 999.0);
-    let text = egui::RichText::new(format!("Audio CPU {percent:.0} %"));
-    let text = if load >= 0.9 {
-        text.color(ui.visuals().error_fg_color)
-    } else if load >= 0.7 {
-        text.color(ui.visuals().warn_fg_color)
-    } else {
-        text
-    };
     let rate = rate.map_or_else(String::new, |rate| {
         format!(" at {} kHz", f64::from(rate) / 1000.0)
     });
-    ui.label(text).on_hover_text(format!(
-        "How much of each audio buffer's time the built-in synthesizer needs to compute \
-         it{rate}. Near 100 % the sound drops out: use fewer modelled tracks or a lower \
-         sample rate."
+    let id = response.id;
+    response.on_hover_text(format!(
+        "Audio CPU: {percent:.0} %{rate}. The share of each audio buffer's time the \
+         built-in synthesizer needs to compute it; near 100 % the sound drops out."
     ));
-    // Keep the number current.
+    ui.ctx()
+        .accesskit_node_builder(id, |node| node.set_label("Audio CPU"));
+    // Keep the bar current.
     ui.ctx()
         .request_repaint_after(std::time::Duration::from_millis(500));
     true
