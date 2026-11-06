@@ -89,6 +89,7 @@ pub fn decode_sequence(bytes: &[u8]) -> Result<Sequence, String> {
         end,
         skipped_notes: 0,
         degraded_pitch_bends: 0,
+        performance: std::sync::Arc::default(),
     })
 }
 
@@ -276,6 +277,7 @@ mod tests {
             end: u64::from(PPQ) * 4,
             skipped_notes: 0,
             degraded_pitch_bends: 0,
+            performance: Default::default(),
         }
     }
 

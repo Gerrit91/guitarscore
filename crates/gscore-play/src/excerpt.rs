@@ -2,10 +2,13 @@
 //! start there, and their grace notes) with every effect, as the song plays them, moved to tick 0. The app plays
 //! it to let a palette click be heard.
 
+use std::sync::Arc;
+
 use gscore_model::{BeatPosition, ModelError, Song};
 
 use crate::build;
 use crate::event::{Channel, MidiEvent, controller};
+use crate::performance::Performance;
 use crate::sequence::TimedEvent;
 use crate::sequence::{Sequence, rank};
 use crate::tempo::{PPQ, TempoMap};
@@ -43,9 +46,19 @@ impl Sequence {
         for note in &mut notes {
             note.start = note.start.saturating_sub(origin);
             note.end = note.end.saturating_sub(origin).min(MAX_TICKS);
+            note.onset = note.onset.saturating_sub(origin);
         }
-        let mut events = collected.setup;
-        build::emit(&notes, &collected.tracks, &mut events);
+        let bpm = crate::timeline::tempo_at(song, at.measure);
+        let mut performance = Performance {
+            tracks: collected.tracks,
+            notes,
+            tempo: TempoMap::new(bpm),
+            measures: Vec::new(),
+            end: 0,
+            skipped_notes: collected.skipped_notes,
+        };
+        let midi = crate::midi::derive(&performance);
+        let mut events = midi.events;
         events.retain(|event| event.tick <= MAX_TICKS);
         // Run on after the last note-off while its release fades. The player centers every
         // bend when the sequence ends, so a bent release still ringing is faded out (its
@@ -56,10 +69,11 @@ impl Sequence {
             .max()
             .unwrap_or(0)
             .saturating_add(RELEASE_TAIL);
-        let base: Vec<Channel> = collected.tracks.iter().map(|track| track.channel).collect();
-        let mut borrowed: Vec<Channel> = notes
+        let base: Vec<Channel> = midi.tracks.iter().map(|track| track.channel).collect();
+        let mut borrowed: Vec<Channel> = midi
+            .channels
             .iter()
-            .map(|note| note.play_channel)
+            .copied()
             .filter(|channel| !base.contains(channel))
             .collect();
         borrowed.sort_by_key(|channel| channel.get());
@@ -81,15 +95,16 @@ impl Sequence {
             }
         }
         events.sort_by_key(|event| (event.tick, rank(&event.event)));
-        let bpm = crate::timeline::tempo_at(song, at.measure);
+        performance.end = end;
         Ok(Some(Sequence {
-            tracks: collected.tracks,
+            tracks: midi.tracks,
             events,
-            tempo: TempoMap::new(bpm),
+            tempo: performance.tempo.clone(),
             measures: Vec::new(),
             end,
-            skipped_notes: collected.skipped_notes,
-            degraded_pitch_bends: collected.degraded_pitch_bends,
+            skipped_notes: performance.skipped_notes,
+            degraded_pitch_bends: midi.degraded_pitch_bends,
+            performance: Arc::new(performance),
         }))
     }
 }

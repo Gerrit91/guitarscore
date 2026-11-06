@@ -19,6 +19,13 @@ pub struct TempoMap {
     pauses: Vec<(u64, u64)>,
 }
 
+impl Default for TempoMap {
+    /// 120 beats per minute, Guitar Pro's default tempo.
+    fn default() -> Self {
+        TempoMap::new(120)
+    }
+}
+
 /// Microseconds per quarter note at `bpm` beats per minute (clamped to a sane range).
 pub fn micros_per_quarter(bpm: u32) -> u32 {
     let bpm = u64::from(bpm.clamp(TEMPO_RANGE.0, TEMPO_RANGE.1));

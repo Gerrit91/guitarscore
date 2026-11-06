@@ -7,6 +7,7 @@ use gscore_model::{BeatView, Fade, SlapKind, Stroke, StrokeDirection, StrokeKind
 
 use crate::effects::{scale, spread, spread_with_offset};
 use crate::event::{Channel, MidiEvent, controller};
+use crate::performance::Attack;
 use crate::sounding::Sounding;
 use crate::tempo::PPQ;
 
@@ -32,12 +33,29 @@ pub(crate) fn shape_beat(chord: &mut [Sounding], beat: &BeatView<'_>) {
         Some(SlapKind::Popping) => Some(POPPING_PERCENT),
         None => None,
     };
+    let attack = match beat.slap() {
+        Some(SlapKind::Tapping) => Some(Attack::Tapped),
+        Some(SlapKind::Slapping) => Some(Attack::Slapped),
+        Some(SlapKind::Popping) => Some(Attack::Popped),
+        None => None,
+    };
     let upstroke = beat.pick_stroke() == Some(StrokeDirection::Up);
     let fade = beat.fade();
+    let stroke = beat
+        .stroke(StrokeKind::Arpeggio)
+        .or_else(|| beat.stroke(StrokeKind::Brush))
+        .map(|stroke| stroke.direction)
+        .or_else(|| beat.pick_stroke());
     for note in chord.iter_mut() {
         if let Some(percent) = percent {
             note.velocity = scale(note.velocity, percent);
         }
+        if let Some(attack) = attack
+            && note.attack == Attack::Picked
+        {
+            note.attack = attack;
+        }
+        note.stroke = note.stroke.or(stroke);
         if upstroke {
             note.velocity = scale(note.velocity, UPSTROKE_PERCENT);
         }
@@ -64,18 +82,22 @@ fn spread_stroke(chord: &mut [Sounding], stroke: Stroke) {
     spread_with_offset(chord, stroke.direction, total, !stroke.on_beat);
 }
 
-/// A note reached by a hammer-on, pull-off or legato: no pick attack, so softer.
-pub(crate) fn legato(note: &mut Sounding) {
+/// A note reached by a hammer-on, pull-off, legato or a tap of the fretting hand
+/// (`attack`): no pick attack, so softer.
+pub(crate) fn legato(note: &mut Sounding, attack: Attack) {
     note.velocity = scale(note.velocity, LEGATO_PERCENT);
+    note.attack = attack;
 }
 
-/// The expression steps of a fade on the note's own (borrowed) channel: in from silence,
-/// out to silence, or a swell that rises and falls again.
-pub(crate) fn fade_events(note: &Sounding, channel: Channel) -> Vec<(u64, MidiEvent)> {
-    let length = note.end.saturating_sub(note.start).max(1);
-    let Some(fade) = note.fade else {
-        return Vec::new();
-    };
+/// The expression steps of a fade over a note from `start` to `end` on its own (borrowed)
+/// channel: in from silence, out to silence, or a swell that rises and falls again.
+pub(crate) fn fade_events(
+    fade: Fade,
+    start: u64,
+    end: u64,
+    channel: Channel,
+) -> Vec<(u64, MidiEvent)> {
+    let length = end.saturating_sub(start).max(1);
     let steps = if fade == Fade::Swell {
         FADE_STEPS.saturating_mul(2)
     } else {
@@ -83,7 +105,7 @@ pub(crate) fn fade_events(note: &Sounding, channel: Channel) -> Vec<(u64, MidiEv
     };
     (0..=steps)
         .map(|step| {
-            let tick = note.start.saturating_add(
+            let tick = start.saturating_add(
                 length
                     .saturating_mul(step)
                     .checked_div(steps.max(1))
@@ -132,9 +154,7 @@ mod tests {
     #[test]
     fn a_fade_in_rises_from_silence_over_the_note() {
         let channel = Channel::new(3).unwrap();
-        let mut faded = note(1, 100, 1060);
-        faded.fade = Some(Fade::In);
-        let events = fade_events(&faded, channel);
+        let events = fade_events(Fade::In, 100, 1060, channel);
         let values: Vec<(u64, u8)> = events
             .iter()
             .map(|(tick, event)| match event {

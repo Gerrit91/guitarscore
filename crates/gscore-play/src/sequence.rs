@@ -1,5 +1,6 @@
 //! Turns a song into a [`Sequence`]: timed MIDI events per track, a tempo map, and where
-//! each played measure lies in time.
+//! each played measure lies in time. The events are derived from the song's
+//! [`Performance`], which the sequence carries for engines that play notes, not MIDI.
 //!
 //! Notes play on their track's channel. A note with a bend or slide borrows a free channel
 //! for its own pitch bend (AGENTS.md section 5, decision 10): the borrowed channel gets the
@@ -7,14 +8,16 @@
 //! and is released after the note. When every other channel is in use the note plays
 //! without its pitch movement and [`Sequence::degraded_pitch_bends`] counts it.
 
+use std::sync::Arc;
+
 use gscore_model::{
     BeatIndex, BeatKind, BeatPosition, Duration, MeasureIndex, ModelError, Song, TimeSignature,
     TrackIndex, TrackSound,
 };
 
-use crate::build;
 use crate::click::Click;
 use crate::event::{Channel, MidiEvent, PITCH_BEND_CENTER, controller};
+use crate::performance::Performance;
 use crate::swing;
 use crate::tempo::{PPQ, TempoMap};
 
@@ -79,6 +82,9 @@ pub struct Sequence {
     /// Notes whose bend or slide was dropped because every other MIDI channel was in use.
     /// They still play, on their track's channel, without the pitch movement.
     pub degraded_pitch_bends: usize,
+    /// The performance the events were derived from (empty for a count-in or a sequence
+    /// received without one): the notes an engine that plays strings works from.
+    pub performance: Arc<Performance>,
 }
 
 impl Sequence {
@@ -114,64 +120,41 @@ impl Sequence {
         tracks: Option<&[TrackIndex]>,
         click: Option<Click>,
     ) -> Result<Self, ModelError> {
-        // When each played measure starts, by its time signature.
-        let (measures, tick) = crate::timeline::measure_spans(song)?;
-
-        let mut tempo_changes: Vec<(u64, u32)> = vec![(0, song.tempo())];
-        for span in &measures {
-            if let Some(bpm) = song.tempo_change(span.measure) {
-                tempo_changes.push((span.start, bpm));
-            }
-        }
-
-        let selected: Vec<TrackIndex> = match tracks {
-            Some(tracks) => tracks.to_vec(),
-            None => (0..song.track_count()).map(TrackIndex::new).collect(),
-        };
-        // Muted tracks do not play; with any soloed track, only soloed tracks play.
-        let soloed = song.any_soloed();
-        let selected: Vec<TrackIndex> = selected
-            .into_iter()
-            .filter(|&track| match song.track(track) {
-                // A track that does not exist is reported by the loop below.
-                None => true,
-                Some(view) => !view.is_muted() && (!soloed || view.is_soloed()),
-            })
-            .collect();
-        let collected = build::collect(song, &selected, &measures, None, None)?;
-        let mut events = collected.setup;
-        build::emit(&collected.notes, &collected.tracks, &mut events);
-        tempo_changes.extend(collected.tempo_changes);
+        let performance = Performance::new(song, tracks)?;
+        let mut sequence = Sequence::from_performance(Arc::new(performance));
         if let Some(click) = click {
-            events.push(crate::click::sound_event(click.sound, 0));
-            for span in &measures {
+            sequence
+                .events
+                .push(crate::click::sound_event(click.sound, 0));
+            for span in &sequence.measures {
                 // Free time has no metronome, as in Guitar Pro.
                 if song.free_time(span.measure) == Some(true) {
                     continue;
                 }
-                events.extend(crate::click::click_events_at(*span, click.volume));
+                sequence
+                    .events
+                    .extend(crate::click::click_events_at(*span, click.volume));
             }
+            sequence.events.sort_by_key(|e| (e.tick, rank(&e.event)));
         }
+        Ok(sequence)
+    }
+
+    /// The MIDI sequence that plays `performance` on a General MIDI synthesizer.
+    pub fn from_performance(performance: Arc<Performance>) -> Self {
+        let midi = crate::midi::derive(&performance);
+        let mut events = midi.events;
         events.sort_by_key(|e| (e.tick, rank(&e.event)));
-
-        tempo_changes.sort_by_key(|&(tick, _)| tick);
-        let mut tempo = TempoMap::new(song.tempo());
-        for (tick, bpm) in tempo_changes {
-            tempo.set(tick, bpm);
-        }
-        for span in &measures {
-            tempo.hold_ticks(span.end, span.pause);
-        }
-
-        Ok(Sequence {
-            tracks: collected.tracks,
+        Sequence {
+            tracks: midi.tracks,
             events,
-            tempo,
-            measures,
-            end: tick,
-            skipped_notes: collected.skipped_notes,
-            degraded_pitch_bends: collected.degraded_pitch_bends,
-        })
+            tempo: performance.tempo.clone(),
+            measures: performance.measures.clone(),
+            end: performance.end,
+            skipped_notes: performance.skipped_notes,
+            degraded_pitch_bends: midi.degraded_pitch_bends,
+            performance,
+        }
     }
 
     /// The length of the whole sequence in microseconds.

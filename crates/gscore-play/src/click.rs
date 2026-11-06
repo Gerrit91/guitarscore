@@ -2,9 +2,12 @@
 //! playback starts. Clicks go to the General MIDI percussion channel (10), so the internal
 //! synthesizer and every external synthesizer have a sound for them without a SoundFont.
 
+use std::sync::Arc;
+
 use gscore_model::{BeatPosition, ModelError, Song, TimeSignature, TrackIndex};
 
 use crate::event::{Channel, MidiEvent};
+use crate::performance::{Performance, PlayedNote};
 use crate::sequence::{MeasureSpan, Sequence, TimedEvent, ticks};
 use crate::tempo::{PPQ, TempoMap};
 use crate::timeline::tempo_at;
@@ -206,6 +209,7 @@ pub fn count_in(
         end,
         skipped_notes: 0,
         degraded_pitch_bends: 0,
+        performance: Arc::default(),
     })
 }
 
@@ -267,23 +271,46 @@ pub fn lead_in(sequence: &Sequence, clicks: &Sequence, start: u64) -> Sequence {
         .map(|&(tick, micros)| (moved(tick), micros))
         .collect();
     let tempo = TempoMap::from_parts(points, pauses).unwrap_or_else(|| clicks.tempo.clone());
+    let measures: Vec<MeasureSpan> = sequence
+        .measures
+        .iter()
+        .filter(|span| span.start >= start)
+        .map(|span| MeasureSpan {
+            start: moved(span.start),
+            end: moved(span.end),
+            ..*span
+        })
+        .collect();
+    let end = moved(sequence.end);
+    // The notes the song plays from `start` on, moved like its events.
+    let source = &sequence.performance;
+    let performance = Performance {
+        tracks: source.tracks.clone(),
+        notes: source
+            .notes
+            .iter()
+            .filter(|note| note.start >= start)
+            .map(|note| PlayedNote {
+                start: moved(note.start),
+                end: moved(note.end),
+                onset: moved(note.onset.max(start)),
+                ..*note
+            })
+            .collect(),
+        tempo: tempo.clone(),
+        measures: measures.clone(),
+        end,
+        skipped_notes: source.skipped_notes,
+    };
     Sequence {
         tracks: sequence.tracks.clone(),
         events,
         tempo,
-        measures: sequence
-            .measures
-            .iter()
-            .filter(|span| span.start >= start)
-            .map(|span| MeasureSpan {
-                start: moved(span.start),
-                end: moved(span.end),
-                ..*span
-            })
-            .collect(),
-        end: moved(sequence.end),
+        measures,
+        end,
         skipped_notes: sequence.skipped_notes,
         degraded_pitch_bends: sequence.degraded_pitch_bends,
+        performance: Arc::new(performance),
     }
 }
 

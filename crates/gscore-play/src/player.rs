@@ -224,6 +224,7 @@ mod tests {
             end: 4 * u64::from(PPQ),
             skipped_notes: 0,
             degraded_pitch_bends: 0,
+            performance: Default::default(),
         })
     }
 

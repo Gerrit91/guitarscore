@@ -5,6 +5,7 @@
 
 use gscore_model::{AccentKind, NoteView, StrokeDirection, TremoloSpeed, TrillSpeed, Vibrato};
 
+use crate::performance::Attack;
 use crate::pitch::{PitchShape, Wave};
 use crate::sounding::Sounding;
 use crate::tempo::PPQ;
@@ -258,7 +259,7 @@ pub(crate) fn tremolo_picking(notes: Vec<Sounding>) -> Vec<Sounding> {
 pub(crate) fn trills(notes: Vec<Sounding>) -> Vec<Sounding> {
     let mut out = Vec::with_capacity(notes.len());
     for note in notes {
-        let Some((other_key, speed)) = note.trill else {
+        let Some((other_key, other_fret, speed)) = note.trill else {
             out.push(note);
             continue;
         };
@@ -275,6 +276,17 @@ pub(crate) fn trills(notes: Vec<Sounding>) -> Vec<Sounding> {
                 start,
                 end,
                 key: if alternate { other_key } else { note.key },
+                fret: if alternate {
+                    Some(other_fret)
+                } else {
+                    note.fret
+                },
+                // The first note is struck; the rest are hammered on and pulled off.
+                attack: if start == note.start {
+                    note.attack
+                } else {
+                    Attack::Legato
+                },
                 trill: None,
                 // Only the first note carries the note's slide, bend or fade.
                 fade: note.fade.filter(|_| start == note.start),
@@ -369,6 +381,8 @@ pub(crate) fn pick_slides(notes: Vec<Sounding>) -> Vec<Sounding> {
                 start,
                 end: start.saturating_add(step).min(run_end),
                 key,
+                fret: None,
+                attack: Attack::Scrape,
                 velocity: scale(note.velocity, 85),
                 pick_slide: None,
                 damp: true,
@@ -468,31 +482,7 @@ pub(crate) mod tests {
 
     /// A plain note for the tests.
     pub(crate) fn note(string: u8, start: u64, end: u64) -> Sounding {
-        let channel = Channel::new(0).unwrap();
-        Sounding {
-            track: 0,
-            channel,
-            play_channel: channel,
-            key: 60,
-            velocity: 100,
-            start,
-            end,
-            string,
-            slide: None,
-            bend: None,
-            shape: None,
-            vibrato: None,
-            let_ring: false,
-            tremolo: None,
-            trill: None,
-            pick_slide: None,
-            rasgueado: false,
-            onset: start,
-            damp: false,
-            bend_curve: None,
-            whammy: None,
-            fade: None,
-        }
+        Sounding::new(0, string, 60, 100, start, end)
     }
 
     #[test]
@@ -548,7 +538,7 @@ pub(crate) mod tests {
         let mut notes = [note(1, 0, QUARTER)];
         notes[0].vibrato = Some(Vibrato::Wide);
         apply_vibrato(&mut notes);
-        let events = notes[0].shape.unwrap().events(notes[0].channel, 0);
+        let events = notes[0].shape.unwrap().events(Channel::new(0).unwrap(), 0);
         assert!(events.len() > 10);
     }
 }

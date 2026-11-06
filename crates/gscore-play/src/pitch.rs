@@ -23,10 +23,12 @@ const OUT_SLIDE_QUARTER_TONES: i32 = 4;
 /// How many messages approximate a pitch ramp.
 const RAMP_STEPS: u64 = 16;
 
-/// A pitch movement over one note: from `start` to `target` quarter tones over `ramp` ticks,
-/// then held until the note ends.
+/// How a note's pitch moves while it sounds: a bend or slide from one offset to another
+/// (in quarter tones) over a ramp, then held until the note ends, with the note's drawn bend
+/// curve, its beat's whammy curve and a vibrato on top. [`PitchShape::cents_at`] reads it
+/// at any moment; the MIDI path turns it into pitch bend messages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PitchShape {
+pub struct PitchShape {
     start: i32,
     target: i32,
     ramp: u64,
@@ -230,6 +232,52 @@ impl PitchShape {
 }
 
 impl PitchShape {
+    /// The offset from the note's own pitch in cents, `offset` ticks after the note starts.
+    /// It follows the same shape the pitch bend messages are taken from: the ramp from the
+    /// start offset to the target, the bend and whammy curves spread over the note, and the
+    /// vibrato's sine. With no curves and no vibrato it moves in a straight line (the MIDI
+    /// path approximates that line in a few steps).
+    pub fn cents_at(&self, offset: u64) -> f64 {
+        let cents_per_quarter_tone = 50.0_f64;
+        let sampled = self.vibrato.is_some() || self.bend.is_some() || self.whammy.is_some();
+        let progress = if self.ramp == 0 {
+            // A shape without curves stays at its start; a sampled one is at its target.
+            if sampled { 1.0 } else { 0.0 }
+        } else {
+            (offset as f64 / self.ramp as f64).min(1.0)
+        };
+        let length = self.vibrato.map_or(self.length, |wave| wave.length).max(1);
+        let share = (offset as f64 / length as f64).min(1.0);
+        let curves: f64 = [self.bend, self.whammy]
+            .iter()
+            .flatten()
+            .map(|curve| curve.at(share))
+            .sum();
+        let base = f64::from(self.start)
+            + (f64::from(self.target) - f64::from(self.start)) * progress
+            + curves;
+        let wobble = self.vibrato.map_or(0.0, |wave| {
+            let phase = offset as f64 / wave.period.max(1) as f64 * std::f64::consts::TAU;
+            f64::from(wave.depth_cents) * phase.sin()
+        });
+        base * cents_per_quarter_tone + wobble
+    }
+
+    /// The farthest the pitch goes from the note's own, in cents (ignoring the vibrato's
+    /// swing): how far a string must be able to bend or slide.
+    pub fn reach_cents(&self) -> u32 {
+        let curves = [self.bend, self.whammy]
+            .iter()
+            .flatten()
+            .map(Curve::reach)
+            .fold(0_u32, u32::saturating_add);
+        self.start
+            .unsigned_abs()
+            .max(self.target.unsigned_abs())
+            .saturating_add(curves)
+            .saturating_mul(50)
+    }
+
     /// The movement sampled through the note: the bend or slide ramp, the bend and whammy
     /// curves (in cents), and a sine of the vibrato's depth.
     fn sampled_events(

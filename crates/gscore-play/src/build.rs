@@ -1,7 +1,6 @@
-//! Building a sequence in two passes: [`collect`] walks the played measures of each track
-//! and gathers the notes with their timing, velocity and effects; [`emit`] turns them into
-//! MIDI events (borrowed channels for pitch movement, note-on and note-off). The whole
-//! song and a one-beat excerpt share both passes.
+//! Building a performance: [`collect`] walks the played measures of each track and gathers
+//! the notes with their timing, velocity and effects. The whole song and a one-beat excerpt
+//! share it; `midi` turns the notes into MIDI events.
 
 use std::collections::{HashMap, HashSet};
 
@@ -10,14 +9,12 @@ use gscore_model::{
     StringNumber, StrokeDirection, TrackIndex,
 };
 
-use crate::channels::ChannelAllocator;
 use crate::curve::Curve;
 use crate::drums;
 use crate::effects;
-use crate::event::{MidiEvent, controller};
 use crate::graces;
-use crate::pitch;
-use crate::sequence::{MeasureSpan, SequenceTrack, TimedEvent, sound_events, ticks};
+use crate::performance::{Attack, PerformanceTrack, PlayedNote};
+use crate::sequence::{MeasureSpan, ticks};
 use crate::sounding::{self, Sounding};
 use crate::strokes;
 use crate::swing;
@@ -38,18 +35,14 @@ const TIE_TOLERANCE: u64 = 2;
 
 /// What [`collect`] gathers.
 pub(crate) struct Collected {
-    /// The tracks that play, with their channels.
-    pub(crate) tracks: Vec<SequenceTrack>,
-    /// Each track's sound setup at tick 0.
-    pub(crate) setup: Vec<TimedEvent>,
-    /// The notes, with effects applied and pitch channels assigned.
-    pub(crate) notes: Vec<Sounding>,
+    /// The tracks that play.
+    pub(crate) tracks: Vec<PerformanceTrack>,
+    /// The notes, with effects applied.
+    pub(crate) notes: Vec<PlayedNote>,
     /// Tempo changes on beats.
     pub(crate) tempo_changes: Vec<(u64, u32)>,
     /// Notes left out because their pitch could not be worked out.
     pub(crate) skipped_notes: usize,
-    /// Notes that play without their pitch movement (no free channel).
-    pub(crate) degraded_pitch_bends: usize,
 }
 
 /// Gathers the notes of `selected` over the played `measures`. With `keep`, only the notes
@@ -63,9 +56,7 @@ pub(crate) fn collect(
     keep: Option<&dyn Fn(&Sounding) -> bool>,
     fresh_at: Option<u64>,
 ) -> Result<Collected, ModelError> {
-    let mut channels = ChannelAllocator::default();
     let mut tracks = Vec::with_capacity(selected.len());
-    let mut setup = Vec::new();
     let mut notes: Vec<Sounding> = Vec::new();
     let mut tempo_changes = Vec::new();
     let mut skipped_notes = 0_usize;
@@ -77,21 +68,8 @@ pub(crate) fn collect(
                 "the song has no {track_index}"
             )));
         };
-        let channel = channels.allocate(sound.percussion);
         let number = tracks.len();
-        tracks.push(SequenceTrack {
-            track: track_index,
-            name: view.name().to_owned(),
-            channel,
-            sound,
-        });
-        for event in sound_events(channel, sound) {
-            setup.push(TimedEvent {
-                tick: 0,
-                track: number,
-                event,
-            });
-        }
+        tracks.push(PerformanceTrack::of(song, track_index)?);
 
         // The note currently sounding on each (voice, string), to extend it on a tie.
         // Voices are independent: a tie in one must not extend a note of another on the
@@ -155,7 +133,6 @@ pub(crate) fn collect(
                         start,
                         crate::timeline::tempo_at(song, span.measure),
                         number,
-                        channel,
                     );
                     notes.extend(grace_notes);
                     let first_note = notes.len();
@@ -212,54 +189,48 @@ pub(crate) fn collect(
                             let fret = trill.fret?;
                             let string = StringNumber::new(string).ok()?;
                             let pitch = view.pitch_at(string, Fret::new(fret).ok()?).ok()?;
-                            Some((pitch.get(), trill.speed))
+                            Some((pitch.get(), fret, trill.speed))
                         });
                         let pick_slide = note.slides().find_map(|slide| match slide {
                             SlideKind::PickSlideUp => Some(StrokeDirection::Up),
                             SlideKind::PickSlideDown => Some(StrokeDirection::Down),
                             _ => None,
                         });
-                        let mut sounding = Sounding {
-                            track: number,
-                            channel,
-                            play_channel: channel,
-                            // A drum note's number is Guitar Pro's articulation; play the
-                            // General MIDI sound it stands for.
-                            key: if sound.percussion {
-                                drums::drum_key(pitch.get())
-                            } else {
-                                pitch.get()
-                            },
-                            velocity,
-                            start,
-                            end,
-                            string,
-                            slide: sounding::choose_slide(&slides),
-                            bend,
-                            shape: None,
-                            vibrato: note.vibrato().or(beat.vibrato()).filter(|_| pitched),
-                            let_ring: note.is_let_ring(),
-                            tremolo: note.tremolo_speed(),
-                            trill: trill.filter(|_| pitched),
-                            pick_slide: pick_slide.filter(|_| pitched),
-                            rasgueado: false,
-                            onset: start,
-                            damp: false,
-                            bend_curve: note.bend_shape().filter(|_| pitched).and_then(|shape| {
-                                Curve::new(shape.points.iter().map(|p| (p.position, p.value)))
-                            }),
-                            whammy: beat.whammy_shape().filter(|_| pitched).and_then(|shape| {
-                                Curve::new(shape.points.iter().map(|p| (p.position, p.value)))
-                            }),
-                            fade: None,
+                        // A drum note's number is Guitar Pro's articulation; play the
+                        // General MIDI sound it stands for.
+                        let key = if sound.percussion {
+                            drums::drum_key(pitch.get())
+                        } else {
+                            pitch.get()
                         };
+                        let mut sounding = Sounding::new(number, string, key, velocity, start, end);
+                        sounding.fret = note.fret().ok().map(|fret| fret.get()).filter(|_| pitched);
+                        sounding.slide = sounding::choose_slide(&slides);
+                        sounding.bend = bend;
+                        sounding.vibrato = note.vibrato().or(beat.vibrato()).filter(|_| pitched);
+                        sounding.let_ring = note.is_let_ring();
+                        sounding.tremolo = note.tremolo_speed();
+                        sounding.trill = trill.filter(|_| pitched);
+                        sounding.pick_slide = pick_slide.filter(|_| pitched);
+                        sounding.bend_curve =
+                            note.bend_shape().filter(|_| pitched).and_then(|shape| {
+                                Curve::new(shape.points.iter().map(|p| (p.position, p.value)))
+                            });
+                        sounding.whammy =
+                            beat.whammy_shape().filter(|_| pitched).and_then(|shape| {
+                                Curve::new(shape.points.iter().map(|p| (p.position, p.value)))
+                            });
+                        sounding.dead = kind == NoteKind::Dead;
+                        sounding.palm_mute = note.is_palm_muted();
+                        sounding.harmonic = note
+                            .harmonic()
+                            .map(|harmonic| harmonic.kind)
+                            .filter(|_| pitched);
                         effects::shape_note(&mut sounding, &note);
-                        if hammered
-                            || legato_beat
-                            || note.is_left_hand_tapped()
-                            || grace_hammers.contains(&string)
-                        {
-                            strokes::legato(&mut sounding);
+                        if note.is_left_hand_tapped() {
+                            strokes::legato(&mut sounding, Attack::LeftHandTap);
+                        } else if hammered || legato_beat || grace_hammers.contains(&string) {
+                            strokes::legato(&mut sounding, Attack::Legato);
                         }
                         on_string.insert((voice_index, string), notes.len());
                         notes.push(sounding);
@@ -277,30 +248,19 @@ pub(crate) fn collect(
                             let Ok(pitch) = view.pitch_at(string, Fret::OPEN) else {
                                 continue;
                             };
-                            notes.push(Sounding {
-                                track: number,
-                                channel,
-                                play_channel: channel,
-                                key: pitch.get(),
-                                velocity: DEAD_SLAP_VELOCITY,
+                            let mut hit = Sounding::new(
+                                number,
+                                string_number,
+                                pitch.get(),
+                                DEAD_SLAP_VELOCITY,
                                 start,
-                                end: end.min(start.saturating_add(DEAD_SLAP_TICKS)),
-                                string: string_number,
-                                slide: None,
-                                bend: None,
-                                shape: None,
-                                vibrato: None,
-                                let_ring: false,
-                                tremolo: None,
-                                trill: None,
-                                pick_slide: None,
-                                rasgueado: false,
-                                onset: start,
-                                damp: true,
-                                bend_curve: None,
-                                whammy: None,
-                                fade: None,
-                            });
+                                end.min(start.saturating_add(DEAD_SLAP_TICKS)),
+                            );
+                            hit.fret = Some(0);
+                            hit.attack = Attack::Slapped;
+                            hit.dead = true;
+                            hit.damp = true;
+                            notes.push(hit);
                         }
                     }
                     // An appoggiatura takes the start of the beat on its string.
@@ -332,92 +292,10 @@ pub(crate) fn collect(
     notes = effects::rasgueados(notes);
     sounding::apply_bends(&mut notes);
     effects::apply_vibrato(&mut notes);
-    let degraded_pitch_bends =
-        sounding::assign_pitch_channels(&mut notes, channels.free_channels());
     Ok(Collected {
         tracks,
-        setup,
-        notes,
+        notes: notes.iter().map(Sounding::played).collect(),
         tempo_changes,
         skipped_notes,
-        degraded_pitch_bends,
     })
-}
-
-/// The MIDI events of `notes`: a borrowed channel's setup and pitch movement, the note-on
-/// and note-off (and the cut of a damped note).
-pub(crate) fn emit(notes: &[Sounding], tracks: &[SequenceTrack], events: &mut Vec<TimedEvent>) {
-    for note in notes {
-        let borrowed = note.play_channel != note.channel;
-        if borrowed && let Some(track) = tracks.get(note.track) {
-            for event in sound_events(note.play_channel, track.sound) {
-                events.push(TimedEvent {
-                    tick: note.start,
-                    track: note.track,
-                    event,
-                });
-            }
-            let range = note
-                .shape
-                .map_or(pitch::BEND_RANGE_SEMITONES, |shape| shape.range());
-            for event in pitch::bend_range_setup(note.play_channel, range) {
-                events.push(TimedEvent {
-                    tick: note.start,
-                    track: note.track,
-                    event,
-                });
-            }
-        }
-        if borrowed && note.fade.is_some() {
-            for (tick, event) in strokes::fade_events(note, note.play_channel) {
-                events.push(TimedEvent {
-                    tick,
-                    track: note.track,
-                    event,
-                });
-            }
-        }
-        if borrowed && let Some(shape) = note.shape {
-            for (tick, event) in shape.events(note.play_channel, note.start) {
-                events.push(TimedEvent {
-                    tick,
-                    track: note.track,
-                    event,
-                });
-            }
-        }
-        events.push(TimedEvent {
-            tick: note.start,
-            track: note.track,
-            event: MidiEvent::NoteOn {
-                channel: note.play_channel,
-                key: note.key,
-                velocity: note.velocity,
-            },
-        });
-        let end = note.end.max(note.start.saturating_add(1));
-        events.push(TimedEvent {
-            tick: end,
-            track: note.track,
-            event: MidiEvent::NoteOff {
-                channel: note.play_channel,
-                key: note.key,
-            },
-        });
-        if borrowed && note.damp {
-            // Cut the release: the note stops at its end.
-            events.push(TimedEvent {
-                tick: end,
-                track: note.track,
-                event: MidiEvent::Control {
-                    channel: note.play_channel,
-                    controller: controller::EXPRESSION,
-                    value: 0,
-                },
-            });
-        }
-        // No pitch reset at the note's end: its release still sounds and would be pulled
-        // back. The channel is set again when it is next borrowed (see
-        // `sounding::assign_pitch_channels`, which waits for the release first).
-    }
 }
