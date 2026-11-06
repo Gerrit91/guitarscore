@@ -1,0 +1,482 @@
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 3840 skipped 0 degraded 0
+tempo 0 500000
+measure 0 0..3840 pause 0
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 43 95
+0 t0 on ch0 50 95
+0 t0 on ch0 55 95
+960 t0 off ch0 43
+960 t0 off ch0 50
+960 t0 off ch0 55
+960 t0 on ch0 43 95
+960 t0 on ch0 50 95
+960 t0 on ch0 55 95
+1920 t0 off ch0 43
+1920 t0 off ch0 50
+1920 t0 off ch0 55
+1920 t0 program ch1 25
+1920 t0 cc ch1 7 104
+1920 t0 cc ch1 10 64
+1920 t0 cc ch1 91 0
+1920 t0 cc ch1 93 0
+1920 t0 cc ch1 11 127
+1920 t0 cc ch1 101 0
+1920 t0 cc ch1 100 0
+1920 t0 cc ch1 6 6
+1920 t0 cc ch1 38 0
+1920 t0 cc ch1 101 127
+1920 t0 cc ch1 100 127
+1920 t0 bend ch1 8192
+1920 t0 bend ch1 8192
+1920 t0 on ch1 60 95
+1930 t0 bend ch1 8305
+1940 t0 bend ch1 8419
+1950 t0 bend ch1 8533
+1960 t0 bend ch1 8647
+1970 t0 bend ch1 8760
+1980 t0 bend ch1 8874
+1990 t0 bend ch1 8988
+2000 t0 bend ch1 9102
+2010 t0 bend ch1 9216
+2020 t0 bend ch1 9329
+2030 t0 bend ch1 9443
+2040 t0 bend ch1 9557
+2050 t0 bend ch1 9671
+2060 t0 bend ch1 9784
+2070 t0 bend ch1 9898
+2080 t0 bend ch1 10012
+2090 t0 bend ch1 10126
+2100 t0 bend ch1 10240
+2110 t0 bend ch1 10353
+2120 t0 bend ch1 10467
+2130 t0 bend ch1 10581
+2140 t0 bend ch1 10695
+2150 t0 bend ch1 10808
+2160 t0 bend ch1 10922
+2170 t0 bend ch1 10922
+2180 t0 bend ch1 10922
+2190 t0 bend ch1 10922
+2200 t0 bend ch1 10922
+2210 t0 bend ch1 10922
+2220 t0 bend ch1 10922
+2230 t0 bend ch1 10922
+2240 t0 bend ch1 10922
+2250 t0 bend ch1 10922
+2260 t0 bend ch1 10922
+2270 t0 bend ch1 10922
+2280 t0 bend ch1 10922
+2290 t0 bend ch1 10922
+2300 t0 bend ch1 10922
+2310 t0 bend ch1 10922
+2320 t0 bend ch1 10922
+2330 t0 bend ch1 10922
+2340 t0 bend ch1 10922
+2350 t0 bend ch1 10922
+2360 t0 bend ch1 10922
+2370 t0 bend ch1 10922
+2380 t0 bend ch1 10922
+2390 t0 bend ch1 10922
+2400 t0 off ch1 60
+2400 t0 program ch2 25
+2400 t0 cc ch2 7 104
+2400 t0 cc ch2 10 64
+2400 t0 cc ch2 91 0
+2400 t0 cc ch2 93 0
+2400 t0 cc ch2 11 127
+2400 t0 cc ch2 101 0
+2400 t0 cc ch2 100 0
+2400 t0 cc ch2 6 6
+2400 t0 cc ch2 38 0
+2400 t0 cc ch2 101 127
+2400 t0 cc ch2 100 127
+2400 t0 bend ch2 8192
+2400 t0 bend ch2 8192
+2400 t0 on ch2 62 95
+2410 t0 bend ch2 8362
+2420 t0 bend ch2 8533
+2430 t0 bend ch2 8704
+2440 t0 bend ch2 8874
+2450 t0 bend ch2 9045
+2460 t0 bend ch2 9216
+2470 t0 bend ch2 9386
+2480 t0 bend ch2 9557
+2490 t0 bend ch2 9728
+2500 t0 bend ch2 9898
+2510 t0 bend ch2 10069
+2520 t0 bend ch2 10240
+2530 t0 bend ch2 10410
+2540 t0 bend ch2 10581
+2550 t0 bend ch2 10752
+2560 t0 bend ch2 10922
+2570 t0 bend ch2 10752
+2580 t0 bend ch2 10581
+2590 t0 bend ch2 10410
+2600 t0 bend ch2 10240
+2610 t0 bend ch2 10069
+2620 t0 bend ch2 9898
+2630 t0 bend ch2 9728
+2640 t0 bend ch2 9557
+2650 t0 bend ch2 9386
+2660 t0 bend ch2 9216
+2670 t0 bend ch2 9045
+2680 t0 bend ch2 8874
+2690 t0 bend ch2 8704
+2700 t0 bend ch2 8533
+2710 t0 bend ch2 8362
+2720 t0 bend ch2 8192
+2730 t0 bend ch2 8362
+2740 t0 bend ch2 8533
+2750 t0 bend ch2 8704
+2760 t0 bend ch2 8874
+2770 t0 bend ch2 9045
+2780 t0 bend ch2 9216
+2790 t0 bend ch2 9386
+2800 t0 bend ch2 9557
+2810 t0 bend ch2 9728
+2820 t0 bend ch2 9898
+2830 t0 bend ch2 10069
+2840 t0 bend ch2 10240
+2850 t0 bend ch2 10410
+2860 t0 bend ch2 10581
+2870 t0 bend ch2 10752
+2880 t0 off ch2 62
+2880 t0 program ch3 25
+2880 t0 cc ch3 7 104
+2880 t0 cc ch3 10 64
+2880 t0 cc ch3 91 0
+2880 t0 cc ch3 93 0
+2880 t0 cc ch3 11 127
+2880 t0 cc ch3 101 0
+2880 t0 cc ch3 100 0
+2880 t0 cc ch3 6 6
+2880 t0 cc ch3 38 0
+2880 t0 cc ch3 101 127
+2880 t0 cc ch3 100 127
+2880 t0 bend ch3 8192
+2880 t0 bend ch3 10922
+2880 t0 on ch3 64 95
+2890 t0 bend ch3 10922
+2900 t0 bend ch3 10922
+2910 t0 bend ch3 10922
+2920 t0 bend ch3 10922
+2930 t0 bend ch3 10922
+2940 t0 bend ch3 10922
+2950 t0 bend ch3 10922
+2960 t0 bend ch3 10922
+2970 t0 bend ch3 10922
+2980 t0 bend ch3 10922
+2990 t0 bend ch3 10922
+3000 t0 bend ch3 10922
+3010 t0 bend ch3 10922
+3020 t0 bend ch3 10922
+3030 t0 bend ch3 10922
+3040 t0 bend ch3 10922
+3050 t0 bend ch3 10922
+3060 t0 bend ch3 10922
+3070 t0 bend ch3 10922
+3080 t0 bend ch3 10922
+3090 t0 bend ch3 10922
+3100 t0 bend ch3 10922
+3110 t0 bend ch3 10922
+3120 t0 bend ch3 10922
+3130 t0 bend ch3 10808
+3140 t0 bend ch3 10695
+3150 t0 bend ch3 10581
+3160 t0 bend ch3 10467
+3170 t0 bend ch3 10353
+3180 t0 bend ch3 10240
+3190 t0 bend ch3 10126
+3200 t0 bend ch3 10012
+3210 t0 bend ch3 9898
+3220 t0 bend ch3 9784
+3230 t0 bend ch3 9671
+3240 t0 bend ch3 9557
+3250 t0 bend ch3 9443
+3260 t0 bend ch3 9329
+3270 t0 bend ch3 9216
+3280 t0 bend ch3 9102
+3290 t0 bend ch3 8988
+3300 t0 bend ch3 8874
+3310 t0 bend ch3 8760
+3320 t0 bend ch3 8647
+3330 t0 bend ch3 8533
+3340 t0 bend ch3 8419
+3350 t0 bend ch3 8305
+3360 t0 off ch3 64
+3360 t0 on ch0 62 95
+3840 t0 off ch0 62
+## excerpt track 0 measure 0 voice 0 beat 0
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 4800 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 43 95
+0 t0 on ch0 50 95
+0 t0 on ch0 55 95
+960 t0 off ch0 43
+960 t0 off ch0 50
+960 t0 off ch0 55
+## excerpt track 0 measure 0 voice 0 beat 1
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 4800 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 43 95
+0 t0 on ch0 50 95
+0 t0 on ch0 55 95
+960 t0 off ch0 43
+960 t0 off ch0 50
+960 t0 off ch0 55
+## excerpt track 0 measure 0 voice 0 beat 2
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 program ch1 25
+0 t0 cc ch1 7 104
+0 t0 cc ch1 10 64
+0 t0 cc ch1 91 0
+0 t0 cc ch1 93 0
+0 t0 cc ch1 11 127
+0 t0 cc ch1 101 0
+0 t0 cc ch1 100 0
+0 t0 cc ch1 6 6
+0 t0 cc ch1 38 0
+0 t0 cc ch1 101 127
+0 t0 cc ch1 100 127
+0 t0 bend ch1 8192
+0 t0 bend ch1 8192
+0 t0 on ch1 60 95
+10 t0 bend ch1 8305
+20 t0 bend ch1 8419
+30 t0 bend ch1 8533
+40 t0 bend ch1 8647
+50 t0 bend ch1 8760
+60 t0 bend ch1 8874
+70 t0 bend ch1 8988
+80 t0 bend ch1 9102
+90 t0 bend ch1 9216
+100 t0 bend ch1 9329
+110 t0 bend ch1 9443
+120 t0 bend ch1 9557
+130 t0 bend ch1 9671
+140 t0 bend ch1 9784
+150 t0 bend ch1 9898
+160 t0 bend ch1 10012
+170 t0 bend ch1 10126
+180 t0 bend ch1 10240
+190 t0 bend ch1 10353
+200 t0 bend ch1 10467
+210 t0 bend ch1 10581
+220 t0 bend ch1 10695
+230 t0 bend ch1 10808
+240 t0 bend ch1 10922
+250 t0 bend ch1 10922
+260 t0 bend ch1 10922
+270 t0 bend ch1 10922
+280 t0 bend ch1 10922
+290 t0 bend ch1 10922
+300 t0 bend ch1 10922
+310 t0 bend ch1 10922
+320 t0 bend ch1 10922
+330 t0 bend ch1 10922
+340 t0 bend ch1 10922
+350 t0 bend ch1 10922
+360 t0 bend ch1 10922
+370 t0 bend ch1 10922
+380 t0 bend ch1 10922
+390 t0 bend ch1 10922
+400 t0 bend ch1 10922
+410 t0 bend ch1 10922
+420 t0 bend ch1 10922
+430 t0 bend ch1 10922
+440 t0 bend ch1 10922
+450 t0 bend ch1 10922
+460 t0 bend ch1 10922
+470 t0 bend ch1 10922
+480 t0 off ch1 60
+4319 t0 cc ch1 11 0
+4320 t0 cc ch1 120 0
+## excerpt track 0 measure 0 voice 0 beat 3
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 program ch1 25
+0 t0 cc ch1 7 104
+0 t0 cc ch1 10 64
+0 t0 cc ch1 91 0
+0 t0 cc ch1 93 0
+0 t0 cc ch1 11 127
+0 t0 cc ch1 101 0
+0 t0 cc ch1 100 0
+0 t0 cc ch1 6 6
+0 t0 cc ch1 38 0
+0 t0 cc ch1 101 127
+0 t0 cc ch1 100 127
+0 t0 bend ch1 8192
+0 t0 bend ch1 8192
+0 t0 on ch1 62 95
+10 t0 bend ch1 8362
+20 t0 bend ch1 8533
+30 t0 bend ch1 8704
+40 t0 bend ch1 8874
+50 t0 bend ch1 9045
+60 t0 bend ch1 9216
+70 t0 bend ch1 9386
+80 t0 bend ch1 9557
+90 t0 bend ch1 9728
+100 t0 bend ch1 9898
+110 t0 bend ch1 10069
+120 t0 bend ch1 10240
+130 t0 bend ch1 10410
+140 t0 bend ch1 10581
+150 t0 bend ch1 10752
+160 t0 bend ch1 10922
+170 t0 bend ch1 10752
+180 t0 bend ch1 10581
+190 t0 bend ch1 10410
+200 t0 bend ch1 10240
+210 t0 bend ch1 10069
+220 t0 bend ch1 9898
+230 t0 bend ch1 9728
+240 t0 bend ch1 9557
+250 t0 bend ch1 9386
+260 t0 bend ch1 9216
+270 t0 bend ch1 9045
+280 t0 bend ch1 8874
+290 t0 bend ch1 8704
+300 t0 bend ch1 8533
+310 t0 bend ch1 8362
+320 t0 bend ch1 8192
+330 t0 bend ch1 8362
+340 t0 bend ch1 8533
+350 t0 bend ch1 8704
+360 t0 bend ch1 8874
+370 t0 bend ch1 9045
+380 t0 bend ch1 9216
+390 t0 bend ch1 9386
+400 t0 bend ch1 9557
+410 t0 bend ch1 9728
+420 t0 bend ch1 9898
+430 t0 bend ch1 10069
+440 t0 bend ch1 10240
+450 t0 bend ch1 10410
+460 t0 bend ch1 10581
+470 t0 bend ch1 10752
+480 t0 off ch1 62
+4319 t0 cc ch1 11 0
+4320 t0 cc ch1 120 0
+## excerpt track 0 measure 0 voice 0 beat 4
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 program ch1 25
+0 t0 cc ch1 7 104
+0 t0 cc ch1 10 64
+0 t0 cc ch1 91 0
+0 t0 cc ch1 93 0
+0 t0 cc ch1 11 127
+0 t0 cc ch1 101 0
+0 t0 cc ch1 100 0
+0 t0 cc ch1 6 6
+0 t0 cc ch1 38 0
+0 t0 cc ch1 101 127
+0 t0 cc ch1 100 127
+0 t0 bend ch1 8192
+0 t0 bend ch1 10922
+0 t0 on ch1 64 95
+10 t0 bend ch1 10922
+20 t0 bend ch1 10922
+30 t0 bend ch1 10922
+40 t0 bend ch1 10922
+50 t0 bend ch1 10922
+60 t0 bend ch1 10922
+70 t0 bend ch1 10922
+80 t0 bend ch1 10922
+90 t0 bend ch1 10922
+100 t0 bend ch1 10922
+110 t0 bend ch1 10922
+120 t0 bend ch1 10922
+130 t0 bend ch1 10922
+140 t0 bend ch1 10922
+150 t0 bend ch1 10922
+160 t0 bend ch1 10922
+170 t0 bend ch1 10922
+180 t0 bend ch1 10922
+190 t0 bend ch1 10922
+200 t0 bend ch1 10922
+210 t0 bend ch1 10922
+220 t0 bend ch1 10922
+230 t0 bend ch1 10922
+240 t0 bend ch1 10922
+250 t0 bend ch1 10808
+260 t0 bend ch1 10695
+270 t0 bend ch1 10581
+280 t0 bend ch1 10467
+290 t0 bend ch1 10353
+300 t0 bend ch1 10240
+310 t0 bend ch1 10126
+320 t0 bend ch1 10012
+330 t0 bend ch1 9898
+340 t0 bend ch1 9784
+350 t0 bend ch1 9671
+360 t0 bend ch1 9557
+370 t0 bend ch1 9443
+380 t0 bend ch1 9329
+390 t0 bend ch1 9216
+400 t0 bend ch1 9102
+410 t0 bend ch1 8988
+420 t0 bend ch1 8874
+430 t0 bend ch1 8760
+440 t0 bend ch1 8647
+450 t0 bend ch1 8533
+460 t0 bend ch1 8419
+470 t0 bend ch1 8305
+480 t0 off ch1 64
+4319 t0 cc ch1 11 0
+4320 t0 cc ch1 120 0
+## excerpt track 0 measure 0 voice 0 beat 5
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 62 95
+480 t0 off ch0 62

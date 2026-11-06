@@ -1,0 +1,122 @@
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 3840 skipped 0 degraded 0
+tempo 0 500000
+measure 0 0..3840 pause 0
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 43 95
+0 t0 on ch0 50 95
+0 t0 on ch0 55 95
+840 t0 off ch0 43
+840 t0 on ch0 42 95
+960 t0 off ch0 50
+960 t0 off ch0 55
+960 t0 off ch0 42
+960 t0 on ch0 43 76
+960 t0 on ch0 50 95
+960 t0 on ch0 55 95
+1920 t0 off ch0 43
+1920 t0 off ch0 50
+1920 t0 off ch0 55
+1920 t0 on ch0 60 95
+2400 t0 off ch0 60
+2400 t0 on ch0 57 95
+2520 t0 off ch0 57
+2520 t0 on ch0 62 95
+2760 t0 off ch0 62
+2760 t0 on ch0 57 57
+2880 t0 off ch0 57
+2880 t0 on ch0 64 95
+3360 t0 off ch0 64
+3360 t0 on ch0 62 95
+3840 t0 off ch0 62
+## excerpt track 0 measure 0 voice 0 beat 0
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 4800 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 43 95
+0 t0 on ch0 50 95
+0 t0 on ch0 55 95
+840 t0 off ch0 43
+960 t0 off ch0 50
+960 t0 off ch0 55
+## excerpt track 0 measure 0 voice 0 beat 1
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 4920 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 42 95
+120 t0 off ch0 42
+120 t0 on ch0 43 76
+120 t0 on ch0 50 95
+120 t0 on ch0 55 95
+1080 t0 off ch0 43
+1080 t0 off ch0 50
+1080 t0 off ch0 55
+## excerpt track 0 measure 0 voice 0 beat 2
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 60 95
+480 t0 off ch0 60
+## excerpt track 0 measure 0 voice 0 beat 3
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 4200 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 57 95
+120 t0 off ch0 57
+120 t0 on ch0 62 95
+360 t0 off ch0 62
+## excerpt track 0 measure 0 voice 0 beat 4
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 4440 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 57 57
+120 t0 off ch0 57
+120 t0 on ch0 64 95
+600 t0 off ch0 64
+## excerpt track 0 measure 0 voice 0 beat 5
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 62 95
+480 t0 off ch0 62

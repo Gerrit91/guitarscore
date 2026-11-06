@@ -1,0 +1,22 @@
+track 0 ch0 program 25 volume 15 pan 8 reverb 0 chorus 0 percussion false
+end 3840 skipped 0 degraded 0
+tempo 0 500000
+measure 0 0..3840 pause 0
+0 t0 program ch0 25
+0 t0 cc ch0 7 15
+0 t0 cc ch0 10 8
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 38 79
+480 t0 off ch0 38
+480 t0 on ch0 45 79
+960 t0 off ch0 45
+960 t0 on ch0 50 79
+1440 t0 off ch0 50
+1440 t0 on ch0 55 79
+1920 t0 off ch0 55
+1920 t0 on ch0 57 79
+2400 t0 off ch0 57
+2400 t0 on ch0 62 79
+2880 t0 off ch0 62

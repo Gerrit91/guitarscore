@@ -1,0 +1,179 @@
+track 0 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 1 ch1 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 2 ch2 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 3 ch3 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 4 ch4 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 5 ch5 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 6 ch6 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 7 ch7 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 8 ch8 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 9 ch10 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 10 ch11 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 11 ch12 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 12 ch13 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 13 ch14 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 14 ch15 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+track 15 ch0 program 25 volume 104 pan 64 reverb 0 chorus 0 percussion false
+end 3840 skipped 0 degraded 32
+tempo 0 500000
+measure 0 0..3840 pause 0
+0 t0 program ch0 25
+0 t0 cc ch0 7 104
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t1 program ch1 25
+0 t1 cc ch1 7 104
+0 t1 cc ch1 10 64
+0 t1 cc ch1 91 0
+0 t1 cc ch1 93 0
+0 t1 cc ch1 11 127
+0 t2 program ch2 25
+0 t2 cc ch2 7 104
+0 t2 cc ch2 10 64
+0 t2 cc ch2 91 0
+0 t2 cc ch2 93 0
+0 t2 cc ch2 11 127
+0 t3 program ch3 25
+0 t3 cc ch3 7 104
+0 t3 cc ch3 10 64
+0 t3 cc ch3 91 0
+0 t3 cc ch3 93 0
+0 t3 cc ch3 11 127
+0 t4 program ch4 25
+0 t4 cc ch4 7 104
+0 t4 cc ch4 10 64
+0 t4 cc ch4 91 0
+0 t4 cc ch4 93 0
+0 t4 cc ch4 11 127
+0 t5 program ch5 25
+0 t5 cc ch5 7 104
+0 t5 cc ch5 10 64
+0 t5 cc ch5 91 0
+0 t5 cc ch5 93 0
+0 t5 cc ch5 11 127
+0 t6 program ch6 25
+0 t6 cc ch6 7 104
+0 t6 cc ch6 10 64
+0 t6 cc ch6 91 0
+0 t6 cc ch6 93 0
+0 t6 cc ch6 11 127
+0 t7 program ch7 25
+0 t7 cc ch7 7 104
+0 t7 cc ch7 10 64
+0 t7 cc ch7 91 0
+0 t7 cc ch7 93 0
+0 t7 cc ch7 11 127
+0 t8 program ch8 25
+0 t8 cc ch8 7 104
+0 t8 cc ch8 10 64
+0 t8 cc ch8 91 0
+0 t8 cc ch8 93 0
+0 t8 cc ch8 11 127
+0 t9 program ch10 25
+0 t9 cc ch10 7 104
+0 t9 cc ch10 10 64
+0 t9 cc ch10 91 0
+0 t9 cc ch10 93 0
+0 t9 cc ch10 11 127
+0 t10 program ch11 25
+0 t10 cc ch11 7 104
+0 t10 cc ch11 10 64
+0 t10 cc ch11 91 0
+0 t10 cc ch11 93 0
+0 t10 cc ch11 11 127
+0 t11 program ch12 25
+0 t11 cc ch12 7 104
+0 t11 cc ch12 10 64
+0 t11 cc ch12 91 0
+0 t11 cc ch12 93 0
+0 t11 cc ch12 11 127
+0 t12 program ch13 25
+0 t12 cc ch13 7 104
+0 t12 cc ch13 10 64
+0 t12 cc ch13 91 0
+0 t12 cc ch13 93 0
+0 t12 cc ch13 11 127
+0 t13 program ch14 25
+0 t13 cc ch14 7 104
+0 t13 cc ch14 10 64
+0 t13 cc ch14 91 0
+0 t13 cc ch14 93 0
+0 t13 cc ch14 11 127
+0 t14 program ch15 25
+0 t14 cc ch15 7 104
+0 t14 cc ch15 10 64
+0 t14 cc ch15 91 0
+0 t14 cc ch15 93 0
+0 t14 cc ch15 11 127
+0 t15 program ch0 25
+0 t15 cc ch0 7 104
+0 t15 cc ch0 10 64
+0 t15 cc ch0 91 0
+0 t15 cc ch0 93 0
+0 t15 cc ch0 11 127
+0 t0 on ch0 60 95
+0 t1 on ch1 60 95
+0 t2 on ch2 60 95
+0 t3 on ch3 60 95
+0 t4 on ch4 60 95
+0 t5 on ch5 60 95
+0 t6 on ch6 60 95
+0 t7 on ch7 60 95
+0 t8 on ch8 60 95
+0 t9 on ch10 60 95
+0 t10 on ch11 60 95
+0 t11 on ch12 60 95
+0 t12 on ch13 60 95
+0 t13 on ch14 60 95
+0 t14 on ch15 60 95
+0 t15 on ch0 60 95
+960 t0 off ch0 60
+960 t1 off ch1 60
+960 t2 off ch2 60
+960 t3 off ch3 60
+960 t4 off ch4 60
+960 t5 off ch5 60
+960 t6 off ch6 60
+960 t7 off ch7 60
+960 t8 off ch8 60
+960 t9 off ch10 60
+960 t10 off ch11 60
+960 t11 off ch12 60
+960 t12 off ch13 60
+960 t13 off ch14 60
+960 t14 off ch15 60
+960 t15 off ch0 60
+960 t0 on ch0 60 95
+960 t1 on ch1 60 95
+960 t2 on ch2 60 95
+960 t3 on ch3 60 95
+960 t4 on ch4 60 95
+960 t5 on ch5 60 95
+960 t6 on ch6 60 95
+960 t7 on ch7 60 95
+960 t8 on ch8 60 95
+960 t9 on ch10 60 95
+960 t10 on ch11 60 95
+960 t11 on ch12 60 95
+960 t12 on ch13 60 95
+960 t13 on ch14 60 95
+960 t14 on ch15 60 95
+960 t15 on ch0 60 95
+1920 t0 off ch0 60
+1920 t1 off ch1 60
+1920 t2 off ch2 60
+1920 t3 off ch3 60
+1920 t4 off ch4 60
+1920 t5 off ch5 60
+1920 t6 off ch6 60
+1920 t7 off ch7 60
+1920 t8 off ch8 60
+1920 t9 off ch10 60
+1920 t10 off ch11 60
+1920 t11 off ch12 60
+1920 t12 off ch13 60
+1920 t13 off ch14 60
+1920 t14 off ch15 60
+1920 t15 off ch0 60

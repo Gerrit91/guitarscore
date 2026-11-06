@@ -1,0 +1,1230 @@
+## excerpt track 0 measure 0 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 11520 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 52 79
+0 t0 on ch0 55 79
+0 t0 on ch0 59 79
+0 t0 on ch0 66 79
+7680 t0 off ch0 52
+7680 t0 off ch0 55
+7680 t0 off ch0 59
+7680 t0 off ch0 66
+## excerpt track 0 measure 1 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 7680 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 52 79
+0 t0 on ch0 55 79
+0 t0 on ch0 59 79
+0 t0 on ch0 66 79
+3840 t0 off ch0 52
+3840 t0 off ch0 55
+3840 t0 off ch0 59
+3840 t0 off ch0 66
+## excerpt track 0 measure 2 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 7680 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 53 79
+3840 t0 off ch0 53
+## excerpt track 0 measure 3 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4189 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 56 79
+349 t0 off ch0 56
+## excerpt track 0 measure 3 voice 0 beat 1
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4189 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 56 79
+349 t0 off ch0 56
+## excerpt track 0 measure 3 voice 0 beat 2
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4189 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 56 79
+349 t0 off ch0 56
+## excerpt track 0 measure 3 voice 0 beat 3
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4189 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 56 79
+349 t0 off ch0 56
+## excerpt track 0 measure 3 voice 0 beat 4
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4539 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 56 79
+699 t0 off ch0 56
+## excerpt track 0 measure 3 voice 0 beat 5
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4189 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 56 79
+349 t0 off ch0 56
+## excerpt track 0 measure 3 voice 0 beat 7
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4189 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 56 79
+349 t0 off ch0 56
+## excerpt track 0 measure 3 voice 0 beat 8
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4189 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 56 79
+349 t0 off ch0 56
+## excerpt track 0 measure 5 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 program ch1 26
+0 t0 cc ch1 7 101
+0 t0 cc ch1 10 64
+0 t0 cc ch1 91 0
+0 t0 cc ch1 93 0
+0 t0 cc ch1 11 127
+0 t0 cc ch1 101 0
+0 t0 cc ch1 100 0
+0 t0 cc ch1 6 6
+0 t0 cc ch1 38 0
+0 t0 cc ch1 101 127
+0 t0 cc ch1 100 127
+0 t0 bend ch1 8192
+0 t0 on ch1 62 39
+80 t0 off ch1 62
+80 t0 cc ch1 11 0
+80 t0 program ch2 26
+80 t0 cc ch2 7 101
+80 t0 cc ch2 10 64
+80 t0 cc ch2 91 0
+80 t0 cc ch2 93 0
+80 t0 cc ch2 11 127
+80 t0 cc ch2 101 0
+80 t0 cc ch2 100 0
+80 t0 cc ch2 6 6
+80 t0 cc ch2 38 0
+80 t0 cc ch2 101 127
+80 t0 cc ch2 100 127
+80 t0 bend ch2 8192
+80 t0 on ch2 64 39
+160 t0 off ch2 64
+160 t0 cc ch2 11 0
+160 t0 program ch3 26
+160 t0 cc ch3 7 101
+160 t0 cc ch3 10 64
+160 t0 cc ch3 91 0
+160 t0 cc ch3 93 0
+160 t0 cc ch3 11 127
+160 t0 cc ch3 101 0
+160 t0 cc ch3 100 0
+160 t0 cc ch3 6 6
+160 t0 cc ch3 38 0
+160 t0 cc ch3 101 127
+160 t0 cc ch3 100 127
+160 t0 bend ch3 8192
+160 t0 on ch3 66 39
+240 t0 off ch3 66
+240 t0 cc ch3 11 0
+240 t0 program ch4 26
+240 t0 cc ch4 7 101
+240 t0 cc ch4 10 64
+240 t0 cc ch4 91 0
+240 t0 cc ch4 93 0
+240 t0 cc ch4 11 127
+240 t0 cc ch4 101 0
+240 t0 cc ch4 100 0
+240 t0 cc ch4 6 6
+240 t0 cc ch4 38 0
+240 t0 cc ch4 101 127
+240 t0 cc ch4 100 127
+240 t0 bend ch4 8192
+240 t0 on ch4 69 39
+320 t0 off ch4 69
+320 t0 cc ch4 11 0
+320 t0 program ch5 26
+320 t0 cc ch5 7 101
+320 t0 cc ch5 10 64
+320 t0 cc ch5 91 0
+320 t0 cc ch5 93 0
+320 t0 cc ch5 11 127
+320 t0 cc ch5 101 0
+320 t0 cc ch5 100 0
+320 t0 cc ch5 6 6
+320 t0 cc ch5 38 0
+320 t0 cc ch5 101 127
+320 t0 cc ch5 100 127
+320 t0 bend ch5 8192
+320 t0 on ch5 71 39
+400 t0 off ch5 71
+400 t0 cc ch5 11 0
+400 t0 program ch6 26
+400 t0 cc ch6 7 101
+400 t0 cc ch6 10 64
+400 t0 cc ch6 91 0
+400 t0 cc ch6 93 0
+400 t0 cc ch6 11 127
+400 t0 cc ch6 101 0
+400 t0 cc ch6 100 0
+400 t0 cc ch6 6 6
+400 t0 cc ch6 38 0
+400 t0 cc ch6 101 127
+400 t0 cc ch6 100 127
+400 t0 bend ch6 8192
+400 t0 on ch6 74 39
+480 t0 off ch6 74
+480 t0 cc ch6 11 0
+4319 t0 cc ch1 11 0
+4319 t0 cc ch2 11 0
+4319 t0 cc ch3 11 0
+4319 t0 cc ch4 11 0
+4319 t0 cc ch5 11 0
+4319 t0 cc ch6 11 0
+4320 t0 cc ch1 120 0
+4320 t0 cc ch2 120 0
+4320 t0 cc ch3 120 0
+4320 t0 cc ch4 120 0
+4320 t0 cc ch5 120 0
+4320 t0 cc ch6 120 0
+## excerpt track 0 measure 5 voice 0 beat 1
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4800 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 62 79
+960 t0 off ch0 62
+## excerpt track 0 measure 5 voice 0 beat 2
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 program ch1 26
+0 t0 cc ch1 7 101
+0 t0 cc ch1 10 64
+0 t0 cc ch1 91 0
+0 t0 cc ch1 93 0
+0 t0 cc ch1 11 127
+0 t0 cc ch1 101 0
+0 t0 cc ch1 100 0
+0 t0 cc ch1 6 6
+0 t0 cc ch1 38 0
+0 t0 cc ch1 101 127
+0 t0 cc ch1 100 127
+0 t0 bend ch1 8192
+0 t0 on ch1 62 39
+80 t0 off ch1 62
+80 t0 cc ch1 11 0
+80 t0 program ch2 26
+80 t0 cc ch2 7 101
+80 t0 cc ch2 10 64
+80 t0 cc ch2 91 0
+80 t0 cc ch2 93 0
+80 t0 cc ch2 11 127
+80 t0 cc ch2 101 0
+80 t0 cc ch2 100 0
+80 t0 cc ch2 6 6
+80 t0 cc ch2 38 0
+80 t0 cc ch2 101 127
+80 t0 cc ch2 100 127
+80 t0 bend ch2 8192
+80 t0 on ch2 60 39
+160 t0 off ch2 60
+160 t0 cc ch2 11 0
+160 t0 program ch3 26
+160 t0 cc ch3 7 101
+160 t0 cc ch3 10 64
+160 t0 cc ch3 91 0
+160 t0 cc ch3 93 0
+160 t0 cc ch3 11 127
+160 t0 cc ch3 101 0
+160 t0 cc ch3 100 0
+160 t0 cc ch3 6 6
+160 t0 cc ch3 38 0
+160 t0 cc ch3 101 127
+160 t0 cc ch3 100 127
+160 t0 bend ch3 8192
+160 t0 on ch3 58 39
+240 t0 off ch3 58
+240 t0 cc ch3 11 0
+240 t0 program ch4 26
+240 t0 cc ch4 7 101
+240 t0 cc ch4 10 64
+240 t0 cc ch4 91 0
+240 t0 cc ch4 93 0
+240 t0 cc ch4 11 127
+240 t0 cc ch4 101 0
+240 t0 cc ch4 100 0
+240 t0 cc ch4 6 6
+240 t0 cc ch4 38 0
+240 t0 cc ch4 101 127
+240 t0 cc ch4 100 127
+240 t0 bend ch4 8192
+240 t0 on ch4 55 39
+320 t0 off ch4 55
+320 t0 cc ch4 11 0
+320 t0 program ch5 26
+320 t0 cc ch5 7 101
+320 t0 cc ch5 10 64
+320 t0 cc ch5 91 0
+320 t0 cc ch5 93 0
+320 t0 cc ch5 11 127
+320 t0 cc ch5 101 0
+320 t0 cc ch5 100 0
+320 t0 cc ch5 6 6
+320 t0 cc ch5 38 0
+320 t0 cc ch5 101 127
+320 t0 cc ch5 100 127
+320 t0 bend ch5 8192
+320 t0 on ch5 53 39
+400 t0 off ch5 53
+400 t0 cc ch5 11 0
+400 t0 program ch6 26
+400 t0 cc ch6 7 101
+400 t0 cc ch6 10 64
+400 t0 cc ch6 91 0
+400 t0 cc ch6 93 0
+400 t0 cc ch6 11 127
+400 t0 cc ch6 101 0
+400 t0 cc ch6 100 0
+400 t0 cc ch6 6 6
+400 t0 cc ch6 38 0
+400 t0 cc ch6 101 127
+400 t0 cc ch6 100 127
+400 t0 bend ch6 8192
+400 t0 on ch6 50 39
+480 t0 off ch6 50
+480 t0 cc ch6 11 0
+4319 t0 cc ch1 11 0
+4319 t0 cc ch2 11 0
+4319 t0 cc ch3 11 0
+4319 t0 cc ch4 11 0
+4319 t0 cc ch5 11 0
+4319 t0 cc ch6 11 0
+4320 t0 cc ch1 120 0
+4320 t0 cc ch2 120 0
+4320 t0 cc ch3 120 0
+4320 t0 cc ch4 120 0
+4320 t0 cc ch5 120 0
+4320 t0 cc ch6 120 0
+## excerpt track 0 measure 5 voice 0 beat 3
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4800 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 57 79
+960 t0 off ch0 57
+## excerpt track 0 measure 6 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 5760 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 57 63
+1920 t0 off ch0 57
+## excerpt track 0 measure 6 voice 0 beat 1
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 5760 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 64 63
+0 t0 on ch0 73 79
+1920 t0 off ch0 64
+1920 t0 off ch0 73
+## excerpt track 0 measure 7 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 52 79
+480 t0 off ch0 52
+## excerpt track 0 measure 7 voice 0 beat 1
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 53 79
+480 t0 off ch0 53
+## excerpt track 0 measure 7 voice 0 beat 2
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 54 79
+480 t0 off ch0 54
+## excerpt track 0 measure 7 voice 0 beat 3
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 55 79
+480 t0 off ch0 55
+## excerpt track 0 measure 7 voice 0 beat 4
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 56 79
+480 t0 off ch0 56
+## excerpt track 0 measure 7 voice 0 beat 5
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 57 79
+480 t0 off ch0 57
+## excerpt track 0 measure 8 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 40 79
+480 t0 off ch0 40
+## excerpt track 0 measure 8 voice 0 beat 1
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 47 79
+480 t0 off ch0 47
+## excerpt track 0 measure 8 voice 0 beat 2
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 54 79
+480 t0 off ch0 54
+## excerpt track 0 measure 8 voice 0 beat 3
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 56 79
+480 t0 off ch0 56
+## excerpt track 0 measure 8 voice 0 beat 4
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 63 79
+480 t0 off ch0 63
+## excerpt track 0 measure 8 voice 0 beat 5
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 64 79
+480 t0 off ch0 64
+## excerpt track 0 measure 9 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 41 79
+480 t0 off ch0 41
+## excerpt track 0 measure 9 voice 0 beat 1
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 47 79
+480 t0 off ch0 47
+## excerpt track 0 measure 9 voice 0 beat 2
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 53 79
+480 t0 off ch0 53
+## excerpt track 0 measure 9 voice 0 beat 3
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 59 79
+480 t0 off ch0 59
+## excerpt track 0 measure 9 voice 0 beat 4
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 64 79
+480 t0 off ch0 64
+## excerpt track 0 measure 9 voice 0 beat 5
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4320 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 70 79
+480 t0 off ch0 70
+## excerpt track 0 measure 10 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4800 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 45 79
+40 t0 on ch0 52 79
+80 t0 on ch0 59 79
+120 t0 on ch0 60 79
+960 t0 off ch0 45
+960 t0 off ch0 52
+960 t0 off ch0 59
+960 t0 off ch0 60
+## excerpt track 0 measure 10 voice 0 beat 1
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4800 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 60 79
+40 t0 on ch0 59 79
+80 t0 on ch0 52 79
+120 t0 on ch0 45 79
+960 t0 off ch0 45
+960 t0 off ch0 52
+960 t0 off ch0 59
+960 t0 off ch0 60
+## excerpt track 0 measure 10 voice 0 beat 2
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4800 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 45 79
+160 t0 on ch0 52 79
+320 t0 on ch0 59 79
+480 t0 on ch0 60 79
+960 t0 off ch0 45
+960 t0 off ch0 52
+960 t0 off ch0 59
+960 t0 off ch0 60
+## excerpt track 0 measure 10 voice 0 beat 3
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4800 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 60 79
+160 t0 on ch0 59 79
+320 t0 on ch0 52 79
+480 t0 on ch0 45 79
+960 t0 off ch0 45
+960 t0 off ch0 52
+960 t0 off ch0 59
+960 t0 off ch0 60
+## excerpt track 0 measure 11 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 7680 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 45 79
+0 t0 on ch0 52 79
+0 t0 on ch0 59 79
+0 t0 on ch0 60 79
+60 t0 off ch0 45
+60 t0 off ch0 52
+60 t0 off ch0 59
+60 t0 off ch0 60
+60 t0 on ch0 45 67
+60 t0 on ch0 52 67
+60 t0 on ch0 59 67
+60 t0 on ch0 60 67
+120 t0 off ch0 45
+120 t0 off ch0 52
+120 t0 off ch0 59
+120 t0 off ch0 60
+120 t0 on ch0 45 55
+120 t0 on ch0 52 55
+120 t0 on ch0 59 55
+120 t0 on ch0 60 55
+3840 t0 off ch0 45
+3840 t0 off ch0 52
+3840 t0 off ch0 59
+3840 t0 off ch0 60
+## excerpt track 0 measure 12 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 5760 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 40 79
+30 t0 on ch0 47 79
+1920 t0 off ch0 47
+1920 t0 off ch0 40
+## excerpt track 0 measure 12 voice 0 beat 1
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 5760 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 47 71
+30 t0 on ch0 40 71
+1920 t0 off ch0 47
+1920 t0 off ch0 40
+## excerpt track 0 measure 13 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 5880 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 55 79
+120 t0 off ch0 55
+120 t0 on ch0 57 63
+2040 t0 off ch0 57
+## excerpt track 0 measure 13 voice 0 beat 1
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 5880 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 55 79
+120 t0 off ch0 55
+120 t0 on ch0 57 63
+2040 t0 off ch0 57
+## excerpt track 0 measure 13 voice 0 beat 2
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 5760 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 57 79
+120 t0 off ch0 57
+120 t0 on ch0 55 63
+1920 t0 off ch0 55
+## excerpt track 0 measure 14 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 7680 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 57 79
+240 t0 off ch0 57
+240 t0 on ch0 59 79
+480 t0 off ch0 59
+480 t0 on ch0 57 79
+720 t0 off ch0 57
+720 t0 on ch0 59 79
+960 t0 off ch0 59
+960 t0 on ch0 57 79
+1200 t0 off ch0 57
+1200 t0 on ch0 59 79
+1440 t0 off ch0 59
+1440 t0 on ch0 57 79
+1680 t0 off ch0 57
+1680 t0 on ch0 59 79
+1920 t0 off ch0 59
+1920 t0 on ch0 57 79
+2160 t0 off ch0 57
+2160 t0 on ch0 59 79
+2400 t0 off ch0 59
+2400 t0 on ch0 57 79
+2640 t0 off ch0 57
+2640 t0 on ch0 59 79
+2880 t0 off ch0 59
+2880 t0 on ch0 57 79
+3120 t0 off ch0 57
+3120 t0 on ch0 59 79
+3360 t0 off ch0 59
+3360 t0 on ch0 57 79
+3600 t0 off ch0 57
+3600 t0 on ch0 59 79
+3840 t0 off ch0 59
+## excerpt track 0 measure 15 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4800 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 57 79
+480 t0 off ch0 57
+480 t0 on ch0 57 79
+960 t0 off ch0 57
+## excerpt track 0 measure 15 voice 0 beat 1
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 4800 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 59 79
+240 t0 off ch0 59
+240 t0 on ch0 59 79
+480 t0 off ch0 59
+480 t0 on ch0 59 79
+720 t0 off ch0 59
+720 t0 on ch0 59 79
+960 t0 off ch0 59
+## excerpt track 0 measure 15 voice 0 beat 2
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 5760 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 60 79
+120 t0 off ch0 60
+120 t0 on ch0 60 79
+240 t0 off ch0 60
+240 t0 on ch0 60 79
+360 t0 off ch0 60
+360 t0 on ch0 60 79
+480 t0 off ch0 60
+480 t0 on ch0 60 79
+600 t0 off ch0 60
+600 t0 on ch0 60 79
+720 t0 off ch0 60
+720 t0 on ch0 60 79
+840 t0 off ch0 60
+840 t0 on ch0 60 79
+960 t0 off ch0 60
+960 t0 on ch0 60 79
+1080 t0 off ch0 60
+1080 t0 on ch0 60 79
+1200 t0 off ch0 60
+1200 t0 on ch0 60 79
+1320 t0 off ch0 60
+1320 t0 on ch0 60 79
+1440 t0 off ch0 60
+1440 t0 on ch0 60 79
+1560 t0 off ch0 60
+1560 t0 on ch0 60 79
+1680 t0 off ch0 60
+1680 t0 on ch0 60 79
+1800 t0 off ch0 60
+1800 t0 on ch0 60 79
+1920 t0 off ch0 60
+## excerpt track 0 measure 16 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 7680 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 program ch1 26
+0 t0 cc ch1 7 101
+0 t0 cc ch1 10 64
+0 t0 cc ch1 91 0
+0 t0 cc ch1 93 0
+0 t0 cc ch1 11 127
+0 t0 cc ch1 101 0
+0 t0 cc ch1 100 0
+0 t0 cc ch1 6 6
+0 t0 cc ch1 38 0
+0 t0 cc ch1 101 127
+0 t0 cc ch1 100 127
+0 t0 cc ch1 11 0
+0 t0 program ch2 26
+0 t0 cc ch2 7 101
+0 t0 cc ch2 10 64
+0 t0 cc ch2 91 0
+0 t0 cc ch2 93 0
+0 t0 cc ch2 11 127
+0 t0 cc ch2 101 0
+0 t0 cc ch2 100 0
+0 t0 cc ch2 6 6
+0 t0 cc ch2 38 0
+0 t0 cc ch2 101 127
+0 t0 cc ch2 100 127
+0 t0 cc ch2 11 0
+0 t0 program ch3 26
+0 t0 cc ch3 7 101
+0 t0 cc ch3 10 64
+0 t0 cc ch3 91 0
+0 t0 cc ch3 93 0
+0 t0 cc ch3 11 127
+0 t0 cc ch3 101 0
+0 t0 cc ch3 100 0
+0 t0 cc ch3 6 6
+0 t0 cc ch3 38 0
+0 t0 cc ch3 101 127
+0 t0 cc ch3 100 127
+0 t0 cc ch3 11 0
+0 t0 program ch4 26
+0 t0 cc ch4 7 101
+0 t0 cc ch4 10 64
+0 t0 cc ch4 91 0
+0 t0 cc ch4 93 0
+0 t0 cc ch4 11 127
+0 t0 cc ch4 101 0
+0 t0 cc ch4 100 0
+0 t0 cc ch4 6 6
+0 t0 cc ch4 38 0
+0 t0 cc ch4 101 127
+0 t0 cc ch4 100 127
+0 t0 cc ch4 11 0
+0 t0 bend ch1 8192
+0 t0 bend ch2 8192
+0 t0 bend ch3 8192
+0 t0 bend ch4 8192
+0 t0 on ch1 50 79
+0 t0 on ch2 53 79
+0 t0 on ch3 62 79
+0 t0 on ch4 65 79
+240 t0 cc ch1 11 7
+240 t0 cc ch2 11 7
+240 t0 cc ch3 11 7
+240 t0 cc ch4 11 7
+480 t0 cc ch1 11 15
+480 t0 cc ch2 11 15
+480 t0 cc ch3 11 15
+480 t0 cc ch4 11 15
+720 t0 cc ch1 11 23
+720 t0 cc ch2 11 23
+720 t0 cc ch3 11 23
+720 t0 cc ch4 11 23
+960 t0 cc ch1 11 31
+960 t0 cc ch2 11 31
+960 t0 cc ch3 11 31
+960 t0 cc ch4 11 31
+1200 t0 cc ch1 11 39
+1200 t0 cc ch2 11 39
+1200 t0 cc ch3 11 39
+1200 t0 cc ch4 11 39
+1440 t0 cc ch1 11 47
+1440 t0 cc ch2 11 47
+1440 t0 cc ch3 11 47
+1440 t0 cc ch4 11 47
+1680 t0 cc ch1 11 55
+1680 t0 cc ch2 11 55
+1680 t0 cc ch3 11 55
+1680 t0 cc ch4 11 55
+1920 t0 cc ch1 11 63
+1920 t0 cc ch2 11 63
+1920 t0 cc ch3 11 63
+1920 t0 cc ch4 11 63
+2160 t0 cc ch1 11 71
+2160 t0 cc ch2 11 71
+2160 t0 cc ch3 11 71
+2160 t0 cc ch4 11 71
+2400 t0 cc ch1 11 79
+2400 t0 cc ch2 11 79
+2400 t0 cc ch3 11 79
+2400 t0 cc ch4 11 79
+2640 t0 cc ch1 11 87
+2640 t0 cc ch2 11 87
+2640 t0 cc ch3 11 87
+2640 t0 cc ch4 11 87
+2880 t0 cc ch1 11 95
+2880 t0 cc ch2 11 95
+2880 t0 cc ch3 11 95
+2880 t0 cc ch4 11 95
+3120 t0 cc ch1 11 103
+3120 t0 cc ch2 11 103
+3120 t0 cc ch3 11 103
+3120 t0 cc ch4 11 103
+3360 t0 cc ch1 11 111
+3360 t0 cc ch2 11 111
+3360 t0 cc ch3 11 111
+3360 t0 cc ch4 11 111
+3600 t0 cc ch1 11 119
+3600 t0 cc ch2 11 119
+3600 t0 cc ch3 11 119
+3600 t0 cc ch4 11 119
+3840 t0 off ch1 50
+3840 t0 off ch2 53
+3840 t0 off ch3 62
+3840 t0 off ch4 65
+3840 t0 cc ch1 11 127
+3840 t0 cc ch2 11 127
+3840 t0 cc ch3 11 127
+3840 t0 cc ch4 11 127
+7679 t0 cc ch1 11 0
+7679 t0 cc ch2 11 0
+7679 t0 cc ch3 11 0
+7679 t0 cc ch4 11 0
+7680 t0 cc ch1 120 0
+7680 t0 cc ch2 120 0
+7680 t0 cc ch3 120 0
+7680 t0 cc ch4 120 0
+## excerpt track 0 measure 17 voice 0 beat 0
+track 0 ch0 program 26 volume 101 pan 64 reverb 0 chorus 0 percussion false
+end 7680 skipped 0 degraded 0
+tempo 0 500000
+0 t0 program ch0 26
+0 t0 cc ch0 7 101
+0 t0 cc ch0 10 64
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 program ch1 26
+0 t0 cc ch1 7 101
+0 t0 cc ch1 10 64
+0 t0 cc ch1 91 0
+0 t0 cc ch1 93 0
+0 t0 cc ch1 11 127
+0 t0 cc ch1 101 0
+0 t0 cc ch1 100 0
+0 t0 cc ch1 6 6
+0 t0 cc ch1 38 0
+0 t0 cc ch1 101 127
+0 t0 cc ch1 100 127
+0 t0 cc ch1 11 127
+0 t0 program ch2 26
+0 t0 cc ch2 7 101
+0 t0 cc ch2 10 64
+0 t0 cc ch2 91 0
+0 t0 cc ch2 93 0
+0 t0 cc ch2 11 127
+0 t0 cc ch2 101 0
+0 t0 cc ch2 100 0
+0 t0 cc ch2 6 6
+0 t0 cc ch2 38 0
+0 t0 cc ch2 101 127
+0 t0 cc ch2 100 127
+0 t0 cc ch2 11 127
+0 t0 program ch3 26
+0 t0 cc ch3 7 101
+0 t0 cc ch3 10 64
+0 t0 cc ch3 91 0
+0 t0 cc ch3 93 0
+0 t0 cc ch3 11 127
+0 t0 cc ch3 101 0
+0 t0 cc ch3 100 0
+0 t0 cc ch3 6 6
+0 t0 cc ch3 38 0
+0 t0 cc ch3 101 127
+0 t0 cc ch3 100 127
+0 t0 cc ch3 11 127
+0 t0 program ch4 26
+0 t0 cc ch4 7 101
+0 t0 cc ch4 10 64
+0 t0 cc ch4 91 0
+0 t0 cc ch4 93 0
+0 t0 cc ch4 11 127
+0 t0 cc ch4 101 0
+0 t0 cc ch4 100 0
+0 t0 cc ch4 6 6
+0 t0 cc ch4 38 0
+0 t0 cc ch4 101 127
+0 t0 cc ch4 100 127
+0 t0 cc ch4 11 127
+0 t0 bend ch1 8192
+0 t0 bend ch2 8192
+0 t0 bend ch3 8192
+0 t0 bend ch4 8192
+0 t0 on ch1 50 79
+0 t0 on ch2 53 79
+0 t0 on ch3 62 79
+0 t0 on ch4 65 79
+240 t0 cc ch1 11 119
+240 t0 cc ch2 11 119
+240 t0 cc ch3 11 119
+240 t0 cc ch4 11 119
+480 t0 cc ch1 11 111
+480 t0 cc ch2 11 111
+480 t0 cc ch3 11 111
+480 t0 cc ch4 11 111
+720 t0 cc ch1 11 103
+720 t0 cc ch2 11 103
+720 t0 cc ch3 11 103
+720 t0 cc ch4 11 103
+960 t0 cc ch1 11 95
+960 t0 cc ch2 11 95
+960 t0 cc ch3 11 95
+960 t0 cc ch4 11 95
+1200 t0 cc ch1 11 87
+1200 t0 cc ch2 11 87
+1200 t0 cc ch3 11 87
+1200 t0 cc ch4 11 87
+1440 t0 cc ch1 11 79
+1440 t0 cc ch2 11 79
+1440 t0 cc ch3 11 79
+1440 t0 cc ch4 11 79
+1680 t0 cc ch1 11 71
+1680 t0 cc ch2 11 71
+1680 t0 cc ch3 11 71
+1680 t0 cc ch4 11 71
+1920 t0 cc ch1 11 63
+1920 t0 cc ch2 11 63
+1920 t0 cc ch3 11 63
+1920 t0 cc ch4 11 63
+2160 t0 cc ch1 11 55
+2160 t0 cc ch2 11 55
+2160 t0 cc ch3 11 55
+2160 t0 cc ch4 11 55
+2400 t0 cc ch1 11 47
+2400 t0 cc ch2 11 47
+2400 t0 cc ch3 11 47
+2400 t0 cc ch4 11 47
+2640 t0 cc ch1 11 39
+2640 t0 cc ch2 11 39
+2640 t0 cc ch3 11 39
+2640 t0 cc ch4 11 39
+2880 t0 cc ch1 11 31
+2880 t0 cc ch2 11 31
+2880 t0 cc ch3 11 31
+2880 t0 cc ch4 11 31
+3120 t0 cc ch1 11 23
+3120 t0 cc ch2 11 23
+3120 t0 cc ch3 11 23
+3120 t0 cc ch4 11 23
+3360 t0 cc ch1 11 15
+3360 t0 cc ch2 11 15
+3360 t0 cc ch3 11 15
+3360 t0 cc ch4 11 15
+3600 t0 cc ch1 11 7
+3600 t0 cc ch2 11 7
+3600 t0 cc ch3 11 7
+3600 t0 cc ch4 11 7
+3840 t0 off ch1 50
+3840 t0 off ch2 53
+3840 t0 off ch3 62
+3840 t0 off ch4 65
+3840 t0 cc ch1 11 0
+3840 t0 cc ch2 11 0
+3840 t0 cc ch3 11 0
+3840 t0 cc ch4 11 0
+7679 t0 cc ch1 11 0
+7679 t0 cc ch2 11 0
+7679 t0 cc ch3 11 0
+7679 t0 cc ch4 11 0
+7680 t0 cc ch1 120 0
+7680 t0 cc ch2 120 0
+7680 t0 cc ch3 120 0
+7680 t0 cc ch4 120 0
