@@ -56,7 +56,9 @@ impl Sequence {
             measures: Vec::new(),
             end: 0,
             skipped_notes: collected.skipped_notes,
+            by_start: Vec::new(),
         };
+        performance.index_by_start();
         let midi = crate::midi::derive(&performance);
         let mut events = midi.events;
         events.retain(|event| event.tick <= MAX_TICKS);

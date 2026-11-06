@@ -13,6 +13,43 @@ use crate::pitch::PitchShape;
 use crate::sequence::MeasureSpan;
 use crate::tempo::TempoMap;
 
+/// Which engine plays a track.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TrackEngine {
+    /// The General MIDI path: a SoundFont or a MIDI device.
+    #[default]
+    SoundFont,
+    /// Modelled strings of this kind (M22). MIDI output still plays the track's MIDI.
+    Modelled(StringKind),
+}
+
+/// The kinds of modelled string instrument.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StringKind {
+    /// Classical guitar.
+    Nylon,
+    /// Acoustic guitar with steel strings.
+    Steel,
+    /// Electric guitar.
+    Electric,
+    /// Electric bass.
+    Bass,
+}
+
+impl StringKind {
+    /// The modelled instrument for General MIDI `program` (0-based), if it is a guitar
+    /// (24-31) or a bass (32-39).
+    pub fn for_program(program: u8) -> Option<StringKind> {
+        match program {
+            24 => Some(StringKind::Nylon),
+            25 => Some(StringKind::Steel),
+            26..=31 => Some(StringKind::Electric),
+            32..=39 => Some(StringKind::Bass),
+            _ => None,
+        }
+    }
+}
+
 /// A track as it is performed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PerformanceTrack {
@@ -28,6 +65,8 @@ pub struct PerformanceTrack {
     /// The sounding pitch (MIDI note number, capo included) of each open string, string 1
     /// (the highest) first. Empty for drums.
     pub strings: Vec<u8>,
+    /// The engine that plays it.
+    pub engine: TrackEngine,
 }
 
 /// How a note is set going.
@@ -111,6 +150,10 @@ pub struct Performance {
     /// Notes left out because their pitch could not be worked out (invalid string, fret or
     /// a pitch above MIDI's range). The model lists such notes as issues.
     pub skipped_notes: usize,
+    /// The indices of [`Performance::notes`] by start (ties in their order), for an engine
+    /// that walks through the notes as time passes. [`Performance::index_by_start`]
+    /// builds it; whoever changes the notes calls it again.
+    pub by_start: Vec<usize>,
 }
 
 impl Performance {
@@ -152,14 +195,37 @@ impl Performance {
             tempo.hold_ticks(span.end, span.pause);
         }
 
-        Ok(Performance {
+        let mut performance = Performance {
             tracks: collected.tracks,
             notes: collected.notes,
             tempo,
             measures,
             end,
             skipped_notes: collected.skipped_notes,
-        })
+            by_start: Vec::new(),
+        };
+        performance.index_by_start();
+        Ok(performance)
+    }
+
+    /// Builds [`Performance::by_start`] for the current notes.
+    pub fn index_by_start(&mut self) {
+        let mut order: Vec<usize> = (0..self.notes.len()).collect();
+        order.sort_by_key(|&index| self.notes.get(index).map_or(0, |note| note.start));
+        self.by_start = order;
+    }
+
+    /// Lets the modelled strings play every guitar and bass track (a string instrument
+    /// whose General MIDI program is a guitar or a bass); the others stay on the SoundFont.
+    pub fn model_guitars(&mut self) {
+        for track in &mut self.tracks {
+            if track.kind == InstrumentKind::Strings
+                && !track.sound.percussion
+                && let Some(kind) = StringKind::for_program(track.sound.program)
+            {
+                track.engine = TrackEngine::Modelled(kind);
+            }
+        }
     }
 }
 
@@ -188,6 +254,7 @@ impl PerformanceTrack {
             sound,
             kind: view.instrument_kind(),
             strings,
+            engine: TrackEngine::SoundFont,
         })
     }
 }

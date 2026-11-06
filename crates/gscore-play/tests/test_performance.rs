@@ -269,3 +269,48 @@ fn the_performance_travels_to_the_worklet_intact() {
         }
     }
 }
+
+#[test]
+fn guitar_and_bass_tracks_can_be_played_by_the_modelled_strings() {
+    use gscore_play::{StringKind, TrackEngine};
+    let song = open("basic/multi_staff.gp");
+    let plain = Sequence::new(&song, None).unwrap();
+    assert!(
+        plain
+            .performance
+            .tracks
+            .iter()
+            .all(|t| t.engine == TrackEngine::SoundFont)
+    );
+    let modelled = plain.clone().with_modelled_guitars();
+    assert_eq!(modelled.events, plain.events, "the MIDI stays");
+    for track in &modelled.performance.tracks {
+        let expected = match StringKind::for_program(track.sound.program) {
+            Some(kind) if !track.sound.percussion && track.kind == InstrumentKind::Strings => {
+                TrackEngine::Modelled(kind)
+            }
+            _ => TrackEngine::SoundFont,
+        };
+        assert_eq!(track.engine, expected, "{}", track.name);
+    }
+    assert!(
+        modelled
+            .performance
+            .tracks
+            .iter()
+            .any(|t| matches!(t.engine, TrackEngine::Modelled(_))),
+        "the test file has a guitar"
+    );
+    let decoded = gscore_play::decode_sequence(&gscore_play::encode_sequence(&modelled)).unwrap();
+    assert_eq!(decoded.performance.tracks, modelled.performance.tracks);
+    assert_eq!(decoded.performance.by_start, modelled.performance.by_start);
+    // The index walks the notes in time.
+    let starts: Vec<u64> = modelled
+        .performance
+        .by_start
+        .iter()
+        .map(|&i| modelled.performance.notes[i].start)
+        .collect();
+    assert!(starts.windows(2).all(|pair| pair[0] <= pair[1]));
+    assert_eq!(starts.len(), modelled.performance.notes.len());
+}

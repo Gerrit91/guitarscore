@@ -284,7 +284,7 @@ pub fn lead_in(sequence: &Sequence, clicks: &Sequence, start: u64) -> Sequence {
     let end = moved(sequence.end);
     // The notes the song plays from `start` on, moved like its events.
     let source = &sequence.performance;
-    let performance = Performance {
+    let mut performance = Performance {
         tracks: source.tracks.clone(),
         notes: source
             .notes
@@ -301,7 +301,9 @@ pub fn lead_in(sequence: &Sequence, clicks: &Sequence, start: u64) -> Sequence {
         measures: measures.clone(),
         end,
         skipped_notes: source.skipped_notes,
+        by_start: Vec::new(),
     };
+    performance.index_by_start();
     Sequence {
         tracks: sequence.tracks.clone(),
         events,

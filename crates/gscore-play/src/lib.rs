@@ -54,7 +54,7 @@ pub use click::{
 };
 pub use event::{Channel, MidiEvent, controller};
 pub use order::playback_order;
-pub use performance::{Attack, Performance, PerformanceTrack, PlayedNote};
+pub use performance::{Attack, Performance, PerformanceTrack, PlayedNote, StringKind, TrackEngine};
 pub use pitch::PitchShape;
 pub use player::{PlayError, PlayState, Player, Scheduler, TEMPO_SCALE_RANGE};
 pub use sequence::{MeasureSpan, Sequence, SequenceTrack, TimedEvent, sound_events};

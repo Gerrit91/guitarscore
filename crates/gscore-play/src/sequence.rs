@@ -140,6 +140,13 @@ impl Sequence {
         Ok(sequence)
     }
 
+    /// This sequence with its guitar and bass tracks played by the modelled strings
+    /// ([`Performance::model_guitars`]); the MIDI events stay for MIDI output and export.
+    pub fn with_modelled_guitars(mut self) -> Self {
+        Arc::make_mut(&mut self.performance).model_guitars();
+        self
+    }
+
     /// The MIDI sequence that plays `performance` on a General MIDI synthesizer.
     pub fn from_performance(performance: Arc<Performance>) -> Self {
         let midi = crate::midi::derive(&performance);

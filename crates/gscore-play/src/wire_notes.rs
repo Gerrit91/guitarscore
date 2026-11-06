@@ -4,7 +4,9 @@
 use gscore_model::{Fade, HarmonicKind, InstrumentKind, StrokeDirection, TrackIndex, TrackSound};
 
 use crate::curve::Curve;
-use crate::performance::{Attack, Performance, PerformanceTrack, PlayedNote};
+use crate::performance::{
+    Attack, Performance, PerformanceTrack, PlayedNote, StringKind, TrackEngine,
+};
 use crate::pitch::{PitchShape, Wave};
 use crate::tempo::TempoMap;
 use crate::wire::{Reader, put_u16, put_u32, put_u64};
@@ -50,6 +52,7 @@ pub(crate) fn encode_performance(out: &mut Vec<u8>, performance: &Performance) {
                 InstrumentKind::Drums => 1,
                 InstrumentKind::Other => 2,
             },
+            engine_code(track.engine),
             u8::try_from(track.strings.len()).unwrap_or(0),
         ]);
         out.extend(track.strings.iter().take(usize::from(u8::MAX)));
@@ -100,6 +103,7 @@ pub(crate) fn decode_performance(
             2 => InstrumentKind::Other,
             _ => return Err(damaged("instrument")),
         };
+        let engine = engine_from(reader.u8()?).ok_or_else(|| damaged("engine"))?;
         let string_count = usize::from(reader.u8()?);
         let strings = reader.take(string_count)?.to_vec();
         tracks.push(PerformanceTrack {
@@ -108,6 +112,7 @@ pub(crate) fn decode_performance(
             sound,
             kind,
             strings,
+            engine,
         });
     }
     let skipped_notes = usize::try_from(reader.u64()?).unwrap_or(usize::MAX);
@@ -123,14 +128,37 @@ pub(crate) fn decode_performance(
         }
         notes.push(note);
     }
-    Ok(Performance {
+    let mut performance = Performance {
         tracks,
         notes,
         tempo: tempo.clone(),
         measures: Vec::new(),
         end,
         skipped_notes,
-    })
+        by_start: Vec::new(),
+    };
+    performance.index_by_start();
+    Ok(performance)
+}
+
+const ENGINES: [TrackEngine; 5] = [
+    TrackEngine::SoundFont,
+    TrackEngine::Modelled(StringKind::Nylon),
+    TrackEngine::Modelled(StringKind::Steel),
+    TrackEngine::Modelled(StringKind::Electric),
+    TrackEngine::Modelled(StringKind::Bass),
+];
+
+fn engine_code(engine: TrackEngine) -> u8 {
+    ENGINES
+        .iter()
+        .position(|&known| known == engine)
+        .and_then(|index| u8::try_from(index).ok())
+        .unwrap_or(0)
+}
+
+fn engine_from(code: u8) -> Option<TrackEngine> {
+    ENGINES.get(usize::from(code)).copied()
 }
 
 fn encode_note(out: &mut Vec<u8>, note: &PlayedNote) {
