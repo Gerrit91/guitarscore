@@ -3,6 +3,8 @@
 
 use egui::{Align2, Color32, FontId, Rect, Sense, Stroke, Vec2, pos2};
 
+use crate::app::style::TOKENS;
+
 /// The x range the mixer controls get in a track row.
 pub(super) fn controls_rect(row: Rect) -> Rect {
     Rect::from_min_max(
@@ -61,6 +63,51 @@ pub(super) fn activity_rect(row: Rect) -> Rect {
         pos2(row.right() - 13.0, row.center().y),
         Vec2::new(6.0, 14.0),
     )
+}
+
+/// How far a color recedes when its track is not heard (muted, or unsoloed while another
+/// track is soloed): dark enough to set it apart at a glance, bright enough to stay
+/// recognizable as the track's own color.
+const SILENT_DIM: f32 = 0.38;
+
+/// [`color`], darkened while its track is silent, so the score and the mixer show at a
+/// glance what plays and what does not.
+pub(super) fn sounding_color(color: Color32, audible: bool) -> Color32 {
+    if audible {
+        color
+    } else {
+        color.gamma_multiply(SILENT_DIM)
+    }
+}
+
+/// A small mute toggle ("M"): the letter is red at rest, and the whole button is filled red
+/// while the track is muted, so a muted track cannot be overlooked.
+pub(super) fn mute_button(on: bool) -> egui::Button<'static> {
+    toggle_button("M", on, TOKENS.mute, Color32::WHITE)
+}
+
+/// A small solo toggle ("S"): the letter is amber at rest, and the whole button is filled
+/// amber while the track is soloed. The ink is dark, since white on amber is hard to read.
+pub(super) fn solo_button(on: bool) -> egui::Button<'static> {
+    toggle_button("S", on, TOKENS.solo, Color32::from_rgb(0x23, 0x1A, 0x05))
+}
+
+/// A small tinted toggle: its letter in `tint` at rest (with a faint `tint` outline), the
+/// button filled `tint` with `ink` text while `on`.
+fn toggle_button(letter: &str, on: bool, tint: Color32, ink: Color32) -> egui::Button<'static> {
+    let text = egui::RichText::new(letter);
+    if on {
+        egui::Button::new(text.color(ink))
+            .selected(true)
+            .fill(tint)
+            .stroke(Stroke::new(1.0, tint))
+            .small()
+    } else {
+        egui::Button::new(text.color(tint))
+            .selected(false)
+            .stroke(Stroke::new(1.0, tint.gamma_multiply(0.55)))
+            .small()
+    }
 }
 
 /// Paints a small green activity bar (the compact form of the mixer meter).

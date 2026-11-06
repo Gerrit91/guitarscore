@@ -8,7 +8,7 @@ use crate::document::GridData;
 use crate::state::MeasureSelection;
 
 use super::rows::{TrackRow, color32};
-use super::{CELL_PADDING, GridAction, GridView, MEASURE_WIDTH, ROW_HEIGHT, RULER_HEIGHT};
+use super::{CELL_PADDING, GridAction, GridView, MEASURE_WIDTH, ROW_HEIGHT, RULER_HEIGHT, mixer};
 
 /// The measure matrix: ruler with numbers, sections and repeats, then one row per track.
 pub(super) fn matrix(
@@ -117,9 +117,9 @@ pub(super) fn matrix(
                     ROW_HEIGHT - 2.0 * CELL_PADDING,
                 ),
             );
-            let color = rows
-                .get(row)
-                .map_or(visuals.text_color(), |track| color32(track.color));
+            let color = rows.get(row).map_or(visuals.text_color(), |track| {
+                mixer::sounding_color(color32(track.color), track.audible)
+            });
             painter.rect_filled(cell, 0.0, color);
         }
     }

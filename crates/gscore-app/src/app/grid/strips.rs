@@ -179,6 +179,7 @@ fn track_strip(
         &row.preset,
         Symbol::Instrument(row.instrument),
         Color32::from_rgb(red, green, blue),
+        row.audible,
     );
 }
 
@@ -268,6 +269,7 @@ fn master_strip(
         "All tracks",
         Symbol::Waveform,
         visuals.selection.bg_fill,
+        !all_muted,
     );
 }
 
@@ -327,6 +329,7 @@ fn metronome_strip(
         "Click volume",
         Symbol::Metronome,
         visuals.selection.bg_fill,
+        true,
     );
 }
 
@@ -772,10 +775,7 @@ fn mute_solo(
         pos2(rect.left() + width + 4.0, rect.top()),
         vec2(width, rect.height()),
     );
-    let mute = ui.put(
-        mute_rect,
-        egui::Button::new("M").selected(row.muted).small(),
-    );
+    let mute = ui.put(mute_rect, mixer::mute_button(row.muted));
     ui.ctx().accesskit_node_builder(mute.id, |node| {
         node.set_label(format!("Mute {}", row.name));
     });
@@ -788,10 +788,7 @@ fn mute_solo(
             merge: false,
         });
     }
-    let solo = ui.put(
-        solo_rect,
-        egui::Button::new("S").selected(row.soloed).small(),
-    );
+    let solo = ui.put(solo_rect, mixer::solo_button(row.soloed));
     ui.ctx().accesskit_node_builder(solo.id, |node| {
         node.set_label(format!("Solo {}", row.name));
     });
@@ -823,10 +820,7 @@ fn mute_solo_all(
         pos2(rect.left() + width + 4.0, rect.top()),
         vec2(width, rect.height()),
     );
-    let mute = ui.put(
-        mute_rect,
-        egui::Button::new("M").selected(all_muted).small(),
-    );
+    let mute = ui.put(mute_rect, mixer::mute_button(all_muted));
     ui.ctx().accesskit_node_builder(mute.id, |node| {
         node.set_label("Mute all");
     });
@@ -844,10 +838,7 @@ fn mute_solo_all(
             merge: false,
         });
     }
-    let solo = ui.put(
-        solo_rect,
-        egui::Button::new("S").selected(all_soloed).small(),
-    );
+    let solo = ui.put(solo_rect, mixer::solo_button(all_soloed));
     ui.ctx().accesskit_node_builder(solo.id, |node| {
         node.set_label("Solo all");
     });
@@ -902,18 +893,25 @@ fn labels(
     preset: &str,
     symbol: Symbol,
     color: Color32,
+    audible: bool,
 ) {
     let visuals = ui.visuals().clone();
     let name_rect = Rect::from_min_size(
         pos2(bottom.left(), bottom.top() + 42.0),
         vec2(bottom.width(), 14.0),
     );
+    // A silent track's name and color recede, so the strips show at a glance what plays.
+    let name_ink = if audible {
+        visuals.strong_text_color()
+    } else {
+        visuals.weak_text_color()
+    };
     ui.painter().with_clip_rect(name_rect).text(
         pos2(name_rect.left(), name_rect.center().y),
         Align2::LEFT_CENTER,
         name,
         FontId::proportional(10.0),
-        visuals.strong_text_color(),
+        name_ink,
     );
     let name_response = ui.interact(name_rect, ui.scope_id().with("mixer_name"), Sense::hover());
     name_response.on_hover_text(name);
@@ -952,7 +950,8 @@ fn labels(
         pos2(bottom.left(), bottom.bottom() - 5.0),
         vec2(bottom.width(), 5.0),
     );
-    ui.painter().rect_filled(color_rect, 1.0, color);
+    ui.painter()
+        .rect_filled(color_rect, 1.0, mixer::sounding_color(color, audible));
 }
 
 /// The fader travel for a volume, 0 (silence) to 1 (volume 127): `(v / 127)^(2/3)`. As the

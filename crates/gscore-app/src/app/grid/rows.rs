@@ -15,6 +15,9 @@ pub(super) struct TrackRow {
     pub(super) color: TrackColor,
     pub(super) muted: bool,
     pub(super) soloed: bool,
+    /// Whether the track is heard: not muted, and soloed if anything is soloed. Silent tracks
+    /// are drawn dimmed everywhere, so it is obvious what plays.
+    pub(super) audible: bool,
     /// The instrument family, shown as an icon.
     pub(super) instrument: gscore_model::InstrumentSymbol,
     /// The instrument preset's name, for the mixer strip.
@@ -32,6 +35,8 @@ pub(super) struct TrackRow {
 
 /// A snapshot of the track rows.
 pub(super) fn track_rows(document: &Document) -> Vec<TrackRow> {
+    // A soloed track silences every track that is not soloed.
+    let any_soloed = document.song().tracks().any(|track| track.is_soloed());
     document
         .song()
         .tracks()
@@ -40,6 +45,7 @@ pub(super) fn track_rows(document: &Document) -> Vec<TrackRow> {
             color: track.color(),
             muted: track.is_muted(),
             soloed: track.is_soloed(),
+            audible: !track.is_muted() && (!any_soloed || track.is_soloed()),
             instrument: instrument::derived(&track, document.song().track_sound(track.index())),
             preset: document.song().track_sound(track.index()).map_or_else(
                 || "No sound".to_owned(),
@@ -150,17 +156,26 @@ fn track_header(
     if index == view.shown_track {
         painter.rect_filled(rect, 3.0, visuals.selection.bg_fill.gamma_multiply(0.18));
     }
-    // The track's color, then its instrument tag and name.
+    // The track's color, then its instrument tag and name. A silent track recedes.
+    let ink = if row.audible {
+        visuals.text_color()
+    } else {
+        visuals.weak_text_color()
+    };
     let swatch = Rect::from_min_size(
         pos2(rect.left() + 3.0, rect.top() + 4.0),
         vec2(5.0, ROW_HEIGHT - 8.0),
     );
-    painter.rect_filled(swatch, 1.0, color32(row.color));
+    painter.rect_filled(
+        swatch,
+        1.0,
+        mixer::sounding_color(color32(row.color), row.audible),
+    );
     let icon = Rect::from_center_size(
         pos2(swatch.right() + 13.0, rect.center().y),
         vec2(14.0, 14.0),
     );
-    instrument::paint(&painter, icon, row.instrument, visuals.text_color());
+    instrument::paint(&painter, icon, row.instrument, ink);
     let name_rect = Rect::from_min_max(
         pos2(swatch.right() + 28.0, rect.top()),
         pos2(mixer::controls_rect(rect).left() - 4.0, rect.bottom()),
@@ -170,14 +185,14 @@ fn track_header(
         Align2::LEFT_CENTER,
         &row.name,
         FontId::proportional(12.0),
-        visuals.text_color(),
+        ink,
     );
 
-    // Mute and solo, on the right of the name.
+    // Mute and solo, on the right of the name: red and amber, filled while engaged.
     let mute = mixer::mute_rect(rect);
     let solo = mixer::solo_rect(rect);
     if ui
-        .put(mute, egui::Button::new("M").selected(row.muted).small())
+        .put(mute, mixer::mute_button(row.muted))
         .on_hover_text("Mute this track")
         .clicked()
     {
@@ -190,7 +205,7 @@ fn track_header(
         });
     }
     if ui
-        .put(solo, egui::Button::new("S").selected(row.soloed).small())
+        .put(solo, mixer::solo_button(row.soloed))
         .on_hover_text("Solo this track")
         .clicked()
     {

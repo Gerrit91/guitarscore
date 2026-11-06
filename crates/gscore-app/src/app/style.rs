@@ -35,6 +35,10 @@ pub(crate) struct Tokens {
     pub accent: Color32,
     /// Text on the accent.
     pub on_accent: Color32,
+    /// Mute (red) and solo (amber): the two mixer states that must never be confused,
+    /// neither with each other nor with the blue accent.
+    pub mute: Color32,
+    pub solo: Color32,
 }
 
 /// The app's tokens. The chrome is always dark (a soft charcoal, white icons and text),
@@ -51,6 +55,8 @@ pub(crate) const TOKENS: Tokens = Tokens {
     text_weak: Color32::from_rgb(0xA6, 0xAA, 0xB1),
     accent: Color32::from_rgb(0x4C, 0x9A, 0xFF),
     on_accent: Color32::WHITE,
+    mute: Color32::from_rgb(0xE0, 0x4A, 0x45),
+    solo: Color32::from_rgb(0xE9, 0xA8, 0x2E),
 };
 
 /// The red behind a window's or tab's close button while it is hovered.

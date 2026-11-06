@@ -180,6 +180,30 @@ fn empty_staves_can_be_hidden_from_the_view_menu() {
 
 #[test]
 fn the_mixer_matches_its_snapshot() {
+    let mut harness = app_with_mixer_view();
+    // The tracks, the master (a waveform for all tracks) and the metronome's fader.
+    harness.snapshot("mixer_view");
+}
+
+#[test]
+fn the_mixer_shows_what_plays_and_what_does_not() {
+    let mut harness = app_with_mixer_view();
+    // A muted track and, while another one is soloed, a track that a solo silences: both
+    // recede, their mute buttons red and the solo button amber.
+    harness.get_by_label("Mute Clean Guitar").click();
+    harness.run();
+    harness.get_by_label("Solo Rhythm Guitar").click();
+    harness.run();
+    harness.snapshot("mixer_mute_solo");
+    // The same in the song grid: the muted and the unsoloed rows' squares and names dim.
+    harness.get_by_label("Grid view").click();
+    harness.run();
+    harness.snapshot("grid_mute_solo");
+}
+
+/// The app showing [multi_staff.gp](../../../testdata/basic/multi_staff.gp) in the mixer
+/// view, at the snapshot size.
+fn app_with_mixer_view() -> Harness<'static, GuitarScoreApp> {
     let file =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/basic/multi_staff.gp");
     let mut harness = Harness::builder()
@@ -195,8 +219,7 @@ fn the_mixer_matches_its_snapshot() {
     harness.run();
     harness.get_by_label("Mixer view").click();
     harness.run();
-    // The tracks, the master (a waveform for all tracks) and the metronome's fader.
-    harness.snapshot("mixer_view");
+    harness
 }
 
 #[test]

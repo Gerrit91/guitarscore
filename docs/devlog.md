@@ -3273,3 +3273,21 @@ needed for a much larger font); owner listening check.
   when Guitar Pro saves the file again. Untested against Guitar Pro itself. GP3-5 and GPX
   have no such room. Waiting for the owner's decision.
 
+## 2026-11-06 — Mixer: mute in red, solo in amber, silent tracks recede
+
+- Mute ("M") is red and solo ("S") amber, in the song grid's track column, the master row
+  and the mixer strips: a tinted letter with a faint outline at rest, the whole button
+  filled while engaged (white ink on red, near-black on amber, since white on amber is
+  hard to read). `style::Tokens` gained `mute` and `solo`, so the two states can never be
+  confused with each other or with the blue accent.
+- `TrackRow::audible`: a track is heard when it is not muted and, if anything is soloed, is
+  itself soloed. Silent tracks recede everywhere: the grid's measure squares and the
+  track's color swatch, name and instrument icon are darkened (`mixer::sounding_color`,
+  ×0.38), and the mixer strip's name and color band likewise; the master strip dims while
+  every track is muted.
+- Snapshot tests: `mixer_mute_solo` and `grid_mute_solo` (one track muted, another soloed,
+  with the rest silenced by the solo) beside the updated `mixer_view`. All other snapshot
+  diffs are only the tinted M/S buttons in the grid and mixer.
+- Open: the page's staves of silent tracks are not dimmed. `gscore-layout` has no opacity
+  or "silent" color token, so that needs a design decision (per-op alpha or a parallel
+  token set) and would touch every golden.
