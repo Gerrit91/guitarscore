@@ -2283,3 +2283,14 @@ fn file_keys_work_in_the_empty_workspace() {
     // Ctrl+N opens the new-song dialog.
     harness.get_by_label("Create");
 }
+
+#[test]
+fn the_view_menu_shows_one_key_per_entry() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.get_by_label("View").click();
+    harness.run();
+    // Zoom in has two keys (ctrl++ and ctrl+=); the menu shows the first.
+    harness.get_by_label("Zoom in ctrl++");
+    harness.get_by_label("Zoom out ctrl+-");
+    harness.get_by_label("Actual size ctrl+0");
+}

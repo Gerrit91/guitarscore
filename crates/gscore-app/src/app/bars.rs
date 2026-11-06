@@ -10,13 +10,15 @@ use crate::state::ThemeChoice;
 impl GuitarScoreApp {
     /// A menu entry for `action`, with its keys from the keymap as the shortcut text.
     fn action_button(&self, ui: &mut egui::Ui, action: ActionId, enabled: bool) -> bool {
-        let keys: Vec<String> = self
+        // A menu shows one key, as menus do (zoom in has ctrl++ and ctrl+=, one key with
+        // and without Shift); the tooltips and the shortcut list show them all.
+        let key = self
             .keymap
             .keys_for(action)
-            .iter()
+            .first()
             .map(ToString::to_string)
-            .collect();
-        let button = egui::Button::new(action.label()).shortcut_text(keys.join(", "));
+            .unwrap_or_default();
+        let button = egui::Button::new(action.label()).shortcut_text(key);
         ui.add_enabled(enabled, button).clicked()
     }
 
