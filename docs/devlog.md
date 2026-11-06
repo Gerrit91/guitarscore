@@ -3404,3 +3404,18 @@ needed for a much larger font); owner listening check.
   Electric Gtr", the one the track panel's Preset shows); the saved chain presets are the
   list at the bottom.
 - A tall window no longer starts over the toolbar (dialogs keep 80 px below the top edge).
+
+## 2026-11-06 — Typed knob values, a block's own menu, and presets that land where you look
+
+- Clicking a knob's value under it opens a small field: type a number (comma or point),
+  Enter or leaving the field takes it (clamped to the knob's range), Escape cancels. A knob
+  also takes the arrow keys (a hundredth of its range a step) once clicked.
+- A chain block's menu moved to the block: right-click offers Bypass (or Hear it again) and
+  Remove; the editor no longer has a Remove button, it says so.
+- The engine buttons read "MIDI synth" and "PM Synthesis" (no "(preset)" suffix).
+- Choosing a saved chain preset now lands on the kind the window shows, unless the preset
+  names a modelled engine (then it brings its kind) - so selecting a preset always moves the
+  knobs in front of the user, even when it was saved on another kind of string.
+- Tests: a preset saved on an electric track, chosen after the track's instrument was
+  changed to a steel string, loads onto the steel chain; typing into a knob's value; the
+  block menu's Remove.

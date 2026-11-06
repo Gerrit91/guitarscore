@@ -65,8 +65,6 @@ struct Actions {
 
 /// A preset chosen in the list: the whole sound it carries.
 struct ChosenPreset {
-    /// The kind of string it was saved for: its sound and chain belong to it.
-    kind: StringKind,
     sound: StringSound,
     chain: ChainSetting,
     /// What plays the strings, when the preset names it (older ones do not).
@@ -143,14 +141,10 @@ fn strings_editor(
         };
         let pm = TrackEngine::Modelled(modelled_kind.unwrap_or(StringKind::Steel));
         let mut choice = |ui: &mut egui::Ui, engine: TrackEngine, label: &str, enabled: bool| {
-            let mut text = label.to_owned();
-            if engine == player.default {
-                text.push_str(" (preset)");
-            }
             let response = ui
                 .add_enabled(
                     enabled,
-                    egui::Button::selectable(player.engine == engine, text),
+                    egui::Button::selectable(player.engine == engine, label),
                 )
                 .on_hover_text(match engine {
                     TrackEngine::SoundFont => {
@@ -243,7 +237,6 @@ fn preset_row(
             .show_ui(ui, |ui| {
                 if ui.selectable_label(false, "Built-in").clicked() {
                     actions.preset = Some(ChosenPreset {
-                        kind,
                         sound: built_in(),
                         chain: ChainSetting::default(),
                         engine: None,
@@ -251,12 +244,7 @@ fn preset_row(
                 }
                 for preset in presets {
                     if ui.selectable_label(false, &preset.name).clicked() {
-                        let preset_kind = match engine_from_id(&preset.kind) {
-                            Some(TrackEngine::Modelled(saved)) => saved,
-                            _ => kind,
-                        };
                         actions.preset = Some(ChosenPreset {
-                            kind: preset_kind,
                             sound: preset.sound,
                             chain: preset.chain.clone(),
                             engine: engine_from_id(&preset.engine),
@@ -321,6 +309,8 @@ struct BoardActions {
     select: Option<usize>,
     /// An empty box's effect was chosen: the place gets it.
     fill: Option<(usize, BlockChoice)>,
+    /// A block's menu asked for it: its place is emptied.
+    remove: Option<usize>,
     /// The mute under a place was clicked: its bypass flips.
     bypass: Option<usize>,
 }
@@ -475,8 +465,35 @@ fn board(
                         }
                     }
                 });
-            } else if response.clicked() {
-                actions.select = Some(index);
+            } else {
+                if response.clicked() {
+                    actions.select = Some(index);
+                }
+                // A block's own menu: right-click removes or bypasses it.
+                let bypassed = chain.blocks.get(place).is_some_and(|block| block.bypass);
+                egui::Popup::context_menu(&response).show(|ui| {
+                    let tip = if bypassed {
+                        "Let this block be heard again"
+                    } else {
+                        "Let the sound pass this block unchanged"
+                    };
+                    if ui
+                        .button(if bypassed { "Hear it again" } else { "Bypass" })
+                        .on_hover_text(tip)
+                        .clicked()
+                    {
+                        actions.bypass = Some(place);
+                        ui.close();
+                    }
+                    if ui
+                        .button("Remove")
+                        .on_hover_text("Empty this place of the board")
+                        .clicked()
+                    {
+                        actions.remove = Some(place);
+                        ui.close();
+                    }
+                });
             }
             // Under a block, its mute: the block passes the sound unchanged while it is on.
             if empty {
@@ -523,12 +540,11 @@ fn editor(ui: &mut egui::Ui, chain: &ChainSetting, place: usize) -> Edited {
             ui.label(RichText::new(block.choice.label()).strong());
             ui.checkbox(&mut edited.bypass, "Bypass")
                 .on_hover_text("Let the sound pass this block unchanged");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Remove").clicked() {
-                    edited = BlockSetting::default();
-                    changed = true;
-                }
-            });
+            ui.label(
+                RichText::new("Right-click the block to remove it")
+                    .weak()
+                    .small(),
+            );
         });
         if block.choice.uses_file() {
             ui.horizontal(|ui| {
@@ -817,6 +833,14 @@ impl GuitarScoreApp {
                         if let Some(index) = board.select {
                             window.selected = index;
                         }
+                        if let Some(place) = board.remove {
+                            let mut changed = chain.clone();
+                            if let Some(slot) = changed.blocks.get_mut(place) {
+                                *slot = BlockSetting::default();
+                            }
+                            actions.chain = Some(changed);
+                            window.selected = place.saturating_add(1);
+                        }
                         if let Some((place, choice)) = board.fill {
                             let mut changed = chain.clone();
                             if let Some(slot) = changed.blocks.get_mut(place) {
@@ -891,8 +915,14 @@ impl GuitarScoreApp {
             });
         // A preset first: it carries both a string sound and a chain.
         if let Some(preset) = actions.preset {
-            self.playback.set_string_sound(preset.kind, preset.sound);
-            self.playback.set_string_chain(preset.kind, preset.chain);
+            // A preset with a modelled engine brings its kind; otherwise it lands on the
+            // kind the window shows, so the knobs in front of the user do move.
+            let target = match preset.engine {
+                Some(TrackEngine::Modelled(saved)) => saved,
+                _ => kind,
+            };
+            self.playback.set_string_sound(target, preset.sound);
+            self.playback.set_string_chain(target, preset.chain);
             if let Some(engine) = preset.engine {
                 self.set_track_engine(window.track, engine);
             }

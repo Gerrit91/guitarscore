@@ -65,9 +65,27 @@ pub(super) fn round_knob(
         value.clamp(low, high)
     };
     let tokens = style::tokens(ui);
-    let (rect, response) = ui.allocate_exact_size(CELL, Sense::click_and_drag());
+    let (rect, _) = ui.allocate_exact_size(CELL, Sense::hover());
+    // The knob itself (its circle and name) and, under it, its value: two separate
+    // targets, so clicking the value opens the field instead of turning the knob.
+    let knob_area = egui::Rect::from_min_max(
+        rect.min,
+        pos2(rect.right(), rect.top() + CENTRE_Y + RADIUS + 12.0),
+    );
+    let value_rect = egui::Rect::from_center_size(
+        pos2(rect.center().x, rect.top() + CENTRE_Y + RADIUS + 18.0),
+        vec2(CELL.x - 6.0, 13.0),
+    );
+    let response = ui.interact(
+        knob_area,
+        ui.scope_id().with(("knob", label)),
+        Sense::click_and_drag(),
+    );
     let hover = format!("{label}: {}{unit}\n{tip}", value_text(*value, unit));
     let response = response.on_hover_text(hover);
+    if response.clicked() && !response.double_clicked() {
+        response.request_focus();
+    }
     ui.ctx().accesskit_node_builder(response.id, |node| {
         node.set_label(label);
         node.set_role(egui::Role::Slider);
@@ -89,6 +107,29 @@ pub(super) fn round_knob(
         if (new - *value).abs() > f32::EPSILON {
             *value = new;
             edit.changed = true;
+        }
+    } else if response.has_focus() {
+        // The arrow keys turn it a hundredth of its range at a time.
+        let step = ui.input(|input| {
+            let mut step = 0.0;
+            for (key, direction) in [
+                (egui::Key::ArrowRight, 1.0),
+                (egui::Key::ArrowUp, 1.0),
+                (egui::Key::ArrowLeft, -1.0),
+                (egui::Key::ArrowDown, -1.0),
+            ] {
+                if input.key_pressed(key) {
+                    step += direction;
+                }
+            }
+            step
+        });
+        if step != 0.0 {
+            let new = to_value(fraction(*value) + step / 100.0);
+            if (new - *value).abs() > f32::EPSILON {
+                *value = new;
+                edit.changed = true;
+            }
         }
     }
     if response.drag_stopped() {
@@ -115,7 +156,7 @@ pub(super) fn round_knob(
         [centre, centre + Vec2::angled(angle(at)) * (RADIUS - 3.0)],
         Stroke::new(1.5, tokens.accent),
     );
-    // Its name and its value, under it.
+    // Its name under it, and its value: clicking the value opens a field to type one.
     painter.text(
         pos2(rect.center().x, rect.top() + CENTRE_Y + RADIUS + 3.0),
         Align2::CENTER_TOP,
@@ -123,13 +164,64 @@ pub(super) fn round_knob(
         FontId::proportional(9.0),
         tokens.text_weak,
     );
-    painter.text(
-        pos2(rect.center().x, rect.top() + CENTRE_Y + RADIUS + 14.0),
-        Align2::CENTER_TOP,
-        value_text(*value, unit),
-        FontId::proportional(9.0),
-        tokens.text,
-    );
+    let edit_id = response.id.with("typed_value");
+    // Kept across frames (a temp value would be dropped at the end of each).
+    let mut typing: Option<(String, bool)> = ui.ctx().data_mut(|data| data.get_persisted(edit_id));
+    if let Some((text, focused)) = typing.as_mut() {
+        let field = ui.put(
+            value_rect,
+            egui::TextEdit::singleline(text)
+                .font(FontId::proportional(9.0))
+                .align(Align2::CENTER_CENTER)
+                .margin(egui::Margin::symmetric(1, 0)),
+        );
+        ui.ctx().accesskit_node_builder(field.id, |node| {
+            node.set_label(format!("{label} value"));
+        });
+        let had_focus = *focused;
+        if !had_focus {
+            field.request_focus();
+            *focused = true;
+        }
+        let done = ui.input(|input| input.key_pressed(egui::Key::Enter));
+        let cancel = ui.input(|input| input.key_pressed(egui::Key::Escape));
+        if cancel {
+            typing = None;
+        } else if done || (had_focus && field.lost_focus()) {
+            if let Ok(number) = text.trim().replace(',', ".").parse::<f32>() {
+                let new = number.clamp(low, high);
+                if (new - *value).abs() > f32::EPSILON {
+                    *value = new;
+                    edit.changed = true;
+                }
+            }
+            typing = None;
+        }
+    } else {
+        let value_response = ui
+            .interact(value_rect, response.id.with("value"), Sense::click())
+            .on_hover_text("Click to type a value");
+        ui.ctx().accesskit_node_builder(value_response.id, |node| {
+            node.set_label(format!("{label} value"));
+        });
+        ui.painter().text(
+            pos2(rect.center().x, rect.top() + CENTRE_Y + RADIUS + 14.0),
+            Align2::CENTER_TOP,
+            value_text(*value, unit),
+            FontId::proportional(9.0),
+            tokens.text,
+        );
+        if value_response.clicked() {
+            typing = Some((format!("{value:.2}"), false));
+        }
+    }
+    if let Some(typing) = typing {
+        ui.ctx()
+            .data_mut(|data| data.insert_persisted(edit_id, typing));
+    } else {
+        ui.ctx()
+            .data_mut(|data| data.remove::<(String, bool)>(edit_id));
+    }
     edit
 }
 

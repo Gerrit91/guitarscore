@@ -306,6 +306,33 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
     }
     harness.get_by_label("Nylon guitar").click();
     harness.run();
+    // Clicking a knob's value lets one type a number.
+    harness.get_by_label("Pick position value").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Pick position value").type_text("0.4");
+    harness.run();
+    eprintln!(
+        "FIELD TEXT {:?}",
+        harness
+            .get_by_label("Pick position value")
+            .accesskit_node()
+            .value()
+    );
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert!(
+        (harness
+            .state()
+            .playback()
+            .string_sounds()
+            .get(gscore_play::StringKind::Nylon)
+            .pick_position
+            - 0.4)
+            .abs()
+            < 1e-6,
+        "the typed value is taken"
+    );
     // Back to the MIDI synth: the knobs go.
     harness
         .query_all_by_label_contains("MIDI synth")
@@ -316,7 +343,69 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
     assert!(harness.query_all_by_label("Brilliance").next().is_none());
 }
 
-/// What the Sound chain window's preset list shows./// What the Sound chain window's preset list shows.
+#[test]
+fn choosing_a_preset_changes_what_is_in_front_of_you() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    // A chain on the track's first place, saved as a preset.
+    harness.get_by_label("Block 1: +").click();
+    harness.run();
+    harness.get_by_label("Reverb").click();
+    harness.run();
+    harness.get_by_label("Block 1: Reverb");
+    harness.get_by_label("Save as…").click();
+    harness.run();
+    harness.get_by_label("Preset name").focus();
+    harness.get_by_label("Preset name").type_text("Hall");
+    harness.run();
+    harness.query_all_by_label("Save").last().unwrap().click();
+    harness.run();
+    assert_eq!(preset_shown(&harness), "Hall");
+
+    // Another instrument in the track panel: the window follows its kind of string, whose
+    // chain is empty.
+    harness.get_by_label_contains("Close Sound chain").click();
+    harness.run();
+    harness.get_by_label("SoundFont preset").click();
+    harness.run();
+    // The program list is long: the wanted entry must be scrolled into view first.
+    harness
+        .get_by_label("25: Steel String Guitar")
+        .scroll_to_me();
+    harness.run();
+    harness.get_by_label("25: Steel String Guitar").click();
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .track_sound(TrackIndex::new(0))
+            .map(|sound| sound.program),
+        Some(25),
+        "the track's preset changed"
+    );
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    harness.get_by_label("Block 1: +");
+
+    // Choosing the preset changes what is in front of the user - the steel chain here -
+    // not the kind it happened to be saved on.
+    harness
+        .query_all_by_label("Preset")
+        .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
+        .unwrap()
+        .click();
+    harness.run();
+    harness.get_by_label("Hall").click();
+    harness.run();
+    harness.get_by_label("Block 1: Reverb");
+    assert_eq!(preset_shown(&harness), "Hall");
+}
+
+/// What the Sound chain window's preset list shows.
 fn preset_shown(harness: &Harness<'_, GuitarScoreApp>) -> String {
     harness
         .query_all_by_label("Preset")
@@ -362,8 +451,17 @@ fn a_saved_chain_preset_brings_back_the_whole_chain() {
         "the chain is part of the preset"
     );
 
-    // Remove the block: the preset no longer matches.
-    harness.get_by_label("Block 1: Reverb").click();
+    // Remove the block from its context menu: the preset no longer matches.
+    let block = harness.get_by_label("Block 1: Reverb").rect();
+    harness.hover_at(block.center());
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos: block.center(),
+            button: egui::PointerButton::Secondary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+    }
     harness.run();
     harness.get_by_label("Remove").click();
     harness.run();
