@@ -9,7 +9,7 @@ pub enum GuitarModel {
     Nylon,
     /// Acoustic guitar with steel strings: bright, long.
     Steel,
-    /// Electric guitar: long sustain, read by a pickup (the amp comes later).
+    /// Electric guitar: long sustain, read by a pickup (an amp comes in its chain).
     Electric,
     /// Electric bass: long, round, stiff wound strings.
     Bass,
@@ -53,6 +53,12 @@ pub struct StringModel {
     pub second: f32,
     /// How far the second vibration is detuned, in cents: the beating of a long note.
     pub detune: f32,
+    /// The magnetic pickup that hears the string (none: heard at the bridge), see
+    /// [`crate::Pickup`]...
+    pub pickup: crate::Pickup,
+    /// ...and where it sits, as a share of the string from the bridge
+    /// ([`crate::pickup_positions`]).
+    pub pickup_position: f32,
 }
 
 impl GuitarModel {
@@ -75,6 +81,8 @@ impl GuitarModel {
                 low_cut: 70.0,
                 second: 0.4,
                 detune: 1.0,
+                pickup: crate::Pickup::None,
+                pickup_position: crate::pickup_positions::BRIDGE,
             },
             GuitarModel::Steel => StringModel {
                 sustain: 9.0,
@@ -92,6 +100,8 @@ impl GuitarModel {
                 low_cut: 110.0,
                 second: 0.5,
                 detune: 1.5,
+                pickup: crate::Pickup::None,
+                pickup_position: crate::pickup_positions::BRIDGE,
             },
             GuitarModel::Electric => StringModel {
                 sustain: 8.0,
@@ -102,13 +112,17 @@ impl GuitarModel {
                 pick_position: 0.12,
                 hardness: 0.6,
                 softness: 0.2,
-                tone: 4_000.0,
-                resonance: 1.3,
+                // The humbucker's coil resonance: a peak near 3 kHz, then a steep roll-off.
+                tone: 3_000.0,
+                resonance: 1.8,
                 level: 0.35,
                 bridge: 0.7,
                 low_cut: 60.0,
                 second: 0.4,
                 detune: 1.0,
+                // A humbucker at the bridge, as most rock guitars are played.
+                pickup: crate::Pickup::Humbucker,
+                pickup_position: crate::pickup_positions::BRIDGE,
             },
             GuitarModel::Bass => StringModel {
                 sustain: 7.0,
@@ -126,6 +140,8 @@ impl GuitarModel {
                 low_cut: 30.0,
                 second: 0.3,
                 detune: 0.8,
+                pickup: crate::Pickup::None,
+                pickup_position: crate::pickup_positions::BRIDGE,
             },
         }
     }
@@ -154,6 +170,8 @@ pub mod ranges {
     pub const SECOND: (f32, f32) = (0.0, 1.0);
     /// Cents.
     pub const DETUNE: (f32, f32) = (0.0, 10.0);
+    /// Share of the string from the bridge.
+    pub const PICKUP_POSITION: (f32, f32) = (0.04, 0.35);
 }
 
 impl StringModel {
@@ -189,6 +207,12 @@ impl StringModel {
             low_cut: fit(self.low_cut, ranges::LOW_CUT, 60.0),
             second: fit(self.second, ranges::SECOND, 0.4),
             detune: fit(self.detune, ranges::DETUNE, 1.0),
+            pickup: self.pickup,
+            pickup_position: fit(
+                self.pickup_position,
+                ranges::PICKUP_POSITION,
+                crate::pickup_positions::BRIDGE,
+            ),
         }
     }
 }

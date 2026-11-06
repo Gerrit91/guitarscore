@@ -140,6 +140,46 @@ impl ShapePreset {
     }
 }
 
+/// The pickup of a string sound as the settings file keeps it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PickupSetting {
+    /// Not set (a sound saved before pickups existed): its kind's preset decides, see
+    /// [`StringSound::for_kind`].
+    #[default]
+    Unset,
+    None,
+    SingleCoil,
+    Humbucker,
+}
+
+impl PickupSetting {
+    /// The pickups a user can choose, in the order the window shows them, with a label.
+    pub const CHOICES: [(PickupSetting, &'static str); 3] = [
+        (PickupSetting::None, "None"),
+        (PickupSetting::SingleCoil, "Single coil"),
+        (PickupSetting::Humbucker, "Humbucker"),
+    ];
+
+    fn pickup(self) -> gscore_guitar::Pickup {
+        match self {
+            PickupSetting::Unset | PickupSetting::None => gscore_guitar::Pickup::None,
+            PickupSetting::SingleCoil => gscore_guitar::Pickup::SingleCoil,
+            PickupSetting::Humbucker => gscore_guitar::Pickup::Humbucker,
+        }
+    }
+}
+
+impl From<gscore_guitar::Pickup> for PickupSetting {
+    fn from(pickup: gscore_guitar::Pickup) -> Self {
+        match pickup {
+            gscore_guitar::Pickup::None => PickupSetting::None,
+            gscore_guitar::Pickup::SingleCoil => PickupSetting::SingleCoil,
+            gscore_guitar::Pickup::Humbucker => PickupSetting::Humbucker,
+        }
+    }
+}
+
 /// One kind of modelled string as the user dialed it in: the knobs of
 /// [`gscore_guitar::StringModel`], kept as plain numbers in the settings file.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -160,6 +200,13 @@ pub struct StringSound {
     pub low_cut: f32,
     pub second: f32,
     pub detune: f32,
+    /// A magnetic pickup and where it sits (a share of the string from the bridge). A
+    /// sound saved before pickups existed has none set (not the struct's default, an
+    /// electric's humbucker): its kind decides.
+    #[serde(default)]
+    pub pickup: PickupSetting,
+    #[serde(default)]
+    pub pickup_position: f32,
 }
 
 impl Default for StringSound {
@@ -188,6 +235,8 @@ impl From<gscore_guitar::StringModel> for StringSound {
             low_cut: model.low_cut,
             second: model.second,
             detune: model.detune,
+            pickup: model.pickup.into(),
+            pickup_position: model.pickup_position,
         }
     }
 }
@@ -211,8 +260,21 @@ impl StringSound {
             low_cut: self.low_cut,
             second: self.second,
             detune: self.detune,
+            pickup: self.pickup.pickup(),
+            pickup_position: self.pickup_position,
         }
         .sanitized()
+    }
+
+    /// This sound for strings of `kind`: a pickup not set comes from the kind's preset
+    /// (an electric's humbucker; none for an acoustic or the bass).
+    pub fn for_kind(mut self, kind: gscore_play::StringKind) -> Self {
+        if self.pickup == PickupSetting::Unset {
+            let preset = gscore_audio::default_string_model(kind);
+            self.pickup = preset.pickup.into();
+            self.pickup_position = preset.pickup_position;
+        }
+        self
     }
 }
 
@@ -318,6 +380,7 @@ impl StringSounds {
             gscore_play::StringKind::Electric => self.electric,
             gscore_play::StringKind::Bass => self.bass,
         }
+        .for_kind(kind)
     }
 
     /// Sets the knobs of `kind`.
@@ -736,6 +799,39 @@ impl Settings {
 mod tests {
     use super::*;
     use crate::state::ThemeChoice;
+
+    #[test]
+    fn sounds_saved_before_pickups_get_their_kinds_pickup() {
+        use gscore_play::StringKind;
+        let mut sounds = StringSounds::default();
+        sounds.steel.level = 0.3;
+        let text = serde_json::to_string(&sounds).unwrap_or_default();
+        // An older settings file: no pickup in any sound.
+        let mut value: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+        for kind in ["nylon", "steel", "electric", "bass"] {
+            if let Some(sound) = value.get_mut(kind).and_then(|v| v.as_object_mut()) {
+                assert!(sound.remove("pickup").is_some(), "{kind}");
+                sound.remove("pickup_position");
+            }
+        }
+        let older: StringSounds = serde_json::from_value(value).unwrap_or_default();
+        assert_eq!(older.steel.level, 0.3, "read");
+        assert_eq!(older.get(StringKind::Steel).pickup, PickupSetting::None);
+        assert_eq!(older.get(StringKind::Bass).pickup, PickupSetting::None);
+        let electric = older.get(StringKind::Electric);
+        assert_eq!(electric.pickup, PickupSetting::Humbucker);
+        assert_eq!(
+            electric.model().pickup_position,
+            gscore_guitar::pickup_positions::BRIDGE
+        );
+        // A chosen pickup is kept, also "none" on an electric.
+        let mut chosen = sounds.electric;
+        chosen.pickup = PickupSetting::None;
+        assert_eq!(
+            chosen.for_kind(StringKind::Electric).pickup,
+            PickupSetting::None
+        );
+    }
 
     #[test]
     fn the_reverb_bus_runs_a_reverb_or_a_room_all_wet() {

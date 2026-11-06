@@ -12,7 +12,9 @@
 // Integration tests are separate crates and see all of the library's dependencies.
 #![allow(unused_crate_dependencies)]
 
-use gscore_guitar::{Attack, GuitarModel, Pluck, Release, StringModel, StringVoice, frequency};
+use gscore_guitar::{
+    Attack, GuitarModel, Pickup, Pluck, Release, StringModel, StringVoice, frequency,
+};
 
 const RATE: f32 = 48_000.0;
 const BLOCK: usize = 64;
@@ -314,6 +316,8 @@ fn no_parameters_make_nan_or_runaway_output() {
             pick_position: random.wild(),
             hardness: random.wild(),
             level: random.wild(),
+            pickup: [Pickup::None, Pickup::SingleCoil, Pickup::Humbucker][round % 3],
+            pickup_position: random.wild(),
         };
         let rate = [8_000.0, 44_100.0, 192_000.0, random.wild()][round % 4];
         let mut voice = StringVoice::new(rate, random.wild(), model);
@@ -391,4 +395,56 @@ fn the_highs_of_a_low_note_fade_as_fast_as_a_high_notes() {
         (low / high - 1.0).abs() < 0.5,
         "the same rate on both strings: low {low:.1} dB, high {high:.1} dB"
     );
+}
+
+#[test]
+fn a_bridge_pickup_bites_and_a_neck_pickup_is_round() {
+    // The open A string (110 Hz) on an electric guitar with one coil at the bridge, in
+    // the middle and at the neck, and with no pickup: the share of the mid overtones (the
+    // third to the fifth) against the fundamental is far larger at the bridge, the neck pickup
+    // loses the octave (it sits about a quarter of the way along), and every one is about
+    // as loud as the string heard at the bridge.
+    let hz = frequency(45, 0.0);
+    let play = |pickup: Pickup, position: f32| {
+        let model = StringModel {
+            pickup,
+            pickup_position: position,
+            ..GuitarModel::Electric.strings()
+        };
+        let mut voice = StringVoice::new(RATE, 20.0, model);
+        voice.pluck(pick(hz));
+        render(&mut voice, 1.0, |_| {})
+    };
+    let mids = |out: &[f32]| {
+        let part = seconds(out, 0.1, 0.6);
+        (3..=5).map(|n| power_at(part, hz * n as f32)).sum::<f64>() / power_at(part, hz)
+    };
+    let bridge = play(Pickup::SingleCoil, gscore_guitar::pickup_positions::BRIDGE);
+    let middle = play(Pickup::SingleCoil, gscore_guitar::pickup_positions::MIDDLE);
+    let neck = play(Pickup::SingleCoil, 0.25);
+    let none = play(Pickup::None, 0.25);
+    // (The middle pickup is not simply between them: it sits near the third overtone's
+    // node, a comb has no single brightness.)
+    assert!(
+        mids(&bridge) > 2.0 * mids(&middle) && mids(&bridge) > 2.0 * mids(&neck),
+        "{} {} {}",
+        mids(&bridge),
+        mids(&middle),
+        mids(&neck)
+    );
+    let part = |out: &[f32]| seconds(out, 0.1, 0.6).to_vec();
+    let octave = |out: &[f32]| power_at(&part(out), hz * 2.0) / power_at(&part(out), hz);
+    assert!(
+        octave(&neck) < 0.05 * octave(&none),
+        "the neck pickup has no octave"
+    );
+    for (name, out) in [("bridge", &bridge), ("middle", &middle), ("neck", &neck)] {
+        let ratio = rms(out) / rms(&none);
+        assert!((0.4..2.5).contains(&ratio), "{name}: {ratio}");
+    }
+    // A humbucker plays too, and every pickup stays in tune.
+    let humbucker = play(Pickup::Humbucker, gscore_guitar::pickup_positions::BRIDGE);
+    assert!(humbucker.iter().all(|x| x.is_finite()) && rms(&humbucker) > 0.01);
+    let off = cents_off(seconds(&neck, 0.2, 0.8), hz);
+    assert!(off.abs() < 2.0, "{off:.2} cents");
 }

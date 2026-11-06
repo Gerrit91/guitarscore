@@ -162,9 +162,23 @@ described in the literature below:
 - **In the synth engine** (`gscore-audio::guitars`): 16 tracks x 8 string voices are made
   with the engine. Notes start at the block they are due (as MIDI events do), pitch
   shapes and fades are applied per block, tracks are mixed with their volume and pan. The
-  SoundFont gets no note-ons or bends of a modelled track. 96 ringing strings take about
-  57 ms per second of audio (budget 250 ms, `cargo xtask bench`).
-- **Not yet:** pickup position (step 2), body, coupling and two polarizations
+  SoundFont gets no note-ons or bends of a modelled track. 96 ringing strings took about
+  57 ms per second of audio with one loop per string (budget 250 ms, `cargo xtask
+  bench`); with two loops, the bridge force and the pickup about 280 ms on a busy machine
+  (load 3; 244 ms there without the pickup), so this worst case is over its budget.
+- **Pickup** (`gscore-guitar::pickup`, 2026-11-06): a magnetic pickup hears the string at
+  its spot: the string's output minus itself delayed by twice the time from the pickup to
+  the bridge (`2 · position · period`), a comb whose notches fall on the overtones with a
+  node under the pickup. Bridge (0.09 of the string) keeps the mid overtones and thins the
+  fundamental, the neck (0.26) loses the octave and is round (tests). A humbucker reads two
+  spots 0.028 apart (18 mm of 648 mm), averaged: the comb evens out where the two coils
+  are half a wave apart. The delays follow the pitch per block (bends), linear
+  interpolation. Each comb is scaled to about the level of the string heard at the
+  bridge. The coil's resonance is the voice's resonant tone filter after it: choosing a
+  single coil sets it to 4.5 kHz, Q 2.2, a humbucker 3 kHz, Q 1.8. Electric preset: a
+  humbucker at the bridge, tone 3 kHz, resonance 1.8. Sounds saved before pickups existed
+  take their kind's pickup (`StringSound::for_kind`), so an older steel sound gets none.
+- **Not yet:** a real pick attack (next), body, coupling and two polarizations
   (step 3), noises and feel (step 4). Everything is one generic string model now; a
   distorted part sounds distorted once its chain has an Amp block (below). Harmonics play the
   harmonic's pitch with a purer pluck rather than damping at a node.

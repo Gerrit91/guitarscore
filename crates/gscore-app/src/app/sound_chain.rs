@@ -1141,7 +1141,8 @@ impl GuitarScoreApp {
                 track,
                 Tone {
                     kind: target,
-                    sound: preset.sound,
+                    // A tone saved before pickups existed gets its kind's.
+                    sound: preset.sound.for_kind(target),
                     chain: preset.chain,
                 },
             );

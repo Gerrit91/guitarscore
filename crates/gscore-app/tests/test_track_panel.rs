@@ -675,10 +675,16 @@ fn two_guitars_of_one_kind_keep_their_own_tone() {
         harness.run();
         harness.get_by_label("Sound chain").click();
         harness.run();
-        harness.get_by_label("Block 0: MIDI").click();
-        harness.run();
-        harness.get_by_label("PM Synthesis").click();
-        harness.run();
+        // Played by the strings (if it is not yet), their box selected.
+        if harness.query_by_label("Block 0: MIDI").is_some() {
+            harness.get_by_label("Block 0: MIDI").click();
+            harness.run();
+            harness.get_by_label("PM Synthesis").click();
+            harness.run();
+        } else {
+            harness.get_by_label("Block 0: Strings").click();
+            harness.run();
+        }
         harness.get_by_label("Pick position value").click();
         harness.run();
         harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
@@ -698,6 +704,25 @@ fn two_guitars_of_one_kind_keep_their_own_tone() {
             .pick_position
     };
     let untouched = pick(&harness, 1);
+    // An electric guitar's strings with their pickup (a humbucker at the bridge).
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    harness.get_by_label("Block 0: MIDI").click();
+    harness.run();
+    harness.get_by_label("PM Synthesis").click();
+    harness.run();
+    harness.snapshot("sound_chain_pickup");
+    harness.get_by_label("Neck").click();
+    harness.run();
+    let neck = harness
+        .state()
+        .playback()
+        .tone(0, gscore_play::StringKind::Electric)
+        .sound;
+    assert_eq!(neck.model().pickup, gscore_guitar::Pickup::Humbucker);
+    assert_eq!(neck.pickup_position, gscore_guitar::pickup_positions::NECK);
+    harness.get_by_label("Close").click();
+    harness.run();
     dial(&mut harness, 0, "0.4");
     dial(&mut harness, 2, "0.2");
     assert!(

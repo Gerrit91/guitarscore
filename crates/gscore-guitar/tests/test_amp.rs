@@ -14,7 +14,7 @@ use std::f32::consts::TAU;
 
 use gscore_guitar::{
     AmpKnobs, AmpVoice, Attack, BLOCKS, BlockKind, BlockSettings, ChainSpec, DriveKnobs,
-    GuitarModel, Pluck, StringVoice, frequency,
+    GuitarModel, Pickup, Pluck, StringModel, StringVoice, frequency,
 };
 
 const RATE: u32 = 48_000;
@@ -22,7 +22,15 @@ const BLOCK: usize = 64;
 
 /// An E5 power chord (E2, B2, E3) picked hard on electric strings, `seconds` long.
 fn power_chord(seconds: f32) -> Vec<f32> {
-    let model = GuitarModel::Electric.strings();
+    // Fixed strings without a pickup (the tone the amp was calibrated with), so the tests
+    // measure the amp and the drive alone, whatever the electric preset becomes (a bridge
+    // pickup, for one, thins the low E's fundamental by itself).
+    let model = StringModel {
+        pickup: Pickup::None,
+        tone: 4_000.0,
+        resonance: 1.3,
+        ..GuitarModel::Electric.strings()
+    };
     let mut strings: Vec<StringVoice> = [40_u8, 47, 52]
         .iter()
         .map(|&key| {

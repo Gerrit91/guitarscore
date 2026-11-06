@@ -3557,3 +3557,27 @@ needed for a much larger font); owner listening check.
 - Tests: after a note and a second of silence, a drive and an amp put out exact zeros
   (failed before: 2.6e-30); ignored timing tests for the tail with and without blocks in
   front, and for the whole engine after Stop.
+
+## 2026-11-06 — The electric guitar gets a pickup
+
+- Owner: the electric string lacked realism, the pick attack and the mid-range overtones.
+  First the pickup (the pick attack comes next): the string used to be heard as an
+  acoustic one (its swing and its force on the bridge, then a lowpass).
+- `gscore-guitar::pickup`: the pickup hears the string where it sits, a comb that follows
+  the pitch (bends too). Single coil or humbucker (two spots side by side), its position
+  as a share of the string from the bridge; the voice's resonant tone filter is the coil's
+  resonance. Electric preset: humbucker at the bridge, 3 kHz, resonance 1.8.
+- Window: a **Pickup** row in the strings' knobs (None, Single coil, Humbucker; Position;
+  Bridge, Middle, Neck). Choosing a type sets Tone and Resonance to its coil's peak. The
+  knob row that was called "Tone" is now **Output**, so it is not mistaken for the saved
+  tones.
+- Settings written before have no pickup in their sounds: each kind's preset decides (an
+  electric gets the humbucker, steel, nylon and bass none).
+- Cost: the strings benchmark (96 strings ringing) went from 244 to about 280 ms per second
+  of audio on a busy machine, over its 250 ms budget; it was at the edge before. The
+  zero-flush of the last change is no longer in the string loop's own filters (a string
+  stops being computed once silent), which won some of it back.
+- Tests: the neck pickup has no octave, the bridge pickup's mids against the fundamental,
+  the humbucker's even comb, no pickup changes nothing, a plucked open A through bridge,
+  middle and neck pickups (loudness, in tune), older settings, and the window's buttons.
+  The amp tests now play fixed strings without a pickup, so they measure the amp alone.

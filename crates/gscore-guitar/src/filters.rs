@@ -26,7 +26,9 @@ pub(crate) struct OnePole {
 
 impl OnePole {
     pub(crate) fn process(&mut self, x: f32) -> f32 {
-        self.state = flushed((1.0 - self.a) * x + self.a * self.state);
+        // Not flushed: it runs only inside a sounding string's loop, and a string stops
+        // being computed once it is silent (far above the denormal range).
+        self.state = (1.0 - self.a) * x + self.a * self.state;
         self.state
     }
 
@@ -58,7 +60,8 @@ pub(crate) struct Allpass {
 
 impl Allpass {
     pub(crate) fn process(&mut self, x: f32) -> f32 {
-        let y = flushed(self.c * x + self.x1 - self.c * self.y1);
+        // Not flushed, as the one-pole (inside a sounding string's loop only).
+        let y = self.c * x + self.x1 - self.c * self.y1;
         self.x1 = x;
         self.y1 = y;
         y

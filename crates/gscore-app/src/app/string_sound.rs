@@ -6,7 +6,7 @@ use gscore_guitar::ranges;
 use gscore_play::StringKind;
 
 use crate::app::style;
-use crate::settings::StringSound;
+use crate::settings::{PickupSetting, StringSound};
 
 /// The space one knob takes: the knob, its name and its value.
 const CELL: Vec2 = vec2(78.0, 60.0);
@@ -352,7 +352,9 @@ pub(super) fn sound_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
         )
         .changed;
     });
-    group(ui, "Tone", |ui| {
+    group(ui, "Pickup", |ui| changed |= pickup_knobs(ui, sound));
+    // Not "Tone": that is the saved tones' word in the same window.
+    group(ui, "Output", |ui| {
         changed |= round_knob(
             ui,
             &mut sound.bridge,
@@ -386,7 +388,9 @@ pub(super) fn sound_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
             " Hz",
             16_000.0,
             true,
-            "The pickup's or body's tone: overtones above this frequency are rolled off.",
+            "The pickup's or body's tone: overtones above this frequency are rolled off. \
+             With a pickup, its coil's resonance: about 3 kHz for a humbucker, 4-5 kHz for a \
+             single coil.",
         )
         .changed;
         changed |= round_knob(
@@ -412,6 +416,88 @@ pub(super) fn sound_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
             "How loud these strings are against the rest of the mix.",
         )
         .changed;
+    });
+    changed
+}
+
+/// What each pickup is, for its tooltip.
+fn pickup_tip(pickup: PickupSetting) -> &'static str {
+    match pickup {
+        PickupSetting::Unset | PickupSetting::None => {
+            "No magnetic pickup: the string is heard at the bridge, as an acoustic guitar's \
+             body hears it."
+        }
+        PickupSetting::SingleCoil => {
+            "One coil: clear, bright and glassy. Sets Tone and Resonance to its coil's peak \
+             (4.5 kHz)."
+        }
+        PickupSetting::Humbucker => {
+            "Two coils side by side: fatter and darker, the classic rock sound. Sets Tone and \
+             Resonance to its coils' peak (3 kHz)."
+        }
+    }
+}
+
+/// The pickup: which kind (choosing one sets the tone filter to its coil's resonance) and
+/// where it sits; whether anything changed.
+fn pickup_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
+    let mut changed = false;
+    ui.vertical(|ui| {
+        ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
+        for (pickup, label) in PickupSetting::CHOICES {
+            let chosen = sound.pickup == pickup
+                || (pickup == PickupSetting::None && sound.pickup == PickupSetting::Unset);
+            let text = RichText::new(label);
+            if ui
+                .selectable_label(chosen, if chosen { text.strong() } else { text })
+                .on_hover_text(pickup_tip(pickup))
+                .clicked()
+                && !chosen
+            {
+                sound.pickup = pickup;
+                match pickup {
+                    PickupSetting::SingleCoil => (sound.tone, sound.resonance) = (4_500.0, 2.2),
+                    PickupSetting::Humbucker => (sound.tone, sound.resonance) = (3_000.0, 1.8),
+                    PickupSetting::None | PickupSetting::Unset => {}
+                }
+                changed = true;
+            }
+        }
+    });
+    if matches!(sound.pickup, PickupSetting::None | PickupSetting::Unset) {
+        return changed;
+    }
+    ui.add_space(8.0);
+    changed |= round_knob(
+        ui,
+        &mut sound.pickup_position,
+        ranges::PICKUP_POSITION,
+        "Position",
+        "",
+        gscore_guitar::pickup_positions::BRIDGE,
+        false,
+        "Where the pickup sits, as a share of the string from the bridge: close to the \
+         bridge (0.09) nasal and biting, in the middle (0.17) hollow, at the neck (0.26) \
+         round and warm.",
+    )
+    .changed;
+    ui.vertical(|ui| {
+        ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
+        for (label, position) in [
+            ("Bridge", gscore_guitar::pickup_positions::BRIDGE),
+            ("Middle", gscore_guitar::pickup_positions::MIDDLE),
+            ("Neck", gscore_guitar::pickup_positions::NECK),
+        ] {
+            let chosen = (sound.pickup_position - position).abs() < 1e-3;
+            if ui
+                .selectable_label(chosen, label)
+                .on_hover_text(format!("The {} pickup's place", label.to_lowercase()))
+                .clicked()
+            {
+                sound.pickup_position = position;
+                changed = true;
+            }
+        }
     });
     changed
 }

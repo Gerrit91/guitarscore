@@ -22,6 +22,7 @@ mod impulse;
 mod knobs;
 mod model;
 mod oversample;
+mod pickup;
 mod reverb;
 mod string;
 mod string_loop;
@@ -33,6 +34,7 @@ pub use drive::DriveKnobs;
 pub use impulse::{ImpulseError, ImpulseResponse, MAX_SECONDS};
 pub use knobs::{BlockSettings, ImpulseKnobs, ReverbKnobs, RoomKnobs, knob_ranges};
 pub use model::{GuitarModel, StringModel, ranges};
+pub use pickup::{Pickup, positions as pickup_positions};
 pub use string::{Attack, Pluck, Release, StringVoice};
 pub use tail::{LENGTH_RANGE, MAX_LENGTHENED_SECONDS};
 

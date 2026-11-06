@@ -5,7 +5,7 @@
 //!
 //! ```text
 //!              ┌──► [ loop: across the top ]  ──┐
-//! excitation ──┤                                ├──► bridge ──► low cut ──► tone ──► out
+//! excitation ──┤                                ├──► bridge ──► pickup ──► low cut ──► tone ──► out
 //!              └──► [ loop: toward the top ]  ──┘
 //! ```
 //!
@@ -15,7 +15,8 @@
 //! damping lowers the loop gain, and a new pluck adds to what is still vibrating. The
 //! output is a blend of the string's swing and the force it puts on the bridge (its
 //! velocity, which a bridge and a magnetic pickup pass): the force carries far less of the
-//! fundamental, as a real guitar's low notes do.
+//! fundamental, as a real guitar's low notes do. An electric guitar's magnetic pickup then
+//! hears the string where it sits (`pickup`), and the tone filter is its coil's resonance.
 //!
 //! `render` neither allocates nor blocks: the delay lines are made once, long enough for
 //! the lowest pitch the voice is set up for.
@@ -24,6 +25,7 @@ use std::f32::consts::{PI, TAU};
 
 use crate::filters::{Biquad, DcBlocker, Noise};
 use crate::model::StringModel;
+use crate::pickup::PickupComb;
 use crate::string_loop::{Loop, Tuning};
 
 /// A hammer-on or pull-off reaches its new pitch within this long, in seconds.
@@ -111,6 +113,8 @@ pub struct StringVoice {
     /// The bridge's last input, for its force (the swing's change), and the force's scale.
     last: f32,
     bridge_scale: f32,
+    /// Where a magnetic pickup hears the string.
+    pickup: PickupComb,
     /// The body's or pickup's low cut and tone on the output.
     low_cut: Biquad,
     tone: Biquad,
@@ -155,6 +159,7 @@ impl StringVoice {
             dc: DcBlocker::new(sample_rate),
             last: 0.0,
             bridge_scale: 1.0 / (2.0 * (PI * BRIDGE_AT / sample_rate).sin()).max(1e-6),
+            pickup: PickupComb::new(samples),
             low_cut: Biquad::highpass(sample_rate, model.low_cut, LOW_CUT_Q),
             tone: Biquad::lowpass(sample_rate, model.tone, model.resonance),
             noise: Noise::new(0x9E37_79B9),
@@ -228,6 +233,7 @@ impl StringVoice {
         self.set_damping(damping, true);
         self.level = self.level_target;
         self.update(0);
+        self.retune_pickup(true);
         let (amplitude, hardness, noise) = match pluck.attack {
             Attack::Pick => (1.0, self.model.hardness, 0.08),
             Attack::Legato => (0.7, self.model.hardness * 0.5, 0.02),
@@ -288,6 +294,8 @@ impl StringVoice {
         }
         self.settle(out.len());
         self.update(out.len());
+        self.retune_pickup(false);
+        let pickup = self.model.pickup;
         let level_step = (self.level_target - self.level) / out.len() as f32;
         let second = self.model.second > 0.0;
         let bridge = self.model.bridge;
@@ -308,7 +316,9 @@ impl StringVoice {
             }
             let force = (swing - self.last) * self.bridge_scale;
             self.last = swing;
-            let heard = swing * (1.0 - bridge) + force * bridge;
+            let heard = self
+                .pickup
+                .process(pickup, swing * (1.0 - bridge) + force * bridge);
             self.level += level_step;
             let out_sample = self
                 .tone
@@ -331,6 +341,7 @@ impl StringVoice {
             string.clear();
         }
         self.dc.reset();
+        self.pickup.clear();
         self.low_cut.reset();
         self.tone.reset();
         self.last = 0.0;
@@ -380,6 +391,17 @@ impl StringVoice {
         };
         self.decay = glide(self.decay.max(1e-4), decay);
         self.high_decay = glide(self.high_decay.max(1e-4), high_decay);
+    }
+
+    /// Points the pickup's comb at the current pitch (bend included): at once for a new
+    /// note, gliding for a bend.
+    fn retune_pickup(&mut self, jump: bool) {
+        let frequency = (self.frequency * (self.bend / 1200.0).exp2()).max(8.0);
+        self.pickup.retune(
+            self.sample_rate / frequency,
+            self.model.pickup_position,
+            jump,
+        );
     }
 
     /// Retunes both loops for the current pitch and damping; their delays glide to the new
