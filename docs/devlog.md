@@ -3202,3 +3202,22 @@ needed for a much larger font); owner listening check.
 - Open: the owner's listening check; amp and cabinet next (step 2); the browser shows no
   CPU meter (the worklet has no clock to measure with).
 
+## 2026-11-06 — Less synthetic strings, and knobs to dial them in
+
+- The owner heard the low notes as "a synthesizer with slight distortion". Causes: a
+  fixed loss filter lets a low string's highs ring about four times longer (it goes round
+  its loop less often); the pluck was a rectangular pulse (a pulse-wave synth's
+  spectrum); nothing coloured the raw string. Now the loss filter is designed from two
+  decay times (fundamental and 2 kHz, "brilliance"), the pluck blends pulse and triangle
+  ("roundness") rounded in Hz by hardness, and each string has a resonant tone lowpass.
+  Test: a harmonic at 1.98 kHz fades at the same rate on E2 and E4.
+- String sound dialog, opened from the track panel's Sound section (which shows the
+  modelled strings' switch and the track's kind of string): strike, string and tone
+  knobs per kind, explained on hover, heard live (also while playing), kept in the
+  settings, sent to every new synthesizer, used by WAV export (`AudioExport`). Listen
+  plays a phrase built as a `Performance`; Preset restores the built-in values.
+- Levels against FluidR3 on the testdata songs: RMS a little above, peaks close, no
+  clipping.
+- Open: the browser build does not take the knobs yet (the worklet has no message for
+  them); the mixer colours the owner asked for go to another model.
+

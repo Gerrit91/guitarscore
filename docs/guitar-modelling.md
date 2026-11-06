@@ -134,9 +134,21 @@ described in the literature below:
   pick noise. A pick on a sounding string leaves 35 % of the vibration and adds the new
   strike. A legato attack on a sounding string glides the delay to the new pitch in 2 ms
   with a light finger tap; on a silent string it is a soft pluck.
-- **Damping** moves the 60 dB decay time and loss darkness (settling in 4 ms): ringing
-  (the model's sustain, falling with pitch), palm muted 0.18 s, released 0.3 s, damped
-  0.04 s, dead 0.015 s.
+- **Damping** moves two 60 dB decay times, the fundamental's and the harmonics' at
+  2 kHz (settling in 4 ms): ringing (the model's sustain, falling with pitch, and its
+  brilliance), palm muted 0.18/0.03 s, released 0.3/0.06 s, damped 0.04/0.01 s, dead
+  0.015/0.005 s. The loss filter is designed from both (a bisection, redone only when
+  they or the pitch change), so the highs fade at the same rate on every string. Before
+  (first version) a fixed filter let a low string's highs ring about four times longer
+  than a high string's: the owner heard the low notes as "a synthesizer with slight
+  distortion" (2026-11-06).
+- **The strike** blends a sharp pulse (bright) with the string's triangular shape
+  (round) by the model's softness, rounded above 400 Hz to 12 kHz by hardness and
+  velocity. A resonant lowpass on each string's output stands in for the pickup or body
+  (tone, resonance) until step 2 and 3 bring the real ones.
+- **Knobs:** every `StringModel` value has a range (`gscore_guitar::ranges`); the app's
+  String sound dialog (track panel › Sound) turns them per kind of string, heard at once
+  (`Command::StringModel`), kept in the settings, used by WAV export.
 - **Presets** (`GuitarModel`): nylon, steel, electric, bass; chosen by the track's General
   MIDI program (24 nylon, 25 steel, 26-31 electric, 32-39 bass) through
   `PerformanceTrack::engine`.
