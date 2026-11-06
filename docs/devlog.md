@@ -3634,3 +3634,31 @@ needed for a much larger font); owner listening check.
 - Tests (`gscore-audio/tests/test_split_channels.rs`): a channel's notes reach only its
   output (a pan reaches its side), the channels add up exactly to the unsplit synthesizer,
   also when rendered in uneven pieces; an ignored test times a large SoundFont.
+
+## 2026-11-07 — Mixer, step 2: every track a strip in the engine
+
+- `gscore-audio::mixer`: the synth engine renders each MIDI channel apart (the fork of
+  step 1, its reverb and chorus off) and mixes every track of the sequence as a strip:
+  its source (the channels it plays on, borrowed ones for bends included, or its modelled
+  strings), its chain, then fader and pan, then a post-fader send to the reverb bus; bus
+  and strips into the master. Chains and the reverb bus moved there from `guitars`, which
+  now only renders each track's strings.
+- Chains for SoundFont tracks too (`Chain::process_stereo`/`process_in_place`: a stereo
+  input). Playback sends one for every track; a SoundFont track gets its preset's own tone's
+  chain, if one was dialed in, not the kinds' defaults (those are the modelled strings'; an
+  amp on a SoundFont distortion guitar, or a guitar chain on a piano, would surprise). The
+  chain window shows a SoundFont track's chain as it plays. SoundFont tracks now send into
+  the reverb bus with their Reverb knob (their own reverb is gone); the bus window says so.
+- The song's volume, pan and reverb send (CC 7, 10, 91: setup, automation, the mixer's
+  live changes) move the strip; the synthesizer is held at full volume and centred (also
+  after a reset of all controllers). Same square law and equal-power pan as RustySynth's,
+  so levels did not change (test: exact ratios).
+- Tracks sharing a MIDI channel are one strip: the first owns the channel's sound, a
+  later one has none of its own (the interface will show them linked, step 3).
+- `gscore-audio::meters`: every strip's level after its fader, the reverb bus's and the
+  master's, as falling peaks (20 dB in 1.7 s) in atomics; `SynthEngine::meters`. The
+  interface still shows the estimates until step 3.
+- Lost for now: the SoundFont's chorus (CC 93): it becomes a chain block (owner).
+- Tests (`test_mixer.rs`): fader square law and equal-power pan, a SoundFont track's own
+  chain leaves the other alone, meters show the real levels and fall when stopped, a
+  SoundFont track's send reaches the bus, a live fader change, two tracks on one channel.

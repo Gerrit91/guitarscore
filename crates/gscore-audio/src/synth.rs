@@ -1,5 +1,6 @@
-//! The internal synthesizer: plays sequences with a SoundFont through `rustysynth`, without
-//! an audio device. [`SynthEngine`] renders samples on request; the [`crate::SynthPlayer`]
+//! The internal synthesizer: plays sequences with a SoundFont through `rustysynth` (our
+//! fork, each MIDI channel rendered apart) and the modelled strings, every track through
+//! its strip of the [`crate::mixer`], without an audio device. [`SynthEngine`] renders samples on request; the [`crate::SynthPlayer`]
 //! calls it from the audio callback, tests and offline rendering call it directly.
 //!
 //! The engine's clock is the number of frames rendered, so event timing is exact to one
@@ -12,11 +13,14 @@ use std::sync::Arc;
 
 use gscore_guitar::{BLOCKS, BlockSettings, Chain, StringModel};
 
-use gscore_play::{Channel, MidiEvent, PlayError, PlayState, Sequence, StringKind, TimedEvent};
+use gscore_play::{
+    Channel, MidiEvent, PlayError, PlayState, Sequence, StringKind, TimedEvent, controller,
+};
 use rustysynth::{SoundFont, Synthesizer, SynthesizerSettings};
 
 use crate::click::ClickVoice;
 use crate::guitars::Guitars;
+use crate::mixer::{CHANNELS as MIXER_CHANNELS, Mixer};
 use crate::transport::{Command, Sink, Transport};
 
 /// Something the engine no longer uses, handed back so it is freed off the audio thread.
@@ -34,6 +38,12 @@ pub(crate) enum Retired {
 pub const BLOCK: usize = 64;
 /// MIDI channels of the synthesizer.
 const CHANNELS: u8 = 16;
+/// The synthesizer's own volume and pan on every channel: full and centred, since the
+/// mixer's strips apply the tracks' (see `mixer`).
+const FULL_VOLUME: i32 = 127;
+const CENTRE: i32 = 64;
+/// MIDI's "reset all controllers".
+const RESET_CONTROLLERS: u8 = 121;
 /// The synthesizer's own volume (rustysynth's default is 0.5); the output is also clipped,
 /// so several loud tracks never wrap around.
 const MASTER_VOLUME: f32 = 0.5;
@@ -106,6 +116,8 @@ pub struct SynthEngine {
     click: ClickVoice,
     /// The modelled strings, for tracks the sequence gives to them.
     guitars: Guitars,
+    /// Every track's strip: chain, fader, pan, sends; the buses and the meters.
+    mixer: Mixer,
     /// One block of samples per side, rendered before interleaving.
     left: [f32; BLOCK],
     right: [f32; BLOCK],
@@ -128,9 +140,12 @@ impl SynthEngine {
             .map_err(|_| PlayError::Device(format!("sample rate {sample_rate} is too high")))?;
         let mut settings = SynthesizerSettings::new(rate);
         settings.block_size = BLOCK;
+        settings.split_channels = true;
+        settings.enable_reverb_and_chorus = false;
         let mut synth = Synthesizer::new(&bank.font, &settings)
             .map_err(|e| PlayError::Device(format!("cannot start the synthesizer: {e}")))?;
         synth.set_master_volume(MASTER_VOLUME);
+        neutral_channels(&mut synth);
         Ok(SynthEngine {
             synth,
             transport: Transport::default(),
@@ -138,6 +153,7 @@ impl SynthEngine {
             frames: 0,
             click: ClickVoice::new(sample_rate),
             guitars: Guitars::new(sample_rate),
+            mixer: Mixer::new(sample_rate),
             left: [0.0; BLOCK],
             right: [0.0; BLOCK],
         })
@@ -279,18 +295,18 @@ impl SynthEngine {
         chain: Option<Box<Chain>>,
         settings: [BlockSettings; BLOCKS],
     ) -> Option<Box<Chain>> {
-        self.guitars.set_chain(track, chain, settings)
+        self.mixer.set_chain(track, chain, settings)
     }
 
     /// New knob values for the effect chain of `track`, heard at once.
     pub fn set_chain_settings(&mut self, track: usize, settings: [BlockSettings; BLOCKS]) {
-        self.guitars.set_chain_settings(track, settings);
+        self.mixer.set_chain_settings(track, settings);
     }
 
     /// Gives the tracks a reverb bus (`None`: none), a prepared chain that runs all wet.
     /// Returns the one it replaces, to be freed elsewhere.
     pub fn set_reverb_bus(&mut self, chain: Option<Box<Chain>>) -> Option<Box<Chain>> {
-        self.guitars
+        self.mixer
             .set_reverb_bus(chain, [BlockSettings::default(); BLOCKS])
     }
 
@@ -301,7 +317,13 @@ impl SynthEngine {
         level: u8,
         muted: bool,
     ) {
-        self.guitars.set_reverb_bus_settings(settings, level, muted);
+        self.mixer.set_reverb_bus_settings(settings, level, muted);
+    }
+
+    /// The mixer's meters: every track's level, the reverb bus's and the master's, to be
+    /// read from another thread.
+    pub fn meters(&self) -> Arc<crate::Meters> {
+        self.mixer.meters()
     }
 
     /// Carries out a player command now. What it replaces comes back, to be freed off
@@ -337,7 +359,12 @@ impl SynthEngine {
             .handle(
                 command,
                 now,
-                &mut SynthSink(&mut self.synth, &mut self.click, &mut self.guitars),
+                &mut SynthSink(
+                    &mut self.synth,
+                    &mut self.click,
+                    &mut self.guitars,
+                    &mut self.mixer,
+                ),
             )
             .map(Retired::Sequence)
     }
@@ -349,6 +376,7 @@ impl SynthEngine {
             &mut self.synth,
             &mut self.click,
             &mut self.guitars,
+            &mut self.mixer,
         ));
     }
 
@@ -364,29 +392,65 @@ impl SynthEngine {
         let now = self.now();
         if let Some(sequence) = self.transport.sequence() {
             self.guitars.follow(sequence);
+            self.mixer.follow(sequence);
         }
         self.transport.advance(
             now,
-            &mut SynthSink(&mut self.synth, &mut self.click, &mut self.guitars),
+            &mut SynthSink(
+                &mut self.synth,
+                &mut self.click,
+                &mut self.guitars,
+                &mut self.mixer,
+            ),
         );
         if let (Some(l), Some(r)) = (self.left.get_mut(..frames), self.right.get_mut(..frames)) {
-            self.synth.render(l, r);
+            // Each channel apart, for the strips.
+            {
+                let buffers = self.mixer.channel_buffers();
+                let mut lefts: [&mut [f32]; MIXER_CHANNELS] = Default::default();
+                let mut rights: [&mut [f32]; MIXER_CHANNELS] = Default::default();
+                for ((channel, left), right) in buffers
+                    .iter_mut()
+                    .zip(lefts.iter_mut())
+                    .zip(rights.iter_mut())
+                {
+                    let [channel_left, channel_right] = channel;
+                    *left = channel_left.get_mut(..frames).unwrap_or_default();
+                    *right = channel_right.get_mut(..frames).unwrap_or_default();
+                }
+                self.synth.render_channels(&mut lefts, &mut rights);
+            }
             self.guitars.render(
                 self.transport.sequence(),
                 self.transport.position(),
                 self.transport.state() == PlayState::Playing,
-                l,
-                r,
+                frames,
             );
+            self.mixer.mix(frames, &self.guitars, l, r);
             self.click.add(l, r);
+            self.mixer.meter_master(l, r);
         }
         self.frames = self.frames.saturating_add(frames as u64);
     }
 }
 
-/// Sends events to the synthesizer; the metronome's keys go to its own click, and the
-/// notes of tracks the modelled strings play go nowhere (the strings play them).
-struct SynthSink<'a>(&'a mut Synthesizer, &'a mut ClickVoice, &'a mut Guitars);
+/// Sends events to the synthesizer; the metronome's keys go to its own click, the notes of
+/// tracks the modelled strings play go nowhere (the strings play them), and the tracks'
+/// volume, pan and reverb send go to their strips in the mixer.
+struct SynthSink<'a>(
+    &'a mut Synthesizer,
+    &'a mut ClickVoice,
+    &'a mut Guitars,
+    &'a mut Mixer,
+);
+
+/// Every channel of `synth` at full volume and centred: the mixer applies the tracks'.
+fn neutral_channels(synth: &mut Synthesizer) {
+    for channel in 0..i32::from(CHANNELS) {
+        synth.process_midi_message(channel, 0xB0, i32::from(controller::VOLUME), FULL_VOLUME);
+        synth.process_midi_message(channel, 0xB0, i32::from(controller::PAN), CENTRE);
+    }
+}
 
 impl Sink for SynthSink<'_> {
     fn send_timed(&mut self, event: &TimedEvent) {
@@ -399,10 +463,32 @@ impl Sink for SynthSink<'_> {
         if note && self.2.plays(event.track) {
             return;
         }
-        self.send(event.event);
+        if self.3.take(&event.event, Some(event.track)) {
+            self.forward(event.event);
+        }
     }
 
     fn send(&mut self, event: MidiEvent) {
+        if self.3.take(&event, None) {
+            self.forward(event);
+        }
+    }
+
+    fn silence(&mut self, _: &Sequence) {
+        self.2.silence();
+        // Notes fade out with their release instead of clicking off. Every channel: this
+        // allocates nothing, unlike collecting the sequence's channels.
+        self.0.note_off_all(false);
+        for channel in 0..CHANNELS {
+            self.0
+                .process_midi_message(i32::from(channel), 0xE0, BEND_CENTER.0, BEND_CENTER.1);
+        }
+    }
+}
+
+impl SynthSink<'_> {
+    /// An event for the synthesizer (or the metronome's click).
+    fn forward(&mut self, event: MidiEvent) {
         match event {
             MidiEvent::NoteOn {
                 channel: Channel::PERCUSSION,
@@ -452,16 +538,14 @@ impl Sink for SynthSink<'_> {
             i32::from(data1 & 0x7F),
             i32::from(data2 & 0x7F),
         );
-    }
-
-    fn silence(&mut self, _: &Sequence) {
-        self.2.silence();
-        // Notes fade out with their release instead of clicking off. Every channel: this
-        // allocates nothing, unlike collecting the sequence's channels.
-        self.0.note_off_all(false);
-        for channel in 0..CHANNELS {
+        // A reset of all controllers takes the synthesizer's volume and pan back to its
+        // defaults: full and centred again (the strips keep the tracks').
+        if command == 0xB0 && data1 == RESET_CONTROLLERS {
+            let channel = i32::from(channel.get());
             self.0
-                .process_midi_message(i32::from(channel), 0xE0, BEND_CENTER.0, BEND_CENTER.1);
+                .process_midi_message(channel, 0xB0, i32::from(controller::VOLUME), FULL_VOLUME);
+            self.0
+                .process_midi_message(channel, 0xB0, i32::from(controller::PAN), CENTRE);
         }
     }
 }

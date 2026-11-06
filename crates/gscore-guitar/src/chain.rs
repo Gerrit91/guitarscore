@@ -292,10 +292,29 @@ impl Chain {
     /// Runs `input` (mono, from the strings) through the chain into `left` and `right`
     /// (overwritten). The slices should be equally long; the shortest decides.
     pub fn process(&mut self, input: &[f32], left: &mut [f32], right: &mut [f32]) {
-        let mut peak = 0.0_f32;
         for ((&x, l), r) in input.iter().zip(left.iter_mut()).zip(right.iter_mut()) {
-            let mut signal = [x, x];
-            let mut stereo = false;
+            *l = x;
+            *r = x;
+        }
+        let frames = input.len().min(left.len()).min(right.len());
+        if let (Some(left), Some(right)) = (left.get_mut(..frames), right.get_mut(..frames)) {
+            self.process_in_place(left, right, false);
+        }
+    }
+
+    /// Runs a stereo signal (a SoundFont track's) through the chain, in place.
+    pub fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+        self.process_in_place(left, right, true);
+    }
+
+    /// The chain on `left` and `right`, in place: mono (`stereo_in` false: only `left` is
+    /// read, as from the strings) until a block makes it stereo, or stereo from the start.
+    pub fn process_in_place(&mut self, left: &mut [f32], right: &mut [f32], stereo_in: bool) {
+        let frames = left.len().min(right.len());
+        let mut peak = 0.0_f32;
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            let mut signal = if stereo_in { [*l, *r] } else { [*l, *l] };
+            let mut stereo = stereo_in;
             for (block, settings) in self.blocks.iter_mut().zip(&self.settings) {
                 if settings.bypass {
                     continue;
@@ -414,7 +433,7 @@ impl Chain {
         self.quiet = if peak > SILENCE {
             0
         } else {
-            self.quiet.saturating_add(input.len())
+            self.quiet.saturating_add(frames)
         };
     }
 }

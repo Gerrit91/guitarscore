@@ -1022,8 +1022,8 @@ impl GuitarScoreApp {
         let Some(player) = self.track_player(window.track) else {
             return;
         };
-        // The chain of the kind that plays the track; for the SoundFont, the one its
-        // preset stands for (shown, but not heard).
+        // The chain of the kind that plays the track; for the SoundFont, the kind its preset
+        // stands for (the mixer runs a SoundFont track's chain too).
         let (kind, modelled) = match player.engine {
             TrackEngine::Modelled(kind) => (kind, true),
             TrackEngine::SoundFont => (player.preset_kind.unwrap_or(StringKind::Steel), false),
@@ -1035,8 +1035,13 @@ impl GuitarScoreApp {
         // The title names the track (the MIDI box shows its preset, the General MIDI
         // program); the saved tones are the list at the bottom.
         let title = format!("Sound chain — {}", self.track_name(window.track));
-        // This track's tone: its preset's, or its kind's default (the built-in one).
-        let tone = self.track_tone(window.track, kind);
+        // This track's tone: its preset's, or its kind's default (the built-in one). On the
+        // SoundFont only a tone dialed in for the preset brings a chain (the kinds'
+        // defaults are the modelled strings'): shown as it plays.
+        let mut tone = self.track_tone(window.track, kind);
+        if !modelled && self.playback.preset_tone(player.program).is_none() {
+            tone.chain = ChainSetting::default();
+        }
         egui::Window::new(&title)
             .title_bar(false)
             .collapsible(false)

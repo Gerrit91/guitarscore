@@ -12,12 +12,11 @@
 use std::sync::Arc;
 
 use gscore_guitar::{
-    Attack as StrikeKind, BLOCKS, BlockSettings, Chain, GuitarModel, Pluck, Release, StringModel,
-    StringVoice, frequency,
+    Attack as StrikeKind, GuitarModel, Pluck, Release, StringModel, StringVoice, frequency,
 };
 use gscore_play::{Attack, Fade, Performance, PlayedNote, Sequence, StringKind, TrackEngine};
 
-use crate::chains::TrackTones;
+use crate::chains::MAX_TONES;
 use crate::synth::BLOCK;
 
 /// How many tracks the modelled strings play at once; further modelled tracks stay on
@@ -49,24 +48,16 @@ pub(crate) struct Guitars {
     /// How each kind of string sounds (nylon, steel, electric, bass) on a track without a
     /// string model of its own.
     models: [StringModel; 4],
-    /// Each track's own string model and effect chain.
-    tones: TrackTones,
-    /// The reverb bus every modelled track sends into (a computed reverb, all wet), its
-    /// knob values, and its level (-127 to 127; 127 plays it as it comes) and mute.
-    reverb_bus: Option<Box<Chain>>,
-    bus_mix: (u8, bool),
-    /// The bus's input (mono: the sends summed) and its output of one block.
-    bus_in: [f32; BLOCK],
-    bus_out: [[f32; BLOCK]; 2],
+    /// Each track's own string model, by the song's track index (`None`: its kind's).
+    track_models: Vec<Option<StringModel>>,
     /// The sequence the slots were set up for (by address; the transport owns it).
     sequence: usize,
     /// The next entry of the performance's `by_start` to start.
     cursor: usize,
     /// Whether the cursor must be found again (after a stop, pause, seek or load).
     resync: bool,
-    mono: [f32; BLOCK],
-    /// A track's output after its chain.
-    wet: [[f32; BLOCK]; 2],
+    /// Each slot's strings this block (mono), for the mixer.
+    outputs: [[f32; BLOCK]; SLOTS],
 }
 
 impl std::fmt::Debug for Guitars {
@@ -113,20 +104,6 @@ fn strike_of(attack: Attack) -> StrikeKind {
     }
 }
 
-/// The gain of a General MIDI channel volume (0-127): a square law, as synthesizers do.
-fn volume_gain(volume: u8) -> f32 {
-    let share = f32::from(volume.min(127)) / 127.0;
-    share * share
-}
-
-/// Left and right gains for a pan (0 left, 64 middle, 127 right), equal power, 1 in the
-/// middle.
-fn pan_gains(pan: u8) -> (f32, f32) {
-    let angle = f32::from(pan.min(127)) / 127.0 * std::f32::consts::FRAC_PI_2;
-    let boost = std::f32::consts::SQRT_2;
-    (angle.cos() * boost, angle.sin() * boost)
-}
-
 /// How far a note has played, 0 to 1, at `tick`.
 fn progress(note: &PlayedNote, tick: u64) -> f32 {
     let length = note.end.saturating_sub(note.start).max(1);
@@ -155,13 +132,8 @@ impl Guitars {
             sequence: 0,
             cursor: 0,
             resync: true,
-            mono: [0.0; BLOCK],
-            wet: [[0.0; BLOCK]; 2],
-            tones: TrackTones::new(),
-            reverb_bus: None,
-            bus_mix: (127, false),
-            bus_in: [0.0; BLOCK],
-            bus_out: [[0.0; BLOCK]; 2],
+            outputs: [[0.0; BLOCK]; SLOTS],
+            track_models: vec![None; MAX_TONES],
         }
     }
 
@@ -173,12 +145,16 @@ impl Guitars {
 
     /// The string model `slot`'s track plays with: its own, or its kind's.
     fn model_for(&self, slot: Slot) -> StringModel {
-        self.tones.model(slot.tone).unwrap_or_else(|| {
-            self.models
-                .get(kind_index(slot.kind))
-                .copied()
-                .unwrap_or_else(|| default_model(slot.kind))
-        })
+        self.track_models
+            .get(slot.tone)
+            .copied()
+            .flatten()
+            .unwrap_or_else(|| {
+                self.models
+                    .get(kind_index(slot.kind))
+                    .copied()
+                    .unwrap_or_else(|| default_model(slot.kind))
+            })
     }
 
     /// Gives the voices of every slot that `matches` the model its track plays with now.
@@ -213,51 +189,10 @@ impl Guitars {
 
     /// Gives `track` its own string model (`None`: its kind's again), at once.
     pub(crate) fn set_track_model(&mut self, track: usize, model: Option<StringModel>) {
-        self.tones.set_model(track, model);
+        if let Some(slot) = self.track_models.get_mut(track) {
+            *slot = model;
+        }
         self.refresh_models(|slot| slot.tone == track);
-    }
-
-    /// Gives `track` the effect chain `chain` (`None`: none) with `settings`. Returns the
-    /// chain it replaces, to be freed off the audio thread.
-    pub(crate) fn set_chain(
-        &mut self,
-        track: usize,
-        chain: Option<Box<Chain>>,
-        settings: [BlockSettings; BLOCKS],
-    ) -> Option<Box<Chain>> {
-        self.tones.set_chain(track, chain, settings)
-    }
-
-    /// New knob values for the chain of `track`, heard at once.
-    pub(crate) fn set_chain_settings(&mut self, track: usize, settings: [BlockSettings; BLOCKS]) {
-        self.tones.set_settings(track, settings);
-    }
-
-    /// Gives the reverb bus `chain` (`None`: none) with its knob values. Returns the chain
-    /// it replaces, to be freed off the audio thread.
-    pub(crate) fn set_reverb_bus(
-        &mut self,
-        chain: Option<Box<Chain>>,
-        settings: [BlockSettings; BLOCKS],
-    ) -> Option<Box<Chain>> {
-        let mut chain = chain;
-        if let Some(chain) = &mut chain {
-            chain.set_settings(&settings);
-        }
-        std::mem::replace(&mut self.reverb_bus, chain)
-    }
-
-    /// New knob values, level and mute for the reverb bus, heard at once.
-    pub(crate) fn set_reverb_bus_settings(
-        &mut self,
-        settings: [BlockSettings; BLOCKS],
-        level: u8,
-        muted: bool,
-    ) {
-        self.bus_mix = (level.min(127), muted);
-        if let Some(bus) = &mut self.reverb_bus {
-            bus.set_settings(&settings);
-        }
     }
 
     /// Stops every string quickly (stop, pause, seek, a new sequence).
@@ -322,24 +257,35 @@ impl Guitars {
     }
 
     /// Starts and ends the notes due at `tick` (when `playing`), moves the pitches and
-    /// fades, and adds the strings' next `left.len()` samples (at most [`BLOCK`]) to the
-    /// output.
+    /// fades, and renders `frames` (at most [`BLOCK`]) of each slot's strings, mono, for
+    /// the mixer ([`crate::mixer::Strings`]).
     pub(crate) fn render(
         &mut self,
         sequence: Option<&Arc<Sequence>>,
         tick: u64,
         playing: bool,
-        left: &mut [f32],
-        right: &mut [f32],
+        frames: usize,
     ) {
-        if let Some(sequence) = sequence {
-            let performance = &sequence.performance;
-            if playing {
-                self.advance(performance, tick);
+        if let Some(sequence) = sequence
+            && playing
+        {
+            self.advance(&sequence.performance, tick);
+        }
+        let frames = frames.min(BLOCK);
+        for (index, output) in self.outputs.iter_mut().enumerate() {
+            let output = output.get_mut(..frames).unwrap_or_default();
+            output.fill(0.0);
+            if self.slots.get(index).copied().flatten().is_none() {
+                continue;
             }
-            self.mix(Some(performance), left, right);
-        } else {
-            self.mix(None, left, right);
+            let first = index.saturating_mul(STRINGS);
+            for voice in self
+                .voices
+                .get_mut(first..first.saturating_add(STRINGS))
+                .unwrap_or_default()
+            {
+                voice.render(output);
+            }
         }
     }
 
@@ -416,109 +362,17 @@ impl Guitars {
             }
         }
     }
+}
 
-    fn mix(&mut self, performance: Option<&Performance>, left: &mut [f32], right: &mut [f32]) {
-        let frames = left.len().min(right.len()).min(BLOCK);
-        if let Some(input) = self.bus_in.get_mut(..frames) {
-            input.fill(0.0);
-        }
-        for (slot_index, slot) in self.slots.iter().enumerate() {
-            let Some(slot) = slot else {
-                continue;
-            };
-            let first = slot_index.saturating_mul(STRINGS);
-            let voices = self
-                .voices
-                .get_mut(first..first.saturating_add(STRINGS))
-                .unwrap_or_default();
-            // The track's own chain; a track without one plays dry.
-            let chain = self.tones.chain(slot.tone);
-            let sounding = voices.iter().any(StringVoice::is_sounding);
-            if !sounding && !chain.as_ref().is_some_and(|chain| chain.ringing()) {
-                continue;
-            }
-            let mono = self.mono.get_mut(..frames).unwrap_or_default();
-            mono.fill(0.0);
-            for voice in voices {
-                voice.render(mono);
-            }
-            let [wet_left, wet_right] = &mut self.wet;
-            let (wet_left, wet_right) = (
-                wet_left.get_mut(..frames).unwrap_or_default(),
-                wet_right.get_mut(..frames).unwrap_or_default(),
-            );
-            match chain {
-                Some(chain) => chain.process(mono, wet_left, wet_right),
-                None => {
-                    wet_left.copy_from_slice(mono);
-                    wet_right.copy_from_slice(mono);
-                }
-            }
-            let sound = performance
-                .and_then(|performance| performance.tracks.get(slot.track))
-                .map(|track| track.sound);
-            let (volume, pan) = sound.map_or((100, 64), |sound| (sound.volume, sound.pan));
-            let gain = volume_gain(volume);
-            // The pan works as a balance once the chain has made the track stereo.
-            let (to_left, to_right) = pan_gains(pan);
-            // The track's reverb send (the mixer's Reverb knob) goes into the bus after
-            // its fader and pan, as a mixing desk sends; a mono sum is enough for the
-            // room, which makes it stereo again.
-            let send = if self.reverb_bus.is_some() {
-                f32::from(sound.map_or(0, |sound| sound.reverb).min(127)) / 127.0
-            } else {
-                0.0
-            };
-            let bus_in = self.bus_in.get_mut(..frames).unwrap_or_default();
-            for ((((l, r), wl), wr), bus) in left
-                .iter_mut()
-                .zip(right.iter_mut())
-                .zip(wet_left.iter())
-                .zip(wet_right.iter())
-                .zip(bus_in.iter_mut())
-            {
-                let (l_dry, r_dry) = (wl * gain * to_left, wr * gain * to_right);
-                *l += l_dry;
-                *r += r_dry;
-                if send > 0.0 {
-                    *bus += 0.5 * (l_dry + r_dry) * send;
-                }
-            }
-        }
-        self.mix_reverb_bus(left, right, frames);
+impl crate::mixer::Strings for Guitars {
+    fn slot_of(&self, position: usize) -> Option<usize> {
+        self.slots
+            .iter()
+            .position(|slot| slot.is_some_and(|slot| slot.track == position))
     }
 
-    /// Runs the reverb bus (which rings on after the sends stop) and adds it to the mix.
-    fn mix_reverb_bus(&mut self, left: &mut [f32], right: &mut [f32], frames: usize) {
-        let Some(bus) = &mut self.reverb_bus else {
-            return;
-        };
-        let (level, muted) = self.bus_mix;
-        let input = self.bus_in.get(..frames).unwrap_or_default();
-        let sent = input.iter().any(|sample| sample.abs() > 1e-9);
-        // Silent and its tail over: nothing to do (and it may rest).
-        if !sent && !bus.ringing() {
-            return;
-        }
-        let [out_left, out_right] = &mut self.bus_out;
-        let (out_left, out_right) = (
-            out_left.get_mut(..frames).unwrap_or_default(),
-            out_right.get_mut(..frames).unwrap_or_default(),
-        );
-        bus.process(input, out_left, out_right);
-        if muted {
-            return;
-        }
-        let gain = volume_gain(level);
-        for (((l, r), bl), br) in left
-            .iter_mut()
-            .zip(right.iter_mut())
-            .zip(out_left.iter())
-            .zip(out_right.iter())
-        {
-            *l += bl * gain;
-            *r += br * gain;
-        }
+    fn output(&self, slot: usize) -> &[f32] {
+        self.outputs.get(slot).map_or(&[], |output| &output[..])
     }
 }
 

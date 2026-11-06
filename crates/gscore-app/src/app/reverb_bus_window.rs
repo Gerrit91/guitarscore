@@ -75,11 +75,10 @@ impl GuitarScoreApp {
                         ui.set_width(WIDTH);
                         ui.label(
                             RichText::new(
-                                "Tracks played by PM synthesis (the string emulation) send \
-                                 into this reverb with their Reverb knobs in the mixer; its \
-                                 fader (and mute) decide how much comes back. It runs all wet, \
-                                 so the sends alone set how much each track gives it. Tracks \
-                                 on the SoundFont keep its own reverb.",
+                                "Every track sends into this reverb with its Reverb knob in \
+                                 the mixer, whether the MIDI synth or PM synthesis plays it; \
+                                 its fader (and mute) decide how much comes back. It runs all \
+                                 wet, so the sends alone set how much each track gives it.",
                             )
                             .weak(),
                         );

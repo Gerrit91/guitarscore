@@ -1,6 +1,7 @@
-//! Each modelled track's own tone inside the engine: how its strings sound (its string
-//! model; without one, its kind's) and its effect chain (the blocks after the strings:
-//! amps, cabinet or body responses, rooms, reverbs). A chain is prepared off the audio
+//! Each track's effect chain inside the engine (the blocks after its sound: amps, drives,
+//! cabinet or body responses, rooms, reverbs), for every track the mixer plays, the
+//! SoundFont's as well as the modelled strings'. (A modelled track's own string model is
+//! kept with the strings, `guitars`.) A chain is prepared off the audio
 //! thread, swapped in whole, and the one it replaces handed back to be freed elsewhere.
 //!
 //! Tracks are known by their index in the song (`PerformanceTrack::track`, which an
@@ -8,7 +9,7 @@
 //! [`MAX_TONES`] tracks can have a tone of their own (the room for them is made with the
 //! engine, so nothing allocates here).
 
-use gscore_guitar::{BLOCKS, BlockSettings, Chain, ChainSpec, StringModel};
+use gscore_guitar::{BLOCKS, BlockSettings, Chain, ChainSpec};
 
 /// The tracks that can have a tone of their own: those with an index below this. A track
 /// past it plays its kind's sound, dry.
@@ -29,9 +30,8 @@ pub fn prepare_chain(
     (!chain_is_empty(spec)).then(|| Box::new(spec.prepare(sample_rate).instance(settings)))
 }
 
-/// The tones of the tracks, by track index.
+/// The chains of the tracks, by track index.
 pub(crate) struct TrackTones {
-    models: Vec<Option<StringModel>>,
     chains: Vec<Option<Box<Chain>>>,
     settings: Vec<[BlockSettings; BLOCKS]>,
 }
@@ -39,7 +39,6 @@ pub(crate) struct TrackTones {
 impl std::fmt::Debug for TrackTones {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TrackTones")
-            .field("models", &self.models.iter().flatten().count())
             .field("chains", &self.chains.iter().flatten().count())
             .finish()
     }
@@ -49,21 +48,8 @@ impl TrackTones {
     /// Room for [`MAX_TONES`] tracks. Allocates.
     pub(crate) fn new() -> Self {
         TrackTones {
-            models: vec![None; MAX_TONES],
             chains: (0..MAX_TONES).map(|_| None).collect(),
             settings: vec![[BlockSettings::default(); BLOCKS]; MAX_TONES],
-        }
-    }
-
-    /// The string model of `track`, if it has its own.
-    pub(crate) fn model(&self, track: usize) -> Option<StringModel> {
-        self.models.get(track).copied().flatten()
-    }
-
-    /// Gives `track` its own string model (`None`: its kind's again).
-    pub(crate) fn set_model(&mut self, track: usize, model: Option<StringModel>) {
-        if let Some(slot) = self.models.get_mut(track) {
-            *slot = model;
         }
     }
 

@@ -92,6 +92,15 @@ AudioWorklet (`gscore-worklet` runs the same engine there). `TunerPlayer` plays 
 reference tone. Milestone M22 adds a modelled guitar engine next to the SoundFont one
 (`docs/guitar-modelling.md`).
 
+Inside `SynthEngine` every track is a strip of the `mixer` (M22, 2026-11-07): its source
+(the MIDI channels it plays on, each rendered apart by our fork of RustySynth in
+`vendor/rustysynth`, or its modelled strings from `guitars`), its chain (`chains`, the
+blocks of `gscore-guitar`), then fader and pan, then a post-fader send to the reverb bus;
+the bus and the strips sum into the master. The song's volume, pan and reverb send (MIDI
+CC 7, 10, 91) move the strips; the synthesizer stays at full volume and centred. Tracks
+sharing a MIDI channel are one strip (the first owns it). `meters` publishes every strip's,
+the bus's and the master's peak for the interface (atomics, no locks).
+
 ## Session (`gscore-session`)
 
 `open` reads a file with a size cap and imports it; `save` is the safe save (temporary
