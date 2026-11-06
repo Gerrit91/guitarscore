@@ -3196,7 +3196,8 @@ needed for a much larger font); owner listening check.
 - Owner's requests: a sample rate setting (automatic or 44.1/48/88.2/96 kHz, falling back
   to the device's with a notice; WAV export follows it) and an audio CPU meter at the
   bottom right of the status bar (the callback's render time over the buffer time): a
-  small green bar filling from the bottom, named and given in percent on hover.
+  small green bar filling from the bottom (red from 90 %), named and given in percent on
+  hover.
 - `cargo xtask bench`: one second of 16 tracks x 6 ringing strings in 57 ms (budget 250).
 - Open: the owner's listening check; amp and cabinet next (step 2); the browser shows no
   CPU meter (the worklet has no clock to measure with).

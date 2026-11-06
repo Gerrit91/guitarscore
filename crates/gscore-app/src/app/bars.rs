@@ -367,8 +367,12 @@ fn count(n: usize, noun: &str) -> String {
     }
 }
 
+/// From this audio load the CPU bar turns red.
+const OVERLOAD: f32 = 0.9;
+
 /// The built-in synthesizer's audio load (`load`, 1 = all of each buffer's time at
-/// `rate`), if it runs: a small green bar filling from the bottom; hovering names it.
+/// `rate`), if it runs: a small green bar filling from the bottom, red from [`OVERLOAD`];
+/// hovering names it.
 /// Returns whether it was shown.
 fn audio_load(ui: &mut egui::Ui, load: Option<f32>, rate: Option<u32>) -> bool {
     let Some(load) = load.filter(|load| load.is_finite()) else {
@@ -383,7 +387,13 @@ fn audio_load(ui: &mut egui::Ui, load: Option<f32>, rate: Option<u32>) -> bool {
         egui::pos2(rect.left(), rect.bottom() - rect.height() * share),
         rect.right_bottom(),
     );
-    painter.rect_filled(filled, 1.0, egui::Color32::from_rgb(0x4C, 0xAF, 0x50));
+    // Red from 90 %, where the sound is close to dropping out.
+    let color = if load >= OVERLOAD {
+        ui.visuals().error_fg_color
+    } else {
+        egui::Color32::from_rgb(0x4C, 0xAF, 0x50)
+    };
+    painter.rect_filled(filled, 1.0, color);
     let percent = (load * 100.0).round().clamp(0.0, 999.0);
     let rate = rate.map_or_else(String::new, |rate| {
         format!(" at {} kHz", f64::from(rate) / 1000.0)
