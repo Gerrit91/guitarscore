@@ -24,7 +24,7 @@ struct Comb {
 impl Comb {
     fn new(length: usize) -> Self {
         Comb {
-            buffer: vec![0.0; length.max(1)],
+            buffer: crate::convolver::touched(length.max(1), 0.0, 1.0),
             at: 0,
             store: 0.0,
         }
@@ -59,7 +59,7 @@ struct Allpass {
 impl Allpass {
     fn new(length: usize) -> Self {
         Allpass {
-            buffer: vec![0.0; length.max(1)],
+            buffer: crate::convolver::touched(length.max(1), 0.0, 1.0),
             at: 0,
         }
     }

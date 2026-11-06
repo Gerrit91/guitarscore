@@ -20,7 +20,7 @@ impl DelayLine {
     pub(crate) fn new(samples: usize) -> Self {
         let length = samples.saturating_add(8).next_power_of_two();
         DelayLine {
-            buffer: vec![0.0; length],
+            buffer: crate::convolver::touched(length, 0.0, 1.0),
             mask: length.saturating_sub(1),
             write: 0,
         }

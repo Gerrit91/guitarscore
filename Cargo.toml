@@ -29,6 +29,18 @@ repository = "https://github.com/Gerrit91/guitarscore"
 [profile.dev]
 panic = "unwind"
 
+# The audio code is optimized in debug builds too: unoptimized, the modelled strings and
+# convolution take several times the time an audio buffer plays for, and playback
+# stutters (2026-11-06). The rest of a debug build stays quick to compile.
+[profile.dev.package.gscore-guitar]
+opt-level = 3
+
+[profile.dev.package.gscore-audio]
+opt-level = 3
+
+[profile.dev.package.rustysynth]
+opt-level = 3
+
 [profile.release]
 panic = "unwind"
 

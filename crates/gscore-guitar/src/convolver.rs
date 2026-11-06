@@ -126,18 +126,20 @@ impl Stage {
             .fft
             .steps()
             .saturating_mul(2)
-            .saturating_add(partitions.saturating_mul(size));
+            .saturating_add(partitions.saturating_mul((size / 2).saturating_add(1)));
         let quota = steps
             .div_ceil(spectra.block.saturating_sub(8).max(1))
             .max(1);
+        let zero = Complex::default();
+        let one = Complex::new(1.0, 0.0);
         Stage {
-            input: vec![0.0; size],
+            input: touched(size, 0.0, 1.0),
             filled: 0,
-            history: vec![vec![Complex::default(); size]; partitions],
+            history: (0..partitions).map(|_| touched(size, zero, one)).collect(),
             newest: 0,
-            work: vec![Complex::default(); size],
-            sum: vec![Complex::default(); size],
-            output: vec![0.0; spectra.block],
+            work: touched(size, zero, one),
+            sum: touched(size, zero, one),
+            output: touched(spectra.block, 0.0, 1.0),
             job: Job::Idle,
             quota,
         }
@@ -213,6 +215,7 @@ impl Stage {
                 }
                 Job::Multiply { partition, bin } => {
                     let Some(response) = spectra.partitions.get(partition) else {
+                        mirror(&mut self.sum);
                         self.job = Job::Inverse(FftProgress::start());
                         continue;
                     };
@@ -222,7 +225,9 @@ impl Stage {
                         .saturating_sub(partition.checked_rem(count).unwrap_or(0))
                         .checked_rem(count)
                         .unwrap_or(0);
-                    let size = self.sum.len();
+                    // Input and response are real, so the product's upper half mirrors its
+                    // lower half: only the lower half (and the middle bin) is computed.
+                    let size = (self.sum.len() / 2).saturating_add(1);
                     let end = bin.saturating_add(left).min(size);
                     if let (Some(frame), Some(sum), Some(response)) = (
                         self.history
@@ -285,6 +290,30 @@ impl Stage {
         self.filled = 0;
         self.job = Job::Idle;
     }
+}
+
+/// Fills the upper half of a real signal's spectrum from its lower half (complex
+/// conjugates, mirrored about the middle bin).
+fn mirror(spectrum: &mut [Complex]) {
+    let size = spectrum.len();
+    for k in 1..size / 2 {
+        let Some(&value) = spectrum.get(k) else {
+            continue;
+        };
+        if let Some(slot) = spectrum.get_mut(size.saturating_sub(k)) {
+            *slot = Complex::new(value.re, -value.im);
+        }
+    }
+}
+
+/// A buffer of `count` copies of `value`, every page of it written once now: memory the
+/// system only maps on first use would otherwise be mapped in the audio callback, a page
+/// at a time.
+pub(crate) fn touched<T: Copy>(count: usize, value: T, other: T) -> Vec<T> {
+    let mut buffer = vec![other; count];
+    std::hint::black_box(&mut buffer);
+    buffer.fill(value);
+    buffer
 }
 
 /// One running convolution.
