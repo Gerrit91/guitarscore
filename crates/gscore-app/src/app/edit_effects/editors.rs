@@ -4,16 +4,20 @@
 
 use gscore_edit::Command;
 use gscore_model::{
-    BeatEffect, BendKind, BendShape, Hand, NoteEffect, StrokeDirection, WhammyShape,
+    BeatEffect, BendKind, BendShape, Finger, Hand, NoteEffect, StrokeDirection, WhammyShape,
 };
 
 use super::super::beat_text_editor::BeatTextEditor;
+use super::super::chord_editor::ChordEditor;
 use super::super::edit_palette::PaletteSnapshot;
 use super::super::grace_editor::GraceEditor;
 use super::super::harmonic_editor::HarmonicEditor;
+use super::super::lyrics_editor::LyricsEditor;
 use super::super::shape_editor::{Outcome, ShapeEditor, ShapeTarget};
-use super::dialogs::{FingerEditor, StrokeEditor, StrokeEditorKind, TremoloEditor, TrillEditor};
-use super::{EffectsState, apply_beat, apply_note, default_bend, default_whammy};
+use super::dialogs::{
+    FingerEditor, FingerOutcome, StrokeEditor, StrokeEditorKind, TremoloEditor, TrillEditor,
+};
+use super::{EffectsState, LyricsPreview, apply_beat, apply_note, default_bend, default_whammy};
 use crate::settings::{Settings, ShapePreset};
 
 impl EffectsState {
@@ -49,6 +53,21 @@ impl EffectsState {
         self.whammy = Some(ShapeEditor::new(ShapeTarget::Whammy, BendKind::Up, points));
     }
 
+    /// Whether an open editor takes the keys: every one but the fingering windows, which
+    /// let the cursor move through the score while they are open.
+    pub(in crate::app) fn takes_keys(&self) -> bool {
+        self.bend.is_some()
+            || self.whammy.is_some()
+            || self.harmonic.is_some()
+            || self.grace.is_some()
+            || self.trill.is_some()
+            || self.tremolo.is_some()
+            || self.beat_text.is_some()
+            || self.chord.is_some()
+            || self.lyrics.is_some()
+            || self.stroke.is_some()
+    }
+
     /// Whether the bend or whammy editor is open.
     pub(in crate::app) fn is_editing(&self) -> bool {
         self.bend.is_some()
@@ -58,6 +77,8 @@ impl EffectsState {
             || self.trill.is_some()
             || self.tremolo.is_some()
             || self.beat_text.is_some()
+            || self.chord.is_some()
+            || self.lyrics.is_some()
             || self.finger_left.is_some()
             || self.finger_right.is_some()
             || self.stroke.is_some()
@@ -81,6 +102,8 @@ impl EffectsState {
         self.show_trill(ctx, snapshot, commands);
         self.show_tremolo(ctx, snapshot, commands);
         self.show_beat_text(ctx, snapshot, commands);
+        self.show_chord(ctx, snapshot, commands);
+        self.show_lyrics(ctx, snapshot, commands);
         self.show_finger(ctx, snapshot, commands, Hand::Left);
         self.show_finger(ctx, snapshot, commands, Hand::Right);
         self.show_stroke(ctx, snapshot, commands);
@@ -133,24 +156,33 @@ impl EffectsState {
         self.stroke = None;
     }
 
-    /// Opens the fingering dialog for one hand on the cursor note's finger.
-    pub(in crate::app) fn open_finger(&mut self, snapshot: &PaletteSnapshot, hand: Hand) {
-        let Some(note) = snapshot
-            .note_state
-            .as_ref()
-            .or(snapshot.target_states.first())
-        else {
-            return;
-        };
-        let current = match hand {
-            Hand::Left => note.finger_left,
-            Hand::Right => note.finger_right,
-        };
-        let editor = FingerEditor::new(hand, current);
+    /// Opens the fingering window for `hand` (closing the other hand's: one at a time, so
+    /// the keys are clear).
+    pub(in crate::app) fn open_finger(&mut self, _snapshot: &PaletteSnapshot, hand: Hand) {
+        let editor = FingerEditor::new(hand);
         match hand {
-            Hand::Left => self.finger_left = Some(editor),
-            Hand::Right => self.finger_right = Some(editor),
+            Hand::Left => {
+                self.finger_right = None;
+                self.finger_left = Some(editor);
+            }
+            Hand::Right => {
+                self.finger_left = None;
+                self.finger_right = Some(editor);
+            }
         }
+    }
+
+    /// The hand whose fingering window is open, if one is.
+    pub(in crate::app) fn finger_hand(&self) -> Option<Hand> {
+        self.finger_left
+            .as_ref()
+            .or(self.finger_right.as_ref())
+            .map(FingerEditor::hand)
+    }
+
+    /// A finger chosen with a key while the fingering window is open.
+    pub(in crate::app) fn choose_finger(&mut self, finger: Option<Finger>) {
+        self.finger_key = Some(finger);
     }
 
     fn show_finger(
@@ -167,18 +199,143 @@ impl EffectsState {
         let Some(editor) = editor else {
             return;
         };
-        let effect = match editor.show(ctx) {
-            Outcome::Open => return,
-            Outcome::Apply => Some(NoteEffect::Finger(hand, editor.finger())),
-            Outcome::Remove => Some(NoteEffect::Finger(hand, None)),
-            Outcome::Cancel | Outcome::Listen => None,
+        // Always the cursor note's finger: the window follows the cursor.
+        let current = snapshot
+            .note_state
+            .as_ref()
+            .or(snapshot.target_states.first())
+            .and_then(|note| match hand {
+                Hand::Left => note.finger_left,
+                Hand::Right => note.finger_right,
+            });
+        let has_note = !snapshot.note_targets.is_empty();
+        let outcome = match (editor.show(ctx, current, has_note), self.finger_key.take()) {
+            (FingerOutcome::Open, Some(finger)) => FingerOutcome::Set(finger),
+            (outcome, _) => outcome,
         };
-        if let Some(effect) = effect {
-            apply_note(commands, &snapshot.note_targets, effect);
+        match outcome {
+            FingerOutcome::Open => {}
+            FingerOutcome::Set(finger) => {
+                if has_note {
+                    apply_note(
+                        commands,
+                        &snapshot.note_targets,
+                        NoteEffect::Finger(hand, finger),
+                    );
+                }
+            }
+            FingerOutcome::Close => match hand {
+                Hand::Left => self.finger_left = None,
+                Hand::Right => self.finger_right = None,
+            },
         }
-        match hand {
-            Hand::Left => self.finger_left = None,
-            Hand::Right => self.finger_right = None,
+    }
+
+    /// Opens the chord diagram dialog on the cursor beat's diagram, or on an empty one.
+    pub(in crate::app) fn open_chord(&mut self, snapshot: &PaletteSnapshot) {
+        if snapshot.beats.is_empty() {
+            return;
+        }
+        self.chord = Some(ChordEditor::new(
+            snapshot.chord.as_ref(),
+            snapshot.string_count,
+            &snapshot.beat_shape,
+            snapshot.beat_chord.as_deref(),
+        ));
+    }
+
+    fn show_chord(
+        &mut self,
+        ctx: &egui::Context,
+        snapshot: &PaletteSnapshot,
+        commands: &mut Vec<Command>,
+    ) {
+        let Some(editor) = &mut self.chord else {
+            return;
+        };
+        let outcome = editor.show(ctx, snapshot.chord.is_some());
+        match outcome {
+            Outcome::Open => return,
+            Outcome::Apply => commands.push(Command::SetChordDiagram {
+                at: snapshot.cursor.position(),
+                diagram: Some(editor.diagram()),
+            }),
+            Outcome::Remove => commands.push(Command::SetChordDiagram {
+                at: snapshot.cursor.position(),
+                diagram: None,
+            }),
+            Outcome::Cancel | Outcome::Listen => {}
+        }
+        self.chord = None;
+    }
+
+    /// Opens the lyrics dialog on the cursor's measure.
+    pub(in crate::app) fn open_lyrics(&mut self, snapshot: &PaletteSnapshot) {
+        self.lyrics = Some(LyricsEditor::new(
+            snapshot.lyric_lines.clone(),
+            snapshot.measure.get(),
+            snapshot.measure_count,
+        ));
+    }
+
+    fn show_lyrics(
+        &mut self,
+        ctx: &egui::Context,
+        _snapshot: &PaletteSnapshot,
+        commands: &mut Vec<Command>,
+    ) {
+        let Some(editor) = &mut self.lyrics else {
+            return;
+        };
+        let outcome = editor.show(ctx);
+        let show = |editor: &LyricsEditor| Command::SetLyricLine {
+            line: editor.line(),
+            start: gscore_model::MeasureIndex::new(editor.start()),
+            text: editor.text().to_owned(),
+        };
+        match outcome {
+            Outcome::Open => {
+                // What is typed shows in the score at once.
+                if editor.take_change() {
+                    self.lyrics_preview = Some(LyricsPreview::Show(show(editor)));
+                }
+                return;
+            }
+            Outcome::Apply => {
+                if editor.take_change() {
+                    self.lyrics_preview = Some(LyricsPreview::Show(show(editor)));
+                } else {
+                    self.lyrics_preview = Some(LyricsPreview::Done);
+                }
+            }
+            Outcome::Remove => commands.push(Command::SetLyricLine {
+                line: editor.line(),
+                start: gscore_model::MeasureIndex::new(editor.start()),
+                text: String::new(),
+            }),
+            Outcome::Cancel | Outcome::Listen => {
+                if let Some(depth) = editor.undo_start() {
+                    self.lyrics_preview = Some(LyricsPreview::Revert(depth));
+                }
+            }
+        }
+        self.lyrics = None;
+    }
+
+    /// What the lyrics dialog asks of the score this frame, if anything.
+    pub(in crate::app) fn take_lyrics_preview(&mut self) -> Option<LyricsPreview> {
+        self.lyrics_preview.take()
+    }
+
+    /// Whether the lyrics dialog is open.
+    pub(in crate::app) fn lyrics_open(&self) -> bool {
+        self.lyrics.is_some()
+    }
+
+    /// Remembers the undo depth before the lyrics dialog's first change in the score.
+    pub(in crate::app) fn note_lyrics_undo_start(&mut self, depth: usize) {
+        if let Some(editor) = &mut self.lyrics {
+            editor.note_undo_start(depth);
         }
     }
 

@@ -421,11 +421,41 @@ fn the_tie_beat_text_and_fingering_tiles_work() {
         .get_by_label("Left-hand fingering…")
         .click_accesskit();
     harness.run();
+    // A click sets the finger at once; the window stays open, following the cursor.
     harness.get_by_label("Little").click_accesskit();
     harness.run();
-    harness.get_by_label("OK").click_accesskit();
-    harness.run();
     assert_eq!(finger(&harness, Hand::Left), Some(Finger::Little));
+    // Keys: the arrows move to the previous note, a digit fingers it (not a fret).
+    press(&mut harness, Key::ArrowLeft);
+    assert_eq!(finger(&harness, Hand::Left), None);
+    type_char(&mut harness, "2", Modifiers::NONE);
+    harness.run();
+    assert_eq!(finger(&harness, Hand::Left), Some(Finger::Middle));
+    assert_eq!(
+        fret_at_cursor(harness.state(), 1),
+        Some(5),
+        "the fret stays"
+    );
+    // The window shows the cursor note's finger.
+    use egui_kittest::kittest::NodeT as _;
+    assert!(
+        harness.get_by_label("Middle").accesskit_node().toggled()
+            == Some(egui::accesskit::Toggled::True)
+    );
+    press(&mut harness, Key::ArrowRight);
+    assert!(
+        harness.get_by_label("Little").accesskit_node().toggled()
+            == Some(egui::accesskit::Toggled::True)
+    );
+    // Backspace takes the finger off; Escape closes the window.
+    press(&mut harness, Key::Backspace);
+    assert_eq!(finger(&harness, Hand::Left), None);
+    press(&mut harness, Key::Escape);
+    assert!(
+        harness
+            .query_by_label("Close Left-hand fingering")
+            .is_none()
+    );
 
     // The beat text tile opens its dialog; Cancel leaves the beat unchanged.
     harness.get_by_label("Beat text…").scroll_to_me();
@@ -439,6 +469,103 @@ fn the_tie_beat_text_and_fingering_tiles_work() {
         harness.query_by_label("Beat text").is_none(),
         "the dialog closed"
     );
+}
+
+#[test]
+fn the_lyrics_and_chord_diagram_dialogs_create_them() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    harness.run();
+
+    // Lyrics: the first line, starting at the cursor's bar.
+    harness.get_by_label("Lyrics…").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Lyrics…").click_accesskit();
+    harness.run();
+    harness.get_by_label("Lyric text").click();
+    harness.run();
+    harness.get_by_label("Lyric text").type_text("one two");
+    harness.run();
+    harness.get_by_label("Apply").click_accesskit();
+    harness.run();
+    let song = harness.state().document().unwrap().song();
+    let lines = song.lyric_lines();
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert_eq!(lines[0].text, "one two");
+    assert_eq!(
+        song.lyric_syllables(TrackIndex::new(0))
+            .iter()
+            .map(|syllable| syllable.text.as_str())
+            .collect::<Vec<_>>(),
+        ["one", "two"]
+    );
+
+    // Chord diagram: it starts from the beat's notes (fret 5 on the highest string), and
+    // a click on the drawn grid adds a finger (its middle: the fourth string, fret 3).
+    harness.get_by_label("Chord diagram…").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Chord diagram…").click_accesskit();
+    harness.run();
+    harness.get_by_label("Chord diagram grid").click();
+    harness.run();
+    harness.get_by_label("Apply").click_accesskit();
+    harness.run();
+    let document = harness.state().document().unwrap();
+    let cursor = document.editor().cursor();
+    let chord = document
+        .song()
+        .beat(cursor.position())
+        .and_then(|beat| beat.chord_diagram())
+        .expect("the beat has a chord diagram");
+    assert_eq!(chord.name, "Chord");
+    assert_eq!(chord.frets.len(), 6, "the track's six strings");
+    assert!(chord.frets.contains(&(5, 5)), "{:?}", chord.frets);
+    assert!(chord.frets.contains(&(3, 3)), "{:?}", chord.frets);
+}
+
+#[test]
+fn lyrics_show_in_the_score_while_typed_and_cancel_takes_them_back() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    let syllables = |harness: &Harness<'static, GuitarScoreApp>| {
+        let song = harness.state().document().unwrap().song();
+        song.lyric_syllables(TrackIndex::new(0))
+            .iter()
+            .map(|syllable| syllable.text.clone())
+            .collect::<Vec<_>>()
+    };
+    let depth = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness.state().document().unwrap().editor().undo_depth()
+    };
+    let before = depth(&harness);
+    // Shift+L opens the dialog.
+    type_char(&mut harness, "L", Modifiers::SHIFT);
+    harness.get_by_label("Lyric text").click();
+    harness.run();
+    harness.get_by_label("Lyric text").type_text("one two");
+    harness.run();
+    // In the score before Apply, as one undo step.
+    assert_eq!(syllables(&harness), ["one", "two"]);
+    assert_eq!(depth(&harness), before + 1);
+    harness.get_by_label("Lyric text").type_text(" three");
+    harness.run();
+    assert_eq!(syllables(&harness), ["one", "two", "three"]);
+    assert_eq!(depth(&harness), before + 1);
+    // Cancel takes it all back.
+    harness.get_by_label("Cancel").click_accesskit();
+    harness.run();
+    assert!(syllables(&harness).is_empty());
+    assert_eq!(depth(&harness), before);
+
+    // Apply keeps it, in one step; a new dialog starts a new step.
+    type_char(&mut harness, "L", Modifiers::SHIFT);
+    harness.get_by_label("Lyric text").click();
+    harness.run();
+    harness.get_by_label("Lyric text").type_text("la");
+    harness.run();
+    harness.get_by_label("Apply").click_accesskit();
+    harness.run();
+    assert_eq!(syllables(&harness), ["la"]);
+    assert_eq!(depth(&harness), before + 1);
 }
 
 #[test]
@@ -528,7 +655,7 @@ fn an_entered_fret_is_heard_and_undo_is_not() {
     // With the setting off, nothing sounds.
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("Settings…").click();
+    harness.get_by_label("Settings… ctrl+,").click();
     harness.run();
     harness.get_by_label("Editor").click();
     harness.run();
@@ -1198,7 +1325,7 @@ fn breaks_bars_per_line_and_the_page_setup_are_edited_from_the_menus() {
     // Landscape from the settings window's Page layout tab: one undo step.
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("Settings…").click();
+    harness.get_by_label("Settings… ctrl+,").click();
     harness.run();
     harness.get_by_label("Page layout").click();
     harness.run();
@@ -1561,7 +1688,39 @@ fn a_selection_in_the_score_can_be_looped() {
         .expect("a selection");
     assert!(selection.last_measure() > selection.first_measure());
     assert!(enabled(&harness), "the score's selection can be looped");
+    // A selection of several beats turns Loop on by itself.
+    assert!(harness.state().playback().loop_selection());
+    // Turned off, it stays off while the selection grows.
     harness.get_by_label("Loop selection").click();
     harness.run();
+    assert!(!harness.state().playback().loop_selection());
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
+    harness.run();
+    assert!(!harness.state().playback().loop_selection());
+    // A new selection turns it on again.
+    harness.key_press(Key::ArrowRight);
+    harness.run();
+    assert!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .editor()
+            .selection()
+            .is_none()
+    );
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
+    harness.run();
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
+    harness.run();
     assert!(harness.state().playback().loop_selection());
+}
+
+#[test]
+fn shift_h_opens_the_history() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    assert!(harness.query_by_label("Close History").is_none());
+    type_char(&mut harness, "H", Modifiers::SHIFT);
+    harness.run();
+    harness.get_by_label("Close History");
 }

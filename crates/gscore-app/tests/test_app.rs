@@ -133,7 +133,7 @@ fn escape_closes_the_shared_windows() {
     // New song (the song behind it stays)
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("New").click();
+    harness.get_by_label("New ctrl+n").click();
     harness.run();
     harness.get_by_label("New song title");
     harness.key_press(egui::Key::Escape);
@@ -852,7 +852,7 @@ fn the_settings_window_edits_song_information_and_undoes_it() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("Settings…").click();
+    harness.get_by_label("Settings… ctrl+,").click();
     harness.run();
     harness.get_by_label("Done");
 
@@ -1567,6 +1567,59 @@ fn an_interrupted_count_in_starts_again_where_the_cursor_is_now() {
 }
 
 #[test]
+fn previous_and_next_bar_during_a_count_in_count_in_again() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("count-in-navigate");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    harness.state_mut().set_count_in(true);
+    cursor_to_measure(&mut harness, 2);
+    harness.get_by_label("Play").click();
+    let started = step_until(&mut harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    });
+    assert!(started, "neither played nor failed");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+    assert!(harness.state().playback().count_in_pending());
+    assert_eq!(harness.state().playback().current_measure(), Some(3));
+
+    // Next bar while the clicks run: a new count-in for the new bar, not a stop.
+    harness.get_by_label("Next bar").click();
+    harness.run();
+    assert!(
+        harness.state().playback().count_in_pending(),
+        "playback stopped instead of counting in again"
+    );
+    assert_eq!(harness.state().playback().current_measure(), Some(4));
+    assert_eq!(
+        harness.state().playback().state(),
+        gscore_play::PlayState::Playing
+    );
+
+    // Previous bar: again a count-in, now for the bar before.
+    harness.get_by_label("Previous bar").click();
+    harness.run();
+    assert!(harness.state().playback().count_in_pending());
+    assert_eq!(harness.state().playback().current_measure(), Some(3));
+
+    // The clicks lead into the song at the bar chosen last.
+    assert!(
+        step_until(&mut harness, 10, |app| {
+            app.playback().state() == gscore_play::PlayState::Playing
+                && !app.playback().count_in_pending()
+        }),
+        "the count-in did not lead into the song"
+    );
+    assert_eq!(harness.state().playback().current_measure(), Some(3));
+    harness.state_mut().playback_mut().stop().unwrap();
+}
+
+#[test]
 fn the_player_moves_by_bar_and_to_the_score_ends() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     let measure = |harness: &Harness<'static, GuitarScoreApp>| {
@@ -1700,7 +1753,7 @@ fn the_audio_tab_is_last_and_named_audio_io() {
         .use_soundfont(PathBuf::from("/fonts/Test.sf2"));
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("Settings…").click();
+    harness.get_by_label("Settings… ctrl+,").click();
     harness.run();
     harness.get_by_label("Audio I/O").click();
     harness.run();
@@ -1713,7 +1766,7 @@ fn the_metronome_tab_sets_the_click_and_the_count_in() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("Settings…").click();
+    harness.get_by_label("Settings… ctrl+,").click();
     harness.run();
     // The tab (the toolbar's metronome switch has the same name).
     harness
@@ -1842,7 +1895,7 @@ fn shortcuts_can_be_changed_and_reverted_from_the_editor() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("Settings…").click();
+    harness.get_by_label("Settings… ctrl+,").click();
     harness.run();
     harness.get_by_label("Editor").click();
     harness.run();
@@ -1914,7 +1967,7 @@ fn the_history_window_lists_changes_and_undoes_them() {
 
     harness.get_by_label("Edit").click();
     harness.run();
-    harness.get_by_label("History…").click();
+    harness.get_by_label("History… H").click();
     harness.run();
     // The newest change is where the song is; the one before it is a step back.
     harness.get_by_label_contains("Current point, change 1:");
@@ -2191,4 +2244,58 @@ fn the_mixer_sets_reverb_and_chorus_with_one_undo_per_drag() {
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
     harness.run();
     assert_eq!(sends(&harness), (0, 0));
+}
+
+#[test]
+fn dismissing_an_open_error_shows_the_empty_workspace() {
+    let mut harness = app_with(Some(testdata("basic/README.md")));
+    assert!(harness.state().notice().is_some());
+    harness.get_by_label("Dismiss").click();
+    settle(&mut harness);
+    assert_eq!(harness.state().notice(), None);
+    harness.get_by_label("Open a song");
+}
+
+#[test]
+fn the_speed_trainer_button_left_of_the_speed_opens_its_settings() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    assert!(!harness.state().playback().trainer().enabled);
+    let button = harness.get_by_label("Speed trainer").rect();
+    let speed = harness.get_by_label("Playback speed").rect();
+    assert!(
+        button.right() <= speed.left(),
+        "the button sits left of the speed"
+    );
+    harness.get_by_label("Speed trainer").click();
+    settle(&mut harness);
+    harness
+        .get_by_label("Raise the speed while a loop plays")
+        .click();
+    settle(&mut harness);
+    assert!(harness.state().playback().trainer().enabled);
+}
+
+#[test]
+fn file_keys_work_in_the_empty_workspace() {
+    let mut harness = app_with(None);
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::N);
+    harness.run();
+    // Ctrl+N opens the new-song dialog.
+    harness.get_by_label("Create");
+}
+
+#[test]
+fn the_view_menu_shows_one_key_per_entry() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.get_by_label("View").click();
+    harness.run();
+    // Zoom in has two keys (ctrl++ and ctrl+=); the menu shows the first.
+    harness.get_by_label("Zoom in ctrl++");
+    harness.get_by_label("Zoom out ctrl+-");
+    harness.get_by_label("Actual size ctrl+0");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Quit ctrl+q");
 }

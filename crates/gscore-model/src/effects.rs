@@ -175,6 +175,32 @@ impl OctaveSign {
         }
     }
 
+    /// Guitar Pro's value for `sign` (`None`: no sign).
+    pub(crate) fn to_gp(sign: Option<Self>) -> gscore_gp::Octave {
+        match sign {
+            Some(OctaveSign::Ottava) => gscore_gp::Octave::Ottava,
+            Some(OctaveSign::OttavaBassa) => gscore_gp::Octave::OttavaBassa,
+            Some(OctaveSign::Quindicesima) => gscore_gp::Octave::Quindicesima,
+            Some(OctaveSign::QuindicesimaBassa) => gscore_gp::Octave::QuindicesimaBassa,
+            None => gscore_gp::Octave::None,
+        }
+    }
+
+    /// Every sign, in the order a palette offers them.
+    pub const ALL: [OctaveSign; 4] = [
+        OctaveSign::Ottava,
+        OctaveSign::OttavaBassa,
+        OctaveSign::Quindicesima,
+        OctaveSign::QuindicesimaBassa,
+    ];
+
+    /// The sign written `label` ("8va", ...), if any.
+    pub fn from_label(label: &str) -> Option<Self> {
+        OctaveSign::ALL
+            .into_iter()
+            .find(|sign| sign.label() == label)
+    }
+
     /// The text written over the staff ("8va", "15mb", ...).
     pub fn label(self) -> &'static str {
         match self {
@@ -431,6 +457,8 @@ pub enum BeatEffect {
     FadeOut(bool),
     /// A volume swell, in and out again (switching it on removes the other fades).
     VolumeSwell(bool),
+    /// The octave sign over or under the beat (8va, 8vb, 15ma, 15mb); `None` removes it.
+    Octave(Option<OctaveSign>),
 }
 
 impl NoteEffect {
@@ -511,8 +539,14 @@ impl BeatEffect {
 
     /// Applies this effect to `beat`, leaving the beat's other effects untouched.
     pub(crate) fn apply(&self, beat: &mut gscore_gp::Beat) -> Result<(), ModelError> {
+        if let BeatEffect::Octave(sign) = self {
+            beat.octave = OctaveSign::to_gp(*sign);
+            return Ok(());
+        }
         let effects = &mut beat.effect;
         match self {
+            // Set on the beat itself, above.
+            BeatEffect::Octave(_) => {}
             BeatEffect::PickStroke(direction) => {
                 effects.pick_stroke = stroke_to_gp(*direction);
             }

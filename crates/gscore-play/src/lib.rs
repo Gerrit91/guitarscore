@@ -16,8 +16,9 @@
 //! left-hand taps and grace hammer-ons (softer, like legato), pick slides (a quick muted
 //! scrape), fades in, out and swells (an expression ramp on a borrowed channel), and
 //! hammer-ons, pull-offs and legato (the reached note is not picked: softer).
+//! Repeats, alternative endings and navigation signs (D.C., D.S., coda, fine) are followed,
+//! and fermatas hold the end of their measure.
 //! [`Sequence::beat_excerpt`] plays one beat alone, for hearing an edit.
-//! Not yet: fermatas and directions (D.C., D.S., coda).
 
 #![warn(clippy::arithmetic_side_effects)]
 

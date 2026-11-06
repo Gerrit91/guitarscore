@@ -47,6 +47,8 @@ struct TrackPanel {
     instrument_name: Option<String>,
     sound: Option<TrackSound>,
     tuning: Vec<StringTuning>,
+    /// Whether the notes have pitches to write as standard notation (also a voice's).
+    has_pitches: bool,
     tuning_name: Option<String>,
     capo: u8,
     string_count: usize,
@@ -64,6 +66,7 @@ impl TrackPanel {
             instrument_name: track.instrument_name().map(str::to_owned),
             sound: song.track_sound(track.index()),
             tuning: track.tuning().ok().flatten().unwrap_or_default(),
+            has_pitches: track.note_tuning().ok().flatten().is_some(),
             tuning_name: track.tuning_name().ok().flatten(),
             capo: track.capo().unwrap_or(0),
             string_count: track.string_count(),

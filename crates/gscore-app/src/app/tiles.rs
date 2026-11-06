@@ -10,6 +10,27 @@ use super::tile_faces::{more_corner, paint_face};
 /// The size of a tile.
 pub(crate) const TILE: egui::Vec2 = egui::Vec2::new(27.0, 32.0);
 
+/// A tile a little larger than the palette's, for a small window of choices.
+pub(crate) fn large_tile(
+    ui: &mut egui::Ui,
+    face: Face<'_>,
+    selected: bool,
+    enabled: bool,
+    label: &str,
+    tip: &str,
+) -> Response {
+    sized_tile(
+        ui,
+        vec2(32.0, 34.0),
+        face,
+        selected,
+        enabled,
+        label,
+        tip,
+        false,
+    )
+}
+
 /// One tile. `label` is what screen readers (and tests) call it; `tip` the tooltip.
 pub(crate) fn tile(
     ui: &mut egui::Ui,

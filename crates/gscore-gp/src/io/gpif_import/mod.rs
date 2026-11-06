@@ -89,6 +89,8 @@ mod display_tests;
 #[cfg(test)]
 mod effect_tests;
 mod helpers;
+#[cfg(test)]
+mod lyrics_tests;
 mod notes;
 #[cfg(test)]
 mod page_tests;
@@ -594,6 +596,45 @@ impl SongGpifOps for Song {
         // nothing is lost, as the editor works with attached grace notes. Writing turns
         // them back into grace beats (`Song::with_grace_beats`).
         self.fold_grace_beats();
+        // The lyric lines as typed, from the first track that has any text.
+        for (index, g_track) in gpif.tracks.tracks.iter().enumerate() {
+            let Some(lyrics) = &g_track.lyrics else {
+                continue;
+            };
+            let lines: Vec<(u8, u16, String)> = lyrics
+                .lines
+                .iter()
+                .enumerate()
+                .filter(|(_, line)| !line.text.trim().is_empty())
+                .filter_map(|(number, line)| {
+                    Some((
+                        u8::try_from(number).ok()?,
+                        u16::try_from(line.offset.max(0)).ok()?.saturating_add(1),
+                        line.text.trim().to_owned(),
+                    ))
+                })
+                .collect();
+            if !lines.is_empty() {
+                self.lyrics.lines = lines;
+                self.lyrics.track_choice = u8::try_from(index).unwrap_or(0);
+                break;
+            }
+        }
+        // Without typed lines, the syllables on the beats tell the lyric track.
+        if self.lyrics.lines.is_empty()
+            && let Some(track) = self.tracks.iter().position(|track| {
+                track.measures.iter().any(|measure| {
+                    measure.voices.iter().any(|voice| {
+                        voice
+                            .beats
+                            .iter()
+                            .any(|beat| beat.lyrics.iter().any(|line| !line.is_empty()))
+                    })
+                })
+            })
+        {
+            self.lyrics.track_choice = u8::try_from(track).unwrap_or(0);
+        }
     }
 }
 

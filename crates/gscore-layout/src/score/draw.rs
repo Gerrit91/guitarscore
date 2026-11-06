@@ -170,6 +170,29 @@ pub(super) fn draw_part(
             ctx,
             &mut content,
         );
+        if let Some(syllables) = part.lyrics.get(index)
+            && !syllables.is_empty()
+        {
+            let columns = measure.lyric_columns(content_x, system.stretch);
+            for syllable in syllables {
+                let Some(at) = columns
+                    .iter()
+                    .find(|(beat, _)| *beat == syllable.beat)
+                    .map(|&(_, x)| x)
+                else {
+                    continue;
+                };
+                let y = top + part.lyric_baseline(system.plan_measures.clone(), syllable.line);
+                content.push(DrawOp::Text {
+                    text: syllable.text.clone(),
+                    at: Point::new(at, y),
+                    size: 1.05,
+                    font: TextFont::Bold,
+                    anchor: TextAnchor::Middle,
+                    color: ColorToken::Notation,
+                });
+            }
+        }
         x = content_x + measure.width(system.stretch) + after;
         marks::draw(
             marks::Placed {

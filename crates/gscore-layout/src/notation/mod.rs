@@ -87,7 +87,9 @@ impl<'a> Notation<'a> {
                 track,
             }));
         }
-        let Some(tuning) = track.tuning()? else {
+        // Voices and keyboards too: their notes are written on Guitar Pro's stand-in
+        // strings, which give their pitches.
+        let Some(tuning) = track.note_tuning()? else {
             return Ok(None);
         };
         let lowest = tuning.iter().map(|s| s.pitch.get()).min().unwrap_or(40);

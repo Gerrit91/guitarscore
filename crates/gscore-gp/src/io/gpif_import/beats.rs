@@ -129,6 +129,16 @@ pub(super) fn convert_beat(
     if let Some(text) = &g_beat.free_text {
         s_beat.text = text.clone();
     }
+    // Lyric syllables for each line (GP6/GP7 store them on the beat).
+    // Trailing empty lines are dropped (Guitar Pro writes all five).
+    if let Some(lyrics) = &g_beat.lyrics {
+        let used = lyrics
+            .lines
+            .iter()
+            .rposition(|line| !line.is_empty())
+            .map_or(0, |last| last.saturating_add(1));
+        s_beat.lyrics = lyrics.lines.iter().take(used).cloned().collect();
+    }
 
     // Octave sign
     s_beat.octave = match g_beat.ottavia.as_deref() {

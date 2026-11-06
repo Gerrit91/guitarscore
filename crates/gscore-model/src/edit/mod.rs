@@ -12,6 +12,7 @@
 
 mod beat_flags;
 mod beats;
+mod chord;
 mod dynamics;
 mod effect_edits;
 mod headers;
@@ -44,6 +45,38 @@ use tracks::MixFlag;
 #[derive(Debug)]
 pub struct Change {
     kind: ChangeKind,
+}
+
+impl Change {
+    /// The change of one lyric line, for [`Song::set_lyric_line`].
+    pub(crate) fn lyric_line(
+        line: u8,
+        previous: Option<(u16, String)>,
+        previous_track: u8,
+        previous_beats: Vec<(BeatPosition, Vec<String>)>,
+    ) -> Self {
+        Change {
+            kind: ChangeKind::LyricLine {
+                line,
+                previous,
+                previous_track,
+                previous_beats,
+            },
+        }
+    }
+
+    /// The change of a beat's chord diagram.
+    pub(crate) fn chord_diagram(
+        at: BeatPosition,
+        previous: Option<crate::techniques::ChordDiagram>,
+    ) -> Self {
+        Change {
+            kind: ChangeKind::ChordDiagram {
+                at,
+                previous: previous.map(Box::new),
+            },
+        }
+    }
 }
 
 /// What an edit changed, with the data needed to put it back.
@@ -171,6 +204,18 @@ enum ChangeKind {
     },
     /// A beat's text changed; `previous` is the text before.
     BeatText { at: BeatPosition, previous: String },
+    /// A lyric line changed; `previous` is its starting measure and text before.
+    LyricLine {
+        line: u8,
+        previous: Option<(u16, String)>,
+        previous_track: u8,
+        previous_beats: Vec<(BeatPosition, Vec<String>)>,
+    },
+    /// A beat's chord diagram changed.
+    ChordDiagram {
+        at: BeatPosition,
+        previous: Option<Box<crate::techniques::ChordDiagram>>,
+    },
     /// A beat was made a rest; its notes are kept to put them back.
     BeatRest {
         at: BeatPosition,
@@ -335,6 +380,30 @@ impl Change {
             ChangeKind::SongText { previous, .. } | ChangeKind::BeatText { previous, .. } => {
                 previous.len()
             }
+            ChangeKind::LyricLine {
+                previous,
+                previous_beats,
+                ..
+            } => previous
+                .as_ref()
+                .map_or(0, |(_, text)| text.len())
+                .saturating_add(
+                    previous_beats
+                        .iter()
+                        .map(|(_, texts)| {
+                            texts
+                                .iter()
+                                .map(|text| text.len().saturating_add(size_of::<String>()))
+                                .sum::<usize>()
+                        })
+                        .sum::<usize>(),
+                ),
+            ChangeKind::ChordDiagram { previous, .. } => previous.as_ref().map_or(0, |diagram| {
+                diagram
+                    .name
+                    .len()
+                    .saturating_add(diagram.frets.len().saturating_mul(size_of::<(u8, i8)>()))
+            }),
             ChangeKind::SongTempo { .. } => 0,
             ChangeKind::BeatRest { notes, .. } => notes.len().saturating_mul(size_of::<GpNote>()),
             ChangeKind::NoteTie { .. } | ChangeKind::NoteDead { .. } => 0,
@@ -717,6 +786,22 @@ impl Song {
             ChangeKind::BeatText { at, previous } => {
                 self.edit_measure(at.track, at.measure, |measure| {
                     beat_in(measure, *at)?.text = previous.clone();
+                    Ok(())
+                })
+            }
+            ChangeKind::LyricLine {
+                line,
+                previous,
+                previous_track,
+                previous_beats,
+            } => {
+                crate::lyrics::restore_line(self, *line, previous, *previous_track, previous_beats);
+                Ok(())
+            }
+            ChangeKind::ChordDiagram { at, previous } => {
+                self.edit_measure(at.track, at.measure, |measure| {
+                    beat_in(measure, *at)?.chord_diagram =
+                        previous.as_ref().map(|diagram| diagram.to_gp());
                     Ok(())
                 })
             }

@@ -324,7 +324,13 @@ impl TabEditor {
             | ActionId::ZoomOut
             | ActionId::ZoomReset
             | ActionId::ToggleFullscreen
-            | ActionId::ToggleMultitrack => Ok(Outcome::Nothing),
+            | ActionId::ToggleMultitrack
+            | ActionId::ShowHistory
+            | ActionId::NewSong
+            | ActionId::OpenFile
+            | ActionId::SaveAs
+            | ActionId::OpenSettings
+            | ActionId::Quit => Ok(Outcome::Nothing),
             // Palette actions: the app runs them like a click on the palette tile.
             ActionId::NoteWhole
             | ActionId::NoteHalf
@@ -344,6 +350,8 @@ impl TabEditor {
             | ActionId::ToggleTie
             | ActionId::TieBeat
             | ActionId::EditBeatText
+            | ActionId::EditLyrics
+            | ActionId::EditChordDiagram
             | ActionId::EditLeftFinger
             | ActionId::EditRightFinger
             | ActionId::ToggleDeadNote
@@ -381,6 +389,10 @@ impl TabEditor {
             | ActionId::ToggleFadeIn
             | ActionId::ToggleFadeOut
             | ActionId::ToggleVolumeSwell
+            | ActionId::ToggleOttava
+            | ActionId::ToggleOttavaBassa
+            | ActionId::ToggleQuindicesima
+            | ActionId::ToggleQuindicesimaBassa
             | ActionId::ToggleWhammy
             | ActionId::ToggleLegato
             | ActionId::ToggleBeatVibrato

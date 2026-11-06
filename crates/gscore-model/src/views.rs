@@ -100,6 +100,21 @@ impl<'a> TrackView<'a> {
         Ok(Some(strings))
     }
 
+    /// The open strings the notes are written on: [`Self::tuning`] for a string
+    /// instrument, and for a voice, keyboard or other instrument the stand-in tuning Guitar
+    /// Pro stores (its notes are a string and a fret on it, the fret possibly negative).
+    /// `None` for drums and for tracks that store no pitches at all.
+    pub fn note_tuning(&self) -> Result<Option<Vec<StringTuning>>, ModelError> {
+        if self.is_percussion() || !self.inner.has_tuning {
+            return Ok(None);
+        }
+        let strings = self.strings()?;
+        if strings.iter().all(|s| s.pitch.get() == 0) {
+            return Ok(None);
+        }
+        Ok(Some(strings))
+    }
+
     /// The tuning's name: the one given in the file, or a recognized common tuning
     /// ("E standard", "Drop D", "Open G", "DADGAD", ...). `None` if the track has no tuning
     /// or it has no common name.

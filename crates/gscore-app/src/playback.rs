@@ -131,6 +131,52 @@ struct Lead {
     passed: bool,
 }
 
+/// The speeds the toolbar offers: 50 % to 120 % of the written tempo.
+pub const SPEED_CHOICES: [f32; 8] = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2];
+
+/// The fastest and slowest playback speed.
+pub const SPEED_RANGE: (f32, f32) = (0.5, 1.2);
+
+/// The speeds a speed trainer may work up to.
+pub const TRAINER_TARGETS: [f32; 3] = [1.0, 1.1, 1.2];
+
+/// A playback speed trainer: practise a loop slowly, and raise the speed every few passes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpeedTrainer {
+    /// Whether it is on.
+    pub enabled: bool,
+    /// Passes between two speed steps (1 or more).
+    pub every: u8,
+    /// How much faster each step is, in percent (1 to 20).
+    pub step: u8,
+    /// The top speed it may reach.
+    pub target: f32,
+}
+
+impl Default for SpeedTrainer {
+    fn default() -> Self {
+        SpeedTrainer {
+            enabled: false,
+            every: 2,
+            step: 5,
+            target: 1.0,
+        }
+    }
+}
+
+impl SpeedTrainer {
+    /// Makes the values safe and usable.
+    pub fn sanitize(&mut self) {
+        self.every = self.every.clamp(1, 32);
+        self.step = self.step.clamp(1, 20);
+        self.target = if self.target.is_finite() {
+            self.target.clamp(SPEED_RANGE.0, SPEED_RANGE.1)
+        } else {
+            1.0
+        };
+    }
+}
+
 /// The app's playback state.
 #[derive(Debug)]
 pub struct Playback {
@@ -161,6 +207,12 @@ pub struct Playback {
     count_in_loops: bool,
     /// Whether one bar of clicks is played before playback starts.
     count_in: bool,
+    /// Playback speed relative to the written tempo (1 is normal).
+    speed: f32,
+    /// The speed trainer's settings.
+    trainer: SpeedTrainer,
+    /// Loop passes completed since the trainer last went back to the starting speed.
+    passes: u32,
     /// While the player holds a count-in joined to the song (see [`Lead`]).
     lead: Option<Lead>,
     /// Whether playback loops the selected measures.
@@ -193,6 +245,9 @@ impl Default for Playback {
             count_in_bars: 1,
             count_in_loops: false,
             count_in: false,
+            speed: 1.0,
+            trainer: SpeedTrainer::default(),
+            passes: 0,
             lead: None,
             loop_selection: false,
             audition: None,
@@ -378,6 +433,78 @@ impl Playback {
     /// Counts a loop in again each time it starts over (with the count-in on), or not.
     pub fn set_count_in_loops(&mut self, enabled: bool) {
         self.count_in_loops = enabled;
+    }
+
+    /// Playback speed relative to the written tempo (1 is normal).
+    pub fn speed(&self) -> f32 {
+        self.speed
+    }
+
+    /// Slows down or speeds up playback, heard at once while it plays.
+    pub fn set_speed(&mut self, speed: f32) -> Result<(), String> {
+        let speed = if speed.is_finite() {
+            speed.clamp(SPEED_RANGE.0, SPEED_RANGE.1)
+        } else {
+            1.0
+        };
+        if (self.speed - speed).abs() < f32::EPSILON {
+            return Ok(());
+        }
+        self.speed = speed;
+        self.passes = 0;
+        if let Some(active) = &mut self.player {
+            active
+                .player_mut()
+                .set_tempo_scale(speed)
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// The speed trainer's settings.
+    pub fn trainer(&self) -> SpeedTrainer {
+        self.trainer
+    }
+
+    /// Sets the speed trainer. Turning it on, or changing its steps, starts the pass count
+    /// again at the current speed.
+    pub fn set_trainer(&mut self, mut trainer: SpeedTrainer) {
+        trainer.sanitize();
+        if trainer != self.trainer {
+            self.passes = 0;
+        }
+        self.trainer = trainer;
+    }
+
+    /// How many loop passes the trainer has counted since it started.
+    pub fn trainer_passes(&self) -> u32 {
+        self.passes
+    }
+
+    /// Counts one completed loop pass; every `every`th pass, raises the speed by `step`
+    /// percent until the trainer's target. Returns whether the speed changed.
+    pub fn trainer_pass(&mut self) -> Result<bool, String> {
+        if !self.trainer.enabled {
+            return Ok(false);
+        }
+        self.passes = self.passes.saturating_add(1);
+        let every = u32::from(self.trainer.every.max(1));
+        if !self.passes.is_multiple_of(every) {
+            return Ok(false);
+        }
+        let target = self.trainer.target.max(SPEED_RANGE.0);
+        if self.speed >= target - f32::EPSILON {
+            return Ok(false);
+        }
+        let step = f32::from(self.trainer.step.max(1)) / 100.0;
+        let next = (self.speed + step).min(target).min(SPEED_RANGE.1);
+        self.set_speed(next)?;
+        Ok(true)
+    }
+
+    /// Starts the speed trainer over at `speed` (a fresh practice run).
+    fn reset_trainer(&mut self) {
+        self.passes = 0;
     }
 
     /// Plays one bar of the metronome alone, to hear its sound and volume. Only while the
@@ -615,11 +742,18 @@ impl Playback {
         let position = self.position();
         match self.state() {
             PlayState::Playing if position >= end && self.count_in && self.count_in_loops => {
+                let _ = self.trainer_pass()?;
                 self.start_count_in(song, Some(first))
             }
-            PlayState::Playing if position < start || position >= end => self.seek_song(start),
+            PlayState::Playing if position < start || position >= end => {
+                if position >= end {
+                    let _ = self.trainer_pass()?;
+                }
+                self.seek_song(start)
+            }
             PlayState::Stopped if position >= end => {
                 // The song ended at the loop's end: play the loop again.
+                let _ = self.trainer_pass()?;
                 self.seek_song(start)?;
                 self.player_mut()?.play().map_err(|e| e.to_string())
             }
@@ -757,6 +891,7 @@ impl Playback {
         self.sequence = None;
         self.paused_at = None;
         self.lead = None;
+        self.reset_trainer();
     }
 
     /// The song's mix (volume, pan, mute, solo) changed: rebuild the sequence. While it is
@@ -829,6 +964,7 @@ impl Playback {
         if !resume {
             // A fresh start: whatever count-in came before is over.
             self.drop_lead()?;
+            self.reset_trainer();
         }
         // A fresh start with the count-in on: one bar of clicks, then the song, played as
         // one sequence so the song follows the last click exactly.
@@ -849,6 +985,10 @@ impl Playback {
         if !resume && let Some(tick) = from.and_then(|at| sequence.tick_of(song, at)) {
             self.player_mut()?.seek(tick).map_err(|e| e.to_string())?;
         }
+        let speed = self.speed;
+        self.player_mut()?
+            .set_tempo_scale(speed)
+            .map_err(|e| e.to_string())?;
         self.player_mut()?.play().map_err(|e| e.to_string())
     }
 
@@ -873,9 +1013,11 @@ impl Playback {
         });
         let played = self.played(&sequence);
         self.sequence = Some(sequence);
+        let speed = self.speed;
         let player = self.player_mut()?;
         player.stop().map_err(|e| e.to_string())?;
         player.load(played).map_err(|e| e.to_string())?;
+        player.set_tempo_scale(speed).map_err(|e| e.to_string())?;
         player.play().map_err(|e| e.to_string())
     }
 
@@ -954,6 +1096,7 @@ impl Playback {
         let _ = self.end_preview();
         self.paused_at = None;
         self.lead = None;
+        self.reset_trainer();
         match &mut self.player {
             Some(active) => active.player_mut().stop().map_err(|e| e.to_string()),
             None => Ok(()),
@@ -1180,4 +1323,57 @@ fn file_name(path: &Path) -> String {
         || path.display().to_string(),
         |n| n.to_string_lossy().into_owned(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    #[test]
+    fn the_speed_is_clamped_and_kept_between_plays() {
+        let mut playback = Playback::default();
+        assert_eq!(playback.speed(), 1.0);
+        playback.set_speed(0.7).unwrap();
+        assert_eq!(playback.speed(), 0.7);
+        playback.set_speed(0.1).unwrap();
+        assert_eq!(playback.speed(), SPEED_RANGE.0);
+        playback.set_speed(9.0).unwrap();
+        assert_eq!(playback.speed(), SPEED_RANGE.1);
+        playback.set_speed(f32::NAN).unwrap();
+        assert_eq!(playback.speed(), 1.0);
+    }
+
+    #[test]
+    fn the_speed_trainer_raises_the_speed_every_few_passes_up_to_its_target() {
+        let mut playback = Playback::default();
+        playback.set_speed(0.8).unwrap();
+        playback.set_trainer(SpeedTrainer {
+            enabled: true,
+            every: 2,
+            step: 5,
+            target: 1.0,
+        });
+        assert!(!playback.trainer_pass().unwrap(), "the first pass waits");
+        assert!(playback.trainer_pass().unwrap());
+        assert!((playback.speed() - 0.85).abs() < 1e-6);
+        while playback.speed() < 1.0 {
+            let _ = playback.trainer_pass().unwrap();
+        }
+        assert!((playback.speed() - 1.0).abs() < 1e-6);
+        assert!(!playback.trainer_pass().unwrap(), "the target is the top");
+        assert_eq!(playback.speed(), 1.0);
+
+        // A disabled trainer never changes the speed.
+        playback.set_speed(0.6).unwrap();
+        playback.set_trainer(SpeedTrainer {
+            enabled: false,
+            ..playback.trainer()
+        });
+        for _ in 0..10 {
+            assert!(!playback.trainer_pass().unwrap());
+        }
+        assert!((playback.speed() - 0.6).abs() < 1e-6);
+    }
 }

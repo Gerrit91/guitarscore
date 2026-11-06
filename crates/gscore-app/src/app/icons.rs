@@ -74,6 +74,8 @@ pub(crate) enum Icon {
     Rename,
     /// A tuner (a tuning fork).
     Tuner,
+    /// The speed trainer (a speed gauge with its needle turned up).
+    SpeedTrainer,
 }
 
 /// The size of the compact icon buttons in the panels and the toolbar.
@@ -548,6 +550,40 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 ],
                 stroke,
             );
+        }
+        Icon::SpeedTrainer => {
+            // A speed gauge: an open arc, a few ticks and a needle pointing up-right.
+            let radius = size * 0.42;
+            let pivot = pos2(center.x, center.y + size * 0.18);
+            let start = 200.0_f32.to_radians();
+            let end = 340.0_f32.to_radians();
+            let arc: Vec<_> = (0..=16)
+                .map(|step| {
+                    let angle = start + (end - start) * step as f32 / 16.0;
+                    pivot + vec2(angle.cos(), angle.sin()) * radius
+                })
+                .collect();
+            painter.add(Shape::line(arc, stroke));
+            for tick in [200.0_f32, 270.0, 340.0] {
+                let angle = tick.to_radians();
+                let direction = vec2(angle.cos(), angle.sin());
+                painter.line_segment(
+                    [
+                        pivot + direction * radius * 0.72,
+                        pivot + direction * radius,
+                    ],
+                    stroke,
+                );
+            }
+            let needle = 305.0_f32.to_radians();
+            painter.line_segment(
+                [
+                    pivot,
+                    pivot + vec2(needle.cos(), needle.sin()) * radius * 0.85,
+                ],
+                stroke,
+            );
+            painter.circle_filled(pivot, size * 0.08, color);
         }
         Icon::MoveUp | Icon::MoveDown => {
             // Drawn pointing up, mirrored for down.

@@ -63,6 +63,12 @@ ctrl+y = redo
 
 Space = play_pause
 ctrl+s = save
+ctrl+shift+s = save_as
+ctrl+n = new_song
+ctrl+o = open_file
+ctrl+, = open_settings
+ctrl+q = quit
+H = show_history
 
 # Palette: note values, rest and tie, techniques.
 ctrl+1 = note_whole
@@ -94,6 +100,7 @@ u = toggle_pick_up
 D = toggle_brush_down
 U = toggle_brush_up
 t = edit_beat_text
+L = edit_lyrics
 T = toggle_tapping
 < = toggle_fade_in
 w = toggle_whammy

@@ -273,3 +273,13 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     "Vocal ALEX" showed "Vocal SAMIR"). Each track now reads its first staff's bar; a
     missing entry is an empty bar so later bars stay in place. The second staff itself is
     not read yet. Test `a_track_with_two_staves_does_not_shift_the_tracks_after_it`.
+42. Lyrics and chord diagrams (`src/model/beat.rs`, `src/io/gpif/bars.rs`,
+    `src/io/gpif_import/beats.rs`, `src/io/gpif_export/beats.rs`,
+    `src/io/gpif_export/mod.rs`, 2026-11-06): `Beat` gains `lyrics` (GP6/GP7's
+    `<Lyrics><Line>..</Line>..</Lyrics>` on a beat, one `<Line>` per lyric line; trailing
+    empty lines are dropped) and the GPIF writer now writes it the same way. The importer
+    makes the first track with beat lyrics the lyric track. Tests in
+    `gpif_import/lyrics_tests.rs`. The writer also
+    writes each track's chord diagrams as a `DiagramCollection` property and each beat's
+    diagram id as `<Chord>`, which the importer already read; diagrams used to be dropped
+    on save. Tests cover both through a GP7 round trip.

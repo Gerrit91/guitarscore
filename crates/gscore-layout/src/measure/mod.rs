@@ -547,6 +547,21 @@ impl MeasureLayout {
             .filter_map(|(index, column)| column.text.as_deref().map(|text| (index, text)))
     }
 
+    /// The chord diagrams written over columns: column index and diagram.
+    pub(crate) fn chord_diagrams(
+        &self,
+    ) -> impl Iterator<Item = (usize, &gscore_model::ChordDiagram)> {
+        self.columns
+            .iter()
+            .enumerate()
+            .filter_map(|(index, column)| column.chord.as_ref().map(|chord| (index, chord)))
+    }
+
+    /// Whether any column carries a chord diagram.
+    pub(crate) fn has_chord_diagram(&self) -> bool {
+        self.columns.iter().any(|column| column.chord.is_some())
+    }
+
     /// Whether any column carries beat text.
     pub(crate) fn has_beat_text(&self) -> bool {
         self.columns.iter().any(|column| column.text.is_some())

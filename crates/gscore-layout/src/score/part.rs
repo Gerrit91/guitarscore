@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use gscore_model::{Song, TrackIndex, TrackView};
+use gscore_model::{LyricSyllable, Song, TrackIndex, TrackView};
 
 use super::NAME_SIZE;
 use crate::marks::MeasureMarks;
@@ -23,6 +23,8 @@ pub(super) struct Part<'a> {
     pub(super) show_slash: bool,
     pub(super) measures: Vec<Arc<MeasureLayout>>,
     pub(super) marks: Vec<MeasureMarks>,
+    /// The lyric syllables of each measure, in measure order.
+    pub(super) lyrics: Vec<Vec<LyricSyllable>>,
     /// From the top staff's top line to the tab's at the least (0 without notation): the
     /// gap between the staves grows in a system whose low notes or dynamics need it.
     tab_offset: f32,
@@ -31,6 +33,13 @@ pub(super) struct Part<'a> {
 /// Room between the lowest note of the notation staff and the tab's top line, for what
 /// is written just above the tab (bends, the tab's own marks).
 const NOTES_ABOVE_TAB: f32 = 2.0;
+/// Lyrics: the gap between the ink above and the first line's text, the distance between
+/// two lines, and how far below its line's top a syllable's baseline is.
+const LYRIC_GAP: f32 = 0.4;
+const LYRIC_LINE: f32 = 1.45;
+const LYRIC_BASELINE: f32 = 1.1;
+/// Between the lyrics and the tab below them (room for the tab's high fret numbers).
+const LYRICS_ABOVE_TAB: f32 = 1.2;
 
 /// The slash staff's height: one line in the middle of a five-line staff's room, so its
 /// slashes, stems and rests sit as on a notation staff.
@@ -71,6 +80,12 @@ impl<'a> Part<'a> {
             slash,
         };
         let mut measures = Vec::with_capacity(view.measures().len());
+        let mut lyrics: Vec<Vec<LyricSyllable>> = vec![Vec::new(); view.measures().len()];
+        for syllable in song.lyric_syllables(track) {
+            if let Some(slot) = lyrics.get_mut(syllable.measure.get()) {
+                slot.push(syllable);
+            }
+        }
         let mut previous_signature = None;
         let mut previous_key = None;
         let mut previous_clef = None;
@@ -121,6 +136,7 @@ impl<'a> Part<'a> {
             show_slash: slash,
             measures,
             marks: Vec::new(),
+            lyrics,
             tab_offset,
         })
     }
@@ -153,7 +169,7 @@ impl<'a> Part<'a> {
         let notation_height = notation::staff().height();
         let gap = self.tab_offset - notation_height;
         let layouts = self.measures.get(measures.clone()).unwrap_or_default();
-        let marks = self.marks.get(measures).unwrap_or_default();
+        let marks = self.marks.get(measures.clone()).unwrap_or_default();
         let needed = layouts
             .iter()
             .enumerate()
@@ -166,18 +182,121 @@ impl<'a> Part<'a> {
                 notes.max(dynamics)
             })
             .fold(gap, f32::max);
+        // Lyrics sit between the notation and the tab, below the notes and dynamics.
+        let lines = self.lyric_lines(measures.clone());
+        let needed = if lines == 0 {
+            needed
+        } else {
+            let lyrics = self.ink_below_notation(measures)
+                + LYRIC_GAP
+                + LYRIC_LINE * lines as f32
+                + LYRICS_ABOVE_TAB;
+            needed.max(lyrics)
+        };
         slash + notation_height + needed
     }
 
-    /// From the top staff's top line to the lowest staff's bottom line, in a system of
-    /// `measures`.
-    pub(super) fn staves_height(&self, measures: std::ops::Range<usize>) -> f32 {
+    /// Whether the lyrics go between the notation and the tab (both shown), not under the
+    /// lowest staff.
+    fn lyrics_between_staves(&self) -> bool {
+        self.ctx.notation.is_some() && self.show_tab
+    }
+
+    /// How far the notes and dynamics of `measures` reach below the notation staff.
+    fn ink_below_notation(&self, measures: std::ops::Range<usize>) -> f32 {
+        let layouts = self.measures.get(measures.clone()).unwrap_or_default();
+        let marks = self.marks.get(measures).unwrap_or_default();
+        layouts
+            .iter()
+            .enumerate()
+            .map(|(index, layout)| {
+                // The depth is a dynamic's baseline: its letters hang below it.
+                const DYNAMIC_DESCENT: f32 = 1.0;
+                let dynamics = marks.get(index).map_or(0.0, |marks| {
+                    crate::marks::dynamics_depth(layout, marks, &self.ctx)
+                });
+                let dynamics = if dynamics > 0.0 {
+                    dynamics + DYNAMIC_DESCENT
+                } else {
+                    0.0
+                };
+                layout.notation_reach().1.max(dynamics)
+            })
+            .fold(0.0, f32::max)
+    }
+
+    /// The baseline of lyric line `line` in a system of `measures`, below its top staff's
+    /// top line: under the notation (above the tab) when both are shown, else under the
+    /// lowest staff.
+    pub(super) fn lyric_baseline(&self, measures: std::ops::Range<usize>, line: u8) -> f32 {
+        let start = if self.lyrics_between_staves() {
+            self.below_slash(measures.clone())
+                + notation::staff().height()
+                + self.ink_below_notation(measures)
+        } else {
+            self.lowest_staff_bottom(measures.clone()) + self.ink_below_lowest(measures)
+        };
+        start + LYRIC_GAP + LYRIC_BASELINE + LYRIC_LINE * f32::from(line)
+    }
+
+    /// From the top staff's top line to the lowest staff's bottom line, without lyrics.
+    fn lowest_staff_bottom(&self, measures: std::ops::Range<usize>) -> f32 {
         if self.show_tab {
             self.tab_offset(measures) + self.ctx.staff.height()
         } else if self.ctx.notation.is_some() {
             self.below_slash(measures) + notation::staff().height()
         } else {
             SLASH_HEIGHT
+        }
+    }
+
+    /// How far the ink under the lowest staff reaches below it, when the lyrics go there.
+    fn ink_below_lowest(&self, measures: std::ops::Range<usize>) -> f32 {
+        if !self.show_tab {
+            // Notation only: the notes and dynamics under it.
+            return if self.ctx.notation.is_some() {
+                self.ink_below_notation(measures)
+            } else {
+                0.0
+            };
+        }
+        let layouts = self.measures.get(measures.clone()).unwrap_or_default();
+        let marks = self.marks.get(measures).unwrap_or_default();
+        let empty = MeasureMarks::default();
+        layouts
+            .iter()
+            .enumerate()
+            .map(|(index, layout)| {
+                crate::marks::below_tab_depth(
+                    layout,
+                    marks.get(index).unwrap_or(&empty),
+                    self.ctx.notation.is_some(),
+                )
+            })
+            .fold(0.0, f32::max)
+    }
+
+    /// The number of lyric lines in `measures` (up to the last one used).
+    fn lyric_lines(&self, measures: std::ops::Range<usize>) -> usize {
+        self.lyrics
+            .get(measures)
+            .unwrap_or_default()
+            .iter()
+            .flatten()
+            .map(|syllable| usize::from(syllable.line).saturating_add(1))
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// From the top staff's top line to the lowest staff's bottom line, in a system of
+    /// `measures`, with the lyrics under it when they go there.
+    pub(super) fn staves_height(&self, measures: std::ops::Range<usize>) -> f32 {
+        let staves = self.lowest_staff_bottom(measures.clone());
+        let lines = self.lyric_lines(measures.clone());
+        if lines == 0 || self.lyrics_between_staves() {
+            staves
+        } else {
+            staves + self.ink_below_lowest(measures) + LYRIC_GAP + LYRIC_LINE * lines as f32
         }
     }
 

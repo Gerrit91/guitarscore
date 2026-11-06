@@ -19,6 +19,12 @@ has the overview.
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut / paste |
 | Space | Play / pause |
 | Ctrl+S | Save |
+| Ctrl+Shift+S | Save As |
+| Ctrl+N / Ctrl+O | New song / open a file |
+| Ctrl+, | Settings |
+| Ctrl+Q | Quit (asks about unsaved changes) |
+| Shift+H | History |
+| Shift+L | Lyrics |
 | F11 | Full screen |
 
 Change any key in Settings → Editor. The keymap can also live in a text file
@@ -61,7 +67,29 @@ The metronome and the count-in are switched in the toolbar; Settings › Metrono
 click's volume and sound, the count-in's length (1 to 4 bars) and whether a loop is counted
 in again each time it starts over. The built-in synthesizer plays its own click; a MIDI
 output gets General MIDI's metronome notes. Play with a selection plays it; with Loop on,
-it repeats the selected bars.
+it repeats the selected bars. Selecting more than one beat turns Loop on; click Loop to
+play on past the selection instead.
+
+The speed dropdown in the transport slows playback to 50-90 % or speeds it to 110-120 % of
+the written tempo. The gauge button left of it is the speed trainer: with Loop on, it
+raises the speed by a chosen step every few passes, up to 100, 110 or 120 %.
+Previous and next bar during a count-in count in again at the new bar.
+
+File › Export › Audio (WAV) renders the song with the chosen SoundFont (16-bit stereo,
+44.1 kHz); `gscore-cli wav song.gp -o song.wav --soundfont FluidR3_GM.sf2` does the same
+without the window.
+
+The Staff tiles hold Beat text and Lyrics (Shift+L): five lines of syllables, written
+under the notation staff (above the tab when both are shown). Spaces separate syllables,
+Tab skips a beat, a `+` puts two words on one beat (`in+the`) and `[text]` is hidden.
+What is typed shows in the score at once, as one undo step per line; Cancel takes it back.
+The L.H. and R.H. tiles open a small fingering window that stays open and always
+shows the cursor note's finger: move through the notes with the arrows and press a
+finger's key (`0`-`4` and `t` for the left hand, `p i m a c` for the right; Backspace
+removes it) or click it. While the window is open those keys set fingers, not frets.
+The technique matrix holds the chord diagram (`Ch`): a dialog sets the name, base fret
+and a fret or `x` per string. Both are drawn in the score and can be edited or removed
+again.
 
 ## Command line
 

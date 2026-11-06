@@ -256,6 +256,17 @@ pub fn one_beat_with_raw_notes(notes: &[(i8, i16)]) -> Result<Song, ModelError> 
     Song::from_inner(inner)
 }
 
+/// [`one_beat_with_raw_notes`] on a voice track, as Guitar Pro 7 writes one: its notes are
+/// `(string, fret)` on a stand-in E-standard tuning, the frets possibly negative.
+pub fn voice_with_raw_notes(notes: &[(i8, i16)]) -> Result<Song, ModelError> {
+    let song = one_beat_with_raw_notes(notes)?;
+    let mut inner = song.inner().clone();
+    for track in &mut inner.tracks {
+        track.instrument_type = Some("voice".to_owned());
+    }
+    Song::from_inner(inner)
+}
+
 /// A bend for [`song_with_notes`]: how far it reaches and whether it releases back down.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TestBend {
@@ -433,6 +444,40 @@ pub fn song_with_repeats(
             header.repeat_close = end;
         }
         header.repeat_alternative |= endings;
+    }
+    Song::from_inner(inner)
+}
+
+/// A 4/4 guitar song of `count` measures with navigation signs at the given measures.
+pub fn song_with_directions(
+    count: usize,
+    marks: &[(usize, crate::marks::Direction)],
+) -> Result<Song, ModelError> {
+    let song = song(&[GUITAR_6], count)?;
+    let mut inner = song.inner().clone();
+    for &(measure, direction) in marks {
+        let header = inner
+            .measure_headers
+            .get_mut(measure)
+            .ok_or_else(|| ModelError::Invalid(format!("no measure {measure} for a direction")))?;
+        header.direction = Some(direction.to_gp());
+    }
+    Song::from_inner(inner)
+}
+
+/// A 4/4 guitar song of `count` measures with fermatas at the given measures.
+pub fn song_with_fermatas(
+    count: usize,
+    marks: &[(usize, crate::marks::Fermata)],
+) -> Result<Song, ModelError> {
+    let song = song(&[GUITAR_6], count)?;
+    let mut inner = song.inner().clone();
+    for &(measure, fermata) in marks {
+        let header = inner
+            .measure_headers
+            .get_mut(measure)
+            .ok_or_else(|| ModelError::Invalid(format!("no measure {measure} for a fermata")))?;
+        header.fermatas = vec![(fermata.to_gp().to_owned(), "0/1".to_owned())];
     }
     Song::from_inner(inner)
 }

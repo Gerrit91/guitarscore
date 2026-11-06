@@ -568,6 +568,32 @@ fn chord_diagrams_are_read_and_drawn() {
         })
         .collect();
     assert!(texts.contains(&"Gb7/#11"), "{texts:?}");
+    // The diagram has its own row: its grid ends above the beat text of the same system
+    // ("Octaves"), instead of running into it.
+    let baseline = |wanted: &str| {
+        layout
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                DrawOp::Text { text, at, .. } if text == wanted => Some(at.y),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let grid_bottom = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            // The dots are the round polygons (arrowheads have three corners).
+            DrawOp::Polygon { points, .. } if points.len() > 8 => {
+                points.iter().map(|p| p.y).reduce(f32::max)
+            }
+            _ => None,
+        })
+        .reduce(f32::max)
+        .expect("the diagram's dots");
+    assert!(baseline("Gb7/#11") < grid_bottom);
+    assert!(grid_bottom + 1.0 < baseline("Octaves") - 1.0);
 }
 
 /// The staff file's repeats, alternative endings and key change are read and drawn.
@@ -646,4 +672,28 @@ fn time_signature_changes_are_laid_out() {
         .collect();
     assert!(digits.contains(&3), "the numerator: {digits:?}");
     assert!(digits.contains(&8), "the denominator: {digits:?}");
+}
+
+/// A voice track has standard notation: Guitar Pro writes its notes on stand-in strings,
+/// negative frets included, which give the pitches.
+#[test]
+fn a_voice_track_is_written_in_standard_notation() {
+    use gscore_layout::Glyph;
+    // A whole note on the stand-in low E, 7 below it (A1), and one 5 above (A2).
+    let song = testing::voice_with_raw_notes(&[(6, -7), (5, 0)]).unwrap();
+    let layout = common::layout(&song, 0);
+    let heads = layout
+        .ops
+        .iter()
+        .filter(|op| {
+            matches!(
+                op,
+                DrawOp::Glyph {
+                    glyph: Glyph::NoteheadWhole,
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(heads, 2, "both notes, the negative fret too");
 }

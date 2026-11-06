@@ -3,14 +3,13 @@
 //! Kept apart from the column layout in the parent module: this file only positions and
 //! paints, while `measure/mod.rs` decides the widths.
 
-use gscore_model::Dynamic;
+use gscore_model::{BeatIndex, Dynamic};
 
 use super::effects::LANE_CLEARANCE;
 use super::{Column, DEAD_SLAP_HALF, Item, MEASURE_NUMBER_RISE, MeasureLayout, Tops};
 
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
-use crate::glyph::Glyph;
 use crate::notation::{self, BeamPlan, Chord, Head, NotationItem};
 use crate::ornaments::{self, Fret};
 use crate::place::{BeatPlace, MeasurePlace};
@@ -160,6 +159,22 @@ impl MeasureLayout {
         (xs, cursor)
     }
 
+    /// Where the first voice's beats are, for lyrics: `(beat, x)`.
+    pub(crate) fn lyric_columns(&self, x: f32, stretch: f32) -> Vec<(BeatIndex, f32)> {
+        let (xs, _) = self.column_positions(x, stretch);
+        self.columns
+            .iter()
+            .zip(xs)
+            .flat_map(|(column, x)| {
+                column
+                    .beats
+                    .iter()
+                    .filter(|(voice, _)| voice.get() == 0)
+                    .map(move |&(_, beat)| (beat, x))
+            })
+            .collect()
+    }
+
     /// Where the measure's beats are, for the cursor and clicks.
     pub(crate) fn place(&self, x: f32, stretch: f32, system: usize) -> MeasurePlace {
         let (xs, right) = self.column_positions(x, stretch);
@@ -306,13 +321,6 @@ impl MeasureLayout {
                 ctx,
                 ops,
             );
-        }
-        // Chord diagrams sit above the top staff, at their beat's column.
-        for (index, column) in self.columns.iter().enumerate() {
-            let (Some(chord), Some(&at)) = (&column.chord, xs.get(index)) else {
-                continue;
-            };
-            draw_chord_diagram(at, tops.top_line(), chord, ctx, ops);
         }
         // The slash-notation staff: the same rhythm, written as slashes.
         if let Some(slash_top) = tops.slash {
@@ -638,103 +646,6 @@ impl MeasureLayout {
 }
 
 /// A large cross across a staff for a dead slapped beat, centered on `x`.
-/// A chord diagram above the staff: its name, a small fretboard grid and a dot per
-/// fretted string.
-fn draw_chord_diagram(
-    x: f32,
-    top: f32,
-    chord: &gscore_model::ChordDiagram,
-    ctx: &Context<'_>,
-    ops: &mut Vec<DrawOp>,
-) {
-    let strings = usize::from(chord.string_count.max(1));
-    let frets = usize::from(chord.fret_count.max(1));
-    let width = (strings.saturating_sub(1)) as f32 * 0.9;
-    let height = frets as f32 * 0.8;
-    let left = x - width / 2.0;
-    // Above the staff and clear of the measure number at the staff's top.
-    let name_y = top - 7.0;
-    ops.push(DrawOp::Text {
-        text: chord.name.clone(),
-        at: Point::new(x, name_y),
-        size: 0.9,
-        font: TextFont::Regular,
-        anchor: TextAnchor::Middle,
-        color: ColorToken::Annotation,
-    });
-    let grid_top = top - 6.0;
-    // Strings (vertical) and frets (horizontal).
-    for string in 0..strings {
-        let sx = left + string as f32 * 0.9;
-        ops.push(DrawOp::Line {
-            from: Point::new(sx, grid_top),
-            to: Point::new(sx, grid_top + height),
-            thickness: 0.06,
-            color: ColorToken::Annotation,
-        });
-    }
-    for fret in 0..=frets {
-        let fy = grid_top + fret as f32 * 0.8;
-        ops.push(DrawOp::Line {
-            from: Point::new(left, fy),
-            to: Point::new(left + width, fy),
-            thickness: if fret == 0 && chord.base_fret == 0 {
-                0.18
-            } else {
-                0.06
-            },
-            color: ColorToken::Annotation,
-        });
-    }
-    if chord.base_fret > 0 {
-        ops.push(DrawOp::Text {
-            text: chord.base_fret.to_string(),
-            at: Point::new(left - 0.6, grid_top),
-            size: 0.8,
-            font: TextFont::Regular,
-            anchor: TextAnchor::End,
-            color: ColorToken::Annotation,
-        });
-    }
-    for &(string, fret) in &chord.frets {
-        let index = usize::from(string);
-        if index >= strings {
-            continue;
-        }
-        let sx = left + index as f32 * 0.9;
-        if fret < 0 {
-            ops.push(DrawOp::Text {
-                text: "x".to_owned(),
-                at: Point::new(sx, grid_top - 0.2),
-                size: 0.8,
-                font: TextFont::Regular,
-                anchor: TextAnchor::Middle,
-                color: ColorToken::Annotation,
-            });
-        } else if fret == 0 {
-            ops.push(DrawOp::Glyph {
-                glyph: Glyph::AugmentationDot,
-                at: Point::new(sx - 0.2, grid_top - 0.1),
-                scale: 0.5,
-                color: ColorToken::Annotation,
-            });
-        } else {
-            let row = i32::from(fret).saturating_sub(i32::from(chord.base_fret.max(1)));
-            if row < 0 || row >= i32::try_from(frets).unwrap_or(0) {
-                continue;
-            }
-            let fy = grid_top + (row as f32 + 0.5) * 0.8;
-            ops.push(DrawOp::Glyph {
-                glyph: Glyph::AugmentationDot,
-                at: Point::new(sx - 0.2, fy),
-                scale: 0.5,
-                color: ColorToken::Annotation,
-            });
-        }
-    }
-    let _ = ctx;
-}
-
 /// An octave sign over or under the tab staff: "8va", "8vb", "15ma" or "15mb" and a line
 /// to the end of the column's space.
 fn draw_octave(

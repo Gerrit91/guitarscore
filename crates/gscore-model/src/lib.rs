@@ -18,6 +18,7 @@
 
 #![warn(clippy::arithmetic_side_effects)]
 
+mod chord_name;
 mod compare;
 mod duration;
 mod dynamics;
@@ -28,6 +29,7 @@ mod grace;
 mod instrument;
 pub mod interop;
 mod issues;
+mod lyrics;
 mod marks;
 mod metadata;
 mod page;
@@ -47,6 +49,7 @@ mod test_support;
 #[cfg(test)]
 mod tests;
 
+pub use chord_name::chord_name;
 pub use compare::{Difference, differences, settings_differences};
 pub use duration::{Duration, NoteValue, TimeSignature};
 pub use dynamics::Dynamic;
@@ -60,7 +63,8 @@ pub use error::ModelError;
 pub use grace::{Grace, GraceSpeed};
 pub use instrument::{InstrumentKind, InstrumentSymbol, program_name};
 pub use issues::{Issue, IssueKind};
-pub use marks::{Feel, Fermata};
+pub use lyrics::{LYRIC_LINES, LyricLine, LyricSyllable, MAX_LYRIC_LINE_CHARS};
+pub use marks::{Direction, Feel, Fermata};
 pub use metadata::{
     MAX_SONG_NOTES_CHARS, MAX_SONG_TEXT_CHARS, MAX_TEMPO, SONG_TEXT_FIELDS, SongInfo, SongTextField,
 };

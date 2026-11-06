@@ -3,21 +3,24 @@
 //! click to every note or beat in the selection as commands.
 
 mod dialogs;
+pub(in crate::app) use dialogs::finger_key;
 mod editors;
 
 use egui::vec2;
 use gscore_edit::{ActionId, Command};
 use gscore_model::{
     AccentKind, BeatEffect, BeatView, BendKind, BendPoint, BendShape, Fade, Finger, Grace, Hand,
-    Harmonic, HarmonicKind, Legato, NoteEffect, NoteView, SlapKind, SlideKind, Stroke,
+    Harmonic, HarmonicKind, Legato, NoteEffect, NoteView, OctaveSign, SlapKind, SlideKind, Stroke,
     StrokeDirection, StrokeKind, TremoloSpeed, Trill, TrillSpeed, Vibrato, WhammyShape,
 };
 
 use super::beat_text_editor::BeatTextEditor;
+use super::chord_editor::ChordEditor;
 use super::edit_effects::dialogs::{TremoloEditor, TrillEditor};
 use super::edit_palette::PaletteSnapshot;
 use super::grace_editor::GraceEditor;
 use super::harmonic_editor::HarmonicEditor;
+use super::lyrics_editor::LyricsEditor;
 use super::shape_editor::ShapeEditor;
 use super::style;
 use super::tiles::{self, Face};
@@ -86,6 +89,7 @@ pub(super) struct BeatState {
     whammy: Option<WhammyShape>,
     legato: Option<Legato>,
     vibrato: Option<Vibrato>,
+    octave: Option<OctaveSign>,
 }
 
 impl BeatState {
@@ -101,6 +105,7 @@ impl BeatState {
             whammy: beat.whammy_shape(),
             legato: beat.legato(),
             vibrato: beat.vibrato(),
+            octave: beat.octave(),
         }
     }
 }
@@ -115,10 +120,27 @@ pub(super) struct EffectsState {
     trill: Option<TrillEditor>,
     tremolo: Option<TremoloEditor>,
     beat_text: Option<BeatTextEditor>,
+    chord: Option<ChordEditor>,
+    lyrics: Option<LyricsEditor>,
     finger_left: Option<dialogs::FingerEditor>,
     finger_right: Option<dialogs::FingerEditor>,
     /// The brush or arpeggio dialog, while it is open.
     stroke: Option<dialogs::StrokeEditor>,
+    /// What the lyrics dialog asks of the score this frame.
+    lyrics_preview: Option<LyricsPreview>,
+    /// A finger chosen with a key while a fingering window is open (`Some(None)`: none).
+    finger_key: Option<Option<Finger>>,
+}
+
+/// What the lyrics dialog asks of the score: it shows what is typed at once.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum LyricsPreview {
+    /// Show this line as typed (merged into the line's undo step).
+    Show(Command),
+    /// The dialog closed with Apply: the next edit is a new undo step.
+    Done,
+    /// The dialog was cancelled: undo back to this depth.
+    Revert(usize),
 }
 
 /// What an effect tile (or its key) does.
@@ -148,12 +170,16 @@ pub(super) enum Fx {
     FadeIn,
     FadeOut,
     VolumeSwell,
+    /// An octave sign over or under the beat.
+    Octave(OctaveSign),
     DeadSlapped,
     Rasgueado,
     LeftHandTap,
     StringNumber,
     FingerLeft,
     FingerRight,
+    /// The chord diagram editor is beat-level and opens a dialog.
+    ChordDiagram,
     Whammy,
     Legato,
     BeatVibrato(Vibrato),
@@ -435,6 +461,11 @@ const BEAT_ITEMS: &[FxItem] = &[
     ),
     item(ActionId::ToggleDeadSlapped, Face::DeadSlap, Fx::DeadSlapped),
     item(
+        ActionId::EditChordDiagram,
+        Face::ChordGrid,
+        Fx::ChordDiagram,
+    ),
+    item(
         ActionId::ToggleRasgueado,
         Face::Word("rasg."),
         Fx::Rasgueado,
@@ -462,6 +493,52 @@ const BEAT_ITEMS: &[FxItem] = &[
     ),
 ];
 
+/// The octave signs: they change where notes are written, so they sit in Note input.
+const OCTAVE_ITEMS: &[FxItem] = &[
+    item(
+        ActionId::ToggleOttava,
+        Face::Octave {
+            number: "8",
+            suffix: "va",
+        },
+        Fx::Octave(OctaveSign::Ottava),
+    ),
+    item(
+        ActionId::ToggleOttavaBassa,
+        Face::Octave {
+            number: "8",
+            suffix: "vb",
+        },
+        Fx::Octave(OctaveSign::OttavaBassa),
+    ),
+    item(
+        ActionId::ToggleQuindicesima,
+        Face::Octave {
+            number: "15",
+            suffix: "ma",
+        },
+        Fx::Octave(OctaveSign::Quindicesima),
+    ),
+    item(
+        ActionId::ToggleQuindicesimaBassa,
+        Face::Octave {
+            number: "15",
+            suffix: "mb",
+        },
+        Fx::Octave(OctaveSign::QuindicesimaBassa),
+    ),
+];
+
+/// The octave sign tiles, at the end of Note input: 8va, 8vb, 15ma and 15mb.
+pub(super) fn octave_tiles(
+    ui: &mut egui::Ui,
+    snapshot: &PaletteSnapshot,
+    hint: &dyn Fn(ActionId) -> String,
+    commands: &mut Vec<Command>,
+) {
+    effect_tiles(ui, OCTAVE_ITEMS, snapshot, hint, commands);
+}
+
 /// The fades: dynamics, so they sit in the dynamics section of the palette.
 const FADE_ITEMS: &[FxItem] = &[
     item(ActionId::ToggleFadeIn, Face::Hairpin, Fx::FadeIn),
@@ -480,21 +557,32 @@ pub(super) fn fade_tiles(
     hint: &dyn Fn(ActionId) -> String,
     commands: &mut Vec<Command>,
 ) {
-    let enabled = !snapshot.beats.is_empty();
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(2.0, 3.0);
-        for item in FADE_ITEMS {
-            let label = item.action.label();
-            let mut tip = format!("{label}{}", hint(item.action));
-            if !enabled {
-                tip.push_str("\nPut the cursor on a beat first.");
-            }
-            let on = is_on_for_targets(item.fx, snapshot);
-            if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
-                commands.extend(fx_commands(item.fx, snapshot));
-            }
-        }
+        effect_tiles(ui, FADE_ITEMS, snapshot, hint, commands);
     });
+}
+
+/// Beat effect tiles for `items`, in the current row.
+fn effect_tiles(
+    ui: &mut egui::Ui,
+    items: &[FxItem],
+    snapshot: &PaletteSnapshot,
+    hint: &dyn Fn(ActionId) -> String,
+    commands: &mut Vec<Command>,
+) {
+    let enabled = !snapshot.beats.is_empty();
+    for item in items {
+        let label = item.action.label();
+        let mut tip = format!("{label}{}", hint(item.action));
+        if !enabled {
+            tip.push_str("\nPut the cursor on a beat first.");
+        }
+        let on = is_on_for_targets(item.fx, snapshot);
+        if tiles::tile(ui, item.face, on, enabled, label, &tip).clicked() {
+            commands.extend(fx_commands(item.fx, snapshot));
+        }
+    }
 }
 
 /// Every effect tile's face, for the test that they fit their tiles.
@@ -507,6 +595,7 @@ pub(super) fn faces() -> Vec<Face<'static>> {
         HARMONIC_ITEMS,
         BEAT_ITEMS,
         FADE_ITEMS,
+        OCTAVE_ITEMS,
     ]
     .into_iter()
     .flatten()
@@ -523,6 +612,7 @@ pub(super) fn fx_item(action: ActionId) -> Option<&'static FxItem> {
         SLIDE_ITEMS,
         PITCH_ITEMS,
         FADE_ITEMS,
+        OCTAVE_ITEMS,
         BEAT_ITEMS,
     ]
     .into_iter()
@@ -549,6 +639,7 @@ fn no_beat() -> BeatState {
         whammy: None,
         legato: None,
         vibrato: None,
+        octave: None,
     }
 }
 
@@ -586,11 +677,13 @@ fn is_on(fx: Fx, note: Option<&NoteState>, beat: &BeatState) -> bool {
         Fx::FadeIn => beat.fade == Some(Fade::In),
         Fx::FadeOut => beat.fade == Some(Fade::Out),
         Fx::VolumeSwell => beat.fade == Some(Fade::Swell),
+        Fx::Octave(sign) => beat.octave == Some(sign),
         Fx::DeadSlapped => beat.dead_slapped,
         Fx::Rasgueado => beat.rasgueado,
         Fx::Whammy => beat.whammy.is_some(),
         Fx::Legato => beat.legato.is_some(),
         Fx::BeatVibrato(kind) => beat.vibrato == Some(kind),
+        Fx::ChordDiagram => false,
     }
 }
 
@@ -598,6 +691,9 @@ fn is_on(fx: Fx, note: Option<&NoteState>, beat: &BeatState) -> bool {
 /// selected beat (beat effects) has it. Then a click takes it off them all; otherwise a
 /// click puts it on them all. Without targets it is off.
 fn is_on_for_targets(fx: Fx, snapshot: &PaletteSnapshot) -> bool {
+    if fx == Fx::ChordDiagram {
+        return snapshot.chord.is_some();
+    }
     let none = no_beat();
     if fx.on_note() {
         !snapshot.target_states.is_empty()
@@ -705,6 +801,11 @@ pub(super) fn fx_commands(fx: Fx, snapshot: &PaletteSnapshot) -> Vec<Command> {
         Fx::FadeIn => apply_beat(&mut commands, beats, BeatEffect::FadeIn(!on)),
         Fx::FadeOut => apply_beat(&mut commands, beats, BeatEffect::FadeOut(!on)),
         Fx::VolumeSwell => apply_beat(&mut commands, beats, BeatEffect::VolumeSwell(!on)),
+        Fx::Octave(sign) => apply_beat(
+            &mut commands,
+            beats,
+            BeatEffect::Octave((!on).then_some(sign)),
+        ),
         Fx::Arpeggio(direction) => apply_beat(
             &mut commands,
             beats,
@@ -789,6 +890,7 @@ impl EffectsState {
                                 | Fx::Tremolo
                                 | Fx::FingerLeft
                                 | Fx::FingerRight
+                                | Fx::ChordDiagram
                         );
                     let response = if opens {
                         tiles::dialog_tile(ui, item.face, on, enabled, label, &tip)
@@ -840,6 +942,7 @@ impl EffectsState {
             Some(Fx::Tremolo) => self.open_tremolo(snapshot),
             Some(Fx::FingerLeft) => self.open_finger(snapshot, Hand::Left),
             Some(Fx::FingerRight) => self.open_finger(snapshot, Hand::Right),
+            Some(Fx::ChordDiagram) => self.open_chord(snapshot),
             Some(fx) if fx.stroke_target().is_some() => {
                 if let Some((kind, direction)) = fx.stroke_target() {
                     self.open_stroke(snapshot, kind, direction);

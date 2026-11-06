@@ -98,6 +98,10 @@ pub enum ActionId {
     TieBeat,
     /// Palette: text written above the beat (opens the beat text dialog).
     EditBeatText,
+    /// Palette: lyrics (opens the lyrics dialog).
+    EditLyrics,
+    /// Palette: chord diagram (opens the chord diagram dialog).
+    EditChordDiagram,
     /// Palette: left-hand fingering (opens the fingering dialog).
     EditLeftFinger,
     /// Palette: right-hand fingering (opens the fingering dialog).
@@ -172,6 +176,14 @@ pub enum ActionId {
     ToggleFadeOut,
     /// Palette: Volume swell (in and out again).
     ToggleVolumeSwell,
+    /// Palette: 8va (an octave higher).
+    ToggleOttava,
+    /// Palette: 8vb (an octave lower).
+    ToggleOttavaBassa,
+    /// Palette: 15ma (two octaves higher).
+    ToggleQuindicesima,
+    /// Palette: 15mb (two octaves lower).
+    ToggleQuindicesimaBassa,
     /// Palette: Whammy bar.
     ToggleWhammy,
     /// Palette: Legato (beat slur).
@@ -208,6 +220,18 @@ pub enum ActionId {
     ToggleFullscreen,
     /// Show every track of the song together, or only the cursor's track again.
     ToggleMultitrack,
+    /// Open the edit history window.
+    ShowHistory,
+    /// Start a new song.
+    NewSong,
+    /// Open a file.
+    OpenFile,
+    /// Save under another name.
+    SaveAs,
+    /// Open the settings window.
+    OpenSettings,
+    /// Quit the app (asking about unsaved changes first).
+    Quit,
 }
 
 impl ActionId {
@@ -234,6 +258,8 @@ impl ActionId {
                 | ActionId::ToggleTie
                 | ActionId::TieBeat
                 | ActionId::EditBeatText
+                | ActionId::EditLyrics
+                | ActionId::EditChordDiagram
                 | ActionId::EditLeftFinger
                 | ActionId::EditRightFinger
                 | ActionId::ToggleDeadNote
@@ -271,6 +297,10 @@ impl ActionId {
                 | ActionId::ToggleFadeIn
                 | ActionId::ToggleFadeOut
                 | ActionId::ToggleVolumeSwell
+                | ActionId::ToggleOttava
+                | ActionId::ToggleOttavaBassa
+                | ActionId::ToggleQuindicesima
+                | ActionId::ToggleQuindicesimaBassa
                 | ActionId::ToggleWhammy
                 | ActionId::ToggleLegato
                 | ActionId::ToggleBeatVibrato
@@ -372,6 +402,12 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::ToggleTie, "toggle_tie", "Tie"),
     info(ActionId::TieBeat, "tie_beat", "Tie beat"),
     info(ActionId::EditBeatText, "edit_beat_text", "Beat text…"),
+    info(ActionId::EditLyrics, "edit_lyrics", "Lyrics…"),
+    info(
+        ActionId::EditChordDiagram,
+        "edit_chord_diagram",
+        "Chord diagram…",
+    ),
     info(
         ActionId::EditLeftFinger,
         "edit_left_finger",
@@ -493,6 +529,22 @@ pub const ACTIONS: &[ActionInfo] = &[
         "toggle_volume_swell",
         "Volume swell",
     ),
+    info(ActionId::ToggleOttava, "toggle_8va", "8va (an octave up)"),
+    info(
+        ActionId::ToggleOttavaBassa,
+        "toggle_8vb",
+        "8vb (an octave down)",
+    ),
+    info(
+        ActionId::ToggleQuindicesima,
+        "toggle_15ma",
+        "15ma (two octaves up)",
+    ),
+    info(
+        ActionId::ToggleQuindicesimaBassa,
+        "toggle_15mb",
+        "15mb (two octaves down)",
+    ),
     info(ActionId::ToggleWhammy, "toggle_whammy", "Whammy bar"),
     info(
         ActionId::ToggleLegato,
@@ -555,6 +607,12 @@ pub const ACTIONS: &[ActionInfo] = &[
         "toggle_multitrack",
         "All tracks",
     ),
+    info(ActionId::ShowHistory, "show_history", "History…"),
+    info(ActionId::NewSong, "new_song", "New"),
+    info(ActionId::OpenFile, "open_file", "Open…"),
+    info(ActionId::SaveAs, "save_as", "Save As…"),
+    info(ActionId::OpenSettings, "open_settings", "Settings…"),
+    info(ActionId::Quit, "quit", "Quit"),
 ];
 
 const fn info(action: ActionId, id: &'static str, label: &'static str) -> ActionInfo {
@@ -630,6 +688,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 98, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 110, "one entry per ActionId variant");
     }
 }

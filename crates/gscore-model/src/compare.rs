@@ -4,7 +4,7 @@
 //! tuning), measure time signatures, and every beat (kind, length, beat effects) and note
 //! (string, fret, kind, effects). Placeholder beats and empty voices are ignored, because
 //! formats differ in how many voice slots they store. Not compared: data the model has no
-//! accessors for (lyrics, mix tables, grace notes, fingerings, ...).
+//! accessors for (mix tables, grace notes, ...).
 
 use std::fmt;
 
@@ -69,6 +69,7 @@ pub fn differences(before: &Song, after: &Song) -> Vec<Difference> {
         after.measure_count(),
     );
     diff.check(song, "tracks", before.track_count(), after.track_count());
+    diff.check(song, "lyrics", before.lyric_lines(), after.lyric_lines());
     for (a, b) in before.tracks().zip(after.tracks()) {
         compare_track(&mut diff, &a, &b);
     }

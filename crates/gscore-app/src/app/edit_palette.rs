@@ -9,13 +9,13 @@ use super::shape_editor::Outcome;
 use super::tuplet_dialog::TupletDialog;
 use gscore_edit::{ActionId, Command, Cursor, Selection};
 use gscore_model::{
-    BeatIndex, BeatPosition, Feel, Fermata, Hand, MeasureIndex, NoteValue, Repeat, Song,
+    BeatIndex, BeatPosition, Feel, Fermata, Finger, Hand, MeasureIndex, NoteValue, Repeat, Song,
     SystemBreak, VoiceIndex,
 };
 
 use super::GuitarScoreApp;
 use super::edit_dynamics::{self, DynamicsSnapshot};
-use super::edit_effects::{BeatState, EffectsState, NoteState};
+use super::edit_effects::{BeatState, EffectsState, LyricsPreview, NoteState};
 use super::edit_staff::{self, StaffState};
 use super::style;
 use super::tiles::{self, Face};
@@ -65,10 +65,19 @@ impl EditPaletteState {
         NoteValue::new(self.value, self.dots, self.tuplet).ok()
     }
 
-    /// Whether one of the palette's effect dialogs is open (the bend, whammy, harmonic,
-    /// grace, trill, tremolo, beat text or fingering editor).
-    pub(super) fn is_editing(&self) -> bool {
-        self.effects.is_editing()
+    /// The hand whose fingering window is open, if one is.
+    pub(super) fn finger_hand(&self) -> Option<Hand> {
+        self.effects.finger_hand()
+    }
+
+    /// A finger chosen with a key while a fingering window is open.
+    pub(super) fn choose_finger(&mut self, finger: Option<Finger>) {
+        self.effects.choose_finger(finger);
+    }
+
+    /// Whether an open editor takes the keys (the fingering windows do not).
+    pub(super) fn takes_keys(&self) -> bool {
+        self.effects.takes_keys()
     }
 }
 
@@ -115,6 +124,18 @@ pub(super) struct PaletteSnapshot {
     pub(super) beat_tie: Option<bool>,
     /// The cursor beat's text, if it has one.
     pub(super) beat_text: String,
+    /// The cursor beat's chord diagram, if it has one.
+    pub(super) chord: Option<gscore_model::ChordDiagram>,
+    /// The track's string count, and the cursor beat's frets as a chord shape (lowest
+    /// string first, -1 where it has no note), for the chord diagram dialog.
+    pub(super) string_count: usize,
+    pub(super) beat_shape: Vec<i8>,
+    /// The chord the cursor beat's notes make ("Am"), if they make one.
+    pub(super) beat_chord: Option<String>,
+    /// The lyrics lines of the song, for the lyrics dialog.
+    pub(super) lyric_lines: Vec<gscore_model::LyricLine>,
+    /// How many measures the song has (for the lyrics dialog's start).
+    pub(super) measure_count: usize,
     /// The cursor note's effects, and the cursor beat's.
     pub(super) note_state: Option<NoteState>,
     pub(super) beat_state: Option<BeatState>,
@@ -148,6 +169,35 @@ impl PaletteSnapshot {
             .as_ref()
             .map(|beat| beat.text().to_owned())
             .unwrap_or_default();
+        let chord = beat
+            .as_ref()
+            .and_then(gscore_model::BeatView::chord_diagram);
+        let string_count = track.map_or(6, |track| track.string_count()).max(1);
+        let mut beat_shape = vec![-1_i8; string_count];
+        if let Some(beat) = &beat {
+            for note in beat.notes() {
+                let (Ok(string), Ok(fret)) = (note.string(), note.fret()) else {
+                    continue;
+                };
+                // String 1 is the highest; a diagram starts at the lowest.
+                let index = string_count.checked_sub(usize::from(string.get()));
+                if let (Some(slot), Ok(fret)) = (
+                    index.and_then(|index| beat_shape.get_mut(index)),
+                    i8::try_from(fret.get()),
+                ) {
+                    *slot = fret;
+                }
+            }
+        }
+        let beat_chord = beat.as_ref().zip(track).and_then(|(beat, track)| {
+            let pitches: Vec<_> = beat
+                .notes()
+                .filter_map(|note| track.sounding_pitch(&note).ok())
+                .collect();
+            gscore_model::chord_name(&pitches)
+        });
+        let lyric_lines = song.lyric_lines();
+        let measure_count = song.measure_count();
         let mut note_targets = Vec::new();
         let mut target_states = Vec::new();
         let mut beat_states = Vec::new();
@@ -221,6 +271,12 @@ impl PaletteSnapshot {
                 .is_some_and(|note| note.kind() == gscore_model::NoteKind::Tie),
             beat_tie,
             beat_text,
+            chord,
+            string_count,
+            beat_shape,
+            beat_chord,
+            lyric_lines,
+            measure_count,
             note_state,
             beat_state,
             note_targets,
@@ -283,6 +339,8 @@ impl GuitarScoreApp {
                 );
                 if beat_text == Some(ActionId::EditBeatText) {
                     tab.edit_palette.effects.open_beat_text(&snapshot);
+                } else if beat_text == Some(ActionId::EditLyrics) {
+                    tab.edit_palette.effects.open_lyrics(&snapshot);
                 }
                 style::section(ui, "note_input", "Note input", |ui| {
                     note_length(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
@@ -383,6 +441,10 @@ impl GuitarScoreApp {
             commands = tie_beat_commands(&snapshot);
         } else if action == ActionId::EditBeatText {
             state.effects.open_beat_text(&snapshot);
+        } else if action == ActionId::EditLyrics {
+            state.effects.open_lyrics(&snapshot);
+        } else if action == ActionId::EditChordDiagram {
+            state.effects.open_chord(&snapshot);
         } else if action == ActionId::EditLeftFinger {
             state.effects.open_finger(&snapshot, Hand::Left);
         } else if action == ActionId::EditRightFinger {
@@ -442,6 +504,45 @@ impl GuitarScoreApp {
         );
         self.apply_commands(commands);
         self.listen_to(&trial);
+        self.show_lyrics_preview();
+    }
+
+    /// Shows the lyrics dialog's text in the score as it is typed, one undo step per line;
+    /// Cancel takes the dialog's changes back.
+    fn show_lyrics_preview(&mut self) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let Some(preview) = tab.edit_palette.effects.take_lyrics_preview() else {
+            return;
+        };
+        match preview {
+            LyricsPreview::Show(command) => {
+                let depth = tab.document.editor().undo_depth();
+                tab.edit_palette.effects.note_lyrics_undo_start(depth);
+                let closing = !tab.edit_palette.effects.lyrics_open();
+                self.apply_command(command, true);
+                if closing && let Some(tab) = self.tabs.get_mut(self.active) {
+                    tab.document.editor_mut().break_merge();
+                }
+            }
+            LyricsPreview::Done => tab.document.editor_mut().break_merge(),
+            LyricsPreview::Revert(depth) => {
+                // Only the dialog's own steps, newest first: an edit made meanwhile stays.
+                while self.tabs.get(self.active).is_some_and(|tab| {
+                    tab.document.editor().undo_depth() > depth
+                        && matches!(
+                            tab.document.editor().last_command(),
+                            Some(Command::SetLyricLine { .. })
+                        )
+                }) {
+                    self.apply_command(Command::Undo, false);
+                }
+                if let Some(tab) = self.tabs.get_mut(self.active) {
+                    tab.document.editor_mut().break_merge();
+                }
+            }
+        }
     }
 
     /// The tuplet dialog, while it is open. OK sets the palette's tuplet and the length of
@@ -867,6 +968,21 @@ fn beat_buttons(
         if tiles::tile(ui, rest, rests, true, "Rest", &tip).clicked() {
             commands.extend(rest_commands(state, snapshot));
         }
+        // A fermata holds the bar's first note: next to the rest, which it often sits on.
+        if tiles::dialog_tile(
+            ui,
+            Face::Fermata,
+            snapshot.fermata.is_some(),
+            true,
+            "Fermata",
+            "Put a fermata on this bar",
+        )
+        .clicked()
+        {
+            state
+                .staff
+                .open_dialog(edit_staff::Dialog::Fermata, snapshot);
+        }
         let tip = format!(
             "Tie the note to the previous one on its string{}",
             hint(ActionId::ToggleTie)
@@ -897,6 +1013,8 @@ fn beat_buttons(
         if tie_beat.clicked() {
             commands.extend(tie_beat_commands(snapshot));
         }
+        // Octave signs change where the notes are written: the last of Note input.
+        super::edit_effects::octave_tiles(ui, snapshot, hint, commands);
     });
     ui.add_space(2.0);
     let chosen = snapshot.cursor.voice.get();

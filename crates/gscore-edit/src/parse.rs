@@ -341,11 +341,53 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             at: position(args)?,
             text: text_arg(args, "text")?,
         }),
+        "set_lyric_line" => {
+            let text = args.required("line")?;
+            let line: u8 = text
+                .parse()
+                .map_err(|_| bad(args.command, "line", &text, "a line from 1 to 5"))?;
+            if !(1..=5).contains(&line) {
+                return Err(bad(args.command, "line", &text, "a line from 1 to 5"));
+            }
+            Ok(Command::SetLyricLine {
+                line: line.saturating_sub(1),
+                start: MeasureIndex::new(required_position(args, "measure")?),
+                text: text_arg(args, "text")?,
+            })
+        }
         "set_dead_note" => {
             let at = position(args)?;
             let string = string_arg(args)?;
             let dead = bool_arg(args, "dead")?;
             Ok(Command::SetDeadNote { at, string, dead })
+        }
+        "set_chord_diagram" => {
+            let at = position(args)?;
+            let name = text_arg(args, "name")?;
+            let base_text = args.take("base").unwrap_or_else(|| "0".to_owned());
+            let base: u8 = base_text
+                .parse()
+                .map_err(|_| bad(args.command, "base", &base_text, "a fret from 0 to 24"))?;
+            let frets_text = text_arg(args, "frets")?;
+            let mut diagram = gscore_model::ChordDiagram::new(name);
+            diagram.base_fret = base;
+            let mut frets = Vec::new();
+            for (string, value) in frets_text.split(',').enumerate() {
+                let value = value.trim();
+                let fret: i8 = if value.eq_ignore_ascii_case("x") {
+                    -1
+                } else {
+                    value.parse().map_err(|_| {
+                        bad(args.command, "frets", value, "a fret from 0 to 24, or x")
+                    })?
+                };
+                frets.push((u8::try_from(string).unwrap_or(0), fret));
+            }
+            diagram.frets = frets;
+            Ok(Command::SetChordDiagram {
+                at,
+                diagram: Some(diagram),
+            })
         }
         "set_dynamic" => Ok(Command::SetDynamic {
             at: position(args)?,

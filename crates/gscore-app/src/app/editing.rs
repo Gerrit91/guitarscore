@@ -54,8 +54,9 @@ impl GuitarScoreApp {
     /// of the input, so no widget handles it as well.
     pub(super) fn handle_keys(&mut self, ctx: &egui::Context) {
         let tab = self.tabs.get(self.active);
-        if tab.is_none()
-            || self.dialog.is_some()
+        // Without a song only the actions that need none (files, windows, the view) run.
+        let without_song = tab.is_none();
+        if self.dialog.is_some()
             || self.settings_window.is_some()
             || self.shortcuts.is_some()
             || self.tuner.is_some()
@@ -66,7 +67,7 @@ impl GuitarScoreApp {
             || tab.is_some_and(|tab| tab.renaming.is_some())
             || tab.is_some_and(|tab| tab.track_panel.tuning_open())
             || tab.is_some_and(|tab| tab.edit_palette.staff.is_open())
-            || tab.is_some_and(|tab| tab.edit_palette.is_editing())
+            || tab.is_some_and(|tab| tab.edit_palette.takes_keys())
             || ctx.egui_wants_keyboard_input()
             || egui::Popup::is_any_open(ctx)
         {
@@ -75,10 +76,42 @@ impl GuitarScoreApp {
         let events = ctx.input_mut(|input| std::mem::take(&mut input.events));
         let mut kept = Vec::with_capacity(events.len());
         let mut actions = Vec::new();
+        // While a fingering window is open its keys choose the finger (they win over the
+        // keymap: `1` is a finger then, not a fret); everything else, the arrows among
+        // them, works as usual, so the cursor moves on to the next note.
+        let finger_hand = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| tab.edit_palette.finger_hand());
+        let mut finger = None;
         for event in events {
+            if let Some(hand) = finger_hand {
+                let chosen = match &event {
+                    egui::Event::Text(text) => super::edit_effects::finger_key(hand, text),
+                    egui::Event::Key {
+                        key: egui::Key::Backspace | egui::Key::Delete,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } if modifiers.is_none() => Some(None),
+                    _ => None,
+                };
+                if let Some(chosen) = chosen {
+                    finger = Some(chosen);
+                    continue;
+                }
+                // The key press that typed a finger's character is not a command either.
+                if let egui::Event::Key { key, modifiers, .. } = &event
+                    && !modifiers.command
+                    && !modifiers.alt
+                    && key_types_finger(hand, *key)
+                {
+                    continue;
+                }
+            }
             match self.keys.combo(&event).and_then(|c| self.keymap.action(c)) {
-                Some(action) => actions.push(action),
-                None => kept.push(event),
+                Some(action) if !without_song || needs_no_song(action) => actions.push(action),
+                _ => kept.push(event),
             }
         }
         ctx.input_mut(|input| {
@@ -86,6 +119,12 @@ impl GuitarScoreApp {
             kept.append(&mut input.events);
             input.events = kept;
         });
+        if let Some(finger) = finger
+            && let Some(tab) = self.tabs.get_mut(self.active)
+        {
+            tab.edit_palette.choose_finger(finger);
+            ctx.request_repaint();
+        }
         for action in actions {
             self.perform_action(action, ctx);
         }
@@ -161,6 +200,39 @@ impl GuitarScoreApp {
                     let fullscreen =
                         ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!fullscreen));
+                    return;
+                }
+                // Windows and files: they work without an open document too.
+                ActionId::ShowHistory => {
+                    self.open_history();
+                    ctx.request_repaint();
+                    return;
+                }
+                ActionId::NewSong => {
+                    self.new_song(ctx);
+                    return;
+                }
+                ActionId::OpenFile => {
+                    self.ask_open(ctx);
+                    return;
+                }
+                ActionId::SaveAs => {
+                    if self.document().is_some() {
+                        self.save_as(ctx);
+                    }
+                    return;
+                }
+                ActionId::OpenSettings => {
+                    self.open_settings_window();
+                    ctx.request_repaint();
+                    return;
+                }
+                // Like the window's close button: unsaved changes are asked about first.
+                // A browser tab is closed by the browser.
+                ActionId::Quit => {
+                    if cfg!(not(target_arch = "wasm32")) {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
                     return;
                 }
                 _ => {}
@@ -462,6 +534,19 @@ impl GuitarScoreApp {
         }
     }
 
+    /// A new selection of more than one beat turns Loop on (as Guitar Pro does); turned
+    /// off, it stays off for that selection.
+    pub(super) fn auto_loop(&mut self) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let selected = tab.has_loop_selection();
+        if selected && !tab.had_loop_selection {
+            self.playback.set_loop_selection(true);
+        }
+        tab.had_loop_selection = selected;
+    }
+
     /// Keeps the playing position inside the selected measures when looping is on.
     pub(super) fn poll_loop(&mut self) {
         if !self.playback.loop_selection() {
@@ -495,12 +580,6 @@ impl GuitarScoreApp {
     /// the player there too. `at_end` seeks to the very end of the score instead of the
     /// measure's start.
     fn goto_measure(&mut self, measure: usize, at_end: bool) {
-        if self.playback.count_in_pending() {
-            // A count-in for the old place makes no sense now.
-            if let Err(error) = self.playback.stop() {
-                self.notice = Some(error);
-            }
-        }
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
@@ -535,6 +614,14 @@ impl GuitarScoreApp {
             voice: at.voice,
             beat: at.beat,
         };
+        // A count-in is playing for the old place: count in again where the cursor went,
+        // instead of stopping playback.
+        if self.playback.count_in_pending() {
+            if let Err(error) = self.playback.jump_to(document.song(), target) {
+                self.notice = Some(error);
+            }
+            return;
+        }
         let Some(sequence) = self.playback.sequence().cloned() else {
             return;
         };
@@ -650,6 +737,25 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Slows down or speeds up playback (0.5 to 1.2 of the written tempo).
+    pub fn set_playback_speed(&mut self, speed: f32) {
+        if let Err(error) = self.playback.set_speed(speed) {
+            self.notice = Some(error);
+            return;
+        }
+        self.settings.playback_speed = self.playback.speed();
+    }
+
+    /// Sets the speed trainer's settings (stored with the app settings).
+    pub fn set_speed_trainer(&mut self, trainer: crate::playback::SpeedTrainer) {
+        self.playback.set_trainer(trainer);
+        let trainer = self.playback.trainer();
+        self.settings.speed_trainer_enabled = trainer.enabled;
+        self.settings.speed_trainer_every = trainer.every;
+        self.settings.speed_trainer_step = trainer.step;
+        self.settings.speed_trainer_target = trainer.target;
+    }
+
     /// Does what the editor asked the app for.
     pub(super) fn request(&mut self, request: Request, ctx: &egui::Context) {
         match request {
@@ -723,6 +829,31 @@ pub(super) fn preview_target(command: &Command) -> Option<BeatPosition> {
         Command::Batch { commands } => commands.iter().find_map(preview_target),
         _ => None,
     }
+}
+
+/// Whether `key` types one of `hand`'s finger characters (its key event is then no command).
+fn key_types_finger(hand: gscore_model::Hand, key: egui::Key) -> bool {
+    let name = key.name().to_lowercase();
+    super::edit_effects::finger_key(hand, &name).is_some()
+        || matches!(key, egui::Key::Backspace | egui::Key::Delete)
+}
+
+/// Whether `action` works with no song open: files, windows and the view.
+fn needs_no_song(action: Action) -> bool {
+    matches!(
+        action,
+        Action::Plain(
+            ActionId::NewSong
+                | ActionId::OpenFile
+                | ActionId::OpenSettings
+                | ActionId::ShowHistory
+                | ActionId::Quit
+                | ActionId::ZoomIn
+                | ActionId::ZoomOut
+                | ActionId::ZoomReset
+                | ActionId::ToggleFullscreen
+        )
+    )
 }
 
 /// A change of the interface size.

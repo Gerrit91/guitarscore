@@ -176,6 +176,10 @@ pub(crate) struct Beat {
     pub legato: Option<LegatoInfo>,
     #[serde(rename = "FreeText", default)]
     pub free_text: Option<String>,
+    /// GP6/GP7 lyric syllables on the beat: `<Lyrics><Line>..</Line>..</Lyrics>`, one
+    /// `<Line>` per lyric line.
+    #[serde(rename = "Lyrics", default)]
+    pub lyrics: Option<BeatLyrics>,
     /// GP7's octave sign on the beat: `8va`, `8vb`, `15ma` or `15mb`.
     #[serde(rename = "Ottavia", default)]
     pub ottavia: Option<String>,
@@ -190,6 +194,13 @@ pub(crate) struct Beat {
     pub dead_slapped: Option<EnableTag>,
     #[serde(rename = "Properties", default)]
     pub properties: Option<BeatPropertiesWrapper>,
+}
+
+/// The `<Lyrics>` of a beat: one syllable per lyric line (often empty).
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct BeatLyrics {
+    #[serde(rename = "Line", default)]
+    pub lines: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

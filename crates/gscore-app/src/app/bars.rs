@@ -10,13 +10,15 @@ use crate::state::ThemeChoice;
 impl GuitarScoreApp {
     /// A menu entry for `action`, with its keys from the keymap as the shortcut text.
     fn action_button(&self, ui: &mut egui::Ui, action: ActionId, enabled: bool) -> bool {
-        let keys: Vec<String> = self
+        // A menu shows one key, as menus do (zoom in has ctrl++ and ctrl+=, one key with
+        // and without Shift); the tooltips and the shortcut list show them all.
+        let key = self
             .keymap
             .keys_for(action)
-            .iter()
+            .first()
             .map(ToString::to_string)
-            .collect();
-        let button = egui::Button::new(action.label()).shortcut_text(keys.join(", "));
+            .unwrap_or_default();
+        let button = egui::Button::new(action.label()).shortcut_text(key);
         ui.add_enabled(enabled, button).clicked()
     }
 
@@ -24,11 +26,11 @@ impl GuitarScoreApp {
         let mut choices = Vec::new();
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
-                if ui.button("New").clicked() {
+                if self.action_button(ui, ActionId::NewSong, true) {
                     self.new_song(ui.ctx());
                     ui.close();
                 }
-                if ui.button("Open…").clicked() {
+                if self.action_button(ui, ActionId::OpenFile, true) {
                     self.ask_open(ui.ctx());
                 }
                 let mut chosen = None;
@@ -74,10 +76,7 @@ impl GuitarScoreApp {
                 if self.action_button(ui, ActionId::Save, has_document) {
                     self.request(Request::Save, ui.ctx());
                 }
-                if ui
-                    .add_enabled(has_document, egui::Button::new("Save As…"))
-                    .clicked()
-                {
+                if self.action_button(ui, ActionId::SaveAs, has_document) {
                     self.save_as(ui.ctx());
                 }
                 let mut export = None;
@@ -99,14 +98,14 @@ impl GuitarScoreApp {
                     self.ask_export(format, ui.ctx());
                 }
                 ui.separator();
-                if ui.button("Settings…").clicked() {
+                if self.action_button(ui, ActionId::OpenSettings, true) {
                     self.open_settings_window();
                     ui.close();
                 }
                 // A browser tab is closed by the browser, not from the page.
                 if cfg!(not(target_arch = "wasm32")) {
                     ui.separator();
-                    if ui.button("Quit").clicked() {
+                    if self.action_button(ui, ActionId::Quit, true) {
                         ui.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 }
@@ -128,7 +127,7 @@ impl GuitarScoreApp {
                     }
                 }
                 ui.separator();
-                if ui.button("History…").clicked() {
+                if self.action_button(ui, ActionId::ShowHistory, true) {
                     self.open_history();
                     ui.close();
                 }
@@ -162,35 +161,30 @@ impl GuitarScoreApp {
                 ui.separator();
                 self.score_view_menu(ui);
                 ui.separator();
-                if ui.button("Zoom in").clicked() {
-                    self.view.zoom_in();
-                }
-                if ui.button("Zoom out").clicked() {
-                    self.view.zoom_out();
-                }
-                if ui.button("Actual size").clicked() {
-                    self.view.set_zoom(1.0);
+                for action in [ActionId::ZoomIn, ActionId::ZoomOut, ActionId::ZoomReset] {
+                    if self.action_button(ui, action, true) {
+                        self.perform_action(gscore_edit::Action::Plain(action), ui.ctx());
+                    }
                 }
                 ui.separator();
                 // The whole interface: Ctrl+Shift with +, - and 0 (read in
                 // `interface_zoom_keys`, not from the keymap).
                 if ui
-                    .button("Larger interface")
-                    .on_hover_text("Menus, panels and icons larger (ctrl+shift++)")
+                    .add(egui::Button::new("Larger interface").shortcut_text("ctrl+shift++"))
+                    .on_hover_text("Menus, panels and icons larger")
                     .clicked()
                 {
                     self.view.interface_larger();
                 }
                 if ui
-                    .button("Smaller interface")
-                    .on_hover_text("Menus, panels and icons smaller (ctrl+shift+-)")
+                    .add(egui::Button::new("Smaller interface").shortcut_text("ctrl+shift+-"))
+                    .on_hover_text("Menus, panels and icons smaller")
                     .clicked()
                 {
                     self.view.interface_smaller();
                 }
                 if ui
-                    .button("Normal interface size")
-                    .on_hover_text("ctrl+shift+0")
+                    .add(egui::Button::new("Normal interface size").shortcut_text("ctrl+shift+0"))
                     .clicked()
                 {
                     self.view.set_interface_zoom(1.0);
@@ -332,11 +326,23 @@ impl GuitarScoreApp {
         let Some(notice) = self.notice.clone() else {
             return;
         };
-        ui.horizontal(|ui| {
-            ui.colored_label(ui.visuals().error_fg_color, notice);
+        // The button stays at the right edge and a long message wraps, so the button is
+        // never pushed out of the window.
+        ui.with_layout(UiLayout::right_to_left(Align::Center), |ui| {
             if ui.small_button("Dismiss").clicked() {
                 self.notice = None;
             }
+            ui.with_layout(
+                UiLayout::left_to_right(Align::Center).with_main_wrap(true),
+                |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(notice).color(ui.visuals().error_fg_color),
+                        )
+                        .wrap(),
+                    );
+                },
+            );
         });
     }
 }

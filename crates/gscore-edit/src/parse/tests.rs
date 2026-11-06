@@ -641,6 +641,21 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
             at: at(0, 2, 0, 3),
             text: "let ring".to_owned(),
         },
+        Command::SetLyricLine {
+            line: 1,
+            start: MeasureIndex::new(1),
+            text: "love-ly words".to_owned(),
+        },
+        Command::SetChordDiagram {
+            at: at(0, 2, 0, 3),
+            diagram: Some(gscore_model::ChordDiagram {
+                name: "C".to_owned(),
+                string_count: 6,
+                fret_count: 5,
+                base_fret: 0,
+                frets: vec![(0, -1), (1, 3), (2, 2), (3, 0), (4, 1), (5, 0)],
+            }),
+        },
         Command::SetDeadNote {
             at: at(0, 2, 0, 3),
             string,

@@ -42,6 +42,7 @@ fn beat_effect_is_off(effect: &BeatEffect) -> bool {
             | BeatEffect::FadeIn(false)
             | BeatEffect::FadeOut(false)
             | BeatEffect::VolumeSwell(false)
+            | BeatEffect::Octave(None)
             | BeatEffect::Arpeggio(None)
             | BeatEffect::DeadSlapped(false)
             | BeatEffect::Rasgueado(false)

@@ -192,6 +192,16 @@ impl Song {
             .map(|(kind, _)| crate::marks::Fermata::from_gp(kind))
     }
 
+    /// The navigation sign at `measure` (a coda, segno, fine or D.C./D.S. direction), or
+    /// `None` if it has none or there is no such measure.
+    pub fn direction(&self, measure: MeasureIndex) -> Option<crate::marks::Direction> {
+        let header = self.inner().measure_headers.get(measure.get())?;
+        header
+            .direction
+            .as_ref()
+            .map(crate::marks::Direction::from_gp)
+    }
+
     /// The tempo (beats per minute) set at the start of `measure` (GP6 and later store tempo
     /// changes per measure), if any.
     pub fn tempo_change(&self, measure: MeasureIndex) -> Option<u32> {
@@ -213,6 +223,15 @@ impl TrackView<'_> {
     /// harmonic's pitch for natural, artificial, tapped and pinch harmonics. On drum tracks
     /// the "fret" is the General MIDI drum sound itself.
     pub fn sounding_pitch(&self, note: &NoteView<'_>) -> Result<Pitch, ModelError> {
+        // Guitar Pro writes a voice or keyboard note below its stand-in string as a
+        // negative fret: the pitch is still the open string's plus the fret.
+        if note.inner.value < 0 && !self.is_percussion() {
+            let open = self.pitch_at(note.string()?, Fret::new(0)?)?;
+            let pitch = i32::from(open.get()).saturating_add(i32::from(note.inner.value));
+            let pitch = u8::try_from(pitch)
+                .map_err(|_| ModelError::Invalid(format!("pitch {pitch} is below MIDI's range")))?;
+            return Pitch::new(pitch);
+        }
         let fret = note.fret()?.get();
         if self.is_percussion() {
             return Pitch::new(fret);
@@ -342,6 +361,23 @@ mod tests {
     }
 
     #[test]
+    fn a_voice_note_below_its_stand_in_string_has_a_negative_fret() {
+        // Guitar Pro writes a voice's A1 (33) as fret -7 on the stand-in low E (40).
+        let mut gp = test_song(vec![track(
+            "Vocals",
+            GUITAR_6,
+            vec![measure((4, 4), vec![vec![beat(1, &[(6, -7)])]])],
+        )]);
+        gp.tracks[0].instrument_type = Some("voice".to_owned());
+        let song = from_gp(gp).unwrap();
+        assert_eq!(first_note_pitch(&song).get(), 33);
+        let view = song.track(TrackIndex::new(0)).unwrap();
+        // Not a string instrument, so no tuning is shown, but the notes have pitches.
+        assert!(view.tuning().unwrap().is_none());
+        assert!(view.note_tuning().unwrap().is_some());
+    }
+
+    #[test]
     fn harmonic_nodes_give_their_intervals() {
         let cases = [
             (12, 12),
@@ -408,6 +444,7 @@ mod tests {
         gp.measure_headers[1].repeat_close = 2;
         gp.measure_headers[1].repeat_alternative = 0b10;
         gp.measure_headers[1].tempo = 140;
+        gp.measure_headers[1].direction = Some(gscore_gp::DirectionSign::DaCapoAlCoda);
         let song = from_gp(gp).unwrap();
         assert_eq!(
             song.repeat(MeasureIndex::new(0)).unwrap(),
@@ -422,5 +459,10 @@ mod tests {
         assert_eq!(song.tempo_change(MeasureIndex::new(0)), None);
         assert_eq!(song.tempo_change(MeasureIndex::new(1)), Some(140));
         assert_eq!(song.repeat(MeasureIndex::new(2)), None);
+        assert_eq!(
+            song.direction(MeasureIndex::new(1)),
+            Some(crate::marks::Direction::DaCapoAlCoda)
+        );
+        assert_eq!(song.direction(MeasureIndex::new(0)), None);
     }
 }

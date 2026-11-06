@@ -8,7 +8,8 @@ use super::super::harmonic_editor::{buttons, keys};
 use super::super::shape_editor::Outcome;
 use super::super::staff_widgets::{choice, stepper};
 use super::super::style;
-use super::super::tile_faces::{self, Face, lettering, music_glyph};
+use super::super::tile_faces::{self, Face, music_glyph};
+use super::super::tiles;
 
 /// Width of a dialog's content.
 const WIDTH: f32 = 460.0;
@@ -173,40 +174,56 @@ impl TrillEditor {
     }
 }
 
-/// The open fingering dialog.
+/// A fingering window, as Guitar Pro's: small, it stays open while the cursor moves
+/// through the score and always shows the cursor note's finger. A click (or a key: `0`-`4`
+/// and `t`, or `p i m a c`) sets the finger at once; arrows go to the next note.
 #[derive(Debug, Clone)]
 pub(super) struct FingerEditor {
     pos: Option<Pos2>,
     hand: Hand,
-    finger: Option<Finger>,
+}
+
+/// What the fingering window asks for this frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FingerOutcome {
+    /// Still open, nothing chosen.
+    Open,
+    /// Set this finger on the selected notes (`None` removes it).
+    Set(Option<Finger>),
+    /// Closed.
+    Close,
 }
 
 impl FingerEditor {
-    /// A dialog on `current`, or on the index finger.
-    pub(super) fn new(hand: Hand, current: Option<Finger>) -> Self {
-        FingerEditor {
-            pos: None,
-            hand,
-            finger: current.or(Some(Finger::Index)),
-        }
+    /// A window for `hand`'s fingering.
+    pub(super) fn new(hand: Hand) -> Self {
+        FingerEditor { pos: None, hand }
     }
 
-    /// The finger as chosen; `None` removes the fingering.
-    pub(super) fn finger(&self) -> Option<Finger> {
-        self.finger
+    /// The hand it sets.
+    pub(super) fn hand(&self) -> Hand {
+        self.hand
     }
 
-    /// Shows the window.
-    pub(super) fn show(&mut self, ctx: &egui::Context) -> Outcome {
+    /// Shows the window with `current` (the cursor note's finger) chosen; `has_note` is
+    /// false when the cursor is not on a note.
+    pub(super) fn show(
+        &mut self,
+        ctx: &egui::Context,
+        current: Option<Finger>,
+        has_note: bool,
+    ) -> FingerOutcome {
         let title = match self.hand {
             Hand::Left => "Left-hand fingering",
             Hand::Right => "Right-hand fingering",
         };
-        let size = vec2(WIDTH + 32.0, 360.0);
-        let pos = *self
-            .pos
-            .get_or_insert_with(|| style::centered_window_pos(ctx, size));
-        let mut outcome = Outcome::Open;
+        let size = vec2(260.0, 120.0);
+        // At the top right of the score, out of the way of the notes being fingered.
+        let pos = *self.pos.get_or_insert_with(|| {
+            let screen = ctx.content_rect();
+            egui::pos2(screen.right() - size.x - 300.0, screen.top() + 110.0)
+        });
+        let mut outcome = FingerOutcome::Open;
         egui::Window::new(title)
             .title_bar(false)
             .collapsible(false)
@@ -215,50 +232,80 @@ impl FingerEditor {
             .frame(style::window_frame(ctx))
             .show(ctx, |ui| {
                 if style::window_title_bar(ui, title, &mut self.pos) {
-                    outcome = Outcome::Cancel;
+                    outcome = FingerOutcome::Close;
                 }
                 egui::Frame::new()
-                    .inner_margin(Margin::symmetric(16, 12))
+                    .inner_margin(Margin::symmetric(12, 10))
                     .show(ui, |ui| {
-                        ui.set_width(WIDTH);
-                        ui.label(
-                            RichText::new(match self.hand {
-                                Hand::Left => {
-                                    "The fretting hand: 0 is the open string, t the thumb."
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = vec2(3.0, 3.0);
+                            // As each hand writes them: 0 1 2 3 4 t, and p i m a c.
+                            let order = match self.hand {
+                                Hand::Left => Finger::ALL.to_vec(),
+                                Hand::Right => vec![
+                                    Finger::Thumb,
+                                    Finger::Index,
+                                    Finger::Middle,
+                                    Finger::Ring,
+                                    Finger::Little,
+                                ],
+                            };
+                            for finger in order {
+                                let sign = finger.sign(self.hand);
+                                let chosen = current == Some(finger);
+                                let tip = format!("{} (key {sign})", finger_name(finger));
+                                let response = tiles::large_tile(
+                                    ui,
+                                    Face::Finger(sign),
+                                    chosen,
+                                    has_note,
+                                    finger_name(finger),
+                                    &tip,
+                                );
+                                if response.clicked() {
+                                    // A second click on the chosen finger takes it off.
+                                    outcome = FingerOutcome::Set((!chosen).then_some(finger));
                                 }
-                                Hand::Right => {
-                                    "The picking hand: p i m a c, as classical guitar writes them."
-                                }
-                            })
-                            .weak(),
-                        );
-                        ui.add_space(4.0);
-                        for finger in Finger::ALL {
-                            let sign = finger.sign(self.hand);
-                            let name = finger_name(finger);
-                            if choice(
-                                ui,
-                                self.finger == Some(finger),
-                                name,
-                                "Which finger plays this note.",
-                                |painter, rect, ink| {
-                                    lettering(painter, rect.center(), sign, 16.0, false, ink);
-                                },
-                            )
-                            .clicked()
-                            {
-                                self.finger = Some(finger);
                             }
-                        }
-                        ui.add_space(6.0);
-                        ui.separator();
+                            let none = tiles::large_tile(
+                                ui,
+                                Face::Finger("–"),
+                                false,
+                                has_note && current.is_some(),
+                                "No fingering",
+                                "No fingering (key Backspace)",
+                            );
+                            if none.clicked() {
+                                outcome = FingerOutcome::Set(None);
+                            }
+                        });
                         ui.add_space(4.0);
-                        buttons(ui, &mut outcome, "No fingering", None);
-                        keys(ui, &mut outcome);
+                        ui.label(
+                            RichText::new(if has_note {
+                                "Arrows go to the next note; the keys set the finger."
+                            } else {
+                                "Move the cursor to a note."
+                            })
+                            .weak()
+                            .small(),
+                        );
                     });
             });
+        if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+            outcome = FingerOutcome::Close;
+        }
         outcome
     }
+}
+
+/// The finger a typed `text` chooses for `hand` (`Some(None)`: none), or `None` if the text
+/// is no finger key.
+pub(in crate::app) fn finger_key(hand: Hand, text: &str) -> Option<Option<Finger>> {
+    Finger::ALL
+        .into_iter()
+        .filter(|finger| hand == Hand::Left || *finger != Finger::Open)
+        .find(|finger| finger.sign(hand) == text)
+        .map(Some)
 }
 
 /// A finger's name for the dialog.
