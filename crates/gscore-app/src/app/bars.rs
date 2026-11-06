@@ -24,11 +24,11 @@ impl GuitarScoreApp {
         let mut choices = Vec::new();
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
-                if ui.button("New").clicked() {
+                if self.action_button(ui, ActionId::NewSong, true) {
                     self.new_song(ui.ctx());
                     ui.close();
                 }
-                if ui.button("Open…").clicked() {
+                if self.action_button(ui, ActionId::OpenFile, true) {
                     self.ask_open(ui.ctx());
                 }
                 let mut chosen = None;
@@ -74,10 +74,7 @@ impl GuitarScoreApp {
                 if self.action_button(ui, ActionId::Save, has_document) {
                     self.request(Request::Save, ui.ctx());
                 }
-                if ui
-                    .add_enabled(has_document, egui::Button::new("Save As…"))
-                    .clicked()
-                {
+                if self.action_button(ui, ActionId::SaveAs, has_document) {
                     self.save_as(ui.ctx());
                 }
                 let mut export = None;
@@ -99,7 +96,7 @@ impl GuitarScoreApp {
                     self.ask_export(format, ui.ctx());
                 }
                 ui.separator();
-                if ui.button("Settings…").clicked() {
+                if self.action_button(ui, ActionId::OpenSettings, true) {
                     self.open_settings_window();
                     ui.close();
                 }
@@ -128,7 +125,7 @@ impl GuitarScoreApp {
                     }
                 }
                 ui.separator();
-                if ui.button("History…").clicked() {
+                if self.action_button(ui, ActionId::ShowHistory, true) {
                     self.open_history();
                     ui.close();
                 }
@@ -162,35 +159,30 @@ impl GuitarScoreApp {
                 ui.separator();
                 self.score_view_menu(ui);
                 ui.separator();
-                if ui.button("Zoom in").clicked() {
-                    self.view.zoom_in();
-                }
-                if ui.button("Zoom out").clicked() {
-                    self.view.zoom_out();
-                }
-                if ui.button("Actual size").clicked() {
-                    self.view.set_zoom(1.0);
+                for action in [ActionId::ZoomIn, ActionId::ZoomOut, ActionId::ZoomReset] {
+                    if self.action_button(ui, action, true) {
+                        self.perform_action(gscore_edit::Action::Plain(action), ui.ctx());
+                    }
                 }
                 ui.separator();
                 // The whole interface: Ctrl+Shift with +, - and 0 (read in
                 // `interface_zoom_keys`, not from the keymap).
                 if ui
-                    .button("Larger interface")
-                    .on_hover_text("Menus, panels and icons larger (ctrl+shift++)")
+                    .add(egui::Button::new("Larger interface").shortcut_text("ctrl+shift++"))
+                    .on_hover_text("Menus, panels and icons larger")
                     .clicked()
                 {
                     self.view.interface_larger();
                 }
                 if ui
-                    .button("Smaller interface")
-                    .on_hover_text("Menus, panels and icons smaller (ctrl+shift+-)")
+                    .add(egui::Button::new("Smaller interface").shortcut_text("ctrl+shift+-"))
+                    .on_hover_text("Menus, panels and icons smaller")
                     .clicked()
                 {
                     self.view.interface_smaller();
                 }
                 if ui
-                    .button("Normal interface size")
-                    .on_hover_text("ctrl+shift+0")
+                    .add(egui::Button::new("Normal interface size").shortcut_text("ctrl+shift+0"))
                     .clicked()
                 {
                     self.view.set_interface_zoom(1.0);

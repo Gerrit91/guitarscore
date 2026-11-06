@@ -63,6 +63,11 @@ ctrl+y = redo
 
 Space = play_pause
 ctrl+s = save
+ctrl+shift+s = save_as
+ctrl+n = new_song
+ctrl+o = open_file
+ctrl+, = open_settings
+H = show_history
 
 # Palette: note values, rest and tie, techniques.
 ctrl+1 = note_whole

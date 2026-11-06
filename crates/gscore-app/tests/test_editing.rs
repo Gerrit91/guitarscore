@@ -620,7 +620,7 @@ fn an_entered_fret_is_heard_and_undo_is_not() {
     // With the setting off, nothing sounds.
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("Settings…").click();
+    harness.get_by_label("Settings… ctrl+,").click();
     harness.run();
     harness.get_by_label("Editor").click();
     harness.run();
@@ -1290,7 +1290,7 @@ fn breaks_bars_per_line_and_the_page_setup_are_edited_from_the_menus() {
     // Landscape from the settings window's Page layout tab: one undo step.
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("Settings…").click();
+    harness.get_by_label("Settings… ctrl+,").click();
     harness.run();
     harness.get_by_label("Page layout").click();
     harness.run();
@@ -1656,4 +1656,13 @@ fn a_selection_in_the_score_can_be_looped() {
     harness.get_by_label("Loop selection").click();
     harness.run();
     assert!(harness.state().playback().loop_selection());
+}
+
+#[test]
+fn shift_h_opens_the_history() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    assert!(harness.query_by_label("Close History").is_none());
+    type_char(&mut harness, "H", Modifiers::SHIFT);
+    harness.run();
+    harness.get_by_label("Close History");
 }

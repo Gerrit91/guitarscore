@@ -133,7 +133,7 @@ fn escape_closes_the_shared_windows() {
     // New song (the song behind it stays)
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("New").click();
+    harness.get_by_label("New ctrl+n").click();
     harness.run();
     harness.get_by_label("New song title");
     harness.key_press(egui::Key::Escape);
@@ -852,7 +852,7 @@ fn the_settings_window_edits_song_information_and_undoes_it() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("Settings…").click();
+    harness.get_by_label("Settings… ctrl+,").click();
     harness.run();
     harness.get_by_label("Done");
 
@@ -1753,7 +1753,7 @@ fn the_audio_tab_is_last_and_named_audio_io() {
         .use_soundfont(PathBuf::from("/fonts/Test.sf2"));
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("Settings…").click();
+    harness.get_by_label("Settings… ctrl+,").click();
     harness.run();
     harness.get_by_label("Audio I/O").click();
     harness.run();
@@ -1766,7 +1766,7 @@ fn the_metronome_tab_sets_the_click_and_the_count_in() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("Settings…").click();
+    harness.get_by_label("Settings… ctrl+,").click();
     harness.run();
     // The tab (the toolbar's metronome switch has the same name).
     harness
@@ -1895,7 +1895,7 @@ fn shortcuts_can_be_changed_and_reverted_from_the_editor() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("File").click();
     harness.run();
-    harness.get_by_label("Settings…").click();
+    harness.get_by_label("Settings… ctrl+,").click();
     harness.run();
     harness.get_by_label("Editor").click();
     harness.run();
@@ -1967,7 +1967,7 @@ fn the_history_window_lists_changes_and_undoes_them() {
 
     harness.get_by_label("Edit").click();
     harness.run();
-    harness.get_by_label("History…").click();
+    harness.get_by_label("History… H").click();
     harness.run();
     // The newest change is where the song is; the one before it is a step back.
     harness.get_by_label_contains("Current point, change 1:");
@@ -2273,4 +2273,13 @@ fn the_speed_trainer_button_left_of_the_speed_opens_its_settings() {
         .click();
     settle(&mut harness);
     assert!(harness.state().playback().trainer().enabled);
+}
+
+#[test]
+fn file_keys_work_in_the_empty_workspace() {
+    let mut harness = app_with(None);
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::N);
+    harness.run();
+    // Ctrl+N opens the new-song dialog.
+    harness.get_by_label("Create");
 }

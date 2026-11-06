@@ -19,6 +19,11 @@ has the overview.
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut / paste |
 | Space | Play / pause |
 | Ctrl+S | Save |
+| Ctrl+Shift+S | Save As |
+| Ctrl+N / Ctrl+O | New song / open a file |
+| Ctrl+, | Settings |
+| Shift+H | History |
+| Shift+L | Lyrics |
 | F11 | Full screen |
 
 Change any key in Settings → Editor. The keymap can also live in a text file

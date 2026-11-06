@@ -212,6 +212,16 @@ pub enum ActionId {
     ToggleFullscreen,
     /// Show every track of the song together, or only the cursor's track again.
     ToggleMultitrack,
+    /// Open the edit history window.
+    ShowHistory,
+    /// Start a new song.
+    NewSong,
+    /// Open a file.
+    OpenFile,
+    /// Save under another name.
+    SaveAs,
+    /// Open the settings window.
+    OpenSettings,
 }
 
 impl ActionId {
@@ -567,6 +577,11 @@ pub const ACTIONS: &[ActionInfo] = &[
         "toggle_multitrack",
         "All tracks",
     ),
+    info(ActionId::ShowHistory, "show_history", "History…"),
+    info(ActionId::NewSong, "new_song", "New"),
+    info(ActionId::OpenFile, "open_file", "Open…"),
+    info(ActionId::SaveAs, "save_as", "Save As…"),
+    info(ActionId::OpenSettings, "open_settings", "Settings…"),
 ];
 
 const fn info(action: ActionId, id: &'static str, label: &'static str) -> ActionInfo {
@@ -642,6 +657,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 100, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 105, "one entry per ActionId variant");
     }
 }

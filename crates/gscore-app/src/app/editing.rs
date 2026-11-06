@@ -54,8 +54,9 @@ impl GuitarScoreApp {
     /// of the input, so no widget handles it as well.
     pub(super) fn handle_keys(&mut self, ctx: &egui::Context) {
         let tab = self.tabs.get(self.active);
-        if tab.is_none()
-            || self.dialog.is_some()
+        // Without a song only the actions that need none (files, windows, the view) run.
+        let without_song = tab.is_none();
+        if self.dialog.is_some()
             || self.settings_window.is_some()
             || self.shortcuts.is_some()
             || self.tuner.is_some()
@@ -77,8 +78,8 @@ impl GuitarScoreApp {
         let mut actions = Vec::new();
         for event in events {
             match self.keys.combo(&event).and_then(|c| self.keymap.action(c)) {
-                Some(action) => actions.push(action),
-                None => kept.push(event),
+                Some(action) if !without_song || needs_no_song(action) => actions.push(action),
+                _ => kept.push(event),
             }
         }
         ctx.input_mut(|input| {
@@ -161,6 +162,31 @@ impl GuitarScoreApp {
                     let fullscreen =
                         ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!fullscreen));
+                    return;
+                }
+                // Windows and files: they work without an open document too.
+                ActionId::ShowHistory => {
+                    self.open_history();
+                    ctx.request_repaint();
+                    return;
+                }
+                ActionId::NewSong => {
+                    self.new_song(ctx);
+                    return;
+                }
+                ActionId::OpenFile => {
+                    self.ask_open(ctx);
+                    return;
+                }
+                ActionId::SaveAs => {
+                    if self.document().is_some() {
+                        self.save_as(ctx);
+                    }
+                    return;
+                }
+                ActionId::OpenSettings => {
+                    self.open_settings_window();
+                    ctx.request_repaint();
                     return;
                 }
                 _ => {}
@@ -744,6 +770,23 @@ pub(super) fn preview_target(command: &Command) -> Option<BeatPosition> {
         Command::Batch { commands } => commands.iter().find_map(preview_target),
         _ => None,
     }
+}
+
+/// Whether `action` works with no song open: files, windows and the view.
+fn needs_no_song(action: Action) -> bool {
+    matches!(
+        action,
+        Action::Plain(
+            ActionId::NewSong
+                | ActionId::OpenFile
+                | ActionId::OpenSettings
+                | ActionId::ShowHistory
+                | ActionId::ZoomIn
+                | ActionId::ZoomOut
+                | ActionId::ZoomReset
+                | ActionId::ToggleFullscreen
+        )
+    )
 }
 
 /// A change of the interface size.
