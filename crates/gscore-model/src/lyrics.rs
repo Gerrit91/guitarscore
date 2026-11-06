@@ -8,7 +8,7 @@ use gscore_gp::Lyrics as GpLyrics;
 use crate::error::ModelError;
 use crate::position::{BeatIndex, BeatPosition, MeasureIndex, TrackIndex, VoiceIndex};
 use crate::song::Song;
-use crate::views::BeatKind;
+use crate::views::{BeatKind, NoteKind};
 
 /// Most characters one lyric line may hold.
 pub const MAX_LYRIC_LINE_CHARS: usize = 10_000;
@@ -66,10 +66,8 @@ impl Song {
                 text: text.clone(),
             })
             .collect();
-        if !stored.is_empty() {
-            return stored;
-        }
-        // GP6/GP7: rebuild each line from its per-beat syllables.
+        // GP6/GP7: rebuild each line from its per-beat syllables; a line with a stored
+        // text (GP3-5, or one edited here) keeps that text.
         let mut rebuilt: Vec<LyricLine> = Vec::new();
         for (measure, _, lyrics) in beat_lyrics(self, self.lyric_track()) {
             for (line, text) in lyrics.iter().enumerate() {
@@ -92,6 +90,8 @@ impl Song {
                 }
             }
         }
+        rebuilt.retain(|entry| !stored.iter().any(|known| known.line == entry.line));
+        rebuilt.extend(stored);
         rebuilt.sort_by_key(|line| line.line);
         rebuilt
     }
@@ -160,6 +160,10 @@ impl Song {
                 placed.push((entry.line, measure, beat, text));
             }
         }
+        // GP6/GP7 lyrics already sit on their beats, where Guitar Pro put them: keep them
+        // (placing the joined text again could move syllables), and only fill in the
+        // per-measure lines GP3-5 need.
+        let on_beats = has_beat_syllables(self, track);
         let track_choice = u8::try_from(track.get()).unwrap_or(0);
         let inner = self.inner_mut();
         inner.lyrics.lines.clear();
@@ -172,6 +176,9 @@ impl Song {
         }
         inner.lyrics.lines.sort_by_key(|(line, _, _)| *line);
         inner.lyrics.track_choice = track_choice;
+        if on_beats {
+            return;
+        }
         let Some(gp_track) = inner.tracks.get_mut(track.get()) else {
             return;
         };
@@ -235,10 +242,16 @@ impl Song {
         }
         lines.sort_by_key(|entry| entry.line);
 
-        // Place every line on the beats, as the beats will store them.
+        // Place the lines on the beats, as the beats will store them. When the beats
+        // already hold syllables (GP6/GP7, or an earlier edit), only the edited line is
+        // placed again, so the other lines keep their beats.
+        let only_this_line = has_beat_syllables(self, track);
         let count = self.measure_count();
         let mut placed: Vec<(u8, MeasureIndex, BeatIndex, String)> = Vec::new();
-        for entry in &lines {
+        for entry in lines
+            .iter()
+            .filter(|entry| !only_this_line || entry.line == line)
+        {
             for (measure, beat, text) in
                 place_tokens(self, track, entry.start, lyric_tokens(&entry.text), count)
             {
@@ -285,10 +298,20 @@ impl Song {
         let Some(gp_track) = inner.tracks.get_mut(track.get()) else {
             return Err(ModelError::Invalid(format!("the song has no {track}")));
         };
+        let edited = usize::from(line);
         for measure in &mut gp_track.measures {
             for voice in &mut measure.voices {
                 for beat in &mut voice.beats {
-                    beat.lyrics.clear();
+                    if only_this_line {
+                        if let Some(slot) = beat.lyrics.get_mut(edited) {
+                            slot.clear();
+                        }
+                        while beat.lyrics.last().is_some_and(String::is_empty) {
+                            beat.lyrics.pop();
+                        }
+                    } else {
+                        beat.lyrics.clear();
+                    }
                 }
             }
         }
@@ -382,6 +405,13 @@ fn beat_lyrics(song: &Song, track: TrackIndex) -> Vec<(MeasureIndex, BeatIndex, 
     found
 }
 
+/// Whether any beat of `track` holds a lyric syllable.
+fn has_beat_syllables(song: &Song, track: TrackIndex) -> bool {
+    beat_lyrics(song, track)
+        .iter()
+        .any(|(_, _, lyrics)| lyrics.iter().any(|text| !text.is_empty()))
+}
+
 /// Places `tokens` on the beats from `start` on, skipping rests and grace notes.
 fn place_tokens(
     song: &Song,
@@ -404,7 +434,14 @@ fn place_tokens(
             continue;
         };
         for beat in voice.beats() {
-            if beat.kind() == BeatKind::Empty || beat.kind() == BeatKind::Rest || beat.is_grace() {
+            // Like Guitar Pro: no syllable on a rest, a grace note or a beat that only
+            // continues tied notes.
+            let tied = beat.notes().len() > 0 && beat.notes().all(|note| note.kind() == NoteKind::Tie);
+            if beat.kind() == BeatKind::Empty
+                || beat.kind() == BeatKind::Rest
+                || beat.is_grace()
+                || tied
+            {
                 continue;
             }
             let Some(token) = next.next() else {
@@ -603,4 +640,98 @@ mod tests {
             ["two"]
         );
     }
+
+    /// Words of `song`'s lyric track as `(measure, beat, line, text)`.
+    fn placed(song: &Song) -> Vec<(usize, usize, u8, String)> {
+        song.lyric_syllables(song.lyric_track())
+            .into_iter()
+            .map(|syllable| {
+                (
+                    syllable.measure.get(),
+                    syllable.beat.get(),
+                    syllable.line,
+                    syllable.text,
+                )
+            })
+            .collect()
+    }
+
+    /// Two measures whose second beat of measure 0 continues a tied note, with GP7-style
+    /// syllables already on beats 0 and 3 of measure 0 and beat 0 of measure 1 (beat 2 of
+    /// measure 0 sounds but has none, as Guitar Pro allows).
+    fn song_with_beat_syllables() -> Song {
+        let mut tied = crate::test_support::beat(4, &[(1, 5)]);
+        for note in &mut tied.notes {
+            note.kind = gscore_gp::NoteType::Tie;
+        }
+        let mut first = vec![
+            crate::test_support::beat(4, &[(1, 5)]),
+            tied,
+            crate::test_support::beat(4, &[(1, 5)]),
+            crate::test_support::beat(4, &[(1, 5)]),
+        ];
+        first[0].lyrics = vec!["one".to_owned(), "uno".to_owned()];
+        first[3].lyrics = vec!["two".to_owned()];
+        let mut second = vec![
+            crate::test_support::beat(4, &[(1, 5)]),
+            crate::test_support::beat(4, &[(1, 5)]),
+            crate::test_support::beat(4, &[(1, 5)]),
+            crate::test_support::beat(4, &[(1, 5)]),
+        ];
+        second[0].lyrics = vec!["three".to_owned(), "dos".to_owned()];
+        crate::interop::from_gp(crate::test_support::song(vec![crate::test_support::track(
+            "Vocals",
+            crate::test_support::GUITAR_6,
+            vec![
+                crate::test_support::measure((4, 4), vec![first]),
+                crate::test_support::measure((4, 4), vec![second]),
+            ],
+        )]))
+        .unwrap()
+    }
+
+    #[test]
+    fn synchronizing_keeps_syllables_on_their_beats() {
+        let mut song = song_with_beat_syllables();
+        let before = placed(&song);
+        song.synchronize_lyrics();
+        assert_eq!(placed(&song), before);
+        // The GP3-5 lines are filled in from the beats.
+        assert_eq!(song.inner().lyrics.lines.len(), 2);
+    }
+
+    #[test]
+    fn editing_one_line_leaves_the_other_lines_on_their_beats() {
+        let mut song = song_with_beat_syllables();
+        let _change = song
+            .set_lyric_line(1, MeasureIndex::new(0), "a b c")
+            .unwrap();
+        let line_of = |song: &Song, line: u8| {
+            placed(song)
+                .into_iter()
+                .filter(|entry| entry.2 == line)
+                .map(|(measure, beat, _, text)| (measure, beat, text))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            line_of(&song, 0),
+            [
+                (0, 0, "one".to_owned()),
+                (0, 3, "two".to_owned()),
+                (1, 0, "three".to_owned())
+            ]
+        );
+        // The edited line skips the tied beat, like Guitar Pro.
+        assert_eq!(
+            line_of(&song, 1),
+            [
+                (0, 0, "a".to_owned()),
+                (0, 2, "b".to_owned()),
+                (0, 3, "c".to_owned())
+            ]
+        );
+        // Both lines are still listed.
+        assert_eq!(song.lyric_lines().len(), 2);
+    }
+
 }

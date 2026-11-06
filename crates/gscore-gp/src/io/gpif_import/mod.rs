@@ -89,6 +89,8 @@ mod display_tests;
 #[cfg(test)]
 mod effect_tests;
 mod helpers;
+#[cfg(test)]
+mod lyrics_tests;
 mod notes;
 #[cfg(test)]
 mod page_tests;
@@ -594,6 +596,19 @@ impl SongGpifOps for Song {
         // nothing is lost, as the editor works with attached grace notes. Writing turns
         // them back into grace beats (`Song::with_grace_beats`).
         self.fold_grace_beats();
+        // GP6/GP7 keep lyrics on the beats of one track: that track is the lyric track.
+        if let Some(track) = self.tracks.iter().position(|track| {
+            track.measures.iter().any(|measure| {
+                measure.voices.iter().any(|voice| {
+                    voice
+                        .beats
+                        .iter()
+                        .any(|beat| beat.lyrics.iter().any(|line| !line.is_empty()))
+                })
+            })
+        }) {
+            self.lyrics.track_choice = u8::try_from(track).unwrap_or(0);
+        }
     }
 }
 

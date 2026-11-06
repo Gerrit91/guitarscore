@@ -81,11 +81,13 @@ pub(super) fn build_beat_xml(
     if !beat.text.is_empty() {
         bxml.push_str(&format!("<FreeText>{}</FreeText>", escape_xml(&beat.text)));
     }
-    // Lyric syllables, one element per line (GP6/GP7).
-    for line in &beat.lyrics {
-        if !line.is_empty() {
-            bxml.push_str(&format!("<Lyrics>{}</Lyrics>", escape_xml(line)));
+    // Lyric syllables, one `<Line>` per lyric line (GP6/GP7).
+    if beat.lyrics.iter().any(|line| !line.is_empty()) {
+        bxml.push_str("<Lyrics>");
+        for line in &beat.lyrics {
+            bxml.push_str(&format!("<Line>{}</Line>", escape_xml(line)));
         }
+        bxml.push_str("</Lyrics>");
     }
     // The chord diagram shown at this beat, by its id in the track's collection.
     if let Some(id) = chord_id {
