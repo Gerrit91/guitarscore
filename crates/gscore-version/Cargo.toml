@@ -1,6 +1,6 @@
 [package]
 name = "gscore-version"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 description = "The version string baked into the binaries at build time"
 

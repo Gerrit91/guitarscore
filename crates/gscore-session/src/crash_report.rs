@@ -79,7 +79,7 @@ fn format_report(info: &PanicHookInfo<'_>, backtrace: &Backtrace) -> String {
          message: {message}\n\
          \n\
          backtrace:\n{backtrace}\n",
-        env!("CARGO_PKG_VERSION"),
+        gscore_version::VERSION,
         unix_time().as_secs(),
         thread.name().unwrap_or("<unnamed>"),
     )
