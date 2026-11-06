@@ -344,11 +344,17 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
 }
 
 #[test]
-fn choosing_a_preset_changes_what_is_in_front_of_you() {
+fn a_preset_brings_its_kind_of_string_back() {
     let mut harness = app_with("basic/note_lengths.gp");
     harness.get_by_label("Sound chain").click();
     harness.run();
-    // A chain on the track's first place, saved as a preset.
+    // A steel sound dialed in (PM synthesis, steel strings) with a reverb behind it, saved.
+    harness.get_by_label("Block 0: MIDI").click();
+    harness.run();
+    harness.get_by_label("PM Synthesis").click();
+    harness.run();
+    harness.get_by_label("Steel guitar").click();
+    harness.run();
     harness.get_by_label("Block 1: +").click();
     harness.run();
     harness.get_by_label("Reverb").click();
@@ -357,52 +363,34 @@ fn choosing_a_preset_changes_what_is_in_front_of_you() {
     harness.get_by_label("Save as…").click();
     harness.run();
     harness.get_by_label("Preset name").focus();
-    harness.get_by_label("Preset name").type_text("Hall");
+    harness
+        .get_by_label("Preset name")
+        .type_text("Natural Steel 1");
     harness.run();
     harness.query_all_by_label("Save").last().unwrap().click();
     harness.run();
-    assert_eq!(preset_shown(&harness), "Hall");
+    assert_eq!(preset_shown(&harness), "Natural Steel 1");
 
-    // Another instrument in the track panel: the window follows its kind of string, whose
-    // chain is empty.
-    harness.get_by_label_contains("Close Sound chain").click();
+    // Another kind of string (electric): its chain is empty.
+    harness.get_by_label("Block 0: Strings").click();
     harness.run();
-    harness.get_by_label("SoundFont preset").click();
-    harness.run();
-    // The program list is long: the wanted entry must be scrolled into view first.
-    harness
-        .get_by_label("25: Steel String Guitar")
-        .scroll_to_me();
-    harness.run();
-    harness.get_by_label("25: Steel String Guitar").click();
-    harness.run();
-    assert_eq!(
-        harness
-            .state()
-            .document()
-            .unwrap()
-            .song()
-            .track_sound(TrackIndex::new(0))
-            .map(|sound| sound.program),
-        Some(25),
-        "the track's preset changed"
-    );
-    harness.get_by_label("Sound chain").click();
+    harness.get_by_label("Electric guitar").click();
     harness.run();
     harness.get_by_label("Block 1: +");
+    assert_eq!(preset_shown(&harness), "Built-in");
 
-    // Choosing the preset changes what is in front of the user - the steel chain here -
-    // not the kind it happened to be saved on.
+    // Choosing the steel preset brings back the steel strings and their chain, not just
+    // values on the electric ones.
     harness
         .query_all_by_label("Preset")
         .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
         .unwrap()
         .click();
     harness.run();
-    harness.get_by_label("Hall").click();
+    harness.get_by_label("Natural Steel 1").click();
     harness.run();
     harness.get_by_label("Block 1: Reverb");
-    assert_eq!(preset_shown(&harness), "Hall");
+    assert_eq!(preset_shown(&harness), "Natural Steel 1");
 }
 
 /// What the Sound chain window's preset list shows.

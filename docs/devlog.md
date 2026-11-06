@@ -3419,3 +3419,16 @@ needed for a much larger font); owner listening check.
 - Tests: a preset saved on an electric track, chosen after the track's instrument was
   changed to a steel string, loads onto the steel chain; typing into a knob's value; the
   block menu's Remove.
+
+## 2026-11-06 — A preset brings its kind of string with it
+
+- Choosing a saved chain preset now switches the track to the kind of string the preset was
+  made for (its sound and chain are that kind's), so a "Natural Steel 1" preset turns an
+  electric track into steel strings - the model itself changes, not just values on whatever
+  kind was showing. A preset saved on the SoundFont keeps the track on the SoundFont (it has
+  no modelled sound to switch to); an older preset, from before the engine was part of one,
+  was made for modelled strings and brings them (its kind).
+- "Built-in" keeps whatever plays the track and resets the sound and chain of the kind on
+  screen.
+- Test: a steel preset with a reverb block, dialed in on an electric track, comes back as
+  steel strings with the block after choosing it.

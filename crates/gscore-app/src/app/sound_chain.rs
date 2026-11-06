@@ -65,6 +65,8 @@ struct Actions {
 
 /// A preset chosen in the list: the whole sound it carries.
 struct ChosenPreset {
+    /// The kind of string the sound belongs to; `None` keeps the kind the window shows.
+    kind: Option<StringKind>,
     sound: StringSound,
     chain: ChainSetting,
     /// What plays the strings, when the preset names it (older ones do not).
@@ -237,6 +239,7 @@ fn preset_row(
             .show_ui(ui, |ui| {
                 if ui.selectable_label(false, "Built-in").clicked() {
                     actions.preset = Some(ChosenPreset {
+                        kind: None,
                         sound: built_in(),
                         chain: ChainSetting::default(),
                         engine: None,
@@ -244,10 +247,21 @@ fn preset_row(
                 }
                 for preset in presets {
                     if ui.selectable_label(false, &preset.name).clicked() {
+                        // A preset brings the kind of string it was made for: a modelled
+                        // one plays it, and an older preset (saved before the engine was
+                        // part of it) was made for the modelled strings of its kind.
+                        let target = match engine_from_id(&preset.kind) {
+                            Some(TrackEngine::Modelled(saved)) => saved,
+                            _ => kind,
+                        };
                         actions.preset = Some(ChosenPreset {
+                            kind: Some(target),
                             sound: preset.sound,
                             chain: preset.chain.clone(),
-                            engine: engine_from_id(&preset.engine),
+                            engine: Some(
+                                engine_from_id(&preset.engine)
+                                    .unwrap_or(TrackEngine::Modelled(target)),
+                            ),
                         });
                     }
                 }
@@ -915,12 +929,7 @@ impl GuitarScoreApp {
             });
         // A preset first: it carries both a string sound and a chain.
         if let Some(preset) = actions.preset {
-            // A preset with a modelled engine brings its kind; otherwise it lands on the
-            // kind the window shows, so the knobs in front of the user do move.
-            let target = match preset.engine {
-                Some(TrackEngine::Modelled(saved)) => saved,
-                _ => kind,
-            };
+            let target = preset.kind.unwrap_or(kind);
             self.playback.set_string_sound(target, preset.sound);
             self.playback.set_string_chain(target, preset.chain);
             if let Some(engine) = preset.engine {
