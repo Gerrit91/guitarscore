@@ -23,3 +23,8 @@ pub use string::{Attack, Pluck, Release, StringVoice};
 pub fn frequency(key: u8, cents: f32) -> f32 {
     440.0 * ((f32::from(key) - 69.0 + cents / 100.0) / 12.0).exp2()
 }
+
+// The no-allocation test counts allocations with `stats_alloc`; this marks the test-only
+// dependency for the library test target's unused-dependency check.
+#[cfg(test)]
+use stats_alloc as _;

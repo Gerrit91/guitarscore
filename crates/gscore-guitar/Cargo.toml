@@ -8,3 +8,8 @@ description = "Physically modelled guitar and bass strings (digital waveguides)"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Counts allocations in the no-allocation test of `render` (test only, never in a
+# binary; MIT; no unsafe code of ours: the test only declares the global allocator).
+stats_alloc = "0.1.10"

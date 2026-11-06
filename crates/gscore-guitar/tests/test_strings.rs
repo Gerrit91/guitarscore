@@ -9,6 +9,8 @@
     clippy::indexing_slicing,
     clippy::arithmetic_side_effects
 )]
+// Integration tests are separate crates and see all of the library's dependencies.
+#![allow(unused_crate_dependencies)]
 
 use gscore_guitar::{Attack, GuitarModel, Pluck, Release, StringModel, StringVoice, frequency};
 
