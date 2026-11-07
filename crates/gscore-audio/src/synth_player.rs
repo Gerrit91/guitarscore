@@ -90,6 +90,8 @@ fn decode(state: u8) -> PlayState {
 #[derive(Debug)]
 struct ChainRequest {
     track: usize,
+    /// `None`: the track's own chain; `Some(part)`: one of its drum parts.
+    part: Option<usize>,
     spec: ChainSpec,
     settings: [BlockSettings; BLOCKS],
 }
@@ -269,10 +271,43 @@ impl SynthPlayer {
         self.chains
             .try_send(ChainRequest {
                 track,
+                part: None,
                 spec,
                 settings,
             })
             .map_err(|_| PlayError::Device("the synthesizer is not keeping up".to_owned()))
+    }
+
+    /// Gives `part` of the song's drum track `track` the chain `spec` with `settings`,
+    /// prepared on the synth's own thread, then heard. An empty chain removes it.
+    pub fn set_part_chain(
+        &self,
+        track: usize,
+        part: usize,
+        spec: ChainSpec,
+        settings: [BlockSettings; BLOCKS],
+    ) -> Result<(), PlayError> {
+        if let Some(error) = self.error() {
+            return Err(PlayError::Device(error));
+        }
+        self.chains
+            .try_send(ChainRequest {
+                track,
+                part: Some(part),
+                spec,
+                settings,
+            })
+            .map_err(|_| PlayError::Device("the synthesizer is not keeping up".to_owned()))
+    }
+
+    /// New knob values for `part` of the song's drum track `track`, heard at once.
+    pub fn set_part_chain_settings(
+        &self,
+        track: usize,
+        part: usize,
+        settings: [BlockSettings; BLOCKS],
+    ) -> Result<(), PlayError> {
+        self.send(Command::PartChainSettings(track, part, settings))
     }
 
     /// New knob values for the effect chain of `track`, heard at once.
@@ -441,16 +476,14 @@ fn run(
         match house.chains.recv_timeout(HOUSEKEEPING) {
             Ok(request) => {
                 let chain = prepare_chain(&request.spec, &request.settings, rate);
+                let command = match request.part {
+                    None => Command::Chain(request.track, chain, Box::new(request.settings)),
+                    Some(part) => {
+                        Command::PartChain(request.track, part, chain, Box::new(request.settings))
+                    }
+                };
                 // Waits for room in the queue: this thread may.
-                if house
-                    .commands
-                    .send(Command::Chain(
-                        request.track,
-                        chain,
-                        Box::new(request.settings),
-                    ))
-                    .is_err()
-                {
+                if house.commands.send(command).is_err() {
                     break;
                 }
             }

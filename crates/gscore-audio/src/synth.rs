@@ -322,6 +322,28 @@ impl SynthEngine {
         self.set_bus_settings(crate::Bus::Reverb, settings, level, muted);
     }
 
+    /// Gives `part` of the song's drum track `track` a prepared chain (`None`: none).
+    /// Returns the one it replaces, to be freed elsewhere.
+    pub fn set_part_chain(
+        &mut self,
+        track: usize,
+        part: usize,
+        chain: Option<Box<Chain>>,
+        settings: [BlockSettings; BLOCKS],
+    ) -> Option<Box<Chain>> {
+        self.mixer.set_part_chain(track, part, chain, settings)
+    }
+
+    /// New knob values for `part` of the song's drum track `track`, heard at once.
+    pub fn set_part_chain_settings(
+        &mut self,
+        track: usize,
+        part: usize,
+        settings: [BlockSettings; BLOCKS],
+    ) {
+        self.mixer.set_part_chain_settings(track, part, settings);
+    }
+
     /// Gives `bus` a prepared chain (`None`: none). Returns the one it replaces, to be
     /// freed elsewhere.
     pub fn set_bus(&mut self, bus: crate::Bus, chain: Option<Box<Chain>>) -> Option<Box<Chain>> {
@@ -368,6 +390,15 @@ impl SynthEngine {
             }
             Command::ChainSettings(track, settings) => {
                 self.set_chain_settings(track, settings);
+                return None;
+            }
+            Command::PartChain(track, part, chain, settings) => {
+                return self
+                    .set_part_chain(track, part, chain, *settings)
+                    .map(Retired::Chain);
+            }
+            Command::PartChainSettings(track, part, settings) => {
+                self.set_part_chain_settings(track, part, settings);
                 return None;
             }
             Command::Bus(bus, chain) => {
@@ -463,7 +494,7 @@ impl SynthEngine {
                 self.transport.state() == PlayState::Playing,
                 frames,
             );
-            self.mixer.mix(frames, &self.guitars, l, r);
+            self.mixer.mix(frames, &self.guitars, &self.synth, l, r);
             self.click.add(l, r);
             self.mixer.meter_master(l, r);
         }

@@ -45,6 +45,15 @@ pub(crate) enum Command {
     ),
     /// New knob values for one track's chain.
     ChainSettings(usize, [BlockSettings; BLOCKS]),
+    /// Gives one part of a drum track's chain a prepared chain (`None`: none).
+    PartChain(
+        usize,
+        usize,
+        Option<Box<gscore_guitar::Chain>>,
+        Box<[BlockSettings; BLOCKS]>,
+    ),
+    /// New knob values for one part of a drum track's chain.
+    PartChainSettings(usize, usize, [BlockSettings; BLOCKS]),
     /// Gives a bus of the mixer its prepared chain (`None`: none).
     Bus(crate::Bus, Option<Box<gscore_guitar::Chain>>),
     /// New knob values, level and mute for a bus.
@@ -172,6 +181,8 @@ impl Transport {
             | Command::TrackModel(..)
             | Command::Chain(..)
             | Command::ChainSettings(..)
+            | Command::PartChain(..)
+            | Command::PartChainSettings(..)
             | Command::Bus(..)
             | Command::BusSettings(..)
             | Command::CompSend(..) => {}

@@ -372,3 +372,73 @@ fn a_compressor_in_a_tracks_chain_turns_it_down() {
     let _ = render(&mut compressed, 3.0);
     assert_eq!(compressed.meters().reduction(0), 0.0);
 }
+
+#[test]
+fn a_drum_tracks_parts_have_their_own_chains() {
+    use gscore_guitar::CompressorKnobs;
+
+    // A drum track stays one strip, but its kit is split into parts the mixer can process
+    // apart: a chain on the kick's part takes the kick and leaves the snare alone. (No
+    // notes in the song: the test plays the drums itself.)
+    let mut song = testing::song_with_notes_on_tracks(1, &[]).expect("a silent song");
+    let _ = song
+        .set_track_drums(TrackIndex::new(0), true)
+        .expect("a drum track");
+    let sequence = Sequence::new(&song, None).unwrap();
+    let channel = sequence.tracks[0].channel;
+    assert_eq!(
+        channel,
+        Channel::PERCUSSION,
+        "the first drum track gets channel 10"
+    );
+    assert!(sequence.tracks[0].sound.percussion);
+    // A compressor that turns its part right down (no make-up).
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Compressor);
+    let mut settings = [BlockSettings::default(); BLOCKS];
+    settings[0].compressor = CompressorKnobs {
+        input_db: 24.0,
+        output_db: -24.0,
+        ..CompressorKnobs::default()
+    };
+    // One drum, with a chain on `chain_part` (or none).
+    let level = |key: u8, chain_part: Option<usize>| {
+        let bytes = gscore_audio::testing::sine_drum_soundfont("Test Drums");
+        let bank = SoundBank::read(&mut bytes.as_slice()).unwrap();
+        let mut engine = SynthEngine::new(&bank, RATE).unwrap();
+        engine.load(Arc::new(sequence.clone()));
+        engine.play();
+        if let Some(part) = chain_part {
+            let _ = engine.set_part_chain(
+                0,
+                part,
+                Some(Box::new(spec.prepare(RATE).instance(&settings))),
+                settings,
+            );
+        }
+        engine.send_event(MidiEvent::NoteOn {
+            channel,
+            key,
+            velocity: 100,
+        });
+        let (left, _) = render(&mut engine, 1.0);
+        rms(steady(&left))
+    };
+    let kick = level(36, None);
+    let snare = level(38, None);
+    assert!(
+        kick > 0.001 && snare > 0.001,
+        "the drums sound: {kick} {snare}"
+    );
+    // The kick's own chain turns it right down...
+    let kick_cut = level(36, Some(0));
+    assert!(kick_cut < 0.2 * kick, "{kick_cut} against {kick}");
+    // ...and leaves the snare alone, which is another part.
+    let snare_alone = level(38, Some(0));
+    assert!(
+        (snare_alone - snare).abs() < 1e-6,
+        "{snare_alone} against {snare}"
+    );
+    // A part the kit does not use has no sound, so its chain changes nothing either.
+    assert!((level(36, Some(2)) - kick).abs() < 1e-6);
+}

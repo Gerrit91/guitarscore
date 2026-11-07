@@ -25,6 +25,8 @@ pub(super) struct ToneTarget {
     kind: Option<StringKind>,
     /// The General MIDI program of its preset, whose tone it plays.
     program: u8,
+    /// Whether it is a drum track (its sound is split into the kit's parts).
+    drums: bool,
 }
 
 /// What the synthesizer was given for one mixer bus: whether it was prepared, and what it
@@ -68,6 +70,7 @@ fn targets(sequence: &Sequence) -> Vec<ToneTarget> {
                 TrackEngine::SoundFont => None,
             },
             program: track.sound.program,
+            drums: track.sound.percussion,
         })
         .collect()
 }
@@ -353,6 +356,36 @@ impl Playback {
         }
         self.tone_targets = targets(sequence);
         self.send_tones();
+        self.send_drum_parts(sequence);
+    }
+
+    /// Sends each drum track the chains of its parts (the built-in tones). They do not
+    /// change, so this happens when a sequence is loaded.
+    fn send_drum_parts(&mut self, sequence: &Sequence) {
+        if !self.synth_running() {
+            return;
+        }
+        let mut jobs = Vec::new();
+        for track in &sequence.performance.tracks {
+            if !track.sound.percussion {
+                continue;
+            }
+            for part in crate::chain_settings::DrumPart::ALL {
+                let chain = crate::chain_settings::default_drum_part_chain(part);
+                let spec = self.chain_spec(&chain);
+                jobs.push((track.track.get(), part.index(), spec, chain.knobs()));
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(super::Active::Synth(player)) = &self.player {
+            for (track, part, spec, settings) in jobs {
+                if let Err(error) = player.set_part_chain(track, part, spec, settings) {
+                    self.chain_notices.push(error.to_string());
+                }
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = jobs;
     }
 
     /// Forgets what the synthesizer was given (a new one starts with nothing).
@@ -387,7 +420,15 @@ impl Playback {
                         .get(&target.track)
                         .map(|tone| tone.chain.clone())
                         .or_else(|| self.preset_tone(target.program).map(|own| own.chain))
-                        .unwrap_or_default(),
+                        .unwrap_or_else(|| {
+                            // A drum track with no tone of its own runs the drum bus: a
+                            // light compressor that glues the kit together.
+                            if target.drums {
+                                crate::chain_settings::default_drum_bus_chain()
+                            } else {
+                                ChainSetting::default()
+                            }
+                        }),
                 },
                 Some(kind) => {
                     let tone = own.or(preset).unwrap_or_else(|| self.default_tone(kind));

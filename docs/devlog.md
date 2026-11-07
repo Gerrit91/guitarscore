@@ -3813,3 +3813,19 @@ needed for a much larger font); owner listening check.
 - Tests: a click beside the fader of the third strip selects track 3 (panel and cursor),
   a click on the first goes back, snapshot `mixer_selected_track`; the mixer snapshots
   changed (the strips are click targets now).
+
+## 2026-11-07 — Drums, step 3 and 4: the drum bus in the engine, and the part tones
+
+- The engine plays a drum track as one strip whose sound is split: the fork's parts (step
+  2) go each through its own chain, the parts are summed, then the track's own chain (the
+  drum bus), fader, pan and sends as for any track. `Mixer::set_part_chain` /
+  `set_part_chain_settings` (prepared off the audio thread through the player's chain
+  queue, `Command::PartChain*`), a `DrumParts` view of the fork's blocks, and the strip's
+  gain-reduction needle takes the deepest of the parts'.
+- `chain_settings::DrumPart` (kick, snare, hi-hat, toms, cymbals, percussion) and the
+  owner's first tones: EQ (low cut, body, boxy mids out, click/crack in), a CA-76, a short
+  room on the snare and toms; the hi-hat and cymbals only EQ; the drum track's own chain
+  (when it has no tone of its own) is a light compressor that glues the kit.
+- Playback sends the part chains when a sequence is loaded (`send_drum_parts`).
+- Tests: a chain on the kick's part turns the kick right down and leaves the snare alone,
+  a part the kit does not use changes nothing; every part's built-in tone is usable.

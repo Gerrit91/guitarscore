@@ -23,6 +23,9 @@
 //! - **Tracks sharing a MIDI channel** (Guitar Pro allows it) are one signal: the first
 //!   track with that channel owns it, the others are linked to it (the interface shows
 //!   them together); their notes still come and go with their own mute and solo.
+//! - **A drum track** stays one strip: its channel's sound is split into the kit's parts
+//!   by the fork (kick, snare, hi-hat, toms, cymbals, the rest), each part through its own
+//!   chain, then the parts summed and through the track's own chain (the drum bus).
 //! - **Meters** measure each strip after its fader, the reverb bus and the master
 //!   ([`crate::Meters`]).
 //!
@@ -32,6 +35,7 @@ use std::sync::Arc;
 
 use gscore_guitar::{BLOCKS, BlockSettings, Chain};
 use gscore_play::{MidiEvent, Sequence, controller};
+use rustysynth::PARTS;
 
 use crate::chains::{MAX_TONES, TrackTones};
 use crate::meters::{Ballistics, Meters, Needle, Peak, Which, peak_of};
@@ -61,6 +65,10 @@ pub(crate) fn pan_gains(pan: u8) -> (f32, f32) {
 struct Strip {
     /// The song's track it plays (its chain and meter are that track's).
     song_track: usize,
+    /// The MIDI channel its sound comes on (a drum track's parts come from it).
+    channel: usize,
+    /// Whether it is a drum track, its sound split into the kit's parts.
+    drums: bool,
     volume: u8,
     pan: u8,
     reverb: u8,
@@ -71,6 +79,8 @@ impl Default for Strip {
     fn default() -> Self {
         Strip {
             song_track: usize::MAX,
+            channel: 0,
+            drums: false,
             volume: 100,
             pan: 64,
             reverb: 0,
@@ -129,6 +139,18 @@ pub(crate) trait Strings {
     fn output(&self, slot: usize) -> &[f32];
 }
 
+/// What the fork gives the mixer: each drum channel's parts of the block just rendered.
+pub(crate) trait DrumParts {
+    /// One part of `channel`'s last block (`side` 0 left, 1 right).
+    fn part(&self, channel: usize, part: usize, side: usize) -> &[f32];
+}
+
+impl DrumParts for rustysynth::Synthesizer {
+    fn part(&self, channel: usize, part: usize, side: usize) -> &[f32] {
+        self.part_block(channel, part, side)
+    }
+}
+
 /// The mixer of one engine.
 pub(crate) struct Mixer {
     /// The synthesizer's output, channel by channel, left and right.
@@ -143,6 +165,8 @@ pub(crate) struct Mixer {
     sequence: usize,
     /// Each track's chain.
     tones: TrackTones,
+    /// Each drum track's part chains ([`PARTS`] of them), by strip.
+    part_chains: [[Option<Box<Chain>>; PARTS]; MAX_STRIPS],
     /// The buses ([`Bus::index`]).
     buses: [BusState; 2],
     /// Each track's send into the compressor bus (0-127), by the song's track index.
@@ -150,8 +174,9 @@ pub(crate) struct Mixer {
     /// Each track's gain-reduction needle, by the song's track index.
     needles: [Needle; MAX_TONES],
     master_peak: Peak,
-    /// A strip's signal on its way through.
+    /// A strip's signal on its way through, and a drum strip's parts summed.
     work: [[f32; BLOCK]; 2],
+    parts_work: [[f32; BLOCK]; 2],
     meters: Arc<Meters>,
     ballistics: Ballistics,
 }
@@ -176,11 +201,13 @@ impl Mixer {
             count: 0,
             sequence: 0,
             tones: TrackTones::new(),
+            part_chains: std::array::from_fn(|_| std::array::from_fn(|_| None)),
             buses: [BusState::new(), BusState::new()],
             comp_sends: [0; MAX_TONES],
             needles: [Needle::default(); MAX_TONES],
             master_peak: Peak::default(),
             work: [[0.0; BLOCK]; 2],
+            parts_work: [[0.0; BLOCK]; 2],
             meters: Arc::new(Meters::default()),
             ballistics: Ballistics::new(sample_rate, BLOCK),
         }
@@ -227,6 +254,8 @@ impl Mixer {
                 Some(kept) => *kept,
                 None => Strip {
                     song_track,
+                    channel,
+                    drums: track.sound.percussion,
                     volume: track.sound.volume,
                     pan: track.sound.pan,
                     reverb: track.sound.reverb,
@@ -320,6 +349,43 @@ impl Mixer {
         self.tones.set_settings(track, settings);
     }
 
+    /// Gives `part` of the song's drum track `track` the chain `chain` (`None`: none) with
+    /// its knob values. Returns the chain it replaces, to be freed off the audio thread.
+    pub(crate) fn set_part_chain(
+        &mut self,
+        track: usize,
+        part: usize,
+        chain: Option<Box<Chain>>,
+        settings: [BlockSettings; BLOCKS],
+    ) -> Option<Box<Chain>> {
+        let mut chain = chain;
+        if let Some(chain) = &mut chain {
+            chain.set_settings(&settings);
+        }
+        let slot = self
+            .part_chains
+            .get_mut(track)
+            .and_then(|parts| parts.get_mut(part))?;
+        std::mem::replace(slot, chain)
+    }
+
+    /// New knob values for `part` of the song's drum track `track`, heard at once.
+    pub(crate) fn set_part_chain_settings(
+        &mut self,
+        track: usize,
+        part: usize,
+        settings: [BlockSettings; BLOCKS],
+    ) {
+        if let Some(chain) = self
+            .part_chains
+            .get_mut(track)
+            .and_then(|parts| parts.get_mut(part))
+            .and_then(Option::as_mut)
+        {
+            chain.set_settings(&settings);
+        }
+    }
+
     /// Gives `bus` the chain `chain` (`None`: none) with its knob values. Returns the
     /// chain it replaces, to be freed off the audio thread.
     pub(crate) fn set_bus(
@@ -367,6 +433,7 @@ impl Mixer {
         &mut self,
         frames: usize,
         strings: &impl Strings,
+        drums: &dyn DrumParts,
         left: &mut [f32],
         right: &mut [f32],
     ) {
@@ -390,7 +457,7 @@ impl Mixer {
             }
         }
         for position in 0..self.count {
-            self.mix_strip(position, frames, strings, left, right);
+            self.mix_strip(position, frames, strings, drums, left, right);
         }
         for bus in [Bus::Reverb, Bus::Compressor] {
             self.mix_bus(bus, frames, left, right);
@@ -403,6 +470,7 @@ impl Mixer {
         position: usize,
         frames: usize,
         strings: &impl Strings,
+        drums: &dyn DrumParts,
         left: &mut [f32],
         right: &mut [f32],
     ) {
@@ -415,28 +483,74 @@ impl Mixer {
         else {
             return;
         };
-        // The source: the strings (mono), or the channels the track plays on (stereo).
-        let stereo = match strings.slot_of(position) {
-            Some(slot) => {
-                let output = strings.output(slot);
-                for (work, sample) in work_left
-                    .iter_mut()
-                    .zip(output.iter().chain(std::iter::repeat(&0.0)))
-                {
+        // The source: the strings (mono), the channels the track plays on (stereo), or -
+        // for a drum track - its channel's parts, each through its own chain, summed.
+        let mut part_reduction = 0.0_f32;
+        let stereo = if strip.drums {
+            let channel = strip.channel;
+            let [sum_left, sum_right] = &mut self.parts_work;
+            let (Some(sum_left), Some(sum_right)) =
+                (sum_left.get_mut(..frames), sum_right.get_mut(..frames))
+            else {
+                return;
+            };
+            sum_left.fill(0.0);
+            sum_right.fill(0.0);
+            for part in 0..PARTS {
+                for (work, sample) in work_left.iter_mut().zip(
+                    drums
+                        .part(channel, part, 0)
+                        .iter()
+                        .chain(std::iter::repeat(&0.0)),
+                ) {
                     *work = *sample;
                 }
-                false
-            }
-            None => {
-                work_left.fill(0.0);
-                work_right.fill(0.0);
-                for (channel, [from_left, from_right]) in self.channels.iter().enumerate() {
-                    if self.channel_strip.get(channel).copied().flatten() == Some(position) {
-                        add(work_left, from_left);
-                        add(work_right, from_right);
-                    }
+                for (work, sample) in work_right.iter_mut().zip(
+                    drums
+                        .part(channel, part, 1)
+                        .iter()
+                        .chain(std::iter::repeat(&0.0)),
+                ) {
+                    *work = *sample;
                 }
-                true
+                if let Some(chain) = self
+                    .part_chains
+                    .get_mut(position)
+                    .and_then(|parts| parts.get_mut(part))
+                    .and_then(Option::as_mut)
+                {
+                    chain.process_in_place(work_left, work_right, true);
+                    part_reduction = part_reduction.min(chain.take_gain_reduction());
+                }
+                add(sum_left, work_left);
+                add(sum_right, work_right);
+            }
+            work_left.copy_from_slice(sum_left);
+            work_right.copy_from_slice(sum_right);
+            true
+        } else {
+            match strings.slot_of(position) {
+                Some(slot) => {
+                    let output = strings.output(slot);
+                    for (work, sample) in work_left
+                        .iter_mut()
+                        .zip(output.iter().chain(std::iter::repeat(&0.0)))
+                    {
+                        *work = *sample;
+                    }
+                    false
+                }
+                None => {
+                    work_left.fill(0.0);
+                    work_right.fill(0.0);
+                    for (channel, [from_left, from_right]) in self.channels.iter().enumerate() {
+                        if self.channel_strip.get(channel).copied().flatten() == Some(position) {
+                            add(work_left, from_left);
+                            add(work_right, from_right);
+                        }
+                    }
+                    true
+                }
             }
         };
         let sounding = peak_of(work_left) > 0.0 || (stereo && peak_of(work_right) > 0.0);
@@ -449,13 +563,13 @@ impl Mixer {
         let reduction = match chain {
             Some(chain) => {
                 chain.process_in_place(work_left, work_right, stereo);
-                chain.take_gain_reduction()
+                chain.take_gain_reduction().min(part_reduction)
             }
             None => {
                 if !stereo {
                     work_right.copy_from_slice(work_left);
                 }
-                0.0
+                part_reduction
             }
         };
         // The fader and the pan (a balance once the signal is stereo), then the sends.
