@@ -354,3 +354,41 @@ pub(super) fn eq_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
     .changed;
     changed
 }
+
+/// A chorus's knobs: its speed, its swing and the mix under the dry sound.
+pub(super) fn chorus_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
+    let mut changed = round_knob(
+        ui,
+        &mut block.chorus_rate,
+        knob_ranges::CHORUS_RATE,
+        "Rate",
+        " Hz",
+        0.6,
+        true,
+        "How fast the chorus swings: slow for a wide, dreamy drift, fast for a shiver.",
+    )
+    .changed;
+    changed |= round_knob(
+        ui,
+        &mut block.chorus_depth,
+        knob_ranges::CHORUS_DEPTH,
+        "Depth",
+        " ms",
+        3.0,
+        false,
+        "How far the delay swings: more is a wider, more obviously doubled sound.",
+    )
+    .changed;
+    changed |= round_knob(
+        ui,
+        &mut block.mix,
+        knob_ranges::MIX,
+        "Mix",
+        "",
+        0.5,
+        false,
+        "How much of the chorus under the dry sound: 0 none, 1 only the chorus.",
+    )
+    .changed;
+    changed
+}

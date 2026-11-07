@@ -11,6 +11,7 @@
 use std::sync::Arc;
 
 use crate::amp::Amp;
+use crate::chorus::Chorus;
 use crate::compressor::Compressor;
 use crate::convolver::{Convolver, PARTITION, Spectra};
 use crate::drive::Drive;
@@ -52,6 +53,8 @@ pub enum BlockKind {
     Compressor,
     /// The 4-band parametric EQ.
     Eq,
+    /// The stereo chorus.
+    Chorus,
 }
 
 impl BlockKind {
@@ -85,6 +88,7 @@ enum PreparedBlock {
     Drive,
     Compressor,
     Eq,
+    Chorus,
 }
 
 impl ChainSpec {
@@ -114,6 +118,7 @@ impl ChainSpec {
                 BlockKind::Drive => PreparedBlock::Drive,
                 BlockKind::Compressor => PreparedBlock::Compressor,
                 BlockKind::Eq => PreparedBlock::Eq,
+                BlockKind::Chorus => PreparedBlock::Chorus,
             })
         });
         PreparedChain {
@@ -158,6 +163,9 @@ impl PreparedChain {
             Some(PreparedBlock::Eq) => Block::Eq(Box::new(
                 [(); 2].map(|()| Eq::new(rate, crate::EqKnobs::default())),
             )),
+            Some(PreparedBlock::Chorus) => {
+                Block::Chorus(Box::new(Chorus::new(rate, crate::ChorusKnobs::default())))
+            }
             Some(PreparedBlock::Drive) => Block::Drive(Box::new(
                 [(); 2].map(|()| Drive::new(rate, crate::DriveKnobs::default())),
             )),
@@ -199,6 +207,8 @@ enum Block {
     Compressor(Box<Compressor>),
     /// Left and right, as an amp's.
     Eq(Box<[Eq; 2]>),
+    /// Both sides at once.
+    Chorus(Box<Chorus>),
 }
 
 /// The computed reverb and the cut filters on its sound, left and right.
@@ -261,6 +271,10 @@ impl Chain {
                     for side in sides.iter_mut() {
                         side.set_knobs(new.eq);
                     }
+                    (None, (0.0, 0.0))
+                }
+                Block::Chorus(chorus) => {
+                    chorus.set_knobs(new.chorus);
                     (None, (0.0, 0.0))
                 }
                 Block::Empty => (None, (0.0, 0.0)),
@@ -327,6 +341,7 @@ impl Chain {
                         side.reset();
                     }
                 }
+                Block::Chorus(chorus) => chorus.reset(),
                 Block::Reverb(reverb) => {
                     reverb.reverb.clear();
                     for filter in reverb.cuts.iter_mut().flatten() {
@@ -391,6 +406,14 @@ impl Chain {
                         } else {
                             signal[0]
                         };
+                    }
+                    Block::Chorus(chorus) => {
+                        // The chorus needs both sides: a mono signal is made stereo first.
+                        let mut left = [signal[0]];
+                        let mut right = [signal[1]];
+                        chorus.process(&mut left, &mut right);
+                        signal = [left[0], right[0]];
+                        stereo = true;
                     }
                     Block::Drive(sides) => {
                         let [left, right] = &mut **sides;

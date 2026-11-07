@@ -31,6 +31,8 @@ pub enum BlockChoice {
     Compressor,
     /// The 4-band parametric EQ.
     Eq,
+    /// The stereo chorus.
+    Chorus,
 }
 
 impl BlockChoice {
@@ -45,6 +47,7 @@ impl BlockChoice {
             BlockChoice::Drive => "Drive",
             BlockChoice::Compressor => "Compressor",
             BlockChoice::Eq => "EQ",
+            BlockChoice::Chorus => "Chorus",
         }
     }
 
@@ -170,6 +173,9 @@ pub struct BlockSetting {
     pub eq_band_freq: [f32; BANDS],
     pub eq_band_gain: [f32; BANDS],
     pub eq_band_q: [f32; BANDS],
+    /// A chorus's speed and swing (its mix is `mix`).
+    pub chorus_rate: f32,
+    pub chorus_depth: f32,
 }
 
 impl Default for BlockSetting {
@@ -211,6 +217,10 @@ impl BlockSetting {
             BlockChoice::Eq => {
                 let eq = EqKnobs::default();
                 (1.0, 0.0, eq.low_cut, eq.high_cut, 1.0)
+            }
+            BlockChoice::Chorus => {
+                let chorus = gscore_guitar::ChorusKnobs::default();
+                (chorus.mix, 0.0, 0.0, 0.0, 1.0)
             }
             BlockChoice::Cabinet | BlockChoice::Empty => {
                 let impulse = ImpulseKnobs::default();
@@ -259,6 +269,8 @@ impl BlockSetting {
             eq_band_freq: EqKnobs::default().band_freq,
             eq_band_gain: EqKnobs::default().band_gain,
             eq_band_q: EqKnobs::default().band_q,
+            chorus_rate: gscore_guitar::ChorusKnobs::default().rate_hz,
+            chorus_depth: gscore_guitar::ChorusKnobs::default().depth_ms,
         }
     }
 
@@ -328,6 +340,11 @@ impl BlockSetting {
                 band_freq: self.eq_band_freq,
                 band_gain: self.eq_band_gain,
                 band_q: self.eq_band_q,
+            },
+            chorus: gscore_guitar::ChorusKnobs {
+                rate_hz: self.chorus_rate,
+                depth_ms: self.chorus_depth,
+                mix: self.mix,
             },
         }
         .sanitized()

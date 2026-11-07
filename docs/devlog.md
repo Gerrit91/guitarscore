@@ -3851,3 +3851,17 @@ needed for a much larger font); owner listening check.
 - Tests: the drum track's window shows the kit's compressor, the kick's EQ and compressor,
   a moved knob is kept as the kick's tone in the settings, Built-in forgets it, and the kit
   board comes back; snapshot `sound_chain_drum_kick`.
+
+## 2026-11-07 — The chorus block
+
+- `gscore-guitar::chorus`: a stereo chorus, two short delay lines swinging around 14 ms,
+  the right side a quarter cycle ahead (the width), rate 0.05-5 Hz, depth 0.2-8 ms, mix;
+  linear-interpolated reads, ring-buffer index math bounded by the buffer (the module
+  allows the arithmetic lint for that). `BlockKind::Chorus`; a mono signal is made stereo
+  before it, so the sides differ as they should.
+- The chain window's block: "Chorus" on the board, "stereo" under it, Rate, Depth and Mix
+  as round knobs (`chorus_knobs`); offered in an empty place's menu (the mixer's step 5,
+  item 2: the GM Chorus knob still does nothing).
+- Tests: a dry chorus passes the signal exactly, an all-wet one moves the sound and keeps
+  the two sides apart without silencing it, a broken settings file never makes NaN or a
+  huge signal, and reset leaves silence.

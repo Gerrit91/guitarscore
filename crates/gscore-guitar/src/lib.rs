@@ -13,6 +13,7 @@
 
 mod amp;
 mod chain;
+mod chorus;
 mod compressor;
 mod convolver;
 mod delay;
@@ -32,6 +33,7 @@ mod tail;
 
 pub use amp::{AmpKnobs, AmpVoice};
 pub use chain::{BLOCKS, BlockKind, Chain, ChainSpec, PreparedChain};
+pub use chorus::{CENTRE_MS, ChorusKnobs};
 pub use compressor::{CompRatio, CompressorKnobs};
 pub use drive::DriveKnobs;
 pub use eq::{BANDS, BandShape, EqKnobs};

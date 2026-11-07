@@ -117,6 +117,7 @@ fn box_text(block: &BlockSetting) -> (String, String) {
         BlockChoice::Drive => "overdrive".to_owned(),
         BlockChoice::Compressor => format!("CA-76 · {}", block.comp_ratio.label()),
         BlockChoice::Eq => "4 bands".to_owned(),
+        BlockChoice::Chorus => "stereo".to_owned(),
         BlockChoice::Cabinet | BlockChoice::Room => block
             .file
             .as_ref()
@@ -460,7 +461,7 @@ fn parts_row(
 }
 
 /// What an empty place can hold: the block, the name its menu shows, and what it does.
-fn block_choices() -> [(BlockChoice, &'static str, &'static str); 7] {
+fn block_choices() -> [(BlockChoice, &'static str, &'static str); 8] {
     [
         (
             BlockChoice::Drive,
@@ -483,6 +484,11 @@ fn block_choices() -> [(BlockChoice, &'static str, &'static str); 7] {
             "EQ",
             "A 4-band parametric EQ: a low cut, a low shelf, two bells and a high shelf, \
              then a high cut",
+        ),
+        (
+            BlockChoice::Chorus,
+            "Chorus",
+            "A stereo chorus: two short delays swinging slowly, mixed under the dry sound",
         ),
         (
             BlockChoice::Compressor,
@@ -853,6 +859,7 @@ pub(super) fn block_knobs(
                 moved.changed |= super::amp_knobs::compressor_knobs(ui, block, reduction);
             }
             BlockChoice::Eq => moved.changed |= super::amp_knobs::eq_knobs(ui, block),
+            BlockChoice::Chorus => moved.changed |= super::amp_knobs::chorus_knobs(ui, block),
             BlockChoice::Cabinet | BlockChoice::Room => {
                 // First the room itself: how long it lasts.
                 if block.choice == BlockChoice::Room {

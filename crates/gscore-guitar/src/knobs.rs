@@ -104,6 +104,7 @@ pub struct BlockSettings {
     pub drive: DriveKnobs,
     pub compressor: CompressorKnobs,
     pub eq: crate::EqKnobs,
+    pub chorus: crate::ChorusKnobs,
 }
 
 /// The knob ranges, for user interfaces and for sanitizing: `(lowest, highest)`.
@@ -138,6 +139,10 @@ pub mod knob_ranges {
     pub const BAND_FREQ: (f32, f32) = (20.0, 20_000.0);
     /// A bell's width.
     pub const BAND_Q: (f32, f32) = (0.3, 6.0);
+    /// A chorus's speed, Hz.
+    pub const CHORUS_RATE: (f32, f32) = (0.05, 5.0);
+    /// A chorus's swing, ms.
+    pub const CHORUS_DEPTH: (f32, f32) = (0.2, 8.0);
 }
 
 fn fit(value: f32, (low, high): (f32, f32), fallback: f32) -> f32 {
@@ -219,6 +224,7 @@ impl BlockSettings {
                 mix: fit(self.compressor.mix, knob_ranges::MIX, c.mix),
             },
             eq: self.eq.sanitized(),
+            chorus: self.chorus.sanitized(),
         }
     }
 }

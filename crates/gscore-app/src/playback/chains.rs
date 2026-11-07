@@ -317,6 +317,7 @@ impl Playback {
                 (BlockChoice::Drive, _) => Some(BlockKind::Drive),
                 (BlockChoice::Compressor, _) => Some(BlockKind::Compressor),
                 (BlockChoice::Eq, _) => Some(BlockKind::Eq),
+                (BlockChoice::Chorus, _) => Some(BlockKind::Chorus),
                 (BlockChoice::Cabinet | BlockChoice::Room, None) => None,
                 (choice, Some(file)) => match self.impulse(file) {
                     Ok(response) if choice == BlockChoice::Room => {
@@ -619,7 +620,7 @@ impl Playback {
                     }
                 }),
             // A bus never runs an amp, a drive pedal or an EQ: `sanitized` keeps them out.
-            BlockChoice::Amp | BlockChoice::Drive | BlockChoice::Eq => None,
+            BlockChoice::Amp | BlockChoice::Drive | BlockChoice::Eq | BlockChoice::Chorus => None,
         };
         if let Some(slot) = spec.blocks.first_mut() {
             *slot = prepared;
