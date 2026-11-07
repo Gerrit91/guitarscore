@@ -500,7 +500,7 @@ fn draw(
             buses,
             readings,
             comp_sends,
-            view.metronome,
+            view,
             mixer_state,
             actions,
         );

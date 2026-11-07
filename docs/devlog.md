@@ -3799,3 +3799,17 @@ needed for a much larger font); owner listening check.
   none.
 - Still to come (steps 3-6 of `docs/handoff-drums.md`): the engine's part chains and drum
   bus, the default part tones, the window's row of parts, and the export check.
+
+## 2026-11-07 — The mixer strips select their track
+
+- Owner: clicking a strip's background in the mixer view selects the track, and the
+  selected strip has the grid view's selection background. `track_strip` is a click
+  target now (its children - knobs, fader, mute, fields - still take their own clicks) and
+  pushes the same `GridAction::MoveCursor` the grid's track row does: the cursor goes to
+  that track's measure and the track panel shows it. The selected strip gets
+  `selection.bg_fill × 0.18`, as the row does.
+- `strips()` takes the `GridView` (it needs the shown track, the cursor's measure and the
+  metronome reading) instead of only the metronome.
+- Tests: a click beside the fader of the third strip selects track 3 (panel and cursor),
+  a click on the first goes back, snapshot `mixer_selected_track`; the mixer snapshots
+  changed (the strips are click targets now).

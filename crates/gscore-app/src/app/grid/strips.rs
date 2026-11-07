@@ -10,7 +10,7 @@ use crate::settings::{CompressorBus, ReverbBus};
 
 use super::mixer::{self, FLOOR_DB, TRACK_UNITY, db_value, volume_from_db};
 use super::rows::TrackRow;
-use super::{GridAction, ROW_HEIGHT};
+use super::{GridAction, GridView, ROW_HEIGHT};
 use crate::app::{icons, instrument, style};
 
 /// One strip's width (four knobs across the top: pan, reverb, chorus, comp).
@@ -60,7 +60,7 @@ pub(super) fn strips(
     buses: Buses,
     readings: &Readings,
     comp_sends: &[u8],
-    metronome: (f32, f32),
+    view: GridView,
     state: &mut MixerState,
     actions: &mut Vec<GridAction>,
 ) {
@@ -81,6 +81,7 @@ pub(super) fn strips(
                         comp_sends.get(index).copied().unwrap_or(0),
                         readings.tracks.get(index).copied().unwrap_or_default(),
                         height,
+                        view,
                         state,
                         actions,
                     );
@@ -105,7 +106,7 @@ pub(super) fn strips(
                     state,
                     actions,
                 );
-                metronome_strip(ui, metronome, height, state, actions);
+                metronome_strip(ui, view.metronome, height, state, actions);
             });
         });
 }
@@ -118,13 +119,30 @@ fn track_strip(
     comp_send: u8,
     level: Reading,
     height: f32,
+    view: GridView,
     state: &mut MixerState,
     actions: &mut Vec<GridAction>,
 ) {
-    let (rect, _) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::hover());
+    // The strip's background is the track's: clicking it selects the track, as the track's
+    // row in the song grid does (the cursor moves there and the track panel shows it).
+    let (rect, response) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::click());
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label(format!("Track {}: {}", index.saturating_add(1), row.name));
+        node.set_role(egui::Role::Button);
+    });
+    if response.clicked() {
+        actions.push(GridAction::MoveCursor {
+            track: index,
+            measure: view.cursor_measure,
+        });
+    }
     let visuals = ui.visuals().clone();
     if index % 2 == 1 {
         ui.painter().rect_filled(rect, 0.0, visuals.faint_bg_color);
+    }
+    if index == view.shown_track {
+        ui.painter()
+            .rect_filled(rect, 3.0, visuals.selection.bg_fill.gamma_multiply(0.18));
     }
     ui.painter().line_segment(
         [rect.right_top(), rect.right_bottom()],
