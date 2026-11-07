@@ -93,6 +93,8 @@ pub(super) enum GridAction {
         bus: crate::settings::CompressorBus,
         commit: bool,
     },
+    /// A track's send into the compressor bus (0-127), kept with the song.
+    CompSend { track: usize, value: u8 },
 }
 
 /// The rename window's state.
@@ -123,6 +125,9 @@ impl GuitarScoreApp {
         let playing = self.playback.current_measure().map(|m| m.saturating_sub(1));
         let estimates: Vec<f32> = (0..rows.len())
             .map(|index| self.playback.track_level(TrackIndex::new(index)))
+            .collect();
+        let comp_sends: Vec<u8> = (0..rows.len())
+            .map(|index| tab.comp_sends.get(&index).copied().unwrap_or(0))
             .collect();
         let reverb_bus = self.playback.reverb_bus();
         let compressor_bus = self.playback.compressor_bus();
@@ -199,6 +204,7 @@ impl GuitarScoreApp {
                 ),
             },
             &levels,
+            &comp_sends,
             &mut tab.mixer,
             &mut actions,
         );
@@ -292,6 +298,7 @@ impl GuitarScoreApp {
                 }
             }
             GridAction::OpenCompressorBus => self.open_compressor_bus_window(),
+            GridAction::CompSend { track, value } => self.set_comp_send(track, value),
             GridAction::CompressorBus { bus, commit } => {
                 self.playback.set_compressor_bus(bus);
                 if commit {
@@ -480,6 +487,7 @@ fn draw(
     readings: &strips::Readings,
     view: GridView,
     levels: &[f32],
+    comp_sends: &[u8],
     mixer_state: &mut MixerState,
     actions: &mut Vec<GridAction>,
 ) {
@@ -491,6 +499,7 @@ fn draw(
             master,
             buses,
             readings,
+            comp_sends,
             view.metronome,
             mixer_state,
             actions,

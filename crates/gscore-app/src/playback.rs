@@ -223,6 +223,11 @@ pub struct Playback {
     string_chains: crate::chain_settings::StringChains,
     /// The tones set for track presets (by General MIDI program), local to this machine.
     preset_tones: Vec<crate::settings::PresetTone>,
+    /// The tones that came with the open song, by its track index (they win over the
+    /// preset's: a shared song keeps its sound).
+    tones: std::collections::BTreeMap<usize, crate::chain_settings::Tone>,
+    /// Each track's send into the compressor bus (0-127), by the song's track index.
+    comp_sends: Vec<(usize, u8)>,
     /// The modelled tracks of the sequence the synthesizer has, and what each place of it
     /// was given (see `chains`).
     tone_targets: Vec<chains::ToneTarget>,
@@ -286,6 +291,8 @@ impl Default for Playback {
             string_sounds: crate::settings::StringSounds::default(),
             string_chains: crate::chain_settings::StringChains::default(),
             preset_tones: Vec::new(),
+            tones: std::collections::BTreeMap::new(),
+            comp_sends: Vec::new(),
             tone_targets: Vec::new(),
             sent_tones: std::collections::BTreeMap::new(),
             reverb_bus: crate::settings::ReverbBus::default(),
@@ -783,6 +790,7 @@ impl Playback {
             self.compressor_sent = chains::SentBus::default();
             self.send_reverb_bus();
             self.send_compressor_bus();
+            self.send_comp_sends();
         }
         Ok(())
     }

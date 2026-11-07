@@ -40,6 +40,7 @@ mod settings_page;
 mod settings_window;
 mod shape_editor;
 mod shortcuts;
+mod song_state;
 mod sound_chain;
 mod staff_pickers;
 mod staff_widgets;
@@ -309,6 +310,55 @@ impl GuitarScoreApp {
         });
         app.restore_tabs(startup_files, startup_active, ctx);
         app
+    }
+
+    /// The state to keep in a song's notes: each track's send into the compressor bus and
+    /// the tone it plays, when that is not its kind's built-in default.
+    fn song_state(&self, tab: &Tab) -> Option<song_state::SongState> {
+        let song = tab.document.song();
+        let mut tracks = Vec::new();
+        for index in 0..song.track_count() {
+            let Some(player) = self.track_player(index) else {
+                continue;
+            };
+            let kind = match player.engine {
+                gscore_play::TrackEngine::Modelled(kind) => Some(kind),
+                gscore_play::TrackEngine::SoundFont => player.preset_kind,
+            };
+            let tone = kind.and_then(|kind| {
+                let tone = self.track_tone(index, kind);
+                (tone != self.playback.default_tone(kind))
+                    .then(|| crate::settings::PresetTone::of(player.program, &tone))
+            });
+            let comp_send = tab.comp_sends.get(&index).copied().unwrap_or(0);
+            tracks.push(song_state::TrackState {
+                track: index,
+                comp_send,
+                tone,
+            });
+        }
+        song_state::SongState::new(tracks)
+    }
+
+    /// Takes the state a song carried: its tracks' compressor sends and the tones they
+    /// play (the song keeps its sound, whatever the presets are set to here).
+    pub(super) fn apply_song_state(&mut self, state: &song_state::SongState) {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            for track in &state.tracks {
+                if track.comp_send != 0 {
+                    tab.comp_sends.insert(track.track, track.comp_send.min(127));
+                }
+                if let Some(tone) = track
+                    .tone
+                    .as_ref()
+                    .and_then(crate::settings::PresetTone::tone)
+                {
+                    tab.track_tones.insert(track.track, tone);
+                }
+            }
+        }
+        self.sync_track_tones();
+        self.sync_comp_sends();
     }
 
     /// The settings as they are now (including the view and window state).
@@ -650,8 +700,11 @@ impl eframe::App for GuitarScoreApp {
         self.handle_keys(&ctx);
         // A count-in that has finished starts the song it was counting in.
         self.poll_count_in();
-        // Another tab may hold other choices of what plays its tracks.
+        // Another tab may hold other choices of what plays its tracks, other tones and
+        // other sends into the compressor bus.
         self.sync_track_engines();
+        self.sync_track_tones();
+        self.sync_comp_sends();
         // Keep a loop of the selected measures going; a new selection turns it on.
         self.auto_loop();
         self.poll_loop();

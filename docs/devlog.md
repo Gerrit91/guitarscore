@@ -3747,3 +3747,24 @@ needed for a much larger font); owner listening check.
   Comp strip's fader and mute, its window's defaults, knobs, None/CA-76 switch, snapshots
   `sound_chain_compressor` and `compressor_bus_window` (the mixer snapshots changed: the
   new strip is in them).
+
+## 2026-11-07 — Mixer, step 5: a Comp knob per track, and the song carries its mix
+
+- Owner's idea: keep our own state in a field Guitar Pro already keeps, so a file keeps it
+  when Guitar Pro saves it again. The song's free-text notes ("Notices") carry a marked,
+  single-line block (`[GuitarScore 1]{...}[/GuitarScore]`, `app/song_state.rs`): each
+  track's send into the compressor bus and the tone it plays when that is not its kind's
+  built-in default. The block is taken out of the notes when a song opens (the user sees
+  only their own notes) and written back on save (`Song::with_notes`, the app's
+  `start_save`); a foreign or broken block is dropped, never a panic.
+- A track's tone now has three layers: the one that came with the song (wins), the preset's
+  (the owner's local overwrite), the kind's default. The Sound chain window edits the
+  song's tone when the song brought one, otherwise the preset's; Built-in clears both.
+  `Playback::tone(track, program, kind)` resolves it, for playback, export and the window.
+- The mixer strip has a fourth knob, **Comp** (send into the compressor bus, 0-127): it is
+  the song's, so no undo step; the strip is a little wider for the four knobs. Playback
+  sends them to the engine (`set_comp_sends`, again after a synthesizer restart) and the
+  WAV export renders them.
+- Tests: the block round trips (and a foreign, broken, future-version or truncated block
+  loses nothing), the app's steps: a comp send and a tone dialed in, saved, and a fresh app
+  with default settings hears both from the file, with the block hidden from the notes.

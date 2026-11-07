@@ -215,6 +215,17 @@ impl Song {
         self.inner.notice.iter().map(String::as_str)
     }
 
+    /// A copy of this song with its free-text notes replaced by `notes`.
+    ///
+    /// The save path keeps GuitarScore's own per-track state (mixer sends, the tones the
+    /// tracks play) in these notes, under a marked block: Guitar Pro shows and keeps the
+    /// field when it saves the file again, so the state survives a round trip through it.
+    pub fn with_notes(&self, notes: Vec<String>) -> Self {
+        let mut song = self.clone();
+        song.inner.notice = notes;
+        song
+    }
+
     /// The initial tempo in quarter notes per minute (always positive).
     pub fn tempo(&self) -> u32 {
         // Validated positive on creation, so the absolute value is the value.

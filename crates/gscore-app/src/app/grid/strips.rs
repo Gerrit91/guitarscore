@@ -13,8 +13,8 @@ use super::rows::TrackRow;
 use super::{GridAction, ROW_HEIGHT};
 use crate::app::{icons, instrument, style};
 
-/// One strip's width.
-const STRIP_WIDTH: f32 = 124.0;
+/// One strip's width (four knobs across the top: pan, reverb, chorus, comp).
+const STRIP_WIDTH: f32 = 140.0;
 /// Height of the knob row at the top of a strip (pan, reverb, chorus and their labels).
 const TOP_HEIGHT: f32 = 40.0;
 /// A knob's diameter, and the distance between knob centres.
@@ -59,6 +59,7 @@ pub(super) fn strips(
     master: MasterMix,
     buses: Buses,
     readings: &Readings,
+    comp_sends: &[u8],
     metronome: (f32, f32),
     state: &mut MixerState,
     actions: &mut Vec<GridAction>,
@@ -77,6 +78,7 @@ pub(super) fn strips(
                         ui,
                         index,
                         row,
+                        comp_sends.get(index).copied().unwrap_or(0),
                         readings.tracks.get(index).copied().unwrap_or_default(),
                         height,
                         state,
@@ -108,10 +110,12 @@ pub(super) fn strips(
         });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn track_strip(
     ui: &mut egui::Ui,
     index: usize,
     row: &TrackRow,
+    comp_send: u8,
     level: Reading,
     height: f32,
     state: &mut MixerState,
@@ -134,7 +138,7 @@ fn track_strip(
         top,
         index,
         row.pan,
-        Some((row.reverb, row.chorus)),
+        Some((row.reverb, row.chorus, comp_send)),
         &row.name,
         actions,
     );
@@ -583,7 +587,7 @@ fn knobs(
     area: Rect,
     index: usize,
     pan: u8,
-    sends: Option<(u8, u8)>,
+    sends: Option<(u8, u8, u8)>,
     name: &str,
     actions: &mut Vec<GridAction>,
 ) {
@@ -603,8 +607,10 @@ fn knobs(
             ui.visuals().weak_text_color(),
         );
     };
+    // Four knobs side by side (pan, reverb, chorus, comp); the captions fit under them.
+    let step = if sends.is_some() { 30.0 } else { KNOB_SPACING };
     let pan_rect = if sends.is_some() {
-        at(-KNOB_SPACING)
+        at(-1.5 * step)
     } else {
         at(0.0)
     };
@@ -629,11 +635,11 @@ fn knobs(
             });
         }
     }
-    let Some((reverb, chorus)) = sends else {
+    let Some((reverb, chorus, comp)) = sends else {
         return;
     };
     let track = TrackIndex::new(index);
-    let reverb_rect = at(0.0);
+    let reverb_rect = at(-0.5 * step);
     let knob = mixer::send_knob(
         ui,
         reverb_rect,
@@ -653,7 +659,7 @@ fn knobs(
             merge,
         });
     }
-    let chorus_rect = at(KNOB_SPACING);
+    let chorus_rect = at(0.5 * step);
     let knob = mixer::send_knob(
         ui,
         chorus_rect,
@@ -671,6 +677,25 @@ fn knobs(
         actions.push(GridAction::Command {
             command: Command::SetTrackChorus { track, chorus },
             merge,
+        });
+    }
+    // The send into the mixer's compressor bus (parallel compression): it is the song's,
+    // kept in its notes, so it is no undoable command.
+    let comp_rect = at(1.5 * step);
+    let knob = mixer::send_knob(
+        ui,
+        comp_rect,
+        comp,
+        ("comp", index),
+        &format!("Comp {name}"),
+        "Send into the compressor bus (parallel compression)",
+        0,
+    );
+    caption(ui, comp_rect, "Comp");
+    if let Some((comp, _)) = knob.change {
+        actions.push(GridAction::CompSend {
+            track: index,
+            value: comp,
         });
     }
 }

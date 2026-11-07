@@ -325,7 +325,7 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
         (harness
             .state()
             .playback()
-            .tone(26, gscore_play::StringKind::Nylon)
+            .tone(0, 26, gscore_play::StringKind::Nylon)
             .sound
             .pick_position
             - 0.4)
@@ -618,7 +618,7 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
         harness
             .state()
             .playback()
-            .tone(26, *kind)
+            .tone(0, 26, *kind)
             .chain
             .blocks
             .first()
@@ -637,7 +637,7 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
     let blocks = harness
         .state()
         .playback()
-        .tone(26, kind)
+        .tone(0, 26, kind)
         .chain
         .blocks
         .clone();
@@ -656,7 +656,7 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
     let blocks = harness
         .state()
         .playback()
-        .tone(26, kind)
+        .tone(0, 26, kind)
         .chain
         .blocks
         .clone();
@@ -698,15 +698,20 @@ fn a_tone_belongs_to_the_track_preset() {
         harness.get_by_label("Close").click();
         harness.run();
     };
-    let pick = |harness: &Harness<'static, GuitarScoreApp>, program: u8, kind| {
+    // The track whose preset is `program` (0, 2 and 4 in this song).
+    let pick = |harness: &Harness<'static, GuitarScoreApp>, track: usize, program: u8, kind| {
         harness
             .state()
             .playback()
-            .tone(program, kind)
+            .tone(track, program, kind)
             .sound
             .pick_position
     };
-    let bass = harness.state().playback().tone(33, StringKind::Bass).sound;
+    let bass = harness
+        .state()
+        .playback()
+        .tone(4, 33, StringKind::Bass)
+        .sound;
     // An electric guitar's strings with their pickup (a humbucker at the bridge).
     harness.get_by_label("Sound chain").click();
     harness.run();
@@ -720,7 +725,7 @@ fn a_tone_belongs_to_the_track_preset() {
     let neck = harness
         .state()
         .playback()
-        .tone(27, StringKind::Electric)
+        .tone(0, 27, StringKind::Electric)
         .sound;
     assert_eq!(neck.model().pickup, gscore_guitar::Pickup::Humbucker);
     assert_eq!(neck.pickup_position, gscore_guitar::pickup_positions::NECK);
@@ -730,9 +735,9 @@ fn a_tone_belongs_to_the_track_preset() {
     // The first guitar's preset (27) gets a tone of its own: preset 27's, from now on.
     dial(&mut harness, 0, "0.4");
     assert!(
-        (pick(&harness, 27, StringKind::Electric) - 0.4).abs() < 1e-6,
+        (pick(&harness, 0, 27, StringKind::Electric) - 0.4).abs() < 1e-6,
         "{}",
-        pick(&harness, 27, StringKind::Electric)
+        pick(&harness, 0, 27, StringKind::Electric)
     );
     // It is kept in the settings for that preset, so every song's 27 plays it.
     let stored = harness.state().settings().preset_tones.clone();
@@ -746,7 +751,11 @@ fn a_tone_belongs_to_the_track_preset() {
     );
     // Another preset is not touched: the bass (33) keeps its own tone.
     assert_eq!(
-        harness.state().playback().tone(33, StringKind::Bass).sound,
+        harness
+            .state()
+            .playback()
+            .tone(4, 33, StringKind::Bass)
+            .sound,
         bass
     );
 
@@ -760,9 +769,9 @@ fn a_tone_belongs_to_the_track_preset() {
         .click_accesskit();
     harness.run();
     dial(&mut harness, 2, "0.2");
-    assert!((pick(&harness, 30, StringKind::Electric) - 0.2).abs() < 1e-6);
+    assert!((pick(&harness, 2, 30, StringKind::Electric) - 0.2).abs() < 1e-6);
     assert!(
-        (pick(&harness, 27, StringKind::Electric) - 0.4).abs() < 1e-6,
+        (pick(&harness, 0, 27, StringKind::Electric) - 0.4).abs() < 1e-6,
         "the first preset keeps its tone"
     );
 }
@@ -794,7 +803,7 @@ fn the_built_in_entry_forgets_a_presets_tone() {
     let changed = harness
         .state()
         .playback()
-        .tone(27, StringKind::Electric)
+        .tone(0, 27, StringKind::Electric)
         .sound;
     assert_ne!(changed, built_in, "the preset has a tone of its own now");
     // The tone row offers Built-in: the preset's own tone is forgotten.
@@ -819,7 +828,7 @@ fn the_built_in_entry_forgets_a_presets_tone() {
         harness
             .state()
             .playback()
-            .tone(27, StringKind::Electric)
+            .tone(0, 27, StringKind::Electric)
             .sound,
         built_in,
         "the built-in tone plays again"

@@ -76,6 +76,14 @@ fn targets(sequence: &Sequence) -> Vec<ToneTarget> {
 /// and each kind's default, resolved against the export's sequence once it is built.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ExportTones {
+    /// The tones that came with the song, by track.
+    own: Vec<(
+        usize,
+        StringKind,
+        StringModel,
+        ChainSpec,
+        [BlockSettings; BLOCKS],
+    )>,
     presets: Vec<(
         u8,
         StringKind,
@@ -97,22 +105,38 @@ impl ExportTones {
         let mut chains = Vec::new();
         for target in targets(sequence) {
             let chain = match target.kind {
-                // The SoundFont plays it: its preset's own tone's chain, if one was dialed
-                // in (the kinds' defaults are the modelled strings').
+                // The SoundFont plays it: the chain the song gave it, else its preset's own
+                // (the kinds' defaults are the modelled strings').
                 None => self
-                    .presets
+                    .own
                     .iter()
-                    .find(|(program, ..)| *program == target.program)
-                    .map(|(_, _, _, spec, knobs)| (spec.clone(), *knobs)),
+                    .find(|(track, ..)| *track == target.track)
+                    .map(|(_, _, _, spec, knobs)| (spec.clone(), *knobs))
+                    .or_else(|| {
+                        self.presets
+                            .iter()
+                            .find(|(program, ..)| *program == target.program)
+                            .map(|(_, _, _, spec, knobs)| (spec.clone(), *knobs))
+                    }),
                 Some(kind) => {
+                    // The song's own tone for this track first, then its preset's.
                     let own = self
-                        .presets
+                        .own
                         .iter()
-                        .find(|(program, own, ..)| *program == target.program && *own == kind);
+                        .find(|(track, own, ..)| *track == target.track && *own == kind)
+                        .map(|(_, _, model, spec, knobs)| (*model, spec.clone(), *knobs))
+                        .or_else(|| {
+                            self.presets
+                                .iter()
+                                .find(|(program, preset_kind, ..)| {
+                                    *program == target.program && *preset_kind == kind
+                                })
+                                .map(|(_, _, model, spec, knobs)| (*model, spec.clone(), *knobs))
+                        });
                     match own {
-                        Some((_, _, model, spec, knobs)) => {
-                            models.push((target.track, *model));
-                            Some((spec.clone(), *knobs))
+                        Some((model, spec, knobs)) => {
+                            models.push((target.track, model));
+                            Some((spec, knobs))
                         }
                         None => self
                             .defaults
@@ -167,12 +191,56 @@ impl Playback {
         preset_kind_of(&self.preset_tones, program)
     }
 
-    /// The tone a track of preset `program` plays as `kind`: the preset's if it was dialed
-    /// in on that kind of string, otherwise the kind's default.
-    pub fn tone(&self, program: u8, kind: StringKind) -> Tone {
-        self.preset_tone(program)
+    /// The tone the song's track `track` (whose preset is `program`) plays as `kind`: the
+    /// tone that came with the song, else the preset's if it was dialed in on that kind of
+    /// string, otherwise the kind's default.
+    pub fn tone(&self, track: usize, program: u8, kind: StringKind) -> Tone {
+        self.tones
+            .get(&track)
             .filter(|tone| tone.kind == kind)
+            .cloned()
+            .or_else(|| self.preset_tone(program).filter(|tone| tone.kind == kind))
             .unwrap_or_else(|| self.default_tone(kind))
+    }
+
+    /// The tones that came with the open song (by its track index), heard at once: only
+    /// what changed is sent.
+    pub fn set_track_tones(&mut self, tones: &std::collections::BTreeMap<usize, Tone>) {
+        if &self.tones == tones {
+            return;
+        }
+        self.tones = tones.clone();
+        self.send_tones();
+    }
+
+    /// The tones that came with the open song (by its track index).
+    pub fn track_tones(&self) -> &std::collections::BTreeMap<usize, Tone> {
+        &self.tones
+    }
+
+    /// The tracks' sends into the compressor bus (by the song's track index), heard at
+    /// once.
+    pub fn set_comp_sends(&mut self, sends: Vec<(usize, u8)>) {
+        if self.comp_sends == sends {
+            return;
+        }
+        self.comp_sends = sends;
+        self.send_comp_sends();
+    }
+
+    /// The tracks' sends into the compressor bus (by the song's track index).
+    pub fn comp_sends(&self) -> &[(usize, u8)] {
+        &self.comp_sends
+    }
+
+    /// Gives the running synthesizer every track's comp send (a new one starts with none).
+    pub(super) fn send_comp_sends(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(super::Active::Synth(player)) = &self.player {
+            for &(track, value) in &self.comp_sends {
+                let _ = player.set_comp_send(track, value);
+            }
+        }
     }
 
     /// The kind's default tone: the sound and chain from the settings (what a preset
@@ -298,23 +366,36 @@ impl Playback {
             return;
         }
         for target in self.tone_targets.clone() {
+            // The tone that came with the song wins over the preset's; a preset tone only
+            // applies on the kind of string it was dialed in on.
+            let own = self
+                .tones
+                .get(&target.track)
+                .filter(|tone| Some(tone.kind) == target.kind)
+                .cloned();
+            let preset = self
+                .preset_tone(target.program)
+                .filter(|tone| Some(tone.kind) == target.kind);
             let wanted = match target.kind {
-                // The SoundFont plays it: its preset's own chain, if one was dialed in (the
-                // kinds' defaults are the modelled strings'); no string sound.
+                // The SoundFont plays it: the chain the song gave it, else its preset's own
+                // (the kinds' defaults are the modelled strings'); no string sound.
                 None => SentTone {
                     sound: None,
                     chain: self
-                        .preset_tone(target.program)
-                        .map(|own| own.chain)
+                        .tones
+                        .get(&target.track)
+                        .map(|tone| tone.chain.clone())
+                        .or_else(|| self.preset_tone(target.program).map(|own| own.chain))
                         .unwrap_or_default(),
                 },
                 Some(kind) => {
-                    let tone = self.tone(target.program, kind);
-                    let own = self
-                        .preset_tone(target.program)
-                        .is_some_and(|own| own.kind == kind);
+                    let tone = own.or(preset).unwrap_or_else(|| self.default_tone(kind));
+                    let dialed_in = self.tones.contains_key(&target.track)
+                        || self
+                            .preset_tone(target.program)
+                            .is_some_and(|own| own.kind == kind);
                     SentTone {
-                        sound: own.then_some(tone.sound),
+                        sound: dialed_in.then_some(tone.sound),
                         chain: tone.chain,
                     }
                 }
@@ -375,6 +456,24 @@ impl Playback {
 
     /// The tones to render audio export with.
     pub(crate) fn export_tones(&mut self) -> ExportTones {
+        let track_tones: Vec<(usize, Tone)> = self
+            .tones
+            .iter()
+            .map(|(&track, tone)| (track, tone.clone()))
+            .collect();
+        let own = track_tones
+            .into_iter()
+            .map(|(track, tone)| {
+                let spec = self.chain_spec(&tone.chain);
+                (
+                    track,
+                    tone.kind,
+                    tone.sound.model(),
+                    spec,
+                    tone.chain.knobs(),
+                )
+            })
+            .collect();
         let preset_tones = self.preset_tones.clone();
         let presets = preset_tones
             .iter()
@@ -397,7 +496,11 @@ impl Playback {
                 (kind, self.chain_spec(&chain), chain.knobs())
             })
             .collect();
-        ExportTones { presets, defaults }
+        ExportTones {
+            own,
+            presets,
+            defaults,
+        }
     }
 
     /// A message about the chains, once.
@@ -638,10 +741,10 @@ mod tests {
                 },
             ),
         ]);
-        assert_eq!(playback.tone(27, StringKind::Steel).sound, sound);
+        assert_eq!(playback.tone(0, 27, StringKind::Steel).sound, sound);
         assert_eq!(
-            playback.tone(28, StringKind::Steel),
-            playback.tone(29, StringKind::Steel),
+            playback.tone(0, 28, StringKind::Steel),
+            playback.tone(0, 29, StringKind::Steel),
             "a tone of another kind does not play on steel"
         );
         let song = gscore_model::testing::song_with_notes_on_tracks(

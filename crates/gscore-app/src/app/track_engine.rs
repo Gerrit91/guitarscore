@@ -81,18 +81,32 @@ impl GuitarScoreApp {
             .unwrap_or_default()
     }
 
-    /// The tone `track` of the open document plays as `kind`: its preset's, or the kind's
-    /// default.
+    /// The tone `track` of the open document plays as `kind`: the one that came with the
+    /// song, else its preset's, else the kind's default.
     pub(super) fn track_tone(&self, track: usize, kind: StringKind) -> Tone {
-        match self.track_player(track) {
-            Some(player) => self.playback.tone(player.program, kind),
+        let own = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| tab.track_tones.get(&track))
+            .filter(|tone| tone.kind == kind)
+            .cloned();
+        own.unwrap_or_else(|| match self.track_player(track) {
+            Some(player) => self.playback.tone(track, player.program, kind),
             None => self.playback.default_tone(kind),
-        }
+        })
     }
 
-    /// Gives the preset `track` belongs to `tone`: every track with that preset, in every
-    /// song, plays it from now on (it is kept in the settings).
+    /// Gives `track` `tone`. A track whose tone came with the song keeps its own (the song
+    /// keeps its sound); otherwise the preset's tone changes, so every track with that
+    /// preset, in every song, plays it from now on (it is kept in the settings).
     pub(super) fn set_track_tone(&mut self, track: usize, tone: Tone) {
+        if let Some(tab) = self.tabs.get_mut(self.active)
+            && tab.track_tones.contains_key(&track)
+        {
+            tab.track_tones.insert(track, tone);
+            self.sync_track_tones();
+            return;
+        }
         let Some(player) = self.track_player(track) else {
             return;
         };
@@ -107,9 +121,14 @@ impl GuitarScoreApp {
         }
     }
 
-    /// Forgets the tone of the preset `track` belongs to: it plays its built-in default
-    /// again (the kind's sound and chain from the settings).
+    /// Forgets the tone of `track`: the one that came with the song and the preset's own,
+    /// so it plays its built-in default again (the kind's sound and chain from the
+    /// settings).
     pub(super) fn reset_track_tone(&mut self, track: usize) {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.track_tones.remove(&track);
+        }
+        self.sync_track_tones();
         let Some(player) = self.track_player(track) else {
             return;
         };
@@ -119,6 +138,41 @@ impl GuitarScoreApp {
         if let Err(error) = self.playback.set_preset_tone(&song, player.program, None) {
             self.notice = Some(error);
         }
+    }
+
+    /// Sets `track`'s send into the mixer's compressor bus (0-127), heard at once. It is
+    /// kept with the song (in its notes), not with the settings.
+    pub(super) fn set_comp_send(&mut self, track: usize, value: u8) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        if value == 0 {
+            tab.comp_sends.remove(&track);
+        } else {
+            tab.comp_sends.insert(track, value.min(127));
+        }
+        self.sync_comp_sends();
+    }
+
+    /// Hands the open document's comp sends to playback, so they are heard.
+    pub(super) fn sync_comp_sends(&mut self) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        let sends: Vec<(usize, u8)> = tab
+            .comp_sends
+            .iter()
+            .map(|(&track, &value)| (track, value))
+            .collect();
+        self.playback.set_comp_sends(sends);
+    }
+
+    /// Hands the open document's own tones to playback, so a song's sound is heard.
+    pub(super) fn sync_track_tones(&mut self) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        self.playback.set_track_tones(&tab.track_tones);
     }
 
     /// Hands the open document's engine choices to playback (a change rebuilds the

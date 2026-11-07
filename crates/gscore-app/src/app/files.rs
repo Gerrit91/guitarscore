@@ -343,7 +343,14 @@ impl GuitarScoreApp {
             self.abandon_save();
             return;
         };
-        let song = tab.document.song().clone();
+        let mut song = tab.document.song().clone();
+        // Our own state travels in the song's free-text notes ("Notices"), which Guitar
+        // Pro shows and keeps when it saves the file again.
+        let state = self.song_state(tab);
+        song = song.with_notes(super::song_state::encode(
+            song.notes().map(str::to_owned),
+            state.as_ref(),
+        ));
         let revision = tab.document.editor().revision();
         if let Err(error) = self.tasks.save(song, path, revision, allow_losses, ctx) {
             self.notice = Some(error);
@@ -373,20 +380,31 @@ impl GuitarScoreApp {
                 Event::Opened { path, result } => match result {
                     Ok(opened) => {
                         let recent = path.clone();
+                        // GuitarScore's own state travels in the song's free-text notes
+                        // ("Notices", which Guitar Pro keeps): take it out and apply it.
+                        let mut song = *opened.song;
+                        let (notes, state) =
+                            super::song_state::split(song.notes().map(str::to_owned));
+                        if state.is_some() {
+                            song = song.with_notes(notes);
+                        }
                         let (document, problem) = match opened.journal {
                             Ok(Some(journal)) => (
-                                Document::with_journal(path, *opened.song, opened.format, journal),
+                                Document::with_journal(path, song, opened.format, journal),
                                 None,
                             ),
-                            Ok(None) => (Document::new(path, *opened.song, opened.format), None),
+                            Ok(None) => (Document::new(path, song, opened.format), None),
                             Err(error) => (
-                                Document::new(path, *opened.song, opened.format),
+                                Document::new(path, song, opened.format),
                                 Some(format!(
                                     "{error}. Edits are not protected against a crash; save often."
                                 )),
                             ),
                         };
                         self.push_tab(document);
+                        if let Some(state) = state {
+                            self.apply_song_state(&state);
+                        }
                         self.notice = problem;
                         self.status = None;
                         self.settings.add_recent(recent);

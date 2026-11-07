@@ -2460,7 +2460,22 @@ fn the_reverb_bus_window_chooses_the_reverb() {
 fn the_compressor_bus_is_a_strip_and_a_window() {
     use gscore_app::chain_settings::{BlockChoice, CompRatioSetting};
 
-    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    // A wide window, so the strips after the tracks (the two buses) are on screen.
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1500.0, 700.0))
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/multi_staff.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
     harness.get_by_label("Mixer view").click();
     harness.run();
     harness.get_by_label("Comp bus level");
@@ -2660,4 +2675,114 @@ fn the_view_menu_shows_one_key_per_entry() {
     harness.get_by_label("File").click();
     harness.run();
     harness.get_by_label("Quit ctrl+q");
+}
+
+#[test]
+fn a_songs_mixer_state_travels_in_its_notes() {
+    // The comp sends and the tones a song plays are kept in the song's free-text notes
+    // ("Notices" in Guitar Pro, which keeps that field): a saved and reopened song sounds
+    // the same, even with default settings.
+    let dir = std::env::temp_dir().join(format!("gscore-notes-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a temp dir");
+    let path = dir.join("song.gp");
+    std::fs::copy(testdata("basic/multi_staff.gp"), &path).expect("a copy of the song");
+
+    // A tall window: the track panel's Sound section (the stomp box) is below the mixer.
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1400.0, 1100.0))
+        .build_eframe(|cc| GuitarScoreApp::new(&cc.egui_ctx, Some(path.clone())));
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    // A send into the compressor bus on the first track: the knob drags sideways.
+    let knob = harness.get_by_label("Comp Clean Guitar").rect().center();
+    harness.hover_at(knob);
+    harness.run();
+    harness.drag_at(knob);
+    harness.run();
+    for step in 1..=10 {
+        harness.hover_at(knob + egui::vec2(6.0 * step as f32, 0.0));
+        harness.run();
+    }
+    harness.drop_at(knob + egui::vec2(60.0, 0.0));
+    harness.run();
+    let send = harness
+        .state()
+        .playback()
+        .comp_sends()
+        .iter()
+        .find(|(track, _)| *track == 0)
+        .map(|&(_, value)| value)
+        .expect("the send was set");
+    assert!(send > 0, "{send}");
+    // And a tone of its own for the track's preset (27: Clean Guitar).
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    harness.get_by_label("Block 0: MIDI").click();
+    harness.run();
+    harness.get_by_label("PM Synthesis").click();
+    harness.run();
+    harness.get_by_label("Pick position value").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Pick position value").type_text("0.4");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    harness.get_by_label("Close").click();
+    harness.run();
+    // Saved, the song carries both in its notes.
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::S);
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "saving timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    // The saved notice and the meters keep the interface repainting for a few frames.
+    harness.run_steps(8);
+
+    // A fresh app with default settings hears the same sound and sends.
+    let reopened = app_with(Some(path));
+    assert_eq!(
+        reopened
+            .state()
+            .playback()
+            .comp_sends()
+            .iter()
+            .find(|(track, _)| *track == 0)
+            .map(|&(_, value)| value),
+        Some(send)
+    );
+    let tone = reopened
+        .state()
+        .playback()
+        .track_tones()
+        .get(&0)
+        .cloned()
+        .expect("the song's tone came back");
+    assert!((tone.sound.pick_position - 0.4).abs() < 1e-6, "{tone:?}");
+    // The notes the user sees are their own: our block is not shown.
+    assert!(
+        reopened
+            .state()
+            .document()
+            .expect("the song")
+            .song()
+            .notes()
+            .all(|note| !note.starts_with("[GuitarScore"))
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
