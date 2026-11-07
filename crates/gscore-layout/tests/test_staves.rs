@@ -69,6 +69,84 @@ fn each_choice_shows_its_staves() {
     assert!(system.tab_bottom() < both_system.tab_top);
 }
 
+/// A tie within a measure draws its curve on the slash staff too.
+#[test]
+fn slash_notation_shows_a_tie_within_the_measure() {
+    let mut song = testing::song(&[GUITAR_6], 1).unwrap();
+    let at = |beat| gscore_model::BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: gscore_model::VoiceIndex::new(0),
+        beat: gscore_model::BeatIndex::new(beat),
+    };
+    let _ = song
+        .set_note(at(0), StringNumber::new(1).unwrap(), Fret::new(5).unwrap())
+        .unwrap();
+    let _ = song
+        .set_note(at(1), StringNumber::new(1).unwrap(), Fret::new(5).unwrap())
+        .unwrap();
+    let _ = song
+        .set_note_tie(at(1), StringNumber::new(1).unwrap(), true)
+        .unwrap();
+    let _ = song.set_track_staves(TrackIndex::new(0), TrackStaves::SLASH_ONLY);
+    let laid = slash_layout(&song);
+    let curves = laid
+        .ops
+        .iter()
+        .filter(|op| matches!(op, DrawOp::Curve { .. }))
+        .count();
+    assert!(curves >= 1, "the tied slashes are joined by a curve");
+}
+
+/// A tie across a barline reaches the next measure's first slash.
+#[test]
+fn slash_notation_shows_a_tie_across_a_barline() {
+    let mut song = testing::song(&[GUITAR_6], 2).unwrap();
+    let at = |measure, beat| gscore_model::BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(measure),
+        voice: gscore_model::VoiceIndex::new(0),
+        beat: gscore_model::BeatIndex::new(beat),
+    };
+    let _ = song
+        .set_note(
+            at(0, 3),
+            StringNumber::new(1).unwrap(),
+            Fret::new(5).unwrap(),
+        )
+        .unwrap();
+    let _ = song
+        .set_note(
+            at(1, 0),
+            StringNumber::new(1).unwrap(),
+            Fret::new(5).unwrap(),
+        )
+        .unwrap();
+    let _ = song
+        .set_note_tie(at(1, 0), StringNumber::new(1).unwrap(), true)
+        .unwrap();
+    let _ = song.set_track_staves(TrackIndex::new(0), TrackStaves::SLASH_ONLY);
+    let laid = slash_layout(&song);
+    let boundary = laid.places.measures[1].left;
+    let crossing = laid
+        .ops
+        .iter()
+        .filter(|op| match op {
+            DrawOp::Curve { from, to, .. } => from.x < boundary && to.x > boundary,
+            _ => false,
+        })
+        .count();
+    assert!(
+        crossing >= 1,
+        "the tie crosses the barline on the slash staff"
+    );
+}
+
+fn slash_layout(song: &Song) -> Layout {
+    let fonts = Fonts::bundled().unwrap();
+    layout_track(song, TrackIndex::new(0), &LayoutOptions::default(), &fonts).unwrap()
+}
+
 /// A tab-only staff still shows the tuplets the notation staff would carry.
 #[test]
 fn tab_only_shows_tuplet_numbers() {

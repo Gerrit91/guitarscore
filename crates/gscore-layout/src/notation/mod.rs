@@ -28,9 +28,9 @@ use gscore_model::{
 };
 
 pub(crate) use draw::{
-    BeamPlan, KEY_GAPS, KeySigLayout, SLASH_PREFIX, clef_change_width, draw_clef_change,
-    draw_measure, draw_staff_start, draw_tab_staff_start, draw_tie_curve, key_start_width,
-    ledger_positions, prefix_width, tab_prefix_width, y_of,
+    BeamPlan, KEY_GAPS, KeySigLayout, SLASH_HALF, SLASH_PREFIX, clef_change_width,
+    draw_clef_change, draw_measure, draw_staff_start, draw_tab_staff_start, draw_tie_curve,
+    key_start_width, ledger_positions, prefix_width, tab_prefix_width, y_of,
 };
 pub(crate) use marks::draw_arrow;
 pub(crate) use pitch::{Alter, Clef};
@@ -338,6 +338,9 @@ pub(crate) fn slash_column_items(
             BeatKind::Normal => Some(NotationItem::Chord(Chord {
                 heads: vec![Head {
                     position: MIDDLE,
+                    // The rhythm slash carries the tie too: any tied note in the beat ties
+                    // the slash to the one before it.
+                    tied: beat.notes().any(|note| note.kind() == NoteKind::Tie),
                     ..Head::plain()
                 }],
                 value: value.value(),
