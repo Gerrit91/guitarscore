@@ -405,11 +405,13 @@ fn a_measure_selection_copies_across_tracks_and_cuts() {
     e.set_selection(Some(Selection::Measures {
         anchor: MeasureIndex::new(0),
         focus: MeasureIndex::new(0),
+        track: None,
     }));
     plain(&mut e, ActionId::Copy);
     e.set_selection(Some(Selection::Measures {
         anchor: MeasureIndex::new(1),
         focus: MeasureIndex::new(1),
+        track: None,
     }));
     e.set_cursor(Cursor {
         measure: MeasureIndex::new(1),
@@ -423,6 +425,7 @@ fn a_measure_selection_copies_across_tracks_and_cuts() {
     e.set_selection(Some(Selection::Measures {
         anchor: MeasureIndex::new(0),
         focus: MeasureIndex::new(0),
+        track: None,
     }));
     assert_eq!(plain(&mut e, ActionId::Cut), Outcome::Edited);
     assert_eq!(e.song().measure_count(), 1);
@@ -505,11 +508,13 @@ fn a_measure_paste_carries_voice_two_and_sets_headers_once() {
     e.set_selection(Some(Selection::Measures {
         anchor: MeasureIndex::new(0),
         focus: MeasureIndex::new(0),
+        track: None,
     }));
     plain(&mut e, ActionId::Copy);
     e.set_selection(Some(Selection::Measures {
         anchor: MeasureIndex::new(1),
         focus: MeasureIndex::new(1),
+        track: None,
     }));
     let before_paste = e.song().clone();
     assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);

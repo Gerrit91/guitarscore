@@ -271,6 +271,15 @@ impl GuitarScoreApp {
             );
             return;
         };
+        // What was copied goes on the system clipboard as a line of text too: a desktop
+        // sends Ctrl+V on as a paste only when the system clipboard holds text, so without
+        // it the paste would never reach us (and another program sees what was copied).
+        if performed.is_ok()
+            && matches!(action, Action::Plain(ActionId::Copy | ActionId::Cut))
+            && let Some(text) = document.editor().clipboard_text()
+        {
+            ctx.copy_text(text);
+        }
         match performed {
             Ok(Outcome::Edited) => {
                 self.status = None;
@@ -422,7 +431,8 @@ impl GuitarScoreApp {
             tab.track = tracks.saturating_sub(1);
         }
         if let Some(selection) = tab.selection
-            && selection.start() >= document.song().measure_count()
+            && (selection.start() >= document.song().measure_count()
+                || selection.track.is_some_and(|track| track >= tracks))
         {
             tab.selection = None;
         }
@@ -794,6 +804,44 @@ impl GuitarScoreApp {
             Request::PlayPause => self.play_pause(),
             Request::Stop => self.stop_playback(),
             Request::Save => self.save_song(ctx),
+            Request::SelectLine { down } => self.select_line(down, ctx),
+        }
+    }
+
+    /// Extends the beat selection to the line above or below, as a text editor does: to
+    /// the beat at the same place on the neighbouring system of the page. Past the first
+    /// or last line it goes to the track's start or end.
+    fn select_line(&mut self, down: bool, ctx: &egui::Context) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let cursor = tab.document.editor().cursor();
+        let target = tab.document.shown_layout().and_then(|layout| {
+            let places = layout.places_of(cursor.track)?;
+            Some(super::page::line_spot(
+                places,
+                gscore_edit::BeatSpot::of(cursor),
+                cursor.voice,
+                down,
+            ))
+        });
+        match target {
+            // No layout yet (nothing drawn since the last edit): nothing to go by.
+            None => {}
+            Some(Some(spot)) => {
+                tab.document.editor_mut().extend_selection_to_spot(spot);
+                // A grid selection gives way to the score's, as with Shift+Left/Right.
+                tab.selection = None;
+                ctx.request_repaint();
+            }
+            Some(None) => {
+                let to = if down {
+                    ActionId::SelectEnd
+                } else {
+                    ActionId::SelectHome
+                };
+                self.perform_action(Action::Plain(to), ctx);
+            }
         }
     }
 

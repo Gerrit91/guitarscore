@@ -280,3 +280,44 @@ fn a_click_on_a_strip_selects_its_track() {
     harness.run();
     assert_eq!(harness.state().shown_track(), 0);
 }
+
+#[test]
+fn a_selection_looks_the_same_in_the_score_and_on_top_of_the_grid() {
+    let mut harness = app_with_mixer_view();
+    harness.get_by_label("Grid view").click();
+    harness.run();
+    // Beats selected in the score, over a bar line: the grid marks the bars they span in
+    // that track's row, over the colored squares, in the score's selection color.
+    for _ in 0..6 {
+        harness.key_press_modifiers(egui::Modifiers::SHIFT, Key::ArrowRight);
+        harness.run();
+    }
+    assert!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .editor()
+            .selection()
+            .is_some()
+    );
+    harness.snapshot("grid_score_selection");
+
+    // Bars of the shown track selected in the grid: the same look in both places.
+    press(&mut harness, Key::ArrowLeft, 1);
+    harness
+        .state_mut()
+        .set_selection(Some(gscore_app::MeasureSelection::on(0, 1).to(2)));
+    harness
+        .state_mut()
+        .document_mut()
+        .unwrap()
+        .editor_mut()
+        .set_selection(Some(gscore_edit::Selection::Measures {
+            anchor: gscore_model::MeasureIndex::new(1),
+            focus: gscore_model::MeasureIndex::new(2),
+            track: Some(gscore_model::TrackIndex::new(0)),
+        }));
+    harness.run();
+    harness.snapshot("grid_track_selection");
+}

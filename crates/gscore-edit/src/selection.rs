@@ -52,12 +52,14 @@ pub enum Selection {
         /// Where it ends now.
         focus: BeatSpot,
     },
-    /// A range of whole measures, in every track.
+    /// A range of whole measures, in one track or in every track.
     Measures {
         /// Where the selection started.
         anchor: MeasureIndex,
         /// Where it ends now.
         focus: MeasureIndex,
+        /// The one selected track, or `None` for every track.
+        track: Option<TrackIndex>,
     },
 }
 
@@ -66,7 +68,7 @@ impl Selection {
     pub fn first_measure(self) -> MeasureIndex {
         match self {
             Selection::Beats { anchor, focus, .. } => anchor.min(focus).measure,
-            Selection::Measures { anchor, focus } => anchor.min(focus),
+            Selection::Measures { anchor, focus, .. } => anchor.min(focus),
         }
     }
 
@@ -74,7 +76,7 @@ impl Selection {
     pub fn last_measure(self) -> MeasureIndex {
         match self {
             Selection::Beats { anchor, focus, .. } => anchor.max(focus).measure,
-            Selection::Measures { anchor, focus } => anchor.max(focus),
+            Selection::Measures { anchor, focus, .. } => anchor.max(focus),
         }
     }
 
@@ -128,10 +130,19 @@ impl Selection {
                     push_measure(track, measure, voice, from, to);
                 }
             }
-            Selection::Measures { anchor, focus } => {
+            Selection::Measures {
+                anchor,
+                focus,
+                track,
+            } => {
                 let first = anchor.min(focus).get();
                 let last = anchor.max(focus).get();
-                for track in 0..song.track_count() {
+                let tracks: Vec<usize> = match track {
+                    Some(track) if track.get() < song.track_count() => vec![track.get()],
+                    Some(_) => Vec::new(),
+                    None => (0..song.track_count()).collect(),
+                };
+                for track in tracks {
                     for index in first..=last {
                         let measure = MeasureIndex::new(index);
                         let voices = song
@@ -190,6 +201,51 @@ impl TabEditor {
             self.cursor.right(song);
         } else {
             self.cursor.left(song);
+        }
+        self.selection = Some(Selection::Beats {
+            track: self.cursor.track,
+            voice: self.cursor.voice,
+            anchor,
+            focus: BeatSpot::of(self.cursor),
+        });
+        Outcome::Moved
+    }
+
+    /// Moves the cursor to `spot` (a beat of the cursor's track and voice) and extends the
+    /// beat selection to it; without one, the selection starts at the beat the cursor was
+    /// on. What Shift+Up and Shift+Down do with the beat the page's layout found on the
+    /// neighbouring line (see [`crate::Request::SelectLine`]).
+    pub fn extend_selection_to_spot(&mut self, spot: BeatSpot) -> Outcome {
+        let anchor = self
+            .beat_anchor()
+            .unwrap_or_else(|| BeatSpot::of(self.cursor));
+        let song = self.editor.song();
+        if spot.measure.get() >= song.measure_count() {
+            return Outcome::Nothing;
+        }
+        self.cursor.measure = spot.measure;
+        self.cursor.beat = spot.beat;
+        self.cursor.clamp(song);
+        self.selection = Some(Selection::Beats {
+            track: self.cursor.track,
+            voice: self.cursor.voice,
+            anchor,
+            focus: BeatSpot::of(self.cursor),
+        });
+        Outcome::Moved
+    }
+
+    /// Moves the cursor to the track's first (`to_start`) or last beat and extends the
+    /// beat selection to it, as Shift+Home and Shift+End do.
+    pub(crate) fn extend_selection_to(&mut self, to_start: bool) -> Outcome {
+        let anchor = self
+            .beat_anchor()
+            .unwrap_or_else(|| BeatSpot::of(self.cursor));
+        let song = self.editor.song();
+        if to_start {
+            self.cursor.start_of_track(song);
+        } else {
+            self.cursor.end_of_track(song);
         }
         self.selection = Some(Selection::Beats {
             track: self.cursor.track,

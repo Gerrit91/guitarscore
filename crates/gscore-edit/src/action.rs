@@ -23,6 +23,14 @@ pub enum ActionId {
     PreviousMeasure,
     /// Move to the first beat of the next measure.
     NextMeasure,
+    /// Move to the first beat of the track (the start of the song).
+    CursorHome,
+    /// Move to the last beat of the track's last measure (its start when it is empty).
+    CursorEnd,
+    /// Extend the beat selection to the first beat of the track.
+    SelectHome,
+    /// Extend the beat selection to the last beat of the track.
+    SelectEnd,
     /// Type a fret digit on the cursor's string; a second digit soon after makes two-digit
     /// frets.
     EnterFret,
@@ -62,6 +70,11 @@ pub enum ActionId {
     SelectRight,
     /// Select the cursor's whole beat (every string).
     SelectBeat,
+    /// Extend the beat selection to the line above: the beat at the same place on the
+    /// system before (the page's layout decides; see [`crate::Request::SelectLine`]).
+    SelectLineUp,
+    /// Extend the beat selection to the line below.
+    SelectLineDown,
     /// Palette: Whole note.
     NoteWhole,
     /// Palette: Half note.
@@ -349,6 +362,10 @@ pub const ACTIONS: &[ActionInfo] = &[
         "Previous measure",
     ),
     info(ActionId::NextMeasure, "next_measure", "Next measure"),
+    info(ActionId::CursorHome, "cursor_home", "Start of track"),
+    info(ActionId::CursorEnd, "cursor_end", "End of track"),
+    info(ActionId::SelectHome, "select_home", "Select to start"),
+    info(ActionId::SelectEnd, "select_end", "Select to end"),
     info(ActionId::EnterFret, "enter_fret", "Enter fret"),
     info(ActionId::ClearNote, "clear_note", "Clear note"),
     info(
@@ -376,6 +393,16 @@ pub const ACTIONS: &[ActionInfo] = &[
         "Extend selection right",
     ),
     info(ActionId::SelectBeat, "select_beat", "Select whole beat"),
+    info(
+        ActionId::SelectLineUp,
+        "select_line_up",
+        "Extend selection a line up",
+    ),
+    info(
+        ActionId::SelectLineDown,
+        "select_line_down",
+        "Extend selection a line down",
+    ),
     info(ActionId::NoteWhole, "note_whole", "Whole note"),
     info(ActionId::NoteHalf, "note_half", "Half note"),
     info(ActionId::NoteQuarter, "note_quarter", "Quarter note"),
@@ -688,6 +715,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 110, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 116, "one entry per ActionId variant");
     }
 }

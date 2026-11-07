@@ -5,7 +5,7 @@
 //! copy/paste and looping later); the measure being played is highlighted. Track commands
 //! go through `gscore-edit`, so every change can be undone.
 
-use egui::{Align, Layout, Margin, RichText, vec2};
+use egui::{Align, Color32, Layout, Margin, RichText, vec2};
 use gscore_edit::Command;
 use gscore_model::TrackIndex;
 
@@ -220,7 +220,10 @@ impl GuitarScoreApp {
                 cursor_measure: cursor.measure.get(),
                 cursor_track: cursor.track.get(),
                 playing,
-                selection: tab.selection,
+                // The grid shows the score's selection too (the bars a beat selection
+                // spans), in that track.
+                selection: tab.loop_measures(),
+                selection_color: crate::canvas::color(self.view.theme.palette().selection),
                 shown_track: tab.track,
                 mixer: self.view.grid_mixer,
                 metronome: (
@@ -276,8 +279,12 @@ impl GuitarScoreApp {
                         gscore_edit::Selection::Measures {
                             anchor: gscore_model::MeasureIndex::new(selection.start()),
                             focus: gscore_model::MeasureIndex::new(selection.end()),
+                            track: selection.track.map(TrackIndex::new),
                         },
                     ));
+                    if let Some(track) = selection.track {
+                        tab.track = track;
+                    }
                 }
                 // While playing, playback goes to the selection's first measure, unless
                 // that measure is already playing (the selection just follows it).
@@ -486,6 +493,8 @@ pub(super) struct GridView {
     cursor_track: usize,
     playing: Option<usize>,
     selection: Option<MeasureSelection>,
+    /// The score's selection color, so a selection looks the same in both views.
+    selection_color: Color32,
     shown_track: usize,
     mixer: bool,
     /// The metronome's volume and how loud it sounds right now (both 0 to 1).
@@ -531,7 +540,7 @@ fn draw(
         .unwrap_or(0.0);
     ui.horizontal_top(|ui| {
         rows::header(ui, rows, view, actions);
-        matrix::ruler(ui, grid, view, scroll_x);
+        matrix::ruler(ui, grid, view, scroll_x, actions);
     });
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])

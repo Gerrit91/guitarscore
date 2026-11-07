@@ -33,8 +33,17 @@ Up = cursor_up_string
 Down = cursor_down_string
 shift+Left = select_left
 shift+Right = select_right
-shift+Up = select_beat
-shift+Down = select_beat
+shift+Up = select_line_up
+shift+Down = select_line_down
+Home = cursor_home
+End = cursor_end
+shift+Home = select_home
+shift+End = select_end
+# Cmd+Left/Right are Home/End on macOS; ctrl is Cmd there.
+ctrl+Left = cursor_home
+ctrl+Right = cursor_end
+ctrl+shift+Left = select_home
+ctrl+shift+Right = select_end
 
 0 = enter_fret
 1 = enter_fret

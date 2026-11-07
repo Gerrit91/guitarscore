@@ -306,6 +306,16 @@ impl Document {
         timeline
     }
 
+    /// The layout drawn last, while the song has not changed since (what the page shows:
+    /// Shift+Up and Shift+Down find the neighbouring line in it).
+    pub fn shown_layout(&self) -> Option<Arc<Layout>> {
+        let shown = self.layouts.shown.as_ref()?;
+        if shown.revision != self.editor.revision() {
+            return None;
+        }
+        shown.layout.as_ref().ok().cloned()
+    }
+
     /// The layout of `tracks` (top to bottom; their places are `primary`'s) for the
     /// current revision. A panic inside layout is contained and shown as an error (the
     /// panic hook has already written a crash report).

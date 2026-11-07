@@ -4125,6 +4125,16 @@ needed for a much larger font); owner listening check.
   Tests: the repository's Jazz, Overdrive-plus-American-Clean and Steel RSE sounds map to
   Warm Jazz, Clean Single Coil and Steel Fingerpicked; drums are not mapped; an explicit
   GuitarScore tone always wins.
+- Navigation and selection (2026-11-07): empty bars are cursor stops and are covered by
+  selection bands (drawn from each bar's extent, on every shown track); navigation follows
+  written order, so repeats and alternative endings do not move the cursor; Home/End and
+  Shift+Home/End go to the track's ends (also Cmd+Left/Right on macOS); a grid drag inside
+  one row selects that track's bars, leaving the row selects all tracks, and a ruler click
+  selects all; copy, cut, delete and paste follow the selected track. Copy with only the
+  cursor on a note copies that note (fret and effects) and Paste puts it on the cursor's
+  string, leaving the beat's other notes; beat selections still paste whole beats, and a
+  paste without room reports it. Tests: `test_navigation`, `test_written_order`,
+  `test_selection`, `test_editing` and `test_app`.
 - Part B, step 6: app tests for the switcher and the picker. A tone clicked in the track
   panel belongs to that track alone and comes back in a fresh app after saving; the source
   switch keeps both the General MIDI program and the modelled tone across PM → MIDI →
@@ -4132,3 +4142,28 @@ needed for a much larger font); owner listening check.
   its PM button is disabled; a hardware synth shows the port, channel and program table.
   Switching the source clears the table's filter, which would otherwise hide the other
   list's rows.
+
+## 2026-11-07 — Navigation handoff: copy and paste, Shift+Up/Down, the grid's selection
+
+- **Ctrl+C / Ctrl+V never pasted in the app** (the tests passed): egui's window layer
+  turns Ctrl+V into a Paste event only when the system clipboard holds text, and sends no
+  key press at all. GuitarScore's copy put nothing there, and the app is built without
+  eframe's `clipboard` feature, so egui's own clipboard stayed empty and Ctrl+V never
+  arrived. Copy and Cut now also put a line of text on the clipboard
+  (`TabEditor::clipboard_text`, "GuitarScore: fret 2", "… 3 beats"), so the next Ctrl+V
+  arrives as a paste. The app test sends Copy and Paste as the desktop does
+  (`copy_and_paste_work_as_the_desktop_sends_them`); the older tests sent key presses the
+  desktop never sends.
+- **Shift+Up/Down extend the selection a line up or down** on the page, as in a text
+  editor: `select_line_up` / `select_line_down` ask the app (`Request::SelectLine`), which
+  finds the beat at the same place on the neighbouring system in the layout drawn last
+  (`page::line_spot`, `Document::shown_layout`) and answers with
+  `TabEditor::extend_selection_to_spot`. Past the first or last line they go to the
+  track's start or end. Selecting the cursor's whole beat (`select_beat`) keeps its action
+  without a default key.
+- **The song grid shows every selection, over its squares:** a selection made in the
+  score marks the bars it spans in its track's row, a grid selection one track's row or
+  all rows; drawn after the squares in the score's selection color and shade, with an
+  outline, the ruler likewise. Snapshots `grid_score_selection`, `grid_track_selection`
+  (reviewed).
+

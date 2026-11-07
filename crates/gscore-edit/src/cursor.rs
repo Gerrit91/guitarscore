@@ -127,10 +127,8 @@ impl Cursor {
                     return false;
                 };
                 measure = MeasureIndex::new(previous_measure);
-                let Some(last) = self.beats_in(song, measure).checked_sub(1) else {
-                    continue;
-                };
-                beat = last;
+                // An empty measure is a stop: its beat 0 is where a note would go.
+                beat = self.beats_in(song, measure).saturating_sub(1);
             }
             if !self.is_grace(song, measure, beat) {
                 self.measure = measure;
@@ -153,11 +151,9 @@ impl Cursor {
                 if next >= song.measure_count() {
                     return false;
                 }
+                // An empty measure is a stop too: its beat 0 is where a note would go.
                 measure = MeasureIndex::new(next);
                 beat = 0;
-                if self.beats_in(song, measure) == 0 {
-                    continue;
-                }
             }
             if !self.is_grace(song, measure, beat) {
                 self.measure = measure;
@@ -165,6 +161,43 @@ impl Cursor {
                 return true;
             }
         }
+    }
+
+    /// To the first timed beat of the track (the start of the song), keeping the string.
+    /// Returns whether it moved.
+    pub fn start_of_track(&mut self, song: &Song) -> bool {
+        if song.measure_count() == 0 {
+            return false;
+        }
+        let measure = MeasureIndex::new(0);
+        let beats = self.beats_in(song, measure);
+        let beat = (0..beats)
+            .find(|&beat| !self.is_grace(song, measure, beat))
+            .unwrap_or(0);
+        self.jump_to(measure, beat)
+    }
+
+    /// To the last timed beat of the track's last measure, or its start when the measure is
+    /// empty. Returns whether it moved.
+    pub fn end_of_track(&mut self, song: &Song) -> bool {
+        let Some(last) = song.measure_count().checked_sub(1) else {
+            return false;
+        };
+        let measure = MeasureIndex::new(last);
+        let beats = self.beats_in(song, measure);
+        let beat = (0..beats)
+            .rev()
+            .find(|&beat| !self.is_grace(song, measure, beat))
+            .unwrap_or(0);
+        self.jump_to(measure, beat)
+    }
+
+    /// Sets measure and beat, reporting whether that changed the cursor.
+    fn jump_to(&mut self, measure: MeasureIndex, beat: usize) -> bool {
+        let moved = self.measure != measure || self.beat.get() != beat;
+        self.measure = measure;
+        self.beat = BeatIndex::new(beat);
+        moved
     }
 
     /// To the first timed beat of the next (`forward`) or previous measure; backwards from
