@@ -4098,3 +4098,9 @@ needed for a much larger font); owner listening check.
   families (Clean, Crunch, Lead, High gain, Acoustic, Bass), each a full `Tone` (strings,
   sound and computed chain, no IR files) with a description, a default tone for every
   guitar and bass program, and a fallback for other programs. Not wired into the UI yet.
+- Part B, step 2: a track with no tone of the song or its preset now plays its General
+  MIDI program's built-in library tone (`Playback::default_tone_for`), in the app, the
+  sequencer and the WAV export alike; a track switched to another kind of string still
+  gets that kind's tone. The per-kind settings remain the fallback for programs without
+  a tone. Tests: 27 and 30 start on different electric tones, a bass-switched track gets
+  a bass tone, and export resolves every modelled track's model and chain.

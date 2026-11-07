@@ -1368,7 +1368,7 @@ impl GuitarScoreApp {
                                 ShownPreset {
                                     program: player.program,
                                     kind,
-                                    default: self.playback.default_tone(kind),
+                                    default: self.playback.default_tone_for(player.program, kind),
                                 },
                                 &sound,
                                 &chain,

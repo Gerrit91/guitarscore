@@ -352,7 +352,7 @@ impl GuitarScoreApp {
                         && let Some(kind) = kind
                     {
                         let tone = self.track_tone_in(tab, index, kind);
-                        if tone != self.playback.default_tone(kind) {
+                        if tone != self.playback.default_tone_for(player.program, kind) {
                             sound.tone =
                                 Some(crate::settings::PresetTone::of(player.program, &tone));
                         }

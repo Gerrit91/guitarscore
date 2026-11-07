@@ -162,7 +162,7 @@ impl GuitarScoreApp {
     pub(super) fn track_tone(&self, track: usize, kind: StringKind) -> Tone {
         match self.tabs.get(self.active) {
             Some(tab) => self.track_tone_in(tab, track, kind),
-            None => self.playback.default_tone(kind),
+            None => crate::tone_library::default_for_kind(kind).tone.clone(),
         }
     }
 
@@ -176,7 +176,7 @@ impl GuitarScoreApp {
         let player = self.track_player_in(tab, track);
         let mut tone = own.unwrap_or_else(|| match &player {
             Some(player) => self.playback.tone(track, player.program, kind),
-            None => self.playback.default_tone(kind),
+            None => crate::tone_library::default_for_kind(kind).tone.clone(),
         });
         // A drum track with no tone of its own runs the drum bus, as playback does.
         if player.is_some_and(|player| player.drums) && tone.chain == ChainSetting::default() {
