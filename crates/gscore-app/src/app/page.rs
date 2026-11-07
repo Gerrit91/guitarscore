@@ -255,9 +255,7 @@ impl GuitarScoreApp {
             let to_layout = |pos: egui::Pos2| arrangement.layout_point((pos - origin) / scale);
             // The selection: one solid band per system line it touches.
             if let Some(selection) = shown_selection {
-                for band in
-                    selection_bands(&layout.places, document.song(), selection, cursor.track)
-                {
+                for band in layout_selection_bands(&layout, document.song(), selection) {
                     let band = arrangement.rect(band);
                     let rect = Rect::from_min_size(
                         origin + Vec2::new(band.origin.x, band.origin.y) * scale,
@@ -505,6 +503,27 @@ impl GuitarScoreApp {
     }
 }
 
+/// The selection's highlight over a laid-out score. A beat selection follows its track's
+/// places (also when several tracks are shown); a measure selection covers every shown
+/// track's staves.
+fn layout_selection_bands(
+    layout: &gscore_layout::Layout,
+    song: &Song,
+    selection: Selection,
+) -> Vec<gscore_layout::Rect> {
+    match selection {
+        Selection::Beats { track, .. } => layout
+            .places_of(track)
+            .map(|places| selection_bands(places, song, selection, track))
+            .unwrap_or_default(),
+        Selection::Measures { .. } => layout
+            .tracks
+            .iter()
+            .flat_map(|track| selection_bands(&track.places, song, selection, track.track))
+            .collect(),
+    }
+}
+
 /// The selection's highlight on the page of `track`, in page units: one rectangle per
 /// system line, from the first selected column (or measure) on it to the last, so the band
 /// is solid between the notes and across bar lines.
@@ -518,15 +537,46 @@ fn selection_bands(
         Selection::Beats {
             track: selected,
             voice,
-            ..
+            anchor,
+            focus,
         } => {
             if selected != track {
                 return Vec::new();
             }
-            selection
-                .positions(song)
-                .into_iter()
-                .filter_map(|at| places.column_rect(at.measure, voice, at.beat))
+            let first = anchor.min(focus);
+            let last = anchor.max(focus);
+            let count = song.measure_count();
+            (first.measure.get()..=last.measure.get().min(count.saturating_sub(1)))
+                .filter_map(|index| {
+                    let measure = MeasureIndex::new(index);
+                    let place = places.measure(measure)?;
+                    let system = places.systems.get(place.system)?;
+                    let top = system.top - 1.0;
+                    // A bar without beats in this voice has no column of its own: the
+                    // selection covers the whole bar, as it does between two notes.
+                    let has_beats = place.beats.iter().any(|beat| beat.voice == voice);
+                    let mut left = place.left;
+                    let mut right = place.right;
+                    if measure == first.measure
+                        && let Some(column) = has_beats
+                            .then(|| places.column_rect(measure, voice, first.beat))
+                            .flatten()
+                    {
+                        left = column.origin.x;
+                    }
+                    if measure == last.measure
+                        && let Some(column) = has_beats
+                            .then(|| places.column_rect(measure, voice, last.beat))
+                            .flatten()
+                    {
+                        right = column.origin.x + column.width;
+                    }
+                    Some(gscore_layout::Rect {
+                        origin: Point::new(left, top),
+                        width: (right - left).max(0.0),
+                        height: system.tab_bottom() + 1.0 - top,
+                    })
+                })
                 .collect()
         }
         Selection::Measures { anchor, focus } => (anchor.min(focus).get()
@@ -708,6 +758,68 @@ mod tests {
         // Another track's selection is not drawn on this page.
         let bands = selection_bands(&places(), &song, beats((0, 0), (0, 1)), TrackIndex::new(1));
         assert!(bands.is_empty());
+    }
+
+    /// Three measures on one system; measure 1 has no beats (an empty bar).
+    fn places_in_a_line() -> Places {
+        let system = SystemPlace {
+            top: 0.0,
+            tab_top: 10.0,
+            string_spacing: 1.5,
+            strings: 6,
+        };
+        let measure = |index: usize| MeasurePlace {
+            measure: MeasureIndex::new(index),
+            system: 0,
+            left: index as f32 * 50.0 + 5.0,
+            right: index as f32 * 50.0 + 45.0,
+            content: index as f32 * 50.0 + 10.0,
+            beats: if index == 1 {
+                Vec::new()
+            } else {
+                (0..4)
+                    .map(|beat| BeatPlace {
+                        voice: VoiceIndex::new(0),
+                        beat: BeatIndex::new(beat),
+                        x: index as f32 * 50.0 + 10.0 * (beat as f32 + 1.0),
+                    })
+                    .collect()
+            },
+        };
+        Places {
+            systems: vec![system],
+            measures: vec![measure(0), measure(1), measure(2)],
+        }
+    }
+
+    #[test]
+    fn a_selection_covers_an_empty_measure_inside_it() {
+        let song = testing::song(&[GUITAR_6], 3).unwrap();
+        let bands = selection_bands(
+            &places_in_a_line(),
+            &song,
+            beats((0, 1), (2, 1)),
+            TrackIndex::new(0),
+        );
+        assert_eq!(bands.len(), 1, "one band from the first to the last beat");
+        let band = bands[0];
+        assert!((band.origin.x - 19.1).abs() < 1e-4, "{band:?}");
+        assert!((band.origin.x + band.width - 120.9).abs() < 1e-4, "{band:?}");
+    }
+
+    #[test]
+    fn a_selection_ending_in_an_empty_measure_covers_the_whole_bar() {
+        let song = testing::song(&[GUITAR_6], 3).unwrap();
+        let bands = selection_bands(
+            &places_in_a_line(),
+            &song,
+            beats((0, 2), (1, 0)),
+            TrackIndex::new(0),
+        );
+        assert_eq!(bands.len(), 1);
+        let band = bands[0];
+        assert!((band.origin.x - 29.1).abs() < 1e-4, "{band:?}");
+        assert!((band.origin.x + band.width - 95.0).abs() < 1e-4, "{band:?}");
     }
 
     #[test]
