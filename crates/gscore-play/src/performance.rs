@@ -21,6 +21,9 @@ pub enum TrackEngine {
     SoundFont,
     /// Modelled strings of this kind (M22). MIDI output still plays the track's MIDI.
     Modelled(StringKind),
+    /// A hardware synthesizer on a MIDI output port. Its notes are the sequence's MIDI,
+    /// played by the device; the audio never returns to the mixer.
+    MidiOut,
 }
 
 /// The kinds of modelled string instrument.

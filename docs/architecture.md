@@ -92,6 +92,13 @@ AudioWorklet (`gscore-worklet` runs the same engine there). `TunerPlayer` plays 
 reference tone. Milestone M22 adds a modelled guitar engine next to the SoundFont one
 (`docs/guitar-modelling.md`).
 
+A track can be played by a hardware synthesizer instead (`TrackEngine::MidiOut`): the app
+splits its sequence (`Sequence::with_tracks`) into what the main output plays and what each
+MIDI-out port plays, runs one `MidiOutPlayer` per port beside the main player, sends every
+transport command to all of them, and holds the MIDI start back by the main device's output
+latency. The hardware's audio never returns, so its strip shows note activity rather than a
+measured meter. A browser has no MIDI ports and falls back to the SoundFont.
+
 Inside `SynthEngine` every track is a strip of the `mixer` (M22, 2026-11-07): its source
 (the MIDI channels it plays on, each rendered apart by our fork of RustySynth in
 `vendor/rustysynth`, or its modelled strings from `guitars`), its chain (`chains`, the

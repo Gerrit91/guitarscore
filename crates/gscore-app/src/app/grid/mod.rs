@@ -126,6 +126,9 @@ impl GuitarScoreApp {
         let estimates: Vec<f32> = (0..rows.len())
             .map(|index| self.playback.track_level(TrackIndex::new(index)))
             .collect();
+        let midi_out: Vec<bool> = (0..rows.len())
+            .map(|index| self.playback.track_is_midi_out(index))
+            .collect();
         let comp_sends: Vec<u8> = (0..rows.len())
             .map(|index| tab.comp_sends.get(&index).copied().unwrap_or(0))
             .collect();
@@ -139,6 +142,7 @@ impl GuitarScoreApp {
             let loudest = rows
                 .iter()
                 .enumerate()
+                .filter(|(index, _)| !midi_out.get(*index).copied().unwrap_or(false))
                 .map(|(index, row)| {
                     f32::from(row.reverb.min(127)) / 127.0
                         * estimates.get(index).copied().unwrap_or(0.0)
@@ -151,8 +155,21 @@ impl GuitarScoreApp {
         // notes (MIDI output, the browser).
         let readings = match &meters {
             Some(meters) => strips::Readings {
-                tracks: (0..rows.len())
-                    .map(|index| strips::Reading::measured(meters.track(index)))
+                tracks: rows
+                    .iter()
+                    .enumerate()
+                    .map(|(index, row)| {
+                        // A hardware synthesizer's audio never reaches the mixer: its strip
+                        // shows the notes it plays instead of a measured level.
+                        if midi_out.get(index).copied().unwrap_or(false) {
+                            strips::Reading::estimated(
+                                estimates.get(index).copied().unwrap_or(0.0),
+                                row.pan,
+                            )
+                        } else {
+                            strips::Reading::measured(meters.track(index))
+                        }
+                    })
                     .collect(),
                 bus: strips::Reading::measured(meters.reverb()),
                 compressor: strips::Reading::measured(meters.compressor()),
@@ -168,7 +185,12 @@ impl GuitarScoreApp {
                 // No Comp knobs yet (step 5): nothing is sent into it, so it is silent.
                 compressor: strips::Reading::estimated(0.0, 64),
                 master: strips::Reading::estimated(
-                    estimates.iter().copied().fold(0.0_f32, f32::max),
+                    estimates
+                        .iter()
+                        .enumerate()
+                        .filter(|(index, _)| !midi_out.get(*index).copied().unwrap_or(false))
+                        .map(|(_, &level)| level)
+                        .fold(0.0_f32, f32::max),
                     master.pan,
                 ),
             },

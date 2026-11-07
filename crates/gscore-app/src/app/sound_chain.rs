@@ -21,7 +21,7 @@ use crate::app::string_sound::{kind_name, round_knob, sound_knobs};
 use crate::app::style::{self, Tokens};
 use crate::app::track_engine::TrackPlayer;
 use crate::chain_settings::{BlockChoice, BlockSetting, ChainSetting, DrumPart, Tone};
-use crate::playback::Heard;
+use crate::playback::{Heard, MidiOutRoute};
 use crate::settings::{
     ChainPreset, MAX_STRING_PRESET_NAME, MAX_STRING_PRESETS, StringSound, engine_from_id,
     engine_id, kind_id,
@@ -63,6 +63,8 @@ struct Actions {
     rebuild: bool,
     /// What plays the track was chosen in the first box.
     engine: Option<TrackEngine>,
+    /// A MIDI-out track's port or channel changed in the first box.
+    midi_out: Option<MidiOutRoute>,
     /// The strings' sound changed (in the first box's editor).
     sound: Option<StringSound>,
     /// A saved tone was chosen for the track's preset: its string sound, its chain and
@@ -147,12 +149,75 @@ fn short(text: &str, chars: usize) -> String {
     cut
 }
 
+/// The port and channel of a track played by a hardware synthesizer.
+fn midi_out_controls(
+    ui: &mut egui::Ui,
+    player: &TrackPlayer,
+    ports: &[String],
+    actions: &mut Actions,
+) {
+    let mut route = player.midi_out.clone();
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new("Port").color(style::tokens(ui).text_weak));
+        let port_choice = egui::ComboBox::from_id_salt("midi_out_port")
+            .selected_text(route.port.as_deref().unwrap_or("Automatic port"))
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut route.port, None, "Automatic port");
+                for port in ports {
+                    ui.selectable_value(&mut route.port, Some(port.clone()), port);
+                }
+            });
+        ui.ctx()
+            .accesskit_node_builder(port_choice.response.id, |node| {
+                node.set_label("MIDI out port");
+            });
+        ui.label(RichText::new("Channel").color(style::tokens(ui).text_weak));
+        let channel_choice = egui::ComboBox::from_id_salt("midi_out_channel")
+            .selected_text(route.channel.map_or_else(
+                || "Automatic channel".to_owned(),
+                |c| c.saturating_add(1).to_string(),
+            ))
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut route.channel, None, "Automatic channel");
+                for channel in 0..16_u8 {
+                    ui.selectable_value(
+                        &mut route.channel,
+                        Some(channel),
+                        channel.saturating_add(1).to_string(),
+                    );
+                }
+            });
+        ui.ctx()
+            .accesskit_node_builder(channel_choice.response.id, |node| {
+                node.set_label("MIDI out channel");
+            });
+    });
+    ui.label(
+        RichText::new(
+            "Ports are listed in Settings › Audio I/O; Refresh ports there finds a device \
+             plugged in since.",
+        )
+        .weak(),
+    );
+    ui.label(
+        RichText::new(
+            "The hardware synthesizer plays this track. Its chain and the mixer's effects do \
+             not apply; the strip's meter shows its notes.",
+        )
+        .weak(),
+    );
+    if route != player.midi_out {
+        actions.midi_out = Some(route);
+    }
+}
+
 /// The first box: what plays the track (the internal synth, or physical modelling), the
 /// kind of string and - for modelled strings - their sound, all in this window.
 fn strings_editor(
     ui: &mut egui::Ui,
     player: &TrackPlayer,
     sound: &mut StringSound,
+    ports: &[String],
     actions: &mut Actions,
 ) -> bool {
     let mut changed = false;
@@ -161,7 +226,7 @@ fn strings_editor(
         // PM keeps the kind it had (or the one the track's preset stands for).
         let modelled_kind = match player.engine {
             TrackEngine::Modelled(kind) => Some(kind),
-            TrackEngine::SoundFont => player.preset_kind,
+            TrackEngine::SoundFont | TrackEngine::MidiOut => player.preset_kind,
         };
         let pm = TrackEngine::Modelled(modelled_kind.unwrap_or(StringKind::Steel));
         let mut choice = |ui: &mut egui::Ui, engine: TrackEngine, label: &str, enabled: bool| {
@@ -178,6 +243,10 @@ fn strings_editor(
                         "Physical modelling: the strings are synthesized and played through \
                          the chain"
                     }
+                    TrackEngine::MidiOut => {
+                        "A hardware synthesizer on a MIDI output port plays the track; its \
+                         sound does not come back through the mixer"
+                    }
                 });
             if response.clicked() {
                 actions.engine = Some(engine);
@@ -185,7 +254,13 @@ fn strings_editor(
         };
         choice(ui, TrackEngine::SoundFont, "MIDI synth", true);
         choice(ui, pm, "PM Synthesis", player.strings);
+        #[cfg(not(target_arch = "wasm32"))]
+        choice(ui, TrackEngine::MidiOut, "MIDI out", true);
     });
+    if player.engine == TrackEngine::MidiOut {
+        midi_out_controls(ui, player, ports, actions);
+        return changed;
+    }
     if !player.strings {
         ui.label(
             RichText::new("Only string instruments can be played by modelled strings.").weak(),
@@ -194,7 +269,7 @@ fn strings_editor(
     }
     let Some(kind) = (match player.engine {
         TrackEngine::Modelled(kind) => Some(kind),
-        TrackEngine::SoundFont => None,
+        TrackEngine::SoundFont | TrackEngine::MidiOut => None,
     }) else {
         return changed;
     };
@@ -645,6 +720,7 @@ fn board(
                         gscore_model::program_name(player.program)
                     ),
                 ),
+                TrackEngine::MidiOut => ("MIDI out".to_owned(), player.midi_out.label()),
             },
             Some(block) => box_text(block),
         };
@@ -1121,8 +1197,11 @@ impl GuitarScoreApp {
         // stands for (the mixer runs a SoundFont track's chain too).
         let (kind, modelled) = match player.engine {
             TrackEngine::Modelled(kind) => (kind, true),
-            TrackEngine::SoundFont => (player.preset_kind.unwrap_or(StringKind::Steel), false),
+            TrackEngine::SoundFont | TrackEngine::MidiOut => {
+                (player.preset_kind.unwrap_or(StringKind::Steel), false)
+            }
         };
+        let ports = self.playback.ports().to_vec();
         // Every preset, whatever kind of string it was saved for (choosing one also
         // switches the track to that kind when it names a modelled engine).
         let mut presets: Vec<ChainPreset> = self.settings.string_presets.clone();
@@ -1232,7 +1311,7 @@ impl GuitarScoreApp {
                         match window.selected.checked_sub(1) {
                             None => {
                                 let mut sound = sound;
-                                if strings_editor(ui, &player, &mut sound, &mut actions) {
+                                if strings_editor(ui, &player, &mut sound, &ports, &mut actions) {
                                     actions.sound = Some(sound);
                                 }
                             }
@@ -1326,6 +1405,9 @@ impl GuitarScoreApp {
         }
         if let Some(engine) = actions.engine {
             self.set_track_engine(track, engine);
+        }
+        if let Some(route) = actions.midi_out {
+            self.set_midi_out(track, route);
         }
         if actions.sound.is_some() || actions.chain.is_some() {
             let mut tone = self.track_tone(track, kind);

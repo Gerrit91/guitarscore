@@ -1,6 +1,7 @@
 //! Playback to a MIDI output port (an external or software synthesizer such as FluidSynth)
 //! through `midir`.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
@@ -47,6 +48,9 @@ pub struct MidiOutPlayer {
     port: String,
     /// The drum channels of the sequence last loaded (live changes to them go to 10).
     drums: [bool; 16],
+    /// How long events are held back (microseconds), so a hardware synthesizer lines up
+    /// with the built-in one's audio output.
+    delay: Arc<AtomicU64>,
     commands: SyncSender<Command>,
     status: Arc<Mutex<Status>>,
     thread: Option<JoinHandle<()>>,
@@ -89,17 +93,29 @@ impl MidiOutPlayer {
             error: None,
         }));
         let thread_status = Arc::clone(&status);
+        let delay = Arc::new(AtomicU64::new(0));
+        let thread_delay = Arc::clone(&delay);
         let thread = std::thread::Builder::new()
             .name("gscore-midi-out".to_owned())
-            .spawn(move || run(connection, &receiver, &thread_status))
+            .spawn(move || run(connection, &receiver, &thread_status, &thread_delay))
             .map_err(|e| PlayError::Device(format!("cannot start the MIDI thread: {e}")))?;
         Ok(MidiOutPlayer {
             port: name,
             drums: [false; 16],
+            delay,
             commands,
             status,
             thread: Some(thread),
         })
+    }
+
+    /// Holds the events back by `delay`: the built-in synthesizer's audio reaches the ears
+    /// that much later than a hardware synthesizer hears its MIDI.
+    pub fn set_delay(&self, delay: Duration) {
+        /// More than this is a broken device timestamp, not output latency.
+        const MAX_DELAY: u64 = 250_000;
+        let micros = u64::try_from(delay.as_micros()).unwrap_or(MAX_DELAY);
+        self.delay.store(micros.min(MAX_DELAY), Ordering::Release);
     }
 
     /// The port this player sends to.
@@ -216,7 +232,12 @@ impl Sink for Output {
 }
 
 /// The playing thread: handles commands and sends due events.
-fn run(connection: MidiOutputConnection, commands: &Receiver<Command>, status: &Mutex<Status>) {
+fn run(
+    connection: MidiOutputConnection,
+    commands: &Receiver<Command>,
+    status: &Mutex<Status>,
+    delay: &AtomicU64,
+) {
     let clock = Instant::now();
     let now = || u64::try_from(clock.elapsed().as_micros()).unwrap_or(u64::MAX);
     let mut out = Output {
@@ -224,9 +245,18 @@ fn run(connection: MidiOutputConnection, commands: &Receiver<Command>, status: &
         error: None,
     };
     let mut transport = Transport::default();
+    // A play held back until the built-in synthesizer's audio output has caught up.
+    let mut pending_play: Option<u64> = None;
 
     loop {
-        let wait = if transport.state() == PlayState::Playing {
+        let at = now();
+        if let Some(due) = pending_play
+            && at >= due
+        {
+            pending_play = None;
+            let _old = transport.handle(Command::Play, at, &mut out);
+        }
+        let wait = if pending_play.is_some() || transport.state() == PlayState::Playing {
             TICK
         } else {
             IDLE
@@ -236,12 +266,28 @@ fn run(connection: MidiOutputConnection, commands: &Receiver<Command>, status: &
                 transport.fail(&mut out);
                 break;
             }
+            Ok(Command::Play) if transport.state() != PlayState::Playing => {
+                out.error = None;
+                let delay = delay.load(Ordering::Acquire);
+                if delay > 0 {
+                    pending_play = Some(at.saturating_add(delay));
+                } else {
+                    // The old sequence is freed here; this thread may allocate.
+                    let _old = transport.handle(Command::Play, at, &mut out);
+                }
+            }
             Ok(command) => {
-                if matches!(command, Command::Play) && transport.state() != PlayState::Playing {
-                    out.error = None;
+                // A pause or a new sequence must not leave this output sounding after the
+                // rest has stopped (or playing the old one). A tempo change or a live
+                // mixer event leaves a play that is still being held back alone.
+                if matches!(
+                    command,
+                    Command::Pause | Command::Stop | Command::Load(_) | Command::Seek(_)
+                ) {
+                    pending_play = None;
                 }
                 // The old sequence is freed here; this thread may allocate.
-                let _old = transport.handle(command, now(), &mut out);
+                let _old = transport.handle(command, at, &mut out);
             }
             Err(RecvTimeoutError::Timeout) => {}
         }

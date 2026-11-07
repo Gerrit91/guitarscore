@@ -340,6 +340,7 @@ pub(crate) fn engine_id(engine: gscore_play::TrackEngine) -> &'static str {
     match engine {
         gscore_play::TrackEngine::SoundFont => "soundfont",
         gscore_play::TrackEngine::Modelled(kind) => kind_id(kind),
+        gscore_play::TrackEngine::MidiOut => "midi_out",
     }
 }
 
@@ -347,6 +348,7 @@ pub(crate) fn engine_id(engine: gscore_play::TrackEngine) -> &'static str {
 pub(crate) fn engine_from_id(id: &str) -> Option<gscore_play::TrackEngine> {
     match id {
         "soundfont" => Some(gscore_play::TrackEngine::SoundFont),
+        "midi_out" => Some(gscore_play::TrackEngine::MidiOut),
         "nylon" => Some(gscore_play::TrackEngine::Modelled(
             gscore_play::StringKind::Nylon,
         )),

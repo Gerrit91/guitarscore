@@ -157,6 +157,54 @@ impl Sequence {
         self
     }
 
+    /// This sequence with only the tracks whose song index `keep` accepts. Metronome clicks
+    /// stay (they belong to no track), so the beat can still be kept by an output that has
+    /// only some of the song's tracks. Track positions in events and in the performance
+    /// are renumbered, so an engine that plays the notes (the modelled strings) keeps
+    /// working.
+    pub fn with_tracks(&self, keep: impl Fn(TrackIndex) -> bool) -> Self {
+        let mut new_position = Vec::with_capacity(self.tracks.len());
+        let mut tracks = Vec::with_capacity(self.tracks.len());
+        let mut performance_tracks = Vec::with_capacity(self.tracks.len());
+        for (position, track) in self.tracks.iter().enumerate() {
+            if keep(track.track) {
+                new_position.push(Some(tracks.len()));
+                tracks.push(track.clone());
+                if let Some(entry) = self.performance.tracks.get(position) {
+                    performance_tracks.push(entry.clone());
+                }
+            } else {
+                new_position.push(None);
+            }
+        }
+        let mut sequence = self.clone();
+        sequence.tracks = tracks;
+        sequence.events = self
+            .events
+            .iter()
+            .filter_map(|event| {
+                if event.track == crate::click::CLICK_TRACK {
+                    return Some(*event);
+                }
+                let track = new_position.get(event.track).copied().flatten()?;
+                Some(TimedEvent { track, ..*event })
+            })
+            .collect();
+        let performance = Arc::make_mut(&mut sequence.performance);
+        performance.tracks = performance_tracks;
+        performance.notes = self
+            .performance
+            .notes
+            .iter()
+            .filter_map(|note| {
+                let track = new_position.get(note.track).copied().flatten()?;
+                Some(crate::performance::PlayedNote { track, ..*note })
+            })
+            .collect();
+        performance.index_by_start();
+        sequence
+    }
+
     /// The MIDI sequence that plays `performance` on a General MIDI synthesizer.
     pub fn from_performance(performance: Arc<Performance>) -> Self {
         let midi = crate::midi::derive(&performance);

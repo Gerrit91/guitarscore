@@ -50,6 +50,9 @@ struct Shared {
     bank: Mutex<Option<String>>,
     /// The rate the device runs at (0 until it is open).
     sample_rate: AtomicU32,
+    /// How long the audio takes to leave the device (microseconds), as the last callback
+    /// reported.
+    latency: AtomicU64,
     /// The audio callback's load: the share of each buffer's time spent rendering it,
     /// smoothed (`f32` bits).
     load: AtomicU32,
@@ -188,6 +191,16 @@ impl SynthPlayer {
     /// The sample rate the device plays at, once it is open.
     pub fn sample_rate(&self) -> Option<u32> {
         Some(self.shared.sample_rate.load(Ordering::Acquire)).filter(|&rate| rate > 0)
+    }
+
+    /// How long the sound takes to leave the audio device, once a callback has reported
+    /// it. A hardware synthesizer's MIDI can be held back by as much so both line up.
+    /// A device that reports an implausible figure is ignored.
+    pub fn latency(&self) -> Option<Duration> {
+        /// The most a MIDI-out track is held back; longer is a broken timestamp.
+        const MAX_LATENCY: u64 = 250_000;
+        let micros = self.shared.latency.load(Ordering::Acquire);
+        (micros > 0 && micros <= MAX_LATENCY).then(|| Duration::from_micros(micros))
     }
 
     /// The mixer's meters (every track's real level, the reverb bus's and the master's),
@@ -638,12 +651,12 @@ where
     device
         .build_output_stream(
             *config,
-            move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+            move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
                 if broken {
                     data.fill(T::EQUILIBRIUM);
                     return;
                 }
-                let rendered = catch_unwind(AssertUnwindSafe(|| callback(&mut parts, data)));
+                let rendered = catch_unwind(AssertUnwindSafe(|| callback(&mut parts, data, info)));
                 if rendered.is_err() {
                     // The panic hook wrote a report; stay silent from now on.
                     broken = true;
@@ -671,10 +684,16 @@ where
 }
 
 /// One audio callback: commands, then samples, then the status.
-fn callback<T>(parts: &mut Parts, data: &mut [T])
+fn callback<T>(parts: &mut Parts, data: &mut [T], info: &cpal::OutputCallbackInfo)
 where
     T: SizedSample + FromSample<f32>,
 {
+    let timing = info.timestamp();
+    let latency = timing.playback.duration_since(timing.callback);
+    parts.shared.latency.store(
+        u64::try_from(latency.as_micros()).unwrap_or(u64::MAX),
+        Ordering::Release,
+    );
     while let Ok(command) = parts.commands.try_recv() {
         if let Some(old) = parts.engine.apply(command) {
             // Freed by the thread; if its queue is full, here (rare and small).

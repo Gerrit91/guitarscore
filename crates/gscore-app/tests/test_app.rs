@@ -428,6 +428,12 @@ fn the_track_dialogs_match_their_snapshots() {
         .unwrap()
         .click();
     harness.run();
+    // A track played by a hardware synthesizer: its port and channel, next to the two
+    // internal sources.
+    harness.get_by_label("MIDI out").click();
+    harness.run();
+    harness.get_by_label("Block 0: MIDI out");
+    harness.snapshot("sound_chain_midi_out");
 }
 
 #[test]
@@ -526,6 +532,31 @@ fn the_staff_dialogs_match_their_snapshots() {
     harness.get_by_label("Tempo").click();
     harness.run();
     harness.snapshot("staff_tempo_dialog");
+}
+
+#[test]
+fn a_track_can_be_played_by_a_hardware_synthesizer() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    harness.get_by_label("Block 0: MIDI").click();
+    harness.run();
+    harness.get_by_label("MIDI out").click();
+    harness.run();
+    {
+        let playback = harness.state().playback();
+        assert!(playback.track_is_midi_out(0));
+        let routes = playback.midi_routes();
+        assert_eq!(routes.len(), 1);
+        assert_eq!(routes[0].0, 0, "the track's own route");
+        assert_eq!(routes[0].1.port, None, "automatic until a port is chosen");
+        assert_eq!(routes[0].1.channel, None, "automatic channel");
+    }
+    harness.get_by_label("Block 0: MIDI out");
+    // Back to the internal synthesizer: the route is kept but no longer used.
+    harness.get_by_label("MIDI synth").click();
+    harness.run();
+    assert!(!harness.state().playback().track_is_midi_out(0));
 }
 
 #[test]

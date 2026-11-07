@@ -230,7 +230,8 @@ impl Guitars {
                         tone: entry.track.get(),
                         kind,
                     }),
-                    TrackEngine::SoundFont => None,
+                    // A hardware synthesizer plays a MIDI-out track; the strings do not.
+                    TrackEngine::SoundFont | TrackEngine::MidiOut => None,
                 });
         for (place, slot) in slots.iter_mut().zip(modelled) {
             *place = Some(slot);

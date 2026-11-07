@@ -141,12 +141,14 @@ pub(crate) fn decode_performance(
     Ok(performance)
 }
 
-const ENGINES: [TrackEngine; 5] = [
+const ENGINES: [TrackEngine; 6] = [
     TrackEngine::SoundFont,
     TrackEngine::Modelled(StringKind::Nylon),
     TrackEngine::Modelled(StringKind::Steel),
     TrackEngine::Modelled(StringKind::Electric),
     TrackEngine::Modelled(StringKind::Bass),
+    // A browser has no MIDI ports; it plays such a track with the SoundFont synth.
+    TrackEngine::MidiOut,
 ];
 
 fn engine_code(engine: TrackEngine) -> u8 {

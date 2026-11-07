@@ -3852,6 +3852,35 @@ needed for a much larger font); owner listening check.
   a moved knob is kept as the kick's tone in the settings, Built-in forgets it, and the kit
   board comes back; snapshot `sound_chain_drum_kick`.
 
+## 2026-11-07 — MIDI out per track
+
+- A track can now be played by a hardware synthesizer: the Sound chain window's first box
+  offers **MIDI out** next to MIDI synth and PM Synthesis, with a port and a channel (both
+  automatic until chosen; the port list is refreshed when MIDI out is first chosen). The
+  app keeps the route in the open tab (`Tab::midi_outs`), like the other per-track engine
+  choices.
+- `TrackEngine::MidiOut` marks the track in the performance. `Sequence::with_tracks` splits
+  a full sequence without rebuilding it from the song: the main output gets every track
+  except the MIDI-out ones, each MIDI port gets its own tracks (and no metronome clicks).
+  Track positions in events and in the performance are renumbered, so modelled strings on
+  the remaining tracks keep working; a chosen channel moves that track's own events there
+  (borrowed channels for bends stay independent).
+- `Playback` now runs the main output plus one `MidiOutPlayer` per needed port. Every
+  transport command (play, pause, stop, seek, tempo, replace, count-in, loop, excerpt)
+  goes to all of them; the main output keeps the UI's position and state. The MIDI players
+  hold their start back by the synthesizer device's reported output latency
+  (`SynthPlayer::latency`, `MidiOutPlayer::set_delay`), so both sources line up. A port that
+  cannot be opened is reported, and the other tracks still play.
+- Mixer: a MIDI-out track's strip shows its note activity (estimated from the full
+  sequence) instead of a measured level, since its audio never returns; its comp/reverb
+  sends no longer feed the app's buses. Volume, pan and program still go to the device.
+- The browser has no MIDI ports: a saved MIDI-out choice falls back to the SoundFont there,
+  and the option is not shown.
+- Tests: `Sequence::with_tracks` keeps the clicks and renumbers notes/tracks; the app's
+  route split (port, channel, no clicks on the hardware output) and its MIDI-out choice
+  from the Sound chain; snapshots `sound_chain_midi_out` (new) and `sound_chain_strings` /
+  `sound_chain_pickup` (the third source button).
+
 ## 2026-11-07 — The chorus block
 
 - `gscore-guitar::chorus`: a stereo chorus, two short delay lines swinging around 14 ms,

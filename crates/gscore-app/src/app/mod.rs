@@ -325,7 +325,9 @@ impl GuitarScoreApp {
             };
             let kind = match player.engine {
                 gscore_play::TrackEngine::Modelled(kind) => Some(kind),
-                gscore_play::TrackEngine::SoundFont => player.preset_kind,
+                gscore_play::TrackEngine::SoundFont | gscore_play::TrackEngine::MidiOut => {
+                    player.preset_kind
+                }
             };
             let tone = kind.and_then(|kind| {
                 let tone = self.track_tone(index, kind);
@@ -703,9 +705,10 @@ impl eframe::App for GuitarScoreApp {
         self.handle_keys(&ctx);
         // A count-in that has finished starts the song it was counting in.
         self.poll_count_in();
-        // Another tab may hold other choices of what plays its tracks, other tones and
-        // other sends into the compressor bus.
+        // Another tab may hold other choices of what plays its tracks, their MIDI-out
+        // ports and channels, other tones and other sends into the compressor bus.
         self.sync_track_engines();
+        self.sync_midi_routes();
         self.sync_track_tones();
         self.sync_comp_sends();
         // Keep a loop of the selected measures going; a new selection turns it on.

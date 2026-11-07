@@ -10,6 +10,7 @@ use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
 use crate::chain_settings::Tone;
+use crate::playback::MidiOutRoute;
 
 /// What plays a track, and why.
 #[derive(Debug, Clone, PartialEq)]
@@ -26,6 +27,8 @@ pub(super) struct TrackPlayer {
     pub(super) preset_kind: Option<StringKind>,
     /// Its General MIDI program and name, for the SoundFont line.
     pub(super) program: u8,
+    /// The port and channel its hardware synthesizer plays, when it is a MIDI-out track.
+    pub(super) midi_out: MidiOutRoute,
 }
 
 impl GuitarScoreApp {
@@ -47,7 +50,12 @@ impl GuitarScoreApp {
             .track_engines
             .get(&track)
             .copied()
-            .filter(|engine| strings || *engine == TrackEngine::SoundFont)
+            .filter(|engine| match engine {
+                TrackEngine::Modelled(_) => strings,
+                TrackEngine::SoundFont => true,
+                // A browser has no MIDI ports; such a track falls back to the SoundFont.
+                TrackEngine::MidiOut => !cfg!(target_arch = "wasm32"),
+            })
             .unwrap_or(default);
         Some(TrackPlayer {
             engine,
@@ -56,6 +64,7 @@ impl GuitarScoreApp {
             drums: sound.percussion,
             preset_kind,
             program: sound.program,
+            midi_out: tab.midi_outs.get(&track).cloned().unwrap_or_default(),
         })
     }
 
@@ -72,7 +81,28 @@ impl GuitarScoreApp {
         } else {
             tab.track_engines.insert(track, engine);
         }
+        // A MIDI-out track needs a route; automatic until the user picks a port.
+        if engine == TrackEngine::MidiOut {
+            tab.midi_outs.entry(track).or_default();
+            // The Sound chain window offers the ports by name, so list them if that has
+            // not happened yet.
+            if self.playback.ports().is_empty() {
+                let _ = self.playback.refresh_ports();
+            }
+        }
+        // The engine first: a MIDI-out track needs its player, then the route splits the
+        // rebuilt sequence.
         self.sync_track_engines();
+        self.sync_midi_routes();
+    }
+
+    /// Gives the hardware synthesizer of `track` a port and channel, heard at once.
+    pub(super) fn set_midi_out(&mut self, track: usize, route: MidiOutRoute) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        tab.midi_outs.insert(track, route);
+        self.sync_midi_routes();
     }
 
     /// The name of `track` of the open document (empty without one).
@@ -183,6 +213,22 @@ impl GuitarScoreApp {
             return;
         };
         self.playback.set_track_tones(&tab.track_tones);
+    }
+
+    /// Hands the open document's MIDI-out port and channel choices to playback.
+    pub(super) fn sync_midi_routes(&mut self) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        let routes: Vec<(usize, MidiOutRoute)> = tab
+            .midi_outs
+            .iter()
+            .map(|(&track, route)| (track, route.clone()))
+            .collect();
+        let song = tab.document.song();
+        if let Err(error) = self.playback.set_midi_routes(song, routes) {
+            self.notice = Some(error);
+        }
     }
 
     /// Hands the open document's engine choices to playback (a change rebuilds the

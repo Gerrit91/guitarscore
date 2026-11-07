@@ -135,6 +135,55 @@ fn assert_same_notes(ours: &[(u64, u8)], theirs: &[(u64, u8)], what: &str) {
 }
 
 #[test]
+fn a_sequence_can_keep_only_some_of_its_tracks_and_their_notes() {
+    let song = testing::song_with_notes_on_tracks(2, &[(1, &[TestNote::new(3, 2)])]).unwrap();
+    let full = Sequence::with_metronome(&song, None, true).unwrap();
+    assert_eq!(full.tracks.len(), 2);
+
+    // The first track, its position unchanged; the metronome stays.
+    let first = full.with_tracks(|track| track == TrackIndex::new(0));
+    assert_eq!(first.tracks.len(), 1);
+    assert_eq!(first.tracks[0].track, TrackIndex::new(0));
+    assert!(
+        first
+            .events
+            .iter()
+            .all(|event| event.track == 0 || event.track == gscore_play::CLICK_TRACK)
+    );
+    assert!(
+        first
+            .events
+            .iter()
+            .any(|event| event.track == gscore_play::CLICK_TRACK),
+        "the clicks are kept"
+    );
+    assert_eq!(first.performance.tracks.len(), 1);
+    assert!(first.performance.notes.iter().all(|note| note.track == 0));
+    assert_eq!(
+        first.performance.by_start.len(),
+        first.performance.notes.len()
+    );
+
+    // The second track moves to position 0 in events and notes, so an engine that plays
+    // the notes (the modelled strings) still finds them.
+    let second = full.with_tracks(|track| track == TrackIndex::new(1));
+    assert_eq!(second.tracks.len(), 1);
+    assert_eq!(second.tracks[0].track, TrackIndex::new(1));
+    assert!(
+        second
+            .events
+            .iter()
+            .all(|event| event.track == 0 || event.track == gscore_play::CLICK_TRACK)
+    );
+    assert_eq!(second.performance.tracks[0].track, TrackIndex::new(1));
+    assert!(second.performance.notes.iter().all(|note| note.track == 0));
+    assert_eq!(
+        second.performance.notes.len(),
+        first.performance.notes.len()
+    );
+}
+
+#[test]
 fn notes_and_programs_match_guitar_pros_midi_export() {
     // Including ornaments: ties are held, harmonics sound at their harmonic pitch.
     for name in ["steel_guitar_dadgad", "note_lengths", "ornaments"] {

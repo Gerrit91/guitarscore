@@ -67,7 +67,8 @@ fn targets(sequence: &Sequence) -> Vec<ToneTarget> {
             track: track.track.get(),
             kind: match track.engine {
                 TrackEngine::Modelled(kind) => Some(kind),
-                TrackEngine::SoundFont => None,
+                // A MIDI-out track's sound is made by the device, not the mixer.
+                TrackEngine::SoundFont | TrackEngine::MidiOut => None,
             },
             program: track.sound.program,
             drums: track.sound.percussion,

@@ -101,10 +101,19 @@ never on `main`, never push.
    GM Chorus knob (CC 93) does nothing meanwhile; decide with the owner whether it should
    drive the chorus block's mix when a track has one.
 
+### Done after step 5
+
+- **MIDI out per track:** `TrackEngine::MidiOut` in `gscore-play`; the Sound chain window's
+  first box offers "MIDI out" with a port and channel (kept in the open tab,
+  `Tab::midi_outs`); `Playback` splits the sequence with `Sequence::with_tracks`, runs one
+  `MidiOutPlayer` per port beside the main output, and forwards every transport command to
+  both. The MIDI start is held back by the synthesizer device's latency
+  (`SynthPlayer::latency` → `MidiOutPlayer::set_delay`). A MIDI-out strip shows note
+  activity, not a measured meter. The browser falls back to the SoundFont. See the devlog
+  ("MIDI out per track"); its route is not saved with the song yet.
+
 ### Later
 
-- MIDI out per track (see the design above). `MidiOutPlayer` already maps drum tracks to
-  channel 10 (`Sequence::general_midi`).
 - The strings benchmark (`cargo xtask bench`) is about 280 ms against its 250 ms budget on
   a busy machine since the pickup; see the devlog ("The electric guitar gets a pickup").
 
