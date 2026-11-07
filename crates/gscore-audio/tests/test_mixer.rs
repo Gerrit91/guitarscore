@@ -12,8 +12,10 @@
 use std::sync::Arc;
 
 use gscore_audio::testing::sine_soundfont;
-use gscore_audio::{SoundBank, SynthEngine};
-use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, ChainSpec, ReverbKnobs};
+use gscore_audio::{Bus, SoundBank, SynthEngine};
+use gscore_guitar::{
+    BLOCKS, BlockKind, BlockSettings, ChainSpec, CompRatio, CompressorKnobs, ReverbKnobs,
+};
 use gscore_model::testing::{self, TestNote};
 use gscore_model::{Song, TrackIndex};
 use gscore_play::{Channel, MidiEvent, Sequence, controller};
@@ -288,4 +290,85 @@ fn a_sequence_sent_to_the_browsers_worklet_keeps_its_strips() {
         (ratio - expected).abs() < 0.01,
         "{ratio} against {expected}"
     );
+}
+
+/// A CA-76 driven hard and made up short: it turns the part down.
+fn hard_compressor() -> CompressorKnobs {
+    CompressorKnobs {
+        input_db: 18.0,
+        output_db: -18.0,
+        attack_ms: 0.02,
+        release_ms: 200.0,
+        ratio: CompRatio::Twenty,
+        mix: 1.0,
+    }
+}
+
+#[test]
+fn a_compressor_bus_is_fed_by_the_comp_sends() {
+    // The bus runs a compressor; each track's Comp send feeds it after its fader.
+    let song = song(2);
+    let sequence = Sequence::new(&song, None).unwrap();
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Compressor);
+    let mut settings = [BlockSettings::default(); BLOCKS];
+    settings[0].compressor = hard_compressor();
+    let run = |send: u8, level: u8, muted: bool| {
+        let mut engine = engine(&sequence);
+        let _ = engine.set_bus(
+            Bus::Compressor,
+            Some(Box::new(spec.prepare(RATE).instance(&settings))),
+        );
+        engine.set_bus_settings(Bus::Compressor, settings, level, muted);
+        for track in 0..2 {
+            engine.set_comp_send(track, send);
+        }
+        let _ = render(&mut engine, 1.0);
+        let meters = engine.meters();
+        (meters.compressor().left, meters.bus_reduction())
+    };
+    // Nothing sent: the bus has nothing to work on, so it is silent and its needle rests.
+    assert_eq!(run(0, 127, false), (0.0, 0.0));
+    // Sent: the bus works (its needle shows how far) and its meter moves.
+    let (level, reduction) = run(127, 127, false);
+    assert!(level > 0.0, "the bus's meter moves: {level}");
+    assert!(reduction < -1.0, "the compressor works: {reduction} dB");
+    // Its fader and its mute silence what comes back (it still works).
+    let (quiet, quiet_reduction) = run(127, 0, false);
+    assert_eq!(quiet, 0.0);
+    assert!(quiet_reduction < -1.0, "{quiet_reduction}");
+    assert_eq!(run(127, 127, true).0, 0.0);
+}
+
+#[test]
+fn a_compressor_in_a_tracks_chain_turns_it_down() {
+    // The track's own chain holds a CA-76 driven hard: its level drops against a track
+    // without one, and its gain-reduction needle says how far it works.
+    let song = song(1);
+    let sequence = Sequence::new(&song, None).unwrap();
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Compressor);
+    let mut settings = [BlockSettings::default(); BLOCKS];
+    settings[0].compressor = hard_compressor();
+    let mut compressed = engine(&sequence);
+    let _ = compressed.set_chain(
+        0,
+        Some(Box::new(spec.prepare(RATE).instance(&settings))),
+        settings,
+    );
+    let mut dry = engine(&sequence);
+    let (wet_left, _) = render(&mut compressed, 1.0);
+    let (dry_left, _) = render(&mut dry, 1.0);
+    let reduction = compressed.meters().reduction(0);
+    assert!(reduction < -2.0, "{reduction} dB");
+    assert!(
+        rms(steady(&wet_left)) < 0.8 * rms(steady(&dry_left)),
+        "{} against {}",
+        rms(steady(&wet_left)),
+        rms(steady(&dry_left))
+    );
+    // Let go, the needle returns to rest.
+    compressed.stop();
+    let _ = render(&mut compressed, 3.0);
+    assert_eq!(compressed.meters().reduction(0), 0.0);
 }

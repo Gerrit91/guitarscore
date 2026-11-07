@@ -1019,8 +1019,8 @@ pub(crate) struct AudioExport {
     pub(crate) preset_tones: Vec<crate::settings::PresetTone>,
     /// The presets' tones and each kind's default chain.
     pub(crate) tones: crate::playback::ExportTones,
-    /// The mixer's reverb bus, rendered as it is set.
-    pub(crate) bus: Option<gscore_audio::ReverbBusChoice>,
+    /// The mixer's buses (reverb and compressor), rendered as they are set.
+    pub(crate) buses: gscore_audio::BusChoices,
 }
 
 /// The work of [`Tasks::export_wav`]: the status message, or why it failed.
@@ -1063,7 +1063,7 @@ fn export_wav(song: &Song, path: &std::path::Path, audio: &AudioExport) -> Resul
                 &audio.models,
                 &track_models,
                 &chains,
-                audio.bus.as_ref(),
+                &audio.buses,
             )
             .and_then(|info| {
                 std::io::Write::flush(&mut writer)

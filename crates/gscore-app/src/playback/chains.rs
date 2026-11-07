@@ -12,7 +12,7 @@ use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, ChainSpec, ImpulseResponse
 use gscore_play::{Sequence, StringKind, TrackEngine};
 
 use super::Playback;
-use crate::chain_settings::{BlockChoice, ChainSetting, StringChains, Tone};
+use crate::chain_settings::{BlockChoice, BlockSetting, ChainSetting, StringChains, Tone};
 use crate::settings::{PresetTone, StringSound};
 
 /// A modelled track of the loaded sequence: the song's track it plays (as the
@@ -25,6 +25,14 @@ pub(super) struct ToneTarget {
     kind: Option<StringKind>,
     /// The General MIDI program of its preset, whose tone it plays.
     program: u8,
+}
+
+/// What the synthesizer was given for one mixer bus: whether it was prepared, and what it
+/// runs (another kind of block or another impulse response prepares it again).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(super) struct SentBus {
+    sent: bool,
+    structure: Option<(BlockChoice, Option<std::path::PathBuf>)>,
 }
 
 /// What the synthesizer was given for one track.
@@ -236,6 +244,7 @@ impl Playback {
                 (BlockChoice::Reverb, _) => Some(BlockKind::Reverb),
                 (BlockChoice::Amp, _) => Some(BlockKind::Amp),
                 (BlockChoice::Drive, _) => Some(BlockKind::Drive),
+                (BlockChoice::Compressor, _) => Some(BlockKind::Compressor),
                 (BlockChoice::Cabinet | BlockChoice::Room, None) => None,
                 (choice, Some(file)) => match self.impulse(file) {
                     Ok(response) if choice == BlockChoice::Room => {
@@ -267,8 +276,11 @@ impl Playback {
     /// Follows the sequence the synthesizer has loaded: its modelled tracks get their
     /// tones (only what differs from what they had is sent).
     pub(super) fn sync_chains(&mut self, sequence: &Sequence) {
-        if !self.bus_sent {
+        if !self.reverb_sent.sent {
             self.send_reverb_bus();
+        }
+        if !self.compressor_sent.sent {
+            self.send_compressor_bus();
         }
         self.tone_targets = targets(sequence);
         self.send_tones();
@@ -409,32 +421,38 @@ impl Playback {
     /// knobs, level and mute are sent (so its tail is not cut while a knob turns).
     pub fn set_reverb_bus(&mut self, bus: crate::settings::ReverbBus) {
         self.reverb_bus = bus.sanitized();
-        let structure = (
-            self.reverb_bus.block.choice,
-            self.reverb_bus.block.file.clone(),
-        );
-        if self.bus_sent && self.bus_structure.as_ref() == Some(&structure) {
-            self.send_reverb_bus_settings();
-        } else {
-            self.send_reverb_bus();
-        }
+        self.send_reverb_bus();
     }
 
-    /// The bus's chain as it is set: the computed reverb or a room's response, all wet (the
-    /// sends decide how much each track gives it, the fader how much comes back).
-    fn reverb_bus_parts(&mut self) -> (ChainSpec, [BlockSettings; BLOCKS]) {
-        let block = self.reverb_bus.block.clone();
+    /// The mixer's compressor bus as it is set.
+    pub fn compressor_bus(&self) -> crate::settings::CompressorBus {
+        self.compressor_bus.clone()
+    }
+
+    /// Takes the compressor bus without sending it (when the settings load).
+    pub fn store_compressor_bus(&mut self, bus: crate::settings::CompressorBus) {
+        self.compressor_bus = bus.sanitized();
+    }
+
+    /// Sets the compressor bus, heard at once (a new block prepares it, knobs go straight
+    /// to the running one).
+    pub fn set_compressor_bus(&mut self, bus: crate::settings::CompressorBus) {
+        self.compressor_bus = bus.sanitized();
+        self.send_compressor_bus();
+    }
+
+    /// The chain a bus runs, as the engine takes it, and its knob values. A bus runs one
+    /// block: a reverb or a room, a compressor, or nothing.
+    fn bus_parts(&mut self, block: &BlockSetting) -> (ChainSpec, [BlockSettings; BLOCKS]) {
         let mut settings = [BlockSettings::default(); BLOCKS];
-        let mut block_settings = block.knobs();
-        // An all-wet bus: nothing dry goes through it (the tracks' own signal is the dry).
-        block_settings.reverb.mix = 1.0;
-        block_settings.room.mix = 1.0;
         if let Some(slot) = settings.first_mut() {
-            *slot = block_settings;
+            *slot = block.knobs();
         }
         let mut spec = ChainSpec::default();
         let prepared = match block.choice {
             BlockChoice::Empty => None,
+            BlockChoice::Reverb => Some(BlockKind::Reverb),
+            BlockChoice::Compressor => Some(BlockKind::Compressor),
             BlockChoice::Room => block
                 .file
                 .as_ref()
@@ -445,10 +463,18 @@ impl Playback {
                         None
                     }
                 }),
-            // The bus is a reverb: `ReverbBus::sanitized` keeps anything else out.
-            BlockChoice::Reverb | BlockChoice::Cabinet | BlockChoice::Amp | BlockChoice::Drive => {
-                Some(BlockKind::Reverb)
-            }
+            BlockChoice::Cabinet => block
+                .file
+                .as_ref()
+                .and_then(|file| match self.impulse(file) {
+                    Ok(response) => Some(BlockKind::Impulse(response)),
+                    Err(error) => {
+                        self.chain_notices.push(error);
+                        None
+                    }
+                }),
+            // A bus never runs an amp or a drive pedal: `sanitized` keeps them out.
+            BlockChoice::Amp | BlockChoice::Drive => None,
         };
         if let Some(slot) = spec.blocks.first_mut() {
             *slot = prepared;
@@ -456,51 +482,71 @@ impl Playback {
         (spec, settings)
     }
 
-    /// Prepares the bus on the synthesizer's thread (once per player, or when what it runs
-    /// changes: another kind of reverb or another impulse response).
-    pub(super) fn send_reverb_bus(&mut self) {
+    /// Prepares `which` on the synthesizer's thread (once per player, or when what it runs
+    /// changes), otherwise sends only its knob values, level and mute.
+    fn send_bus(&mut self, which: gscore_audio::Bus, block: &BlockSetting, level: u8, muted: bool) {
         if !self.synth_running() {
             return;
         }
-        let (spec, settings) = self.reverb_bus_parts();
-        let structure = (
-            self.reverb_bus.block.choice,
-            self.reverb_bus.block.file.clone(),
-        );
+        let structure = (block.choice, block.file.clone());
+        let (spec, settings) = self.bus_parts(block);
+        let sent = match which {
+            gscore_audio::Bus::Reverb => &mut self.reverb_sent,
+            gscore_audio::Bus::Compressor => &mut self.compressor_sent,
+        };
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(super::Active::Synth(player)) = &self.player {
-            let bus = self.reverb_bus.clone();
-            if let Err(error) = player.set_reverb_bus(spec, settings, bus.level, bus.muted) {
+            if sent.sent && sent.structure.as_ref() == Some(&structure) {
+                let _ = player.set_bus_settings(which, settings, level, muted);
+            } else if let Err(error) = player.set_bus(which, spec, settings, level, muted) {
                 self.chain_notices.push(error.to_string());
             } else {
-                self.bus_sent = true;
-                self.bus_structure = Some(structure);
+                sent.sent = true;
+                sent.structure = Some(structure);
             }
         }
         #[cfg(target_arch = "wasm32")]
-        let _ = (spec, settings);
+        let _ = (which, spec, settings, level, muted);
     }
 
-    /// New knob values, level and mute for a running synthesizer.
-    fn send_reverb_bus_settings(&mut self) {
-        let (_, settings) = self.reverb_bus_parts();
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(super::Active::Synth(player)) = &self.player {
-            let bus = self.reverb_bus.clone();
-            let _ = player.set_reverb_bus_settings(settings, bus.level, bus.muted);
-        }
-        #[cfg(target_arch = "wasm32")]
-        let _ = settings;
+    /// Prepares the reverb bus on the synthesizer's thread (or sends its knobs).
+    pub(super) fn send_reverb_bus(&mut self) {
+        let bus = self.reverb_bus.clone();
+        self.send_bus(gscore_audio::Bus::Reverb, &bus.block, bus.level, bus.muted);
     }
 
-    /// The bus to render audio export with.
-    pub fn reverb_bus_choice(&mut self) -> gscore_audio::ReverbBusChoice {
-        let (spec, settings) = self.reverb_bus_parts();
-        gscore_audio::ReverbBusChoice {
-            spec,
-            settings,
-            level: self.reverb_bus.level,
-            muted: self.reverb_bus.muted,
+    /// Prepares the compressor bus on the synthesizer's thread (or sends its knobs).
+    pub(super) fn send_compressor_bus(&mut self) {
+        let bus = self.compressor_bus.clone();
+        self.send_bus(
+            gscore_audio::Bus::Compressor,
+            &bus.block,
+            bus.level,
+            bus.muted,
+        );
+    }
+
+    /// The buses to render audio export with.
+    pub fn export_buses(&mut self) -> gscore_audio::BusChoices {
+        let reverb = self.reverb_bus.clone();
+        let compressor = self.compressor_bus.clone();
+        let (reverb_spec, reverb_settings) = self.bus_parts(&reverb.block);
+        let (comp_spec, comp_settings) = self.bus_parts(&compressor.block);
+        gscore_audio::BusChoices {
+            reverb: Some(gscore_audio::BusChoice {
+                spec: reverb_spec,
+                settings: reverb_settings,
+                level: reverb.level,
+                muted: reverb.muted,
+            }),
+            compressor: Some(gscore_audio::BusChoice {
+                spec: comp_spec,
+                settings: comp_settings,
+                level: compressor.level,
+                muted: compressor.muted,
+            }),
+            // Each track's Comp send, once the mixer has them (step 5).
+            comp_sends: Vec::new(),
         }
     }
 }

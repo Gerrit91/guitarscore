@@ -5,8 +5,8 @@
 use std::path::PathBuf;
 
 use gscore_guitar::{
-    AmpKnobs, AmpVoice, BLOCKS, BlockSettings, DriveKnobs, ImpulseKnobs, LENGTH_RANGE, ReverbKnobs,
-    RoomKnobs,
+    AmpKnobs, AmpVoice, BLOCKS, BlockSettings, CompRatio, CompressorKnobs, DriveKnobs,
+    ImpulseKnobs, LENGTH_RANGE, ReverbKnobs, RoomKnobs,
 };
 use gscore_play::StringKind;
 use serde::{Deserialize, Serialize};
@@ -27,6 +27,8 @@ pub enum BlockChoice {
     Amp,
     /// The computed overdrive pedal.
     Drive,
+    /// The computed FET compressor (CA-76).
+    Compressor,
 }
 
 impl BlockChoice {
@@ -39,6 +41,7 @@ impl BlockChoice {
             BlockChoice::Reverb => "Reverb",
             BlockChoice::Amp => "Amp",
             BlockChoice::Drive => "Drive",
+            BlockChoice::Compressor => "Compressor",
         }
     }
 
@@ -81,6 +84,46 @@ impl AmpVoiceSetting {
     }
 }
 
+/// A compressor's ratio as the settings file keeps it (the CA-76's buttons).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CompRatioSetting {
+    #[default]
+    Four,
+    Eight,
+    Twelve,
+    Twenty,
+    /// Every button in: harder than 20, overshooting, more color.
+    All,
+}
+
+impl CompRatioSetting {
+    /// Every ratio, in the order the chain window shows them.
+    pub const ALL: [CompRatioSetting; 5] = [
+        CompRatioSetting::Four,
+        CompRatioSetting::Eight,
+        CompRatioSetting::Twelve,
+        CompRatioSetting::Twenty,
+        CompRatioSetting::All,
+    ];
+
+    /// The engine's ratio.
+    pub fn ratio(self) -> CompRatio {
+        match self {
+            CompRatioSetting::Four => CompRatio::Four,
+            CompRatioSetting::Eight => CompRatio::Eight,
+            CompRatioSetting::Twelve => CompRatio::Twelve,
+            CompRatioSetting::Twenty => CompRatio::Twenty,
+            CompRatioSetting::All => CompRatio::All,
+        }
+    }
+
+    /// Its button's label.
+    pub fn label(self) -> &'static str {
+        self.ratio().label()
+    }
+}
+
 /// One place of a chain.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -113,6 +156,12 @@ pub struct BlockSetting {
     pub speaker: f32,
     /// A drive pedal's tone (its Drive is `drive`, its level `gain_db`).
     pub tone: f32,
+    /// A compressor's input drive and its attack and release times (ms); its output level
+    /// is `gain_db`, its dry/compressed blend `mix`.
+    pub input_db: f32,
+    pub attack_ms: f32,
+    pub release_ms: f32,
+    pub comp_ratio: CompRatioSetting,
 }
 
 impl Default for BlockSetting {
@@ -147,6 +196,10 @@ impl BlockSetting {
             }
             BlockChoice::Amp => (1.0, AmpKnobs::default().level_db, 0.0, 0.0, 1.0),
             BlockChoice::Drive => (1.0, DriveKnobs::default().level_db, 0.0, 0.0, 1.0),
+            BlockChoice::Compressor => {
+                let compressor = CompressorKnobs::default();
+                (compressor.mix, compressor.output_db, 0.0, 0.0, 1.0)
+            }
             BlockChoice::Cabinet | BlockChoice::Empty => {
                 let impulse = ImpulseKnobs::default();
                 (
@@ -187,6 +240,10 @@ impl BlockSetting {
             treble: amp.treble,
             speaker: amp.speaker,
             tone: DriveKnobs::default().tone,
+            input_db: CompressorKnobs::default().input_db,
+            attack_ms: CompressorKnobs::default().attack_ms,
+            release_ms: CompressorKnobs::default().release_ms,
+            comp_ratio: CompRatioSetting::default(),
         }
     }
 
@@ -242,9 +299,14 @@ impl BlockSetting {
                 tone: self.tone,
                 level_db: self.gain_db,
             },
-            // The compressor block is not offered in the window yet (mixer step 4, see
-            // docs/handoff-mixer.md): its defaults.
-            compressor: gscore_guitar::CompressorKnobs::default(),
+            compressor: CompressorKnobs {
+                input_db: self.input_db,
+                output_db: self.gain_db,
+                attack_ms: self.attack_ms,
+                release_ms: self.release_ms,
+                ratio: self.comp_ratio.ratio(),
+                mix: self.mix,
+            },
         }
         .sanitized()
     }

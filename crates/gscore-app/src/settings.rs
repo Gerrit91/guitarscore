@@ -490,6 +490,58 @@ impl ReverbBus {
     }
 }
 
+/// The mixer's compressor bus: a compressor every track can send into with its Comp knob
+/// (parallel, "New York" compression: the compressed sum blended in under the dry tracks).
+/// Kept in the settings (it is the mixer's, not the song's).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CompressorBus {
+    /// The bus's level, 0-127 (127 plays it as it comes; the Comp sends decide how much
+    /// each track gives it).
+    pub level: u8,
+    pub muted: bool,
+    /// What the bus runs: a compressor, or nothing. Its knobs apply; the mix is the dry
+    /// share of the compressed sum (0.5 blends it in under the tracks).
+    pub block: crate::chain_settings::BlockSetting,
+}
+
+impl Default for CompressorBus {
+    fn default() -> Self {
+        // A CA-76 at "All", driven hard and made up: the classic parallel slam.
+        let mut block =
+            crate::chain_settings::BlockSetting::of(crate::chain_settings::BlockChoice::Compressor);
+        block.input_db = 18.0;
+        block.gain_db = -12.0;
+        block.attack_ms = 0.2;
+        block.release_ms = 150.0;
+        block.comp_ratio = crate::chain_settings::CompRatioSetting::All;
+        block.mix = 1.0;
+        CompressorBus {
+            level: 127,
+            muted: false,
+            block,
+        }
+    }
+}
+
+impl CompressorBus {
+    /// Every value in its range; a compressor bus runs a compressor or nothing, never a
+    /// reverb or a cabinet.
+    pub fn sanitized(mut self) -> Self {
+        self.level = self.level.min(127);
+        if !matches!(
+            self.block.choice,
+            crate::chain_settings::BlockChoice::Empty
+                | crate::chain_settings::BlockChoice::Compressor
+        ) {
+            self.block = crate::chain_settings::BlockSetting::of(
+                crate::chain_settings::BlockChoice::Compressor,
+            );
+        }
+        self
+    }
+}
+
 /// Everything the app remembers between runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -585,6 +637,8 @@ pub struct Settings {
     pub string_chains: crate::chain_settings::StringChains,
     /// The mixer's reverb bus.
     pub reverb_bus: ReverbBus,
+    /// The mixer's compressor bus (parallel compression).
+    pub compressor_bus: CompressorBus,
     /// The MIDI port chosen, if any.
     pub midi_port: Option<String>,
     /// Bend shapes saved as presets in the bend editor.
@@ -636,6 +690,7 @@ impl Default for Settings {
             string_sounds: StringSounds::default(),
             string_chains: crate::chain_settings::StringChains::default(),
             reverb_bus: ReverbBus::default(),
+            compressor_bus: CompressorBus::default(),
             string_presets: Vec::new(),
             preset_tones: Vec::new(),
             midi_port: None,
@@ -825,6 +880,7 @@ impl Settings {
             stored.keys.retain(|key| !key.is_empty() && key.len() <= 64);
         }
         self.reverb_bus = std::mem::take(&mut self.reverb_bus).sanitized();
+        self.compressor_bus = std::mem::take(&mut self.compressor_bus).sanitized();
         // Panel sizes: a broken or huge value must not take the window over.
         self.track_panel_width = fit_panel(self.track_panel_width, PANEL_WIDTH_RANGE);
         self.edit_panel_width = fit_panel(self.edit_panel_width, PANEL_WIDTH_RANGE);

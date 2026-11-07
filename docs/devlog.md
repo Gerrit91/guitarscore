@@ -3715,3 +3715,35 @@ needed for a much larger font); owner listening check.
   bus and gain-reduction needles per track and for the bus.
 - Not done (budget): the app side of the block and the bus, export of the compressor bus,
   engine tests for the bus. Handed over in `docs/handoff-mixer.md`.
+
+## 2026-11-07 — Mixer, step 4 (the rest): the compressor in the app, the bus in the mixer
+
+- **The block:** `BlockChoice::Compressor` ("Comp" on the board, "CA-76 · <ratio>" under
+  it): `BlockSetting` keeps input, attack, release, the ratio as a settings enum
+  (`comp_ratio`: 4, 8, 12, 20, all) and reuses `gain_db` (output) and `mix`; older settings
+  read (serde defaults). `app/amp_knobs::compressor_knobs`: the ratio buttons stacked like
+  the amp's voices, Input, Output, Attack, Release and Mix as round knobs, and the
+  **gain-reduction meter** (a 0 to -20 dB bar) read from `Meters::reduction(track)`; the
+  chain window repaints every 30 ms while any meter moves. `chain_spec` maps the block;
+  a bus never runs an amp or a drive (sanitized away).
+- **The bus:** `CompressorBus` in the settings (a CA-76 at "All", input +18 dB, output
+  -12 dB, 0.2 ms attack, 150 ms release, mix 1), sanitized to a compressor or nothing.
+  Playback's reverb-bus plumbing is generalized: `SentBus` (prepared? what it runs) per
+  bus, `bus_parts` (the one block a bus runs: reverb, room, compressor, cabinet) and
+  `send_bus` (prepares when the block or file changed, otherwise sends knobs, level and
+  mute); `set_/store_/send_compressor_bus`, `export_buses`.
+- **The mixer:** the reverb strip became `bus_strip` (one drawing, `BusChange`s mapped to
+  actions), so the **Comp strip** (fader, level field, mute, Edit…) sits between the
+  reverb bus and the master; `Readings` has its meter (`Meters::compressor()`), and its
+  own window (`app/compressor_bus_window.rs`: the CA-76 or None, the knobs and the bus's
+  gain reduction from `Meters::bus_reduction()`, repainting while it moves).
+- **WAV export:** `write_wav_with` takes `BusChoices { reverb, compressor, comp_sends }`
+  instead of the single reverb bus; the app fills it from `Playback::export_buses()`
+  (`comp_sends` is still empty until step 5's Comp knobs).
+- Tests: the compressor bus (fed by `set_comp_send`: silent and resting with no send,
+  its meter and needle with one, silenced by its fader and mute), a compressor in a
+  track's chain (level down against a dry track, needle returns to rest after Stop), a
+  CA-76 flattens a strummed chord's crest factor (5.3 to 2.6), and the app's steps: the
+  Comp strip's fader and mute, its window's defaults, knobs, None/CA-76 switch, snapshots
+  `sound_chain_compressor` and `compressor_bus_window` (the mixer snapshots changed: the
+  new strip is in them).

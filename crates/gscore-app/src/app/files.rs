@@ -279,7 +279,7 @@ impl GuitarScoreApp {
                     engines: self.playback.track_engines(),
                     preset_tones: self.playback.preset_tones().to_vec(),
                     tones: self.playback.export_tones(),
-                    bus: Some(self.playback.reverb_bus_choice()),
+                    buses: self.playback.export_buses(),
                 };
                 if let Err(error) = self.tasks.export_wav(song, path, audio, ctx) {
                     self.notice = Some(error);

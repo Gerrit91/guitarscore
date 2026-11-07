@@ -12,6 +12,7 @@ mod bars;
 mod beat_text_editor;
 mod chord_editor;
 mod circle_of_fifths;
+mod compressor_bus_window;
 mod edit_dynamics;
 mod edit_effects;
 mod edit_palette;
@@ -137,6 +138,8 @@ pub struct GuitarScoreApp {
     sound_chain: Option<sound_chain::SoundChainWindow>,
     /// The reverb bus's window, while it is open.
     reverb_bus_window: Option<reverb_bus_window::ReverbBusWindow>,
+    /// The mixer's compressor bus window, while it is open.
+    compressor_bus_window: Option<compressor_bus_window::CompressorBusWindow>,
     /// What the app remembers between runs.
     settings: Settings,
     /// Where the settings are stored (`None` keeps them only in memory; a browser keeps
@@ -270,6 +273,7 @@ impl GuitarScoreApp {
             tuner: None,
             sound_chain: None,
             reverb_bus_window: None,
+            compressor_bus_window: None,
             settings,
             settings_path,
             panel_sizes,
@@ -292,6 +296,8 @@ impl GuitarScoreApp {
             .store_preset_tones(app.settings.preset_tones.clone());
         app.playback
             .store_reverb_bus(app.settings.reverb_bus.clone());
+        app.playback
+            .store_compressor_bus(app.settings.compressor_bus.clone());
         app.playback.set_count_in_bars(app.settings.count_in_bars);
         app.playback.set_count_in_loops(app.settings.count_in_loops);
         let _ = app.playback.set_speed(app.settings.playback_speed);
@@ -310,6 +316,7 @@ impl GuitarScoreApp {
         let mut settings = self.settings.clone();
         settings.update_from_view(&self.view);
         settings.reverb_bus = self.playback.reverb_bus();
+        settings.compressor_bus = self.playback.compressor_bus();
         settings.grid_height_chosen = self.panel_sizes.grid;
         settings.mixer_height_chosen = self.panel_sizes.mixer;
         settings.track_panel_width = self.panel_sizes.track_panel;
@@ -808,6 +815,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_tuning_dialog(&ctx);
         self.show_sound_chain(&ctx);
         self.show_reverb_bus_window(&ctx);
+        self.show_compressor_bus_window(&ctx);
         self.show_settings_window(&ctx);
         self.show_shortcuts(&ctx);
         self.show_history(&ctx);

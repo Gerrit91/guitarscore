@@ -41,16 +41,25 @@ pub fn write_wav_at(
     bank: &SoundBank,
     sample_rate: u32,
 ) -> Result<WavInfo, PlayError> {
-    write_wav_with(writer, sequence, bank, sample_rate, &[], &[], &[], None)
+    write_wav_with(
+        writer,
+        sequence,
+        bank,
+        sample_rate,
+        &[],
+        &[],
+        &[],
+        &BusChoices::default(),
+    )
 }
 
 /// An effect chain to render with: the track (its index in the song), its blocks and their
 /// knobs.
 pub type ChainChoice = (usize, ChainSpec, [BlockSettings; BLOCKS]);
 
-/// The mixer's reverb bus to render with: an all-wet chain, its knobs and its level.
+/// A mixer bus to render with: its chain, its knob values and its level.
 #[derive(Debug, Clone)]
-pub struct ReverbBusChoice {
+pub struct BusChoice {
     pub spec: ChainSpec,
     pub settings: [BlockSettings; BLOCKS],
     /// 0-127, 127 unity.
@@ -58,9 +67,21 @@ pub struct ReverbBusChoice {
     pub muted: bool,
 }
 
+/// The mixer's buses, and each track's send into the compressor bus, to render with.
+#[derive(Debug, Clone, Default)]
+pub struct BusChoices {
+    /// The reverb bus (an all-wet chain; the tracks' Reverb knobs are its sends).
+    pub reverb: Option<BusChoice>,
+    /// The compressor bus (usually a compressor driven hard, blended in under the dry
+    /// tracks); each track's Comp send feeds it.
+    pub compressor: Option<BusChoice>,
+    /// Each track's Comp send (its song index, 0-127).
+    pub comp_sends: Vec<(usize, u8)>,
+}
+
 /// Like [`write_wav_at`], with the modelled strings of each listed kind sounding as its
-/// model (the others keep their presets), each listed track with its own model, and each
-/// listed track through its effect chain (the others have none).
+/// model (the others keep their presets), each listed track with its own model, each listed
+/// track through its effect chain (the others have none), and the mixer's buses.
 #[allow(clippy::too_many_arguments)]
 pub fn write_wav_with(
     mut writer: impl Write,
@@ -70,7 +91,7 @@ pub fn write_wav_with(
     models: &[(StringKind, StringModel)],
     track_models: &[(usize, StringModel)],
     chains: &[ChainChoice],
-    bus: Option<&ReverbBusChoice>,
+    buses: &BusChoices,
 ) -> Result<WavInfo, PlayError> {
     let frames = frames_for(sequence, sample_rate)?;
     let data_bytes = frames
@@ -91,12 +112,22 @@ pub fn write_wav_with(
             let _ = engine.set_chain(*track, Some(chain), *settings);
         }
     }
-    if let Some(bus) = bus
-        && !chain_is_empty(&bus.spec)
-    {
-        let chain = bus.spec.prepare(sample_rate).instance(&bus.settings);
-        engine.set_reverb_bus(Some(Box::new(chain)));
-        engine.set_reverb_bus_settings(bus.settings, bus.level, bus.muted);
+    for (bus, choice) in [
+        (crate::Bus::Reverb, &buses.reverb),
+        (crate::Bus::Compressor, &buses.compressor),
+    ] {
+        let Some(choice) = choice else {
+            continue;
+        };
+        if chain_is_empty(&choice.spec) {
+            continue;
+        }
+        let chain = choice.spec.prepare(sample_rate).instance(&choice.settings);
+        engine.set_bus(bus, Some(Box::new(chain)));
+        engine.set_bus_settings(bus, choice.settings, choice.level, choice.muted);
+    }
+    for &(track, value) in &buses.comp_sends {
+        engine.set_comp_send(track, value);
     }
     engine.load(std::sync::Arc::new(sequence.clone()));
     engine.play();

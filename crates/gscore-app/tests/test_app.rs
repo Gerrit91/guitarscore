@@ -397,6 +397,13 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.run();
     harness.get_by_label("Block 1: Drive");
     harness.snapshot("sound_chain_drive");
+    // A compressor after the reverb, at its "All" ratio.
+    harness.get_by_label("Block 4: +").click();
+    harness.run();
+    harness.get_by_label("Compressor").click();
+    harness.run();
+    harness.get_by_label("Block 4: Comp");
+    harness.snapshot("sound_chain_compressor");
     harness.get_by_label("Block 2: Reverb").click();
     harness.run();
     harness.snapshot("sound_chain_reverb");
@@ -2447,6 +2454,62 @@ fn the_reverb_bus_window_chooses_the_reverb() {
     );
     // A room is offered too (it asks for its WAV).
     harness.get_by_label("Room (impulse response)");
+}
+
+#[test]
+fn the_compressor_bus_is_a_strip_and_a_window() {
+    use gscore_app::chain_settings::{BlockChoice, CompRatioSetting};
+
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    harness.get_by_label("Comp bus level");
+    // Its fader turns the parallel sum down.
+    let fader = harness.get_by_label("Comp bus level").rect();
+    let start = fader.center();
+    harness.hover_at(start);
+    harness.drag_at(start);
+    harness.run();
+    for step in 1..=4 {
+        harness.hover_at(start + egui::vec2(0.0, 8.0 * step as f32));
+        harness.run();
+    }
+    harness.drop_at(start + egui::vec2(0.0, 32.0));
+    harness.run();
+    assert!(harness.state().playback().compressor_bus().level < 127);
+    // And its mute.
+    harness.get_by_label("Mute comp bus").click();
+    harness.run();
+    assert!(harness.state().playback().compressor_bus().muted);
+    harness.get_by_label("Mute comp bus").click();
+    harness.run();
+    // Its window holds the CA-76: a default at "All", driven hard and made up short, with
+    // its knobs and its gain-reduction meter.
+    harness.get_by_label("Edit the comp bus").click();
+    harness.run();
+    harness.snapshot("compressor_bus_window");
+    let bus = harness.state().playback().compressor_bus();
+    assert_eq!(bus.block.choice, BlockChoice::Compressor);
+    assert_eq!(bus.block.comp_ratio, CompRatioSetting::All);
+    assert!(bus.block.input_db > 0.0);
+    for knob in ["Input", "Output", "Attack", "Release", "Mix"] {
+        assert!(harness.query_all_by_label(knob).next().is_some(), "{knob}");
+    }
+    // It can be turned off, and back on.
+    harness.get_by_label("None").click();
+    harness.run();
+    assert_eq!(
+        harness.state().playback().compressor_bus().block.choice,
+        BlockChoice::Empty
+    );
+    harness.get_by_label("CA-76").click();
+    harness.run();
+    assert_eq!(
+        harness.state().playback().compressor_bus().block.choice,
+        BlockChoice::Compressor
+    );
+    harness.get_by_label("Close").click();
+    harness.run();
 }
 
 #[test]

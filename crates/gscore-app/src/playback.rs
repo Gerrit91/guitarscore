@@ -227,11 +227,12 @@ pub struct Playback {
     /// was given (see `chains`).
     tone_targets: Vec<chains::ToneTarget>,
     sent_tones: std::collections::BTreeMap<usize, chains::SentTone>,
-    /// The mixer's reverb bus (a computed reverb, all wet) and whether it was prepared.
+    /// The mixer's reverb bus (a computed reverb or a room, all wet) and its compressor
+    /// bus (parallel compression), and what the synthesizer was last given for each.
     reverb_bus: crate::settings::ReverbBus,
-    /// Whether the bus was prepared, and what it runs (another kind or file re-prepares).
-    bus_sent: bool,
-    bus_structure: Option<(crate::chain_settings::BlockChoice, Option<PathBuf>)>,
+    compressor_bus: crate::settings::CompressorBus,
+    reverb_sent: chains::SentBus,
+    compressor_sent: chains::SentBus,
     /// The impulse responses read so far (by file).
     impulses: std::collections::HashMap<PathBuf, Arc<gscore_guitar::ImpulseResponse>>,
     /// Messages about the chains (an impulse response that cannot be read), shown once.
@@ -288,8 +289,9 @@ impl Default for Playback {
             tone_targets: Vec::new(),
             sent_tones: std::collections::BTreeMap::new(),
             reverb_bus: crate::settings::ReverbBus::default(),
-            bus_sent: false,
-            bus_structure: None,
+            compressor_bus: crate::settings::CompressorBus::default(),
+            reverb_sent: chains::SentBus::default(),
+            compressor_sent: chains::SentBus::default(),
             impulses: std::collections::HashMap::new(),
             chain_notices: Vec::new(),
             metronome_volume: 1.0,
@@ -776,10 +778,11 @@ impl Playback {
                 self.send_string_model(kind);
             }
             self.forget_sent_tones();
-            // The reverb bus too (a new synthesizer starts without one).
-            self.bus_sent = false;
-            self.bus_structure = None;
+            // The buses too (a new synthesizer starts without them).
+            self.reverb_sent = chains::SentBus::default();
+            self.compressor_sent = chains::SentBus::default();
             self.send_reverb_bus();
+            self.send_compressor_bus();
         }
         Ok(())
     }

@@ -86,6 +86,13 @@ pub(super) enum GridAction {
         bus: crate::settings::ReverbBus,
         commit: bool,
     },
+    /// Open the window of the mixer's compressor bus.
+    OpenCompressorBus,
+    /// Set the mixer's compressor bus; `commit` writes the settings.
+    CompressorBus {
+        bus: crate::settings::CompressorBus,
+        commit: bool,
+    },
 }
 
 /// The rename window's state.
@@ -117,10 +124,11 @@ impl GuitarScoreApp {
         let estimates: Vec<f32> = (0..rows.len())
             .map(|index| self.playback.track_level(TrackIndex::new(index)))
             .collect();
-        let bus = self.playback.reverb_bus();
+        let reverb_bus = self.playback.reverb_bus();
+        let compressor_bus = self.playback.compressor_bus();
         let meters = self.playback.meters();
         // The bus's meter: the loudest send into it, through its own (square-law) level.
-        let bus_level = if bus.muted {
+        let bus_level = if reverb_bus.muted {
             0.0
         } else {
             let loudest = rows
@@ -131,7 +139,7 @@ impl GuitarScoreApp {
                         * estimates.get(index).copied().unwrap_or(0.0)
                 })
                 .fold(0.0_f32, f32::max);
-            let level = f32::from(bus.level.min(127)) / 127.0;
+            let level = f32::from(reverb_bus.level.min(127)) / 127.0;
             loudest * level * level
         };
         // What the meters show: measured by the built-in synthesizer, or estimated from the
@@ -142,6 +150,7 @@ impl GuitarScoreApp {
                     .map(|index| strips::Reading::measured(meters.track(index)))
                     .collect(),
                 bus: strips::Reading::measured(meters.reverb()),
+                compressor: strips::Reading::measured(meters.compressor()),
                 master: strips::Reading::measured(meters.master()),
             },
             None => strips::Readings {
@@ -151,6 +160,8 @@ impl GuitarScoreApp {
                     .map(|(row, &level)| strips::Reading::estimated(level, row.pan))
                     .collect(),
                 bus: strips::Reading::estimated(bus_level, 64),
+                // No Comp knobs yet (step 5): nothing is sent into it, so it is silent.
+                compressor: strips::Reading::estimated(0.0, 64),
                 master: strips::Reading::estimated(
                     estimates.iter().copied().fold(0.0_f32, f32::max),
                     master.pan,
@@ -169,7 +180,10 @@ impl GuitarScoreApp {
             &rows,
             master,
             &grid,
-            bus,
+            strips::Buses {
+                reverb: reverb_bus,
+                compressor: compressor_bus,
+            },
             &readings,
             GridView {
                 measure_count,
@@ -273,6 +287,13 @@ impl GuitarScoreApp {
             GridAction::OpenReverbBus => self.open_reverb_bus_window(),
             GridAction::ReverbBus { bus, commit } => {
                 self.playback.set_reverb_bus(bus);
+                if commit {
+                    self.save_settings();
+                }
+            }
+            GridAction::OpenCompressorBus => self.open_compressor_bus_window(),
+            GridAction::CompressorBus { bus, commit } => {
+                self.playback.set_compressor_bus(bus);
                 if commit {
                     self.save_settings();
                 }
@@ -455,7 +476,7 @@ fn draw(
     rows: &[TrackRow],
     master: gscore_model::MasterMix,
     grid: &GridData,
-    bus: crate::settings::ReverbBus,
+    buses: strips::Buses,
     readings: &strips::Readings,
     view: GridView,
     levels: &[f32],
@@ -468,7 +489,7 @@ fn draw(
             ui,
             rows,
             master,
-            bus,
+            buses,
             readings,
             view.metronome,
             mixer_state,

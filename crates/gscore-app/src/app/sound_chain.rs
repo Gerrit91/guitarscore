@@ -110,6 +110,7 @@ fn box_text(block: &BlockSetting) -> (String, String) {
         BlockChoice::Reverb => "computed".to_owned(),
         BlockChoice::Amp => block.voice.label().to_owned(),
         BlockChoice::Drive => "overdrive".to_owned(),
+        BlockChoice::Compressor => format!("CA-76 · {}", block.comp_ratio.label()),
         BlockChoice::Cabinet | BlockChoice::Room => block
             .file
             .as_ref()
@@ -123,6 +124,7 @@ fn box_text(block: &BlockSetting) -> (String, String) {
         BlockChoice::Empty => "+".to_owned(),
         // "Cabinet / body" does not fit a box.
         BlockChoice::Cabinet => "Cab".to_owned(),
+        BlockChoice::Compressor => "Comp".to_owned(),
         other => other.label().to_owned(),
     };
     (title, detail)
@@ -400,7 +402,7 @@ fn move_block(blocks: &mut [BlockSetting], from: usize, to: usize) -> bool {
 }
 
 /// What an empty place can hold: the block, the name its menu shows, and what it does.
-fn block_choices() -> [(BlockChoice, &'static str, &'static str); 5] {
+fn block_choices() -> [(BlockChoice, &'static str, &'static str); 6] {
     [
         (
             BlockChoice::Drive,
@@ -417,6 +419,12 @@ fn block_choices() -> [(BlockChoice, &'static str, &'static str); 5] {
             "Cabinet / body",
             "An impulse response from a WAV file: an acoustic guitar's body, or a cabinet \
              after an amp",
+        ),
+        (
+            BlockChoice::Compressor,
+            "Compressor",
+            "A FET compressor (CA-76): tames peaks, thickens a part, and its meter shows how \
+             far it works",
         ),
         (
             BlockChoice::Room,
@@ -711,7 +719,7 @@ fn board(
 }
 
 /// The selected place's choices (when empty) or knobs.
-fn editor(ui: &mut egui::Ui, chain: &ChainSetting, place: usize) -> Edited {
+fn editor(ui: &mut egui::Ui, chain: &ChainSetting, place: usize, reduction: f32) -> Edited {
     let Some(block) = chain.blocks.get(place) else {
         return Edited::default();
     };
@@ -739,7 +747,7 @@ fn editor(ui: &mut egui::Ui, chain: &ChainSetting, place: usize) -> Edited {
             });
         }
         ui.add_space(4.0);
-        let moved = block_knobs(ui, &mut edited, false);
+        let moved = block_knobs(ui, &mut edited, false, reduction);
         changed |= moved.changed;
         // A value from a hand-edited settings file comes back within its range.
         changed |= edited.length != block.length;
@@ -765,6 +773,7 @@ pub(super) fn block_knobs(
     ui: &mut egui::Ui,
     block: &mut BlockSetting,
     all_wet: bool,
+    reduction: f32,
 ) -> KnobChanges {
     let mut moved = KnobChanges::default();
     if all_wet {
@@ -776,6 +785,9 @@ pub(super) fn block_knobs(
             BlockChoice::Empty => {}
             BlockChoice::Amp => moved.changed |= super::amp_knobs::amp_knobs(ui, block),
             BlockChoice::Drive => moved.changed |= super::amp_knobs::drive_knobs(ui, block),
+            BlockChoice::Compressor => {
+                moved.changed |= super::amp_knobs::compressor_knobs(ui, block, reduction);
+            }
             BlockChoice::Cabinet | BlockChoice::Room => {
                 // First the room itself: how long it lasts.
                 if block.choice == BlockChoice::Room {
@@ -1042,6 +1054,15 @@ impl GuitarScoreApp {
         if !modelled && self.playback.preset_tone(player.program).is_none() {
             tone.chain = ChainSetting::default();
         }
+        // How far the track's compressors work, for the block's meter (and a repaint while
+        // the needle moves).
+        let meters = self.playback.meters();
+        let reduction = meters
+            .as_ref()
+            .map_or(0.0, |meters| meters.reduction(window.track));
+        if meters.as_ref().is_some_and(|meters| meters.moving()) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(30));
+        }
         egui::Window::new(&title)
             .title_bar(false)
             .collapsible(false)
@@ -1108,7 +1129,7 @@ impl GuitarScoreApp {
                                 }
                             }
                             Some(place) => {
-                                let edited = editor(ui, &chain, place);
+                                let edited = editor(ui, &chain, place, reduction);
                                 if let Some(changed) = edited.chain {
                                     actions.chain = Some(changed);
                                 }

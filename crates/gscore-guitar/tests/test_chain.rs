@@ -14,7 +14,8 @@
 use std::sync::Arc;
 
 use gscore_guitar::{
-    BLOCKS, BlockKind, BlockSettings, ChainSpec, ImpulseKnobs, ImpulseResponse, RoomKnobs,
+    BLOCKS, BlockKind, BlockSettings, ChainSpec, CompRatio, CompressorKnobs, ImpulseKnobs,
+    ImpulseResponse, RoomKnobs,
 };
 
 const RATE: u32 = 48_000;
@@ -290,4 +291,44 @@ fn the_reverbs_high_cut_darkens_only_the_reverb() {
         change / level.max(1e-12)
     };
     assert!(highs(1_500.0) < 0.5 * highs(20_000.0));
+}
+
+#[test]
+fn a_compressor_flattens_a_chords_crest() {
+    // A chord (three partials) through a CA-76 driven hard: the peaks come down against the
+    // body, so the crest factor (peak over RMS) falls.
+    let crest = |compressed: bool| {
+        let mut spec = ChainSpec::default();
+        spec.blocks[0] = compressed.then_some(BlockKind::Compressor);
+        let mut knobs = settings();
+        knobs[0].compressor = CompressorKnobs {
+            input_db: 12.0,
+            output_db: 0.0,
+            attack_ms: 0.02,
+            release_ms: 200.0,
+            ratio: CompRatio::Twenty,
+            mix: 1.0,
+        };
+        let mut chain = spec.prepare(RATE).instance(&knobs);
+        // A strummed chord: loud when picked, then ringing out.
+        let input: Vec<f32> = (0..RATE as usize)
+            .map(|i| {
+                let t = i as f32 / RATE as f32;
+                let ring = (-t * 3.0).exp();
+                0.4 * ring
+                    * ((t * 110.0 * std::f32::consts::TAU).sin()
+                        + (t * 165.0 * std::f32::consts::TAU).sin()
+                        + (t * 220.0 * std::f32::consts::TAU).sin())
+            })
+            .collect();
+        let (mut left, mut right) = (vec![0.0; input.len()], vec![0.0; input.len()]);
+        chain.process(&input, &mut left, &mut right);
+        // From a little after the attack to the end of the ring.
+        let steady = &left[1_000..];
+        let peak = steady.iter().fold(0.0_f32, |peak, x| peak.max(x.abs()));
+        let rms = (steady.iter().map(|x| x * x).sum::<f32>() / steady.len() as f32).sqrt();
+        peak / rms.max(1e-12)
+    };
+    let (dry, wet) = (crest(false), crest(true));
+    assert!(wet < 0.6 * dry, "{wet} against {dry}");
 }

@@ -1,11 +1,12 @@
-//! The mixer view of the bottom panel: one channel strip per track (and a master strip),
-//! with a fader, a decibel scale, an activity meter, pan and a disabled reverb knob.
+//! The mixer view of the bottom panel: one channel strip per track, the reverb and
+//! compressor buses and a master strip, with a fader, a decibel scale, an activity meter,
+//! pan and the sends.
 
 use egui::{Align2, Color32, FontId, Rect, RichText, Sense, Stroke, UiBuilder, pos2, vec2};
 use gscore_edit::Command;
 use gscore_model::{MASTER_UNITY, MasterMix, TrackIndex};
 
-use crate::settings::ReverbBus;
+use crate::settings::{CompressorBus, ReverbBus};
 
 use super::mixer::{self, FLOOR_DB, TRACK_UNITY, db_value, volume_from_db};
 use super::rows::TrackRow;
@@ -56,7 +57,7 @@ pub(super) fn strips(
     ui: &mut egui::Ui,
     rows: &[TrackRow],
     master: MasterMix,
-    bus: ReverbBus,
+    buses: Buses,
     readings: &Readings,
     metronome: (f32, f32),
     state: &mut MixerState,
@@ -82,7 +83,15 @@ pub(super) fn strips(
                         actions,
                     );
                 }
-                reverb_strip(ui, bus, readings.bus, height, state, actions);
+                reverb_strip(ui, buses.reverb, readings.bus, height, state, actions);
+                compressor_strip(
+                    ui,
+                    buses.compressor,
+                    readings.compressor,
+                    height,
+                    state,
+                    actions,
+                );
                 master_strip(
                     ui,
                     master,
@@ -273,18 +282,55 @@ fn master_strip(
     );
 }
 
-/// The reverb bus: the tracks send their mixer reverb amount into it, and its level (and
-/// mute) decide how much of its tail goes into the mix. Its knobs are the room's.
-fn reverb_strip(
-    ui: &mut egui::Ui,
-    bus: ReverbBus,
-    level: Reading,
+/// The mixer's buses as the strips show them.
+#[derive(Debug, Clone)]
+pub(super) struct Buses {
+    pub(super) reverb: ReverbBus,
+    pub(super) compressor: CompressorBus,
+}
+
+/// What a bus strip asked for.
+#[derive(Debug)]
+enum BusChange {
+    /// Open the bus's own window (what it runs and its knobs).
+    Edit,
+    /// Its level; `commit` when a drag or a typed value ended.
+    Level { level: u8, commit: bool },
+    /// Its mute was clicked.
+    Mute(bool),
+}
+
+/// What a bus strip shows.
+struct BusStrip<'a> {
+    /// Its name under the strip.
+    name: &'a str,
+    /// The tooltip of the button into its window.
+    edit_tip: &'a str,
+    /// The id of its controls (the master's is `usize::MAX`).
+    id: usize,
+    level: u8,
+    muted: bool,
+    meter: Reading,
     height: f32,
+}
+
+/// A bus's strip: the way into its window, its fader, its level field and its mute. The
+/// tracks send into it after their faders; its level decides how much comes back.
+fn bus_strip(
+    ui: &mut egui::Ui,
+    strip: BusStrip<'_>,
     state: &mut MixerState,
-    actions: &mut Vec<GridAction>,
+    changes: &mut Vec<BusChange>,
 ) {
-    /// The id of the bus's controls (the master's is `usize::MAX`).
-    const REVERB: usize = usize::MAX - 2;
+    let BusStrip {
+        name,
+        edit_tip,
+        id,
+        level,
+        muted,
+        meter,
+        height,
+    } = strip;
     let (rect, _) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::hover());
     let visuals = ui.visuals().clone();
     ui.painter().line_segment(
@@ -294,31 +340,27 @@ fn reverb_strip(
     let inner = rect.shrink2(vec2(8.0, 6.0));
     let (top, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
-    // Where a track has its pan and sends: the way to the bus's own window, which chooses
-    // the reverb (the computed one or a room's impulse response) and holds its knobs.
+    // Where a track has its pan and sends: the way into the bus's own window, which
+    // chooses what it runs and holds its knobs.
     let button = Rect::from_min_size(pos2(top.left(), top.top() + 4.0), vec2(top.width(), 26.0));
     let response = strip
         .put(button, egui::Button::new("Edit…").small())
-        .on_hover_text("The bus's reverb: the computed one, or a room's impulse response");
+        .on_hover_text(edit_tip);
     strip.ctx().accesskit_node_builder(response.id, |node| {
-        node.set_label("Edit the reverb bus");
+        node.set_label(format!("Edit the {} bus", name.to_lowercase()));
     });
     if response.clicked() {
-        actions.push(GridAction::OpenReverbBus);
+        changes.push(BusChange::Edit);
     }
     fader(
         &mut strip,
         fader_area,
-        REVERB,
-        bus.level,
+        id,
         level,
+        meter,
         127,
-        "Reverb bus level",
-        |level, _| {
-            let mut bus = bus.clone();
-            bus.level = level;
-            actions.push(GridAction::ReverbBus { bus, commit: false });
-        },
+        &format!("{name} bus level"),
+        |level, commit| changes.push(BusChange::Level { level, commit }),
     );
     let db_rect = Rect::from_min_size(
         pos2(bottom.left(), bottom.top()),
@@ -328,14 +370,15 @@ fn reverb_strip(
         &mut strip,
         db_rect,
         state,
-        REVERB,
-        bus.level,
+        id,
+        level,
         127,
-        "Reverb bus level",
+        &format!("{name} bus level"),
         |level| {
-            let mut bus = bus.clone();
-            bus.level = level;
-            actions.push(GridAction::ReverbBus { bus, commit: true });
+            changes.push(BusChange::Level {
+                level,
+                commit: true,
+            })
         },
     );
     let buttons = Rect::from_min_size(
@@ -343,29 +386,121 @@ fn reverb_strip(
         vec2(bottom.width(), 20.0),
     );
     let response = strip
-        .put(buttons, style::mute_button(bus.muted))
-        .on_hover_text(if bus.muted {
-            "The reverb bus is muted: click to hear it again"
+        .put(buttons, style::mute_button(muted))
+        .on_hover_text(if muted {
+            format!(
+                "The {} bus is muted: click to hear it again",
+                name.to_lowercase()
+            )
         } else {
-            "Mute the reverb bus (its tail keeps running)"
+            format!(
+                "Mute the {} bus (its tail keeps running)",
+                name.to_lowercase()
+            )
         });
     strip.ctx().accesskit_node_builder(response.id, |node| {
-        node.set_label("Mute reverb bus");
+        node.set_label(format!("Mute {} bus", name.to_lowercase()));
     });
     if response.clicked() {
-        let mut bus = bus.clone();
-        bus.muted = !bus.muted;
-        actions.push(GridAction::ReverbBus { bus, commit: true });
+        changes.push(BusChange::Mute(!muted));
     }
     labels(
         &mut strip,
         bottom,
-        "Reverb",
+        name,
         "Mixer bus",
         Symbol::Waveform,
         visuals.selection.bg_fill,
-        !bus.muted,
+        !muted,
     );
+}
+
+/// The reverb bus: the tracks send their mixer reverb amount into it, and its level (and
+/// mute) decide how much of its tail goes into the mix. Its knobs are the room's.
+fn reverb_strip(
+    ui: &mut egui::Ui,
+    bus: ReverbBus,
+    meter: Reading,
+    height: f32,
+    state: &mut MixerState,
+    actions: &mut Vec<GridAction>,
+) {
+    /// The id of the bus's controls (the master's is `usize::MAX`).
+    const REVERB: usize = usize::MAX - 2;
+    let mut changes = Vec::new();
+    bus_strip(
+        ui,
+        BusStrip {
+            name: "Reverb",
+            edit_tip: "The bus's reverb: the computed one, or a room's impulse response",
+            id: REVERB,
+            level: bus.level,
+            muted: bus.muted,
+            meter,
+            height,
+        },
+        state,
+        &mut changes,
+    );
+    for change in changes {
+        let mut bus = bus.clone();
+        let action = match change {
+            BusChange::Edit => GridAction::OpenReverbBus,
+            BusChange::Level { level, commit } => {
+                bus.level = level;
+                GridAction::ReverbBus { bus, commit }
+            }
+            BusChange::Mute(muted) => {
+                bus.muted = muted;
+                GridAction::ReverbBus { bus, commit: true }
+            }
+        };
+        actions.push(action);
+    }
+}
+
+/// The compressor bus (parallel compression): each track's Comp send feeds it, and its
+/// level blends the compressed sum back in under the dry tracks.
+fn compressor_strip(
+    ui: &mut egui::Ui,
+    bus: CompressorBus,
+    meter: Reading,
+    height: f32,
+    state: &mut MixerState,
+    actions: &mut Vec<GridAction>,
+) {
+    /// The id of the bus's controls (the master's is `usize::MAX`).
+    const COMPRESSOR: usize = usize::MAX - 3;
+    let mut changes = Vec::new();
+    bus_strip(
+        ui,
+        BusStrip {
+            name: "Comp",
+            edit_tip: "The bus's compressor: a CA-76, driven hard, blended in under the tracks",
+            id: COMPRESSOR,
+            level: bus.level,
+            muted: bus.muted,
+            meter,
+            height,
+        },
+        state,
+        &mut changes,
+    );
+    for change in changes {
+        let mut bus = bus.clone();
+        let action = match change {
+            BusChange::Edit => GridAction::OpenCompressorBus,
+            BusChange::Level { level, commit } => {
+                bus.level = level;
+                GridAction::CompressorBus { bus, commit }
+            }
+            BusChange::Mute(muted) => {
+                bus.muted = muted;
+                GridAction::CompressorBus { bus, commit: true }
+            }
+        };
+        actions.push(action);
+    }
 }
 
 /// The metronome's own strip: only its click volume, on a fader like the tracks' (the
@@ -727,11 +862,13 @@ impl Reading {
     }
 }
 
-/// Every strip's reading: the tracks (by index), the reverb bus and the master.
+/// Every strip's reading: the tracks (by index), the reverb and compressor buses and the
+/// master.
 #[derive(Debug, Clone, Default)]
 pub(super) struct Readings {
     pub(super) tracks: Vec<Reading>,
     pub(super) bus: Reading,
+    pub(super) compressor: Reading,
     pub(super) master: Reading,
 }
 

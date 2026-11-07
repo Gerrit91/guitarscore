@@ -136,7 +136,7 @@ impl GuitarScoreApp {
                             });
                         }
                         ui.add_space(4.0);
-                        let moved = block_knobs(ui, &mut block, true);
+                        let moved = block_knobs(ui, &mut block, true, 0.0);
                         rebuilt |= moved.rebuild;
                         ui.add_space(6.0);
                         ui.separator();
