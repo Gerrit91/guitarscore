@@ -80,6 +80,39 @@ impl Change {
 }
 
 /// What an edit changed, with the data needed to put it back.
+/// A GP7 track's RSE sound as the file had it (`<Sounds>` and `<AudioEngineState>`),
+/// kept by an instrument change so undo can bring it back.
+#[derive(Debug)]
+struct RseSound {
+    sounds: Option<String>,
+    audio_engine: Option<String>,
+}
+
+impl RseSound {
+    /// Takes the RSE sound off `track`: it was chosen for the instrument the track had,
+    /// and a GP7 save would otherwise keep playing it in Guitar Pro.
+    fn take(track: &mut gscore_gp::Track) -> Self {
+        RseSound {
+            sounds: track.gpif_sounds.take(),
+            audio_engine: track.gpif_audio_engine.take(),
+        }
+    }
+
+    /// Gives `track` this sound again.
+    fn restore(&self, track: &mut gscore_gp::Track) {
+        track.gpif_sounds.clone_from(&self.sounds);
+        track.gpif_audio_engine.clone_from(&self.audio_engine);
+    }
+
+    /// The bytes it keeps, for the undo history's budget.
+    fn size(&self) -> usize {
+        self.sounds
+            .as_ref()
+            .map_or(0, String::len)
+            .saturating_add(self.audio_engine.as_ref().map_or(0, String::len))
+    }
+}
+
 #[derive(Debug)]
 enum ChangeKind {
     /// A note was added or replaced; `previous` is what was on the string before.
@@ -155,6 +188,8 @@ enum ChangeKind {
     TrackProgram {
         at: TrackIndex,
         previous: Option<i32>,
+        /// The GP7 sound the track had, when the instrument changed and it was dropped.
+        previous_rse: Option<RseSound>,
     },
     /// A track became (or stopped being) a drum kit, which also changes its GP7
     /// instrument type and name.
@@ -163,6 +198,9 @@ enum ChangeKind {
         previous: bool,
         previous_type: Option<String>,
         previous_name: Option<String>,
+        /// The GP7 sound the track had, when it became or stopped being a kit and it was
+        /// dropped.
+        previous_rse: Option<RseSound>,
     },
     /// A track's capo fret changed.
     TrackCapo { at: TrackIndex, previous: i32 },
@@ -367,15 +405,23 @@ impl Change {
             ChangeKind::TrackSoundState { previous, .. }
             | ChangeKind::SongSoundState { previous } => previous.as_ref().map_or(0, String::len),
             ChangeKind::TrackRemoved { track, .. } => track_size(track),
-            ChangeKind::TrackProgram { previous, .. } => previous.map_or(0, |_| size_of::<i32>()),
+            ChangeKind::TrackProgram {
+                previous,
+                previous_rse,
+                ..
+            } => previous
+                .map_or(0, |_| size_of::<i32>())
+                .saturating_add(previous_rse.as_ref().map_or(0, RseSound::size)),
             ChangeKind::TrackDrums {
                 previous_type,
                 previous_name,
+                previous_rse,
                 ..
             } => previous_type
                 .as_ref()
                 .map_or(0, String::len)
-                .saturating_add(previous_name.as_ref().map_or(0, String::len)),
+                .saturating_add(previous_name.as_ref().map_or(0, String::len))
+                .saturating_add(previous_rse.as_ref().map_or(0, RseSound::size)),
             ChangeKind::TrackStrings {
                 previous,
                 previous_label,
@@ -689,8 +735,16 @@ impl Song {
                 }
                 Ok(())
             }),
-            ChangeKind::TrackProgram { at, previous } => self.edit_track_settings(|inner| {
-                track_mut(inner, *at)?.midi_program_gpif = *previous;
+            ChangeKind::TrackProgram {
+                at,
+                previous,
+                previous_rse,
+            } => self.edit_track_settings(|inner| {
+                let track = track_mut(inner, *at)?;
+                track.midi_program_gpif = *previous;
+                if let Some(rse) = previous_rse {
+                    rse.restore(track);
+                }
                 Ok(())
             }),
             ChangeKind::TrackDrums {
@@ -698,11 +752,15 @@ impl Song {
                 previous,
                 previous_type,
                 previous_name,
+                previous_rse,
             } => self.edit_track_settings(|inner| {
                 let track = track_mut(inner, *at)?;
                 track.percussion_track = *previous;
                 track.instrument_type.clone_from(previous_type);
                 track.instrument_name.clone_from(previous_name);
+                if let Some(rse) = previous_rse {
+                    rse.restore(track);
+                }
                 Ok(())
             }),
             ChangeKind::TrackCapo { at, previous } => self.edit_track_settings(|inner| {

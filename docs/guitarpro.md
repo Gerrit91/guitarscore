@@ -291,8 +291,11 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     `score.gpif` (`capture_track_raw`) now records each track's `<Sounds>` and
     `<AudioEngineState>` elements verbatim — CDATA, unknown effects and all — and the GPIF
     writer emits them back unchanged. `Track` gains `gpif_sounds` and
-    `gpif_audio_engine`; GP3-5/GPX leave them `None`. Tests in
-    `gpif_import/sounds_tests.rs` and `gpif/raw_tests`.
+    `gpif_audio_engine`; GP3-5/GPX leave them `None`. The model drops both when the
+    track's instrument changes (another program, or a drum kit) and does not copy them to
+    a new track, so Guitar Pro never plays the old instrument's sound; undo restores them.
+    Tests in `gpif_import/sounds_tests.rs`, `gpif/raw_tests` and `gscore-model`
+    `edit::tests::another_instrument_drops_the_gp7_sound_and_undo_brings_it_back`.
 44. GuitarScore's own per-track sound state (`src/model/track.rs`, 2026-11-07): a track
     gains `sound_state`, an opaque JSON payload the app owns (what plays the track, its
     tone and chain, its sends, ...) for settings the Guitar Pro format has no field for.

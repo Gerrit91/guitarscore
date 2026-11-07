@@ -6,7 +6,7 @@
 //! [`crate::Song::track_sound`], and the app payload through
 //! [`crate::TrackView::sound_state`].
 
-use super::super::{Change, ChangeKind, track_mut};
+use super::super::{Change, ChangeKind, RseSound, track_mut};
 use crate::error::ModelError;
 use crate::position::TrackIndex;
 use crate::song::Song;
@@ -28,12 +28,24 @@ impl Song {
                 "{program} is not a MIDI program (0 to 127)"
             )));
         }
+        // The program it plays now (a GP3-5 track keeps it in its channel).
+        let playing = self.track_sound(at).map(|sound| sound.program);
         self.edit_track_settings(|inner| {
             let track = track_mut(inner, at)?;
             let previous = track.midi_program_gpif;
             track.midi_program_gpif = Some(i32::from(program));
+            // Another instrument: the GP7 sound chosen for the old one no longer fits.
+            let previous_rse = if playing == Some(program) {
+                None
+            } else {
+                Some(RseSound::take(track))
+            };
             Ok(Change {
-                kind: ChangeKind::TrackProgram { at, previous },
+                kind: ChangeKind::TrackProgram {
+                    at,
+                    previous,
+                    previous_rse,
+                },
             })
         })
     }
@@ -46,6 +58,12 @@ impl Song {
             let previous = track.percussion_track;
             let previous_type = track.instrument_type.clone();
             let previous_name = track.instrument_name.clone();
+            // A kit and an instrument have different GP7 sounds.
+            let previous_rse = if previous == drums {
+                None
+            } else {
+                Some(RseSound::take(track))
+            };
             track.percussion_track = drums;
             if drums {
                 // GP7 stores the kit in the instrument, not only in the flag; otherwise a
@@ -62,6 +80,7 @@ impl Song {
                     previous,
                     previous_type,
                     previous_name,
+                    previous_rse,
                 },
             })
         })

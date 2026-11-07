@@ -954,3 +954,54 @@ fn renaming_keeps_measure_stamps_but_moving_a_track_renews_them() {
     let undone = stamps(&song);
     assert!(undone.iter().all(|stamp| !after_move.contains(stamp)));
 }
+
+/// Each track's GP7 sound as the file had it (`<Sounds>`, `<AudioEngineState>`).
+fn rse_sounds(song: &Song) -> Vec<(Option<String>, Option<String>)> {
+    song.inner()
+        .tracks
+        .iter()
+        .map(|track| (track.gpif_sounds.clone(), track.gpif_audio_engine.clone()))
+        .collect()
+}
+
+#[test]
+fn another_instrument_drops_the_gp7_sound_and_undo_brings_it_back() {
+    let mut song = two_tracks();
+    let sounds =
+        "<Sounds><Sound><Path>Stringed/Electric Guitars/Clean Guitar</Path></Sound></Sounds>";
+    let engine = "<AudioEngineState>RSE</AudioEngineState>";
+    for track in &mut song.inner_mut().tracks {
+        track.gpif_sounds = Some(sounds.to_owned());
+        track.gpif_audio_engine = Some(engine.to_owned());
+    }
+    let kept = (Some(sounds.to_owned()), Some(engine.to_owned()));
+    let program = song.track_sound(TrackIndex::new(0)).unwrap().program;
+
+    // The same program again is no change of instrument: the sound stays.
+    let change = song.set_track_program(TrackIndex::new(0), program).unwrap();
+    assert_eq!(rse_sounds(&song), [kept.clone(), kept.clone()]);
+    song.revert(&change).unwrap();
+
+    // Another program: the old instrument's sound goes, only on that track.
+    let change = song
+        .set_track_program(TrackIndex::new(0), program.wrapping_add(1) % 128)
+        .unwrap();
+    assert_eq!(rse_sounds(&song), [(None, None), kept.clone()]);
+    song.revert(&change).unwrap();
+    assert_eq!(rse_sounds(&song), [kept.clone(), kept.clone()]);
+
+    // A drum kit too.
+    let change = song.set_track_drums(TrackIndex::new(1), true).unwrap();
+    assert_eq!(rse_sounds(&song), [kept.clone(), (None, None)]);
+    song.revert(&change).unwrap();
+    assert_eq!(rse_sounds(&song), [kept.clone(), kept.clone()]);
+
+    // A new track does not take its neighbour's sound.
+    let change = song.insert_track(TrackIndex::new(1)).unwrap();
+    assert_eq!(
+        rse_sounds(&song),
+        [kept.clone(), (None, None), kept.clone()]
+    );
+    song.revert(&change).unwrap();
+    assert_eq!(rse_sounds(&song), [kept.clone(), kept]);
+}
