@@ -34,7 +34,10 @@ in AGENTS.md section 9.
    own sound for the metronome (GM keys 33/34), which a GM1-only synth may not have.
    A per-track MIDI-out route lives in the open tab, not in the song, and the hardware's
    audio never returns: its strip shows note activity, and its chain and bus sends do not
-   apply (volume, pan, program and reverb/chorus CCs are sent to the device).
+   apply (volume, pan, program and reverb/chorus CCs are sent to the device). The master
+   chain has no limiter block yet, so an over-loud mix is still hard-clipped to -1..1; the
+   kit's built-in part tones are empty until the owner designs them (2026-11-07). Every
+   drum part's chain still runs every block, even in silence (the proposed skip is open).
 
 ## Files
 

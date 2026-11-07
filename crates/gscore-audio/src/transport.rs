@@ -56,6 +56,17 @@ pub(crate) enum Command {
     PartChainSettings(usize, usize, [BlockSettings; BLOCKS]),
     /// The mixing level (0-127, 127 unity) of one part of a drum track.
     PartLevel(usize, usize, u8),
+    /// Mutes or unmutes one part of a drum track.
+    PartMute(usize, usize, bool),
+    /// Soloes or un-soloes one part of a drum track.
+    PartSolo(usize, usize, bool),
+    /// Gives the master its prepared chain (`None`: none) with its knob values.
+    MasterChain(
+        Option<Box<gscore_guitar::Chain>>,
+        Box<[BlockSettings; BLOCKS]>,
+    ),
+    /// New knob values for the master's chain.
+    MasterChainSettings([BlockSettings; BLOCKS]),
     /// Gives a bus of the mixer its prepared chain (`None`: none).
     Bus(crate::Bus, Option<Box<gscore_guitar::Chain>>),
     /// New knob values, level and mute for a bus.
@@ -186,6 +197,10 @@ impl Transport {
             | Command::PartChain(..)
             | Command::PartChainSettings(..)
             | Command::PartLevel(..)
+            | Command::PartMute(..)
+            | Command::PartSolo(..)
+            | Command::MasterChain(..)
+            | Command::MasterChainSettings(..)
             | Command::Bus(..)
             | Command::BusSettings(..)
             | Command::CompSend(..) => {}

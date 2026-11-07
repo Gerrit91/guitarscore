@@ -355,8 +355,9 @@ pub(super) fn eq_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
     changed
 }
 
-/// A chorus's knobs: its speed, its swing and the mix under the dry sound.
-pub(super) fn chorus_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
+/// A chorus's knobs: its speed, its swing and, unless it runs all wet (a bus), the mix
+/// under the dry sound.
+pub(super) fn chorus_knobs(ui: &mut egui::Ui, block: &mut BlockSetting, all_wet: bool) -> bool {
     let mut changed = round_knob(
         ui,
         &mut block.chorus_rate,
@@ -379,16 +380,18 @@ pub(super) fn chorus_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool 
         "How far the delay swings: more is a wider, more obviously doubled sound.",
     )
     .changed;
-    changed |= round_knob(
-        ui,
-        &mut block.mix,
-        knob_ranges::MIX,
-        "Mix",
-        "",
-        0.5,
-        false,
-        "How much of the chorus under the dry sound: 0 none, 1 only the chorus.",
-    )
-    .changed;
+    if !all_wet {
+        changed |= round_knob(
+            ui,
+            &mut block.mix,
+            knob_ranges::MIX,
+            "Mix",
+            "",
+            0.5,
+            false,
+            "How much of the chorus under the dry sound: 0 none, 1 only the chorus.",
+        )
+        .changed;
+    }
     changed
 }

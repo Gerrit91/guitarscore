@@ -28,6 +28,8 @@ pub(super) struct TrackRow {
     /// The reverb and chorus sends, for the mixer strips.
     pub(super) reverb: u8,
     pub(super) chorus: u8,
+    /// Whether it is a drum kit (its parts can open as strips).
+    pub(super) drums: bool,
     /// The instrument's full name, for the row's tooltip.
     description: String,
     sound: Option<TrackSound>,
@@ -73,6 +75,10 @@ pub(super) fn track_rows(document: &Document) -> Vec<TrackRow> {
                 .song()
                 .track_sound(track.index())
                 .map_or(0, |sound| sound.chorus),
+            drums: document
+                .song()
+                .track_sound(track.index())
+                .is_some_and(|sound| sound.percussion),
             description: track
                 .instrument_name()
                 .map_or_else(|| track.name().to_owned(), str::to_owned),

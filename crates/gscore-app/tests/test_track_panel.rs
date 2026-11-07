@@ -286,7 +286,7 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
     harness.get_by_label("Block 0: Strings").click();
     harness.run();
     harness
-        .query_all_by_label("Played by")
+        .query_all_by_label("MIDI synth")
         .next()
         .expect("the sound source switch");
     // Physical modelling shows the kind of string and its knobs.
@@ -330,6 +330,22 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
         .click();
     harness.run();
     assert!(harness.query_all_by_label("Brilliance").next().is_none());
+}
+
+#[test]
+fn the_tone_table_folds_its_groups() {
+    let mut harness = app_with("basic/steel_guitar_dadgad.gp");
+    harness.get_by_label("Group: Acoustic").click();
+    harness.run();
+    assert!(
+        harness.query_by_label("Steel Strummed").is_none(),
+        "the group's rows are folded away"
+    );
+    // The other groups stay open.
+    assert!(harness.query_by_label("Group: Clean").is_some());
+    harness.get_by_label("Group: Acoustic").click();
+    harness.run();
+    assert!(harness.query_by_label("Steel Strummed").is_some());
 }
 
 #[test]
@@ -792,6 +808,8 @@ fn a_tone_belongs_to_the_track_preset() {
     harness.run();
     harness.get_by_label("MIDI synth").click();
     harness.run();
+    harness.get_by_label("Filter the sounds").click();
+    harness.run();
     harness.get_by_label("Filter sounds").focus();
     harness
         .get_by_label("Filter sounds")
@@ -960,7 +978,7 @@ fn the_built_in_entry_forgets_a_presets_tone() {
 
 /// Types `text` into the track panel's picker filter and clicks the row `row`.
 fn pick_in_track_panel(harness: &mut Harness<'static, GuitarScoreApp>, text: &str, row: &str) {
-    harness.get_by_label("Filter sounds").click();
+    harness.get_by_label("Filter the sounds").click();
     harness.run();
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
     harness.get_by_label("Filter sounds").type_text(text);
@@ -1083,7 +1101,7 @@ fn a_drum_track_lists_the_kits_and_cannot_be_played_by_pm() {
     harness.state_mut().set_shown_track(5);
     harness.run();
     assert!(
-        harness.query_by_label("Drum kits").is_some(),
+        harness.query_by_label("Group: Drum kits").is_some(),
         "the kit group"
     );
     assert!(

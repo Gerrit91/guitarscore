@@ -4167,3 +4167,71 @@ needed for a much larger font); owner listening check.
   outline, the ruler likewise. Snapshots `grid_score_selection`, `grid_track_selection`
   (reviewed).
 
+
+## 2026-11-07 — Mixer next round, items 1-3: chorus bus, master chain, drum parts
+
+- **Chorus bus:** `gscore_audio::Bus::Chorus` is a third bus next to reverb and
+  compressor. The mixer takes MIDI CC 93 like CC 91 (the synth's own chorus stays off)
+  into each strip's Chorus send after the fader; the bus runs a chorus block all wet and
+  hears the sends in mono, returning a stereo signal. `ChorusBus` in the settings (level,
+  mute, chorus knobs), travels with the song like the other buses, is rendered by WAV
+  export, and has its own window from the strip's stomp box. Default: 0.6 Hz, 3 ms depth,
+  mix 1 (the block's 14 ms centre).
+- **Stomp box on every strip:** tracks, buses, the master and drum parts open their sound
+  chain from the same icon; the buses' "Edit…" buttons are gone. A drum track's ▸/◂ arrow
+  opens its six part strips (meter, fader, mute, solo, stomp box) beside it; the open state
+  lives in the tab.
+- **Master chain:** the master runs a `Chain` (stereo) after the tracks and buses and
+  before its fader. It is prepared off the audio thread, stored in the song's state
+  (`Buses::master`), follows this machine's empty default when the song has none, has its
+  own board window from the master strip, and is rendered by WAV export. The metronome's
+  click is still added after the mix, so a master compressor or limiter never pumps with
+  it (test: the click is unchanged by a -30 dB master amp).
+- **Drum kit:** all built-in part tones and the drum-bus compressor are gone
+  (`default_drum_part_chain` / `default_drum_bus_chain` return empty chains); the kit plays
+  exactly as the SoundFont renders it until the owner designs the defaults. Every part has
+  a level (square law, unity 127), mute and solo inside the kit, and a meter after its
+  chain and level; all three travel in the song per drum track. Engine tests cover the
+  chorus send, master chain versus click, and part level/mute/solo.
+- Snapshots regenerated: `mixer_view`, `mixer_mute_solo`, `mixer_selected_track`,
+  `mixer_drum_parts`, `mixer_stomp_track`, `mixer_stomp_master`,
+  `mixer_stomp_reverb_bus`, `chorus_bus_window`, the bus windows (their background
+  changed) and `sound_chain_drum_kick` (empty kit defaults).
+
+## 2026-11-07 — Track panel sound menu, default tones and notices
+
+- **The Sound section is quieter and easier to scan:** "Played by" and the long explanatory
+  paragraphs under the source switch are gone (the source buttons say what they are), the
+  stomp box is a large pedal icon (the same shape as the reference: meter, knob and
+  footswitch), and the RSE line under the tone picker is removed.
+- **The tone table is one dark surface**, not a dark box per row with panel gaps between;
+  rows span the table's width, soft lines separate the items, and hover and the current
+  choice still light up. Its groups are an accordion: the header's triangle folds a family
+  (or "Saved", or the drum kits) shut and opens it again; a filter shows its matches in
+  every group. The filter is a magnifying-glass icon in the table's top-right corner (the
+  size and look of the zoom icons); it opens a small field over the table, so the filter
+  takes no row of its own.
+- **The owner's saved tones are the program defaults:** for each General MIDI guitar and
+  bass program, the default is the saved preset of the same kind whose name best matches
+  the old built-in tone (so "Metal Guitar 1" starts the metal programs, "Lead Guitar 1"
+  the lead, "Classical Guitar 1" nylon, "Natural Steel 1" steel, the first electric preset
+  the clean programs, and so on). All steel-string acoustic programs take "Natural Steel 1"
+  and all nylon-string ones "Classical Guitar 1", even when other acoustic presets exist.
+  With no saved preset of a kind, the built-in library still answers.
+  `Playback::default_tone_for` and the WAV export use the same choice.
+- **Default tones arrive at the mixer at the same loudness:** a saved preset keeps the
+  chain levels the owner dialed in (so an amp preset is not boosted past a clean one);
+  only its string sound is set to the machine's level for its kind, which lifts the clean
+  electric preset saved at 0.35 to the kind's 0.597. A built-in fallback has its chain's
+  output trims cancelled as well, by adjusting one block's output level (amp, drive,
+  compressor, cabinet or room), never its drive or tone. Applied when a default is sent to
+  the engine or exported, not to the tone saved in the settings (so the pickers still
+  recognise it).
+- **The preview is the first chord and the whole chain:** the demo phrase is one strummed
+  chord on a guitar and one note on a bass (plus a short tail); choosing a tone syncs
+  playback's tones before the excerpt starts, so its amp, cabinet, room and reverb play,
+  not just the strings. The Sound chain window's Listen does the same.
+- **Notices:** the top notice bar now goes away by itself after 15 seconds (Dismiss still
+  works at once), and the status bar at the bottom shows the same notice in red beside the
+  working spinner and file name (truncated, full text on hover). Test:
+  `a_notice_also_shows_in_the_status_bar_beside_the_spinner`.

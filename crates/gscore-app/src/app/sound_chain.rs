@@ -94,13 +94,13 @@ struct ChosenPreset {
 
 /// What editing the selected block asked for.
 #[derive(Default)]
-struct Edited {
+pub(super) struct Edited {
     /// The chain with the edit, when something moved.
-    chain: Option<ChainSetting>,
+    pub(super) chain: Option<ChainSetting>,
     /// Open the file dialog for the impulse response.
-    load: bool,
+    pub(super) load: bool,
     /// The room's length changed: its response must be prepared again.
-    rebuild: bool,
+    pub(super) rebuild: bool,
 }
 
 /// What the knobs of a block asked for.
@@ -293,6 +293,7 @@ struct ShownPreset {
 fn preset_row(
     ui: &mut egui::Ui,
     shown: ShownPreset,
+    default_tone: &str,
     tone: &Tone,
     presets: &[ChainPreset],
     window: &mut SoundChainWindow,
@@ -392,7 +393,6 @@ fn preset_row(
             }
         }
     });
-    let default_tone = crate::tone_library::for_program(program, kind).name;
     // Built-in tones by family, then the user's saved ones; compact here so the window
     // keeps its height (the track panel shows the full table).
     let mut chosen: Option<super::tone_picker::PickerChoice> = None;
@@ -487,23 +487,23 @@ fn preset_row(
 
 /// What the board asked for.
 #[derive(Default)]
-struct BoardActions {
+pub(super) struct BoardActions {
     /// The box clicked: 0 the strings, 1 to 5 a place.
-    select: Option<usize>,
+    pub(super) select: Option<usize>,
     /// An empty box's effect was chosen: the place gets it.
-    fill: Option<(usize, BlockChoice)>,
+    pub(super) fill: Option<(usize, BlockChoice)>,
     /// A block's menu asked for it: its place is emptied.
-    remove: Option<usize>,
+    pub(super) remove: Option<usize>,
     /// The mute under a place was clicked: its bypass flips.
-    bypass: Option<usize>,
+    pub(super) bypass: Option<usize>,
     /// A block was dropped on another place: (from, to), both places (0 to 4).
-    moved: Option<(usize, usize)>,
+    pub(super) moved: Option<(usize, usize)>,
 }
 
 /// Moves the block at place `from` to place `to`, the places in between sliding one place
 /// toward `from` - the order the sound passes them in follows the board. False when
 /// nothing moves: the same place, or a place off the board.
-fn move_block(blocks: &mut [BlockSetting], from: usize, to: usize) -> bool {
+pub(super) fn move_block(blocks: &mut [BlockSetting], from: usize, to: usize) -> bool {
     if from == to {
         return false;
     }
@@ -685,9 +685,9 @@ fn paint_box(
 /// The board: the boxes, the cables between them and, under each block, its mute. A block
 /// can be dragged to another place; the block follows the mouse and the place it would
 /// land in is outlined, until it is let go there.
-fn board(
+pub(super) fn board(
     ui: &mut egui::Ui,
-    player: &TrackPlayer,
+    source: (&str, &str),
     chain: &ChainSetting,
     selected: usize,
 ) -> BoardActions {
@@ -750,18 +750,7 @@ fn board(
             });
         }
         let (title, detail) = match block {
-            None => match player.engine {
-                TrackEngine::Modelled(kind) => ("Strings".to_owned(), kind_name(kind).to_owned()),
-                TrackEngine::SoundFont => (
-                    "MIDI".to_owned(),
-                    format!(
-                        "{}: {}",
-                        player.program,
-                        gscore_model::program_name(player.program)
-                    ),
-                ),
-                TrackEngine::MidiOut => ("MIDI out".to_owned(), player.midi_out.label()),
-            },
+            None => (source.0.to_owned(), source.1.to_owned()),
             Some(block) => box_text(block),
         };
         ui.ctx().accesskit_node_builder(response.id, |node| {
@@ -905,7 +894,12 @@ fn board(
 }
 
 /// The selected place's choices (when empty) or knobs.
-fn editor(ui: &mut egui::Ui, chain: &ChainSetting, place: usize, reduction: f32) -> Edited {
+pub(super) fn editor(
+    ui: &mut egui::Ui,
+    chain: &ChainSetting,
+    place: usize,
+    reduction: f32,
+) -> Edited {
     let Some(block) = chain.blocks.get(place) else {
         return Edited::default();
     };
@@ -975,7 +969,9 @@ pub(super) fn block_knobs(
                 moved.changed |= super::amp_knobs::compressor_knobs(ui, block, reduction);
             }
             BlockChoice::Eq => moved.changed |= super::amp_knobs::eq_knobs(ui, block),
-            BlockChoice::Chorus => moved.changed |= super::amp_knobs::chorus_knobs(ui, block),
+            BlockChoice::Chorus => {
+                moved.changed |= super::amp_knobs::chorus_knobs(ui, block, all_wet);
+            }
             BlockChoice::Cabinet | BlockChoice::Room => {
                 // First the room itself: how long it lasts.
                 if block.choice == BlockChoice::Room {
@@ -1190,6 +1186,16 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Opens the Sound chain window for `track`, showing `part` of a drum kit (its own
+    /// board and level); from the mixer's part strip.
+    pub(super) fn open_sound_chain_part(&mut self, track: usize, part: DrumPart) {
+        self.open_sound_chain(track);
+        if let Some(window) = &mut self.sound_chain {
+            window.part = Some(part);
+            window.selected = 1;
+        }
+    }
+
     /// The impulse response chosen for place `place` of `track`'s chain (as `kind`): read
     /// (an error is shown) and heard at once.
     pub(super) fn use_impulse(
@@ -1205,11 +1211,11 @@ impl GuitarScoreApp {
             return;
         }
         if let Some(part) = part.and_then(DrumPart::at) {
-            let (mut chain, level) = self.track_drum_part(track, part);
-            if let Some(block) = chain.blocks.get_mut(place) {
+            let mut own = self.track_drum_part(track, part);
+            if let Some(block) = own.chain.blocks.get_mut(place) {
                 block.file = Some(path);
             }
-            self.set_track_drum_part(track, part, Some((chain, level)));
+            self.set_track_drum_part(track, part, Some(own), false);
             return;
         }
         let mut tone = self.track_tone(track, kind);
@@ -1271,7 +1277,7 @@ impl GuitarScoreApp {
         let part_chain = window
             .part
             .map(|part| self.track_drum_part(window.track, part));
-        let part_level = part_chain.as_ref().map(|(_, level)| *level);
+        let part_level = part_chain.as_ref().map(|own| own.level);
         let dialed_in: Vec<DrumPart> = self
             .tabs
             .get(self.active)
@@ -1330,12 +1336,15 @@ impl GuitarScoreApp {
                         // The tone: which one this preset plays, another one, and saving
                         // it. Above the board so it stays in reach when the window is tall.
                         if window.part.is_none() {
+                            let default_tone =
+                                self.playback.default_tone_name(player.program, kind);
                             preset_row(
                                 ui,
                                 ShownPreset {
                                     program: player.program,
                                     kind,
                                 },
+                                &default_tone,
                                 &tone,
                                 &presets,
                                 &mut window,
@@ -1345,10 +1354,33 @@ impl GuitarScoreApp {
                         }
                         let chain = part_chain
                             .as_ref()
-                            .map(|(chain, _)| chain.clone())
+                            .map(|own| own.chain.clone())
                             .unwrap_or_else(|| tone.chain.clone());
                         let sound = tone.sound;
-                        let board = board(ui, &player, &chain, window.selected);
+                        // The first box names what plays the track: the strings, the MIDI
+                        // synth or a hardware port.
+                        let source = match player.engine {
+                            TrackEngine::Modelled(kind) => {
+                                ("Strings".to_owned(), kind_name(kind).to_owned())
+                            }
+                            TrackEngine::SoundFont => (
+                                "MIDI".to_owned(),
+                                format!(
+                                    "{}: {}",
+                                    player.program,
+                                    gscore_model::program_name(player.program)
+                                ),
+                            ),
+                            TrackEngine::MidiOut => {
+                                ("MIDI out".to_owned(), player.midi_out.label())
+                            }
+                        };
+                        let board = board(
+                            ui,
+                            (source.0.as_str(), source.1.as_str()),
+                            &chain,
+                            window.selected,
+                        );
                         if let Some(index) = board.select {
                             window.selected = index;
                             // The first box is the track's source: the kit's, not a part's.
@@ -1439,23 +1471,21 @@ impl GuitarScoreApp {
         // A drum part's chain and level belong to the song's copy of the track; Built-in
         // forgets the song's own and follows the kit again.
         if let Some(part) = window.part {
-            let current = self.track_drum_part(track, part);
-            let mut chain = current.0;
-            let mut level = current.1;
+            let mut own = self.track_drum_part(track, part);
             let mut changed = false;
             if actions.reset_part {
-                self.set_track_drum_part(track, part, None);
+                self.set_track_drum_part(track, part, None, false);
             } else {
                 if let Some(edited) = actions.chain.take() {
-                    chain = edited;
+                    own.chain = edited;
                     changed = true;
                 }
                 if let Some(edited) = actions.part_level.take() {
-                    level = edited;
+                    own.level = edited;
                     changed = true;
                 }
                 if changed {
-                    self.set_track_drum_part(track, part, Some((chain, level)));
+                    self.set_track_drum_part(track, part, Some(own), true);
                 }
             }
             // The strings' sound and the preset tones belong to the track, not the part.
@@ -1529,12 +1559,16 @@ impl GuitarScoreApp {
             if presets.len() < MAX_STRING_PRESETS {
                 presets.push(preset);
             }
+            self.playback
+                .store_string_presets(self.settings.string_presets.clone());
             self.save_settings();
         }
         if let Some((preset_kind, name)) = actions.delete_preset {
             self.settings
                 .string_presets
                 .retain(|preset| !(preset.kind == preset_kind && preset.name == name));
+            self.playback
+                .store_string_presets(self.settings.string_presets.clone());
             self.save_settings();
         }
         if let Some(place) = actions.load
@@ -1549,6 +1583,8 @@ impl GuitarScoreApp {
             self.notice = Some(error);
         }
         if actions.listen && modelled {
+            // The chain as it is now (not as it was when the window opened).
+            self.sync_track_tones();
             match self.playback.play_string_demo(track, active_kind) {
                 Ok(Heard::Skipped(why)) => self.notice = Some(format!("Not played: {why}")),
                 Ok(_) => {}

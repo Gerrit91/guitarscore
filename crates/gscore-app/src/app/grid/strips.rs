@@ -6,7 +6,8 @@ use egui::{Align2, Color32, FontId, Rect, RichText, Sense, Stroke, UiBuilder, po
 use gscore_edit::Command;
 use gscore_model::{MASTER_UNITY, MasterMix, TrackIndex};
 
-use crate::settings::{CompressorBus, ReverbBus};
+use crate::chain_settings::DrumPart;
+use crate::settings::{ChorusBus, CompressorBus, ReverbBus};
 
 use super::mixer::{self, FLOOR_DB, TRACK_UNITY, db_value, volume_from_db};
 use super::rows::TrackRow;
@@ -15,6 +16,9 @@ use crate::app::{icons, instrument, style};
 
 /// One strip's width (four knobs across the top: pan, reverb, chorus, comp).
 const STRIP_WIDTH: f32 = 140.0;
+/// A drum part's strip, narrower than a track's (its fader still fits: the fixed parts of
+/// the fader take 100 points).
+const PART_STRIP_WIDTH: f32 = 116.0;
 /// Height of the knob row at the top of a strip (pan, reverb, chorus and their labels).
 const TOP_HEIGHT: f32 = 40.0;
 /// A knob's diameter, and the distance between knob centres.
@@ -49,6 +53,22 @@ struct DbEdit {
 pub(crate) struct MixerState {
     /// The decibel field being edited, if any.
     editing_db: Option<DbEdit>,
+    /// The drum tracks whose part strips are open.
+    open_parts: std::collections::BTreeSet<usize>,
+}
+
+impl MixerState {
+    /// Whether the part strips of `track` are open.
+    fn parts_open(&self, track: usize) -> bool {
+        self.open_parts.contains(&track)
+    }
+
+    /// Opens or closes the part strips of `track`.
+    fn toggle_parts(&mut self, track: usize) {
+        if !self.open_parts.remove(&track) {
+            self.open_parts.insert(track);
+        }
+    }
 }
 
 /// The mixer strips, tracks then master.
@@ -60,6 +80,7 @@ pub(super) fn strips(
     buses: Buses,
     readings: &Readings,
     comp_sends: &[u8],
+    parts: &[Vec<PartRow>],
     view: GridView,
     state: &mut MixerState,
     actions: &mut Vec<GridAction>,
@@ -85,6 +106,25 @@ pub(super) fn strips(
                         state,
                         actions,
                     );
+                    if row.drums && state.parts_open(index) {
+                        for part in parts.get(index).map(Vec::as_slice).unwrap_or_default() {
+                            part_strip(
+                                ui,
+                                index,
+                                row,
+                                part,
+                                readings
+                                    .parts
+                                    .get(index)
+                                    .and_then(|parts| parts.get(part.part.index()))
+                                    .copied()
+                                    .unwrap_or_default(),
+                                height,
+                                state,
+                                actions,
+                            );
+                        }
+                    }
                 }
                 reverb_strip(ui, buses.reverb, readings.bus, height, state, actions);
                 compressor_strip(
@@ -95,6 +135,7 @@ pub(super) fn strips(
                     state,
                     actions,
                 );
+                chorus_strip(ui, buses.chorus, readings.chorus, height, state, actions);
                 master_strip(
                     ui,
                     master,
@@ -214,7 +255,32 @@ fn track_strip(
         Symbol::Instrument(row.instrument),
         Color32::from_rgb(red, green, blue),
         row.audible,
+        16.0,
     );
+    // The way into this track's sound chain, on the name's row.
+    let stomp = Rect::from_min_size(
+        pos2(bottom.right() - 14.0, bottom.top() + 41.0),
+        vec2(14.0, 14.0),
+    );
+    if stomp_button(
+        &mut strip,
+        stomp,
+        index,
+        &format!("Sound chain for {}", row.name),
+        "Open this track's sound chain",
+    ) {
+        actions.push(GridAction::OpenSoundChain { track: index });
+    }
+    // A drum track's kit opens beside it as part strips.
+    if row.drums {
+        let arrow = Rect::from_min_size(
+            pos2(bottom.right() - 14.0, bottom.top() + 56.0),
+            vec2(14.0, 13.0),
+        );
+        if parts_arrow(&mut strip, arrow, index, state.parts_open(index)) {
+            state.toggle_parts(index);
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -301,7 +367,21 @@ fn master_strip(
         Symbol::Waveform,
         visuals.selection.bg_fill,
         !all_muted,
+        16.0,
     );
+    let stomp = Rect::from_min_size(
+        pos2(bottom.right() - 14.0, bottom.top() + 41.0),
+        vec2(14.0, 14.0),
+    );
+    if stomp_button(
+        &mut strip,
+        stomp,
+        usize::MAX,
+        "Sound chain for the master",
+        "Open the master's sound chain (after the tracks and buses)",
+    ) {
+        actions.push(GridAction::OpenMasterChain);
+    }
 }
 
 /// The mixer's buses as the strips show them.
@@ -309,6 +389,7 @@ fn master_strip(
 pub(super) struct Buses {
     pub(super) reverb: ReverbBus,
     pub(super) compressor: CompressorBus,
+    pub(super) chorus: ChorusBus,
 }
 
 /// What a bus strip asked for.
@@ -362,16 +443,16 @@ fn bus_strip(
     let inner = rect.shrink2(vec2(8.0, 6.0));
     let (top, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
-    // Where a track has its pan and sends: the way into the bus's own window, which
-    // chooses what it runs and holds its knobs.
-    let button = Rect::from_min_size(pos2(top.left(), top.top() + 4.0), vec2(top.width(), 26.0));
-    let response = strip
-        .put(button, egui::Button::new("Edit…").small())
-        .on_hover_text(edit_tip);
-    strip.ctx().accesskit_node_builder(response.id, |node| {
-        node.set_label(format!("Edit the {} bus", name.to_lowercase()));
-    });
-    if response.clicked() {
+    // Where a track has its pan and sends: the stomp box into the bus's own window, which
+    // chooses what it runs and holds its knobs. Every strip opens its chain the same way.
+    let button = Rect::from_center_size(pos2(top.center().x, top.top() + 15.0), vec2(26.0, 22.0));
+    if stomp_button(
+        &mut strip,
+        button,
+        id,
+        &format!("Sound chain for the {} bus", name.to_lowercase()),
+        edit_tip,
+    ) {
         changes.push(BusChange::Edit);
     }
     fader(
@@ -429,6 +510,7 @@ fn bus_strip(
         Symbol::Waveform,
         visuals.selection.bg_fill,
         !muted,
+        0.0,
     );
 }
 
@@ -520,6 +602,230 @@ fn compressor_strip(
     }
 }
 
+/// The chorus bus: each track's Chorus knob is its send, and its level blends the chorused
+/// signal back in under the dry tracks.
+fn chorus_strip(
+    ui: &mut egui::Ui,
+    bus: ChorusBus,
+    meter: Reading,
+    height: f32,
+    state: &mut MixerState,
+    actions: &mut Vec<GridAction>,
+) {
+    /// The id of the bus's controls (the master's is `usize::MAX`).
+    const CHORUS: usize = usize::MAX - 4;
+    let mut changes = Vec::new();
+    bus_strip(
+        ui,
+        BusStrip {
+            name: "Chorus",
+            edit_tip: "The bus's chorus: a slow, wide drift every track's Chorus knob sends into",
+            id: CHORUS,
+            level: bus.level,
+            muted: bus.muted,
+            meter,
+            height,
+        },
+        state,
+        &mut changes,
+    );
+    for change in changes {
+        let mut bus = bus.clone();
+        let action = match change {
+            BusChange::Edit => GridAction::OpenChorusBus,
+            BusChange::Level { level } => {
+                bus.level = level;
+                GridAction::ChorusBus { bus }
+            }
+            BusChange::Mute(muted) => {
+                bus.muted = muted;
+                GridAction::ChorusBus { bus }
+            }
+        };
+        actions.push(action);
+    }
+}
+
+/// One part of a drum kit as its strip shows it.
+#[derive(Debug, Clone)]
+pub(super) struct PartRow {
+    pub(super) part: DrumPart,
+    /// Its mixing level (0-127, 127 unity).
+    pub(super) level: u8,
+    pub(super) muted: bool,
+    pub(super) soloed: bool,
+    /// Whether anything in the kit is soloed: then only the soloed parts play.
+    pub(super) any_soloed: bool,
+}
+
+impl PartRow {
+    /// Whether the part is heard: not muted, and soloed if anything is soloed.
+    fn audible(&self) -> bool {
+        !self.muted && (!self.any_soloed || self.soloed)
+    }
+}
+
+/// A drum part's strip: its meter, fader, mute, solo and the way into its sound chain.
+#[allow(clippy::too_many_arguments)]
+fn part_strip(
+    ui: &mut egui::Ui,
+    track: usize,
+    row: &TrackRow,
+    part: &PartRow,
+    level: Reading,
+    height: f32,
+    state: &mut MixerState,
+    actions: &mut Vec<GridAction>,
+) {
+    let id = part_id(track, part.part);
+    let (rect, _) = ui.allocate_exact_size(vec2(PART_STRIP_WIDTH, height), Sense::hover());
+    let visuals = ui.visuals().clone();
+    ui.painter()
+        .rect_filled(rect, 0.0, visuals.faint_bg_color.gamma_multiply(0.7));
+    ui.painter().line_segment(
+        [rect.left_top(), rect.left_bottom()],
+        Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
+    );
+    ui.painter().line_segment(
+        [rect.right_top(), rect.right_bottom()],
+        Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
+    );
+    let inner = rect.shrink2(vec2(8.0, 6.0));
+    let (top, fader_area, bottom) = layout(inner);
+    let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
+    // The part's name where a track has its knobs, so the fader keeps its place.
+    strip.painter().with_clip_rect(top).text(
+        pos2(top.center().x, top.top() + 6.0),
+        Align2::CENTER_TOP,
+        part.part.label(),
+        FontId::proportional(11.0),
+        visuals.strong_text_color(),
+    );
+    fader(
+        &mut strip,
+        fader_area,
+        id,
+        part.level,
+        level,
+        127,
+        &format!("{} level", part.part.label()),
+        |level, merge| {
+            actions.push(GridAction::DrumPart {
+                track,
+                part: part.part,
+                level,
+                muted: part.muted,
+                soloed: part.soloed,
+                merge,
+            });
+        },
+    );
+    let db_rect = Rect::from_min_size(
+        pos2(bottom.left(), bottom.top()),
+        vec2(bottom.width(), 16.0),
+    );
+    db_field(
+        &mut strip,
+        db_rect,
+        state,
+        id,
+        part.level,
+        127,
+        &format!("{} level", part.part.label()),
+        |level| {
+            actions.push(GridAction::DrumPart {
+                track,
+                part: part.part,
+                level,
+                muted: part.muted,
+                soloed: part.soloed,
+                merge: false,
+            });
+        },
+    );
+    let buttons = Rect::from_min_size(
+        pos2(bottom.left(), bottom.top() + 18.0),
+        vec2(bottom.width(), 20.0),
+    );
+    part_mute_solo(&mut strip, buttons, track, part, actions);
+    let (red, green, blue) = row.color.parts();
+    labels(
+        &mut strip,
+        bottom,
+        part.part.label(),
+        "Drum part",
+        Symbol::Waveform,
+        Color32::from_rgb(red, green, blue),
+        part.audible(),
+        16.0,
+    );
+    let stomp = Rect::from_min_size(
+        pos2(bottom.right() - 14.0, bottom.top() + 41.0),
+        vec2(14.0, 14.0),
+    );
+    if stomp_button(
+        &mut strip,
+        stomp,
+        id,
+        &format!("Sound chain for the {} part", part.part.label()),
+        "Open this part's sound chain",
+    ) {
+        actions.push(GridAction::OpenSoundChainPart {
+            track,
+            part: part.part,
+        });
+    }
+}
+
+/// A stable control id for a drum part (away from the tracks', buses' and master's).
+fn part_id(track: usize, part: DrumPart) -> usize {
+    usize::MAX.saturating_sub(128 + track.saturating_mul(8) + part.index())
+}
+
+/// The mute and solo of one part of a drum kit.
+fn part_mute_solo(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    track: usize,
+    part: &PartRow,
+    actions: &mut Vec<GridAction>,
+) {
+    let width = (rect.width() - 4.0) / 2.0;
+    let mute_rect = Rect::from_min_size(rect.min, vec2(width, rect.height()));
+    let solo_rect = Rect::from_min_size(
+        pos2(rect.left() + width + 4.0, rect.top()),
+        vec2(width, rect.height()),
+    );
+    let mute = ui.put(mute_rect, style::mute_button(part.muted));
+    ui.ctx().accesskit_node_builder(mute.id, |node| {
+        node.set_label(format!("Mute {}", part.part.label()));
+    });
+    if mute.on_hover_text("Mute this part of the kit").clicked() {
+        actions.push(GridAction::DrumPart {
+            track,
+            part: part.part,
+            level: part.level,
+            muted: !part.muted,
+            soloed: part.soloed,
+            merge: false,
+        });
+    }
+    let solo = ui.put(solo_rect, style::solo_button(part.soloed));
+    ui.ctx().accesskit_node_builder(solo.id, |node| {
+        node.set_label(format!("Solo {}", part.part.label()));
+    });
+    if solo.on_hover_text("Solo this part of the kit").clicked() {
+        actions.push(GridAction::DrumPart {
+            track,
+            part: part.part,
+            level: part.level,
+            muted: part.muted,
+            soloed: !part.soloed,
+            merge: false,
+        });
+    }
+}
+
 /// The metronome's own strip: only its click volume, on a fader like the tracks' (the
 /// switch stays in the toolbar). Full volume is the click as loud as it comes.
 fn metronome_strip(
@@ -576,6 +882,7 @@ fn metronome_strip(
         Symbol::Metronome,
         visuals.selection.bg_fill,
         true,
+        0.0,
     );
 }
 
@@ -591,6 +898,70 @@ fn layout(inner: Rect) -> (Rect, Rect, Rect) {
         pos2(inner.right(), bottom.top() - 6.0),
     );
     (top, fader, bottom)
+}
+
+/// A small stomp-box icon that opens a strip's sound chain. True when clicked.
+fn stomp_button(ui: &mut egui::Ui, rect: Rect, id: usize, label: &str, tip: &str) -> bool {
+    let response = ui.interact(rect, ui.scope_id().with(("stomp", id)), Sense::click());
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label(label);
+        node.set_role(egui::Role::Button);
+    });
+    let visuals = ui.style().interact(&response);
+    if response.hovered() || response.has_focus() {
+        ui.painter().rect_filled(rect, 3.0, visuals.weak_bg_fill);
+    }
+    icons::paint(
+        ui.painter(),
+        rect.shrink(2.0),
+        visuals.fg_stroke.color,
+        icons::Icon::StompBox,
+    );
+    response.on_hover_text(tip).clicked()
+}
+
+/// The ▸/◂ arrow that opens or closes a drum track's part strips. True when clicked.
+fn parts_arrow(ui: &mut egui::Ui, rect: Rect, track: usize, open: bool) -> bool {
+    let response = ui.interact(rect, ui.scope_id().with(("parts", track)), Sense::click());
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label(if open {
+            "Hide the drum parts"
+        } else {
+            "Show the drum parts"
+        });
+        node.set_role(egui::Role::Button);
+    });
+    let visuals = ui.style().interact(&response);
+    if response.hovered() || response.has_focus() {
+        ui.painter().rect_filled(rect, 2.0, visuals.weak_bg_fill);
+    }
+    let center = rect.center();
+    let half = 3.5;
+    let points = if open {
+        vec![
+            pos2(center.x + half, center.y - half),
+            pos2(center.x + half, center.y + half),
+            pos2(center.x - half, center.y),
+        ]
+    } else {
+        vec![
+            pos2(center.x - half, center.y - half),
+            pos2(center.x - half, center.y + half),
+            pos2(center.x + half, center.y),
+        ]
+    };
+    ui.painter().add(egui::Shape::convex_polygon(
+        points,
+        visuals.fg_stroke.color,
+        Stroke::NONE,
+    ));
+    response
+        .on_hover_text(if open {
+            "Hide this drum track's parts"
+        } else {
+            "Show this drum track's parts (kick, snare, hi-hat, toms, cymbals, percussion)"
+        })
+        .clicked()
 }
 
 /// The knob row: pan, and for a track its reverb and chorus sends (the master has only its
@@ -659,7 +1030,7 @@ fn knobs(
         reverb,
         ("reverb", index),
         &format!("Reverb {name}"),
-        "Reverb send (to the reverb bus, for PM synthesis)",
+        "Reverb send (into the reverb bus, whatever plays the track)",
         0,
     );
     caption(ui, reverb_rect, "Reverb");
@@ -679,7 +1050,7 @@ fn knobs(
         chorus,
         ("chorus", index),
         &format!("Chorus {name}"),
-        "Chorus send",
+        "Chorus send (into the shared chorus bus)",
         0,
     );
     caption(ui, chorus_rect, "Chorus");
@@ -905,8 +1276,11 @@ impl Reading {
 #[derive(Debug, Clone, Default)]
 pub(super) struct Readings {
     pub(super) tracks: Vec<Reading>,
+    /// Each track's drum parts, by track and then part (empty for a melodic track).
+    pub(super) parts: Vec<Vec<Reading>>,
     pub(super) bus: Reading,
     pub(super) compressor: Reading,
+    pub(super) chorus: Reading,
     pub(super) master: Reading,
 }
 
@@ -1229,6 +1603,7 @@ fn paint_waveform(painter: &egui::Painter, rect: Rect, ink: Color32) {
     painter.add(egui::Shape::line(points, Stroke::new(1.0, ink)));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn labels(
     ui: &mut egui::Ui,
     bottom: Rect,
@@ -1237,11 +1612,12 @@ fn labels(
     symbol: Symbol,
     color: Color32,
     audible: bool,
+    trailing: f32,
 ) {
     let visuals = ui.visuals().clone();
     let name_rect = Rect::from_min_size(
         pos2(bottom.left(), bottom.top() + 42.0),
-        vec2(bottom.width(), 14.0),
+        vec2(bottom.width() - trailing, 14.0),
     );
     // A silent track's name and color recede, so the strips show at a glance what plays.
     let name_ink = if audible {
@@ -1261,7 +1637,7 @@ fn labels(
 
     let preset_rect = Rect::from_min_size(
         pos2(bottom.left(), bottom.top() + 58.0),
-        vec2(bottom.width(), 12.0),
+        vec2(bottom.width() - trailing, 12.0),
     );
     let icon = Rect::from_min_size(
         pos2(preset_rect.left(), preset_rect.center().y - 5.0),

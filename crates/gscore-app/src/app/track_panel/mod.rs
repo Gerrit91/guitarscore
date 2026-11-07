@@ -460,8 +460,7 @@ fn sound(
         return;
     };
     let player = &panel.player;
-    ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new("Played by").color(style::tokens(ui).text_weak));
+    ui.horizontal(|ui| {
         let pm = match player.engine {
             gscore_play::TrackEngine::Modelled(kind) => gscore_play::TrackEngine::Modelled(kind),
             gscore_play::TrackEngine::SoundFont | gscore_play::TrackEngine::MidiOut => {
@@ -476,7 +475,7 @@ fn sound(
             actions.engine = Some(engine);
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let button = icons::button(
+            let button = icons::large_button(
                 ui,
                 Icon::StompBox,
                 "Sound chain",
@@ -499,28 +498,13 @@ fn sound(
             }
             let rows = super::tone_picker::tone_rows(
                 panel.current.as_ref(),
-                Some(panel.default_tone),
+                Some(panel.default_tone.as_str()),
                 &panel.saved,
             );
             if let Some(choice) = super::tone_picker::picker(ui, "track_tone_picker", &rows, picker)
                 && let Some(tone) = tone_of_choice(choice, &panel.saved)
             {
                 actions.tone = Some(tone);
-            }
-            ui.label(
-                RichText::new(
-                    "The track plays this tone; it travels in the song, so the file sounds the \
-                     same elsewhere. Hover a tone for what it is.",
-                )
-                .weak(),
-            );
-            if let Some(rse) = &panel.rse {
-                ui.label(
-                    RichText::new(format!(
-                        "RSE: {rse} (Guitar Pro's sound; this tone is its nearest match)"
-                    ))
-                    .weak(),
-                );
             }
         }
         gscore_play::TrackEngine::SoundFont | gscore_play::TrackEngine::MidiOut => {
@@ -541,23 +525,6 @@ fn sound(
                     },
                     false,
                 ));
-            }
-            if player.drums {
-                ui.label(
-                    RichText::new(
-                        "A drum kit plays the percussion bank; its parts' tones are in the Sound \
-                         chain window.",
-                    )
-                    .weak(),
-                );
-            } else {
-                ui.label(
-                    RichText::new(
-                        "The SoundFont preset (General MIDI program) the built-in synthesizer \
-                         plays for this track.",
-                    )
-                    .weak(),
-                );
             }
         }
     }

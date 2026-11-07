@@ -322,6 +322,47 @@ impl SynthEngine {
         self.set_bus_settings(crate::Bus::Reverb, settings, level, muted);
     }
 
+    /// Gives the tracks a chorus bus (`None`: none), a prepared chain that runs all wet.
+    /// Returns the one it replaces, to be freed elsewhere.
+    pub fn set_chorus_bus(&mut self, chain: Option<Box<Chain>>) -> Option<Box<Chain>> {
+        self.set_bus(crate::Bus::Chorus, chain)
+    }
+
+    /// New knob values, level and mute for the chorus bus, heard at once.
+    pub fn set_chorus_bus_settings(
+        &mut self,
+        settings: [BlockSettings; BLOCKS],
+        level: u8,
+        muted: bool,
+    ) {
+        self.set_bus_settings(crate::Bus::Chorus, settings, level, muted);
+    }
+
+    /// Gives the master the chain `chain` (`None`: none) with its knob values, heard at
+    /// once. Returns the one it replaces, to be freed elsewhere.
+    pub fn set_master_chain(
+        &mut self,
+        chain: Option<Box<Chain>>,
+        settings: [BlockSettings; BLOCKS],
+    ) -> Option<Box<Chain>> {
+        self.mixer.set_master_chain(chain, settings)
+    }
+
+    /// New knob values for the master's chain, heard at once.
+    pub fn set_master_chain_settings(&mut self, settings: [BlockSettings; BLOCKS]) {
+        self.mixer.set_master_chain_settings(settings);
+    }
+
+    /// Mutes or unmutes `part` of the song's drum track `track`, heard at once.
+    pub fn set_part_mute(&mut self, track: usize, part: usize, muted: bool) {
+        self.mixer.set_part_mute(track, part, muted);
+    }
+
+    /// Soloes or un-soloes `part` of the song's drum track `track`, heard at once.
+    pub fn set_part_solo(&mut self, track: usize, part: usize, soloed: bool) {
+        self.mixer.set_part_solo(track, part, soloed);
+    }
+
     /// Gives `part` of the song's drum track `track` a prepared chain (`None`: none).
     /// Returns the one it replaces, to be freed elsewhere.
     pub fn set_part_chain(
@@ -408,6 +449,21 @@ impl SynthEngine {
             }
             Command::PartLevel(track, part, level) => {
                 self.set_part_level(track, part, level);
+                return None;
+            }
+            Command::PartMute(track, part, muted) => {
+                self.set_part_mute(track, part, muted);
+                return None;
+            }
+            Command::PartSolo(track, part, soloed) => {
+                self.set_part_solo(track, part, soloed);
+                return None;
+            }
+            Command::MasterChain(chain, settings) => {
+                return self.set_master_chain(chain, *settings).map(Retired::Chain);
+            }
+            Command::MasterChainSettings(settings) => {
+                self.set_master_chain_settings(settings);
                 return None;
             }
             Command::Bus(bus, chain) => {

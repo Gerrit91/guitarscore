@@ -178,7 +178,7 @@ fn a_stored_panel_size_cannot_cover_the_window() {
         harness.run();
         // The track panel's first control is in the right half, and the palette's one in
         // the left half: the score has the middle.
-        let track_panel = harness.get_by_label("Played by").rect().left();
+        let track_panel = harness.get_by_label("Instrument").rect().left();
         assert!(
             track_panel > 500.0,
             "a stored width of {width} pushed the track panel to {track_panel}"
@@ -195,7 +195,7 @@ fn a_stored_panel_size_cannot_cover_the_window() {
 fn the_track_panel_does_not_grow_by_itself() {
     let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
     let panel = |harness: &Harness<'static, GuitarScoreApp>| {
-        let rect = harness.get_by_label("Played by").rect();
+        let rect = harness.get_by_label("Instrument").rect();
         (rect.left(), rect.top())
     };
     let before = panel(&harness);
@@ -224,6 +224,21 @@ fn files_that_cannot_be_opened_give_a_notice_not_a_crash() {
         assert!(harness.state().document().is_none());
         harness.get_by_label("Dismiss");
     }
+}
+
+#[test]
+fn a_notice_also_shows_in_the_status_bar_beside_the_spinner() {
+    let mut harness = app_with(None);
+    harness.state_mut().set_notice("Something went wrong");
+    harness.run();
+    // The notice bar at the top and the status bar at the bottom both carry it.
+    assert!(
+        harness
+            .query_all_by_label_contains("Something went wrong")
+            .count()
+            >= 2
+    );
+    harness.get_by_label("Dismiss");
 }
 
 #[test]
@@ -995,7 +1010,7 @@ fn song_drum_part(harness: &Harness<'static, GuitarScoreApp>, id: &str) -> Optio
 fn the_track_panel_edits_the_shown_track() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
     // The panel is open by default and shows the first track (on PM synthesis).
-    harness.get_by_label("Played by");
+    harness.get_by_label("Instrument");
 
     // The General MIDI program changes and is undoable: the MIDI synth's table lists it.
     let before = first_sound(&harness).program;
@@ -1425,19 +1440,19 @@ fn a_measure_selection_is_shared_with_the_editor_for_copy_and_paste() {
 #[test]
 fn the_view_menu_and_the_row_menu_show_the_track_panel() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
-    harness.get_by_label("Played by");
+    harness.get_by_label("Instrument");
 
     harness.get_by_label("View").click();
     harness.run();
     harness.get_by_label("Track panel").click();
     harness.run();
-    assert!(harness.query_by_label("Played by").is_none());
+    assert!(harness.query_by_label("Instrument").is_none());
 
     // The row's "Edit track…" opens it again.
     right_click_track(&mut harness, "Track 1: Steel Guitar");
     harness.get_by_label("Edit track…").click();
     harness.run();
-    harness.get_by_label("Played by");
+    harness.get_by_label("Instrument");
 }
 
 #[test]
@@ -2623,7 +2638,9 @@ fn the_reverb_bus_window_chooses_the_reverb() {
     let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
     harness.get_by_label("Mixer view").click();
     harness.run();
-    harness.get_by_label("Edit the reverb bus").click();
+    harness
+        .get_by_label("Sound chain for the reverb bus")
+        .click();
     harness.run();
     harness.snapshot("reverb_bus_window");
     // A computed reverb by default, with its knobs and no mix (the bus runs all wet).
@@ -2662,7 +2679,9 @@ fn every_change_in_a_bus_window_is_its_own_undo_step_and_a_drag_is_one() {
     let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
     harness.get_by_label("Mixer view").click();
     harness.run();
-    harness.get_by_label("Edit the reverb bus").click();
+    harness
+        .get_by_label("Sound chain for the reverb bus")
+        .click();
     harness.run();
     let undo_depth = |harness: &Harness<'_, GuitarScoreApp>| {
         harness.state().document().unwrap().editor().undo_depth()
@@ -2765,7 +2784,7 @@ fn the_compressor_bus_is_a_strip_and_a_window() {
     harness.run();
     // Its window holds the CA-76: a default at "All", driven hard and made up short, with
     // its knobs and its gain-reduction meter.
-    harness.get_by_label("Edit the comp bus").click();
+    harness.get_by_label("Sound chain for the comp bus").click();
     harness.run();
     harness.snapshot("compressor_bus_window");
     let bus = harness.state().playback().compressor_bus();
@@ -2787,6 +2806,65 @@ fn the_compressor_bus_is_a_strip_and_a_window() {
     assert_eq!(
         harness.state().playback().compressor_bus().block.choice,
         BlockChoice::Compressor
+    );
+    harness.get_by_label("Close").click();
+    harness.run();
+}
+
+#[test]
+fn the_mixer_has_a_chorus_bus_the_tracks_send_into() {
+    use gscore_app::chain_settings::BlockChoice;
+
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    harness.get_by_label("Chorus bus level");
+    // Its fader turns the chorused signal down, and its mute silences it.
+    let fader = harness.get_by_label("Chorus bus level").rect();
+    let start = fader.center();
+    harness.hover_at(start);
+    harness.drag_at(start);
+    harness.run();
+    for step in 1..=4 {
+        harness.hover_at(start + egui::vec2(0.0, 8.0 * step as f32));
+        harness.run();
+    }
+    harness.drop_at(start + egui::vec2(0.0, 32.0));
+    harness.run();
+    assert!(harness.state().playback().chorus_bus().level < 127);
+    harness.get_by_label("Mute chorus bus").click();
+    harness.run();
+    assert!(harness.state().playback().chorus_bus().muted);
+    harness.get_by_label("Mute chorus bus").click();
+    harness.run();
+    // Its window holds the chorus, all wet (the tracks' Chorus knobs are the sends).
+    harness
+        .get_by_label("Sound chain for the chorus bus")
+        .click();
+    harness.run();
+    harness.snapshot("chorus_bus_window");
+    let bus = harness.state().playback().chorus_bus();
+    assert_eq!(bus.block.choice, BlockChoice::Chorus);
+    assert!((bus.block.mix - 1.0).abs() < 1e-6);
+    for knob in ["Rate", "Depth"] {
+        assert!(harness.query_all_by_label(knob).next().is_some(), "{knob}");
+    }
+    assert!(
+        harness.query_all_by_label("Mix").next().is_none(),
+        "an all-wet bus has no mix"
+    );
+    // It can be turned off, and back on.
+    harness.get_by_label("None").click();
+    harness.run();
+    assert_eq!(
+        harness.state().playback().chorus_bus().block.choice,
+        BlockChoice::Empty
+    );
+    harness.get_by_label("Stereo chorus").click();
+    harness.run();
+    assert_eq!(
+        harness.state().playback().chorus_bus().block.choice,
+        BlockChoice::Chorus
     );
     harness.get_by_label("Close").click();
     harness.run();
@@ -3083,18 +3161,22 @@ fn a_drum_tracks_window_edits_the_kits_parts() {
     harness.get_by_label("Sound chain").click();
     harness.run();
     harness.run();
-    // The kit's own chain (the drum bus) is shown first: a compressor.
+    // The kit's own chain (the drum bus) is shown first, empty until the owner designs
+    // the defaults: the kit plays as the SoundFont renders it.
     harness.get_by_label("Part");
-    harness.get_by_label("Block 1: Comp");
-    // A part's board: the kick's EQ and compressor.
+    harness.get_by_label("Block 1: +");
+    // A part's board is empty too.
     harness.get_by_label("Kick").click();
     harness.run();
-    harness.get_by_label("Block 1: EQ");
-    harness.get_by_label("Block 2: Comp");
+    harness.get_by_label("Block 1: +");
     harness.snapshot("sound_chain_drum_kick");
-    // A knob moved is the kick's tone in the song from then on (an edit with undo), and
-    // this machine's kit keeps its own.
-    harness.get_by_label("Block 2: Comp").click();
+    // A block added to the kick is the kick's tone in the song from then on (an edit with
+    // undo), and this machine's kit keeps its own.
+    harness.get_by_label("Block 1: +").click();
+    harness.run();
+    harness.get_by_label("Compressor").click();
+    harness.run();
+    harness.get_by_label("Block 1: Comp").click();
     harness.run();
     harness.get_by_label("Input value").click();
     harness.run();
@@ -3105,10 +3187,10 @@ fn a_drum_tracks_window_edits_the_kits_parts() {
     harness.run();
     let kick = song_drum_part(&harness, "kick").expect("the kick's tone is in the song");
     assert!(
-        (kick.chain.blocks[1].input_db - 12.0).abs() < 1e-6,
+        (kick.chain.blocks[0].input_db - 12.0).abs() < 1e-6,
         "{kick:?}"
     );
-    assert_eq!(kick.chain.blocks[0].choice, BlockChoice::Eq);
+    assert_eq!(kick.chain.blocks[0].choice, BlockChoice::Compressor);
     assert_eq!(kick.level, 127);
     assert_ne!(
         harness
@@ -3136,10 +3218,10 @@ fn a_drum_tracks_window_edits_the_kits_parts() {
             .kit_drum_part_chain(DrumPart::Kick),
         "back to the kit's kick"
     );
-    // Back to the kit: the track's own chain, the drum bus.
+    // Back to the kit: the track's own chain, the drum bus (empty).
     harness.get_by_label("Kit").click();
     harness.run();
-    harness.get_by_label("Block 1: Comp");
+    harness.get_by_label("Block 1: +");
     harness.get_by_label("Close").click();
     harness.run();
 }

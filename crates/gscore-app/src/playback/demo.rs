@@ -39,57 +39,25 @@ const fn step(string: u8, fret: u8, beat: f32, beats: f32) -> Step {
     }
 }
 
-const fn muted(string: u8, fret: u8, beat: f32) -> Step {
-    Step {
-        palm_mute: true,
-        ..step(string, fret, beat, 0.5)
-    }
-}
-
-const fn hammered(string: u8, fret: u8, beat: f32, beats: f32) -> Step {
-    Step {
-        attack: Attack::Legato,
-        ..step(string, fret, beat, beats)
-    }
-}
-
-/// An E major chord struck down, string 6 first, a few milliseconds apart.
+/// An E major chord struck down, string 6 first, a few milliseconds apart: the preview's
+/// first (and only) chord, so a tone is heard at once without waiting through a phrase.
 const fn strum(string: u8, fret: u8) -> Step {
     Step {
         stroke: Some(StrokeDirection::Down),
-        ..step(string, fret, 2.0 + (6 - string) as f32 * 0.03, 2.0)
+        ..step(string, fret, (6 - string) as f32 * 0.03, 2.0)
     }
 }
 
-const GUITAR_PHRASE: [Step; 15] = [
-    step(6, 0, 0.0, 2.0),
+const GUITAR_PHRASE: [Step; 6] = [
     strum(6, 0),
     strum(5, 2),
     strum(4, 2),
     strum(3, 1),
     strum(2, 0),
     strum(1, 0),
-    muted(6, 0, 4.0),
-    muted(6, 0, 4.5),
-    muted(6, 0, 5.0),
-    muted(6, 3, 5.5),
-    step(3, 7, 6.0, 0.5),
-    hammered(3, 9, 6.5, 0.5),
-    step(2, 8, 7.0, 0.5),
-    step(1, 7, 7.5, 2.5),
 ];
 
-const BASS_PHRASE: [Step; 9] = [
-    step(4, 0, 0.0, 2.0),
-    step(3, 0, 2.0, 1.0),
-    step(3, 2, 3.0, 1.0),
-    step(2, 2, 4.0, 2.0),
-    muted(4, 0, 6.0),
-    muted(4, 0, 6.5),
-    muted(4, 0, 7.0),
-    hammered(4, 2, 7.5, 0.5),
-    step(3, 2, 8.0, 2.0),
-];
+const BASS_PHRASE: [Step; 1] = [step(4, 0, 0.0, 2.0)];
 
 /// The phrase for `kind`, ready to play.
 pub(super) fn phrase(kind: StringKind, track: usize) -> Sequence {
@@ -139,7 +107,7 @@ pub(super) fn phrase(kind: StringKind, track: usize) -> Sequence {
         .map(|note| note.end)
         .max()
         .unwrap_or(0)
-        .saturating_add(tick(4.0));
+        .saturating_add(tick(2.0));
     let mut performance = Performance {
         tracks: vec![PerformanceTrack {
             // Played as this track of the song, so it is heard with that track's tone.
@@ -180,7 +148,7 @@ mod tests {
             let sequence = phrase(kind, 0);
             let performance = &sequence.performance;
             assert_eq!(performance.tracks[0].engine, TrackEngine::Modelled(kind));
-            assert!(performance.notes.len() >= 9);
+            assert!(!performance.notes.is_empty());
             let strings = performance.tracks[0].strings.len();
             assert!(
                 performance

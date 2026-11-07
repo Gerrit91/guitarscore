@@ -78,6 +78,8 @@ pub(crate) enum Icon {
     SpeedTrainer,
     /// The sound chain: a guitar stomp box (a pedal with two knobs and its footswitch).
     StompBox,
+    /// A filter (a funnel): narrows a list to what matches.
+    Filter,
 }
 
 /// The size of the compact icon buttons in the panels and the toolbar.
@@ -95,6 +97,12 @@ pub(crate) fn button(ui: &mut egui::Ui, icon: Icon, label: &str, tip: &str) -> R
 /// A [`button`] for the toolbar, with a larger drawn icon but the same layout size.
 pub(crate) fn toolbar_button(ui: &mut egui::Ui, icon: Icon, label: &str, tip: &str) -> Response {
     sized_button(ui, icon, label, tip, BUTTON, TOOLBAR_SHRINK)
+}
+
+/// A button larger than the compact ones, for an action that must not be overlooked (a
+/// track's sound chain).
+pub(crate) fn large_button(ui: &mut egui::Ui, icon: Icon, label: &str, tip: &str) -> Response {
+    sized_button(ui, icon, label, tip, vec2(38.0, 32.0), 4.0)
 }
 
 fn sized_button(
@@ -518,26 +526,80 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 Stroke::NONE,
             ));
         }
-        Icon::StompBox => {
-            // A pedal seen from above: a rounded box, two knobs, and the footswitch below.
-            let body = Rect::from_center_size(
-                center + vec2(0.0, -size * 0.04),
-                vec2(size * 0.8, size * 0.86),
+        Icon::Filter => {
+            // The same magnifying glass as ZoomIn and ZoomOut (without their sign): the
+            // clearest small sign for narrowing a list.
+            let radius = size * 0.32;
+            let lens = center + vec2(-size * 0.08, -size * 0.08);
+            painter.circle_stroke(lens, radius, stroke);
+            painter.line_segment(
+                [
+                    lens + Vec2::angled(std::f32::consts::FRAC_PI_4) * radius,
+                    rect.right_bottom() - vec2(size * 0.08, size * 0.08),
+                ],
+                stroke,
             );
-            painter.rect_stroke(body, 2.0, stroke, egui::StrokeKind::Inside);
-            for dx in [-size * 0.19, size * 0.19] {
-                painter.circle_stroke(
-                    pos2(center.x + dx, body.top() + size * 0.22),
-                    size * 0.08,
-                    stroke,
-                );
+        }
+        Icon::StompBox => {
+            // A pedal from the front: a tall rounded box with four corner screws, a meter
+            // window at the top, its knob below and the concentric footswitch at the
+            // bottom; a jack sticks out on either side.
+            let body = Rect::from_center_size(center, vec2(size * 0.68, size * 0.94));
+            painter.rect_stroke(body, size * 0.10, stroke, egui::StrokeKind::Inside);
+            let thin = Stroke::new((stroke.width * 0.7).max(0.7), stroke.color);
+            let dot = (size * 0.018).max(0.55);
+            for dx in [body.left() + size * 0.07, body.right() - size * 0.07] {
+                for dy in [body.top() + size * 0.06, body.bottom() - size * 0.06] {
+                    painter.circle_stroke(pos2(dx, dy), dot, thin);
+                }
+            }
+            // The meter: a window with a semicircle of ticks and a needle.
+            let meter = Rect::from_min_size(
+                pos2(body.left() + size * 0.11, body.top() + size * 0.12),
+                vec2(size * 0.46, size * 0.19),
+            );
+            painter.rect_stroke(meter, size * 0.02, thin, egui::StrokeKind::Inside);
+            let pivot = pos2(meter.center().x, meter.bottom() - size * 0.02);
+            let tick_outer = meter.width() * 0.42;
+            for step in 0..=6 {
+                let angle = std::f32::consts::PI + std::f32::consts::PI * step as f32 / 6.0;
+                let (sin, cos) = angle.sin_cos();
+                let at = |radius: f32| pos2(pivot.x + cos * radius, pivot.y + sin * radius);
+                painter.line_segment([at(tick_outer * 0.72), at(tick_outer)], thin);
             }
             painter.line_segment(
                 [
-                    pos2(center.x - size * 0.16, body.bottom() - size * 0.16),
-                    pos2(center.x + size * 0.16, body.bottom() - size * 0.16),
+                    pivot,
+                    pos2(pivot.x + size * 0.09, pivot.y - tick_outer * 0.78),
                 ],
-                stroke,
+                thin,
+            );
+            // The knob, with its pointer.
+            let knob = pos2(center.x, body.top() + size * 0.47);
+            painter.circle_stroke(knob, size * 0.09, thin);
+            painter.line_segment(
+                [knob, pos2(knob.x + size * 0.01, knob.y - size * 0.08)],
+                thin,
+            );
+            // The footswitch: two concentric circles.
+            let switch = pos2(center.x, body.top() + size * 0.76);
+            painter.circle_stroke(switch, size * 0.13, thin);
+            painter.circle_stroke(switch, size * 0.07, thin);
+            // The jacks on both sides.
+            let jack = center.y + size * 0.02;
+            painter.line_segment(
+                [
+                    pos2(body.left() - size * 0.05, jack),
+                    pos2(body.left(), jack),
+                ],
+                thin,
+            );
+            painter.line_segment(
+                [
+                    pos2(body.right(), jack),
+                    pos2(body.right() + size * 0.05, jack),
+                ],
+                thin,
             );
         }
         Icon::Tuner => {

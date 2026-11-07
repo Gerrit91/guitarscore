@@ -192,6 +192,17 @@ impl Playback {
         self.string_chains = chains;
     }
 
+    /// The user's saved tones, which the default of a program without a tone of its own
+    /// starts on.
+    pub fn string_presets(&self) -> &[crate::settings::ChainPreset] {
+        &self.string_presets
+    }
+
+    /// Takes the user's saved tones (after one was saved or deleted).
+    pub fn store_string_presets(&mut self, presets: Vec<crate::settings::ChainPreset>) {
+        self.string_presets = presets;
+    }
+
     /// The tones set for track presets (by General MIDI program), local to this machine.
     pub fn preset_tones(&self) -> &[PresetTone] {
         &self.preset_tones
@@ -278,11 +289,32 @@ impl Playback {
         }
     }
 
-    /// The built-in tone of `program` for strings of `kind`: the library's tone for that
-    /// preset (an electric guitar program gets its own sound, not a generic one), with the
-    /// kind's default when the program has none of that kind.
+    /// The default tone of `program` for strings of `kind`: the owner's saved preset when
+    /// one matches, else the built-in library's tone. This is the tone as it was saved (so
+    /// the pickers recognise it); playback normalizes a default's loudness just before it
+    /// builds the chain (see `send_tones`).
     pub fn default_tone_for(&self, program: u8, kind: StringKind) -> Tone {
-        crate::tone_library::for_program(program, kind).tone.clone()
+        crate::tone_library::saved_default_for(program, kind, &self.string_presets).map_or_else(
+            || crate::tone_library::for_program(program, kind).tone.clone(),
+            |preset| Tone {
+                kind,
+                sound: preset.sound,
+                chain: preset.chain.clone(),
+            },
+        )
+    }
+
+    /// The name of the tone `default_tone_for` returns (a saved preset's or a built-in
+    /// tone's), for the picker's "default" marker.
+    pub fn default_tone_name(&self, program: u8, kind: StringKind) -> String {
+        crate::tone_library::default_tone_name(program, kind, &self.string_presets)
+    }
+
+    /// Whether `default_tone_for` falls back to the built-in library (no saved preset of
+    /// that kind): only those need their loudness matched; a saved preset keeps the levels
+    /// the owner dialed in.
+    fn built_in_default(&self, program: u8, kind: StringKind) -> bool {
+        crate::tone_library::saved_default_for(program, kind, &self.string_presets).is_none()
     }
 
     /// Gives the preset `program` a tone of its own (heard at once, and on every track with
@@ -384,6 +416,12 @@ impl Playback {
         if !self.compressor_sent.sent {
             self.send_compressor_bus();
         }
+        if !self.chorus_sent.sent {
+            self.send_chorus_bus();
+        }
+        if self.master_sent.is_none() {
+            self.send_master_chain();
+        }
         self.tone_targets = targets(sequence);
         self.send_tones();
         self.send_drum_parts();
@@ -407,16 +445,20 @@ impl Playback {
             }
             for part in crate::chain_settings::DrumPart::ALL {
                 let chain = self.track_drum_part_chain(target.track, part);
-                let level = self.track_drum_part_level(target.track, part);
+                let (level, muted, soloed) = self.track_drum_part_mix(target.track, part);
                 let key = (target.track, part.index());
                 let sent = self.sent_parts.get(&key).cloned();
-                let chain_same = sent.as_ref().is_some_and(|(sent, _)| *sent == chain);
-                let level_same = sent.as_ref().is_some_and(|(_, sent)| *sent == level);
-                if chain_same && level_same {
+                let chain_same = sent.as_ref().is_some_and(|(sent, ..)| *sent == chain);
+                let mix_same =
+                    sent.as_ref()
+                        .is_some_and(|(_, sent_level, sent_muted, sent_soloed)| {
+                            (*sent_level, *sent_muted, *sent_soloed) == (level, muted, soloed)
+                        });
+                if chain_same && mix_same {
                     continue;
                 }
                 match sent {
-                    Some((sent, _)) if sent.same_structure(&chain) => {
+                    Some((sent, ..)) if sent.same_structure(&chain) => {
                         knobs.push((key, chain.knobs()));
                     }
                     _ => {
@@ -424,10 +466,10 @@ impl Playback {
                         prepare.push((key, spec, chain.knobs()));
                     }
                 }
-                if !level_same {
-                    levels.push((key, level));
+                if !mix_same {
+                    levels.push((key, level, muted, soloed));
                 }
-                self.sent_parts.insert(key, (chain, level));
+                self.sent_parts.insert(key, (chain, level, muted, soloed));
             }
         }
         #[cfg(not(target_arch = "wasm32"))]
@@ -440,8 +482,10 @@ impl Playback {
             for ((track, part), settings) in knobs {
                 let _ = player.set_part_chain_settings(track, part, settings);
             }
-            for ((track, part), level) in levels {
+            for ((track, part), level, muted, soloed) in levels {
                 let _ = player.set_part_level(track, part, level);
+                let _ = player.set_part_mute(track, part, muted);
+                let _ = player.set_part_solo(track, part, soloed);
             }
         }
         #[cfg(target_arch = "wasm32")]
@@ -492,10 +536,27 @@ impl Playback {
                         }),
                 },
                 Some(kind) => {
-                    let tone = own
+                    let default = own.is_none() && preset.is_none();
+                    let mut tone = own
                         .or(preset)
                         .unwrap_or_else(|| self.default_tone_for(target.program, kind));
-                    let dialed_in = self.tones.contains_key(&target.track)
+                    if default {
+                        // A saved preset keeps its chain levels (the owner's); only the
+                        // string level is matched to the kind, so a clean preset saved
+                        // lower is not weak beside an amp preset. A built-in fallback has
+                        // its chain trims matched too.
+                        let target_level = self.string_sounds.get(kind).level;
+                        if self.built_in_default(target.program, kind) {
+                            crate::tone_library::normalize_default(&mut tone, target_level);
+                        } else {
+                            crate::tone_library::normalize_string_level(&mut tone, target_level);
+                        }
+                    }
+                    // A default tone brings its own string sound too (the owner's saved
+                    // preset may differ from the kind's settings); only a SoundFont track
+                    // stays without one.
+                    let dialed_in = default
+                        || self.tones.contains_key(&target.track)
                         || self
                             .preset_tone(target.program)
                             .is_some_and(|own| own.kind == kind);
@@ -597,7 +658,13 @@ impl Playback {
         let defaults = super::STRING_KINDS
             .iter()
             .map(|&kind| {
-                let tone = crate::tone_library::default_for_kind(kind).tone.clone();
+                let mut tone = self.default_tone_for(0, kind);
+                let target_level = self.string_sounds.get(kind).level;
+                if self.built_in_default(0, kind) {
+                    crate::tone_library::normalize_default(&mut tone, target_level);
+                } else {
+                    crate::tone_library::normalize_string_level(&mut tone, target_level);
+                }
                 let spec = self.chain_spec(&tone.chain);
                 (kind, tone.sound.model(), spec, tone.chain.knobs())
             })
@@ -607,7 +674,13 @@ impl Playback {
         let program_defaults = (24..=39_u8)
             .filter_map(|program| {
                 let kind = StringKind::for_program(program)?;
-                let tone = crate::tone_library::for_program(program, kind).tone.clone();
+                let mut tone = self.default_tone_for(program, kind);
+                let target_level = self.string_sounds.get(kind).level;
+                if self.built_in_default(program, kind) {
+                    crate::tone_library::normalize_default(&mut tone, target_level);
+                } else {
+                    crate::tone_library::normalize_string_level(&mut tone, target_level);
+                }
                 let spec = self.chain_spec(&tone.chain);
                 Some((program, kind, tone.sound.model(), spec, tone.chain.knobs()))
             })
@@ -659,6 +732,40 @@ impl Playback {
     pub fn set_compressor_bus(&mut self, bus: crate::settings::CompressorBus) {
         self.compressor_bus = bus.sanitized();
         self.send_compressor_bus();
+    }
+
+    /// The mixer's chorus bus as it is set.
+    pub fn chorus_bus(&self) -> crate::settings::ChorusBus {
+        self.chorus_bus.clone()
+    }
+
+    /// Takes the chorus bus without sending it (when the settings load).
+    pub fn store_chorus_bus(&mut self, bus: crate::settings::ChorusBus) {
+        self.chorus_bus = bus.sanitized();
+    }
+
+    /// Sets the chorus bus, heard at once (a new block prepares it, knobs go straight to
+    /// the running one).
+    pub fn set_chorus_bus(&mut self, bus: crate::settings::ChorusBus) {
+        self.chorus_bus = bus.sanitized();
+        self.send_chorus_bus();
+    }
+
+    /// The master's chain as the synthesizer has it (the song's, else this machine's).
+    pub fn master_chain(&self) -> ChainSetting {
+        self.master_chain.clone()
+    }
+
+    /// Takes the master's chain without sending it (when the settings load).
+    pub fn store_master_chain(&mut self, chain: ChainSetting) {
+        self.master_chain = chain;
+    }
+
+    /// Sets the master's chain, heard at once (a new block prepares it, knobs go straight
+    /// to the running one).
+    pub fn set_master_chain(&mut self, chain: ChainSetting) {
+        self.master_chain = chain;
+        self.send_master_chain();
     }
 
     /// The chain a bus runs, as the engine takes it, and its knob values. A bus runs one
@@ -713,6 +820,7 @@ impl Playback {
         let sent = match which {
             gscore_audio::Bus::Reverb => &mut self.reverb_sent,
             gscore_audio::Bus::Compressor => &mut self.compressor_sent,
+            gscore_audio::Bus::Chorus => &mut self.chorus_sent,
         };
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(super::Active::Synth(player)) = &self.player {
@@ -744,6 +852,41 @@ impl Playback {
             bus.level,
             bus.muted,
         );
+    }
+
+    /// Prepares the chorus bus on the synthesizer's thread (or sends its knobs).
+    pub(super) fn send_chorus_bus(&mut self) {
+        let bus = self.chorus_bus.clone();
+        self.send_bus(gscore_audio::Bus::Chorus, &bus.block, bus.level, bus.muted);
+    }
+
+    /// Prepares the master's chain on the synthesizer's thread, or sends only its knob
+    /// values when it still holds the same blocks. An empty chain removes it.
+    pub(super) fn send_master_chain(&mut self) {
+        if !self.synth_running() {
+            return;
+        }
+        let chain = self.master_chain.clone();
+        if self.master_sent.as_ref() == Some(&chain) {
+            return;
+        }
+        let spec = self.chain_spec(&chain);
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(super::Active::Synth(player)) = &self.player {
+            match &self.master_sent {
+                Some(sent) if sent.same_structure(&chain) => {
+                    let _ = player.set_master_chain_settings(chain.knobs());
+                }
+                _ => {
+                    if let Err(error) = player.set_master_chain(spec, chain.knobs()) {
+                        self.chain_notices.push(error.to_string());
+                    }
+                }
+            }
+            self.master_sent = Some(chain);
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = (spec, chain);
     }
 
     /// The chain a drum track with no tone of its own runs: the drum bus (a light
@@ -791,9 +934,36 @@ impl Playback {
 
     /// The mixing level `part` of `track` plays (0-127, 127 unity).
     pub fn track_drum_part_level(&self, track: usize, part: crate::chain_settings::DrumPart) -> u8 {
+        self.track_drum_part(track, part).level
+    }
+
+    /// `part` of a drum track as it is mixed: its level (0-127, 127 unity), its mute and
+    /// its solo inside the kit.
+    pub fn track_drum_part(
+        &self,
+        track: usize,
+        part: crate::chain_settings::DrumPart,
+    ) -> super::TrackDrumPart {
         self.track_drum_parts(track)
             .and_then(|parts| parts.iter().find(|own| own.part == part))
-            .map_or(127, |own| own.level.min(127))
+            .cloned()
+            .unwrap_or(super::TrackDrumPart {
+                part,
+                chain: ChainSetting::default(),
+                level: 127,
+                muted: false,
+                soloed: false,
+            })
+    }
+
+    /// The mixing level, mute and solo of `part` of `track`.
+    pub fn track_drum_part_mix(
+        &self,
+        track: usize,
+        part: crate::chain_settings::DrumPart,
+    ) -> (u8, bool, bool) {
+        let own = self.track_drum_part(track, part);
+        (own.level.min(127), own.muted, own.soloed)
     }
 
     /// Hands the open song's per-track drum parts to playback, heard at once.
@@ -847,8 +1017,41 @@ impl Playback {
     pub fn export_buses(&mut self) -> gscore_audio::BusChoices {
         let reverb = self.reverb_bus.clone();
         let compressor = self.compressor_bus.clone();
+        let chorus = self.chorus_bus.clone();
+        let master = self.master_chain.clone();
         let (reverb_spec, reverb_settings) = self.bus_parts(&reverb.block);
         let (comp_spec, comp_settings) = self.bus_parts(&compressor.block);
+        let (chorus_spec, chorus_settings) = self.bus_parts(&chorus.block);
+        let (master_spec, master_settings) = {
+            let mut settings = [BlockSettings::default(); BLOCKS];
+            for (slot, block) in settings.iter_mut().zip(&master.blocks) {
+                *slot = block.knobs();
+            }
+            let mut spec = ChainSpec::default();
+            for (slot, block) in spec.blocks.iter_mut().zip(&master.blocks) {
+                *slot = match (block.choice, &block.file) {
+                    (BlockChoice::Empty, _) => None,
+                    (BlockChoice::Chorus, _) => Some(BlockKind::Chorus),
+                    (BlockChoice::Compressor, _) => Some(BlockKind::Compressor),
+                    (BlockChoice::Eq, _) => Some(BlockKind::Eq),
+                    (BlockChoice::Amp, _) => Some(BlockKind::Amp),
+                    (BlockChoice::Drive, _) => Some(BlockKind::Drive),
+                    (BlockChoice::Reverb, _) => Some(BlockKind::Reverb),
+                    (BlockChoice::Cabinet | BlockChoice::Room, None) => None,
+                    (choice, Some(file)) => match self.impulse(file) {
+                        Ok(response) if choice == BlockChoice::Room => {
+                            Some(BlockKind::room(response, block.room_length()))
+                        }
+                        Ok(response) => Some(BlockKind::Impulse(response)),
+                        Err(error) => {
+                            self.chain_notices.push(error);
+                            None
+                        }
+                    },
+                };
+            }
+            (spec, settings)
+        };
         gscore_audio::BusChoices {
             reverb: Some(gscore_audio::BusChoice {
                 spec: reverb_spec,
@@ -862,6 +1065,20 @@ impl Playback {
                 level: compressor.level,
                 muted: compressor.muted,
             }),
+            chorus: Some(gscore_audio::BusChoice {
+                spec: chorus_spec,
+                settings: chorus_settings,
+                level: chorus.level,
+                muted: chorus.muted,
+            }),
+            master: (!gscore_audio::chain_is_empty(&master_spec)).then_some(
+                gscore_audio::BusChoice {
+                    spec: master_spec,
+                    settings: master_settings,
+                    level: 127,
+                    muted: false,
+                },
+            ),
             // Each track's Comp send, once the mixer has them (step 5).
             comp_sends: Vec::new(),
         }

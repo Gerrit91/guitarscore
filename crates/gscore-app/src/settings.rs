@@ -544,6 +544,54 @@ impl CompressorBus {
     }
 }
 
+/// The mixer's chorus bus: the shared chorus every track sends into with its Chorus knob
+/// (MIDI CC 93), after its fader. It runs all wet, so the sends alone set how much each
+/// track gives it and the dry signal stays as it is. Kept in the settings (it is the
+/// mixer's, not the song's, unless the song brings its own).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ChorusBus {
+    /// The bus's level, 0-127 (127 plays it as it comes; the Chorus knobs are the sends).
+    pub level: u8,
+    pub muted: bool,
+    /// What the bus runs: a chorus, or nothing. Its knobs apply; the mix is always 1 (the
+    /// bus runs all wet and returns only the chorused signal).
+    pub block: crate::chain_settings::BlockSetting,
+}
+
+impl Default for ChorusBus {
+    fn default() -> Self {
+        // A classic General MIDI chorus: a slow, wide drift around 14 ms.
+        let mut block =
+            crate::chain_settings::BlockSetting::of(crate::chain_settings::BlockChoice::Chorus);
+        block.chorus_rate = 0.6;
+        block.chorus_depth = 3.0;
+        block.mix = 1.0;
+        ChorusBus {
+            level: 127,
+            muted: false,
+            block,
+        }
+    }
+}
+
+impl ChorusBus {
+    /// Every value in its range; a chorus bus runs a chorus or nothing, never a reverb or
+    /// a cabinet.
+    pub fn sanitized(mut self) -> Self {
+        self.level = self.level.min(127);
+        if !matches!(
+            self.block.choice,
+            crate::chain_settings::BlockChoice::Empty | crate::chain_settings::BlockChoice::Chorus
+        ) {
+            self.block =
+                crate::chain_settings::BlockSetting::of(crate::chain_settings::BlockChoice::Chorus);
+        }
+        self.block.mix = 1.0;
+        self
+    }
+}
+
 /// A drum part's tone the user dialed in (a kick's EQ and compressor, say), kept in the
 /// settings: every drum track's kit plays it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -673,6 +721,10 @@ pub struct Settings {
     pub reverb_bus: ReverbBus,
     /// The mixer's compressor bus (parallel compression).
     pub compressor_bus: CompressorBus,
+    /// The mixer's chorus bus (the tracks' Chorus values).
+    pub chorus_bus: ChorusBus,
+    /// The master's effect chain when the song has none of its own (empty: none).
+    pub master_chain: crate::chain_settings::ChainSetting,
     /// The MIDI port chosen, if any.
     pub midi_port: Option<String>,
     /// Bend shapes saved as presets in the bend editor.
@@ -725,6 +777,8 @@ impl Default for Settings {
             string_chains: crate::chain_settings::StringChains::default(),
             reverb_bus: ReverbBus::default(),
             compressor_bus: CompressorBus::default(),
+            chorus_bus: ChorusBus::default(),
+            master_chain: crate::chain_settings::ChainSetting::default(),
             string_presets: Vec::new(),
             preset_tones: Vec::new(),
             drum_parts: Vec::new(),
@@ -916,6 +970,7 @@ impl Settings {
         }
         self.reverb_bus = std::mem::take(&mut self.reverb_bus).sanitized();
         self.compressor_bus = std::mem::take(&mut self.compressor_bus).sanitized();
+        self.chorus_bus = std::mem::take(&mut self.chorus_bus).sanitized();
         // Panel sizes: a broken or huge value must not take the window over.
         self.track_panel_width = fit_panel(self.track_panel_width, PANEL_WIDTH_RANGE);
         self.edit_panel_width = fit_panel(self.edit_panel_width, PANEL_WIDTH_RANGE);
@@ -1009,6 +1064,24 @@ mod tests {
         assert!((clean.block.mix - 1.0).abs() < 1e-6);
         assert_eq!(clean.level, 127);
         assert_eq!(clean.block.choice, BlockChoice::Room);
+    }
+
+    #[test]
+    fn the_chorus_bus_runs_a_chorus_all_wet() {
+        use crate::chain_settings::BlockChoice;
+
+        let mut bus = ChorusBus::default();
+        assert_eq!(bus.block.choice, BlockChoice::Chorus);
+        // Only a chorus or nothing; a compressor is not a chorus.
+        bus.block.choice = BlockChoice::Compressor;
+        assert_eq!(bus.clone().sanitized().block.choice, BlockChoice::Chorus);
+        // All wet, whatever the block says, and the level in its range.
+        bus.block.choice = BlockChoice::Chorus;
+        bus.block.mix = 0.2;
+        bus.level = 200;
+        let clean = bus.sanitized();
+        assert!((clean.block.mix - 1.0).abs() < 1e-6);
+        assert_eq!(clean.level, 127);
     }
 
     #[test]

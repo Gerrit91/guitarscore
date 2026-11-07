@@ -40,6 +40,10 @@ pub(crate) enum Event {
     /// The impulse response dialog of the mixer's reverb bus closed; `None` if cancelled.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     PickedBusImpulse(Option<PathBuf>),
+    /// The impulse response dialog of place `place` of the master's chain closed; `None`
+    /// if cancelled.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    PickedMasterImpulse { place: usize, path: Option<PathBuf> },
     /// The export dialog closed; `None` if it was cancelled.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     PickedExport {
@@ -509,6 +513,32 @@ impl Tasks {
     /// The reverb bus's impulse response cannot be chosen in the browser build yet.
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn pick_bus_impulse(&mut self, _ctx: &egui::Context) -> Result<(), String> {
+        Err("loading impulse responses is not available in the browser build yet".to_owned())
+    }
+
+    /// Shows the impulse response dialog for place `place` of the master's chain.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn pick_master_impulse(
+        &mut self,
+        place: usize,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        self.spawn("impulse response dialog", ctx, move || {
+            let path = rfd::FileDialog::new()
+                .set_title("Choose an impulse response (WAV)")
+                .add_filter("WAV audio", &["wav"])
+                .pick_file();
+            Event::PickedMasterImpulse { place, path }
+        })
+    }
+
+    /// The master's impulse response cannot be chosen in the browser build yet.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn pick_master_impulse(
+        &mut self,
+        _place: usize,
+        _ctx: &egui::Context,
+    ) -> Result<(), String> {
         Err("loading impulse responses is not available in the browser build yet".to_owned())
     }
 
