@@ -3955,3 +3955,19 @@ needed for a much larger font); owner listening check.
 - Tests: reordered and inserted tracks, a deleted track, a changed instrument, ambiguous
   names, old blocks without identities, and an identity with non-ASCII text surviving the
   block.
+
+## 2026-11-07 — Part A, 4: the per-track state lives on the track
+
+- `gscore_gp::Track` gains `sound_state`: GuitarScore's opaque JSON payload for a track
+  (what plays it, its tone and chain, its sends, ...), never written to a Guitar Pro file
+  (the app saves it in the notes block). Because it sits on the track itself, every track
+  command already carries it: a moved track keeps it, a duplicate copies it, a delete takes
+  it away and undo restores it, and a new track starts without one (`fresh_track` clears
+  it).
+- `gscore-model`: `TrackView::sound_state`, `Song::set_track_sound_state` (undone through
+  `ChangeKind::TrackSoundState`, payload bounded at 256 KiB), and `differences` now compares
+  it, so undo tests notice a lost state.
+- Test: set on two tracks, then duplicate, move, delete, insert and clear, with undo after
+  each; a missing track and an oversized payload are refused without changing the song.
+- Still open: the app still reads and writes its four tab maps; wiring it to this field is
+  next.

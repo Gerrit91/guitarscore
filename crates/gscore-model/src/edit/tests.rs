@@ -628,6 +628,88 @@ fn deleting_and_duplicating_tracks_undo_exactly() {
 }
 
 #[test]
+fn a_tracks_sound_state_follows_insert_delete_duplicate_and_move() {
+    let mut song = two_tracks();
+    assert_eq!(track_names(&song), ["Lead", "Bass"]);
+    let lead = r#"{"comp_send":96,"tone":"lead"}"#.to_owned();
+    let bass = r#"{"comp_send":0,"tone":"bass"}"#.to_owned();
+    let _ = song
+        .set_track_sound_state(TrackIndex::new(0), Some(lead.clone()))
+        .unwrap();
+    let _ = song
+        .set_track_sound_state(TrackIndex::new(1), Some(bass.clone()))
+        .unwrap();
+    let before = song.clone();
+
+    // A duplicated track copies the state.
+    let change = song.duplicate_track(TrackIndex::new(0)).unwrap();
+    let states: Vec<Option<&str>> = song.tracks().map(|track| track.sound_state()).collect();
+    assert_eq!(
+        states,
+        [
+            Some(lead.as_str()),
+            Some(lead.as_str()),
+            Some(bass.as_str())
+        ]
+    );
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+
+    // A moved track keeps its state.
+    let change = song
+        .move_track(TrackIndex::new(0), TrackIndex::new(1))
+        .unwrap();
+    let states: Vec<Option<&str>> = song.tracks().map(|track| track.sound_state()).collect();
+    assert_eq!(states, [Some(bass.as_str()), Some(lead.as_str())]);
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+
+    // A deleted track takes its state with it, and undo brings it back.
+    let change = song.delete_track(TrackIndex::new(0)).unwrap();
+    assert_eq!(track_names(&song), ["Bass"]);
+    assert_eq!(
+        song.track(TrackIndex::new(0)).unwrap().sound_state(),
+        Some(bass.as_str())
+    );
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+
+    // A new track starts without one; its neighbours keep theirs.
+    let change = song.insert_track(TrackIndex::new(1)).unwrap();
+    assert_eq!(song.track(TrackIndex::new(1)).unwrap().sound_state(), None);
+    assert_eq!(
+        song.track(TrackIndex::new(0)).unwrap().sound_state(),
+        Some(lead.as_str())
+    );
+    assert_eq!(
+        song.track(TrackIndex::new(2)).unwrap().sound_state(),
+        Some(bass.as_str())
+    );
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+
+    // Setting and clearing are edits with undo too.
+    let change = song
+        .set_track_sound_state(TrackIndex::new(0), None)
+        .unwrap();
+    assert_eq!(song.track(TrackIndex::new(0)).unwrap().sound_state(), None);
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+
+    // A missing track, and a payload beyond the bound, are refused without a change.
+    assert!(
+        song.set_track_sound_state(TrackIndex::new(9), None)
+            .is_err()
+    );
+    let huge = "x".repeat(300 * 1024);
+    assert!(
+        song.set_track_sound_state(TrackIndex::new(0), Some(huge))
+            .is_err()
+    );
+    assert_unchanged(&before, &song);
+}
+
+#[test]
 fn moving_a_track_changes_the_order_and_undo_puts_it_back() {
     let mut song = two_tracks();
     let before = song.clone();

@@ -85,6 +85,14 @@ impl<'a> TrackView<'a> {
             .and_then(InstrumentSymbol::from_id)
     }
 
+    /// GuitarScore's own sound state for this track, if it has any: the opaque payload the
+    /// app serializes (what plays the track, its tone and chain, its sends, ...). It has
+    /// no field in the Guitar Pro format and is saved in the song's notes; see
+    /// [`crate::Song::set_track_sound_state`].
+    pub fn sound_state(&self) -> Option<&'a str> {
+        self.inner.sound_state.as_deref()
+    }
+
     /// The tuning, from string 1 (highest) down, or `None` if the track has none: it is
     /// not a string instrument (Guitar Pro still stores E standard for vocal and piano
     /// tracks), the file stores no tuning, or every string is at pitch 0 (drum kits).

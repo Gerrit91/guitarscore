@@ -293,3 +293,12 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     writer emits them back unchanged. `Track` gains `gpif_sounds` and
     `gpif_audio_engine`; GP3-5/GPX leave them `None`. Tests in
     `gpif_import/sounds_tests.rs` and `gpif/raw_tests`.
+44. GuitarScore's own per-track sound state (`src/model/track.rs`, 2026-11-07): a track
+    gains `sound_state`, an opaque JSON payload the app owns (what plays the track, its
+    tone and chain, its sends, ...) for settings the Guitar Pro format has no field for.
+    It is never read from or written to a Guitar Pro file; the app stores it in the song's
+    notes block. It lives on `Track` so that inserting, deleting, duplicating and moving a
+    track — and their undo, which keeps or restores whole `Track`s — carry it along like
+    the name or the color. `gscore-model` exposes it through `TrackView::sound_state` and
+    `Song::set_track_sound_state`; a new track starts without one. Test:
+    `edit::tests::a_tracks_sound_state_follows_insert_delete_duplicate_and_move`.

@@ -145,6 +145,7 @@ fn compare_track(diff: &mut Diffs, a: &TrackView<'_>, b: &TrackView<'_>) {
         a.tuning_name().ok(),
         b.tuning_name().ok(),
     );
+    diff.check(&at, "sound state", a.sound_state(), b.sound_state());
     diff.check(&at, "measures", a.measures().len(), b.measures().len());
     for (ma, mb) in a.measures().zip(b.measures()) {
         compare_measure(diff, &at, &ma, &mb);

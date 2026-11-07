@@ -1,7 +1,10 @@
-//! Track sound edits: the General MIDI program and the drum-kit flag.
+//! Track sound edits: the General MIDI program, the drum-kit flag, and GuitarScore's own
+//! opaque sound payload (which the app saves in the song's notes, not in the file).
 //!
-//! Both are per-track settings, so they use [`Song::edit_track_settings`] and keep every
-//! measure's layout stamp. Playback reads them through [`crate::Song::track_sound`].
+//! All are per-track settings, so they use [`Song::edit_track_settings`] and keep every
+//! measure's layout stamp. Playback reads the program and the drum flag through
+//! [`crate::Song::track_sound`], and the app payload through
+//! [`crate::TrackView::sound_state`].
 
 use super::super::{Change, ChangeKind, track_mut};
 use crate::error::ModelError;
@@ -12,6 +15,10 @@ use crate::song::Song;
 const DRUM_KIT: &str = "drumKit";
 /// The name the track panel shows for a drum kit that had no instrument type.
 const DRUMS: &str = "Drums";
+
+/// Longest sound-state payload accepted for one track. Ours is a few kilobytes; this
+/// bounds a hostile file or a hand-edited notes block.
+const MAX_TRACK_SOUND_STATE_BYTES: usize = 256 * 1024;
 
 impl Song {
     /// Sets the track's General MIDI program (0-127).
@@ -56,6 +63,33 @@ impl Song {
                     previous_type,
                     previous_name,
                 },
+            })
+        })
+    }
+
+    /// Sets GuitarScore's own sound state for the track: the opaque payload the app
+    /// serializes (what plays it, its tone and chain, its sends, ...), or `None` for a
+    /// track at its defaults. It has no field in the Guitar Pro format and is saved in the
+    /// song's notes; keeping it on the track means every track edit and its undo carry it
+    /// along like the name or the color.
+    pub fn set_track_sound_state(
+        &mut self,
+        at: TrackIndex,
+        state: Option<String>,
+    ) -> Result<Change, ModelError> {
+        if state
+            .as_ref()
+            .is_some_and(|state| state.len() > MAX_TRACK_SOUND_STATE_BYTES)
+        {
+            return Err(ModelError::Invalid(format!(
+                "the track's sound state is longer than {MAX_TRACK_SOUND_STATE_BYTES} bytes"
+            )));
+        }
+        self.edit_track_settings(|inner| {
+            let track = track_mut(inner, at)?;
+            let previous = std::mem::replace(&mut track.sound_state, state);
+            Ok(Change {
+                kind: ChangeKind::TrackSoundState { at, previous },
             })
         })
     }

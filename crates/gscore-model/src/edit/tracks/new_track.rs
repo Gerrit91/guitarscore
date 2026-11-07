@@ -36,6 +36,8 @@ pub(super) fn fresh_track(
     track.visible = true;
     track.channel_index = channel;
     track.color = TrackColor::DEFAULT.rgb() as i32;
+    // A new track starts with its kind's default sound, not the neighbour's tone.
+    track.sound_state = None;
     track.measures = empty_measures(song)?;
     Ok(track)
 }
