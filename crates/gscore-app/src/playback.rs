@@ -358,7 +358,7 @@ impl Default for Playback {
             reported: None,
             paused_at: None,
             metronome: false,
-            modelled_guitars: false,
+            modelled_guitars: true,
             track_engines: Vec::new(),
             midi_routes: Vec::new(),
             primary_sequence: None,
@@ -2198,13 +2198,13 @@ mod tests {
         let engine = |playback: &mut Playback| {
             playback.build_sequence(&song).unwrap().performance.tracks[0].engine
         };
-        assert_eq!(engine(&mut playback), gscore_play::TrackEngine::SoundFont);
-        playback.set_modelled_guitars(&song, true).unwrap();
-        assert!(playback.modelled_guitars());
         assert!(matches!(
             engine(&mut playback),
             gscore_play::TrackEngine::Modelled(_)
         ));
+        playback.set_modelled_guitars(&song, false).unwrap();
+        assert!(!playback.modelled_guitars());
+        assert_eq!(engine(&mut playback), gscore_play::TrackEngine::SoundFont);
     }
 
     #[test]

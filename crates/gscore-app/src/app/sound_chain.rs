@@ -151,13 +151,13 @@ fn short(text: &str, chars: usize) -> String {
     cut
 }
 
-/// The port and channel of a track played by a hardware synthesizer.
-fn midi_out_controls(
+/// The port and channel of a track played by a hardware synthesizer. Returns the new route
+/// when either changed.
+pub(super) fn midi_out_controls(
     ui: &mut egui::Ui,
     player: &TrackPlayer,
     ports: &[String],
-    actions: &mut Actions,
-) {
+) -> Option<MidiOutRoute> {
     let mut route = player.midi_out.clone();
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new("Port").color(style::tokens(ui).text_weak));
@@ -209,7 +209,9 @@ fn midi_out_controls(
         .weak(),
     );
     if route != player.midi_out {
-        actions.midi_out = Some(route);
+        Some(route)
+    } else {
+        None
     }
 }
 
@@ -224,43 +226,19 @@ fn strings_editor(
 ) -> bool {
     let mut changed = false;
     ui.label(RichText::new("Played by").strong());
-    ui.horizontal_wrapped(|ui| {
-        // PM keeps the kind it had (or the one the track's preset stands for).
-        let modelled_kind = match player.engine {
-            TrackEngine::Modelled(kind) => Some(kind),
-            TrackEngine::SoundFont | TrackEngine::MidiOut => player.preset_kind,
-        };
-        let pm = TrackEngine::Modelled(modelled_kind.unwrap_or(StringKind::Steel));
-        let mut choice = |ui: &mut egui::Ui, engine: TrackEngine, label: &str, enabled: bool| {
-            let response = ui
-                .add_enabled(
-                    enabled,
-                    egui::Button::selectable(player.engine == engine, label),
-                )
-                .on_hover_text(match engine {
-                    TrackEngine::SoundFont => {
-                        "The internal synth plays the track with the SoundFont (General MIDI)"
-                    }
-                    TrackEngine::Modelled(_) => {
-                        "Physical modelling: the strings are synthesized and played through \
-                         the chain"
-                    }
-                    TrackEngine::MidiOut => {
-                        "A hardware synthesizer on a MIDI output port plays the track; its \
-                         sound does not come back through the mixer"
-                    }
-                });
-            if response.clicked() {
-                actions.engine = Some(engine);
-            }
-        };
-        choice(ui, TrackEngine::SoundFont, "MIDI synth", true);
-        choice(ui, pm, "PM Synthesis", player.strings);
-        #[cfg(not(target_arch = "wasm32"))]
-        choice(ui, TrackEngine::MidiOut, "MIDI out", true);
-    });
+    // PM keeps the kind it had (or the one the track's preset stands for).
+    let modelled_kind = match player.engine {
+        TrackEngine::Modelled(kind) => Some(kind),
+        TrackEngine::SoundFont | TrackEngine::MidiOut => player.preset_kind,
+    };
+    let pm = TrackEngine::Modelled(modelled_kind.unwrap_or(StringKind::Steel));
+    if let Some(engine) = super::tone_picker::source_switch(ui, player.engine, pm, player.strings) {
+        actions.engine = Some(engine);
+    }
     if player.engine == TrackEngine::MidiOut {
-        midi_out_controls(ui, player, ports, actions);
+        if let Some(route) = midi_out_controls(ui, player, ports) {
+            actions.midi_out = Some(route);
+        }
         return changed;
     }
     if !player.strings {
@@ -299,96 +277,65 @@ fn strings_editor(
     changed
 }
 
-/// The track's preset (its General MIDI program, whose tone the window edits), the kind of
-/// string it shows and that kind's default tone (what Built-in plays).
+/// The track's preset (its General MIDI program, whose tone the window edits) and the kind
+/// of string it shows.
 #[derive(Debug, Clone)]
 struct ShownPreset {
     program: u8,
     kind: StringKind,
-    default: Tone,
 }
 
-/// The saved tones: the one this preset plays, saving it (over it or under a new name),
-/// choosing another for the preset and deleting. A tone is the whole chain plus the string
-/// sound it was saved with, and the kind of string it belongs to. (Called tones so they
-/// are not mistaken for the track's preset, its General MIDI program; the settings still
-/// call them presets.)
+/// The saved tones: the one this track plays, saving it (over it or under a new name),
+/// choosing another from the library and deleting. A tone is the whole chain plus the
+/// string sound it was saved with, and the kind of string it belongs to. (Called tones so
+/// they are not mistaken for the track's preset, its General MIDI program; the settings
+/// still call them presets.) The table is the same one the track panel uses.
 fn preset_row(
     ui: &mut egui::Ui,
     shown: ShownPreset,
-    sound: &StringSound,
-    chain: &ChainSetting,
+    tone: &Tone,
     presets: &[ChainPreset],
     window: &mut SoundChainWindow,
     actions: &mut Actions,
 ) {
     let (program, kind) = (shown.program, shown.kind);
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("Tone").color(style::tokens(ui).text_weak));
-        // The tone being worked on: one whose sound and chain match exactly, or the one
-        // last chosen or saved for this preset (its knobs may have moved since).
-        let exact = presets
-            .iter()
-            .find(|preset| preset.sound == *sound && preset.chain == *chain)
-            .map(|preset| preset.name.clone());
-        let remembered = window
+    let current = super::tone_picker::current_tone_choice(tone, presets);
+    let shown_name = match &current {
+        Some(super::tone_picker::PickerChoice::BuiltIn(name)) => (*name).to_owned(),
+        Some(super::tone_picker::PickerChoice::Saved { name, .. }) => name.clone(),
+        // The tone was saved under this name and its knobs moved since.
+        None => match window
             .preset
             .as_ref()
             .filter(|(saved, _)| *saved == program)
-            .map(|(_, name)| name.clone());
-        let active = exact.clone().or(remembered);
-        let is_built_in = shown.default.sound == *sound && shown.default.chain == *chain;
-        let shown = match (&exact, &active) {
-            (Some(name), _) => name.clone(),
-            (None, Some(name)) if !is_built_in => format!("{name} *"),
-            (None, _) if is_built_in => "Built-in".to_owned(),
-            (None, Some(name)) => name.clone(),
-            (None, None) => "Changed".to_owned(),
-        };
-        let response = egui::ComboBox::from_id_salt("sound_chain_preset")
-            .selected_text(shown.clone())
-            .show_ui(ui, |ui| {
-                if ui.selectable_label(false, "Built-in").clicked() {
-                    window.preset = None;
-                    actions.reset_tone = true;
-                }
-                for preset in presets {
-                    if ui.selectable_label(false, &preset.name).clicked() {
-                        // A tone brings the kind of string it was made for: a modelled
-                        // one plays it, and an older tone (saved before the engine was
-                        // part of it) was made for the modelled strings of its kind.
-                        let target = match engine_from_id(&preset.kind) {
-                            Some(TrackEngine::Modelled(saved)) => saved,
-                            _ => kind,
-                        };
-                        window.preset = Some((program, preset.name.clone()));
-                        actions.preset = Some(ChosenPreset {
-                            kind: target,
-                            sound: preset.sound,
-                            chain: preset.chain.clone(),
-                            engine: Some(
-                                engine_from_id(&preset.engine)
-                                    .unwrap_or(TrackEngine::Modelled(target)),
-                            ),
-                        });
-                    }
-                }
-            });
-        response.response.clone().on_hover_text(format!(
-            "The tone this track's preset ({}: {}) plays: every track with that preset, in \
-             every song. Built-in forgets it.",
-            program,
-            gscore_model::program_name(program)
-        ));
-        ui.ctx()
-            .accesskit_node_builder(response.response.id, |node| {
-                node.set_label("Tone");
-                node.set_value(shown);
-            });
+        {
+            Some((_, name)) => format!("{name} *"),
+            None => "Changed".to_owned(),
+        },
+        Some(
+            super::tone_picker::PickerChoice::Program(_)
+            | super::tone_picker::PickerChoice::DrumKit(_),
+        ) => "Changed".to_owned(),
+    };
+    ui.horizontal(|ui| {
+        let _ = ui.selectable_label(false, format!("Tone: {shown_name}"));
+        if ui
+            .button("Built-in")
+            .on_hover_text("Forget this preset's tone; its built-in tone plays again")
+            .clicked()
+        {
+            window.preset = None;
+            actions.reset_tone = true;
+        }
         match &mut window.saving {
             None => {
-                // Saving over the preset being worked on, and deleting it.
-                if let Some(name) = active.clone() {
+                // Saving over the tone being worked on, and deleting it.
+                if let Some(name) = window
+                    .preset
+                    .as_ref()
+                    .filter(|(saved, _)| *saved == program)
+                    .map(|(_, name)| name.clone())
+                {
                     let save = ui
                         .button("Save")
                         .on_hover_text(format!("Save over \"{name}\" (its knobs as they are now)"));
@@ -445,6 +392,97 @@ fn preset_row(
             }
         }
     });
+    let default_tone = crate::tone_library::for_program(program, kind).name;
+    // Built-in tones by family, then the user's saved ones; compact here so the window
+    // keeps its height (the track panel shows the full table).
+    let mut chosen: Option<super::tone_picker::PickerChoice> = None;
+    let combo = egui::ComboBox::from_id_salt("sound_chain_tone")
+        .selected_text(if shown_name == "Changed" {
+            "Changed".to_owned()
+        } else {
+            shown_name.clone()
+        })
+        .show_ui(ui, |ui| {
+            if ui.selectable_label(false, "Built-in").clicked() {
+                window.preset = None;
+                actions.reset_tone = true;
+            }
+            // The user's saved tones first (the list is long), then the built-in ones.
+            if !presets.is_empty() {
+                ui.label(RichText::new("Saved").weak());
+                for preset in presets {
+                    let selected = preset.name == shown_name;
+                    if ui.selectable_label(selected, &preset.name).clicked() {
+                        chosen = Some(super::tone_picker::PickerChoice::Saved {
+                            kind: preset.kind.clone(),
+                            name: preset.name.clone(),
+                        });
+                    }
+                }
+            }
+            for family in crate::tone_library::ToneFamily::ALL {
+                ui.label(RichText::new(family.label()).weak());
+                for tone in crate::tone_library::all()
+                    .iter()
+                    .filter(|tone| tone.family == family)
+                {
+                    let selected = tone.name == shown_name;
+                    let response = ui
+                        .selectable_label(selected, tone.name)
+                        .on_hover_text(tone.description);
+                    if response.clicked() {
+                        chosen = Some(super::tone_picker::PickerChoice::BuiltIn(tone.name));
+                    }
+                }
+            }
+        });
+    combo.response.clone().on_hover_text(format!(
+        "The tone this track's preset ({}: {}) plays; its built-in one is {default_tone}",
+        program,
+        gscore_model::program_name(program)
+    ));
+    ui.ctx()
+        .accesskit_node_builder(combo.response.id, |node| node.set_label("Tone"));
+    if let Some(choice) = chosen {
+        use super::tone_picker::PickerChoice;
+        match choice {
+            PickerChoice::BuiltIn(name) => {
+                if let Some(built) = crate::tone_library::find(name) {
+                    window.preset = None;
+                    actions.preset = Some(ChosenPreset {
+                        kind: built.tone.kind,
+                        sound: built.tone.sound,
+                        chain: built.tone.chain.clone(),
+                        engine: Some(TrackEngine::Modelled(built.tone.kind)),
+                    });
+                }
+            }
+            PickerChoice::Saved {
+                kind: saved_kind,
+                name,
+            } => {
+                if let Some(preset) = presets
+                    .iter()
+                    .find(|preset| preset.kind == saved_kind && preset.name == name)
+                {
+                    let target = match engine_from_id(&preset.kind) {
+                        Some(TrackEngine::Modelled(saved)) => saved,
+                        _ => kind,
+                    };
+                    window.preset = Some((program, preset.name.clone()));
+                    actions.preset = Some(ChosenPreset {
+                        kind: target,
+                        sound: preset.sound,
+                        chain: preset.chain.clone(),
+                        engine: Some(
+                            engine_from_id(&preset.engine).unwrap_or(TrackEngine::Modelled(target)),
+                        ),
+                    });
+                }
+            }
+            PickerChoice::Program(_) | PickerChoice::DrumKit(_) => {}
+        }
+    }
 }
 
 /// What the board asked for.
@@ -1289,6 +1327,22 @@ impl GuitarScoreApp {
                             }
                             ui.separator();
                         }
+                        // The tone: which one this preset plays, another one, and saving
+                        // it. Above the board so it stays in reach when the window is tall.
+                        if window.part.is_none() {
+                            preset_row(
+                                ui,
+                                ShownPreset {
+                                    program: player.program,
+                                    kind,
+                                },
+                                &tone,
+                                &presets,
+                                &mut window,
+                                &mut actions,
+                            );
+                            ui.separator();
+                        }
                         let chain = part_chain
                             .as_ref()
                             .map(|(chain, _)| chain.clone())
@@ -1360,25 +1414,6 @@ impl GuitarScoreApp {
                         }
                         ui.add_space(6.0);
                         ui.separator();
-                        // The tone: which one this preset plays, another one, and saving it
-                        // (a drum part has no preset; its row is above the board).
-                        if window.part.is_none() {
-                            preset_row(
-                                ui,
-                                ShownPreset {
-                                    program: player.program,
-                                    kind,
-                                    default: self.playback.default_tone_for(player.program, kind),
-                                },
-                                &sound,
-                                &chain,
-                                &presets,
-                                &mut window,
-                                &mut actions,
-                            );
-                        }
-                        ui.add_space(4.0);
-                        ui.separator();
                         ui.horizontal(|ui| {
                             if ui
                                 .button("Listen")
@@ -1432,6 +1467,11 @@ impl GuitarScoreApp {
         if actions.reset_tone {
             self.reset_track_tone(track);
         }
+        // What plays the track first: the sound and chain edits below belong to the kind
+        // of string chosen here (switching to steel while adding a block must store steel).
+        if let Some(engine) = actions.engine {
+            self.set_track_engine(track, engine);
+        }
         // A saved tone: it carries both a string sound and a chain (and what plays them).
         if let Some(preset) = actions.preset {
             self.set_track_tone(
@@ -1447,14 +1487,18 @@ impl GuitarScoreApp {
                 self.set_track_engine(track, engine);
             }
         }
-        if let Some(engine) = actions.engine {
-            self.set_track_engine(track, engine);
-        }
         if let Some(route) = actions.midi_out {
             self.set_midi_out(track, route);
         }
+        // The kind that plays the track now, after any source or tone change above.
+        let active_kind = self
+            .track_player(track)
+            .map_or(kind, |player| match player.engine {
+                TrackEngine::Modelled(kind) => kind,
+                TrackEngine::SoundFont | TrackEngine::MidiOut => player.preset_kind.unwrap_or(kind),
+            });
         if actions.sound.is_some() || actions.chain.is_some() {
-            let mut tone = self.track_tone(track, kind);
+            let mut tone = self.track_tone(track, active_kind);
             if let Some(sound) = actions.sound {
                 tone.sound = sound;
             }
@@ -1469,13 +1513,16 @@ impl GuitarScoreApp {
             self.playback.rebuild_chain(track);
         }
         if let Some(name) = actions.save_preset {
-            let tone = self.track_tone(track, kind);
+            let tone = self.track_tone(track, active_kind);
+            let engine = self
+                .track_player(track)
+                .map_or(TrackEngine::Modelled(active_kind), |player| player.engine);
             let preset = ChainPreset {
                 name,
-                kind: kind_id(kind).to_owned(),
+                kind: kind_id(tone.kind).to_owned(),
                 sound: tone.sound,
                 chain: tone.chain,
-                engine: engine_id(player.engine).to_owned(),
+                engine: engine_id(engine).to_owned(),
             };
             let presets = &mut self.settings.string_presets;
             presets.retain(|old| !(old.kind == preset.kind && old.name == preset.name));
@@ -1491,14 +1538,18 @@ impl GuitarScoreApp {
             self.save_settings();
         }
         if let Some(place) = actions.load
-            && let Err(error) =
-                self.tasks
-                    .pick_impulse(track, kind, place, window.part.map(DrumPart::index), ctx)
+            && let Err(error) = self.tasks.pick_impulse(
+                track,
+                active_kind,
+                place,
+                window.part.map(DrumPart::index),
+                ctx,
+            )
         {
             self.notice = Some(error);
         }
         if actions.listen && modelled {
-            match self.playback.play_string_demo(track, kind) {
+            match self.playback.play_string_demo(track, active_kind) {
                 Ok(Heard::Skipped(why)) => self.notice = Some(format!("Not played: {why}")),
                 Ok(_) => {}
                 Err(error) => self.notice = Some(error),

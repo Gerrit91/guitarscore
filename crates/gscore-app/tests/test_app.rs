@@ -178,7 +178,7 @@ fn a_stored_panel_size_cannot_cover_the_window() {
         harness.run();
         // The track panel's first control is in the right half, and the palette's one in
         // the left half: the score has the middle.
-        let track_panel = harness.get_by_label("Preset").rect().left();
+        let track_panel = harness.get_by_label("Played by").rect().left();
         assert!(
             track_panel > 500.0,
             "a stored width of {width} pushed the track panel to {track_panel}"
@@ -195,7 +195,7 @@ fn a_stored_panel_size_cannot_cover_the_window() {
 fn the_track_panel_does_not_grow_by_itself() {
     let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
     let panel = |harness: &Harness<'static, GuitarScoreApp>| {
-        let rect = harness.get_by_label("Preset").rect();
+        let rect = harness.get_by_label("Played by").rect();
         (rect.left(), rect.top())
     };
     let before = panel(&harness);
@@ -372,7 +372,10 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.snapshot("color_picker");
     harness.key_press(egui::Key::Escape);
     harness.run();
-    // The Sound chain: a reverb in the second place, then the strings' own dialog.
+    // The Sound chain with an empty chain (the MIDI synth plays it), then the strings'
+    // own dialog.
+    harness.get_by_label("MIDI synth").click();
+    harness.run();
     harness.get_by_label("Sound chain").click();
     harness.run();
     harness.get_by_label("Block 2: +").click();
@@ -417,7 +420,11 @@ fn the_track_dialogs_match_their_snapshots() {
     // The strings' own window (their box opens it once PM synthesis plays the track).
     harness.get_by_label("Block 0: MIDI").click();
     harness.run();
-    harness.get_by_label("PM Synthesis").click();
+    harness
+        .query_all_by_label("PM Synthesis")
+        .find(|node| node.rect().center().x < 700.0)
+        .expect("the Sound chain window's source switch")
+        .click();
     harness.run();
     harness.get_by_label("Block 0: Strings").click();
     harness.run();
@@ -430,7 +437,11 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.run();
     // A track played by a hardware synthesizer: its port and channel, next to the two
     // internal sources.
-    harness.get_by_label("MIDI out").click();
+    harness
+        .query_all_by_label("MIDI out")
+        .find(|node| node.rect().center().x < 700.0)
+        .expect("the Sound chain window's source switch")
+        .click();
     harness.run();
     harness.get_by_label("Block 0: MIDI out");
     harness.snapshot("sound_chain_midi_out");
@@ -539,9 +550,12 @@ fn a_track_can_be_played_by_a_hardware_synthesizer() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("Sound chain").click();
     harness.run();
-    harness.get_by_label("Block 0: MIDI").click();
     harness.run();
-    harness.get_by_label("MIDI out").click();
+    harness
+        .query_all_by_label("MIDI out")
+        .find(|node| node.rect().center().x < 700.0)
+        .expect("the Sound chain window's source switch")
+        .click();
     harness.run();
     {
         let playback = harness.state().playback();
@@ -554,7 +568,11 @@ fn a_track_can_be_played_by_a_hardware_synthesizer() {
     }
     harness.get_by_label("Block 0: MIDI out");
     // Back to the internal synthesizer: the route is kept but no longer used.
-    harness.get_by_label("MIDI synth").click();
+    harness
+        .query_all_by_label("MIDI synth")
+        .find(|node| node.rect().center().x < 700.0)
+        .expect("the Sound chain window's source switch")
+        .click();
     harness.run();
     assert!(!harness.state().playback().track_is_midi_out(0));
 }
@@ -969,20 +987,18 @@ fn song_drum_part(harness: &Harness<'static, GuitarScoreApp>, id: &str) -> Optio
 #[test]
 fn the_track_panel_edits_the_shown_track() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
-    // The panel is open by default and shows the first track.
-    harness.get_by_label("SoundFont preset");
+    // The panel is open by default and shows the first track (on PM synthesis).
+    harness.get_by_label("Played by");
 
-    // The SoundFont preset (the General MIDI program) changes and is undoable.
+    // The General MIDI program changes and is undoable: the MIDI synth's table lists it.
     let before = first_sound(&harness).program;
-    harness.get_by_label("SoundFont preset").click();
+    harness.get_by_label("MIDI synth").click();
     harness.run();
     assert!(
         harness.query_by_label("24: Nylon Str Guitar").is_some(),
-        "the preset list did not open"
+        "the program table did not show"
     );
-    harness
-        .get_by_label("24: Nylon Str Guitar")
-        .click_accesskit();
+    harness.get_by_label("24: Nylon Str Guitar").click();
     harness.run();
     assert_eq!(first_sound(&harness).program, 24);
     assert_ne!(before, 24);
@@ -1402,19 +1418,19 @@ fn a_measure_selection_is_shared_with_the_editor_for_copy_and_paste() {
 #[test]
 fn the_view_menu_and_the_row_menu_show_the_track_panel() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
-    harness.get_by_label("SoundFont preset");
+    harness.get_by_label("Played by");
 
     harness.get_by_label("View").click();
     harness.run();
     harness.get_by_label("Track panel").click();
     harness.run();
-    assert!(harness.query_by_label("SoundFont preset").is_none());
+    assert!(harness.query_by_label("Played by").is_none());
 
     // The row's "Edit track…" opens it again.
     right_click_track(&mut harness, "Track 1: Steel Guitar");
     harness.get_by_label("Edit track…").click();
     harness.run();
-    harness.get_by_label("SoundFont preset");
+    harness.get_by_label("Played by");
 }
 
 #[test]
@@ -2864,9 +2880,8 @@ fn a_songs_mixer_state_travels_in_its_notes() {
     // And a tone of its own for the track's preset (27: Clean Guitar).
     harness.get_by_label("Sound chain").click();
     harness.run();
-    harness.get_by_label("Block 0: MIDI").click();
     harness.run();
-    harness.get_by_label("PM Synthesis").click();
+    harness.get_by_label("Block 0: Strings").click();
     harness.run();
     harness.get_by_label("Pick position value").click();
     harness.run();
@@ -2950,6 +2965,7 @@ fn a_drum_tracks_window_edits_the_kits_parts() {
     harness.state_mut().set_shown_track(5);
     harness.run();
     harness.get_by_label("Sound chain").click();
+    harness.run();
     harness.run();
     // The kit's own chain (the drum bus) is shown first: a compressor.
     harness.get_by_label("Part");

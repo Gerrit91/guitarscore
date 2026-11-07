@@ -719,7 +719,7 @@ impl Default for Settings {
             speed_trainer_target: 1.0,
             soundfont_path: None,
             prefer_synth: true,
-            modelled_guitars: false,
+            modelled_guitars: true,
             sample_rate: None,
             string_sounds: StringSounds::default(),
             string_chains: crate::chain_settings::StringChains::default(),

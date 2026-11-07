@@ -304,7 +304,6 @@ fn build_tones() -> Vec<BuiltInTone> {
                         (8_000.0, 1.5, 0.707),
                     ],
                 ),
-                reverb(0.3, 0.9, 20.0, 0.12),
             ],
         ),
         tone(
@@ -320,7 +319,6 @@ fn build_tones() -> Vec<BuiltInTone> {
             vec![
                 compressor(CompRatioSetting::Four, 2.5, -2.5, 12.0, 160.0),
                 chorus(0.6, 1.8, 0.25),
-                reverb(0.4, 1.2, 25.0, 0.18),
             ],
         ),
         tone(
@@ -345,7 +343,6 @@ fn build_tones() -> Vec<BuiltInTone> {
                     ],
                 ),
                 compressor(CompRatioSetting::Four, 3.0, -3.0, 20.0, 220.0),
-                reverb(0.35, 1.0, 25.0, 0.14),
             ],
         ),
         tone(
@@ -376,7 +373,7 @@ fn build_tones() -> Vec<BuiltInTone> {
         tone(
             "Texas Blues",
             Crunch,
-            "A pushed combo with a springy room and a little pedal grit.",
+            "A pushed combo with a little pedal grit.",
             electric,
             sound(
                 electric,
@@ -386,7 +383,6 @@ fn build_tones() -> Vec<BuiltInTone> {
             vec![
                 drive(0.35, 5_000.0, -3.0),
                 amp(AmpVoiceSetting::Crunch, 0.55, 0.55, 0.5, 0.6, -6.0),
-                reverb(0.3, 1.0, 18.0, 0.16),
             ],
         ),
         tone(
@@ -426,14 +422,13 @@ fn build_tones() -> Vec<BuiltInTone> {
             vec![
                 drive(0.5, 4_000.0, -4.0),
                 amp(AmpVoiceSetting::Crunch, 0.7, 0.5, 0.6, 0.5, -6.0),
-                reverb(0.35, 1.1, 22.0, 0.12),
             ],
         ),
         // Lead: singing sustain and an eighties chorus lead.
         tone(
             "80s Lead",
             Lead,
-            "Smooth lead with chorus and a long room behind it.",
+            "Smooth lead with a long, even sustain.",
             electric,
             sound(
                 electric,
@@ -443,8 +438,6 @@ fn build_tones() -> Vec<BuiltInTone> {
             vec![
                 drive(0.45, 4_500.0, -3.0),
                 amp(AmpVoiceSetting::Lead, 0.7, 0.5, 0.55, 0.6, -5.0),
-                chorus(0.4, 2.5, 0.3),
-                reverb(0.5, 1.8, 30.0, 0.2),
             ],
         ),
         tone(
@@ -460,7 +453,6 @@ fn build_tones() -> Vec<BuiltInTone> {
             vec![
                 compressor(CompRatioSetting::Eight, 8.0, -7.0, 12.0, 250.0),
                 amp(AmpVoiceSetting::Lead, 0.8, 0.5, 0.6, 0.55, -6.0),
-                reverb(0.4, 1.4, 25.0, 0.15),
             ],
         ),
         // High gain: a tight rhythm and a scooped, percussive djent sound.
@@ -477,16 +469,6 @@ fn build_tones() -> Vec<BuiltInTone> {
             vec![
                 drive(0.7, 3_000.0, -6.0),
                 amp(AmpVoiceSetting::Lead, 0.85, 0.4, 0.55, 0.5, -7.0),
-                eq(
-                    110.0,
-                    9_000.0,
-                    [
-                        (90.0, 1.0, 0.707),
-                        (400.0, -3.0, 1.2),
-                        (2_000.0, -1.0, 1.0),
-                        (5_000.0, 1.5, 0.707),
-                    ],
-                ),
             ],
         ),
         tone(
@@ -502,23 +484,13 @@ fn build_tones() -> Vec<BuiltInTone> {
             vec![
                 compressor(CompRatioSetting::Twelve, 10.0, -8.0, 3.0, 80.0),
                 amp(AmpVoiceSetting::Lead, 0.9, 0.35, 0.5, 0.55, -7.0),
-                eq(
-                    140.0,
-                    8_000.0,
-                    [
-                        (80.0, 2.0, 0.707),
-                        (350.0, -4.0, 1.2),
-                        (1_600.0, -2.0, 1.0),
-                        (4_500.0, 2.0, 0.707),
-                    ],
-                ),
             ],
         ),
         // Acoustic: two steel sounds and a classical guitar.
         tone(
             "Steel Strummed",
             Acoustic,
-            "A wide steel-string strum with a little compression and room.",
+            "A wide steel-string strum with a little compression.",
             steel,
             sound(steel, PickupSetting::Unset, 0.0),
             vec![
@@ -533,7 +505,6 @@ fn build_tones() -> Vec<BuiltInTone> {
                         (9_000.0, 1.0, 0.707),
                     ],
                 ),
-                reverb(0.45, 1.3, 25.0, 0.16),
             ],
         ),
         tone(
@@ -603,19 +574,7 @@ fn build_tones() -> Vec<BuiltInTone> {
             "A pick on the strings: harder attack and a brighter top.",
             bass,
             sound(bass, PickupSetting::Unset, 0.0),
-            vec![
-                compressor(CompRatioSetting::Four, 5.0, -5.0, 8.0, 140.0),
-                eq(
-                    40.0,
-                    9_000.0,
-                    [
-                        (70.0, 0.0, 0.707),
-                        (350.0, 0.0, 1.0),
-                        (1_200.0, 1.0, 1.0),
-                        (4_000.0, 1.5, 0.707),
-                    ],
-                ),
-            ],
+            vec![compressor(CompRatioSetting::Four, 5.0, -5.0, 8.0, 140.0)],
         ),
         tone(
             "Slap",
@@ -646,16 +605,6 @@ fn build_tones() -> Vec<BuiltInTone> {
             vec![
                 drive(0.4, 2_500.0, -5.0),
                 compressor(CompRatioSetting::Eight, 6.0, -6.0, 10.0, 150.0),
-                eq(
-                    40.0,
-                    8_000.0,
-                    [
-                        (70.0, 1.0, 0.707),
-                        (300.0, 0.0, 1.0),
-                        (1_000.0, -1.0, 1.0),
-                        (3_500.0, 0.5, 0.707),
-                    ],
-                ),
             ],
         ),
     ]

@@ -83,12 +83,26 @@ fn matches(row: &PickerRow, filter: &str) -> bool {
             .is_some_and(|group| group.to_lowercase().contains(&filter))
 }
 
-/// Shows the picker and returns the row clicked this frame.
+/// Shows the picker and returns the row clicked this frame, with the usual eight rows.
 pub(super) fn picker(
     ui: &mut egui::Ui,
     id_salt: &str,
     rows: &[PickerRow],
     state: &mut TonePickerState,
+) -> Option<PickerChoice> {
+    picker_rows(ui, id_salt, rows, state, VISIBLE_ROWS, None)
+}
+
+/// Shows the picker with `visible` rows at once and returns the row clicked this frame.
+/// `reveal` asks for a row to be scrolled into view even when it is not the current choice
+/// (the saved tone being worked on, which may have moved since it was saved).
+pub(super) fn picker_rows(
+    ui: &mut egui::Ui,
+    id_salt: &str,
+    rows: &[PickerRow],
+    state: &mut TonePickerState,
+    visible: usize,
+    reveal: Option<&PickerChoice>,
 ) -> Option<PickerChoice> {
     ui.horizontal(|ui| {
         let filter = ui.add(
@@ -102,17 +116,19 @@ pub(super) fn picker(
             state.filter.clear();
         }
     });
-    // A new current choice is scrolled into view once, as is the first frame's.
-    let selected = rows
-        .iter()
-        .find(|row| row.selected)
-        .map(|row| row.choice.id());
+    // A new current choice is scrolled into view once, as is the first frame's; a tone
+    // being worked on is revealed even when its knobs moved away from it.
+    let selected = reveal.map(PickerChoice::id).or_else(|| {
+        rows.iter()
+            .find(|row| row.selected)
+            .map(|row| row.choice.id())
+    });
     if state.seen != selected {
         state.reveal.clone_from(&selected);
         state.seen = selected;
     }
     let row_height = ui.spacing().interact_size.y.max(18.0);
-    let visible = row_height * VISIBLE_ROWS as f32;
+    let visible = row_height * visible.max(1) as f32;
     let mut chosen = None;
     ScrollArea::vertical()
         .id_salt(id_salt)
@@ -194,6 +210,77 @@ const DRUM_KITS: [(u8, &str); 9] = [
     (48, "Orchestra"),
     (56, "Sound effects"),
 ];
+
+/// The built-in or saved tone that exactly matches `tone`, if one does.
+pub(super) fn current_tone_choice(
+    tone: &crate::chain_settings::Tone,
+    saved: &[ChainPreset],
+) -> Option<PickerChoice> {
+    if let Some(built_in) = tone_library::all().iter().find(|built| built.tone == *tone) {
+        return Some(PickerChoice::BuiltIn(built_in.name));
+    }
+    saved
+        .iter()
+        .find(|preset| {
+            preset.kind == crate::settings::kind_id(tone.kind)
+                && preset.sound == tone.sound
+                && preset.chain == tone.chain
+        })
+        .map(|preset| PickerChoice::Saved {
+            kind: preset.kind.clone(),
+            name: preset.name.clone(),
+        })
+}
+
+/// The sound source switch the track panel and the Sound chain window share (MIDI synth,
+/// PM synthesis, or a hardware synthesizer). `pm` is the PM engine to choose (the track's
+/// kind, or the one its preset stands for). Returns the engine clicked.
+pub(super) fn source_switch(
+    ui: &mut egui::Ui,
+    engine: gscore_play::TrackEngine,
+    pm: gscore_play::TrackEngine,
+    strings: bool,
+) -> Option<gscore_play::TrackEngine> {
+    use gscore_play::TrackEngine;
+    let mut chosen = None;
+    ui.horizontal_wrapped(|ui| {
+        let mut choice = |ui: &mut egui::Ui, candidate: TrackEngine, label: &str, enabled: bool| {
+            let selected = match (engine, candidate) {
+                (TrackEngine::Modelled(_), TrackEngine::Modelled(_)) => true,
+                _ => engine == candidate,
+            };
+            let response = ui
+                .add_enabled(enabled, egui::Button::selectable(selected, label))
+                .on_hover_text(match candidate {
+                    TrackEngine::SoundFont => {
+                        "The internal synth plays the track with the SoundFont (General MIDI)"
+                    }
+                    TrackEngine::Modelled(_) => {
+                        "Physical modelling: the strings are synthesized and played through \
+                         the chain"
+                    }
+                    TrackEngine::MidiOut => {
+                        "A hardware synthesizer on a MIDI output port plays the track; its \
+                         sound does not come back through the mixer"
+                    }
+                });
+            if !enabled {
+                response.clone().on_hover_text(
+                    "Only string instruments that are not drum kits can be played by \
+                     modelled strings",
+                );
+            }
+            if response.clicked() {
+                chosen = Some(candidate);
+            }
+        };
+        choice(ui, TrackEngine::SoundFont, "MIDI synth", true);
+        choice(ui, pm, "PM Synthesis", strings);
+        #[cfg(not(target_arch = "wasm32"))]
+        choice(ui, TrackEngine::MidiOut, "MIDI out", true);
+    });
+    chosen
+}
 
 /// The General MIDI programs (or, for a drum track, the percussion bank's kits), grouped by
 /// family, with `program` highlighted.

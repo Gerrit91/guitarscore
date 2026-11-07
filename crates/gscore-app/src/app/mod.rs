@@ -336,9 +336,7 @@ impl GuitarScoreApp {
                 if let Some(player) = self.track_player_in(tab, index) {
                     // What plays it: SoundFont is the built-in default; anything else
                     // must travel with the song.
-                    if sound.engine.is_none()
-                        && player.engine != gscore_play::TrackEngine::SoundFont
-                    {
+                    if sound.engine.is_none() && player.engine != player.default {
                         sound.engine = Some(song_state::SoundEngine::of(player.engine));
                     }
                     // The tone it plays: the song's own, the preset's on this machine, or

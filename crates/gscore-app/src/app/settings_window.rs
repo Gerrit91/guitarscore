@@ -502,7 +502,7 @@ impl GuitarScoreApp {
         ui.add_space(4.0);
         let mut modelled = self.playback.modelled_guitars();
         if ui
-            .checkbox(&mut modelled, "Modelled guitars and basses (experimental)")
+            .checkbox(&mut modelled, "Modelled guitars and basses (PM synthesis)")
             .changed()
         {
             self.set_modelled_guitars(modelled);
@@ -511,7 +511,9 @@ impl GuitarScoreApp {
             RichText::new(
                 "The built-in synthesizer plays guitar and bass tracks with physically \
                  modelled strings instead of the SoundFont; drums and other instruments keep \
-                 the SoundFont. Also used for audio export. MIDI output is unchanged.",
+                 the SoundFont. Each track can also choose its own source in the track panel \
+                 or the Sound chain window. Also used for audio export. MIDI output is \
+                 unchanged.",
             )
             .weak(),
         );

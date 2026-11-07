@@ -4109,3 +4109,13 @@ needed for a much larger font); owner listening check.
   family plus the user's saved tones; the current choice is highlighted and scrolled into
   view and a tone's description shows on hover. Pure row builders and filter are tested;
   not wired into a window yet.
+- Part B, step 4: the track panel's Sound section now shows the shared source switch (MIDI
+  synth / PM synthesis / External MIDI) and the matching table below it: General MIDI
+  programs (drum kits for a drum track), our built-in tones plus saved ones for PM, and a
+  port, channel and the programs for a hardware synthesizer. Choosing a PM tone gives that
+  track the tone (kept in the song), and plays the Listen phrase unless the song is
+  playing. PM synthesis is now the default for string tracks (settings default on; the
+  checkbox stays as the machine-wide escape hatch). The Sound chain window shares the
+  source switch and lists the same tones (saved ones first) in its compact Tone combo, so
+  both views always show the same choice. Snapshots regenerated (the panel's taller Sound
+  section); tone chains are capped at two blocks each so the board keeps room.

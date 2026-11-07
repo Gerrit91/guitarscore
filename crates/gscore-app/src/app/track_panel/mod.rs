@@ -8,14 +8,15 @@ mod tuning;
 use egui::RichText;
 use gscore_edit::Command;
 use gscore_model::{
-    InstrumentKind, InstrumentSymbol, Song, StringTuning, TrackColor, TrackIndex, TrackSound,
-    TrackStaves, TrackView, program_name,
+    InstrumentKind, InstrumentSymbol, Song, StringTuning, TrackColor, TrackIndex, TrackStaves,
+    TrackView,
 };
 
 use super::GuitarScoreApp;
 use super::icons::{self, Icon};
 use super::instrument;
 use super::style;
+use crate::chain_settings::Tone;
 
 /// What the track panel keeps between frames: which track it showed, and the name being
 /// typed (so a rename is one undo step, not one per keystroke).
@@ -29,6 +30,8 @@ pub(super) struct TrackPanelState {
     editing: bool,
     /// The tuning dialog, while it is open.
     tuning: Option<tuning::TuningDialog>,
+    /// The Sound section's picker (its filter and scroll position).
+    pub(super) sound_picker: super::tone_picker::TonePickerState,
 }
 
 impl TrackPanelState {
@@ -45,7 +48,6 @@ struct TrackPanel {
     color: TrackColor,
     kind: InstrumentKind,
     instrument_name: Option<String>,
-    sound: Option<TrackSound>,
     tuning: Vec<StringTuning>,
     /// Whether the notes have pitches to write as standard notation (also a voice's).
     has_pitches: bool,
@@ -64,7 +66,6 @@ impl TrackPanel {
             color: track.color(),
             kind: track.instrument_kind(),
             instrument_name: track.instrument_name().map(str::to_owned),
-            sound: song.track_sound(track.index()),
             tuning: track.tuning().ok().flatten().unwrap_or_default(),
             has_pitches: track.note_tuning().ok().flatten().is_some(),
             tuning_name: track.tuning_name().ok().flatten(),
@@ -80,11 +81,16 @@ impl TrackPanel {
 impl GuitarScoreApp {
     /// The right panel: the shown track's settings.
     pub(super) fn track_panel(&mut self, ui: &mut egui::Ui) {
+        let Some(index) = self.tabs.get(self.active).map(|tab| tab.track) else {
+            return;
+        };
+        // The sound's player, tone and picker rows are app state: read them before the
+        // document is borrowed for the widgets.
+        let sound_panel = self.sound_panel(index);
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
         let document = &tab.document;
-        let index = tab.track;
         let Some(track) = document.song().track(TrackIndex::new(index)) else {
             return;
         };
@@ -94,10 +100,14 @@ impl GuitarScoreApp {
             tab.track_panel.name.clone_from(&snapshot.name);
             tab.track_panel.editing = false;
         }
+        // Taken out so the widgets (which borrow the app for their commands) do not hold
+        // the tab; it goes back below.
+        let mut sound_picker = std::mem::take(&mut tab.track_panel.sound_picker);
 
         let mut commands: Vec<(Command, bool)> = Vec::new();
         let mut open_tuning = false;
         let mut open_sound = false;
+        let mut sound_actions = SoundActions::default();
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -111,11 +121,31 @@ impl GuitarScoreApp {
                     look::staves(ui, index, &snapshot, &mut commands);
                 });
                 style::section(ui, "track_sound", "Sound", |ui| {
-                    sound(ui, index, &snapshot, &mut commands, &mut open_sound);
+                    sound(
+                        ui,
+                        index,
+                        sound_panel.as_ref(),
+                        &mut commands,
+                        &mut sound_picker,
+                        &mut open_sound,
+                        &mut sound_actions,
+                    );
                 });
             });
         for (command, merge) in commands {
             self.apply_command(command, merge);
+        }
+        if let Some(engine) = sound_actions.engine {
+            self.set_track_engine(index, engine);
+        }
+        if let Some(route) = sound_actions.midi_out {
+            self.set_midi_out(index, route);
+        }
+        if let Some(tone) = sound_actions.tone {
+            self.choose_track_tone(index, tone);
+        }
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.track_panel.sound_picker = sound_picker;
         }
         if open_sound {
             self.open_sound_chain(index);
@@ -399,63 +429,158 @@ fn instrument(
     }
 }
 
-/// The sound: the General MIDI program the synth plays for the track (its preset), and the
-/// stomp box that opens the track's Sound chain window.
+/// What the Sound section asked for (applied after the panel's widgets ran).
+#[derive(Debug, Default)]
+struct SoundActions {
+    engine: Option<gscore_play::TrackEngine>,
+    midi_out: Option<crate::playback::MidiOutRoute>,
+    /// A tone chosen in the library, for this track alone.
+    tone: Option<Tone>,
+}
+
+/// The sound: what plays the track (one setting, shared with the Sound chain window) and,
+/// below it, the matching picker: the General MIDI programs or drum kits for the MIDI
+/// synth, our tone library for modelled strings, and the General MIDI programs again for a
+/// hardware synthesizer (with its port and channel). The stomp box opens the Sound chain
+/// window.
 fn sound(
     ui: &mut egui::Ui,
     index: usize,
-    snapshot: &TrackPanel,
+    panel: Option<&super::track_engine::SoundPanel>,
     commands: &mut Vec<(Command, bool)>,
+    picker: &mut super::tone_picker::TonePickerState,
     open: &mut bool,
+    actions: &mut SoundActions,
 ) {
-    let mut program = snapshot.sound.map_or(25, |sound| sound.program);
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("Preset").color(style::tokens(ui).text_weak));
-        // Room for the stomp box to the right; capped, because a width that follows the
-        // panel's own width would make the panel grow a little every frame.
-        let combo_width = (ui.available_width() - 60.0).clamp(90.0, 260.0);
-        ui.add_enabled_ui(!snapshot.percussion, |ui| {
-            let combo = egui::ComboBox::from_id_salt("track_program")
-                .selected_text(format!("{program}: {}", program_name(program)))
-                .width(combo_width)
-                .show_ui(ui, |ui| {
-                    for candidate in 0..=127_u8 {
-                        ui.selectable_value(
-                            &mut program,
-                            candidate,
-                            format!("{candidate}: {}", program_name(candidate)),
-                        );
-                    }
-                });
-            ui.ctx().accesskit_node_builder(combo.response.id, |node| {
-                node.set_label("SoundFont preset");
-            });
-            combo.response.on_hover_text(
-                "The SoundFont preset (General MIDI program) the built-in synthesizer plays \
-                 for this track; a drum kit plays the percussion bank",
-            );
-        });
-        let button = icons::button(
-            ui,
-            Icon::StompBox,
-            "Sound chain",
-            "Sound chain: what plays this track, the strings' sound and the effects after \
-             them",
-        );
-        if button.clicked() {
-            *open = true;
+    let Some(panel) = panel else {
+        ui.label(RichText::new("This track has no sound settings").weak());
+        return;
+    };
+    let player = &panel.player;
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new("Played by").color(style::tokens(ui).text_weak));
+        let pm = match player.engine {
+            gscore_play::TrackEngine::Modelled(kind) => gscore_play::TrackEngine::Modelled(kind),
+            gscore_play::TrackEngine::SoundFont | gscore_play::TrackEngine::MidiOut => {
+                gscore_play::TrackEngine::Modelled(
+                    player.preset_kind.unwrap_or(gscore_play::StringKind::Steel),
+                )
+            }
+        };
+        if let Some(engine) =
+            super::tone_picker::source_switch(ui, player.engine, pm, player.strings)
+        {
+            actions.engine = Some(engine);
         }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let button = icons::button(
+                ui,
+                Icon::StompBox,
+                "Sound chain",
+                "Sound chain: what plays this track, the strings' sound and the effects after \
+                 them",
+            );
+            if button.clicked() {
+                *open = true;
+            }
+        });
     });
-    if snapshot.percussion {
-        ui.label(RichText::new("A drum kit plays the drum presets").weak());
+    match player.engine {
+        gscore_play::TrackEngine::Modelled(_) => {
+            if !player.strings {
+                ui.label(
+                    RichText::new("Only string instruments can be played by modelled strings.")
+                        .weak(),
+                );
+                return;
+            }
+            let rows = super::tone_picker::tone_rows(
+                panel.current.as_ref(),
+                Some(panel.default_tone),
+                &panel.saved,
+            );
+            if let Some(choice) = super::tone_picker::picker(ui, "track_tone_picker", &rows, picker)
+                && let Some(tone) = tone_of_choice(choice, &panel.saved)
+            {
+                actions.tone = Some(tone);
+            }
+            ui.label(
+                RichText::new(
+                    "The track plays this tone; it travels in the song, so the file sounds the \
+                     same elsewhere. Hover a tone for what it is.",
+                )
+                .weak(),
+            );
+        }
+        gscore_play::TrackEngine::SoundFont | gscore_play::TrackEngine::MidiOut => {
+            if player.engine == gscore_play::TrackEngine::MidiOut
+                && let Some(route) = super::sound_chain::midi_out_controls(ui, player, &panel.ports)
+            {
+                actions.midi_out = Some(route);
+            }
+            let rows = super::tone_picker::general_midi_rows(player.program, player.drums);
+            if let Some(choice) =
+                super::tone_picker::picker(ui, "track_program_picker", &rows, picker)
+                && let Some(program) = choice_program(&choice)
+            {
+                commands.push((
+                    Command::SetTrackProgram {
+                        track: TrackIndex::new(index),
+                        program,
+                    },
+                    false,
+                ));
+            }
+            if player.drums {
+                ui.label(
+                    RichText::new(
+                        "A drum kit plays the percussion bank; its parts' tones are in the Sound \
+                         chain window.",
+                    )
+                    .weak(),
+                );
+            } else {
+                ui.label(
+                    RichText::new(
+                        "The SoundFont preset (General MIDI program) the built-in synthesizer \
+                         plays for this track.",
+                    )
+                    .weak(),
+                );
+            }
+        }
     }
-    if program != snapshot.sound.map_or(25, |sound| sound.program) {
-        commands.push((
-            Command::SetTrackProgram {
-                track: TrackIndex::new(index),
-                program,
-            },
-            false,
-        ));
+}
+
+/// The program a General MIDI or drum-kit row chooses.
+fn choice_program(choice: &super::tone_picker::PickerChoice) -> Option<u8> {
+    use super::tone_picker::PickerChoice;
+    match choice {
+        PickerChoice::Program(program) | PickerChoice::DrumKit(program) => Some(*program),
+        PickerChoice::BuiltIn(_) | PickerChoice::Saved { .. } => None,
+    }
+}
+
+/// The tone a picker row chooses, from the built-in library or the user's saved tones.
+fn tone_of_choice(
+    choice: super::tone_picker::PickerChoice,
+    saved: &[crate::settings::ChainPreset],
+) -> Option<Tone> {
+    use super::tone_picker::PickerChoice;
+    match choice {
+        PickerChoice::BuiltIn(name) => {
+            crate::tone_library::find(name).map(|tone| tone.tone.clone())
+        }
+        PickerChoice::Saved { kind, name } => {
+            let preset = saved
+                .iter()
+                .find(|preset| preset.kind == kind && preset.name == name)?;
+            Some(Tone {
+                kind: crate::settings::kind_from_id(&preset.kind)?,
+                sound: preset.sound,
+                chain: preset.chain.clone(),
+            })
+        }
+        PickerChoice::Program(_) | PickerChoice::DrumKit(_) => None,
     }
 }

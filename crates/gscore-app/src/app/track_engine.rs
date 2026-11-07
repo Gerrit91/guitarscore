@@ -16,9 +16,10 @@ use gscore_play::{StringKind, TrackEngine};
 use super::GuitarScoreApp;
 use super::song_state::{Buses, DrumPartSound, SoundEngine, TrackSound};
 use super::tab::Tab;
+use super::tone_picker::{PickerChoice, current_tone_choice};
 use crate::chain_settings::{ChainSetting, DrumPart, Tone};
-use crate::playback::{MidiOutRoute, TrackDrumPart};
-use crate::settings::{CompressorBus, ReverbBus};
+use crate::playback::{Heard, MidiOutRoute, TrackDrumPart};
+use crate::settings::{ChainPreset, CompressorBus, ReverbBus};
 
 /// What plays a track, and why.
 #[derive(Debug, Clone, PartialEq)]
@@ -37,6 +38,21 @@ pub(super) struct TrackPlayer {
     pub(super) program: u8,
     /// The port and channel its hardware synthesizer plays, when it is a MIDI-out track.
     pub(super) midi_out: MidiOutRoute,
+}
+
+/// What the track panel's Sound section shows: what plays the track, the tone it plays now,
+/// and the choices its picker offers.
+#[derive(Debug, Clone)]
+pub(super) struct SoundPanel {
+    pub(super) player: TrackPlayer,
+    /// The built-in or saved tone that matches `tone` exactly, when one does.
+    pub(super) current: Option<PickerChoice>,
+    /// The built-in tone the track's program starts on.
+    pub(super) default_tone: &'static str,
+    /// The user's saved tones, for the picker's own group.
+    pub(super) saved: Vec<ChainPreset>,
+    /// The MIDI output ports this machine has (for the external source).
+    pub(super) ports: Vec<String>,
 }
 
 impl GuitarScoreApp {
@@ -79,6 +95,50 @@ impl GuitarScoreApp {
             program: sound.program,
             midi_out: own.midi_out.unwrap_or_default(),
         })
+    }
+
+    /// The Sound section's data for `track` of the open document, if there is one.
+    pub(super) fn sound_panel(&self, track: usize) -> Option<SoundPanel> {
+        let player = self.track_player(track)?;
+        let kind = match player.engine {
+            TrackEngine::Modelled(kind) => kind,
+            TrackEngine::SoundFont | TrackEngine::MidiOut => {
+                player.preset_kind.unwrap_or(StringKind::Steel)
+            }
+        };
+        let tone = self.track_tone(track, kind);
+        let default_tone = crate::tone_library::for_program(player.program, kind).name;
+        Some(SoundPanel {
+            player,
+            current: current_tone_choice(&tone, &self.settings.string_presets),
+            default_tone,
+            saved: self.settings.string_presets.clone(),
+            ports: self.playback.ports().to_vec(),
+        })
+    }
+
+    /// Gives `track` `tone` as its own sound (kept with the song, part A), played by
+    /// modelled strings, and plays the short Listen phrase unless the song is playing.
+    /// This is the picker's choice: it belongs to this track alone.
+    pub(super) fn choose_track_tone(&mut self, track: usize, tone: Tone) {
+        let Some(player) = self.track_player(track) else {
+            return;
+        };
+        let Some(mut sound) = self.open_track_sound(track) else {
+            return;
+        };
+        sound.tone = Some(crate::settings::PresetTone::of(player.program, &tone));
+        let engine = TrackEngine::Modelled(tone.kind);
+        sound.engine = (engine != player.default).then(|| SoundEngine::of(engine));
+        self.set_track_sound(track, sound, false);
+        if player.strings {
+            match self.playback.play_string_demo(track, tone.kind) {
+                Ok(Heard::Skipped(why)) if why == "the song is playing" => {}
+                Ok(Heard::Skipped(why)) => self.notice = Some(format!("Not played: {why}")),
+                Ok(_) => {}
+                Err(error) => self.notice = Some(error),
+            }
+        }
     }
 
     /// Notes whether the primary pointer button is held, and ends the undo step a sound
@@ -179,7 +239,7 @@ impl GuitarScoreApp {
             None => crate::tone_library::default_for_kind(kind).tone.clone(),
         });
         // A drum track with no tone of its own runs the drum bus, as playback does.
-        if player.is_some_and(|player| player.drums) && tone.chain == ChainSetting::default() {
+        if player.is_some_and(|player| player.drums) {
             tone.chain = self.playback.drum_bus_chain();
         }
         tone

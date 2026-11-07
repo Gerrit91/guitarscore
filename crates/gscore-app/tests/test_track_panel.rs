@@ -281,19 +281,15 @@ fn a_click_in_the_song_grid_while_playing_jumps_there() {
 fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
     let mut harness = app_with("basic/note_lengths.gp");
     // The track panel's Sound section opens the Sound chain with its stomp box.
-    harness.get_by_label("Sound chain").click();
+    open_sound_chain(&mut harness);
+    // The first box is what plays the track; PM synthesis is the default for strings.
+    harness.get_by_label("Block 0: Strings").click();
     harness.run();
-    // The first box is what plays the track; a Guitar Pro file starts on the MIDI synth.
-    harness.get_by_label("Block 0: MIDI").click();
-    harness.run();
-    harness.get_by_label("Played by");
-    assert!(
-        harness.query_all_by_label("Brilliance").next().is_none(),
-        "the SoundFont plays it: no string knobs"
-    );
-    // Physical modelling brings the kind of string and its knobs into the same window.
-    harness.get_by_label("PM Synthesis").click();
-    harness.run();
+    harness
+        .query_all_by_label("Played by")
+        .next()
+        .expect("the sound source switch");
+    // Physical modelling shows the kind of string and its knobs.
     harness.snapshot("sound_chain_strings");
     for knob in [
         "Pick position",
@@ -312,13 +308,6 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
     harness.get_by_label("Pick position value").type_text("0.4");
     harness.run();
-    eprintln!(
-        "FIELD TEXT {:?}",
-        harness
-            .get_by_label("Pick position value")
-            .accesskit_node()
-            .value()
-    );
     harness.key_press(egui::Key::Enter);
     harness.run();
     assert!(
@@ -346,20 +335,15 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
 #[test]
 fn a_preset_brings_its_kind_of_string_back() {
     let mut harness = app_with("basic/note_lengths.gp");
-    harness.get_by_label("Sound chain").click();
-    harness.run();
-    // A steel sound dialed in (PM synthesis, steel strings) with a reverb behind it, saved.
-    harness.get_by_label("Block 0: MIDI").click();
-    harness.run();
-    harness.get_by_label("PM Synthesis").click();
-    harness.run();
+    open_sound_chain(&mut harness);
+    // A steel sound dialed in with a reverb behind it, saved.
     harness.get_by_label("Steel guitar").click();
     harness.run();
-    harness.get_by_label("Block 1: +").click();
+    let block = empty_block(&harness);
+    harness.get_by_label(&block).click();
     harness.run();
     harness.get_by_label("Reverb").click();
     harness.run();
-    harness.get_by_label("Block 1: Reverb");
     harness.get_by_label("Save as…").click();
     harness.run();
     harness.get_by_label("Tone name").focus();
@@ -371,35 +355,32 @@ fn a_preset_brings_its_kind_of_string_back() {
     harness.run();
     assert_eq!(preset_shown(&harness), "Natural Steel 1");
 
-    // Another kind of string (electric): its chain is empty.
+    // Another kind of string (electric): it starts on its presets built-in tone.
     harness.get_by_label("Block 0: Strings").click();
     harness.run();
     harness.get_by_label("Electric guitar").click();
     harness.run();
-    harness.get_by_label("Block 1: +");
-    assert_eq!(preset_shown(&harness), "Built-in");
+    assert_eq!(preset_shown(&harness), "Warm Jazz");
 
     // Choosing the steel preset brings back the steel strings and their chain, not just
     // values on the electric ones.
-    harness
-        .query_all_by_label("Tone")
-        .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
-        .unwrap()
-        .click();
-    harness.run();
-    harness.get_by_label("Natural Steel 1").click();
-    harness.run();
-    harness.get_by_label("Block 1: Reverb");
+    choose_chain_tone(&mut harness, "Natural Steel 1");
+    assert!(
+        harness
+            .query_all_by_label_contains("Reverb")
+            .next()
+            .is_some()
+    );
     assert_eq!(preset_shown(&harness), "Natural Steel 1");
 }
 
 #[test]
 fn a_preset_can_be_saved_over_and_deleted_while_active() {
     let mut harness = app_with("basic/note_lengths.gp");
-    harness.get_by_label("Sound chain").click();
-    harness.run();
+    open_sound_chain(&mut harness);
     // A block, saved under a name.
-    harness.get_by_label("Block 1: +").click();
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
     harness.run();
     harness.get_by_label("Reverb").click();
     harness.run();
@@ -413,7 +394,8 @@ fn a_preset_can_be_saved_over_and_deleted_while_active() {
     assert_eq!(preset_shown(&harness), "Room 1");
 
     // Add a second block: the preset is still the one being worked on, now changed.
-    harness.get_by_label("Block 2: +").click();
+    let second = empty_block(&harness);
+    harness.get_by_label(&second).click();
     harness.run();
     // The menu's entry (the selected block's header says Reverb too).
     harness
@@ -439,7 +421,7 @@ fn a_preset_can_be_saved_over_and_deleted_while_active() {
     assert_eq!(
         presets
             .first()
-            .and_then(|preset| preset.chain.blocks.get(1))
+            .and_then(|preset| preset.chain.blocks.get(first.saturating_sub(1)))
             .map(|block| block.choice),
         Some(gscore_app::chain_settings::BlockChoice::Reverb),
         "the saved chain took the block added after it was saved"
@@ -455,13 +437,64 @@ fn a_preset_can_be_saved_over_and_deleted_while_active() {
     assert_eq!(preset_shown(&harness), "Changed");
 }
 
-/// What the Sound chain window's preset list shows./// What the Sound chain window's preset list shows.
+/// What the Sound chain window's Tone row shows.
 fn preset_shown(harness: &Harness<'_, GuitarScoreApp>) -> String {
     harness
-        .query_all_by_label("Tone")
-        .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
-        .and_then(|node| node.value())
+        .query_all_by_label_contains("Tone: ")
+        .last()
+        .and_then(|node| node.accesskit_node().label())
+        .and_then(|label| label.strip_prefix("Tone: ").map(str::to_owned))
         .unwrap_or_default()
+}
+
+/// The first empty place on the board (1-based), a built-in tone fills some places.
+fn empty_block_index(harness: &Harness<'_, GuitarScoreApp>) -> usize {
+    for index in 1..=gscore_guitar::BLOCKS {
+        if harness
+            .query_by_label(&format!("Block {index}: +"))
+            .is_some()
+        {
+            return index;
+        }
+    }
+    panic!("the board has no empty place")
+}
+
+/// The label of the first empty place on the board.
+fn empty_block(harness: &Harness<'_, GuitarScoreApp>) -> String {
+    format!("Block {}: +", empty_block_index(harness))
+}
+
+/// Opens the Sound chain window and lets it settle (its first frame is laid out before the
+/// window has its final position, so a click on a box needs a second frame).
+fn open_sound_chain(harness: &mut Harness<'static, GuitarScoreApp>) {
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    harness.run();
+}
+
+/// Clicks a label inside the Sound chain window (the track panel shows some of the same
+/// labels, such as the source switch and the picker's saved tones).
+fn click_in_chain(harness: &Harness<'_, GuitarScoreApp>, label: &str) {
+    harness
+        .query_all_by_label(label)
+        .find(|node| node.rect().center().x < 700.0)
+        .unwrap_or_else(|| {
+            let all: Vec<_> = harness
+                .query_all_by_label(label)
+                .map(|node| node.rect())
+                .collect();
+            panic!("no {label} in the Sound chain window: {all:?}")
+        })
+        .click();
+}
+
+/// Chooses a tone in the Sound chain window's Tone list (the combo, then the row).
+fn choose_chain_tone(harness: &mut Harness<'static, GuitarScoreApp>, name: &str) {
+    click_in_chain(harness, "Tone");
+    harness.run();
+    click_in_chain(harness, name);
+    harness.run();
 }
 
 #[test]
@@ -469,14 +502,14 @@ fn a_saved_chain_preset_brings_back_the_whole_chain() {
     use gscore_app::chain_settings::BlockChoice;
 
     let mut harness = app_with("basic/note_lengths.gp");
-    harness.get_by_label("Sound chain").click();
-    harness.run();
-    // A computed reverb in the first place.
-    harness.get_by_label("Block 1: +").click();
+    open_sound_chain(&mut harness);
+    // A computed reverb in the first empty place.
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
     harness.run();
     harness.get_by_label("Reverb").click();
     harness.run();
-    harness.get_by_label("Block 1: Reverb");
+    harness.get_by_label(&format!("Block {first}: Reverb"));
     // Save the chain (with the string sound it was dialed in with) under a name.
     harness.get_by_label("Save as…").click();
     harness.run();
@@ -496,13 +529,19 @@ fn a_saved_chain_preset_brings_back_the_whole_chain() {
         .cloned()
         .expect("the preset is kept");
     assert_eq!(
-        preset.chain.blocks.first().map(|block| block.choice),
+        preset
+            .chain
+            .blocks
+            .get(first.saturating_sub(1))
+            .map(|block| block.choice),
         Some(BlockChoice::Reverb),
         "the chain is part of the preset"
     );
 
     // Remove the block from its context menu: the preset no longer matches.
-    let block = harness.get_by_label("Block 1: Reverb").rect();
+    let block = harness
+        .get_by_label(&format!("Block {first}: Reverb"))
+        .rect();
     harness.hover_at(block.center());
     for pressed in [true, false] {
         harness.input_mut().events.push(egui::Event::PointerButton {
@@ -515,41 +554,23 @@ fn a_saved_chain_preset_brings_back_the_whole_chain() {
     harness.run();
     harness.get_by_label("Remove").click();
     harness.run();
-    harness.get_by_label("Block 1: +");
-    assert_eq!(preset_shown(&harness), "Built-in");
+    harness.get_by_label(&format!("Block {first}: +"));
+    assert_ne!(preset_shown(&harness), "Hall 1");
     // Choosing the preset brings the block back.
-    harness
-        .query_all_by_label("Tone")
-        .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
-        .unwrap()
-        .click();
-    harness.run();
-    harness.get_by_label("Hall 1").click();
-    harness.run();
-    harness.get_by_label("Block 1: Reverb");
+    choose_chain_tone(&mut harness, "Hall 1");
+    harness.get_by_label(&format!("Block {first}: Reverb"));
     assert_eq!(preset_shown(&harness), "Hall 1");
 
     // Every preset is listed, whatever kind of string it was saved for: switch the track
     // to another kind and the preset is still there, and choosing it comes back to its own.
-    harness.get_by_label("Block 0: MIDI").click();
-    harness.run();
-    harness.get_by_label("PM Synthesis").click();
-    harness.run();
     harness.get_by_label("Block 0: Strings").click();
     harness.run();
     harness.get_by_label("Nylon guitar").click();
     harness.run();
-    harness.get_by_label("Block 1: +");
-    harness
-        .query_all_by_label("Tone")
-        .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
-        .unwrap()
-        .click();
-    harness.run();
+    empty_block(&harness);
     // The preset of the other kind is in the list, and brings its chain and kind back.
-    harness.get_by_label("Hall 1").click();
-    harness.run();
-    harness.get_by_label("Block 1: Reverb");
+    choose_chain_tone(&mut harness, "Hall 1");
+    harness.get_by_label(&format!("Block {first}: Reverb"));
     assert_eq!(preset_shown(&harness), "Hall 1");
 }
 
@@ -593,19 +614,20 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
     use gscore_play::StringKind;
 
     let mut harness = app_with("basic/note_lengths.gp");
-    harness.get_by_label("Sound chain").click();
-    harness.run();
-    // An amp in the first place and a drive in the second.
-    harness.get_by_label("Block 1: +").click();
+    open_sound_chain(&mut harness);
+    // An amp in the first empty place and a drive in the next one.
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
     harness.run();
     harness.get_by_label("Amp").click();
     harness.run();
-    harness.get_by_label("Block 2: +").click();
+    let second = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {second}: +")).click();
     harness.run();
     harness.get_by_label("Drive").click();
     harness.run();
-    harness.get_by_label("Block 1: Amp");
-    harness.get_by_label("Block 2: Drive");
+    harness.get_by_label(&format!("Block {first}: Amp"));
+    harness.get_by_label(&format!("Block {second}: Drive"));
     // The chain that took the blocks (the kind of string the track's preset stands for).
     let kind = [
         StringKind::Nylon,
@@ -621,19 +643,19 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
             .tone(0, 26, *kind)
             .chain
             .blocks
-            .first()
+            .get(first.saturating_sub(1))
             .is_some_and(|block| block.choice == BlockChoice::Amp)
     })
     .expect("the blocks went into one chain");
 
-    // The amp, dragged past the drive into the empty third place: the drive slides back.
+    // The amp, dragged onto the drive: the drive slides back into the amp's place.
     drag_box(
         &mut harness,
-        "Block 1: Amp",
-        "Block 3: +",
+        &format!("Block {first}: Amp"),
+        &format!("Block {second}: Drive"),
         Some("sound_chain_dragging"),
     );
-    harness.get_by_label("Block 3: Amp");
+    harness.get_by_label(&format!("Block {second}: Amp"));
     let blocks = harness
         .state()
         .playback()
@@ -641,18 +663,25 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
         .chain
         .blocks
         .clone();
-    assert_eq!(blocks[0].choice, BlockChoice::Drive, "the drive slid back");
-    assert_eq!(blocks[1].choice, BlockChoice::Empty);
     assert_eq!(
-        blocks[2].choice,
+        blocks[first.saturating_sub(1)].choice,
+        BlockChoice::Drive,
+        "the drive slid back"
+    );
+    assert_eq!(
+        blocks[second.saturating_sub(1)].choice,
         BlockChoice::Amp,
         "the amp is where it was let go"
     );
-    assert_eq!(blocks[3].choice, BlockChoice::Empty);
 
-    // And back toward the strings: the drive and the empty place slide the other way.
-    drag_box(&mut harness, "Block 3: Amp", "Block 1: Drive", None);
-    harness.get_by_label("Block 1: Amp");
+    // And back toward the strings: the other block slides the other way.
+    drag_box(
+        &mut harness,
+        &format!("Block {second}: Amp"),
+        &format!("Block {first}: Drive"),
+        None,
+    );
+    harness.get_by_label(&format!("Block {first}: Amp"));
     let blocks = harness
         .state()
         .playback()
@@ -660,9 +689,8 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
         .chain
         .blocks
         .clone();
-    assert_eq!(blocks[0].choice, BlockChoice::Amp);
-    assert_eq!(blocks[1].choice, BlockChoice::Drive);
-    assert_eq!(blocks[2].choice, BlockChoice::Empty);
+    assert_eq!(blocks[first.saturating_sub(1)].choice, BlockChoice::Amp);
+    assert_eq!(blocks[second.saturating_sub(1)].choice, BlockChoice::Drive);
 }
 
 #[test]
@@ -682,7 +710,7 @@ fn a_tone_belongs_to_the_track_preset() {
         if harness.query_by_label("Block 0: MIDI").is_some() {
             harness.get_by_label("Block 0: MIDI").click();
             harness.run();
-            harness.get_by_label("PM Synthesis").click();
+            click_in_chain(harness, "PM Synthesis");
             harness.run();
         } else {
             harness.get_by_label("Block 0: Strings").click();
@@ -712,12 +740,9 @@ fn a_tone_belongs_to_the_track_preset() {
         .playback()
         .tone(4, 33, StringKind::Bass)
         .sound;
-    // An electric guitar's strings with their pickup (a humbucker at the bridge).
-    harness.get_by_label("Sound chain").click();
-    harness.run();
-    harness.get_by_label("Block 0: MIDI").click();
-    harness.run();
-    harness.get_by_label("PM Synthesis").click();
+    // An electric guitar's strings with their pickup (a single coil at the bridge).
+    open_sound_chain(&mut harness);
+    harness.get_by_label("Block 0: Strings").click();
     harness.run();
     harness.snapshot("sound_chain_pickup");
     harness.get_by_label("Neck").click();
@@ -727,7 +752,7 @@ fn a_tone_belongs_to_the_track_preset() {
         .playback()
         .tone(0, 27, StringKind::Electric)
         .sound;
-    assert_eq!(neck.model().pickup, gscore_guitar::Pickup::Humbucker);
+    assert_eq!(neck.model().pickup, gscore_guitar::Pickup::SingleCoil);
     assert_eq!(neck.pickup_position, gscore_guitar::pickup_positions::NECK);
     harness.get_by_label("Close").click();
     harness.run();
@@ -762,11 +787,14 @@ fn a_tone_belongs_to_the_track_preset() {
     // A guitar on another preset (30) gets its own tone, and 27's stays as it was.
     harness.state_mut().set_shown_track(2);
     harness.run();
-    harness.get_by_label("SoundFont preset").click();
+    harness.get_by_label("MIDI synth").click();
     harness.run();
+    harness.get_by_label("Filter sounds").focus();
     harness
-        .get_by_label("30: Distortion Guitar")
-        .click_accesskit();
+        .get_by_label("Filter sounds")
+        .type_text("Distortion Guitar");
+    harness.run();
+    harness.get_by_label("30: Distortion Guitar").click();
     harness.run();
     dial(&mut harness, 2, "0.2");
     assert!((pick(&harness, 2, 30, StringKind::Electric) - 0.2).abs() < 1e-6);
@@ -808,8 +836,7 @@ fn a_songs_resolved_preset_tone_survives_with_default_settings() {
     };
     let mut harness = open(&path);
     // Dial the pick position of the tone the first track's preset (27) plays.
-    harness.get_by_label("Sound chain").click();
-    harness.run();
+    open_sound_chain(&mut harness);
     if harness.query_by_label("Block 0: MIDI").is_some() {
         harness.get_by_label("Block 0: MIDI").click();
         harness.run();
@@ -875,20 +902,18 @@ fn a_songs_resolved_preset_tone_survives_with_default_settings() {
 
 #[test]
 fn the_built_in_entry_forgets_a_presets_tone() {
-    // Switching back to Built-in drops the local overwrite: the kind's default plays again.
+    // Switching back to Built-in drops the local overwrite: the program's built-in tone
+    // plays again.
     use gscore_play::StringKind;
 
     let mut harness = app_with("basic/multi_staff.gp");
     let built_in = harness
         .state()
         .playback()
-        .string_sounds()
-        .get(StringKind::Electric);
-    harness.get_by_label("Sound chain").click();
-    harness.run();
-    harness.get_by_label("Block 0: MIDI").click();
-    harness.run();
-    harness.get_by_label("PM Synthesis").click();
+        .default_tone_for(27, StringKind::Electric)
+        .sound;
+    open_sound_chain(&mut harness);
+    harness.get_by_label("Block 0: Strings").click();
     harness.run();
     harness.get_by_label("Pick position value").click();
     harness.run();
@@ -904,12 +929,6 @@ fn the_built_in_entry_forgets_a_presets_tone() {
         .sound;
     assert_ne!(changed, built_in, "the preset has a tone of its own now");
     // The tone row offers Built-in: the preset's own tone is forgotten.
-    harness
-        .query_all_by_label("Tone")
-        .find(|node| node.accesskit_node().role() == egui::accesskit::Role::ComboBox)
-        .expect("the tone row")
-        .click();
-    harness.run();
     harness.get_by_label("Built-in").click();
     harness.run();
     assert!(
