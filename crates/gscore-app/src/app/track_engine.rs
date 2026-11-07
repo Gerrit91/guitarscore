@@ -75,9 +75,29 @@ impl GuitarScoreApp {
         })
     }
 
+    /// Notes whether the primary pointer button is held, and ends the undo step a sound
+    /// drag was merging into when a new press begins (the Sound chain and bus windows'
+    /// knobs and sliders do not mark their drags themselves). Called once per frame,
+    /// before the windows run.
+    pub(super) fn track_pointer(&mut self, ctx: &egui::Context) {
+        let (pressed, held) =
+            ctx.input(|input| (input.pointer.any_pressed(), input.pointer.primary_down()));
+        if pressed && let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.document.editor_mut().break_merge();
+        }
+        self.pointer_held = held;
+    }
+
+    /// Whether a sound change asked to `merge` may continue the undo step before it: only
+    /// within one drag, never across two drags or a typed value.
+    fn sound_merge(&self, merge: bool) -> bool {
+        merge && self.pointer_held
+    }
+
     /// Replaces the track's state with `sound`, through the undoable command.
     fn set_track_sound(&mut self, track: usize, sound: TrackSound, merge: bool) {
         let state = sound.json();
+        let merge = self.sound_merge(merge);
         self.apply_command(
             Command::SetTrackSound {
                 track: TrackIndex::new(track),
@@ -375,11 +395,12 @@ impl GuitarScoreApp {
         };
         let mut buses = Buses::of_song(&song);
         buses.reverb = Some(bus);
+        let merge = self.sound_merge(true);
         self.apply_command(
             Command::SetSongSound {
                 state: buses.json(),
             },
-            true,
+            merge,
         );
     }
 
@@ -390,11 +411,12 @@ impl GuitarScoreApp {
         };
         let mut buses = Buses::of_song(&song);
         buses.compressor = Some(bus);
+        let merge = self.sound_merge(true);
         self.apply_command(
             Command::SetSongSound {
                 state: buses.json(),
             },
-            true,
+            merge,
         );
     }
 

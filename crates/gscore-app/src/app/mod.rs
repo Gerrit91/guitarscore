@@ -151,6 +151,10 @@ pub struct GuitarScoreApp {
     panel_sizes: PanelSizes,
     /// The window's last position and size.
     last_window: Option<WindowState>,
+    /// Whether the primary pointer button is held this frame: a change of a song's sound
+    /// (a knob, a slider) continues the undo step before it only while it is, and a new
+    /// press starts a new one.
+    pointer_held: bool,
     /// The browser's SoundFont state last written to the page (`loaded` or `error: …`).
     #[cfg(target_arch = "wasm32")]
     browser_sound: Option<String>,
@@ -279,6 +283,7 @@ impl GuitarScoreApp {
             settings_path,
             panel_sizes,
             last_window,
+            pointer_held: false,
             #[cfg(target_arch = "wasm32")]
             browser_sound: None,
         };
@@ -671,6 +676,7 @@ impl eframe::App for GuitarScoreApp {
             self.last_window = Some(window);
         }
         self.handle_events(&ctx);
+        self.track_pointer(&ctx);
         #[cfg(target_arch = "wasm32")]
         self.mark_browser_sound(&ctx);
         // The page asks before it is left while a song has unsaved edits: the browser

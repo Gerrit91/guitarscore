@@ -2524,6 +2524,72 @@ fn the_reverb_bus_window_chooses_the_reverb() {
 }
 
 #[test]
+fn every_change_in_a_bus_window_is_its_own_undo_step_and_a_drag_is_one() {
+    use gscore_app::chain_settings::BlockChoice;
+
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    harness.get_by_label("Edit the reverb bus").click();
+    harness.run();
+    let undo_depth = |harness: &Harness<'_, GuitarScoreApp>| {
+        harness.state().document().unwrap().editor().undo_depth()
+    };
+    let start = undo_depth(&harness);
+    // Two clicks are two edits, not one merged step.
+    harness.get_by_label("None").click();
+    harness.run();
+    harness.get_by_label("Computed").click();
+    harness.run();
+    assert_eq!(
+        undo_depth(&harness),
+        start + 2,
+        "two clicks, two undo steps"
+    );
+
+    // Two drags of one knob are two steps; each drag is one.
+    let drag = |harness: &mut Harness<'_, GuitarScoreApp>| {
+        let from = harness.get_by_label("Size").rect().center();
+        harness.hover_at(from);
+        harness.drag_at(from);
+        harness.run();
+        // The knob turns with a sideways drag.
+        for step in 1..=4 {
+            harness.hover_at(from + egui::vec2(8.0 * step as f32, 0.0));
+            harness.run();
+        }
+        harness.drop_at(from + egui::vec2(32.0, 0.0));
+        harness.run();
+    };
+    let size = |harness: &Harness<'_, GuitarScoreApp>| harness.state().playback().reverb_bus();
+    let before = size(&harness);
+    drag(&mut harness);
+    let after_first = size(&harness);
+    assert_ne!(after_first, before, "the drag turned the knob");
+    assert_eq!(undo_depth(&harness), start + 3, "one drag, one undo step");
+    drag(&mut harness);
+    assert_ne!(
+        size(&harness),
+        after_first,
+        "the second drag turned it further"
+    );
+    assert_eq!(
+        undo_depth(&harness),
+        start + 4,
+        "another drag, another step"
+    );
+
+    // Undo goes back one drag at a time.
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+    harness.run();
+    assert_eq!(size(&harness), after_first);
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+    harness.run();
+    assert_eq!(size(&harness), before);
+    assert_eq!(size(&harness).block.choice, BlockChoice::Reverb);
+}
+
+#[test]
 fn the_compressor_bus_is_a_strip_and_a_window() {
     use gscore_app::chain_settings::{BlockChoice, CompRatioSetting};
 
