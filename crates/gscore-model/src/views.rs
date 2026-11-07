@@ -100,6 +100,14 @@ impl<'a> TrackView<'a> {
         self.inner.sound_state.as_deref()
     }
 
+    /// Guitar Pro 7's `<Sounds>` element for this track exactly as the file had it: the RSE
+    /// sound the author chose (its path, bank patch, pickups and effect chain), or `None`
+    /// when the file had none. GuitarScore keeps it on a load-save cycle and reads it to
+    /// start the track on a fitting modelled tone.
+    pub fn rse_sound(&self) -> Option<&'a str> {
+        self.inner.gpif_sounds.as_deref()
+    }
+
     /// The tuning, from string 1 (highest) down, or `None` if the track has none: it is
     /// not a string instrument (Guitar Pro still stores E standard for vocal and piano
     /// tracks), the file stores no tuning, or every string is at pitch 0 (drum kits).

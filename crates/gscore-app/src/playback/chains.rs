@@ -1,5 +1,5 @@
 //! The tones of the modelled tracks in playback: the tone its preset (General MIDI
-//! program) has, else its kind's default from the settings.
+//! program) has, the song's own, else its program's built-in tone from the library.
 //! What the synthesizer has been given is remembered per track (by the song's track index,
 //! which a beat excerpt keeps too), so a change sends only what differs: a new block or file prepares that track's chain
 //! again (on the synthesizer's own thread); a knob only sends its value, so a reverb's
@@ -95,7 +95,16 @@ pub(crate) struct ExportTones {
         ChainSpec,
         [BlockSettings; BLOCKS],
     )>,
-    defaults: Vec<(StringKind, ChainSpec, [BlockSettings; BLOCKS])>,
+    defaults: Vec<(StringKind, StringModel, ChainSpec, [BlockSettings; BLOCKS])>,
+    /// The same for a program that brings its own built-in tone (an electric guitar
+    /// program's is not the generic electric one).
+    program_defaults: Vec<(
+        u8,
+        StringKind,
+        StringModel,
+        ChainSpec,
+        [BlockSettings; BLOCKS],
+    )>,
 }
 
 impl ExportTones {
@@ -143,10 +152,22 @@ impl ExportTones {
                             Some((spec, knobs))
                         }
                         None => self
-                            .defaults
+                            .program_defaults
                             .iter()
-                            .find(|(default, ..)| *default == kind)
-                            .map(|(_, spec, knobs)| (spec.clone(), *knobs)),
+                            .find(|(program, default_kind, ..)| {
+                                *program == target.program && *default_kind == kind
+                            })
+                            .map(|(_, _, model, spec, knobs)| (*model, spec.clone(), *knobs))
+                            .or_else(|| {
+                                self.defaults
+                                    .iter()
+                                    .find(|(default_kind, ..)| *default_kind == kind)
+                                    .map(|(_, model, spec, knobs)| (*model, spec.clone(), *knobs))
+                            })
+                            .map(|(model, spec, knobs)| {
+                                models.push((target.track, model));
+                                (spec, knobs)
+                            }),
                     }
                 }
             };
@@ -204,7 +225,7 @@ impl Playback {
             .filter(|tone| tone.kind == kind)
             .cloned()
             .or_else(|| self.preset_tone(program).filter(|tone| tone.kind == kind))
-            .unwrap_or_else(|| self.default_tone(kind))
+            .unwrap_or_else(|| self.default_tone_for(program, kind))
     }
 
     /// The tones that came with the open song (by its track index), heard at once: only
@@ -255,6 +276,13 @@ impl Playback {
             sound: self.string_sounds.get(kind),
             chain: self.string_chains.get(kind).clone(),
         }
+    }
+
+    /// The built-in tone of `program` for strings of `kind`: the library's tone for that
+    /// preset (an electric guitar program gets its own sound, not a generic one), with the
+    /// kind's default when the program has none of that kind.
+    pub fn default_tone_for(&self, program: u8, kind: StringKind) -> Tone {
+        crate::tone_library::for_program(program, kind).tone.clone()
     }
 
     /// Gives the preset `program` a tone of its own (heard at once, and on every track with
@@ -464,7 +492,9 @@ impl Playback {
                         }),
                 },
                 Some(kind) => {
-                    let tone = own.or(preset).unwrap_or_else(|| self.default_tone(kind));
+                    let tone = own
+                        .or(preset)
+                        .unwrap_or_else(|| self.default_tone_for(target.program, kind));
                     let dialed_in = self.tones.contains_key(&target.track)
                         || self
                             .preset_tone(target.program)
@@ -567,14 +597,26 @@ impl Playback {
         let defaults = super::STRING_KINDS
             .iter()
             .map(|&kind| {
-                let chain = self.string_chains.get(kind).clone();
-                (kind, self.chain_spec(&chain), chain.knobs())
+                let tone = crate::tone_library::default_for_kind(kind).tone.clone();
+                let spec = self.chain_spec(&tone.chain);
+                (kind, tone.sound.model(), spec, tone.chain.knobs())
+            })
+            .collect();
+        // The guitar and bass programs, each with the library's tone of its own; a track
+        // switched to another kind falls back to that kind's default above.
+        let program_defaults = (24..=39_u8)
+            .filter_map(|program| {
+                let kind = StringKind::for_program(program)?;
+                let tone = crate::tone_library::for_program(program, kind).tone.clone();
+                let spec = self.chain_spec(&tone.chain);
+                Some((program, kind, tone.sound.model(), spec, tone.chain.knobs()))
             })
             .collect();
         ExportTones {
             own,
             presets,
             defaults,
+            program_defaults,
         }
     }
 
@@ -857,6 +899,26 @@ mod tests {
     }
 
     #[test]
+    fn a_track_without_its_own_tone_plays_its_programs_built_in_one() {
+        let playback = Playback::default();
+        // 27 (Clean Guitar) and 30 (Distortion) are both electric strings but start on
+        // different built-in tones.
+        let clean = playback.tone(0, 27, StringKind::Electric);
+        let distorted = playback.tone(0, 30, StringKind::Electric);
+        assert_eq!(clean, playback.default_tone_for(27, StringKind::Electric));
+        assert_ne!(clean, distorted);
+        assert_eq!(
+            playback.tone(0, 30, StringKind::Electric),
+            playback.default_tone_for(30, StringKind::Electric)
+        );
+        // A track switched to another kind gets that kind's tone, never the old kind's.
+        assert_eq!(
+            playback.tone(0, 30, StringKind::Bass).kind,
+            StringKind::Bass
+        );
+    }
+
+    #[test]
     fn impulse_files_are_read_once_and_used_for_export() {
         let dir = std::env::temp_dir().join(format!("gscore-chains-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -891,8 +953,8 @@ mod tests {
         chain.blocks[4] = BlockSetting::of(BlockChoice::Drive);
         // Three steel-string tracks whose presets are 27, 28 and 29: 27's preset has this
         // chain and a sound of its own, 28's was dialed in on nylon strings (so on steel it
-        // plays steel's default), 29's none. Only the first gets a chain, and only it its
-        // own sound.
+        // plays steel's default), 29's none. Only the first gets a chain; every track gets
+        // the model of the tone it plays (a preset's, or its program's built-in one).
         let mut sound = playback.string_sounds().get(StringKind::Steel);
         sound.level *= 0.5;
         playback.store_preset_tones(vec![
@@ -938,11 +1000,21 @@ mod tests {
             &[],
         );
         let (models, choices) = playback.export_tones().resolve(&sequence);
-        assert_eq!(models.len(), 1, "{models:?}");
-        assert_eq!(models[0].0, 0);
-        assert_eq!(choices.len(), 1, "only the first track has a chain");
-        let (track, spec, _) = &choices[0];
-        assert_eq!(*track, 0);
+        assert_eq!(models.len(), 3, "{models:?}");
+        assert_eq!(
+            models.iter().map(|(track, _)| *track).collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+        assert!(
+            models[0].1.level < models[1].1.level,
+            "27 keeps its own sound"
+        );
+        assert_eq!(models[1].1, models[2].1, "28 falls back to steel's default");
+        assert_eq!(choices.len(), 3, "every modelled track has its chain");
+        let (_, spec, _) = choices
+            .iter()
+            .find(|(track, ..)| *track == 0)
+            .expect("the first track");
         assert!(matches!(spec.blocks[0], Some(BlockKind::Impulse(_))));
         assert!(
             spec.blocks[1].is_none(),

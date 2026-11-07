@@ -52,6 +52,7 @@ mod tab_bar;
 mod tile_faces;
 mod tiles;
 mod title_bar;
+mod tone_picker;
 mod toolbar;
 mod track_engine;
 mod track_panel;
@@ -335,9 +336,7 @@ impl GuitarScoreApp {
                 if let Some(player) = self.track_player_in(tab, index) {
                     // What plays it: SoundFont is the built-in default; anything else
                     // must travel with the song.
-                    if sound.engine.is_none()
-                        && player.engine != gscore_play::TrackEngine::SoundFont
-                    {
+                    if sound.engine.is_none() && player.engine != player.default {
                         sound.engine = Some(song_state::SoundEngine::of(player.engine));
                     }
                     // The tone it plays: the song's own, the preset's on this machine, or
@@ -352,7 +351,7 @@ impl GuitarScoreApp {
                         && let Some(kind) = kind
                     {
                         let tone = self.track_tone_in(tab, index, kind);
-                        if tone != self.playback.default_tone(kind) {
+                        if tone != self.playback.default_tone_for(player.program, kind) {
                             sound.tone =
                                 Some(crate::settings::PresetTone::of(player.program, &tone));
                         }

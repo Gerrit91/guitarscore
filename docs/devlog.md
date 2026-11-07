@@ -4086,3 +4086,49 @@ needed for a much larger font); owner listening check.
   the setters no longer clone the whole song on every drag frame to read one track's
   payload; the per-frame sync hands the song's sound to playback only when the open tab
   or its revision changed (the buses are still compared, as they follow the settings).
+
+## 2026-11-07 — File menu: Save As
+
+- "Save As…" from the File menu and the toolbar did nothing: both called `save_as`,
+  which only works for a tab whose save was already prepared (`saving_tab`), so it found
+  none and gave up. They now call `save_as_active`, which picks the active tab, still
+  refuses while another save runs, and then asks for a `.gp` path. Unit test: with
+  nothing being saved the active tab is chosen, and a running save is not disturbed.
+- Part B, step 1: the built-in tone library (`tone_library.rs`): 18 named tones in six
+  families (Clean, Crunch, Lead, High gain, Acoustic, Bass), each a full `Tone` (strings,
+  sound and computed chain, no IR files) with a description, a default tone for every
+  guitar and bass program, and a fallback for other programs. Not wired into the UI yet.
+- Part B, step 2: a track with no tone of the song or its preset now plays its General
+  MIDI program's built-in library tone (`Playback::default_tone_for`), in the app, the
+  sequencer and the WAV export alike; a track switched to another kind of string still
+  gets that kind's tone. The per-kind settings remain the fallback for programs without
+  a tone. Tests: 27 and 30 start on different electric tones, a bass-switched track gets
+  a bass tone, and export resolves every modelled track's model and chain.
+- Part B, step 3: the shared sound picker (`app/tone_picker.rs`): a filterable, scrollable
+  table about eight rows high, grouped by General MIDI family, by drum kit, or by our tone
+  family plus the user's saved tones; the current choice is highlighted and scrolled into
+  view and a tone's description shows on hover. Pure row builders and filter are tested;
+  not wired into a window yet.
+- Part B, step 4: the track panel's Sound section now shows the shared source switch (MIDI
+  synth / PM synthesis / External MIDI) and the matching table below it: General MIDI
+  programs (drum kits for a drum track), our built-in tones plus saved ones for PM, and a
+  port, channel and the programs for a hardware synthesizer. Choosing a PM tone gives that
+  track the tone (kept in the song), and plays the Listen phrase unless the song is
+  playing. PM synthesis is now the default for string tracks (settings default on; the
+  checkbox stays as the machine-wide escape hatch). The Sound chain window shares the
+  source switch and lists the same tones (saved ones first) in its compact Tone combo, so
+  both views always show the same choice. Snapshots regenerated (the panel's taller Sound
+  section); tone chains are capped at two blocks each so the board keeps room.
+- Part B, step 5: a GP7 file's RSE sound starts a string track on our nearest built-in tone
+  (`song_state/rse.rs`, reading only Guitar Pro's path, name and effect ids; the RSE
+  material itself is never used). The track panel shows "RSE: <name>" beside the tone.
+  Tests: the repository's Jazz, Overdrive-plus-American-Clean and Steel RSE sounds map to
+  Warm Jazz, Clean Single Coil and Steel Fingerpicked; drums are not mapped; an explicit
+  GuitarScore tone always wins.
+- Part B, step 6: app tests for the switcher and the picker. A tone clicked in the track
+  panel belongs to that track alone and comes back in a fresh app after saving; the source
+  switch keeps both the General MIDI program and the modelled tone across PM → MIDI →
+  PM, and the Sound chain window shows the same source; a drum track lists the kits and
+  its PM button is disabled; a hardware synth shows the port, channel and program table.
+  Switching the source clears the table's filter, which would otherwise hide the other
+  list's rows.

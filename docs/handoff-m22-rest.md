@@ -23,20 +23,53 @@ before the release) are his. This file lists the rest, in a sensible order.
 
 ## 2. The sound
 
-1. **Pick attack** (owner asked for it after the pickup): the pick pushes the string and
+1. **Palm mutes** (owner, 2026-11-07: what he dislikes most about the PM sound today):
+   they sound only percussive and thin. A real palm mute is a beefy note: the hand at the
+   bridge takes away the highs and shortens the ring, but the note's pitch and much of its
+   character stay, and it lasts clearly longer than a click. Today:
+   - `gscore-play/src/effects.rs` `shape_note` cuts every palm-muted note to an eighth
+     note at most (`PALM_MUTE_TICKS`), plays it at 85% velocity and stops it dead at its
+     end (`damp`);
+   - the string (`gscore-guitar/src/string.rs`) decays in 0.18 s at the fundamental and
+     0.03 s around 2 kHz (`Damping::PalmMuted`), and the pick's hardness is halved.
+
+   Wanted:
+   - **Longer:** no eighth-note cap for the modelled strings; the note keeps its written
+     length and fades with the palm's damping, and the next note on the string or the
+     note's end stops it as usual, not with a dead stop. The SoundFont path has no
+     palm-mute samples and may keep a cap (`shape_note` is shared by all engines, so the
+     length rule must depend on what plays the track).
+   - **Beefier:** full strength (no velocity cut; a chug is played hard), the pick's
+     attack kept, the low end and low mids full; the hand damps the highs much more than
+     the fundamental and the first harmonics.
+   - **More of the note:** the fundamental and the low harmonics ring long enough to hear
+     the pitch clearly (low strings longer than high ones), with no detuning from the
+     damping. The figures in `Damping::PalmMuted` are starting points to tune by ear,
+     not a design.
+   - Maybe a palm-mute amount in the string sound (light to heavy, the hand nearer to or
+     further from the bridge); the owner decides.
+   - Through a high-gain amp it still chugs tightly (the amp's and drive's Tight setting).
+
+   Tests: a palm-muted note against the same note open (same velocity): its level near
+   the open note's, its fundamental still sounding well past an eighth note, clearly less
+   energy above a few kHz, and the same pitch; a palm-muted note followed by another on
+   the same string stops at the new note. Then the palm-muted chugs and the power-chord
+   riff of the reference passages (item 1 of section 1), by ear with the owner, clean and
+   distorted.
+2. **Pick attack** (owner asked for it after the pickup): the pick pushes the string and
    slips off within about a millisecond (a short force pulse whose width follows the
    pick's thickness, `hardness`), a short scrape-and-click noise, and a slightly sharp
    start of a hard pluck that settles within about 50 ms (tension modulation). Today a
    pluck reshapes the loop at once (`gscore-guitar/src/string.rs` `excite`).
-2. **The acoustic body:** a body response for steel and nylon (commuted synthesis, as
+3. **The acoustic body:** a body response for steel and nylon (commuted synthesis, as
    planned). It can be computed (a few body resonances around 100-250 Hz and the
    top's modes) rather than recorded, so it need not wait for the owner's IRs.
-3. **String coupling:** unplayed strings of a track ringing along through the bridge
+4. **String coupling:** unplayed strings of a track ringing along through the bridge
    (sympathetic resonance), quietly; the open strings of a chord shape especially.
-4. **Noises and feel:** fret and slide squeaks (on wound strings), the release noise when
+5. **Noises and feel:** fret and slide squeaks (on wound strings), the release noise when
    a finger lets go, and humanized strum timing (strings of a strum a little apart, up
    and down strokes, a little velocity spread).
-5. **Techniques still simplified:** harmonics play the harmonic's pitch with a purer pluck
+6. **Techniques still simplified:** harmonics play the harmonic's pitch with a purer pluck
    instead of damping the string at a node (`docs/guitar-modelling.md`, "Not yet");
    octave signs (8va, 8vb, 15ma) are not applied in playback (noted when they were added).
    Then listen through every technique of item 1 and fix what sounds wrong.

@@ -14,6 +14,7 @@ mod playback;
 mod settings;
 mod state;
 mod tasks;
+mod tone_library;
 #[cfg(target_arch = "wasm32")]
 pub mod web;
 
