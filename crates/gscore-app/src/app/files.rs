@@ -212,6 +212,32 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Starts "Save As…" for the active tab (the File menu and the toolbar): unlike
+    /// [`Self::save_tab`], nothing was prepared before this call, so the tab to save is
+    /// chosen here. Nothing starts while another save is running: its result could not
+    /// tell the two apart.
+    pub(super) fn save_as_active(&mut self, ctx: &egui::Context) {
+        if self.saving_tab.is_some() {
+            self.status =
+                Some("Another save is still running; try again when it is done".to_owned());
+            self.closing_window = false;
+            return;
+        }
+        let Some(id) = self.save_as_target() else {
+            return;
+        };
+        self.saving_tab = Some(id);
+        self.after_save = None;
+        self.save_as(ctx);
+    }
+
+    /// The tab "Save As…" asks a path for: the one being saved already, else the active
+    /// one. `None` without an open tab.
+    fn save_as_target(&self) -> Option<TabId> {
+        self.saving_tab
+            .or_else(|| self.tabs.get(self.active).map(|tab| tab.id))
+    }
+
     /// Asks where to save the tab being saved as a `.gp` file.
     pub(super) fn save_as(&mut self, ctx: &egui::Context) {
         let Some(tab) = self
@@ -711,4 +737,75 @@ fn same_file(a: &Path, b: &Path) -> bool {
         (std::fs::canonicalize(a), std::fs::canonicalize(b)),
         (Ok(a), Ok(b)) if a == b
     )
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+
+    use super::*;
+    use crate::Keymap;
+    use crate::Settings;
+
+    fn app_with_tabs(count: usize) -> GuitarScoreApp {
+        let ctx = egui::Context::default();
+        let mut app = GuitarScoreApp::with_settings(
+            &ctx,
+            None,
+            Keymap::default(),
+            None,
+            Settings::default(),
+            None,
+        );
+        for index in 0..count {
+            let song =
+                gscore_model::testing::song(&[gscore_model::testing::GUITAR_6], 1).expect("song");
+            app.push_tab(Document::new(
+                PathBuf::from(format!("song-{index}.gp")),
+                song,
+                gscore_session::FileFormat::Gp,
+            ));
+        }
+        app
+    }
+
+    #[test]
+    fn save_as_asks_for_the_active_tabs_path_when_nothing_is_being_saved() {
+        let app = app_with_tabs(2);
+        assert_eq!(app.saving_tab, None);
+        // The bug this guards against: with no save running, "Save As" had no tab to save
+        // and did nothing. It must use the active tab.
+        assert_eq!(
+            app.save_as_target(),
+            app.tabs.get(app.active).map(|tab| tab.id)
+        );
+        // When a save is being prepared, that tab stays the one Save As asks for.
+        let mut app = app;
+        let id = app.tabs.first().unwrap().id;
+        app.saving_tab = Some(id);
+        assert_eq!(app.save_as_target(), Some(id));
+        // Without an open tab there is nothing to save.
+        let app = app_with_tabs(0);
+        assert_eq!(app.save_as_target(), None);
+    }
+
+    #[test]
+    fn save_as_does_not_start_while_another_save_is_running() {
+        let ctx = egui::Context::default();
+        let mut app = app_with_tabs(2);
+        let saving = app.tabs.first().unwrap().id;
+        app.saving_tab = Some(saving);
+        app.active = 1;
+        app.status = None;
+        // No dialog may start here: the other save's result could not be told apart.
+        app.save_as_active(&ctx);
+        assert_eq!(app.saving_tab, Some(saving));
+        assert!(
+            app.status
+                .as_deref()
+                .is_some_and(|s| s.contains("still running")),
+            "{:?}",
+            app.status
+        );
+    }
 }

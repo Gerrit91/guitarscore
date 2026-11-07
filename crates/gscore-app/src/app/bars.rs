@@ -77,7 +77,7 @@ impl GuitarScoreApp {
                     self.request(Request::Save, ui.ctx());
                 }
                 if self.action_button(ui, ActionId::SaveAs, has_document) {
-                    self.save_as(ui.ctx());
+                    self.save_as_active(ui.ctx());
                 }
                 let mut export = None;
                 ui.add_enabled_ui(has_document, |ui| {

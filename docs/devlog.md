@@ -4086,3 +4086,11 @@ needed for a much larger font); owner listening check.
   the setters no longer clone the whole song on every drag frame to read one track's
   payload; the per-frame sync hands the song's sound to playback only when the open tab
   or its revision changed (the buses are still compared, as they follow the settings).
+
+## 2026-11-07 — File menu: Save As
+
+- "Save As…" from the File menu and the toolbar did nothing: both called `save_as`,
+  which only works for a tab whose save was already prepared (`saving_tab`), so it found
+  none and gave up. They now call `save_as_active`, which picks the active tab, still
+  refuses while another save runs, and then asks for a `.gp` path. Unit test: with
+  nothing being saved the active tab is chosen, and a running save is not disturbed.

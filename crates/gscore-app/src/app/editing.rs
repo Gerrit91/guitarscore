@@ -226,7 +226,7 @@ impl GuitarScoreApp {
                 }
                 ActionId::SaveAs => {
                     if self.document().is_some() {
-                        self.save_as(ctx);
+                        self.save_as_active(ctx);
                     }
                     return;
                 }
