@@ -3918,3 +3918,171 @@ needed for a much larger font); owner listening check.
   responses' absolute file paths (visible in Guitar Pro's Notices, useless on another
   machine; the earlier decision was name and checksum). And a seek while playing restarts
   a MIDI-out track at once, without the audio latency hold-back that Play has.
+
+## 2026-11-07 — Part A of the song-state handoff, 1-2: the file keeps what we add
+
+- `gscore-gp`: a GP7 track's `<Sounds>` and `<AudioEngineState>` are kept verbatim (a
+  second, lightweight pass over `score.gpif`) and written back on save, so opening and
+  saving no longer loses the RSE sound its author chose. `Track::gpif_sounds` /
+  `gpif_audio_engine`; tests in `gpif/raw_tests` and `gpif_import/sounds_tests.rs`;
+  `docs/guitarpro.md` item 43.
+- `gscore-app::app::song_state`: the state block in a song's notes is now compact JSON,
+  deflated (`miniz_oxide`) and base64-encoded, split into ASCII lines of at most 200
+  characters, each `::GS1:<part>/<count>:<crc32>:<chunk>` with a CRC-32 (`crc32fast`)
+  over the whole payload. Reading is all-or-nothing: a missing, doubled or edited line, a
+  wrong checksum or a future version drops the whole block instead of half a state. The
+  base64 keeps lines under GP3-5's 255-byte notice limit and survives a code page that
+  would mangle an umlaut. The old `[GuitarScore 1]{json}[/GuitarScore]` line is still
+  read and replaced on save.
+- Tests: base64 round trip at every length, broken base64, multi-line blocks with every
+  line within limits, truncated blocks never half-applied, legacy migration, and non-ASCII
+  tone names travelling intact.
+- Still open: track state carries only the compressor send and the tone; the track's name
+  and instrument are not matched on read yet, and the state does not yet live in
+  `gscore-model` (so track insert/delete does not move it), nor are song-wide buses and
+  drum parts stored.
+
+## 2026-11-07 — Part A, 3: the block knows which track it means
+
+- A track entry now carries its identity as well as its number: the track's name, General
+  MIDI program and whether it is a drum kit (`TrackIdentity`). On opening, an entry goes to
+  the track with its number when that is still the same track; otherwise to the one
+  remaining track with the same name and instrument; otherwise it is dropped, never
+  applied to the wrong track. An instrument changed in Guitar Pro (a guitar tone on a
+  piano) is dropped. Blocks written before identities existed still go by number.
+- Two entries never land on the same track (a hand-edited block with a repeated number
+  keeps the first).
+- Tests: reordered and inserted tracks, a deleted track, a changed instrument, ambiguous
+  names, old blocks without identities, and an identity with non-ASCII text surviving the
+  block.
+
+## 2026-11-07 — Part A, 4: the per-track state lives on the track
+
+- `gscore_gp::Track` gains `sound_state`: GuitarScore's opaque JSON payload for a track
+  (what plays it, its tone and chain, its sends, ...), never written to a Guitar Pro file
+  (the app saves it in the notes block). Because it sits on the track itself, every track
+  command already carries it: a moved track keeps it, a duplicate copies it, a delete takes
+  it away and undo restores it, and a new track starts without one (`fresh_track` clears
+  it).
+- `gscore-model`: `TrackView::sound_state`, `Song::set_track_sound_state` (undone through
+  `ChangeKind::TrackSoundState`, payload bounded at 256 KiB). It is app-owned and has no
+  field in the file, so `differences` (which drives the save loss report) leaves it alone;
+  the test compares the states directly after each undo.
+- Test: set on two tracks, then duplicate, move, delete, insert and clear, with undo after
+  each (and an explicit check that the payloads came back); a missing track and an
+  oversized payload are refused without changing the song.
+- Still open: the app still reads and writes its four tab maps; wiring it to this field is
+  next.
+
+## 2026-11-07 — Part A, 5: the app keeps a track's sound on the track
+
+- The four per-tab maps (`track_engines`, `midi_outs`, `comp_sends`, `track_tones`) are
+  gone. A track's sound state is the document's: `TrackSound` (`engine`, `midi_out`,
+  `comp_send`, `tone`) is that JSON payload, read with `TrackSound::of_song` and keyed by
+  nothing but the track. The Sound chain window, the mixer's send knob and the preset
+  tone dialogs all go through the new undoable `Command::SetTrackSound`, so every change
+  is one undo step (a slider drag merges by `continues`), is journaled, and travels with
+  the document: a track insert, delete, duplicate or move carries it, and undo restores
+  it. `details()` prints only the payload's size.
+- Opening a song applies the block to the tracks (`SongState::apply_to_song`) before the
+  `Document` exists, so the journal replays on a song that already has it and no edit can
+  drop it. Every edit (and every undo) hands the document's state to playback
+  (`sync_song_sound`); the player ignores what did not change.
+- Saving resolves what each track **actually** plays: its song tone, else the preset tone
+  of this machine, else the built-in one. Anything not built-in is stored in the block,
+  as is the resolved engine when it is not `SoundFont` and the MIDI-out route, so another
+  machine hears the same song.
+- `differences` stays without the payload (no file field holds it, so the save's read-back
+  would report a loss every time); the model undo test checks the payloads directly.
+- Tests: block round trip through the new shape and old flat entries, engine/tone/route
+  resolution, a saved-and-reopened song with default settings (mixer send, tone, engine),
+  and the command parse round trip. Three snapshots show the song as modified after a
+  sound change — it is a real edit now; reviewed and updated.
+- Still open: song-wide buses (reverb, compressor) and per-track drum part chains and
+  levels; the round trip through GP3/4/5/GPX, recovery and the journal.
+
+## 2026-11-07 — Part A, 6: the mixer's buses belong to the song too
+
+- `gscore-model`: the song has its own opaque `sound_state` (no GP field; saved in the
+  notes next to the tracks' payloads), set by the undoable `Song::set_sound_state` with
+  the same 256 KiB bound as a track's. `ChangeKind::SongSoundState` carries the previous
+  value, so undo restores it.
+- `gscore-edit`: `Command::SetSongSound { state }` (`set_song_sound`, `state=`, `none` to
+  clear) with `details()` printing only the size and consecutive changes merging into one
+  drag step; it joins the parse round trip and `panic_hunt`.
+- `gscore-app`: `Buses { reverb: Option<ReverbBus>, compressor: Option<CompressorBus> }`
+  is the song's payload; a bus the song does not set follows this machine's settings
+  (`song_buses`). The mixer strips and both bus windows read the song's effective buses
+  and write them with `SetSongSound`, so adjusting a bus marks the song modified, is one
+  undo step per drag, is journaled, and travels in the notes block. Bus edits no longer
+  write `settings.reverb_bus`/`compressor_bus`, and `settings()` no longer copies what
+  playback runs back into the settings, so a song's buses never leak into the machine's.
+- The compressor-bus snapshot now shows the song modified and the score scrolled to the
+  cursor (a bus change is an edit like any other); reviewed and updated.
+- Still open: per-track drum part chains and levels; the block round trip through
+  GP3/4/5/GPX, recovery and the journal.
+
+## 2026-11-07 — Part A, 7: a drum kit's parts belong to its track
+
+- `TrackSound` gains `drum_parts` (`DrumPartSound`: the part's id, its chain and its
+  level 0-127), so the Sound chain window's part row writes the **song's** copy of the
+  drum track instead of the machine-wide settings: each drum track has its own kick,
+  snare, ... chains and levels, a part the song does not set follows the machine's kit
+  (the old `settings.rs` `drum_parts`, or the built-in tone), and Built-in forgets the
+  song's own again. All of it goes through `Command::SetTrackSound`, so a part is one
+  undo step per drag and travels with the song.
+- The engine gained the part **level**: `SynthEngine::set_part_level` and
+  `Command::PartLevel` scale a part after its chain, and `PartChoice` carries it so WAV
+  export matches playback. `Playback` keeps the song's per-track parts
+  (`TrackDrumPart`, sync'd after every edit) over the machine kit;
+  `track_drum_part_chain`/`track_drum_part_level` resolve the two, and
+  `export_parts` uses them.
+- The part window shows a level slider under the part row; a part the song owns offers
+  Built-in, a part that only follows the kit does not (so the machine's setting is never
+  silently overwritten).
+- Tests: the block round trip with two parts (a chain and a level, one at unity), the
+  window writes the track's payload rather than the settings and Built-in clears it, the
+  mixer's level scales only its part, and `sound_chain_drum_kick` shows the slider.
+- Still open: the block round trip through GP3/4/5/GPX, recovery and the journal.
+
+## 2026-11-07 — Part A, 8: tests through every format, recovery
+
+- The state block now round-trips through **every format we write** (GP3, GP4, GP5, GPX,
+  GP7), not only the default GP7 save: a state longer than one line with a non-ASCII tone
+  name and the user's own notes comes back byte for byte. The app gained `gscore-io` as a
+  test-only dependency for the writer/reader.
+- A tone dialed in for a preset (a setting, not the song's) is still written as the tone
+  the track actually plays, so a fresh app with default settings hears it; a song's own
+  muted reverb bus likewise survives save and reopen.
+- Crash recovery: a mixer send changed in a song and then a crash comes back after Restore
+  with the same per-track payload, and undo from the restored document clears it — so
+  `Command::SetTrackSound` (and `SetSongSound`, its bus siblings) really reach the journal
+  and replay.
+- Part A is complete: GuitarScore's own sound state (per track: engine, MIDI route, comp
+  send, tone, drum parts and levels; per song: reverb and compressor buses) lives in the
+  document, is edited by undoable commands, is journaled, and is saved in the notes block
+  of every format. Part B (the PM tone library) is next.
+
+## 2026-11-07 — Part A, review fixes
+
+- A track keeps its state after a save to GP3-5: those formats cut a track name to 40
+  bytes and keep only what Windows-1252 holds, so a long or non-Latin name came back
+  different and the entry was dropped. Names now also match as those formats store them
+  (`gscore_model::track_name_in_binary_formats`, from `gscore-gp`'s field writer). Test
+  through every format with a long, a Cyrillic and an umlaut name.
+- Another instrument (program or drum kit) drops the track's kept GP7 `<Sounds>` and
+  `<AudioEngineState>`, and a new track no longer copies its neighbour's, so Guitar Pro
+  does not play the old instrument's RSE sound; undo restores them (`RseSound` in the
+  program and drum changes).
+- Sound edits merge into the undo step before them only while the primary pointer button
+  is held, and every new press ends the step: the Sound chain and bus windows used to
+  merge separate drags, clicks and even a reverb and a compressor change into one step.
+  App test: two clicks are two steps, two knob drags are two steps, undo goes back one
+  drag at a time.
+- Saving resolves what plays a track from the tab being saved, not the open one
+  (`track_player_in`, `track_tone_in`); a Save As finished after switching tabs used to
+  mix the open song's engine, tone and MIDI route into the saved one.
+- Performance: each tab reads its sound state once per editor revision (`Tab::sound`);
+  the setters no longer clone the whole song on every drag frame to read one track's
+  payload; the per-frame sync hands the song's sound to playback only when the open tab
+  or its revision changed (the buses are still compared, as they follow the settings).

@@ -81,18 +81,12 @@ pub(super) enum GridAction {
     SetMetronomeVolume(f32),
     /// Open the window of the mixer's reverb bus.
     OpenReverbBus,
-    /// Set the mixer's reverb bus; `commit` writes the settings (a drag or a click ended).
-    ReverbBus {
-        bus: crate::settings::ReverbBus,
-        commit: bool,
-    },
+    /// Set the mixer's reverb bus (an edit of the song, heard at once).
+    ReverbBus { bus: crate::settings::ReverbBus },
     /// Open the window of the mixer's compressor bus.
     OpenCompressorBus,
-    /// Set the mixer's compressor bus; `commit` writes the settings.
-    CompressorBus {
-        bus: crate::settings::CompressorBus,
-        commit: bool,
-    },
+    /// Set the mixer's compressor bus (an edit of the song, heard at once).
+    CompressorBus { bus: crate::settings::CompressorBus },
     /// A track's send into the compressor bus (0-127), kept with the song.
     CompSend { track: usize, value: u8 },
 }
@@ -116,6 +110,7 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let sound = tab.sound();
         let document = &mut tab.document;
         let grid = document.grid();
         let cursor = document.editor().cursor();
@@ -130,10 +125,18 @@ impl GuitarScoreApp {
             .map(|index| self.playback.track_is_midi_out(index))
             .collect();
         let comp_sends: Vec<u8> = (0..rows.len())
-            .map(|index| tab.comp_sends.get(&index).copied().unwrap_or(0))
+            .map(|index| sound.tracks.get(index).map_or(0, |track| track.comp_send))
             .collect();
-        let reverb_bus = self.playback.reverb_bus();
-        let compressor_bus = self.playback.compressor_bus();
+        let reverb_bus = sound
+            .buses
+            .reverb
+            .clone()
+            .unwrap_or_else(|| self.settings.reverb_bus.clone());
+        let compressor_bus = sound
+            .buses
+            .compressor
+            .clone()
+            .unwrap_or_else(|| self.settings.compressor_bus.clone());
         let meters = self.playback.meters();
         // The bus's meter: the loudest send into it, through its own (square-law) level.
         let bus_level = if reverb_bus.muted {
@@ -313,20 +316,10 @@ impl GuitarScoreApp {
             }
             GridAction::SetMetronomeVolume(volume) => self.set_metronome_volume(volume),
             GridAction::OpenReverbBus => self.open_reverb_bus_window(),
-            GridAction::ReverbBus { bus, commit } => {
-                self.playback.set_reverb_bus(bus);
-                if commit {
-                    self.save_settings();
-                }
-            }
+            GridAction::ReverbBus { bus } => self.set_song_reverb_bus(bus),
             GridAction::OpenCompressorBus => self.open_compressor_bus_window(),
             GridAction::CompSend { track, value } => self.set_comp_send(track, value),
-            GridAction::CompressorBus { bus, commit } => {
-                self.playback.set_compressor_bus(bus);
-                if commit {
-                    self.save_settings();
-                }
-            }
+            GridAction::CompressorBus { bus } => self.set_song_compressor_bus(bus),
         }
     }
 

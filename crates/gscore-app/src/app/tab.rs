@@ -2,7 +2,9 @@
 //! track, the measure selection, and the panel drafts. What is shared between tabs (theme,
 //! zoom, which panels are visible) stays on the app.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::time::SystemTime;
 
 use gscore_edit::Cursor;
@@ -13,6 +15,7 @@ use crate::state::MeasureSelection;
 use super::edit_palette::EditPaletteState;
 use super::grid::{MixerState, RenameTrack};
 use super::new_track::NewTrackDialog;
+use super::song_state::{Buses, TrackSound};
 use super::track_panel::TrackPanelState;
 
 /// A tab's identity for as long as it is open. Unlike its index, it does not change when
@@ -21,6 +24,15 @@ use super::track_panel::TrackPanelState;
 pub(crate) struct TabId(u64);
 
 /// One open song and the view state that belongs to it.
+/// GuitarScore's own sound state of a document, read from its JSON payloads once.
+#[derive(Debug, Default)]
+pub(super) struct SongSound {
+    /// Each track's state, by track index.
+    pub(super) tracks: Vec<TrackSound>,
+    /// The song's own buses.
+    pub(super) buses: Buses,
+}
+
 #[derive(Debug)]
 pub(super) struct Tab {
     pub(super) id: TabId,
@@ -53,21 +65,14 @@ pub(super) struct Tab {
     pub(super) new_track: Option<NewTrackDialog>,
     /// Which tracks the score shows besides the cursor's.
     pub(super) score: super::score_view::ScoreTracks,
-    /// What plays a track when the user chose it (in the Sound chain window) instead of
-    /// the default for its preset: by track index.
-    pub(super) track_engines: std::collections::BTreeMap<usize, gscore_play::TrackEngine>,
-    /// The port and channel of each track played by a hardware synthesizer (MIDI out), by
-    /// track index.
-    pub(super) midi_outs: std::collections::BTreeMap<usize, crate::playback::MidiOutRoute>,
-    /// Each track's send into the mixer's compressor bus (0-127), by track index. Kept in
-    /// the song's notes when it is saved (Guitar Pro keeps that field).
-    pub(super) comp_sends: std::collections::BTreeMap<usize, u8>,
-    /// The tones a track plays that came with the song (not from its preset), by track
-    /// index: a song keeps its sound when it is shared.
-    pub(super) track_tones: std::collections::BTreeMap<usize, crate::chain_settings::Tone>,
     /// Whether the last frame had a selection of more than one beat: a new one turns
     /// Loop on.
     pub(super) had_loop_selection: bool,
+    /// The document's sound state and the editor revision it was read at. Playback, the
+    /// mixer and the Sound chain window read it every frame; parsing every track's
+    /// payload each time would be wasted work, and the revision changes with every edit
+    /// and undo.
+    sound: RefCell<Option<(u64, Rc<SongSound>)>>,
 }
 
 impl Tab {
@@ -110,12 +115,33 @@ impl Tab {
             history_stamps: HashMap::new(),
             new_track: None,
             score: super::score_view::ScoreTracks::default(),
-            track_engines: std::collections::BTreeMap::new(),
-            midi_outs: std::collections::BTreeMap::new(),
-            comp_sends: std::collections::BTreeMap::new(),
-            track_tones: std::collections::BTreeMap::new(),
             had_loop_selection: false,
+            sound: RefCell::new(None),
         }
+    }
+
+    /// The document's sound state, read again only after the song changed.
+    pub(super) fn sound(&self) -> Rc<SongSound> {
+        let revision = self.document.editor().revision();
+        if let Some((at, sound)) = self.sound.borrow().as_ref()
+            && *at == revision
+        {
+            return Rc::clone(sound);
+        }
+        let song = self.document.song();
+        let sound = Rc::new(SongSound {
+            tracks: (0..song.track_count())
+                .map(|track| TrackSound::of_song(song, track))
+                .collect(),
+            buses: Buses::of_song(song),
+        });
+        *self.sound.borrow_mut() = Some((revision, Rc::clone(&sound)));
+        sound
+    }
+
+    /// The sound state of `track` (its defaults when it has none or does not exist).
+    pub(super) fn track_sound(&self, track: usize) -> TrackSound {
+        self.sound().tracks.get(track).cloned().unwrap_or_default()
     }
 
     /// Whether more than one beat is selected (beats in the score, or bars in the grid or

@@ -74,6 +74,8 @@ struct Actions {
     reset_tone: bool,
     /// Back to the built-in tone of the drum part the window shows.
     reset_part: bool,
+    /// A drum part's mixing level (0-127), while its slider moves.
+    part_level: Option<u8>,
     /// Save the sound and the chain under this name, or delete that preset (its kind of
     /// string and its name, since names are unique within a kind only).
     save_preset: Option<String>,
@@ -1165,12 +1167,11 @@ impl GuitarScoreApp {
             return;
         }
         if let Some(part) = part.and_then(DrumPart::at) {
-            let mut chain = self.playback.drum_part_chain(part);
+            let (mut chain, level) = self.track_drum_part(track, part);
             if let Some(block) = chain.blocks.get_mut(place) {
                 block.file = Some(path);
             }
-            self.playback.set_drum_part_chain(part, Some(chain));
-            self.save_settings();
+            self.set_track_drum_part(track, part, Some((chain, level)));
             return;
         }
         let mut tone = self.track_tone(track, kind);
@@ -1228,14 +1229,23 @@ impl GuitarScoreApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(30));
         }
         // A drum kit: the board shows the part chosen in the row (or the track's own chain,
-        // the drum bus), and the parts that have a tone of their own.
-        let part_chain = window.part.map(|part| self.playback.drum_part_chain(part));
+        // the drum bus), and the parts the song gives a tone of their own.
+        let part_chain = window
+            .part
+            .map(|part| self.track_drum_part(window.track, part));
+        let part_level = part_chain.as_ref().map(|(_, level)| *level);
         let dialed_in: Vec<DrumPart> = self
-            .playback
-            .drum_parts()
-            .iter()
-            .filter_map(crate::settings::DrumPartTone::part)
-            .collect();
+            .tabs
+            .get(self.active)
+            .map(|tab| tab.track_sound(window.track))
+            .map(|sound| {
+                sound
+                    .drum_parts
+                    .iter()
+                    .filter_map(super::song_state::DrumPartSound::part)
+                    .collect()
+            })
+            .unwrap_or_default();
         egui::Window::new(&title)
             .title_bar(false)
             .collapsible(false)
@@ -1258,9 +1268,31 @@ impl GuitarScoreApp {
                                 &dialed_in,
                                 &mut actions,
                             );
+                            if let Some(part) = window.part {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        RichText::new(format!("{} level", part.label()))
+                                            .color(style::tokens(ui).text_weak),
+                                    );
+                                    let mut level = part_level.unwrap_or(127);
+                                    if ui
+                                        .add(egui::Slider::new(&mut level, 0..=127))
+                                        .on_hover_text(
+                                            "The part's level inside the drum track, after its \
+                                             chain (127 is unity)",
+                                        )
+                                        .changed()
+                                    {
+                                        actions.part_level = Some(level);
+                                    }
+                                });
+                            }
                             ui.separator();
                         }
-                        let chain = part_chain.clone().unwrap_or_else(|| tone.chain.clone());
+                        let chain = part_chain
+                            .as_ref()
+                            .map(|(chain, _)| chain.clone())
+                            .unwrap_or_else(|| tone.chain.clone());
                         let sound = tone.sound;
                         let board = board(ui, &player, &chain, window.selected);
                         if let Some(index) = board.select {
@@ -1369,15 +1401,27 @@ impl GuitarScoreApp {
         // A tone belongs to the track's preset (its General MIDI program): every track with
         // that preset, in every song, plays it. Built-in forgets it.
         let track = window.track;
-        // A drum part's chain is the kit's (kept in the settings, for every drum track).
+        // A drum part's chain and level belong to the song's copy of the track; Built-in
+        // forgets the song's own and follows the kit again.
         if let Some(part) = window.part {
+            let current = self.track_drum_part(track, part);
+            let mut chain = current.0;
+            let mut level = current.1;
+            let mut changed = false;
             if actions.reset_part {
-                self.playback.set_drum_part_chain(part, None);
-                self.save_settings();
-            }
-            if let Some(chain) = actions.chain.take() {
-                self.playback.set_drum_part_chain(part, Some(chain));
-                self.save_settings();
+                self.set_track_drum_part(track, part, None);
+            } else {
+                if let Some(edited) = actions.chain.take() {
+                    chain = edited;
+                    changed = true;
+                }
+                if let Some(edited) = actions.part_level.take() {
+                    level = edited;
+                    changed = true;
+                }
+                if changed {
+                    self.set_track_drum_part(track, part, Some((chain, level)));
+                }
             }
             // The strings' sound and the preset tones belong to the track, not the part.
             actions.sound = None;

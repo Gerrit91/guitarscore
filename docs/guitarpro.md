@@ -283,3 +283,25 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     writes each track's chord diagrams as a `DiagramCollection` property and each beat's
     diagram id as `<Chord>`, which the importer already read; diagrams used to be dropped
     on save. Tests cover both through a GP7 round trip.
+43. Guitar Pro's RSE sound survives saving (`src/io/gpif/mod.rs`, `src/io/gpx/mod.rs`,
+    `src/model/track.rs`, `src/io/gpif_import/mod.rs`, `src/io/gpif_export/mod.rs`,
+    2026-11-07): the reader kept only the MIDI program of a GP7 track's `<Sounds>` and the
+    writer dropped the element, so a save from GuitarScore lost the RSE sound its author
+    chose (path, soundbank patch, pickups, effect chain). A second, lightweight pass over
+    `score.gpif` (`capture_track_raw`) now records each track's `<Sounds>` and
+    `<AudioEngineState>` elements verbatim — CDATA, unknown effects and all — and the GPIF
+    writer emits them back unchanged. `Track` gains `gpif_sounds` and
+    `gpif_audio_engine`; GP3-5/GPX leave them `None`. The model drops both when the
+    track's instrument changes (another program, or a drum kit) and does not copy them to
+    a new track, so Guitar Pro never plays the old instrument's sound; undo restores them.
+    Tests in `gpif_import/sounds_tests.rs`, `gpif/raw_tests` and `gscore-model`
+    `edit::tests::another_instrument_drops_the_gp7_sound_and_undo_brings_it_back`.
+44. GuitarScore's own per-track sound state (`src/model/track.rs`, 2026-11-07): a track
+    gains `sound_state`, an opaque JSON payload the app owns (what plays the track, its
+    tone and chain, its sends, ...) for settings the Guitar Pro format has no field for.
+    It is never read from or written to a Guitar Pro file; the app stores it in the song's
+    notes block. It lives on `Track` so that inserting, deleting, duplicating and moving a
+    track — and their undo, which keeps or restores whole `Track`s — carry it along like
+    the name or the color. `gscore-model` exposes it through `TrackView::sound_state` and
+    `Song::set_track_sound_state`; a new track starts without one. Test:
+    `edit::tests::a_tracks_sound_state_follows_insert_delete_duplicate_and_move`.

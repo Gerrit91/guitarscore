@@ -298,6 +298,12 @@ impl WriteGpifInGpifStringOrder for Song {
                 "<RSE><ChannelStrip version=\"E56\"><Parameters>{}</Parameters></ChannelStrip></RSE>",
                 rse_parameters(volume, pan)
             ));
+            // GuitarScore addition: the track's RSE sound and audio engine choice, kept
+            // exactly as the file had them (`<Sounds>` holds CDATA and an open-ended effect
+            // chain, so it is not modeled). New tracks have neither.
+            if let Some(sounds) = track.gpif_sounds.as_deref() {
+                xml.push_str(sounds);
+            }
             xml.push_str(&format!(
                 "<MidiConnection><Port>{}</Port><PrimaryChannel>{}</PrimaryChannel><SecondaryChannel>{}</SecondaryChannel><ForeOneChannelPerString>false</ForeOneChannelPerString></MidiConnection>",
                 track.port,
@@ -312,6 +318,9 @@ impl WriteGpifInGpifStringOrder for Song {
                 "Default"
             };
             xml.push_str(&format!("<PlaybackState>{state}</PlaybackState>"));
+            if let Some(engine) = track.gpif_audio_engine.as_deref() {
+                xml.push_str(engine);
+            }
             // The lyric lines as typed, on the lyric track, as Guitar Pro keeps them (the
             // syllables are written on the beats as well).
             if usize::from(self.lyrics.track_choice) == t_idx && !self.lyrics.lines.is_empty() {

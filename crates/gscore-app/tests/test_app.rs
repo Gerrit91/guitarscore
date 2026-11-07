@@ -937,6 +937,35 @@ fn first_sound(harness: &Harness<'static, GuitarScoreApp>) -> gscore_model::Trac
         .unwrap()
 }
 
+/// One drum part's own tone in the drum track's sound payload (the sixth track).
+#[derive(Debug)]
+struct SongDrumPart {
+    chain: gscore_app::chain_settings::ChainSetting,
+    level: u8,
+}
+
+fn song_drum_part(harness: &Harness<'static, GuitarScoreApp>, id: &str) -> Option<SongDrumPart> {
+    let document = harness.state().document()?;
+    let json = document
+        .song()
+        .track(gscore_model::TrackIndex::new(5))?
+        .sound_state()?;
+    let value: serde_json::Value = serde_json::from_str(json).ok()?;
+    let part = value
+        .get("drum_parts")?
+        .as_array()?
+        .iter()
+        .find(|part| part.get("part").and_then(serde_json::Value::as_str) == Some(id))?;
+    Some(SongDrumPart {
+        chain: serde_json::from_value(part.get("chain")?.clone()).ok()?,
+        level: part
+            .get("level")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|level| u8::try_from(level).ok())
+            .unwrap_or(127),
+    })
+}
+
 #[test]
 fn the_track_panel_edits_the_shown_track() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
@@ -2495,6 +2524,72 @@ fn the_reverb_bus_window_chooses_the_reverb() {
 }
 
 #[test]
+fn every_change_in_a_bus_window_is_its_own_undo_step_and_a_drag_is_one() {
+    use gscore_app::chain_settings::BlockChoice;
+
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    harness.get_by_label("Edit the reverb bus").click();
+    harness.run();
+    let undo_depth = |harness: &Harness<'_, GuitarScoreApp>| {
+        harness.state().document().unwrap().editor().undo_depth()
+    };
+    let start = undo_depth(&harness);
+    // Two clicks are two edits, not one merged step.
+    harness.get_by_label("None").click();
+    harness.run();
+    harness.get_by_label("Computed").click();
+    harness.run();
+    assert_eq!(
+        undo_depth(&harness),
+        start + 2,
+        "two clicks, two undo steps"
+    );
+
+    // Two drags of one knob are two steps; each drag is one.
+    let drag = |harness: &mut Harness<'_, GuitarScoreApp>| {
+        let from = harness.get_by_label("Size").rect().center();
+        harness.hover_at(from);
+        harness.drag_at(from);
+        harness.run();
+        // The knob turns with a sideways drag.
+        for step in 1..=4 {
+            harness.hover_at(from + egui::vec2(8.0 * step as f32, 0.0));
+            harness.run();
+        }
+        harness.drop_at(from + egui::vec2(32.0, 0.0));
+        harness.run();
+    };
+    let size = |harness: &Harness<'_, GuitarScoreApp>| harness.state().playback().reverb_bus();
+    let before = size(&harness);
+    drag(&mut harness);
+    let after_first = size(&harness);
+    assert_ne!(after_first, before, "the drag turned the knob");
+    assert_eq!(undo_depth(&harness), start + 3, "one drag, one undo step");
+    drag(&mut harness);
+    assert_ne!(
+        size(&harness),
+        after_first,
+        "the second drag turned it further"
+    );
+    assert_eq!(
+        undo_depth(&harness),
+        start + 4,
+        "another drag, another step"
+    );
+
+    // Undo goes back one drag at a time.
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+    harness.run();
+    assert_eq!(size(&harness), after_first);
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+    harness.run();
+    assert_eq!(size(&harness), before);
+    assert_eq!(size(&harness).block.choice, BlockChoice::Reverb);
+}
+
+#[test]
 fn the_compressor_bus_is_a_strip_and_a_window() {
     use gscore_app::chain_settings::{BlockChoice, CompRatioSetting};
 
@@ -2762,6 +2857,10 @@ fn a_songs_mixer_state_travels_in_its_notes() {
         .map(|&(_, value)| value)
         .expect("the send was set");
     assert!(send > 0, "{send}");
+    // And the song's own reverb bus (muted here): a bus the song sets travels too.
+    harness.get_by_label("Mute reverb bus").click();
+    harness.run();
+    assert!(harness.state().playback().reverb_bus().muted);
     // And a tone of its own for the track's preset (27: Clean Guitar).
     harness.get_by_label("Sound chain").click();
     harness.run();
@@ -2812,6 +2911,8 @@ fn a_songs_mixer_state_travels_in_its_notes() {
         .cloned()
         .expect("the song's tone came back");
     assert!((tone.sound.pick_position - 0.4).abs() < 1e-6, "{tone:?}");
+    // The song's own bus came back and plays (the fresh app's default bus is not muted).
+    assert!(reopened.state().playback().reverb_bus().muted);
     // The notes the user sees are their own: our block is not shown.
     assert!(
         reopened
@@ -2859,7 +2960,8 @@ fn a_drum_tracks_window_edits_the_kits_parts() {
     harness.get_by_label("Block 1: EQ");
     harness.get_by_label("Block 2: Comp");
     harness.snapshot("sound_chain_drum_kick");
-    // A knob moved is the kick's tone from then on, kept in the settings.
+    // A knob moved is the kick's tone in the song from then on (an edit with undo), and
+    // this machine's kit keeps its own.
     harness.get_by_label("Block 2: Comp").click();
     harness.run();
     harness.get_by_label("Input value").click();
@@ -2869,29 +2971,38 @@ fn a_drum_tracks_window_edits_the_kits_parts() {
     harness.run();
     harness.key_press(egui::Key::Enter);
     harness.run();
-    let kick = harness
-        .state()
-        .settings()
-        .drum_parts
-        .iter()
-        .find(|tone| tone.part() == Some(DrumPart::Kick))
-        .cloned()
-        .expect("the kick's tone is kept");
+    let kick = song_drum_part(&harness, "kick").expect("the kick's tone is in the song");
     assert!(
         (kick.chain.blocks[1].input_db - 12.0).abs() < 1e-6,
         "{kick:?}"
     );
     assert_eq!(kick.chain.blocks[0].choice, BlockChoice::Eq);
-    // Built-in forgets it again.
-    harness.get_by_label("Built-in").click();
-    harness.run();
-    assert!(
+    assert_eq!(kick.level, 127);
+    assert_ne!(
         harness
             .state()
-            .settings()
-            .drum_parts
-            .iter()
-            .all(|tone| tone.part() != Some(DrumPart::Kick))
+            .playback()
+            .track_drum_part_chain(5, DrumPart::Kick),
+        harness
+            .state()
+            .playback()
+            .kit_drum_part_chain(DrumPart::Kick),
+        "the track plays its own kick, not the machine's kit"
+    );
+    // Built-in forgets it again: the kit's setting (or the built-in tone) plays.
+    harness.get_by_label("Built-in").click();
+    harness.run();
+    assert!(song_drum_part(&harness, "kick").is_none());
+    assert_eq!(
+        harness
+            .state()
+            .playback()
+            .track_drum_part_chain(5, DrumPart::Kick),
+        harness
+            .state()
+            .playback()
+            .kit_drum_part_chain(DrumPart::Kick),
+        "back to the kit's kick"
     );
     // Back to the kit: the track's own chain, the drum bus.
     harness.get_by_label("Kit").click();

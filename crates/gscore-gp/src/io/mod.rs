@@ -27,6 +27,8 @@ mod rse;
 mod song;
 mod track;
 
+pub use track::track_name_as_stored;
+
 pub(crate) use crate::model::*;
 
 pub(crate) use self::beat::*;

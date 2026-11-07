@@ -316,8 +316,8 @@ pub(super) struct Buses {
 enum BusChange {
     /// Open the bus's own window (what it runs and its knobs).
     Edit,
-    /// Its level; `commit` when a drag or a typed value ended.
-    Level { level: u8, commit: bool },
+    /// Its level.
+    Level { level: u8 },
     /// Its mute was clicked.
     Mute(bool),
 }
@@ -382,7 +382,7 @@ fn bus_strip(
         meter,
         127,
         &format!("{name} bus level"),
-        |level, commit| changes.push(BusChange::Level { level, commit }),
+        |level, _| changes.push(BusChange::Level { level }),
     );
     let db_rect = Rect::from_min_size(
         pos2(bottom.left(), bottom.top()),
@@ -396,12 +396,7 @@ fn bus_strip(
         level,
         127,
         &format!("{name} bus level"),
-        |level| {
-            changes.push(BusChange::Level {
-                level,
-                commit: true,
-            })
-        },
+        |level| changes.push(BusChange::Level { level }),
     );
     let buttons = Rect::from_min_size(
         pos2(bottom.left(), bottom.top() + 18.0),
@@ -468,13 +463,13 @@ fn reverb_strip(
         let mut bus = bus.clone();
         let action = match change {
             BusChange::Edit => GridAction::OpenReverbBus,
-            BusChange::Level { level, commit } => {
+            BusChange::Level { level } => {
                 bus.level = level;
-                GridAction::ReverbBus { bus, commit }
+                GridAction::ReverbBus { bus }
             }
             BusChange::Mute(muted) => {
                 bus.muted = muted;
-                GridAction::ReverbBus { bus, commit: true }
+                GridAction::ReverbBus { bus }
             }
         };
         actions.push(action);
@@ -512,13 +507,13 @@ fn compressor_strip(
         let mut bus = bus.clone();
         let action = match change {
             BusChange::Edit => GridAction::OpenCompressorBus,
-            BusChange::Level { level, commit } => {
+            BusChange::Level { level } => {
                 bus.level = level;
-                GridAction::CompressorBus { bus, commit }
+                GridAction::CompressorBus { bus }
             }
             BusChange::Mute(muted) => {
                 bus.muted = muted;
-                GridAction::CompressorBus { bus, commit: true }
+                GridAction::CompressorBus { bus }
             }
         };
         actions.push(action);

@@ -105,6 +105,55 @@ fn edit_and_crash(file: &Path, recovery: &Path) -> gscore_model::Song {
 }
 
 #[test]
+fn a_sound_change_is_restored_from_the_journal() {
+    use gscore_model::TrackIndex;
+
+    let (file, recovery) = scratch("sound");
+    let mut harness = app(Some(&file), &recovery);
+    // The first track's send into the compressor bus: a drag of the mixer's Comp knob.
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    let knob = harness.get_by_label("Comp Jazz Guitar").rect().center();
+    harness.hover_at(knob);
+    harness.run();
+    harness.drag_at(knob);
+    harness.run();
+    for step in 1..=10 {
+        harness.hover_at(knob + egui::vec2(6.0 * step as f32, 0.0));
+        harness.run();
+    }
+    harness.drop_at(knob + egui::vec2(60.0, 0.0));
+    harness.run();
+    let state = |song: &gscore_model::Song| {
+        song.track(TrackIndex::new(0))
+            .and_then(|view| view.sound_state())
+            .map(str::to_owned)
+    };
+    let edited = harness.state().document().unwrap().song().clone();
+    let payload = state(&edited).expect("the send is saved with the song");
+    drop(harness);
+    assert_eq!(find_sessions(&recovery).len(), 1);
+
+    // Restored from the journal, the song has the same per-track state.
+    let mut harness = app(None, &recovery);
+    harness.get_by_label("Restore").click();
+    settle(&mut harness);
+    assert_eq!(
+        state(harness.state().document().unwrap().song()),
+        Some(payload)
+    );
+    // And undo takes the change back too.
+    harness
+        .state_mut()
+        .document_mut()
+        .unwrap()
+        .editor_mut()
+        .undo()
+        .unwrap();
+    assert_eq!(state(harness.state().document().unwrap().song()), None);
+}
+
+#[test]
 fn a_crashed_document_is_restored_with_its_edits_and_undo() {
     let (file, recovery) = scratch("restore");
     let edited = edit_and_crash(&file, &recovery);

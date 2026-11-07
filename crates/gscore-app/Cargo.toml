@@ -37,6 +37,9 @@ egui = "0.37"
 serde = { version = "1.0.228", features = ["derive"] }
 # Our own state in a song's notes (the mixer sends, the tones a song plays).
 serde_json = "1.0.149"
+# Compressed state block: deflate, and a CRC-32 so damaged lines are never half-applied.
+miniz_oxide = "0.8"
+crc32fast = "1.5"
 # `Instant` that also works in a browser (`performance.now()`); on native it is the
 # standard library's.
 web-time = "1.1"
@@ -88,6 +91,8 @@ gscore-edit = { path = "../gscore-edit", features = ["test-support"] }
 gscore-model = { path = "../gscore-model", features = ["test-support"] }
 # A SoundFont built in code, for the synthesizer test.
 gscore-audio = { path = "../gscore-audio", features = ["test-support"] }
+# Every format the song-state block must survive, for the round-trip test.
+gscore-io = { path = "../gscore-io" }
 # Drives the UI headlessly and renders it offscreen for snapshots (no window).
 egui_kittest = { version = "0.37", features = ["wgpu", "snapshot", "eframe"] }
 # Saving the snapshot example's image as PNG (the version egui_kittest already uses).

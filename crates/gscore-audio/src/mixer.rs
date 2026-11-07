@@ -168,6 +168,8 @@ pub(crate) struct Mixer {
     /// Each drum track's part chains ([`PARTS`] of them), by the song's track index (as
     /// the chains: a strip's place in the sequence changes with mute, solo and excerpts).
     part_chains: [[Option<Box<Chain>>; PARTS]; MAX_TONES],
+    /// Each drum track's part levels (0-127, 127 unity), by the song's track index.
+    part_levels: [[u8; PARTS]; MAX_TONES],
     /// The buses ([`Bus::index`]).
     buses: [BusState; 2],
     /// Each track's send into the compressor bus (0-127), by the song's track index.
@@ -203,6 +205,7 @@ impl Mixer {
             sequence: 0,
             tones: TrackTones::new(),
             part_chains: std::array::from_fn(|_| std::array::from_fn(|_| None)),
+            part_levels: [[127; PARTS]; MAX_TONES],
             buses: [BusState::new(), BusState::new()],
             comp_sends: [0; MAX_TONES],
             needles: [Needle::default(); MAX_TONES],
@@ -387,6 +390,18 @@ impl Mixer {
         }
     }
 
+    /// The mixing level of `part` of the song's drum track `track` (0-127, 127 unity),
+    /// heard at once.
+    pub(crate) fn set_part_level(&mut self, track: usize, part: usize, level: u8) {
+        if let Some(slot) = self
+            .part_levels
+            .get_mut(track)
+            .and_then(|levels| levels.get_mut(part))
+        {
+            *slot = level.min(127);
+        }
+    }
+
     /// Gives `bus` the chain `chain` (`None`: none) with its knob values. Returns the
     /// chain it replaces, to be freed off the audio thread.
     pub(crate) fn set_bus(
@@ -506,6 +521,13 @@ impl Mixer {
             sum_left.fill(0.0);
             sum_right.fill(0.0);
             for part in 0..PARTS {
+                let level = self
+                    .part_levels
+                    .get(strip.song_track)
+                    .and_then(|levels| levels.get(part))
+                    .copied()
+                    .unwrap_or(127)
+                    .min(127);
                 for (work, sample) in work_left.iter_mut().zip(
                     drums
                         .part(channel, part, 0)
@@ -530,6 +552,15 @@ impl Mixer {
                 {
                     chain.process_in_place(work_left, work_right, true);
                     part_reduction = part_reduction.min(chain.take_gain_reduction());
+                }
+                if level < 127 {
+                    let gain = f32::from(level) / 127.0;
+                    for sample in work_left.iter_mut() {
+                        *sample *= gain;
+                    }
+                    for sample in work_right.iter_mut() {
+                        *sample *= gain;
+                    }
                 }
                 add(sum_left, work_left);
                 add(sum_right, work_right);

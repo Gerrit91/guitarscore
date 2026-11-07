@@ -40,7 +40,18 @@ pub(crate) fn note(value: u16) -> NoteValue {
 /// Whether `after` equals `before` in everything the command tests compare: the musical
 /// content, plus the track settings that a save may not keep (color, mute, solo, sound).
 fn same_state(before: &Song, after: &Song) -> bool {
-    differences(before, after).is_empty() && settings_differences(before, after).is_empty()
+    // The app's own opaque sound payloads have no field the file comparison covers.
+    let payloads = |song: &Song| -> Vec<Option<String>> {
+        let mut states = vec![song.sound_state().map(str::to_owned)];
+        states.extend(
+            song.tracks()
+                .map(|track| track.sound_state().map(str::to_owned)),
+        );
+        states
+    };
+    differences(before, after).is_empty()
+        && settings_differences(before, after).is_empty()
+        && payloads(before) == payloads(after)
 }
 
 /// Applies `command` to `song`, checks that it changed something, undoes it, and checks that

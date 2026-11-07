@@ -36,6 +36,169 @@ pub(crate) struct Gpif {
     pub notes: NotesWrapper,
     #[serde(rename = "Rhythms")]
     pub rhythms: RhythmsWrapper,
+    /// GuitarScore addition: the parts of each track that are kept verbatim, by track
+    /// index. They are not part of the serde model because they must survive unchanged
+    /// (Guitar Pro's `<Sounds>` and `<AudioEngineState>`); see [`capture_track_raw`].
+    #[serde(skip)]
+    pub track_raw: Vec<TrackRaw>,
+}
+
+/// The parts of one GPIF track that are kept exactly as the file has them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct TrackRaw {
+    /// The whole `<Sounds>` element: the RSE sound chosen for the track (its path,
+    /// bank patch, pickups and effect chain), which GuitarScore does not edit yet.
+    pub sounds: Option<String>,
+    /// The whole `<AudioEngineState>` element (`RSE` or `MIDI`).
+    pub audio_engine: Option<String>,
+}
+
+/// One element captured verbatim from a track.
+#[derive(Debug, Clone, Copy)]
+enum RawElement {
+    Sounds,
+    AudioEngine,
+}
+
+/// Captures the raw XML of the elements of each `score.gpif` track that are kept
+/// verbatim: its `<Sounds>` and `<AudioEngineState>`. The result has one entry per
+/// `<Track>` element, in file order, so it lines up with the track index.
+///
+/// This walks the XML a second time instead of extending the serde model: `<Sounds>`
+/// holds CDATA (`<Name>`, `<Label>`), an open-ended effect chain and fields of newer
+/// Guitar Pro versions, all of which must survive a load-save cycle unchanged. A file
+/// whose XML the reader cannot walk simply keeps nothing extra (deserialization has
+/// already reported a real parse error before this runs).
+pub(crate) fn capture_track_raw(xml: &str) -> Vec<TrackRaw> {
+    use quick_xml::events::Event;
+
+    let mut reader = quick_xml::Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut tracks: Vec<TrackRaw> = Vec::new();
+    let mut depth: usize = 0;
+    // The element being captured: what it is, where its first byte is, and its depth.
+    let mut capturing: Option<(RawElement, usize, usize)> = None;
+    let position = |reader: &quick_xml::Reader<&[u8]>| {
+        usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX)
+    };
+
+    loop {
+        let start = position(&reader);
+        let event = match reader.read_event() {
+            Ok(event) => event,
+            // The song itself was parsed before; keep the elements captured so far.
+            Err(_) => break,
+        };
+        match &event {
+            Event::Start(element) => {
+                depth = depth.saturating_add(1);
+                let name = element.name();
+                let name = name.as_ref();
+                if name == "Track" && depth == 3 {
+                    // `<GPIF><Tracks><Track>`: one entry per track, in order.
+                    tracks.push(TrackRaw::default());
+                } else if capturing.is_none() && !tracks.is_empty() {
+                    let captured = match name {
+                        "Sounds" => Some(RawElement::Sounds),
+                        "AudioEngineState" => Some(RawElement::AudioEngine),
+                        _ => None,
+                    };
+                    if let Some(captured) = captured {
+                        capturing = Some((captured, start, depth));
+                    }
+                }
+            }
+            Event::Empty(element) => {
+                // A self-closing element is complete at once.
+                if capturing.is_none() && !tracks.is_empty() {
+                    let name = element.name();
+                    let raw = xml.get(start..position(&reader));
+                    match (name.as_ref(), raw) {
+                        ("Sounds", Some(raw)) => {
+                            if let Some(track) = tracks.last_mut() {
+                                track.sounds = Some(raw.to_owned());
+                            }
+                        }
+                        ("AudioEngineState", Some(raw)) => {
+                            if let Some(track) = tracks.last_mut() {
+                                track.audio_engine = Some(raw.to_owned());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Event::End(_) => {
+                if let Some((captured, begin, element_depth)) = capturing
+                    && element_depth == depth
+                {
+                    let raw = xml.get(begin..position(&reader));
+                    if let (Some(raw), Some(track)) = (raw, tracks.last_mut()) {
+                        match captured {
+                            RawElement::Sounds => track.sounds = Some(raw.to_owned()),
+                            RawElement::AudioEngine => track.audio_engine = Some(raw.to_owned()),
+                        }
+                    }
+                    capturing = None;
+                }
+                depth = depth.saturating_sub(1);
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    tracks
+}
+
+/// Regression tests for the verbatim track elements.
+#[cfg(test)]
+mod raw_tests {
+    use super::*;
+
+    #[test]
+    fn sounds_and_audio_engine_are_captured_verbatim_per_track() {
+        let xml = "<GPIF><Tracks count=\"2\">\
+            <Track id=\"0\"><Name>A</Name>\
+            <Sounds><Sound><Name><![CDATA[Blues]]></Name><Path>Stringed/EG</Path>\
+            <RSE><EffectChain><Effect id=\"E1\"><Parameters>0.1 0.2</Parameters></Effect>\
+            </EffectChain></RSE></Sound></Sounds>\
+            <AudioEngineState>RSE</AudioEngineState></Track>\
+            <Track id=\"1\"><Name>B</Name><Sounds/></Track>\
+            </Tracks></GPIF>";
+        let raw = capture_track_raw(xml);
+        assert_eq!(raw.len(), 2);
+        let first = raw.first().expect("one per track");
+        assert_eq!(
+            first.sounds.as_deref(),
+            Some(
+                "<Sounds><Sound><Name><![CDATA[Blues]]></Name><Path>Stringed/EG</Path>\
+                 <RSE><EffectChain><Effect id=\"E1\"><Parameters>0.1 0.2</Parameters></Effect>\
+                 </EffectChain></RSE></Sound></Sounds>"
+            )
+        );
+        assert_eq!(
+            first.audio_engine.as_deref(),
+            Some("<AudioEngineState>RSE</AudioEngineState>")
+        );
+        let second = raw.get(1).expect("second track");
+        assert_eq!(second.sounds.as_deref(), Some("<Sounds/>"));
+        assert!(second.audio_engine.is_none());
+    }
+
+    #[test]
+    fn a_missing_sounds_leaves_none_and_foreign_tracks_do_not_shift_the_indices() {
+        // `<MasterTrack><Tracks>` holds ids, not `<Track>` elements: it must not count.
+        let xml = "<GPIF><MasterTrack><Tracks>0 1</Tracks></MasterTrack>\
+            <Tracks><Track id=\"0\"><Name>A</Name></Track>\
+            <Track id=\"1\"><Name>B</Name><Sounds><Sound/></Sounds></Track></Tracks></GPIF>";
+        let raw = capture_track_raw(xml);
+        assert_eq!(raw.len(), 2);
+        assert!(raw.first().expect("first").sounds.is_none());
+        assert_eq!(
+            raw.get(1).and_then(|track| track.sounds.as_deref()),
+            Some("<Sounds><Sound/></Sounds>")
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

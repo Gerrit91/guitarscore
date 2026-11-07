@@ -236,6 +236,25 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
             symbol: symbol_arg(args)?,
         }),
+        "set_track_sound" => {
+            let track = TrackIndex::new(optional_position(args, "track")?.unwrap_or(0));
+            let raw = args.required("state")?;
+            let state = if raw == "none" {
+                None
+            } else {
+                Some(decode_text_value(args.command, "state", &raw)?)
+            };
+            Ok(Command::SetTrackSound { track, state })
+        }
+        "set_song_sound" => {
+            let raw = args.required("state")?;
+            let state = if raw == "none" {
+                None
+            } else {
+                Some(decode_text_value(args.command, "state", &raw)?)
+            };
+            Ok(Command::SetSongSound { state })
+        }
         "set_track_volume" => Ok(Command::SetTrackVolume {
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
             volume: midi_value_arg(args, "volume")?,

@@ -36,5 +36,7 @@ This file documents all third-party assets used in the GuitarScore project.
 | image (dev, `png`) | 0.25.10 | MIT OR Apache-2.0 | Saving the snapshot example's PNG (already used by egui_kittest) |
 | pdf-writer | 0.15.0 | MIT OR Apache-2.0 | Writing PDF files for the PDF export (Typst project; only `gscore-layout`) |
 | subsetter (without default features) | 0.2.6 | MIT OR Apache-2.0 | Embedding only the used glyphs of the fonts in PDFs (Typst project; only `gscore-layout`) |
+| miniz_oxide (deflate) | 0.8.9 | MIT OR Apache-2.0 OR Zlib | Compressing GuitarScore's state block in a song's notes (pure Rust, works in the browser; only `gscore-app`) |
+| crc32fast | 1.5.3 | MIT OR Apache-2.0 | CRC-32 of that block, so a damaged or edited line is noticed and never half-applied (only `gscore-app`) |
 
 > Add new entries when adding third-party assets or dependencies to the project.

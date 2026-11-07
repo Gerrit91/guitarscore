@@ -469,6 +469,40 @@ pub(crate) const SET_TRACK_SYMBOL: CommandInfo = CommandInfo {
     params: &[TRACK, SYMBOL],
 };
 
+const SOUND_STATE: ParamInfo = ParamInfo {
+    name: "state",
+    required: true,
+    default: None,
+    help: "GuitarScore's own sound state for the track (an opaque payload), or `none` to \
+           clear it",
+};
+
+pub(crate) const SET_TRACK_SOUND: CommandInfo = CommandInfo {
+    id: "set_track_sound",
+    aliases: &[],
+    label: "Set the track sound state",
+    help: "Sets GuitarScore's own sound settings for a track (what plays it, its tone and \
+           chain, its sends); the app saves them in the song's notes.",
+    params: &[TRACK, SOUND_STATE],
+};
+
+const SONG_SOUND_STATE: ParamInfo = ParamInfo {
+    name: "state",
+    required: true,
+    default: None,
+    help: "GuitarScore's own sound settings for the whole song (the mixer's buses, an \
+           opaque payload), or `none` to clear them",
+};
+
+pub(crate) const SET_SONG_SOUND: CommandInfo = CommandInfo {
+    id: "set_song_sound",
+    aliases: &[],
+    label: "Set the song sound state",
+    help: "Sets GuitarScore's own song-wide sound settings (the mixer's reverb and \
+           compressor buses); the app saves them in the song's notes.",
+    params: &[SONG_SOUND_STATE],
+};
+
 pub(crate) const SET_TRACK_VOLUME: CommandInfo = CommandInfo {
     id: "set_track_volume",
     aliases: &[],
@@ -953,6 +987,8 @@ pub const COMMANDS: &[CommandInfo] = &[
     RENAME_TRACK,
     SET_TRACK_COLOR,
     SET_TRACK_SYMBOL,
+    SET_TRACK_SOUND,
+    SET_SONG_SOUND,
     SET_TRACK_VOLUME,
     SET_TRACK_PAN,
     SET_TRACK_REVERB,

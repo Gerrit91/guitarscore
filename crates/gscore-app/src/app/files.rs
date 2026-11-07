@@ -389,6 +389,11 @@ impl GuitarScoreApp {
                         if state.is_some() {
                             song = song.with_notes(notes);
                         }
+                        // The state goes onto the tracks before the document exists, so
+                        // every edit (and its undo) carries it from the start.
+                        if let Some(state) = state.as_ref() {
+                            state.apply_to_song(&mut song);
+                        }
                         let (document, problem) = match opened.journal {
                             Ok(Some(journal)) => (
                                 Document::with_journal(path, song, opened.format, journal),
@@ -403,9 +408,6 @@ impl GuitarScoreApp {
                             ),
                         };
                         self.push_tab(document);
-                        if let Some(state) = state {
-                            self.apply_song_state(&state);
-                        }
                         self.notice = problem;
                         self.status = None;
                         self.settings.add_recent(recent);

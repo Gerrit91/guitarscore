@@ -628,6 +628,128 @@ fn deleting_and_duplicating_tracks_undo_exactly() {
 }
 
 #[test]
+fn a_tracks_sound_state_follows_insert_delete_duplicate_and_move() {
+    let mut song = two_tracks();
+    assert_eq!(track_names(&song), ["Lead", "Bass"]);
+    let lead = r#"{"comp_send":96,"tone":"lead"}"#.to_owned();
+    let bass = r#"{"comp_send":0,"tone":"bass"}"#.to_owned();
+    let _ = song
+        .set_track_sound_state(TrackIndex::new(0), Some(lead.clone()))
+        .unwrap();
+    let _ = song
+        .set_track_sound_state(TrackIndex::new(1), Some(bass.clone()))
+        .unwrap();
+    let before = song.clone();
+    let before_states = sound_states(&before);
+
+    // A duplicated track copies the state.
+    let change = song.duplicate_track(TrackIndex::new(0)).unwrap();
+    let states: Vec<Option<&str>> = song.tracks().map(|track| track.sound_state()).collect();
+    assert_eq!(
+        states,
+        [
+            Some(lead.as_str()),
+            Some(lead.as_str()),
+            Some(bass.as_str())
+        ]
+    );
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+    assert_eq!(sound_states(&song), before_states);
+
+    // A moved track keeps its state.
+    let change = song
+        .move_track(TrackIndex::new(0), TrackIndex::new(1))
+        .unwrap();
+    let states: Vec<Option<&str>> = song.tracks().map(|track| track.sound_state()).collect();
+    assert_eq!(states, [Some(bass.as_str()), Some(lead.as_str())]);
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+    assert_eq!(sound_states(&song), before_states);
+
+    // A deleted track takes its state with it, and undo brings it back.
+    let change = song.delete_track(TrackIndex::new(0)).unwrap();
+    assert_eq!(track_names(&song), ["Bass"]);
+    assert_eq!(
+        song.track(TrackIndex::new(0)).unwrap().sound_state(),
+        Some(bass.as_str())
+    );
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+    assert_eq!(sound_states(&song), before_states);
+
+    // A new track starts without one; its neighbours keep theirs.
+    let change = song.insert_track(TrackIndex::new(1)).unwrap();
+    assert_eq!(song.track(TrackIndex::new(1)).unwrap().sound_state(), None);
+    assert_eq!(
+        song.track(TrackIndex::new(0)).unwrap().sound_state(),
+        Some(lead.as_str())
+    );
+    assert_eq!(
+        song.track(TrackIndex::new(2)).unwrap().sound_state(),
+        Some(bass.as_str())
+    );
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+    assert_eq!(sound_states(&song), before_states);
+
+    // Setting and clearing are edits with undo too.
+    let change = song
+        .set_track_sound_state(TrackIndex::new(0), None)
+        .unwrap();
+    assert_eq!(song.track(TrackIndex::new(0)).unwrap().sound_state(), None);
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+    assert_eq!(sound_states(&song), before_states);
+
+    // A missing track, and a payload beyond the bound, are refused without a change.
+    assert!(
+        song.set_track_sound_state(TrackIndex::new(9), None)
+            .is_err()
+    );
+    let huge = "x".repeat(300 * 1024);
+    assert!(
+        song.set_track_sound_state(TrackIndex::new(0), Some(huge))
+            .is_err()
+    );
+    assert_unchanged(&before, &song);
+    assert_eq!(sound_states(&song), before_states);
+}
+
+/// Every track's own sound payload, in order.
+fn sound_states(song: &Song) -> Vec<Option<String>> {
+    song.tracks()
+        .map(|track| track.sound_state().map(str::to_owned))
+        .collect()
+}
+
+#[test]
+fn the_songs_own_sound_state_is_an_undoable_edit() {
+    let mut song = two_tracks();
+    assert_eq!(song.sound_state(), None);
+    let before = song.clone();
+    let payload = r#"{"buses":{"reverb":{"level":96}}}"#.to_owned();
+    let change = song.set_sound_state(Some(payload.clone())).unwrap();
+    assert_eq!(song.sound_state(), Some(payload.as_str()));
+    song.revert(&change).unwrap();
+    assert_eq!(song.sound_state(), None);
+    assert_unchanged(&before, &song);
+
+    // Clearing it is an edit too, and undo brings it back.
+    let _ = song.set_sound_state(Some(payload.clone())).unwrap();
+    let set = song.clone();
+    let change = song.set_sound_state(None).unwrap();
+    assert_eq!(song.sound_state(), None);
+    song.revert(&change).unwrap();
+    assert_unchanged(&set, &song);
+
+    // A payload beyond the bound is refused without a change.
+    let huge = "x".repeat(300 * 1024);
+    assert!(song.set_sound_state(Some(huge)).is_err());
+    assert_unchanged(&set, &song);
+}
+
+#[test]
 fn moving_a_track_changes_the_order_and_undo_puts_it_back() {
     let mut song = two_tracks();
     let before = song.clone();
@@ -831,4 +953,55 @@ fn renaming_keeps_measure_stamps_but_moving_a_track_renews_them() {
     assert_eq!(song.track(TrackIndex::new(0)).unwrap().name(), "Guitar");
     let undone = stamps(&song);
     assert!(undone.iter().all(|stamp| !after_move.contains(stamp)));
+}
+
+/// Each track's GP7 sound as the file had it (`<Sounds>`, `<AudioEngineState>`).
+fn rse_sounds(song: &Song) -> Vec<(Option<String>, Option<String>)> {
+    song.inner()
+        .tracks
+        .iter()
+        .map(|track| (track.gpif_sounds.clone(), track.gpif_audio_engine.clone()))
+        .collect()
+}
+
+#[test]
+fn another_instrument_drops_the_gp7_sound_and_undo_brings_it_back() {
+    let mut song = two_tracks();
+    let sounds =
+        "<Sounds><Sound><Path>Stringed/Electric Guitars/Clean Guitar</Path></Sound></Sounds>";
+    let engine = "<AudioEngineState>RSE</AudioEngineState>";
+    for track in &mut song.inner_mut().tracks {
+        track.gpif_sounds = Some(sounds.to_owned());
+        track.gpif_audio_engine = Some(engine.to_owned());
+    }
+    let kept = (Some(sounds.to_owned()), Some(engine.to_owned()));
+    let program = song.track_sound(TrackIndex::new(0)).unwrap().program;
+
+    // The same program again is no change of instrument: the sound stays.
+    let change = song.set_track_program(TrackIndex::new(0), program).unwrap();
+    assert_eq!(rse_sounds(&song), [kept.clone(), kept.clone()]);
+    song.revert(&change).unwrap();
+
+    // Another program: the old instrument's sound goes, only on that track.
+    let change = song
+        .set_track_program(TrackIndex::new(0), program.wrapping_add(1) % 128)
+        .unwrap();
+    assert_eq!(rse_sounds(&song), [(None, None), kept.clone()]);
+    song.revert(&change).unwrap();
+    assert_eq!(rse_sounds(&song), [kept.clone(), kept.clone()]);
+
+    // A drum kit too.
+    let change = song.set_track_drums(TrackIndex::new(1), true).unwrap();
+    assert_eq!(rse_sounds(&song), [kept.clone(), (None, None)]);
+    song.revert(&change).unwrap();
+    assert_eq!(rse_sounds(&song), [kept.clone(), kept.clone()]);
+
+    // A new track does not take its neighbour's sound.
+    let change = song.insert_track(TrackIndex::new(1)).unwrap();
+    assert_eq!(
+        rse_sounds(&song),
+        [kept.clone(), (None, None), kept.clone()]
+    );
+    song.revert(&change).unwrap();
+    assert_eq!(rse_sounds(&song), [kept.clone(), kept]);
 }

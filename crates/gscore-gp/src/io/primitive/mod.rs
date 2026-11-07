@@ -338,6 +338,21 @@ pub(crate) fn write_fixed_string(data: &mut Vec<u8>, value: &str, size: u8) {
     write_placeholder_default(data, usize::from(size.saturating_sub(count)));
 }
 
+/// `value` as a fixed-size field of `size` bytes reads back: Windows-1252, characters it
+/// has no code for replaced, cut to fit (what [`write_fixed_string`] and
+/// [`read_byte_size_string`] make of it).
+pub(crate) fn fixed_string_as_stored(value: &str, size: u8) -> String {
+    let encoded = encode_windows1252(value);
+    let count = encoded.len().min(usize::from(size));
+    let bytes = encoded.get(..count).unwrap_or_default();
+    let (text, _, had_errors) = WINDOWS_1252.decode(bytes);
+    if had_errors {
+        String::from_utf8_lossy(bytes).into_owned()
+    } else {
+        text.into_owned()
+    }
+}
+
 /// Writes a string as a 32-bit length and the bytes (cut at `i32::MAX` bytes).
 pub(crate) fn write_int_size_string(data: &mut Vec<u8>, value: &str) {
     let encoded = encode_windows1252(value);

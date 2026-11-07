@@ -58,9 +58,9 @@ pub fn write_wav_at(
 /// knobs.
 pub type ChainChoice = (usize, ChainSpec, [BlockSettings; BLOCKS]);
 
-/// One part of a drum track's chain to render with: the track, the part, its blocks and
-/// their knobs.
-pub type PartChoice = (usize, usize, ChainSpec, [BlockSettings; BLOCKS]);
+/// One part of a drum track's chain to render with: the track, the part, its mixing level
+/// (0-127, 127 unity), its blocks and their knobs.
+pub type PartChoice = (usize, usize, u8, ChainSpec, [BlockSettings; BLOCKS]);
 
 /// A mixer bus to render with: its chain, its knob values and its level.
 #[derive(Debug, Clone)]
@@ -118,10 +118,11 @@ pub fn write_wav_with(
             let _ = engine.set_chain(*track, Some(chain), *settings);
         }
     }
-    for (track, part, spec, settings) in parts {
+    for (track, part, level, spec, settings) in parts {
         if let Some(chain) = prepare_chain(spec, settings, sample_rate) {
             let _ = engine.set_part_chain(*track, *part, Some(chain), *settings);
         }
+        engine.set_part_level(*track, *part, *level);
     }
     for (bus, choice) in [
         (crate::Bus::Reverb, &buses.reverb),

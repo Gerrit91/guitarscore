@@ -54,6 +54,8 @@ pub(crate) enum Command {
     ),
     /// New knob values for one part of a drum track's chain.
     PartChainSettings(usize, usize, [BlockSettings; BLOCKS]),
+    /// The mixing level (0-127, 127 unity) of one part of a drum track.
+    PartLevel(usize, usize, u8),
     /// Gives a bus of the mixer its prepared chain (`None`: none).
     Bus(crate::Bus, Option<Box<gscore_guitar::Chain>>),
     /// New knob values, level and mute for a bus.
@@ -183,6 +185,7 @@ impl Transport {
             | Command::ChainSettings(..)
             | Command::PartChain(..)
             | Command::PartChainSettings(..)
+            | Command::PartLevel(..)
             | Command::Bus(..)
             | Command::BusSettings(..)
             | Command::CompSend(..) => {}

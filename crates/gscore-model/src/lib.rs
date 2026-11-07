@@ -83,4 +83,5 @@ pub use techniques::{
 };
 pub use views::{
     BeatKind, BeatView, MeasureView, NoteKind, NoteView, StringTuning, TrackView, VoiceView,
+    track_name_in_binary_formats,
 };

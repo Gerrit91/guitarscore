@@ -36,6 +36,11 @@ pub(super) fn fresh_track(
     track.visible = true;
     track.channel_index = channel;
     track.color = TrackColor::DEFAULT.rgb() as i32;
+    // A new track starts with its kind's default sound, not the neighbour's tone.
+    track.sound_state = None;
+    // Nor the neighbour's GP7 sound (Guitar Pro would play it for the new instrument).
+    track.gpif_sounds = None;
+    track.gpif_audio_engine = None;
     track.measures = empty_measures(song)?;
     Ok(track)
 }

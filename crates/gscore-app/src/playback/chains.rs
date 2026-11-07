@@ -362,25 +362,33 @@ impl Playback {
     }
 
     /// Sends each drum track of the loaded sequence what differs between its parts'
-    /// chains and what they were last given: a new chain when its blocks changed, else
-    /// only the knob values (so a rebuilt sequence - a mixer change, a beat preview - does
-    /// not prepare every part's room again and cut its tail).
+    /// chains and levels and what they were last given: a new chain when its blocks
+    /// changed, else only the knob values and the level (so a rebuilt sequence - a mixer
+    /// change, a beat preview - does not prepare every part's room again and cut its
+    /// tail).
     fn send_drum_parts(&mut self) {
         if !self.synth_running() {
             return;
         }
         let mut prepare = Vec::new();
         let mut knobs = Vec::new();
+        let mut levels = Vec::new();
         for target in self.tone_targets.clone() {
             if !target.drums {
                 continue;
             }
             for part in crate::chain_settings::DrumPart::ALL {
-                let chain = self.drum_part_chain(part);
+                let chain = self.track_drum_part_chain(target.track, part);
+                let level = self.track_drum_part_level(target.track, part);
                 let key = (target.track, part.index());
-                match self.sent_parts.get(&key) {
-                    Some(sent) if *sent == chain => continue,
-                    Some(sent) if sent.same_structure(&chain) => {
+                let sent = self.sent_parts.get(&key).cloned();
+                let chain_same = sent.as_ref().is_some_and(|(sent, _)| *sent == chain);
+                let level_same = sent.as_ref().is_some_and(|(_, sent)| *sent == level);
+                if chain_same && level_same {
+                    continue;
+                }
+                match sent {
+                    Some((sent, _)) if sent.same_structure(&chain) => {
                         knobs.push((key, chain.knobs()));
                     }
                     _ => {
@@ -388,7 +396,10 @@ impl Playback {
                         prepare.push((key, spec, chain.knobs()));
                     }
                 }
-                self.sent_parts.insert(key, chain);
+                if !level_same {
+                    levels.push((key, level));
+                }
+                self.sent_parts.insert(key, (chain, level));
             }
         }
         #[cfg(not(target_arch = "wasm32"))]
@@ -401,9 +412,12 @@ impl Playback {
             for ((track, part), settings) in knobs {
                 let _ = player.set_part_chain_settings(track, part, settings);
             }
+            for ((track, part), level) in levels {
+                let _ = player.set_part_level(track, part, level);
+            }
         }
         #[cfg(target_arch = "wasm32")]
-        let _ = (prepare, knobs);
+        let _ = (prepare, knobs, levels);
     }
 
     /// Forgets what the synthesizer was given (a new one starts with nothing).
@@ -706,13 +720,50 @@ impl Playback {
         self.drum_parts = parts;
     }
 
-    /// The tone `part` of a drum kit plays: the one dialed in, else the built-in default.
-    pub fn drum_part_chain(&self, part: crate::chain_settings::DrumPart) -> ChainSetting {
+    /// The tone `part` of a drum kit plays on this machine, without the song's own: the
+    /// one dialed in, else the built-in default.
+    pub fn kit_drum_part_chain(&self, part: crate::chain_settings::DrumPart) -> ChainSetting {
         self.drum_parts
             .iter()
             .find(|tone| tone.part() == Some(part))
             .map(|tone| tone.chain.clone())
             .unwrap_or_else(|| crate::chain_settings::default_drum_part_chain(part))
+    }
+
+    /// The drum parts the open song gives `track` of its own, if any.
+    pub fn track_drum_parts(&self, track: usize) -> Option<&[super::TrackDrumPart]> {
+        self.track_drum_parts.get(&track).map(Vec::as_slice)
+    }
+
+    /// The chain `part` of `track` plays: the song's own, else this machine's kit's.
+    pub fn track_drum_part_chain(
+        &self,
+        track: usize,
+        part: crate::chain_settings::DrumPart,
+    ) -> ChainSetting {
+        self.track_drum_parts(track)
+            .and_then(|parts| parts.iter().find(|own| own.part == part))
+            .map(|own| own.chain.clone())
+            .unwrap_or_else(|| self.kit_drum_part_chain(part))
+    }
+
+    /// The mixing level `part` of `track` plays (0-127, 127 unity).
+    pub fn track_drum_part_level(&self, track: usize, part: crate::chain_settings::DrumPart) -> u8 {
+        self.track_drum_parts(track)
+            .and_then(|parts| parts.iter().find(|own| own.part == part))
+            .map_or(127, |own| own.level.min(127))
+    }
+
+    /// Hands the open song's per-track drum parts to playback, heard at once.
+    pub fn set_track_drum_parts(
+        &mut self,
+        parts: std::collections::BTreeMap<usize, Vec<super::TrackDrumPart>>,
+    ) {
+        if self.track_drum_parts == parts {
+            return;
+        }
+        self.track_drum_parts = parts;
+        self.send_drum_parts();
     }
 
     /// Gives `part` of the kit `chain`, heard at once on every drum track (kept in the
@@ -730,7 +781,7 @@ impl Playback {
         self.send_drum_parts();
     }
 
-    /// The drum parts' chains to render audio export with.
+    /// The drum parts' chains and levels to render audio export with.
     pub fn export_parts(&mut self) -> Vec<gscore_audio::PartChoice> {
         let mut parts = Vec::new();
         let tracks: Vec<usize> = self
@@ -741,9 +792,10 @@ impl Playback {
             .collect();
         for track in tracks {
             for part in crate::chain_settings::DrumPart::ALL {
-                let chain = self.drum_part_chain(part);
+                let chain = self.track_drum_part_chain(track, part);
+                let level = self.track_drum_part_level(track, part);
                 let spec = self.chain_spec(&chain);
-                parts.push((track, part.index(), spec, chain.knobs()));
+                parts.push((track, part.index(), level, spec, chain.knobs()));
             }
         }
         parts

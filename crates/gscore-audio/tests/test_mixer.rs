@@ -444,6 +444,47 @@ fn a_drum_tracks_parts_have_their_own_chains() {
 }
 
 #[test]
+fn a_drum_tracks_parts_have_their_own_levels() {
+    // Each part of a drum track has a mixing level of its own: turning the kick down
+    // leaves the snare as it is, and the level scales the part after its chain.
+    let mut song = testing::song_with_notes_on_tracks(1, &[]).expect("a silent song");
+    let _ = song
+        .set_track_drums(TrackIndex::new(0), true)
+        .expect("a drum track");
+    let sequence = Sequence::new(&song, None).unwrap();
+    let channel = sequence.tracks[0].channel;
+    let level = |key: u8, part: usize, part_level: u8| {
+        let bytes = gscore_audio::testing::sine_drum_soundfont("Test Drums");
+        let bank = SoundBank::read(&mut bytes.as_slice()).unwrap();
+        let mut engine = SynthEngine::new(&bank, RATE).unwrap();
+        engine.load(Arc::new(sequence.clone()));
+        engine.play();
+        engine.set_part_level(0, part, part_level);
+        engine.send_event(MidiEvent::NoteOn {
+            channel,
+            key,
+            velocity: 100,
+        });
+        let (left, _) = render(&mut engine, 1.0);
+        rms(steady(&left))
+    };
+    let kick = level(36, 0, 127);
+    let snare = level(38, 1, 127);
+    assert!(kick > 0.001 && snare > 0.001, "the drums sound");
+    // Half the level is about half the amplitude, and only the kick's.
+    let kick_half = level(36, 0, 64);
+    assert!(
+        kick_half > 0.4 * kick && kick_half < 0.6 * kick,
+        "{kick_half} against {kick}"
+    );
+    let snare_with_kick_down = level(38, 0, 64);
+    assert!((snare_with_kick_down - snare).abs() < 1e-6);
+    // The snare's own level moves only the snare.
+    let snare_half = level(38, 1, 64);
+    assert!(snare_half < 0.6 * snare, "{snare_half} against {snare}");
+}
+
+#[test]
 fn a_drum_tracks_part_chains_follow_it_when_a_track_before_it_is_muted() {
     use gscore_guitar::CompressorKnobs;
 

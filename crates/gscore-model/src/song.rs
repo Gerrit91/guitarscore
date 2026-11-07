@@ -17,6 +17,10 @@ pub struct Song {
     inner: gscore_gp::Song,
     /// One stamp per measure; see [`Song::measure_stamp`].
     stamps: Vec<u64>,
+    /// GuitarScore's own song-wide sound state (the mixer's buses, ...), opaque to the
+    /// model. It has no field in the Guitar Pro format and is saved in the song's notes;
+    /// `None` when the song brings none and follows the program's own settings.
+    sound_state: Option<String>,
 }
 
 /// The source of measure stamps, shared by all songs so a stamp is never reused.
@@ -31,7 +35,11 @@ impl Song {
     /// Wraps Guitar Pro song data after checking the invariants.
     pub(crate) fn from_inner(inner: gscore_gp::Song) -> Result<Self, ModelError> {
         let stamps = inner.measure_headers.iter().map(|_| new_stamp()).collect();
-        let song = Song { inner, stamps };
+        let song = Song {
+            inner,
+            stamps,
+            sound_state: None,
+        };
         validate::check(&song)?;
         Ok(song)
     }
@@ -217,13 +225,28 @@ impl Song {
 
     /// A copy of this song with its free-text notes replaced by `notes`.
     ///
-    /// The save path keeps GuitarScore's own per-track state (mixer sends, the tones the
-    /// tracks play) in these notes, under a marked block: Guitar Pro shows and keeps the
-    /// field when it saves the file again, so the state survives a round trip through it.
+    /// The save path keeps GuitarScore's own sound state (the mixer sends, the tones the
+    /// tracks play, the buses) in these notes, under a marked block: Guitar Pro shows and
+    /// keeps the field when it saves the file again, so the state survives a round trip
+    /// through it.
     pub fn with_notes(&self, notes: Vec<String>) -> Self {
         let mut song = self.clone();
         song.inner.notice = notes;
         song
+    }
+
+    /// GuitarScore's own song-wide sound state (the mixer's reverb and compressor buses,
+    /// and what else the app adds), an opaque payload. It has no field in the Guitar Pro
+    /// format and is saved in the song's notes; `None` when the song brings none and
+    /// follows the program's own settings.
+    pub fn sound_state(&self) -> Option<&str> {
+        self.sound_state.as_deref()
+    }
+
+    /// Replaces the song-wide sound state and gives back the previous one, so the caller
+    /// can make the edit undoable. The payload is opaque to the model.
+    pub(crate) fn replace_sound_state(&mut self, state: Option<String>) -> Option<String> {
+        std::mem::replace(&mut self.sound_state, state)
     }
 
     /// The initial tempo in quarter notes per minute (always positive).

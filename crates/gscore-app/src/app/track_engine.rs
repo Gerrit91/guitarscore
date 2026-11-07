@@ -1,16 +1,24 @@
 //! What plays a track: the SoundFont, or modelled strings of a kind. By default a guitar
 //! or bass track's preset decides (with the Settings' switch for modelled guitars); the
-//! user can choose for each track in the Sound chain window. The choice is kept with the
-//! open document (by track index) and sent to playback every frame it changes. A track's
-//! tone (the sound of its strings and its chain) belongs to its preset, not to the track:
-//! it is kept in the settings, so every track with that preset, in every song, plays it.
+//! user can choose for each track in the Sound chain window. The choice belongs to the
+//! song: it lives on the track in the document (GuitarScore's own sound state) and is
+//! written into the song's notes on save, so a song keeps its sound when it is shared. A
+//! track's tone (the sound of its strings and its chain) belongs to its preset unless the
+//! song brought one: then it is kept with the song too.
+//!
+//! Every change goes through [`gscore_edit::Command::SetTrackSound`], so it can be undone
+//! and replayed from the recovery journal like any other edit.
 
+use gscore_edit::Command;
 use gscore_model::{InstrumentKind, TrackIndex};
 use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
-use crate::chain_settings::Tone;
-use crate::playback::MidiOutRoute;
+use super::song_state::{Buses, DrumPartSound, SoundEngine, TrackSound};
+use super::tab::Tab;
+use crate::chain_settings::{ChainSetting, DrumPart, Tone};
+use crate::playback::{MidiOutRoute, TrackDrumPart};
+use crate::settings::{CompressorBus, ReverbBus};
 
 /// What plays a track, and why.
 #[derive(Debug, Clone, PartialEq)]
@@ -34,10 +42,16 @@ pub(super) struct TrackPlayer {
 impl GuitarScoreApp {
     /// What plays `track` of the open document, if there is one.
     pub(super) fn track_player(&self, track: usize) -> Option<TrackPlayer> {
-        let tab = self.tabs.get(self.active)?;
+        self.track_player_in(self.tabs.get(self.active)?, track)
+    }
+
+    /// What plays `track` of `tab`'s document (which need not be the open one: a save may
+    /// run for another tab).
+    pub(super) fn track_player_in(&self, tab: &Tab, track: usize) -> Option<TrackPlayer> {
         let song = tab.document.song();
         let view = song.track(TrackIndex::new(track))?;
         let sound = song.track_sound(TrackIndex::new(track))?;
+        let own = tab.track_sound(track);
         let strings = view.instrument_kind() == InstrumentKind::Strings && !sound.percussion;
         // The kind its preset's tone was dialed in on (the owner's Clean Guitar plays steel
         // strings), otherwise its program's family.
@@ -46,10 +60,9 @@ impl GuitarScoreApp {
             Some(kind) if self.playback.modelled_guitars() => TrackEngine::Modelled(kind),
             _ => TrackEngine::SoundFont,
         };
-        let engine = tab
-            .track_engines
-            .get(&track)
-            .copied()
+        let engine = own
+            .engine
+            .map(SoundEngine::engine)
             .filter(|engine| match engine {
                 TrackEngine::Modelled(_) => strings,
                 TrackEngine::SoundFont => true,
@@ -64,8 +77,45 @@ impl GuitarScoreApp {
             drums: sound.percussion,
             preset_kind,
             program: sound.program,
-            midi_out: tab.midi_outs.get(&track).cloned().unwrap_or_default(),
+            midi_out: own.midi_out.unwrap_or_default(),
         })
+    }
+
+    /// Notes whether the primary pointer button is held, and ends the undo step a sound
+    /// drag was merging into when a new press begins (the Sound chain and bus windows'
+    /// knobs and sliders do not mark their drags themselves). Called once per frame,
+    /// before the windows run.
+    pub(super) fn track_pointer(&mut self, ctx: &egui::Context) {
+        let (pressed, held) =
+            ctx.input(|input| (input.pointer.any_pressed(), input.pointer.primary_down()));
+        if pressed && let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.document.editor_mut().break_merge();
+        }
+        self.pointer_held = held;
+    }
+
+    /// Whether a sound change asked to `merge` may continue the undo step before it: only
+    /// within one drag, never across two drags or a typed value.
+    fn sound_merge(&self, merge: bool) -> bool {
+        merge && self.pointer_held
+    }
+
+    /// The sound state of `track` of the open document (`None` without one).
+    fn open_track_sound(&self, track: usize) -> Option<TrackSound> {
+        self.tabs.get(self.active).map(|tab| tab.track_sound(track))
+    }
+
+    /// Replaces the track's state with `sound`, through the undoable command.
+    fn set_track_sound(&mut self, track: usize, sound: TrackSound, merge: bool) {
+        let state = sound.json();
+        let merge = self.sound_merge(merge);
+        self.apply_command(
+            Command::SetTrackSound {
+                track: TrackIndex::new(track),
+                state,
+            },
+            merge,
+        );
     }
 
     /// Lets `engine` play `track` (back to the default when it is the default).
@@ -73,36 +123,29 @@ impl GuitarScoreApp {
         let Some(player) = self.track_player(track) else {
             return;
         };
-        let Some(tab) = self.tabs.get_mut(self.active) else {
+        let Some(mut sound) = self.open_track_sound(track) else {
             return;
         };
-        if engine == player.default {
-            tab.track_engines.remove(&track);
-        } else {
-            tab.track_engines.insert(track, engine);
-        }
+        sound.engine = (engine != player.default).then(|| SoundEngine::of(engine));
         // A MIDI-out track needs a route; automatic until the user picks a port.
         if engine == TrackEngine::MidiOut {
-            tab.midi_outs.entry(track).or_default();
+            sound.midi_out.get_or_insert_with(MidiOutRoute::default);
             // The Sound chain window offers the ports by name, so list them if that has
             // not happened yet.
             if self.playback.ports().is_empty() {
                 let _ = self.playback.refresh_ports();
             }
         }
-        // The engine first: a MIDI-out track needs its player, then the route splits the
-        // rebuilt sequence.
-        self.sync_track_engines();
-        self.sync_midi_routes();
+        self.set_track_sound(track, sound, false);
     }
 
     /// Gives the hardware synthesizer of `track` a port and channel, heard at once.
     pub(super) fn set_midi_out(&mut self, track: usize, route: MidiOutRoute) {
-        let Some(tab) = self.tabs.get_mut(self.active) else {
+        let Some(mut sound) = self.open_track_sound(track) else {
             return;
         };
-        tab.midi_outs.insert(track, route);
-        self.sync_midi_routes();
+        sound.midi_out = Some(route);
+        self.set_track_sound(track, sound, false);
     }
 
     /// The name of `track` of the open document (empty without one).
@@ -117,20 +160,26 @@ impl GuitarScoreApp {
     /// The tone `track` of the open document plays as `kind`: the one that came with the
     /// song, else its preset's, else the kind's default.
     pub(super) fn track_tone(&self, track: usize, kind: StringKind) -> Tone {
-        let own = self
-            .tabs
-            .get(self.active)
-            .and_then(|tab| tab.track_tones.get(&track))
-            .filter(|tone| tone.kind == kind)
-            .cloned();
-        let mut tone = own.unwrap_or_else(|| match self.track_player(track) {
+        match self.tabs.get(self.active) {
+            Some(tab) => self.track_tone_in(tab, track, kind),
+            None => self.playback.default_tone(kind),
+        }
+    }
+
+    /// [`Self::track_tone`] for `track` of `tab`'s document.
+    pub(super) fn track_tone_in(&self, tab: &Tab, track: usize, kind: StringKind) -> Tone {
+        let own = tab
+            .track_sound(track)
+            .tone
+            .and_then(|preset| preset.tone())
+            .filter(|tone| tone.kind == kind);
+        let player = self.track_player_in(tab, track);
+        let mut tone = own.unwrap_or_else(|| match &player {
             Some(player) => self.playback.tone(track, player.program, kind),
             None => self.playback.default_tone(kind),
         });
         // A drum track with no tone of its own runs the drum bus, as playback does.
-        if self.track_player(track).is_some_and(|player| player.drums)
-            && tone.chain == crate::chain_settings::ChainSetting::default()
-        {
+        if player.is_some_and(|player| player.drums) && tone.chain == ChainSetting::default() {
             tone.chain = self.playback.drum_bus_chain();
         }
         tone
@@ -140,22 +189,23 @@ impl GuitarScoreApp {
     /// keeps its sound); otherwise the preset's tone changes, so every track with that
     /// preset, in every song, plays it from now on (it is kept in the settings).
     pub(super) fn set_track_tone(&mut self, track: usize, tone: Tone) {
-        if let Some(tab) = self.tabs.get_mut(self.active)
-            && tab.track_tones.contains_key(&track)
-        {
-            tab.track_tones.insert(track, tone);
-            self.sync_track_tones();
-            return;
-        }
         let Some(player) = self.track_player(track) else {
             return;
         };
-        let Some(song) = self.document().map(|document| document.song().clone()) else {
+        let Some(mut sound) = self.open_track_sound(track) else {
             return;
         };
-        if let Err(error) = self
-            .playback
-            .set_preset_tone(&song, player.program, Some(tone))
+        if sound.tone.is_some() {
+            sound.tone = Some(crate::settings::PresetTone::of(player.program, &tone));
+            self.set_track_sound(track, sound, true);
+            return;
+        }
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        if let Err(error) =
+            self.playback
+                .set_preset_tone(tab.document.song(), player.program, Some(tone))
         {
             self.notice = Some(error);
         }
@@ -165,17 +215,22 @@ impl GuitarScoreApp {
     /// so it plays its built-in default again (the kind's sound and chain from the
     /// settings).
     pub(super) fn reset_track_tone(&mut self, track: usize) {
-        if let Some(tab) = self.tabs.get_mut(self.active) {
-            tab.track_tones.remove(&track);
+        let Some(mut sound) = self.open_track_sound(track) else {
+            return;
+        };
+        if sound.tone.take().is_some() {
+            self.set_track_sound(track, sound, false);
         }
-        self.sync_track_tones();
         let Some(player) = self.track_player(track) else {
             return;
         };
-        let Some(song) = self.document().map(|document| document.song().clone()) else {
+        let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
-        if let Err(error) = self.playback.set_preset_tone(&song, player.program, None) {
+        if let Err(error) = self
+            .playback
+            .set_preset_tone(tab.document.song(), player.program, None)
+        {
             self.notice = Some(error);
         }
     }
@@ -183,15 +238,12 @@ impl GuitarScoreApp {
     /// Sets `track`'s send into the mixer's compressor bus (0-127), heard at once. It is
     /// kept with the song (in its notes), not with the settings.
     pub(super) fn set_comp_send(&mut self, track: usize, value: u8) {
-        let Some(tab) = self.tabs.get_mut(self.active) else {
+        let Some(mut sound) = self.open_track_sound(track) else {
             return;
         };
-        if value == 0 {
-            tab.comp_sends.remove(&track);
-        } else {
-            tab.comp_sends.insert(track, value.min(127));
-        }
-        self.sync_comp_sends();
+        sound.comp_send = value.min(127);
+        // One slider drag is one undo step.
+        self.set_track_sound(track, sound, true);
     }
 
     /// Hands the open document's comp sends to playback, so they are heard.
@@ -200,9 +252,12 @@ impl GuitarScoreApp {
             return;
         };
         let sends: Vec<(usize, u8)> = tab
-            .comp_sends
+            .sound()
+            .tracks
             .iter()
-            .map(|(&track, &value)| (track, value))
+            .enumerate()
+            .map(|(track, sound)| (track, sound.comp_send))
+            .filter(|&(_, value)| value != 0)
             .collect();
         self.playback.set_comp_sends(sends);
     }
@@ -212,20 +267,34 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
-        self.playback.set_track_tones(&tab.track_tones);
+        let tones: std::collections::BTreeMap<usize, Tone> = tab
+            .sound()
+            .tracks
+            .iter()
+            .enumerate()
+            .filter_map(|(track, sound)| Some((track, sound.tone.as_ref()?.tone()?)))
+            .collect();
+        self.playback.set_track_tones(&tones);
     }
 
-    /// Hands the open document's MIDI-out port and channel choices to playback.
+    /// Hands the open document's MIDI-out port and channel choices to playback. A track
+    /// played by MIDI out always has a route, automatic until the user picks a port, so
+    /// its notes are never routed to an output nobody opened.
     pub(super) fn sync_midi_routes(&mut self) {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
-        let routes: Vec<(usize, MidiOutRoute)> = tab
-            .midi_outs
-            .iter()
-            .map(|(&track, route)| (track, route.clone()))
-            .collect();
         let song = tab.document.song();
+        let sound = tab.sound();
+        let routes: Vec<(usize, MidiOutRoute)> = (0..song.track_count())
+            .filter_map(|track| {
+                if let Some(route) = sound.tracks.get(track).and_then(|own| own.midi_out.clone()) {
+                    return Some((track, route));
+                }
+                let player = self.track_player_in(tab, track)?;
+                (player.engine == TrackEngine::MidiOut).then_some((track, player.midi_out))
+            })
+            .collect();
         if let Err(error) = self.playback.set_midi_routes(song, routes) {
             self.notice = Some(error);
         }
@@ -237,14 +306,180 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
-        let engines: Vec<(usize, TrackEngine)> = tab
-            .track_engines
-            .iter()
-            .map(|(&track, &engine)| (track, engine))
-            .collect();
         let song = tab.document.song();
+        let engines: Vec<(usize, TrackEngine)> = tab
+            .sound()
+            .tracks
+            .iter()
+            .enumerate()
+            .filter_map(|(track, sound)| Some((track, sound.engine?.engine())))
+            .collect();
         if let Err(error) = self.playback.set_track_engines(song, engines) {
             self.notice = Some(error);
+        }
+    }
+
+    /// Hands everything the song says about its sound to playback: what plays each track,
+    /// its MIDI route, its tone, its compressor send, the drum parts it gives its own
+    /// tones, and the mixer's buses. Called after every edit; the player drops what did not
+    /// change.
+    pub(super) fn sync_song_sound(&mut self) {
+        self.sync_track_engines();
+        self.sync_midi_routes();
+        self.sync_track_tones();
+        self.sync_comp_sends();
+        self.sync_track_drum_parts();
+        self.sync_song_buses();
+        self.sound_synced = self.sound_key();
+    }
+
+    /// Hands the open song's sound to playback when it is another song or the song changed
+    /// since the last time (each frame: another tab may be open now). The buses are always
+    /// compared, because a song without its own follows this machine's settings.
+    pub(super) fn sync_song_sound_if_changed(&mut self) {
+        if self.sound_key() == self.sound_synced {
+            self.sync_song_buses();
+        } else {
+            self.sync_song_sound();
+        }
+    }
+
+    /// Which song's state playback was last given: the open tab and its revision.
+    fn sound_key(&self) -> Option<(super::tab::TabId, u64)> {
+        self.tabs
+            .get(self.active)
+            .map(|tab| (tab.id, tab.document.editor().revision()))
+    }
+
+    /// The chain and mixing level `part` of `track` plays: the song's own, else this
+    /// machine's kit setting (or the built-in tone) at unity.
+    pub(super) fn track_drum_part(&self, track: usize, part: DrumPart) -> (ChainSetting, u8) {
+        let own = self.open_track_sound(track).and_then(|sound| {
+            sound
+                .drum_parts
+                .into_iter()
+                .find(|own| own.part() == Some(part))
+        });
+        match own {
+            Some(own) => (own.chain, own.level.min(127)),
+            None => (self.playback.kit_drum_part_chain(part), 127),
+        }
+    }
+
+    /// Gives `part` of `track` a tone of the song's own (a chain and a level), or `None`
+    /// to follow this machine's kit again. An edit, with undo, heard at once.
+    pub(super) fn set_track_drum_part(
+        &mut self,
+        track: usize,
+        part: DrumPart,
+        own: Option<(ChainSetting, u8)>,
+    ) {
+        let Some(mut sound) = self.open_track_sound(track) else {
+            return;
+        };
+        sound.drum_parts.retain(|entry| entry.part() != Some(part));
+        if let Some((chain, level)) = own {
+            sound
+                .drum_parts
+                .push(DrumPartSound::of(part, &chain, level));
+        }
+        // The kit's order, so the payload does not depend on the order parts were edited.
+        sound
+            .drum_parts
+            .sort_by_key(|entry| entry.part().map_or(usize::MAX, DrumPart::index));
+        self.set_track_sound(track, sound, true);
+    }
+
+    /// Hands the drum parts the open document gives its tracks to playback.
+    pub(super) fn sync_track_drum_parts(&mut self) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        let parts: std::collections::BTreeMap<usize, Vec<TrackDrumPart>> = tab
+            .sound()
+            .tracks
+            .iter()
+            .enumerate()
+            .filter_map(|(track, sound)| {
+                let own: Vec<TrackDrumPart> = sound
+                    .drum_parts
+                    .iter()
+                    .filter_map(DrumPartSound::track_part)
+                    .collect();
+                (!own.is_empty()).then_some((track, own))
+            })
+            .collect();
+        self.playback.set_track_drum_parts(parts);
+    }
+
+    /// The song's own buses, each falling back to this machine's settings when the song
+    /// does not set it.
+    pub(super) fn song_buses(&self) -> Buses {
+        let own = self
+            .tabs
+            .get(self.active)
+            .map(|tab| tab.sound().buses.clone())
+            .unwrap_or_default();
+        Buses {
+            reverb: own
+                .reverb
+                .or_else(|| Some(self.settings.reverb_bus.clone())),
+            compressor: own
+                .compressor
+                .or_else(|| Some(self.settings.compressor_bus.clone())),
+        }
+    }
+
+    /// Gives the open song its own reverb bus (an edit, with undo), heard at once.
+    pub(super) fn set_song_reverb_bus(&mut self, bus: ReverbBus) {
+        let Some(mut buses) = self
+            .tabs
+            .get(self.active)
+            .map(|tab| tab.sound().buses.clone())
+        else {
+            return;
+        };
+        buses.reverb = Some(bus);
+        let merge = self.sound_merge(true);
+        self.apply_command(
+            Command::SetSongSound {
+                state: buses.json(),
+            },
+            merge,
+        );
+    }
+
+    /// Gives the open song its own compressor bus (an edit, with undo), heard at once.
+    pub(super) fn set_song_compressor_bus(&mut self, bus: CompressorBus) {
+        let Some(mut buses) = self
+            .tabs
+            .get(self.active)
+            .map(|tab| tab.sound().buses.clone())
+        else {
+            return;
+        };
+        buses.compressor = Some(bus);
+        let merge = self.sound_merge(true);
+        self.apply_command(
+            Command::SetSongSound {
+                state: buses.json(),
+            },
+            merge,
+        );
+    }
+
+    /// Hands the open document's buses to playback, so a song's own reverb and compressor
+    /// are heard (a song without them follows the settings). The player is sent a bus only
+    /// when it differs from the one it runs.
+    pub(super) fn sync_song_buses(&mut self) {
+        let buses = self.song_buses();
+        let reverb = buses.reverb.unwrap_or_default();
+        if self.playback.reverb_bus() != reverb {
+            self.playback.set_reverb_bus(reverb);
+        }
+        let compressor = buses.compressor.unwrap_or_default();
+        if self.playback.compressor_bus() != compressor {
+            self.playback.set_compressor_bus(compressor);
         }
     }
 }
