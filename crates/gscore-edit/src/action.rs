@@ -23,6 +23,14 @@ pub enum ActionId {
     PreviousMeasure,
     /// Move to the first beat of the next measure.
     NextMeasure,
+    /// Move to the first beat of the track (the start of the song).
+    CursorHome,
+    /// Move to the last beat of the track's last measure (its start when it is empty).
+    CursorEnd,
+    /// Extend the beat selection to the first beat of the track.
+    SelectHome,
+    /// Extend the beat selection to the last beat of the track.
+    SelectEnd,
     /// Type a fret digit on the cursor's string; a second digit soon after makes two-digit
     /// frets.
     EnterFret,
@@ -349,6 +357,10 @@ pub const ACTIONS: &[ActionInfo] = &[
         "Previous measure",
     ),
     info(ActionId::NextMeasure, "next_measure", "Next measure"),
+    info(ActionId::CursorHome, "cursor_home", "Start of track"),
+    info(ActionId::CursorEnd, "cursor_end", "End of track"),
+    info(ActionId::SelectHome, "select_home", "Select to start"),
+    info(ActionId::SelectEnd, "select_end", "Select to end"),
     info(ActionId::EnterFret, "enter_fret", "Enter fret"),
     info(ActionId::ClearNote, "clear_note", "Clear note"),
     info(
@@ -688,6 +700,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 110, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 114, "one entry per ActionId variant");
     }
 }

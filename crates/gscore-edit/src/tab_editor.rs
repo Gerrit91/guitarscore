@@ -259,6 +259,8 @@ impl TabEditor {
                 | ActionId::CursorDownString
                 | ActionId::PreviousMeasure
                 | ActionId::NextMeasure
+                | ActionId::CursorHome
+                | ActionId::CursorEnd
         );
         let deselected = cursor_move && self.selection.take().is_some();
         let moved = |moved: bool| {
@@ -275,8 +277,12 @@ impl TabEditor {
             ActionId::CursorDownString => Ok(moved(self.cursor.down(song))),
             ActionId::PreviousMeasure => Ok(moved(self.cursor.to_measure(song, false))),
             ActionId::NextMeasure => Ok(moved(self.cursor.to_measure(song, true))),
+            ActionId::CursorHome => Ok(moved(self.cursor.start_of_track(song))),
+            ActionId::CursorEnd => Ok(moved(self.cursor.end_of_track(song))),
             ActionId::SelectLeft => Ok(self.extend_selection(false)),
             ActionId::SelectRight => Ok(self.extend_selection(true)),
+            ActionId::SelectHome => Ok(self.extend_selection_to(true)),
+            ActionId::SelectEnd => Ok(self.extend_selection_to(false)),
             ActionId::SelectBeat => Ok(self.select_beat()),
             ActionId::EnterFret => Ok(Outcome::Nothing),
             // With a selection, Delete and clear clear every selected note at once.

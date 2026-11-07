@@ -84,6 +84,57 @@ fn arrows_stop_in_an_empty_measure_in_the_middle_and_at_the_end() {
 }
 
 #[test]
+fn home_and_end_go_to_the_first_and_last_beat_of_the_track() {
+    let mut e = editor(3);
+    go(&mut e, 1, 2);
+    assert_eq!(plain(&mut e, ActionId::CursorHome), Outcome::Moved);
+    assert_eq!((e.cursor().measure.get(), e.cursor().beat.get()), (0, 0));
+    assert_eq!(plain(&mut e, ActionId::CursorEnd), Outcome::Moved);
+    assert_eq!((e.cursor().measure.get(), e.cursor().beat.get()), (2, 3));
+
+    // An empty last bar: End is its start.
+    empty_measure(&mut e, 2);
+    go(&mut e, 1, 2);
+    assert_eq!(plain(&mut e, ActionId::CursorEnd), Outcome::Moved);
+    assert_eq!((e.cursor().measure.get(), e.cursor().beat.get()), (2, 0));
+    // Already there: nothing moves.
+    assert_eq!(plain(&mut e, ActionId::CursorEnd), Outcome::Nothing);
+}
+
+#[test]
+fn shift_home_and_shift_end_extend_the_selection_to_the_track_ends() {
+    let mut e = editor(3);
+    go(&mut e, 1, 2);
+    assert_eq!(plain(&mut e, ActionId::SelectEnd), Outcome::Moved);
+    assert_eq!(
+        e.selection(),
+        Some(Selection::Beats {
+            track: TrackIndex::new(0),
+            voice: VoiceIndex::new(0),
+            anchor: spot(1, 2),
+            focus: spot(2, 3),
+        })
+    );
+    assert_eq!((e.cursor().measure.get(), e.cursor().beat.get()), (2, 3));
+
+    assert_eq!(plain(&mut e, ActionId::SelectHome), Outcome::Moved);
+    assert_eq!(
+        e.selection(),
+        Some(Selection::Beats {
+            track: TrackIndex::new(0),
+            voice: VoiceIndex::new(0),
+            anchor: spot(1, 2),
+            focus: spot(0, 0),
+        })
+    );
+    assert_eq!((e.cursor().measure.get(), e.cursor().beat.get()), (0, 0));
+
+    // A plain Home ends the selection.
+    assert_eq!(plain(&mut e, ActionId::CursorEnd), Outcome::Moved);
+    assert_eq!(e.selection(), None);
+}
+
+#[test]
 fn shift_arrows_extend_the_selection_through_empty_measures() {
     let mut e = editor(3);
     empty_measure(&mut e, 1);

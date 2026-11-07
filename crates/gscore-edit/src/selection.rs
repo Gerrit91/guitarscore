@@ -200,6 +200,27 @@ impl TabEditor {
         Outcome::Moved
     }
 
+    /// Moves the cursor to the track's first (`to_start`) or last beat and extends the
+    /// beat selection to it, as Shift+Home and Shift+End do.
+    pub(crate) fn extend_selection_to(&mut self, to_start: bool) -> Outcome {
+        let anchor = self
+            .beat_anchor()
+            .unwrap_or_else(|| BeatSpot::of(self.cursor));
+        let song = self.editor.song();
+        if to_start {
+            self.cursor.start_of_track(song);
+        } else {
+            self.cursor.end_of_track(song);
+        }
+        self.selection = Some(Selection::Beats {
+            track: self.cursor.track,
+            voice: self.cursor.voice,
+            anchor,
+            focus: BeatSpot::of(self.cursor),
+        });
+        Outcome::Moved
+    }
+
     /// Selects the cursor's whole beat (every string), unless a beat selection in its voice
     /// already holds it.
     pub(crate) fn select_beat(&mut self) -> Outcome {
