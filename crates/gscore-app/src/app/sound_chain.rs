@@ -293,6 +293,7 @@ struct ShownPreset {
 fn preset_row(
     ui: &mut egui::Ui,
     shown: ShownPreset,
+    default_tone: &str,
     tone: &Tone,
     presets: &[ChainPreset],
     window: &mut SoundChainWindow,
@@ -392,7 +393,6 @@ fn preset_row(
             }
         }
     });
-    let default_tone = crate::tone_library::for_program(program, kind).name;
     // Built-in tones by family, then the user's saved ones; compact here so the window
     // keeps its height (the track panel shows the full table).
     let mut chosen: Option<super::tone_picker::PickerChoice> = None;
@@ -1336,12 +1336,15 @@ impl GuitarScoreApp {
                         // The tone: which one this preset plays, another one, and saving
                         // it. Above the board so it stays in reach when the window is tall.
                         if window.part.is_none() {
+                            let default_tone =
+                                self.playback.default_tone_name(player.program, kind);
                             preset_row(
                                 ui,
                                 ShownPreset {
                                     program: player.program,
                                     kind,
                                 },
+                                &default_tone,
                                 &tone,
                                 &presets,
                                 &mut window,
@@ -1556,12 +1559,16 @@ impl GuitarScoreApp {
             if presets.len() < MAX_STRING_PRESETS {
                 presets.push(preset);
             }
+            self.playback
+                .store_string_presets(self.settings.string_presets.clone());
             self.save_settings();
         }
         if let Some((preset_kind, name)) = actions.delete_preset {
             self.settings
                 .string_presets
                 .retain(|preset| !(preset.kind == preset_kind && preset.name == name));
+            self.playback
+                .store_string_presets(self.settings.string_presets.clone());
             self.save_settings();
         }
         if let Some(place) = actions.load
@@ -1576,6 +1583,8 @@ impl GuitarScoreApp {
             self.notice = Some(error);
         }
         if actions.listen && modelled {
+            // The chain as it is now (not as it was when the window opened).
+            self.sync_track_tones();
             match self.playback.play_string_demo(track, active_kind) {
                 Ok(Heard::Skipped(why)) => self.notice = Some(format!("Not played: {why}")),
                 Ok(_) => {}

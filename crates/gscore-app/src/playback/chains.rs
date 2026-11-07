@@ -192,6 +192,17 @@ impl Playback {
         self.string_chains = chains;
     }
 
+    /// The user's saved tones, which the default of a program without a tone of its own
+    /// starts on.
+    pub fn string_presets(&self) -> &[crate::settings::ChainPreset] {
+        &self.string_presets
+    }
+
+    /// Takes the user's saved tones (after one was saved or deleted).
+    pub fn store_string_presets(&mut self, presets: Vec<crate::settings::ChainPreset>) {
+        self.string_presets = presets;
+    }
+
     /// The tones set for track presets (by General MIDI program), local to this machine.
     pub fn preset_tones(&self) -> &[PresetTone] {
         &self.preset_tones
@@ -278,11 +289,25 @@ impl Playback {
         }
     }
 
-    /// The built-in tone of `program` for strings of `kind`: the library's tone for that
-    /// preset (an electric guitar program gets its own sound, not a generic one), with the
-    /// kind's default when the program has none of that kind.
+    /// The default tone of `program` for strings of `kind`: the owner's saved preset when
+    /// one matches, else the built-in library's tone. This is the tone as it was saved (so
+    /// the pickers recognise it); playback normalizes a default's loudness just before it
+    /// builds the chain (see `send_tones`).
     pub fn default_tone_for(&self, program: u8, kind: StringKind) -> Tone {
-        crate::tone_library::for_program(program, kind).tone.clone()
+        crate::tone_library::saved_default_for(program, kind, &self.string_presets).map_or_else(
+            || crate::tone_library::for_program(program, kind).tone.clone(),
+            |preset| Tone {
+                kind,
+                sound: preset.sound,
+                chain: preset.chain.clone(),
+            },
+        )
+    }
+
+    /// The name of the tone `default_tone_for` returns (a saved preset's or a built-in
+    /// tone's), for the picker's "default" marker.
+    pub fn default_tone_name(&self, program: u8, kind: StringKind) -> String {
+        crate::tone_library::default_tone_name(program, kind, &self.string_presets)
     }
 
     /// Gives the preset `program` a tone of its own (heard at once, and on every track with
@@ -504,10 +529,20 @@ impl Playback {
                         }),
                 },
                 Some(kind) => {
-                    let tone = own
+                    let default = own.is_none() && preset.is_none();
+                    let mut tone = own
                         .or(preset)
                         .unwrap_or_else(|| self.default_tone_for(target.program, kind));
-                    let dialed_in = self.tones.contains_key(&target.track)
+                    if default {
+                        // The defaults arrive at the mixer at the same loudness.
+                        let target_level = self.string_sounds.get(kind).level;
+                        crate::tone_library::normalize_default(&mut tone, target_level);
+                    }
+                    // A default tone brings its own string sound too (the owner's saved
+                    // preset may differ from the kind's settings); only a SoundFont track
+                    // stays without one.
+                    let dialed_in = default
+                        || self.tones.contains_key(&target.track)
                         || self
                             .preset_tone(target.program)
                             .is_some_and(|own| own.kind == kind);
@@ -609,7 +644,9 @@ impl Playback {
         let defaults = super::STRING_KINDS
             .iter()
             .map(|&kind| {
-                let tone = crate::tone_library::default_for_kind(kind).tone.clone();
+                let mut tone = self.default_tone_for(0, kind);
+                let target_level = self.string_sounds.get(kind).level;
+                crate::tone_library::normalize_default(&mut tone, target_level);
                 let spec = self.chain_spec(&tone.chain);
                 (kind, tone.sound.model(), spec, tone.chain.knobs())
             })
@@ -619,7 +656,9 @@ impl Playback {
         let program_defaults = (24..=39_u8)
             .filter_map(|program| {
                 let kind = StringKind::for_program(program)?;
-                let tone = crate::tone_library::for_program(program, kind).tone.clone();
+                let mut tone = self.default_tone_for(program, kind);
+                let target_level = self.string_sounds.get(kind).level;
+                crate::tone_library::normalize_default(&mut tone, target_level);
                 let spec = self.chain_spec(&tone.chain);
                 Some((program, kind, tone.sound.model(), spec, tone.chain.knobs()))
             })

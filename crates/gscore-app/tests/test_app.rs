@@ -178,7 +178,7 @@ fn a_stored_panel_size_cannot_cover_the_window() {
         harness.run();
         // The track panel's first control is in the right half, and the palette's one in
         // the left half: the score has the middle.
-        let track_panel = harness.get_by_label("Played by").rect().left();
+        let track_panel = harness.get_by_label("Instrument").rect().left();
         assert!(
             track_panel > 500.0,
             "a stored width of {width} pushed the track panel to {track_panel}"
@@ -195,7 +195,7 @@ fn a_stored_panel_size_cannot_cover_the_window() {
 fn the_track_panel_does_not_grow_by_itself() {
     let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
     let panel = |harness: &Harness<'static, GuitarScoreApp>| {
-        let rect = harness.get_by_label("Played by").rect();
+        let rect = harness.get_by_label("Instrument").rect();
         (rect.left(), rect.top())
     };
     let before = panel(&harness);
@@ -224,6 +224,21 @@ fn files_that_cannot_be_opened_give_a_notice_not_a_crash() {
         assert!(harness.state().document().is_none());
         harness.get_by_label("Dismiss");
     }
+}
+
+#[test]
+fn a_notice_also_shows_in_the_status_bar_beside_the_spinner() {
+    let mut harness = app_with(None);
+    harness.state_mut().set_notice("Something went wrong");
+    harness.run();
+    // The notice bar at the top and the status bar at the bottom both carry it.
+    assert!(
+        harness
+            .query_all_by_label_contains("Something went wrong")
+            .count()
+            >= 2
+    );
+    harness.get_by_label("Dismiss");
 }
 
 #[test]
@@ -995,7 +1010,7 @@ fn song_drum_part(harness: &Harness<'static, GuitarScoreApp>, id: &str) -> Optio
 fn the_track_panel_edits_the_shown_track() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
     // The panel is open by default and shows the first track (on PM synthesis).
-    harness.get_by_label("Played by");
+    harness.get_by_label("Instrument");
 
     // The General MIDI program changes and is undoable: the MIDI synth's table lists it.
     let before = first_sound(&harness).program;
@@ -1425,19 +1440,19 @@ fn a_measure_selection_is_shared_with_the_editor_for_copy_and_paste() {
 #[test]
 fn the_view_menu_and_the_row_menu_show_the_track_panel() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
-    harness.get_by_label("Played by");
+    harness.get_by_label("Instrument");
 
     harness.get_by_label("View").click();
     harness.run();
     harness.get_by_label("Track panel").click();
     harness.run();
-    assert!(harness.query_by_label("Played by").is_none());
+    assert!(harness.query_by_label("Instrument").is_none());
 
     // The row's "Edit track…" opens it again.
     right_click_track(&mut harness, "Track 1: Steel Guitar");
     harness.get_by_label("Edit track…").click();
     harness.run();
-    harness.get_by_label("Played by");
+    harness.get_by_label("Instrument");
 }
 
 #[test]

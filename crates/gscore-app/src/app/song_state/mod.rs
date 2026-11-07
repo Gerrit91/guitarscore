@@ -36,11 +36,6 @@ pub(crate) fn apply_rse(song: &mut Song) {
     rse::apply_to_song(song);
 }
 
-/// The RSE name Guitar Pro stored for `track`, if it had one (for "RSE: ...").
-pub(crate) fn rse_name(song: &Song, track: usize) -> Option<String> {
-    rse::of_song(song, track).map(|mapped| mapped.name)
-}
-
 /// The old block's opening marker; the version follows, then `]` and the JSON.
 const LEGACY_OPEN: &str = "[GuitarScore ";
 /// The old block's closing marker.

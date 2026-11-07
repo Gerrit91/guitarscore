@@ -48,13 +48,11 @@ pub(super) struct SoundPanel {
     /// The built-in or saved tone that matches `tone` exactly, when one does.
     pub(super) current: Option<PickerChoice>,
     /// The built-in tone the track's program starts on.
-    pub(super) default_tone: &'static str,
+    pub(super) default_tone: String,
     /// The user's saved tones, for the picker's own group.
     pub(super) saved: Vec<ChainPreset>,
     /// The MIDI output ports this machine has (for the external source).
     pub(super) ports: Vec<String>,
-    /// The RSE name Guitar Pro stored for the track ("Blues"), if any.
-    pub(super) rse: Option<String>,
 }
 
 impl GuitarScoreApp {
@@ -109,18 +107,13 @@ impl GuitarScoreApp {
             }
         };
         let tone = self.track_tone(track, kind);
-        let default_tone = crate::tone_library::for_program(player.program, kind).name;
-        let rse = self
-            .tabs
-            .get(self.active)
-            .and_then(|tab| super::song_state::rse_name(tab.document.song(), track));
+        let default_tone = self.playback.default_tone_name(player.program, kind);
         Some(SoundPanel {
             player,
             current: current_tone_choice(&tone, &self.settings.string_presets),
             default_tone,
             saved: self.settings.string_presets.clone(),
             ports: self.playback.ports().to_vec(),
-            rse,
         })
     }
 
@@ -138,6 +131,9 @@ impl GuitarScoreApp {
         let engine = TrackEngine::Modelled(tone.kind);
         sound.engine = (engine != player.default).then(|| SoundEngine::of(engine));
         self.set_track_sound(track, sound, false);
+        // The preview plays through the tone's whole chain: give playback the new tone
+        // before it starts, not on the next frame.
+        self.sync_track_tones();
         if player.strings {
             match self.playback.play_string_demo(track, tone.kind) {
                 Ok(Heard::Skipped(why)) if why == "the song is playing" => {}
@@ -229,7 +225,7 @@ impl GuitarScoreApp {
     pub(super) fn track_tone(&self, track: usize, kind: StringKind) -> Tone {
         match self.tabs.get(self.active) {
             Some(tab) => self.track_tone_in(tab, track, kind),
-            None => crate::tone_library::default_for_kind(kind).tone.clone(),
+            None => self.playback.default_tone_for(0, kind),
         }
     }
 
@@ -243,7 +239,7 @@ impl GuitarScoreApp {
         let player = self.track_player_in(tab, track);
         let mut tone = own.unwrap_or_else(|| match &player {
             Some(player) => self.playback.tone(track, player.program, kind),
-            None => crate::tone_library::default_for_kind(kind).tone.clone(),
+            None => self.playback.default_tone_for(0, kind),
         });
         // A drum track with no tone of its own runs the drum bus, as playback does.
         if player.is_some_and(|player| player.drums) {

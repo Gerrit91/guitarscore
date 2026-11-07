@@ -288,11 +288,19 @@ impl GuitarScoreApp {
                             ui.separator();
                             ui.label(status);
                         }
+                        if let Some(notice) = &self.notice {
+                            ui.separator();
+                            notice_in_status(ui, notice);
+                        }
                     } else {
                         ui.label("No file open");
                         if self.tasks.busy() {
                             ui.add(egui::Spinner::new().size(14.0))
                                 .on_hover_text("Working…");
+                        }
+                        if let Some(notice) = &self.notice {
+                            ui.separator();
+                            notice_in_status(ui, notice);
                         }
                     }
                 }
@@ -345,6 +353,14 @@ impl GuitarScoreApp {
         let Some(notice) = self.notice.clone() else {
             return;
         };
+        // A notice goes away by itself after a while (its button dismisses it sooner); the
+        // status bar keeps showing it meanwhile.
+        let now = ui.input(|input| input.time);
+        if now - self.notice_since > NOTICE_SECONDS {
+            self.notice = None;
+            self.notice_shown = None;
+            return;
+        }
         // The button stays at the right edge and a long message wraps, so the button is
         // never pushed out of the window.
         ui.with_layout(UiLayout::right_to_left(Align::Center), |ui| {
@@ -364,6 +380,18 @@ impl GuitarScoreApp {
             );
         });
     }
+}
+
+/// How long a notice stays before it goes away by itself, in seconds.
+const NOTICE_SECONDS: f64 = 15.0;
+
+/// A notice in the status bar, beside the working spinner and the file name: red, kept to
+/// one line (hover for the whole text).
+fn notice_in_status(ui: &mut egui::Ui, notice: &str) {
+    let response = ui.add(
+        egui::Label::new(egui::RichText::new(notice).color(ui.visuals().error_fg_color)).truncate(),
+    );
+    response.on_hover_text(notice);
 }
 
 /// "1 track", "3 tracks".

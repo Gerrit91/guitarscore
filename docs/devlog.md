@@ -4197,3 +4197,36 @@ needed for a much larger font); owner listening check.
   `mixer_drum_parts`, `mixer_stomp_track`, `mixer_stomp_master`,
   `mixer_stomp_reverb_bus`, `chorus_bus_window`, the bus windows (their background
   changed) and `sound_chain_drum_kick` (empty kit defaults).
+
+## 2026-11-07 — Track panel sound menu, default tones and notices
+
+- **The Sound section is quieter and easier to scan:** "Played by" and the long explanatory
+  paragraphs under the source switch are gone (the source buttons say what they are), the
+  stomp box is a large pedal icon (the same shape as the reference: meter, knob and
+  footswitch), and the RSE line under the tone picker is removed.
+- **The tone table is one dark surface**, not a dark box per row with panel gaps between;
+  rows span the table's width, soft lines separate the items, and hover and the current
+  choice still light up. Its groups are an accordion: the header's triangle folds a family
+  (or "Saved", or the drum kits) shut and opens it again; a filter shows its matches in
+  every group. The filter is a magnifying-glass icon in the table's top-right corner (the
+  size and look of the zoom icons); it opens a small field over the table, so the filter
+  takes no row of its own.
+- **The owner's saved tones are the program defaults:** for each General MIDI guitar and
+  bass program, the default is the saved preset of the same kind whose name best matches
+  the old built-in tone (so "Metal Guitar 1" starts the metal programs, "Lead Guitar 1"
+  the lead, "Classical Guitar 1" nylon, "Natural Steel 1" steel, the first electric preset
+  the clean programs, and so on). With no saved preset of a kind, the built-in library
+  still answers. `Playback::default_tone_for` and the WAV export use the same choice.
+- **Default tones arrive at the mixer at the same loudness:** the string sound is set to
+  the machine's level for its kind and the chain's output trims are cancelled by adjusting
+  one block's output level (amp, drive, compressor, cabinet or room), never its drive or
+  tone. This is applied when a default is sent to the engine or exported, not to the tone
+  saved in the settings (so the pickers still recognise it).
+- **The preview is the first chord and the whole chain:** the demo phrase is one strummed
+  chord on a guitar and one note on a bass (plus a short tail); choosing a tone syncs
+  playback's tones before the excerpt starts, so its amp, cabinet, room and reverb play,
+  not just the strings. The Sound chain window's Listen does the same.
+- **Notices:** the top notice bar now goes away by itself after 15 seconds (Dismiss still
+  works at once), and the status bar at the bottom shows the same notice in red beside the
+  working spinner and file name (truncated, full text on hover). Test:
+  `a_notice_also_shows_in_the_status_bar_beside_the_spinner`.

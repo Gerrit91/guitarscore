@@ -289,6 +289,8 @@ pub struct Playback {
     string_sounds: crate::settings::StringSounds,
     /// The effect chain after each kind of string on a track without a tone of its own.
     string_chains: crate::chain_settings::StringChains,
+    /// The user's saved tones: the defaults a program without a tone of its own starts on.
+    string_presets: Vec<crate::settings::ChainPreset>,
     /// The tones set for track presets (by General MIDI program), local to this machine.
     preset_tones: Vec<crate::settings::PresetTone>,
     /// The tones set for the parts of a drum kit (kick, snare, ...), local to this machine.
@@ -381,6 +383,7 @@ impl Default for Playback {
             sample_rate: None,
             string_sounds: crate::settings::StringSounds::default(),
             string_chains: crate::chain_settings::StringChains::default(),
+            string_presets: Vec::new(),
             preset_tones: Vec::new(),
             drum_parts: Vec::new(),
             track_drum_parts: std::collections::BTreeMap::new(),

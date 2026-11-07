@@ -23,7 +23,7 @@ use gscore_play::StringKind;
 use crate::chain_settings::{
     AmpVoiceSetting, BlockChoice, BlockSetting, ChainSetting, CompRatioSetting, Tone,
 };
-use crate::settings::{PickupSetting, StringSound};
+use crate::settings::{ChainPreset, PickupSetting, StringSound, kind_from_id};
 
 /// The group a tone appears under in the picker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -110,6 +110,127 @@ pub(crate) fn default_for_kind(kind: StringKind) -> &'static BuiltInTone {
         // The list is built from named tones and the tests check them; this keeps a
         // mistake there from taking a track's sound (or the program) down.
         None => fallback_tone(),
+    }
+}
+
+/// The user's saved preset that best stands in for the program's default tone: a preset of
+/// the same kind, matched by the words of the built-in tone's name and family (the
+/// owner's "Metal Guitar 1" for the high-gain programs, "Lead Guitar 1" for the lead one,
+/// "Classical Guitar 1" for nylon, and so on). The first matching preset wins a tie, so
+/// the choice is stable. `None` when the user has no preset of that kind.
+pub(crate) fn saved_default_for(
+    program: u8,
+    kind: StringKind,
+    saved: &[ChainPreset],
+) -> Option<&ChainPreset> {
+    let template = program_tone(program)
+        .filter(|tone| tone.tone.kind == kind)
+        .unwrap_or_else(|| default_for_kind(kind));
+    let mut words: Vec<String> = template
+        .name
+        .split(|c: char| !c.is_alphanumeric())
+        .map(str::to_lowercase)
+        .filter(|word| word.len() >= 3)
+        .collect();
+    for word in family_words(template.family) {
+        if !words.iter().any(|known| known == word) {
+            words.push((*word).to_owned());
+        }
+    }
+    let mut best: Option<(&ChainPreset, usize)> = None;
+    for preset in saved {
+        if kind_from_id(&preset.kind) != Some(kind) {
+            continue;
+        }
+        let name = preset.name.to_lowercase();
+        let score = words
+            .iter()
+            .filter(|word| name.contains(word.as_str()))
+            .count();
+        if best.is_none_or(|(_, best_score)| score > best_score) {
+            best = Some((preset, score));
+        }
+    }
+    best.map(|(preset, _)| preset)
+}
+
+/// The name of the default tone `program` starts on: the user's saved preset when there is
+/// one, else the built-in tone's name.
+pub(crate) fn default_tone_name(program: u8, kind: StringKind, saved: &[ChainPreset]) -> String {
+    saved_default_for(program, kind, saved).map_or_else(
+        || for_program(program, kind).name.to_owned(),
+        |preset| preset.name.clone(),
+    )
+}
+
+/// The words that point at each family, added to a built-in tone's own name when a saved
+/// preset is matched to it.
+fn family_words(family: ToneFamily) -> &'static [&'static str] {
+    match family {
+        ToneFamily::Clean => &[
+            "clean", "electric", "single", "coil", "warm", "jazz", "funk", "glass", "neck",
+        ],
+        ToneFamily::Crunch => &[
+            "crunch",
+            "blues",
+            "texas",
+            "british",
+            "classic",
+            "rock",
+            "rhythm",
+            "drive",
+            "overdriven",
+            "grit",
+        ],
+        ToneFamily::Lead => &["lead", "singing", "sustain", "80s", "solo"],
+        ToneFamily::HighGain => &["metal", "high", "gain", "djent", "tight", "heavy"],
+        ToneFamily::Acoustic => &[
+            "acoustic",
+            "nylon",
+            "classical",
+            "steel",
+            "natural",
+            "strum",
+            "finger",
+        ],
+        ToneFamily::Bass => &["bass", "finger", "pick", "slap", "driven", "clean"],
+    }
+}
+
+/// Matches the default tones' loudness: the string sound sits at `target_level` (the
+/// machine's level for its kind) and the chain's output trims cancel out, so no default
+/// arrives at the mixer much louder or quieter than another. The trim is taken from one
+/// block's output level (an amp, then a drive, a compressor, a cabinet or a room), never
+/// from its drive or tone.
+pub(crate) fn normalize_default(tone: &mut Tone, target_level: f32) {
+    tone.sound.level = if target_level.is_finite() {
+        target_level.clamp(0.0, 1.0)
+    } else {
+        tone.sound.level.clamp(0.0, 1.0)
+    };
+    let mut trim = 0.0_f32;
+    let mut chosen: Option<(u8, usize)> = None;
+    for (index, block) in tone.chain.blocks.iter().enumerate() {
+        let priority = match block.choice {
+            BlockChoice::Amp => 4,
+            BlockChoice::Drive => 3,
+            BlockChoice::Compressor => 2,
+            BlockChoice::Cabinet | BlockChoice::Room => 1,
+            _ => continue,
+        };
+        if block.gain_db.is_finite() {
+            trim += block.gain_db;
+        }
+        if chosen.is_none_or(|(best, _)| priority > best) {
+            chosen = Some((priority, index));
+        }
+    }
+    if trim.is_finite()
+        && let Some((_, index)) = chosen
+        && let Some(block) = tone.chain.blocks.get_mut(index)
+    {
+        let (low, high) = gscore_guitar::knob_ranges::GAIN;
+        block.gain_db = (block.gain_db - trim).clamp(low, high);
     }
 }
 
@@ -691,6 +812,92 @@ mod tests {
                 tone.name
             );
         }
+    }
+
+    #[test]
+    fn the_owners_saved_presets_stand_in_for_the_programs_defaults() {
+        let preset = |name: &str, kind: StringKind, level: f32| ChainPreset {
+            name: name.to_owned(),
+            kind: crate::settings::kind_id(kind).to_owned(),
+            sound: StringSound {
+                level,
+                ..StringSound::from(gscore_audio::default_string_model(kind))
+            },
+            chain: ChainSetting::default(),
+            engine: crate::settings::engine_id(gscore_play::TrackEngine::Modelled(kind)).to_owned(),
+        };
+        let saved = vec![
+            preset("Electric Guitar 1", StringKind::Electric, 0.35),
+            preset("Natural Steel 1", StringKind::Steel, 0.6),
+            preset("Clean Bass 1", StringKind::Bass, 0.5),
+            preset("Muted Overdriven Guitar", StringKind::Electric, 0.6),
+            preset("Metal Guitar 1", StringKind::Electric, 0.6),
+            preset("Lead Guitar 1", StringKind::Electric, 0.6),
+            preset("Classical Guitar 1", StringKind::Nylon, 0.4),
+        ];
+        let name = |program, kind| {
+            saved_default_for(program, kind, &saved).map(|preset| preset.name.as_str())
+        };
+        assert_eq!(name(24, StringKind::Nylon), Some("Classical Guitar 1"));
+        assert_eq!(name(25, StringKind::Steel), Some("Natural Steel 1"));
+        assert_eq!(name(27, StringKind::Electric), Some("Electric Guitar 1"));
+        assert_eq!(
+            name(29, StringKind::Electric),
+            Some("Muted Overdriven Guitar")
+        );
+        assert_eq!(name(30, StringKind::Electric), Some("Metal Guitar 1"));
+        assert_eq!(name(31, StringKind::Electric), Some("Lead Guitar 1"));
+        assert_eq!(name(33, StringKind::Bass), Some("Clean Bass 1"));
+        // No saved presets at all: the built-in library still answers.
+        assert_eq!(saved_default_for(27, StringKind::Electric, &[]), None);
+        assert_eq!(
+            default_tone_name(27, StringKind::Electric, &[]),
+            for_program(27, StringKind::Electric).name
+        );
+        assert_eq!(
+            default_tone_name(27, StringKind::Electric, &saved),
+            "Electric Guitar 1"
+        );
+    }
+
+    #[test]
+    fn normalized_defaults_arrive_at_the_same_level() {
+        // A quiet string sound with an amp trimmed far down, and a loud one with only a
+        // cabinet: both come out at the same string level and with no net chain trim.
+        let mut quiet = Tone {
+            kind: StringKind::Electric,
+            sound: StringSound {
+                level: 0.2,
+                ..StringSound::from(gscore_audio::default_string_model(StringKind::Electric))
+            },
+            chain: chain(vec![
+                amp(AmpVoiceSetting::Lead, 0.8, 0.5, 0.5, 0.5, -18.0),
+                compressor(CompRatioSetting::Four, 4.0, -4.0, 10.0, 150.0),
+            ]),
+        };
+        normalize_default(&mut quiet, 0.55);
+        assert!((quiet.sound.level - 0.55).abs() < 1e-6);
+        let trim: f32 = quiet
+            .chain
+            .blocks
+            .iter()
+            .filter(|block| {
+                matches!(
+                    block.choice,
+                    BlockChoice::Amp
+                        | BlockChoice::Drive
+                        | BlockChoice::Compressor
+                        | BlockChoice::Cabinet
+                        | BlockChoice::Room
+                )
+            })
+            .map(|block| block.gain_db)
+            .sum();
+        assert!(trim.abs() < 1e-4, "{trim}");
+        // The amp's output (the strongest level block) took the adjustment; its voice and
+        // drive did not move.
+        assert!((quiet.chain.blocks[0].gain_db - 4.0).abs() < 1e-4);
+        assert!((quiet.chain.blocks[0].drive - 0.8).abs() < 1e-6);
     }
 
     #[test]

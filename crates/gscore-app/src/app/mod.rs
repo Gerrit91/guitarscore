@@ -89,8 +89,13 @@ pub struct GuitarScoreApp {
     tabs: Vec<Tab>,
     active: usize,
     tasks: Tasks,
-    /// A message for the user (an error); shown until dismissed.
+    /// A message for the user (an error), shown in the notice bar and the status bar and
+    /// dismissed by itself after a while (or at once with its button).
     notice: Option<String>,
+    /// The notice last shown, so a new one starts its own time.
+    notice_shown: Option<String>,
+    /// The egui time (seconds) when the current notice appeared.
+    notice_since: f64,
     /// A short confirmation (saved, ...) in the status bar.
     status: Option<String>,
     /// The theme applied to egui's own widgets, to apply a change once.
@@ -262,6 +267,8 @@ impl GuitarScoreApp {
             active: 0,
             tasks: Tasks::default(),
             notice: None,
+            notice_shown: None,
+            notice_since: 0.0,
             status: None,
             applied_theme: None,
             applied_interface_zoom: None,
@@ -311,6 +318,8 @@ impl GuitarScoreApp {
         app.playback.store_string_sounds(app.settings.string_sounds);
         app.playback
             .store_string_chains(app.settings.string_chains.clone());
+        app.playback
+            .store_string_presets(app.settings.string_presets.clone());
         app.playback
             .store_preset_tones(app.settings.preset_tones.clone());
         app.playback
@@ -683,6 +692,12 @@ impl GuitarScoreApp {
 impl eframe::App for GuitarScoreApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        // A notice starts its own lifetime, whether it replaces another or is new.
+        let now = ctx.input(|input| input.time);
+        if self.notice != self.notice_shown {
+            self.notice_shown = self.notice.clone();
+            self.notice_since = now;
+        }
         // Wayland never tells the position; the size and the mode are kept regardless.
         if let Some(window) =
             ctx.input(|input| WindowState::of_viewport(input.viewport(), self.last_window))
