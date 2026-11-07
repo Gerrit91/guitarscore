@@ -96,6 +96,47 @@ a user's own IR keeps a path (it plays only on that machine; elsewhere the block
 skipped with a notice). The owner's test IRs (Voxengo, ~/Downloads/IMreverbs; Bureå
 Church) may not be redistributed: never bundle them.
 
+### Our state follows the tracks while editing (owner: important)
+
+The open tab keeps four things per track **by track position**
+(`crates/gscore-app/src/app/tab.rs`): what plays it (`track_engines`), its MIDI-out route
+(`midi_outs`), its Comp send (`comp_sends`) and its song tone (`track_tones`). Inserting,
+deleting, duplicating or moving a track in the program (`gscore-edit` `Command::InsertTrack`,
+`DeleteTrack`, `DuplicateTrack`, `MoveTrack`, and their undo) does not touch these maps,
+so the settings stay at the old positions and land on the wrong tracks: move the drum
+track up and the guitar below it gets the drums' Comp send.
+
+- Fix it at the root: keep our per-track state **with the track in the document**, not
+  beside it. Give the song model's track a field of our own (in `gscore-model`, not
+  written to the Guitar Pro data itself; the Notices block of this document is how it is
+  saved), so every track command and its undo carry it along like the track's name or
+  color: a moved track keeps its tone, a duplicated one gets a copy, a deleted one takes
+  its state with it and undo brings it back.
+- The tab's four maps then go; playback and the mixer read the state from the document.
+- The Notices block is written from and read into that field.
+- Tests: move, insert, duplicate and delete a track with a tone, an engine choice, a MIDI
+  out route and a Comp send on it and on its neighbours; each stays with its track, and
+  undo/redo of each command restores them.
+
+### Sound changes are edits: undo and "modified" (owner: important)
+
+Changing what plays a track, its tone or chain (a block added, moved or removed, a knob),
+its Comp send, a drum part's chain or level, or a bus's settings does not mark the song as
+modified and cannot be undone today: the changes go to the tab or the settings, not
+through the editor. Now that they travel with the song, they are edits of the song.
+
+- Make them editor commands with undo (`gscore-edit` `Command`, as the mixer's fader and
+  pan already are, `Command::SetTrackVolume` and the like), so they show in the edit
+  history, mark the document as modified (the title's dot, the question on closing) and
+  are journaled for crash recovery (`gscore-session`'s journal, `Command::to_line`).
+- A knob drag is one undo step: merge the steps of one drag as the mixer's faders do
+  (`apply_command(command, merge)`).
+- Settings that are not the song's stay settings without undo: a preset's local tone
+  (`preset_tones`), the machine's default buses, the user's saved tones library.
+- Tests: change a tone's knob, undo, redo; a drag is one step; a changed tone marks the
+  document modified and asks before closing; recovery after a crash brings the change
+  back.
+
 ### Prerequisite: keep Guitar Pro's own sound choice
 
 The GP7 writer (`crates/gscore-gp/src/io/gpif_export/`) does not write a track's
