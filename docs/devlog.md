@@ -3829,3 +3829,6 @@ needed for a much larger font); owner listening check.
 - Playback sends the part chains when a sequence is loaded (`send_drum_parts`).
 - Tests: a chain on the kick's part turns the kick right down and leaves the snare alone,
   a part the kit does not use changes nothing; every part's built-in tone is usable.
+- Export: `write_wav_with` takes the drum parts' chains too (`PartChoice`), and the app
+  fills them from `Playback::export_parts()` with the same built-in part tones, so a
+  rendered WAV has the drums processed as they are heard.

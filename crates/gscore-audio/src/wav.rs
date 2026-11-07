@@ -49,6 +49,7 @@ pub fn write_wav_at(
         &[],
         &[],
         &[],
+        &[],
         &BusChoices::default(),
     )
 }
@@ -56,6 +57,10 @@ pub fn write_wav_at(
 /// An effect chain to render with: the track (its index in the song), its blocks and their
 /// knobs.
 pub type ChainChoice = (usize, ChainSpec, [BlockSettings; BLOCKS]);
+
+/// One part of a drum track's chain to render with: the track, the part, its blocks and
+/// their knobs.
+pub type PartChoice = (usize, usize, ChainSpec, [BlockSettings; BLOCKS]);
 
 /// A mixer bus to render with: its chain, its knob values and its level.
 #[derive(Debug, Clone)]
@@ -91,6 +96,7 @@ pub fn write_wav_with(
     models: &[(StringKind, StringModel)],
     track_models: &[(usize, StringModel)],
     chains: &[ChainChoice],
+    parts: &[PartChoice],
     buses: &BusChoices,
 ) -> Result<WavInfo, PlayError> {
     let frames = frames_for(sequence, sample_rate)?;
@@ -110,6 +116,11 @@ pub fn write_wav_with(
     for (track, spec, settings) in chains {
         if let Some(chain) = prepare_chain(spec, settings, sample_rate) {
             let _ = engine.set_chain(*track, Some(chain), *settings);
+        }
+    }
+    for (track, part, spec, settings) in parts {
+        if let Some(chain) = prepare_chain(spec, settings, sample_rate) {
+            let _ = engine.set_part_chain(*track, *part, Some(chain), *settings);
         }
     }
     for (bus, choice) in [

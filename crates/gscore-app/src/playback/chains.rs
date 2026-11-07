@@ -671,6 +671,25 @@ impl Playback {
         );
     }
 
+    /// The drum parts' chains to render audio export with (the built-in tones).
+    pub fn export_parts(&mut self) -> Vec<gscore_audio::PartChoice> {
+        let mut parts = Vec::new();
+        let tracks: Vec<usize> = self
+            .tone_targets
+            .iter()
+            .filter(|target| target.drums)
+            .map(|target| target.track)
+            .collect();
+        for track in tracks {
+            for part in crate::chain_settings::DrumPart::ALL {
+                let chain = crate::chain_settings::default_drum_part_chain(part);
+                let spec = self.chain_spec(&chain);
+                parts.push((track, part.index(), spec, chain.knobs()));
+            }
+        }
+        parts
+    }
+
     /// The buses to render audio export with.
     pub fn export_buses(&mut self) -> gscore_audio::BusChoices {
         let reverb = self.reverb_bus.clone();

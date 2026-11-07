@@ -1019,6 +1019,8 @@ pub(crate) struct AudioExport {
     pub(crate) preset_tones: Vec<crate::settings::PresetTone>,
     /// The presets' tones and each kind's default chain.
     pub(crate) tones: crate::playback::ExportTones,
+    /// The drum parts' chains (the built-in part tones).
+    pub(crate) parts: Vec<gscore_audio::PartChoice>,
     /// The mixer's buses (reverb and compressor), rendered as they are set.
     pub(crate) buses: gscore_audio::BusChoices,
 }
@@ -1063,6 +1065,7 @@ fn export_wav(song: &Song, path: &std::path::Path, audio: &AudioExport) -> Resul
                 &audio.models,
                 &track_models,
                 &chains,
+                &audio.parts,
                 &audio.buses,
             )
             .and_then(|info| {
