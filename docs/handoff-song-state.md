@@ -142,13 +142,35 @@ guitarists (trademarks and personality rights). Our tones are named by style and
 - Each GM program keeps its default built-in tone (owner's decision: "every preset ships
   with a default tone for PM synthesis"); the library is the choice on top of it.
 
-### The track panel
+### The track panel (owner, 2026-11-07)
 
-- With PM synthesis: a tone picker (grouped, searchable list with the description on
-  hover) where the GM preset picker is; the GM program stays in the file for MIDI
-  playback and for other programs. With the MIDI synth: the GM picker as today.
-- Choosing a tone gives the track that tone (it then travels in the song, part A).
-- The sound chain window's tone row and the track panel show the same choice.
+The track panel's Sound section gets the **sound source** of the chain window's first box
+(MIDI synth / PM synthesis / External MIDI): one setting shown in two places, so a change
+in either shows in the other at once (today's choice: `app/track_engine.rs`,
+`sound_chain.rs` `strings_editor`). PM synthesis is the default for string instruments.
+Below the switch, depending on the source:
+
+- **MIDI synth:** the General MIDI presets, no longer as a dropdown (hard to navigate) but
+  as a **small scrollable table**: about 8 rows high, grouped by GM family (Piano,
+  Chromatic percussion, Organ, Guitar, Bass, Strings, …), a filter field above it, the
+  track's preset highlighted and scrolled into view; a click chooses. A **drum track**
+  lists the General MIDI drum kits instead (Standard, Room, Power, Electronic, Jazz, Brush,
+  Orchestra, …: the SoundFont's bank-128 presets).
+- **PM synthesis:** the same table with **our tones** instead: grouped by family (Clean,
+  Crunch, Lead, High gain, Acoustic, Bass), then the user's saved tones; the preset's
+  built-in tone marked; the description on hover. A click gives the track that tone (it
+  then travels in the song, part A) and plays the short Listen phrase as a preview (the
+  chain window's Listen, `playback/demo.rs`), unless the song is playing. Only offered for
+  string instruments that are not drums: elsewhere the PM choice is greyed out with a
+  tooltip saying why.
+- **External MIDI:** a dropdown for the MIDI output port and one for the channel
+  (1-16), **and** the General MIDI table as for the MIDI synth (the hardware synthesizer
+  gets the program change too).
+- Switching the source keeps both choices: the General MIDI program stays the track's (it
+  is what the file stores and what MIDI plays), the PM tone is chosen apart from it;
+  switching back and forth loses neither.
+- The sound chain window's tone row and the track panel show the same choice. The table
+  is one widget used in both places (and maybe in the new-track dialog).
 
 ### Reading Guitar Pro's choice
 
@@ -163,6 +185,10 @@ our tone ("RSE: …"), so the user sees what the author chose.
 
 - The picker lists built-in and saved tones; choosing one gives only that track the tone
   and it survives save and reopen.
+- The source switch in the track panel and in the chain window stay in step; switching
+  from PM to MIDI and back keeps the GM program and the PM tone; a drum track lists the
+  kits and offers no PM; External MIDI shows port, channel and the GM table; the filter
+  field narrows the table (app tests, a snapshot of each source).
 - The RSE mapping: a few GP7 files with different RSE sounds start with the expected
   tones (use repository test data only; the owner's band files in ~/svn/wyw are local
   test material, never committed, and files in ~/svn/bigfive must never be used).
