@@ -4125,3 +4125,8 @@ needed for a much larger font); owner listening check.
   Tests: the repository's Jazz, Overdrive-plus-American-Clean and Steel RSE sounds map to
   Warm Jazz, Clean Single Coil and Steel Fingerpicked; drums are not mapped; an explicit
   GuitarScore tone always wins.
+- Part B, step 6: app tests for the switcher and the picker. A tone clicked in the track
+  panel belongs to that track alone and comes back in a fresh app after saving; the source
+  switch keeps both the General MIDI program and the modelled tone across PM → MIDI →
+  PM, and the Sound chain window shows the same source; a drum track lists the kits and
+  its PM button is disabled; a hardware synth shows the port, channel and program table.

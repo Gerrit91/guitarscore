@@ -957,3 +957,155 @@ fn the_built_in_entry_forgets_a_presets_tone() {
         "the built-in tone plays again"
     );
 }
+
+/// Types `text` into the track panel's picker filter and clicks the row `row`.
+fn pick_in_track_panel(harness: &mut Harness<'static, GuitarScoreApp>, text: &str, row: &str) {
+    harness.get_by_label("Filter sounds").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Filter sounds").type_text(text);
+    harness.run();
+    harness.get_by_label(row).click();
+    harness.run();
+}
+
+#[test]
+fn a_tone_clicked_in_the_track_panel_belongs_to_that_track_and_survives_saving() {
+    let dir = std::env::temp_dir().join(format!("gscore-tone-picker-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a temp dir");
+    let path = dir.join("song.gp");
+    std::fs::copy(testdata("basic/multi_staff.gp"), &path).expect("a copy of the song");
+
+    let open = |path: &std::path::Path| {
+        let path = path.to_path_buf();
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1200.0, 1100.0))
+            .build_eframe(|cc| GuitarScoreApp::new(&cc.egui_ctx, Some(path.clone())));
+        let started = Instant::now();
+        while harness.state().is_busy() {
+            assert!(
+                started.elapsed() < Duration::from_secs(30),
+                "opening timed out"
+            );
+            harness.step();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        harness.run();
+        harness
+    };
+    let mut harness = open(&path);
+    // Every string track may already play the tone its RSE sound brought; only the shown
+    // track's choice may change.
+    let before = harness.state().playback().track_tones().clone();
+    // Choose a tone from the library for the shown (first) track.
+    pick_in_track_panel(&mut harness, "Djent Tight", "Djent Tight");
+    let chosen = harness
+        .state()
+        .playback()
+        .track_tones()
+        .get(&0)
+        .cloned()
+        .expect("the track has the tone");
+    let after = harness.state().playback().track_tones().clone();
+    assert_eq!(after.get(&1), before.get(&1), "only that track got it");
+    // It travels in the song: a fresh app with default settings hears the same tone.
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::S);
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "saving timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run_steps(8);
+    drop(harness);
+    let reopened = open(&path);
+    assert_eq!(
+        reopened.state().playback().track_tones().get(&0),
+        Some(&chosen),
+        "the saved song carries the tone"
+    );
+    assert!(
+        !reopened.state().playback().track_tones().contains_key(&1)
+            || reopened.state().playback().track_tones().get(&1) == before.get(&1)
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn switching_the_source_keeps_the_program_and_the_tone() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    // A modelled tone of the track's own.
+    pick_in_track_panel(&mut harness, "Djent Tight", "Djent Tight");
+    let chosen = harness
+        .state()
+        .playback()
+        .track_tones()
+        .get(&0)
+        .cloned()
+        .expect("the tone");
+    // To the MIDI synth and another General MIDI program.
+    harness.get_by_label("MIDI synth").click();
+    harness.run();
+    pick_in_track_panel(&mut harness, "24: Nylon", "24: Nylon Str Guitar");
+    let program = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .document()
+            .and_then(|document| {
+                document
+                    .song()
+                    .track_sound(TrackIndex::new(0))
+                    .map(|sound| sound.program)
+            })
+            .expect("the track")
+    };
+    assert_eq!(program(&harness), 24, "the MIDI synth's program changed");
+    // And back: the modelled tone is still the one chosen, not the program's default.
+    harness.get_by_label("PM Synthesis").click();
+    harness.run();
+    assert_eq!(
+        harness.state().playback().track_tones().get(&0),
+        Some(&chosen)
+    );
+    assert_eq!(program(&harness), 24, "the program is kept too");
+    // The Sound chain window shows the same source.
+    open_sound_chain(&mut harness);
+    harness.get_by_label("Block 0: Strings");
+}
+
+#[test]
+fn a_drum_track_lists_the_kits_and_cannot_be_played_by_pm() {
+    let mut harness = app_with("basic/multi_staff.gp");
+    harness.state_mut().set_shown_track(5);
+    harness.run();
+    assert!(
+        harness.query_by_label("Drum kits").is_some(),
+        "the kit group"
+    );
+    assert!(
+        harness.query_by_label("0: Standard").is_some(),
+        "the standard kit"
+    );
+    let pm = harness
+        .query_all_by_label("PM Synthesis")
+        .find(|node| node.rect().center().x > 700.0)
+        .expect("the track panel's source switch");
+    assert!(pm.accesskit_node().is_disabled(), "no PM for a drum kit");
+}
+
+#[test]
+fn an_external_synth_offers_a_port_a_channel_and_the_programs() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    harness.get_by_label("MIDI out").click();
+    harness.run();
+    harness.get_by_label("Port");
+    harness.get_by_label("Channel");
+    assert!(
+        harness.query_by_label("24: Nylon Str Guitar").is_some(),
+        "the hardware synth gets the program table too"
+    );
+}

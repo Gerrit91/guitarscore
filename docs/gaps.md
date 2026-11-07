@@ -6,10 +6,16 @@ in AGENTS.md section 9.
 
 ## Sound and playback
 
-1. **Playback sounds like General MIDI.** Every instrument plays through a SoundFont
-   (`rustysynth`; release archives bundle FluidR3 GM, the browser GeneralUser GS 2.0.3).
-   Distorted guitars and basses are far from Guitar Pro's RSE, so the band's songs sound
-   bad. This is M22 (modelled guitars and basses, `docs/guitar-modelling.md`).
+1. **Playback is still General MIDI for most instruments.** Guitar and bass tracks now
+   play by default through physically modelled strings with the built-in tone library
+   (chosen per track in the track panel, starting from the nearest match to a GP7 file's
+   RSE sound), but every other instrument, and every track set to the MIDI synth, still
+   plays through a SoundFont (`rustysynth`; release archives bundle FluidR3 GM, the browser
+   GeneralUser GS 2.0.3). Distorted guitars and basses are not yet judged comparable to
+   Guitar Pro's RSE on every passage; the library waits for the owner's ear. This is M22
+   (modelled guitars and basses, `docs/guitar-modelling.md`). The built-in tones use only
+   computed blocks: no licence-free impulse responses are bundled yet, so cabinets and
+   rooms still refer to machine-local files.
 2. **Pitched tracks without strings are read as string and fret.** GP7 stores the real
    pitch of a voice, synth, piano or strings note (`Midi`, `ConcertPitch`) and only
    leftover string and fret values against a guitar tuning, often negative. We read the
