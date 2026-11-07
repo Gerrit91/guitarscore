@@ -4044,3 +4044,21 @@ needed for a much larger font); owner listening check.
   window writes the track's payload rather than the settings and Built-in clears it, the
   mixer's level scales only its part, and `sound_chain_drum_kick` shows the slider.
 - Still open: the block round trip through GP3/4/5/GPX, recovery and the journal.
+
+## 2026-11-07 — Part A, 8: tests through every format, recovery
+
+- The state block now round-trips through **every format we write** (GP3, GP4, GP5, GPX,
+  GP7), not only the default GP7 save: a state longer than one line with a non-ASCII tone
+  name and the user's own notes comes back byte for byte. The app gained `gscore-io` as a
+  test-only dependency for the writer/reader.
+- A tone dialed in for a preset (a setting, not the song's) is still written as the tone
+  the track actually plays, so a fresh app with default settings hears it; a song's own
+  muted reverb bus likewise survives save and reopen.
+- Crash recovery: a mixer send changed in a song and then a crash comes back after Restore
+  with the same per-track payload, and undo from the restored document clears it — so
+  `Command::SetTrackSound` (and `SetSongSound`, its bus siblings) really reach the journal
+  and replay.
+- Part A is complete: GuitarScore's own sound state (per track: engine, MIDI route, comp
+  send, tone, drum parts and levels; per song: reverb and compressor buses) lives in the
+  document, is edited by undoable commands, is journaled, and is saved in the notes block
+  of every format. Part B (the PM tone library) is next.

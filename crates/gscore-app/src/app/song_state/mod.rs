@@ -682,6 +682,39 @@ mod tests {
     }
 
     #[test]
+    fn the_block_survives_every_format_we_write() {
+        use gscore_io::{FileFormat, export_to_bytes, import_guitar_pro_from_bytes};
+
+        // A state long enough for several lines, with a non-ASCII tone name, and the
+        // user's own (ASCII) notes around it.
+        let song =
+            gscore_model::testing::song(&[gscore_model::testing::GUITAR_6], 1).expect("a song");
+        let mut state = long_state(60);
+        if let Some(track) = state.tracks.first_mut()
+            && let Some(tone) = &mut track.sound.tone
+        {
+            tone.kind = "Grüße & Saiten".to_owned();
+        }
+        let user = vec!["A song by the band".to_owned(), "Tune down".to_owned()];
+        let song = song.with_notes(encode(user.clone(), Some(&state)));
+        for format in [
+            FileFormat::Gp,
+            FileFormat::Gpx,
+            FileFormat::Gp5,
+            FileFormat::Gp4,
+            FileFormat::Gp3,
+        ] {
+            let bytes = export_to_bytes(&song, format).expect("the song is written");
+            let reread = import_guitar_pro_from_bytes(&bytes)
+                .expect("the song is read back")
+                .song;
+            let (kept, back) = split(reread.notes().map(str::to_owned));
+            assert_eq!(kept, user, "{format:?} lost the user's notes");
+            assert_eq!(back, Some(state.clone()), "{format:?} lost the block");
+        }
+    }
+
+    #[test]
     fn a_block_from_before_the_sound_record_still_reads() {
         // The first form of the compact block kept `comp_send` and `tone` at the entry's
         // own level; the flat sound record still reads them there.

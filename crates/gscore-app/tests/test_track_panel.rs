@@ -777,6 +777,103 @@ fn a_tone_belongs_to_the_track_preset() {
 }
 
 #[test]
+fn a_songs_resolved_preset_tone_survives_with_default_settings() {
+    // A tone dialed in for a preset lives in this machine's settings. When the song is
+    // saved, it gets the tone it actually plays, so another machine (with its own default
+    // settings) hears the same.
+    use gscore_play::StringKind;
+
+    let dir = std::env::temp_dir().join(format!("gscore-preset-tone-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a temp dir");
+    let path = dir.join("song.gp");
+    std::fs::copy(testdata("basic/multi_staff.gp"), &path).expect("a copy of the song");
+
+    let open = |path: &std::path::Path| {
+        let path = path.to_path_buf();
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1200.0, 1100.0))
+            .build_eframe(|cc| GuitarScoreApp::new(&cc.egui_ctx, Some(path.clone())));
+        let started = Instant::now();
+        while harness.state().is_busy() {
+            assert!(
+                started.elapsed() < Duration::from_secs(30),
+                "opening timed out"
+            );
+            harness.step();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        harness.run();
+        harness
+    };
+    let mut harness = open(&path);
+    // Dial the pick position of the tone the first track's preset (27) plays.
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    if harness.query_by_label("Block 0: MIDI").is_some() {
+        harness.get_by_label("Block 0: MIDI").click();
+        harness.run();
+        harness.get_by_label("PM Synthesis").click();
+        harness.run();
+    } else {
+        harness.get_by_label("Block 0: Strings").click();
+        harness.run();
+    }
+    harness.get_by_label("Pick position value").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Pick position value").type_text("0.4");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    harness.get_by_label("Close").click();
+    harness.run();
+    // The tone is the preset's: this machine's settings, not the song's block.
+    assert!(
+        harness
+            .state()
+            .settings()
+            .preset_tones
+            .iter()
+            .any(|tone| tone.program == 27)
+    );
+    // Saved, the song carries the tone it plays.
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::S);
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "saving timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run_steps(8);
+    drop(harness);
+
+    // A fresh app with default settings hears the tone, though it knows no preset tone.
+    let reopened = open(&path);
+    assert!(
+        reopened
+            .state()
+            .settings()
+            .preset_tones
+            .iter()
+            .all(|tone| tone.program != 27)
+    );
+    let tone = reopened
+        .state()
+        .playback()
+        .tone(0, 27, StringKind::Electric);
+    assert!(
+        (tone.sound.pick_position - 0.4).abs() < 1e-6,
+        "{:?}",
+        tone.sound.pick_position
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn the_built_in_entry_forgets_a_presets_tone() {
     // Switching back to Built-in drops the local overwrite: the kind's default plays again.
     use gscore_play::StringKind;

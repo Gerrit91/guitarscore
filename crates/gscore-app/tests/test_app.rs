@@ -2791,6 +2791,10 @@ fn a_songs_mixer_state_travels_in_its_notes() {
         .map(|&(_, value)| value)
         .expect("the send was set");
     assert!(send > 0, "{send}");
+    // And the song's own reverb bus (muted here): a bus the song sets travels too.
+    harness.get_by_label("Mute reverb bus").click();
+    harness.run();
+    assert!(harness.state().playback().reverb_bus().muted);
     // And a tone of its own for the track's preset (27: Clean Guitar).
     harness.get_by_label("Sound chain").click();
     harness.run();
@@ -2841,6 +2845,8 @@ fn a_songs_mixer_state_travels_in_its_notes() {
         .cloned()
         .expect("the song's tone came back");
     assert!((tone.sound.pick_position - 0.4).abs() < 1e-6, "{tone:?}");
+    // The song's own bus came back and plays (the fresh app's default bus is not muted).
+    assert!(reopened.state().playback().reverb_bus().muted);
     // The notes the user sees are their own: our block is not shown.
     assert!(
         reopened
