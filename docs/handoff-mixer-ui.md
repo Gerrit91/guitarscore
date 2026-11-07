@@ -5,18 +5,46 @@ Builds on the mixer of `docs/handoff-mixer.md` and the drum parts of
 decided; items marked **Proposed** came from the review and need the owner's OK before
 they are built.
 
-## 1. The strip's top row: the stomp box instead of Chorus (Owner)
+## 1. A chorus bus, and the stomp box on every strip (Owner)
 
-- The Chorus knob (MIDI CC 93) in every track strip goes: since the mixer, the SoundFont's
-  chorus is off and chorus is a chain block. In its place the **stomp-box icon**
-  (`app/icons.rs` `Icon::StompBox`, the one the track panel's Sound section uses) opens
-  that track's sound chain window (`open_sound_chain`). Strip layout: `app/grid/strips.rs`
-  (`knobs`, "four knobs across the top: pan, reverb, chorus, comp").
-- The buses' "Edit…" buttons (`strips.rs` `BusChange::Edit`, reverb and compressor bus)
-  become the same icon, so every strip opens its chain the same way.
-- The song's chorus value stays in the file untouched (round trip), it is only no longer
-  shown. **Proposed:** when a song with a track's chorus above 0 is opened, nothing is
-  added automatically; the value is just kept.
+### The chorus bus (owner, 2026-11-07)
+
+In General MIDI a track's chorus value (MIDI CC 93, Guitar Pro's per-track Chorus) is a
+send into one shared chorus, like the reverb value; every SoundFont synthesizer does it so
+(RustySynth too, whose own chorus has been off since the mixer). The owner chose that
+reading: a **chorus bus** next to the reverb and compressor buses.
+
+- Every track's Chorus knob sends into it after the fader, whatever plays the track (the
+  MIDI synth, PM synthesis, a drum kit): consistent for every source, and songs made in
+  Guitar Pro keep their chorus.
+- The bus runs our chorus block (`gscore-guitar/src/chorus.rs`) **all wet** and returns
+  only the chorused signal, so the dry signal stays as it is (in the middle) and the bus
+  widens it. A stereo bus like the compressor bus, but hearing a mono sum of the sends
+  (like the reverb bus) suits a chorus too: pick one and say so.
+- Default tuned like a classic General MIDI chorus (a slow rate, moderate depth, about
+  15 ms delay); its knobs in a bus window like the reverb bus's
+  (`app/reverb_bus_window.rs`), level and mute on its strip.
+- Engine: `gscore-audio::mixer` `Bus` gets a `Chorus` variant (a third `BusState`); the
+  mixer takes CC 93 like CC 91 (`Mixer::take`: today 93 goes on to the synthesizer, whose chorus is off, so it does nothing) into the strip's chorus
+  send. Settings and playback like the compressor bus (`settings.rs` `CompressorBus`,
+  `playback/chains.rs` `send_compressor_bus`); WAV export renders it; it travels with the
+  song like the other buses (`docs/handoff-song-state.md`, "Song-wide").
+- The **chorus block** stays as it is, for deliberate sound design inside a chain (a
+  chorus pedal before an amp or a reverb). The bus is for the tracks' Chorus values.
+
+### The strip: the Chorus knob stays, the stomp box joins
+
+- The Chorus knob in every track strip stays (it is the send into the chorus bus now).
+  Strip layout: `app/grid/strips.rs` (`knobs`, "four knobs across the top: pan, reverb,
+  chorus, comp").
+- The **stomp-box icon** (`app/icons.rs` `Icon::StompBox`, the one the track panel's
+  Sound section uses) opens that strip's sound chain window (`open_sound_chain`) from
+  every strip: on its own small row next to (or under) the strip's name, so the four
+  knobs keep their places. A track, a drum part (item 3), a bus and the master (item 2)
+  all have it.
+- The buses' "Edit…" buttons (`strips.rs` `BusChange::Edit`, reverb and compressor bus,
+  and the new chorus bus) become the same icon, so every strip opens its chain the same
+  way.
 
 ## 2. A sound chain on the master (Owner)
 
@@ -104,8 +132,11 @@ master chain (item 2). Better value: a few more click sounds and an accent level
 
 ## Tests
 
-- The strip opens the chain window from its stomp box (track, bus, master); the Chorus
-  knob is gone (snapshot of the mixer).
+- The strip opens the chain window from its stomp box (track, bus, master) (snapshot of
+  the mixer).
+- A track's Chorus value (and a live change of the knob) reaches the chorus bus, for a
+  SoundFont track and a modelled one alike; level 0 or mute silences the bus; a song with
+  chorus 0 everywhere leaves the bus silent.
 - A drum track without part chains plays exactly as before the split; a part's level and
   mute change only that part; the part strips open and close with the arrow and their
   meters move (engine test with `sine_drum_soundfont`, app test for the arrow).
