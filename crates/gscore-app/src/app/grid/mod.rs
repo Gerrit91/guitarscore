@@ -110,6 +110,7 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
+        let sound = tab.sound();
         let document = &mut tab.document;
         let grid = document.grid();
         let cursor = document.editor().cursor();
@@ -124,13 +125,17 @@ impl GuitarScoreApp {
             .map(|index| self.playback.track_is_midi_out(index))
             .collect();
         let comp_sends: Vec<u8> = (0..rows.len())
-            .map(|index| super::song_state::TrackSound::of_song(document.song(), index).comp_send)
+            .map(|index| sound.tracks.get(index).map_or(0, |track| track.comp_send))
             .collect();
-        let reverb_bus = super::song_state::Buses::of_song(document.song())
+        let reverb_bus = sound
+            .buses
             .reverb
+            .clone()
             .unwrap_or_else(|| self.settings.reverb_bus.clone());
-        let compressor_bus = super::song_state::Buses::of_song(document.song())
+        let compressor_bus = sound
+            .buses
             .compressor
+            .clone()
             .unwrap_or_else(|| self.settings.compressor_bus.clone());
         let meters = self.playback.meters();
         // The bus's meter: the loudest send into it, through its own (square-law) level.

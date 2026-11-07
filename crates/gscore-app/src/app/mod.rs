@@ -155,6 +155,9 @@ pub struct GuitarScoreApp {
     /// (a knob, a slider) continues the undo step before it only while it is, and a new
     /// press starts a new one.
     pointer_held: bool,
+    /// The tab and editor revision whose sound state playback was last given, so an
+    /// unchanged song is not handed over again every frame.
+    sound_synced: Option<(tab::TabId, u64)>,
     /// The browser's SoundFont state last written to the page (`loaded` or `error: …`).
     #[cfg(target_arch = "wasm32")]
     browser_sound: Option<String>,
@@ -284,6 +287,7 @@ impl GuitarScoreApp {
             panel_sizes,
             last_window,
             pointer_held: false,
+            sound_synced: None,
             #[cfg(target_arch = "wasm32")]
             browser_sound: None,
         };
@@ -327,8 +331,8 @@ impl GuitarScoreApp {
         let song = tab.document.song();
         let tracks: Vec<song_state::TrackState> = (0..song.track_count())
             .filter_map(|index| {
-                let mut sound = song_state::TrackSound::of_song(song, index);
-                if let Some(player) = self.track_player(index) {
+                let mut sound = tab.track_sound(index);
+                if let Some(player) = self.track_player_in(tab, index) {
                     // What plays it: SoundFont is the built-in default; anything else
                     // must travel with the song.
                     if sound.engine.is_none()
@@ -347,7 +351,7 @@ impl GuitarScoreApp {
                     if sound.tone.is_none()
                         && let Some(kind) = kind
                     {
-                        let tone = self.track_tone(index, kind);
+                        let tone = self.track_tone_in(tab, index, kind);
                         if tone != self.playback.default_tone(kind) {
                             sound.tone =
                                 Some(crate::settings::PresetTone::of(player.program, &tone));
@@ -366,8 +370,7 @@ impl GuitarScoreApp {
                 })
             })
             .collect();
-        let buses = song_state::Buses::of_song(song);
-        song_state::SongState::new(tracks, buses)
+        song_state::SongState::new(tracks, tab.sound().buses.clone())
     }
 
     /// The settings as they are now (including the view and window state).
@@ -711,13 +714,8 @@ impl eframe::App for GuitarScoreApp {
         self.poll_count_in();
         // Another tab may hold other choices of what plays its tracks, their MIDI-out
         // ports and channels, other tones and other sends into the compressor bus, and
-        // other mixer buses.
-        self.sync_track_engines();
-        self.sync_midi_routes();
-        self.sync_track_tones();
-        self.sync_comp_sends();
-        self.sync_track_drum_parts();
-        self.sync_song_buses();
+        // other mixer buses: hand them over when the open song is another or changed.
+        self.sync_song_sound_if_changed();
         // Keep a loop of the selected measures going; a new selection turns it on.
         self.auto_loop();
         self.poll_loop();
@@ -954,5 +952,79 @@ mod tests {
         let app =
             GuitarScoreApp::with_settings(&ctx, None, Keymap::default(), None, settings, None);
         assert!(app.last_window.is_none());
+    }
+
+    /// A tab with one guitar track, played by a hardware synthesizer when `midi_out`.
+    fn guitar_tab(app: &mut GuitarScoreApp, name: &str, midi_out: bool) {
+        let mut song =
+            gscore_model::testing::song(&[gscore_model::testing::GUITAR_6], 1).expect("a song");
+        if midi_out {
+            let sound = song_state::TrackSound {
+                engine: Some(song_state::SoundEngine::MidiOut),
+                ..song_state::TrackSound::default()
+            };
+            let _ = song
+                .set_track_sound_state(gscore_model::TrackIndex::new(0), sound.json())
+                .expect("the state is set");
+        }
+        app.push_tab(Document::new(
+            PathBuf::from(format!("{name}.gp")),
+            song,
+            gscore_session::FileFormat::Gp,
+        ));
+    }
+
+    #[test]
+    fn a_tab_saved_while_another_is_open_keeps_its_own_sound() {
+        let ctx = egui::Context::default();
+        let mut app = GuitarScoreApp::with_settings(
+            &ctx,
+            None,
+            Keymap::default(),
+            None,
+            Settings::default(),
+            None,
+        );
+        guitar_tab(&mut app, "hardware", true);
+        guitar_tab(&mut app, "plain", false);
+        let state = |app: &GuitarScoreApp, index: usize| {
+            app.tabs.get(index).and_then(|tab| app.song_state(tab))
+        };
+        for active in [0, 1] {
+            app.active = active;
+            // The hardware synthesizer's track saves its engine and its route, whichever
+            // tab is open: the route comes from what plays that tab's track.
+            let hardware = state(&app, 0).expect("the hardware tab has a state");
+            let track = hardware.tracks.first().expect("its track");
+            assert_eq!(track.sound.engine, Some(song_state::SoundEngine::MidiOut));
+            assert!(track.sound.midi_out.is_some(), "active tab {active}");
+            // The plain song never takes the other tab's sound.
+            assert_eq!(state(&app, 1), None, "active tab {active}");
+        }
+    }
+
+    #[test]
+    fn the_read_sound_state_follows_every_edit_and_undo() {
+        let ctx = egui::Context::default();
+        let mut app = GuitarScoreApp::with_settings(
+            &ctx,
+            None,
+            Keymap::default(),
+            None,
+            Settings::default(),
+            None,
+        );
+        guitar_tab(&mut app, "song", false);
+        let send = |app: &GuitarScoreApp| app.tabs.first().map(|tab| tab.track_sound(0).comp_send);
+        assert_eq!(send(&app), Some(0));
+        app.set_comp_send(0, 80);
+        assert_eq!(send(&app), Some(80));
+        assert_eq!(app.playback.comp_sends(), [(0, 80)]);
+        app.apply_command(gscore_edit::Command::Undo, false);
+        assert_eq!(send(&app), Some(0));
+        assert!(app.playback.comp_sends().is_empty());
+        app.apply_command(gscore_edit::Command::Redo, false);
+        assert_eq!(send(&app), Some(80));
+        assert_eq!(app.playback.comp_sends(), [(0, 80)]);
     }
 }

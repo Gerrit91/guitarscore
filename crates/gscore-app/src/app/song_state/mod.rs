@@ -741,7 +741,8 @@ mod tests {
         ] {
             let mut song =
                 gscore_model::testing::song(&[gscore_model::testing::GUITAR_6], 1).expect("song");
-            song.rename_track(TrackIndex::new(0), name)
+            let _ = song
+                .rename_track(TrackIndex::new(0), name)
                 .expect("renamed");
             let state = SongState::new(
                 vec![TrackState {

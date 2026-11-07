@@ -4062,3 +4062,27 @@ needed for a much larger font); owner listening check.
   send, tone, drum parts and levels; per song: reverb and compressor buses) lives in the
   document, is edited by undoable commands, is journaled, and is saved in the notes block
   of every format. Part B (the PM tone library) is next.
+
+## 2026-11-07 — Part A, review fixes
+
+- A track keeps its state after a save to GP3-5: those formats cut a track name to 40
+  bytes and keep only what Windows-1252 holds, so a long or non-Latin name came back
+  different and the entry was dropped. Names now also match as those formats store them
+  (`gscore_model::track_name_in_binary_formats`, from `gscore-gp`'s field writer). Test
+  through every format with a long, a Cyrillic and an umlaut name.
+- Another instrument (program or drum kit) drops the track's kept GP7 `<Sounds>` and
+  `<AudioEngineState>`, and a new track no longer copies its neighbour's, so Guitar Pro
+  does not play the old instrument's RSE sound; undo restores them (`RseSound` in the
+  program and drum changes).
+- Sound edits merge into the undo step before them only while the primary pointer button
+  is held, and every new press ends the step: the Sound chain and bus windows used to
+  merge separate drags, clicks and even a reverb and a compressor change into one step.
+  App test: two clicks are two steps, two knob drags are two steps, undo goes back one
+  drag at a time.
+- Saving resolves what plays a track from the tab being saved, not the open one
+  (`track_player_in`, `track_tone_in`); a Save As finished after switching tabs used to
+  mix the open song's engine, tone and MIDI route into the saved one.
+- Performance: each tab reads its sound state once per editor revision (`Tab::sound`);
+  the setters no longer clone the whole song on every drag frame to read one track's
+  payload; the per-frame sync hands the song's sound to playback only when the open tab
+  or its revision changed (the buses are still compared, as they follow the settings).

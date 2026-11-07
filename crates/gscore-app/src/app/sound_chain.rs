@@ -1237,7 +1237,7 @@ impl GuitarScoreApp {
         let dialed_in: Vec<DrumPart> = self
             .tabs
             .get(self.active)
-            .map(|tab| super::song_state::TrackSound::of_song(tab.document.song(), window.track))
+            .map(|tab| tab.track_sound(window.track))
             .map(|sound| {
                 sound
                     .drum_parts
