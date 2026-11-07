@@ -5,7 +5,9 @@
 #![allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 #![allow(unused_crate_dependencies)]
 
-use gscore_edit::{Action, ActionId, BeatSpot, Command, Cursor, Outcome, Selection, TabEditor};
+use gscore_edit::{
+    Action, ActionId, BeatSpot, Command, Cursor, Keymap, Outcome, Request, Selection, TabEditor,
+};
 use gscore_model::testing::{self, GUITAR_6};
 use gscore_model::{
     BeatIndex, BeatPosition, Dynamic, MeasureIndex, NoteEffect, StringNumber, TrackIndex,
@@ -105,7 +107,7 @@ fn shift_arrows_extend_the_selection_across_bar_lines() {
 }
 
 #[test]
-fn shift_up_selects_the_whole_beat_and_delete_clears_its_notes() {
+fn select_beat_takes_the_whole_beat_and_delete_clears_its_notes() {
     let mut e = editor(1);
     for _ in 0..3 {
         e.perform(Action::Digit(5), 0).unwrap();
@@ -139,7 +141,7 @@ fn shift_up_selects_the_whole_beat_and_delete_clears_its_notes() {
 
     plain(&mut e, ActionId::Undo);
     assert!(differences(&before, e.song()).is_empty());
-    // Shift+Down does the same; a second press keeps the selection as it is.
+    // A second time keeps the selection as it is.
     assert_eq!(plain(&mut e, ActionId::SelectBeat), Outcome::Nothing);
 }
 
@@ -420,4 +422,61 @@ fn cutting_a_selection_over_a_bar_line_leaves_rests() {
     assert!(notes_at(&e, at(0, 3)).is_empty());
     assert!(notes_at(&e, at(1, 0)).is_empty());
     assert_eq!((e.cursor().measure.get(), e.cursor().beat.get()), (0, 3));
+}
+
+#[test]
+fn shift_up_and_down_ask_the_page_for_the_neighbouring_line() {
+    // The lines are the layout's: the editor hands the move to the app, which answers
+    // with the beat it found there.
+    let keymap = Keymap::default();
+    let shift = |key| {
+        gscore_edit::KeyCombo::new(
+            gscore_edit::Key::Named(key),
+            gscore_edit::Modifiers {
+                shift: true,
+                ..gscore_edit::Modifiers::default()
+            },
+        )
+    };
+    assert_eq!(
+        keymap.action(shift(gscore_edit::NamedKey::Down)),
+        Some(Action::Plain(ActionId::SelectLineDown))
+    );
+    assert_eq!(
+        keymap.action(shift(gscore_edit::NamedKey::Up)),
+        Some(Action::Plain(ActionId::SelectLineUp))
+    );
+    let mut e = editor(4);
+    assert_eq!(
+        plain(&mut e, ActionId::SelectLineDown),
+        Outcome::Request(Request::SelectLine { down: true })
+    );
+    assert_eq!(
+        plain(&mut e, ActionId::SelectLineUp),
+        Outcome::Request(Request::SelectLine { down: false })
+    );
+    assert!(e.selection().is_none(), "nothing changes before the answer");
+
+    // The answer extends the selection from the cursor's beat and moves the cursor.
+    plain(&mut e, ActionId::CursorRight);
+    assert_eq!(e.extend_selection_to_spot(spot(2, 1)), Outcome::Moved);
+    assert_eq!(
+        e.selection(),
+        Some(Selection::Beats {
+            track: TrackIndex::new(0),
+            voice: VoiceIndex::new(0),
+            anchor: spot(0, 1),
+            focus: spot(2, 1),
+        })
+    );
+    assert_eq!(e.cursor().measure, MeasureIndex::new(2));
+    // Again from there: the anchor stays.
+    assert_eq!(e.extend_selection_to_spot(spot(1, 0)), Outcome::Moved);
+    let Some(Selection::Beats { anchor, focus, .. }) = e.selection() else {
+        panic!("a beat selection");
+    };
+    assert_eq!((anchor, focus), (spot(0, 1), spot(1, 0)));
+    // A spot past the song changes nothing.
+    assert_eq!(e.extend_selection_to_spot(spot(9, 0)), Outcome::Nothing);
+    assert_eq!(e.cursor().measure, MeasureIndex::new(1));
 }

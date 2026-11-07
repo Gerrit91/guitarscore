@@ -7,6 +7,7 @@ use egui::{Align2, Color32, FontId, Rect, Response, Sense, Stroke, pos2, vec2};
 use crate::document::GridData;
 use crate::state::MeasureSelection;
 
+use super::super::page::SELECTION_ALPHA;
 use super::rows::{TrackRow, color32};
 use super::{CELL_PADDING, GridAction, GridView, MEASURE_WIDTH, ROW_HEIGHT, RULER_HEIGHT, mixer};
 
@@ -39,7 +40,8 @@ pub(super) fn ruler(
             pos2(x_of(measure) + MEASURE_WIDTH, rect.bottom()),
         )
     };
-    // The playing measure and the selection, as behind the squares below.
+    // The playing measure and the selection (in the score's color and shade), as in the
+    // matrix below.
     if let Some(playing) = view.playing
         && playing >= first
         && playing < last
@@ -59,7 +61,7 @@ pub(super) fn ruler(
             painter.rect_filled(
                 column(measure),
                 0.0,
-                visuals.selection.bg_fill.gamma_multiply(0.30),
+                view.selection_color.gamma_multiply(SELECTION_ALPHA),
             );
         }
     }
@@ -184,7 +186,7 @@ pub(super) fn matrix(
     let last_measure =
         (((clip.right() - rect.left()) / MEASURE_WIDTH).ceil() as usize).min(view.measure_count);
 
-    // The playing measure and the selection, behind the squares.
+    // The playing measure, behind the squares.
     if let Some(playing) = view.playing
         && playing >= first_measure
         && playing < last_measure
@@ -195,31 +197,6 @@ pub(super) fn matrix(
             0.0,
             Color32::from_rgb(255, 200, 40).gamma_multiply(0.25),
         );
-    }
-    if let Some(selection) = view.selection
-        && last_measure > first_measure
-    {
-        let start = selection.start().max(first_measure);
-        let end = selection.end().min(last_measure.saturating_sub(1));
-        for measure in start..=end {
-            let column = measure_rect(rect, measure);
-            let highlighted = match selection.track {
-                Some(track) if track < rows.len() => Rect::from_min_max(
-                    pos2(column.left(), rect.top() + track as f32 * ROW_HEIGHT),
-                    pos2(
-                        column.right(),
-                        rect.top() + (track as f32 + 1.0) * ROW_HEIGHT,
-                    ),
-                ),
-                Some(_) => continue,
-                None => column,
-            };
-            painter.rect_filled(
-                highlighted,
-                0.0,
-                visuals.selection.bg_fill.gamma_multiply(0.30),
-            );
-        }
     }
 
     // Row stripes and squares.
@@ -294,6 +271,44 @@ pub(super) fn matrix(
             [pos2(x, rect.top()), pos2(x, rect.bottom())],
             Stroke::new(1.0, color),
         );
+    }
+
+    // The selection, over the squares so it shows on the colored ones too: the score's
+    // color and shade, and an outline around the selected bars (of one track's row, or of
+    // every row).
+    if let Some(selection) = view.selection
+        && selection.start() < last_measure
+        && selection.end() >= first_measure
+    {
+        let rows_top = rect.top();
+        let span = match selection.track {
+            Some(track) if track < rows.len() => Some((
+                rows_top + track as f32 * ROW_HEIGHT,
+                rows_top + (track as f32 + 1.0) * ROW_HEIGHT,
+            )),
+            Some(_) => None,
+            None => Some((rows_top, rows_top + rows.len() as f32 * ROW_HEIGHT)),
+        };
+        if let Some((top, bottom)) = span {
+            let area = Rect::from_min_max(
+                pos2(rect.left() + selection.start() as f32 * MEASURE_WIDTH, top),
+                pos2(
+                    rect.left() + (selection.end() as f32 + 1.0) * MEASURE_WIDTH,
+                    bottom,
+                ),
+            );
+            painter.rect_filled(
+                area,
+                0.0,
+                view.selection_color.gamma_multiply(SELECTION_ALPHA),
+            );
+            painter.rect_stroke(
+                area,
+                0.0,
+                Stroke::new(1.5, view.selection_color),
+                egui::StrokeKind::Inside,
+            );
+        }
     }
 
     // Section titles in the master row, below every track: there they have the whole

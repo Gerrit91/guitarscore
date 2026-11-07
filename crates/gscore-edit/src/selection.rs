@@ -211,6 +211,30 @@ impl TabEditor {
         Outcome::Moved
     }
 
+    /// Moves the cursor to `spot` (a beat of the cursor's track and voice) and extends the
+    /// beat selection to it; without one, the selection starts at the beat the cursor was
+    /// on. What Shift+Up and Shift+Down do with the beat the page's layout found on the
+    /// neighbouring line (see [`crate::Request::SelectLine`]).
+    pub fn extend_selection_to_spot(&mut self, spot: BeatSpot) -> Outcome {
+        let anchor = self
+            .beat_anchor()
+            .unwrap_or_else(|| BeatSpot::of(self.cursor));
+        let song = self.editor.song();
+        if spot.measure.get() >= song.measure_count() {
+            return Outcome::Nothing;
+        }
+        self.cursor.measure = spot.measure;
+        self.cursor.beat = spot.beat;
+        self.cursor.clamp(song);
+        self.selection = Some(Selection::Beats {
+            track: self.cursor.track,
+            voice: self.cursor.voice,
+            anchor,
+            focus: BeatSpot::of(self.cursor),
+        });
+        Outcome::Moved
+    }
+
     /// Moves the cursor to the track's first (`to_start`) or last beat and extends the
     /// beat selection to it, as Shift+Home and Shift+End do.
     pub(crate) fn extend_selection_to(&mut self, to_start: bool) -> Outcome {

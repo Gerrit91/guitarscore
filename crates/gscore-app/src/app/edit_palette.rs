@@ -632,9 +632,9 @@ impl GuitarScoreApp {
         let cursor = document.editor().cursor();
         let song = document.song();
         let selection = document.editor().selection()?;
-        if let Selection::Measures { .. } = selection {
+        if let Selection::Measures { track, .. } = selection {
             return Some(BeatPosition {
-                track: cursor.track,
+                track: track.unwrap_or(cursor.track),
                 measure: selection.first_measure(),
                 voice: VoiceIndex::new(0),
                 beat: BeatIndex::new(0),

@@ -70,6 +70,11 @@ pub enum ActionId {
     SelectRight,
     /// Select the cursor's whole beat (every string).
     SelectBeat,
+    /// Extend the beat selection to the line above: the beat at the same place on the
+    /// system before (the page's layout decides; see [`crate::Request::SelectLine`]).
+    SelectLineUp,
+    /// Extend the beat selection to the line below.
+    SelectLineDown,
     /// Palette: Whole note.
     NoteWhole,
     /// Palette: Half note.
@@ -388,6 +393,16 @@ pub const ACTIONS: &[ActionInfo] = &[
         "Extend selection right",
     ),
     info(ActionId::SelectBeat, "select_beat", "Select whole beat"),
+    info(
+        ActionId::SelectLineUp,
+        "select_line_up",
+        "Extend selection a line up",
+    ),
+    info(
+        ActionId::SelectLineDown,
+        "select_line_down",
+        "Extend selection a line down",
+    ),
     info(ActionId::NoteWhole, "note_whole", "Whole note"),
     info(ActionId::NoteHalf, "note_half", "Half note"),
     info(ActionId::NoteQuarter, "note_quarter", "Quarter note"),
@@ -700,6 +715,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 114, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 116, "one entry per ActionId variant");
     }
 }

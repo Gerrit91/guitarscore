@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use egui::{Align, Layout, Rect, RichText, ScrollArea, Sense, Vec2};
 use gscore_edit::{BeatSpot, Cursor, Selection};
 use gscore_layout::{Places, Point};
-use gscore_model::{MeasureIndex, Song, TrackIndex};
+use gscore_model::{BeatIndex, MeasureIndex, Song, TrackIndex, VoiceIndex};
 use gscore_play::PlayState;
 
 use super::GuitarScoreApp;
@@ -16,7 +16,7 @@ use crate::state::ScoreView;
 
 /// How strongly the selection color is laid over the page: the shade the cursor's band and
 /// the selection made together, used for the whole selection.
-const SELECTION_ALPHA: f32 = 0.32;
+pub(super) const SELECTION_ALPHA: f32 = 0.32;
 
 /// Space around the page inside the view, in points.
 const PAGE_MARGIN: f32 = 32.0;
@@ -508,6 +508,50 @@ fn selection_contains(selection: Selection, song: &Song, cursor: Cursor) -> bool
     }
 }
 
+/// The beat on the line above (`down` false) or below `from` (a beat of `voice`), at the
+/// same place across the page: the neighbouring system's measure under the beat's x (or
+/// the nearest one), and in it the beat of `voice` nearest that x (the start of a measure
+/// without beats). `None` when there is no line there.
+pub(super) fn line_spot(
+    places: &Places,
+    from: BeatSpot,
+    voice: VoiceIndex,
+    down: bool,
+) -> Option<BeatSpot> {
+    let (x, _) = places.beat_x(from.measure, voice, from.beat)?;
+    let system = places.measure(from.measure)?.system;
+    let target = if down {
+        system.checked_add(1)?
+    } else {
+        system.checked_sub(1)?
+    };
+    // How far `x` is from a measure's extent (0 inside it).
+    let distance = |place: &gscore_layout::MeasurePlace| {
+        if x < place.left {
+            place.left - x
+        } else if x > place.right {
+            x - place.right
+        } else {
+            0.0
+        }
+    };
+    let measure = places
+        .measures
+        .iter()
+        .filter(|place| place.system == target)
+        .min_by(|a, b| distance(a).total_cmp(&distance(b)))?;
+    let beat = measure
+        .beats
+        .iter()
+        .filter(|beat| beat.voice == voice)
+        .min_by(|a, b| (a.x - x).abs().total_cmp(&(b.x - x).abs()))
+        .map_or(BeatIndex::new(0), |beat| beat.beat);
+    Some(BeatSpot {
+        measure: measure.measure,
+        beat,
+    })
+}
+
 /// The selection's highlight over a laid-out score. A beat selection follows its track's
 /// places (also when several tracks are shown); a measure selection covers every shown
 /// track's staves.
@@ -770,6 +814,32 @@ mod tests {
         // Another track's selection is not drawn on this page.
         let bands = selection_bands(&places(), &song, beats((0, 0), (0, 1)), TrackIndex::new(1));
         assert!(bands.is_empty());
+    }
+
+    #[test]
+    fn the_line_below_and_above_is_the_beat_at_the_same_place() {
+        use super::line_spot;
+        let spot = |measure: usize, beat: usize| BeatSpot {
+            measure: MeasureIndex::new(measure),
+            beat: BeatIndex::new(beat),
+        };
+        let voice = VoiceIndex::new(0);
+        // Beat 3 of the first line (x 30) goes to beat 3 of the second line, and back.
+        assert_eq!(
+            line_spot(&places(), spot(0, 2), voice, true),
+            Some(spot(1, 2))
+        );
+        assert_eq!(
+            line_spot(&places(), spot(1, 2), voice, false),
+            Some(spot(0, 2))
+        );
+        // No line above the first or below the last.
+        assert_eq!(line_spot(&places(), spot(0, 1), voice, false), None);
+        assert_eq!(line_spot(&places(), spot(1, 1), voice, true), None);
+        // A line whose bar has no beats in the voice: its start.
+        let mut empty = places();
+        empty.measures[1].beats.clear();
+        assert_eq!(line_spot(&empty, spot(0, 3), voice, true), Some(spot(1, 0)));
     }
 
     /// Three measures on one system; measure 1 has no beats (an empty bar).

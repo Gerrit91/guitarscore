@@ -60,6 +60,35 @@ pub(crate) enum Clipboard {
 }
 
 impl TabEditor {
+    /// A plain-text line describing what was copied (`None` when nothing was), for the
+    /// system clipboard. The app puts it there on Copy and Cut: a desktop sends Ctrl+V on
+    /// as a paste only when the system clipboard holds text, so without it our own paste
+    /// would never arrive.
+    pub fn clipboard_text(&self) -> Option<String> {
+        let plural = |count: usize, one: &str, many: &str| {
+            if count == 1 {
+                format!("1 {one}")
+            } else {
+                format!("{count} {many}")
+            }
+        };
+        let what = match &self.clipboard {
+            Clipboard::Empty => return None,
+            Clipboard::Note(note) if note.dead => "a dead note".to_owned(),
+            Clipboard::Note(note) => format!("fret {}", note.fret.get()),
+            Clipboard::Beats(groups) => plural(groups.iter().map(Vec::len).sum(), "beat", "beats"),
+            Clipboard::Measures(tracks) => {
+                let bars = tracks.first().map_or(0, |(_, bars)| bars.len());
+                let mut text = plural(bars, "bar", "bars");
+                if tracks.len() > 1 {
+                    text.push_str(&format!(" of {} tracks", tracks.len()));
+                }
+                text
+            }
+        };
+        Some(format!("GuitarScore: {what}"))
+    }
+
     /// Copies the selected beats or measures; with nothing selected, the note under the
     /// cursor. Copying changes nothing in the song.
     pub fn copy_selection(&mut self) -> Result<Outcome, EditError> {

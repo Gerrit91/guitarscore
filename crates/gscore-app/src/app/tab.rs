@@ -76,8 +76,9 @@ pub(super) struct Tab {
 }
 
 impl Tab {
-    /// The measures a loop plays: the grid's measure selection, or the measures a
-    /// selection made in the score spans.
+    /// The measures a loop plays, and what the song grid shows as selected: the grid's
+    /// measure selection, or the measures a selection made in the score spans (in the
+    /// selected track, for a beat selection).
     pub(super) fn loop_measures(&self) -> Option<MeasureSelection> {
         self.selection.or_else(|| {
             self.document
@@ -90,7 +91,7 @@ impl Tab {
                         gscore_edit::Selection::Measures { track, .. } => {
                             track.map(|track| track.get())
                         }
-                        gscore_edit::Selection::Beats { .. } => None,
+                        gscore_edit::Selection::Beats { track, .. } => Some(track.get()),
                     },
                 })
         })

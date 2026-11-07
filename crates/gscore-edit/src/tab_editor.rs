@@ -44,6 +44,13 @@ pub enum Request {
     Stop,
     /// Save the file.
     Save,
+    /// Extend the beat selection to the line above (`down` false) or below: the beat at
+    /// the same place on the neighbouring system of the page, which only the app's layout
+    /// knows. It answers with [`TabEditor::extend_selection_to_spot`].
+    SelectLine {
+        /// Whether to the line below.
+        down: bool,
+    },
 }
 
 /// A fret digit that a second digit may still extend.
@@ -289,6 +296,8 @@ impl TabEditor {
             ActionId::SelectHome => Ok(self.extend_selection_to(true)),
             ActionId::SelectEnd => Ok(self.extend_selection_to(false)),
             ActionId::SelectBeat => Ok(self.select_beat()),
+            ActionId::SelectLineUp => Ok(Outcome::Request(Request::SelectLine { down: false })),
+            ActionId::SelectLineDown => Ok(Outcome::Request(Request::SelectLine { down: true })),
             ActionId::EnterFret => Ok(Outcome::Nothing),
             // With a selection, Delete and clear clear every selected note at once.
             ActionId::ClearNote | ActionId::DeleteBeat if let Some(selection) = self.selection => {
