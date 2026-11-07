@@ -39,6 +39,10 @@ pub struct Synthesizer {
     channel_left: Vec<Vec<f32>>,
     channel_right: Vec<Vec<f32>>,
 
+    // GuitarScore fork: a percussion channel's drum parts, apart (see `drum_part`).
+    part_left: Vec<f32>,
+    part_right: Vec<f32>,
+
     inverse_block_size: f32,
 
     block_read: usize,
@@ -105,6 +109,7 @@ impl Synthesizer {
         let master_volume = 0.5_f32;
 
         let split_channels = settings.split_channels;
+        let part_blocks = Synthesizer::CHANNEL_COUNT * PARTS * settings.block_size;
         let channel_blocks = if split_channels {
             vec![vec![0_f32; settings.block_size]; Synthesizer::CHANNEL_COUNT]
         } else {
@@ -134,6 +139,8 @@ impl Synthesizer {
             inverse_block_size,
             block_read,
             master_volume,
+            part_left: vec![0.0; part_blocks],
+            part_right: vec![0.0; part_blocks],
             effects,
         })
     }
@@ -384,6 +391,18 @@ impl Synthesizer {
         }
     }
 
+    /// GuitarScore fork: one part of a percussion channel's last rendered block, as
+    /// `render_channels` wrote it (`side` 0 left, 1 right).
+    pub fn part_block(&self, channel: usize, part: usize, side: usize) -> &[f32] {
+        let at = (channel * PARTS + part).saturating_mul(self.block_size);
+        let blocks = if side == 0 {
+            &self.part_left
+        } else {
+            &self.part_right
+        };
+        blocks.get(at..at + self.block_size).unwrap_or(&[])
+    }
+
     /// GuitarScore fork: whether `channel` plays drums.
     pub fn is_percussion_channel(&self, channel: usize) -> bool {
         self.channels
@@ -563,6 +582,13 @@ impl Synthesizer {
         for block in self.channel_left.iter_mut().chain(self.channel_right.iter_mut()) {
             block.fill(0_f32);
         }
+        self.part_left.fill(0_f32);
+        self.part_right.fill(0_f32);
+        let block_size = self.block_size;
+        // Which channels play drums, before the voices are borrowed mutably.
+        let drums: [bool; Synthesizer::CHANNEL_COUNT] = core::array::from_fn(|channel| {
+            self.is_percussion_channel(channel)
+        });
         for voice in self.voices.get_active_voices().iter_mut() {
             let channel = voice.channel() as usize;
             let (Some(left), Some(right)) = (
@@ -585,6 +611,31 @@ impl Synthesizer {
                 &mut right[..],
                 self.inverse_block_size,
             );
+            // A drum channel's voices are also summed by part, so the mixer can give each
+            // drum its own chain.
+            if drums.get(channel).copied().unwrap_or(false) {
+                let part = drum_part(voice.key());
+                let at = (channel * PARTS + part) * block_size;
+                if let (Some(part_left), Some(part_right)) = (
+                    self.part_left.get_mut(at..at + block_size),
+                    self.part_right.get_mut(at..at + block_size),
+                ) {
+                    Synthesizer::write_block(
+                        self.master_volume * voice.previous_mix_gain_left,
+                        self.master_volume * voice.current_mix_gain_left,
+                        voice.block(),
+                        part_left,
+                        self.inverse_block_size,
+                    );
+                    Synthesizer::write_block(
+                        self.master_volume * voice.previous_mix_gain_right,
+                        self.master_volume * voice.current_mix_gain_right,
+                        voice.block(),
+                        part_right,
+                        self.inverse_block_size,
+                    );
+                }
+            }
         }
         self.block_left.fill(0_f32);
         self.block_right.fill(0_f32);
@@ -684,5 +735,29 @@ impl Effects {
             chorus_output_left: vec![0_f32; settings.block_size],
             chorus_output_right: vec![0_f32; settings.block_size],
         }
+    }
+}
+
+/// GuitarScore fork: the drum parts a percussion channel's voices are summed into.
+pub const PARTS: usize = 6;
+
+/// GuitarScore fork: the part of a General MIDI drum key (35 to 81, the kit's notes);
+/// anything else is Percussion. The order is the one a kit is mixed in: kick, snare,
+/// hi-hat, toms, cymbals, the rest.
+pub fn drum_part(key: i32) -> usize {
+    match key {
+        // Kick: acoustic and electric bass drum.
+        35 | 36 => 0,
+        // Snare: acoustic and electric snare, side stick.
+        37 | 38 | 40 => 1,
+        // Hi-hat: closed, pedal, open.
+        42 | 44 | 46 => 2,
+        // Toms: low floor to high, the two low and two high toms.
+        41 | 43 | 45 | 47 | 48 | 50 => 3,
+        // Cymbals and ride: crash 1 and 2, splash, china, ride, bell, second bell, tambourine?
+        // No: the ride's bells and the crash cymbals, then the Chinese cymbal.
+        49 | 51 | 52 | 53 | 55 | 57 | 59 => 4,
+        // Everything else (cowbell, claps, congas, shakers, ...).
+        _ => 5,
     }
 }

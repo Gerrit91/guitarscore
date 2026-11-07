@@ -169,3 +169,54 @@ fn a_second_drum_channel_plays_the_same_kit() {
     assert!(other > 1.0, "a melodic channel plays something else");
     println!("same kit on channel 4 (difference {difference}), piano differs by {other}");
 }
+
+#[test]
+fn a_drum_channels_parts_add_up_to_its_channel() {
+    // The fork sorts a percussion channel's voices by drum part (kick, snare, hi-hat, ...)
+    // as well as summing them into the channel: the mixer gives each part its own chain.
+    let bytes = gscore_audio::testing::sine_drum_soundfont("Test Drums");
+    let font = Arc::new(SoundFont::new(&mut bytes.as_slice()).unwrap());
+    let mut settings = SynthesizerSettings::new(RATE);
+    settings.enable_reverb_and_chorus = false;
+    settings.split_channels = true;
+    let mut synth = Synthesizer::new(&font, &settings).unwrap();
+    synth.set_percussion_channel(9, true);
+    // A kick, a snare and a hi-hat, each on its own part.
+    for key in [36, 38, 42] {
+        synth.note_on(9, key, 100);
+    }
+    let frames = 64;
+    let mut sounded = [false; rustysynth::PARTS];
+    for _ in 0..40 {
+        let mut out: Vec<[Vec<f32>; 2]> = (0..CHANNELS)
+            .map(|_| [vec![0.0; frames], vec![0.0; frames]])
+            .collect();
+        {
+            let (mut lefts, mut rights): (Vec<&mut [f32]>, Vec<&mut [f32]>) = out
+                .iter_mut()
+                .map(|[left, right]| (&mut left[..], &mut right[..]))
+                .unzip();
+            synth.render_channels(&mut lefts, &mut rights);
+        }
+        for (side, rendered) in out.get(9).into_iter().flatten().enumerate() {
+            for (index, channel) in rendered.iter().enumerate() {
+                let mut sum = 0.0_f32;
+                for part in 0..rustysynth::PARTS {
+                    let block = synth.part_block(9, part, side);
+                    sum += block.get(index).copied().unwrap_or(0.0);
+                }
+                assert!((sum - channel).abs() < 1e-6, "{sum} against {channel}");
+            }
+        }
+        for (part, heard) in sounded.iter_mut().enumerate() {
+            if energy(synth.part_block(9, part, 0)) > 0.0 {
+                *heard = true;
+            }
+        }
+    }
+    // The kick, snare and hi-hat landed in their own parts, and nowhere else.
+    assert!(sounded[0] && sounded[1] && sounded[2], "{sounded:?}");
+    assert!(!sounded[3] && !sounded[4] && !sounded[5], "{sounded:?}");
+    // A melodic channel has no parts (its sound is only in its channel).
+    assert!(synth.part_block(0, 0, 0).iter().all(|&x| x == 0.0));
+}

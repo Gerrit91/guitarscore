@@ -3785,3 +3785,17 @@ needed for a much larger font); owner listening check.
   no-allocation test runs an EQ while its bands are retuned.
 - Owner asked for a 4-band parametric EQ while the drums handoff was under way; it is the
   block the drum part tones are built from.
+
+## 2026-11-07 — Drums, step 2: a drum channel's parts (fork)
+
+- `vendor/rustysynth`: a percussion channel's voices are summed into six parts as well as
+  into the channel (kick, snare, hi-hat, toms, cymbals, the rest, by General MIDI key;
+  `PARTS`, `drum_part`), filled in `render_split_block` and read with `part_block`. So the
+  mixer can give every drum its own chain while a drum track stays one strip. Recorded in
+  `FORK.md`.
+- Tested through the engine's test SoundFont (`testing::sine_drum_soundfont`, a preset in
+  the percussion bank): the parts of a drum channel add up to exactly its block, a kick, a
+  snare and a hi-hat land in their own parts and nowhere else, and a melodic channel has
+  none.
+- Still to come (steps 3-6 of `docs/handoff-drums.md`): the engine's part chains and drum
+  bus, the default part tones, the window's row of parts, and the export check.

@@ -18,3 +18,8 @@ apply to it.
   drums (the percussion banks), not only channel 9, so several drum tracks each get a
   channel and a mixer strip of their own. A channel that becomes percussion starts on the
   standard kit.
+- **Drum parts:** a percussion channel's voices are also summed by part (`PARTS` = 6:
+  kick, snare, hi-hat, toms, cymbals, the rest, by General MIDI key; `drum_part`), apart
+  from the channel's own block, so the mixer can give each drum its own chain and still
+  have one strip per drum track. `render_channels` fills them; `part_block(channel, part,
+  side)` reads one back. The parts of a channel add up to exactly its block.

@@ -38,6 +38,17 @@ fn u16s(values: &[u16]) -> Vec<u8> {
 /// looped sine wave at A4 (440 Hz: 100 samples per period at 44 kHz). Every program falls
 /// back to it.
 pub fn sine_soundfont(bank: &str) -> Vec<u8> {
+    sine_soundfont_at(bank, 0)
+}
+
+/// The same, its one preset in `bank` (128 is the percussion bank): a drum kit of one
+/// sound, for the fork's per-part rendering.
+pub fn sine_drum_soundfont(bank: &str) -> Vec<u8> {
+    sine_soundfont_at(bank, 128)
+}
+
+/// [`sine_soundfont`]'s body, the preset in `preset_bank` and program 0.
+fn sine_soundfont_at(bank: &str, preset_bank: u16) -> Vec<u8> {
     const PERIOD: u32 = 100;
     const PERIODS: u32 = 40;
     let samples = PERIOD * PERIODS;
@@ -68,7 +79,7 @@ pub fn sine_soundfont(bank: &str) -> Vec<u8> {
 
     let preset = |text: &str, program: u16, bag: u16| {
         let mut r = name(text).to_vec();
-        r.extend(u16s(&[program, 0, bag]));
+        r.extend(u16s(&[program, preset_bank, bag]));
         r.extend([0; 12]);
         r
     };

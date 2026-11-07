@@ -60,5 +60,5 @@ pub use self::sample_header::SampleHeader;
 pub use self::soundfont::SoundFont;
 pub use self::soundfont_info::SoundFontInfo;
 pub use self::soundfont_version::SoundFontVersion;
-pub use self::synthesizer::Synthesizer;
+pub use self::synthesizer::{PARTS, Synthesizer, drum_part};
 pub use self::synthesizer_settings::SynthesizerSettings;
