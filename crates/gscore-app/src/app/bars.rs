@@ -151,6 +151,14 @@ impl GuitarScoreApp {
                 ui.checkbox(&mut self.view.show_track_grid, "Track grid");
                 ui.checkbox(&mut self.view.show_track_panel, "Track panel");
                 ui.checkbox(&mut self.view.show_edit_panel, "Edit palette");
+                if ui
+                    .button("Reset panel sizes")
+                    .on_hover_text("The side panels and the song grid go back to their usual sizes")
+                    .clicked()
+                {
+                    self.reset_panel_sizes();
+                    ui.close();
+                }
                 ui.separator();
                 ui.radio_value(&mut self.view.theme, ThemeChoice::Light, "Light score");
                 ui.radio_value(&mut self.view.theme, ThemeChoice::Dark, "Dark score");
@@ -289,9 +297,20 @@ impl GuitarScoreApp {
                     }
                 }
             }
-            // The open document's counts, page and cursor, on the right.
+            // The audio load in the corner, then the open document's counts, page and
+            // cursor, on the right.
+            let load = self.playback.audio_load();
+            let rate = self.playback.device_sample_rate();
+            if self.document().is_none() && load.is_some() {
+                ui.with_layout(UiLayout::right_to_left(Align::Center), |ui| {
+                    audio_load(ui, load, rate);
+                });
+            }
             if let Some(document) = self.document() {
                 ui.with_layout(UiLayout::right_to_left(Align::Center), |ui| {
+                    if audio_load(ui, load, rate) {
+                        ui.separator();
+                    }
                     let song = document.song();
                     ui.label(format!(
                         "{}, {}",
@@ -354,4 +373,48 @@ fn count(n: usize, noun: &str) -> String {
     } else {
         format!("{n} {noun}s")
     }
+}
+
+/// From this audio load the CPU bar turns red.
+const OVERLOAD: f32 = 0.9;
+
+/// The built-in synthesizer's audio load (`load`, 1 = all of each buffer's time at
+/// `rate`), if it runs: a small green bar filling from the bottom, red from [`OVERLOAD`];
+/// hovering names it.
+/// Returns whether it was shown.
+fn audio_load(ui: &mut egui::Ui, load: Option<f32>, rate: Option<u32>) -> bool {
+    let Some(load) = load.filter(|load| load.is_finite()) else {
+        return false;
+    };
+    let size = egui::vec2(5.0, 14.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let painter = ui.painter();
+    painter.rect_filled(rect, 1.0, ui.visuals().extreme_bg_color);
+    let share = load.clamp(0.0, 1.0);
+    let filled = egui::Rect::from_min_max(
+        egui::pos2(rect.left(), rect.bottom() - rect.height() * share),
+        rect.right_bottom(),
+    );
+    // Red from 90 %, where the sound is close to dropping out.
+    let color = if load >= OVERLOAD {
+        ui.visuals().error_fg_color
+    } else {
+        egui::Color32::from_rgb(0x4C, 0xAF, 0x50)
+    };
+    painter.rect_filled(filled, 1.0, color);
+    let percent = (load * 100.0).round().clamp(0.0, 999.0);
+    let rate = rate.map_or_else(String::new, |rate| {
+        format!(" at {} kHz", f64::from(rate) / 1000.0)
+    });
+    let id = response.id;
+    response.on_hover_text(format!(
+        "Audio CPU: {percent:.0} %{rate}. The share of each audio buffer's time the \
+         built-in synthesizer needs to compute it; near 100 % the sound drops out."
+    ));
+    ui.ctx()
+        .accesskit_node_builder(id, |node| node.set_label("Audio CPU"));
+    // Keep the bar current.
+    ui.ctx()
+        .request_repaint_after(std::time::Duration::from_millis(500));
+    true
 }

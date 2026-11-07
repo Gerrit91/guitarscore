@@ -10,6 +10,7 @@ use gscore_model::{MASTER_UNITY, MasterMix, TrackIndex};
 use super::rows::TrackRow;
 use super::{GridAction, GridView, ROW_HEIGHT, RULER_HEIGHT, TRACK_COLUMN, mixer};
 use crate::app::icons::{self, Icon};
+use crate::app::style;
 
 /// The header cell: the "Tracks" title, track actions, and mute/solo for all tracks.
 pub(super) fn header(
@@ -88,14 +89,23 @@ pub(super) fn header(
     });
 }
 
-/// A small letter toggle like a row's mute and solo buttons; true when clicked.
-fn toggle(ui: &mut egui::Ui, rect: Rect, letter: &str, label: &str, on: bool, tip: &str) -> bool {
-    let response = ui
-        .put(rect, egui::Button::new(letter).selected(on).small())
-        .on_hover_text(tip);
+/// A small mute or solo toggle like a row's; true when clicked.
+fn toggle(ui: &mut egui::Ui, rect: Rect, which: Toggle, label: &str, on: bool, tip: &str) -> bool {
+    let button = match which {
+        Toggle::Mute => style::mute_button(on),
+        Toggle::Solo => style::solo_button(on),
+    };
+    let response = ui.put(rect, button).on_hover_text(tip);
     ui.ctx()
         .accesskit_node_builder(response.id, |node| node.set_label(label));
     response.clicked()
+}
+
+/// Which of a row's two toggles a call draws.
+#[derive(Clone, Copy)]
+enum Toggle {
+    Mute,
+    Solo,
 }
 
 /// The master row: mute/solo-all, and the volume and pan of all tracks together.
@@ -124,7 +134,7 @@ pub(super) fn master_row(
     if toggle(
         ui,
         mixer::mute_rect(rect),
-        "M",
+        Toggle::Mute,
         "Mute all",
         all_muted,
         if mute {
@@ -149,7 +159,7 @@ pub(super) fn master_row(
     if toggle(
         ui,
         mixer::solo_rect(rect),
-        "S",
+        Toggle::Solo,
         "Solo all",
         all_soloed,
         if solo {

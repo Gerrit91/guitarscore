@@ -1,6 +1,7 @@
 //! `bench`: how long the work behind one keystroke takes on real files (opening, layout,
-//! an edit and the layout after it, sequencing). Numbers are medians of several runs; build
-//! with `--release` (`cargo xtask bench` does) for numbers that mean anything.
+//! an edit and the layout after it, sequencing), and whether the modelled strings play a
+//! busy song in real time. Numbers are medians of several runs; build with `--release`
+//! (`cargo xtask bench` does) for numbers that mean anything.
 
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -23,6 +24,47 @@ const RUNS: usize = 9;
 const KEY_TO_SCREEN: Duration = Duration::from_millis(16);
 /// Opening a file.
 const OPEN: Duration = Duration::from_secs(2);
+/// Rendering one second of 16 tracks of modelled strings, every string ringing: a quarter
+/// of one core, leaving room for the SoundFont, the UI and slower machines (M22).
+const STRINGS_PER_SECOND: Duration = Duration::from_millis(250);
+/// The strings' worst case: tracks and strings per track, all sounding at once.
+const STRING_TRACKS: usize = 16;
+const STRINGS_PER_TRACK: usize = 6;
+const STRINGS_RATE: u32 = 48_000;
+
+/// How long one second of the strings' worst case takes to render: every string of
+/// [`STRING_TRACKS`] tracks ringing, picked again on every quarter (120 BPM) with a vibrato.
+fn bench_strings() -> Duration {
+    use gscore_guitar::{Attack, GuitarModel, Pluck, StringVoice, frequency};
+    const BLOCK: usize = 64;
+    let rate = STRINGS_RATE as f32;
+    let mut voices: Vec<StringVoice> = (0..STRING_TRACKS * STRINGS_PER_TRACK)
+        .map(|_| StringVoice::new(rate, 16.0, GuitarModel::Electric.strings()))
+        .collect();
+    let mut block = [0.0_f32; BLOCK];
+    let blocks = STRINGS_RATE as usize / BLOCK;
+    let quarter = blocks / 2;
+    let mut play = || {
+        for index in 0..blocks {
+            for (number, voice) in voices.iter_mut().enumerate() {
+                if index % quarter.max(1) == 0 {
+                    voice.pluck(Pluck {
+                        frequency: frequency(40 + (number % 24) as u8, 0.0),
+                        velocity: 0.8,
+                        attack: Attack::Pick,
+                        palm_mute: false,
+                        dead: false,
+                        harmonic: false,
+                    });
+                }
+                voice.set_bend(30.0 * ((index as f32) * 0.1).sin());
+                voice.render(&mut block);
+            }
+        }
+        std::hint::black_box(&block);
+    };
+    median(&mut play)
+}
 
 /// The median time of `RUNS` calls of `work`.
 fn median(mut work: impl FnMut()) -> Duration {
@@ -62,6 +104,19 @@ pub(crate) fn run(files: &[impl AsRef<Path>], check: bool) -> Result<String, Cli
         out.push_str("Note: a debug build; use --release (cargo xtask bench) for real numbers.\n");
     }
     let mut missed = Vec::new();
+    let strings = bench_strings();
+    out.push_str(&format!(
+        "modelled strings, {STRING_TRACKS} tracks x {STRINGS_PER_TRACK} strings ringing:\n  \
+         one second of audio {}  (budget {})\n",
+        ms(strings),
+        ms(STRINGS_PER_SECOND).trim()
+    ));
+    if strings > STRINGS_PER_SECOND {
+        missed.push(format!(
+            "modelled strings: one second of audio took over {}",
+            ms(STRINGS_PER_SECOND).trim()
+        ));
+    }
     for file in files {
         let file = file.as_ref();
         let (text, measured) = bench_file(file, &fonts, &options)?;

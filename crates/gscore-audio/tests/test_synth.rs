@@ -73,6 +73,7 @@ fn notes(at: &[(u64, u8)]) -> Arc<Sequence> {
         end,
         skipped_notes: 0,
         degraded_pitch_bends: 0,
+        performance: Default::default(),
     })
 }
 

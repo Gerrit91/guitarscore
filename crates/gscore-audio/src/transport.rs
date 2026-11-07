@@ -7,11 +7,17 @@
 
 use std::sync::Arc;
 
-use gscore_play::{MidiEvent, PlayState, Scheduler, Sequence};
+use gscore_guitar::{BLOCKS, BlockSettings, StringModel};
+
+use gscore_play::{MidiEvent, PlayState, Scheduler, Sequence, StringKind, TimedEvent};
 
 /// A command for a backend.
 #[derive(Debug)]
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))] // `Quit` ends the MIDI thread.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+// `Quit` ends the MIDI thread.
+// The chain's knob values make one variant large; boxing them would free memory in the
+// audio callback, which is worse than copying a few hundred bytes through the queue.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Command {
     Load(Arc<Sequence>),
     Play,
@@ -25,12 +31,45 @@ pub(crate) enum Command {
     Replace(Arc<Sequence>),
     /// Ends the backend (the transport itself ignores it).
     Quit,
+    /// Changes how the modelled strings of one kind sound on tracks without a sound of
+    /// their own (the synth engine carries it out; the transport and MIDI output ignore it).
+    StringModel(StringKind, StringModel),
+    /// Gives one track (by index) its own string model (`None`: its kind's again).
+    TrackModel(usize, Option<StringModel>),
+    /// Gives one track a prepared effect chain (`None`: none) with its knob values; the
+    /// synth engine carries it out.
+    Chain(
+        usize,
+        Option<Box<gscore_guitar::Chain>>,
+        Box<[BlockSettings; BLOCKS]>,
+    ),
+    /// New knob values for one track's chain.
+    ChainSettings(usize, [BlockSettings; BLOCKS]),
+    /// Gives one part of a drum track's chain a prepared chain (`None`: none).
+    PartChain(
+        usize,
+        usize,
+        Option<Box<gscore_guitar::Chain>>,
+        Box<[BlockSettings; BLOCKS]>,
+    ),
+    /// New knob values for one part of a drum track's chain.
+    PartChainSettings(usize, usize, [BlockSettings; BLOCKS]),
+    /// Gives a bus of the mixer its prepared chain (`None`: none).
+    Bus(crate::Bus, Option<Box<gscore_guitar::Chain>>),
+    /// New knob values, level and mute for a bus.
+    BusSettings(crate::Bus, [BlockSettings; BLOCKS], u8, bool),
+    /// A track's (by the song's index) send into the compressor bus.
+    CompSend(usize, u8),
 }
 
 /// Where a transport's events go.
 pub(crate) trait Sink {
     /// Plays one event now.
     fn send(&mut self, event: MidiEvent);
+    /// Plays one event of the sequence now (its track is known).
+    fn send_timed(&mut self, event: &TimedEvent) {
+        self.send(event.event);
+    }
     /// Ends every sounding note and stale pitch bend of `sequence`'s channels, keeping
     /// program, volume and pan (a pause resumes with the same mix).
     fn silence(&mut self, sequence: &Sequence);
@@ -56,6 +95,11 @@ impl Transport {
     /// Playing, paused or stopped.
     pub(crate) fn state(&self) -> PlayState {
         self.state
+    }
+
+    /// The sequence loaded, if any.
+    pub(crate) fn sequence(&self) -> Option<&Arc<Sequence>> {
+        self.scheduler.as_ref().map(Scheduler::sequence)
     }
 
     /// The position in ticks (0 without a sequence).
@@ -132,7 +176,16 @@ impl Transport {
                     s.set_tempo_scale(scale, now);
                 }
             }
-            Command::Quit => {}
+            Command::Quit
+            | Command::StringModel(..)
+            | Command::TrackModel(..)
+            | Command::Chain(..)
+            | Command::ChainSettings(..)
+            | Command::PartChain(..)
+            | Command::PartChainSettings(..)
+            | Command::Bus(..)
+            | Command::BusSettings(..)
+            | Command::CompSend(..) => {}
         }
         None
     }
@@ -146,7 +199,7 @@ impl Transport {
             return;
         };
         for event in s.advance(now) {
-            out.send(event.event);
+            out.send_timed(event);
         }
         if s.finished() {
             self.fail(out);
@@ -217,6 +270,7 @@ mod tests {
             end: 4 * u64::from(PPQ),
             skipped_notes: 0,
             degraded_pitch_bends: 0,
+            performance: Default::default(),
         })
     }
 

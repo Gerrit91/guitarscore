@@ -118,7 +118,8 @@ guitarscore/
     gscore-model/             # L1: document model (wraps gscore-gp's song), positions, queries, edits, invariants
     gscore-io/                # L2: GP files <-> model: format detection, limits, catch_unwind (bytes in, bytes out; no file system)
     gscore-layout/            # L2: model -> positioned draw ops (pages, systems, notation, tab), SVG and PDF. No GUI imports.
-    gscore-play/              # L2: sequencer, MIDI events, channel allocator, metronome, SMF export, Player trait. No device crates.
+    gscore-play/              # L2: performance (engine-neutral notes), MIDI sequence derived from it, channel allocator, metronome, SMF export, Player trait. No device crates.
+    gscore-guitar/            # L2: modelled strings (digital waveguides, M22); no dependencies, render never allocates.
     gscore-edit/              # L3: cursor, selection, clipboard, commands, undo/redo, keymap
     gscore-audio/             # L3: output backends (midir, cpal, rustysynth) implementing Player; the tuner
     gscore-session/           # L4: open, safe save and export, recovery journal, autosave, settings files
@@ -146,7 +147,7 @@ Dependency restrictions enforced by the layers check: only `gscore-app` may use 
    - The keymap loader reports conflicts and unknown command ids as errors shown to the user, never as panics, and falls back to the default keymap.
 8. **Playback behind a trait.** `gscore-play` defines the `Player` trait (load a sequence, play, pause, seek, stop, tempo scale, live events, replace); `gscore-audio` implements it for a MIDI port, the native synthesizer and the browser's worklet. See section 8.
 9. **Audio thread rules** (internal synth). The audio callback must not allocate, wait on locks, do I/O, or panic. Send events through a bounded lock-free queue or channel.
-10. **MIDI channel allocation.** `ChannelAllocator` in `gscore-play`, not in the model. Default: one channel per track; drums on channel 10 (index 9, General MIDI). Notes needing independent pitch bend or slide borrow a free channel temporarily (copy program, volume, pan; reset bend afterward; release). If channels run out, degrade gracefully instead of failing. Verify the internal synth's channel support (expected 16) before designing around more.
+10. **MIDI channel allocation.** `ChannelAllocator` in `gscore-play`, not in the model. Default: one channel per track; the first drum track on channel 10 (index 9, General MIDI), further drum tracks on channels of their own, played as drums by the built-in synthesizer (our RustySynth fork) so each has its own mixer strip, and moved to channel 10 for MIDI output and MIDI files (`Sequence::general_midi`). Notes needing independent pitch bend or slide borrow a free channel temporarily (copy program, volume, pan; reset bend afterward; release). If channels run out, degrade gracefully instead of failing. Verify the internal synth's channel support (expected 16) before designing around more.
 
 ### Portability (the browser build)
 A browser (WebAssembly) build exists since 2026-11-04 (`docs/web.md`). These rules keep it working:
@@ -286,10 +287,13 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
     start, end, and every technique as it changes over time (bend and whammy curves,
     slides, vibrato, damping, hammer-on and pull-off without a new pluck, harmonics,
     strokes). The MIDI and SoundFont path is derived from it, so both engines play the
-    same notes. Takes over M18's "one MIDI channel per string".
+    same notes. *Done 2026-11-06* (`gscore_play::Performance`; MIDI keeps today's channel
+    borrowing by owner decision, no channel per string).
   - The string engine behind the `Player` trait: digital waveguide per string with exact
     tuning, loss filter and dispersion; every technique played by the model. Bass on the
-    same engine.
+    same engine. *First version 2026-11-06* (`gscore-guitar`, played by `SynthEngine` for
+    tracks whose engine is `Modelled`; Settings › Audio I/O "Modelled guitars and basses
+    (experimental)", `gscore-cli wav --modelled`); waiting for the owner's ear.
   - Electric guitar: pickup position, amp (clean to high gain), cabinet. Acoustic guitar:
     commuted-synthesis body, string coupling, two vibration directions, pick attack.
     Then noises and strum feel.

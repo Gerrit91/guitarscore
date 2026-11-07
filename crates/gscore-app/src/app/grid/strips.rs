@@ -1,17 +1,20 @@
-//! The mixer view of the bottom panel: one channel strip per track (and a master strip),
-//! with a fader, a decibel scale, an activity meter, pan and a disabled reverb knob.
+//! The mixer view of the bottom panel: one channel strip per track, the reverb and
+//! compressor buses and a master strip, with a fader, a decibel scale, an activity meter,
+//! pan and the sends.
 
 use egui::{Align2, Color32, FontId, Rect, RichText, Sense, Stroke, UiBuilder, pos2, vec2};
 use gscore_edit::Command;
 use gscore_model::{MASTER_UNITY, MasterMix, TrackIndex};
 
+use crate::settings::{CompressorBus, ReverbBus};
+
 use super::mixer::{self, FLOOR_DB, TRACK_UNITY, db_value, volume_from_db};
 use super::rows::TrackRow;
-use super::{GridAction, ROW_HEIGHT};
-use crate::app::{icons, instrument};
+use super::{GridAction, GridView, ROW_HEIGHT};
+use crate::app::{icons, instrument, style};
 
-/// One strip's width.
-const STRIP_WIDTH: f32 = 124.0;
+/// One strip's width (four knobs across the top: pan, reverb, chorus, comp).
+const STRIP_WIDTH: f32 = 140.0;
 /// Height of the knob row at the top of a strip (pan, reverb, chorus and their labels).
 const TOP_HEIGHT: f32 = 40.0;
 /// A knob's diameter, and the distance between knob centres.
@@ -49,12 +52,15 @@ pub(crate) struct MixerState {
 }
 
 /// The mixer strips, tracks then master.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn strips(
     ui: &mut egui::Ui,
     rows: &[TrackRow],
     master: MasterMix,
-    levels: &[f32],
-    metronome: (f32, f32),
+    buses: Buses,
+    readings: &Readings,
+    comp_sends: &[u8],
+    view: GridView,
     state: &mut MixerState,
     actions: &mut Vec<GridAction>,
 ) {
@@ -72,17 +78,27 @@ pub(super) fn strips(
                         ui,
                         index,
                         row,
-                        levels.get(index).copied().unwrap_or(0.0),
+                        comp_sends.get(index).copied().unwrap_or(0),
+                        readings.tracks.get(index).copied().unwrap_or_default(),
                         height,
+                        view,
                         state,
                         actions,
                     );
                 }
-                let master_level = levels.iter().copied().fold(0.0_f32, f32::max);
+                reverb_strip(ui, buses.reverb, readings.bus, height, state, actions);
+                compressor_strip(
+                    ui,
+                    buses.compressor,
+                    readings.compressor,
+                    height,
+                    state,
+                    actions,
+                );
                 master_strip(
                     ui,
                     master,
-                    master_level,
+                    readings.master,
                     height,
                     rows.len(),
                     all_muted,
@@ -90,24 +106,43 @@ pub(super) fn strips(
                     state,
                     actions,
                 );
-                metronome_strip(ui, metronome, height, state, actions);
+                metronome_strip(ui, view.metronome, height, state, actions);
             });
         });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn track_strip(
     ui: &mut egui::Ui,
     index: usize,
     row: &TrackRow,
-    level: f32,
+    comp_send: u8,
+    level: Reading,
     height: f32,
+    view: GridView,
     state: &mut MixerState,
     actions: &mut Vec<GridAction>,
 ) {
-    let (rect, _) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::hover());
+    // The strip's background is the track's: clicking it selects the track, as the track's
+    // row in the song grid does (the cursor moves there and the track panel shows it).
+    let (rect, response) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::click());
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label(format!("Track {}: {}", index.saturating_add(1), row.name));
+        node.set_role(egui::Role::Button);
+    });
+    if response.clicked() {
+        actions.push(GridAction::MoveCursor {
+            track: index,
+            measure: view.cursor_measure,
+        });
+    }
     let visuals = ui.visuals().clone();
     if index % 2 == 1 {
         ui.painter().rect_filled(rect, 0.0, visuals.faint_bg_color);
+    }
+    if index == view.shown_track {
+        ui.painter()
+            .rect_filled(rect, 3.0, visuals.selection.bg_fill.gamma_multiply(0.18));
     }
     ui.painter().line_segment(
         [rect.right_top(), rect.right_bottom()],
@@ -121,7 +156,7 @@ fn track_strip(
         top,
         index,
         row.pan,
-        Some((row.reverb, row.chorus)),
+        Some((row.reverb, row.chorus, comp_send)),
         &row.name,
         actions,
     );
@@ -130,7 +165,6 @@ fn track_strip(
         fader_area,
         index,
         row.volume,
-        row.pan,
         level,
         TRACK_UNITY,
         &format!("Volume {}", row.name),
@@ -179,6 +213,7 @@ fn track_strip(
         &row.preset,
         Symbol::Instrument(row.instrument),
         Color32::from_rgb(red, green, blue),
+        row.audible,
     );
 }
 
@@ -186,7 +221,7 @@ fn track_strip(
 fn master_strip(
     ui: &mut egui::Ui,
     master: MasterMix,
-    level: f32,
+    level: Reading,
     height: f32,
     track_count: usize,
     all_muted: bool,
@@ -212,14 +247,11 @@ fn master_strip(
         "Master",
         actions,
     );
-    // The track levels already include the master volume (the sequence plays the mixed
-    // volumes), so the loudest track is what the master puts out.
     fader(
         &mut strip,
         fader_area,
         usize::MAX,
         master.volume,
-        master.pan,
         level,
         MASTER_UNITY,
         "Master volume",
@@ -268,7 +300,229 @@ fn master_strip(
         "All tracks",
         Symbol::Waveform,
         visuals.selection.bg_fill,
+        !all_muted,
     );
+}
+
+/// The mixer's buses as the strips show them.
+#[derive(Debug, Clone)]
+pub(super) struct Buses {
+    pub(super) reverb: ReverbBus,
+    pub(super) compressor: CompressorBus,
+}
+
+/// What a bus strip asked for.
+#[derive(Debug)]
+enum BusChange {
+    /// Open the bus's own window (what it runs and its knobs).
+    Edit,
+    /// Its level; `commit` when a drag or a typed value ended.
+    Level { level: u8, commit: bool },
+    /// Its mute was clicked.
+    Mute(bool),
+}
+
+/// What a bus strip shows.
+struct BusStrip<'a> {
+    /// Its name under the strip.
+    name: &'a str,
+    /// The tooltip of the button into its window.
+    edit_tip: &'a str,
+    /// The id of its controls (the master's is `usize::MAX`).
+    id: usize,
+    level: u8,
+    muted: bool,
+    meter: Reading,
+    height: f32,
+}
+
+/// A bus's strip: the way into its window, its fader, its level field and its mute. The
+/// tracks send into it after their faders; its level decides how much comes back.
+fn bus_strip(
+    ui: &mut egui::Ui,
+    strip: BusStrip<'_>,
+    state: &mut MixerState,
+    changes: &mut Vec<BusChange>,
+) {
+    let BusStrip {
+        name,
+        edit_tip,
+        id,
+        level,
+        muted,
+        meter,
+        height,
+    } = strip;
+    let (rect, _) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::hover());
+    let visuals = ui.visuals().clone();
+    ui.painter().line_segment(
+        [rect.left_top(), rect.left_bottom()],
+        Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
+    );
+    let inner = rect.shrink2(vec2(8.0, 6.0));
+    let (top, fader_area, bottom) = layout(inner);
+    let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
+    // Where a track has its pan and sends: the way into the bus's own window, which
+    // chooses what it runs and holds its knobs.
+    let button = Rect::from_min_size(pos2(top.left(), top.top() + 4.0), vec2(top.width(), 26.0));
+    let response = strip
+        .put(button, egui::Button::new("Edit…").small())
+        .on_hover_text(edit_tip);
+    strip.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label(format!("Edit the {} bus", name.to_lowercase()));
+    });
+    if response.clicked() {
+        changes.push(BusChange::Edit);
+    }
+    fader(
+        &mut strip,
+        fader_area,
+        id,
+        level,
+        meter,
+        127,
+        &format!("{name} bus level"),
+        |level, commit| changes.push(BusChange::Level { level, commit }),
+    );
+    let db_rect = Rect::from_min_size(
+        pos2(bottom.left(), bottom.top()),
+        vec2(bottom.width(), 16.0),
+    );
+    db_field(
+        &mut strip,
+        db_rect,
+        state,
+        id,
+        level,
+        127,
+        &format!("{name} bus level"),
+        |level| {
+            changes.push(BusChange::Level {
+                level,
+                commit: true,
+            })
+        },
+    );
+    let buttons = Rect::from_min_size(
+        pos2(bottom.left(), bottom.top() + 18.0),
+        vec2(bottom.width(), 20.0),
+    );
+    let response = strip
+        .put(buttons, style::mute_button(muted))
+        .on_hover_text(if muted {
+            format!(
+                "The {} bus is muted: click to hear it again",
+                name.to_lowercase()
+            )
+        } else {
+            format!(
+                "Mute the {} bus (its tail keeps running)",
+                name.to_lowercase()
+            )
+        });
+    strip.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label(format!("Mute {} bus", name.to_lowercase()));
+    });
+    if response.clicked() {
+        changes.push(BusChange::Mute(!muted));
+    }
+    labels(
+        &mut strip,
+        bottom,
+        name,
+        "Mixer bus",
+        Symbol::Waveform,
+        visuals.selection.bg_fill,
+        !muted,
+    );
+}
+
+/// The reverb bus: the tracks send their mixer reverb amount into it, and its level (and
+/// mute) decide how much of its tail goes into the mix. Its knobs are the room's.
+fn reverb_strip(
+    ui: &mut egui::Ui,
+    bus: ReverbBus,
+    meter: Reading,
+    height: f32,
+    state: &mut MixerState,
+    actions: &mut Vec<GridAction>,
+) {
+    /// The id of the bus's controls (the master's is `usize::MAX`).
+    const REVERB: usize = usize::MAX - 2;
+    let mut changes = Vec::new();
+    bus_strip(
+        ui,
+        BusStrip {
+            name: "Reverb",
+            edit_tip: "The bus's reverb: the computed one, or a room's impulse response",
+            id: REVERB,
+            level: bus.level,
+            muted: bus.muted,
+            meter,
+            height,
+        },
+        state,
+        &mut changes,
+    );
+    for change in changes {
+        let mut bus = bus.clone();
+        let action = match change {
+            BusChange::Edit => GridAction::OpenReverbBus,
+            BusChange::Level { level, commit } => {
+                bus.level = level;
+                GridAction::ReverbBus { bus, commit }
+            }
+            BusChange::Mute(muted) => {
+                bus.muted = muted;
+                GridAction::ReverbBus { bus, commit: true }
+            }
+        };
+        actions.push(action);
+    }
+}
+
+/// The compressor bus (parallel compression): each track's Comp send feeds it, and its
+/// level blends the compressed sum back in under the dry tracks.
+fn compressor_strip(
+    ui: &mut egui::Ui,
+    bus: CompressorBus,
+    meter: Reading,
+    height: f32,
+    state: &mut MixerState,
+    actions: &mut Vec<GridAction>,
+) {
+    /// The id of the bus's controls (the master's is `usize::MAX`).
+    const COMPRESSOR: usize = usize::MAX - 3;
+    let mut changes = Vec::new();
+    bus_strip(
+        ui,
+        BusStrip {
+            name: "Comp",
+            edit_tip: "The bus's compressor: a CA-76, driven hard, blended in under the tracks",
+            id: COMPRESSOR,
+            level: bus.level,
+            muted: bus.muted,
+            meter,
+            height,
+        },
+        state,
+        &mut changes,
+    );
+    for change in changes {
+        let mut bus = bus.clone();
+        let action = match change {
+            BusChange::Edit => GridAction::OpenCompressorBus,
+            BusChange::Level { level, commit } => {
+                bus.level = level;
+                GridAction::CompressorBus { bus, commit }
+            }
+            BusChange::Mute(muted) => {
+                bus.muted = muted;
+                GridAction::CompressorBus { bus, commit: true }
+            }
+        };
+        actions.push(action);
+    }
 }
 
 /// The metronome's own strip: only its click volume, on a fader like the tracks' (the
@@ -300,8 +554,7 @@ fn metronome_strip(
         fader_area,
         METRONOME,
         value,
-        64,
-        level,
+        Reading::estimated(level, 64),
         127,
         "Metronome volume",
         |value, _| actions.push(GridAction::SetMetronomeVolume(set(value))),
@@ -327,6 +580,7 @@ fn metronome_strip(
         "Click volume",
         Symbol::Metronome,
         visuals.selection.bg_fill,
+        true,
     );
 }
 
@@ -351,7 +605,7 @@ fn knobs(
     area: Rect,
     index: usize,
     pan: u8,
-    sends: Option<(u8, u8)>,
+    sends: Option<(u8, u8, u8)>,
     name: &str,
     actions: &mut Vec<GridAction>,
 ) {
@@ -371,8 +625,10 @@ fn knobs(
             ui.visuals().weak_text_color(),
         );
     };
+    // Four knobs side by side (pan, reverb, chorus, comp); the captions fit under them.
+    let step = if sends.is_some() { 30.0 } else { KNOB_SPACING };
     let pan_rect = if sends.is_some() {
-        at(-KNOB_SPACING)
+        at(-1.5 * step)
     } else {
         at(0.0)
     };
@@ -397,18 +653,18 @@ fn knobs(
             });
         }
     }
-    let Some((reverb, chorus)) = sends else {
+    let Some((reverb, chorus, comp)) = sends else {
         return;
     };
     let track = TrackIndex::new(index);
-    let reverb_rect = at(0.0);
+    let reverb_rect = at(-0.5 * step);
     let knob = mixer::send_knob(
         ui,
         reverb_rect,
         reverb,
         ("reverb", index),
         &format!("Reverb {name}"),
-        "Reverb send",
+        "Reverb send (to the reverb bus, for PM synthesis)",
         0,
     );
     caption(ui, reverb_rect, "Reverb");
@@ -421,7 +677,7 @@ fn knobs(
             merge,
         });
     }
-    let chorus_rect = at(KNOB_SPACING);
+    let chorus_rect = at(0.5 * step);
     let knob = mixer::send_knob(
         ui,
         chorus_rect,
@@ -441,6 +697,25 @@ fn knobs(
             merge,
         });
     }
+    // The send into the mixer's compressor bus (parallel compression): it is the song's,
+    // kept in its notes, so it is no undoable command.
+    let comp_rect = at(1.5 * step);
+    let knob = mixer::send_knob(
+        ui,
+        comp_rect,
+        comp,
+        ("comp", index),
+        &format!("Comp {name}"),
+        "Send into the compressor bus (parallel compression)",
+        0,
+    );
+    caption(ui, comp_rect, "Comp");
+    if let Some((comp, _)) = knob.change {
+        actions.push(GridAction::CompSend {
+            track: index,
+            value: comp,
+        });
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -449,8 +724,7 @@ fn fader(
     area: Rect,
     index: usize,
     value: u8,
-    pan: u8,
-    level: f32,
+    level: Reading,
     unity: u8,
     label: &str,
     mut on_change: impl FnMut(u8, bool),
@@ -559,9 +833,15 @@ fn fader(
     );
     paint_gain_scale(ui, gain_scale, area, unity);
     paint_meter_scale(ui, meter_scale, area);
-    paint_meter(ui, meter, level, pan);
+    paint_meter(ui, meter, level);
     let meter_response = ui.interact(meter, ui.scope_id().with(("meter", index)), Sense::hover());
-    meter_response.on_hover_text("Estimated output level, left and right");
+    meter_response.on_hover_text(if level.measured {
+        "Output level, left and right: the bar holds a peak briefly, the line shows the \
+         highest of the last 1.5 s"
+    } else {
+        "Estimated output level, left and right (from the notes: the built-in synthesizer \
+         measures the real one)"
+    });
 }
 
 /// A green/yellow/red level segment. `fill` is 0 (bottom) to 1 (top).
@@ -587,8 +867,57 @@ fn paint_segment(ui: &egui::Ui, rect: Rect, fill: f32) {
     ui.painter().rect_filled(filled, 1.0, color);
 }
 
-/// Left and right meter segments; the pan sets their balance.
-fn paint_meter(ui: &egui::Ui, rect: Rect, level: f32, pan: u8) {
+/// What one strip's meter shows: left and right bars with their peak marks, measured by
+/// the built-in synthesizer or estimated from the notes.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(super) struct Reading {
+    pub(super) level: gscore_audio::Level,
+    pub(super) measured: bool,
+}
+
+impl Reading {
+    /// A measured level.
+    pub(super) fn measured(level: gscore_audio::Level) -> Self {
+        Reading {
+            level,
+            measured: true,
+        }
+    }
+
+    /// An estimate of one level (0 to 1), split into left and right by `pan`.
+    pub(super) fn estimated(level: f32, pan: u8) -> Self {
+        let balance = f32::from(pan.min(127)) / 127.0;
+        let (left, right) = (level * (1.0 - balance).sqrt(), level * balance.sqrt());
+        Reading {
+            level: gscore_audio::Level {
+                left,
+                right,
+                mark_left: left,
+                mark_right: right,
+            },
+            measured: false,
+        }
+    }
+
+    /// The louder bar (for the song grid's activity bars).
+    pub(super) fn bar(&self) -> f32 {
+        self.level.left.max(self.level.right)
+    }
+}
+
+/// Every strip's reading: the tracks (by index), the reverb and compressor buses and the
+/// master.
+#[derive(Debug, Clone, Default)]
+pub(super) struct Readings {
+    pub(super) tracks: Vec<Reading>,
+    pub(super) bus: Reading,
+    pub(super) compressor: Reading,
+    pub(super) master: Reading,
+}
+
+/// Left and right meter segments, each with its peak mark (a line, when it stands above
+/// the bar).
+fn paint_meter(ui: &egui::Ui, rect: Rect, reading: Reading) {
     let gap = 2.0;
     let width = (rect.width() - gap) / 2.0;
     let left = Rect::from_min_size(rect.min, vec2(width, rect.height()));
@@ -596,11 +925,33 @@ fn paint_meter(ui: &egui::Ui, rect: Rect, level: f32, pan: u8) {
         pos2(left.right() + gap, rect.top()),
         vec2(width, rect.height()),
     );
-    let balance = f32::from(pan) / 127.0;
-    let left_level = level * (1.0 - balance).sqrt();
-    let right_level = level * balance.sqrt();
-    paint_segment(ui, left, meter_fraction(left_level));
-    paint_segment(ui, right, meter_fraction(right_level));
+    let level = reading.level;
+    for (side, bar, mark) in [
+        (left, level.left, level.mark_left),
+        (right, level.right, level.mark_right),
+    ] {
+        let bar = meter_fraction(bar);
+        paint_segment(ui, side, bar);
+        let mark = meter_fraction(mark);
+        if mark > bar + 0.005 {
+            let y = side.bottom() - side.height() * mark;
+            ui.painter().line_segment(
+                [pos2(side.left(), y), pos2(side.right(), y)],
+                Stroke::new(1.5, mark_color(mark)),
+            );
+        }
+    }
+}
+
+/// A peak mark's color: the bar's color at that height (see [`paint_segment`]).
+fn mark_color(fill: f32) -> Color32 {
+    if fill > 0.9 {
+        Color32::from_rgb(0xF2, 0x55, 0x4D)
+    } else if fill > 0.72 {
+        Color32::from_rgb(0xFD, 0xD8, 0x35)
+    } else {
+        Color32::from_rgb(0x43, 0xA0, 0x47)
+    }
 }
 
 /// The gain scale left of the fader: where each mark's gain sits on the fader's travel
@@ -772,10 +1123,7 @@ fn mute_solo(
         pos2(rect.left() + width + 4.0, rect.top()),
         vec2(width, rect.height()),
     );
-    let mute = ui.put(
-        mute_rect,
-        egui::Button::new("M").selected(row.muted).small(),
-    );
+    let mute = ui.put(mute_rect, style::mute_button(row.muted));
     ui.ctx().accesskit_node_builder(mute.id, |node| {
         node.set_label(format!("Mute {}", row.name));
     });
@@ -788,10 +1136,7 @@ fn mute_solo(
             merge: false,
         });
     }
-    let solo = ui.put(
-        solo_rect,
-        egui::Button::new("S").selected(row.soloed).small(),
-    );
+    let solo = ui.put(solo_rect, style::solo_button(row.soloed));
     ui.ctx().accesskit_node_builder(solo.id, |node| {
         node.set_label(format!("Solo {}", row.name));
     });
@@ -823,10 +1168,7 @@ fn mute_solo_all(
         pos2(rect.left() + width + 4.0, rect.top()),
         vec2(width, rect.height()),
     );
-    let mute = ui.put(
-        mute_rect,
-        egui::Button::new("M").selected(all_muted).small(),
-    );
+    let mute = ui.put(mute_rect, style::mute_button(all_muted));
     ui.ctx().accesskit_node_builder(mute.id, |node| {
         node.set_label("Mute all");
     });
@@ -844,10 +1186,7 @@ fn mute_solo_all(
             merge: false,
         });
     }
-    let solo = ui.put(
-        solo_rect,
-        egui::Button::new("S").selected(all_soloed).small(),
-    );
+    let solo = ui.put(solo_rect, style::solo_button(all_soloed));
     ui.ctx().accesskit_node_builder(solo.id, |node| {
         node.set_label("Solo all");
     });
@@ -902,18 +1241,25 @@ fn labels(
     preset: &str,
     symbol: Symbol,
     color: Color32,
+    audible: bool,
 ) {
     let visuals = ui.visuals().clone();
     let name_rect = Rect::from_min_size(
         pos2(bottom.left(), bottom.top() + 42.0),
         vec2(bottom.width(), 14.0),
     );
+    // A silent track's name and color recede, so the strips show at a glance what plays.
+    let name_ink = if audible {
+        visuals.strong_text_color()
+    } else {
+        visuals.weak_text_color()
+    };
     ui.painter().with_clip_rect(name_rect).text(
         pos2(name_rect.left(), name_rect.center().y),
         Align2::LEFT_CENTER,
         name,
         FontId::proportional(10.0),
-        visuals.strong_text_color(),
+        name_ink,
     );
     let name_response = ui.interact(name_rect, ui.scope_id().with("mixer_name"), Sense::hover());
     name_response.on_hover_text(name);
@@ -952,7 +1298,8 @@ fn labels(
         pos2(bottom.left(), bottom.bottom() - 5.0),
         vec2(bottom.width(), 5.0),
     );
-    ui.painter().rect_filled(color_rect, 1.0, color);
+    ui.painter()
+        .rect_filled(color_rect, 1.0, mixer::sounding_color(color, audible));
 }
 
 /// The fader travel for a volume, 0 (silence) to 1 (volume 127): `(v / 127)^(2/3)`. As the
@@ -996,7 +1343,31 @@ fn meter_fraction(level: f32) -> f32 {
 mod tests {
     use gscore_model::MASTER_UNITY;
 
-    use super::{TRACK_UNITY, fader_fraction, gain_fraction, volume_at_fraction};
+    use super::{Reading, TRACK_UNITY, fader_fraction, gain_fraction, volume_at_fraction};
+
+    #[test]
+    fn an_estimate_is_split_by_the_pan_and_a_measurement_kept_as_it_is() {
+        let middle = Reading::estimated(0.5, 64);
+        assert!((middle.level.left - middle.level.right).abs() < 0.01);
+        assert!(!middle.measured);
+        let left = Reading::estimated(0.5, 0);
+        assert_eq!(left.level.right, 0.0);
+        assert_eq!(
+            left.level.mark_left, left.level.left,
+            "an estimate has no hold"
+        );
+        assert_eq!(left.bar(), 0.5);
+        let level = gscore_audio::Level {
+            left: 0.2,
+            right: 0.4,
+            mark_left: 0.6,
+            mark_right: 0.4,
+        };
+        let measured = Reading::measured(level);
+        assert!(measured.measured);
+        assert_eq!(measured.level, level);
+        assert_eq!(measured.bar(), 0.4);
+    }
 
     #[test]
     fn the_fader_travel_is_logarithmic_with_room_at_the_loud_end() {

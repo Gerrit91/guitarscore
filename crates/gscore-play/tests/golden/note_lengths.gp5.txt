@@ -1,0 +1,134 @@
+track 0 ch0 program 26 volume 15 pan 8 reverb 0 chorus 0 percussion false
+end 34560 skipped 0 degraded 0
+tempo 0 500000
+measure 0 0..3840 pause 0
+measure 1 3840..7680 pause 0
+measure 2 7680..11520 pause 0
+measure 3 11520..15360 pause 0
+measure 4 15360..19200 pause 0
+measure 5 19200..23040 pause 0
+measure 6 23040..26880 pause 0
+measure 7 26880..30720 pause 0
+measure 8 30720..34560 pause 0
+0 t0 program ch0 26
+0 t0 cc ch0 7 15
+0 t0 cc ch0 10 8
+0 t0 cc ch0 91 0
+0 t0 cc ch0 93 0
+0 t0 cc ch0 11 127
+0 t0 on ch0 40 79
+3840 t0 off ch0 40
+3840 t0 on ch0 45 79
+5760 t0 off ch0 45
+5760 t0 on ch0 50 79
+6720 t0 off ch0 50
+6720 t0 on ch0 50 79
+7680 t0 off ch0 50
+7680 t0 on ch0 55 79
+8160 t0 off ch0 55
+8160 t0 on ch0 55 79
+8640 t0 off ch0 55
+8640 t0 on ch0 59 79
+8880 t0 off ch0 59
+8880 t0 on ch0 59 79
+9120 t0 off ch0 59
+9120 t0 on ch0 59 79
+9360 t0 off ch0 59
+9360 t0 on ch0 59 79
+9600 t0 off ch0 59
+9600 t0 on ch0 64 79
+9720 t0 off ch0 64
+9720 t0 on ch0 64 79
+9840 t0 off ch0 64
+9840 t0 on ch0 64 79
+9960 t0 off ch0 64
+9960 t0 on ch0 64 79
+10080 t0 off ch0 64
+10080 t0 on ch0 64 79
+10200 t0 off ch0 64
+10200 t0 on ch0 64 79
+10320 t0 off ch0 64
+10320 t0 on ch0 64 79
+10440 t0 off ch0 64
+10440 t0 on ch0 64 79
+10560 t0 off ch0 64
+10560 t0 on ch0 40 79
+10620 t0 off ch0 40
+10620 t0 on ch0 40 79
+10680 t0 off ch0 40
+10680 t0 on ch0 40 79
+10740 t0 off ch0 40
+10740 t0 on ch0 40 79
+10800 t0 off ch0 40
+10800 t0 on ch0 40 79
+10860 t0 off ch0 40
+10860 t0 on ch0 40 79
+10920 t0 off ch0 40
+10920 t0 on ch0 40 79
+10980 t0 off ch0 40
+10980 t0 on ch0 40 79
+11040 t0 off ch0 40
+11040 t0 on ch0 40 79
+11100 t0 off ch0 40
+11100 t0 on ch0 40 79
+11160 t0 off ch0 40
+11160 t0 on ch0 40 79
+11220 t0 off ch0 40
+11220 t0 on ch0 40 79
+11280 t0 off ch0 40
+11280 t0 on ch0 40 79
+11340 t0 off ch0 40
+11340 t0 on ch0 40 79
+11400 t0 off ch0 40
+11400 t0 on ch0 40 79
+11460 t0 off ch0 40
+11460 t0 on ch0 40 79
+11520 t0 off ch0 40
+23040 t0 on ch0 40 79
+23680 t0 off ch0 40
+23680 t0 on ch0 40 79
+24320 t0 off ch0 40
+24320 t0 on ch0 40 79
+24960 t0 off ch0 40
+24960 t0 on ch0 45 79
+25344 t0 off ch0 45
+25344 t0 on ch0 45 79
+25728 t0 off ch0 45
+25728 t0 on ch0 45 79
+26112 t0 off ch0 45
+26112 t0 on ch0 45 79
+26496 t0 off ch0 45
+26496 t0 on ch0 45 79
+26880 t0 off ch0 45
+26880 t0 on ch0 50 79
+27200 t0 off ch0 50
+27200 t0 on ch0 50 79
+27520 t0 off ch0 50
+27520 t0 on ch0 50 79
+27840 t0 off ch0 50
+27840 t0 on ch0 50 79
+28160 t0 off ch0 50
+28160 t0 on ch0 50 79
+28480 t0 off ch0 50
+28480 t0 on ch0 50 79
+28800 t0 off ch0 50
+28800 t0 on ch0 55 79
+29074 t0 off ch0 55
+29074 t0 on ch0 55 79
+29349 t0 off ch0 55
+29349 t0 on ch0 55 79
+29623 t0 off ch0 55
+29623 t0 on ch0 55 79
+29897 t0 off ch0 55
+29897 t0 on ch0 55 79
+30171 t0 off ch0 55
+30171 t0 on ch0 55 79
+30446 t0 off ch0 55
+30446 t0 on ch0 55 79
+30720 t0 off ch0 55
+30720 t0 on ch0 40 79
+32160 t0 off ch0 40
+32160 t0 on ch0 40 79
+33600 t0 off ch0 40
+33600 t0 on ch0 40 79
+34320 t0 off ch0 40

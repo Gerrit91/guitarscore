@@ -11,7 +11,6 @@ use std::collections::HashMap;
 
 use gscore_model::{BeatView, NoteKind, TrackView};
 
-use crate::event::Channel;
 use crate::sounding::Sounding;
 use crate::tempo::PPQ;
 
@@ -30,6 +29,10 @@ pub(crate) struct Grace {
     pub(crate) value: u16,
     /// The main note is reached with a hammer-on (so it is not picked).
     pub(crate) hammer: bool,
+    /// The fret, if known.
+    pub(crate) fret: Option<u8>,
+    /// A dead grace note.
+    pub(crate) dead: bool,
 }
 
 /// How long a grace note of written `value` (64, 32 or 16) sounds at `bpm`: its value,
@@ -78,6 +81,8 @@ pub(crate) fn gather(
                     on_beat: note.grace().is_some_and(|grace| grace.on_beat),
                     value,
                     hammer: note.grace().is_some_and(|grace| grace.hammer),
+                    fret: note.fret().ok().map(|fret| fret.get()),
+                    dead: note.kind() == NoteKind::Dead,
                 }),
                 _ => *skipped = skipped.saturating_add(1),
             }
@@ -99,6 +104,8 @@ pub(crate) fn gather(
                 on_beat: grace.on_beat,
                 value: u16::from(grace.speed.value()),
                 hammer: grace.hammer,
+                fret: Some(grace.fret.get()),
+                dead: grace.dead,
             }),
             None => *skipped = skipped.saturating_add(1),
         }
@@ -124,7 +131,6 @@ pub(crate) fn place(
     start: u64,
     bpm: u32,
     track: usize,
-    channel: Channel,
 ) -> (Vec<Sounding>, HashMap<u8, u64>) {
     let span = graces
         .iter()
@@ -137,7 +143,7 @@ pub(crate) fn place(
         Some(mut at) => {
             for grace in graces.iter().filter(|grace| !grace.on_beat) {
                 let length = length(bpm, grace.value);
-                placed.push(sounding(grace, at, length, start, track, channel));
+                placed.push(sounding(grace, at, length, start, track));
                 at = at.saturating_add(length);
             }
             on_beat.extend(graces.iter().filter(|grace| grace.on_beat));
@@ -148,46 +154,28 @@ pub(crate) fn place(
     let mut at = start;
     for grace in on_beat {
         let length = length(bpm, grace.value);
-        placed.push(sounding(grace, at, length, start, track, channel));
+        placed.push(sounding(grace, at, length, start, track));
         at = at.saturating_add(length);
         delays.insert(grace.string, at.saturating_sub(start));
     }
     (placed, delays)
 }
 
-fn sounding(
-    grace: &Grace,
-    start: u64,
-    length: u64,
-    onset: u64,
-    track: usize,
-    channel: Channel,
-) -> Sounding {
-    Sounding {
+fn sounding(grace: &Grace, start: u64, length: u64, onset: u64, track: usize) -> Sounding {
+    let mut note = Sounding::new(
         track,
-        channel,
-        play_channel: channel,
-        key: grace.key,
-        velocity: grace.velocity,
+        grace.string,
+        grace.key,
+        grace.velocity,
         start,
-        end: start.saturating_add(length.max(1)),
-        string: grace.string,
-        slide: None,
-        bend: None,
-        shape: None,
-        vibrato: None,
-        let_ring: false,
-        tremolo: None,
-        trill: None,
-        pick_slide: None,
-        rasgueado: false,
-        // Grace notes belong to their beat: an excerpt of the beat plays them too.
-        onset,
-        damp: false,
-        bend_curve: None,
-        whammy: None,
-        fade: None,
-    }
+        start.saturating_add(length.max(1)),
+    );
+    note.fret = grace.fret;
+    note.dead = grace.dead;
+    note.grace = true;
+    // Grace notes belong to their beat: an excerpt of the beat plays them too.
+    note.onset = onset;
+    note
 }
 
 #[cfg(test)]
@@ -206,6 +194,8 @@ mod tests {
             on_beat,
             value: 32,
             hammer: false,
+            fret: None,
+            dead: false,
         }
     }
 
@@ -226,8 +216,7 @@ mod tests {
 
     #[test]
     fn graces_before_the_beat_end_at_it_in_order() {
-        let channel = Channel::new(0).unwrap();
-        let (notes, delays) = place(&[grace(1, false), grace(2, false)], 960, 60, 0, channel);
+        let (notes, delays) = place(&[grace(1, false), grace(2, false)], 960, 60, 0);
         let spans: Vec<(u64, u64)> = notes.iter().map(|n| (n.start, n.end)).collect();
         assert_eq!(spans, [(720, 840), (840, 960)]);
         assert!(delays.is_empty());
@@ -239,16 +228,14 @@ mod tests {
 
     #[test]
     fn an_appoggiatura_takes_the_beat_and_delays_its_string() {
-        let channel = Channel::new(0).unwrap();
-        let (notes, delays) = place(&[grace(3, true)], 960, 60, 0, channel);
+        let (notes, delays) = place(&[grace(3, true)], 960, 60, 0);
         assert_eq!((notes[0].start, notes[0].end), (960, 1080));
         assert_eq!(delays.get(&3), Some(&120));
     }
 
     #[test]
     fn at_the_song_start_graces_move_onto_the_beat() {
-        let channel = Channel::new(0).unwrap();
-        let (notes, delays) = place(&[grace(1, false)], 0, 60, 0, channel);
+        let (notes, delays) = place(&[grace(1, false)], 0, 60, 0);
         assert_eq!((notes[0].start, notes[0].end), (0, 120));
         assert_eq!(delays.get(&1), Some(&120), "the main note follows");
     }

@@ -79,6 +79,22 @@ pub(super) enum GridAction {
     ShowTrack { track: usize },
     /// Set the metronome's click volume (0 to 1).
     SetMetronomeVolume(f32),
+    /// Open the window of the mixer's reverb bus.
+    OpenReverbBus,
+    /// Set the mixer's reverb bus; `commit` writes the settings (a drag or a click ended).
+    ReverbBus {
+        bus: crate::settings::ReverbBus,
+        commit: bool,
+    },
+    /// Open the window of the mixer's compressor bus.
+    OpenCompressorBus,
+    /// Set the mixer's compressor bus; `commit` writes the settings.
+    CompressorBus {
+        bus: crate::settings::CompressorBus,
+        commit: bool,
+    },
+    /// A track's send into the compressor bus (0-127), kept with the song.
+    CompSend { track: usize, value: u8 },
 }
 
 /// The rename window's state.
@@ -107,15 +123,95 @@ impl GuitarScoreApp {
         let master = document.song().master_mix();
         let measure_count = document.song().measure_count();
         let playing = self.playback.current_measure().map(|m| m.saturating_sub(1));
-        let levels: Vec<f32> = (0..rows.len())
+        let estimates: Vec<f32> = (0..rows.len())
             .map(|index| self.playback.track_level(TrackIndex::new(index)))
             .collect();
+        let midi_out: Vec<bool> = (0..rows.len())
+            .map(|index| self.playback.track_is_midi_out(index))
+            .collect();
+        let comp_sends: Vec<u8> = (0..rows.len())
+            .map(|index| tab.comp_sends.get(&index).copied().unwrap_or(0))
+            .collect();
+        let reverb_bus = self.playback.reverb_bus();
+        let compressor_bus = self.playback.compressor_bus();
+        let meters = self.playback.meters();
+        // The bus's meter: the loudest send into it, through its own (square-law) level.
+        let bus_level = if reverb_bus.muted {
+            0.0
+        } else {
+            let loudest = rows
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| !midi_out.get(*index).copied().unwrap_or(false))
+                .map(|(index, row)| {
+                    f32::from(row.reverb.min(127)) / 127.0
+                        * estimates.get(index).copied().unwrap_or(0.0)
+                })
+                .fold(0.0_f32, f32::max);
+            let level = f32::from(reverb_bus.level.min(127)) / 127.0;
+            loudest * level * level
+        };
+        // What the meters show: measured by the built-in synthesizer, or estimated from the
+        // notes (MIDI output, the browser).
+        let readings = match &meters {
+            Some(meters) => strips::Readings {
+                tracks: rows
+                    .iter()
+                    .enumerate()
+                    .map(|(index, row)| {
+                        // A hardware synthesizer's audio never reaches the mixer: its strip
+                        // shows the notes it plays instead of a measured level.
+                        if midi_out.get(index).copied().unwrap_or(false) {
+                            strips::Reading::estimated(
+                                estimates.get(index).copied().unwrap_or(0.0),
+                                row.pan,
+                            )
+                        } else {
+                            strips::Reading::measured(meters.track(index))
+                        }
+                    })
+                    .collect(),
+                bus: strips::Reading::measured(meters.reverb()),
+                compressor: strips::Reading::measured(meters.compressor()),
+                master: strips::Reading::measured(meters.master()),
+            },
+            None => strips::Readings {
+                tracks: rows
+                    .iter()
+                    .zip(&estimates)
+                    .map(|(row, &level)| strips::Reading::estimated(level, row.pan))
+                    .collect(),
+                bus: strips::Reading::estimated(bus_level, 64),
+                // No Comp knobs yet (step 5): nothing is sent into it, so it is silent.
+                compressor: strips::Reading::estimated(0.0, 64),
+                master: strips::Reading::estimated(
+                    estimates
+                        .iter()
+                        .enumerate()
+                        .filter(|(index, _)| !midi_out.get(*index).copied().unwrap_or(false))
+                        .map(|(_, &level)| level)
+                        .fold(0.0_f32, f32::max),
+                    master.pan,
+                ),
+            },
+        };
+        // The song grid's activity bars follow the meters.
+        let levels: Vec<f32> = readings.tracks.iter().map(strips::Reading::bar).collect();
+        if meters.as_ref().is_some_and(|meters| meters.moving()) {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(30));
+        }
         let mut actions = Vec::new();
         draw(
             ui,
             &rows,
             master,
             &grid,
+            strips::Buses {
+                reverb: reverb_bus,
+                compressor: compressor_bus,
+            },
+            &readings,
             GridView {
                 measure_count,
                 cursor_measure: cursor.measure.get(),
@@ -130,6 +226,7 @@ impl GuitarScoreApp {
                 ),
             },
             &levels,
+            &comp_sends,
             &mut tab.mixer,
             &mut actions,
         );
@@ -215,6 +312,21 @@ impl GuitarScoreApp {
                 self.view.show_track_panel = true;
             }
             GridAction::SetMetronomeVolume(volume) => self.set_metronome_volume(volume),
+            GridAction::OpenReverbBus => self.open_reverb_bus_window(),
+            GridAction::ReverbBus { bus, commit } => {
+                self.playback.set_reverb_bus(bus);
+                if commit {
+                    self.save_settings();
+                }
+            }
+            GridAction::OpenCompressorBus => self.open_compressor_bus_window(),
+            GridAction::CompSend { track, value } => self.set_comp_send(track, value),
+            GridAction::CompressorBus { bus, commit } => {
+                self.playback.set_compressor_bus(bus);
+                if commit {
+                    self.save_settings();
+                }
+            }
         }
     }
 
@@ -393,8 +505,11 @@ fn draw(
     rows: &[TrackRow],
     master: gscore_model::MasterMix,
     grid: &GridData,
+    buses: strips::Buses,
+    readings: &strips::Readings,
     view: GridView,
     levels: &[f32],
+    comp_sends: &[u8],
     mixer_state: &mut MixerState,
     actions: &mut Vec<GridAction>,
 ) {
@@ -404,22 +519,39 @@ fn draw(
             ui,
             rows,
             master,
-            levels,
-            view.metronome,
+            buses,
+            readings,
+            comp_sends,
+            view,
             mixer_state,
             actions,
         );
         return;
     }
+    // The top line - the track actions and the mixer switch, beside the measure ruler -
+    // stays put; only the tracks below scroll, however many there are.
+    ui.spacing_mut().item_spacing.y = 0.0;
+    let scroll_id = ui.make_persistent_id("song_grid_x");
+    let scroll_x = ui
+        .ctx()
+        .data(|data| data.get_temp::<f32>(scroll_id))
+        .unwrap_or(0.0);
+    ui.horizontal_top(|ui| {
+        rows::header(ui, rows, view, actions);
+        matrix::ruler(ui, grid, view, scroll_x);
+    });
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             ui.horizontal_top(|ui| {
-                rows::headers(ui, rows, master, view, levels, actions);
-                egui::ScrollArea::horizontal()
+                rows::body(ui, rows, master, view, levels, actions);
+                let scrolled = egui::ScrollArea::horizontal()
                     .id_salt("song_grid")
                     .show(ui, |ui| matrix::matrix(ui, rows, grid, view, actions));
+                ui.ctx().data_mut(|data| {
+                    data.insert_temp(scroll_id, scrolled.state.clamped_offset().x);
+                });
             });
         });
 }

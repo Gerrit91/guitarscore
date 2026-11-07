@@ -35,6 +35,10 @@ pub(crate) struct Tokens {
     pub accent: Color32,
     /// Text on the accent.
     pub on_accent: Color32,
+    /// Mute (red) and solo (amber): the two mixer states that must never be confused,
+    /// neither with each other nor with the blue accent.
+    pub mute: Color32,
+    pub solo: Color32,
 }
 
 /// The app's tokens. The chrome is always dark (a soft charcoal, white icons and text),
@@ -51,10 +55,43 @@ pub(crate) const TOKENS: Tokens = Tokens {
     text_weak: Color32::from_rgb(0xA6, 0xAA, 0xB1),
     accent: Color32::from_rgb(0x4C, 0x9A, 0xFF),
     on_accent: Color32::WHITE,
+    mute: Color32::from_rgb(0xE0, 0x4A, 0x45),
+    solo: Color32::from_rgb(0xE9, 0xA8, 0x2E),
 };
 
 /// The red behind a window's or tab's close button while it is hovered.
 pub(crate) const CLOSE_RED: Color32 = Color32::from_rgb(0xD9, 0x3A, 0x3A);
+
+/// A small mute toggle ("M"): an ordinary button at rest, filled red while it is on, so a
+/// muted track (or a bypassed block) cannot be overlooked.
+pub(crate) fn mute_button(on: bool) -> egui::Button<'static> {
+    toggle_button("M", on, TOKENS.mute, Color32::WHITE)
+}
+
+/// A small solo toggle ("S"): an ordinary button at rest, filled amber while it is on. The
+/// ink is dark, since white on amber is hard to read.
+pub(crate) fn solo_button(on: bool) -> egui::Button<'static> {
+    toggle_button("S", on, TOKENS.solo, Color32::from_rgb(0x23, 0x1A, 0x05))
+}
+
+/// A small toggle: no color of its own while off, the whole button filled `tint` with `ink`
+/// text while `on`, so the color alone says what it does.
+pub(crate) fn toggle_button(
+    letter: &str,
+    on: bool,
+    tint: Color32,
+    ink: Color32,
+) -> egui::Button<'static> {
+    if on {
+        egui::Button::new(RichText::new(letter).color(ink))
+            .selected(true)
+            .fill(tint)
+            .stroke(Stroke::new(1.0, tint))
+            .small()
+    } else {
+        egui::Button::new(letter).selected(false).small()
+    }
+}
 
 /// The app's tokens (the same in every theme; `ui` keeps call sites uniform).
 pub(crate) fn tokens(_ui: &egui::Ui) -> &'static Tokens {
@@ -210,12 +247,14 @@ pub(crate) fn window_frame(ctx: &egui::Context) -> Frame {
         .inner_margin(Margin::same(0))
 }
 
-/// Where a floating window of `size` starts: centered in the app.
+/// Where a floating window of `size` starts: centered in the app, and never so high that
+/// its title bar would sit over the toolbar (a tall window like the Sound chain's).
 pub(crate) fn centered_window_pos(ctx: &egui::Context, size: egui::Vec2) -> egui::Pos2 {
     let screen = ctx.content_rect();
+    let top = (screen.center().y - size.y / 2.0).max(screen.top() + 80.0);
     egui::pos2(
-        screen.center().x - size.x / 2.0,
-        screen.center().y - size.y / 2.0,
+        (screen.center().x - size.x / 2.0).max(screen.left() + 8.0),
+        top,
     )
 }
 

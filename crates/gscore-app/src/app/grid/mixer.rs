@@ -63,6 +63,21 @@ pub(super) fn activity_rect(row: Rect) -> Rect {
     )
 }
 
+/// How far a color recedes when its track is not heard (muted, or unsoloed while another
+/// track is soloed): dark enough to set it apart at a glance, bright enough to stay
+/// recognizable as the track's own color.
+const SILENT_DIM: f32 = 0.38;
+
+/// [`color`], darkened while its track is silent, so the score and the mixer show at a
+/// glance what plays and what does not.
+pub(super) fn sounding_color(color: Color32, audible: bool) -> Color32 {
+    if audible {
+        color
+    } else {
+        color.gamma_multiply(SILENT_DIM)
+    }
+}
+
 /// Paints a small green activity bar (the compact form of the mixer meter).
 pub(super) fn paint_activity(ui: &egui::Ui, rect: Rect, level: f32) {
     let visuals = ui.visuals();

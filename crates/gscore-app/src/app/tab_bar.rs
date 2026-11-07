@@ -1,8 +1,10 @@
 //! The tab strip: one tab per open song, with a dot marking unsaved changes and a close
 //! icon inside the tab. Clicking a tab switches to it; clicking its close icon asks before
-//! closing a tab with unsaved changes.
+//! closing a tab with unsaved changes. A "+" after the last tab, or a double click on the
+//! empty part of the strip, opens a new empty workspace (open a song, the recent files or a
+//! dropped file) without closing the open tabs.
 
-use egui::{FontId, Rect, Sense, pos2, vec2};
+use egui::{FontId, Rect, Sense, Stroke, pos2, vec2};
 
 use super::GuitarScoreApp;
 use super::icons::{self, Icon};
@@ -27,6 +29,7 @@ impl GuitarScoreApp {
     pub(super) fn tab_bar(&mut self, ui: &mut egui::Ui) {
         let mut switch_to = None;
         let mut close = None;
+        let mut new_workspace = false;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 3.0;
             for (index, tab) in self.tabs.iter().enumerate() {
@@ -46,6 +49,29 @@ impl GuitarScoreApp {
                     switch_to = Some(index);
                 }
             }
+            if plus_button(ui) {
+                new_workspace = true;
+            }
+            // The rest of the strip, where there are no tabs: a double click starts a new
+            // empty workspace too.
+            let width = ui.available_width();
+            if width > 1.0 {
+                let (_, empty) =
+                    ui.allocate_exact_size(vec2(width, TAB_HEIGHT), Sense::click());
+                empty.widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::Role::Group,
+                        true,
+                        "Empty tab strip: double-click for a new empty workspace",
+                    )
+                });
+                if empty.double_clicked() {
+                    new_workspace = true;
+                }
+                empty.on_hover_text(
+                    "Double-click here to open a new empty workspace (a song, a recent file                      or a dropped file)",
+                );
+            }
         });
         if let Some(index) = switch_to {
             self.switch_tab(index);
@@ -53,6 +79,17 @@ impl GuitarScoreApp {
         if let Some(index) = close {
             self.close_tab(index);
         }
+        if new_workspace {
+            self.new_empty_workspace();
+        }
+    }
+
+    /// Shows the empty workspace - open a song, the recent files, or drop a file - without
+    /// closing any tab: no tab is active until one is clicked again.
+    pub(super) fn new_empty_workspace(&mut self) {
+        self.active = self.tabs.len();
+        self.playback.song_changed();
+        self.status = None;
     }
 
     /// Makes `index` the active tab. Playback follows the active tab: the previous song
@@ -165,4 +202,29 @@ fn tab_widget(
     let shut = close_response.clicked();
     let switch = response.clicked() && !shut;
     (switch, shut)
+}
+
+/// A small "+" after the last tab: opens a new empty workspace.
+fn plus_button(ui: &mut egui::Ui) -> bool {
+    let tokens = style::tokens(ui);
+    let (rect, response) = ui.allocate_exact_size(vec2(TAB_HEIGHT, TAB_HEIGHT), Sense::click());
+    let response =
+        response.on_hover_text("New empty workspace: open a song, a recent file, or drop one here");
+    ui.ctx()
+        .accesskit_node_builder(response.id, |node| node.set_label("New workspace"));
+    if response.hovered() {
+        ui.painter().rect_filled(rect, RADIUS, tokens.control_hover);
+    }
+    let ink = if response.hovered() {
+        tokens.text
+    } else {
+        tokens.text_weak
+    };
+    let plus = Rect::from_center_size(rect.center(), vec2(10.0, 10.0));
+    let stroke = Stroke::new(1.6, ink);
+    ui.painter()
+        .line_segment([plus.left_center(), plus.right_center()], stroke);
+    ui.painter()
+        .line_segment([plus.center_top(), plus.center_bottom()], stroke);
+    response.clicked()
 }

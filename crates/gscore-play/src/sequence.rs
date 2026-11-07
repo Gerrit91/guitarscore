@@ -1,5 +1,6 @@
 //! Turns a song into a [`Sequence`]: timed MIDI events per track, a tempo map, and where
-//! each played measure lies in time.
+//! each played measure lies in time. The events are derived from the song's
+//! [`Performance`], which the sequence carries for engines that play notes, not MIDI.
 //!
 //! Notes play on their track's channel. A note with a bend or slide borrows a free channel
 //! for its own pitch bend (AGENTS.md section 5, decision 10): the borrowed channel gets the
@@ -7,14 +8,16 @@
 //! and is released after the note. When every other channel is in use the note plays
 //! without its pitch movement and [`Sequence::degraded_pitch_bends`] counts it.
 
+use std::sync::Arc;
+
 use gscore_model::{
     BeatIndex, BeatKind, BeatPosition, Duration, MeasureIndex, ModelError, Song, TimeSignature,
     TrackIndex, TrackSound,
 };
 
-use crate::build;
 use crate::click::Click;
 use crate::event::{Channel, MidiEvent, PITCH_BEND_CENTER, controller};
+use crate::performance::{Performance, StringKind};
 use crate::swing;
 use crate::tempo::{PPQ, TempoMap};
 
@@ -79,6 +82,9 @@ pub struct Sequence {
     /// Notes whose bend or slide was dropped because every other MIDI channel was in use.
     /// They still play, on their track's channel, without the pitch movement.
     pub degraded_pitch_bends: usize,
+    /// The performance the events were derived from (empty for a count-in or a sequence
+    /// received without one): the notes an engine that plays strings works from.
+    pub performance: Arc<Performance>,
 }
 
 impl Sequence {
@@ -114,69 +120,164 @@ impl Sequence {
         tracks: Option<&[TrackIndex]>,
         click: Option<Click>,
     ) -> Result<Self, ModelError> {
-        // When each played measure starts, by its time signature.
-        let (measures, tick) = crate::timeline::measure_spans(song)?;
-
-        let mut tempo_changes: Vec<(u64, u32)> = vec![(0, song.tempo())];
-        for span in &measures {
-            if let Some(bpm) = song.tempo_change(span.measure) {
-                tempo_changes.push((span.start, bpm));
-            }
-        }
-
-        let selected: Vec<TrackIndex> = match tracks {
-            Some(tracks) => tracks.to_vec(),
-            None => (0..song.track_count()).map(TrackIndex::new).collect(),
-        };
-        // Muted tracks do not play; with any soloed track, only soloed tracks play.
-        let soloed = song.any_soloed();
-        let selected: Vec<TrackIndex> = selected
-            .into_iter()
-            .filter(|&track| match song.track(track) {
-                // A track that does not exist is reported by the loop below.
-                None => true,
-                Some(view) => !view.is_muted() && (!soloed || view.is_soloed()),
-            })
-            .collect();
-        let collected = build::collect(song, &selected, &measures, None, None)?;
-        let mut events = collected.setup;
-        build::emit(&collected.notes, &collected.tracks, &mut events);
-        tempo_changes.extend(collected.tempo_changes);
+        let performance = Performance::new(song, tracks)?;
+        let mut sequence = Sequence::from_performance(Arc::new(performance));
         if let Some(click) = click {
-            events.push(crate::click::sound_event(click.sound, 0));
-            for span in &measures {
+            sequence
+                .events
+                .push(crate::click::sound_event(click.sound, 0));
+            for span in &sequence.measures {
                 // Free time has no metronome, as in Guitar Pro.
                 if song.free_time(span.measure) == Some(true) {
                     continue;
                 }
-                events.extend(crate::click::click_events_at(*span, click.volume));
+                sequence
+                    .events
+                    .extend(crate::click::click_events_at(*span, click.volume));
+            }
+            sequence.events.sort_by_key(|e| (e.tick, rank(&e.event)));
+        }
+        Ok(sequence)
+    }
+
+    /// This sequence with its guitar and bass tracks played by the modelled strings
+    /// ([`Performance::model_guitars`]); the MIDI events stay for MIDI output and export.
+    pub fn with_modelled_guitars(self) -> Self {
+        self.with_modelled_guitars_where(StringKind::for_program)
+    }
+
+    /// The same, the kind of string each preset (General MIDI program) starts from decided
+    /// by `kind_of`: a preset the user gave a tone of its own plays that tone's kind of
+    /// string, the rest their program's family.
+    pub fn with_modelled_guitars_where(
+        mut self,
+        kind_of: impl Fn(u8) -> Option<StringKind>,
+    ) -> Self {
+        Arc::make_mut(&mut self.performance).model_guitars_where(kind_of);
+        self
+    }
+
+    /// This sequence with only the tracks whose song index `keep` accepts. Metronome clicks
+    /// stay (they belong to no track), so the beat can still be kept by an output that has
+    /// only some of the song's tracks. Track positions in events and in the performance
+    /// are renumbered, so an engine that plays the notes (the modelled strings) keeps
+    /// working.
+    pub fn with_tracks(&self, keep: impl Fn(TrackIndex) -> bool) -> Self {
+        let mut new_position = Vec::with_capacity(self.tracks.len());
+        let mut tracks = Vec::with_capacity(self.tracks.len());
+        let mut performance_tracks = Vec::with_capacity(self.tracks.len());
+        for (position, track) in self.tracks.iter().enumerate() {
+            if keep(track.track) {
+                new_position.push(Some(tracks.len()));
+                tracks.push(track.clone());
+                if let Some(entry) = self.performance.tracks.get(position) {
+                    performance_tracks.push(entry.clone());
+                }
+            } else {
+                new_position.push(None);
             }
         }
+        let mut sequence = self.clone();
+        sequence.tracks = tracks;
+        sequence.events = self
+            .events
+            .iter()
+            .filter_map(|event| {
+                if event.track == crate::click::CLICK_TRACK {
+                    return Some(*event);
+                }
+                let track = new_position.get(event.track).copied().flatten()?;
+                Some(TimedEvent { track, ..*event })
+            })
+            .collect();
+        let performance = Arc::make_mut(&mut sequence.performance);
+        performance.tracks = performance_tracks;
+        performance.notes = self
+            .performance
+            .notes
+            .iter()
+            .filter_map(|note| {
+                let track = new_position.get(note.track).copied().flatten()?;
+                Some(crate::performance::PlayedNote { track, ..*note })
+            })
+            .collect();
+        performance.index_by_start();
+        sequence
+    }
+
+    /// The MIDI sequence that plays `performance` on a General MIDI synthesizer.
+    pub fn from_performance(performance: Arc<Performance>) -> Self {
+        let midi = crate::midi::derive(&performance);
+        let mut events = midi.events;
         events.sort_by_key(|e| (e.tick, rank(&e.event)));
-
-        tempo_changes.sort_by_key(|&(tick, _)| tick);
-        let mut tempo = TempoMap::new(song.tempo());
-        for (tick, bpm) in tempo_changes {
-            tempo.set(tick, bpm);
-        }
-        for span in &measures {
-            tempo.hold_ticks(span.end, span.pause);
-        }
-
-        Ok(Sequence {
-            tracks: collected.tracks,
+        Sequence {
+            tracks: midi.tracks,
             events,
-            tempo,
-            measures,
-            end: tick,
-            skipped_notes: collected.skipped_notes,
-            degraded_pitch_bends: collected.degraded_pitch_bends,
-        })
+            tempo: performance.tempo.clone(),
+            measures: performance.measures.clone(),
+            end: performance.end,
+            skipped_notes: performance.skipped_notes,
+            degraded_pitch_bends: midi.degraded_pitch_bends,
+            performance,
+        }
     }
 
     /// The length of the whole sequence in microseconds.
     pub fn micros(&self) -> u64 {
         self.tempo.micros_at(self.end)
+    }
+
+    /// Which channels play drums: 10, and those of further drum tracks (each drum track has
+    /// a channel of its own, see [`crate::ChannelAllocator`]). Indexed by channel number.
+    pub fn drum_channels(&self) -> [bool; 16] {
+        let mut drums = [false; 16];
+        let mut mark = |channel: Channel| {
+            if let Some(slot) = drums.get_mut(usize::from(channel.get())) {
+                *slot = true;
+            }
+        };
+        mark(Channel::PERCUSSION);
+        for track in self.tracks.iter().filter(|track| track.sound.percussion) {
+            mark(track.channel);
+        }
+        drums
+    }
+
+    /// `event` as a General MIDI device takes it: on channel 10 if it goes to one of
+    /// `drums` (see [`Sequence::drum_channels`]), which such a device plays drums on only.
+    pub fn general_midi_event(drums: &[bool; 16], event: MidiEvent) -> MidiEvent {
+        if drums
+            .get(usize::from(event.channel().get()))
+            .copied()
+            .unwrap_or(false)
+        {
+            event.on_channel(Channel::PERCUSSION)
+        } else {
+            event
+        }
+    }
+
+    /// This sequence for a General MIDI device (a MIDI port, a MIDI file): every drum track
+    /// on channel 10. `None` if they are already (one drum track or none).
+    pub fn general_midi(&self) -> Option<Sequence> {
+        let drums = self.drum_channels();
+        let others = drums
+            .iter()
+            .enumerate()
+            .any(|(channel, &drum)| drum && channel != usize::from(Channel::PERCUSSION.get()));
+        if !others {
+            return None;
+        }
+        let mut sequence = self.clone();
+        for track in &mut sequence.tracks {
+            if track.sound.percussion {
+                track.channel = Channel::PERCUSSION;
+            }
+        }
+        for event in &mut sequence.events {
+            event.event = Sequence::general_midi_event(&drums, event.event);
+        }
+        Some(sequence)
     }
 
     /// The channels this sequence uses, including borrowed ones.

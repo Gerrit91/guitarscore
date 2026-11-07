@@ -140,6 +140,439 @@ impl ShapePreset {
     }
 }
 
+/// The pickup of a string sound as the settings file keeps it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PickupSetting {
+    /// Not set (a sound saved before pickups existed): its kind's preset decides, see
+    /// [`StringSound::for_kind`].
+    #[default]
+    Unset,
+    None,
+    SingleCoil,
+    Humbucker,
+}
+
+impl PickupSetting {
+    /// The pickups a user can choose, in the order the window shows them, with a label.
+    pub const CHOICES: [(PickupSetting, &'static str); 3] = [
+        (PickupSetting::None, "None"),
+        (PickupSetting::SingleCoil, "Single coil"),
+        (PickupSetting::Humbucker, "Humbucker"),
+    ];
+
+    fn pickup(self) -> gscore_guitar::Pickup {
+        match self {
+            PickupSetting::Unset | PickupSetting::None => gscore_guitar::Pickup::None,
+            PickupSetting::SingleCoil => gscore_guitar::Pickup::SingleCoil,
+            PickupSetting::Humbucker => gscore_guitar::Pickup::Humbucker,
+        }
+    }
+}
+
+impl From<gscore_guitar::Pickup> for PickupSetting {
+    fn from(pickup: gscore_guitar::Pickup) -> Self {
+        match pickup {
+            gscore_guitar::Pickup::None => PickupSetting::None,
+            gscore_guitar::Pickup::SingleCoil => PickupSetting::SingleCoil,
+            gscore_guitar::Pickup::Humbucker => PickupSetting::Humbucker,
+        }
+    }
+}
+
+/// One kind of modelled string as the user dialed it in: the knobs of
+/// [`gscore_guitar::StringModel`], kept as plain numbers in the settings file.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StringSound {
+    pub sustain: f32,
+    pub sustain_exponent: f32,
+    pub brilliance: f32,
+    pub stiffness: f32,
+    pub stiffness_stages: u8,
+    pub pick_position: f32,
+    pub hardness: f32,
+    pub softness: f32,
+    pub tone: f32,
+    pub resonance: f32,
+    pub level: f32,
+    pub bridge: f32,
+    pub low_cut: f32,
+    pub second: f32,
+    pub detune: f32,
+    /// A magnetic pickup and where it sits (a share of the string from the bridge). A
+    /// sound saved before pickups existed has none set (not the struct's default, an
+    /// electric's humbucker): its kind decides.
+    #[serde(default)]
+    pub pickup: PickupSetting,
+    #[serde(default)]
+    pub pickup_position: f32,
+}
+
+impl Default for StringSound {
+    fn default() -> Self {
+        StringSound::from(gscore_audio::default_string_model(
+            gscore_play::StringKind::Electric,
+        ))
+    }
+}
+
+impl From<gscore_guitar::StringModel> for StringSound {
+    fn from(model: gscore_guitar::StringModel) -> Self {
+        StringSound {
+            sustain: model.sustain,
+            sustain_exponent: model.sustain_exponent,
+            brilliance: model.brilliance,
+            stiffness: model.stiffness,
+            stiffness_stages: u8::try_from(model.stiffness_stages).unwrap_or(0),
+            pick_position: model.pick_position,
+            hardness: model.hardness,
+            softness: model.softness,
+            tone: model.tone,
+            resonance: model.resonance,
+            level: model.level,
+            bridge: model.bridge,
+            low_cut: model.low_cut,
+            second: model.second,
+            detune: model.detune,
+            pickup: model.pickup.into(),
+            pickup_position: model.pickup_position,
+        }
+    }
+}
+
+impl StringSound {
+    /// The model these knobs make, every value in its range.
+    pub fn model(&self) -> gscore_guitar::StringModel {
+        gscore_guitar::StringModel {
+            sustain: self.sustain,
+            sustain_exponent: self.sustain_exponent,
+            brilliance: self.brilliance,
+            stiffness: self.stiffness,
+            stiffness_stages: usize::from(self.stiffness_stages),
+            pick_position: self.pick_position,
+            hardness: self.hardness,
+            softness: self.softness,
+            tone: self.tone,
+            resonance: self.resonance,
+            level: self.level,
+            bridge: self.bridge,
+            low_cut: self.low_cut,
+            second: self.second,
+            detune: self.detune,
+            pickup: self.pickup.pickup(),
+            pickup_position: self.pickup_position,
+        }
+        .sanitized()
+    }
+
+    /// This sound for strings of `kind`: a pickup not set comes from the kind's preset
+    /// (an electric's humbucker; none for an acoustic or the bass).
+    pub fn for_kind(mut self, kind: gscore_play::StringKind) -> Self {
+        if self.pickup == PickupSetting::Unset {
+            let preset = gscore_audio::default_string_model(kind);
+            self.pickup = preset.pickup.into();
+            self.pickup_position = preset.pickup_position;
+        }
+        self
+    }
+}
+
+/// A chain the user saved under a name (the Sound chain window's presets): the whole effect
+/// chain of a kind of string, and the string sound it was saved with.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChainPreset {
+    /// The name shown in the preset list.
+    pub name: String,
+    /// The kind of string it is for: `nylon`, `steel`, `electric` or `bass`.
+    pub kind: String,
+    pub sound: StringSound,
+    /// The five places after the strings (a preset written before the chain was part of it
+    /// has an empty one).
+    #[serde(default)]
+    pub chain: crate::chain_settings::ChainSetting,
+    /// What plays the strings: `soundfont` for the internal synth, or the kind of modelled
+    /// string (`nylon`, `steel`, `electric`, `bass`); empty leaves the track's choice.
+    #[serde(default)]
+    pub engine: String,
+}
+
+/// A tone the user set for a track preset (its General MIDI program): what its strings
+/// sound like and the chain after them. Kept in the settings, so it plays on every track
+/// with that preset, in every song; "Built-in" in the Sound chain window removes it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PresetTone {
+    /// The preset's General MIDI program (0 to 127).
+    pub program: u8,
+    /// The kind of string it is for: `nylon`, `steel`, `electric` or `bass`.
+    pub kind: String,
+    pub sound: StringSound,
+    /// The five places after the strings (a tone written before the chain was part of it
+    /// has an empty one).
+    #[serde(default)]
+    pub chain: crate::chain_settings::ChainSetting,
+}
+
+impl PresetTone {
+    /// `tone` as the settings keep it, for the preset `program`.
+    pub fn of(program: u8, tone: &crate::chain_settings::Tone) -> Self {
+        PresetTone {
+            program,
+            kind: kind_id(tone.kind).to_owned(),
+            sound: tone.sound,
+            chain: tone.chain.clone(),
+        }
+    }
+
+    /// The tone it stands for, if its kind is one we know.
+    pub fn tone(&self) -> Option<crate::chain_settings::Tone> {
+        let kind = kind_from_id(&self.kind)?;
+        Some(crate::chain_settings::Tone {
+            kind,
+            sound: self.sound.for_kind(kind),
+            chain: self.chain.clone(),
+        })
+    }
+}
+
+/// The settings name of what plays a track.
+pub(crate) fn engine_id(engine: gscore_play::TrackEngine) -> &'static str {
+    match engine {
+        gscore_play::TrackEngine::SoundFont => "soundfont",
+        gscore_play::TrackEngine::Modelled(kind) => kind_id(kind),
+        gscore_play::TrackEngine::MidiOut => "midi_out",
+    }
+}
+
+/// The engine an `id` names, if it names one.
+pub(crate) fn engine_from_id(id: &str) -> Option<gscore_play::TrackEngine> {
+    match id {
+        "soundfont" => Some(gscore_play::TrackEngine::SoundFont),
+        "midi_out" => Some(gscore_play::TrackEngine::MidiOut),
+        "nylon" => Some(gscore_play::TrackEngine::Modelled(
+            gscore_play::StringKind::Nylon,
+        )),
+        "steel" => Some(gscore_play::TrackEngine::Modelled(
+            gscore_play::StringKind::Steel,
+        )),
+        "electric" => Some(gscore_play::TrackEngine::Modelled(
+            gscore_play::StringKind::Electric,
+        )),
+        "bass" => Some(gscore_play::TrackEngine::Modelled(
+            gscore_play::StringKind::Bass,
+        )),
+        _ => None,
+    }
+}
+
+/// The settings name of `kind`.
+pub(crate) fn kind_id(kind: gscore_play::StringKind) -> &'static str {
+    match kind {
+        gscore_play::StringKind::Nylon => "nylon",
+        gscore_play::StringKind::Steel => "steel",
+        gscore_play::StringKind::Electric => "electric",
+        gscore_play::StringKind::Bass => "bass",
+    }
+}
+
+/// The kind of string an `id` names, if it names one.
+pub(crate) fn kind_from_id(id: &str) -> Option<gscore_play::StringKind> {
+    match engine_from_id(id) {
+        Some(gscore_play::TrackEngine::Modelled(kind)) => Some(kind),
+        _ => None,
+    }
+}
+
+/// The range a remembered panel width may have, and of the song grid's height.
+const PANEL_WIDTH_RANGE: (f32, f32) = (200.0, 1200.0);
+const GRID_HEIGHT_RANGE: (f32, f32) = (72.0, 2000.0);
+
+/// A remembered size within `range`; anything that is not a number means "not chosen".
+fn fit_panel(size: Option<f32>, (low, high): (f32, f32)) -> Option<f32> {
+    size.filter(|size| size.is_finite())
+        .map(|size| size.clamp(low, high))
+}
+
+/// The most string sound presets kept, and the longest name.
+pub(crate) const MAX_STRING_PRESETS: usize = 100;
+pub(crate) const MAX_STRING_PRESET_NAME: usize = 60;
+/// How many track presets (General MIDI programs) there are.
+pub(crate) const MAX_PROGRAMS: u8 = 128;
+
+/// The four kinds of modelled string, as dialed in.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StringSounds {
+    pub nylon: StringSound,
+    pub steel: StringSound,
+    pub electric: StringSound,
+    pub bass: StringSound,
+}
+
+impl Default for StringSounds {
+    fn default() -> Self {
+        let preset = |kind| StringSound::from(gscore_audio::default_string_model(kind));
+        StringSounds {
+            nylon: preset(gscore_play::StringKind::Nylon),
+            steel: preset(gscore_play::StringKind::Steel),
+            electric: preset(gscore_play::StringKind::Electric),
+            bass: preset(gscore_play::StringKind::Bass),
+        }
+    }
+}
+
+impl StringSounds {
+    /// The knobs of `kind`.
+    pub fn get(&self, kind: gscore_play::StringKind) -> StringSound {
+        match kind {
+            gscore_play::StringKind::Nylon => self.nylon,
+            gscore_play::StringKind::Steel => self.steel,
+            gscore_play::StringKind::Electric => self.electric,
+            gscore_play::StringKind::Bass => self.bass,
+        }
+        .for_kind(kind)
+    }
+
+    /// Sets the knobs of `kind`.
+    pub fn set(&mut self, kind: gscore_play::StringKind, sound: StringSound) {
+        match kind {
+            gscore_play::StringKind::Nylon => self.nylon = sound,
+            gscore_play::StringKind::Steel => self.steel = sound,
+            gscore_play::StringKind::Electric => self.electric = sound,
+            gscore_play::StringKind::Bass => self.bass = sound,
+        }
+    }
+}
+
+/// The mixer's reverb bus: the reverb every modelled track sends into with its mixer reverb
+/// amount. Kept in the settings (it is the mixer's, not the song's).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ReverbBus {
+    /// The bus's level, 0-127 (127 plays it as it comes; the track volumes are the sends).
+    pub level: u8,
+    pub muted: bool,
+    /// What the bus runs: the computed reverb, or a room's impulse response (or nothing).
+    /// Its knobs apply; the mix is always 1 (the bus runs all wet).
+    pub block: crate::chain_settings::BlockSetting,
+}
+
+impl Default for ReverbBus {
+    fn default() -> Self {
+        // A large hall: the bus is where the big, shared reverb lives.
+        let mut block =
+            crate::chain_settings::BlockSetting::of(crate::chain_settings::BlockChoice::Reverb);
+        block.size = 0.9;
+        block.decay = 5.0;
+        block.pre_delay = 30.0;
+        ReverbBus {
+            level: 127,
+            muted: false,
+            block,
+        }
+    }
+}
+
+impl ReverbBus {
+    /// Every value in its range; a bus is a reverb or a room, never a cabinet or a place
+    /// that holds nothing (empty means it does not run at all).
+    pub fn sanitized(mut self) -> Self {
+        self.level = self.level.min(127);
+        if !matches!(
+            self.block.choice,
+            crate::chain_settings::BlockChoice::Empty
+                | crate::chain_settings::BlockChoice::Room
+                | crate::chain_settings::BlockChoice::Reverb
+        ) {
+            self.block =
+                crate::chain_settings::BlockSetting::of(crate::chain_settings::BlockChoice::Reverb);
+        }
+        self.block.mix = 1.0;
+        self
+    }
+}
+
+/// The mixer's compressor bus: a compressor every track can send into with its Comp knob
+/// (parallel, "New York" compression: the compressed sum blended in under the dry tracks).
+/// Kept in the settings (it is the mixer's, not the song's).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CompressorBus {
+    /// The bus's level, 0-127 (127 plays it as it comes; the Comp sends decide how much
+    /// each track gives it).
+    pub level: u8,
+    pub muted: bool,
+    /// What the bus runs: a compressor, or nothing. Its knobs apply; the mix is the dry
+    /// share of the compressed sum (0.5 blends it in under the tracks).
+    pub block: crate::chain_settings::BlockSetting,
+}
+
+impl Default for CompressorBus {
+    fn default() -> Self {
+        // A CA-76 at "All", driven hard and made up: the classic parallel slam.
+        let mut block =
+            crate::chain_settings::BlockSetting::of(crate::chain_settings::BlockChoice::Compressor);
+        block.input_db = 18.0;
+        block.gain_db = -12.0;
+        block.attack_ms = 0.2;
+        block.release_ms = 150.0;
+        block.comp_ratio = crate::chain_settings::CompRatioSetting::All;
+        block.mix = 1.0;
+        CompressorBus {
+            level: 127,
+            muted: false,
+            block,
+        }
+    }
+}
+
+impl CompressorBus {
+    /// Every value in its range; a compressor bus runs a compressor or nothing, never a
+    /// reverb or a cabinet.
+    pub fn sanitized(mut self) -> Self {
+        self.level = self.level.min(127);
+        if !matches!(
+            self.block.choice,
+            crate::chain_settings::BlockChoice::Empty
+                | crate::chain_settings::BlockChoice::Compressor
+        ) {
+            self.block = crate::chain_settings::BlockSetting::of(
+                crate::chain_settings::BlockChoice::Compressor,
+            );
+        }
+        self
+    }
+}
+
+/// A drum part's tone the user dialed in (a kick's EQ and compressor, say), kept in the
+/// settings: every drum track's kit plays it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DrumPartTone {
+    /// The part's id (`kick`, `snare`, `hi_hat`, `toms`, `cymbals`, `percussion`).
+    pub part: String,
+    /// Its blocks and knobs.
+    #[serde(default)]
+    pub chain: crate::chain_settings::ChainSetting,
+}
+
+impl DrumPartTone {
+    /// The tone of `part`, as the settings keep it.
+    pub fn of(
+        part: crate::chain_settings::DrumPart,
+        chain: &crate::chain_settings::ChainSetting,
+    ) -> Self {
+        DrumPartTone {
+            part: part.id().to_owned(),
+            chain: chain.clone(),
+        }
+    }
+
+    /// The part it is for.
+    pub fn part(&self) -> Option<crate::chain_settings::DrumPart> {
+        crate::chain_settings::DrumPart::from_id(&self.part)
+    }
+}
+
 /// Everything the app remembers between runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -218,6 +651,28 @@ pub struct Settings {
     pub soundfont_path: Option<PathBuf>,
     /// Whether playback prefers the built-in synthesizer over MIDI output.
     pub prefer_synth: bool,
+    /// Whether the built-in synthesizer plays guitar and bass tracks with the modelled
+    /// strings instead of the SoundFont (experimental, M22).
+    pub modelled_guitars: bool,
+    /// The sample rate the built-in synthesizer asks the device for (and WAV export uses);
+    /// `None`: the device's own.
+    pub sample_rate: Option<u32>,
+    /// How each kind of modelled string sounds (the Sound chain window's strings).
+    pub string_sounds: StringSounds,
+    /// Chains (with their string sound) saved under a name, by the Sound chain window.
+    pub string_presets: Vec<ChainPreset>,
+    /// The tones set for track presets (by General MIDI program), local to this machine:
+    /// a track whose preset has one plays it, in every song.
+    pub preset_tones: Vec<PresetTone>,
+    /// The tones set for the parts of a drum kit (kick, snare, ...), local to this
+    /// machine: every drum track's parts play them.
+    pub drum_parts: Vec<DrumPartTone>,
+    /// The effect chain after each kind of modelled string (the "Sound chain" window).
+    pub string_chains: crate::chain_settings::StringChains,
+    /// The mixer's reverb bus.
+    pub reverb_bus: ReverbBus,
+    /// The mixer's compressor bus (parallel compression).
+    pub compressor_bus: CompressorBus,
     /// The MIDI port chosen, if any.
     pub midi_port: Option<String>,
     /// Bend shapes saved as presets in the bend editor.
@@ -264,6 +719,15 @@ impl Default for Settings {
             speed_trainer_target: 1.0,
             soundfont_path: None,
             prefer_synth: true,
+            modelled_guitars: false,
+            sample_rate: None,
+            string_sounds: StringSounds::default(),
+            string_chains: crate::chain_settings::StringChains::default(),
+            reverb_bus: ReverbBus::default(),
+            compressor_bus: CompressorBus::default(),
+            string_presets: Vec::new(),
+            preset_tones: Vec::new(),
+            drum_parts: Vec::new(),
             midi_port: None,
             bend_presets: Vec::new(),
             whammy_presets: Vec::new(),
@@ -377,6 +841,12 @@ impl Settings {
     /// Makes the loaded values safe: finite zoom and sizes, a sane autosave interval, and
     /// no nonsense window rectangles.
     pub fn sanitize(&mut self) {
+        if self
+            .sample_rate
+            .is_some_and(|rate| !crate::playback::SAMPLE_RATES.contains(&rate))
+        {
+            self.sample_rate = None;
+        }
         if !self.zoom.is_finite() {
             self.zoom = 1.0;
         }
@@ -444,9 +914,42 @@ impl Settings {
             stored.keys.truncate(MAX_KEYS_PER_ACTION);
             stored.keys.retain(|key| !key.is_empty() && key.len() <= 64);
         }
+        self.reverb_bus = std::mem::take(&mut self.reverb_bus).sanitized();
+        self.compressor_bus = std::mem::take(&mut self.compressor_bus).sanitized();
+        // Panel sizes: a broken or huge value must not take the window over.
+        self.track_panel_width = fit_panel(self.track_panel_width, PANEL_WIDTH_RANGE);
+        self.edit_panel_width = fit_panel(self.edit_panel_width, PANEL_WIDTH_RANGE);
+        self.grid_height_chosen = fit_panel(self.grid_height_chosen, GRID_HEIGHT_RANGE);
+        self.mixer_height_chosen = fit_panel(self.mixer_height_chosen, GRID_HEIGHT_RANGE);
         for presets in [&mut self.bend_presets, &mut self.whammy_presets] {
             presets.retain(ShapePreset::is_valid);
             presets.truncate(MAX_SHAPE_PRESETS);
+        }
+        // Chain presets: a name and a known kind, most recent one per name.
+        self.string_presets.retain(|preset| {
+            !preset.name.trim().is_empty()
+                && preset.name.len() <= MAX_STRING_PRESET_NAME
+                && matches!(
+                    preset.kind.as_str(),
+                    "nylon" | "steel" | "electric" | "bass"
+                )
+        });
+        self.string_presets.truncate(MAX_STRING_PRESETS);
+        // Drum part tones: a known part, one per part.
+        let mut parts = std::collections::BTreeSet::new();
+        self.drum_parts
+            .retain(|tone| tone.part().is_some_and(|part| parts.insert(part.index())));
+        // Per-preset tones: a program the board has and a known kind, one per program.
+        let mut programs = std::collections::BTreeSet::new();
+        self.preset_tones.retain(|tone| {
+            tone.program < MAX_PROGRAMS
+                && kind_from_id(&tone.kind).is_some()
+                && programs.insert(tone.program)
+        });
+        for tone in &mut self.preset_tones {
+            if let Some(kind) = kind_from_id(&tone.kind) {
+                tone.sound = tone.sound.for_kind(kind);
+            }
         }
     }
 }
@@ -455,6 +958,99 @@ impl Settings {
 mod tests {
     use super::*;
     use crate::state::ThemeChoice;
+
+    #[test]
+    fn sounds_saved_before_pickups_get_their_kinds_pickup() {
+        use gscore_play::StringKind;
+        let mut sounds = StringSounds::default();
+        sounds.steel.level = 0.3;
+        let text = serde_json::to_string(&sounds).unwrap_or_default();
+        // An older settings file: no pickup in any sound.
+        let mut value: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+        for kind in ["nylon", "steel", "electric", "bass"] {
+            if let Some(sound) = value.get_mut(kind).and_then(|v| v.as_object_mut()) {
+                assert!(sound.remove("pickup").is_some(), "{kind}");
+                sound.remove("pickup_position");
+            }
+        }
+        let older: StringSounds = serde_json::from_value(value).unwrap_or_default();
+        assert_eq!(older.steel.level, 0.3, "read");
+        assert_eq!(older.get(StringKind::Steel).pickup, PickupSetting::None);
+        assert_eq!(older.get(StringKind::Bass).pickup, PickupSetting::None);
+        let electric = older.get(StringKind::Electric);
+        assert_eq!(electric.pickup, PickupSetting::Humbucker);
+        assert_eq!(
+            electric.model().pickup_position,
+            gscore_guitar::pickup_positions::BRIDGE
+        );
+        // A chosen pickup is kept, also "none" on an electric.
+        let mut chosen = sounds.electric;
+        chosen.pickup = PickupSetting::None;
+        assert_eq!(
+            chosen.for_kind(StringKind::Electric).pickup,
+            PickupSetting::None
+        );
+    }
+
+    #[test]
+    fn the_reverb_bus_runs_a_reverb_or_a_room_all_wet() {
+        use crate::chain_settings::BlockChoice;
+
+        let mut bus = ReverbBus::default();
+        assert_eq!(bus.block.choice, BlockChoice::Reverb);
+        // Only a reverb, a room or nothing; a cabinet is not a reverb.
+        bus.block.choice = BlockChoice::Cabinet;
+        assert_eq!(bus.clone().sanitized().block.choice, BlockChoice::Reverb);
+        // All wet, whatever the block says, and the level in its range.
+        bus.block.choice = BlockChoice::Room;
+        bus.block.mix = 0.3;
+        bus.level = 200;
+        let clean = bus.sanitized();
+        assert!((clean.block.mix - 1.0).abs() < 1e-6);
+        assert_eq!(clean.level, 127);
+        assert_eq!(clean.block.choice, BlockChoice::Room);
+    }
+
+    #[test]
+    fn preset_tones_round_trip_and_a_broken_one_is_dropped() {
+        use gscore_play::StringKind;
+
+        let mut settings = Settings::default();
+        // A tone saved before pickups existed: its kind's pickup comes back.
+        let mut sound = settings.string_sounds.get(StringKind::Electric);
+        sound.pickup = PickupSetting::Unset;
+        let tone = |program: u8, kind: &str, sound: StringSound| PresetTone {
+            program,
+            kind: kind.to_owned(),
+            sound,
+            chain: crate::chain_settings::ChainSetting::default(),
+        };
+        settings.preset_tones.push(tone(27, "electric", sound));
+        // A broken settings file: a program past the board, an unknown kind, and a second
+        // tone for one program (the first one is kept).
+        settings.preset_tones.push(tone(200, "electric", sound));
+        settings.preset_tones.push(tone(28, "banjo", sound));
+        settings.preset_tones.push(tone(27, "bass", sound));
+        let text = serde_json::to_string(&settings).unwrap_or_default();
+        let mut back: Settings = serde_json::from_str(&text).unwrap_or_default();
+        back.sanitize();
+        assert_eq!(back.preset_tones.len(), 1, "{:?}", back.preset_tones);
+        let kept = back.preset_tones.first().expect("kept");
+        assert_eq!((kept.program, kept.kind.as_str()), (27, "electric"));
+        let tone = kept.tone().expect("a known kind");
+        assert_eq!(tone.kind, StringKind::Electric);
+        assert_eq!(tone.sound.pickup, PickupSetting::Humbucker);
+        // An older settings file without preset tones reads with none.
+        let mut value: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+        assert!(
+            value
+                .as_object_mut()
+                .and_then(|object| object.remove("preset_tones"))
+                .is_some()
+        );
+        let older: Settings = serde_json::from_value(value).unwrap_or_default();
+        assert!(older.preset_tones.is_empty());
+    }
 
     #[test]
     fn recent_files_are_unique_and_bounded() {
@@ -475,6 +1071,19 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn a_sample_rate_not_offered_becomes_automatic() {
+        let mut settings = Settings {
+            sample_rate: Some(1),
+            ..Settings::default()
+        };
+        settings.sanitize();
+        assert_eq!(settings.sample_rate, None);
+        settings.sample_rate = Some(48_000);
+        settings.sanitize();
+        assert_eq!(settings.sample_rate, Some(48_000));
     }
 
     #[test]

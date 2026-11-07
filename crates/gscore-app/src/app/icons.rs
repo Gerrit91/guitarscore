@@ -76,6 +76,8 @@ pub(crate) enum Icon {
     Tuner,
     /// The speed trainer (a speed gauge with its needle turned up).
     SpeedTrainer,
+    /// The sound chain: a guitar stomp box (a pedal with two knobs and its footswitch).
+    StompBox,
 }
 
 /// The size of the compact icon buttons in the panels and the toolbar.
@@ -515,6 +517,28 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 stroke.color,
                 Stroke::NONE,
             ));
+        }
+        Icon::StompBox => {
+            // A pedal seen from above: a rounded box, two knobs, and the footswitch below.
+            let body = Rect::from_center_size(
+                center + vec2(0.0, -size * 0.04),
+                vec2(size * 0.8, size * 0.86),
+            );
+            painter.rect_stroke(body, 2.0, stroke, egui::StrokeKind::Inside);
+            for dx in [-size * 0.19, size * 0.19] {
+                painter.circle_stroke(
+                    pos2(center.x + dx, body.top() + size * 0.22),
+                    size * 0.08,
+                    stroke,
+                );
+            }
+            painter.line_segment(
+                [
+                    pos2(center.x - size * 0.16, body.bottom() - size * 0.16),
+                    pos2(center.x + size * 0.16, body.bottom() - size * 0.16),
+                ],
+                stroke,
+            );
         }
         Icon::Tuner => {
             // A tuning fork: two prongs, the U where they meet, a stem and a base.

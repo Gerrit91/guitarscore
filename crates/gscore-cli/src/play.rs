@@ -85,6 +85,7 @@ pub(crate) fn export_wav(
     output: &Path,
     tracks: &[usize],
     soundfont: Option<PathBuf>,
+    modelled: bool,
 ) -> Result<String, CliError> {
     if !output
         .extension()
@@ -101,7 +102,10 @@ pub(crate) fn export_wav(
         )
     })?;
     let song = crate::input::read_song(input)?.song;
-    let sequence = sequence(&song, tracks)?;
+    let mut sequence = sequence(&song, tracks)?;
+    if modelled {
+        sequence = sequence.with_modelled_guitars();
+    }
     let bank =
         gscore_audio::SoundBank::open(&soundfont).map_err(|e| CliError::Failed(e.to_string()))?;
     let file = std::fs::File::create(output)
@@ -156,6 +160,8 @@ pub(crate) struct Options<'a> {
     pub(crate) tracks: &'a [usize],
     /// The tempo scale.
     pub(crate) speed: f32,
+    /// Guitar and bass tracks played by the modelled strings (built-in synthesizer only).
+    pub(crate) modelled: bool,
 }
 
 /// Plays `input` with the internal synth (or to a MIDI port) and returns when it has
@@ -163,7 +169,11 @@ pub(crate) struct Options<'a> {
 /// without one the first MIDI port.
 pub(crate) fn play(input: &Path, options: &Options<'_>) -> Result<String, CliError> {
     let song = crate::input::read_song(input)?.song;
-    let sequence = Arc::new(sequence(&song, options.tracks)?);
+    let mut sequence = sequence(&song, options.tracks)?;
+    if options.modelled {
+        sequence = sequence.with_modelled_guitars();
+    }
+    let sequence = Arc::new(sequence);
     let start = start_tick(&song, &sequence, options.from)?;
     let title = if song.title().is_empty() {
         "the song"

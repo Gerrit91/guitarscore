@@ -28,12 +28,15 @@ gscore-layout = { path = "../gscore-layout" }
 gscore-session = { path = "../gscore-session" }
 gscore-play = { path = "../gscore-play" }
 gscore-audio = { path = "../gscore-audio" }
+gscore-guitar = { path = "../gscore-guitar" }
 # GUI. Default features off; the window renderer is a feature of this crate (wgpu for the
 # desktop, glow/WebGL for the browser). Window backends for Linux (Wayland, X11) and
 # accessibility are named.
 eframe = { version = "0.37", default-features = false, features = ["accesskit", "wayland", "x11", "default_fonts"] }
 egui = "0.37"
 serde = { version = "1.0.228", features = ["derive"] }
+# Our own state in a song's notes (the mixer sends, the tones a song plays).
+serde_json = "1.0.149"
 # `Instant` that also works in a browser (`performance.now()`); on native it is the
 # standard library's.
 web-time = "1.1"
@@ -89,7 +92,6 @@ gscore-audio = { path = "../gscore-audio", features = ["test-support"] }
 egui_kittest = { version = "0.37", features = ["wgpu", "snapshot", "eframe"] }
 # Saving the snapshot example's image as PNG (the version egui_kittest already uses).
 image = { version = "0.25", default-features = false, features = ["png"] }
-serde_json = "1.0.149"
 
 [lints]
 workspace = true

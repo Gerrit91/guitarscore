@@ -15,6 +15,10 @@ use gscore_audio::{MidiOutPlayer, SynthPlayer, midi_output_ports};
 use gscore_model::{
     BeatIndex, BeatPosition, MeasureIndex, NoteKind, Song, StringNumber, TrackIndex, VoiceIndex,
 };
+mod chains;
+
+pub(crate) use chains::ExportTones;
+mod demo;
 mod preview;
 
 pub use preview::Heard;
@@ -31,12 +35,24 @@ const AUDITION_LENGTH: Duration = Duration::from_millis(450);
 const AUDITION_CHANNEL: u8 = 15;
 
 /// A note sounding because it was just entered.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Audition {
     channel: Channel,
     key: u8,
     until: Instant,
+    /// The MIDI-out port that plays it (`None`: the main output).
+    port: Option<Option<String>>,
 }
+
+pub(crate) use gscore_audio::SAMPLE_RATES;
+
+/// Every kind of modelled string.
+pub(crate) const STRING_KINDS: [gscore_play::StringKind; 4] = [
+    gscore_play::StringKind::Nylon,
+    gscore_play::StringKind::Steel,
+    gscore_play::StringKind::Electric,
+    gscore_play::StringKind::Bass,
+];
 
 /// Where playback goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,6 +81,45 @@ impl Default for Output {
 /// The bundled browser SoundFont's name, as the toolbar and the settings show it.
 #[cfg(target_arch = "wasm32")]
 pub const BROWSER_SOUNDFONT_NAME: &str = "GeneralUser GS 2.0.3";
+
+/// Where a track's MIDI output goes: the port and channel of a hardware synthesizer.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MidiOutRoute {
+    /// The port's name (or a part of it), or `None` for the first port that makes sound.
+    pub port: Option<String>,
+    /// The MIDI channel (0-15), or `None` for the sequence's own.
+    pub channel: Option<u8>,
+}
+
+impl MidiOutRoute {
+    /// The route with values a MIDI port can take (a broken settings file may hold
+    /// anything).
+    fn sanitized(mut self) -> Self {
+        self.channel = self.channel.filter(|channel| *channel < 16);
+        self
+    }
+
+    /// A short name for the Sound chain window and the board.
+    pub fn label(&self) -> String {
+        let port = self.port.as_deref().unwrap_or("Automatic");
+        match self.channel {
+            Some(channel) => format!("{port} · {}", channel.saturating_add(1)),
+            None => format!("{port} · auto"),
+        }
+    }
+}
+
+/// What each MIDI-out port plays, by the port requested ([`MidiOutRoute::port`]).
+type MidiSequences = Vec<(Option<String>, Arc<Sequence>)>;
+
+/// One MIDI output port that plays MIDI-out tracks.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug)]
+struct MidiOutConnection {
+    /// The port requested (`None`: the first that makes sound), which routes match.
+    requested: Option<String>,
+    player: MidiOutPlayer,
+}
 
 /// The connected player.
 #[derive(Debug)]
@@ -197,6 +252,53 @@ pub struct Playback {
     paused_at: Option<BeatPosition>,
     /// Whether the metronome clicks on every beat while playing.
     metronome: bool,
+    /// Whether guitar and bass tracks are played by the modelled strings.
+    modelled_guitars: bool,
+    /// What plays the tracks the user chose for (by track index), over the default.
+    track_engines: Vec<(usize, gscore_play::TrackEngine)>,
+    /// Each track's MIDI-out port and channel, by the song's track index.
+    midi_routes: Vec<(usize, MidiOutRoute)>,
+    /// What the main output plays: the song's sequence without its MIDI-out tracks.
+    primary_sequence: Option<Arc<Sequence>>,
+    /// What each MIDI-out port plays, by the requested port.
+    midi_sequences: MidiSequences,
+    /// The MIDI-out players that are connected, by the port they were asked for.
+    #[cfg(not(target_arch = "wasm32"))]
+    midi_outs: Vec<MidiOutConnection>,
+    /// A MIDI-out problem not reported to the user yet.
+    midi_error: Option<String>,
+    /// The sample rate asked of the device; `None`: its own.
+    sample_rate: Option<u32>,
+    /// How each kind of modelled string sounds on a track without a tone of its own.
+    string_sounds: crate::settings::StringSounds,
+    /// The effect chain after each kind of string on a track without a tone of its own.
+    string_chains: crate::chain_settings::StringChains,
+    /// The tones set for track presets (by General MIDI program), local to this machine.
+    preset_tones: Vec<crate::settings::PresetTone>,
+    /// The tones set for the parts of a drum kit (kick, snare, ...), local to this machine.
+    drum_parts: Vec<crate::settings::DrumPartTone>,
+    /// The tones that came with the open song, by its track index (they win over the
+    /// preset's: a shared song keeps its sound).
+    tones: std::collections::BTreeMap<usize, crate::chain_settings::Tone>,
+    /// Each track's send into the compressor bus (0-127), by the song's track index.
+    comp_sends: Vec<(usize, u8)>,
+    /// The modelled tracks of the sequence the synthesizer has, and what each place of it
+    /// was given (see `chains`).
+    tone_targets: Vec<chains::ToneTarget>,
+    sent_tones: std::collections::BTreeMap<usize, chains::SentTone>,
+    /// What each drum track's parts were given (by song track and part), so a part's
+    /// chain is prepared again only when its blocks change.
+    sent_parts: std::collections::BTreeMap<(usize, usize), crate::chain_settings::ChainSetting>,
+    /// The mixer's reverb bus (a computed reverb or a room, all wet) and its compressor
+    /// bus (parallel compression), and what the synthesizer was last given for each.
+    reverb_bus: crate::settings::ReverbBus,
+    compressor_bus: crate::settings::CompressorBus,
+    reverb_sent: chains::SentBus,
+    compressor_sent: chains::SentBus,
+    /// The impulse responses read so far (by file).
+    impulses: std::collections::HashMap<PathBuf, Arc<gscore_guitar::ImpulseResponse>>,
+    /// Messages about the chains (an impulse response that cannot be read), shown once.
+    chain_notices: Vec<String>,
     /// The metronome's volume, 0 to 1 (1 is full).
     metronome_volume: f32,
     /// The built-in synthesizer's click sound.
@@ -240,6 +342,30 @@ impl Default for Playback {
             reported: None,
             paused_at: None,
             metronome: false,
+            modelled_guitars: false,
+            track_engines: Vec::new(),
+            midi_routes: Vec::new(),
+            primary_sequence: None,
+            midi_sequences: Vec::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            midi_outs: Vec::new(),
+            midi_error: None,
+            sample_rate: None,
+            string_sounds: crate::settings::StringSounds::default(),
+            string_chains: crate::chain_settings::StringChains::default(),
+            preset_tones: Vec::new(),
+            drum_parts: Vec::new(),
+            tones: std::collections::BTreeMap::new(),
+            comp_sends: Vec::new(),
+            tone_targets: Vec::new(),
+            sent_tones: std::collections::BTreeMap::new(),
+            sent_parts: std::collections::BTreeMap::new(),
+            reverb_bus: crate::settings::ReverbBus::default(),
+            compressor_bus: crate::settings::CompressorBus::default(),
+            reverb_sent: chains::SentBus::default(),
+            compressor_sent: chains::SentBus::default(),
+            impulses: std::collections::HashMap::new(),
+            chain_notices: Vec::new(),
             metronome_volume: 1.0,
             click_sound: ClickSound::default(),
             count_in_bars: 1,
@@ -409,6 +535,123 @@ impl Playback {
         self.rebuild_sequence(song)
     }
 
+    /// How the modelled strings sound, kind by kind, on tracks without a tone of their own.
+    pub fn string_sounds(&self) -> crate::settings::StringSounds {
+        self.string_sounds
+    }
+
+    /// The string models to render with, for audio export.
+    pub fn string_models(&self) -> Vec<(gscore_play::StringKind, gscore_guitar::StringModel)> {
+        STRING_KINDS
+            .iter()
+            .map(|&kind| (kind, self.string_sounds.get(kind).model()))
+            .collect()
+    }
+
+    /// Makes the modelled strings of `kind` sound as `sound` on tracks without a tone of
+    /// their own (the kind's default), heard at once while playing.
+    pub fn set_string_sound(
+        &mut self,
+        kind: gscore_play::StringKind,
+        sound: crate::settings::StringSound,
+    ) {
+        self.string_sounds.set(kind, sound);
+        self.send_string_model(kind);
+    }
+
+    /// Takes the dialed-in sounds without sending them (when the settings load).
+    pub fn store_string_sounds(&mut self, sounds: crate::settings::StringSounds) {
+        self.string_sounds = sounds;
+    }
+
+    /// Sends the model of `kind` to the running synthesizer, if any.
+    fn send_string_model(&self, kind: gscore_play::StringKind) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(Active::Synth(player)) = &self.player {
+            let _ = player.set_string_model(kind, self.string_sounds.get(kind).model());
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = kind;
+    }
+
+    /// The sample rate chosen for the built-in synthesizer (`None`: the device's own).
+    pub fn sample_rate(&self) -> Option<u32> {
+        self.sample_rate
+    }
+
+    /// Chooses the synthesizer's sample rate; a running synthesizer is restarted at the
+    /// next play (it stops now).
+    pub fn set_sample_rate(&mut self, rate: Option<u32>) {
+        let rate = rate.filter(|rate| SAMPLE_RATES.contains(rate));
+        if rate == self.sample_rate {
+            return;
+        }
+        self.sample_rate = rate;
+        #[cfg(not(target_arch = "wasm32"))]
+        if matches!(self.player, Some(Active::Synth(_))) {
+            if let Some(active) = &mut self.player {
+                let _ = active.player_mut().stop();
+            }
+            self.stop_midi_outs();
+            self.player = None;
+            self.sequence = None;
+            self.primary_sequence = None;
+            self.midi_sequences.clear();
+            self.reported = None;
+            self.lead = None;
+        }
+    }
+
+    /// The rate the synthesizer's device plays at, once it runs.
+    pub fn device_sample_rate(&self) -> Option<u32> {
+        match &self.player {
+            #[cfg(not(target_arch = "wasm32"))]
+            Some(Active::Synth(player)) => player.sample_rate(),
+            _ => None,
+        }
+    }
+
+    /// The mixer's real meters (every track's level after its fader, the reverb bus's and
+    /// the master's), while the built-in synthesizer runs. `None` for MIDI output and in a
+    /// browser: the mixer then shows levels estimated from the notes.
+    pub fn meters(&self) -> Option<Arc<gscore_audio::Meters>> {
+        match &self.player {
+            #[cfg(not(target_arch = "wasm32"))]
+            Some(Active::Synth(player)) => player.meters(),
+            _ => None,
+        }
+    }
+
+    /// How busy the synthesizer's audio thread is (1: all of each buffer's time), once it
+    /// runs. `None` for MIDI output and in a browser.
+    pub fn audio_load(&self) -> Option<f32> {
+        match &self.player {
+            #[cfg(not(target_arch = "wasm32"))]
+            Some(Active::Synth(player)) => player.audio_load(),
+            _ => None,
+        }
+    }
+
+    /// Whether guitar and bass tracks are played by the modelled strings.
+    pub fn modelled_guitars(&self) -> bool {
+        self.modelled_guitars
+    }
+
+    /// Plays guitar and bass tracks with the modelled strings (or the SoundFont again),
+    /// heard at once while playing.
+    pub fn set_modelled_guitars(&mut self, song: &Song, modelled: bool) -> Result<(), String> {
+        if self.modelled_guitars == modelled {
+            return Ok(());
+        }
+        self.modelled_guitars = modelled;
+        self.rebuild_sequence(song)
+    }
+
+    /// Like [`Self::set_modelled_guitars`] without rebuilding (when the settings load).
+    pub fn store_modelled_guitars(&mut self, modelled: bool) {
+        self.modelled_guitars = modelled;
+    }
+
     /// Chooses the click sound without rebuilding a sequence (when the settings load).
     pub fn store_click_sound(&mut self, sound: ClickSound) {
         self.click_sound = sound;
@@ -452,13 +695,7 @@ impl Playback {
         }
         self.speed = speed;
         self.passes = 0;
-        if let Some(active) = &mut self.player {
-            active
-                .player_mut()
-                .set_tempo_scale(speed)
-                .map_err(|e| e.to_string())?;
-        }
-        Ok(())
+        self.transport_all(|player| player.set_tempo_scale(speed))
     }
 
     /// The speed trainer's settings.
@@ -553,7 +790,7 @@ impl Playback {
             // Skip the rest of the clicks: the song starts now.
             lead.passed = true;
             let bar = lead.bar;
-            return self.player_mut()?.seek(bar).map_err(|e| e.to_string());
+            return self.transport_all(|player| player.seek(bar));
         }
         Ok(())
     }
@@ -588,9 +825,9 @@ impl Playback {
         if self.player.is_none() {
             #[cfg(not(target_arch = "wasm32"))]
             let active = match &self.output {
-                Output::Synth(path) => {
-                    Active::Synth(SynthPlayer::start(path).map_err(|e| e.to_string())?)
-                }
+                Output::Synth(path) => Active::Synth(
+                    SynthPlayer::start_at(path, self.sample_rate).map_err(|e| e.to_string())?,
+                ),
                 Output::Midi(port) => Active::Midi(
                     MidiOutPlayer::connect(port.as_deref()).map_err(|e| e.to_string())?,
                 ),
@@ -604,6 +841,24 @@ impl Playback {
             };
             self.player = Some(active);
             self.sequence = None;
+            self.primary_sequence = None;
+            self.midi_sequences.clear();
+            self.midi_error = None;
+            // A track may be played by a hardware synthesizer: one player per port it
+            // needs.
+            self.connect_midi_outs();
+            // A new synthesizer starts with the presets: give it each kind's default sound;
+            // the tracks' tones follow with the first sequence it loads.
+            for kind in STRING_KINDS {
+                self.send_string_model(kind);
+            }
+            self.forget_sent_tones();
+            // The buses too (a new synthesizer starts without them).
+            self.reverb_sent = chains::SentBus::default();
+            self.compressor_sent = chains::SentBus::default();
+            self.send_reverb_bus();
+            self.send_compressor_bus();
+            self.send_comp_sends();
         }
         Ok(())
     }
@@ -653,40 +908,64 @@ impl Playback {
             return Ok(());
         }
         self.end_audition();
-        let channel = if sound.percussion {
-            Channel::PERCUSSION
-        } else {
-            Channel::new(AUDITION_CHANNEL).unwrap_or(Channel::PERCUSSION)
+        let route = self
+            .track_is_midi_out(at.track.get())
+            .then(|| self.midi_route(at.track.get()));
+        let port = route.as_ref().map(|route| route.port.clone());
+        let channel = match &route {
+            Some(route) => route
+                .channel
+                .and_then(Channel::new)
+                .unwrap_or_else(|| Channel::new(AUDITION_CHANNEL).unwrap_or(Channel::PERCUSSION)),
+            None if sound.percussion => Channel::PERCUSSION,
+            None => Channel::new(AUDITION_CHANNEL).unwrap_or(Channel::PERCUSSION),
         };
-        let player = self.player_mut()?;
-        for event in sound_events(channel, sound) {
-            player.send_event(event).map_err(|e| e.to_string())?;
-        }
-        player
-            .send_event(MidiEvent::NoteOn {
+        let events = sound_events(channel, sound)
+            .into_iter()
+            .chain([MidiEvent::NoteOn {
                 channel,
                 key: pitch.get(),
                 velocity,
-            })
-            .map_err(|e| e.to_string())?;
+            }]);
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(port) = &port {
+            let Some(player) = self.midi_player_mut(port) else {
+                return Ok(());
+            };
+            for event in events {
+                player.send_event(event).map_err(|e| e.to_string())?;
+            }
+            self.audition = Some(Audition {
+                channel,
+                key: pitch.get(),
+                until: Instant::now() + AUDITION_LENGTH,
+                port: Some(port.clone()),
+            });
+            return Ok(());
+        }
+        let player = self.player_mut()?;
+        for event in events {
+            player.send_event(event).map_err(|e| e.to_string())?;
+        }
         self.audition = Some(Audition {
             channel,
             key: pitch.get(),
             until: Instant::now() + AUDITION_LENGTH,
+            port,
         });
         Ok(())
     }
 
     /// The key of the entered note that is sounding, if one is.
     pub fn auditioning(&self) -> Option<u8> {
-        self.audition.map(|audition| audition.key)
+        self.audition.as_ref().map(|audition| audition.key)
     }
 
     /// Ends an auditioned note whose time is up. Returns how long the sounding one still
     /// has, so the UI can wake up for it.
     pub fn poll_audition(&mut self) -> Option<Duration> {
-        let audition = self.audition?;
-        let left = audition.until.saturating_duration_since(Instant::now());
+        let until = self.audition.as_ref()?.until;
+        let left = until.saturating_duration_since(Instant::now());
         if left.is_zero() {
             self.end_audition();
             return None;
@@ -699,12 +978,21 @@ impl Playback {
         let Some(audition) = self.audition.take() else {
             return;
         };
+        let event = MidiEvent::NoteOff {
+            channel: audition.channel,
+            key: audition.key,
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(port) = &audition.port {
+            if let Some(player) = self.midi_player_mut(port) {
+                // A failed note-off only means the output is gone; nothing is left sounding.
+                let _ = player.send_event(event);
+            }
+            return;
+        }
         if let Some(active) = &mut self.player {
             // A failed note-off only means the output is gone; nothing is left sounding.
-            let _ = active.player_mut().send_event(MidiEvent::NoteOff {
-                channel: audition.channel,
-                key: audition.key,
-            });
+            let _ = active.player_mut().send_event(event);
         }
     }
 
@@ -755,7 +1043,7 @@ impl Playback {
                 // The song ended at the loop's end: play the loop again.
                 let _ = self.trainer_pass()?;
                 self.seek_song(start)?;
-                self.player_mut()?.play().map_err(|e| e.to_string())
+                self.transport_all(|player| player.play())
             }
             _ => Ok(()),
         }
@@ -774,47 +1062,36 @@ impl Playback {
     /// the song's own (in the same state).
     fn seek_song(&mut self, tick: u64) -> Result<(), String> {
         let Some(lead) = &self.lead else {
-            return self.player_mut()?.seek(tick).map_err(|e| e.to_string());
+            return self.transport_all(|player| player.seek(tick));
         };
         if tick >= lead.start {
             let at = tick.saturating_sub(lead.start).saturating_add(lead.bar);
-            return self.player_mut()?.seek(at).map_err(|e| e.to_string());
+            return self.transport_all(|player| player.seek(at));
         }
         let playing = self.state() == PlayState::Playing;
         self.drop_lead()?;
-        self.player_mut()?.seek(tick).map_err(|e| e.to_string())?;
+        self.transport_all(|player| player.seek(tick))?;
         if playing {
-            self.player_mut()?.play().map_err(|e| e.to_string())?;
+            self.transport_all(|player| player.play())?;
         }
         Ok(())
     }
 
-    /// Ends a count-in joined to the song: the player gets the song's own sequence again
-    /// (stopped at its start).
+    /// Ends a count-in joined to the song: the players get the song's own sequences again
+    /// (stopped at their start).
     fn drop_lead(&mut self) -> Result<(), String> {
         if self.lead.take().is_none() {
             return Ok(());
         }
-        let Some(sequence) = self.sequence.clone() else {
+        if self.sequence.is_none() {
             return Ok(());
-        };
-        if let Some(active) = &mut self.player {
-            active.player_mut().stop().map_err(|e| e.to_string())?;
-            active
-                .player_mut()
-                .load(sequence)
-                .map_err(|e| e.to_string())?;
+        }
+        let (primary, midi) = self.loading_sequences();
+        if self.player.is_some() {
+            self.transport_all(|player| player.stop())?;
+            self.load_sequences(primary, &midi)?;
         }
         Ok(())
-    }
-
-    /// What the player plays for the song's `sequence`: behind a running or finished
-    /// count-in, the two joined.
-    fn played(&self, sequence: &Arc<Sequence>) -> Arc<Sequence> {
-        match &self.lead {
-            Some(lead) => Arc::new(gscore_play::lead_in(sequence, &lead.clicks, lead.start)),
-            None => Arc::clone(sequence),
-        }
     }
 
     /// Chooses the output; the player reconnects on the next play.
@@ -823,8 +1100,14 @@ impl Playback {
             if let Some(active) = &mut self.player {
                 let _ = active.player_mut().stop();
             }
+            self.stop_midi_outs();
             self.player = None;
+            #[cfg(not(target_arch = "wasm32"))]
+            self.midi_outs.clear();
             self.sequence = None;
+            self.primary_sequence = None;
+            self.midi_sequences.clear();
+            self.midi_error = None;
             self.reported = None;
             self.lead = None;
             self.output = output;
@@ -857,8 +1140,11 @@ impl Playback {
     /// play starts it again.
     pub fn cancel_loading(&mut self) {
         if self.is_loading() {
+            self.stop_midi_outs();
             self.player = None;
             self.sequence = None;
+            self.primary_sequence = None;
+            self.midi_sequences.clear();
             self.reported = None;
             self.lead = None;
         }
@@ -888,7 +1174,10 @@ impl Playback {
         if let Some(active) = &mut self.player {
             let _ = active.player_mut().stop();
         }
+        self.stop_midi_outs();
         self.sequence = None;
+        self.primary_sequence = None;
+        self.midi_sequences.clear();
         self.paused_at = None;
         self.lead = None;
         self.reset_trainer();
@@ -902,28 +1191,27 @@ impl Playback {
             return Ok(());
         }
         let sequence = self.build_sequence(song)?;
-        let played = self.played(&sequence);
-        let Some(active) = &mut self.player else {
+        let (primary, midi) = self.loading_sequences();
+        let Some(active) = &self.player else {
             // Nothing is connected: the next play builds the sequence again.
             self.sequence = None;
+            self.primary_sequence = None;
+            self.midi_sequences.clear();
             return Ok(());
         };
         let state = active.player().state();
         let position = active.player().position();
-        active.player_mut().stop().map_err(|e| e.to_string())?;
-        if let Err(error) = active.player_mut().load(played) {
+        self.transport_all(|player| player.stop())?;
+        if let Err(error) = self.load_sequences(primary, &midi) {
             self.sequence = None;
-            return Err(error.to_string());
+            return Err(error);
         }
         self.sequence = Some(sequence);
         if state != PlayState::Stopped {
-            active
-                .player_mut()
-                .seek(position)
-                .map_err(|e| e.to_string())?;
+            self.transport_all(|player| player.seek(position))?;
         }
         if state == PlayState::Playing {
-            active.player_mut().play().map_err(|e| e.to_string())?;
+            self.transport_all(|player| player.play())?;
         }
         Ok(())
     }
@@ -939,7 +1227,7 @@ impl Playback {
         let ended_preview = self.end_preview();
         if !ended_preview && self.state() == PlayState::Playing {
             self.paused_at = from;
-            return self.player_mut()?.pause().map_err(|e| e.to_string());
+            return self.transport_all(|player| player.pause());
         }
         // A synthesizer that failed (SoundFont, device) is started afresh: the problem
         // may have been fixed meanwhile, and it is reported again if not.
@@ -953,6 +1241,8 @@ impl Playback {
         }
         self.end_audition();
         self.connect()?;
+        self.connect_midi_outs();
+        self.sync_midi_delay();
         // An interrupted count-in starts again from its first click, at the place asked for
         // now (the cursor may have moved): half a bar of clicks is no count-in.
         if self.count_in_pending() && self.state() == PlayState::Paused {
@@ -975,21 +1265,18 @@ impl Playback {
             Some(sequence) => Arc::clone(sequence),
             None => {
                 let sequence = self.build_sequence(song)?;
-                self.player_mut()?
-                    .load(Arc::clone(&sequence))
-                    .map_err(|e| e.to_string())?;
+                let (primary, midi) = self.loading_sequences();
+                self.load_sequences(primary, &midi)?;
                 self.sequence = Some(Arc::clone(&sequence));
                 sequence
             }
         };
         if !resume && let Some(tick) = from.and_then(|at| sequence.tick_of(song, at)) {
-            self.player_mut()?.seek(tick).map_err(|e| e.to_string())?;
+            self.transport_all(|player| player.seek(tick))?;
         }
         let speed = self.speed;
-        self.player_mut()?
-            .set_tempo_scale(speed)
-            .map_err(|e| e.to_string())?;
-        self.player_mut()?.play().map_err(|e| e.to_string())
+        self.transport_all(|player| player.set_tempo_scale(speed))?;
+        self.transport_all(|player| player.play())
     }
 
     /// Plays one bar of clicks, then the song from `from` (its start without), as one
@@ -1011,14 +1298,13 @@ impl Playback {
             armed: false,
             passed: false,
         });
-        let played = self.played(&sequence);
         self.sequence = Some(sequence);
+        let (primary, midi) = self.loading_sequences();
         let speed = self.speed;
-        let player = self.player_mut()?;
-        player.stop().map_err(|e| e.to_string())?;
-        player.load(played).map_err(|e| e.to_string())?;
-        player.set_tempo_scale(speed).map_err(|e| e.to_string())?;
-        player.play().map_err(|e| e.to_string())
+        self.transport_all(|player| player.stop())?;
+        self.load_sequences(primary, &midi)?;
+        self.transport_all(|player| player.set_tempo_scale(speed))?;
+        self.transport_all(|player| player.play())
     }
 
     /// Notes when the count-in has given way to the song (the readout then follows the
@@ -1042,11 +1328,340 @@ impl Playback {
         Ok(())
     }
 
-    /// Builds the song's sequence with the current metronome setting and volume.
-    fn build_sequence(&self, song: &Song) -> Result<Arc<Sequence>, String> {
-        Sequence::with_click(song, None, self.metronome.then(|| self.click()))
+    /// Builds the song's sequence with the current metronome setting and volume (and
+    /// makes sure the synthesizer's chains are made for as many tracks as it has). The
+    /// MIDI-out tracks are split off: the main output gets the others, each MIDI port its
+    /// own tracks.
+    fn build_sequence(&mut self, song: &Song) -> Result<Arc<Sequence>, String> {
+        let sequence = Sequence::with_click(song, None, self.metronome.then(|| self.click()))
+            .map(|sequence| self.engines(sequence))
             .map(Arc::new)
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        let (primary, midi) = self.route_sequences(&sequence);
+        self.sync_chains(&primary);
+        self.primary_sequence = Some(primary);
+        self.midi_sequences = midi;
+        Ok(sequence)
+    }
+
+    /// `sequence` with the engines chosen: the settings' default for guitar and bass
+    /// tracks, then each track's own choice (modelled strings only for string tracks).
+    pub(crate) fn engines(&self, sequence: Sequence) -> Sequence {
+        with_engines(
+            sequence,
+            self.modelled_guitars,
+            &self.track_engines,
+            &self.preset_tones,
+        )
+    }
+
+    /// The tracks' own engine choices (by track index).
+    pub(crate) fn track_engines(&self) -> Vec<(usize, gscore_play::TrackEngine)> {
+        self.track_engines.clone()
+    }
+
+    /// Each track's MIDI-out route (by the song's track index).
+    pub fn midi_routes(&self) -> &[(usize, MidiOutRoute)] {
+        &self.midi_routes
+    }
+
+    /// The MIDI-out route of `track` (automatic when none was chosen).
+    pub fn midi_route(&self, track: usize) -> MidiOutRoute {
+        self.midi_routes
+            .iter()
+            .find(|(index, _)| *index == track)
+            .map(|(_, route)| route.clone())
+            .unwrap_or_default()
+    }
+
+    /// Whether `track` of the open song is played by a hardware synthesizer.
+    pub fn track_is_midi_out(&self, track: usize) -> bool {
+        !cfg!(target_arch = "wasm32")
+            && self.track_engines.iter().any(|&(index, engine)| {
+                index == track && engine == gscore_play::TrackEngine::MidiOut
+            })
+    }
+
+    /// The tracks' own engine choices (by track index); a change is heard at once.
+    pub fn set_track_engines(
+        &mut self,
+        song: &Song,
+        engines: Vec<(usize, gscore_play::TrackEngine)>,
+    ) -> Result<(), String> {
+        if self.track_engines == engines {
+            return Ok(());
+        }
+        self.track_engines = engines;
+        if self.player.is_some() {
+            self.connect_midi_outs();
+        }
+        self.rebuild_sequence(song)
+    }
+
+    /// Each track's MIDI-out port and channel (by the song's track index); a change is
+    /// heard at once.
+    pub fn set_midi_routes(
+        &mut self,
+        song: &Song,
+        routes: Vec<(usize, MidiOutRoute)>,
+    ) -> Result<(), String> {
+        let routes: Vec<(usize, MidiOutRoute)> = routes
+            .into_iter()
+            .map(|(track, route)| (track, route.sanitized()))
+            .collect();
+        if self.midi_routes == routes {
+            return Ok(());
+        }
+        self.midi_routes = routes;
+        if self.player.is_some() {
+            self.connect_midi_outs();
+        }
+        self.rebuild_sequence(song)
+    }
+
+    /// What the main output plays (the song without its MIDI-out tracks).
+    #[cfg(test)]
+    pub(crate) fn primary_sequence(&self) -> Option<&Arc<Sequence>> {
+        self.primary_sequence.as_ref()
+    }
+
+    /// What each MIDI-out port plays, by the requested port.
+    #[cfg(test)]
+    pub(crate) fn midi_sequences(&self) -> &[(Option<String>, Arc<Sequence>)] {
+        &self.midi_sequences
+    }
+
+    /// The song's full sequence, split into what the main output plays and what each MIDI
+    /// port plays.
+    fn route_sequences(&self, full: &Arc<Sequence>) -> (Arc<Sequence>, MidiSequences) {
+        let midi_tracks: Vec<usize> = full
+            .performance
+            .tracks
+            .iter()
+            .filter(|track| track.engine == gscore_play::TrackEngine::MidiOut)
+            .map(|track| track.track.get())
+            .collect();
+        if midi_tracks.is_empty() {
+            return (Arc::clone(full), Vec::new());
+        }
+        let primary = Arc::new(full.with_tracks(|track| !midi_tracks.contains(&track.get())));
+        let mut groups: Vec<(Option<String>, Vec<TrackIndex>)> = Vec::new();
+        for &track in &midi_tracks {
+            let port = self.midi_route(track).port;
+            match groups.iter_mut().find(|(other, _)| *other == port) {
+                Some((_, tracks)) => tracks.push(TrackIndex::new(track)),
+                None => groups.push((port, vec![TrackIndex::new(track)])),
+            }
+        }
+        let midi = groups
+            .into_iter()
+            .map(|(port, tracks)| {
+                let mut sequence = full.with_tracks(|track| tracks.contains(&track));
+                // The click is the app's, not the hardware synthesizer's.
+                sequence
+                    .events
+                    .retain(|event| event.track != gscore_play::CLICK_TRACK);
+                for &track in &tracks {
+                    if let Some(channel) =
+                        self.midi_route(track.get()).channel.and_then(Channel::new)
+                    {
+                        set_track_channel(&mut sequence, track, channel);
+                    }
+                }
+                (port, Arc::new(sequence))
+            })
+            .collect();
+        (primary, midi)
+    }
+
+    /// The ports the MIDI-out tracks need, each once.
+    fn required_midi_ports(&self) -> Vec<Option<String>> {
+        let mut ports = Vec::new();
+        for &(track, ref route) in &self.midi_routes {
+            if self.track_is_midi_out(track) && !ports.contains(&route.port) {
+                ports.push(route.port.clone());
+            }
+        }
+        ports
+    }
+
+    /// Connects a player for every port the MIDI-out tracks need, and drops those no
+    /// track uses any more. A port that cannot be opened is reported once; the other
+    /// tracks still play.
+    fn connect_midi_outs(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let needed = self.required_midi_ports();
+            // A port that failed is opened again: the problem may have been fixed.
+            self.midi_outs.retain(|connection| {
+                needed.contains(&connection.requested) && connection.player.error().is_none()
+            });
+            let mut error = None;
+            for port in needed {
+                if self
+                    .midi_outs
+                    .iter()
+                    .any(|connection| connection.requested == port)
+                {
+                    continue;
+                }
+                match MidiOutPlayer::connect(port.as_deref()) {
+                    Ok(player) => {
+                        if let Some(latency) = self.latency() {
+                            player.set_delay(latency);
+                        }
+                        self.midi_outs.push(MidiOutConnection {
+                            requested: port,
+                            player,
+                        });
+                    }
+                    Err(failed) => error = Some(failed.to_string()),
+                }
+            }
+            self.midi_error = error;
+        }
+        // A browser has no MIDI ports; its MIDI-out choices fall back to the SoundFont.
+        #[cfg(target_arch = "wasm32")]
+        let _ = self.required_midi_ports();
+    }
+
+    /// How late the main output's sound reaches the ears, for holding the MIDI-out tracks
+    /// back by the same time.
+    fn latency(&self) -> Option<Duration> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            match &self.player {
+                Some(Active::Synth(player)) => player.latency(),
+                _ => None,
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            None
+        }
+    }
+
+    /// Stops every MIDI-out player.
+    fn stop_midi_outs(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        for connection in &mut self.midi_outs {
+            let _ = connection.player.stop();
+        }
+    }
+
+    /// Holds the MIDI-out players back by the main output's latency, now that the device
+    /// may have reported it.
+    fn sync_midi_delay(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(latency) = self.latency() {
+            for connection in &mut self.midi_outs {
+                connection.player.set_delay(latency);
+            }
+        }
+    }
+
+    /// The MIDI-out player for `port`.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn midi_player_mut(&mut self, port: &Option<String>) -> Option<&mut MidiOutPlayer> {
+        self.midi_outs
+            .iter_mut()
+            .find(|connection| connection.requested == *port)
+            .map(|connection| &mut connection.player)
+    }
+
+    /// The sequences to load: the main output's and each MIDI port's, behind a count-in
+    /// when one runs (the MIDI outputs hear its timing but not its clicks).
+    fn loading_sequences(&self) -> (Option<Arc<Sequence>>, MidiSequences) {
+        let Some(primary) = &self.primary_sequence else {
+            return (None, Vec::new());
+        };
+        let (primary, silent) = match &self.lead {
+            Some(lead) => (
+                Arc::new(gscore_play::lead_in(primary, &lead.clicks, lead.start)),
+                Some(silent_clicks(&lead.clicks)),
+            ),
+            None => (Arc::clone(primary), None),
+        };
+        let midi = self
+            .midi_sequences
+            .iter()
+            .map(|(port, sequence)| {
+                let sequence = match (&self.lead, &silent) {
+                    (Some(lead), Some(silent)) => {
+                        Arc::new(gscore_play::lead_in(sequence, silent, lead.start))
+                    }
+                    _ => Arc::clone(sequence),
+                };
+                (port.clone(), sequence)
+            })
+            .collect();
+        (Some(primary), midi)
+    }
+
+    /// Loads the sequences for the main output and the MIDI ports (stopped at their
+    /// start).
+    fn load_sequences(
+        &mut self,
+        primary: Option<Arc<Sequence>>,
+        midi: &[(Option<String>, Arc<Sequence>)],
+    ) -> Result<(), String> {
+        let Some(primary) = primary else {
+            return Ok(());
+        };
+        self.player_mut()?
+            .load(primary)
+            .map_err(|e| e.to_string())?;
+        #[cfg(not(target_arch = "wasm32"))]
+        for (port, sequence) in midi {
+            if let Some(player) = self.midi_player_mut(port) {
+                player
+                    .load(Arc::clone(sequence))
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = midi;
+        Ok(())
+    }
+
+    /// Swaps in rebuilt sequences where playback is, without stopping.
+    fn replace_sequences(
+        &mut self,
+        primary: Option<Arc<Sequence>>,
+        midi: &[(Option<String>, Arc<Sequence>)],
+    ) -> Result<(), String> {
+        let Some(primary) = primary else {
+            return Ok(());
+        };
+        self.player_mut()?
+            .replace(primary)
+            .map_err(|e| e.to_string())?;
+        #[cfg(not(target_arch = "wasm32"))]
+        for (port, sequence) in midi {
+            if let Some(player) = self.midi_player_mut(port) {
+                player
+                    .replace(Arc::clone(sequence))
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = midi;
+        Ok(())
+    }
+
+    /// Carries out `action` on the main output and every MIDI-out player.
+    fn transport_all(
+        &mut self,
+        mut action: impl FnMut(&mut dyn Player) -> Result<(), gscore_play::PlayError>,
+    ) -> Result<(), String> {
+        if let Some(active) = &mut self.player {
+            action(active.player_mut()).map_err(|e| e.to_string())?;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        for connection in &mut self.midi_outs {
+            action(&mut connection.player).map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     /// Swaps in a sequence rebuilt with the current settings at the position playback is,
@@ -1054,17 +1669,13 @@ impl Playback {
     fn rebuild_sequence(&mut self, song: &Song) -> Result<(), String> {
         if self.player.is_none() || self.sequence.is_none() {
             self.sequence = None;
+            self.primary_sequence = None;
+            self.midi_sequences.clear();
             return Ok(());
         }
         let sequence = self.build_sequence(song)?;
-        let played = self.played(&sequence);
-        let Some(active) = &mut self.player else {
-            return Ok(());
-        };
-        active
-            .player_mut()
-            .replace(played)
-            .map_err(|e| e.to_string())?;
+        let (primary, midi) = self.loading_sequences();
+        self.replace_sequences(primary, &midi)?;
         self.sequence = Some(sequence);
         Ok(())
     }
@@ -1097,10 +1708,7 @@ impl Playback {
         self.paused_at = None;
         self.lead = None;
         self.reset_trainer();
-        match &mut self.player {
-            Some(active) => active.player_mut().stop().map_err(|e| e.to_string()),
-            None => Ok(()),
-        }
+        self.transport_all(|player| player.stop())
     }
 
     /// Playing, paused or stopped.
@@ -1243,6 +1851,8 @@ impl Playback {
         if self.player.is_none() {
             // Nothing is connected: the next play builds the sequence again.
             self.sequence = None;
+            self.primary_sequence = None;
+            self.midi_sequences.clear();
             return Ok(());
         }
         let rebuilt = if self.sequence.is_some() {
@@ -1250,16 +1860,35 @@ impl Playback {
         } else {
             None
         };
-        let Some(active) = &mut self.player else {
-            return Ok(());
-        };
         for track in tracks {
-            if let (Some(sequence), Some(sound)) = (&self.sequence, song.played_sound(track))
-                && let Some(channel) = sequence.channel_of(track)
+            let Some(sound) = song.played_sound(track) else {
+                continue;
+            };
+            if self.track_is_midi_out(track.get()) {
+                let port = self.midi_route(track.get()).port;
+                let channel = self
+                    .midi_sequences
+                    .iter()
+                    .find(|(other, _)| *other == port)
+                    .and_then(|(_, sequence)| sequence.channel_of(track));
+                let Some(channel) = channel else {
+                    continue;
+                };
+                #[cfg(target_arch = "wasm32")]
+                let _ = channel;
+                #[cfg(not(target_arch = "wasm32"))]
+                if let Some(player) = self.midi_player_mut(&port) {
+                    for event in sound_events(channel, sound) {
+                        player.send_event(event).map_err(|e| e.to_string())?;
+                    }
+                }
+            } else if let Some(channel) = self
+                .primary_sequence
+                .as_ref()
+                .and_then(|sequence| sequence.channel_of(track))
             {
                 for event in sound_events(channel, sound) {
-                    active
-                        .player_mut()
+                    self.player_mut()?
                         .send_event(event)
                         .map_err(|e| e.to_string())?;
                 }
@@ -1268,13 +1897,8 @@ impl Playback {
         let Some(sequence) = rebuilt else {
             return Ok(());
         };
-        let played = self.played(&sequence);
-        if let Some(active) = &mut self.player {
-            active
-                .player_mut()
-                .replace(played)
-                .map_err(|e| e.to_string())?;
-        }
+        let (primary, midi) = self.loading_sequences();
+        self.replace_sequences(primary, &midi)?;
         self.sequence = Some(sequence);
         Ok(())
     }
@@ -1284,13 +1908,35 @@ impl Playback {
         self.sequence.as_ref()
     }
 
-    /// The last output error, if playback stopped because of one.
+    /// The last output error, if playback stopped because of one (a main output's or a
+    /// MIDI-out port's).
     pub fn error(&self) -> Option<String> {
-        self.player.as_ref().and_then(Active::error)
+        if let Some(error) = self.player.as_ref().and_then(Active::error) {
+            return Some(error);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(error) = self
+            .midi_outs
+            .iter()
+            .find_map(|connection| connection.player.error())
+        {
+            return Some(error);
+        }
+        self.midi_error.clone()
     }
 
     /// An output error that has not been reported yet.
     pub fn new_error(&mut self) -> Option<String> {
+        if let Some(notice) = self.chain_notice() {
+            return Some(notice);
+        }
+        // A notice (the chosen sample rate was not available) is shown like an error, once.
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(Active::Synth(player)) = &self.player
+            && let Some(notice) = player.notice()
+        {
+            return Some(notice);
+        }
         let error = self.error();
         if error == self.reported {
             return None;
@@ -1305,6 +1951,42 @@ impl Playback {
             .map(Active::player_mut)
             .ok_or_else(|| "no output is connected".to_owned())
     }
+}
+
+/// Gives `track` of `sequence` `channel`: its own events move there (a borrowed channel
+/// stays borrowed, so a bending note keeps its independent pitch).
+fn set_track_channel(sequence: &mut Sequence, track: TrackIndex, channel: Channel) {
+    let Some(position) = sequence
+        .tracks
+        .iter()
+        .position(|entry| entry.track == track)
+    else {
+        return;
+    };
+    let old = sequence
+        .tracks
+        .get(position)
+        .map(|entry| entry.channel)
+        .unwrap_or(channel);
+    if old == channel {
+        return;
+    }
+    if let Some(entry) = sequence.tracks.get_mut(position) {
+        entry.channel = channel;
+    }
+    for event in &mut sequence.events {
+        if event.track == position && event.event.channel() == old {
+            event.event = event.event.on_channel(channel);
+        }
+    }
+}
+
+/// The count-in clicks without their sound: its timing (the bar's length and tempo) for a
+/// MIDI-out player, which must not make the clicks itself.
+fn silent_clicks(clicks: &Sequence) -> Arc<Sequence> {
+    let mut silent = clicks.clone();
+    silent.events.clear();
+    Arc::new(silent)
 }
 
 /// The first beat of the song, for a count-in without a cursor position.
@@ -1325,11 +2007,188 @@ fn file_name(path: &Path) -> String {
     )
 }
 
+/// `sequence` with its engines: modelled strings for guitar and bass tracks when
+/// `modelled`, then each track's own choice in `engines` (by track index; modelled strings
+/// only for string tracks).
+pub(crate) fn with_engines(
+    sequence: Sequence,
+    modelled: bool,
+    engines: &[(usize, gscore_play::TrackEngine)],
+    preset_tones: &[crate::settings::PresetTone],
+) -> Sequence {
+    let mut sequence = if modelled {
+        // A preset the user gave a tone of its own plays that tone's kind of string.
+        sequence
+            .with_modelled_guitars_where(|program| chains::preset_kind_of(preset_tones, program))
+    } else {
+        sequence
+    };
+    if engines.is_empty() {
+        return sequence;
+    }
+    let performance = Arc::make_mut(&mut sequence.performance);
+    for track in &mut performance.tracks {
+        let chosen = engines
+            .iter()
+            .find(|(index, _)| *index == track.track.get())
+            .map(|&(_, engine)| engine);
+        let strings =
+            track.kind == gscore_model::InstrumentKind::Strings && !track.sound.percussion;
+        match chosen {
+            Some(engine @ gscore_play::TrackEngine::Modelled(_)) if strings => {
+                track.engine = engine;
+            }
+            // Any track can be played by a hardware synthesizer; a browser has none, so it
+            // plays such a track with the SoundFont.
+            Some(gscore_play::TrackEngine::MidiOut) => {
+                track.engine = if cfg!(target_arch = "wasm32") {
+                    gscore_play::TrackEngine::SoundFont
+                } else {
+                    gscore_play::TrackEngine::MidiOut
+                };
+            }
+            Some(gscore_play::TrackEngine::SoundFont) => {
+                track.engine = gscore_play::TrackEngine::SoundFont;
+            }
+            _ => {}
+        }
+    }
+    sequence
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    #[test]
+    fn a_track_can_be_played_by_another_kind_of_string_or_the_soundfont() {
+        use gscore_play::{StringKind, TrackEngine};
+        let song = gscore_model::testing::song_with_notes(&[(
+            1,
+            &[gscore_model::testing::TestNote::new(3, 2)],
+        )])
+        .unwrap();
+        let mut playback = Playback::default();
+        let engine = |playback: &mut Playback| {
+            playback.build_sequence(&song).unwrap().performance.tracks[0].engine
+        };
+        // A steel-guitar preset, played by nylon strings.
+        playback
+            .set_track_engines(&song, vec![(0, TrackEngine::Modelled(StringKind::Nylon))])
+            .unwrap();
+        assert_eq!(
+            engine(&mut playback),
+            TrackEngine::Modelled(StringKind::Nylon)
+        );
+        // With modelled guitars on, the SoundFont can still be chosen for it.
+        playback.set_modelled_guitars(&song, true).unwrap();
+        playback
+            .set_track_engines(&song, vec![(0, TrackEngine::SoundFont)])
+            .unwrap();
+        assert_eq!(engine(&mut playback), TrackEngine::SoundFont);
+        playback.set_track_engines(&song, Vec::new()).unwrap();
+        assert_eq!(
+            engine(&mut playback),
+            TrackEngine::Modelled(StringKind::Steel)
+        );
+    }
+
+    #[test]
+    fn midi_out_tracks_are_split_off_with_their_own_port_and_channel() {
+        use gscore_play::{StringKind, TrackEngine};
+        let song = gscore_model::testing::song_with_notes_on_tracks(
+            2,
+            &[(1, &[gscore_model::testing::TestNote::new(3, 2)])],
+        )
+        .unwrap();
+        let mut playback = Playback::default();
+        playback
+            .set_midi_routes(
+                &song,
+                vec![(
+                    0,
+                    MidiOutRoute {
+                        port: Some("Hardware".to_owned()),
+                        channel: Some(5),
+                    },
+                )],
+            )
+            .unwrap();
+        playback
+            .set_track_engines(&song, vec![(0, TrackEngine::MidiOut)])
+            .unwrap();
+        let full = playback.build_sequence(&song).unwrap();
+        assert_eq!(full.tracks.len(), 2);
+        assert_eq!(full.performance.tracks[0].engine, TrackEngine::MidiOut);
+        // The main output has the other track only.
+        let primary = playback.primary_sequence().unwrap();
+        assert_eq!(primary.tracks.len(), 1);
+        assert_eq!(primary.tracks[0].track, TrackIndex::new(1));
+        assert!(
+            primary
+                .performance
+                .tracks
+                .iter()
+                .all(|track| track.engine != TrackEngine::MidiOut)
+        );
+        // The hardware synthesizer gets its track, on the chosen channel.
+        let midi = playback.midi_sequences();
+        assert_eq!(midi.len(), 1);
+        assert_eq!(midi[0].0.as_deref(), Some("Hardware"));
+        assert_eq!(midi[0].1.tracks.len(), 1);
+        assert_eq!(midi[0].1.tracks[0].track, TrackIndex::new(0));
+        assert_eq!(midi[0].1.tracks[0].channel.get(), 5);
+        assert!(
+            midi[0]
+                .1
+                .events
+                .iter()
+                .all(|event| event.track != gscore_play::CLICK_TRACK),
+            "the hardware synthesizer does not click"
+        );
+        // A modelled track still works in the main output; the MIDI-out route wins over
+        // the string choice.
+        playback.set_midi_routes(&song, Vec::new()).unwrap();
+        playback
+            .set_track_engines(&song, vec![(0, TrackEngine::Modelled(StringKind::Steel))])
+            .unwrap();
+        playback.build_sequence(&song).unwrap();
+        assert_eq!(playback.midi_sequences().len(), 0);
+        assert_eq!(playback.primary_sequence().unwrap().tracks.len(), 2);
+    }
+
+    #[test]
+    fn only_offered_sample_rates_are_kept() {
+        let mut playback = Playback::default();
+        assert_eq!(playback.sample_rate(), None, "the device's own by default");
+        playback.set_sample_rate(Some(96_000));
+        assert_eq!(playback.sample_rate(), Some(96_000));
+        playback.set_sample_rate(Some(12_345));
+        assert_eq!(playback.sample_rate(), None, "an odd rate means automatic");
+        assert_eq!(playback.audio_load(), None, "no synthesizer runs");
+    }
+
+    #[test]
+    fn the_modelled_guitars_setting_chooses_the_engine_of_guitar_tracks() {
+        let song = gscore_model::testing::song_with_notes(&[(
+            1,
+            &[gscore_model::testing::TestNote::new(3, 2)],
+        )])
+        .unwrap();
+        let mut playback = Playback::default();
+        let engine = |playback: &mut Playback| {
+            playback.build_sequence(&song).unwrap().performance.tracks[0].engine
+        };
+        assert_eq!(engine(&mut playback), gscore_play::TrackEngine::SoundFont);
+        playback.set_modelled_guitars(&song, true).unwrap();
+        assert!(playback.modelled_guitars());
+        assert!(matches!(
+            engine(&mut playback),
+            gscore_play::TrackEngine::Modelled(_)
+        ));
+    }
 
     #[test]
     fn the_speed_is_clamped_and_kept_between_plays() {

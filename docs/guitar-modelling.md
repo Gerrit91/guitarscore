@@ -1,7 +1,7 @@
 # Realistic guitar sound: physical modelling
 
-Design note for M22 (owner, 2026-11-03). Status: the current milestone (2026-11-06), nothing
-built yet. Owner's decisions (2026-11-06): the playback sequence comes first (step 0), then
+Design note for M22 (owner, 2026-11-03). Status: the current milestone (2026-11-06); step 0
+(the performance) is done, step 1 (the string engine) has a first version to listen to. Owner's decisions (2026-11-06): the playback sequence comes first (step 0), then
 the engine; distorted and clean electric, bass and acoustic are all aimed at full quality,
 none left rough.
 
@@ -86,12 +86,22 @@ described in the literature below:
 
 ## Architecture
 
-- **Sequence first.** `gscore-play` builds a `Sequence` of `MidiEvent`s today, which loses
-  the string, the fret and most techniques. The new engine needs a playback sequence that
-  carries per-string, per-note events: string, pitch, start and end, technique changes
-  over time (bend curves, slides, damping). The MIDI and SoundFont path is then derived
-  from it, so both engines play the same sequence. This step also carries the M18 MIDI
-  improvements (per-string channels).
+- **Sequence first (done 2026-11-06).** `gscore-play` builds a `Performance`: per track
+  the sound, the kind and the sounding pitch of each open string; per note the track,
+  string, fret, key, velocity, start, end and beat onset, the attack (picked, legato,
+  left-hand tap, tapped, slapped, popped, a pick slide's scrape), the stroke direction,
+  palm mute, dead note, harmonic, let ring, a damped end, grace, a fade, and a
+  `PitchShape` for bends, slides, vibrato and whammy (`cents_at(offset)` reads it at any
+  tick). Hammer-ons, pull-offs, legato and a trill's alternations are notes with a legato
+  attack on the same string: the engine changes the string's length without a new pluck.
+  Tremolo picking, rasgueados and strokes are already spread into the strikes a player
+  makes. The `midi` module derives the `Sequence` from it with the channel borrowing of
+  decision 10 (the owner kept it; no channel per string), and the golden events in
+  `crates/gscore-play/tests/golden/` prove the MIDI did not change. Every `Sequence`
+  carries its `Performance` (also excerpts, count-in, lead-in, and the browser's wire
+  form), so a `Player` gets both. Velocities still hold the MIDI path's technique
+  shading (legato softer, slaps louder); an engine that models the attack itself may want
+  the written velocity back, which would be a new field.
 - **Engine.** A new engine behind the `Player` trait (section 8), in `gscore-audio` or a
   new crate (`gscore-model-synth` or similar, decided with the layers check). One voice
   per string per track; a track's voices share a body or amp stage.
@@ -110,6 +120,179 @@ described in the literature below:
 - **CPU.** A string voice is cheap (one delay line and a few filters); convolution for
   bodies and cabinets is the main cost. Budget: a 16-track song plays in real time on the
   owner's machine with headroom; checked by `cargo xtask bench`.
+
+## The string engine (step 1, first version 2026-11-06)
+
+- **Crate `gscore-guitar`** (layer 2, no dependencies, wasm-clean). `StringVoice` is a
+  single delay loop: a ring buffer read at a fractional delay (third-order Lagrange), a
+  one-pole loss filter and up to four stiffness allpasses. The delay is one period minus
+  the filters' phase delay at the fundamental, recomputed every block, so every model is
+  in tune (tests: within 2 cents from B0 to E6 at 44.1, 48 and 96 kHz). The output is taken
+  where the wave leaves the line, so a dead note's single trip is heard.
+- **Pluck:** a pulse split at the pick position (zero mean, so its harmonics have the
+  pick position's comb), its edges rounded by hardness and velocity, with deterministic
+  pick noise. A pick on a sounding string leaves 35 % of the vibration and adds the new
+  strike. A legato attack on a sounding string glides the delay to the new pitch in 2 ms
+  with a light finger tap; on a silent string it is a soft pluck.
+- **Damping** moves two 60 dB decay times, the fundamental's and the harmonics' at
+  2 kHz (settling in 4 ms): ringing (the model's sustain, falling with pitch, and its
+  brilliance), palm muted 0.18/0.03 s, released 0.3/0.06 s, damped 0.04/0.01 s, dead
+  0.015/0.005 s. The loss filter is designed from both (a bisection, redone only when
+  they or the pitch change), so the highs fade at the same rate on every string. Before
+  (first version) a fixed filter let a low string's highs ring about four times longer
+  than a high string's: the owner heard the low notes as "a synthesizer with slight
+  distortion" (2026-11-06).
+- **The strike** blends a sharp pulse (bright) with the string's triangular shape
+  (round) by the model's softness, rounded above 400 Hz to 12 kHz by hardness and
+  velocity. A resonant lowpass on each string's output stands in for the pickup or body
+  (tone, resonance) until step 2 and 3 bring the real ones.
+- **Knobs:** every `StringModel` value has a range (`gscore_guitar::ranges`); the Sound
+  chain window (track panel › Sound › the stomp box) turns them per kind of string, next
+  to the board, heard at once (`Command::StringModel`), kept in the settings, used by WAV
+  export.
+- **Presets** (`GuitarModel`): nylon, steel (the owner's dialed-in sound), electric,
+  bass; chosen by default from the track's General MIDI program (24 nylon, 25 steel, 26-31
+  electric, 32-39 bass) through `PerformanceTrack::engine`, or per track in the Sound
+  chain window.
+- **Two directions of vibration and the bridge** (2026-11-06): each string is two loops,
+  the second detuned by a few cents and decaying faster (beating, two-stage decay); the
+  output blends the string's swing with the force on the bridge (its change), which
+  carries much less of the fundamental, as a bridge or a magnetic pickup does; then a low
+  cut. Without them the low notes sounded like a synthesizer bass (owner).
+- **In the synth engine** (`gscore-audio::guitars`): 16 tracks x 8 string voices are made
+  with the engine. Notes start at the block they are due (as MIDI events do), pitch
+  shapes and fades are applied per block, tracks are mixed with their volume and pan. The
+  SoundFont gets no note-ons or bends of a modelled track. 96 ringing strings took about
+  57 ms per second of audio with one loop per string (budget 250 ms, `cargo xtask
+  bench`); with two loops, the bridge force and the pickup about 280 ms on a busy machine
+  (load 3; 244 ms there without the pickup), so this worst case is over its budget.
+- **Pickup** (`gscore-guitar::pickup`, 2026-11-06): a magnetic pickup hears the string at
+  its spot: the string's output minus itself delayed by twice the time from the pickup to
+  the bridge (`2 · position · period`), a comb whose notches fall on the overtones with a
+  node under the pickup. Bridge (0.09 of the string) keeps the mid overtones and thins the
+  fundamental, the neck (0.26) loses the octave and is round (tests). A humbucker reads two
+  spots 0.028 apart (18 mm of 648 mm), averaged: the comb evens out where the two coils
+  are half a wave apart. The delays follow the pitch per block (bends), linear
+  interpolation. Each comb is scaled to about the level of the string heard at the
+  bridge. The coil's resonance is the voice's resonant tone filter after it: choosing a
+  single coil sets it to 4.5 kHz, Q 2.2, a humbucker 3 kHz, Q 1.8. Electric preset: a
+  humbucker at the bridge, tone 3 kHz, resonance 1.8. Sounds saved before pickups existed
+  take their kind's pickup (`StringSound::for_kind`), so an older steel sound gets none.
+- **Not yet:** a real pick attack (next), body, coupling and two polarizations
+  (step 3), noises and feel (step 4). Everything is one generic string model now; a
+  distorted part sounds distorted once its chain has an Amp block (below). Harmonics play the
+  harmonic's pitch with a purer pluck rather than damping at a node.
+
+## The effect chain (2026-11-06)
+
+- **The board** (owner's design): per kind of string, six boxes in a fixed row joined by
+  cables, like a pedal board; the order cannot change and boxes do not move. The strings
+  come first and cannot be removed (their box shows the engine, the kind of string and
+  their sound in the window itself); the five places after them hold nothing or a block.
+  Opened from the track panel's Sound section.
+- **Blocks:** *Cabinet / body*, an impulse response from a WAV file played mono with
+  mix, gain, low cut and high cut: what amp modelers call a cab block, and an acoustic
+  guitar's body too. *Room*, a room's impulse response (stereo if recorded so): a
+  convolution reverb with its length (the decay stretched 0.5× to 4×, below), mix, gain,
+  cuts and width. *Reverb*, computed (below): size,
+  decay, pre-delay, damping, modulation, width, mix, and a low and high cut on its sound.
+  *Amp* and *Drive*, computed (below).
+- **Amp** (`gscore-guitar::amp`, 2026-11-06): no capture of a real amp, the parts that
+  make a tube preamp sound as it does. An input pad (the strings come in hot: a power chord
+  picked hard peaks near 4), a low cut before the clipping (*tight*: 40, 90, 160 Hz by
+  voice) and a mid bell (the lead voice pushes 750 Hz by 7 dB, like a boost pedal in
+  front), the Gain knob, then one to three soft-clipping stages, a little lopsided (a
+  tube's bias: even harmonics), each followed by a coupling low cut and a plate high
+  cut. The stages run 4× oversampled (sixth-order Butterworth up and down), so the
+  harmonics they make above half the sample rate do not fold back as fizz (test: a 3 kHz
+  tone clipped hard leaves under 3 % between its harmonics). After them the tone stack
+  (bass shelf 120 Hz, mid bell 700 Hz, treble shelf 3 kHz, ±12 dB each) and a built-in
+  speaker: a closed 4×12 approximated by filters (low cut 75 Hz, 110 Hz resonance, a dip
+  at 450 Hz, presence at 2.4 kHz, fourth-order roll-off at 5 kHz). The Speaker knob blends
+  it out for a cabinet's impulse response in a Cab block after the amp. Voices: *Clean*
+  (one stage, the pad given back so it plays at the strings' level), *Crunch* (two),
+  *Lead* (three); their outputs are trimmed to within about 3 dB of one another on a
+  power chord. About 0.9 % of a core per track (release).
+- **Drive** (`gscore-guitar::drive`): an overdrive pedal after the green mid-hump kind.
+  Only the signal above 720 Hz is driven (6 to 42 dB) into a symmetric soft clip (4×
+  oversampled, smoothed at 6.5 kHz); the lows pass clean beside it, then a tone lowpass
+  (900 Hz to 7 kHz) and Level. In front of the Lead voice with Drive low and Level up,
+  the low E's fundamental is a clearly smaller share of the sound (test): the metal
+  player's tight low end.
+- **Reverb** (`gscore-guitar::reverb`, 2026-11-06, replacing the Freeverb copy the owner
+  did not like): a feedback delay network after Geraint Luff's design for Signalsmith
+  Audio (MIT article; no code taken). Pre-delay up to 250 ms; the stereo signal spread to
+  eight channels; four diffusion stages (each: eight delays spread over its length,
+  shuffle with sign flips, Hadamard mix; lengths doubling up to 0.6 × the room) for a
+  dense onset; a tail of eight delay lines (one to two times the room, 25 to 220 ms by
+  Size) fed back through a Householder matrix. The loop gain per line gives the Decay
+  time exactly (0.3 to 30 s); a shelf at 2.5 kHz in the loop gives the highs a shorter
+  decay (Damping: down to 0.1×). Each tail line drifts by up to 4 ms at its own slow rate
+  (0.11 to 0.83 Hz; Modulation), so long tails shimmer instead of ringing metallic. The
+  diffusion's output also goes out (early part, 0.35). Size and pre-delay glide (80 ms),
+  so turning them while playing does not click. All wet it stays 4-6 dB under the dry
+  strings from a small room to a 30 s cathedral. Allocated once for the largest size
+  (about 1 MB at 48 kHz), 1.3 % of a core per instance (release; linear interpolation
+  in the diffusers, third-order in the drifting tail).
+- **Convolution** (`gscore-guitar::convolver`): an own FFT and partitioned overlap-save in
+  three stages (partitions of 128, 1024 and 8192 samples): 128 samples of lag, and long
+  tails cheap. The two large stages are one block later and spread their frame (a
+  resumable FFT, the multiply-add in slices every 16 samples) over that block; done all
+  at once, a frame took 1.3-1.6 ms inside one 64-sample block (1.33 ms of audio) and long
+  rooms stuttered (owner, Voxengo IRs). Measured per track, release: a 4 s stereo hall
+  about 3 % of a core, worst block 0.13 ms; a 0.2 s body about 1 %; the computed reverb
+  0.1 %. The dry signal is delayed by the lag so a mix does not comb-filter.
+- **Impulse responses:** WAV, 16/24/32-bit PCM or 32/64-bit float, up to two channels,
+  read defensively, capped at 6 s, scaled to unit energy, resampled linearly to the
+  engine's rate. No responses ship with the program (licenses); the user loads their own.
+- **Real time:** a new block or file prepares the track's chain on the synth's own thread
+  (which knows the device rate; a 6 s stereo room needs about 9 MB) and swaps it into the
+  callback with its knob values; the old one is freed on that thread. Knob values go
+  straight to the callback, so tails are not cut while a knob turns. A tail counts as over
+  after 0.5 s of silence. WAV export uses the same chains.
+- **Per track** (2026-11-06, see Tones): the engine keeps a string model and a chain per
+  track (`gscore-audio::chains::TrackTones`, room for 64 tracks made with the engine), by
+  the song's track index, which a one-track beat excerpt keeps; the kind's model is the
+  fallback. Playback remembers what each track was given and sends only what differs
+  (a model, a new chain, or knob values). Export applies the tracks' engine choices too
+  (it used to apply only the global switch).
+- **Longer (or shorter) rooms** (`ImpulseResponse::lengthened`, committed 2026-11-06): the
+  decay time is measured from the energy decay curve (fitted -5 to -25 dB); the recording
+  keeps its start under an envelope that turns its decay into the new one, and where it
+  fades out a diffuse noise tail coloured by the late response carries it on, darker as it
+  goes, down to -80 dB, at most 16 s. Deterministic; 30-400 ms to compute per room. The
+  Room block's *Length* knob sets the factor (0.5-4). Because it changes the response
+  itself, not a value the audio thread can take, the room is built again when the knob is
+  let go (a click or an arrow key applies at once), not on every step of a drag.
+- **Not yet:** the browser build has no chains (no file dialog, no message for them). A
+  preset's tone is local to this machine (the settings file): it does not travel with the
+  song, and the impulse responses it names are absolute paths. The tones set for presets
+  are kept per machine, which is what the owner wants for his own library.
+
+## Tones (owner's decisions, 2026-11-06 and 2026-11-07)
+
+- **A tone** is what a modelled track sounds like: what plays it (MIDI or PM synthesis,
+  the kind of string), the sound of its strings and its effect chain. Called *Tone* in
+  the program, so it is not mistaken for the track's *preset* (its General MIDI program).
+- **A tone belongs to the track preset, not to the track** (owner, 2026-11-07). The Sound
+  chain window edits the tone of the shown track's preset: every track with that preset,
+  in every song, plays it from then on. This is what fixes the owner's first report
+  (dialing in a 30: Distortion Guitar track changed a 29: Overdriven Guitar track, since
+  both are electric strings): 29 and 30 are different presets, so they have different
+  tones.
+- **Kept locally, in the settings** (`preset_tones`, by General MIDI program, with the
+  kind of string it was dialed in on). Switching the tone row back to **Built-in**
+  forgets the preset's tone; its kind of string's default from the settings plays again.
+  The owner's library became the first four: *Natural Steel 1* for 27 Clean Guitar (so
+  that preset plays steel strings), *Muted Overdriven Guitar* for 28 Muted Guitar,
+  *Metal Guitar 1* for 30 Distortion Guitar and *Clean Bass 1* for 33 Fingered Bass.
+- **Saved tones:** the user can save a tone under a name (their library, in our format)
+  and give it to any preset, in any song.
+- **Not in the song file:** a preset's tone stays this machine's (settings file), so the
+  songs of a band that all use GuitarScore keep their own sounds without carrying data
+  Guitar Pro would drop, and the tones work for every song at once. The price: a tone
+  does not travel with a song, and the impulse responses it names are absolute paths.
+  (This replaces the earlier idea of keeping a tone per track inside the GP7 file.)
 
 ## Faust
 

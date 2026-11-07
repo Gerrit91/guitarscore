@@ -35,12 +35,38 @@ impl Playback {
                 "the beat has no note to play (or its track is muted)".to_owned(),
             ));
         };
+        self.hear(excerpt)
+    }
+
+    /// Plays the short phrase of the Sound chain window on the modelled strings of
+    /// `kind`, like a beat preview (not while the song plays).
+    pub fn play_string_demo(
+        &mut self,
+        track: usize,
+        kind: gscore_play::StringKind,
+    ) -> Result<Heard, String> {
+        if self.state() == PlayState::Playing || self.count_in_pending() {
+            return Ok(Heard::Skipped("the song is playing".to_owned()));
+        }
+        if !matches!(self.output, super::Output::Synth(_)) {
+            return Ok(Heard::Skipped(
+                "the modelled strings play on the built-in synthesizer (Settings › Audio I/O)"
+                    .to_owned(),
+            ));
+        }
+        self.hear(super::demo::phrase(kind, track))
+    }
+
+    /// Plays `excerpt` in place of the song (once the SoundFont has loaded, if it is
+    /// loading).
+    fn hear(&mut self, excerpt: Sequence) -> Result<Heard, String> {
         if let Err(error) = self.connect() {
             return Ok(Heard::Skipped(error));
         }
         if let Some(error) = self.error() {
             return Ok(Heard::Skipped(error));
         }
+        let excerpt = self.engines(excerpt);
         if self.is_loading() {
             // The first click starts the synthesizer: play the beat once it is ready.
             self.pending_preview = Some(Arc::new(excerpt));
@@ -54,16 +80,18 @@ impl Playback {
     /// Loads and plays `excerpt` in place of the song.
     pub(super) fn play_excerpt(&mut self, excerpt: Arc<Sequence>) -> Result<(), String> {
         self.end_audition();
+        self.sync_midi_delay();
+        let (primary, midi) = self.route_sequences(&excerpt);
+        self.sync_chains(&primary);
         let rest = self.preview.unwrap_or_else(|| self.output_position());
-        let player = self.player_mut()?;
-        player.stop().map_err(|e| e.to_string())?;
-        player
-            .load(Arc::clone(&excerpt))
-            .map_err(|e| e.to_string())?;
-        player.play().map_err(|e| e.to_string())?;
+        self.transport_all(|player| player.stop())?;
+        self.load_sequences(Some(primary), &midi)?;
+        self.transport_all(|player| player.play())?;
         self.preview_sequence = Some(excerpt);
         // The song's sequence is no longer loaded: the next play loads it again.
         self.sequence = None;
+        self.primary_sequence = None;
+        self.midi_sequences.clear();
         self.lead = None;
         self.preview = Some(rest);
         Ok(())
@@ -113,10 +141,10 @@ impl Playback {
         if self.preview.take().is_none() {
             return false;
         }
-        if let Some(active) = &mut self.player {
-            let _ = active.player_mut().stop();
-        }
+        let _ = self.transport_all(|player| player.stop());
         self.sequence = None;
+        self.primary_sequence = None;
+        self.midi_sequences.clear();
         true
     }
 }

@@ -20,6 +20,7 @@ This file documents all third-party assets used in the GuitarScore project.
 
 | Path | Title | Author | Source | License |
 |------|-------|--------|--------|---------|
+| `vendor/rustysynth/` | RustySynth 1.3.8 (SoundFont synthesizer), forked: each MIDI channel rendered apart, no `unsafe`; see `vendor/rustysynth/FORK.md` | Nobuaki Tanaka | https://github.com/sinshu/rustysynth, crates.io release 1.3.8 | MIT (`vendor/rustysynth/LICENSE.txt`) |
 | `crates/gscore-gp/` | Code derived from guitarpro 0.4.4 (Guitar Pro reader/writer), see `docs/guitarpro.md` | slundi | https://github.com/slundi/guitarpro, commit `b62be7c5e4bedb0c6eb283ac40aa8371adab5c2a` | MIT (`crates/gscore-gp/LICENSE-guitarpro`) |
 
 ## Tools and Libraries

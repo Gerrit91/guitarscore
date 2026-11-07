@@ -5,6 +5,7 @@
 
 mod app;
 mod canvas;
+pub mod chain_settings;
 mod document;
 mod export;
 mod fonts;
@@ -35,8 +36,8 @@ pub use playback::{
     Heard, Output, Playback, SPEED_CHOICES, SPEED_RANGE, SpeedTrainer, TRAINER_TARGETS,
 };
 pub use settings::{
-    DEFAULT_AUTOSAVE_SECONDS, MAX_OPEN_FILES, MAX_RECENT_FILES, MAX_SHAPE_PRESETS, Settings,
-    ShapePreset, ShortcutSetting, WindowState,
+    DEFAULT_AUTOSAVE_SECONDS, MAX_OPEN_FILES, MAX_RECENT_FILES, MAX_SHAPE_PRESETS, PresetTone,
+    ReverbBus, Settings, ShapePreset, ShortcutSetting, WindowState,
 };
 pub use state::{MeasureSelection, ScoreView, ThemeChoice, ViewState, ZOOM_RANGE};
 

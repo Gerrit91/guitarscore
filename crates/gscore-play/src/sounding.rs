@@ -1,22 +1,20 @@
-//! The notes a sequence plays and the pitch shapes they need: bends and slides, and which
-//! channel each note plays on.
+//! The notes of a performance while it is built, and the pitch shapes they need: bends
+//! and slides.
 
-use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, VecDeque};
+use std::collections::HashMap;
 
-use gscore_model::{Fade, SlideKind, StrokeDirection, TremoloSpeed, TrillSpeed, Vibrato};
+use gscore_model::{
+    Fade, HarmonicKind, SlideKind, StrokeDirection, TremoloSpeed, TrillSpeed, Vibrato,
+};
 
 use crate::curve::Curve;
-use crate::event::Channel;
+use crate::performance::{Attack, PlayedNote};
 use crate::pitch::PitchShape;
 use crate::tempo::PPQ;
 
 /// An upward bend reaches its target within a quarter note (or the note's length): Guitar
 /// Pro's own bends take about a beat.
 pub(super) const BEND_RAMP_TICKS: u64 = PPQ as u64;
-/// How long a borrowed channel stays reserved after its note ends, for the release that
-/// still sounds (and would follow the next note's bend): a quarter note.
-const RELEASE_TICKS: u64 = PPQ as u64;
 /// A slide into a note reaches its pitch within an eighth note (or the note's length).
 pub(super) const SLIDE_IN_RAMP_TICKS: u64 = PPQ as u64 / 2;
 /// How far an "into" slide starts from its note when the previous note is unknown: a whole
@@ -26,13 +24,11 @@ const UNKNOWN_SLIDE_IN_SEMITONES: i32 = 2;
 /// A note while the sequence is built.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Sounding {
-    /// The sequence track it belongs to.
+    /// The performance track it belongs to.
     pub(super) track: usize,
-    /// The track's own channel.
-    pub(super) channel: Channel,
-    /// The channel the note plays on: the track's, or a borrowed one.
-    pub(super) play_channel: Channel,
     pub(super) key: u8,
+    /// The fret, if known.
+    pub(super) fret: Option<u8>,
     pub(super) velocity: u8,
     pub(super) start: u64,
     pub(super) end: u64,
@@ -50,8 +46,8 @@ pub(super) struct Sounding {
     pub(super) let_ring: bool,
     /// How fast the note is played as repeated picks, if it is tremolo picked.
     pub(super) tremolo: Option<TremoloSpeed>,
-    /// The note's trill: the other key and how fast it alternates.
-    pub(super) trill: Option<(u8, TrillSpeed)>,
+    /// The note's trill: the other key and fret, and how fast it alternates.
+    pub(super) trill: Option<(u8, u8, TrillSpeed)>,
     /// A pick slide along the string and its direction.
     pub(super) pick_slide: Option<StrokeDirection>,
     /// The beat is played as a rasgueado, repeated by [`crate::effects::rasgueados`].
@@ -59,8 +55,8 @@ pub(super) struct Sounding {
     /// Where its beat starts (a brush stroke may delay the note itself).
     pub(super) onset: u64,
     /// Whether the note stops dead at its end (staccato, palm mute) instead of fading
-    /// with the SoundFont's release: it plays on a borrowed channel whose expression drops
-    /// to zero then.
+    /// with the SoundFont's release: in MIDI it plays on a borrowed channel whose
+    /// expression drops to zero then.
     pub(super) damp: bool,
     /// The bend's drawn curve, and the beat's whammy curve, if any.
     pub(super) bend_curve: Option<Curve>,
@@ -68,6 +64,80 @@ pub(super) struct Sounding {
     /// A fade in, out or swell: it plays on a borrowed channel whose expression follows
     /// the fade over the note.
     pub(super) fade: Option<Fade>,
+    /// How the note is set going, and the direction of its beat's stroke.
+    pub(super) attack: Attack,
+    pub(super) stroke: Option<StrokeDirection>,
+    pub(super) palm_mute: bool,
+    pub(super) dead: bool,
+    pub(super) harmonic: Option<HarmonicKind>,
+    pub(super) grace: bool,
+}
+
+impl Sounding {
+    /// A plain picked note of `track` on `string` from `start` to `end`, struck on its own
+    /// beat; the builders fill in the rest.
+    pub(super) fn new(
+        track: usize,
+        string: u8,
+        key: u8,
+        velocity: u8,
+        start: u64,
+        end: u64,
+    ) -> Self {
+        Sounding {
+            track,
+            key,
+            fret: None,
+            velocity,
+            start,
+            end,
+            string,
+            slide: None,
+            bend: None,
+            shape: None,
+            vibrato: None,
+            let_ring: false,
+            tremolo: None,
+            trill: None,
+            pick_slide: None,
+            rasgueado: false,
+            onset: start,
+            damp: false,
+            bend_curve: None,
+            whammy: None,
+            fade: None,
+            attack: Attack::Picked,
+            stroke: None,
+            palm_mute: false,
+            dead: false,
+            harmonic: None,
+            grace: false,
+        }
+    }
+
+    /// The finished note, once every effect has been worked out.
+    pub(super) fn played(&self) -> PlayedNote {
+        PlayedNote {
+            track: self.track,
+            string: self.string,
+            fret: self.fret,
+            key: self.key,
+            velocity: self.velocity,
+            start: self.start,
+            end: self.end,
+            onset: self.onset,
+            attack: self.attack,
+            stroke: self.stroke,
+            palm_mute: self.palm_mute,
+            dead: self.dead,
+            harmonic: self.harmonic,
+            let_ring: self.let_ring,
+            damped: self.damp,
+            grace: self.grace,
+            pitch: self.shape,
+            fade: self.fade,
+        }
+    }
 }
 
 /// Which slide of a note the sequencer plays.
@@ -207,61 +277,4 @@ pub(super) fn apply_bends(notes: &mut [Sounding]) {
             PitchShape::up(quarter_tones, length, BEND_RAMP_TICKS)
         });
     }
-}
-
-/// Gives every note with a pitch shape a borrowed channel, reusing channels as notes end.
-/// Returns how many notes had to go without one.
-pub(super) fn assign_pitch_channels(notes: &mut [Sounding], free: Vec<Channel>) -> usize {
-    let mut free: VecDeque<Channel> = free.into();
-    let mut in_use: BinaryHeap<Reverse<(u64, Channel)>> = BinaryHeap::new();
-    let mut order: Vec<usize> = notes
-        .iter()
-        .enumerate()
-        .filter(|(_, note)| note.shape.is_some() || note.damp || note.fade.is_some())
-        .map(|(index, _)| index)
-        .collect();
-    order.sort_by_key(|&index| {
-        notes
-            .get(index)
-            .map_or((0, 0), |note| (note.start, note.end))
-    });
-
-    let mut degraded = 0_usize;
-    for index in order {
-        let Some(note) = notes.get(index) else {
-            continue;
-        };
-        let start = note.start;
-        while let Some(&Reverse((end, channel))) = in_use.peek() {
-            if end <= start {
-                let _ = in_use.pop();
-                if !free.iter().any(|&free| free == channel) {
-                    free.push_back(channel);
-                }
-            } else {
-                break;
-            }
-        }
-        let Some(channel) = free.pop_front() else {
-            // A damped note without a channel only keeps its release; a pitch shape is
-            // lost, which is reported.
-            if note.shape.is_some() {
-                degraded = degraded.saturating_add(1);
-            }
-            continue;
-        };
-        if let Some(note) = notes.get_mut(index) {
-            note.play_channel = channel;
-            // A bent note's release rings on after its end: the channel stays its own
-            // until that has faded (a damped note is cut at once).
-            let release = if note.damp { 0 } else { RELEASE_TICKS };
-            in_use.push(Reverse((
-                note.end
-                    .max(note.start.saturating_add(1))
-                    .saturating_add(release),
-                channel,
-            )));
-        }
-    }
-    degraded
 }

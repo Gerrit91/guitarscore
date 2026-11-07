@@ -1,7 +1,9 @@
-//! Playback sequencing: turns the model into timed MIDI events, allocates MIDI channels,
-//! writes Standard MIDI Files, and defines the [`Player`] trait that output backends
-//! (`gscore-audio`) implement. No device crates and no clock here; backends pass the time
-//! into the [`Scheduler`].
+//! Playback sequencing: turns the model into a [`Performance`] (every note with its string,
+//! fret, timing and techniques, for any engine), derives timed MIDI events from it, allocates
+//! MIDI channels, writes Standard MIDI Files, and defines the [`Player`] trait that output
+//! backends (`gscore-audio`) implement. No device crates and no clock here; backends pass
+//! the time into the [`Scheduler`]. A [`Sequence`] carries the performance it was derived
+//! from, so a backend can play the MIDI events, the notes, or both.
 //!
 //! Played: notes of all voices with exact timing, ties, dead notes (short and soft), grace
 //! notes (about 75 ms, just before their beat or on it; they take no time of their own),
@@ -31,7 +33,9 @@ mod effects;
 mod event;
 mod excerpt;
 mod graces;
+mod midi;
 mod order;
+mod performance;
 mod pitch;
 mod player;
 mod sequence;
@@ -42,6 +46,7 @@ mod swing;
 mod tempo;
 mod timeline;
 mod wire;
+mod wire_notes;
 
 pub use channels::ChannelAllocator;
 pub use click::{
@@ -49,6 +54,11 @@ pub use click::{
 };
 pub use event::{Channel, MidiEvent, controller};
 pub use order::playback_order;
+// The model's types in a performance's public fields, so engines need not depend on the
+// model.
+pub use gscore_model::{Fade, HarmonicKind, InstrumentKind, StrokeDirection};
+pub use performance::{Attack, Performance, PerformanceTrack, PlayedNote, StringKind, TrackEngine};
+pub use pitch::PitchShape;
 pub use player::{PlayError, PlayState, Player, Scheduler, TEMPO_SCALE_RANGE};
 pub use sequence::{MeasureSpan, Sequence, SequenceTrack, TimedEvent, sound_events};
 pub use smf::{SmfError, to_smf};

@@ -53,6 +53,18 @@ pub(super) struct Tab {
     pub(super) new_track: Option<NewTrackDialog>,
     /// Which tracks the score shows besides the cursor's.
     pub(super) score: super::score_view::ScoreTracks,
+    /// What plays a track when the user chose it (in the Sound chain window) instead of
+    /// the default for its preset: by track index.
+    pub(super) track_engines: std::collections::BTreeMap<usize, gscore_play::TrackEngine>,
+    /// The port and channel of each track played by a hardware synthesizer (MIDI out), by
+    /// track index.
+    pub(super) midi_outs: std::collections::BTreeMap<usize, crate::playback::MidiOutRoute>,
+    /// Each track's send into the mixer's compressor bus (0-127), by track index. Kept in
+    /// the song's notes when it is saved (Guitar Pro keeps that field).
+    pub(super) comp_sends: std::collections::BTreeMap<usize, u8>,
+    /// The tones a track plays that came with the song (not from its preset), by track
+    /// index: a song keeps its sound when it is shared.
+    pub(super) track_tones: std::collections::BTreeMap<usize, crate::chain_settings::Tone>,
     /// Whether the last frame had a selection of more than one beat: a new one turns
     /// Loop on.
     pub(super) had_loop_selection: bool,
@@ -98,6 +110,10 @@ impl Tab {
             history_stamps: HashMap::new(),
             new_track: None,
             score: super::score_view::ScoreTracks::default(),
+            track_engines: std::collections::BTreeMap::new(),
+            midi_outs: std::collections::BTreeMap::new(),
+            comp_sends: std::collections::BTreeMap::new(),
+            track_tones: std::collections::BTreeMap::new(),
             had_loop_selection: false,
         }
     }

@@ -64,6 +64,155 @@ fn without_a_file_the_app_explains_how_to_open_one() {
 }
 
 #[test]
+fn a_new_empty_workspace_comes_from_the_tab_strip() {
+    // Short frames: a double click must land within egui's 0.3 s window, and the default
+    // frame is a quarter of a second long.
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .with_step_dt(1.0 / 120.0)
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/steel_guitar_dadgad.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(started.elapsed() < Duration::from_secs(30), "timed out");
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    assert!(harness.state().document().is_some());
+    // The "+" after the tabs opens the empty workspace, without closing the tab.
+    harness.get_by_label("New workspace").click();
+    harness.run();
+    assert!(harness.state().document().is_none(), "nothing active");
+    harness.get_by_label_contains("Open a song");
+    // The tab is still there, and clicking it brings the song back.
+    let tab = harness
+        .query_all_by_label_contains("Tab 1:")
+        .next()
+        .expect("the tab");
+    tab.click();
+    harness.run();
+    assert!(harness.state().document().is_some(), "the tab came back");
+    // The rest of the strip is there for the double click (egui's own detection, as on the
+    // mixer's knobs); a physical double click cannot be replayed reliably here.
+    harness.get_by_label_contains("Empty tab strip");
+}
+
+#[test]
+fn the_grid_header_stays_while_the_tracks_scroll() {
+    // A short panel, so the six tracks of the song do not fit.
+    let settings = Settings {
+        grid_height_chosen: Some(150.0),
+        ..Settings::default()
+    };
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .build_eframe(|cc| {
+            GuitarScoreApp::with_settings(
+                &cc.egui_ctx,
+                Some(testdata("basic/multi_staff.gp")),
+                Keymap::default(),
+                None,
+                settings.clone(),
+                None,
+            )
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(started.elapsed() < Duration::from_secs(30), "timed out");
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    let header = harness.get_by_label("Mixer view").rect();
+    let track = harness.get_by_label("Track 1: Clean Guitar").rect();
+    // Wheel down over the matrix: the rows move, the header stays.
+    let grid = harness.get_by_label("Song grid").rect();
+    harness.hover_at(grid.center());
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -220.0),
+        phase: egui::TouchPhase::Move,
+        source: egui::MouseWheelSource::Unknown,
+        modifiers: egui::Modifiers::NONE,
+    });
+    harness.run();
+    let scrolled = harness.get_by_label("Track 1: Clean Guitar").rect();
+    assert!(scrolled.top() < track.top(), "{scrolled:?} {track:?}");
+    let still = harness.get_by_label("Mixer view").rect();
+    assert!(
+        (still.top() - header.top()).abs() < 0.5,
+        "the header stayed: {still:?} {header:?}"
+    );
+}
+
+#[test]
+fn a_stored_panel_size_cannot_cover_the_window() {
+    // A width saved while a bug grew the panel (or a hand-edited one) must not hide the
+    // window: the panels keep room for the score.
+    for width in [5000.0_f32, f32::INFINITY, f32::NAN] {
+        let settings = Settings {
+            track_panel_width: Some(width),
+            edit_panel_width: Some(width),
+            ..Settings::default()
+        };
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1000.0, 700.0))
+            .build_eframe(|cc| {
+                GuitarScoreApp::with_settings(
+                    &cc.egui_ctx,
+                    Some(testdata("basic/note_lengths.gp")),
+                    Keymap::default(),
+                    None,
+                    settings.clone(),
+                    None,
+                )
+            });
+        let started = Instant::now();
+        while harness.state().is_busy() {
+            assert!(started.elapsed() < Duration::from_secs(30), "timed out");
+            harness.step();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        harness.run();
+        // The track panel's first control is in the right half, and the palette's one in
+        // the left half: the score has the middle.
+        let track_panel = harness.get_by_label("Preset").rect().left();
+        assert!(
+            track_panel > 500.0,
+            "a stored width of {width} pushed the track panel to {track_panel}"
+        );
+        let palette = harness.get_by_label("Tie beat").rect().right();
+        assert!(
+            palette < 500.0,
+            "a stored width of {width} pushed the edit palette to {palette}"
+        );
+    }
+}
+
+#[test]
+fn the_track_panel_does_not_grow_by_itself() {
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    let panel = |harness: &Harness<'static, GuitarScoreApp>| {
+        let rect = harness.get_by_label("Preset").rect();
+        (rect.left(), rect.top())
+    };
+    let before = panel(&harness);
+    // A mouse move repaints the window; the panel must keep its size (a width that followed
+    // the panel made it grow a little every frame).
+    for step in 0..20 {
+        harness.hover_at(egui::pos2(300.0 + 10.0 * step as f32, 300.0));
+        harness.run();
+    }
+    let after = panel(&harness);
+    assert!(
+        (after.0 - before.0).abs() < 0.5 && (after.1 - before.1).abs() < 0.5,
+        "the panel grew: {before:?} -> {after:?}"
+    );
+}
+
+#[test]
 fn files_that_cannot_be_opened_give_a_notice_not_a_crash() {
     for (file, expected) in [
         (testdata("basic/no_such_file.gp"), "cannot read"),
@@ -221,6 +370,70 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.get_by_label("Track color").click();
     harness.run();
     harness.snapshot("color_picker");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    // The Sound chain: a reverb in the second place, then the strings' own dialog.
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    harness.get_by_label("Block 2: +").click();
+    harness.run();
+    harness.get_by_label("Reverb").click();
+    harness.run();
+    harness.get_by_label("Block 2: Reverb");
+    harness.snapshot("sound_chain_window");
+    // An amp in the third place, switched to its lead voice.
+    harness.get_by_label("Block 3: +").click();
+    harness.run();
+    harness.get_by_label("Amp").click();
+    harness.run();
+    harness.get_by_label("Lead").click();
+    harness.run();
+    harness.get_by_label("Block 3: Amp");
+    harness.snapshot("sound_chain_amp");
+    // A drive in front of it, and the reverb's knobs.
+    harness.get_by_label("Block 1: +").click();
+    harness.run();
+    harness.get_by_label("Drive").click();
+    harness.run();
+    harness.get_by_label("Block 1: Drive");
+    harness.snapshot("sound_chain_drive");
+    // A compressor after the reverb, at its "All" ratio.
+    harness.get_by_label("Block 4: +").click();
+    harness.run();
+    harness.get_by_label("Compressor").click();
+    harness.run();
+    harness.get_by_label("Block 4: Comp");
+    harness.snapshot("sound_chain_compressor");
+    // The 4-band EQ in the last place, with a bell lifted.
+    harness.get_by_label("Block 5: +").click();
+    harness.run();
+    harness.get_by_label("EQ").click();
+    harness.run();
+    harness.get_by_label("Block 5: EQ");
+    harness.snapshot("sound_chain_eq");
+    harness.get_by_label("Block 2: Reverb").click();
+    harness.run();
+    harness.snapshot("sound_chain_reverb");
+    // The strings' own window (their box opens it once PM synthesis plays the track).
+    harness.get_by_label("Block 0: MIDI").click();
+    harness.run();
+    harness.get_by_label("PM Synthesis").click();
+    harness.run();
+    harness.get_by_label("Block 0: Strings").click();
+    harness.run();
+    // The steel guitar played by modelled strings, to show its knobs beside the chain.
+    harness
+        .query_all_by_label_contains("Steel guitar")
+        .last()
+        .unwrap()
+        .click();
+    harness.run();
+    // A track played by a hardware synthesizer: its port and channel, next to the two
+    // internal sources.
+    harness.get_by_label("MIDI out").click();
+    harness.run();
+    harness.get_by_label("Block 0: MIDI out");
+    harness.snapshot("sound_chain_midi_out");
 }
 
 #[test]
@@ -319,6 +532,31 @@ fn the_staff_dialogs_match_their_snapshots() {
     harness.get_by_label("Tempo").click();
     harness.run();
     harness.snapshot("staff_tempo_dialog");
+}
+
+#[test]
+fn a_track_can_be_played_by_a_hardware_synthesizer() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    harness.get_by_label("Block 0: MIDI").click();
+    harness.run();
+    harness.get_by_label("MIDI out").click();
+    harness.run();
+    {
+        let playback = harness.state().playback();
+        assert!(playback.track_is_midi_out(0));
+        let routes = playback.midi_routes();
+        assert_eq!(routes.len(), 1);
+        assert_eq!(routes[0].0, 0, "the track's own route");
+        assert_eq!(routes[0].1.port, None, "automatic until a port is chosen");
+        assert_eq!(routes[0].1.channel, None, "automatic channel");
+    }
+    harness.get_by_label("Block 0: MIDI out");
+    // Back to the internal synthesizer: the route is kept but no longer used.
+    harness.get_by_label("MIDI synth").click();
+    harness.run();
+    assert!(!harness.state().playback().track_is_midi_out(0));
 }
 
 #[test]
@@ -1120,7 +1358,8 @@ fn a_measure_selection_is_shared_with_the_editor_for_copy_and_paste() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     // Select the first measure in the grid.
     let rect = harness.get_by_label("Song grid").rect();
-    let pos = rect.left_top() + egui::vec2(24.0 * 0.0 + 12.0, 26.0 + 12.0);
+    // The matrix now starts under the pinned ruler: its rect is the first track row.
+    let pos = rect.left_top() + egui::vec2(24.0 * 0.0 + 12.0, 12.0);
     harness.hover_at(pos);
     harness.drag_at(pos);
     harness.drop_at(pos);
@@ -1153,8 +1392,8 @@ fn the_view_menu_and_the_row_menu_show_the_track_panel() {
 fn clicking_the_song_grid_moves_the_cursor_and_selects_measures() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     let rect = harness.get_by_label("Song grid").rect();
-    // The third measure, first track: 24 px square cells under a 26 px ruler.
-    let pos = rect.left_top() + egui::vec2(24.0 * 2.0 + 12.0, 26.0 + 12.0);
+    // The third measure, first track: 24 px square cells (the ruler is a separate strip).
+    let pos = rect.left_top() + egui::vec2(24.0 * 2.0 + 12.0, 12.0);
     harness.hover_at(pos);
     harness.drag_at(pos);
     harness.drop_at(pos);
@@ -2058,6 +2297,44 @@ fn a_new_track_asks_for_name_color_and_symbol() {
 }
 
 #[test]
+fn the_loop_button_works_without_a_selection() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    assert!(!harness.state().playback().loop_selection());
+    // Nothing selected: Loop still turns on, and then the whole song repeats.
+    harness.get_by_label("Loop selection").click();
+    harness.run();
+    assert!(
+        harness.state().playback().loop_selection(),
+        "looping the whole song"
+    );
+    harness.get_by_label("Loop selection").click();
+    harness.run();
+    assert!(!harness.state().playback().loop_selection());
+    // With just one beat selected it works too.
+    harness
+        .state_mut()
+        .document_mut()
+        .unwrap()
+        .editor_mut()
+        .set_selection(Some(gscore_edit::Selection::Beats {
+            track: gscore_model::TrackIndex::new(0),
+            voice: gscore_model::VoiceIndex::new(0),
+            anchor: gscore_edit::BeatSpot {
+                measure: gscore_model::MeasureIndex::new(0),
+                beat: gscore_model::BeatIndex::new(0),
+            },
+            focus: gscore_edit::BeatSpot {
+                measure: gscore_model::MeasureIndex::new(0),
+                beat: gscore_model::BeatIndex::new(0),
+            },
+        }));
+    harness.run();
+    harness.get_by_label("Loop selection").click();
+    harness.run();
+    assert!(harness.state().playback().loop_selection());
+}
+
+#[test]
 fn the_grid_switches_to_a_mixer_view() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
     assert!(
@@ -2148,6 +2425,144 @@ fn the_grid_switches_to_a_mixer_view() {
     harness.get_by_label("Song grid");
     harness.get_by_label("Output activity Steel Guitar");
     harness.get_by_label("Output activity master");
+}
+
+#[test]
+fn the_mixer_has_a_reverb_bus_the_tracks_send_into() {
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    harness.get_by_label("Reverb bus level");
+    // Its fader turns the return down (the tracks' Reverb knobs are the sends).
+    let fader = harness.get_by_label("Reverb bus level").rect();
+    let start = fader.center();
+    harness.hover_at(start);
+    harness.drag_at(start);
+    harness.run();
+    for step in 1..=4 {
+        harness.hover_at(start + egui::vec2(0.0, 8.0 * step as f32));
+        harness.run();
+    }
+    harness.drop_at(start + egui::vec2(0.0, 32.0));
+    harness.run();
+    assert!(
+        harness.state().playback().reverb_bus().level < 127,
+        "the fader turned the return down"
+    );
+    // And its mute.
+    harness.get_by_label("Mute reverb bus").click();
+    harness.run();
+    assert!(harness.state().playback().reverb_bus().muted);
+}
+
+#[test]
+fn the_reverb_bus_window_chooses_the_reverb() {
+    use gscore_app::chain_settings::BlockChoice;
+
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    harness.get_by_label("Edit the reverb bus").click();
+    harness.run();
+    harness.snapshot("reverb_bus_window");
+    // A computed reverb by default, with its knobs and no mix (the bus runs all wet).
+    assert_eq!(
+        harness.state().playback().reverb_bus().block.choice,
+        BlockChoice::Reverb
+    );
+    for knob in ["Size", "Damping", "Width"] {
+        assert!(harness.query_all_by_label(knob).next().is_some(), "{knob}");
+    }
+    assert!(
+        harness.query_all_by_label("Mix").next().is_none(),
+        "an all-wet bus has no mix"
+    );
+    // It can be turned off, and back on.
+    harness.get_by_label("None").click();
+    harness.run();
+    assert_eq!(
+        harness.state().playback().reverb_bus().block.choice,
+        BlockChoice::Empty
+    );
+    harness.get_by_label("Computed").click();
+    harness.run();
+    assert_eq!(
+        harness.state().playback().reverb_bus().block.choice,
+        BlockChoice::Reverb
+    );
+    // A room is offered too (it asks for its WAV).
+    harness.get_by_label("Room (impulse response)");
+}
+
+#[test]
+fn the_compressor_bus_is_a_strip_and_a_window() {
+    use gscore_app::chain_settings::{BlockChoice, CompRatioSetting};
+
+    // A wide window, so the strips after the tracks (the two buses) are on screen.
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1500.0, 700.0))
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/multi_staff.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    harness.get_by_label("Comp bus level");
+    // Its fader turns the parallel sum down.
+    let fader = harness.get_by_label("Comp bus level").rect();
+    let start = fader.center();
+    harness.hover_at(start);
+    harness.drag_at(start);
+    harness.run();
+    for step in 1..=4 {
+        harness.hover_at(start + egui::vec2(0.0, 8.0 * step as f32));
+        harness.run();
+    }
+    harness.drop_at(start + egui::vec2(0.0, 32.0));
+    harness.run();
+    assert!(harness.state().playback().compressor_bus().level < 127);
+    // And its mute.
+    harness.get_by_label("Mute comp bus").click();
+    harness.run();
+    assert!(harness.state().playback().compressor_bus().muted);
+    harness.get_by_label("Mute comp bus").click();
+    harness.run();
+    // Its window holds the CA-76: a default at "All", driven hard and made up short, with
+    // its knobs and its gain-reduction meter.
+    harness.get_by_label("Edit the comp bus").click();
+    harness.run();
+    harness.snapshot("compressor_bus_window");
+    let bus = harness.state().playback().compressor_bus();
+    assert_eq!(bus.block.choice, BlockChoice::Compressor);
+    assert_eq!(bus.block.comp_ratio, CompRatioSetting::All);
+    assert!(bus.block.input_db > 0.0);
+    for knob in ["Input", "Output", "Attack", "Release", "Mix"] {
+        assert!(harness.query_all_by_label(knob).next().is_some(), "{knob}");
+    }
+    // It can be turned off, and back on.
+    harness.get_by_label("None").click();
+    harness.run();
+    assert_eq!(
+        harness.state().playback().compressor_bus().block.choice,
+        BlockChoice::Empty
+    );
+    harness.get_by_label("CA-76").click();
+    harness.run();
+    assert_eq!(
+        harness.state().playback().compressor_bus().block.choice,
+        BlockChoice::Compressor
+    );
+    harness.get_by_label("Close").click();
+    harness.run();
 }
 
 #[test]
@@ -2298,4 +2713,190 @@ fn the_view_menu_shows_one_key_per_entry() {
     harness.get_by_label("File").click();
     harness.run();
     harness.get_by_label("Quit ctrl+q");
+}
+
+#[test]
+fn a_songs_mixer_state_travels_in_its_notes() {
+    // The comp sends and the tones a song plays are kept in the song's free-text notes
+    // ("Notices" in Guitar Pro, which keeps that field): a saved and reopened song sounds
+    // the same, even with default settings.
+    let dir = std::env::temp_dir().join(format!("gscore-notes-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a temp dir");
+    let path = dir.join("song.gp");
+    std::fs::copy(testdata("basic/multi_staff.gp"), &path).expect("a copy of the song");
+
+    // A tall window: the track panel's Sound section (the stomp box) is below the mixer.
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1400.0, 1100.0))
+        .build_eframe(|cc| GuitarScoreApp::new(&cc.egui_ctx, Some(path.clone())));
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    // A send into the compressor bus on the first track: the knob drags sideways.
+    let knob = harness.get_by_label("Comp Clean Guitar").rect().center();
+    harness.hover_at(knob);
+    harness.run();
+    harness.drag_at(knob);
+    harness.run();
+    for step in 1..=10 {
+        harness.hover_at(knob + egui::vec2(6.0 * step as f32, 0.0));
+        harness.run();
+    }
+    harness.drop_at(knob + egui::vec2(60.0, 0.0));
+    harness.run();
+    let send = harness
+        .state()
+        .playback()
+        .comp_sends()
+        .iter()
+        .find(|(track, _)| *track == 0)
+        .map(|&(_, value)| value)
+        .expect("the send was set");
+    assert!(send > 0, "{send}");
+    // And a tone of its own for the track's preset (27: Clean Guitar).
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    harness.get_by_label("Block 0: MIDI").click();
+    harness.run();
+    harness.get_by_label("PM Synthesis").click();
+    harness.run();
+    harness.get_by_label("Pick position value").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Pick position value").type_text("0.4");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    harness.get_by_label("Close").click();
+    harness.run();
+    // Saved, the song carries both in its notes.
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::S);
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "saving timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    // The saved notice and the meters keep the interface repainting for a few frames.
+    harness.run_steps(8);
+
+    // A fresh app with default settings hears the same sound and sends.
+    let reopened = app_with(Some(path));
+    assert_eq!(
+        reopened
+            .state()
+            .playback()
+            .comp_sends()
+            .iter()
+            .find(|(track, _)| *track == 0)
+            .map(|&(_, value)| value),
+        Some(send)
+    );
+    let tone = reopened
+        .state()
+        .playback()
+        .track_tones()
+        .get(&0)
+        .cloned()
+        .expect("the song's tone came back");
+    assert!((tone.sound.pick_position - 0.4).abs() < 1e-6, "{tone:?}");
+    // The notes the user sees are their own: our block is not shown.
+    assert!(
+        reopened
+            .state()
+            .document()
+            .expect("the song")
+            .song()
+            .notes()
+            .all(|note| !note.starts_with("[GuitarScore"))
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_drum_tracks_window_edits_the_kits_parts() {
+    use gscore_app::chain_settings::{BlockChoice, DrumPart};
+
+    // A tall window: the track panel's Sound section (the stomp box) is below the mixer.
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1400.0, 1100.0))
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/multi_staff.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    // The drum track (the sixth) and its Sound chain.
+    harness.state_mut().set_shown_track(5);
+    harness.run();
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    // The kit's own chain (the drum bus) is shown first: a compressor.
+    harness.get_by_label("Part");
+    harness.get_by_label("Block 1: Comp");
+    // A part's board: the kick's EQ and compressor.
+    harness.get_by_label("Kick").click();
+    harness.run();
+    harness.get_by_label("Block 1: EQ");
+    harness.get_by_label("Block 2: Comp");
+    harness.snapshot("sound_chain_drum_kick");
+    // A knob moved is the kick's tone from then on, kept in the settings.
+    harness.get_by_label("Block 2: Comp").click();
+    harness.run();
+    harness.get_by_label("Input value").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Input value").type_text("12");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    let kick = harness
+        .state()
+        .settings()
+        .drum_parts
+        .iter()
+        .find(|tone| tone.part() == Some(DrumPart::Kick))
+        .cloned()
+        .expect("the kick's tone is kept");
+    assert!(
+        (kick.chain.blocks[1].input_db - 12.0).abs() < 1e-6,
+        "{kick:?}"
+    );
+    assert_eq!(kick.chain.blocks[0].choice, BlockChoice::Eq);
+    // Built-in forgets it again.
+    harness.get_by_label("Built-in").click();
+    harness.run();
+    assert!(
+        harness
+            .state()
+            .settings()
+            .drum_parts
+            .iter()
+            .all(|tone| tone.part() != Some(DrumPart::Kick))
+    );
+    // Back to the kit: the track's own chain, the drum bus.
+    harness.get_by_label("Kit").click();
+    harness.run();
+    harness.get_by_label("Block 1: Comp");
+    harness.get_by_label("Close").click();
+    harness.run();
 }

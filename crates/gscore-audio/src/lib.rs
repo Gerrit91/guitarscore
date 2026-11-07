@@ -11,7 +11,12 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod midi_out;
 // The metronome's own click (the synth engine plays it in a browser too).
+mod chains;
 mod click;
+mod guitars;
+mod meters;
+mod mixer;
+pub use mixer::Bus;
 mod soundfont;
 mod synth;
 #[cfg(not(target_arch = "wasm32"))]
@@ -25,6 +30,8 @@ pub mod tuner;
 mod tuner_web;
 mod wav;
 
+pub use chains::{MAX_TONES, chain_is_empty, prepare_chain};
+pub use meters::{Level, Meters};
 #[cfg(not(target_arch = "wasm32"))]
 pub use midi_out::{MidiOutPlayer, midi_output_ports};
 pub use soundfont::{
@@ -33,6 +40,9 @@ pub use soundfont::{
 pub use synth::{BLOCK, SoundBank, SynthEngine};
 #[cfg(not(target_arch = "wasm32"))]
 pub use synth_player::SynthPlayer;
+
+/// The sample rates the settings offer for the built-in synthesizer and audio export.
+pub const SAMPLE_RATES: [u32; 4] = [44_100, 48_000, 88_200, 96_000];
 #[cfg(target_arch = "wasm32")]
 mod web_player;
 #[cfg(target_arch = "wasm32")]
@@ -44,7 +54,15 @@ pub use web_player::WebPlayer;
 pub use tuner::TunerPlayer;
 #[cfg(target_arch = "wasm32")]
 pub use tuner_web::TunerPlayer;
-pub use wav::{WAV_SAMPLE_RATE, WavInfo, write_wav, write_wav_at};
+pub use wav::{
+    BusChoice, BusChoices, ChainChoice, PartChoice, WAV_SAMPLE_RATE, WavInfo, write_wav,
+    write_wav_at, write_wav_with,
+};
+
+/// The preset string model of `kind`, before the user turns any knob.
+pub fn default_string_model(kind: gscore_play::StringKind) -> gscore_guitar::StringModel {
+    guitars::default_model(kind)
+}
 
 // The integration test builds songs with `gscore-model`'s test support; this marks the
 // test-only dependency for the library test target's unused-dependency check.

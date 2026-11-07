@@ -3,7 +3,10 @@
 
 use std::io::Write;
 
-use gscore_play::{PlayError, Sequence};
+use gscore_guitar::{BLOCKS, BlockSettings, ChainSpec, StringModel};
+
+use crate::chains::{chain_is_empty, prepare_chain};
+use gscore_play::{PlayError, Sequence, StringKind};
 
 use crate::synth::{BLOCK, SoundBank, SynthEngine};
 
@@ -33,10 +36,68 @@ pub fn write_wav(
 
 /// Like [`write_wav`] at a chosen sample rate.
 pub fn write_wav_at(
+    writer: impl Write,
+    sequence: &Sequence,
+    bank: &SoundBank,
+    sample_rate: u32,
+) -> Result<WavInfo, PlayError> {
+    write_wav_with(
+        writer,
+        sequence,
+        bank,
+        sample_rate,
+        &[],
+        &[],
+        &[],
+        &[],
+        &BusChoices::default(),
+    )
+}
+
+/// An effect chain to render with: the track (its index in the song), its blocks and their
+/// knobs.
+pub type ChainChoice = (usize, ChainSpec, [BlockSettings; BLOCKS]);
+
+/// One part of a drum track's chain to render with: the track, the part, its blocks and
+/// their knobs.
+pub type PartChoice = (usize, usize, ChainSpec, [BlockSettings; BLOCKS]);
+
+/// A mixer bus to render with: its chain, its knob values and its level.
+#[derive(Debug, Clone)]
+pub struct BusChoice {
+    pub spec: ChainSpec,
+    pub settings: [BlockSettings; BLOCKS],
+    /// 0-127, 127 unity.
+    pub level: u8,
+    pub muted: bool,
+}
+
+/// The mixer's buses, and each track's send into the compressor bus, to render with.
+#[derive(Debug, Clone, Default)]
+pub struct BusChoices {
+    /// The reverb bus (an all-wet chain; the tracks' Reverb knobs are its sends).
+    pub reverb: Option<BusChoice>,
+    /// The compressor bus (usually a compressor driven hard, blended in under the dry
+    /// tracks); each track's Comp send feeds it.
+    pub compressor: Option<BusChoice>,
+    /// Each track's Comp send (its song index, 0-127).
+    pub comp_sends: Vec<(usize, u8)>,
+}
+
+/// Like [`write_wav_at`], with the modelled strings of each listed kind sounding as its
+/// model (the others keep their presets), each listed track with its own model, each listed
+/// track through its effect chain (the others have none), and the mixer's buses.
+#[allow(clippy::too_many_arguments)]
+pub fn write_wav_with(
     mut writer: impl Write,
     sequence: &Sequence,
     bank: &SoundBank,
     sample_rate: u32,
+    models: &[(StringKind, StringModel)],
+    track_models: &[(usize, StringModel)],
+    chains: &[ChainChoice],
+    parts: &[PartChoice],
+    buses: &BusChoices,
 ) -> Result<WavInfo, PlayError> {
     let frames = frames_for(sequence, sample_rate)?;
     let data_bytes = frames
@@ -46,6 +107,39 @@ pub fn write_wav_at(
     write_header(&mut writer, sample_rate, data_bytes)?;
 
     let mut engine = SynthEngine::new(bank, sample_rate)?;
+    for &(kind, model) in models {
+        engine.set_string_model(kind, model);
+    }
+    for &(track, model) in track_models {
+        engine.set_track_model(track, Some(model));
+    }
+    for (track, spec, settings) in chains {
+        if let Some(chain) = prepare_chain(spec, settings, sample_rate) {
+            let _ = engine.set_chain(*track, Some(chain), *settings);
+        }
+    }
+    for (track, part, spec, settings) in parts {
+        if let Some(chain) = prepare_chain(spec, settings, sample_rate) {
+            let _ = engine.set_part_chain(*track, *part, Some(chain), *settings);
+        }
+    }
+    for (bus, choice) in [
+        (crate::Bus::Reverb, &buses.reverb),
+        (crate::Bus::Compressor, &buses.compressor),
+    ] {
+        let Some(choice) = choice else {
+            continue;
+        };
+        if chain_is_empty(&choice.spec) {
+            continue;
+        }
+        let chain = choice.spec.prepare(sample_rate).instance(&choice.settings);
+        engine.set_bus(bus, Some(Box::new(chain)));
+        engine.set_bus_settings(bus, choice.settings, choice.level, choice.muted);
+    }
+    for &(track, value) in &buses.comp_sends {
+        engine.set_comp_send(track, value);
+    }
     engine.load(std::sync::Arc::new(sequence.clone()));
     engine.play();
     let mut left = [0.0_f32; BLOCK];

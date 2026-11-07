@@ -7,6 +7,7 @@ members = [
     "crates/gscore-io",
     "crates/gscore-layout",
     "crates/gscore-play",
+    "crates/gscore-guitar",
     "crates/gscore-edit",
     "crates/gscore-audio",
     "crates/gscore-worklet",
@@ -15,6 +16,9 @@ members = [
     "crates/gscore-app",
     "xtask",
 ]
+# GuitarScore's fork of RustySynth (see vendor/rustysynth/FORK.md): not a workspace
+# member, so the workspace's lints do not apply to foreign code.
+exclude = ["vendor/rustysynth"]
 
 [workspace.package]
 version = "0.1.1"
@@ -27,6 +31,18 @@ repository = "https://github.com/Gerrit91/guitarscore"
 # work. This is the default; it is spelled out so nobody switches it off for speed.
 [profile.dev]
 panic = "unwind"
+
+# The audio code is optimized in debug builds too: unoptimized, the modelled strings and
+# convolution take several times the time an audio buffer plays for, and playback
+# stutters (2026-11-06). The rest of a debug build stays quick to compile.
+[profile.dev.package.gscore-guitar]
+opt-level = 3
+
+[profile.dev.package.gscore-audio]
+opt-level = 3
+
+[profile.dev.package.rustysynth]
+opt-level = 3
 
 [profile.release]
 panic = "unwind"
@@ -52,3 +68,8 @@ unreachable = "deny"
 indexing_slicing = "deny"
 # `arithmetic_side_effects` is enabled per crate (parsing, layout, sequencing)
 # with `#![warn(clippy::arithmetic_side_effects)]` in lib.rs.
+
+# GuitarScore's fork of RustySynth: each MIDI channel rendered apart, for the mixer
+# (vendor/rustysynth/FORK.md).
+[patch.crates-io]
+rustysynth = { path = "vendor/rustysynth" }

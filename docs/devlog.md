@@ -3147,3 +3147,774 @@ needed for a much larger font); owner listening check.
   `gscore_version::VERSION` like the CLI and Help › About.
 - Open: no `--dirty` marker, since the build script does not rerun on working-tree edits
   and the marker would go stale.
+
+## 2026-11-06 — M22 step 0: the performance, and MIDI derived from it
+
+- First, golden files lock what playback sends (`crates/gscore-play/tests/test_golden.rs`,
+  `GSCORE_UPDATE_GOLDEN=1` to regenerate): every testdata song in GP7, GPX and GP5, an
+  excerpt of every beat, the metronome with count-in and lead-in, 16 small songs with one
+  effect each and a crowded-channel song. Only the repository's own files: songs of other
+  bands are under copyright and stay out (owner, 2026-11-06).
+- `gscore_play::Performance` is the engine-neutral form: tracks (sound, instrument kind,
+  open-string pitches with the capo) and notes (string, fret, key, velocity, start, end,
+  onset, `Attack`, stroke direction, palm mute, dead, harmonic, let ring, damped, grace,
+  fade, `PitchShape`). The builder (`build::collect`) no longer touches MIDI channels; the
+  new `midi` module allocates them, borrows channels for moving, damped and fading notes
+  as before, and emits the events. All goldens are unchanged.
+- Trills are a picked note followed by legato fret changes, hammer-ons and legato are
+  legato attacks, left-hand taps their own attack, slaps and pops theirs, a pick slide's
+  steps are scrapes. A natural harmonic keeps its harmonic pitch as the key.
+- `PitchShape` is public with `cents_at(offset)` and `reach_cents()`; the MIDI path still
+  samples it exactly as before.
+- `Sequence` carries `performance: Arc<Performance>` (empty for a count-in), moved with
+  the events by `lead_in` and the excerpt. The worklet's wire format is now `GSQ3` and
+  carries the tracks and notes after the events (checked caps, damaged input is an error).
+- Tests: strings and frets, attacks, trill frets, technique flags, bend and vibrato in
+  cents, note-ons match the performance's notes, excerpt and lead-in timing, wire round
+  trip of three testdata songs.
+- Open: the velocities still contain the MIDI path's technique shading; palm-muted and
+  dead notes are shortened in the performance as the SoundFont path needs them.
+
+## 2026-11-06 — M22 step 1: the modelled strings, first version
+
+- New crate `gscore-guitar` (see `docs/guitar-modelling.md`, "The string engine"):
+  `StringVoice`, a digital waveguide in tune within 2 cents everywhere, with pluck,
+  legato, bend, palm mute, dead notes, release and damping; presets nylon, steel,
+  electric, bass. Tests: tuning over the range and at three sample rates, decays, palm
+  mute and dead notes, a bend and a hammer-on reaching their pitch (the hammer-on keeping
+  the string's energy), determinism, a parameter hunt (NaN and infinities in every input),
+  and no allocation while playing (`stats_alloc`, a dev-dependency only; owner OK).
+- `PerformanceTrack::engine` (`SoundFont` or `Modelled(StringKind)`),
+  `Performance::model_guitars`, `Sequence::with_modelled_guitars`, and
+  `Performance::by_start` (built off the audio thread). Both on the wire.
+- `SynthEngine` plays modelled tracks with a pool of 16 x 8 voices; their MIDI note-ons
+  and bends do not reach the SoundFont (note-offs do, so switching while playing leaves no
+  stuck note). Stop, pause, seek and load silence the strings.
+- Listening: Settings › Audio I/O "Modelled guitars and basses (experimental)" (playback,
+  palette previews, WAV export), `gscore-cli play/wav --modelled`. On the testdata songs
+  the strings come out about as loud as FluidR3 (RMS), with higher pick peaks, no clipping.
+- Owner's requests: a sample rate setting (automatic or 44.1/48/88.2/96 kHz, falling back
+  to the device's with a notice; WAV export follows it) and an audio CPU meter at the
+  bottom right of the status bar (the callback's render time over the buffer time): a
+  small green bar filling from the bottom (red from 90 %), named and given in percent on
+  hover.
+- `cargo xtask bench`: one second of 16 tracks x 6 ringing strings in 57 ms (budget 250).
+- Open: the owner's listening check; amp and cabinet next (step 2); the browser shows no
+  CPU meter (the worklet has no clock to measure with).
+
+## 2026-11-06 — Less synthetic strings, and knobs to dial them in
+
+- The owner heard the low notes as "a synthesizer with slight distortion". Causes: a
+  fixed loss filter lets a low string's highs ring about four times longer (it goes round
+  its loop less often); the pluck was a rectangular pulse (a pulse-wave synth's
+  spectrum); nothing coloured the raw string. Now the loss filter is designed from two
+  decay times (fundamental and 2 kHz, "brilliance"), the pluck blends pulse and triangle
+  ("roundness") rounded in Hz by hardness, and each string has a resonant tone lowpass.
+  Test: a harmonic at 1.98 kHz fades at the same rate on E2 and E4.
+- String sound dialog, opened from the track panel's Sound section (which shows the
+  modelled strings' switch and the track's kind of string): strike, string and tone
+  knobs per kind, explained on hover, heard live (also while playing), kept in the
+  settings, sent to every new synthesizer, used by WAV export (`AudioExport`). Listen
+  plays a phrase built as a `Performance`; Preset restores the built-in values.
+- Levels against FluidR3 on the testdata songs: RMS a little above, peaks close, no
+  clipping.
+- Open: the browser build does not take the knobs yet (the worklet has no message for
+  them); the mixer colours the owner asked for go to another model.
+
+## 2026-11-06 — The sound chain: cabinet, body and room impulse responses, reverb
+
+- Owner's request: an impulse response loader for the acoustic guitar and a way to chain
+  effects, shown as a pedal board (six boxes in a fixed row, cables between them, the
+  strings first and fixed). Also asked: a cab block is an IR loader (yes: one block,
+  "Cabinet / body", with low and high cut); a reverb from a room's impulse response
+  (yes: the "Room" block, a stereo convolution reverb) next to the computed one.
+- `gscore-guitar`: FFT, staged partitioned convolver, WAV impulse responses, Freeverb,
+  `ChainSpec` / `PreparedChain` / `Chain` with `BlockSettings`. Tests: convolution equals
+  direct convolution over every stage, WAV formats and damaged files, a unit response, a
+  stereo room whose tail stops, everything finite, no allocation while running.
+- `gscore-audio`: `ChainSet` (an instance per track of a kind), `SynthPlayer::set_chain`
+  prepared on the synth thread, `set_chain_settings` straight to the callback, chains in
+  WAV export. Test: a room rings on after a palm-muted note.
+- App: the Sound chain window, IR file dialog, chains in the settings, the track panel's
+  button opens the chain (its first box the String sound dialog). Snapshots of both
+  windows.
+- Details and costs in `docs/guitar-modelling.md`, "The effect chain".
+
+## 2026-11-06 — Less synth bass, presets, and choosing what plays a track
+
+- The owner dialed in a Steel sound (now the built-in Steel preset) and still heard a
+  synth-bass character; roundness made it worse. Measured on low E: the fundamental was
+  the loudest partial throughout (harmonic 4 down 12-14 dB), a nearly sine bottom, where
+  a real steel string's harmonics 2-4 are louder than its fundamental, and a real tone
+  moves (two directions of vibration). Now: a second loop per string (second vibration,
+  detune), the output blended with the force on the bridge (bridge), and a low cut.
+  Harmonics 2-4 gain 4-5 dB against the fundamental at bridge 0.6; the Steel preset uses
+  0.85 and a 110 Hz low cut.
+- String sound window: Played by (SoundFont or any kind of string, default from the
+  preset), named presets per kind in the settings, the four new knobs, two columns.
+  The Sound chain window lost its kind buttons and follows its track. The track panel's
+  Sound section only shows what plays the track and opens the chain.
+- Open: a track's own choice of player is kept with the open document by track index,
+  not in the file (owner to decide how to store it); after moving tracks it can point at
+  the wrong one.
+
+## 2026-11-06 — Long rooms without stutter; the reverb's cuts
+
+- The owner's test IRs (Voxengo, 39 stereo 44.1 kHz files of 0.02-8 s; license allows use,
+  not redistribution, so they stay out of the repository) stuttered. The average load was
+  low (1.3 % of a core for a 4 s hall) but the long-tail stage did a whole frame in one
+  sample: 1.3-1.6 ms inside one 64-sample block. The large stages now spread their work
+  over an extra block (`Fft::advance`, resumable); worst block 0.13 ms, average about 3 %.
+- The computed reverb got a low cut and a high cut on its sound (the room block had them).
+- Asked whether Guitar Pro files can carry our own data (a track's player): a GP7 file is
+  a ZIP (`Content/score.gpif`, `BinaryStylesheet`, `PartConfiguration`,
+  `LayoutConfiguration`, `Preferences.json`, `VERSION`); an extra entry of ours would be
+  read back by GuitarScore and most likely ignored by Guitar Pro, but probably dropped
+  when Guitar Pro saves the file again. Untested against Guitar Pro itself. GP3-5 and GPX
+  have no such room. Waiting for the owner's decision.
+
+## 2026-11-06 — Mixer: mute in red, solo in amber, silent tracks recede
+
+- Mute ("M") is red and solo ("S") amber, in the song grid's track column, the master row
+  and the mixer strips: an ordinary button at rest (no color of its own, as the owner
+  asked), the whole button filled while engaged (white ink on red, near-black on amber,
+  since white on amber is hard to read). `style::Tokens` gained `mute` and `solo`, so the
+  two states can never be confused with each other or with the blue accent.
+- `TrackRow::audible`: a track is heard when it is not muted and, if anything is soloed, is
+  itself soloed. Silent tracks recede everywhere: the grid's measure squares and the
+  track's color swatch, name and instrument icon are darkened (`mixer::sounding_color`,
+  ×0.38), and the mixer strip's name and color band likewise; the master strip dims while
+  every track is muted.
+- Snapshot tests: `mixer_mute_solo` and `grid_mute_solo` (one track muted, another soloed,
+  with the rest silenced by the solo) beside the updated `mixer_view`. All other snapshot
+  diffs are only the tinted M/S buttons in the grid and mixer.
+- Open: the page's staves of silent tracks are not dimmed. `gscore-layout` has no opacity
+  or "silent" color token, so that needs a design decision (per-op alpha or a parallel
+  token set) and would touch every golden.
+
+## 2026-11-06 — The Room block's Length knob
+
+- `BlockKind::Room` now carries the length (`BlockKind::room(response, length)`), and
+  `ChainSpec::prepare` really stretches the response there: the factor is clamped to
+  0.5-4 and 1 plays the recording as it is; if lengthening ever failed, the recording
+  plays unchanged rather than the place going silent. It lives in the block, not in
+  `RoomKnobs`, because it changes the response (new spectra, new buffers), not a value the
+  audio thread can take at once.
+- Sound chain window: the Room block's first knob is *Length* (×0.5 to ×4, log), the
+  recording's own at 1.00×. Because a new response has to be prepared, the room is built
+  again when the knob is let go (a click or an arrow key applies at once) instead of on
+  every step of a drag: `BlockSetting::same_structure` leaves the length out, and the
+  window calls the new `Playback::rebuild_chain`. The prepared value and the stored one
+  therefore only differ while the knob is being dragged.
+- Kept in the settings (`BlockSetting::length`, 1.0 for older files; `room_length()` fits
+  whatever a hand-edited file holds), used by playback and by WAV export, which share
+  `chain_spec`.
+- Tests: a guitar-chain test that a ×3 room still rings where the recording has died away
+  and that a ×0.5 one dies sooner; the spec carries the length; older settings read as
+  1.0; the window's snapshot `sound_chain_room` with the knob at the top, and a drag that
+  stores the new length.
+- Open: the length is applied per kind of string (all its tracks), like every other chain
+  setting; the computed Reverb has its own size instead.
+
+## 2026-11-06 — A reverb bus in the mixer; the engine is chosen in the chain window
+
+- The mixer has a **Reverb** strip between the tracks and the master: a computed reverb that
+  every modelled track sends into, its own level (a fader with dB, stored in the settings)
+  and a mute. The **send** is the track's own Reverb knob (MIDI CC 91), now heard on the
+  modelled strings too: post-fader, post-pan, summed mono, the room making it stereo again.
+  The bus runs all wet (its reverb's mix is 1), so the sends alone decide how much each
+  track gives it and nothing is counted twice. The SoundFont keeps its own reverb (its CCs
+  go to rustysynth), so the bus is the modelled tracks'.
+- Per track, the chain already had its own instance, so a track's reverb amount is now its
+  own while the room's sound is still shared by the kind of string.
+- Engine: `Guitars` keeps the bus chain, the sends and its level/mute, runs it after the
+  tracks (it rings on after the sends stop, and a muted bus keeps its tail running);
+  `SynthEngine::set_reverb_bus` / `set_reverb_bus_settings`; the player prepares it on the
+  synth's thread like a chain and re-sends it with a new player; WAV export renders it too
+  (`ReverbBusChoice`).
+- Tests: a palm-muted note whose track sends 120 into the bus rings on after the strings
+  are silent, a lower level is quieter and a muted bus gives nothing back; the mixer test
+  turns the fader down and mutes the bus; snapshots of the mixer with the new strip.
+- Also in this change: the track panel's **Preset** (the synth program) moved to its Sound
+  section, with a small **stomp box** beside it that opens the Sound chain; the **Played
+  by** row is gone. The chain window's first box chooses the engine (MIDI synth or modelled
+  strings of a kind) and opens the strings' sound, and a chain preset keeps that choice
+  (`ChainPreset::engine`), so choosing a preset switches the engine too. The String sound
+  window keeps only the knobs.
+
+## 2026-11-06 — The track panel no longer grows by itself
+
+- The Sound section's preset combo took its width from the panel's own width minus a fixed
+  amount, and the stomp box beside it then needed a few pixels more, so the resizable panel
+  grew a little on every repaint (each mouse move). The width is now reserved for the icon
+  and capped (90-260 px), so the row fits what it is given. Test: twenty mouse moves leave
+  the panel's first label where it was, in both directions.
+
+## 2026-11-06 — The reverb bus opens its own window, with a computed or a recorded room
+
+- The bus strip's **Edit…** button opens the bus's window: **Computed** reverb, **Room
+  (impulse response)** (a WAV, with *Load WAV…*) or **None**, with the block's knobs. The
+  three knobs that used to sit on the strip are in the window now (a recorded room has its
+  own set), and the strip keeps the level, the mute and the way in.
+- `ReverbBus` holds a `BlockSetting` instead of three loose values; it is sanitized to a
+  reverb, a room or nothing (a cabinet is not a reverb) and its mix is always 1, because the
+  bus runs all wet - the tracks' Reverb knobs are the sends, its fader the return.
+- The bus is prepared again when the kind of reverb or the file changes (the player
+  remembers what the running bus was built from); knobs, level and mute go straight to it.
+- Tests: the window's choices turn the bus off and back on, its knobs are there and it has
+  no Mix; the settings' sanitizing; a snapshot of the window.
+
+## 2026-11-06 — The sound chain window says the preset, not the track; the track panel cannot cover the window
+
+- The window's title is **"Sound chain — Preset: …"** (a saved preset, Built-in or Changed); the
+  track name and the explanatory line are gone, so the board follows the title directly, and
+  the preset list with Save as… came down to the bottom, above Listen/Close.
+- The first box is what plays the track: **MIDI** (with the synth's preset) or **Strings**.
+  The engine options are two now, **MIDI synth** and **PM Synthesis**; the kind of string
+  moved to the String sound window, which a click on the Strings box opens (the extra button
+  is gone). The two boxes' names are also their accessibility labels ("Block 0: MIDI").
+- The track panel (and the edit palette) can no longer take the window over: the width is
+  clamped so the score and the other panel keep their room, a stored or hand-edited size is
+  fitted (non-finite ones mean "not chosen"), and **View › Reset panel sizes** puts them back
+  without editing the settings file. This is the way out of a window covered by a panel a
+  saved size had grown. Tests: 5000 px, infinity and NaN stored widths leave both panels in
+  their halves.
+
+## 2026-11-06 — Every preset in the dropdown; the bus shows what reaches it
+
+- The chain preset list is no longer filtered by the kind of string: every preset is shown
+  (by name), and choosing one loads its own kind - the sound and the chain go to that kind,
+  and a preset saved with a modelled engine switches the track to it too (so a nylon preset
+  on an electric track comes back as nylon).
+- The bus strip's meter shows the loudest send into it through its own level (an estimate
+  from the tracks' activity and their Reverb knobs, like the tracks' meters), and the bus
+  window says who feeds it: tracks played by PM synthesis; SoundFont tracks keep the synth's
+  own reverb.
+
+## 2026-11-06 — The strings' sound lives in the chain window; knobs instead of sliders
+
+- The separate String sound window is gone. Selecting the first box on the board shows, in
+  the same window: what plays the track (MIDI synth or PM Synthesis), the kind of string
+  (when modelled) and its sound - strike, string and tone - as round knobs with their value
+  under them and the explanation on hover (drag sideways, double-click for the default;
+  frequencies turn logarithmically).
+- The chain blocks' knobs (size, damping, width, mix, gain, cuts, a room's length) are round
+  knobs too, in one row under the block, in the chain window and in the reverb bus window.
+- The window's title names the track's instrument preset ("Sound chain — Preset: Jazz
+  Electric Gtr", the one the track panel's Preset shows); the saved chain presets are the
+  list at the bottom.
+- A tall window no longer starts over the toolbar (dialogs keep 80 px below the top edge).
+
+## 2026-11-06 — Typed knob values, a block's own menu, and presets that land where you look
+
+- Clicking a knob's value under it opens a small field: type a number (comma or point),
+  Enter or leaving the field takes it (clamped to the knob's range), Escape cancels. A knob
+  also takes the arrow keys (a hundredth of its range a step) once clicked.
+- A chain block's menu moved to the block: right-click offers Bypass (or Hear it again) and
+  Remove; the editor no longer has a Remove button, it says so.
+- The engine buttons read "MIDI synth" and "PM Synthesis" (no "(preset)" suffix).
+- Choosing a saved chain preset now lands on the kind the window shows, unless the preset
+  names a modelled engine (then it brings its kind) - so selecting a preset always moves the
+  knobs in front of the user, even when it was saved on another kind of string.
+- Tests: a preset saved on an electric track, chosen after the track's instrument was
+  changed to a steel string, loads onto the steel chain; typing into a knob's value; the
+  block menu's Remove.
+
+## 2026-11-06 — A preset brings its kind of string with it
+
+- Choosing a saved chain preset now switches the track to the kind of string the preset was
+  made for (its sound and chain are that kind's), so a "Natural Steel 1" preset turns an
+  electric track into steel strings - the model itself changes, not just values on whatever
+  kind was showing. A preset saved on the SoundFont keeps the track on the SoundFont (it has
+  no modelled sound to switch to); an older preset, from before the engine was part of one,
+  was made for modelled strings and brings them (its kind).
+- "Built-in" keeps whatever plays the track and resets the sound and chain of the kind on
+  screen.
+- Test: a steel preset with a reverb block, dialed in on an electric track, comes back as
+  steel strings with the block after choosing it.
+
+## 2026-11-06 — A chain block's box and editor, tidied
+
+- The editor no longer repeats the bypass as a checkbox (the mute under the block does it,
+  and its menu offers it too) and drops the "right-click to remove" hint; it shows just the
+  block's name and its knobs.
+- A cabinet or body block reads "Cab" on the board - "Cabinet / body" was cut off at the
+  box's width; the menu that offers it keeps the full name.
+
+## 2026-11-06 — Saving over a preset, deleting it, and a box that never overflows
+
+- A preset being worked on is remembered (not just recognised by its values): move its knobs
+  and the list says "«name» *", with a **Save** button that overwrites it and a **Delete**
+  button for it - no "Save as…" with the same name again. "Save as…" stays for a new name,
+  and the old "Delete…" menu went: select a preset, then Delete.
+- The chain window's box text is cut to the box (an impulse response's file name used to
+  spill over the neighbouring box): 13 characters for the title, 12 for the file's name,
+  smaller detail text, clipped to the box.
+
+## 2026-11-06 — Loop works without a selection: the song repeats
+
+- The Loop button in the transport is always usable in a song now. With nothing (or only a
+  single beat's cursor) selected it turns looping on and plays the whole song again from its
+  start at the end; with bars or beats selected it loops those bars, as before. The "select
+  bars first" disabled hint and the rule that dropped looping when the selection went away
+  are gone (a song without measures keeps it off).
+- Tests: Loop turns on and off with no selection and with a single beat selected; the score
+  selection test now expects the button to be usable without one.
+
+## 2026-11-06 — An Amp block in the sound chain
+
+- New block **Amp** (first in the menu of an empty place), computed in `gscore-guitar::amp`:
+  three voices (Clean, Crunch, Lead: one to three soft-clipping stages, lopsided like a
+  tube), run 4× oversampled so hard distortion does not alias; Gain, Bass, Mid, Treble,
+  Speaker (a built-in 4×12, blended out to 0 when a cabinet IR follows in a Cab block) and
+  Level. The box shows "Amp" and the voice. Choosing a voice or turning a knob is heard at
+  once (no rebuild). Saved in the settings as `voice` (`clean`/`crunch`/`lead`), `drive`,
+  `bass`, `middle`, `treble`, `speaker`; Level is the block's `gain_db`.
+- Calibrated on the modelled strings: their output is hot (a power chord peaks near 4), so
+  the amp pads its input; Clean plays at the strings' level, the voices within about 3 dB.
+- Knob types moved from `chain.rs` to `knobs.rs` (the file passed 500 lines).
+- Tests: more gain more harmonics, clean stays clean, little aliasing at 3 kHz, voices about
+  equally loud, silence stays silent, tone stack and speaker responses, a power chord through
+  every voice and gain bounded, distortion squashes the attack, knobs while playing, no tail,
+  no allocation; settings round trip; the playback chain gets the amp. Cost (ignored test):
+  0.9 % of a core per track in release.
+
+## 2026-11-06 — A new reverb, and a Drive pedal
+
+- **Reverb** rebuilt (owner did not like the Freeverb copy): a feedback delay network after
+  Geraint Luff's published design (Signalsmith Audio, MIT article; our own code, no
+  dependency, so the browser build keeps working). Four diffusion stages for a dense onset,
+  eight drifting delay lines fed back through a Householder matrix for the tail. New knobs
+  Decay (0.3 to 30 s, exact), Pre-delay (0 to 250 ms) and Modulation (the tail's drift, the
+  shimmer of a big hall); Size now reaches a cathedral; Damping shortens the highs' decay.
+  Size and pre-delay glide while turned. The knobs sit in two rows: the room, then its
+  output. Same block, so saved chains and the reverb bus keep working; reverbs saved before
+  get the new knobs' defaults. A fresh reverb bus is a large hall (size 0.9, 5 s, 30 ms).
+  1.3 % of a core per reverb (release).
+- **Drive**: an overdrive pedal (mid-hump kind): only what lies above 720 Hz is clipped, the
+  lows pass clean; Drive, Tone, Level. In front of the Lead amp with Drive low and Level up
+  it tightens the low end (test).
+- Oversampling shared by the amp and the drive (`gscore-guitar::oversample`).
+- Tests: decay time within 35 %, dense after 100 ms in a cathedral, sides differ, long runs
+  finite and dying, damping darkens, pre-delay waits, matrices keep energy, about as loud at
+  every size and decay; drive: mids distort and lows stay clean, level, silence; drive into
+  amp tightens the lows; no allocation with both; settings (old reverbs read); snapshots of
+  the drive and the reverb's knobs.
+
+## 2026-11-06 — Blocks dragged along the sound chain
+
+- A block on the board can now be **dragged to another place** with the mouse: the block
+  follows the pointer (painted on a tooltip layer, with its knobs' bypass state), the place
+  it would land in is outlined in the accent, and the place it came from is drawn recessed.
+  Dropping it moves it there and the places in between slide one place toward the old one
+  (`rotate_left`/`rotate_right`, so the order the sound passes the blocks in follows the
+  board). A drop on its own place, or anywhere off the board, changes nothing; Escape
+  cancels (egui's drag payload). The knobs and the impulse response travel with the block.
+  `set_string_chain` sees the new structure and prepares the chain again, so the moved order
+  is heard at once.
+- Empty places and the first box (what plays the track) are not draggable; the mute under
+  each block and the context menu (bypass, remove) work as before.
+- Tests: `move_block` both directions, knobs travel, no move for the same or an off-board
+  place; an app test drags a block past another and back with the mouse
+  (`drag_box` in `test_track_panel.rs`) and checks the chain in the playback; snapshot
+  `sound_chain_dragging` of the frame while the block hangs at the mouse.
+
+## 2026-11-06 — Each track has its own tone
+
+- Owner's report: dialing in a 30: Distortion Guitar track, then a 29: Overdriven Guitar
+  track, gave the first one the second's sound. The string sound and the chain were kept
+  per kind of string (both are electric), not per track.
+- Now each track has its own tone (the sound of its strings and its chain), changed for
+  that track alone. A track without one plays its kind's default (the settings' values,
+  so earlier dialed-in sounds become the default for new tracks). A tone belongs to the
+  kind it was dialed in on; on other strings that kind's default plays.
+- Engine (`gscore-audio`): a string model and a chain per track, by the song's track index
+  (a beat excerpt or the Listen phrase keeps it, so they sound like their track); a new
+  chain brings its own knob values (it used to take those kept for the chain it replaced).
+  Playback sends only what differs per track. Export applies the tracks' engine choices and
+  tones.
+- Words: the chain window's saved presets are now **Tones** ("Tone", "Save as…", "Tone
+  name"); its title names the track (the MIDI box shows the GM preset). Owner's decision
+  on tones written down in `docs/guitar-modelling.md` (Tones).
+- Not yet: tones are not saved with the song, and do not follow a moved or deleted track
+  (as the engine choice does not); both come with keeping tones in the song and the GP7
+  file.
+- Tests: two tracks of one kind keep their own sound and chain (engine), a beat excerpt
+  plays with its track's tone, export resolves own tones and kinds, and the owner's steps in
+  the app (two electric tracks dialed in one after the other).
+
+## 2026-11-06 — No more stutter while a long reverb dies away
+
+- Owner: stopping with a long reverb tail took 100 % CPU and stuttered. The reverb itself
+  costs the same through its whole tail (1.2 %); the drive and amp before it did not: a
+  long tail keeps the chain running on the silence after the strings stop, and their
+  filters decayed into denormal numbers (below 1e-38), which the processor handles up to a
+  hundred times slower. Measured: half a core per track for a drive, an amp and a 20 s
+  reverb, from the first second after the notes.
+- Every filter in `gscore-guitar` (biquads, one-poles, allpasses, DC blockers, the reverb's
+  damping shelf) now sets outputs below 1e-20 (400 dB down) to exactly zero: 2.4 % through
+  the tail.
+- Tests: after a note and a second of silence, a drive and an amp put out exact zeros
+  (failed before: 2.6e-30); ignored timing tests for the tail with and without blocks in
+  front, and for the whole engine after Stop.
+
+## 2026-11-06 — The electric guitar gets a pickup
+
+- Owner: the electric string lacked realism, the pick attack and the mid-range overtones.
+  First the pickup (the pick attack comes next): the string used to be heard as an
+  acoustic one (its swing and its force on the bridge, then a lowpass).
+- `gscore-guitar::pickup`: the pickup hears the string where it sits, a comb that follows
+  the pitch (bends too). Single coil or humbucker (two spots side by side), its position
+  as a share of the string from the bridge; the voice's resonant tone filter is the coil's
+  resonance. Electric preset: humbucker at the bridge, 3 kHz, resonance 1.8.
+- Window: a **Pickup** row in the strings' knobs (None, Single coil, Humbucker; Position;
+  Bridge, Middle, Neck). Choosing a type sets Tone and Resonance to its coil's peak. The
+  knob row that was called "Tone" is now **Output**, so it is not mistaken for the saved
+  tones.
+- Settings written before have no pickup in their sounds: each kind's preset decides (an
+  electric gets the humbucker, steel, nylon and bass none).
+- Cost: the strings benchmark (96 strings ringing) went from 244 to about 280 ms per second
+  of audio on a busy machine, over its 250 ms budget; it was at the edge before. The
+  zero-flush of the last change is no longer in the string loop's own filters (a string
+  stops being computed once silent), which won some of it back.
+- Tests: the neck pickup has no octave, the bridge pickup's mids against the fundamental,
+  the humbucker's even comb, no pickup changes nothing, a plucked open A through bridge,
+  middle and neck pickups (loudness, in tune), older settings, and the window's buttons.
+  The amp tests now play fixed strings without a pickup, so they measure the amp alone.
+
+## 2026-11-07 — A tone belongs to the track preset, kept on this machine
+
+- Owner: "my program local overwrites ... are persistent: I change the built-in tone for
+  preset 27, the preset gets stored locally and is associated with preset 27; when I reopen
+  the track or go to another song that is also using preset 27 I hear my custom sound. The
+  custom tone overwrite can be cleaned by switching back to built-in."
+- So a tone is the **preset's**, not the track's: `Settings::preset_tones` (by General MIDI
+  program: the kind of string it was dialed in on, the string sound and the chain). The
+  Sound chain window edits the shown track's preset; every track with that preset, in every
+  song, plays it. **Built-in** in the tone row forgets it (the kind's default plays again).
+  This also fixes the earlier report the other way round: 29 and 30 are different presets,
+  so they keep different tones (two tracks of the *same* preset now share one, by design).
+- The per-track tone map of 2026-11-06 (`Tab::track_tones`, `TrackTones`, `tone_of`) is
+  gone; playback keeps `preset_tones` and resolves a track's tone from its program
+  (`Playback::tone`, `preset_tone`, `preset_kind`, `set_preset_tone`). A preset's tone of
+  another kind of string changes which strings its tracks play, so `with_engines` now
+  derives the default kind per program from the preset tones
+  (`Sequence::with_modelled_guitars_where`), the same answer the window shows.
+- Saving a tone under a name (the library) and deleting it work as before; a library tone
+  is *given* to a preset by choosing it, and "Save" writes the preset's current knobs back
+  over that library tone.
+- Tests: the settings round trip drops a broken tone (unknown kind, program past 127,
+  a second tone for one program), a tone saved before pickups gets its kind's; the app's
+  steps — dialing 27's pick position stores it for preset 27 (not for the kind) and leaves
+  the bass's 33 alone, a 30 track gets its own and 27's stays, and Built-in removes the
+  overwrite from the settings and the sound again.
+- Still open: the owner's four tones are seeded into his settings file by hand (they name
+  his private impulse responses, so nothing ships); the tones are not in the song file, and
+  the impulse responses they name are absolute paths.
+
+## 2026-11-07 — Mixer, step 1: our own fork of RustySynth
+
+- Owner's plan (decided 2026-11-07): a real mixer. Every track a strip (its source, the
+  SoundFont or modelled strings, then its chain, fader and pan after the chain, the song's
+  volume and pan automation moving our fader), post-fader sends to the reverb bus and to a
+  compressor bus (a Comp send per track), the buses into the master, real meters. Chorus
+  becomes a chain block, not a bus. Tracks sharing a MIDI channel get linked strips (one
+  signal: shared meter, fader, pan, sends and chain; mute and solo stay per track), with an
+  Unlink that moves one to a free channel. Later: a track can be played by a hardware
+  synthesizer (MIDI out per track, held back by the audio latency).
+- Step 1, the fork: RustySynth 1.3.8 (MIT, Nobuaki Tanaka) copied to `vendor/rustysynth`
+  and used through `[patch.crates-io]`, outside the workspace (its lints are not ours).
+  `SynthesizerSettings::split_channels` and `Synthesizer::render_channels` render each
+  MIDI channel into its own stereo block (reverb and chorus off in that mode); `render`
+  still plays their sum. Its two `unsafe` uses are gone: the sample data is read in 64 KB
+  chunks and decoded little-endian. Changes listed in `vendor/rustysynth/FORK.md`, licence
+  in `THIRD_PARTY.md`. The engine does not use the split yet (step 2).
+- Checked: FluidR3_GM loads the same 74,098,056 samples (same checksum) in the same time
+  (85-95 ms) as with the crates.io release.
+- Tests (`gscore-audio/tests/test_split_channels.rs`): a channel's notes reach only its
+  output (a pan reaches its side), the channels add up exactly to the unsplit synthesizer,
+  also when rendered in uneven pieces; an ignored test times a large SoundFont.
+
+## 2026-11-07 — Mixer, step 2: every track a strip in the engine
+
+- `gscore-audio::mixer`: the synth engine renders each MIDI channel apart (the fork of
+  step 1, its reverb and chorus off) and mixes every track of the sequence as a strip:
+  its source (the channels it plays on, borrowed ones for bends included, or its modelled
+  strings), its chain, then fader and pan, then a post-fader send to the reverb bus; bus
+  and strips into the master. Chains and the reverb bus moved there from `guitars`, which
+  now only renders each track's strings.
+- Chains for SoundFont tracks too (`Chain::process_stereo`/`process_in_place`: a stereo
+  input). Playback sends one for every track; a SoundFont track gets its preset's own tone's
+  chain, if one was dialed in, not the kinds' defaults (those are the modelled strings'; an
+  amp on a SoundFont distortion guitar, or a guitar chain on a piano, would surprise). The
+  chain window shows a SoundFont track's chain as it plays. SoundFont tracks now send into
+  the reverb bus with their Reverb knob (their own reverb is gone); the bus window says so.
+- The song's volume, pan and reverb send (CC 7, 10, 91: setup, automation, the mixer's
+  live changes) move the strip; the synthesizer is held at full volume and centred (also
+  after a reset of all controllers). Same square law and equal-power pan as RustySynth's,
+  so levels did not change (test: exact ratios).
+- Tracks sharing a MIDI channel are one strip: the first owns the channel's sound, a
+  later one has none of its own (the interface will show them linked, step 3).
+- `gscore-audio::meters`: every strip's level after its fader, the reverb bus's and the
+  master's, as falling peaks (20 dB in 1.7 s) in atomics; `SynthEngine::meters`. The
+  interface still shows the estimates until step 3.
+- Lost for now: the SoundFont's chorus (CC 93): it becomes a chain block (owner).
+- Tests (`test_mixer.rs`): fader square law and equal-power pan, a SoundFont track's own
+  chain leaves the other alone, meters show the real levels and fall when stopped, a
+  SoundFont track's send reaches the bus, a live fader change, two tracks on one channel.
+
+## 2026-11-07 — Mixer, step 3: the mixer shows the real levels, calmly
+
+- The mixer's meters show what the engine measures (every track after its fader, the
+  reverb bus, the master) whenever the built-in synthesizer plays; with MIDI output or in
+  the browser they keep estimating from the notes (their tooltip says which). The song
+  grid's activity bars follow them.
+- Owner: the meters were too nervous; hold the peaks briefly, then fall slowly. Each side
+  now has a bar that holds a peak for 0.3 s and then falls 20 dB in 1.7 s, and a peak mark
+  (a line in the bar's color at that height) that stays 1.5 s at the highest level, then
+  drops quickly to the bar. Computed in the engine (`meters::Ballistics`), so it does not
+  depend on the frame rate; the window redraws while any meter still moves.
+- `SynthPlayer::meters` hands the engine's meters (made on the audio thread) to the app.
+- Found while planning the linked strips: our sequencer gives every melodic track its own
+  MIDI channel whatever the file says, so tracks share one only when they are drums (all
+  on channel 10, as General MIDI wants) or past 15 melodic tracks.
+- Tests: the bar holds and falls at its rate, the mark stays longer and never shows below
+  the bar, silence rests at exactly zero; an estimate is split by the pan.
+
+## 2026-11-07 — Every drum track has a channel and a mixer strip of its own
+
+- Owner's choice: several drum tracks (a kick, a snare, toms as separate tracks) no longer
+  share channel 10 and one strip. `ChannelAllocator`: the first drum track gets 10, a
+  further one the next fresh channel (taken from those free for bends); past the channels
+  they share 10 again, and melodic tracks sharing round-robin never land on a drum
+  track's channel (they would play drums).
+- RustySynth fork: `set_percussion_channel` makes any channel play drums (the percussion
+  banks; it starts on the standard kit). The engine marks the loaded sequence's drum
+  channels (`Sequence::drum_channels`). Checked with FluidR3: a kick on a second drum
+  channel is sample for sample the one on channel 10.
+- General MIDI devices play drums on 10 only: `Sequence::general_midi` moves every drum
+  track there, used by the MIDI output (live mixer changes too) and the MIDI file export.
+- Found on the way: the browser worklet's wire format did not carry the sequence's tracks,
+  so since the mixer (step 2) the browser had no strips and its faders, pans and reverb
+  sends did nothing. The tracks travel now (channel and sound); format `GSQ4`.
+- AGENTS.md decision 10 updated. Tests: the allocator (drum tracks apart, melodic sharing
+  never on a drum channel), a sequence with two drum tracks and its General MIDI form (and
+  a live change), the engine's two drum strips with a chain on one, any channel as drums,
+  the wire round trip with tracks, a fader in a sequence sent to the worklet.
+
+## 2026-11-07 — Mixer, step 4 (engine half): the CA-76 compressor and a compressor bus
+
+- `gscore-guitar::compressor`: a compressor after the 1176 family of FET compressors
+  ("CA-76"): input into a fixed threshold, output make-up, attack 20 µs-0.8 ms, release
+  50 ms-1.1 s (program dependent: slows after sustained compression), ratios 4, 8, 12, 20
+  and All (every button in: harder, overshooting, more color), a little FET second
+  harmonic growing with the reduction, mix, stereo linked. A chain block
+  (`BlockKind::Compressor`); `Chain::take_gain_reduction` for a meter.
+- `gscore-audio`: the reverb bus generalized to `Bus::{Reverb, Compressor}`; the
+  compressor bus is stereo and fed by each track's comp send (post-fader). Meters for the
+  bus and gain-reduction needles per track and for the bus.
+- Not done (budget): the app side of the block and the bus, export of the compressor bus,
+  engine tests for the bus. Handed over in `docs/handoff-mixer.md`.
+
+## 2026-11-07 — Mixer, step 4 (the rest): the compressor in the app, the bus in the mixer
+
+- **The block:** `BlockChoice::Compressor` ("Comp" on the board, "CA-76 · <ratio>" under
+  it): `BlockSetting` keeps input, attack, release, the ratio as a settings enum
+  (`comp_ratio`: 4, 8, 12, 20, all) and reuses `gain_db` (output) and `mix`; older settings
+  read (serde defaults). `app/amp_knobs::compressor_knobs`: the ratio buttons stacked like
+  the amp's voices, Input, Output, Attack, Release and Mix as round knobs, and the
+  **gain-reduction meter** (a 0 to -20 dB bar) read from `Meters::reduction(track)`; the
+  chain window repaints every 30 ms while any meter moves. `chain_spec` maps the block;
+  a bus never runs an amp or a drive (sanitized away).
+- **The bus:** `CompressorBus` in the settings (a CA-76 at "All", input +18 dB, output
+  -12 dB, 0.2 ms attack, 150 ms release, mix 1), sanitized to a compressor or nothing.
+  Playback's reverb-bus plumbing is generalized: `SentBus` (prepared? what it runs) per
+  bus, `bus_parts` (the one block a bus runs: reverb, room, compressor, cabinet) and
+  `send_bus` (prepares when the block or file changed, otherwise sends knobs, level and
+  mute); `set_/store_/send_compressor_bus`, `export_buses`.
+- **The mixer:** the reverb strip became `bus_strip` (one drawing, `BusChange`s mapped to
+  actions), so the **Comp strip** (fader, level field, mute, Edit…) sits between the
+  reverb bus and the master; `Readings` has its meter (`Meters::compressor()`), and its
+  own window (`app/compressor_bus_window.rs`: the CA-76 or None, the knobs and the bus's
+  gain reduction from `Meters::bus_reduction()`, repainting while it moves).
+- **WAV export:** `write_wav_with` takes `BusChoices { reverb, compressor, comp_sends }`
+  instead of the single reverb bus; the app fills it from `Playback::export_buses()`
+  (`comp_sends` is still empty until step 5's Comp knobs).
+- Tests: the compressor bus (fed by `set_comp_send`: silent and resting with no send,
+  its meter and needle with one, silenced by its fader and mute), a compressor in a
+  track's chain (level down against a dry track, needle returns to rest after Stop), a
+  CA-76 flattens a strummed chord's crest factor (5.3 to 2.6), and the app's steps: the
+  Comp strip's fader and mute, its window's defaults, knobs, None/CA-76 switch, snapshots
+  `sound_chain_compressor` and `compressor_bus_window` (the mixer snapshots changed: the
+  new strip is in them).
+
+## 2026-11-07 — Mixer, step 5: a Comp knob per track, and the song carries its mix
+
+- Owner's idea: keep our own state in a field Guitar Pro already keeps, so a file keeps it
+  when Guitar Pro saves it again. The song's free-text notes ("Notices") carry a marked,
+  single-line block (`[GuitarScore 1]{...}[/GuitarScore]`, `app/song_state.rs`): each
+  track's send into the compressor bus and the tone it plays when that is not its kind's
+  built-in default. The block is taken out of the notes when a song opens (the user sees
+  only their own notes) and written back on save (`Song::with_notes`, the app's
+  `start_save`); a foreign or broken block is dropped, never a panic.
+- A track's tone now has three layers: the one that came with the song (wins), the preset's
+  (the owner's local overwrite), the kind's default. The Sound chain window edits the
+  song's tone when the song brought one, otherwise the preset's; Built-in clears both.
+  `Playback::tone(track, program, kind)` resolves it, for playback, export and the window.
+- The mixer strip has a fourth knob, **Comp** (send into the compressor bus, 0-127): it is
+  the song's, so no undo step; the strip is a little wider for the four knobs. Playback
+  sends them to the engine (`set_comp_sends`, again after a synthesizer restart) and the
+  WAV export renders them.
+- Tests: the block round trips (and a foreign, broken, future-version or truncated block
+  loses nothing), the app's steps: a comp send and a tone dialed in, saved, and a fresh app
+  with default settings hears both from the file, with the block hidden from the notes.
+
+## 2026-11-07 — A 4-band parametric EQ block
+
+- `gscore-guitar::eq`: low cut, four bands (a low shelf, two bells, a high shelf) and a
+  high cut; each band has frequency and gain, the bells a width (`q`), the shelves the
+  gentle fixed slope of `Biquad::shelf`. Per side, knobs fitted into their ranges
+  (`knob_ranges::{EQ_GAIN, BAND_FREQ, BAND_Q}`), denormals flushed by the filters.
+  `BlockKind::Eq`, `BlockSettings::eq`.
+- The window's block: "EQ" on the board, "4 bands" under it, twelve round knobs (Low cut,
+  each band's Freq and Gain, the bells' Q, High cut) in two rows; `eq_knobs` in
+  `app/amp_knobs.rs`. Snapshots `sound_chain_eq`.
+- Tests: every band lifts and cuts at its own frequency (the shelves measured inside their
+  corner), a bell's width decides how far it reaches, the cuts and shelves measure as
+  asked, a flat EQ is flat, a broken settings file is fitted and never makes NaN, and the
+  no-allocation test runs an EQ while its bands are retuned.
+- Owner asked for a 4-band parametric EQ while the drums handoff was under way; it is the
+  block the drum part tones are built from.
+
+## 2026-11-07 — Drums, step 2: a drum channel's parts (fork)
+
+- `vendor/rustysynth`: a percussion channel's voices are summed into six parts as well as
+  into the channel (kick, snare, hi-hat, toms, cymbals, the rest, by General MIDI key;
+  `PARTS`, `drum_part`), filled in `render_split_block` and read with `part_block`. So the
+  mixer can give every drum its own chain while a drum track stays one strip. Recorded in
+  `FORK.md`.
+- Tested through the engine's test SoundFont (`testing::sine_drum_soundfont`, a preset in
+  the percussion bank): the parts of a drum channel add up to exactly its block, a kick, a
+  snare and a hi-hat land in their own parts and nowhere else, and a melodic channel has
+  none.
+- Still to come (steps 3-6 of `docs/handoff-drums.md`): the engine's part chains and drum
+  bus, the default part tones, the window's row of parts, and the export check.
+
+## 2026-11-07 — The mixer strips select their track
+
+- Owner: clicking a strip's background in the mixer view selects the track, and the
+  selected strip has the grid view's selection background. `track_strip` is a click
+  target now (its children - knobs, fader, mute, fields - still take their own clicks) and
+  pushes the same `GridAction::MoveCursor` the grid's track row does: the cursor goes to
+  that track's measure and the track panel shows it. The selected strip gets
+  `selection.bg_fill × 0.18`, as the row does.
+- `strips()` takes the `GridView` (it needs the shown track, the cursor's measure and the
+  metronome reading) instead of only the metronome.
+- Tests: a click beside the fader of the third strip selects track 3 (panel and cursor),
+  a click on the first goes back, snapshot `mixer_selected_track`; the mixer snapshots
+  changed (the strips are click targets now).
+
+## 2026-11-07 — Drums, step 3 and 4: the drum bus in the engine, and the part tones
+
+- The engine plays a drum track as one strip whose sound is split: the fork's parts (step
+  2) go each through its own chain, the parts are summed, then the track's own chain (the
+  drum bus), fader, pan and sends as for any track. `Mixer::set_part_chain` /
+  `set_part_chain_settings` (prepared off the audio thread through the player's chain
+  queue, `Command::PartChain*`), a `DrumParts` view of the fork's blocks, and the strip's
+  gain-reduction needle takes the deepest of the parts'.
+- `chain_settings::DrumPart` (kick, snare, hi-hat, toms, cymbals, percussion) and the
+  owner's first tones: EQ (low cut, body, boxy mids out, click/crack in), a CA-76, a short
+  room on the snare and toms; the hi-hat and cymbals only EQ; the drum track's own chain
+  (when it has no tone of its own) is a light compressor that glues the kit.
+- Playback sends the part chains when a sequence is loaded (`send_drum_parts`).
+- Tests: a chain on the kick's part turns the kick right down and leaves the snare alone,
+  a part the kit does not use changes nothing; every part's built-in tone is usable.
+- Export: `write_wav_with` takes the drum parts' chains too (`PartChoice`), and the app
+  fills them from `Playback::export_parts()` with the same built-in part tones, so a
+  rendered WAV has the drums processed as they are heard.
+
+## 2026-11-07 — Drums, step 5: the window's row of parts
+
+- The Sound chain window of a drum track has a **Part** row: the kit itself (the track's
+  own chain, the drum bus) and Kick, Snare, Hi-hat, Toms, Cymbals, Percussion. Choosing a
+  part shows that part's chain on the board; the first box (the source) goes back to the
+  kit, and the tone/preset row is hidden (a part has no preset). **Built-in** forgets a
+  part's own tone.
+- The part tones are kept in the settings (`drum_parts`, by part, like `preset_tones`), so
+  every drum track's kit plays them; `Playback::{drum_part_chain, set_drum_part_chain,
+  drum_parts, store_drum_parts}` and the export use the dialed-in ones. A part's impulse
+  response (a Room on the snare, say) is loaded like a block's (`PickedImpulse` carries the
+  part now).
+- The window and playback now agree on the drum bus: a drum track with no tone of its own
+  shows and plays `default_drum_bus_chain` (the window used to show an empty chain, since
+  the kind's defaults are cleared for SoundFont tracks).
+- Tests: the drum track's window shows the kit's compressor, the kick's EQ and compressor,
+  a moved knob is kept as the kick's tone in the settings, Built-in forgets it, and the kit
+  board comes back; snapshot `sound_chain_drum_kick`.
+
+## 2026-11-07 — MIDI out per track
+
+- A track can now be played by a hardware synthesizer: the Sound chain window's first box
+  offers **MIDI out** next to MIDI synth and PM Synthesis, with a port and a channel (both
+  automatic until chosen; the port list is refreshed when MIDI out is first chosen). The
+  app keeps the route in the open tab (`Tab::midi_outs`), like the other per-track engine
+  choices.
+- `TrackEngine::MidiOut` marks the track in the performance. `Sequence::with_tracks` splits
+  a full sequence without rebuilding it from the song: the main output gets every track
+  except the MIDI-out ones, each MIDI port gets its own tracks (and no metronome clicks).
+  Track positions in events and in the performance are renumbered, so modelled strings on
+  the remaining tracks keep working; a chosen channel moves that track's own events there
+  (borrowed channels for bends stay independent).
+- `Playback` now runs the main output plus one `MidiOutPlayer` per needed port. Every
+  transport command (play, pause, stop, seek, tempo, replace, count-in, loop, excerpt)
+  goes to all of them; the main output keeps the UI's position and state. The MIDI players
+  hold their start back by the synthesizer device's reported output latency
+  (`SynthPlayer::latency`, `MidiOutPlayer::set_delay`), so both sources line up. A port that
+  cannot be opened is reported, and the other tracks still play.
+- Mixer: a MIDI-out track's strip shows its note activity (estimated from the full
+  sequence) instead of a measured level, since its audio never returns; its comp/reverb
+  sends no longer feed the app's buses. Volume, pan and program still go to the device.
+- The browser has no MIDI ports: a saved MIDI-out choice falls back to the SoundFont there,
+  and the option is not shown.
+- Tests: `Sequence::with_tracks` keeps the clicks and renumbers notes/tracks; the app's
+  route split (port, channel, no clicks on the hardware output) and its MIDI-out choice
+  from the Sound chain; snapshots `sound_chain_midi_out` (new) and `sound_chain_strings` /
+  `sound_chain_pickup` (the third source button).
+
+## 2026-11-07 — The chorus block
+
+- `gscore-guitar::chorus`: a stereo chorus, two short delay lines swinging around 14 ms,
+  the right side a quarter cycle ahead (the width), rate 0.05-5 Hz, depth 0.2-8 ms, mix;
+  linear-interpolated reads, ring-buffer index math bounded by the buffer (the module
+  allows the arithmetic lint for that). `BlockKind::Chorus`; a mono signal is made stereo
+  before it, so the sides differ as they should.
+- The chain window's block: "Chorus" on the board, "stereo" under it, Rate, Depth and Mix
+  as round knobs (`chorus_knobs`); offered in an empty place's menu (the mixer's step 5,
+  item 2: the GM Chorus knob still does nothing).
+- Tests: a dry chorus passes the signal exactly, an all-wet one moves the sound and keeps
+  the two sides apart without silencing it, a broken settings file never makes NaN or a
+  huge signal, and reset leaves silence.
+
+## 2026-11-07 — Review of the mixer's last steps, before merging into m22-string-engine
+
+- Reviewed `b5f80e8..0124f34` (compressor block and bus, comp send and the song's notes
+  block, EQ, drum parts and drum bus, chorus, MIDI out per track). Fixed:
+  - A drum track's part chains were stored by the song's track index but looked up by the
+    strip's place in the sequence: with a muted track before the drums, under solo or in a
+    beat preview, the drums got no part chains (or another track's). Now both are the
+    song's track (test: drums behind a muted track).
+  - Every sequence rebuild (Play, a mixer change, a beat preview) prepared all six part
+    chains of every drum track again, rooms included, cutting their tails and loading the
+    synthesizer's thread. Playback now remembers what each part was given and sends only
+    a changed chain, or only its knobs.
+  - Drum tracks that have to share channel 10 (more tracks than channels) each played the
+    whole channel's parts (doubled); now only the channel's owner does, as for any shared
+    channel.
+  - `vendor/rustysynth/target` (7.7 MB of build output) and the vendored crate's own
+    `Cargo.lock` had been committed (in `d902739`): removed, and ignored now. They stay in
+    the branch's history.
+  - The chorus joins the no-allocation test; two comments tidied.
+- Left for the owner: the song-notes block stores a tone's chain with the impulse
+  responses' absolute file paths (visible in Guitar Pro's Notices, useless on another
+  machine; the earlier decision was name and checksum). And a seek while playing restarts
+  a MIDI-out track at once, without the audio latency hold-back that Play has.

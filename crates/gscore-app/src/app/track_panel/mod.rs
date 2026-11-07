@@ -97,6 +97,7 @@ impl GuitarScoreApp {
 
         let mut commands: Vec<(Command, bool)> = Vec::new();
         let mut open_tuning = false;
+        let mut open_sound = false;
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -104,18 +105,20 @@ impl GuitarScoreApp {
                 self.header_row(ui, index, &snapshot, &mut commands);
                 style::section(ui, "track_instrument", "Instrument", |ui| {
                     instrument(ui, index, &snapshot, &mut commands);
-                    sound(ui, index, &snapshot, &mut commands);
                     tuning::button(ui, &snapshot, &mut open_tuning);
                 });
                 style::section(ui, "track_look", "Appearance", |ui| {
                     look::staves(ui, index, &snapshot, &mut commands);
                 });
                 style::section(ui, "track_sound", "Sound", |ui| {
-                    ui.label(RichText::new("Coming soon!").color(style::tokens(ui).text_weak));
+                    sound(ui, index, &snapshot, &mut commands, &mut open_sound);
                 });
             });
         for (command, merge) in commands {
             self.apply_command(command, merge);
+        }
+        if open_sound {
+            self.open_sound_chain(index);
         }
         if open_tuning && let Some(tab) = self.tabs.get_mut(self.active) {
             tab.track_panel.tuning = Some(tuning::TuningDialog::of(index, &snapshot));
@@ -396,20 +399,25 @@ fn instrument(
     }
 }
 
-/// The sound: the General MIDI program, which is the preset the loaded SoundFont plays.
+/// The sound: the General MIDI program the synth plays for the track (its preset), and the
+/// stomp box that opens the track's Sound chain window.
 fn sound(
     ui: &mut egui::Ui,
     index: usize,
     snapshot: &TrackPanel,
     commands: &mut Vec<(Command, bool)>,
+    open: &mut bool,
 ) {
     let mut program = snapshot.sound.map_or(25, |sound| sound.program);
     ui.horizontal(|ui| {
         ui.label(RichText::new("Preset").color(style::tokens(ui).text_weak));
+        // Room for the stomp box to the right; capped, because a width that follows the
+        // panel's own width would make the panel grow a little every frame.
+        let combo_width = (ui.available_width() - 60.0).clamp(90.0, 260.0);
         ui.add_enabled_ui(!snapshot.percussion, |ui| {
             let combo = egui::ComboBox::from_id_salt("track_program")
                 .selected_text(format!("{program}: {}", program_name(program)))
-                .width(ui.available_width())
+                .width(combo_width)
                 .show_ui(ui, |ui| {
                     for candidate in 0..=127_u8 {
                         ui.selectable_value(
@@ -427,6 +435,16 @@ fn sound(
                  for this track; a drum kit plays the percussion bank",
             );
         });
+        let button = icons::button(
+            ui,
+            Icon::StompBox,
+            "Sound chain",
+            "Sound chain: what plays this track, the strings' sound and the effects after \
+             them",
+        );
+        if button.clicked() {
+            *open = true;
+        }
     });
     if snapshot.percussion {
         ui.label(RichText::new("A drum kit plays the drum presets").weak());

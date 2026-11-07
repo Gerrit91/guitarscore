@@ -8,141 +8,58 @@ use crate::document::GridData;
 use crate::state::MeasureSelection;
 
 use super::rows::{TrackRow, color32};
-use super::{CELL_PADDING, GridAction, GridView, MEASURE_WIDTH, ROW_HEIGHT, RULER_HEIGHT};
+use super::{CELL_PADDING, GridAction, GridView, MEASURE_WIDTH, ROW_HEIGHT, RULER_HEIGHT, mixer};
 
-/// The measure matrix: ruler with numbers, sections and repeats, then one row per track.
-pub(super) fn matrix(
-    ui: &mut egui::Ui,
-    rows: &[TrackRow],
-    grid: &GridData,
-    view: GridView,
-    actions: &mut Vec<GridAction>,
-) {
+/// The measure ruler above the tracks: measure numbers, section markers, repeats and
+/// alternative endings. It stays at the top while the tracks scroll under it, and follows
+/// the matrix sideways by `scroll_x`.
+pub(super) fn ruler(ui: &mut egui::Ui, grid: &GridData, view: GridView, scroll_x: f32) {
     let width = view.measure_count as f32 * MEASURE_WIDTH;
-    // One row more than there are tracks: the master row's line, so the matrix ends where
-    // the track column does.
-    let height = RULER_HEIGHT + (rows.len() as f32 + 1.0) * ROW_HEIGHT;
     let available = ui.available_width();
-    let (rect, response) =
-        ui.allocate_exact_size(vec2(width.max(available), height), Sense::click_and_drag());
-    ui.ctx().accesskit_node_builder(response.id, |node| {
-        node.set_label("Song grid");
-        node.set_role(egui::Role::Group);
-    });
+    let (rect, _) =
+        ui.allocate_exact_size(vec2(width.max(available), RULER_HEIGHT), Sense::hover());
     let painter = ui.painter_at(rect);
     let visuals = ui.visuals().clone();
     painter.rect_filled(rect, 0.0, visuals.extreme_bg_color);
-
-    // Paint only the measures and rows the scroll area shows.
-    let clip = ui.clip_rect().intersect(rect);
-    let rows_top = rect.top() + RULER_HEIGHT;
-    let first_row = ((clip.top() - rows_top) / ROW_HEIGHT).floor().max(0.0) as usize;
-    let last_row = (((clip.bottom() - rows_top) / ROW_HEIGHT).ceil() as usize).min(rows.len());
-    let first_measure = ((clip.left() - rect.left()) / MEASURE_WIDTH)
-        .floor()
-        .max(0.0) as usize;
-    let last_measure =
-        (((clip.right() - rect.left()) / MEASURE_WIDTH).ceil() as usize).min(view.measure_count);
-
-    // The playing measure and the selection, behind the squares.
+    // The measures the strip shows: the matrix's sideways scroll decides where it starts.
+    let left = rect.left() - scroll_x;
+    let first = (scroll_x / MEASURE_WIDTH).floor().max(0.0) as usize;
+    let last =
+        (((scroll_x + rect.width()) / MEASURE_WIDTH).ceil() as usize).min(view.measure_count);
+    let x_of = |measure: usize| left + measure as f32 * MEASURE_WIDTH;
+    let column = |measure: usize| {
+        Rect::from_min_max(
+            pos2(x_of(measure), rect.top()),
+            pos2(x_of(measure) + MEASURE_WIDTH, rect.bottom()),
+        )
+    };
+    // The playing measure and the selection, as behind the squares below.
     if let Some(playing) = view.playing
-        && playing >= first_measure
-        && playing < last_measure
+        && playing >= first
+        && playing < last
     {
-        let column = measure_rect(rect, playing);
         painter.rect_filled(
-            column,
+            column(playing),
             0.0,
             Color32::from_rgb(255, 200, 40).gamma_multiply(0.25),
         );
     }
     if let Some(selection) = view.selection
-        && last_measure > first_measure
+        && last > first
     {
-        let start = selection.start().max(first_measure);
-        let end = selection.end().min(last_measure.saturating_sub(1));
+        let start = selection.start().max(first);
+        let end = selection.end().min(last.saturating_sub(1));
         for measure in start..=end {
-            let column = measure_rect(rect, measure);
-            painter.rect_filled(column, 0.0, visuals.selection.bg_fill.gamma_multiply(0.30));
-        }
-    }
-
-    // Row stripes and squares.
-    for row in first_row..last_row {
-        let Some(cells) = grid.cells.get(row) else {
-            continue;
-        };
-        let row_rect = Rect::from_min_max(
-            pos2(
-                rect.left(),
-                rect.top() + RULER_HEIGHT + row as f32 * ROW_HEIGHT,
-            ),
-            pos2(
-                rect.right(),
-                rect.top() + RULER_HEIGHT + (row as f32 + 1.0) * ROW_HEIGHT,
-            ),
-        );
-        if row % 2 == 1 {
-            painter.rect_filled(row_rect, 0.0, visuals.faint_bg_color);
-        }
-        if row == view.cursor_track && view.cursor_measure < view.measure_count {
-            let measure = Rect::from_min_max(
-                pos2(
-                    rect.left() + view.cursor_measure as f32 * MEASURE_WIDTH,
-                    row_rect.top(),
-                ),
-                pos2(
-                    rect.left() + (view.cursor_measure as f32 + 1.0) * MEASURE_WIDTH,
-                    row_rect.bottom(),
-                ),
-            );
-            painter.rect_stroke(
-                measure,
+            painter.rect_filled(
+                column(measure),
                 0.0,
-                Stroke::new(1.5, visuals.selection.bg_fill),
-                egui::StrokeKind::Inside,
+                visuals.selection.bg_fill.gamma_multiply(0.30),
             );
-        }
-        for measure_index in first_measure..last_measure {
-            if !cells.get(measure_index).copied().unwrap_or(false) {
-                continue;
-            }
-            let cell = Rect::from_min_size(
-                pos2(
-                    rect.left() + measure_index as f32 * MEASURE_WIDTH + CELL_PADDING,
-                    row_rect.top() + CELL_PADDING,
-                ),
-                vec2(
-                    MEASURE_WIDTH - 2.0 * CELL_PADDING,
-                    ROW_HEIGHT - 2.0 * CELL_PADDING,
-                ),
-            );
-            let color = rows
-                .get(row)
-                .map_or(visuals.text_color(), |track| color32(track.color));
-            painter.rect_filled(cell, 0.0, color);
         }
     }
-
-    // Grid lines and measure numbers.
     let number_font = FontId::monospace(9.0);
-    for measure in first_measure..last_measure {
-        let x = rect.left() + measure as f32 * MEASURE_WIDTH;
-        let strong = measure % 4 == 0 || grid.sections.get(measure).is_some_and(Option::is_some);
-        let color = if strong {
-            visuals.widgets.noninteractive.bg_stroke.color
-        } else {
-            visuals
-                .widgets
-                .noninteractive
-                .bg_stroke
-                .color
-                .gamma_multiply(0.4)
-        };
-        painter.line_segment(
-            [pos2(x, rect.top()), pos2(x, rect.bottom())],
-            Stroke::new(1.0, color),
-        );
+    for measure in first..last {
+        let x = x_of(measure);
         if measure % 4 == 0 || view.measure_count <= 64 {
             painter.text(
                 pos2(x + 2.0, rect.top() + 2.0),
@@ -152,21 +69,14 @@ pub(super) fn matrix(
                 visuals.weak_text_color(),
             );
         }
-    }
-
-    // Sections, repeats and alternative endings in the ruler. The section title itself
-    // goes into the master row below the tracks, where nothing collides with it.
-    for measure in first_measure..last_measure {
-        let x = rect.left() + measure as f32 * MEASURE_WIDTH;
+        // The section's line above the ruler's bottom edge marks where it starts.
         if let Some(Some(section)) = grid.sections.get(measure) {
-            let color = color32(section.color);
-            // The line above the ruler's bottom edge marks where the section starts.
             painter.line_segment(
                 [
                     pos2(x, rect.top() + RULER_HEIGHT - 3.0),
                     pos2(x + MEASURE_WIDTH, rect.top() + RULER_HEIGHT - 3.0),
                 ],
-                Stroke::new(2.0, color),
+                Stroke::new(2.0, color32(section.color)),
             );
         }
         if let Some(repeat) = grid.repeats.get(measure) {
@@ -209,10 +119,142 @@ pub(super) fn matrix(
             }
         }
     }
+}
+
+/// The measure matrix: one row of squares per track and the master row's line. The ruler
+/// above it is drawn by [`ruler`], which stays while these rows scroll.
+pub(super) fn matrix(
+    ui: &mut egui::Ui,
+    rows: &[TrackRow],
+    grid: &GridData,
+    view: GridView,
+    actions: &mut Vec<GridAction>,
+) {
+    let width = view.measure_count as f32 * MEASURE_WIDTH;
+    // One row more than there are tracks: the master row's line, so the matrix ends where
+    // the track column does.
+    let height = (rows.len() as f32 + 1.0) * ROW_HEIGHT;
+    let available = ui.available_width();
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(width.max(available), height), Sense::click_and_drag());
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label("Song grid");
+        node.set_role(egui::Role::Group);
+    });
+    let painter = ui.painter_at(rect);
+    let visuals = ui.visuals().clone();
+    painter.rect_filled(rect, 0.0, visuals.extreme_bg_color);
+
+    // Paint only the measures and rows the scroll area shows.
+    let clip = ui.clip_rect().intersect(rect);
+    let first_row = ((clip.top() - rect.top()) / ROW_HEIGHT).floor().max(0.0) as usize;
+    let last_row = (((clip.bottom() - rect.top()) / ROW_HEIGHT).ceil() as usize).min(rows.len());
+    let first_measure = ((clip.left() - rect.left()) / MEASURE_WIDTH)
+        .floor()
+        .max(0.0) as usize;
+    let last_measure =
+        (((clip.right() - rect.left()) / MEASURE_WIDTH).ceil() as usize).min(view.measure_count);
+
+    // The playing measure and the selection, behind the squares.
+    if let Some(playing) = view.playing
+        && playing >= first_measure
+        && playing < last_measure
+    {
+        let column = measure_rect(rect, playing);
+        painter.rect_filled(
+            column,
+            0.0,
+            Color32::from_rgb(255, 200, 40).gamma_multiply(0.25),
+        );
+    }
+    if let Some(selection) = view.selection
+        && last_measure > first_measure
+    {
+        let start = selection.start().max(first_measure);
+        let end = selection.end().min(last_measure.saturating_sub(1));
+        for measure in start..=end {
+            let column = measure_rect(rect, measure);
+            painter.rect_filled(column, 0.0, visuals.selection.bg_fill.gamma_multiply(0.30));
+        }
+    }
+
+    // Row stripes and squares.
+    for row in first_row..last_row {
+        let Some(cells) = grid.cells.get(row) else {
+            continue;
+        };
+        let row_rect = Rect::from_min_max(
+            pos2(rect.left(), rect.top() + row as f32 * ROW_HEIGHT),
+            pos2(
+                rect.left() + rect.width(),
+                rect.top() + (row as f32 + 1.0) * ROW_HEIGHT,
+            ),
+        );
+        if row % 2 == 1 {
+            painter.rect_filled(row_rect, 0.0, visuals.faint_bg_color);
+        }
+        if row == view.cursor_track && view.cursor_measure < view.measure_count {
+            let measure = Rect::from_min_max(
+                pos2(
+                    rect.left() + view.cursor_measure as f32 * MEASURE_WIDTH,
+                    row_rect.top(),
+                ),
+                pos2(
+                    rect.left() + (view.cursor_measure as f32 + 1.0) * MEASURE_WIDTH,
+                    row_rect.bottom(),
+                ),
+            );
+            painter.rect_stroke(
+                measure,
+                0.0,
+                Stroke::new(1.5, visuals.selection.bg_fill),
+                egui::StrokeKind::Inside,
+            );
+        }
+        for measure_index in first_measure..last_measure {
+            if !cells.get(measure_index).copied().unwrap_or(false) {
+                continue;
+            }
+            let cell = Rect::from_min_size(
+                pos2(
+                    rect.left() + measure_index as f32 * MEASURE_WIDTH + CELL_PADDING,
+                    row_rect.top() + CELL_PADDING,
+                ),
+                vec2(
+                    MEASURE_WIDTH - 2.0 * CELL_PADDING,
+                    ROW_HEIGHT - 2.0 * CELL_PADDING,
+                ),
+            );
+            let color = rows.get(row).map_or(visuals.text_color(), |track| {
+                mixer::sounding_color(color32(track.color), track.audible)
+            });
+            painter.rect_filled(cell, 0.0, color);
+        }
+    }
+
+    // The measure lines between the squares.
+    for measure in first_measure..last_measure {
+        let x = rect.left() + measure as f32 * MEASURE_WIDTH;
+        let strong = measure % 4 == 0 || grid.sections.get(measure).is_some_and(Option::is_some);
+        let color = if strong {
+            visuals.widgets.noninteractive.bg_stroke.color
+        } else {
+            visuals
+                .widgets
+                .noninteractive
+                .bg_stroke
+                .color
+                .gamma_multiply(0.4)
+        };
+        painter.line_segment(
+            [pos2(x, rect.top()), pos2(x, rect.bottom())],
+            Stroke::new(1.0, color),
+        );
+    }
 
     // Section titles in the master row, below every track: there they have the whole
     // width of their section and no measure number or repeat sign to collide with.
-    let master_top = rect.top() + RULER_HEIGHT + rows.len() as f32 * ROW_HEIGHT;
+    let master_top = rect.top() + rows.len() as f32 * ROW_HEIGHT;
     for measure in first_measure..last_measure {
         let Some(Some(section)) = grid.sections.get(measure) else {
             continue;
@@ -301,10 +343,10 @@ fn pointer_cell(
     let pointer = response
         .hover_pos()
         .or_else(|| response.interact_pointer_pos())?;
-    if !rect.contains(pointer) || pointer.y < rect.top() + RULER_HEIGHT {
+    if !rect.contains(pointer) {
         return None;
     }
-    let track = ((pointer.y - rect.top() - RULER_HEIGHT) / ROW_HEIGHT) as usize;
+    let track = ((pointer.y - rect.top()) / ROW_HEIGHT) as usize;
     let measure = ((pointer.x - rect.left()) / MEASURE_WIDTH) as usize;
     (track < track_count && measure < measure_count).then_some((track, measure))
 }
@@ -320,7 +362,7 @@ fn handle_matrix_clicks(
 ) {
     let pointer = response.interact_pointer_pos();
     let at = pointer.and_then(|pointer| {
-        if !rect.contains(pointer) || pointer.y < rect.top() + RULER_HEIGHT {
+        if !rect.contains(pointer) {
             return None;
         }
         let measure = ((pointer.x - rect.left()) / MEASURE_WIDTH) as usize;

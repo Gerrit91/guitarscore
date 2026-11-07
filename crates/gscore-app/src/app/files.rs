@@ -271,8 +271,18 @@ impl GuitarScoreApp {
                     return;
                 };
                 let song = tab.document.song().clone();
-                let soundfont = self.playback.soundfont().map(Path::to_path_buf);
-                if let Err(error) = self.tasks.export_wav(song, path, soundfont, ctx) {
+                let audio = crate::tasks::AudioExport {
+                    soundfont: self.playback.soundfont().map(Path::to_path_buf),
+                    modelled: self.playback.modelled_guitars(),
+                    sample_rate: self.playback.sample_rate(),
+                    models: self.playback.string_models(),
+                    engines: self.playback.track_engines(),
+                    preset_tones: self.playback.preset_tones().to_vec(),
+                    tones: self.playback.export_tones(),
+                    parts: self.playback.export_parts(),
+                    buses: self.playback.export_buses(),
+                };
+                if let Err(error) = self.tasks.export_wav(song, path, audio, ctx) {
                     self.notice = Some(error);
                 }
             }
@@ -334,7 +344,14 @@ impl GuitarScoreApp {
             self.abandon_save();
             return;
         };
-        let song = tab.document.song().clone();
+        let mut song = tab.document.song().clone();
+        // Our own state travels in the song's free-text notes ("Notices"), which Guitar
+        // Pro shows and keeps when it saves the file again.
+        let state = self.song_state(tab);
+        song = song.with_notes(super::song_state::encode(
+            song.notes().map(str::to_owned),
+            state.as_ref(),
+        ));
         let revision = tab.document.editor().revision();
         if let Err(error) = self.tasks.save(song, path, revision, allow_losses, ctx) {
             self.notice = Some(error);
@@ -364,20 +381,31 @@ impl GuitarScoreApp {
                 Event::Opened { path, result } => match result {
                     Ok(opened) => {
                         let recent = path.clone();
+                        // GuitarScore's own state travels in the song's free-text notes
+                        // ("Notices", which Guitar Pro keeps): take it out and apply it.
+                        let mut song = *opened.song;
+                        let (notes, state) =
+                            super::song_state::split(song.notes().map(str::to_owned));
+                        if state.is_some() {
+                            song = song.with_notes(notes);
+                        }
                         let (document, problem) = match opened.journal {
                             Ok(Some(journal)) => (
-                                Document::with_journal(path, *opened.song, opened.format, journal),
+                                Document::with_journal(path, song, opened.format, journal),
                                 None,
                             ),
-                            Ok(None) => (Document::new(path, *opened.song, opened.format), None),
+                            Ok(None) => (Document::new(path, song, opened.format), None),
                             Err(error) => (
-                                Document::new(path, *opened.song, opened.format),
+                                Document::new(path, song, opened.format),
                                 Some(format!(
                                     "{error}. Edits are not protected against a crash; save often."
                                 )),
                             ),
                         };
                         self.push_tab(document);
+                        if let Some(state) = state {
+                            self.apply_song_state(&state);
+                        }
                         self.notice = problem;
                         self.status = None;
                         self.settings.add_recent(recent);
@@ -397,6 +425,16 @@ impl GuitarScoreApp {
                 }
                 Event::PickedSoundFont(Some(picked)) => self.playback.use_soundfont(picked.path),
                 Event::PickedSoundFont(None) => {}
+                Event::PickedImpulse {
+                    track,
+                    kind,
+                    place,
+                    part,
+                    path: Some(path),
+                } => self.use_impulse(track, kind, place, part, path),
+                Event::PickedImpulse { path: None, .. } => {}
+                Event::PickedBusImpulse(Some(path)) => self.use_bus_impulse(path),
+                Event::PickedBusImpulse(None) => {}
                 // Cancelled: whatever was waiting for the save does not happen.
                 Event::PickedSave(None) => self.abandon_save(),
                 Event::PickedExport { format, picked } => {

@@ -26,6 +26,9 @@ in AGENTS.md section 9.
    synth. The synthesizer always uses the default audio device; `.sf3` SoundFonts are not
    supported; a source build has no SoundFont of its own. External MIDI synths play their
    own sound for the metronome (GM keys 33/34), which a GM1-only synth may not have.
+   A per-track MIDI-out route lives in the open tab, not in the song, and the hardware's
+   audio never returns: its strip shows note activity, and its chain and bus sends do not
+   apply (volume, pan, program and reverb/chorus CCs are sent to the device).
 
 ## Files
 

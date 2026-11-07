@@ -7,10 +7,12 @@
 
 mod about;
 mod alert;
+mod amp_knobs;
 mod bars;
 mod beat_text_editor;
 mod chord_editor;
 mod circle_of_fifths;
+mod compressor_bus_window;
 mod edit_dynamics;
 mod edit_effects;
 mod edit_palette;
@@ -32,13 +34,17 @@ mod new_track;
 mod page;
 mod page_menu;
 mod recovery;
+mod reverb_bus_window;
 mod score_view;
 mod settings_page;
 mod settings_window;
 mod shape_editor;
 mod shortcuts;
+mod song_state;
+mod sound_chain;
 mod staff_pickers;
 mod staff_widgets;
+mod string_sound;
 mod style;
 mod swatches;
 mod tab;
@@ -47,6 +53,7 @@ mod tile_faces;
 mod tiles;
 mod title_bar;
 mod toolbar;
+mod track_engine;
 mod track_panel;
 mod tuner;
 mod tuplet_dialog;
@@ -128,6 +135,12 @@ pub struct GuitarScoreApp {
     about: Option<about::AboutWindow>,
     /// The tuner window, while it is open.
     tuner: Option<tuner::TunerState>,
+    /// The Sound chain window, while it is open.
+    sound_chain: Option<sound_chain::SoundChainWindow>,
+    /// The reverb bus's window, while it is open.
+    reverb_bus_window: Option<reverb_bus_window::ReverbBusWindow>,
+    /// The mixer's compressor bus window, while it is open.
+    compressor_bus_window: Option<compressor_bus_window::CompressorBusWindow>,
     /// What the app remembers between runs.
     settings: Settings,
     /// Where the settings are stored (`None` keeps them only in memory; a browser keeps
@@ -141,6 +154,16 @@ pub struct GuitarScoreApp {
     /// The browser's SoundFont state last written to the page (`loaded` or `error: …`).
     #[cfg(target_arch = "wasm32")]
     browser_sound: Option<String>,
+}
+
+/// A side panel's width: the remembered one (or `default`), in 200..`room`, whatever a
+/// stored - or hand-edited - value says.
+fn panel_width(stored: Option<f32>, default: f32, room: f32) -> f32 {
+    let room = room.max(200.0);
+    match stored {
+        Some(width) if width.is_finite() => width.clamp(200.0, room),
+        _ => default.clamp(200.0, room),
+    }
 }
 
 /// Panel sizes the app remembers: the song grid's height and the track panel's width.
@@ -249,6 +272,9 @@ impl GuitarScoreApp {
             settings_window: None,
             about: None,
             tuner: None,
+            sound_chain: None,
+            reverb_bus_window: None,
+            compressor_bus_window: None,
             settings,
             settings_path,
             panel_sizes,
@@ -261,6 +287,20 @@ impl GuitarScoreApp {
         app.playback.store_click_sound(
             gscore_play::ClickSound::from_id(&app.settings.click_sound).unwrap_or_default(),
         );
+        app.playback
+            .store_modelled_guitars(app.settings.modelled_guitars);
+        app.playback.set_sample_rate(app.settings.sample_rate);
+        app.playback.store_string_sounds(app.settings.string_sounds);
+        app.playback
+            .store_string_chains(app.settings.string_chains.clone());
+        app.playback
+            .store_preset_tones(app.settings.preset_tones.clone());
+        app.playback
+            .store_drum_parts(app.settings.drum_parts.clone());
+        app.playback
+            .store_reverb_bus(app.settings.reverb_bus.clone());
+        app.playback
+            .store_compressor_bus(app.settings.compressor_bus.clone());
         app.playback.set_count_in_bars(app.settings.count_in_bars);
         app.playback.set_count_in_loops(app.settings.count_in_loops);
         let _ = app.playback.set_speed(app.settings.playback_speed);
@@ -274,10 +314,63 @@ impl GuitarScoreApp {
         app
     }
 
+    /// The state to keep in a song's notes: each track's send into the compressor bus and
+    /// the tone it plays, when that is not its kind's built-in default.
+    fn song_state(&self, tab: &Tab) -> Option<song_state::SongState> {
+        let song = tab.document.song();
+        let mut tracks = Vec::new();
+        for index in 0..song.track_count() {
+            let Some(player) = self.track_player(index) else {
+                continue;
+            };
+            let kind = match player.engine {
+                gscore_play::TrackEngine::Modelled(kind) => Some(kind),
+                gscore_play::TrackEngine::SoundFont | gscore_play::TrackEngine::MidiOut => {
+                    player.preset_kind
+                }
+            };
+            let tone = kind.and_then(|kind| {
+                let tone = self.track_tone(index, kind);
+                (tone != self.playback.default_tone(kind))
+                    .then(|| crate::settings::PresetTone::of(player.program, &tone))
+            });
+            let comp_send = tab.comp_sends.get(&index).copied().unwrap_or(0);
+            tracks.push(song_state::TrackState {
+                track: index,
+                comp_send,
+                tone,
+            });
+        }
+        song_state::SongState::new(tracks)
+    }
+
+    /// Takes the state a song carried: its tracks' compressor sends and the tones they
+    /// play (the song keeps its sound, whatever the presets are set to here).
+    pub(super) fn apply_song_state(&mut self, state: &song_state::SongState) {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            for track in &state.tracks {
+                if track.comp_send != 0 {
+                    tab.comp_sends.insert(track.track, track.comp_send.min(127));
+                }
+                if let Some(tone) = track
+                    .tone
+                    .as_ref()
+                    .and_then(crate::settings::PresetTone::tone)
+                {
+                    tab.track_tones.insert(track.track, tone);
+                }
+            }
+        }
+        self.sync_track_tones();
+        self.sync_comp_sends();
+    }
+
     /// The settings as they are now (including the view and window state).
     pub fn settings(&self) -> Settings {
         let mut settings = self.settings.clone();
         settings.update_from_view(&self.view);
+        settings.reverb_bus = self.playback.reverb_bus();
+        settings.compressor_bus = self.playback.compressor_bus();
         settings.grid_height_chosen = self.panel_sizes.grid;
         settings.mixer_height_chosen = self.panel_sizes.mixer;
         settings.track_panel_width = self.panel_sizes.track_panel;
@@ -295,6 +388,12 @@ impl GuitarScoreApp {
         settings.speed_trainer_target = trainer.target;
         settings.soundfont_path = self.playback.soundfont().map(std::path::Path::to_path_buf);
         settings.prefer_synth = matches!(self.playback.output(), Output::Synth(_));
+        settings.modelled_guitars = self.playback.modelled_guitars();
+        settings.sample_rate = self.playback.sample_rate();
+        settings.string_sounds = self.playback.string_sounds();
+        settings.string_chains = self.playback.string_chains().clone();
+        settings.preset_tones = self.playback.preset_tones().to_vec();
+        settings.drum_parts = self.playback.drum_parts().to_vec();
         settings.midi_port = self.playback.port().map(str::to_owned);
         // Remember every tab backed by a real file, and which one was active. Setting the
         // old single-file key too keeps older versions reopening something sensible.
@@ -331,6 +430,13 @@ impl GuitarScoreApp {
 
     /// Writes the settings where this platform keeps them (a JSON file on the desktop,
     /// `localStorage` in a browser). Errors go to the notice bar.
+    /// Puts the side panels and the song grid back to their usual sizes (the way out of a
+    /// layout a stored size made unusable).
+    pub(super) fn reset_panel_sizes(&mut self) {
+        self.panel_sizes = PanelSizes::default();
+        self.save_settings();
+    }
+
     pub fn save_settings(&mut self) {
         let settings = self.settings();
         #[cfg(target_arch = "wasm32")]
@@ -599,6 +705,12 @@ impl eframe::App for GuitarScoreApp {
         self.handle_keys(&ctx);
         // A count-in that has finished starts the song it was counting in.
         self.poll_count_in();
+        // Another tab may hold other choices of what plays its tracks, their MIDI-out
+        // ports and channels, other tones and other sends into the compressor bus.
+        self.sync_track_engines();
+        self.sync_midi_routes();
+        self.sync_track_tones();
+        self.sync_comp_sends();
         // Keep a loop of the selected measures going; a new selection turns it on.
         self.auto_loop();
         self.poll_loop();
@@ -696,10 +808,19 @@ impl eframe::App for GuitarScoreApp {
             egui::Panel::top("notice").show(ui, |ui| self.notice_bar(ui));
         }
         if self.view.show_track_panel && self.document().is_some() {
+            // Never wider than leaves the edit palette and the score their room: a stored
+            // width (or a broken one) must not cover the window and put the edge out of
+            // reach.
+            let width = panel_width(
+                self.panel_sizes.track_panel,
+                280.0,
+                (ui.available_width() - 500.0).max(200.0),
+            );
             let panel = egui::Panel::right("track_panel")
                 .resizable(true)
                 .min_size(200.0)
-                .default_size(self.panel_sizes.track_panel.unwrap_or(260.0))
+                .max_size(width)
+                .default_size(width)
                 .frame(style::panel_frame(&ctx))
                 .show(ui, |ui| {
                     self.track_panel(ui);
@@ -707,10 +828,16 @@ impl eframe::App for GuitarScoreApp {
             self.panel_sizes.track_panel = Some(panel.response.rect.width());
         }
         if self.view.show_edit_panel && self.document().is_some() {
+            let width = panel_width(
+                self.panel_sizes.edit_panel,
+                250.0,
+                (ui.available_width() - 300.0).max(200.0),
+            );
             let panel = egui::Panel::left("edit_palette")
                 .resizable(true)
                 .min_size(200.0)
-                .default_size(self.panel_sizes.edit_panel.unwrap_or(250.0))
+                .max_size(width)
+                .default_size(width)
                 .frame(style::panel_frame(&ctx))
                 .show(ui, |ui| {
                     self.edit_palette(ui);
@@ -745,6 +872,9 @@ impl eframe::App for GuitarScoreApp {
         self.show_new_song_dialog(&ctx);
         self.show_rename_window(&ctx);
         self.show_tuning_dialog(&ctx);
+        self.show_sound_chain(&ctx);
+        self.show_reverb_bus_window(&ctx);
+        self.show_compressor_bus_window(&ctx);
         self.show_settings_window(&ctx);
         self.show_shortcuts(&ctx);
         self.show_history(&ctx);

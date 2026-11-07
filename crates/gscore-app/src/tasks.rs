@@ -26,6 +26,20 @@ pub(crate) enum Event {
     PickedSoundFont(Option<Picked>),
     /// The save dialog closed; `None` if it was cancelled.
     PickedSave(Option<Picked>),
+    /// The impulse response dialog closed (for place `place` of `track`'s chain as `kind`);
+    /// `None` if it was cancelled.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    PickedImpulse {
+        track: usize,
+        kind: gscore_play::StringKind,
+        place: usize,
+        /// `Some(part)`: a drum part's chain; `None`: the track's tone.
+        part: Option<usize>,
+        path: Option<PathBuf>,
+    },
+    /// The impulse response dialog of the mixer's reverb bus closed; `None` if cancelled.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    PickedBusImpulse(Option<PathBuf>),
     /// The export dialog closed; `None` if it was cancelled.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     PickedExport {
@@ -454,6 +468,63 @@ impl Tasks {
         })
     }
 
+    /// Shows the dialog for an impulse response (a WAV file) for place `place` of `kind`'s
+    /// chain, in the background.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn pick_impulse(
+        &mut self,
+        track: usize,
+        kind: gscore_play::StringKind,
+        place: usize,
+        part: Option<usize>,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        self.spawn("impulse response dialog", ctx, move || {
+            let path = rfd::FileDialog::new()
+                .set_title("Choose an impulse response (WAV)")
+                .add_filter("WAV audio", &["wav"])
+                .pick_file();
+            Event::PickedImpulse {
+                track,
+                kind,
+                place,
+                part,
+                path,
+            }
+        })
+    }
+
+    /// Shows the impulse response dialog for the mixer's reverb bus.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn pick_bus_impulse(&mut self, ctx: &egui::Context) -> Result<(), String> {
+        self.spawn("impulse response dialog", ctx, move || {
+            let path = rfd::FileDialog::new()
+                .set_title("Choose a room's impulse response (WAV)")
+                .add_filter("WAV audio", &["wav"])
+                .pick_file();
+            Event::PickedBusImpulse(path)
+        })
+    }
+
+    /// The reverb bus's impulse response cannot be chosen in the browser build yet.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn pick_bus_impulse(&mut self, _ctx: &egui::Context) -> Result<(), String> {
+        Err("loading impulse responses is not available in the browser build yet".to_owned())
+    }
+
+    /// Choosing an impulse response is not available in the browser build yet.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn pick_impulse(
+        &mut self,
+        _track: usize,
+        _kind: gscore_play::StringKind,
+        _place: usize,
+        _part: Option<usize>,
+        _ctx: &egui::Context,
+    ) -> Result<(), String> {
+        Err("loading impulse responses is not available in the browser build yet".to_owned())
+    }
+
     /// Shows the save dialog in the background, suggesting `name`.
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn pick_save_file(
@@ -601,24 +672,24 @@ impl Tasks {
         })
     }
 
-    /// Renders every track of `song` with the SoundFont at `soundfont` (or one found on
-    /// disk) to a WAV file at `path`, in the background.
+    /// Renders every track of `song` to a WAV file at `path` as `audio` says, in the
+    /// background.
     pub(crate) fn export_wav(
         &mut self,
         song: Song,
         path: PathBuf,
-        soundfont: Option<PathBuf>,
+        audio: AudioExport,
         ctx: &egui::Context,
     ) -> Result<(), String> {
         #[cfg(target_arch = "wasm32")]
         {
-            let _ = (song, path, soundfont, ctx);
+            let _ = (song, path, audio, ctx);
             Err("exporting audio is not available in the browser build yet".to_owned())
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
             self.spawn("WAV export", ctx, move || {
-                Event::Exported(export_wav(&song, &path, soundfont))
+                Event::Exported(export_wav(&song, &path, &audio))
             })
         }
     }
@@ -936,13 +1007,34 @@ fn export_midi(song: &Song, path: &std::path::Path) -> Result<String, String> {
     ))
 }
 
+/// How audio is exported: the SoundFont (or one found on disk), whether guitars and basses
+/// play on the modelled strings and how those sound, and the sample rate (`None`: the
+/// WAV default).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct AudioExport {
+    pub(crate) soundfont: Option<PathBuf>,
+    pub(crate) modelled: bool,
+    pub(crate) sample_rate: Option<u32>,
+    /// Each kind's default string model.
+    pub(crate) models: Vec<(gscore_play::StringKind, gscore_guitar::StringModel)>,
+    /// What the user chose to play each track (by track index), as in playback.
+    pub(crate) engines: Vec<(usize, gscore_play::TrackEngine)>,
+    /// The tones set for track presets (by program), which decide the strings of their
+    /// tracks and their sound.
+    pub(crate) preset_tones: Vec<crate::settings::PresetTone>,
+    /// The presets' tones and each kind's default chain.
+    pub(crate) tones: crate::playback::ExportTones,
+    /// The drum parts' chains (the built-in part tones).
+    pub(crate) parts: Vec<gscore_audio::PartChoice>,
+    /// The mixer's buses (reverb and compressor), rendered as they are set.
+    pub(crate) buses: gscore_audio::BusChoices,
+}
+
 /// The work of [`Tasks::export_wav`]: the status message, or why it failed.
-fn export_wav(
-    song: &Song,
-    path: &std::path::Path,
-    soundfont: Option<PathBuf>,
-) -> Result<String, String> {
-    let soundfont = soundfont
+fn export_wav(song: &Song, path: &std::path::Path, audio: &AudioExport) -> Result<String, String> {
+    let soundfont = audio
+        .soundfont
+        .clone()
         .or_else(gscore_audio::find_soundfont)
         .ok_or_else(|| "no SoundFont found; choose one in Settings › Audio I/O".to_owned())?;
     let bank = gscore_audio::SoundBank::open(&soundfont).map_err(|e| e.to_string())?;
@@ -957,23 +1049,38 @@ fn export_wav(
             .set_track_solo(track, false)
             .map_err(|e| e.to_string())?;
     }
-    let sequence = Sequence::new(&song, None).map_err(|e| e.to_string())?;
+    let sequence = crate::playback::with_engines(
+        Sequence::new(&song, None).map_err(|e| e.to_string())?,
+        audio.modelled,
+        &audio.engines,
+        &audio.preset_tones,
+    );
+    let (track_models, chains) = audio.tones.resolve(&sequence);
     let temp = path.with_extension("wav.part");
     let written = std::fs::File::create(&temp)
         .map_err(|e| format!("cannot write {}: {e}", temp.display()))
         .and_then(|file| {
             let mut writer = std::io::BufWriter::new(file);
-            gscore_audio::write_wav(&mut writer, &sequence, &bank)
-                .and_then(|info| {
-                    std::io::Write::flush(&mut writer)
-                        .map_err(|e| {
-                            gscore_play::PlayError::Device(format!(
-                                "cannot write the WAV file: {e}"
-                            ))
-                        })
-                        .map(|()| info)
-                })
-                .map_err(|e| e.to_string())
+            let rate = audio.sample_rate.unwrap_or(gscore_audio::WAV_SAMPLE_RATE);
+            gscore_audio::write_wav_with(
+                &mut writer,
+                &sequence,
+                &bank,
+                rate,
+                &audio.models,
+                &track_models,
+                &chains,
+                &audio.parts,
+                &audio.buses,
+            )
+            .and_then(|info| {
+                std::io::Write::flush(&mut writer)
+                    .map_err(|e| {
+                        gscore_play::PlayError::Device(format!("cannot write the WAV file: {e}"))
+                    })
+                    .map(|()| info)
+            })
+            .map_err(|e| e.to_string())
         });
     let info = match written {
         Ok(info) => info,
@@ -1060,7 +1167,15 @@ mod tests {
         let song =
             song_with_notes(&[(4, &[TestNote::new(1, 5)]), (4, &[]), (4, &[]), (4, &[])]).unwrap();
         let path = dir.join("song.wav");
-        let message = export_wav(&song, &path, Some(soundfont.clone())).unwrap();
+        let message = export_wav(
+            &song,
+            &path,
+            &AudioExport {
+                soundfont: Some(soundfont.clone()),
+                ..AudioExport::default()
+            },
+        )
+        .unwrap();
         assert!(message.contains("song.wav"), "{message}");
         let bytes = std::fs::read(&path).unwrap();
         assert_eq!(bytes.get(0..4), Some(&b"RIFF"[..]));
@@ -1068,7 +1183,17 @@ mod tests {
 
         // A SoundFont that is not there fails without leaving a file behind.
         let missing = dir.join("missing.wav");
-        assert!(export_wav(&song, &missing, Some(dir.join("none.sf2"))).is_err());
+        assert!(
+            export_wav(
+                &song,
+                &missing,
+                &AudioExport {
+                    soundfont: Some(dir.join("none.sf2")),
+                    ..AudioExport::default()
+                },
+            )
+            .is_err()
+        );
         assert!(!missing.exists());
         let temp_files = std::fs::read_dir(&dir)
             .unwrap()

@@ -135,6 +135,55 @@ fn assert_same_notes(ours: &[(u64, u8)], theirs: &[(u64, u8)], what: &str) {
 }
 
 #[test]
+fn a_sequence_can_keep_only_some_of_its_tracks_and_their_notes() {
+    let song = testing::song_with_notes_on_tracks(2, &[(1, &[TestNote::new(3, 2)])]).unwrap();
+    let full = Sequence::with_metronome(&song, None, true).unwrap();
+    assert_eq!(full.tracks.len(), 2);
+
+    // The first track, its position unchanged; the metronome stays.
+    let first = full.with_tracks(|track| track == TrackIndex::new(0));
+    assert_eq!(first.tracks.len(), 1);
+    assert_eq!(first.tracks[0].track, TrackIndex::new(0));
+    assert!(
+        first
+            .events
+            .iter()
+            .all(|event| event.track == 0 || event.track == gscore_play::CLICK_TRACK)
+    );
+    assert!(
+        first
+            .events
+            .iter()
+            .any(|event| event.track == gscore_play::CLICK_TRACK),
+        "the clicks are kept"
+    );
+    assert_eq!(first.performance.tracks.len(), 1);
+    assert!(first.performance.notes.iter().all(|note| note.track == 0));
+    assert_eq!(
+        first.performance.by_start.len(),
+        first.performance.notes.len()
+    );
+
+    // The second track moves to position 0 in events and notes, so an engine that plays
+    // the notes (the modelled strings) still finds them.
+    let second = full.with_tracks(|track| track == TrackIndex::new(1));
+    assert_eq!(second.tracks.len(), 1);
+    assert_eq!(second.tracks[0].track, TrackIndex::new(1));
+    assert!(
+        second
+            .events
+            .iter()
+            .all(|event| event.track == 0 || event.track == gscore_play::CLICK_TRACK)
+    );
+    assert_eq!(second.performance.tracks[0].track, TrackIndex::new(1));
+    assert!(second.performance.notes.iter().all(|note| note.track == 0));
+    assert_eq!(
+        second.performance.notes.len(),
+        first.performance.notes.len()
+    );
+}
+
+#[test]
 fn notes_and_programs_match_guitar_pros_midi_export() {
     // Including ornaments: ties are held, harmonics sound at their harmonic pitch.
     for name in ["steel_guitar_dadgad", "note_lengths", "ornaments"] {
@@ -903,6 +952,60 @@ fn a_sequence_reports_the_channel_each_track_plays_on() {
     let sequence = Sequence::new(&song, None).unwrap();
     assert_eq!(sequence.channel_of(TrackIndex::new(0)), None);
     assert!(sequence.channel_of(TrackIndex::new(1)).is_some());
+}
+
+#[test]
+fn every_drum_track_plays_on_a_channel_of_its_own_and_on_ten_for_general_midi() {
+    // Kick and snare as two drum tracks around a guitar: each its own channel (the
+    // built-in synthesizer plays both as drums, each with its own mixer strip)...
+    let notes = [TestNote::new(6, 5)];
+    let mut song = testing::song_with_notes_on_tracks(3, &[(4, &notes)]).unwrap();
+    let _ = song.set_track_drums(TrackIndex::new(0), true).unwrap();
+    let _ = song.set_track_drums(TrackIndex::new(2), true).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let [kick, guitar, snare] = [0, 1, 2].map(|track| sequence.tracks[track].channel);
+    assert_eq!(kick, Channel::PERCUSSION);
+    assert!(
+        snare != kick && snare != guitar,
+        "{kick:?} {guitar:?} {snare:?}"
+    );
+    let drums = sequence.drum_channels();
+    assert!(drums[usize::from(kick.get())] && drums[usize::from(snare.get())]);
+    assert!(!drums[usize::from(guitar.get())]);
+    assert!(
+        sequence
+            .events
+            .iter()
+            .any(|event| event.track == 2 && event.event.channel() == snare)
+    );
+    // ...and a MIDI port or file gets both on channel 10, the guitar unchanged.
+    let general = sequence.general_midi().unwrap();
+    assert_eq!(general.tracks[2].channel, Channel::PERCUSSION);
+    assert_eq!(general.tracks[1].channel, guitar);
+    for event in &general.events {
+        let expected = if event.track == 1 {
+            guitar
+        } else {
+            Channel::PERCUSSION
+        };
+        assert_eq!(event.event.channel(), expected, "{event:?}");
+    }
+    assert_eq!(
+        Sequence::general_midi_event(
+            &drums,
+            MidiEvent::Control {
+                channel: snare,
+                controller: 7,
+                value: 90
+            }
+        )
+        .channel(),
+        Channel::PERCUSSION,
+        "a live fader move on the snare goes to 10"
+    );
+    // One drum track: nothing to change.
+    let _ = song.set_track_drums(TrackIndex::new(2), false).unwrap();
+    assert!(Sequence::new(&song, None).unwrap().general_midi().is_none());
 }
 
 #[test]

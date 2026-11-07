@@ -180,6 +180,30 @@ fn empty_staves_can_be_hidden_from_the_view_menu() {
 
 #[test]
 fn the_mixer_matches_its_snapshot() {
+    let mut harness = app_with_mixer_view();
+    // The tracks, the master (a waveform for all tracks) and the metronome's fader.
+    harness.snapshot("mixer_view");
+}
+
+#[test]
+fn the_mixer_shows_what_plays_and_what_does_not() {
+    let mut harness = app_with_mixer_view();
+    // A muted track and, while another one is soloed, a track that a solo silences: both
+    // recede, their mute buttons red and the solo button amber.
+    harness.get_by_label("Mute Clean Guitar").click();
+    harness.run();
+    harness.get_by_label("Solo Rhythm Guitar").click();
+    harness.run();
+    harness.snapshot("mixer_mute_solo");
+    // The same in the song grid: the muted and the unsoloed rows' squares and names dim.
+    harness.get_by_label("Grid view").click();
+    harness.run();
+    harness.snapshot("grid_mute_solo");
+}
+
+/// The app showing [multi_staff.gp](../../../testdata/basic/multi_staff.gp) in the mixer
+/// view, at the snapshot size.
+fn app_with_mixer_view() -> Harness<'static, GuitarScoreApp> {
     let file =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/basic/multi_staff.gp");
     let mut harness = Harness::builder()
@@ -195,8 +219,7 @@ fn the_mixer_matches_its_snapshot() {
     harness.run();
     harness.get_by_label("Mixer view").click();
     harness.run();
-    // The tracks, the master (a waveform for all tracks) and the metronome's fader.
-    harness.snapshot("mixer_view");
+    harness
 }
 
 #[test]
@@ -217,4 +240,43 @@ fn the_screen_view_matches_its_snapshot() {
     view_menu(&mut harness, "Screen view (vertical)");
     // Paper from edge to edge, as wide as the room between the panels and no wider.
     harness.snapshot("screen_view");
+}
+
+#[test]
+fn a_click_on_a_strip_selects_its_track() {
+    // The mixer strips behave like the track rows of the song grid: clicking the
+    // background selects the track (the cursor goes there and the panel shows it).
+    let mut harness = app_with_multi_staff();
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    assert_eq!(harness.state().shown_track(), 0);
+    // The background beside the fader (the centre of a strip is its fader).
+    let strip = harness.get_by_label("Track 3: Crunch Guitar").rect();
+    let at = egui::pos2(strip.left() + 6.0, strip.center().y);
+    harness.hover_at(at);
+    harness.run();
+    harness.drag_at(at);
+    harness.run();
+    harness.drop_at(at);
+    harness.run();
+    assert_eq!(harness.state().shown_track(), 2);
+    let cursor = harness
+        .state()
+        .document()
+        .expect("the song")
+        .editor()
+        .cursor();
+    assert_eq!(cursor.track.get(), 2);
+    // The strip now carries the selection's background (the snapshot shows it).
+    harness.snapshot("mixer_selected_track");
+    // A click on the first strip's background goes back.
+    let strip = harness.get_by_label("Track 1: Clean Guitar").rect();
+    let at = egui::pos2(strip.left() + 6.0, strip.center().y);
+    harness.hover_at(at);
+    harness.run();
+    harness.drag_at(at);
+    harness.run();
+    harness.drop_at(at);
+    harness.run();
+    assert_eq!(harness.state().shown_track(), 0);
 }

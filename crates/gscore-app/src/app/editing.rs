@@ -555,9 +555,13 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
-        let Some(selection) = tab.loop_measures() else {
-            // Nothing is selected any more: looping has no range.
-            self.playback.set_loop_selection(false);
+        // Nothing selected: looping plays the whole song again.
+        let selection = tab.loop_measures().or_else(|| {
+            let last = tab.document.song().measure_count().checked_sub(1)?;
+            Some(crate::state::MeasureSelection::new(0).to(last))
+        });
+        let Some(selection) = selection else {
+            // A song without measures has nothing to loop.
             return;
         };
         let timeline = tab.document.timeline();
@@ -733,6 +737,20 @@ impl GuitarScoreApp {
             return;
         };
         if let Err(error) = self.playback.set_count_in(document.song(), enabled) {
+            self.notice = Some(error);
+        }
+    }
+
+    /// Plays guitar and bass tracks with the modelled strings, or with the SoundFont.
+    pub fn set_modelled_guitars(&mut self, modelled: bool) {
+        let Some(document) = self.tabs.get(self.active).map(|tab| &tab.document) else {
+            self.playback.store_modelled_guitars(modelled);
+            return;
+        };
+        if let Err(error) = self
+            .playback
+            .set_modelled_guitars(document.song(), modelled)
+        {
             self.notice = Some(error);
         }
     }

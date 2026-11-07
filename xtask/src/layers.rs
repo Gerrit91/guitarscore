@@ -22,6 +22,7 @@ pub(crate) const LAYERS: &[(&str, u8)] = &[
     ("gscore-io", 2),
     ("gscore-layout", 2),
     ("gscore-play", 2),
+    ("gscore-guitar", 2),
     ("gscore-edit", 3),
     ("gscore-audio", 3),
     ("gscore-worklet", 4),
@@ -37,6 +38,7 @@ pub(crate) const WASM_CRATES: &[&str] = &[
     "gscore-io",
     "gscore-layout",
     "gscore-play",
+    "gscore-guitar",
     "gscore-edit",
 ];
 

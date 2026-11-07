@@ -24,6 +24,10 @@ impl std::error::Error for SmfError {}
 
 /// The sequence as the bytes of a `.mid` file, named `title`.
 pub fn to_smf(sequence: &Sequence, title: &str) -> Result<Vec<u8>, SmfError> {
+    // Every drum track on channel 10, as General MIDI players expect (the built-in
+    // synthesizer gives each its own channel).
+    let general = sequence.general_midi();
+    let sequence = general.as_ref().unwrap_or(sequence);
     let track_count = u16::try_from(sequence.tracks.len().saturating_add(1))
         .map_err(|_| SmfError("too many tracks".to_owned()))?;
     let ppq = u16::try_from(PPQ).map_err(|_| SmfError("tick resolution".to_owned()))?;

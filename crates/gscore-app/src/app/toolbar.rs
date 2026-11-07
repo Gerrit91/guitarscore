@@ -203,11 +203,8 @@ impl GuitarScoreApp {
         let has_song = self.document().is_some();
         let (metronome, count_in) = (self.playback.metronome(), self.playback.count_in());
         let looping = self.playback.loop_selection();
-        let can_loop = has_song
-            && self
-                .tabs
-                .get(self.active)
-                .is_some_and(|tab| tab.loop_measures().is_some());
+        // Looping needs no selection: the whole song repeats then.
+        let can_loop = has_song;
         let (mut toggle_metronome, mut toggle_count_in, mut toggle_loop) = (false, false, false);
         let (mut to_start, mut previous, mut next, mut to_end) = (false, false, false, false);
         let start = ui.cursor().left();
@@ -305,11 +302,8 @@ impl GuitarScoreApp {
                         ui,
                         Icon::Loop,
                         "Loop selection",
-                        "Loop the selected measures while playing",
+                        "Loop the selected bars (the whole song when nothing is selected)",
                         looping,
-                    )
-                    .on_disabled_hover_text(
-                        "Loop selection: select bars in the score or the grid first",
                     )
                 })
                 .inner
