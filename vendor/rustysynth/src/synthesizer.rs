@@ -374,6 +374,23 @@ impl Synthesizer {
         }
     }
 
+    /// GuitarScore fork: makes `channel` a percussion channel (drums, from the SoundFont's
+    /// percussion banks) or a melodic one. Channel 9 is percussion from the start; others
+    /// can be too, so several drum tracks each get a channel (and a mixer strip) of their
+    /// own. A channel that becomes percussion starts on the standard kit.
+    pub fn set_percussion_channel(&mut self, channel: usize, percussion: bool) {
+        if let Some(channel) = self.channels.get_mut(channel) {
+            channel.set_percussion(percussion);
+        }
+    }
+
+    /// GuitarScore fork: whether `channel` plays drums.
+    pub fn is_percussion_channel(&self, channel: usize) -> bool {
+        self.channels
+            .get(channel)
+            .is_some_and(|channel| channel.is_percussion())
+    }
+
     /// GuitarScore fork: renders the waveform of each channel apart (the synthesizer must
     /// have been made with [`SynthesizerSettings::split_channels`]; otherwise every output
     /// stays silent).

@@ -906,6 +906,60 @@ fn a_sequence_reports_the_channel_each_track_plays_on() {
 }
 
 #[test]
+fn every_drum_track_plays_on_a_channel_of_its_own_and_on_ten_for_general_midi() {
+    // Kick and snare as two drum tracks around a guitar: each its own channel (the
+    // built-in synthesizer plays both as drums, each with its own mixer strip)...
+    let notes = [TestNote::new(6, 5)];
+    let mut song = testing::song_with_notes_on_tracks(3, &[(4, &notes)]).unwrap();
+    let _ = song.set_track_drums(TrackIndex::new(0), true).unwrap();
+    let _ = song.set_track_drums(TrackIndex::new(2), true).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let [kick, guitar, snare] = [0, 1, 2].map(|track| sequence.tracks[track].channel);
+    assert_eq!(kick, Channel::PERCUSSION);
+    assert!(
+        snare != kick && snare != guitar,
+        "{kick:?} {guitar:?} {snare:?}"
+    );
+    let drums = sequence.drum_channels();
+    assert!(drums[usize::from(kick.get())] && drums[usize::from(snare.get())]);
+    assert!(!drums[usize::from(guitar.get())]);
+    assert!(
+        sequence
+            .events
+            .iter()
+            .any(|event| event.track == 2 && event.event.channel() == snare)
+    );
+    // ...and a MIDI port or file gets both on channel 10, the guitar unchanged.
+    let general = sequence.general_midi().unwrap();
+    assert_eq!(general.tracks[2].channel, Channel::PERCUSSION);
+    assert_eq!(general.tracks[1].channel, guitar);
+    for event in &general.events {
+        let expected = if event.track == 1 {
+            guitar
+        } else {
+            Channel::PERCUSSION
+        };
+        assert_eq!(event.event.channel(), expected, "{event:?}");
+    }
+    assert_eq!(
+        Sequence::general_midi_event(
+            &drums,
+            MidiEvent::Control {
+                channel: snare,
+                controller: 7,
+                value: 90
+            }
+        )
+        .channel(),
+        Channel::PERCUSSION,
+        "a live fader move on the snare goes to 10"
+    );
+    // One drum track: nothing to change.
+    let _ = song.set_track_drums(TrackIndex::new(2), false).unwrap();
+    assert!(Sequence::new(&song, None).unwrap().general_midi().is_none());
+}
+
+#[test]
 fn swing_feel_moves_the_off_beats() {
     let mut song = testing::song(&[GUITAR_6], 1).unwrap();
     let at = |beat: usize| BeatPosition {

@@ -14,3 +14,7 @@ apply to it.
 - No `unsafe`: the sample data is read in 64 KB chunks and decoded little-endian
   (`BinaryReader::read_wave_data`), and the SoundFont3 check reads the first samples'
   bytes safely (`SoundFontSampleData::new`).
+- `Synthesizer::set_percussion_channel` and `is_percussion_channel`: any channel can play
+  drums (the percussion banks), not only channel 9, so several drum tracks each get a
+  channel and a mixer strip of their own. A channel that becomes percussion starts on the
+  standard kit.

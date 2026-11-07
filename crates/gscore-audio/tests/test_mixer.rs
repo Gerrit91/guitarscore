@@ -241,3 +241,51 @@ fn tracks_sharing_a_channel_are_one_strip() {
     );
     assert!(rms(steady(&left)) > 0.01);
 }
+
+#[test]
+fn every_drum_track_has_its_own_strip() {
+    // Kick and snare as two drum tracks: each on a channel of its own, played as drums
+    // there, each with its own meter, and a chain on one leaves the other alone.
+    let mut song = song(2);
+    let _ = song.set_track_drums(TrackIndex::new(0), true).unwrap();
+    let _ = song.set_track_drums(TrackIndex::new(1), true).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    assert_ne!(sequence.tracks[0].channel, sequence.tracks[1].channel);
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Amp);
+    let mut settings = [BlockSettings::default(); BLOCKS];
+    settings[0].amp.voice = gscore_guitar::AmpVoice::Clean;
+    settings[0].amp.gain = 0.0;
+    settings[0].amp.level_db = -24.0;
+    let mut engine = engine(&sequence);
+    let chain = gscore_audio::prepare_chain(&spec, &settings, RATE);
+    assert!(engine.set_chain(1, chain, settings).is_none());
+    let _ = render(&mut engine, 0.5);
+    let meters = engine.meters();
+    let (kick, snare) = (meters.track(0).left, meters.track(1).left);
+    assert!(kick > 0.05, "the kick plays on its own strip: {kick}");
+    assert!(
+        snare > 0.0 && snare < 0.2 * kick,
+        "the snare plays on its own, through its chain: {snare} against {kick}"
+    );
+}
+
+#[test]
+fn a_sequence_sent_to_the_browsers_worklet_keeps_its_strips() {
+    // The worklet gets the sequence through the wire format: its tracks must arrive, or the
+    // mixer has no strips and the faders do nothing there.
+    let level = |volume: u8| {
+        let mut song = song(1);
+        let _ = song.set_track_volume(TrackIndex::new(0), volume).unwrap();
+        let sequence = Sequence::new(&song, None).unwrap();
+        let sent = gscore_play::decode_sequence(&gscore_play::encode_sequence(&sequence)).unwrap();
+        let (left, _) = render(&mut engine(&sent), 1.0);
+        rms(steady(&left))
+    };
+    let ratio = level(64) / level(127);
+    let expected = (64.0_f32 / 127.0).powi(2);
+    assert!(
+        (ratio - expected).abs() < 0.01,
+        "{ratio} against {expected}"
+    );
+}

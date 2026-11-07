@@ -2,10 +2,15 @@
 
 use crate::event::Channel;
 
-/// Hands out MIDI channels: drum tracks share the percussion channel (10), every other
-/// track gets its own channel, skipping 10. With more melodic tracks than channels, they
-/// share channels round-robin instead of failing (a shared channel uses the first track's
-/// instrument).
+/// Hands out MIDI channels: the first drum track gets the percussion channel (10), every
+/// other track - a further drum track too - its own channel, skipping 10. A drum track on
+/// another channel than 10 is marked percussion by the built-in synthesizer (each drum
+/// track then has its own mixer strip); a MIDI port and a MIDI file get it on 10, as
+/// General MIDI devices expect ([`Sequence::general_midi_channel`]). With more tracks
+/// than channels they share instead of failing: melodic tracks round-robin (never on a
+/// drum track's channel), further drum tracks on 10.
+///
+/// [`Sequence::general_midi_channel`]: crate::Sequence::general_midi_channel
 ///
 /// Channels left over after the tracks are the ones a note with a bend or slide can borrow
 /// temporarily ([`ChannelAllocator::free_channels`]); the sequencer uses them so a bend on
@@ -13,6 +18,10 @@ use crate::event::Channel;
 #[derive(Debug, Clone, Default)]
 pub struct ChannelAllocator {
     next: u8,
+    /// Whether a drum track has channel 10 already.
+    percussion_taken: bool,
+    /// The channels further drum tracks were given (other than 10).
+    drum_channels: Vec<Channel>,
     /// Channels handed to tracks so far (a shared channel appears once).
     used: Vec<Channel>,
     /// Whether channels had to be shared.
@@ -26,14 +35,43 @@ impl ChannelAllocator {
     /// The channel for the next track.
     pub fn allocate(&mut self, percussion: bool) -> Channel {
         if percussion {
-            return Channel::PERCUSSION;
+            if !self.percussion_taken {
+                self.percussion_taken = true;
+                return Channel::PERCUSSION;
+            }
+            // A further drum track: a fresh channel of its own while there is one.
+            if usize::from(self.next) >= MELODIC.len() {
+                self.shared = true;
+                return Channel::PERCUSSION;
+            }
+            let channel = self.take_melodic();
+            self.drum_channels.push(channel);
+            return channel;
         }
+        // Round-robin once every channel is taken, but never onto a drum track's channel
+        // (a melodic track there would play drums).
+        for _ in 0..=MELODIC.len() {
+            if usize::from(self.next) >= MELODIC.len() {
+                self.shared = true;
+            }
+            let channel = self.take_melodic();
+            if !self.drum_channels.contains(&channel) {
+                return channel;
+            }
+        }
+        // Every channel plays drums (no song has that many drum tracks): the first.
+        MELODIC
+            .first()
+            .copied()
+            .and_then(Channel::new)
+            .unwrap_or(Channel::PERCUSSION)
+    }
+
+    /// The next melodic channel in turn (wrapping around), marked used.
+    fn take_melodic(&mut self) -> Channel {
         let slot = usize::from(self.next)
             .checked_rem(MELODIC.len())
             .unwrap_or(0);
-        if usize::from(self.next) >= MELODIC.len() {
-            self.shared = true;
-        }
         self.next = self.next.saturating_add(1);
         let channel = MELODIC
             .get(slot)
@@ -79,6 +117,38 @@ mod tests {
         assert_eq!(melodic, [0, 1, 2, 3, 4, 5, 6, 7, 8, 10]);
         assert_eq!(channels.allocate(true), Channel::PERCUSSION);
         assert!(!channels.shared());
+    }
+
+    #[test]
+    fn every_drum_track_gets_a_channel_of_its_own() {
+        // Kick, snare and toms as three drum tracks between two guitars: the first drums
+        // on 10, the others on fresh channels, which nobody borrows.
+        let mut channels = ChannelAllocator::default();
+        let kick = channels.allocate(true);
+        let guitar = channels.allocate(false);
+        let snare = channels.allocate(true);
+        let toms = channels.allocate(true);
+        let bass = channels.allocate(false);
+        assert_eq!(kick, Channel::PERCUSSION);
+        let all = [kick, guitar, snare, toms, bass];
+        for (index, channel) in all.iter().enumerate() {
+            assert!(!all[index + 1..].contains(channel), "{all:?}");
+        }
+        assert!(!channels.free_channels().contains(&snare));
+        assert!(!channels.shared());
+    }
+
+    #[test]
+    fn with_too_many_tracks_melodic_ones_never_land_on_a_drum_channel() {
+        let mut channels = ChannelAllocator::default();
+        let _kick = channels.allocate(true);
+        let snare = channels.allocate(true);
+        let melodic: Vec<Channel> = (0..30).map(|_| channels.allocate(false)).collect();
+        assert!(!melodic.contains(&snare), "{melodic:?}");
+        assert!(!melodic.contains(&Channel::PERCUSSION));
+        assert!(channels.shared());
+        // Drum tracks past the channels share 10.
+        assert_eq!(channels.allocate(true), Channel::PERCUSSION);
     }
 
     #[test]

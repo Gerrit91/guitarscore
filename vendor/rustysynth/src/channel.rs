@@ -99,6 +99,28 @@ impl Channel {
         }
     }
 
+    /// GuitarScore fork: makes this a percussion channel (or a melodic one again). Its
+    /// bank moves into (or out of) the percussion banks; a channel that becomes
+    /// percussion starts on the standard kit.
+    pub(crate) fn set_percussion(&mut self, percussion: bool) {
+        if percussion == self.is_percussion_channel {
+            return;
+        }
+        self.is_percussion_channel = percussion;
+        if percussion {
+            if self.bank_number < 128 {
+                self.bank_number += 128;
+            }
+            self.patch_number = 0;
+        } else if self.bank_number >= 128 {
+            self.bank_number -= 128;
+        }
+    }
+
+    pub(crate) fn is_percussion(&self) -> bool {
+        self.is_percussion_channel
+    }
+
     pub(crate) fn set_patch(&mut self, value: i32) {
         self.patch_number = value;
     }

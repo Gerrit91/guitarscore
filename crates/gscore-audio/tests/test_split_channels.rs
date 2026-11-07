@@ -105,6 +105,24 @@ fn a_synthesizer_that_is_not_split_gives_silent_channels() {
 }
 
 #[test]
+fn any_channel_can_play_drums() {
+    let mut synth = synth(true);
+    assert!(synth.is_percussion_channel(Synthesizer::PERCUSSION_CHANNEL));
+    assert!(!synth.is_percussion_channel(3));
+    synth.set_percussion_channel(3, true);
+    assert!(synth.is_percussion_channel(3));
+    // Notes on it still sound (the test SoundFont has no drum kit: its preset plays).
+    synth.note_on(3, 40, 100);
+    let out = channels(&mut synth, 2_400);
+    assert!(energy(&out[3][0]) > 0.0);
+    synth.set_percussion_channel(3, false);
+    assert!(!synth.is_percussion_channel(3));
+    // Out of range: nothing happens.
+    synth.set_percussion_channel(99, true);
+    assert!(!synth.is_percussion_channel(99));
+}
+
+#[test]
 #[ignore = "needs a SoundFont: GSCORE_SF2=/path/to.sf2 cargo test --release -p gscore-audio --test test_split_channels -- --ignored"]
 fn a_large_soundfont_loads_as_before() {
     // Prints the load time and a checksum of the sample data, to compare with the
@@ -121,4 +139,33 @@ fn a_large_soundfont_loads_as_before() {
         font.get_wave_data().len(),
         start.elapsed()
     );
+}
+
+#[test]
+#[ignore = "needs a SoundFont with drums: GSCORE_SF2=/path/to.sf2 cargo test --release -p gscore-audio --test test_split_channels -- --ignored"]
+fn a_second_drum_channel_plays_the_same_kit() {
+    // A kick (key 36) on channel 10 and on channel 4 made percussion sound the same; on
+    // channel 4 as a melodic channel it is a piano note.
+    let path = std::env::var("GSCORE_SF2").unwrap();
+    let mut file = std::io::BufReader::new(std::fs::File::open(&path).unwrap());
+    let font = Arc::new(SoundFont::new(&mut file).unwrap());
+    let kick = |channel: usize, drums: bool| {
+        let mut settings = SynthesizerSettings::new(RATE);
+        settings.enable_reverb_and_chorus = false;
+        settings.split_channels = true;
+        let mut synth = Synthesizer::new(&font, &settings).unwrap();
+        synth.set_percussion_channel(channel, drums);
+        synth.note_on(channel as i32, 36, 110);
+        let out = channels(&mut synth, 9_600);
+        out[channel][0].clone()
+    };
+    let ten = kick(9, true);
+    let four = kick(3, true);
+    let piano = kick(3, false);
+    assert!(energy(&ten) > 1.0);
+    let difference: f32 = ten.iter().zip(&four).map(|(a, b)| (a - b).abs()).sum();
+    assert!(difference < 1e-3, "the same kick: {difference}");
+    let other: f32 = ten.iter().zip(&piano).map(|(a, b)| (a - b).abs()).sum();
+    assert!(other > 1.0, "a melodic channel plays something else");
+    println!("same kit on channel 4 (difference {difference}), piano differs by {other}");
 }

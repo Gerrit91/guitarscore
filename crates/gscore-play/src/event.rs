@@ -141,6 +141,29 @@ impl MidiEvent {
         }
     }
 
+    /// This message on `channel` instead.
+    pub fn on_channel(self, channel: Channel) -> MidiEvent {
+        match self {
+            MidiEvent::NoteOn { key, velocity, .. } => MidiEvent::NoteOn {
+                channel,
+                key,
+                velocity,
+            },
+            MidiEvent::NoteOff { key, .. } => MidiEvent::NoteOff { channel, key },
+            MidiEvent::ProgramChange { program, .. } => {
+                MidiEvent::ProgramChange { channel, program }
+            }
+            MidiEvent::Control {
+                controller, value, ..
+            } => MidiEvent::Control {
+                channel,
+                controller,
+                value,
+            },
+            MidiEvent::PitchBend { value, .. } => MidiEvent::PitchBend { channel, value },
+        }
+    }
+
     /// The messages that silence `channels` at once (for stop, pause and seek) and leave
     /// them ready for a fresh start: no notes, no stale pitch bend or controller values.
     pub fn silence(channels: impl IntoIterator<Item = Channel>) -> Vec<MidiEvent> {

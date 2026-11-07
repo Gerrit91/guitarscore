@@ -45,6 +45,8 @@ struct Status {
 #[derive(Debug)]
 pub struct MidiOutPlayer {
     port: String,
+    /// The drum channels of the sequence last loaded (live changes to them go to 10).
+    drums: [bool; 16],
     commands: SyncSender<Command>,
     status: Arc<Mutex<Status>>,
     thread: Option<JoinHandle<()>>,
@@ -93,6 +95,7 @@ impl MidiOutPlayer {
             .map_err(|e| PlayError::Device(format!("cannot start the MIDI thread: {e}")))?;
         Ok(MidiOutPlayer {
             port: name,
+            drums: [false; 16],
             commands,
             status,
             thread: Some(thread),
@@ -109,6 +112,17 @@ impl MidiOutPlayer {
         self.status().error
     }
 
+    /// `sequence` as a General MIDI device plays it: every drum track on channel 10 (the
+    /// built-in synthesizer gives each its own channel). Remembers its drum channels, so
+    /// live changes to them go to 10 as well.
+    fn general_midi(&mut self, sequence: Arc<Sequence>) -> Arc<Sequence> {
+        self.drums = sequence.drum_channels();
+        match sequence.general_midi() {
+            Some(general) => Arc::new(general),
+            None => sequence,
+        }
+    }
+
     fn send(&self, command: Command) -> Result<(), PlayError> {
         self.commands
             .send(command)
@@ -122,6 +136,7 @@ impl MidiOutPlayer {
 
 impl Player for MidiOutPlayer {
     fn load(&mut self, sequence: Arc<Sequence>) -> Result<(), PlayError> {
+        let sequence = self.general_midi(sequence);
         self.send(Command::Load(sequence))
     }
 
@@ -146,10 +161,12 @@ impl Player for MidiOutPlayer {
     }
 
     fn send_event(&mut self, event: MidiEvent) -> Result<(), PlayError> {
+        let event = Sequence::general_midi_event(&self.drums, event);
         self.send(Command::Send(event))
     }
 
     fn replace(&mut self, sequence: Arc<Sequence>) -> Result<(), PlayError> {
+        let sequence = self.general_midi(sequence);
         self.send(Command::Replace(sequence))
     }
 

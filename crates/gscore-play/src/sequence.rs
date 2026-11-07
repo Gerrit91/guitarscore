@@ -179,6 +179,59 @@ impl Sequence {
         self.tempo.micros_at(self.end)
     }
 
+    /// Which channels play drums: 10, and those of further drum tracks (each drum track has
+    /// a channel of its own, see [`crate::ChannelAllocator`]). Indexed by channel number.
+    pub fn drum_channels(&self) -> [bool; 16] {
+        let mut drums = [false; 16];
+        let mut mark = |channel: Channel| {
+            if let Some(slot) = drums.get_mut(usize::from(channel.get())) {
+                *slot = true;
+            }
+        };
+        mark(Channel::PERCUSSION);
+        for track in self.tracks.iter().filter(|track| track.sound.percussion) {
+            mark(track.channel);
+        }
+        drums
+    }
+
+    /// `event` as a General MIDI device takes it: on channel 10 if it goes to one of
+    /// `drums` (see [`Sequence::drum_channels`]), which such a device plays drums on only.
+    pub fn general_midi_event(drums: &[bool; 16], event: MidiEvent) -> MidiEvent {
+        if drums
+            .get(usize::from(event.channel().get()))
+            .copied()
+            .unwrap_or(false)
+        {
+            event.on_channel(Channel::PERCUSSION)
+        } else {
+            event
+        }
+    }
+
+    /// This sequence for a General MIDI device (a MIDI port, a MIDI file): every drum track
+    /// on channel 10. `None` if they are already (one drum track or none).
+    pub fn general_midi(&self) -> Option<Sequence> {
+        let drums = self.drum_channels();
+        let others = drums
+            .iter()
+            .enumerate()
+            .any(|(channel, &drum)| drum && channel != usize::from(Channel::PERCUSSION.get()));
+        if !others {
+            return None;
+        }
+        let mut sequence = self.clone();
+        for track in &mut sequence.tracks {
+            if track.sound.percussion {
+                track.channel = Channel::PERCUSSION;
+            }
+        }
+        for event in &mut sequence.events {
+            event.event = Sequence::general_midi_event(&drums, event.event);
+        }
+        Some(sequence)
+    }
+
     /// The channels this sequence uses, including borrowed ones.
     pub fn channels(&self) -> Vec<Channel> {
         let mut channels: Vec<Channel> = self.tracks.iter().map(|t| t.channel).collect();

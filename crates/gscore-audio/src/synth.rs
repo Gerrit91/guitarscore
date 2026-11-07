@@ -118,6 +118,8 @@ pub struct SynthEngine {
     guitars: Guitars,
     /// Every track's strip: chain, fader, pan, sends; the buses and the meters.
     mixer: Mixer,
+    /// The sequence the synthesizer's drum channels were set for (by address).
+    drums_for: usize,
     /// One block of samples per side, rendered before interleaving.
     left: [f32; BLOCK],
     right: [f32; BLOCK],
@@ -154,6 +156,7 @@ impl SynthEngine {
             click: ClickVoice::new(sample_rate),
             guitars: Guitars::new(sample_rate),
             mixer: Mixer::new(sample_rate),
+            drums_for: 0,
             left: [0.0; BLOCK],
             right: [0.0; BLOCK],
         })
@@ -393,6 +396,14 @@ impl SynthEngine {
         if let Some(sequence) = self.transport.sequence() {
             self.guitars.follow(sequence);
             self.mixer.follow(sequence);
+            // Each drum track plays on a channel of its own: those channels play drums.
+            let address = Arc::as_ptr(sequence) as usize;
+            if address != self.drums_for {
+                self.drums_for = address;
+                for (channel, drums) in sequence.drum_channels().into_iter().enumerate() {
+                    self.synth.set_percussion_channel(channel, drums);
+                }
+            }
         }
         self.transport.advance(
             now,

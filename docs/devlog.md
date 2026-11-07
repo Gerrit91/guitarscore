@@ -3680,3 +3680,24 @@ needed for a much larger font); owner listening check.
   on channel 10, as General MIDI wants) or past 15 melodic tracks.
 - Tests: the bar holds and falls at its rate, the mark stays longer and never shows below
   the bar, silence rests at exactly zero; an estimate is split by the pan.
+
+## 2026-11-07 — Every drum track has a channel and a mixer strip of its own
+
+- Owner's choice: several drum tracks (a kick, a snare, toms as separate tracks) no longer
+  share channel 10 and one strip. `ChannelAllocator`: the first drum track gets 10, a
+  further one the next fresh channel (taken from those free for bends); past the channels
+  they share 10 again, and melodic tracks sharing round-robin never land on a drum
+  track's channel (they would play drums).
+- RustySynth fork: `set_percussion_channel` makes any channel play drums (the percussion
+  banks; it starts on the standard kit). The engine marks the loaded sequence's drum
+  channels (`Sequence::drum_channels`). Checked with FluidR3: a kick on a second drum
+  channel is sample for sample the one on channel 10.
+- General MIDI devices play drums on 10 only: `Sequence::general_midi` moves every drum
+  track there, used by the MIDI output (live mixer changes too) and the MIDI file export.
+- Found on the way: the browser worklet's wire format did not carry the sequence's tracks,
+  so since the mixer (step 2) the browser had no strips and its faders, pans and reverb
+  sends did nothing. The tracks travel now (channel and sound); format `GSQ4`.
+- AGENTS.md decision 10 updated. Tests: the allocator (drum tracks apart, melodic sharing
+  never on a drum channel), a sequence with two drum tracks and its General MIDI form (and
+  a live change), the engine's two drum strips with a chain on one, any channel as drums,
+  the wire round trip with tracks, a fader in a sequence sent to the worklet.
