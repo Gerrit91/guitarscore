@@ -165,8 +165,9 @@ pub(crate) struct Mixer {
     sequence: usize,
     /// Each track's chain.
     tones: TrackTones,
-    /// Each drum track's part chains ([`PARTS`] of them), by strip.
-    part_chains: [[Option<Box<Chain>>; PARTS]; MAX_STRIPS],
+    /// Each drum track's part chains ([`PARTS`] of them), by the song's track index (as
+    /// the chains: a strip's place in the sequence changes with mute, solo and excerpts).
+    part_chains: [[Option<Box<Chain>>; PARTS]; MAX_TONES],
     /// The buses ([`Bus::index`]).
     buses: [BusState; 2],
     /// Each track's send into the compressor bus (0-127), by the song's track index.
@@ -486,7 +487,15 @@ impl Mixer {
         // The source: the strings (mono), the channels the track plays on (stereo), or -
         // for a drum track - its channel's parts, each through its own chain, summed.
         let mut part_reduction = 0.0_f32;
-        let stereo = if strip.drums {
+        // A drum track whose channel another drum track owns (both had to share channel 10:
+        // more tracks than channels) gets nothing of its own, as any shared channel.
+        let owns_channel =
+            self.channel_strip.get(strip.channel).copied().flatten() == Some(position);
+        let stereo = if strip.drums && !owns_channel {
+            work_left.fill(0.0);
+            work_right.fill(0.0);
+            true
+        } else if strip.drums {
             let channel = strip.channel;
             let [sum_left, sum_right] = &mut self.parts_work;
             let (Some(sum_left), Some(sum_right)) =
@@ -515,7 +524,7 @@ impl Mixer {
                 }
                 if let Some(chain) = self
                     .part_chains
-                    .get_mut(position)
+                    .get_mut(strip.song_track)
                     .and_then(|parts| parts.get_mut(part))
                     .and_then(Option::as_mut)
                 {

@@ -754,8 +754,7 @@ pub fn drum_part(key: i32) -> usize {
         42 | 44 | 46 => 2,
         // Toms: low floor to high, the two low and two high toms.
         41 | 43 | 45 | 47 | 48 | 50 => 3,
-        // Cymbals and ride: crash 1 and 2, splash, china, ride, bell, second bell, tambourine?
-        // No: the ride's bells and the crash cymbals, then the Chinese cymbal.
+        // Cymbals: crash 1 and 2, ride 1 and 2, ride bell, Chinese cymbal, splash.
         49 | 51 | 52 | 53 | 55 | 57 | 59 => 4,
         // Everything else (cowbell, claps, congas, shakers, ...).
         _ => 5,

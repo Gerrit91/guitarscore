@@ -442,3 +442,51 @@ fn a_drum_tracks_parts_have_their_own_chains() {
     // A part the kit does not use has no sound, so its chain changes nothing either.
     assert!((level(36, Some(2)) - kick).abs() < 1e-6);
 }
+
+#[test]
+fn a_drum_tracks_part_chains_follow_it_when_a_track_before_it_is_muted() {
+    use gscore_guitar::CompressorKnobs;
+
+    // The drums are the song's second track, the first is muted: in the sequence the
+    // drums are the first (and only) track, but their parts' chains belong to the song's
+    // track 1 (as every chain is the song's track's).
+    let mut song = testing::song_with_notes_on_tracks(2, &[]).expect("a silent song");
+    let _ = song.set_track_drums(TrackIndex::new(1), true).unwrap();
+    let _ = song.set_track_mute(TrackIndex::new(0), true).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    assert_eq!(sequence.tracks.len(), 1);
+    assert_eq!(sequence.tracks[0].track, TrackIndex::new(1));
+    let channel = sequence.tracks[0].channel;
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Compressor);
+    let mut settings = [BlockSettings::default(); BLOCKS];
+    settings[0].compressor = CompressorKnobs {
+        input_db: 24.0,
+        output_db: -24.0,
+        ..CompressorKnobs::default()
+    };
+    let kick = |chained: bool| {
+        let bytes = gscore_audio::testing::sine_drum_soundfont("Test Drums");
+        let bank = SoundBank::read(&mut bytes.as_slice()).unwrap();
+        let mut engine = SynthEngine::new(&bank, RATE).unwrap();
+        engine.load(Arc::new(sequence.clone()));
+        engine.play();
+        if chained {
+            let chain = Some(Box::new(spec.prepare(RATE).instance(&settings)));
+            let _ = engine.set_part_chain(1, 0, chain, settings);
+        }
+        engine.send_event(MidiEvent::NoteOn {
+            channel,
+            key: 36,
+            velocity: 100,
+        });
+        let (left, _) = render(&mut engine, 1.0);
+        rms(steady(&left))
+    };
+    let (plain, chained) = (kick(false), kick(true));
+    assert!(plain > 0.001);
+    assert!(
+        chained < 0.2 * plain,
+        "the kick's chain applies: {chained} against {plain}"
+    );
+}

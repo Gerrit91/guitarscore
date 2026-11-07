@@ -659,7 +659,8 @@ fn chain_of(blocks: Vec<BlockSetting>) -> ChainSetting {
 }
 
 /// The built-in tone of one part of a drum kit: EQ, a compressor, sometimes a little room.
-/// The owner's first version (2026-11-07); a part can be given a tone of its own later.
+/// A starting point (2026-11-07) for the owner to tune by ear; a part can be given a tone
+/// of its own.
 pub fn default_drum_part_chain(part: DrumPart) -> ChainSetting {
     match part {
         // The kick: body low, the boxy mids out, the beater's click in, held steady.

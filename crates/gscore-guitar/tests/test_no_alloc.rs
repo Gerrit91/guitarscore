@@ -72,7 +72,19 @@ fn playing_strings_and_running_a_chain_never_allocate() {
     let mut compressor = compressor_spec.prepare(48_000).instance(&compressor_knobs);
     let loud: Vec<f32> = (0..64).map(|i| (i as f32 * 0.3).sin()).collect();
 
+    // A chorus: its delays are made with it, never while it runs.
+    let mut chorus_spec = ChainSpec::default();
+    chorus_spec.blocks[0] = Some(BlockKind::Chorus);
+    let chorus_knobs = [BlockSettings::default(); BLOCKS];
+    let mut chorus = chorus_spec.prepare(48_000).instance(&chorus_knobs);
+
     let region = Region::new(GLOBAL);
+    for _ in 0..200 {
+        let (mut left, mut right) = ([0.0_f32; 64], [0.0_f32; 64]);
+        left.copy_from_slice(&loud);
+        right.copy_from_slice(&loud);
+        chorus.process_stereo(&mut left, &mut right);
+    }
     for round in 0..500_usize {
         if round % 50 == 0 {
             eq_knobs[0].eq.band_gain = [0.0, (round % 100) as f32 / 5.0, 0.0, 0.0];

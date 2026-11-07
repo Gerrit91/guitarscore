@@ -286,6 +286,9 @@ pub struct Playback {
     /// was given (see `chains`).
     tone_targets: Vec<chains::ToneTarget>,
     sent_tones: std::collections::BTreeMap<usize, chains::SentTone>,
+    /// What each drum track's parts were given (by song track and part), so a part's
+    /// chain is prepared again only when its blocks change.
+    sent_parts: std::collections::BTreeMap<(usize, usize), crate::chain_settings::ChainSetting>,
     /// The mixer's reverb bus (a computed reverb or a room, all wet) and its compressor
     /// bus (parallel compression), and what the synthesizer was last given for each.
     reverb_bus: crate::settings::ReverbBus,
@@ -356,6 +359,7 @@ impl Default for Playback {
             comp_sends: Vec::new(),
             tone_targets: Vec::new(),
             sent_tones: std::collections::BTreeMap::new(),
+            sent_parts: std::collections::BTreeMap::new(),
             reverb_bus: crate::settings::ReverbBus::default(),
             compressor_bus: crate::settings::CompressorBus::default(),
             reverb_sent: chains::SentBus::default(),

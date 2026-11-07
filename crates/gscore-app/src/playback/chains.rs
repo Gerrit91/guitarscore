@@ -361,38 +361,55 @@ impl Playback {
         self.send_drum_parts();
     }
 
-    /// Sends each drum track the chains of its parts (the built-in tones). They do not
-    /// change, so this happens when a sequence is loaded.
+    /// Sends each drum track of the loaded sequence what differs between its parts'
+    /// chains and what they were last given: a new chain when its blocks changed, else
+    /// only the knob values (so a rebuilt sequence - a mixer change, a beat preview - does
+    /// not prepare every part's room again and cut its tail).
     fn send_drum_parts(&mut self) {
         if !self.synth_running() {
             return;
         }
-        let mut jobs = Vec::new();
+        let mut prepare = Vec::new();
+        let mut knobs = Vec::new();
         for target in self.tone_targets.clone() {
             if !target.drums {
                 continue;
             }
             for part in crate::chain_settings::DrumPart::ALL {
                 let chain = self.drum_part_chain(part);
-                let spec = self.chain_spec(&chain);
-                jobs.push((target.track, part.index(), spec, chain.knobs()));
+                let key = (target.track, part.index());
+                match self.sent_parts.get(&key) {
+                    Some(sent) if *sent == chain => continue,
+                    Some(sent) if sent.same_structure(&chain) => {
+                        knobs.push((key, chain.knobs()));
+                    }
+                    _ => {
+                        let spec = self.chain_spec(&chain);
+                        prepare.push((key, spec, chain.knobs()));
+                    }
+                }
+                self.sent_parts.insert(key, chain);
             }
         }
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(super::Active::Synth(player)) = &self.player {
-            for (track, part, spec, settings) in jobs {
+            for ((track, part), spec, settings) in prepare {
                 if let Err(error) = player.set_part_chain(track, part, spec, settings) {
                     self.chain_notices.push(error.to_string());
                 }
             }
+            for ((track, part), settings) in knobs {
+                let _ = player.set_part_chain_settings(track, part, settings);
+            }
         }
         #[cfg(target_arch = "wasm32")]
-        let _ = jobs;
+        let _ = (prepare, knobs);
     }
 
     /// Forgets what the synthesizer was given (a new one starts with nothing).
     pub(super) fn forget_sent_tones(&mut self) {
         self.sent_tones.clear();
+        self.sent_parts.clear();
     }
 
     /// Sends each modelled track of the loaded sequence what differs between its tone and

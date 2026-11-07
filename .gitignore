@@ -1,5 +1,8 @@
 # Build artifacts
 /target
+# The vendored crate built on its own (outside the workspace)
+/vendor/*/target
+/vendor/*/Cargo.lock
 
 # Local configuration files
 .env

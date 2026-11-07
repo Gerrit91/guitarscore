@@ -3894,3 +3894,27 @@ needed for a much larger font); owner listening check.
 - Tests: a dry chorus passes the signal exactly, an all-wet one moves the sound and keeps
   the two sides apart without silencing it, a broken settings file never makes NaN or a
   huge signal, and reset leaves silence.
+
+## 2026-11-07 — Review of the mixer's last steps, before merging into m22-string-engine
+
+- Reviewed `b5f80e8..0124f34` (compressor block and bus, comp send and the song's notes
+  block, EQ, drum parts and drum bus, chorus, MIDI out per track). Fixed:
+  - A drum track's part chains were stored by the song's track index but looked up by the
+    strip's place in the sequence: with a muted track before the drums, under solo or in a
+    beat preview, the drums got no part chains (or another track's). Now both are the
+    song's track (test: drums behind a muted track).
+  - Every sequence rebuild (Play, a mixer change, a beat preview) prepared all six part
+    chains of every drum track again, rooms included, cutting their tails and loading the
+    synthesizer's thread. Playback now remembers what each part was given and sends only
+    a changed chain, or only its knobs.
+  - Drum tracks that have to share channel 10 (more tracks than channels) each played the
+    whole channel's parts (doubled); now only the channel's owner does, as for any shared
+    channel.
+  - `vendor/rustysynth/target` (7.7 MB of build output) and the vendored crate's own
+    `Cargo.lock` had been committed (in `d902739`): removed, and ignored now. They stay in
+    the branch's history.
+  - The chorus joins the no-allocation test; two comments tidied.
+- Left for the owner: the song-notes block stores a tone's chain with the impulse
+  responses' absolute file paths (visible in Guitar Pro's Notices, useless on another
+  machine; the earlier decision was name and checksum). And a seek while playing restarts
+  a MIDI-out track at once, without the audio latency hold-back that Play has.
