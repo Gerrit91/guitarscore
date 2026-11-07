@@ -154,6 +154,11 @@ pub(super) fn apply_to_song(song: &mut Song) {
         let Some(midi) = song.track_sound(TrackIndex::new(track)) else {
             continue;
         };
+        // A bass always plays the owner's saved bass preset, so an RSE Pick or Slap tone
+        // is not stored (it would only be ignored, and would travel with the song).
+        if matches!(midi.program, 32..=39) {
+            continue;
+        }
         let mut state = TrackSound::of_song(song, track);
         if state.tone.is_some() {
             continue;

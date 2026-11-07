@@ -231,11 +231,16 @@ impl GuitarScoreApp {
 
     /// [`Self::track_tone`] for `track` of `tab`'s document.
     pub(super) fn track_tone_in(&self, tab: &Tab, track: usize, kind: StringKind) -> Tone {
-        let own = tab
-            .track_sound(track)
-            .tone
-            .and_then(|preset| preset.tone())
-            .filter(|tone| tone.kind == kind);
+        // A bass track always plays the saved bass preset (see `Playback::tone`), so the
+        // tone the song carries (an RSE Pick, say) is not shown as the current one.
+        let own = if kind == StringKind::Bass {
+            None
+        } else {
+            tab.track_sound(track)
+                .tone
+                .and_then(|preset| preset.tone())
+                .filter(|tone| tone.kind == kind)
+        };
         let player = self.track_player_in(tab, track);
         let mut tone = own.unwrap_or_else(|| match &player {
             Some(player) => self.playback.tone(track, player.program, kind),

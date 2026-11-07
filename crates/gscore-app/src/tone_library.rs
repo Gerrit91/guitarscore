@@ -137,18 +137,8 @@ pub(crate) fn saved_default_for(
             words.push((*word).to_owned());
         }
     }
-    // A bass program with a specific style (pick or slap) takes a saved preset only when
-    // one is named for that style; otherwise the built-in Pick or Slap plays. A single
-    // saved "Clean Bass 1" must not stand in for every bass program.
-    if kind == StringKind::Bass {
-        let style = template.name.to_lowercase();
-        if matches!(style.as_str(), "pick" | "slap") {
-            return saved.iter().find(|preset| {
-                kind_from_id(&preset.kind) == Some(kind)
-                    && preset.name.to_lowercase().contains(&style)
-            });
-        }
-    }
+    // Every bass program plays the owner's saved bass preset (there is one bass sound in
+    // the presets): the finger, pick and slap programs all start on it.
     // The acoustic guitars have one saved preset each by kind: every steel-string acoustic
     // takes the preset named for natural steel, every nylon-string one the classical preset.
     let preferred: &[&str] = match kind {
@@ -885,11 +875,14 @@ mod tests {
         );
         assert_eq!(name(30, StringKind::Electric), Some("Metal Guitar 1"));
         assert_eq!(name(31, StringKind::Electric), Some("Lead Guitar 1"));
-        assert_eq!(name(33, StringKind::Bass), Some("Clean Bass 1"));
-        // The one clean bass preset must not stand in for a picked or slapped bass: those
-        // have their own built-in tones until the owner saves presets for them.
-        assert_eq!(name(34, StringKind::Bass), None);
-        assert_eq!(name(36, StringKind::Bass), None);
+        // Every bass program plays the one saved bass preset.
+        for program in 32..=39 {
+            assert_eq!(
+                name(program, StringKind::Bass),
+                Some("Clean Bass 1"),
+                "bass program {program}"
+            );
+        }
         // No saved presets at all: the built-in library still answers.
         assert_eq!(saved_default_for(27, StringKind::Electric, &[]), None);
         assert_eq!(

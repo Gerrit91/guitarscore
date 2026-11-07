@@ -132,20 +132,26 @@ impl ExportTones {
                             .map(|(_, _, _, spec, knobs)| (spec.clone(), *knobs))
                     }),
                 Some(kind) => {
-                    // The song's own tone for this track first, then its preset's.
-                    let own = self
-                        .own
-                        .iter()
-                        .find(|(track, own, ..)| *track == target.track && *own == kind)
-                        .map(|(_, _, model, spec, knobs)| (*model, spec.clone(), *knobs))
-                        .or_else(|| {
-                            self.presets
-                                .iter()
-                                .find(|(program, preset_kind, ..)| {
-                                    *program == target.program && *preset_kind == kind
-                                })
-                                .map(|(_, _, model, spec, knobs)| (*model, spec.clone(), *knobs))
-                        });
+                    // The song's own tone for this track first, then its preset's; a bass
+                    // always exports with the saved bass preset.
+                    let own = if kind == StringKind::Bass {
+                        None
+                    } else {
+                        self.own
+                            .iter()
+                            .find(|(track, own, ..)| *track == target.track && *own == kind)
+                            .map(|(_, _, model, spec, knobs)| (*model, spec.clone(), *knobs))
+                            .or_else(|| {
+                                self.presets
+                                    .iter()
+                                    .find(|(program, preset_kind, ..)| {
+                                        *program == target.program && *preset_kind == kind
+                                    })
+                                    .map(|(_, _, model, spec, knobs)| {
+                                        (*model, spec.clone(), *knobs)
+                                    })
+                            })
+                    };
                     match own {
                         Some((model, spec, knobs)) => {
                             models.push((target.track, model));
@@ -231,6 +237,11 @@ impl Playback {
     /// tone that came with the song, else the preset's if it was dialed in on that kind of
     /// string, otherwise the kind's default.
     pub fn tone(&self, track: usize, program: u8, kind: StringKind) -> Tone {
+        // Every PM bass sound plays the owner's saved bass preset, whatever the program
+        // (finger, pick, slap) and whatever tone the song or a preset carried.
+        if kind == StringKind::Bass {
+            return self.default_tone_for(program, kind);
+        }
         self.tones
             .get(&track)
             .filter(|tone| tone.kind == kind)
@@ -536,6 +547,13 @@ impl Playback {
                         }),
                 },
                 Some(kind) => {
+                    // A bass track always plays the saved bass preset, so a tone the song
+                    // or a preset carries (an RSE Pick, say) does not override it.
+                    let (own, preset) = if kind == StringKind::Bass {
+                        (None, None)
+                    } else {
+                        (own, preset)
+                    };
                     let default = own.is_none() && preset.is_none();
                     let mut tone = own
                         .or(preset)
@@ -1133,6 +1151,35 @@ mod tests {
             playback.tone(0, 30, StringKind::Bass).kind,
             StringKind::Bass
         );
+    }
+
+    #[test]
+    fn every_bass_program_plays_the_saved_bass_preset() {
+        let mut playback = Playback::default();
+        let preset = crate::settings::ChainPreset {
+            name: "Clean Bass 1".to_owned(),
+            kind: "bass".to_owned(),
+            sound: StringSound::from(gscore_audio::default_string_model(StringKind::Bass)),
+            chain: ChainSetting::default(),
+            engine: String::new(),
+        };
+        playback.store_string_presets(vec![preset.clone()]);
+        // A tone the song carries (an RSE Pick, say) must not win for a bass.
+        playback
+            .tones
+            .insert(4, crate::tone_library::find("Pick").unwrap().tone.clone());
+        let expected = Tone {
+            kind: StringKind::Bass,
+            sound: preset.sound,
+            chain: preset.chain.clone(),
+        };
+        for program in [32_u8, 33, 34, 35, 36, 37, 38, 39] {
+            assert_eq!(
+                playback.tone(4, program, StringKind::Bass),
+                expected,
+                "bass program {program}"
+            );
+        }
     }
 
     #[test]
