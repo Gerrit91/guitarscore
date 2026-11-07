@@ -422,7 +422,8 @@ impl GuitarScoreApp {
             tab.track = tracks.saturating_sub(1);
         }
         if let Some(selection) = tab.selection
-            && selection.start() >= document.song().measure_count()
+            && (selection.start() >= document.song().measure_count()
+                || selection.track.is_some_and(|track| track >= tracks))
         {
             tab.selection = None;
         }

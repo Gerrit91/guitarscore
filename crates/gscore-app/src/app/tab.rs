@@ -86,6 +86,12 @@ impl Tab {
                 .map(|selection| MeasureSelection {
                     anchor: selection.first_measure().get(),
                     focus: selection.last_measure().get(),
+                    track: match selection {
+                        gscore_edit::Selection::Measures { track, .. } => {
+                            track.map(|track| track.get())
+                        }
+                        gscore_edit::Selection::Beats { .. } => None,
+                    },
                 })
         })
     }

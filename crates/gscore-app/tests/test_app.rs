@@ -1462,6 +1462,106 @@ fn clicking_the_song_grid_moves_the_cursor_and_selects_measures() {
     );
 }
 
+#[test]
+fn dragging_in_the_song_grid_selects_one_track_or_all() {
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    let rect = harness.get_by_label("Song grid").rect();
+    let cell = |measure: usize, track: usize| {
+        rect.left_top() + egui::vec2(24.0 * measure as f32 + 12.0, 24.0 * track as f32 + 12.0)
+    };
+    let selection = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness.state().selection()
+    };
+
+    // Within the first track's row: bars of that track only.
+    harness.hover_at(cell(1, 0));
+    harness.drag_at(cell(1, 0));
+    harness.run();
+    // The first movement starts the drag; keep it inside the starting bar.
+    harness.hover_at(cell(1, 0) + egui::vec2(4.0, 0.0));
+    harness.run();
+    harness.hover_at(cell(3, 0));
+    harness.run();
+    harness.drop_at(cell(3, 0));
+    harness.run();
+    let selected = selection(&harness).unwrap();
+    assert_eq!((selected.start(), selected.end(), selected.track), (1, 3, Some(0)));
+    assert!(matches!(
+        harness.state().document().unwrap().editor().selection(),
+        Some(gscore_edit::Selection::Measures {
+            track: Some(track),
+            ..
+        }) if track == gscore_model::TrackIndex::new(0)
+    ));
+
+    // Leaving the row on to another track makes it every track; coming back makes it one.
+    harness.hover_at(cell(1, 0));
+    harness.drag_at(cell(1, 0));
+    harness.run();
+    harness.hover_at(cell(1, 0) + egui::vec2(4.0, 0.0));
+    harness.run();
+    harness.hover_at(cell(1, 1));
+    harness.run();
+    assert_eq!(selection(&harness).unwrap().track, None);
+    harness.hover_at(cell(1, 0));
+    harness.run();
+    assert_eq!(selection(&harness).unwrap().track, Some(0));
+    harness.drop_at(cell(1, 0));
+    harness.run();
+
+    // A click on the ruler selects whole bars across every track.
+    left_click_at(&mut harness, cell(2, 0) - egui::vec2(0.0, 25.0));
+    let selected = selection(&harness).unwrap();
+    assert_eq!((selected.start(), selected.end(), selected.track), (2, 2, None));
+}
+
+#[test]
+fn copy_and_delete_act_on_a_one_track_grid_selection() {
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    let notes = |harness: &Harness<'static, GuitarScoreApp>, track: usize, measure: usize| {
+        let document = harness.state().document().unwrap();
+        let at = gscore_model::BeatPosition {
+            track: gscore_model::TrackIndex::new(track),
+            measure: gscore_model::MeasureIndex::new(measure),
+            voice: gscore_model::VoiceIndex::new(0),
+            beat: gscore_model::BeatIndex::new(0),
+        };
+        document.song().beat(at).map_or_else(Vec::new, |beat| {
+            beat.notes()
+                .map(|note| (note.string().unwrap().get(), note.fret().unwrap().get()))
+                .collect()
+        })
+    };
+    let rect = harness.get_by_label("Song grid").rect();
+    let select = |harness: &mut Harness<'static, GuitarScoreApp>, measure: usize| {
+        let cell = rect.left_top()
+            + egui::vec2(24.0 * measure as f32 + 12.0, 12.0);
+        harness.hover_at(cell);
+        harness.drag_at(cell);
+        harness.drop_at(cell);
+        harness.run();
+    };
+
+    let source = notes(&harness, 0, 0);
+    assert!(!source.is_empty(), "the first bar has notes");
+    let other = notes(&harness, 1, 1);
+    select(&mut harness, 0);
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::C);
+    harness.run();
+    select(&mut harness, 1);
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::V);
+    harness.run();
+    assert_eq!(notes(&harness, 0, 1), source, "the copied track's bar");
+    assert_eq!(notes(&harness, 1, 1), other, "the other track did not change");
+
+    // Delete clears the selected track's notes only.
+    select(&mut harness, 1);
+    harness.key_press(egui::Key::Delete);
+    harness.run();
+    assert!(notes(&harness, 0, 1).is_empty());
+    assert_eq!(notes(&harness, 1, 1), other);
+}
+
 /// Right-clicks at `pos` (kittest's helpers only click the primary button).
 fn right_click_at(harness: &mut Harness<'static, GuitarScoreApp>, pos: egui::Pos2) {
     harness.hover_at(pos);
@@ -1960,6 +2060,7 @@ fn looping_the_selected_measure_restarts_at_its_beginning() {
         .set_selection(Some(gscore_edit::Selection::Measures {
             anchor: gscore_model::MeasureIndex::new(0),
             focus: gscore_model::MeasureIndex::new(0),
+            track: None,
         }));
     harness
         .state_mut()
@@ -2111,6 +2212,7 @@ fn a_loop_is_counted_in_again_each_time_it_starts_over() {
         .set_selection(Some(gscore_edit::Selection::Measures {
             anchor: gscore_model::MeasureIndex::new(1),
             focus: gscore_model::MeasureIndex::new(1),
+            track: None,
         }));
     harness
         .state_mut()

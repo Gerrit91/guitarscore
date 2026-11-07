@@ -176,9 +176,9 @@ const MAX_VOICES: usize = 4;
 pub(super) fn paste_measures(
     song: &Song,
     start: MeasureIndex,
-    tracks: &[Vec<MeasureClip>],
+    tracks: &[(TrackIndex, Vec<MeasureClip>)],
 ) -> Result<Vec<Command>, EditError> {
-    let count = tracks.first().map_or(0, Vec::len);
+    let count = tracks.first().map_or(0, |(_, measures)| measures.len());
     if count == 0 {
         return Err(EditError::NothingToPaste);
     }
@@ -190,7 +190,12 @@ pub(super) fn paste_measures(
     }
     let mut commands = Vec::new();
     // The header data is the same in every track's copy: take the first track's.
-    for (offset, clip) in tracks.first().into_iter().flatten().enumerate() {
+    for (offset, clip) in tracks
+        .first()
+        .into_iter()
+        .flat_map(|(_, measures)| measures)
+        .enumerate()
+    {
         let measure = MeasureIndex::new(start.get().saturating_add(offset));
         commands.push(Command::SetTimeSignature {
             measure,
@@ -209,10 +214,9 @@ pub(super) fn paste_measures(
             None => commands.push(Command::ClearSection { measure }),
         }
     }
-    for (track_index, measures) in tracks.iter().enumerate() {
-        let track_at = TrackIndex::new(track_index);
-        let Some(track) = song.track(track_at) else {
-            break;
+    for (track_at, measures) in tracks {
+        let Some(track) = song.track(*track_at) else {
+            continue;
         };
         for (offset, clip) in measures.iter().enumerate() {
             let measure = MeasureIndex::new(start.get().saturating_add(offset));
@@ -225,7 +229,7 @@ pub(super) fn paste_measures(
                 let voice = VoiceIndex::new(voice_index);
                 let beats = clip.voices.get(voice_index).map_or(&[][..], Vec::as_slice);
                 let position = |beat: usize| BeatPosition {
-                    track: track_at,
+                    track: *track_at,
                     measure,
                     voice,
                     beat: BeatIndex::new(beat),

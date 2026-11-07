@@ -276,8 +276,12 @@ impl GuitarScoreApp {
                         gscore_edit::Selection::Measures {
                             anchor: gscore_model::MeasureIndex::new(selection.start()),
                             focus: gscore_model::MeasureIndex::new(selection.end()),
+                            track: selection.track.map(TrackIndex::new),
                         },
                     ));
+                    if let Some(track) = selection.track {
+                        tab.track = track;
+                    }
                 }
                 // While playing, playback goes to the selection's first measure, unless
                 // that measure is already playing (the selection just follows it).
@@ -531,7 +535,7 @@ fn draw(
         .unwrap_or(0.0);
     ui.horizontal_top(|ui| {
         rows::header(ui, rows, view, actions);
-        matrix::ruler(ui, grid, view, scroll_x);
+        matrix::ruler(ui, grid, view, scroll_x, actions);
     });
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])

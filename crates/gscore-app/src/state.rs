@@ -98,21 +98,33 @@ pub(crate) const INTERFACE_ZOOM_RANGE: (f32, f32) = (0.5, 2.0);
 const INTERFACE_ZOOM_STEP: f32 = 1.1;
 
 /// A range of measures selected in the song grid: from `anchor` to `focus`, inclusive and
-/// in either direction.
+/// in either direction, in one track or in every track.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MeasureSelection {
     /// Where the selection started (the measure that was pressed).
     pub anchor: usize,
     /// Where it ends now (the measure the pointer is over).
     pub focus: usize,
+    /// The one selected track, or `None` for a selection across every track.
+    pub track: Option<usize>,
 }
 
 impl MeasureSelection {
-    /// A selection of just `measure`.
+    /// A selection of just `measure`, across every track.
     pub fn new(measure: usize) -> Self {
         MeasureSelection {
             anchor: measure,
             focus: measure,
+            track: None,
+        }
+    }
+
+    /// A selection of just `measure` in one track.
+    pub fn on(track: usize, measure: usize) -> Self {
+        MeasureSelection {
+            anchor: measure,
+            focus: measure,
+            track: Some(track),
         }
     }
 
@@ -258,10 +270,12 @@ mod tests {
     fn measure_selections_normalize_and_extend() {
         let selection = MeasureSelection::new(5);
         assert_eq!((selection.start(), selection.end()), (5, 5));
+        assert_eq!(selection.track, None);
         let extended = selection.to(2);
         assert_eq!((extended.start(), extended.end()), (2, 5));
         assert!(extended.contains(3));
         assert!(!extended.contains(6));
+        assert_eq!(MeasureSelection::on(1, 5).to(2).track, Some(1));
     }
 
     #[test]

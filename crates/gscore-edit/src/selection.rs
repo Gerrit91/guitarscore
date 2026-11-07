@@ -52,12 +52,14 @@ pub enum Selection {
         /// Where it ends now.
         focus: BeatSpot,
     },
-    /// A range of whole measures, in every track.
+    /// A range of whole measures, in one track or in every track.
     Measures {
         /// Where the selection started.
         anchor: MeasureIndex,
         /// Where it ends now.
         focus: MeasureIndex,
+        /// The one selected track, or `None` for every track.
+        track: Option<TrackIndex>,
     },
 }
 
@@ -66,7 +68,7 @@ impl Selection {
     pub fn first_measure(self) -> MeasureIndex {
         match self {
             Selection::Beats { anchor, focus, .. } => anchor.min(focus).measure,
-            Selection::Measures { anchor, focus } => anchor.min(focus),
+            Selection::Measures { anchor, focus, .. } => anchor.min(focus),
         }
     }
 
@@ -74,7 +76,7 @@ impl Selection {
     pub fn last_measure(self) -> MeasureIndex {
         match self {
             Selection::Beats { anchor, focus, .. } => anchor.max(focus).measure,
-            Selection::Measures { anchor, focus } => anchor.max(focus),
+            Selection::Measures { anchor, focus, .. } => anchor.max(focus),
         }
     }
 
@@ -128,10 +130,19 @@ impl Selection {
                     push_measure(track, measure, voice, from, to);
                 }
             }
-            Selection::Measures { anchor, focus } => {
+            Selection::Measures {
+                anchor,
+                focus,
+                track,
+            } => {
                 let first = anchor.min(focus).get();
                 let last = anchor.max(focus).get();
-                for track in 0..song.track_count() {
+                let tracks: Vec<usize> = match track {
+                    Some(track) if track.get() < song.track_count() => vec![track.get()],
+                    Some(_) => Vec::new(),
+                    None => (0..song.track_count()).collect(),
+                };
+                for track in tracks {
                     for index in first..=last {
                         let measure = MeasureIndex::new(index);
                         let voices = song

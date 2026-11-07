@@ -194,14 +194,8 @@ impl GuitarScoreApp {
         // horizontal screen screen by screen (`screen_turn`).
         let turn_pages = playing && score_view.turns_pages();
         let shown_selection = shown_selection(document.editor().selection(), playing);
-        let in_selection = shown_selection.is_some_and(|selection| {
-            selection
-                .positions(document.song())
-                .contains(&cursor.position())
-                || matches!(selection, Selection::Measures { .. })
-                    && (selection.first_measure()..=selection.last_measure())
-                        .contains(&cursor.measure)
-        });
+        let in_selection = shown_selection
+            .is_some_and(|selection| selection_contains(selection, document.song(), cursor));
         // The grid shows a measure selection; any other selection (or none) ends it there.
         if !matches!(
             document.editor().selection(),
@@ -341,14 +335,10 @@ impl GuitarScoreApp {
                     beat: hit.beat,
                     string: hit.string,
                 };
-                let selected = document.editor().selection().is_some_and(|selection| {
-                    selection
-                        .positions(document.song())
-                        .contains(&target.position())
-                        || matches!(selection, Selection::Measures { .. })
-                            && (selection.first_measure()..=selection.last_measure())
-                                .contains(&target.measure)
-                });
+                let selected = document
+                    .editor()
+                    .selection()
+                    .is_some_and(|selection| selection_contains(selection, document.song(), target));
                 if !selected {
                     document.editor_mut().set_selection(None);
                     tab.selection = None;
@@ -503,6 +493,18 @@ impl GuitarScoreApp {
     }
 }
 
+/// Whether `cursor` is inside `selection` (in the selected track, for a one-track bar
+/// selection).
+fn selection_contains(selection: Selection, song: &Song, cursor: Cursor) -> bool {
+    match selection {
+        Selection::Beats { .. } => selection.positions(song).contains(&cursor.position()),
+        Selection::Measures { anchor, focus, track } => {
+            track.is_none_or(|track| track == cursor.track)
+                && (anchor.min(focus)..=anchor.max(focus)).contains(&cursor.measure)
+        }
+    }
+}
+
 /// The selection's highlight over a laid-out score. A beat selection follows its track's
 /// places (also when several tracks are shown); a measure selection covers every shown
 /// track's staves.
@@ -516,7 +518,11 @@ fn layout_selection_bands(
             .places_of(track)
             .map(|places| selection_bands(places, song, selection, track))
             .unwrap_or_default(),
-        Selection::Measures { .. } => layout
+        Selection::Measures { track: Some(track), .. } => layout
+            .places_of(track)
+            .map(|places| selection_bands(places, song, selection, track))
+            .unwrap_or_default(),
+        Selection::Measures { track: None, .. } => layout
             .tracks
             .iter()
             .flat_map(|track| selection_bands(&track.places, song, selection, track.track))
@@ -579,7 +585,7 @@ fn selection_bands(
                 })
                 .collect()
         }
-        Selection::Measures { anchor, focus } => (anchor.min(focus).get()
+        Selection::Measures { anchor, focus, .. } => (anchor.min(focus).get()
             ..=anchor.max(focus).get())
             .filter_map(|measure| places.measure_rect(MeasureIndex::new(measure)))
             .collect(),
@@ -637,6 +643,7 @@ mod tests {
         let selection = Some(Selection::Measures {
             anchor: MeasureIndex::new(0),
             focus: MeasureIndex::new(1),
+            track: None,
         });
         assert_eq!(shown_selection(selection, false), selection);
         assert_eq!(shown_selection(selection, true), None);
@@ -828,6 +835,7 @@ mod tests {
         let selection = Selection::Measures {
             anchor: MeasureIndex::new(0),
             focus: MeasureIndex::new(0),
+            track: None,
         };
         let bands = selection_bands(&places(), &song, selection, TrackIndex::new(0));
         assert_eq!(bands.len(), 1);

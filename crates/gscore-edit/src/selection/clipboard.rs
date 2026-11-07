@@ -3,7 +3,7 @@
 
 use gscore_model::{
     BeatEffect, BeatKind, BeatView, Dynamic, Fade, Fret, Hand, MeasureIndex, NoteEffect, NoteKind,
-    NoteValue, NoteView, Section, SlideKind, StringNumber, StrokeKind, TimeSignature,
+    NoteValue, NoteView, Section, SlideKind, StringNumber, StrokeKind, TimeSignature, TrackIndex,
 };
 
 use super::paste::{paste_beats, paste_measures};
@@ -53,7 +53,8 @@ pub(crate) enum Clipboard {
     /// Copied beats of one voice, grouped by the measure they came from, so a paste keeps
     /// the bar lines where they were.
     Beats(Vec<Vec<BeatClip>>),
-    Measures(Vec<Vec<MeasureClip>>),
+    /// Copied measures, each with the track it belongs to (all tracks, or only one).
+    Measures(Vec<(TrackIndex, Vec<MeasureClip>)>),
 }
 
 impl TabEditor {
@@ -75,9 +76,16 @@ impl TabEditor {
                 .into_iter()
                 .map(|at| Command::SetBeatRest { at })
                 .collect(),
-            Selection::Measures { anchor, focus } => {
-                let first = anchor.min(focus).get();
-                let last = anchor.max(focus).get();
+            // Cutting one track's bars clears their notes; deleting the bars themselves
+            // would remove them from every track.
+            Selection::Measures { track: Some(_), .. } => selection
+                .positions(self.song())
+                .into_iter()
+                .map(|at| Command::SetBeatRest { at })
+                .collect(),
+            Selection::Measures { track: None, .. } => {
+                let first = selection.first_measure().get();
+                let last = selection.last_measure().get();
                 let count = last.saturating_sub(first).saturating_add(1);
                 if count >= self.song().measure_count() {
                     return Err(EditError::Unsupported(
@@ -119,19 +127,27 @@ impl TabEditor {
                     .selection
                     .map(Selection::first_measure)
                     .unwrap_or_else(|| self.cursor().measure);
-                let count = tracks.first().map_or(0, Vec::len);
+                let count = tracks.first().map_or(0, |(_, measures)| measures.len());
+                let track = match tracks.as_slice() {
+                    [(track, _)] => Some(*track),
+                    _ => None,
+                };
                 let commands = paste_measures(self.song(), first, &tracks)?;
-                let cursor = Cursor {
+                let mut cursor = Cursor {
                     measure: first,
                     beat: gscore_model::BeatIndex::new(0),
                     ..self.cursor()
                 };
+                if let Some(track) = track {
+                    cursor.track = track;
+                }
                 if count > 0 {
                     self.selection = Some(Selection::Measures {
                         anchor: first,
                         focus: MeasureIndex::new(
                             first.get().saturating_add(count.saturating_sub(1)),
                         ),
+                        track,
                     });
                 }
                 self.execute(Command::Batch { commands }, cursor, false)
@@ -155,9 +171,14 @@ impl TabEditor {
                 cursor.measure = first.measure;
                 cursor.beat = first.beat;
             }
-            Selection::Measures { anchor, focus } => {
+            Selection::Measures {
+                anchor, focus, track, ..
+            } => {
                 cursor.measure = anchor.min(focus);
                 cursor.beat = gscore_model::BeatIndex::new(0);
+                if let Some(track) = track {
+                    cursor.track = track;
+                }
             }
         }
         cursor
@@ -183,15 +204,28 @@ impl TabEditor {
                 }
                 Ok(Clipboard::Beats(groups))
             }
-            Selection::Measures { anchor, focus } => {
+            Selection::Measures {
+                anchor,
+                focus,
+                track,
+            } => {
                 let first = anchor.min(focus).get();
                 let last = anchor.max(focus).get();
                 if first >= song.measure_count() {
                     return Err(EditError::NothingSelected);
                 }
                 let last = last.min(song.measure_count().saturating_sub(1));
+                let indices: Vec<usize> = match track {
+                    Some(track) if track.get() < song.track_count() => vec![track.get()],
+                    Some(_) => return Err(EditError::NothingSelected),
+                    None => (0..song.track_count()).collect(),
+                };
                 let mut tracks = Vec::new();
-                for track in song.tracks() {
+                for track_index in indices {
+                    let track_at = TrackIndex::new(track_index);
+                    let Some(track) = song.track(track_at) else {
+                        continue;
+                    };
                     let mut measures = Vec::new();
                     for index in first..=last {
                         let measure_index = MeasureIndex::new(index);
@@ -215,12 +249,13 @@ impl TabEditor {
                             section: song.section(measure_index),
                         });
                     }
-                    tracks.push(measures);
+                    tracks.push((track_at, measures));
                 }
                 Ok(Clipboard::Measures(tracks))
             }
         }
     }
+
 }
 
 /// The copyable content of one beat; `None` for a placeholder beat (no length, dropped

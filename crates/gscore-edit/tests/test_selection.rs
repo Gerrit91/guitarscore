@@ -233,6 +233,61 @@ fn pasted_notes_keep_their_dynamic() {
 }
 
 #[test]
+fn a_one_track_measure_selection_copies_cuts_and_clears_only_that_track() {
+    let mut e = TabEditor::new(
+        testing::song(&[GUITAR_6, GUITAR_6], 2).unwrap(),
+        TrackIndex::new(0),
+    );
+    let note = |track: usize, measure: usize| BeatPosition {
+        track: TrackIndex::new(track),
+        measure: MeasureIndex::new(measure),
+        ..at(0, 0)
+    };
+    e.execute_command(Command::SetFret {
+        at: note(0, 0),
+        string: StringNumber::new(1).unwrap(),
+        fret: gscore_model::Fret::new(3).unwrap(),
+    })
+    .unwrap();
+    e.execute_command(Command::SetFret {
+        at: note(1, 0),
+        string: StringNumber::new(1).unwrap(),
+        fret: gscore_model::Fret::new(7).unwrap(),
+    })
+    .unwrap();
+    let one_track = |measure: usize| Selection::Measures {
+        anchor: MeasureIndex::new(measure),
+        focus: MeasureIndex::new(measure),
+        track: Some(TrackIndex::new(0)),
+    };
+
+    // Copying the first bar of track 1 and pasting it into the second bar writes that
+    // track only.
+    e.set_selection(Some(one_track(0)));
+    plain(&mut e, ActionId::Copy);
+    e.set_selection(Some(one_track(1)));
+    e.set_cursor(Cursor {
+        measure: MeasureIndex::new(1),
+        track: TrackIndex::new(0),
+        ..e.cursor()
+    });
+    assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
+    assert_eq!(notes_at(&e, note(0, 1)), vec![(1, 3)]);
+    assert!(notes_at(&e, note(1, 1)).is_empty(), "the other track stays");
+
+    // Delete clears the selected track's notes only.
+    e.set_selection(Some(one_track(1)));
+    assert_eq!(plain(&mut e, ActionId::DeleteBeat), Outcome::Edited);
+    assert!(notes_at(&e, note(0, 1)).is_empty());
+    // Cut clears the first bar of that track without removing the bars.
+    e.set_selection(Some(one_track(0)));
+    assert_eq!(plain(&mut e, ActionId::Cut), Outcome::Edited);
+    assert_eq!(e.song().measure_count(), 2);
+    assert!(notes_at(&e, note(0, 0)).is_empty());
+    assert_eq!(notes_at(&e, note(1, 0)), vec![(1, 7)]);
+}
+
+#[test]
 fn cutting_a_selection_over_a_bar_line_leaves_rests() {
     let mut e = editor(2);
     go(&mut e, 0, 3);

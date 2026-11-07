@@ -13,11 +13,17 @@ use super::{CELL_PADDING, GridAction, GridView, MEASURE_WIDTH, ROW_HEIGHT, RULER
 /// The measure ruler above the tracks: measure numbers, section markers, repeats and
 /// alternative endings. It stays at the top while the tracks scroll under it, and follows
 /// the matrix sideways by `scroll_x`.
-pub(super) fn ruler(ui: &mut egui::Ui, grid: &GridData, view: GridView, scroll_x: f32) {
+pub(super) fn ruler(
+    ui: &mut egui::Ui,
+    grid: &GridData,
+    view: GridView,
+    scroll_x: f32,
+    actions: &mut Vec<GridAction>,
+) {
     let width = view.measure_count as f32 * MEASURE_WIDTH;
     let available = ui.available_width();
-    let (rect, _) =
-        ui.allocate_exact_size(vec2(width.max(available), RULER_HEIGHT), Sense::hover());
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(width.max(available), RULER_HEIGHT), Sense::click());
     let painter = ui.painter_at(rect);
     let visuals = ui.visuals().clone();
     painter.rect_filled(rect, 0.0, visuals.extreme_bg_color);
@@ -81,6 +87,7 @@ pub(super) fn ruler(ui: &mut egui::Ui, grid: &GridData, view: GridView, scroll_x
         }
         if let Some(repeat) = grid.repeats.get(measure) {
             let y = rect.top() + RULER_HEIGHT - 6.0;
+
             if repeat.start {
                 painter.text(
                     pos2(x + 1.0, y),
@@ -116,6 +123,28 @@ pub(super) fn ruler(ui: &mut egui::Ui, grid: &GridData, view: GridView, scroll_x
                     number_font.clone(),
                     visuals.weak_text_color(),
                 );
+            }
+        }
+    }
+    // The ruler always selects whole bars across every track.
+    if response.clicked()
+        && let Some(pointer) = response.interact_pointer_pos()
+    {
+        let x = pointer.x - left;
+        if x >= 0.0 {
+            let measure = (x / MEASURE_WIDTH) as usize;
+            if measure < view.measure_count {
+                let extend = ui.input(|input| input.modifiers.shift);
+                let mut selection = if extend {
+                    view.selection.map_or_else(
+                        || MeasureSelection::new(measure),
+                        |selection| selection.to(measure),
+                    )
+                } else {
+                    MeasureSelection::new(measure)
+                };
+                selection.track = None;
+                actions.push(GridAction::Select(selection));
             }
         }
     }
@@ -174,7 +203,22 @@ pub(super) fn matrix(
         let end = selection.end().min(last_measure.saturating_sub(1));
         for measure in start..=end {
             let column = measure_rect(rect, measure);
-            painter.rect_filled(column, 0.0, visuals.selection.bg_fill.gamma_multiply(0.30));
+            let highlighted = match selection.track {
+                Some(track) if track < rows.len() => Rect::from_min_max(
+                    pos2(column.left(), rect.top() + track as f32 * ROW_HEIGHT),
+                    pos2(
+                        column.right(),
+                        rect.top() + (track as f32 + 1.0) * ROW_HEIGHT,
+                    ),
+                ),
+                Some(_) => continue,
+                None => column,
+            };
+            painter.rect_filled(
+                highlighted,
+                0.0,
+                visuals.selection.bg_fill.gamma_multiply(0.30),
+            );
         }
     }
 
@@ -360,18 +404,24 @@ fn handle_matrix_clicks(
     cell: Option<(usize, usize)>,
     actions: &mut Vec<GridAction>,
 ) {
-    let pointer = response.interact_pointer_pos();
-    let at = pointer.and_then(|pointer| {
-        if !rect.contains(pointer) {
+    // The measure under the pointer even when the drag has left the matrix vertically
+    // (onto another row or the ruler): only x decides the bar.
+    let at = response.interact_pointer_pos().and_then(|pointer| {
+        let x = pointer.x - rect.left();
+        if x < 0.0 {
             return None;
         }
-        let measure = ((pointer.x - rect.left()) / MEASURE_WIDTH) as usize;
+        let measure = (x / MEASURE_WIDTH) as usize;
         (measure < view.measure_count).then_some(measure)
     });
     if response.drag_started()
         && let Some(measure) = at
     {
-        actions.push(GridAction::Select(MeasureSelection::new(measure)));
+        let selection = match cell {
+            Some((track, _)) => MeasureSelection::on(track, measure),
+            None => MeasureSelection::new(measure),
+        };
+        actions.push(GridAction::Select(selection));
         if let Some((track, measure)) = cell {
             actions.push(GridAction::MoveCursor { track, measure });
         }
@@ -380,21 +430,31 @@ fn handle_matrix_clicks(
         && let Some(measure) = at
     {
         let anchor = view.selection.map_or(measure, MeasureSelection::start);
-        actions.push(GridAction::Select(
-            MeasureSelection::new(anchor).to(measure),
-        ));
+        // Within the row the drag started in: that one track. Anywhere else: every track.
+        let track = match cell {
+            Some((track, _)) if track == view.cursor_track => Some(track),
+            _ => None,
+        };
+        actions.push(GridAction::Select(MeasureSelection {
+            anchor,
+            focus: measure,
+            track,
+        }));
     }
     if response.clicked()
         && let Some(measure) = at
     {
         let extend = ui.input(|input| input.modifiers.shift);
-        let selection = if extend {
-            view.selection.map_or_else(
-                || MeasureSelection::new(measure),
-                |selection| selection.to(measure),
-            )
-        } else {
-            MeasureSelection::new(measure)
+        let selection = match (extend, view.selection) {
+            (true, Some(selection)) => selection.to(measure),
+            (true, None) => match cell {
+                Some((track, _)) => MeasureSelection::on(track, measure),
+                None => MeasureSelection::new(measure),
+            },
+            (false, _) => match cell {
+                Some((track, _)) => MeasureSelection::on(track, measure),
+                None => MeasureSelection::new(measure),
+            },
         };
         actions.push(GridAction::Select(selection));
         if let Some((track, measure)) = cell {
