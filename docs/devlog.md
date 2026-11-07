@@ -4094,3 +4094,7 @@ needed for a much larger font); owner listening check.
   none and gave up. They now call `save_as_active`, which picks the active tab, still
   refuses while another save runs, and then asks for a `.gp` path. Unit test: with
   nothing being saved the active tab is chosen, and a running save is not disturbed.
+- Part B, step 1: the built-in tone library (`tone_library.rs`): 18 named tones in six
+  families (Clean, Crunch, Lead, High gain, Acoustic, Bass), each a full `Tone` (strings,
+  sound and computed chain, no IR files) with a description, a default tone for every
+  guitar and bass program, and a fallback for other programs. Not wired into the UI yet.
