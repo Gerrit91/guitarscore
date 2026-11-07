@@ -3832,3 +3832,22 @@ needed for a much larger font); owner listening check.
 - Export: `write_wav_with` takes the drum parts' chains too (`PartChoice`), and the app
   fills them from `Playback::export_parts()` with the same built-in part tones, so a
   rendered WAV has the drums processed as they are heard.
+
+## 2026-11-07 — Drums, step 5: the window's row of parts
+
+- The Sound chain window of a drum track has a **Part** row: the kit itself (the track's
+  own chain, the drum bus) and Kick, Snare, Hi-hat, Toms, Cymbals, Percussion. Choosing a
+  part shows that part's chain on the board; the first box (the source) goes back to the
+  kit, and the tone/preset row is hidden (a part has no preset). **Built-in** forgets a
+  part's own tone.
+- The part tones are kept in the settings (`drum_parts`, by part, like `preset_tones`), so
+  every drum track's kit plays them; `Playback::{drum_part_chain, set_drum_part_chain,
+  drum_parts, store_drum_parts}` and the export use the dialed-in ones. A part's impulse
+  response (a Room on the snare, say) is loaded like a block's (`PickedImpulse` carries the
+  part now).
+- The window and playback now agree on the drum bus: a drum track with no tone of its own
+  shows and plays `default_drum_bus_chain` (the window used to show an empty chain, since
+  the kind's defaults are cleared for SoundFont tracks).
+- Tests: the drum track's window shows the kit's compressor, the kick's EQ and compressor,
+  a moved knob is kept as the kick's tone in the settings, Built-in forgets it, and the kit
+  board comes back; snapshot `sound_chain_drum_kick`.

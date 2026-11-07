@@ -33,6 +33,8 @@ pub(crate) enum Event {
         track: usize,
         kind: gscore_play::StringKind,
         place: usize,
+        /// `Some(part)`: a drum part's chain; `None`: the track's tone.
+        part: Option<usize>,
         path: Option<PathBuf>,
     },
     /// The impulse response dialog of the mixer's reverb bus closed; `None` if cancelled.
@@ -474,6 +476,7 @@ impl Tasks {
         track: usize,
         kind: gscore_play::StringKind,
         place: usize,
+        part: Option<usize>,
         ctx: &egui::Context,
     ) -> Result<(), String> {
         self.spawn("impulse response dialog", ctx, move || {
@@ -485,6 +488,7 @@ impl Tasks {
                 track,
                 kind,
                 place,
+                part,
                 path,
             }
         })
@@ -515,6 +519,7 @@ impl Tasks {
         _track: usize,
         _kind: gscore_play::StringKind,
         _place: usize,
+        _part: Option<usize>,
         _ctx: &egui::Context,
     ) -> Result<(), String> {
         Err("loading impulse responses is not available in the browser build yet".to_owned())

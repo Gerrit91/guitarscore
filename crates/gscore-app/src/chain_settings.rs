@@ -554,6 +554,23 @@ impl DrumPart {
         }
     }
 
+    /// Its id in the settings file.
+    pub fn id(self) -> &'static str {
+        match self {
+            DrumPart::Kick => "kick",
+            DrumPart::Snare => "snare",
+            DrumPart::HiHat => "hi_hat",
+            DrumPart::Toms => "toms",
+            DrumPart::Cymbals => "cymbals",
+            DrumPart::Percussion => "percussion",
+        }
+    }
+
+    /// The part an `id` names, if it names one.
+    pub fn from_id(id: &str) -> Option<DrumPart> {
+        DrumPart::ALL.into_iter().find(|part| part.id() == id)
+    }
+
     /// Its place in the engine's parts.
     pub fn index(self) -> usize {
         DrumPart::ALL

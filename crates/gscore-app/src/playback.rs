@@ -223,6 +223,8 @@ pub struct Playback {
     string_chains: crate::chain_settings::StringChains,
     /// The tones set for track presets (by General MIDI program), local to this machine.
     preset_tones: Vec<crate::settings::PresetTone>,
+    /// The tones set for the parts of a drum kit (kick, snare, ...), local to this machine.
+    drum_parts: Vec<crate::settings::DrumPartTone>,
     /// The tones that came with the open song, by its track index (they win over the
     /// preset's: a shared song keeps its sound).
     tones: std::collections::BTreeMap<usize, crate::chain_settings::Tone>,
@@ -291,6 +293,7 @@ impl Default for Playback {
             string_sounds: crate::settings::StringSounds::default(),
             string_chains: crate::chain_settings::StringChains::default(),
             preset_tones: Vec::new(),
+            drum_parts: Vec::new(),
             tones: std::collections::BTreeMap::new(),
             comp_sends: Vec::new(),
             tone_targets: Vec::new(),

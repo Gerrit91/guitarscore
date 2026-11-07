@@ -20,6 +20,8 @@ pub(super) struct TrackPlayer {
     pub(super) default: TrackEngine,
     /// Whether modelled strings may play it (a string instrument that is not a drum kit).
     pub(super) strings: bool,
+    /// Whether it is a drum kit (its sound is split into the kit's parts).
+    pub(super) drums: bool,
     /// The kind of string its preset stands for, if it is a guitar or bass preset.
     pub(super) preset_kind: Option<StringKind>,
     /// Its General MIDI program and name, for the SoundFont line.
@@ -51,6 +53,7 @@ impl GuitarScoreApp {
             engine,
             default,
             strings,
+            drums: sound.percussion,
             preset_kind,
             program: sound.program,
         })
@@ -90,10 +93,17 @@ impl GuitarScoreApp {
             .and_then(|tab| tab.track_tones.get(&track))
             .filter(|tone| tone.kind == kind)
             .cloned();
-        own.unwrap_or_else(|| match self.track_player(track) {
+        let mut tone = own.unwrap_or_else(|| match self.track_player(track) {
             Some(player) => self.playback.tone(track, player.program, kind),
             None => self.playback.default_tone(kind),
-        })
+        });
+        // A drum track with no tone of its own runs the drum bus, as playback does.
+        if self.track_player(track).is_some_and(|player| player.drums)
+            && tone.chain == crate::chain_settings::ChainSetting::default()
+        {
+            tone.chain = self.playback.drum_bus_chain();
+        }
+        tone
     }
 
     /// Gives `track` `tone`. A track whose tone came with the song keeps its own (the song

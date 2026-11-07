@@ -542,6 +542,35 @@ impl CompressorBus {
     }
 }
 
+/// A drum part's tone the user dialed in (a kick's EQ and compressor, say), kept in the
+/// settings: every drum track's kit plays it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DrumPartTone {
+    /// The part's id (`kick`, `snare`, `hi_hat`, `toms`, `cymbals`, `percussion`).
+    pub part: String,
+    /// Its blocks and knobs.
+    #[serde(default)]
+    pub chain: crate::chain_settings::ChainSetting,
+}
+
+impl DrumPartTone {
+    /// The tone of `part`, as the settings keep it.
+    pub fn of(
+        part: crate::chain_settings::DrumPart,
+        chain: &crate::chain_settings::ChainSetting,
+    ) -> Self {
+        DrumPartTone {
+            part: part.id().to_owned(),
+            chain: chain.clone(),
+        }
+    }
+
+    /// The part it is for.
+    pub fn part(&self) -> Option<crate::chain_settings::DrumPart> {
+        crate::chain_settings::DrumPart::from_id(&self.part)
+    }
+}
+
 /// Everything the app remembers between runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -633,6 +662,9 @@ pub struct Settings {
     /// The tones set for track presets (by General MIDI program), local to this machine:
     /// a track whose preset has one plays it, in every song.
     pub preset_tones: Vec<PresetTone>,
+    /// The tones set for the parts of a drum kit (kick, snare, ...), local to this
+    /// machine: every drum track's parts play them.
+    pub drum_parts: Vec<DrumPartTone>,
     /// The effect chain after each kind of modelled string (the "Sound chain" window).
     pub string_chains: crate::chain_settings::StringChains,
     /// The mixer's reverb bus.
@@ -693,6 +725,7 @@ impl Default for Settings {
             compressor_bus: CompressorBus::default(),
             string_presets: Vec::new(),
             preset_tones: Vec::new(),
+            drum_parts: Vec::new(),
             midi_port: None,
             bend_presets: Vec::new(),
             whammy_presets: Vec::new(),
@@ -900,6 +933,10 @@ impl Settings {
                 )
         });
         self.string_presets.truncate(MAX_STRING_PRESETS);
+        // Drum part tones: a known part, one per part.
+        let mut parts = std::collections::BTreeSet::new();
+        self.drum_parts
+            .retain(|tone| tone.part().is_some_and(|part| parts.insert(part.index())));
         // Per-preset tones: a program the board has and a known kind, one per program.
         let mut programs = std::collections::BTreeSet::new();
         self.preset_tones.retain(|tone| {

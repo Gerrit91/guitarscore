@@ -20,7 +20,7 @@ use super::GuitarScoreApp;
 use crate::app::string_sound::{kind_name, round_knob, sound_knobs};
 use crate::app::style::{self, Tokens};
 use crate::app::track_engine::TrackPlayer;
-use crate::chain_settings::{BlockChoice, BlockSetting, ChainSetting, Tone};
+use crate::chain_settings::{BlockChoice, BlockSetting, ChainSetting, DrumPart, Tone};
 use crate::playback::Heard;
 use crate::settings::{
     ChainPreset, MAX_STRING_PRESET_NAME, MAX_STRING_PRESETS, StringSound, engine_from_id,
@@ -47,6 +47,9 @@ pub(super) struct SoundChainWindow {
     /// The tone last chosen or saved for the track's preset (its program and name), so it
     /// can be saved over after its knobs were moved.
     preset: Option<(u8, String)>,
+    /// Which part of a drum kit the board edits (`None`: the track's own chain, the drum
+    /// bus).
+    part: Option<DrumPart>,
 }
 
 /// What the user did this frame.
@@ -67,6 +70,8 @@ struct Actions {
     preset: Option<ChosenPreset>,
     /// Back to the built-in tone: the preset's own tone is forgotten.
     reset_tone: bool,
+    /// Back to the built-in tone of the drum part the window shows.
+    reset_part: bool,
     /// Save the sound and the chain under this name, or delete that preset (its kind of
     /// string and its name, since names are unique within a kind only).
     save_preset: Option<String>,
@@ -400,6 +405,58 @@ fn move_block(blocks: &mut [BlockSetting], from: usize, to: usize) -> bool {
         range.rotate_right(1);
     }
     true
+}
+
+/// The row of a drum kit's parts: the kit itself (the track's own chain, the drum bus) and
+/// each part, which the board then edits; "Built-in" forgets a part's own tone.
+fn parts_row(
+    ui: &mut egui::Ui,
+    part: &mut Option<DrumPart>,
+    selected: &mut usize,
+    dialed_in: &[DrumPart],
+    actions: &mut Actions,
+) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new("Part").color(style::tokens(ui).text_weak));
+        let kit = part.is_none();
+        if ui
+            .add(egui::Button::selectable(kit, "Kit"))
+            .on_hover_text("The drum bus: the whole kit's chain, after the parts")
+            .clicked()
+            && !kit
+        {
+            *part = None;
+            *selected = 1;
+        }
+        for candidate in DrumPart::ALL {
+            let chosen = *part == Some(candidate);
+            if ui
+                .add(egui::Button::selectable(chosen, candidate.label()))
+                .on_hover_text(format!(
+                    "The {}'s own chain, before the kit's: EQ, a compressor, maybe a room",
+                    candidate.label()
+                ))
+                .clicked()
+                && !chosen
+            {
+                *part = Some(candidate);
+                *selected = 1;
+            }
+        }
+        // A part with a tone of its own can go back to the built-in one.
+        if let Some(part) = *part
+            && dialed_in.contains(&part)
+        {
+            ui.add_space(6.0);
+            if ui
+                .button("Built-in")
+                .on_hover_text("Forget this part's own tone: the built-in one plays again")
+                .clicked()
+            {
+                actions.reset_part = true;
+            }
+        }
+    });
 }
 
 /// What an empty place can hold: the block, the name its menu shows, and what it does.
@@ -1004,6 +1061,7 @@ impl GuitarScoreApp {
                     pos: None,
                     saving: None,
                     preset: None,
+                    part: None,
                 });
             }
         }
@@ -1016,10 +1074,20 @@ impl GuitarScoreApp {
         track: usize,
         kind: StringKind,
         place: usize,
+        part: Option<usize>,
         path: PathBuf,
     ) {
         if let Err(error) = self.playback.impulse(&path) {
             self.notice = Some(error);
+            return;
+        }
+        if let Some(part) = part.and_then(DrumPart::at) {
+            let mut chain = self.playback.drum_part_chain(part);
+            if let Some(block) = chain.blocks.get_mut(place) {
+                block.file = Some(path);
+            }
+            self.playback.set_drum_part_chain(part, Some(chain));
+            self.save_settings();
             return;
         }
         let mut tone = self.track_tone(track, kind);
@@ -1059,7 +1127,9 @@ impl GuitarScoreApp {
         // SoundFont only a tone dialed in for the preset brings a chain (the kinds'
         // defaults are the modelled strings'): shown as it plays.
         let mut tone = self.track_tone(window.track, kind);
-        if !modelled && self.playback.preset_tone(player.program).is_none() {
+        // On the SoundFont only a tone dialed in for the preset brings a chain (the kinds'
+        // defaults are the modelled strings'); a drum track's own chain is its bus.
+        if !modelled && !player.drums && self.playback.preset_tone(player.program).is_none() {
             tone.chain = ChainSetting::default();
         }
         // How far the track's compressors work, for the block's meter (and a repaint while
@@ -1071,6 +1141,15 @@ impl GuitarScoreApp {
         if meters.as_ref().is_some_and(|meters| meters.moving()) {
             ctx.request_repaint_after(std::time::Duration::from_millis(30));
         }
+        // A drum kit: the board shows the part chosen in the row (or the track's own chain,
+        // the drum bus), and the parts that have a tone of their own.
+        let part_chain = window.part.map(|part| self.playback.drum_part_chain(part));
+        let dialed_in: Vec<DrumPart> = self
+            .playback
+            .drum_parts()
+            .iter()
+            .filter_map(crate::settings::DrumPartTone::part)
+            .collect();
         egui::Window::new(&title)
             .title_bar(false)
             .collapsible(false)
@@ -1085,11 +1164,25 @@ impl GuitarScoreApp {
                     .inner_margin(Margin::symmetric(16, 12))
                     .show(ui, |ui| {
                         ui.set_width(WIDTH);
-                        let chain = tone.chain.clone();
+                        if player.drums {
+                            parts_row(
+                                ui,
+                                &mut window.part,
+                                &mut window.selected,
+                                &dialed_in,
+                                &mut actions,
+                            );
+                            ui.separator();
+                        }
+                        let chain = part_chain.clone().unwrap_or_else(|| tone.chain.clone());
                         let sound = tone.sound;
                         let board = board(ui, &player, &chain, window.selected);
                         if let Some(index) = board.select {
                             window.selected = index;
+                            // The first box is the track's source: the kit's, not a part's.
+                            if index == 0 && window.part.is_some() {
+                                window.part = None;
+                            }
                         }
                         if let Some(place) = board.remove {
                             let mut changed = chain.clone();
@@ -1149,20 +1242,23 @@ impl GuitarScoreApp {
                         }
                         ui.add_space(6.0);
                         ui.separator();
-                        // The tone: which one this preset plays, another one, and saving it.
-                        preset_row(
-                            ui,
-                            ShownPreset {
-                                program: player.program,
-                                kind,
-                                default: self.playback.default_tone(kind),
-                            },
-                            &sound,
-                            &chain,
-                            &presets,
-                            &mut window,
-                            &mut actions,
-                        );
+                        // The tone: which one this preset plays, another one, and saving it
+                        // (a drum part has no preset; its row is above the board).
+                        if window.part.is_none() {
+                            preset_row(
+                                ui,
+                                ShownPreset {
+                                    program: player.program,
+                                    kind,
+                                    default: self.playback.default_tone(kind),
+                                },
+                                &sound,
+                                &chain,
+                                &presets,
+                                &mut window,
+                                &mut actions,
+                            );
+                        }
                         ui.add_space(4.0);
                         ui.separator();
                         ui.horizontal(|ui| {
@@ -1187,6 +1283,21 @@ impl GuitarScoreApp {
         // A tone belongs to the track's preset (its General MIDI program): every track with
         // that preset, in every song, plays it. Built-in forgets it.
         let track = window.track;
+        // A drum part's chain is the kit's (kept in the settings, for every drum track).
+        if let Some(part) = window.part {
+            if actions.reset_part {
+                self.playback.set_drum_part_chain(part, None);
+                self.save_settings();
+            }
+            if let Some(chain) = actions.chain.take() {
+                self.playback.set_drum_part_chain(part, Some(chain));
+                self.save_settings();
+            }
+            // The strings' sound and the preset tones belong to the track, not the part.
+            actions.sound = None;
+            actions.preset = None;
+            actions.reset_tone = false;
+        }
         let tone_chosen = actions.reset_tone || actions.preset.is_some();
         if actions.reset_tone {
             self.reset_track_tone(track);
@@ -1247,7 +1358,9 @@ impl GuitarScoreApp {
             self.save_settings();
         }
         if let Some(place) = actions.load
-            && let Err(error) = self.tasks.pick_impulse(track, kind, place, ctx)
+            && let Err(error) =
+                self.tasks
+                    .pick_impulse(track, kind, place, window.part.map(DrumPart::index), ctx)
         {
             self.notice = Some(error);
         }

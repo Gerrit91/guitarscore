@@ -356,24 +356,24 @@ impl Playback {
         }
         self.tone_targets = targets(sequence);
         self.send_tones();
-        self.send_drum_parts(sequence);
+        self.send_drum_parts();
     }
 
     /// Sends each drum track the chains of its parts (the built-in tones). They do not
     /// change, so this happens when a sequence is loaded.
-    fn send_drum_parts(&mut self, sequence: &Sequence) {
+    fn send_drum_parts(&mut self) {
         if !self.synth_running() {
             return;
         }
         let mut jobs = Vec::new();
-        for track in &sequence.performance.tracks {
-            if !track.sound.percussion {
+        for target in self.tone_targets.clone() {
+            if !target.drums {
                 continue;
             }
             for part in crate::chain_settings::DrumPart::ALL {
-                let chain = crate::chain_settings::default_drum_part_chain(part);
+                let chain = self.drum_part_chain(part);
                 let spec = self.chain_spec(&chain);
-                jobs.push((track.track.get(), part.index(), spec, chain.knobs()));
+                jobs.push((target.track, part.index(), spec, chain.knobs()));
             }
         }
         #[cfg(not(target_arch = "wasm32"))]
@@ -424,7 +424,7 @@ impl Playback {
                             // A drum track with no tone of its own runs the drum bus: a
                             // light compressor that glues the kit together.
                             if target.drums {
-                                crate::chain_settings::default_drum_bus_chain()
+                                self.drum_bus_chain()
                             } else {
                                 ChainSetting::default()
                             }
@@ -671,7 +671,47 @@ impl Playback {
         );
     }
 
-    /// The drum parts' chains to render audio export with (the built-in tones).
+    /// The chain a drum track with no tone of its own runs: the drum bus (a light
+    /// compressor that glues the kit together).
+    pub fn drum_bus_chain(&self) -> ChainSetting {
+        crate::chain_settings::default_drum_bus_chain()
+    }
+
+    /// The tones set for the drum kit's parts (by part), local to this machine.
+    pub fn drum_parts(&self) -> &[crate::settings::DrumPartTone] {
+        &self.drum_parts
+    }
+
+    /// Takes the drum part tones without sending them (when the settings load).
+    pub fn store_drum_parts(&mut self, parts: Vec<crate::settings::DrumPartTone>) {
+        self.drum_parts = parts;
+    }
+
+    /// The tone `part` of a drum kit plays: the one dialed in, else the built-in default.
+    pub fn drum_part_chain(&self, part: crate::chain_settings::DrumPart) -> ChainSetting {
+        self.drum_parts
+            .iter()
+            .find(|tone| tone.part() == Some(part))
+            .map(|tone| tone.chain.clone())
+            .unwrap_or_else(|| crate::chain_settings::default_drum_part_chain(part))
+    }
+
+    /// Gives `part` of the kit `chain`, heard at once on every drum track (kept in the
+    /// settings). `None`: the built-in tone again.
+    pub fn set_drum_part_chain(
+        &mut self,
+        part: crate::chain_settings::DrumPart,
+        chain: Option<ChainSetting>,
+    ) {
+        self.drum_parts.retain(|tone| tone.part() != Some(part));
+        if let Some(chain) = chain {
+            self.drum_parts
+                .push(crate::settings::DrumPartTone::of(part, &chain));
+        }
+        self.send_drum_parts();
+    }
+
+    /// The drum parts' chains to render audio export with.
     pub fn export_parts(&mut self) -> Vec<gscore_audio::PartChoice> {
         let mut parts = Vec::new();
         let tracks: Vec<usize> = self
@@ -682,7 +722,7 @@ impl Playback {
             .collect();
         for track in tracks {
             for part in crate::chain_settings::DrumPart::ALL {
-                let chain = crate::chain_settings::default_drum_part_chain(part);
+                let chain = self.drum_part_chain(part);
                 let spec = self.chain_spec(&chain);
                 parts.push((track, part.index(), spec, chain.knobs()));
             }

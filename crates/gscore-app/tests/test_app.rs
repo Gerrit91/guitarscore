@@ -2793,3 +2793,79 @@ fn a_songs_mixer_state_travels_in_its_notes() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_drum_tracks_window_edits_the_kits_parts() {
+    use gscore_app::chain_settings::{BlockChoice, DrumPart};
+
+    // A tall window: the track panel's Sound section (the stomp box) is below the mixer.
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1400.0, 1100.0))
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/multi_staff.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    // The drum track (the sixth) and its Sound chain.
+    harness.state_mut().set_shown_track(5);
+    harness.run();
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    // The kit's own chain (the drum bus) is shown first: a compressor.
+    harness.get_by_label("Part");
+    harness.get_by_label("Block 1: Comp");
+    // A part's board: the kick's EQ and compressor.
+    harness.get_by_label("Kick").click();
+    harness.run();
+    harness.get_by_label("Block 1: EQ");
+    harness.get_by_label("Block 2: Comp");
+    harness.snapshot("sound_chain_drum_kick");
+    // A knob moved is the kick's tone from then on, kept in the settings.
+    harness.get_by_label("Block 2: Comp").click();
+    harness.run();
+    harness.get_by_label("Input value").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Input value").type_text("12");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    let kick = harness
+        .state()
+        .settings()
+        .drum_parts
+        .iter()
+        .find(|tone| tone.part() == Some(DrumPart::Kick))
+        .cloned()
+        .expect("the kick's tone is kept");
+    assert!(
+        (kick.chain.blocks[1].input_db - 12.0).abs() < 1e-6,
+        "{kick:?}"
+    );
+    assert_eq!(kick.chain.blocks[0].choice, BlockChoice::Eq);
+    // Built-in forgets it again.
+    harness.get_by_label("Built-in").click();
+    harness.run();
+    assert!(
+        harness
+            .state()
+            .settings()
+            .drum_parts
+            .iter()
+            .all(|tone| tone.part() != Some(DrumPart::Kick))
+    );
+    // Back to the kit: the track's own chain, the drum bus.
+    harness.get_by_label("Kit").click();
+    harness.run();
+    harness.get_by_label("Block 1: Comp");
+    harness.get_by_label("Close").click();
+    harness.run();
+}

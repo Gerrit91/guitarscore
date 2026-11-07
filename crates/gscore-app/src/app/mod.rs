@@ -296,6 +296,8 @@ impl GuitarScoreApp {
         app.playback
             .store_preset_tones(app.settings.preset_tones.clone());
         app.playback
+            .store_drum_parts(app.settings.drum_parts.clone());
+        app.playback
             .store_reverb_bus(app.settings.reverb_bus.clone());
         app.playback
             .store_compressor_bus(app.settings.compressor_bus.clone());
@@ -389,6 +391,7 @@ impl GuitarScoreApp {
         settings.string_sounds = self.playback.string_sounds();
         settings.string_chains = self.playback.string_chains().clone();
         settings.preset_tones = self.playback.preset_tones().to_vec();
+        settings.drum_parts = self.playback.drum_parts().to_vec();
         settings.midi_port = self.playback.port().map(str::to_owned);
         // Remember every tab backed by a real file, and which one was active. Setting the
         // old single-file key too keeps older versions reopening something sensible.

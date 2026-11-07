@@ -429,8 +429,9 @@ impl GuitarScoreApp {
                     track,
                     kind,
                     place,
+                    part,
                     path: Some(path),
-                } => self.use_impulse(track, kind, place, path),
+                } => self.use_impulse(track, kind, place, part, path),
                 Event::PickedImpulse { path: None, .. } => {}
                 Event::PickedBusImpulse(Some(path)) => self.use_bus_impulse(path),
                 Event::PickedBusImpulse(None) => {}
