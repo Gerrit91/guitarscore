@@ -361,15 +361,14 @@ impl GuitarScoreApp {
                 })
             })
             .collect();
-        song_state::SongState::new(tracks)
+        let buses = song_state::Buses::of_song(song);
+        song_state::SongState::new(tracks, buses)
     }
 
     /// The settings as they are now (including the view and window state).
     pub fn settings(&self) -> Settings {
         let mut settings = self.settings.clone();
         settings.update_from_view(&self.view);
-        settings.reverb_bus = self.playback.reverb_bus();
-        settings.compressor_bus = self.playback.compressor_bus();
         settings.grid_height_chosen = self.panel_sizes.grid;
         settings.mixer_height_chosen = self.panel_sizes.mixer;
         settings.track_panel_width = self.panel_sizes.track_panel;
@@ -705,11 +704,13 @@ impl eframe::App for GuitarScoreApp {
         // A count-in that has finished starts the song it was counting in.
         self.poll_count_in();
         // Another tab may hold other choices of what plays its tracks, their MIDI-out
-        // ports and channels, other tones and other sends into the compressor bus.
+        // ports and channels, other tones and other sends into the compressor bus, and
+        // other mixer buses.
         self.sync_track_engines();
         self.sync_midi_routes();
         self.sync_track_tones();
         self.sync_comp_sends();
+        self.sync_song_buses();
         // Keep a loop of the selected measures going; a new selection turns it on.
         self.auto_loop();
         self.poll_loop();

@@ -37,7 +37,7 @@ impl GuitarScoreApp {
         let pos = *window
             .pos
             .get_or_insert_with(|| style::centered_window_pos(ctx, size));
-        let bus = self.playback.compressor_bus();
+        let bus = self.song_buses().compressor.unwrap_or_default();
         let mut block = bus.block.clone();
         // How far the bus turns its sum down, for the meter (and a repaint while it moves).
         let meters = self.playback.meters();
@@ -130,14 +130,10 @@ impl GuitarScoreApp {
             block,
         };
         if rebuilt || edited != bus {
-            self.playback.set_compressor_bus(edited.clone());
-            self.settings.compressor_bus = edited;
-            if rebuilt {
-                self.save_settings();
-            }
+            self.set_song_compressor_bus(edited);
         }
         if close {
-            self.save_settings();
+            self.compressor_bus_window = None;
         } else {
             self.compressor_bus_window = Some(window);
         }

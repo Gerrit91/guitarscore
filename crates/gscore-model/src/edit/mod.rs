@@ -142,6 +142,9 @@ enum ChangeKind {
         at: TrackIndex,
         previous: Option<String>,
     },
+    /// The song-wide sound state (GuitarScore's opaque payload: the mixer's buses, ...)
+    /// changed.
+    SongSoundState { previous: Option<String> },
     /// A track's mute or solo flag changed.
     TrackFlag {
         at: TrackIndex,
@@ -361,9 +364,8 @@ impl Change {
             }
             ChangeKind::TrackRenamed { previous, .. } => previous.len(),
             ChangeKind::TrackSymbol { previous, .. } => previous.as_ref().map_or(0, String::len),
-            ChangeKind::TrackSoundState { previous, .. } => {
-                previous.as_ref().map_or(0, String::len)
-            }
+            ChangeKind::TrackSoundState { previous, .. }
+            | ChangeKind::SongSoundState { previous } => previous.as_ref().map_or(0, String::len),
             ChangeKind::TrackRemoved { track, .. } => track_size(track),
             ChangeKind::TrackProgram { previous, .. } => previous.map_or(0, |_| size_of::<i32>()),
             ChangeKind::TrackDrums {
@@ -675,6 +677,10 @@ impl Song {
                 track_mut(inner, *at)?.sound_state.clone_from(previous);
                 Ok(())
             }),
+            ChangeKind::SongSoundState { previous } => {
+                self.replace_sound_state(previous.clone());
+                Ok(())
+            }
             ChangeKind::TrackFlag { at, flag, previous } => self.edit_track_settings(|inner| {
                 let track = track_mut(inner, *at)?;
                 match flag {

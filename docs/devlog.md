@@ -4000,3 +4000,24 @@ needed for a much larger font); owner listening check.
   sound change — it is a real edit now; reviewed and updated.
 - Still open: song-wide buses (reverb, compressor) and per-track drum part chains and
   levels; the round trip through GP3/4/5/GPX, recovery and the journal.
+
+## 2026-11-07 — Part A, 6: the mixer's buses belong to the song too
+
+- `gscore-model`: the song has its own opaque `sound_state` (no GP field; saved in the
+  notes next to the tracks' payloads), set by the undoable `Song::set_sound_state` with
+  the same 256 KiB bound as a track's. `ChangeKind::SongSoundState` carries the previous
+  value, so undo restores it.
+- `gscore-edit`: `Command::SetSongSound { state }` (`set_song_sound`, `state=`, `none` to
+  clear) with `details()` printing only the size and consecutive changes merging into one
+  drag step; it joins the parse round trip and `panic_hunt`.
+- `gscore-app`: `Buses { reverb: Option<ReverbBus>, compressor: Option<CompressorBus> }`
+  is the song's payload; a bus the song does not set follows this machine's settings
+  (`song_buses`). The mixer strips and both bus windows read the song's effective buses
+  and write them with `SetSongSound`, so adjusting a bus marks the song modified, is one
+  undo step per drag, is journaled, and travels in the notes block. Bus edits no longer
+  write `settings.reverb_bus`/`compressor_bus`, and `settings()` no longer copies what
+  playback runs back into the settings, so a song's buses never leak into the machine's.
+- The compressor-bus snapshot now shows the song modified and the score scrolled to the
+  cursor (a bus change is an edit like any other); reviewed and updated.
+- Still open: per-track drum part chains and levels; the block round trip through
+  GP3/4/5/GPX, recovery and the journal.

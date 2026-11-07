@@ -547,6 +547,36 @@ fn every_track_command_edits_and_undoes() {
 }
 
 #[test]
+fn the_song_sound_state_edits_and_undoes() {
+    let song = testing::song(&[testing::GUITAR_6], 1).unwrap();
+    for command in [
+        Command::SetSongSound {
+            state: Some(r#"{"buses":{"reverb":{"level":96}}}"#.to_owned()),
+        },
+        Command::SetSongSound {
+            state: Some("none".to_owned()),
+        },
+    ] {
+        apply_then_undo(&song, &command);
+    }
+
+    let mut editor = Editor::new(song);
+    assert_eq!(editor.song().sound_state(), None);
+    editor
+        .execute(Command::SetSongSound {
+            state: Some("payload".to_owned()),
+        })
+        .unwrap();
+    assert_eq!(editor.song().sound_state(), Some("payload"));
+    editor
+        .execute(Command::SetSongSound { state: None })
+        .unwrap();
+    assert_eq!(editor.song().sound_state(), None);
+    editor.undo().unwrap();
+    assert_eq!(editor.song().sound_state(), Some("payload"));
+}
+
+#[test]
 fn song_text_and_tempo_edit_and_undo() {
     let song = testing::song(&[testing::GUITAR_6], 1).unwrap();
     for command in [

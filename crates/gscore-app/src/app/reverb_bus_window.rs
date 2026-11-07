@@ -29,17 +29,16 @@ impl GuitarScoreApp {
         }
     }
 
-    /// The impulse response chosen for the bus: read (an error is shown) and heard at once.
+    /// The impulse response chosen for the bus: read (an error is shown), then the song's
+    /// reverb bus is given the file (an edit, with undo), heard at once.
     pub(super) fn use_bus_impulse(&mut self, path: PathBuf) {
         if let Err(error) = self.playback.impulse(&path) {
             self.notice = Some(error);
             return;
         }
-        let mut bus = self.playback.reverb_bus();
+        let mut bus = self.song_buses().reverb.unwrap_or_default();
         bus.block.file = Some(path);
-        self.playback.set_reverb_bus(bus.clone());
-        self.settings.reverb_bus = bus;
-        self.save_settings();
+        self.set_song_reverb_bus(bus);
     }
 
     /// The reverb bus's window, while it is open.
@@ -52,7 +51,7 @@ impl GuitarScoreApp {
         let pos = *window
             .pos
             .get_or_insert_with(|| style::centered_window_pos(ctx, size));
-        let bus = self.playback.reverb_bus();
+        let bus = self.song_buses().reverb.unwrap_or_default();
         let mut block = bus.block.clone();
         // What the window asked for: another kind of reverb or another file (the bus is
         // prepared again), or just knobs (sent to the running one).
@@ -165,17 +164,13 @@ impl GuitarScoreApp {
             block,
         };
         if rebuilt || edited != bus {
-            self.playback.set_reverb_bus(edited.clone());
-            self.settings.reverb_bus = edited;
-            if rebuilt {
-                self.save_settings();
-            }
+            self.set_song_reverb_bus(edited);
         }
         if load && let Err(error) = self.tasks.pick_bus_impulse(ctx) {
             self.notice = Some(error);
         }
         if close {
-            self.save_settings();
+            self.reverb_bus_window = None;
         } else {
             self.reverb_bus_window = Some(window);
         }

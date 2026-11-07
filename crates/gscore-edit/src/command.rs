@@ -13,11 +13,11 @@ use crate::info::{
     SET_BEAT_EFFECT, SET_BEAT_REST, SET_BEAT_TEXT, SET_BEAT_TIE, SET_CHORD_DIAGRAM, SET_CLEF,
     SET_DEAD_NOTE, SET_DOUBLE_BAR, SET_DURATION, SET_DYNAMIC, SET_FEEL, SET_FERMATA, SET_FREE_TIME,
     SET_FRET, SET_KEY_SIGNATURE, SET_LYRIC_LINE, SET_MASTER_PAN, SET_MASTER_VOLUME,
-    SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_REPEAT, SET_SECTION, SET_SIMILE_MARK, SET_SONG_TEXT,
-    SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_CHORUS, SET_TRACK_COLOR,
-    SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_REVERB,
-    SET_TRACK_SOLO, SET_TRACK_SOUND, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH, SET_TRACK_STRINGS,
-    SET_TRACK_SYMBOL, SET_TRACK_VOLUME, UNDO,
+    SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_REPEAT, SET_SECTION, SET_SIMILE_MARK, SET_SONG_SOUND,
+    SET_SONG_TEXT, SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_CHORUS,
+    SET_TRACK_COLOR, SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM,
+    SET_TRACK_REVERB, SET_TRACK_SOLO, SET_TRACK_SOUND, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH,
+    SET_TRACK_STRINGS, SET_TRACK_SYMBOL, SET_TRACK_VOLUME, UNDO,
 };
 use crate::info::{SET_BARS_PER_SYSTEM, SET_PAGE_SETUP, SET_SCORE_LINE_BREAK, SET_SYSTEM_BREAK};
 
@@ -118,6 +118,12 @@ pub enum Command {
     SetTrackSound {
         /// The track.
         track: TrackIndex,
+        /// The app's state, or `None` to clear it.
+        state: Option<String>,
+    },
+    /// Set GuitarScore's own song-wide sound state: the app's opaque payload (the mixer's
+    /// reverb and compressor buses, ...), or `None` for the program's own settings.
+    SetSongSound {
         /// The app's state, or `None` to clear it.
         state: Option<String>,
     },
@@ -495,6 +501,12 @@ impl Command {
                     .as_deref()
                     .map_or_else(|| "none".to_owned(), crate::parse::encode_text)
             ),
+            Command::SetSongSound { state } => format!(
+                "{id} state={}",
+                state
+                    .as_deref()
+                    .map_or_else(|| "none".to_owned(), crate::parse::encode_text)
+            ),
             Command::SetTrackVolume { track, volume } => {
                 format!("{id} track={} volume={volume}", one(track.get()))
             }
@@ -768,6 +780,7 @@ impl Command {
             Command::SetTrackColor { .. } => &SET_TRACK_COLOR,
             Command::SetTrackSymbol { .. } => &SET_TRACK_SYMBOL,
             Command::SetTrackSound { .. } => &SET_TRACK_SOUND,
+            Command::SetSongSound { .. } => &SET_SONG_SOUND,
             Command::SetTrackVolume { .. } => &SET_TRACK_VOLUME,
             Command::SetTrackPan { .. } => &SET_TRACK_PAN,
             Command::SetTrackReverb { .. } => &SET_TRACK_REVERB,
@@ -842,6 +855,12 @@ impl Command {
             return match state {
                 Some(state) => format!("track {track}, sound state ({} bytes)", state.len()),
                 None => format!("track {track}, sound state cleared"),
+            };
+        }
+        if let Command::SetSongSound { state } = self {
+            return match state {
+                Some(state) => format!("song sound state ({} bytes)", state.len()),
+                None => "song sound state cleared".to_owned(),
             };
         }
         let line = self.to_line();
@@ -1035,6 +1054,8 @@ impl Command {
                 Command::SetTrackSound { track: first, .. },
                 Command::SetTrackSound { track: second, .. },
             ) => first == second,
+            // So does the song's own (a bus's level or a knob in its window).
+            (Command::SetSongSound { .. }, Command::SetSongSound { .. }) => true,
             (Command::SetMasterVolume { .. }, Command::SetMasterVolume { .. })
             | (Command::SetMasterPan { .. }, Command::SetMasterPan { .. }) => true,
             // One Apply in the settings window is one undo step for the fields it changed.
@@ -1130,6 +1151,7 @@ impl Command {
                 .track(*track)
                 .is_some_and(|view| usize::from(string.get()) <= view.string_count()),
             Command::SetSongText { field, text } => field.check(text).is_ok(),
+            Command::SetSongSound { .. } => true,
             Command::SetPageSetup { setup } => setup.check().is_ok(),
             Command::SetSystemBreak {
                 track,
@@ -1259,6 +1281,7 @@ impl Command {
             Command::SetTrackSound { track, state } => {
                 song.set_track_sound_state(*track, state.clone())
             }
+            Command::SetSongSound { state } => song.set_sound_state(state.clone()),
             Command::SetTrackVolume { track, volume } => song.set_track_volume(*track, *volume),
             Command::SetTrackPan { track, pan } => song.set_track_pan(*track, *pan),
             Command::SetTrackReverb { track, reverb } => song.set_track_reverb(*track, *reverb),

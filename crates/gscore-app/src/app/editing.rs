@@ -35,7 +35,10 @@ enum EditEffect {
 impl EditEffect {
     /// The effect of `command`.
     fn of(command: &Command) -> Self {
-        if matches!(command, Command::SetTrackSound { .. }) {
+        if matches!(
+            command,
+            Command::SetTrackSound { .. } | Command::SetSongSound { .. }
+        ) {
             EditEffect::SoundState
         } else if command.changes_master() {
             EditEffect::Master

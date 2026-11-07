@@ -26,7 +26,7 @@ use gscore_play::{StringKind, TrackEngine};
 use serde::{Deserialize, Serialize};
 
 use crate::playback::MidiOutRoute;
-use crate::settings::PresetTone;
+use crate::settings::{CompressorBus, PresetTone, ReverbBus};
 
 /// The old block's opening marker; the version follows, then `]` and the JSON.
 const LEGACY_OPEN: &str = "[GuitarScore ";
@@ -41,6 +41,53 @@ const LEGACY_VERSION: u8 = 1;
 pub(crate) struct SongState {
     #[serde(default)]
     pub tracks: Vec<TrackState>,
+    /// The song's own mixer buses. A bus the song does not set follows the program's
+    /// settings; editing it in the mixer gives the song its own copy.
+    #[serde(default, skip_serializing_if = "Buses::is_default")]
+    pub buses: Buses,
+}
+
+/// The mixer's song-wide buses: the shared reverb and the parallel compressor. Each is
+/// `None` when the song follows the program's settings for it.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub(crate) struct Buses {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reverb: Option<ReverbBus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compressor: Option<CompressorBus>,
+}
+
+impl Buses {
+    /// The buses the document keeps for `song` (a payload that does not read counts as
+    /// none, so a damaged file never stops a song from opening).
+    pub(crate) fn of_song(song: &Song) -> Self {
+        song.sound_state()
+            .and_then(|json| serde_json::from_str::<Buses>(json).ok())
+            .map(Buses::sanitized)
+            .unwrap_or_default()
+    }
+
+    /// A copy with values the rest of the program can rely on (a broken file may hold
+    /// anything).
+    fn sanitized(mut self) -> Self {
+        self.reverb = self.reverb.map(ReverbBus::sanitized);
+        self.compressor = self.compressor.map(CompressorBus::sanitized);
+        self
+    }
+
+    /// The JSON the document keeps for these buses, or `None` when neither is the song's.
+    pub(crate) fn json(&self) -> Option<String> {
+        if *self == Buses::default() {
+            return None;
+        }
+        serde_json::to_string(self).ok()
+    }
+
+    /// Whether the song follows the program's settings for both buses (nothing to keep).
+    pub(crate) fn is_default(&self) -> bool {
+        *self == Buses::default()
+    }
 }
 
 /// One track's state in the block: its position and identity in the song, and the sound
@@ -199,18 +246,18 @@ impl SongState {
         self.tracks.iter().find(|state| state.track == track)
     }
 
-    /// The state of `tracks`, or `None` when every track is at its defaults (nothing to
-    /// keep).
-    pub(crate) fn new(tracks: Vec<TrackState>) -> Option<Self> {
+    /// The state of `tracks` and `buses`, or `None` when nothing needs keeping.
+    pub(crate) fn new(tracks: Vec<TrackState>, buses: Buses) -> Option<Self> {
         let tracks: Vec<TrackState> = tracks
             .into_iter()
             .filter(|track| !track.sound.is_default())
             .collect();
-        (!tracks.is_empty()).then_some(SongState { tracks })
+        (!tracks.is_empty() || !buses.is_default()).then_some(SongState { tracks, buses })
     }
 
-    /// Writes the state into `song`, on the track each entry belongs to (see
-    /// [`Self::resolve`]). Called once when a song opens, before it can be edited.
+    /// Writes the state into `song`: each track's entry on the track it belongs to (see
+    /// [`Self::resolve`]) and the buses on the song. Called once when a song opens, before
+    /// it can be edited.
     pub(crate) fn apply_to_song(&self, song: &mut Song) {
         let resolved: Vec<(usize, Option<String>)> = self
             .resolve(song)
@@ -219,6 +266,9 @@ impl SongState {
             .collect();
         for (track, state) in resolved {
             let _ = song.set_track_sound_state(TrackIndex::new(track), state);
+        }
+        if let Some(json) = self.buses.json() {
+            let _ = song.set_sound_state(Some(json));
         }
     }
 
@@ -374,6 +424,11 @@ mod tests {
     use crate::settings::StringSound;
     use gscore_play::StringKind;
 
+    /// The state of `tracks`, with no song-wide buses (most tests).
+    fn state_of(tracks: Vec<TrackState>) -> Option<SongState> {
+        SongState::new(tracks, Buses::default())
+    }
+
     fn tone() -> PresetTone {
         PresetTone::of(
             27,
@@ -416,12 +471,12 @@ mod tests {
                 }
             })
             .collect();
-        SongState::new(tracks).expect("tracks have state")
+        SongState::new(tracks, Buses::default()).expect("tracks have state")
     }
 
     #[test]
     fn a_songs_state_round_trips_in_its_notes() {
-        let state = SongState::new(vec![
+        let state = state_of(vec![
             TrackState {
                 track: 0,
                 identity: None,
@@ -480,6 +535,50 @@ mod tests {
     }
 
     #[test]
+    fn the_songs_buses_travel_in_the_block() {
+        let reverb = ReverbBus {
+            level: 96,
+            muted: true,
+            ..ReverbBus::default()
+        }
+        .sanitized();
+        let compressor = CompressorBus {
+            level: 64,
+            muted: true,
+            ..CompressorBus::default()
+        }
+        .sanitized();
+        let buses = Buses {
+            reverb: Some(reverb.clone()),
+            compressor: Some(compressor.clone()),
+        };
+        let state = SongState::new(Vec::new(), buses.clone()).expect("the buses are kept");
+        let notes = encode([], Some(&state));
+        assert!(!notes.is_empty());
+        let (kept, back) = split(notes);
+        assert!(kept.is_empty());
+        let back = back.expect("the state is read");
+        assert_eq!(back.buses, buses);
+
+        // Only the bus the song sets is kept.
+        let only = Buses {
+            reverb: Some(reverb),
+            compressor: None,
+        };
+        let state = SongState::new(Vec::new(), only.clone()).expect("the reverb is kept");
+        assert_eq!(state.buses, only);
+
+        // Applying the state gives the song its own buses (the model's payload).
+        let mut song = Song::default();
+        assert_eq!(Buses::of_song(&song), Buses::default());
+        state.apply_to_song(&mut song);
+        assert_eq!(Buses::of_song(&song), only);
+
+        // Buses alone are enough for a state; when everything is default there is none.
+        assert!(SongState::new(Vec::new(), Buses::default()).is_none());
+    }
+
+    #[test]
     fn a_block_from_before_the_sound_record_still_reads() {
         // The first form of the compact block kept `comp_send` and `tone` at the entry's
         // own level; the flat sound record still reads them there.
@@ -535,7 +634,7 @@ mod tests {
         assert_eq!(kept, vec!["Just notes"]);
         assert!(state.is_none());
 
-        let state = SongState::new(vec![TrackState {
+        let state = state_of(vec![TrackState {
             track: 0,
             identity: None,
             sound: TrackSound {
@@ -590,7 +689,7 @@ mod tests {
 
         // Two blocks would double every part, which is as unreadable as a broken line:
         // no state is applied rather than one of them at random.
-        let one = SongState::new(vec![TrackState {
+        let one = state_of(vec![TrackState {
             track: 0,
             identity: None,
             sound: TrackSound {
@@ -600,7 +699,7 @@ mod tests {
             },
         }])
         .unwrap();
-        let two = SongState::new(vec![TrackState {
+        let two = state_of(vec![TrackState {
             track: 0,
             identity: None,
             sound: TrackSound {
@@ -622,7 +721,7 @@ mod tests {
         // it intact.
         let mut named = tone();
         named.kind = "Grüße & Saiten".to_owned();
-        let state = SongState::new(vec![TrackState {
+        let state = state_of(vec![TrackState {
             track: 0,
             identity: None,
             sound: TrackSound {
@@ -648,7 +747,7 @@ mod tests {
 
     #[test]
     fn the_old_block_is_still_read_and_replaced_on_save() {
-        let state = SongState::new(vec![TrackState {
+        let state = state_of(vec![TrackState {
             track: 0,
             identity: None,
             sound: TrackSound {
@@ -709,7 +808,7 @@ mod tests {
     fn entries_follow_their_track_when_the_order_changed() {
         let guitar = identity("Guitar", 25, false);
         let bass = identity("Bass", 33, false);
-        let state = SongState::new(vec![
+        let state = state_of(vec![
             entry(0, 10, Some(guitar.clone())),
             entry(1, 20, Some(bass.clone())),
         ])
@@ -741,7 +840,7 @@ mod tests {
         let guitar = identity("Guitar", 25, false);
 
         // The guitar was deleted and the piano moved into its place: the entry is dropped.
-        let state = SongState::new(vec![entry(0, 10, Some(guitar.clone()))]).unwrap();
+        let state = state_of(vec![entry(0, 10, Some(guitar.clone()))]).unwrap();
         assert!(resolved(&state, &[identity("Piano", 0, false)]).is_empty());
 
         // The instrument changed after we saved (same name, now a piano): a guitar tone
@@ -756,7 +855,7 @@ mod tests {
 
         // Two tracks named like it and the number no longer pointing at either: no way
         // to tell, so the entry is dropped. (When the number still fits, it wins.)
-        let moved = SongState::new(vec![entry(5, 10, Some(guitar.clone()))]).unwrap();
+        let moved = state_of(vec![entry(5, 10, Some(guitar.clone()))]).unwrap();
         let tracks = [guitar.clone(), guitar.clone()];
         assert!(resolved(&moved, &tracks).is_empty());
         assert_eq!(
@@ -768,7 +867,7 @@ mod tests {
 
     #[test]
     fn a_block_from_before_identities_keeps_going_by_number() {
-        let state = SongState::new(vec![entry(1, 40, None)]).unwrap();
+        let state = state_of(vec![entry(1, 40, None)]).unwrap();
         // Same number: applied as before.
         assert_eq!(
             resolved(&state, &[identity("A", 0, false), identity("B", 30, false)]),
@@ -782,7 +881,7 @@ mod tests {
     fn two_entries_never_land_on_the_same_track() {
         // A hand-edited block with the same number twice: the first one wins.
         let guitar = identity("Guitar", 25, false);
-        let state = SongState::new(vec![
+        let state = state_of(vec![
             entry(0, 10, Some(guitar.clone())),
             entry(0, 20, Some(guitar.clone())),
         ])
@@ -792,7 +891,7 @@ mod tests {
 
     #[test]
     fn an_identity_survives_the_block() {
-        let state = SongState::new(vec![entry(
+        let state = state_of(vec![entry(
             0,
             5,
             Some(TrackIdentity {

@@ -9,7 +9,29 @@ use crate::error::ModelError;
 use crate::metadata::{MAX_TEMPO, SongTextField};
 use crate::song::Song;
 
+/// Longest song-wide sound-state payload accepted. Ours is a few kilobytes (the mixer's
+/// buses); this bounds a hostile file or a hand-edited notes block.
+const MAX_SONG_SOUND_STATE_BYTES: usize = 256 * 1024;
+
 impl Song {
+    /// Sets GuitarScore's own song-wide sound state (the mixer's buses, ...), an opaque
+    /// payload the app serializes, or `None` for the program's own settings. It has no
+    /// field in the Guitar Pro format and is saved in the song's notes.
+    pub fn set_sound_state(&mut self, state: Option<String>) -> Result<Change, ModelError> {
+        if state
+            .as_ref()
+            .is_some_and(|state| state.len() > MAX_SONG_SOUND_STATE_BYTES)
+        {
+            return Err(ModelError::Invalid(format!(
+                "the song's sound state is longer than {MAX_SONG_SOUND_STATE_BYTES} bytes"
+            )));
+        }
+        let previous = self.replace_sound_state(state);
+        Ok(Change {
+            kind: ChangeKind::SongSoundState { previous },
+        })
+    }
+
     /// Sets one text field of the song, after checking its length.
     pub fn set_text(&mut self, field: SongTextField, text: &str) -> Result<Change, ModelError> {
         field.check(text)?;

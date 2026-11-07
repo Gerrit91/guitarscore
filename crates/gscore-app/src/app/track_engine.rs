@@ -14,9 +14,10 @@ use gscore_model::{InstrumentKind, TrackIndex};
 use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
-use super::song_state::{SoundEngine, TrackSound};
+use super::song_state::{Buses, SoundEngine, TrackSound};
 use crate::chain_settings::Tone;
 use crate::playback::MidiOutRoute;
+use crate::settings::{CompressorBus, ReverbBus};
 
 /// What plays a track, and why.
 #[derive(Debug, Clone, PartialEq)]
@@ -274,12 +275,76 @@ impl GuitarScoreApp {
     }
 
     /// Hands everything the song says about its sound to playback: what plays each track,
-    /// its MIDI route, its tone and its compressor send. Called after every edit; the
-    /// player drops what did not change.
+    /// its MIDI route, its tone, its compressor send and the mixer's buses. Called after
+    /// every edit; the player drops what did not change.
     pub(super) fn sync_song_sound(&mut self) {
         self.sync_track_engines();
         self.sync_midi_routes();
         self.sync_track_tones();
         self.sync_comp_sends();
+        self.sync_song_buses();
+    }
+
+    /// The song's own buses, each falling back to this machine's settings when the song
+    /// does not set it.
+    pub(super) fn song_buses(&self) -> Buses {
+        let own = self
+            .tabs
+            .get(self.active)
+            .map(|tab| Buses::of_song(tab.document.song()))
+            .unwrap_or_default();
+        Buses {
+            reverb: own
+                .reverb
+                .or_else(|| Some(self.settings.reverb_bus.clone())),
+            compressor: own
+                .compressor
+                .or_else(|| Some(self.settings.compressor_bus.clone())),
+        }
+    }
+
+    /// Gives the open song its own reverb bus (an edit, with undo), heard at once.
+    pub(super) fn set_song_reverb_bus(&mut self, bus: ReverbBus) {
+        let Some(song) = self.document().map(|document| document.song().clone()) else {
+            return;
+        };
+        let mut buses = Buses::of_song(&song);
+        buses.reverb = Some(bus);
+        self.apply_command(
+            Command::SetSongSound {
+                state: buses.json(),
+            },
+            true,
+        );
+    }
+
+    /// Gives the open song its own compressor bus (an edit, with undo), heard at once.
+    pub(super) fn set_song_compressor_bus(&mut self, bus: CompressorBus) {
+        let Some(song) = self.document().map(|document| document.song().clone()) else {
+            return;
+        };
+        let mut buses = Buses::of_song(&song);
+        buses.compressor = Some(bus);
+        self.apply_command(
+            Command::SetSongSound {
+                state: buses.json(),
+            },
+            true,
+        );
+    }
+
+    /// Hands the open document's buses to playback, so a song's own reverb and compressor
+    /// are heard (a song without them follows the settings). The player is sent a bus only
+    /// when it differs from the one it runs.
+    pub(super) fn sync_song_buses(&mut self) {
+        let buses = self.song_buses();
+        let reverb = buses.reverb.unwrap_or_default();
+        if self.playback.reverb_bus() != reverb {
+            self.playback.set_reverb_bus(reverb);
+        }
+        let compressor = buses.compressor.unwrap_or_default();
+        if self.playback.compressor_bus() != compressor {
+            self.playback.set_compressor_bus(compressor);
+        }
     }
 }

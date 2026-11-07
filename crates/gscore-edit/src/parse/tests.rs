@@ -845,6 +845,15 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
     ] {
         commands.push(Command::SetTrackSound { track, state });
     }
+    // The song's own payload does too.
+    for state in [
+        None,
+        Some(String::new()),
+        Some(r#"{"buses":{"reverb":{"level":96}}}"#.to_owned()),
+        Some("none".to_owned()),
+    ] {
+        commands.push(Command::SetSongSound { state });
+    }
     // Every command id is covered.
     for info in crate::COMMANDS {
         assert!(
