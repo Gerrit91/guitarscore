@@ -4235,3 +4235,28 @@ needed for a much larger font); owner listening check.
   works at once), and the status bar at the bottom shows the same notice in red beside the
   working spinner and file name (truncated, full text on hover). Test:
   `a_notice_also_shows_in_the_status_bar_beside_the_spinner`.
+
+## 2026-11-07 — Ties on the rhythm slash-notation staff
+
+- A rhythm slash now carries its beat's tie: `slash_column_items` marks the slash's head
+  tied when any note of the beat continues a tie, so `draw_ties` joins it to the slash
+  before it within the measure.
+- Ties across a barline are drawn on the slash staff too (`draw_barline_ties`, through
+  `last_slash_head`), with the same outgoing/incoming fragments at a system break as the
+  notation and tab staves. Tests: `test_staves::slash_notation_shows_a_tie_within_the_measure`
+  and `..._across_a_barline`.
+
+## 2026-11-07 — RSE mapping: the sound's name decides, and GM 34 is a picked bass
+
+- Guitar Pro's RSE sound **name** now decides the instrument and an explicit style before
+  the stored path and effect chain. `sad.gp`'s James track is named "Distortion Guitar" but
+  stored under `Stringed/Electric Guitars/Clean Guitar` with a British stack: it now starts
+  on "Modern Metal Rhythm" instead of "British Crunch". Genre words such as "Blues" do not
+  override a clean chain (`staff.gp` still maps to "Clean Single Coil").
+- The Jason bass in `sad.gp` is named "Electric Bass (pick)" with the same stale guitar
+  path: the name makes it a bass, and "pick" makes it "Pick", so it no longer falls through
+  to an electric-guitar tone.
+- GM program 34 (Electric Bass (pick)) now maps to the built-in **Pick** tone, not Clean
+  Finger. A saved "Clean Bass 1" therefore stands in only for the finger/acoustic bass
+  programs; pick and slap programs keep their own built-in Pick and Slap until the owner
+  saves presets for them.

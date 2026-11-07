@@ -137,6 +137,18 @@ pub(crate) fn saved_default_for(
             words.push((*word).to_owned());
         }
     }
+    // A bass program with a specific style (pick or slap) takes a saved preset only when
+    // one is named for that style; otherwise the built-in Pick or Slap plays. A single
+    // saved "Clean Bass 1" must not stand in for every bass program.
+    if kind == StringKind::Bass {
+        let style = template.name.to_lowercase();
+        if matches!(style.as_str(), "pick" | "slap") {
+            return saved.iter().find(|preset| {
+                kind_from_id(&preset.kind) == Some(kind)
+                    && preset.name.to_lowercase().contains(&style)
+            });
+        }
+    }
     // The acoustic guitars have one saved preset each by kind: every steel-string acoustic
     // takes the preset named for natural steel, every nylon-string one the classical preset.
     let preferred: &[&str] = match kind {
@@ -281,8 +293,10 @@ fn program_tone(program: u8) -> Option<&'static BuiltInTone> {
         29 => "Classic Rock Rhythm",
         30 => "Modern Metal Rhythm",
         31 => "80s Lead",
-        // The basses.
-        32..=35 => "Clean Finger",
+        // The basses: GM 34 is the picked electric bass, 35 the fretless (a fingerstyle
+        // sound); 36 and 37 slap; 38 and 39 are synth basses, played with a pick here.
+        32 | 33 | 35 => "Clean Finger",
+        34 => "Pick",
         36 | 37 => "Slap",
         38 | 39 => "Pick",
         // Other string programs (banjo, ukulele, ...) take their kind's default instead.
@@ -872,6 +886,10 @@ mod tests {
         assert_eq!(name(30, StringKind::Electric), Some("Metal Guitar 1"));
         assert_eq!(name(31, StringKind::Electric), Some("Lead Guitar 1"));
         assert_eq!(name(33, StringKind::Bass), Some("Clean Bass 1"));
+        // The one clean bass preset must not stand in for a picked or slapped bass: those
+        // have their own built-in tones until the owner saves presets for them.
+        assert_eq!(name(34, StringKind::Bass), None);
+        assert_eq!(name(36, StringKind::Bass), None);
         // No saved presets at all: the built-in library still answers.
         assert_eq!(saved_default_for(27, StringKind::Electric, &[]), None);
         assert_eq!(
@@ -979,5 +997,9 @@ mod tests {
             for_program(33, StringKind::Bass).name,
             for_program(36, StringKind::Bass).name
         );
+        // GM 34 is the picked bass and 36 the slapped one, not another clean finger bass.
+        assert_eq!(for_program(33, StringKind::Bass).name, "Clean Finger");
+        assert_eq!(for_program(34, StringKind::Bass).name, "Pick");
+        assert_eq!(for_program(36, StringKind::Bass).name, "Slap");
     }
 }

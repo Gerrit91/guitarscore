@@ -58,17 +58,25 @@ fn effect_ids(xml: &str) -> Vec<&str> {
     ids
 }
 
-/// The built-in tone nearest to an RSE path and effect chain. The path decides first (it
-/// names the instrument and the preset), then an amp or pedal name narrows it down.
-fn tone_for(path: &str, effects: &[&str]) -> Option<&'static str> {
+/// The built-in tone nearest to an RSE sound: its name, path and effect chain. The sound's
+/// own name decides first (Guitar Pro's "Distortion Guitar" is a distorted guitar even when
+/// the stored path still says "Clean Guitar" and the chain ends in a British stack), then
+/// the path names the instrument and the preset, then an amp or pedal narrows it down.
+fn tone_for(path: &str, name: &str, effects: &[&str]) -> Option<&'static str> {
     let path = path.to_lowercase();
+    let name = name.to_lowercase();
     let effects = effects.join(" ").to_lowercase();
     let has = |needle: &str| effects.contains(needle);
-    // The instrument first: a bass never takes a guitar's tone.
-    if path.contains("bass") || path.contains("basses") {
-        return Some(if has("slap") {
+    // The sound's own name is trusted for the instrument and for an explicit style
+    // ("Distortion Guitar", "Electric Bass (pick)"), but not for a genre word like "Blues":
+    // a clean American combo named "Blues" is still a clean sound.
+    let named = |needle: &str| name.contains(needle);
+    // The instrument first: a bass never takes a guitar's tone. Guitar Pro often keeps a
+    // stale path ("Electric Guitars") for a bass sound named "Electric Bass (pick)".
+    if path.contains("bass") || path.contains("basses") || named("bass") {
+        return Some(if has("slap") || named("slap") {
             "Slap"
-        } else if has("pick") {
+        } else if has("pick") || named("pick") {
             "Pick"
         } else if has("overdrive") || has("drive") || has("distortion") {
             "Driven"
@@ -76,16 +84,22 @@ fn tone_for(path: &str, effects: &[&str]) -> Option<&'static str> {
             "Clean Finger"
         });
     }
-    if path.contains("nylon") {
+    if path.contains("nylon") || named("nylon") {
         return Some("Nylon Classical");
     }
-    if path.contains("acoustic") || path.contains("steel") {
+    if path.contains("acoustic") || path.contains("steel") || named("acoustic") || named("steel") {
         return Some("Steel Fingerpicked");
     }
-    // Electric guitars and other string instruments: read the preset and the chain.
-    Some(if has("djent") || has("tight") {
+    // Electric guitars and other string instruments: read the sound's name, the preset and
+    // the chain.
+    Some(if has("djent") || has("tight") || named("djent") {
         "Djent Tight"
-    } else if has("metal") || has("distortion") || path.contains("distortion") {
+    } else if has("metal")
+        || has("distortion")
+        || named("metal")
+        || named("distortion")
+        || path.contains("distortion")
+    {
         "Modern Metal Rhythm"
     } else if has("blues") || path.contains("blues") {
         "Texas Blues"
@@ -125,7 +139,7 @@ pub(super) fn of_song(song: &Song, track: usize) -> Option<Mapped> {
         .filter(|name| !name.is_empty())
         .unwrap_or(fallback)
         .to_owned();
-    let tone = tone_for(path, &effects)?;
+    let tone = tone_for(path, &name, &effects)?;
     (!name.is_empty()).then_some(Mapped { name, tone })
 }
 
@@ -222,6 +236,7 @@ mod tests {
         assert_eq!(
             tone_for(
                 "Stringed/Electric Guitars/Overdrive Guitar",
+                "Overdrive Guitar",
                 &["A02_ComboAmericanClean"]
             ),
             Some("Clean Single Coil")
@@ -229,6 +244,7 @@ mod tests {
         assert_eq!(
             tone_for(
                 "Stringed/Electric Guitars/Distortion Guitar",
+                "Distortion Guitar",
                 &["A10_MetalLead"]
             ),
             Some("Modern Metal Rhythm")
@@ -236,19 +252,48 @@ mod tests {
         assert_eq!(
             tone_for(
                 "Stringed/Electric Guitars/Distortion Guitar",
+                "Distortion Guitar",
                 &["A11_DjentTight"]
             ),
             Some("Djent Tight")
         );
         assert_eq!(
-            tone_for("Stringed/Basses/Clean Bass", &["E20_SlapComp"]),
+            tone_for(
+                "Stringed/Basses/Clean Bass",
+                "Clean Bass",
+                &["E20_SlapComp"]
+            ),
             Some("Slap")
         );
         assert_eq!(
-            tone_for("Stringed/Acoustic Guitars/Nylon Guitar", &[]),
+            tone_for(
+                "Stringed/Acoustic Guitars/Nylon Guitar",
+                "Nylon Guitar",
+                &[]
+            ),
             Some("Nylon Classical")
         );
-        assert_eq!(tone_for("Stringed/Unknown", &[]), None);
+        assert_eq!(tone_for("Stringed/Unknown", "Unknown", &[]), None);
+        // The stale path says electric guitar, but the sound is a picked bass.
+        assert_eq!(
+            tone_for(
+                "Stringed/Electric Guitars/Clean Guitar",
+                "Electric Bass (pick)",
+                &["A10_StackClassic"]
+            ),
+            Some("Pick")
+        );
+        // The sound's own name wins over a stale path and a British stack: Guitar Pro's
+        // "Distortion Guitar" is a high-gain sound even when it is stored under
+        // "Clean Guitar" with a British amp.
+        assert_eq!(
+            tone_for(
+                "Stringed/Electric Guitars/Clean Guitar",
+                "Distortion Guitar",
+                &["E03_OverdriveScreamer", "A06_StackBritishStack"]
+            ),
+            Some("Modern Metal Rhythm")
+        );
     }
 
     #[test]
