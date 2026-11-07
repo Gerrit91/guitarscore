@@ -23,6 +23,9 @@ enum EditEffect {
     Display,
     /// The master volume or pan changed: every track's sound goes to the player.
     Master,
+    /// The song's own sound state changed (what plays a track, its route, tone or send):
+    /// playback takes the document's state.
+    SoundState,
     /// Tracks were added, removed, duplicated or moved: per-track layouts are stale.
     Tracks,
     /// Anything else: measure stamps invalidate the layouts; playback stops.
@@ -32,7 +35,9 @@ enum EditEffect {
 impl EditEffect {
     /// The effect of `command`.
     fn of(command: &Command) -> Self {
-        if command.changes_master() {
+        if matches!(command, Command::SetTrackSound { .. }) {
+            EditEffect::SoundState
+        } else if command.changes_master() {
             EditEffect::Master
         } else if let Some(track) = command.mix_track() {
             EditEffect::Sound(track)
@@ -428,6 +433,9 @@ impl GuitarScoreApp {
             EditEffect::Rebuild => self.playback.mix_changed(document.song()),
             // The name or color is not heard.
             EditEffect::Display => Ok(()),
+            // The song's sound settings already live in the document; hand them to the
+            // player below, after the document borrow ends.
+            EditEffect::SoundState => Ok(()),
             // Anything else changes the score: stop and rebuild on the next play.
             EditEffect::Tracks | EditEffect::Other => {
                 self.playback.song_changed();
@@ -437,6 +445,9 @@ impl GuitarScoreApp {
         if let Err(error) = updated {
             self.notice = Some(error);
         }
+        // Undoing an edit can change the song's own sound too, so take it from the
+        // document after every edit; the player ignores what did not change.
+        self.sync_song_sound();
         self.sync_history_stamps();
     }
 

@@ -130,7 +130,7 @@ impl GuitarScoreApp {
             .map(|index| self.playback.track_is_midi_out(index))
             .collect();
         let comp_sends: Vec<u8> = (0..rows.len())
-            .map(|index| tab.comp_sends.get(&index).copied().unwrap_or(0))
+            .map(|index| super::song_state::TrackSound::of_song(document.song(), index).comp_send)
             .collect();
         let reverb_bus = self.playback.reverb_bus();
         let compressor_bus = self.playback.compressor_bus();

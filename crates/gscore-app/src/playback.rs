@@ -83,7 +83,7 @@ impl Default for Output {
 pub const BROWSER_SOUNDFONT_NAME: &str = "GeneralUser GS 2.0.3";
 
 /// Where a track's MIDI output goes: the port and channel of a hardware synthesizer.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct MidiOutRoute {
     /// The port's name (or a part of it), or `None` for the first port that makes sound.
     pub port: Option<String>,
@@ -94,7 +94,7 @@ pub struct MidiOutRoute {
 impl MidiOutRoute {
     /// The route with values a MIDI port can take (a broken settings file may hold
     /// anything).
-    fn sanitized(mut self) -> Self {
+    pub(crate) fn sanitized(mut self) -> Self {
         self.channel = self.channel.filter(|channel| *channel < 16);
         self
     }

@@ -314,59 +314,54 @@ impl GuitarScoreApp {
         app
     }
 
-    /// The state to keep in a song's notes: each track's send into the compressor bus and
-    /// the tone it plays, when that is not its kind's built-in default.
+    /// The state to keep in a song's notes: each track's sound settings that are not at
+    /// their defaults. A track plays its song's tone, else the preset tone of this
+    /// machine, else the built-in one; the song gets the tone it actually plays whenever
+    /// that is not built-in, so it sounds the same on another machine.
     fn song_state(&self, tab: &Tab) -> Option<song_state::SongState> {
         let song = tab.document.song();
-        let mut tracks = Vec::new();
-        for index in 0..song.track_count() {
-            let Some(player) = self.track_player(index) else {
-                continue;
-            };
-            let kind = match player.engine {
-                gscore_play::TrackEngine::Modelled(kind) => Some(kind),
-                gscore_play::TrackEngine::SoundFont | gscore_play::TrackEngine::MidiOut => {
-                    player.preset_kind
+        let tracks: Vec<song_state::TrackState> = (0..song.track_count())
+            .filter_map(|index| {
+                let mut sound = song_state::TrackSound::of_song(song, index);
+                if let Some(player) = self.track_player(index) {
+                    // What plays it: SoundFont is the built-in default; anything else
+                    // must travel with the song.
+                    if sound.engine.is_none()
+                        && player.engine != gscore_play::TrackEngine::SoundFont
+                    {
+                        sound.engine = Some(song_state::SoundEngine::of(player.engine));
+                    }
+                    // The tone it plays: the song's own, the preset's on this machine, or
+                    // the built-in one. Only the last needs no entry.
+                    let kind = match player.engine {
+                        gscore_play::TrackEngine::Modelled(kind) => Some(kind),
+                        gscore_play::TrackEngine::SoundFont | gscore_play::TrackEngine::MidiOut => {
+                            player.preset_kind
+                        }
+                    };
+                    if sound.tone.is_none()
+                        && let Some(kind) = kind
+                    {
+                        let tone = self.track_tone(index, kind);
+                        if tone != self.playback.default_tone(kind) {
+                            sound.tone =
+                                Some(crate::settings::PresetTone::of(player.program, &tone));
+                        }
+                    }
+                    if player.engine == gscore_play::TrackEngine::MidiOut
+                        && sound.midi_out.is_none()
+                    {
+                        sound.midi_out = Some(player.midi_out);
+                    }
                 }
-            };
-            let tone = kind.and_then(|kind| {
-                let tone = self.track_tone(index, kind);
-                (tone != self.playback.default_tone(kind))
-                    .then(|| crate::settings::PresetTone::of(player.program, &tone))
-            });
-            let comp_send = tab.comp_sends.get(&index).copied().unwrap_or(0);
-            tracks.push(song_state::TrackState {
-                track: index,
-                comp_send,
-                tone,
-                identity: song_state::TrackIdentity::of(song, index),
-            });
-        }
+                (!sound.is_default()).then(|| song_state::TrackState {
+                    track: index,
+                    identity: song_state::TrackIdentity::of(song, index),
+                    sound,
+                })
+            })
+            .collect();
         song_state::SongState::new(tracks)
-    }
-
-    /// Takes the state a song carried: its tracks' compressor sends and the tones they
-    /// play (the song keeps its sound, whatever the presets are set to here). An entry
-    /// whose track was reordered or deleted in another program is matched by name and
-    /// instrument, or dropped.
-    pub(super) fn apply_song_state(&mut self, state: &song_state::SongState) {
-        if let Some(tab) = self.tabs.get_mut(self.active) {
-            let resolved = state.resolve(tab.document.song());
-            for (index, track) in resolved {
-                if track.comp_send != 0 {
-                    tab.comp_sends.insert(index, track.comp_send.min(127));
-                }
-                if let Some(tone) = track
-                    .tone
-                    .as_ref()
-                    .and_then(crate::settings::PresetTone::tone)
-                {
-                    tab.track_tones.insert(index, tone);
-                }
-            }
-        }
-        self.sync_track_tones();
-        self.sync_comp_sends();
     }
 
     /// The settings as they are now (including the view and window state).

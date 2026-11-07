@@ -4,7 +4,8 @@
 //! tuning), measure time signatures, and every beat (kind, length, beat effects) and note
 //! (string, fret, kind, effects). Placeholder beats and empty voices are ignored, because
 //! formats differ in how many voice slots they store. Not compared: data the model has no
-//! accessors for (mix tables, grace notes, ...).
+//! accessors for (mix tables, grace notes, ...), and GuitarScore's own per-track sound
+//! payload, which no Guitar Pro file stores (the app keeps it in the notes).
 
 use std::fmt;
 
@@ -145,7 +146,6 @@ fn compare_track(diff: &mut Diffs, a: &TrackView<'_>, b: &TrackView<'_>) {
         a.tuning_name().ok(),
         b.tuning_name().ok(),
     );
-    diff.check(&at, "sound state", a.sound_state(), b.sound_state());
     diff.check(&at, "measures", a.measures().len(), b.measures().len());
     for (ma, mb) in a.measures().zip(b.measures()) {
         compare_measure(diff, &at, &ma, &mb);

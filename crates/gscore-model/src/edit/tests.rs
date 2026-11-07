@@ -640,6 +640,7 @@ fn a_tracks_sound_state_follows_insert_delete_duplicate_and_move() {
         .set_track_sound_state(TrackIndex::new(1), Some(bass.clone()))
         .unwrap();
     let before = song.clone();
+    let before_states = sound_states(&before);
 
     // A duplicated track copies the state.
     let change = song.duplicate_track(TrackIndex::new(0)).unwrap();
@@ -654,6 +655,7 @@ fn a_tracks_sound_state_follows_insert_delete_duplicate_and_move() {
     );
     song.revert(&change).unwrap();
     assert_unchanged(&before, &song);
+    assert_eq!(sound_states(&song), before_states);
 
     // A moved track keeps its state.
     let change = song
@@ -663,6 +665,7 @@ fn a_tracks_sound_state_follows_insert_delete_duplicate_and_move() {
     assert_eq!(states, [Some(bass.as_str()), Some(lead.as_str())]);
     song.revert(&change).unwrap();
     assert_unchanged(&before, &song);
+    assert_eq!(sound_states(&song), before_states);
 
     // A deleted track takes its state with it, and undo brings it back.
     let change = song.delete_track(TrackIndex::new(0)).unwrap();
@@ -673,6 +676,7 @@ fn a_tracks_sound_state_follows_insert_delete_duplicate_and_move() {
     );
     song.revert(&change).unwrap();
     assert_unchanged(&before, &song);
+    assert_eq!(sound_states(&song), before_states);
 
     // A new track starts without one; its neighbours keep theirs.
     let change = song.insert_track(TrackIndex::new(1)).unwrap();
@@ -687,6 +691,7 @@ fn a_tracks_sound_state_follows_insert_delete_duplicate_and_move() {
     );
     song.revert(&change).unwrap();
     assert_unchanged(&before, &song);
+    assert_eq!(sound_states(&song), before_states);
 
     // Setting and clearing are edits with undo too.
     let change = song
@@ -695,6 +700,7 @@ fn a_tracks_sound_state_follows_insert_delete_duplicate_and_move() {
     assert_eq!(song.track(TrackIndex::new(0)).unwrap().sound_state(), None);
     song.revert(&change).unwrap();
     assert_unchanged(&before, &song);
+    assert_eq!(sound_states(&song), before_states);
 
     // A missing track, and a payload beyond the bound, are refused without a change.
     assert!(
@@ -707,6 +713,14 @@ fn a_tracks_sound_state_follows_insert_delete_duplicate_and_move() {
             .is_err()
     );
     assert_unchanged(&before, &song);
+    assert_eq!(sound_states(&song), before_states);
+}
+
+/// Every track's own sound payload, in order.
+fn sound_states(song: &Song) -> Vec<Option<String>> {
+    song.tracks()
+        .map(|track| track.sound_state().map(str::to_owned))
+        .collect()
 }
 
 #[test]

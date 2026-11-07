@@ -1,14 +1,20 @@
 //! What plays a track: the SoundFont, or modelled strings of a kind. By default a guitar
 //! or bass track's preset decides (with the Settings' switch for modelled guitars); the
-//! user can choose for each track in the Sound chain window. The choice is kept with the
-//! open document (by track index) and sent to playback every frame it changes. A track's
-//! tone (the sound of its strings and its chain) belongs to its preset, not to the track:
-//! it is kept in the settings, so every track with that preset, in every song, plays it.
+//! user can choose for each track in the Sound chain window. The choice belongs to the
+//! song: it lives on the track in the document (GuitarScore's own sound state) and is
+//! written into the song's notes on save, so a song keeps its sound when it is shared. A
+//! track's tone (the sound of its strings and its chain) belongs to its preset unless the
+//! song brought one: then it is kept with the song too.
+//!
+//! Every change goes through [`gscore_edit::Command::SetTrackSound`], so it can be undone
+//! and replayed from the recovery journal like any other edit.
 
+use gscore_edit::Command;
 use gscore_model::{InstrumentKind, TrackIndex};
 use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
+use super::song_state::{SoundEngine, TrackSound};
 use crate::chain_settings::Tone;
 use crate::playback::MidiOutRoute;
 
@@ -38,6 +44,7 @@ impl GuitarScoreApp {
         let song = tab.document.song();
         let view = song.track(TrackIndex::new(track))?;
         let sound = song.track_sound(TrackIndex::new(track))?;
+        let own = TrackSound::of_song(song, track);
         let strings = view.instrument_kind() == InstrumentKind::Strings && !sound.percussion;
         // The kind its preset's tone was dialed in on (the owner's Clean Guitar plays steel
         // strings), otherwise its program's family.
@@ -46,10 +53,9 @@ impl GuitarScoreApp {
             Some(kind) if self.playback.modelled_guitars() => TrackEngine::Modelled(kind),
             _ => TrackEngine::SoundFont,
         };
-        let engine = tab
-            .track_engines
-            .get(&track)
-            .copied()
+        let engine = own
+            .engine
+            .map(SoundEngine::engine)
             .filter(|engine| match engine {
                 TrackEngine::Modelled(_) => strings,
                 TrackEngine::SoundFont => true,
@@ -64,8 +70,20 @@ impl GuitarScoreApp {
             drums: sound.percussion,
             preset_kind,
             program: sound.program,
-            midi_out: tab.midi_outs.get(&track).cloned().unwrap_or_default(),
+            midi_out: own.midi_out.unwrap_or_default(),
         })
+    }
+
+    /// Replaces the track's state with `sound`, through the undoable command.
+    fn set_track_sound(&mut self, track: usize, sound: TrackSound, merge: bool) {
+        let state = sound.json();
+        self.apply_command(
+            Command::SetTrackSound {
+                track: TrackIndex::new(track),
+                state,
+            },
+            merge,
+        );
     }
 
     /// Lets `engine` play `track` (back to the default when it is the default).
@@ -73,36 +91,31 @@ impl GuitarScoreApp {
         let Some(player) = self.track_player(track) else {
             return;
         };
-        let Some(tab) = self.tabs.get_mut(self.active) else {
+        let Some(song) = self.document().map(|document| document.song().clone()) else {
             return;
         };
-        if engine == player.default {
-            tab.track_engines.remove(&track);
-        } else {
-            tab.track_engines.insert(track, engine);
-        }
+        let mut sound = TrackSound::of_song(&song, track);
+        sound.engine = (engine != player.default).then(|| SoundEngine::of(engine));
         // A MIDI-out track needs a route; automatic until the user picks a port.
         if engine == TrackEngine::MidiOut {
-            tab.midi_outs.entry(track).or_default();
+            sound.midi_out.get_or_insert_with(MidiOutRoute::default);
             // The Sound chain window offers the ports by name, so list them if that has
             // not happened yet.
             if self.playback.ports().is_empty() {
                 let _ = self.playback.refresh_ports();
             }
         }
-        // The engine first: a MIDI-out track needs its player, then the route splits the
-        // rebuilt sequence.
-        self.sync_track_engines();
-        self.sync_midi_routes();
+        self.set_track_sound(track, sound, false);
     }
 
     /// Gives the hardware synthesizer of `track` a port and channel, heard at once.
     pub(super) fn set_midi_out(&mut self, track: usize, route: MidiOutRoute) {
-        let Some(tab) = self.tabs.get_mut(self.active) else {
+        let Some(song) = self.document().map(|document| document.song().clone()) else {
             return;
         };
-        tab.midi_outs.insert(track, route);
-        self.sync_midi_routes();
+        let mut sound = TrackSound::of_song(&song, track);
+        sound.midi_out = Some(route);
+        self.set_track_sound(track, sound, false);
     }
 
     /// The name of `track` of the open document (empty without one).
@@ -120,9 +133,10 @@ impl GuitarScoreApp {
         let own = self
             .tabs
             .get(self.active)
-            .and_then(|tab| tab.track_tones.get(&track))
-            .filter(|tone| tone.kind == kind)
-            .cloned();
+            .map(|tab| TrackSound::of_song(tab.document.song(), track))
+            .and_then(|sound| sound.tone)
+            .and_then(|preset| preset.tone())
+            .filter(|tone| tone.kind == kind);
         let mut tone = own.unwrap_or_else(|| match self.track_player(track) {
             Some(player) => self.playback.tone(track, player.program, kind),
             None => self.playback.default_tone(kind),
@@ -140,19 +154,18 @@ impl GuitarScoreApp {
     /// keeps its sound); otherwise the preset's tone changes, so every track with that
     /// preset, in every song, plays it from now on (it is kept in the settings).
     pub(super) fn set_track_tone(&mut self, track: usize, tone: Tone) {
-        if let Some(tab) = self.tabs.get_mut(self.active)
-            && tab.track_tones.contains_key(&track)
-        {
-            tab.track_tones.insert(track, tone);
-            self.sync_track_tones();
-            return;
-        }
-        let Some(player) = self.track_player(track) else {
-            return;
-        };
         let Some(song) = self.document().map(|document| document.song().clone()) else {
             return;
         };
+        let Some(player) = self.track_player(track) else {
+            return;
+        };
+        let mut sound = TrackSound::of_song(&song, track);
+        if sound.tone.is_some() {
+            sound.tone = Some(crate::settings::PresetTone::of(player.program, &tone));
+            self.set_track_sound(track, sound, true);
+            return;
+        }
         if let Err(error) = self
             .playback
             .set_preset_tone(&song, player.program, Some(tone))
@@ -165,14 +178,14 @@ impl GuitarScoreApp {
     /// so it plays its built-in default again (the kind's sound and chain from the
     /// settings).
     pub(super) fn reset_track_tone(&mut self, track: usize) {
-        if let Some(tab) = self.tabs.get_mut(self.active) {
-            tab.track_tones.remove(&track);
-        }
-        self.sync_track_tones();
-        let Some(player) = self.track_player(track) else {
+        let Some(song) = self.document().map(|document| document.song().clone()) else {
             return;
         };
-        let Some(song) = self.document().map(|document| document.song().clone()) else {
+        let mut sound = TrackSound::of_song(&song, track);
+        if sound.tone.take().is_some() {
+            self.set_track_sound(track, sound, false);
+        }
+        let Some(player) = self.track_player(track) else {
             return;
         };
         if let Err(error) = self.playback.set_preset_tone(&song, player.program, None) {
@@ -183,15 +196,13 @@ impl GuitarScoreApp {
     /// Sets `track`'s send into the mixer's compressor bus (0-127), heard at once. It is
     /// kept with the song (in its notes), not with the settings.
     pub(super) fn set_comp_send(&mut self, track: usize, value: u8) {
-        let Some(tab) = self.tabs.get_mut(self.active) else {
+        let Some(song) = self.document().map(|document| document.song().clone()) else {
             return;
         };
-        if value == 0 {
-            tab.comp_sends.remove(&track);
-        } else {
-            tab.comp_sends.insert(track, value.min(127));
-        }
-        self.sync_comp_sends();
+        let mut sound = TrackSound::of_song(&song, track);
+        sound.comp_send = value.min(127);
+        // One slider drag is one undo step.
+        self.set_track_sound(track, sound, true);
     }
 
     /// Hands the open document's comp sends to playback, so they are heard.
@@ -199,10 +210,10 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
-        let sends: Vec<(usize, u8)> = tab
-            .comp_sends
-            .iter()
-            .map(|(&track, &value)| (track, value))
+        let song = tab.document.song();
+        let sends: Vec<(usize, u8)> = (0..song.track_count())
+            .map(|track| (track, TrackSound::of_song(song, track).comp_send))
+            .filter(|&(_, value)| value != 0)
             .collect();
         self.playback.set_comp_sends(sends);
     }
@@ -212,20 +223,33 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
-        self.playback.set_track_tones(&tab.track_tones);
+        let song = tab.document.song();
+        let tones: std::collections::BTreeMap<usize, Tone> = (0..song.track_count())
+            .filter_map(|track| {
+                let tone = TrackSound::of_song(song, track).tone?;
+                Some((track, tone.tone()?))
+            })
+            .collect();
+        self.playback.set_track_tones(&tones);
     }
 
-    /// Hands the open document's MIDI-out port and channel choices to playback.
+    /// Hands the open document's MIDI-out port and channel choices to playback. A track
+    /// played by MIDI out always has a route, automatic until the user picks a port, so
+    /// its notes are never routed to an output nobody opened.
     pub(super) fn sync_midi_routes(&mut self) {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
-        let routes: Vec<(usize, MidiOutRoute)> = tab
-            .midi_outs
-            .iter()
-            .map(|(&track, route)| (track, route.clone()))
-            .collect();
         let song = tab.document.song();
+        let routes: Vec<(usize, MidiOutRoute)> = (0..song.track_count())
+            .filter_map(|track| {
+                if let Some(route) = TrackSound::of_song(song, track).midi_out {
+                    return Some((track, route));
+                }
+                let player = self.track_player(track)?;
+                (player.engine == TrackEngine::MidiOut).then_some((track, player.midi_out))
+            })
+            .collect();
         if let Err(error) = self.playback.set_midi_routes(song, routes) {
             self.notice = Some(error);
         }
@@ -237,14 +261,25 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
-        let engines: Vec<(usize, TrackEngine)> = tab
-            .track_engines
-            .iter()
-            .map(|(&track, &engine)| (track, engine))
-            .collect();
         let song = tab.document.song();
+        let engines: Vec<(usize, TrackEngine)> = (0..song.track_count())
+            .filter_map(|track| {
+                let engine = TrackSound::of_song(song, track).engine?;
+                Some((track, engine.engine()))
+            })
+            .collect();
         if let Err(error) = self.playback.set_track_engines(song, engines) {
             self.notice = Some(error);
         }
+    }
+
+    /// Hands everything the song says about its sound to playback: what plays each track,
+    /// its MIDI route, its tone and its compressor send. Called after every edit; the
+    /// player drops what did not change.
+    pub(super) fn sync_song_sound(&mut self) {
+        self.sync_track_engines();
+        self.sync_midi_routes();
+        self.sync_track_tones();
+        self.sync_comp_sends();
     }
 }

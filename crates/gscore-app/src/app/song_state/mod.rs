@@ -22,8 +22,10 @@
 mod codec;
 
 use gscore_model::{Song, TrackIndex};
+use gscore_play::{StringKind, TrackEngine};
 use serde::{Deserialize, Serialize};
 
+use crate::playback::MidiOutRoute;
 use crate::settings::PresetTone;
 
 /// The old block's opening marker; the version follows, then `]` and the JSON.
@@ -41,21 +43,124 @@ pub(crate) struct SongState {
     pub tracks: Vec<TrackState>,
 }
 
-/// One track's state.
+/// One track's state in the block: its position and identity in the song, and the sound
+/// settings GuitarScore adds.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct TrackState {
     /// The track in the song.
     pub track: usize,
-    /// Its send into the mixer's compressor bus (0-127).
-    #[serde(default)]
-    pub comp_send: u8,
-    /// The tone it plays, when it is not its kind's built-in default.
-    #[serde(default)]
-    pub tone: Option<PresetTone>,
     /// How the track was recognised when the block was written. `None` in a block from a
     /// version before this existed: then only the number can be used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<TrackIdentity>,
+    /// Its sound settings, flat in the entry (an old block stored `comp_send` and `tone`
+    /// at this level, which is where they still read from).
+    #[serde(flatten)]
+    pub sound: TrackSound,
+}
+
+/// Everything GuitarScore knows about a track's sound that the Guitar Pro format has no
+/// field for: what plays it, its tone and chain, its compressor send, the MIDI-out route.
+///
+/// The same JSON is kept on the track in the document (so track edits carry it) and in the
+/// song's notes block (so it travels with the file).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub(crate) struct TrackSound {
+    /// What plays it, when it is not the default for its preset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub engine: Option<SoundEngine>,
+    /// The hardware synthesizer's port and channel, for a track played by MIDI out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub midi_out: Option<MidiOutRoute>,
+    /// Its send into the mixer's compressor bus (0-127).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub comp_send: u8,
+    /// The tone it plays, when it is not the built-in one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tone: Option<PresetTone>,
+}
+
+/// `true` for 0, so a default number is not written.
+fn is_zero(value: &u8) -> bool {
+    *value == 0
+}
+
+/// What plays a track, as the block writes it: a plain word, not an enum's variant name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SoundEngine {
+    /// The General MIDI path (a SoundFont or a MIDI device).
+    SoundFont,
+    /// Modelled nylon-string guitar.
+    Nylon,
+    /// Modelled steel-string guitar.
+    Steel,
+    /// Modelled electric guitar.
+    Electric,
+    /// Modelled bass.
+    Bass,
+    /// A hardware synthesizer on a MIDI output port.
+    MidiOut,
+}
+
+impl SoundEngine {
+    /// The block's word for `engine`.
+    pub(crate) fn of(engine: TrackEngine) -> Self {
+        match engine {
+            TrackEngine::SoundFont => SoundEngine::SoundFont,
+            TrackEngine::MidiOut => SoundEngine::MidiOut,
+            TrackEngine::Modelled(StringKind::Nylon) => SoundEngine::Nylon,
+            TrackEngine::Modelled(StringKind::Steel) => SoundEngine::Steel,
+            TrackEngine::Modelled(StringKind::Electric) => SoundEngine::Electric,
+            TrackEngine::Modelled(StringKind::Bass) => SoundEngine::Bass,
+        }
+    }
+
+    /// The playback engine this word means.
+    pub(crate) fn engine(self) -> TrackEngine {
+        match self {
+            SoundEngine::SoundFont => TrackEngine::SoundFont,
+            SoundEngine::MidiOut => TrackEngine::MidiOut,
+            SoundEngine::Nylon => TrackEngine::Modelled(StringKind::Nylon),
+            SoundEngine::Steel => TrackEngine::Modelled(StringKind::Steel),
+            SoundEngine::Electric => TrackEngine::Modelled(StringKind::Electric),
+            SoundEngine::Bass => TrackEngine::Modelled(StringKind::Bass),
+        }
+    }
+}
+
+impl TrackSound {
+    /// One track's state, from the document (a payload that does not read counts as none,
+    /// so a damaged file never stops a song from opening).
+    pub(crate) fn of_song(song: &Song, track: usize) -> Self {
+        song.track(TrackIndex::new(track))
+            .and_then(|view| view.sound_state())
+            .and_then(|json| serde_json::from_str::<TrackSound>(json).ok())
+            .map(TrackSound::sanitized)
+            .unwrap_or_default()
+    }
+
+    /// A copy with values the rest of the program can rely on (a broken file may hold
+    /// anything).
+    fn sanitized(mut self) -> Self {
+        self.comp_send = self.comp_send.min(127);
+        self.midi_out = self.midi_out.map(MidiOutRoute::sanitized);
+        self
+    }
+
+    /// The JSON the document keeps for this state, or `None` when it is all defaults.
+    pub(crate) fn json(&self) -> Option<String> {
+        if *self == TrackSound::default() {
+            return None;
+        }
+        serde_json::to_string(self).ok()
+    }
+
+    /// Whether every setting is at its default (nothing to keep).
+    pub(crate) fn is_default(&self) -> bool {
+        *self == TrackSound::default()
+    }
 }
 
 /// How the block recognises a track after someone reordered or deleted tracks in another
@@ -99,9 +204,22 @@ impl SongState {
     pub(crate) fn new(tracks: Vec<TrackState>) -> Option<Self> {
         let tracks: Vec<TrackState> = tracks
             .into_iter()
-            .filter(|track| track.comp_send != 0 || track.tone.is_some())
+            .filter(|track| !track.sound.is_default())
             .collect();
         (!tracks.is_empty()).then_some(SongState { tracks })
+    }
+
+    /// Writes the state into `song`, on the track each entry belongs to (see
+    /// [`Self::resolve`]). Called once when a song opens, before it can be edited.
+    pub(crate) fn apply_to_song(&self, song: &mut Song) {
+        let resolved: Vec<(usize, Option<String>)> = self
+            .resolve(song)
+            .into_iter()
+            .map(|(track, state)| (track, state.sound.json()))
+            .collect();
+        for (track, state) in resolved {
+            let _ = song.set_track_sound_state(TrackIndex::new(track), state);
+        }
     }
 
     /// The entries with the track of `song` each belongs to, in the block's order.
@@ -289,9 +407,12 @@ mod tests {
                 tone.chain.blocks[0] = cabinet;
                 TrackState {
                     track: index,
-                    comp_send: u8::try_from(index % 128).unwrap_or(0),
-                    tone: Some(tone),
                     identity: None,
+                    sound: TrackSound {
+                        comp_send: u8::try_from(index % 128).unwrap_or(0),
+                        tone: Some(tone),
+                        ..TrackSound::default()
+                    },
                 }
             })
             .collect();
@@ -303,22 +424,31 @@ mod tests {
         let state = SongState::new(vec![
             TrackState {
                 track: 0,
-                comp_send: 96,
-                tone: None,
                 identity: None,
+                sound: TrackSound {
+                    comp_send: 96,
+                    tone: None,
+                    ..TrackSound::default()
+                },
             },
             TrackState {
                 track: 2,
-                comp_send: 0,
-                tone: Some(tone()),
                 identity: None,
+                sound: TrackSound {
+                    comp_send: 0,
+                    tone: Some(tone()),
+                    ..TrackSound::default()
+                },
             },
             // Nothing to keep: dropped.
             TrackState {
                 track: 3,
-                comp_send: 0,
-                tone: None,
                 identity: None,
+                sound: TrackSound {
+                    comp_send: 0,
+                    tone: None,
+                    ..TrackSound::default()
+                },
             },
         ])
         .expect("two tracks have state");
@@ -337,9 +467,9 @@ mod tests {
         assert_eq!(kept, vec!["A song by the band", "Tune down"]);
         let back = back.expect("the state is read");
         assert_eq!(back, state);
-        assert_eq!(back.track(0).map(|track| track.comp_send), Some(96));
+        assert_eq!(back.track(0).map(|track| track.sound.comp_send), Some(96));
         assert_eq!(
-            back.track(2).and_then(|track| track.tone.clone()),
+            back.track(2).and_then(|track| track.sound.tone.clone()),
             Some(tone())
         );
         // Saving again replaces the block instead of piling up.
@@ -347,6 +477,24 @@ mod tests {
         assert_eq!(again, notes);
         // Without state the notes are just the user's.
         assert_eq!(encode(again.clone(), None).len(), 2);
+    }
+
+    #[test]
+    fn a_block_from_before_the_sound_record_still_reads() {
+        // The first form of the compact block kept `comp_send` and `tone` at the entry's
+        // own level; the flat sound record still reads them there.
+        let json = format!(
+            r#"{{"tracks":[{{"track":1,"comp_send":42,"tone":{}}}]}}"#,
+            serde_json::to_string(&tone()).expect("a tone")
+        );
+        let notes = codec::encode(json.as_bytes()).expect("a block");
+        let (kept, state) = split(notes);
+        assert!(kept.is_empty());
+        let state = state.expect("the old form is read");
+        let track = state.track(1).expect("the track");
+        assert_eq!(track.sound.comp_send, 42);
+        assert_eq!(track.sound.tone, Some(tone()));
+        assert!(track.identity.is_none());
     }
 
     #[test]
@@ -389,9 +537,12 @@ mod tests {
 
         let state = SongState::new(vec![TrackState {
             track: 0,
-            comp_send: 1,
-            tone: None,
             identity: None,
+            sound: TrackSound {
+                comp_send: 1,
+                tone: None,
+                ..TrackSound::default()
+            },
         }])
         .unwrap();
         let good = encode([], Some(&state));
@@ -441,16 +592,22 @@ mod tests {
         // no state is applied rather than one of them at random.
         let one = SongState::new(vec![TrackState {
             track: 0,
-            comp_send: 1,
-            tone: None,
             identity: None,
+            sound: TrackSound {
+                comp_send: 1,
+                tone: None,
+                ..TrackSound::default()
+            },
         }])
         .unwrap();
         let two = SongState::new(vec![TrackState {
             track: 0,
-            comp_send: 2,
-            tone: None,
             identity: None,
+            sound: TrackSound {
+                comp_send: 2,
+                tone: None,
+                ..TrackSound::default()
+            },
         }])
         .unwrap();
         let notes = [encode([], Some(&one)), encode([], Some(&two))].concat();
@@ -467,9 +624,12 @@ mod tests {
         named.kind = "Grüße & Saiten".to_owned();
         let state = SongState::new(vec![TrackState {
             track: 0,
-            comp_send: 0,
-            tone: Some(named.clone()),
             identity: None,
+            sound: TrackSound {
+                comp_send: 0,
+                tone: Some(named.clone()),
+                ..TrackSound::default()
+            },
         }])
         .unwrap();
         let notes = encode(["Notizen für die Band".to_owned()], Some(&state));
@@ -481,7 +641,7 @@ mod tests {
         assert_eq!(kept, vec!["Notizen für die Band"]);
         assert_eq!(
             back.and_then(|state| state.tracks.first().cloned())
-                .and_then(|track| track.tone),
+                .and_then(|track| track.sound.tone),
             Some(named)
         );
     }
@@ -490,9 +650,12 @@ mod tests {
     fn the_old_block_is_still_read_and_replaced_on_save() {
         let state = SongState::new(vec![TrackState {
             track: 0,
-            comp_send: 96,
-            tone: None,
             identity: None,
+            sound: TrackSound {
+                comp_send: 96,
+                tone: None,
+                ..TrackSound::default()
+            },
         }])
         .unwrap();
         let json = serde_json::to_string(&state).unwrap();
@@ -525,9 +688,11 @@ mod tests {
     fn entry(track: usize, comp_send: u8, identity: Option<TrackIdentity>) -> TrackState {
         TrackState {
             track,
-            comp_send,
-            tone: None,
             identity,
+            sound: TrackSound {
+                comp_send,
+                ..TrackSound::default()
+            },
         }
     }
 
@@ -536,7 +701,7 @@ mod tests {
         state
             .resolve_in(tracks)
             .into_iter()
-            .map(|(track, state)| (track, state.comp_send))
+            .map(|(track, state)| (track, state.sound.comp_send))
             .collect()
     }
 

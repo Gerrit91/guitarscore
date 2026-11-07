@@ -3965,9 +3965,38 @@ needed for a much larger font); owner listening check.
   it away and undo restores it, and a new track starts without one (`fresh_track` clears
   it).
 - `gscore-model`: `TrackView::sound_state`, `Song::set_track_sound_state` (undone through
-  `ChangeKind::TrackSoundState`, payload bounded at 256 KiB), and `differences` now compares
-  it, so undo tests notice a lost state.
+  `ChangeKind::TrackSoundState`, payload bounded at 256 KiB). It is app-owned and has no
+  field in the file, so `differences` (which drives the save loss report) leaves it alone;
+  the test compares the states directly after each undo.
 - Test: set on two tracks, then duplicate, move, delete, insert and clear, with undo after
-  each; a missing track and an oversized payload are refused without changing the song.
+  each (and an explicit check that the payloads came back); a missing track and an
+  oversized payload are refused without changing the song.
 - Still open: the app still reads and writes its four tab maps; wiring it to this field is
   next.
+
+## 2026-11-07 — Part A, 5: the app keeps a track's sound on the track
+
+- The four per-tab maps (`track_engines`, `midi_outs`, `comp_sends`, `track_tones`) are
+  gone. A track's sound state is the document's: `TrackSound` (`engine`, `midi_out`,
+  `comp_send`, `tone`) is that JSON payload, read with `TrackSound::of_song` and keyed by
+  nothing but the track. The Sound chain window, the mixer's send knob and the preset
+  tone dialogs all go through the new undoable `Command::SetTrackSound`, so every change
+  is one undo step (a slider drag merges by `continues`), is journaled, and travels with
+  the document: a track insert, delete, duplicate or move carries it, and undo restores
+  it. `details()` prints only the payload's size.
+- Opening a song applies the block to the tracks (`SongState::apply_to_song`) before the
+  `Document` exists, so the journal replays on a song that already has it and no edit can
+  drop it. Every edit (and every undo) hands the document's state to playback
+  (`sync_song_sound`); the player ignores what did not change.
+- Saving resolves what each track **actually** plays: its song tone, else the preset tone
+  of this machine, else the built-in one. Anything not built-in is stored in the block,
+  as is the resolved engine when it is not `SoundFont` and the MIDI-out route, so another
+  machine hears the same song.
+- `differences` stays without the payload (no file field holds it, so the save's read-back
+  would report a loss every time); the model undo test checks the payloads directly.
+- Tests: block round trip through the new shape and old flat entries, engine/tone/route
+  resolution, a saved-and-reopened song with default settings (mixer send, tone, engine),
+  and the command parse round trip. Three snapshots show the song as modified after a
+  sound change — it is a real edit now; reviewed and updated.
+- Still open: song-wide buses (reverb, compressor) and per-track drum part chains and
+  levels; the round trip through GP3/4/5/GPX, recovery and the journal.
