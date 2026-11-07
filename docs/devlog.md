@@ -4130,3 +4130,5 @@ needed for a much larger font); owner listening check.
   switch keeps both the General MIDI program and the modelled tone across PM → MIDI →
   PM, and the Sound chain window shows the same source; a drum track lists the kits and
   its PM button is disabled; a hardware synth shows the port, channel and program table.
+  Switching the source clears the table's filter, which would otherwise hide the other
+  list's rows.

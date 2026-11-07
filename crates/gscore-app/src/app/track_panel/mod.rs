@@ -137,6 +137,9 @@ impl GuitarScoreApp {
         }
         if let Some(engine) = sound_actions.engine {
             self.set_track_engine(index, engine);
+            // Another table (programs or tones) is shown now: a filter typed for the old
+            // one would hide everything.
+            sound_picker = super::tone_picker::TonePickerState::new();
         }
         if let Some(route) = sound_actions.midi_out {
             self.set_midi_out(index, route);
