@@ -5,6 +5,15 @@
 
 use crate::io::*;
 
+/// The bytes of a track name's field in GP3-5.
+pub(crate) const TRACK_NAME_BYTES: u8 = 40;
+
+/// A track's `name` as GP3-5 read it back after writing it: Windows-1252, cut to its
+/// field.
+pub fn track_name_as_stored(name: &str) -> String {
+    fixed_string_as_stored(name, TRACK_NAME_BYTES)
+}
+
 pub(crate) trait SongTrackOps {
     fn read_tracks(&mut self, data: &[u8], seek: &mut usize, track_count: usize) -> GpResult<()>;
     fn read_tracks_v5(&mut self, data: &[u8], seek: &mut usize, track_count: usize)
@@ -79,7 +88,7 @@ impl SongTrackOps for Song {
         track.twelve_stringed_guitar_track = (flags & 0x02) == 0x02; //12 stringed guitar track
         track.banjo_track = (flags & 0x04) == 0x04; //Banjo track
 
-        track.name = read_byte_size_string(data, seek, 40)?;
+        track.name = read_byte_size_string(data, seek, usize::from(TRACK_NAME_BYTES))?;
         // Clamp string_count: valid range is 0..=7 (Guitar Pro caps at 7),
         // but malformed files may store larger ints.
         let string_count = i8::try_from(read_int(data, seek)?.clamp(0, 7)).unwrap_or_default();
@@ -157,7 +166,7 @@ impl SongTrackOps for Song {
         track.mute = (flags1 & 0x20) == 0x20;
         track.use_rse = (flags1 & 0x40) == 0x40;
         track.indicate_tuning = (flags1 & 0x80) == 0x80;
-        track.name = read_byte_size_string(data, seek, 40)?;
+        track.name = read_byte_size_string(data, seek, usize::from(TRACK_NAME_BYTES))?;
         let sc = read_int(data, seek)?;
         let string_count = sc.to_u8_gp("string count")?;
         track.strings.clear();
@@ -284,7 +293,7 @@ impl Song {
     /// What GP3-5 store alike for a track after its flags: name, strings, port, channel,
     /// frets, capo and color.
     fn write_track_common(&self, data: &mut Vec<u8>, track: &Track) -> GpResult<()> {
-        write_fixed_string(data, &track.name, 40);
+        write_fixed_string(data, &track.name, TRACK_NAME_BYTES);
         write_i32(data, track.strings.len().to_i32_gp("strings len")?);
         for i in 0..7usize {
             let tuning = track.strings.get(i).map_or(0, |string| string.1);

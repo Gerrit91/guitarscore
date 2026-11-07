@@ -293,6 +293,18 @@ impl TrackIdentity {
             drums: sound.percussion,
         })
     }
+
+    /// Whether `track` (a track of the song as it is now) is the one this identity was
+    /// written for. Names are also compared as GP3-5 keep them: a save to those formats
+    /// cuts a long name and replaces characters their code page lacks, and the track is
+    /// still the same.
+    fn fits(&self, track: &TrackIdentity) -> bool {
+        self.program == track.program
+            && self.drums == track.drums
+            && (self.name == track.name
+                || gscore_model::track_name_in_binary_formats(&self.name)
+                    == gscore_model::track_name_in_binary_formats(&track.name))
+    }
 }
 
 impl SongState {
@@ -350,7 +362,9 @@ impl SongState {
         // First by number, so two reordered tracks cannot take each other's place.
         for (entry_index, state) in self.tracks.iter().enumerate() {
             let fits = match &state.identity {
-                Some(identity) => tracks.get(state.track) == Some(identity),
+                Some(identity) => tracks
+                    .get(state.track)
+                    .is_some_and(|track| identity.fits(track)),
                 None => tracks.get(state.track).is_some(),
             };
             if !fits || taken.get(state.track).copied().unwrap_or(true) {
@@ -375,7 +389,7 @@ impl SongState {
             let mut found = None;
             let mut found_count = 0_usize;
             for (track, candidate) in tracks.iter().enumerate() {
-                if taken.get(track).copied().unwrap_or(true) || candidate != identity {
+                if taken.get(track).copied().unwrap_or(true) || !identity.fits(candidate) {
                     continue;
                 }
                 found_count = found_count.saturating_add(1);
@@ -712,6 +726,68 @@ mod tests {
             assert_eq!(kept, user, "{format:?} lost the user's notes");
             assert_eq!(back, Some(state.clone()), "{format:?} lost the block");
         }
+    }
+
+    #[test]
+    fn a_track_keeps_its_state_when_an_older_format_cuts_or_recodes_its_name() {
+        use gscore_io::{FileFormat, export_to_bytes, import_guitar_pro_from_bytes};
+
+        // GP3-5 cut a name to 40 bytes and keep only what Windows-1252 can hold; the
+        // entry must still find its track after such a save.
+        for name in [
+            "Lead guitar, verse and chorus, double-tracked",
+            "Гитара",
+            "Gitarre ä",
+        ] {
+            let mut song =
+                gscore_model::testing::song(&[gscore_model::testing::GUITAR_6], 1).expect("song");
+            song.rename_track(TrackIndex::new(0), name)
+                .expect("renamed");
+            let state = SongState::new(
+                vec![TrackState {
+                    track: 0,
+                    identity: TrackIdentity::of(&song, 0),
+                    sound: TrackSound {
+                        comp_send: 90,
+                        ..TrackSound::default()
+                    },
+                }],
+                Buses::default(),
+            )
+            .expect("a state");
+            let song = song.with_notes(encode(Vec::new(), Some(&state)));
+            for format in [
+                FileFormat::Gp,
+                FileFormat::Gpx,
+                FileFormat::Gp5,
+                FileFormat::Gp4,
+                FileFormat::Gp3,
+            ] {
+                let bytes = export_to_bytes(&song, format).expect("written");
+                let reread = import_guitar_pro_from_bytes(&bytes).expect("read").song;
+                let (_, back) = split(reread.notes().map(str::to_owned));
+                let back = back.expect("the block reads");
+                let resolved: Vec<usize> = back
+                    .resolve(&reread)
+                    .into_iter()
+                    .map(|(track, _)| track)
+                    .collect();
+                assert_eq!(resolved, vec![0], "{name:?} through {format:?}");
+            }
+        }
+        // A different name still does not fit, however it is stored.
+        let written = identity("Lead guitar, verse and chorus, double-tracked", 27, false);
+        assert!(!written.fits(&identity("Rhythm", 27, false)));
+        assert!(written.fits(&identity(
+            "Lead guitar, verse and chorus, double-tr",
+            27,
+            false
+        )));
+        assert!(!written.fits(&identity(
+            "Lead guitar, verse and chorus, double-tr",
+            33,
+            false
+        )));
     }
 
     #[test]

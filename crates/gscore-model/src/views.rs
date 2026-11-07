@@ -29,6 +29,13 @@ pub struct TrackView<'a> {
     pub(crate) inner: &'a gscore_gp::Track,
 }
 
+/// A track name as GP3, GP4 and GP5 read it back after a save: in their single-byte code
+/// page (a character it has no code for becomes a numeric reference) and cut to their
+/// 40-byte field. Newer formats keep the name as it is.
+pub fn track_name_in_binary_formats(name: &str) -> String {
+    gscore_gp::track_name_as_stored(name)
+}
+
 impl<'a> TrackView<'a> {
     pub(crate) fn new(index: TrackIndex, inner: &'a gscore_gp::Track) -> Self {
         TrackView { index, inner }

@@ -25,4 +25,5 @@ mod io;
 pub mod model;
 
 pub use io::error::{GpError, GpResult};
+pub use io::track_name_as_stored;
 pub use model::*;
