@@ -1469,9 +1469,7 @@ fn dragging_in_the_song_grid_selects_one_track_or_all() {
     let cell = |measure: usize, track: usize| {
         rect.left_top() + egui::vec2(24.0 * measure as f32 + 12.0, 24.0 * track as f32 + 12.0)
     };
-    let selection = |harness: &Harness<'static, GuitarScoreApp>| {
-        harness.state().selection()
-    };
+    let selection = |harness: &Harness<'static, GuitarScoreApp>| harness.state().selection();
 
     // Within the first track's row: bars of that track only.
     harness.hover_at(cell(1, 0));
@@ -1485,7 +1483,10 @@ fn dragging_in_the_song_grid_selects_one_track_or_all() {
     harness.drop_at(cell(3, 0));
     harness.run();
     let selected = selection(&harness).unwrap();
-    assert_eq!((selected.start(), selected.end(), selected.track), (1, 3, Some(0)));
+    assert_eq!(
+        (selected.start(), selected.end(), selected.track),
+        (1, 3, Some(0))
+    );
     assert!(matches!(
         harness.state().document().unwrap().editor().selection(),
         Some(gscore_edit::Selection::Measures {
@@ -1512,7 +1513,10 @@ fn dragging_in_the_song_grid_selects_one_track_or_all() {
     // A click on the ruler selects whole bars across every track.
     left_click_at(&mut harness, cell(2, 0) - egui::vec2(0.0, 25.0));
     let selected = selection(&harness).unwrap();
-    assert_eq!((selected.start(), selected.end(), selected.track), (2, 2, None));
+    assert_eq!(
+        (selected.start(), selected.end(), selected.track),
+        (2, 2, None)
+    );
 }
 
 #[test]
@@ -1534,8 +1538,7 @@ fn copy_and_delete_act_on_a_one_track_grid_selection() {
     };
     let rect = harness.get_by_label("Song grid").rect();
     let select = |harness: &mut Harness<'static, GuitarScoreApp>, measure: usize| {
-        let cell = rect.left_top()
-            + egui::vec2(24.0 * measure as f32 + 12.0, 12.0);
+        let cell = rect.left_top() + egui::vec2(24.0 * measure as f32 + 12.0, 12.0);
         harness.hover_at(cell);
         harness.drag_at(cell);
         harness.drop_at(cell);
@@ -1552,7 +1555,11 @@ fn copy_and_delete_act_on_a_one_track_grid_selection() {
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::V);
     harness.run();
     assert_eq!(notes(&harness, 0, 1), source, "the copied track's bar");
-    assert_eq!(notes(&harness, 1, 1), other, "the other track did not change");
+    assert_eq!(
+        notes(&harness, 1, 1),
+        other,
+        "the other track did not change"
+    );
 
     // Delete clears the selected track's notes only.
     select(&mut harness, 1);

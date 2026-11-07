@@ -150,6 +150,11 @@ impl TabEditor {
         self.entry_value = value;
     }
 
+    /// The note value a beat created in an empty measure gets.
+    pub(crate) fn new_beat_value(&self) -> NoteValue {
+        self.entry_value
+    }
+
     /// How many undo steps the history holds.
     pub fn undo_depth(&self) -> usize {
         self.editor.undo_depth()

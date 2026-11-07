@@ -84,6 +84,43 @@ fn fret_at_cursor(app: &GuitarScoreApp, string: u8) -> Option<u8> {
         .map(|f| f.get())
 }
 
+/// Puts the cursor on `beat` of `measure`, on `string`.
+fn put_cursor(
+    harness: &mut Harness<'static, GuitarScoreApp>,
+    measure: usize,
+    beat: usize,
+    string: u8,
+) {
+    let document = harness.state_mut().document_mut().unwrap();
+    let cursor = document.editor().cursor();
+    document.editor_mut().set_cursor(gscore_edit::Cursor {
+        measure: MeasureIndex::new(measure),
+        beat: BeatIndex::new(beat),
+        string,
+        ..cursor
+    });
+}
+
+/// The notes on a beat as (string, fret), highest string first.
+fn notes_at(
+    harness: &Harness<'static, GuitarScoreApp>,
+    measure: usize,
+    beat: usize,
+) -> Vec<(u8, u8)> {
+    let document = harness.state().document().unwrap();
+    let at = BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(measure),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(beat),
+    };
+    document.song().beat(at).map_or_else(Vec::new, |beat| {
+        beat.notes()
+            .map(|note| (note.string().unwrap().get(), note.fret().unwrap().get()))
+            .collect()
+    })
+}
+
 #[test]
 fn keys_move_the_cursor_enter_frets_and_undo() {
     let (dir, file) = scratch_copy("note_lengths.gp", "keys");
@@ -241,6 +278,7 @@ fn shift_arrows_select_beats_and_end_a_grid_selection() {
         .set_selection(Some(gscore_edit::Selection::Measures {
             anchor: MeasureIndex::new(0),
             focus: MeasureIndex::new(0),
+            track: None,
         }));
     harness.run();
 
@@ -1724,4 +1762,131 @@ fn shift_h_opens_the_history() {
     type_char(&mut harness, "H", Modifiers::SHIFT);
     harness.run();
     harness.get_by_label("Close History");
+}
+
+#[test]
+fn ctrl_c_and_ctrl_v_copy_one_note_and_a_beat_selection() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    // A note on the cursor's string, with an effect: Copy takes it without a selection.
+    put_cursor(&mut harness, 0, 0, 1);
+    type_char(&mut harness, "2", Modifiers::NONE);
+    type_char(&mut harness, "p", Modifiers::NONE);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::C);
+    harness.run();
+    press(&mut harness, Key::ArrowDown);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::V);
+    harness.run();
+    assert_eq!(harness.state().notice(), None);
+    assert_eq!(notes_at(&harness, 0, 0), vec![(6, 0), (1, 2), (2, 2)]);
+    assert!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .beat(BeatPosition {
+                track: TrackIndex::new(0),
+                measure: MeasureIndex::new(0),
+                voice: VoiceIndex::new(0),
+                beat: BeatIndex::new(0),
+            })
+            .unwrap()
+            .notes()
+            .find(|note| note.string().unwrap().get() == 2)
+            .unwrap()
+            .is_palm_muted(),
+        "the copied effect came along"
+    );
+
+    // Two beats selected in the score: Copy and Paste replace whole beats.
+    put_cursor(&mut harness, 1, 0, 1);
+    for _ in 0..2 {
+        harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
+        harness.run();
+    }
+    assert!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .editor()
+            .selection()
+            .is_some()
+    );
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::C);
+    harness.run();
+    put_cursor(&mut harness, 4, 0, 1);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::V);
+    harness.run();
+    assert_eq!(harness.state().notice(), None);
+    assert_eq!(notes_at(&harness, 1, 0), notes_at(&harness, 4, 0));
+    assert_eq!(notes_at(&harness, 1, 1), notes_at(&harness, 4, 1));
+}
+
+#[test]
+fn the_edit_menu_copies_and_pastes_a_note_and_a_beat_selection() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    put_cursor(&mut harness, 0, 0, 1);
+    type_char(&mut harness, "3", Modifiers::NONE);
+    harness.get_by_label("Edit").click();
+    harness.run();
+    harness.get_by_label_contains("Copy ctrl+c").click();
+    harness.run();
+    press(&mut harness, Key::ArrowDown);
+    harness.get_by_label("Edit").click();
+    harness.run();
+    harness.get_by_label_contains("Paste ctrl+v").click();
+    harness.run();
+    assert_eq!(notes_at(&harness, 0, 0), vec![(6, 0), (1, 3), (2, 3)]);
+
+    put_cursor(&mut harness, 1, 0, 1);
+    for _ in 0..2 {
+        harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
+        harness.run();
+    }
+    harness.get_by_label("Edit").click();
+    harness.run();
+    harness.get_by_label_contains("Copy ctrl+c").click();
+    harness.run();
+    put_cursor(&mut harness, 4, 0, 1);
+    harness.get_by_label("Edit").click();
+    harness.run();
+    harness.get_by_label_contains("Paste ctrl+v").click();
+    harness.run();
+    assert_eq!(notes_at(&harness, 1, 0), notes_at(&harness, 4, 0));
+    assert_eq!(notes_at(&harness, 1, 1), notes_at(&harness, 4, 1));
+}
+
+#[test]
+fn a_paste_that_needs_more_bars_says_so() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    let document = harness.state_mut().document_mut().unwrap();
+    document
+        .editor_mut()
+        .set_selection(Some(gscore_edit::Selection::Beats {
+            track: TrackIndex::new(0),
+            voice: VoiceIndex::new(0),
+            anchor: gscore_edit::BeatSpot {
+                measure: MeasureIndex::new(7),
+                beat: BeatIndex::new(0),
+            },
+            focus: gscore_edit::BeatSpot {
+                measure: MeasureIndex::new(8),
+                beat: BeatIndex::new(0),
+            },
+        }));
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::C);
+    harness.run();
+    let last = harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .measure_count()
+        .saturating_sub(1);
+    put_cursor(&mut harness, last, 0, 1);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::V);
+    harness.run();
+    let notice = harness.state().notice().unwrap_or_default();
+    assert!(notice.contains("insert measures first"), "{notice}");
 }

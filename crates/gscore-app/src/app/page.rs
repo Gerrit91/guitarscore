@@ -335,10 +335,9 @@ impl GuitarScoreApp {
                     beat: hit.beat,
                     string: hit.string,
                 };
-                let selected = document
-                    .editor()
-                    .selection()
-                    .is_some_and(|selection| selection_contains(selection, document.song(), target));
+                let selected = document.editor().selection().is_some_and(|selection| {
+                    selection_contains(selection, document.song(), target)
+                });
                 if !selected {
                     document.editor_mut().set_selection(None);
                     tab.selection = None;
@@ -498,7 +497,11 @@ impl GuitarScoreApp {
 fn selection_contains(selection: Selection, song: &Song, cursor: Cursor) -> bool {
     match selection {
         Selection::Beats { .. } => selection.positions(song).contains(&cursor.position()),
-        Selection::Measures { anchor, focus, track } => {
+        Selection::Measures {
+            anchor,
+            focus,
+            track,
+        } => {
             track.is_none_or(|track| track == cursor.track)
                 && (anchor.min(focus)..=anchor.max(focus)).contains(&cursor.measure)
         }
@@ -518,7 +521,9 @@ fn layout_selection_bands(
             .places_of(track)
             .map(|places| selection_bands(places, song, selection, track))
             .unwrap_or_default(),
-        Selection::Measures { track: Some(track), .. } => layout
+        Selection::Measures {
+            track: Some(track), ..
+        } => layout
             .places_of(track)
             .map(|places| selection_bands(places, song, selection, track))
             .unwrap_or_default(),
@@ -811,7 +816,10 @@ mod tests {
         assert_eq!(bands.len(), 1, "one band from the first to the last beat");
         let band = bands[0];
         assert!((band.origin.x - 19.1).abs() < 1e-4, "{band:?}");
-        assert!((band.origin.x + band.width - 120.9).abs() < 1e-4, "{band:?}");
+        assert!(
+            (band.origin.x + band.width - 120.9).abs() < 1e-4,
+            "{band:?}"
+        );
     }
 
     #[test]

@@ -4125,6 +4125,16 @@ needed for a much larger font); owner listening check.
   Tests: the repository's Jazz, Overdrive-plus-American-Clean and Steel RSE sounds map to
   Warm Jazz, Clean Single Coil and Steel Fingerpicked; drums are not mapped; an explicit
   GuitarScore tone always wins.
+- Navigation and selection (2026-11-07): empty bars are cursor stops and are covered by
+  selection bands (drawn from each bar's extent, on every shown track); navigation follows
+  written order, so repeats and alternative endings do not move the cursor; Home/End and
+  Shift+Home/End go to the track's ends (also Cmd+Left/Right on macOS); a grid drag inside
+  one row selects that track's bars, leaving the row selects all tracks, and a ruler click
+  selects all; copy, cut, delete and paste follow the selected track. Copy with only the
+  cursor on a note copies that note (fret and effects) and Paste puts it on the cursor's
+  string, leaving the beat's other notes; beat selections still paste whole beats, and a
+  paste without room reports it. Tests: `test_navigation`, `test_written_order`,
+  `test_selection`, `test_editing` and `test_app`.
 - Part B, step 6: app tests for the switcher and the picker. A tone clicked in the track
   panel belongs to that track alone and comes back in a fresh app after saving; the source
   switch keeps both the General MIDI program and the modelled tone across PM → MIDI →

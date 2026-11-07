@@ -44,7 +44,9 @@ fn empty_measure(editor: &mut TabEditor, measure: usize) {
             .unwrap_or_else(|e| panic!("emptying measure {measure}: {e}"));
     }
     assert_eq!(
-        editor.cursor().beats_in(editor.song(), MeasureIndex::new(measure)),
+        editor
+            .cursor()
+            .beats_in(editor.song(), MeasureIndex::new(measure)),
         0
     );
 }

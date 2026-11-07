@@ -8,8 +8,8 @@
 use gscore_edit::{Action, ActionId, BeatSpot, Command, Cursor, Outcome, Selection, TabEditor};
 use gscore_model::testing::{self, GUITAR_6};
 use gscore_model::{
-    BeatIndex, BeatPosition, Dynamic, MeasureIndex, StringNumber, TrackIndex, VoiceIndex,
-    differences,
+    BeatIndex, BeatPosition, Dynamic, MeasureIndex, NoteEffect, StringNumber, TrackIndex,
+    VoiceIndex, differences,
 };
 
 fn editor(measures: usize) -> TabEditor {
@@ -230,6 +230,122 @@ fn pasted_notes_keep_their_dynamic() {
         Some(Dynamic::Pp),
         "not the ff in effect there"
     );
+}
+
+#[test]
+fn copy_with_the_cursor_on_a_note_pastes_that_note_on_another_string() {
+    let mut e = editor(1);
+    let string = |string: u8| StringNumber::new(string).unwrap();
+    let set = |e: &mut TabEditor, beat: usize, string_number: u8, fret: u8| {
+        e.execute_command(Command::SetFret {
+            at: at(0, beat),
+            string: string(string_number),
+            fret: gscore_model::Fret::new(fret).unwrap(),
+        })
+        .unwrap();
+    };
+    set(&mut e, 0, 1, 2);
+    e.execute_command(Command::SetNoteEffect {
+        at: at(0, 0),
+        string: string(1),
+        effect: NoteEffect::PalmMute(true),
+    })
+    .unwrap();
+    // The target beat already has notes on both strings; the second one is a ghost note
+    // that the paste must replace.
+    set(&mut e, 1, 1, 7);
+    set(&mut e, 1, 2, 9);
+    e.execute_command(Command::SetNoteEffect {
+        at: at(0, 1),
+        string: string(2),
+        effect: NoteEffect::Ghost(true),
+    })
+    .unwrap();
+
+    // The cursor is on the note; nothing is selected.
+    assert_eq!(e.selection(), None);
+    go(&mut e, 0, 0);
+    assert_eq!(plain(&mut e, ActionId::Copy), Outcome::Nothing);
+    go(&mut e, 0, 1);
+    e.set_cursor(Cursor {
+        string: 2,
+        ..e.cursor()
+    });
+    let before = e.song().clone();
+    let depth = e.undo_depth();
+    assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
+    assert_eq!(notes_at(&e, at(0, 1)), vec![(1, 7), (2, 2)]);
+    let pasted = e
+        .song()
+        .beat(at(0, 1))
+        .unwrap()
+        .notes()
+        .find(|n| n.string().unwrap().get() == 2)
+        .unwrap();
+    assert!(pasted.is_palm_muted(), "the note effect came along");
+    assert!(!pasted.is_ghost(), "the target note's effect was replaced");
+    assert_eq!(e.undo_depth(), depth + 1, "one undo step");
+    plain(&mut e, ActionId::Undo);
+    assert!(differences(&before, e.song()).is_empty());
+}
+
+#[test]
+fn a_selection_over_a_bar_line_replaces_existing_beats_whole() {
+    let mut e = editor(2);
+    let string = StringNumber::new(1).unwrap();
+    // Two source beats, an eighth and a quarter; the second carries a palm mute.
+    go(&mut e, 0, 0);
+    e.perform(Action::Digit(3), 0).unwrap();
+    plain(&mut e, ActionId::DurationShorter);
+    go(&mut e, 0, 1);
+    e.perform(Action::Digit(5), 0).unwrap();
+    e.execute_command(Command::SetNoteEffect {
+        at: at(0, 1),
+        string,
+        effect: NoteEffect::PalmMute(true),
+    })
+    .unwrap();
+    e.set_selection(Some(Selection::Beats {
+        track: TrackIndex::new(0),
+        voice: VoiceIndex::new(0),
+        anchor: spot(0, 0),
+        focus: spot(0, 1),
+    }));
+    plain(&mut e, ActionId::Copy);
+
+    // Target: two existing beats with other notes.
+    e.set_selection(None);
+    go(&mut e, 1, 2);
+    e.perform(Action::Digit(9), 0).unwrap();
+    plain(&mut e, ActionId::CursorDownString);
+    e.perform(Action::Digit(8), 0).unwrap();
+    go(&mut e, 1, 3);
+    e.perform(Action::Digit(7), 0).unwrap();
+    let before = e.song().clone();
+    let depth = e.undo_depth();
+    go(&mut e, 1, 2);
+    assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
+    let first = e.song().beat(at(1, 2)).unwrap();
+    assert_eq!(first.note_value().unwrap().value(), 8, "the copied length");
+    assert_eq!(
+        notes_at(&e, at(1, 2)),
+        vec![(1, 3)],
+        "the old notes are gone"
+    );
+    assert_eq!(notes_at(&e, at(1, 3)), vec![(1, 5)]);
+    assert!(
+        e.song()
+            .beat(at(1, 3))
+            .unwrap()
+            .notes()
+            .next()
+            .unwrap()
+            .is_palm_muted(),
+        "the copied note effect came along"
+    );
+    assert_eq!(e.undo_depth(), depth + 1, "one undo step");
+    plain(&mut e, ActionId::Undo);
+    assert!(differences(&before, e.song()).is_empty());
 }
 
 #[test]

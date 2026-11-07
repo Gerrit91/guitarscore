@@ -50,6 +50,8 @@ pub(crate) struct MeasureClip {
 pub(crate) enum Clipboard {
     #[default]
     Empty,
+    /// One copied note: its fret and note effects, pasted at the cursor's string.
+    Note(NoteClip),
     /// Copied beats of one voice, grouped by the measure they came from, so a paste keeps
     /// the bar lines where they were.
     Beats(Vec<Vec<BeatClip>>),
@@ -58,18 +60,27 @@ pub(crate) enum Clipboard {
 }
 
 impl TabEditor {
-    /// Copies the selected beats or measures. Copying changes nothing in the song.
+    /// Copies the selected beats or measures; with nothing selected, the note under the
+    /// cursor. Copying changes nothing in the song.
     pub fn copy_selection(&mut self) -> Result<Outcome, EditError> {
-        let selection = self.selection.ok_or(EditError::NothingSelected)?;
-        let clipboard = self.clipboard_from(selection)?;
+        let clipboard = match self.selection {
+            Some(selection) => self.clipboard_from(selection)?,
+            None => self.note_at_cursor()?,
+        };
         self.clipboard = clipboard;
         Ok(Outcome::Nothing)
     }
 
-    /// Copies the selection and clears it (notes become rests; measures are removed).
+    /// Copies the selection and clears it (notes become rests; measures are removed). With
+    /// nothing selected, cuts the note under the cursor.
     pub fn cut_selection(&mut self) -> Result<Outcome, EditError> {
+        let Some(selection) = self.selection else {
+            self.copy_selection()?;
+            let at = self.cursor.position();
+            let string = StringNumber::new(self.cursor.string)?;
+            return self.execute(Command::ClearNote { at, string }, self.cursor, false);
+        };
         self.copy_selection()?;
-        let selection = self.selection.ok_or(EditError::NothingSelected)?;
         let commands = match selection {
             Selection::Beats { .. } => selection
                 .positions(self.song())
@@ -110,6 +121,50 @@ impl TabEditor {
         let clipboard = self.clipboard.clone();
         match clipboard {
             Clipboard::Empty => Err(EditError::NothingToPaste),
+            Clipboard::Note(note) => {
+                let cursor = self.cursor();
+                let at = cursor.position();
+                let string = StringNumber::new(cursor.string)?;
+                let mut commands = Vec::new();
+                if self.song().beat(at).is_none() && at.beat.get() == 0 {
+                    commands.push(Command::InsertBeat {
+                        at,
+                        duration: self.new_beat_value(),
+                    });
+                }
+                if self
+                    .song()
+                    .beat(at)
+                    .is_some_and(|beat| beat.notes().any(|n| n.string().ok() == Some(string)))
+                {
+                    commands.push(Command::ClearNote { at, string });
+                }
+                commands.push(Command::SetFret {
+                    at,
+                    string,
+                    fret: note.fret,
+                });
+                // Every effect is set, so the pasted note matches the copied one instead of
+                // inheriting the effects of the note it replaces.
+                for effect in &note.effects {
+                    commands.push(Command::SetNoteEffect {
+                        at,
+                        string,
+                        effect: effect.clone(),
+                    });
+                }
+                commands.push(Command::SetDeadNote {
+                    at,
+                    string,
+                    dead: note.dead,
+                });
+                commands.push(Command::SetTie {
+                    at,
+                    string,
+                    tie: note.tie,
+                });
+                self.execute(Command::Batch { commands }, cursor, false)
+            }
             Clipboard::Beats(groups) => {
                 let cursor = self.cursor();
                 let at = cursor.position();
@@ -172,7 +227,10 @@ impl TabEditor {
                 cursor.beat = first.beat;
             }
             Selection::Measures {
-                anchor, focus, track, ..
+                anchor,
+                focus,
+                track,
+                ..
             } => {
                 cursor.measure = anchor.min(focus);
                 cursor.beat = gscore_model::BeatIndex::new(0);
@@ -256,6 +314,24 @@ impl TabEditor {
         }
     }
 
+    /// The note under the cursor, for Copy without a selection.
+    fn note_at_cursor(&self) -> Result<Clipboard, EditError> {
+        let at = self.cursor.position();
+        let string = StringNumber::new(self.cursor.string)?;
+        let Some(beat) = self.song().beat(at) else {
+            return Err(EditError::NothingSelected);
+        };
+        let Some(note) = beat.notes().find(|note| note.string().ok() == Some(string)) else {
+            return Err(EditError::NothingSelected);
+        };
+        Ok(Clipboard::Note(NoteClip {
+            string,
+            fret: note.fret().map_err(EditError::Model)?,
+            tie: note.kind() == NoteKind::Tie,
+            dead: note.kind() == NoteKind::Dead,
+            effects: note_effects(&note),
+        }))
+    }
 }
 
 /// The copyable content of one beat; `None` for a placeholder beat (no length, dropped
