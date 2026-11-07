@@ -492,7 +492,9 @@ impl Playback {
                         }),
                 },
                 Some(kind) => {
-                    let tone = own.or(preset).unwrap_or_else(|| self.default_tone(kind));
+                    let tone = own
+                        .or(preset)
+                        .unwrap_or_else(|| self.default_tone_for(target.program, kind));
                     let dialed_in = self.tones.contains_key(&target.track)
                         || self
                             .preset_tone(target.program)

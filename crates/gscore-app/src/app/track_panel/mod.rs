@@ -511,6 +511,14 @@ fn sound(
                 )
                 .weak(),
             );
+            if let Some(rse) = &panel.rse {
+                ui.label(
+                    RichText::new(format!(
+                        "RSE: {rse} (Guitar Pro's sound; this tone is its nearest match)"
+                    ))
+                    .weak(),
+                );
+            }
         }
         gscore_play::TrackEngine::SoundFont | gscore_play::TrackEngine::MidiOut => {
             if player.engine == gscore_play::TrackEngine::MidiOut

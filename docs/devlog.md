@@ -4119,3 +4119,9 @@ needed for a much larger font); owner listening check.
   source switch and lists the same tones (saved ones first) in its compact Tone combo, so
   both views always show the same choice. Snapshots regenerated (the panel's taller Sound
   section); tone chains are capped at two blocks each so the board keeps room.
+- Part B, step 5: a GP7 file's RSE sound starts a string track on our nearest built-in tone
+  (`song_state/rse.rs`, reading only Guitar Pro's path, name and effect ids; the RSE
+  material itself is never used). The track panel shows "RSE: <name>" beside the tone.
+  Tests: the repository's Jazz, Overdrive-plus-American-Clean and Steel RSE sounds map to
+  Warm Jazz, Clean Single Coil and Steel Fingerpicked; drums are not mapped; an explicit
+  GuitarScore tone always wins.

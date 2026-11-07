@@ -378,6 +378,10 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.run();
     harness.get_by_label("Sound chain").click();
     harness.run();
+    harness.run();
+    // Forget the tone the RSE sound brought, so the chain starts empty for the editors.
+    harness.get_by_label("Built-in").click();
+    harness.run();
     harness.get_by_label("Block 2: +").click();
     harness.run();
     harness.get_by_label("Reverb").click();
@@ -713,6 +717,9 @@ fn a_broken_soundfont_is_reported_and_editing_goes_on() {
     let path = dir.join("broken.sf2");
     std::fs::write(&path, "not a soundfont").unwrap();
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    // The SoundFont must actually play the track (PM synthesis is the default for strings).
+    harness.get_by_label("MIDI synth").click();
+    harness.run();
     harness.state_mut().playback_mut().use_soundfont(path);
     harness.get_by_label("Play").click();
     assert!(

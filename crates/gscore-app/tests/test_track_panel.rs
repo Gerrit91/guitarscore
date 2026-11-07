@@ -704,7 +704,10 @@ fn a_tone_belongs_to_the_track_preset() {
     let dial = |harness: &mut Harness<'static, GuitarScoreApp>, track: usize, value: &str| {
         harness.state_mut().set_shown_track(track);
         harness.run();
-        harness.get_by_label("Sound chain").click();
+        open_sound_chain(harness);
+        // Forget the tone the song brought (Guitar Pro's RSE sound) so the knobs edit the
+        // preset's tone, which is what this test is about.
+        harness.get_by_label("Built-in").click();
         harness.run();
         // Played by the strings (if it is not yet), their box selected.
         if harness.query_by_label("Block 0: MIDI").is_some() {
@@ -837,6 +840,10 @@ fn a_songs_resolved_preset_tone_survives_with_default_settings() {
     let mut harness = open(&path);
     // Dial the pick position of the tone the first track's preset (27) plays.
     open_sound_chain(&mut harness);
+    // The file's RSE sound gave the track an own tone; Built-in removes it so the knobs
+    // edit the preset's tone, as this test checks.
+    harness.get_by_label("Built-in").click();
+    harness.run();
     if harness.query_by_label("Block 0: MIDI").is_some() {
         harness.get_by_label("Block 0: MIDI").click();
         harness.run();

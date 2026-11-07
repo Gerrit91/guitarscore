@@ -53,6 +53,8 @@ pub(super) struct SoundPanel {
     pub(super) saved: Vec<ChainPreset>,
     /// The MIDI output ports this machine has (for the external source).
     pub(super) ports: Vec<String>,
+    /// The RSE name Guitar Pro stored for the track ("Blues"), if any.
+    pub(super) rse: Option<String>,
 }
 
 impl GuitarScoreApp {
@@ -108,12 +110,17 @@ impl GuitarScoreApp {
         };
         let tone = self.track_tone(track, kind);
         let default_tone = crate::tone_library::for_program(player.program, kind).name;
+        let rse = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| super::song_state::rse_name(tab.document.song(), track));
         Some(SoundPanel {
             player,
             current: current_tone_choice(&tone, &self.settings.string_presets),
             default_tone,
             saved: self.settings.string_presets.clone(),
             ports: self.playback.ports().to_vec(),
+            rse,
         })
     }
 

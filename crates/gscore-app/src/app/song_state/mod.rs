@@ -20,6 +20,7 @@
 //! without one simply has no state. The user's own notes keep their order.
 
 mod codec;
+mod rse;
 
 use gscore_model::{Song, TrackIndex};
 use gscore_play::{StringKind, TrackEngine};
@@ -28,6 +29,17 @@ use serde::{Deserialize, Serialize};
 use crate::chain_settings::{ChainSetting, DrumPart};
 use crate::playback::{MidiOutRoute, TrackDrumPart};
 use crate::settings::{CompressorBus, PresetTone, ReverbBus};
+
+/// Gives string tracks without a tone of their own the built-in tone nearest to the RSE
+/// sound Guitar Pro stored (see [`rse`]).
+pub(crate) fn apply_rse(song: &mut Song) {
+    rse::apply_to_song(song);
+}
+
+/// The RSE name Guitar Pro stored for `track`, if it had one (for "RSE: ...").
+pub(crate) fn rse_name(song: &Song, track: usize) -> Option<String> {
+    rse::of_song(song, track).map(|mapped| mapped.name)
+}
 
 /// The old block's opening marker; the version follows, then `]` and the JSON.
 const LEGACY_OPEN: &str = "[GuitarScore ";

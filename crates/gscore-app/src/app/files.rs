@@ -420,6 +420,9 @@ impl GuitarScoreApp {
                         if let Some(state) = state.as_ref() {
                             state.apply_to_song(&mut song);
                         }
+                        // A Guitar Pro file made with an RSE preset starts on the nearest
+                        // built-in tone (an explicit GuitarScore tone above wins).
+                        super::song_state::apply_rse(&mut song);
                         let (document, problem) = match opened.journal {
                             Ok(Some(journal)) => (
                                 Document::with_journal(path, song, opened.format, journal),
