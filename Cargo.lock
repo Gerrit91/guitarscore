@@ -1727,6 +1727,7 @@ dependencies = [
 name = "gscore-app"
 version = "0.1.1"
 dependencies = [
+ "crc32fast",
  "eframe",
  "egui",
  "egui_kittest",
@@ -1740,6 +1741,7 @@ dependencies = [
  "gscore-version",
  "image",
  "js-sys",
+ "miniz_oxide 0.8.9",
  "rfd",
  "serde",
  "serde_json",

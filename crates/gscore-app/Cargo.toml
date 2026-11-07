@@ -37,6 +37,9 @@ egui = "0.37"
 serde = { version = "1.0.228", features = ["derive"] }
 # Our own state in a song's notes (the mixer sends, the tones a song plays).
 serde_json = "1.0.149"
+# Compressed state block: deflate, and a CRC-32 so damaged lines are never half-applied.
+miniz_oxide = "0.8"
+crc32fast = "1.5"
 # `Instant` that also works in a browser (`performance.now()`); on native it is the
 # standard library's.
 web-time = "1.1"

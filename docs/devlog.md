@@ -3918,3 +3918,26 @@ needed for a much larger font); owner listening check.
   responses' absolute file paths (visible in Guitar Pro's Notices, useless on another
   machine; the earlier decision was name and checksum). And a seek while playing restarts
   a MIDI-out track at once, without the audio latency hold-back that Play has.
+
+## 2026-11-07 — Part A of the song-state handoff, 1-2: the file keeps what we add
+
+- `gscore-gp`: a GP7 track's `<Sounds>` and `<AudioEngineState>` are kept verbatim (a
+  second, lightweight pass over `score.gpif`) and written back on save, so opening and
+  saving no longer loses the RSE sound its author chose. `Track::gpif_sounds` /
+  `gpif_audio_engine`; tests in `gpif/raw_tests` and `gpif_import/sounds_tests.rs`;
+  `docs/guitarpro.md` item 43.
+- `gscore-app::app::song_state`: the state block in a song's notes is now compact JSON,
+  deflated (`miniz_oxide`) and base64-encoded, split into ASCII lines of at most 200
+  characters, each `::GS1:<part>/<count>:<crc32>:<chunk>` with a CRC-32 (`crc32fast`)
+  over the whole payload. Reading is all-or-nothing: a missing, doubled or edited line, a
+  wrong checksum or a future version drops the whole block instead of half a state. The
+  base64 keeps lines under GP3-5's 255-byte notice limit and survives a code page that
+  would mangle an umlaut. The old `[GuitarScore 1]{json}[/GuitarScore]` line is still
+  read and replaced on save.
+- Tests: base64 round trip at every length, broken base64, multi-line blocks with every
+  line within limits, truncated blocks never half-applied, legacy migration, and non-ASCII
+  tone names travelling intact.
+- Still open: track state carries only the compressor send and the tone; the track's name
+  and instrument are not matched on read yet, and the state does not yet live in
+  `gscore-model` (so track insert/delete does not move it), nor are song-wide buses and
+  drum parts stored.
