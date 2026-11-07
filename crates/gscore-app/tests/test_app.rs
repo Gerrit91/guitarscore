@@ -404,6 +404,13 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.run();
     harness.get_by_label("Block 4: Comp");
     harness.snapshot("sound_chain_compressor");
+    // The 4-band EQ in the last place, with a bell lifted.
+    harness.get_by_label("Block 5: +").click();
+    harness.run();
+    harness.get_by_label("EQ").click();
+    harness.run();
+    harness.get_by_label("Block 5: EQ");
+    harness.snapshot("sound_chain_eq");
     harness.get_by_label("Block 2: Reverb").click();
     harness.run();
     harness.snapshot("sound_chain_reverb");

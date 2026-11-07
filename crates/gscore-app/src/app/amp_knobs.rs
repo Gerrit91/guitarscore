@@ -271,3 +271,86 @@ fn gain_reduction_meter(ui: &mut egui::Ui, reduction: f32) {
         "The compressor's gain reduction: how far it turns the signal down right now",
     );
 }
+
+/// The 4-band EQ's knobs: the low cut, each band's frequency and gain (the bells' width
+/// too), and the high cut. Band 1 is a low shelf and band 4 a high shelf.
+pub(super) fn eq_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
+    let mut changed = false;
+    changed |= round_knob(
+        ui,
+        &mut block.low_cut,
+        knob_ranges::LOW_CUT,
+        "Low cut",
+        " Hz",
+        30.0,
+        true,
+        "Takes away everything below this frequency: rumble, a kick's mud, a boom.",
+    )
+    .changed;
+    let default = gscore_guitar::EqKnobs::default();
+    for band in 0..gscore_guitar::BANDS {
+        let shape = gscore_guitar::BandShape::of(band);
+        let number = band.saturating_add(1);
+        let (Some(freq), Some(gain), Some(q)) = (
+            block.eq_band_freq.get_mut(band),
+            block.eq_band_gain.get_mut(band),
+            block.eq_band_q.get_mut(band),
+        ) else {
+            continue;
+        };
+        let (default_freq, default_q) = (
+            default.band_freq.get(band).copied().unwrap_or(1_000.0),
+            default.band_q.get(band).copied().unwrap_or(1.0),
+        );
+        changed |= round_knob(
+            ui,
+            freq,
+            knob_ranges::BAND_FREQ,
+            &format!("{number} Freq"),
+            " Hz",
+            default_freq,
+            true,
+            &format!("Band {number} ({}): where it acts.", shape.label()),
+        )
+        .changed;
+        changed |= round_knob(
+            ui,
+            gain,
+            knob_ranges::EQ_GAIN,
+            &format!("{number} Gain"),
+            " dB",
+            0.0,
+            false,
+            &format!(
+                "Band {number} ({}): up to make this range stand out, down to take it away.",
+                shape.label()
+            ),
+        )
+        .changed;
+        if shape == gscore_guitar::BandShape::Bell {
+            changed |= round_knob(
+                ui,
+                q,
+                knob_ranges::BAND_Q,
+                &format!("{number} Q"),
+                "",
+                default_q,
+                false,
+                &format!("Band {number}'s width: high for a narrow notch, low for a wide lift."),
+            )
+            .changed;
+        }
+    }
+    changed |= round_knob(
+        ui,
+        &mut block.high_cut,
+        knob_ranges::HIGH_CUT,
+        "High cut",
+        " Hz",
+        18_000.0,
+        true,
+        "Takes away everything above this frequency: fizz, hiss, a cymbal's harshness.",
+    )
+    .changed;
+    changed
+}

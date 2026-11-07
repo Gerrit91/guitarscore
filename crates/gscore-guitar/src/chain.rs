@@ -14,6 +14,7 @@ use crate::amp::Amp;
 use crate::compressor::Compressor;
 use crate::convolver::{Convolver, PARTITION, Spectra};
 use crate::drive::Drive;
+use crate::eq::Eq;
 use crate::filters::Biquad;
 use crate::impulse::ImpulseResponse;
 use crate::knobs::BlockSettings;
@@ -49,6 +50,8 @@ pub enum BlockKind {
     Drive,
     /// A compressor, computed (see [`crate::CompressorKnobs`]): both sides linked.
     Compressor,
+    /// The 4-band parametric EQ.
+    Eq,
 }
 
 impl BlockKind {
@@ -81,6 +84,7 @@ enum PreparedBlock {
     Amp,
     Drive,
     Compressor,
+    Eq,
 }
 
 impl ChainSpec {
@@ -109,6 +113,7 @@ impl ChainSpec {
                 BlockKind::Amp => PreparedBlock::Amp,
                 BlockKind::Drive => PreparedBlock::Drive,
                 BlockKind::Compressor => PreparedBlock::Compressor,
+                BlockKind::Eq => PreparedBlock::Eq,
             })
         });
         PreparedChain {
@@ -150,6 +155,9 @@ impl PreparedChain {
                 rate,
                 crate::CompressorKnobs::default(),
             ))),
+            Some(PreparedBlock::Eq) => Block::Eq(Box::new(
+                [(); 2].map(|()| Eq::new(rate, crate::EqKnobs::default())),
+            )),
             Some(PreparedBlock::Drive) => Block::Drive(Box::new(
                 [(); 2].map(|()| Drive::new(rate, crate::DriveKnobs::default())),
             )),
@@ -189,6 +197,8 @@ enum Block {
     Drive(Box<[Drive; 2]>),
     /// Both sides at once (linked).
     Compressor(Box<Compressor>),
+    /// Left and right, as an amp's.
+    Eq(Box<[Eq; 2]>),
 }
 
 /// The computed reverb and the cut filters on its sound, left and right.
@@ -245,6 +255,12 @@ impl Chain {
                 }
                 Block::Compressor(compressor) => {
                     compressor.set_knobs(new.compressor);
+                    (None, (0.0, 0.0))
+                }
+                Block::Eq(sides) => {
+                    for side in sides.iter_mut() {
+                        side.set_knobs(new.eq);
+                    }
                     (None, (0.0, 0.0))
                 }
                 Block::Empty => (None, (0.0, 0.0)),
@@ -306,6 +322,11 @@ impl Chain {
                     }
                 }
                 Block::Compressor(compressor) => compressor.reset(),
+                Block::Eq(sides) => {
+                    for side in sides.iter_mut() {
+                        side.reset();
+                    }
+                }
                 Block::Reverb(reverb) => {
                     reverb.reverb.clear();
                     for filter in reverb.cuts.iter_mut().flatten() {
@@ -361,6 +382,15 @@ impl Chain {
                     Block::Compressor(compressor) => {
                         let (left, right) = compressor.process(signal[0], signal[1], stereo);
                         signal = [left, right];
+                    }
+                    Block::Eq(sides) => {
+                        let [left, right] = &mut **sides;
+                        signal[0] = left.process(signal[0]);
+                        signal[1] = if stereo {
+                            right.process(signal[1])
+                        } else {
+                            signal[0]
+                        };
                     }
                     Block::Drive(sides) => {
                         let [left, right] = &mut **sides;

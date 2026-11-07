@@ -5,8 +5,8 @@
 use std::path::PathBuf;
 
 use gscore_guitar::{
-    AmpKnobs, AmpVoice, BLOCKS, BlockSettings, CompRatio, CompressorKnobs, DriveKnobs,
-    ImpulseKnobs, LENGTH_RANGE, ReverbKnobs, RoomKnobs,
+    AmpKnobs, AmpVoice, BANDS, BLOCKS, BlockSettings, CompRatio, CompressorKnobs, DriveKnobs,
+    EqKnobs, ImpulseKnobs, LENGTH_RANGE, ReverbKnobs, RoomKnobs,
 };
 use gscore_play::StringKind;
 use serde::{Deserialize, Serialize};
@@ -29,6 +29,8 @@ pub enum BlockChoice {
     Drive,
     /// The computed FET compressor (CA-76).
     Compressor,
+    /// The 4-band parametric EQ.
+    Eq,
 }
 
 impl BlockChoice {
@@ -42,6 +44,7 @@ impl BlockChoice {
             BlockChoice::Amp => "Amp",
             BlockChoice::Drive => "Drive",
             BlockChoice::Compressor => "Compressor",
+            BlockChoice::Eq => "EQ",
         }
     }
 
@@ -162,6 +165,11 @@ pub struct BlockSetting {
     pub attack_ms: f32,
     pub release_ms: f32,
     pub comp_ratio: CompRatioSetting,
+    /// An EQ's four bands: their frequencies, gains and widths (the shelves' width is
+    /// their slope). Its cuts are `low_cut` and `high_cut`.
+    pub eq_band_freq: [f32; BANDS],
+    pub eq_band_gain: [f32; BANDS],
+    pub eq_band_q: [f32; BANDS],
 }
 
 impl Default for BlockSetting {
@@ -199,6 +207,10 @@ impl BlockSetting {
             BlockChoice::Compressor => {
                 let compressor = CompressorKnobs::default();
                 (compressor.mix, compressor.output_db, 0.0, 0.0, 1.0)
+            }
+            BlockChoice::Eq => {
+                let eq = EqKnobs::default();
+                (1.0, 0.0, eq.low_cut, eq.high_cut, 1.0)
             }
             BlockChoice::Cabinet | BlockChoice::Empty => {
                 let impulse = ImpulseKnobs::default();
@@ -244,6 +256,9 @@ impl BlockSetting {
             attack_ms: CompressorKnobs::default().attack_ms,
             release_ms: CompressorKnobs::default().release_ms,
             comp_ratio: CompRatioSetting::default(),
+            eq_band_freq: EqKnobs::default().band_freq,
+            eq_band_gain: EqKnobs::default().band_gain,
+            eq_band_q: EqKnobs::default().band_q,
         }
     }
 
@@ -306,6 +321,13 @@ impl BlockSetting {
                 release_ms: self.release_ms,
                 ratio: self.comp_ratio.ratio(),
                 mix: self.mix,
+            },
+            eq: EqKnobs {
+                low_cut: self.low_cut,
+                high_cut: self.high_cut,
+                band_freq: self.eq_band_freq,
+                band_gain: self.eq_band_gain,
+                band_q: self.eq_band_q,
             },
         }
         .sanitized()

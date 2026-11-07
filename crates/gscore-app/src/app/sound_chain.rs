@@ -111,6 +111,7 @@ fn box_text(block: &BlockSetting) -> (String, String) {
         BlockChoice::Amp => block.voice.label().to_owned(),
         BlockChoice::Drive => "overdrive".to_owned(),
         BlockChoice::Compressor => format!("CA-76 · {}", block.comp_ratio.label()),
+        BlockChoice::Eq => "4 bands".to_owned(),
         BlockChoice::Cabinet | BlockChoice::Room => block
             .file
             .as_ref()
@@ -402,7 +403,7 @@ fn move_block(blocks: &mut [BlockSetting], from: usize, to: usize) -> bool {
 }
 
 /// What an empty place can hold: the block, the name its menu shows, and what it does.
-fn block_choices() -> [(BlockChoice, &'static str, &'static str); 6] {
+fn block_choices() -> [(BlockChoice, &'static str, &'static str); 7] {
     [
         (
             BlockChoice::Drive,
@@ -419,6 +420,12 @@ fn block_choices() -> [(BlockChoice, &'static str, &'static str); 6] {
             "Cabinet / body",
             "An impulse response from a WAV file: an acoustic guitar's body, or a cabinet \
              after an amp",
+        ),
+        (
+            BlockChoice::Eq,
+            "EQ",
+            "A 4-band parametric EQ: a low cut, a low shelf, two bells and a high shelf, \
+             then a high cut",
         ),
         (
             BlockChoice::Compressor,
@@ -788,6 +795,7 @@ pub(super) fn block_knobs(
             BlockChoice::Compressor => {
                 moved.changed |= super::amp_knobs::compressor_knobs(ui, block, reduction);
             }
+            BlockChoice::Eq => moved.changed |= super::amp_knobs::eq_knobs(ui, block),
             BlockChoice::Cabinet | BlockChoice::Room => {
                 // First the room itself: how long it lasts.
                 if block.choice == BlockChoice::Room {

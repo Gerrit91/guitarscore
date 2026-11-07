@@ -60,6 +60,12 @@ fn playing_strings_and_running_a_chain_never_allocate() {
     let mut chain = spec.prepare(48_000).instance(&knobs);
     let (mut left, mut right) = ([0.0_f32; 64], [0.0_f32; 64]);
 
+    // An EQ too: it retunes its bands while it runs.
+    let mut eq_spec = ChainSpec::default();
+    eq_spec.blocks[0] = Some(BlockKind::Eq);
+    let mut eq_knobs = [BlockSettings::default(); BLOCKS];
+    let mut eq = eq_spec.prepare(48_000).instance(&eq_knobs);
+
     let mut compressor_spec = ChainSpec::default();
     compressor_spec.blocks[0] = Some(BlockKind::Compressor);
     let mut compressor_knobs = [BlockSettings::default(); BLOCKS];
@@ -68,6 +74,15 @@ fn playing_strings_and_running_a_chain_never_allocate() {
 
     let region = Region::new(GLOBAL);
     for round in 0..500_usize {
+        if round % 50 == 0 {
+            eq_knobs[0].eq.band_gain = [0.0, (round % 100) as f32 / 5.0, 0.0, 0.0];
+            eq_knobs[0].eq.band_freq[2] = 500.0 + (round % 4_000) as f32;
+            eq.set_settings(&eq_knobs);
+        }
+        let (mut left, mut right) = ([0.0_f32; 64], [0.0_f32; 64]);
+        left.copy_from_slice(&loud);
+        right.copy_from_slice(&loud);
+        eq.process_stereo(&mut left, &mut right);
         if round % 50 == 0 {
             compressor_knobs[0].compressor.input_db = (round % 200) as f32 / 10.0;
             compressor_knobs[0].compressor.ratio =

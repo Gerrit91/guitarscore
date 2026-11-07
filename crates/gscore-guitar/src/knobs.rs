@@ -103,6 +103,7 @@ pub struct BlockSettings {
     pub amp: AmpKnobs,
     pub drive: DriveKnobs,
     pub compressor: CompressorKnobs,
+    pub eq: crate::EqKnobs,
 }
 
 /// The knob ranges, for user interfaces and for sanitizing: `(lowest, highest)`.
@@ -131,6 +132,12 @@ pub mod knob_ranges {
     pub const RELEASE: (f32, f32) = (50.0, 1_100.0);
     /// An amp's or a drive's output level, dB.
     pub const LEVEL: (f32, f32) = (-24.0, 12.0);
+    /// An EQ band's gain, dB.
+    pub const EQ_GAIN: (f32, f32) = (-18.0, 18.0);
+    /// An EQ band's frequency, Hz.
+    pub const BAND_FREQ: (f32, f32) = (20.0, 20_000.0);
+    /// A bell's width.
+    pub const BAND_Q: (f32, f32) = (0.3, 6.0);
 }
 
 fn fit(value: f32, (low, high): (f32, f32), fallback: f32) -> f32 {
@@ -211,6 +218,7 @@ impl BlockSettings {
                 ratio: self.compressor.ratio,
                 mix: fit(self.compressor.mix, knob_ranges::MIX, c.mix),
             },
+            eq: self.eq.sanitized(),
         }
     }
 }

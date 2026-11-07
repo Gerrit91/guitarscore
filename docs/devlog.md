@@ -3768,3 +3768,20 @@ needed for a much larger font); owner listening check.
 - Tests: the block round trips (and a foreign, broken, future-version or truncated block
   loses nothing), the app's steps: a comp send and a tone dialed in, saved, and a fresh app
   with default settings hears both from the file, with the block hidden from the notes.
+
+## 2026-11-07 — A 4-band parametric EQ block
+
+- `gscore-guitar::eq`: low cut, four bands (a low shelf, two bells, a high shelf) and a
+  high cut; each band has frequency and gain, the bells a width (`q`), the shelves the
+  gentle fixed slope of `Biquad::shelf`. Per side, knobs fitted into their ranges
+  (`knob_ranges::{EQ_GAIN, BAND_FREQ, BAND_Q}`), denormals flushed by the filters.
+  `BlockKind::Eq`, `BlockSettings::eq`.
+- The window's block: "EQ" on the board, "4 bands" under it, twelve round knobs (Low cut,
+  each band's Freq and Gain, the bells' Q, High cut) in two rows; `eq_knobs` in
+  `app/amp_knobs.rs`. Snapshots `sound_chain_eq`.
+- Tests: every band lifts and cuts at its own frequency (the shelves measured inside their
+  corner), a bell's width decides how far it reaches, the cuts and shelves measure as
+  asked, a flat EQ is flat, a broken settings file is fitted and never makes NaN, and the
+  no-allocation test runs an EQ while its bands are retuned.
+- Owner asked for a 4-band parametric EQ while the drums handoff was under way; it is the
+  block the drum part tones are built from.
