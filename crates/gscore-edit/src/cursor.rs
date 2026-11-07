@@ -127,10 +127,8 @@ impl Cursor {
                     return false;
                 };
                 measure = MeasureIndex::new(previous_measure);
-                let Some(last) = self.beats_in(song, measure).checked_sub(1) else {
-                    continue;
-                };
-                beat = last;
+                // An empty measure is a stop: its beat 0 is where a note would go.
+                beat = self.beats_in(song, measure).saturating_sub(1);
             }
             if !self.is_grace(song, measure, beat) {
                 self.measure = measure;
@@ -153,11 +151,9 @@ impl Cursor {
                 if next >= song.measure_count() {
                     return false;
                 }
+                // An empty measure is a stop too: its beat 0 is where a note would go.
                 measure = MeasureIndex::new(next);
                 beat = 0;
-                if self.beats_in(song, measure) == 0 {
-                    continue;
-                }
             }
             if !self.is_grace(song, measure, beat) {
                 self.measure = measure;
