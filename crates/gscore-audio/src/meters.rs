@@ -12,6 +12,8 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use rustysynth::PARTS;
+
 use crate::chains::MAX_TONES;
 
 /// How long the bar holds a peak, in seconds, before it falls.
@@ -72,8 +74,11 @@ impl Meter {
 pub struct Meters {
     /// By the song's track index (tracks past [`MAX_TONES`] have none).
     tracks: Vec<Meter>,
+    /// A drum track's parts, by the track's index and then the part's.
+    parts: Vec<Meter>,
     reverb: Meter,
     compressor: Meter,
+    chorus: Meter,
     master: Meter,
     /// The gain reduction of each track's compressors and of the compressor bus, in dB
     /// (0 or below; `f32` bits).
@@ -85,8 +90,12 @@ impl Default for Meters {
     fn default() -> Self {
         Meters {
             tracks: (0..MAX_TONES).map(|_| Meter::default()).collect(),
+            parts: (0..MAX_TONES.saturating_mul(PARTS))
+                .map(|_| Meter::default())
+                .collect(),
             reverb: Meter::default(),
             compressor: Meter::default(),
+            chorus: Meter::default(),
             master: Meter::default(),
             reductions: (0..MAX_TONES).map(|_| AtomicU32::new(0)).collect(),
             bus_reduction: AtomicU32::new(0),
@@ -101,6 +110,16 @@ impl Meters {
         self.tracks.get(track).map_or(Level::default(), Meter::get)
     }
 
+    /// The level of `part` of the song's drum track `track`, after its chain, level and
+    /// mute. Silent for a track that does not play or a part that does not use the meter.
+    pub fn part(&self, track: usize, part: usize) -> Level {
+        track
+            .checked_mul(PARTS)
+            .and_then(|index| index.checked_add(part))
+            .and_then(|index| self.parts.get(index))
+            .map_or(Level::default(), Meter::get)
+    }
+
     /// The level of the reverb bus after its fader.
     pub fn reverb(&self) -> Level {
         self.reverb.get()
@@ -109,6 +128,11 @@ impl Meters {
     /// The level of the compressor bus after its fader.
     pub fn compressor(&self) -> Level {
         self.compressor.get()
+    }
+
+    /// The level of the chorus bus after its fader.
+    pub fn chorus(&self) -> Level {
+        self.chorus.get()
     }
 
     /// The level of the whole mix (before it is clipped to full scale).
@@ -137,7 +161,9 @@ impl Meters {
         shows(&self.master)
             || shows(&self.reverb)
             || shows(&self.compressor)
+            || shows(&self.chorus)
             || self.tracks.iter().any(shows)
+            || self.parts.iter().any(shows)
             || reducing(&self.bus_reduction)
             || self.reductions.iter().any(reducing)
     }
@@ -248,8 +274,11 @@ impl Needle {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Which {
     Track(usize),
+    /// One part of a drum track.
+    Part(usize, usize),
     Reverb,
     Compressor,
+    Chorus,
     Master,
 }
 
@@ -258,8 +287,13 @@ impl Meters {
     pub(crate) fn publish(&self, which: Which, peak: Peak) {
         let meter = match which {
             Which::Track(track) => self.tracks.get(track),
+            Which::Part(track, part) => track
+                .checked_mul(PARTS)
+                .and_then(|index| index.checked_add(part))
+                .and_then(|index| self.parts.get(index)),
             Which::Reverb => Some(&self.reverb),
             Which::Compressor => Some(&self.compressor),
+            Which::Chorus => Some(&self.chorus),
             Which::Master => Some(&self.master),
         };
         if let Some(meter) = meter {

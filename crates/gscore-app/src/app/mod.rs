@@ -11,6 +11,7 @@ mod amp_knobs;
 mod bars;
 mod beat_text_editor;
 mod chord_editor;
+mod chorus_bus_window;
 mod circle_of_fifths;
 mod compressor_bus_window;
 mod edit_dynamics;
@@ -28,6 +29,7 @@ mod history;
 mod icons;
 mod instrument;
 mod lyrics_editor;
+mod master_chain_window;
 mod metronome;
 mod new_song;
 mod new_track;
@@ -142,6 +144,10 @@ pub struct GuitarScoreApp {
     reverb_bus_window: Option<reverb_bus_window::ReverbBusWindow>,
     /// The mixer's compressor bus window, while it is open.
     compressor_bus_window: Option<compressor_bus_window::CompressorBusWindow>,
+    /// The mixer's chorus bus window, while it is open.
+    chorus_bus_window: Option<chorus_bus_window::ChorusBusWindow>,
+    /// The master's sound chain window, while it is open.
+    master_chain_window: Option<master_chain_window::MasterChainWindow>,
     /// What the app remembers between runs.
     settings: Settings,
     /// Where the settings are stored (`None` keeps them only in memory; a browser keeps
@@ -283,6 +289,8 @@ impl GuitarScoreApp {
             sound_chain: None,
             reverb_bus_window: None,
             compressor_bus_window: None,
+            chorus_bus_window: None,
+            master_chain_window: None,
             settings,
             settings_path,
             panel_sizes,
@@ -311,6 +319,10 @@ impl GuitarScoreApp {
             .store_reverb_bus(app.settings.reverb_bus.clone());
         app.playback
             .store_compressor_bus(app.settings.compressor_bus.clone());
+        app.playback
+            .store_chorus_bus(app.settings.chorus_bus.clone());
+        app.playback
+            .store_master_chain(app.settings.master_chain.clone());
         app.playback.set_count_in_bars(app.settings.count_in_bars);
         app.playback.set_count_in_loops(app.settings.count_in_loops);
         let _ = app.playback.set_speed(app.settings.playback_speed);
@@ -879,6 +891,8 @@ impl eframe::App for GuitarScoreApp {
         self.show_sound_chain(&ctx);
         self.show_reverb_bus_window(&ctx);
         self.show_compressor_bus_window(&ctx);
+        self.show_chorus_bus_window(&ctx);
+        self.show_master_chain_window(&ctx);
         self.show_settings_window(&ctx);
         self.show_shortcuts(&ctx);
         self.show_history(&ctx);

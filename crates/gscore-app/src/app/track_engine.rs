@@ -418,9 +418,9 @@ impl GuitarScoreApp {
             .map(|tab| (tab.id, tab.document.editor().revision()))
     }
 
-    /// The chain and mixing level `part` of `track` plays: the song's own, else this
-    /// machine's kit setting (or the built-in tone) at unity.
-    pub(super) fn track_drum_part(&self, track: usize, part: DrumPart) -> (ChainSetting, u8) {
+    /// The chain, mixing level, mute and solo `part` of `track` plays: the song's own,
+    /// else this machine's kit setting (or the built-in tone) at unity.
+    pub(super) fn track_drum_part(&self, track: usize, part: DrumPart) -> TrackDrumPart {
         let own = self.open_track_sound(track).and_then(|sound| {
             sound
                 .drum_parts
@@ -428,33 +428,46 @@ impl GuitarScoreApp {
                 .find(|own| own.part() == Some(part))
         });
         match own {
-            Some(own) => (own.chain, own.level.min(127)),
-            None => (self.playback.kit_drum_part_chain(part), 127),
+            Some(own) => own.track_part().unwrap_or(TrackDrumPart {
+                part,
+                chain: self.playback.kit_drum_part_chain(part),
+                level: 127,
+                muted: false,
+                soloed: false,
+            }),
+            None => TrackDrumPart {
+                part,
+                chain: self.playback.kit_drum_part_chain(part),
+                level: 127,
+                muted: false,
+                soloed: false,
+            },
         }
     }
 
-    /// Gives `part` of `track` a tone of the song's own (a chain and a level), or `None`
-    /// to follow this machine's kit again. An edit, with undo, heard at once.
+    /// Gives `part` of `track` settings of the song's own (a chain, level, mute and solo),
+    /// or `None` to follow this machine's kit again. An edit, with undo, heard at once.
     pub(super) fn set_track_drum_part(
         &mut self,
         track: usize,
         part: DrumPart,
-        own: Option<(ChainSetting, u8)>,
+        own: Option<TrackDrumPart>,
+        merge: bool,
     ) {
         let Some(mut sound) = self.open_track_sound(track) else {
             return;
         };
         sound.drum_parts.retain(|entry| entry.part() != Some(part));
-        if let Some((chain, level)) = own {
-            sound
-                .drum_parts
-                .push(DrumPartSound::of(part, &chain, level));
+        if let Some(own) = own {
+            sound.drum_parts.push(DrumPartSound::of(
+                part, &own.chain, own.level, own.muted, own.soloed,
+            ));
         }
         // The kit's order, so the payload does not depend on the order parts were edited.
         sound
             .drum_parts
             .sort_by_key(|entry| entry.part().map_or(usize::MAX, DrumPart::index));
-        self.set_track_sound(track, sound, true);
+        self.set_track_sound(track, sound, merge);
     }
 
     /// Hands the drum parts the open document gives its tracks to playback.
@@ -494,7 +507,20 @@ impl GuitarScoreApp {
             compressor: own
                 .compressor
                 .or_else(|| Some(self.settings.compressor_bus.clone())),
+            chorus: own
+                .chorus
+                .or_else(|| Some(self.settings.chorus_bus.clone())),
+            master: own
+                .master
+                .or_else(|| Some(self.settings.master_chain.clone())),
         }
+    }
+
+    /// The chain on the master: the song's own, else this machine's (empty by default).
+    pub(super) fn song_master_chain(&self) -> ChainSetting {
+        self.song_buses()
+            .master
+            .unwrap_or_else(|| self.settings.master_chain.clone())
     }
 
     /// Gives the open song its own reverb bus (an edit, with undo), heard at once.
@@ -535,9 +561,47 @@ impl GuitarScoreApp {
         );
     }
 
-    /// Hands the open document's buses to playback, so a song's own reverb and compressor
-    /// are heard (a song without them follows the settings). The player is sent a bus only
-    /// when it differs from the one it runs.
+    /// Gives the open song its own chorus bus (an edit, with undo), heard at once.
+    pub(super) fn set_song_chorus_bus(&mut self, bus: crate::settings::ChorusBus) {
+        let Some(mut buses) = self
+            .tabs
+            .get(self.active)
+            .map(|tab| tab.sound().buses.clone())
+        else {
+            return;
+        };
+        buses.chorus = Some(bus);
+        let merge = self.sound_merge(true);
+        self.apply_command(
+            Command::SetSongSound {
+                state: buses.json(),
+            },
+            merge,
+        );
+    }
+
+    /// Gives the open song its own master chain (an edit, with undo), heard at once.
+    pub(super) fn set_song_master_chain(&mut self, chain: ChainSetting) {
+        let Some(mut buses) = self
+            .tabs
+            .get(self.active)
+            .map(|tab| tab.sound().buses.clone())
+        else {
+            return;
+        };
+        buses.master = Some(chain);
+        let merge = self.sound_merge(true);
+        self.apply_command(
+            Command::SetSongSound {
+                state: buses.json(),
+            },
+            merge,
+        );
+    }
+
+    /// Hands the open document's buses and master chain to playback, so a song's own
+    /// reverb, compressor and chorus are heard (a song without them follows the
+    /// settings). The player is sent a bus only when it differs from the one it runs.
     pub(super) fn sync_song_buses(&mut self) {
         let buses = self.song_buses();
         let reverb = buses.reverb.unwrap_or_default();
@@ -547,6 +611,14 @@ impl GuitarScoreApp {
         let compressor = buses.compressor.unwrap_or_default();
         if self.playback.compressor_bus() != compressor {
             self.playback.set_compressor_bus(compressor);
+        }
+        let chorus = buses.chorus.unwrap_or_default();
+        if self.playback.chorus_bus() != chorus {
+            self.playback.set_chorus_bus(chorus);
+        }
+        let master = buses.master.unwrap_or_default();
+        if self.playback.master_chain() != master {
+            self.playback.set_master_chain(master);
         }
     }
 }

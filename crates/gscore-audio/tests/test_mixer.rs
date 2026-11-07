@@ -485,6 +485,143 @@ fn a_drum_tracks_parts_have_their_own_levels() {
 }
 
 #[test]
+fn a_tracks_chorus_value_reaches_the_chorus_bus() {
+    // The track's Chorus knob (MIDI CC 93) is a send into the shared chorus, after its
+    // fader: the bus runs all wet and only the chorused signal comes back.
+    let source = song(1);
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Chorus);
+    let mut settings = [BlockSettings::default(); BLOCKS];
+    settings[0].chorus = gscore_guitar::ChorusKnobs {
+        rate_hz: 1.0,
+        depth_ms: 4.0,
+        mix: 1.0,
+    };
+    let run = |send: u8, level: u8, muted: bool| {
+        let mut song = source.clone();
+        let _ = song.set_track_chorus(TrackIndex::new(0), send).unwrap();
+        let sequence = Sequence::new(&song, None).unwrap();
+        let mut engine = engine(&sequence);
+        engine.set_chorus_bus(Some(Box::new(spec.prepare(RATE).instance(&settings))));
+        engine.set_chorus_bus_settings(settings, level, muted);
+        let (left, _) = render(&mut engine, 1.0);
+        (engine.meters().chorus().left, left)
+    };
+    let (meter, wet) = run(127, 127, false);
+    assert!(meter > 0.0, "the bus's meter moves: {meter}");
+    let (dry_meter, dry) = run(0, 127, false);
+    assert_eq!(dry_meter, 0.0, "no send, no chorus");
+    assert!(
+        rms(steady(&wet)) > 0.0 && (rms(steady(&wet)) - rms(steady(&dry))).abs() > 1e-4,
+        "the bus is heard under the dry track"
+    );
+    // Its fader and mute silence what comes back.
+    assert_eq!(run(127, 0, false).0, 0.0);
+    assert_eq!(run(127, 127, true).0, 0.0);
+}
+
+#[test]
+fn the_master_chain_processes_the_sum_but_not_the_click() {
+    // A master chain after the tracks and buses: an amp turned right down takes the whole
+    // mix with it. The metronome's click is added after it, so practising stays audible.
+    let source = song(1);
+    let sequence = Sequence::new(&source, None).unwrap();
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Amp);
+    let mut settings = [BlockSettings::default(); BLOCKS];
+    settings[0].amp.voice = gscore_guitar::AmpVoice::Clean;
+    settings[0].amp.gain = 0.0;
+    settings[0].amp.level_db = -30.0;
+    let (dry, quiet) = {
+        let mut dry = engine(&sequence);
+        let (dry_left, _) = render(&mut dry, 1.0);
+        let mut quiet = engine(&sequence);
+        let _ = quiet.set_master_chain(
+            Some(Box::new(spec.prepare(RATE).instance(&settings))),
+            settings,
+        );
+        let (quiet_left, _) = render(&mut quiet, 1.0);
+        (rms(steady(&dry_left)), rms(steady(&quiet_left)))
+    };
+    assert!(quiet < 0.5 * dry, "{quiet} against {dry}");
+
+    // A click on the metronome's percussion keys: it sounds the same with the master chain
+    // as without it.
+    let click = |chained: bool| {
+        let mut song = source.clone();
+        let _ = song.set_track_mute(TrackIndex::new(0), true).unwrap();
+        let sequence = Sequence::new(&song, None).unwrap();
+        let mut engine = engine(&sequence);
+        if chained {
+            let _ = engine.set_master_chain(
+                Some(Box::new(spec.prepare(RATE).instance(&settings))),
+                settings,
+            );
+        }
+        engine.send_event(MidiEvent::NoteOn {
+            channel: Channel::PERCUSSION,
+            key: 34,
+            velocity: 120,
+        });
+        let (left, _) = render(&mut engine, 0.4);
+        rms(&left)
+    };
+    let (plain, chained) = (click(false), click(true));
+    assert!(plain > 0.001, "the click plays: {plain}");
+    assert!(
+        (plain - chained).abs() < 1e-6,
+        "the master chain does not touch the click: {chained} against {plain}"
+    );
+}
+
+#[test]
+fn a_drum_tracks_parts_have_mutes_and_solos() {
+    // A part's mute and solo work inside the kit: muting the kick leaves the snare, and a
+    // soloed part silences the others.
+    let mut song = testing::song_with_notes_on_tracks(1, &[]).expect("a silent song");
+    let _ = song
+        .set_track_drums(TrackIndex::new(0), true)
+        .expect("a drum track");
+    let sequence = Sequence::new(&song, None).unwrap();
+    let channel = sequence.tracks[0].channel;
+    let play = |key: u8, mute_kick: bool, solo_snare: bool| {
+        let bytes = gscore_audio::testing::sine_drum_soundfont("Test Drums");
+        let bank = SoundBank::read(&mut bytes.as_slice()).unwrap();
+        let mut engine = SynthEngine::new(&bank, RATE).unwrap();
+        engine.load(Arc::new(sequence.clone()));
+        engine.play();
+        engine.set_part_mute(0, 0, mute_kick);
+        engine.set_part_solo(0, 1, solo_snare);
+        engine.send_event(MidiEvent::NoteOn {
+            channel,
+            key,
+            velocity: 100,
+        });
+        let (left, _) = render(&mut engine, 1.0);
+        (
+            rms(steady(&left)),
+            engine.meters().part(0, 0).left,
+            engine.meters().part(0, 1).left,
+        )
+    };
+    let (kick, kick_meter, _) = play(36, false, false);
+    let (snare, _, snare_meter) = play(38, false, false);
+    assert!(kick > 0.001 && kick_meter > 0.0, "the kick's meter moves");
+    assert!(
+        snare > 0.001 && snare_meter > 0.0,
+        "the snare's meter moves"
+    );
+    // The muted kick is silent and its meter rests; the snare is unchanged.
+    let (muted_kick, muted_meter, _) = play(36, true, false);
+    assert_eq!(muted_kick, 0.0);
+    assert_eq!(muted_meter, 0.0);
+    assert!((play(38, true, false).0 - snare).abs() < 1e-6);
+    // A soloed snare: the kick is silent, the snare plays.
+    assert_eq!(play(36, false, true).0, 0.0);
+    assert!((play(38, false, true).0 - snare).abs() < 1e-6);
+}
+
+#[test]
 fn a_drum_tracks_part_chains_follow_it_when_a_track_before_it_is_muted() {
     use gscore_guitar::CompressorKnobs;
 

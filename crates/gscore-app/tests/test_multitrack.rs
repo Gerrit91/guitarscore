@@ -201,13 +201,61 @@ fn the_mixer_shows_what_plays_and_what_does_not() {
     harness.snapshot("grid_mute_solo");
 }
 
+#[test]
+fn every_mixer_strip_opens_its_sound_chain_from_the_stomp_box() {
+    // A track's stomp box opens the Sound chain window.
+    let mut harness = app_with_mixer_view();
+    harness.get_by_label("Sound chain for Clean Guitar").click();
+    harness.run();
+    harness.snapshot("mixer_stomp_track");
+}
+
+#[test]
+fn a_bus_strip_opens_its_window_from_the_stomp_box() {
+    // The reverb bus's strip opens the bus window (what it runs and its knobs).
+    let mut harness = app_with_mixer_view();
+    harness
+        .get_by_label("Sound chain for the reverb bus")
+        .click();
+    harness.run();
+    harness.snapshot("mixer_stomp_reverb_bus");
+}
+
+#[test]
+fn the_master_strip_opens_its_sound_chain() {
+    let mut harness = app_with_mixer_view_at(1900.0);
+    harness.get_by_label("Sound chain for the master").click();
+    harness.run();
+    harness.snapshot("mixer_stomp_master");
+}
+
+#[test]
+fn a_drum_tracks_parts_open_and_close_beside_its_strip() {
+    let mut harness = app_with_mixer_view_at(1900.0);
+    // The arrow opens the kit's parts as narrower strips right beside the drum track.
+    harness.get_by_label("Show the drum parts").click();
+    harness.run();
+    harness.snapshot("mixer_drum_parts");
+    assert!(harness.query_by_label("Kick level").is_some());
+    assert!(harness.query_by_label("Mute Kick").is_some());
+    // The same arrow closes them again.
+    harness.get_by_label("Hide the drum parts").click();
+    harness.run();
+    assert!(harness.query_by_label("Kick level").is_none());
+}
+
 /// The app showing [multi_staff.gp](../../../testdata/basic/multi_staff.gp) in the mixer
 /// view, at the snapshot size.
 fn app_with_mixer_view() -> Harness<'static, GuitarScoreApp> {
+    app_with_mixer_view_at(1400.0)
+}
+
+/// The same, wide enough to reach the drum track and the master strip.
+fn app_with_mixer_view_at(width: f32) -> Harness<'static, GuitarScoreApp> {
     let file =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/basic/multi_staff.gp");
     let mut harness = Harness::builder()
-        .with_size(egui::vec2(1400.0, 900.0))
+        .with_size(egui::vec2(width, 900.0))
         .wgpu()
         .build_eframe(|cc| GuitarScoreApp::new(&cc.egui_ctx, Some(file)));
     let started = Instant::now();

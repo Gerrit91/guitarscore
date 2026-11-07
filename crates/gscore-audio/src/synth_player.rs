@@ -95,6 +95,8 @@ struct ChainRequest {
     track: usize,
     /// `None`: the track's own chain; `Some(part)`: one of its drum parts.
     part: Option<usize>,
+    /// The master's chain (after the tracks and buses).
+    master: bool,
     spec: ChainSpec,
     settings: [BlockSettings; BLOCKS],
 }
@@ -285,10 +287,41 @@ impl SynthPlayer {
             .try_send(ChainRequest {
                 track,
                 part: None,
+                master: false,
                 spec,
                 settings,
             })
             .map_err(|_| PlayError::Device("the synthesizer is not keeping up".to_owned()))
+    }
+
+    /// Gives the master the chain `spec` with `settings`, prepared on the synth's own
+    /// thread, then heard. It runs after the tracks and buses, before the metronome's
+    /// click. An empty chain removes it.
+    pub fn set_master_chain(
+        &self,
+        spec: ChainSpec,
+        settings: [BlockSettings; BLOCKS],
+    ) -> Result<(), PlayError> {
+        if let Some(error) = self.error() {
+            return Err(PlayError::Device(error));
+        }
+        self.chains
+            .try_send(ChainRequest {
+                track: 0,
+                part: None,
+                master: true,
+                spec,
+                settings,
+            })
+            .map_err(|_| PlayError::Device("the synthesizer is not keeping up".to_owned()))
+    }
+
+    /// New knob values for the master's chain, heard at once.
+    pub fn set_master_chain_settings(
+        &self,
+        settings: [BlockSettings; BLOCKS],
+    ) -> Result<(), PlayError> {
+        self.send(Command::MasterChainSettings(settings))
     }
 
     /// Gives `part` of the song's drum track `track` the chain `spec` with `settings`,
@@ -307,6 +340,7 @@ impl SynthPlayer {
             .try_send(ChainRequest {
                 track,
                 part: Some(part),
+                master: false,
                 spec,
                 settings,
             })
@@ -327,6 +361,16 @@ impl SynthPlayer {
     /// heard at once.
     pub fn set_part_level(&self, track: usize, part: usize, level: u8) -> Result<(), PlayError> {
         self.send(Command::PartLevel(track, part, level))
+    }
+
+    /// Mutes or unmutes `part` of the song's drum track `track`, heard at once.
+    pub fn set_part_mute(&self, track: usize, part: usize, muted: bool) -> Result<(), PlayError> {
+        self.send(Command::PartMute(track, part, muted))
+    }
+
+    /// Soloes or un-soloes `part` of the song's drum track `track`, heard at once.
+    pub fn set_part_solo(&self, track: usize, part: usize, soloed: bool) -> Result<(), PlayError> {
+        self.send(Command::PartSolo(track, part, soloed))
     }
 
     /// New knob values for the effect chain of `track`, heard at once.
@@ -495,10 +539,17 @@ fn run(
         match house.chains.recv_timeout(HOUSEKEEPING) {
             Ok(request) => {
                 let chain = prepare_chain(&request.spec, &request.settings, rate);
-                let command = match request.part {
-                    None => Command::Chain(request.track, chain, Box::new(request.settings)),
-                    Some(part) => {
-                        Command::PartChain(request.track, part, chain, Box::new(request.settings))
+                let command = if request.master {
+                    Command::MasterChain(chain, Box::new(request.settings))
+                } else {
+                    match request.part {
+                        None => Command::Chain(request.track, chain, Box::new(request.settings)),
+                        Some(part) => Command::PartChain(
+                            request.track,
+                            part,
+                            chain,
+                            Box::new(request.settings),
+                        ),
                     }
                 };
                 // Waits for room in the queue: this thread may.

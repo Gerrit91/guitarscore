@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::chain_settings::{ChainSetting, DrumPart};
 use crate::playback::{MidiOutRoute, TrackDrumPart};
-use crate::settings::{CompressorBus, PresetTone, ReverbBus};
+use crate::settings::{ChorusBus, CompressorBus, PresetTone, ReverbBus};
 
 /// Gives string tracks without a tone of their own the built-in tone nearest to the RSE
 /// sound Guitar Pro stored (see [`rse`]).
@@ -69,6 +69,11 @@ pub(crate) struct Buses {
     pub reverb: Option<ReverbBus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compressor: Option<CompressorBus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chorus: Option<ChorusBus>,
+    /// The master's effect chain (after the tracks and buses), when the song has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub master: Option<ChainSetting>,
 }
 
 impl Buses {
@@ -86,6 +91,7 @@ impl Buses {
     fn sanitized(mut self) -> Self {
         self.reverb = self.reverb.map(ReverbBus::sanitized);
         self.compressor = self.compressor.map(CompressorBus::sanitized);
+        self.chorus = self.chorus.map(ChorusBus::sanitized);
         self
     }
 
@@ -156,6 +162,17 @@ pub(crate) struct DrumPartSound {
     /// Its mixing level (0-127, 127 unity).
     #[serde(default = "unity_level", skip_serializing_if = "is_unity")]
     pub level: u8,
+    /// Whether the part is muted inside the kit.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub muted: bool,
+    /// Whether the part is soloed inside the kit.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub soloed: bool,
+}
+
+/// `true` for `false`, so a default flag is not written.
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// The level of a part the song's payload leaves out.
@@ -169,12 +186,20 @@ fn is_unity(level: &u8) -> bool {
 }
 
 impl DrumPartSound {
-    /// The state of `part` with `chain` at `level`.
-    pub(crate) fn of(part: DrumPart, chain: &ChainSetting, level: u8) -> Self {
+    /// The state of `part` with `chain` at `level`, muted or soloed inside the kit.
+    pub(crate) fn of(
+        part: DrumPart,
+        chain: &ChainSetting,
+        level: u8,
+        muted: bool,
+        soloed: bool,
+    ) -> Self {
         DrumPartSound {
             part: part.id().to_owned(),
             chain: chain.clone(),
             level: level.min(127),
+            muted,
+            soloed,
         }
     }
 
@@ -189,6 +214,8 @@ impl DrumPartSound {
             part: self.part()?,
             chain: self.chain.clone(),
             level: self.level.min(127),
+            muted: self.muted,
+            soloed: self.soloed,
         })
     }
 }
@@ -632,9 +659,13 @@ mod tests {
             ..CompressorBus::default()
         }
         .sanitized();
+        let mut master = ChainSetting::default();
+        master.blocks[0] = BlockSetting::of(BlockChoice::Eq);
         let buses = Buses {
             reverb: Some(reverb.clone()),
             compressor: Some(compressor.clone()),
+            chorus: Some(ChorusBus::default()),
+            master: Some(master),
         };
         let state = SongState::new(Vec::new(), buses.clone()).expect("the buses are kept");
         let notes = encode([], Some(&state));
@@ -648,6 +679,8 @@ mod tests {
         let only = Buses {
             reverb: Some(reverb),
             compressor: None,
+            chorus: None,
+            master: None,
         };
         let state = SongState::new(Vec::new(), only.clone()).expect("the reverb is kept");
         assert_eq!(state.buses, only);
@@ -666,15 +699,18 @@ mod tests {
     fn a_tracks_drum_parts_travel_in_the_block() {
         let mut chain = default_drum_part_chain(DrumPart::Kick);
         if let Some(block) = chain.blocks.first_mut() {
+            *block = BlockSetting::of(BlockChoice::Eq);
             block.low_cut = 45.0;
         }
         let sound = TrackSound {
             drum_parts: vec![
-                DrumPartSound::of(DrumPart::Kick, &chain, 96),
+                DrumPartSound::of(DrumPart::Kick, &chain, 96, false, false),
                 DrumPartSound::of(
                     DrumPart::Snare,
                     &default_drum_part_chain(DrumPart::Snare),
                     127,
+                    true,
+                    false,
                 ),
             ],
             ..TrackSound::default()

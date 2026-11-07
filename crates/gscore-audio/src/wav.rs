@@ -80,6 +80,11 @@ pub struct BusChoices {
     /// The compressor bus (usually a compressor driven hard, blended in under the dry
     /// tracks); each track's Comp send feeds it.
     pub compressor: Option<BusChoice>,
+    /// The chorus bus: the tracks' Chorus values are its sends (they come with the
+    /// sequence, so no list of sends is needed).
+    pub chorus: Option<BusChoice>,
+    /// The master's chain, after the tracks and buses.
+    pub master: Option<BusChoice>,
     /// Each track's Comp send (its song index, 0-127).
     pub comp_sends: Vec<(usize, u8)>,
 }
@@ -127,6 +132,7 @@ pub fn write_wav_with(
     for (bus, choice) in [
         (crate::Bus::Reverb, &buses.reverb),
         (crate::Bus::Compressor, &buses.compressor),
+        (crate::Bus::Chorus, &buses.chorus),
     ] {
         let Some(choice) = choice else {
             continue;
@@ -137,6 +143,12 @@ pub fn write_wav_with(
         let chain = choice.spec.prepare(sample_rate).instance(&choice.settings);
         engine.set_bus(bus, Some(Box::new(chain)));
         engine.set_bus_settings(bus, choice.settings, choice.level, choice.muted);
+    }
+    if let Some(choice) = &buses.master
+        && !chain_is_empty(&choice.spec)
+    {
+        let chain = choice.spec.prepare(sample_rate).instance(&choice.settings);
+        let _ = engine.set_master_chain(Some(Box::new(chain)), choice.settings);
     }
     for &(track, value) in &buses.comp_sends {
         engine.set_comp_send(track, value);

@@ -12,6 +12,7 @@ use gscore_model::TrackIndex;
 use super::GuitarScoreApp;
 use super::shape_editor::Outcome;
 use super::style;
+use crate::chain_settings::DrumPart;
 use crate::document::GridData;
 use crate::state::MeasureSelection;
 
@@ -87,6 +88,26 @@ pub(super) enum GridAction {
     OpenCompressorBus,
     /// Set the mixer's compressor bus (an edit of the song, heard at once).
     CompressorBus { bus: crate::settings::CompressorBus },
+    /// Open the window of the mixer's chorus bus.
+    OpenChorusBus,
+    /// Set the mixer's chorus bus (an edit of the song, heard at once).
+    ChorusBus { bus: crate::settings::ChorusBus },
+    /// Open the master's sound chain window.
+    OpenMasterChain,
+    /// Open `track`'s sound chain window.
+    OpenSoundChain { track: usize },
+    /// Open the sound chain of `part` of a drum track.
+    OpenSoundChainPart { track: usize, part: DrumPart },
+    /// A drum part's level, mute or solo, kept with the song.
+    DrumPart {
+        track: usize,
+        part: DrumPart,
+        level: u8,
+        muted: bool,
+        soloed: bool,
+        /// A fader drag continues the previous undo step.
+        merge: bool,
+    },
     /// A track's send into the compressor bus (0-127), kept with the song.
     CompSend { track: usize, value: u8 },
 }
@@ -137,6 +158,41 @@ impl GuitarScoreApp {
             .compressor
             .clone()
             .unwrap_or_else(|| self.settings.compressor_bus.clone());
+        let chorus_bus = sound
+            .buses
+            .chorus
+            .clone()
+            .unwrap_or_else(|| self.settings.chorus_bus.clone());
+        // A drum track's parts, only for the tracks whose strips can open them.
+        let parts: Vec<Vec<strips::PartRow>> = (0..rows.len())
+            .map(|index| {
+                if !rows.get(index).is_some_and(|row| row.drums) {
+                    return Vec::new();
+                }
+                let own = sound.tracks.get(index);
+                let any_soloed = own.is_some_and(|track| {
+                    track
+                        .drum_parts
+                        .iter()
+                        .any(|part| part.soloed && part.part().is_some())
+                });
+                DrumPart::ALL
+                    .into_iter()
+                    .map(|part| {
+                        let entry = own.and_then(|track| {
+                            track.drum_parts.iter().find(|own| own.part() == Some(part))
+                        });
+                        strips::PartRow {
+                            part,
+                            level: entry.map_or(127, |entry| entry.level.min(127)),
+                            muted: entry.is_some_and(|entry| entry.muted),
+                            soloed: entry.is_some_and(|entry| entry.soloed),
+                            any_soloed,
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
         let meters = self.playback.meters();
         // The bus's meter: the loudest send into it, through its own (square-law) level.
         let bus_level = if reverb_bus.muted {
@@ -174,8 +230,22 @@ impl GuitarScoreApp {
                         }
                     })
                     .collect(),
+                parts: rows
+                    .iter()
+                    .enumerate()
+                    .map(|(index, row)| {
+                        if !row.drums {
+                            return Vec::new();
+                        }
+                        DrumPart::ALL
+                            .into_iter()
+                            .map(|part| strips::Reading::measured(meters.part(index, part.index())))
+                            .collect()
+                    })
+                    .collect(),
                 bus: strips::Reading::measured(meters.reverb()),
                 compressor: strips::Reading::measured(meters.compressor()),
+                chorus: strips::Reading::measured(meters.chorus()),
                 master: strips::Reading::measured(meters.master()),
             },
             None => strips::Readings {
@@ -184,9 +254,15 @@ impl GuitarScoreApp {
                     .zip(&estimates)
                     .map(|(row, &level)| strips::Reading::estimated(level, row.pan))
                     .collect(),
+                // Without meters the parts have nothing measured to show.
+                parts: parts
+                    .iter()
+                    .map(|parts| vec![strips::Reading::estimated(0.0, 64); parts.len()])
+                    .collect(),
                 bus: strips::Reading::estimated(bus_level, 64),
                 // No Comp knobs yet (step 5): nothing is sent into it, so it is silent.
                 compressor: strips::Reading::estimated(0.0, 64),
+                chorus: strips::Reading::estimated(0.0, 64),
                 master: strips::Reading::estimated(
                     estimates
                         .iter()
@@ -213,6 +289,7 @@ impl GuitarScoreApp {
             strips::Buses {
                 reverb: reverb_bus,
                 compressor: compressor_bus,
+                chorus: chorus_bus,
             },
             &readings,
             GridView {
@@ -233,6 +310,7 @@ impl GuitarScoreApp {
             },
             &levels,
             &comp_sends,
+            &parts,
             &mut tab.mixer,
             &mut actions,
         );
@@ -327,6 +405,27 @@ impl GuitarScoreApp {
             GridAction::OpenCompressorBus => self.open_compressor_bus_window(),
             GridAction::CompSend { track, value } => self.set_comp_send(track, value),
             GridAction::CompressorBus { bus } => self.set_song_compressor_bus(bus),
+            GridAction::OpenChorusBus => self.open_chorus_bus_window(),
+            GridAction::ChorusBus { bus } => self.set_song_chorus_bus(bus),
+            GridAction::OpenMasterChain => self.open_master_chain_window(),
+            GridAction::OpenSoundChain { track } => self.open_sound_chain(track),
+            GridAction::OpenSoundChainPart { track, part } => {
+                self.open_sound_chain_part(track, part);
+            }
+            GridAction::DrumPart {
+                track,
+                part,
+                level,
+                muted,
+                soloed,
+                merge,
+            } => {
+                let mut own = self.track_drum_part(track, part);
+                own.level = level.min(127);
+                own.muted = muted;
+                own.soloed = soloed;
+                self.set_track_drum_part(track, part, Some(own), merge);
+            }
         }
     }
 
@@ -512,6 +611,7 @@ fn draw(
     view: GridView,
     levels: &[f32],
     comp_sends: &[u8],
+    parts: &[Vec<strips::PartRow>],
     mixer_state: &mut MixerState,
     actions: &mut Vec<GridAction>,
 ) {
@@ -524,6 +624,7 @@ fn draw(
             buses,
             readings,
             comp_sends,
+            parts,
             view,
             mixer_state,
             actions,

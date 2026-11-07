@@ -122,6 +122,10 @@ pub struct TrackDrumPart {
     pub chain: crate::chain_settings::ChainSetting,
     /// Its mixing level (0-127, 127 unity).
     pub level: u8,
+    /// Whether the part is muted inside the kit.
+    pub muted: bool,
+    /// Whether the part is soloed inside the kit (silencing the others).
+    pub soloed: bool,
 }
 
 /// One MIDI output port that plays MIDI-out tracks.
@@ -303,14 +307,22 @@ pub struct Playback {
     sent_tones: std::collections::BTreeMap<usize, chains::SentTone>,
     /// What each drum track's parts were given (by song track and part), so a part's
     /// chain is prepared again only when its blocks change.
-    sent_parts:
-        std::collections::BTreeMap<(usize, usize), (crate::chain_settings::ChainSetting, u8)>,
-    /// The mixer's reverb bus (a computed reverb or a room, all wet) and its compressor
-    /// bus (parallel compression), and what the synthesizer was last given for each.
+    sent_parts: std::collections::BTreeMap<
+        (usize, usize),
+        (crate::chain_settings::ChainSetting, u8, bool, bool),
+    >,
+    /// The mixer's reverb bus (a computed reverb or a room, all wet), its compressor bus
+    /// (parallel compression) and its chorus bus, and what the synthesizer was last given
+    /// for each.
     reverb_bus: crate::settings::ReverbBus,
     compressor_bus: crate::settings::CompressorBus,
+    chorus_bus: crate::settings::ChorusBus,
     reverb_sent: chains::SentBus,
     compressor_sent: chains::SentBus,
+    chorus_sent: chains::SentBus,
+    /// The master's chain and what the synthesizer was last given for it.
+    master_chain: crate::chain_settings::ChainSetting,
+    master_sent: Option<crate::chain_settings::ChainSetting>,
     /// The impulse responses read so far (by file).
     impulses: std::collections::HashMap<PathBuf, Arc<gscore_guitar::ImpulseResponse>>,
     /// Messages about the chains (an impulse response that cannot be read), shown once.
@@ -379,8 +391,12 @@ impl Default for Playback {
             sent_parts: std::collections::BTreeMap::new(),
             reverb_bus: crate::settings::ReverbBus::default(),
             compressor_bus: crate::settings::CompressorBus::default(),
+            chorus_bus: crate::settings::ChorusBus::default(),
             reverb_sent: chains::SentBus::default(),
             compressor_sent: chains::SentBus::default(),
+            chorus_sent: chains::SentBus::default(),
+            master_chain: crate::chain_settings::ChainSetting::default(),
+            master_sent: None,
             impulses: std::collections::HashMap::new(),
             chain_notices: Vec::new(),
             metronome_volume: 1.0,
@@ -873,8 +889,12 @@ impl Playback {
             // The buses too (a new synthesizer starts without them).
             self.reverb_sent = chains::SentBus::default();
             self.compressor_sent = chains::SentBus::default();
+            self.chorus_sent = chains::SentBus::default();
+            self.master_sent = None;
             self.send_reverb_bus();
             self.send_compressor_bus();
+            self.send_chorus_bus();
+            self.send_master_chain();
             self.send_comp_sends();
         }
         Ok(())

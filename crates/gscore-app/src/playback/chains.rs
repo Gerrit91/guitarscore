@@ -384,6 +384,12 @@ impl Playback {
         if !self.compressor_sent.sent {
             self.send_compressor_bus();
         }
+        if !self.chorus_sent.sent {
+            self.send_chorus_bus();
+        }
+        if self.master_sent.is_none() {
+            self.send_master_chain();
+        }
         self.tone_targets = targets(sequence);
         self.send_tones();
         self.send_drum_parts();
@@ -407,16 +413,20 @@ impl Playback {
             }
             for part in crate::chain_settings::DrumPart::ALL {
                 let chain = self.track_drum_part_chain(target.track, part);
-                let level = self.track_drum_part_level(target.track, part);
+                let (level, muted, soloed) = self.track_drum_part_mix(target.track, part);
                 let key = (target.track, part.index());
                 let sent = self.sent_parts.get(&key).cloned();
-                let chain_same = sent.as_ref().is_some_and(|(sent, _)| *sent == chain);
-                let level_same = sent.as_ref().is_some_and(|(_, sent)| *sent == level);
-                if chain_same && level_same {
+                let chain_same = sent.as_ref().is_some_and(|(sent, ..)| *sent == chain);
+                let mix_same =
+                    sent.as_ref()
+                        .is_some_and(|(_, sent_level, sent_muted, sent_soloed)| {
+                            (*sent_level, *sent_muted, *sent_soloed) == (level, muted, soloed)
+                        });
+                if chain_same && mix_same {
                     continue;
                 }
                 match sent {
-                    Some((sent, _)) if sent.same_structure(&chain) => {
+                    Some((sent, ..)) if sent.same_structure(&chain) => {
                         knobs.push((key, chain.knobs()));
                     }
                     _ => {
@@ -424,10 +434,10 @@ impl Playback {
                         prepare.push((key, spec, chain.knobs()));
                     }
                 }
-                if !level_same {
-                    levels.push((key, level));
+                if !mix_same {
+                    levels.push((key, level, muted, soloed));
                 }
-                self.sent_parts.insert(key, (chain, level));
+                self.sent_parts.insert(key, (chain, level, muted, soloed));
             }
         }
         #[cfg(not(target_arch = "wasm32"))]
@@ -440,8 +450,10 @@ impl Playback {
             for ((track, part), settings) in knobs {
                 let _ = player.set_part_chain_settings(track, part, settings);
             }
-            for ((track, part), level) in levels {
+            for ((track, part), level, muted, soloed) in levels {
                 let _ = player.set_part_level(track, part, level);
+                let _ = player.set_part_mute(track, part, muted);
+                let _ = player.set_part_solo(track, part, soloed);
             }
         }
         #[cfg(target_arch = "wasm32")]
@@ -661,6 +673,40 @@ impl Playback {
         self.send_compressor_bus();
     }
 
+    /// The mixer's chorus bus as it is set.
+    pub fn chorus_bus(&self) -> crate::settings::ChorusBus {
+        self.chorus_bus.clone()
+    }
+
+    /// Takes the chorus bus without sending it (when the settings load).
+    pub fn store_chorus_bus(&mut self, bus: crate::settings::ChorusBus) {
+        self.chorus_bus = bus.sanitized();
+    }
+
+    /// Sets the chorus bus, heard at once (a new block prepares it, knobs go straight to
+    /// the running one).
+    pub fn set_chorus_bus(&mut self, bus: crate::settings::ChorusBus) {
+        self.chorus_bus = bus.sanitized();
+        self.send_chorus_bus();
+    }
+
+    /// The master's chain as the synthesizer has it (the song's, else this machine's).
+    pub fn master_chain(&self) -> ChainSetting {
+        self.master_chain.clone()
+    }
+
+    /// Takes the master's chain without sending it (when the settings load).
+    pub fn store_master_chain(&mut self, chain: ChainSetting) {
+        self.master_chain = chain;
+    }
+
+    /// Sets the master's chain, heard at once (a new block prepares it, knobs go straight
+    /// to the running one).
+    pub fn set_master_chain(&mut self, chain: ChainSetting) {
+        self.master_chain = chain;
+        self.send_master_chain();
+    }
+
     /// The chain a bus runs, as the engine takes it, and its knob values. A bus runs one
     /// block: a reverb or a room, a compressor, or nothing.
     fn bus_parts(&mut self, block: &BlockSetting) -> (ChainSpec, [BlockSettings; BLOCKS]) {
@@ -713,6 +759,7 @@ impl Playback {
         let sent = match which {
             gscore_audio::Bus::Reverb => &mut self.reverb_sent,
             gscore_audio::Bus::Compressor => &mut self.compressor_sent,
+            gscore_audio::Bus::Chorus => &mut self.chorus_sent,
         };
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(super::Active::Synth(player)) = &self.player {
@@ -744,6 +791,41 @@ impl Playback {
             bus.level,
             bus.muted,
         );
+    }
+
+    /// Prepares the chorus bus on the synthesizer's thread (or sends its knobs).
+    pub(super) fn send_chorus_bus(&mut self) {
+        let bus = self.chorus_bus.clone();
+        self.send_bus(gscore_audio::Bus::Chorus, &bus.block, bus.level, bus.muted);
+    }
+
+    /// Prepares the master's chain on the synthesizer's thread, or sends only its knob
+    /// values when it still holds the same blocks. An empty chain removes it.
+    pub(super) fn send_master_chain(&mut self) {
+        if !self.synth_running() {
+            return;
+        }
+        let chain = self.master_chain.clone();
+        if self.master_sent.as_ref() == Some(&chain) {
+            return;
+        }
+        let spec = self.chain_spec(&chain);
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(super::Active::Synth(player)) = &self.player {
+            match &self.master_sent {
+                Some(sent) if sent.same_structure(&chain) => {
+                    let _ = player.set_master_chain_settings(chain.knobs());
+                }
+                _ => {
+                    if let Err(error) = player.set_master_chain(spec, chain.knobs()) {
+                        self.chain_notices.push(error.to_string());
+                    }
+                }
+            }
+            self.master_sent = Some(chain);
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = (spec, chain);
     }
 
     /// The chain a drum track with no tone of its own runs: the drum bus (a light
@@ -791,9 +873,36 @@ impl Playback {
 
     /// The mixing level `part` of `track` plays (0-127, 127 unity).
     pub fn track_drum_part_level(&self, track: usize, part: crate::chain_settings::DrumPart) -> u8 {
+        self.track_drum_part(track, part).level
+    }
+
+    /// `part` of a drum track as it is mixed: its level (0-127, 127 unity), its mute and
+    /// its solo inside the kit.
+    pub fn track_drum_part(
+        &self,
+        track: usize,
+        part: crate::chain_settings::DrumPart,
+    ) -> super::TrackDrumPart {
         self.track_drum_parts(track)
             .and_then(|parts| parts.iter().find(|own| own.part == part))
-            .map_or(127, |own| own.level.min(127))
+            .cloned()
+            .unwrap_or(super::TrackDrumPart {
+                part,
+                chain: ChainSetting::default(),
+                level: 127,
+                muted: false,
+                soloed: false,
+            })
+    }
+
+    /// The mixing level, mute and solo of `part` of `track`.
+    pub fn track_drum_part_mix(
+        &self,
+        track: usize,
+        part: crate::chain_settings::DrumPart,
+    ) -> (u8, bool, bool) {
+        let own = self.track_drum_part(track, part);
+        (own.level.min(127), own.muted, own.soloed)
     }
 
     /// Hands the open song's per-track drum parts to playback, heard at once.
@@ -847,8 +956,41 @@ impl Playback {
     pub fn export_buses(&mut self) -> gscore_audio::BusChoices {
         let reverb = self.reverb_bus.clone();
         let compressor = self.compressor_bus.clone();
+        let chorus = self.chorus_bus.clone();
+        let master = self.master_chain.clone();
         let (reverb_spec, reverb_settings) = self.bus_parts(&reverb.block);
         let (comp_spec, comp_settings) = self.bus_parts(&compressor.block);
+        let (chorus_spec, chorus_settings) = self.bus_parts(&chorus.block);
+        let (master_spec, master_settings) = {
+            let mut settings = [BlockSettings::default(); BLOCKS];
+            for (slot, block) in settings.iter_mut().zip(&master.blocks) {
+                *slot = block.knobs();
+            }
+            let mut spec = ChainSpec::default();
+            for (slot, block) in spec.blocks.iter_mut().zip(&master.blocks) {
+                *slot = match (block.choice, &block.file) {
+                    (BlockChoice::Empty, _) => None,
+                    (BlockChoice::Chorus, _) => Some(BlockKind::Chorus),
+                    (BlockChoice::Compressor, _) => Some(BlockKind::Compressor),
+                    (BlockChoice::Eq, _) => Some(BlockKind::Eq),
+                    (BlockChoice::Amp, _) => Some(BlockKind::Amp),
+                    (BlockChoice::Drive, _) => Some(BlockKind::Drive),
+                    (BlockChoice::Reverb, _) => Some(BlockKind::Reverb),
+                    (BlockChoice::Cabinet | BlockChoice::Room, None) => None,
+                    (choice, Some(file)) => match self.impulse(file) {
+                        Ok(response) if choice == BlockChoice::Room => {
+                            Some(BlockKind::room(response, block.room_length()))
+                        }
+                        Ok(response) => Some(BlockKind::Impulse(response)),
+                        Err(error) => {
+                            self.chain_notices.push(error);
+                            None
+                        }
+                    },
+                };
+            }
+            (spec, settings)
+        };
         gscore_audio::BusChoices {
             reverb: Some(gscore_audio::BusChoice {
                 spec: reverb_spec,
@@ -862,6 +1004,20 @@ impl Playback {
                 level: compressor.level,
                 muted: compressor.muted,
             }),
+            chorus: Some(gscore_audio::BusChoice {
+                spec: chorus_spec,
+                settings: chorus_settings,
+                level: chorus.level,
+                muted: chorus.muted,
+            }),
+            master: (!gscore_audio::chain_is_empty(&master_spec)).then_some(
+                gscore_audio::BusChoice {
+                    spec: master_spec,
+                    settings: master_settings,
+                    level: 127,
+                    muted: false,
+                },
+            ),
             // Each track's Comp send, once the mixer has them (step 5).
             comp_sends: Vec::new(),
         }

@@ -602,160 +602,17 @@ impl DrumPart {
     }
 }
 
-/// An EQ block with `low_cut` and a high cut, then `bands` of (frequency, gain, width).
-fn eq_block(low_cut: f32, high_cut: f32, bands: [(f32, f32, f32); BANDS]) -> BlockSetting {
-    let mut block = BlockSetting::of(BlockChoice::Eq);
-    block.low_cut = low_cut;
-    block.high_cut = high_cut;
-    for (band, (freq, level, width)) in bands.into_iter().enumerate() {
-        if let (Some(slot), Some(gain), Some(q)) = (
-            block.eq_band_freq.get_mut(band),
-            block.eq_band_gain.get_mut(band),
-            block.eq_band_q.get_mut(band),
-        ) {
-            *slot = freq;
-            *gain = level;
-            *q = width;
-        }
-    }
-    block
+/// The built-in tone of one part of a drum kit: none. The owner designs the kit's
+/// defaults later; until then every part plays exactly as the SoundFont renders it, and a
+/// part can still be given a tone of its own.
+pub fn default_drum_part_chain(_part: DrumPart) -> ChainSetting {
+    ChainSetting::default()
 }
 
-/// A compressor block: ratio, input and output (dB), attack and release (ms).
-fn comp_block(
-    ratio: CompRatioSetting,
-    input: f32,
-    output: f32,
-    attack: f32,
-    release: f32,
-) -> BlockSetting {
-    let mut block = BlockSetting::of(BlockChoice::Compressor);
-    block.comp_ratio = ratio;
-    block.input_db = input;
-    block.gain_db = output;
-    block.attack_ms = attack;
-    block.release_ms = release;
-    block
-}
-
-/// A short room, mixed in under the drum.
-fn room_block(size: f32, decay: f32, mix: f32) -> BlockSetting {
-    let mut block = BlockSetting::of(BlockChoice::Reverb);
-    block.size = size;
-    block.decay = decay;
-    block.pre_delay = 8.0;
-    block.mix = mix;
-    block.high_cut = 6_000.0;
-    block
-}
-
-/// A chain of `blocks` in the first places.
-fn chain_of(blocks: Vec<BlockSetting>) -> ChainSetting {
-    let mut chain = ChainSetting::default();
-    for (slot, block) in chain.blocks.iter_mut().zip(blocks) {
-        *slot = block;
-    }
-    chain
-}
-
-/// The built-in tone of one part of a drum kit: EQ, a compressor, sometimes a little room.
-/// A starting point (2026-11-07) for the owner to tune by ear; a part can be given a tone
-/// of its own.
-pub fn default_drum_part_chain(part: DrumPart) -> ChainSetting {
-    match part {
-        // The kick: body low, the boxy mids out, the beater's click in, held steady.
-        DrumPart::Kick => chain_of(vec![
-            eq_block(
-                30.0,
-                18_000.0,
-                [
-                    (80.0, 3.0, 0.707),
-                    (350.0, -4.0, 1.2),
-                    (3_500.0, 3.0, 1.0),
-                    (8_000.0, 0.0, 0.707),
-                ],
-            ),
-            comp_block(CompRatioSetting::Four, 6.0, -6.0, 0.3, 150.0),
-        ]),
-        // The snare: body, the honk out, the crack in, a little room for air.
-        DrumPart::Snare => chain_of(vec![
-            eq_block(
-                80.0,
-                18_000.0,
-                [
-                    (200.0, 3.0, 0.707),
-                    (420.0, -2.0, 1.2),
-                    (5_000.0, 4.0, 1.0),
-                    (8_000.0, 0.0, 0.707),
-                ],
-            ),
-            comp_block(CompRatioSetting::Eight, 6.0, -6.0, 0.2, 200.0),
-            room_block(0.25, 0.8, 0.12),
-        ]),
-        // The hi-hat: the lows out, a little quieter, no room (it would smear the time).
-        DrumPart::HiHat => chain_of(vec![
-            eq_block(
-                300.0,
-                18_000.0,
-                [
-                    (300.0, 0.0, 0.707),
-                    (1_000.0, 0.0, 1.0),
-                    (6_000.0, 0.0, 1.0),
-                    (8_000.0, 2.0, 0.707),
-                ],
-            ),
-            comp_block(CompRatioSetting::Four, 3.0, -3.0, 0.2, 120.0),
-        ]),
-        // The toms: the boxy mids out, a little room, held like the kick.
-        DrumPart::Toms => chain_of(vec![
-            eq_block(
-                60.0,
-                18_000.0,
-                [
-                    (120.0, 0.0, 0.707),
-                    (400.0, -4.0, 1.2),
-                    (2_500.0, 2.0, 1.0),
-                    (8_000.0, 0.0, 0.707),
-                ],
-            ),
-            comp_block(CompRatioSetting::Four, 4.0, -4.0, 0.4, 250.0),
-            room_block(0.3, 1.2, 0.1),
-        ]),
-        // The cymbals: the lows out, the harshness a little down, the air up.
-        DrumPart::Cymbals => chain_of(vec![eq_block(
-            400.0,
-            18_000.0,
-            [
-                (400.0, 0.0, 0.707),
-                (2_000.0, 0.0, 1.0),
-                (6_000.0, -2.0, 1.0),
-                (10_000.0, 1.5, 0.707),
-            ],
-        )]),
-        // Everything else: only the rumble out.
-        DrumPart::Percussion => chain_of(vec![eq_block(
-            40.0,
-            18_000.0,
-            [
-                (40.0, 0.0, 0.707),
-                (1_000.0, 0.0, 1.0),
-                (4_000.0, 0.0, 1.0),
-                (8_000.0, 0.0, 0.707),
-            ],
-        )]),
-    }
-}
-
-/// The built-in chain of the drum track itself (the drum bus): a light compressor that
-/// glues the kit together.
+/// The built-in chain of the drum track itself (the drum bus): none, so a kit without a
+/// tone of its own is the channel as the SoundFont renders it.
 pub fn default_drum_bus_chain() -> ChainSetting {
-    chain_of(vec![comp_block(
-        CompRatioSetting::Four,
-        6.0,
-        -5.0,
-        0.6,
-        120.0,
-    )])
+    ChainSetting::default()
 }
 
 #[cfg(test)]
@@ -765,23 +622,19 @@ mod drum_tests {
     use super::*;
 
     #[test]
-    fn every_drum_part_has_a_usable_tone() {
+    fn a_drum_kit_has_no_built_in_tones() {
+        // The kit plays exactly as the SoundFont renders it until the owner designs the
+        // defaults: no part and no drum bus brings a block of its own.
         for part in DrumPart::ALL {
             let chain = default_drum_part_chain(part);
             assert!(
                 chain
                     .blocks
                     .iter()
-                    .any(|block| block.choice != BlockChoice::Empty),
-                "{} has blocks",
+                    .all(|block| block.choice == BlockChoice::Empty),
+                "{} is dry",
                 part.label()
             );
-            // Its knobs are in range.
-            for block in &chain.blocks {
-                assert!(block.low_cut.is_finite() && block.high_cut.is_finite());
-                let settings = block.knobs();
-                assert_eq!(settings, settings.sanitized());
-            }
             assert_eq!(
                 part.index(),
                 DrumPart::ALL
@@ -791,9 +644,12 @@ mod drum_tests {
             );
             assert_eq!(DrumPart::at(part.index()), Some(part));
         }
-        // The bus is a compressor, and its parts are in the engine's order.
-        let bus = default_drum_bus_chain();
-        assert_eq!(bus.blocks[0].choice, BlockChoice::Compressor);
+        assert!(
+            default_drum_bus_chain()
+                .blocks
+                .iter()
+                .all(|block| block.choice == BlockChoice::Empty)
+        );
         for (index, part) in DrumPart::ALL.into_iter().enumerate() {
             assert_eq!(part.index(), index);
         }
