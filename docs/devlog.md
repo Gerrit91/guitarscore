@@ -3662,3 +3662,21 @@ needed for a much larger font); owner listening check.
 - Tests (`test_mixer.rs`): fader square law and equal-power pan, a SoundFont track's own
   chain leaves the other alone, meters show the real levels and fall when stopped, a
   SoundFont track's send reaches the bus, a live fader change, two tracks on one channel.
+
+## 2026-11-07 — Mixer, step 3: the mixer shows the real levels, calmly
+
+- The mixer's meters show what the engine measures (every track after its fader, the
+  reverb bus, the master) whenever the built-in synthesizer plays; with MIDI output or in
+  the browser they keep estimating from the notes (their tooltip says which). The song
+  grid's activity bars follow them.
+- Owner: the meters were too nervous; hold the peaks briefly, then fall slowly. Each side
+  now has a bar that holds a peak for 0.3 s and then falls 20 dB in 1.7 s, and a peak mark
+  (a line in the bar's color at that height) that stays 1.5 s at the highest level, then
+  drops quickly to the bar. Computed in the engine (`meters::Ballistics`), so it does not
+  depend on the frame rate; the window redraws while any meter still moves.
+- `SynthPlayer::meters` hands the engine's meters (made on the audio thread) to the app.
+- Found while planning the linked strips: our sequencer gives every melodic track its own
+  MIDI channel whatever the file says, so tracks share one only when they are drums (all
+  on channel 10, as General MIDI wants) or past 15 melodic tracks.
+- Tests: the bar holds and falls at its rate, the mark stays longer and never shows below
+  the bar, silence rests at exactly zero; an estimate is split by the pan.

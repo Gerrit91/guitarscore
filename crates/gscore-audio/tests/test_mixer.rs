@@ -103,8 +103,8 @@ fn a_soundfont_track_has_its_own_chain() {
     assert!(chained.set_chain(1, chain, settings).is_none());
     let (chained_left, _) = render(&mut chained, 1.0);
     let meters = chained.meters();
-    let (first, _) = meters.track(0);
-    let (second, _) = meters.track(1);
+    let first = meters.track(0).left;
+    let second = meters.track(1).left;
     assert!(first > 0.05, "the first track plays: {first}");
     assert!(
         second < 0.2 * first,
@@ -124,16 +124,16 @@ fn the_meters_show_the_real_levels() {
     let mut engine = engine(&Sequence::new(&song, None).unwrap());
     let (left, right) = render(&mut engine, 0.5);
     let meters = engine.meters();
-    let (first_left, first_right) = meters.track(0);
+    let (first_left, first_right) = (meters.track(0).left, meters.track(0).right);
     assert!(first_left > 0.05 && (first_left - first_right).abs() < 1e-3);
     assert_eq!(
         meters.track(1),
-        (0.0, 0.0),
+        gscore_audio::Level::default(),
         "a track at volume 0 shows nothing"
     );
-    // The master's peak is the loudest sample of the last moments of the mix.
-    let (master, _) = meters.master();
-    let tail = left[left.len() - 2_400..]
+    // The master's bar holds the loudest sample of the last 0.3 s of the mix.
+    let master = meters.master().left;
+    let tail = left[left.len() - 14_400..]
         .iter()
         .fold(0.0_f32, |peak, x| peak.max(x.abs()));
     assert!(
@@ -144,7 +144,7 @@ fn the_meters_show_the_real_levels() {
     // Stopped, the meters fall back toward silence.
     engine.stop();
     let _ = render(&mut engine, 4.0);
-    let (after, _) = engine.meters().track(0);
+    let after = engine.meters().track(0).mark_left;
     assert!(after < 0.01 * first_left, "{after}");
 }
 
@@ -173,7 +173,7 @@ fn a_soundfont_tracks_reverb_send_reaches_the_bus() {
         let (left, _) = render(&mut engine, 2.0);
         (
             rms(&left[RATE as usize + RATE as usize / 2..]),
-            engine.meters().reverb().0,
+            engine.meters().reverb().left,
         )
     };
     let (dry, _) = tail(false);
@@ -233,10 +233,10 @@ fn tracks_sharing_a_channel_are_one_strip() {
     let mut engine = engine(&sequence);
     let (left, _) = render(&mut engine, 1.0);
     let meters = engine.meters();
-    assert!(meters.track(0).0 > 0.05, "the shared strip plays");
+    assert!(meters.track(0).left > 0.05, "the shared strip plays");
     assert_eq!(
         meters.track(1),
-        (0.0, 0.0),
+        gscore_audio::Level::default(),
         "the linked track has no signal of its own"
     );
     assert!(rms(steady(&left)) > 0.01);

@@ -534,6 +534,17 @@ impl Playback {
         }
     }
 
+    /// The mixer's real meters (every track's level after its fader, the reverb bus's and
+    /// the master's), while the built-in synthesizer runs. `None` for MIDI output and in a
+    /// browser: the mixer then shows levels estimated from the notes.
+    pub fn meters(&self) -> Option<Arc<gscore_audio::Meters>> {
+        match &self.player {
+            #[cfg(not(target_arch = "wasm32"))]
+            Some(Active::Synth(player)) => player.meters(),
+            _ => None,
+        }
+    }
+
     /// How busy the synthesizer's audio thread is (1: all of each buffer's time), once it
     /// runs. `None` for MIDI output and in a browser.
     pub fn audio_load(&self) -> Option<f32> {

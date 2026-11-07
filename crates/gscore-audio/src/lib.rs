@@ -30,7 +30,7 @@ mod tuner_web;
 mod wav;
 
 pub use chains::{MAX_TONES, chain_is_empty, prepare_chain};
-pub use meters::Meters;
+pub use meters::{Level, Meters};
 #[cfg(not(target_arch = "wasm32"))]
 pub use midi_out::{MidiOutPlayer, midi_output_ports};
 pub use soundfont::{

@@ -30,7 +30,7 @@ use gscore_guitar::{BLOCKS, BlockSettings, Chain};
 use gscore_play::{MidiEvent, Sequence, controller};
 
 use crate::chains::{MAX_TONES, TrackTones};
-use crate::meters::{Meters, Peak, Which, fall_per_block, peak_of};
+use crate::meters::{Ballistics, Meters, Peak, Which, peak_of};
 use crate::synth::BLOCK;
 
 /// MIDI channels of the synthesizer.
@@ -107,7 +107,7 @@ pub(crate) struct Mixer {
     /// A strip's signal on its way through.
     work: [[f32; BLOCK]; 2],
     meters: Arc<Meters>,
-    fall: f32,
+    ballistics: Ballistics,
 }
 
 impl std::fmt::Debug for Mixer {
@@ -138,7 +138,7 @@ impl Mixer {
             master_peak: Peak::default(),
             work: [[0.0; BLOCK]; 2],
             meters: Arc::new(Meters::default()),
-            fall: fall_per_block(sample_rate, BLOCK),
+            ballistics: Ballistics::new(sample_rate, BLOCK),
         }
     }
 
@@ -421,7 +421,7 @@ impl Mixer {
 
     /// The meter of strip `position` after a block with these peaks.
     fn settle_meter(&mut self, position: usize, left: f32, right: f32) {
-        let fall = self.fall;
+        let fall = self.ballistics;
         let Some(strip) = self.strips.get_mut(position) else {
             return;
         };
@@ -434,7 +434,7 @@ impl Mixer {
 
     /// Runs the reverb bus (which rings on after the sends stop) and adds it to the mix.
     fn mix_reverb_bus(&mut self, frames: usize, left: &mut [f32], right: &mut [f32]) {
-        let fall = self.fall;
+        let fall = self.ballistics;
         let Some(bus) = &mut self.reverb_bus else {
             self.bus_peak.update(0.0, 0.0, fall);
             self.meters.publish(Which::Reverb, self.bus_peak);
@@ -475,7 +475,7 @@ impl Mixer {
 
     /// Measures the finished mix (after the metronome is added).
     pub(crate) fn meter_master(&mut self, left: &[f32], right: &[f32]) {
-        let fall = self.fall;
+        let fall = self.ballistics;
         self.master_peak.update(peak_of(left), peak_of(right), fall);
         self.meters.publish(Which::Master, self.master_peak);
     }

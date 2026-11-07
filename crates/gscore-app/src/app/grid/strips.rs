@@ -57,9 +57,7 @@ pub(super) fn strips(
     rows: &[TrackRow],
     master: MasterMix,
     bus: ReverbBus,
-    // How loud the bus's return is right now (estimated from the sends and the tracks).
-    bus_level: f32,
-    levels: &[f32],
+    readings: &Readings,
     metronome: (f32, f32),
     state: &mut MixerState,
     actions: &mut Vec<GridAction>,
@@ -78,18 +76,17 @@ pub(super) fn strips(
                         ui,
                         index,
                         row,
-                        levels.get(index).copied().unwrap_or(0.0),
+                        readings.tracks.get(index).copied().unwrap_or_default(),
                         height,
                         state,
                         actions,
                     );
                 }
-                reverb_strip(ui, bus, bus_level, height, state, actions);
-                let master_level = levels.iter().copied().fold(0.0_f32, f32::max);
+                reverb_strip(ui, bus, readings.bus, height, state, actions);
                 master_strip(
                     ui,
                     master,
-                    master_level,
+                    readings.master,
                     height,
                     rows.len(),
                     all_muted,
@@ -106,7 +103,7 @@ fn track_strip(
     ui: &mut egui::Ui,
     index: usize,
     row: &TrackRow,
-    level: f32,
+    level: Reading,
     height: f32,
     state: &mut MixerState,
     actions: &mut Vec<GridAction>,
@@ -137,7 +134,6 @@ fn track_strip(
         fader_area,
         index,
         row.volume,
-        row.pan,
         level,
         TRACK_UNITY,
         &format!("Volume {}", row.name),
@@ -194,7 +190,7 @@ fn track_strip(
 fn master_strip(
     ui: &mut egui::Ui,
     master: MasterMix,
-    level: f32,
+    level: Reading,
     height: f32,
     track_count: usize,
     all_muted: bool,
@@ -220,14 +216,11 @@ fn master_strip(
         "Master",
         actions,
     );
-    // The track levels already include the master volume (the sequence plays the mixed
-    // volumes), so the loudest track is what the master puts out.
     fader(
         &mut strip,
         fader_area,
         usize::MAX,
         master.volume,
-        master.pan,
         level,
         MASTER_UNITY,
         "Master volume",
@@ -285,7 +278,7 @@ fn master_strip(
 fn reverb_strip(
     ui: &mut egui::Ui,
     bus: ReverbBus,
-    level: f32,
+    level: Reading,
     height: f32,
     state: &mut MixerState,
     actions: &mut Vec<GridAction>,
@@ -318,7 +311,6 @@ fn reverb_strip(
         fader_area,
         REVERB,
         bus.level,
-        64,
         level,
         127,
         "Reverb bus level",
@@ -405,8 +397,7 @@ fn metronome_strip(
         fader_area,
         METRONOME,
         value,
-        64,
-        level,
+        Reading::estimated(level, 64),
         127,
         "Metronome volume",
         |value, _| actions.push(GridAction::SetMetronomeVolume(set(value))),
@@ -555,8 +546,7 @@ fn fader(
     area: Rect,
     index: usize,
     value: u8,
-    pan: u8,
-    level: f32,
+    level: Reading,
     unity: u8,
     label: &str,
     mut on_change: impl FnMut(u8, bool),
@@ -665,9 +655,15 @@ fn fader(
     );
     paint_gain_scale(ui, gain_scale, area, unity);
     paint_meter_scale(ui, meter_scale, area);
-    paint_meter(ui, meter, level, pan);
+    paint_meter(ui, meter, level);
     let meter_response = ui.interact(meter, ui.scope_id().with(("meter", index)), Sense::hover());
-    meter_response.on_hover_text("Estimated output level, left and right");
+    meter_response.on_hover_text(if level.measured {
+        "Output level, left and right: the bar holds a peak briefly, the line shows the \
+         highest of the last 1.5 s"
+    } else {
+        "Estimated output level, left and right (from the notes: the built-in synthesizer \
+         measures the real one)"
+    });
 }
 
 /// A green/yellow/red level segment. `fill` is 0 (bottom) to 1 (top).
@@ -693,8 +689,55 @@ fn paint_segment(ui: &egui::Ui, rect: Rect, fill: f32) {
     ui.painter().rect_filled(filled, 1.0, color);
 }
 
-/// Left and right meter segments; the pan sets their balance.
-fn paint_meter(ui: &egui::Ui, rect: Rect, level: f32, pan: u8) {
+/// What one strip's meter shows: left and right bars with their peak marks, measured by
+/// the built-in synthesizer or estimated from the notes.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(super) struct Reading {
+    pub(super) level: gscore_audio::Level,
+    pub(super) measured: bool,
+}
+
+impl Reading {
+    /// A measured level.
+    pub(super) fn measured(level: gscore_audio::Level) -> Self {
+        Reading {
+            level,
+            measured: true,
+        }
+    }
+
+    /// An estimate of one level (0 to 1), split into left and right by `pan`.
+    pub(super) fn estimated(level: f32, pan: u8) -> Self {
+        let balance = f32::from(pan.min(127)) / 127.0;
+        let (left, right) = (level * (1.0 - balance).sqrt(), level * balance.sqrt());
+        Reading {
+            level: gscore_audio::Level {
+                left,
+                right,
+                mark_left: left,
+                mark_right: right,
+            },
+            measured: false,
+        }
+    }
+
+    /// The louder bar (for the song grid's activity bars).
+    pub(super) fn bar(&self) -> f32 {
+        self.level.left.max(self.level.right)
+    }
+}
+
+/// Every strip's reading: the tracks (by index), the reverb bus and the master.
+#[derive(Debug, Clone, Default)]
+pub(super) struct Readings {
+    pub(super) tracks: Vec<Reading>,
+    pub(super) bus: Reading,
+    pub(super) master: Reading,
+}
+
+/// Left and right meter segments, each with its peak mark (a line, when it stands above
+/// the bar).
+fn paint_meter(ui: &egui::Ui, rect: Rect, reading: Reading) {
     let gap = 2.0;
     let width = (rect.width() - gap) / 2.0;
     let left = Rect::from_min_size(rect.min, vec2(width, rect.height()));
@@ -702,11 +745,33 @@ fn paint_meter(ui: &egui::Ui, rect: Rect, level: f32, pan: u8) {
         pos2(left.right() + gap, rect.top()),
         vec2(width, rect.height()),
     );
-    let balance = f32::from(pan) / 127.0;
-    let left_level = level * (1.0 - balance).sqrt();
-    let right_level = level * balance.sqrt();
-    paint_segment(ui, left, meter_fraction(left_level));
-    paint_segment(ui, right, meter_fraction(right_level));
+    let level = reading.level;
+    for (side, bar, mark) in [
+        (left, level.left, level.mark_left),
+        (right, level.right, level.mark_right),
+    ] {
+        let bar = meter_fraction(bar);
+        paint_segment(ui, side, bar);
+        let mark = meter_fraction(mark);
+        if mark > bar + 0.005 {
+            let y = side.bottom() - side.height() * mark;
+            ui.painter().line_segment(
+                [pos2(side.left(), y), pos2(side.right(), y)],
+                Stroke::new(1.5, mark_color(mark)),
+            );
+        }
+    }
+}
+
+/// A peak mark's color: the bar's color at that height (see [`paint_segment`]).
+fn mark_color(fill: f32) -> Color32 {
+    if fill > 0.9 {
+        Color32::from_rgb(0xF2, 0x55, 0x4D)
+    } else if fill > 0.72 {
+        Color32::from_rgb(0xFD, 0xD8, 0x35)
+    } else {
+        Color32::from_rgb(0x43, 0xA0, 0x47)
+    }
 }
 
 /// The gain scale left of the fader: where each mark's gain sits on the fader's travel
@@ -1098,7 +1163,31 @@ fn meter_fraction(level: f32) -> f32 {
 mod tests {
     use gscore_model::MASTER_UNITY;
 
-    use super::{TRACK_UNITY, fader_fraction, gain_fraction, volume_at_fraction};
+    use super::{Reading, TRACK_UNITY, fader_fraction, gain_fraction, volume_at_fraction};
+
+    #[test]
+    fn an_estimate_is_split_by_the_pan_and_a_measurement_kept_as_it_is() {
+        let middle = Reading::estimated(0.5, 64);
+        assert!((middle.level.left - middle.level.right).abs() < 0.01);
+        assert!(!middle.measured);
+        let left = Reading::estimated(0.5, 0);
+        assert_eq!(left.level.right, 0.0);
+        assert_eq!(
+            left.level.mark_left, left.level.left,
+            "an estimate has no hold"
+        );
+        assert_eq!(left.bar(), 0.5);
+        let level = gscore_audio::Level {
+            left: 0.2,
+            right: 0.4,
+            mark_left: 0.6,
+            mark_right: 0.4,
+        };
+        let measured = Reading::measured(level);
+        assert!(measured.measured);
+        assert_eq!(measured.level, level);
+        assert_eq!(measured.bar(), 0.4);
+    }
 
     #[test]
     fn the_fader_travel_is_logarithmic_with_room_at_the_loud_end() {

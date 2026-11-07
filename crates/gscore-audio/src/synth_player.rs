@@ -55,6 +55,8 @@ struct Shared {
     load: AtomicU32,
     /// Something to tell the user that is not an error (the rate chosen was not offered).
     notice: Mutex<Option<String>>,
+    /// The engine's meters, once it runs (the engine is made on the audio thread).
+    meters: Mutex<Option<Arc<crate::Meters>>>,
 }
 
 impl Shared {
@@ -183,6 +185,12 @@ impl SynthPlayer {
     /// The sample rate the device plays at, once it is open.
     pub fn sample_rate(&self) -> Option<u32> {
         Some(self.shared.sample_rate.load(Ordering::Acquire)).filter(|&rate| rate > 0)
+    }
+
+    /// The mixer's meters (every track's real level, the reverb bus's and the master's),
+    /// once the synthesizer runs.
+    pub fn meters(&self) -> Option<Arc<crate::Meters>> {
+        lock(&self.shared.meters).clone()
     }
 
     /// How busy the audio callback is: the share of each buffer's playing time spent
@@ -484,6 +492,7 @@ fn open_stream(
     let format = supported.sample_format();
     let config: StreamConfig = supported.into();
     let engine = SynthEngine::new(bank, config.sample_rate)?;
+    *lock(&shared.meters) = Some(engine.meters());
     shared
         .sample_rate
         .store(config.sample_rate, Ordering::Release);

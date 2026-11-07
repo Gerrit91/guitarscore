@@ -114,10 +114,11 @@ impl GuitarScoreApp {
         let master = document.song().master_mix();
         let measure_count = document.song().measure_count();
         let playing = self.playback.current_measure().map(|m| m.saturating_sub(1));
-        let levels: Vec<f32> = (0..rows.len())
+        let estimates: Vec<f32> = (0..rows.len())
             .map(|index| self.playback.track_level(TrackIndex::new(index)))
             .collect();
         let bus = self.playback.reverb_bus();
+        let meters = self.playback.meters();
         // The bus's meter: the loudest send into it, through its own (square-law) level.
         let bus_level = if bus.muted {
             0.0
@@ -127,12 +128,41 @@ impl GuitarScoreApp {
                 .enumerate()
                 .map(|(index, row)| {
                     f32::from(row.reverb.min(127)) / 127.0
-                        * levels.get(index).copied().unwrap_or(0.0)
+                        * estimates.get(index).copied().unwrap_or(0.0)
                 })
                 .fold(0.0_f32, f32::max);
             let level = f32::from(bus.level.min(127)) / 127.0;
             loudest * level * level
         };
+        // What the meters show: measured by the built-in synthesizer, or estimated from the
+        // notes (MIDI output, the browser).
+        let readings = match &meters {
+            Some(meters) => strips::Readings {
+                tracks: (0..rows.len())
+                    .map(|index| strips::Reading::measured(meters.track(index)))
+                    .collect(),
+                bus: strips::Reading::measured(meters.reverb()),
+                master: strips::Reading::measured(meters.master()),
+            },
+            None => strips::Readings {
+                tracks: rows
+                    .iter()
+                    .zip(&estimates)
+                    .map(|(row, &level)| strips::Reading::estimated(level, row.pan))
+                    .collect(),
+                bus: strips::Reading::estimated(bus_level, 64),
+                master: strips::Reading::estimated(
+                    estimates.iter().copied().fold(0.0_f32, f32::max),
+                    master.pan,
+                ),
+            },
+        };
+        // The song grid's activity bars follow the meters.
+        let levels: Vec<f32> = readings.tracks.iter().map(strips::Reading::bar).collect();
+        if meters.as_ref().is_some_and(|meters| meters.moving()) {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(30));
+        }
         let mut actions = Vec::new();
         draw(
             ui,
@@ -140,7 +170,7 @@ impl GuitarScoreApp {
             master,
             &grid,
             bus,
-            bus_level,
+            &readings,
             GridView {
                 measure_count,
                 cursor_measure: cursor.measure.get(),
@@ -426,7 +456,7 @@ fn draw(
     master: gscore_model::MasterMix,
     grid: &GridData,
     bus: crate::settings::ReverbBus,
-    bus_level: f32,
+    readings: &strips::Readings,
     view: GridView,
     levels: &[f32],
     mixer_state: &mut MixerState,
@@ -439,8 +469,7 @@ fn draw(
             rows,
             master,
             bus,
-            bus_level,
-            levels,
+            readings,
             view.metronome,
             mixer_state,
             actions,
