@@ -4215,13 +4215,18 @@ needed for a much larger font); owner listening check.
   bass program, the default is the saved preset of the same kind whose name best matches
   the old built-in tone (so "Metal Guitar 1" starts the metal programs, "Lead Guitar 1"
   the lead, "Classical Guitar 1" nylon, "Natural Steel 1" steel, the first electric preset
-  the clean programs, and so on). With no saved preset of a kind, the built-in library
-  still answers. `Playback::default_tone_for` and the WAV export use the same choice.
-- **Default tones arrive at the mixer at the same loudness:** the string sound is set to
-  the machine's level for its kind and the chain's output trims are cancelled by adjusting
-  one block's output level (amp, drive, compressor, cabinet or room), never its drive or
-  tone. This is applied when a default is sent to the engine or exported, not to the tone
-  saved in the settings (so the pickers still recognise it).
+  the clean programs, and so on). All steel-string acoustic programs take "Natural Steel 1"
+  and all nylon-string ones "Classical Guitar 1", even when other acoustic presets exist.
+  With no saved preset of a kind, the built-in library still answers.
+  `Playback::default_tone_for` and the WAV export use the same choice.
+- **Default tones arrive at the mixer at the same loudness:** a saved preset keeps the
+  chain levels the owner dialed in (so an amp preset is not boosted past a clean one);
+  only its string sound is set to the machine's level for its kind, which lifts the clean
+  electric preset saved at 0.35 to the kind's 0.597. A built-in fallback has its chain's
+  output trims cancelled as well, by adjusting one block's output level (amp, drive,
+  compressor, cabinet or room), never its drive or tone. Applied when a default is sent to
+  the engine or exported, not to the tone saved in the settings (so the pickers still
+  recognise it).
 - **The preview is the first chord and the whole chain:** the demo phrase is one strummed
   chord on a guitar and one note on a bass (plus a short tail); choosing a tone syncs
   playback's tones before the excerpt starts, so its amp, cabinet, room and reverb play,

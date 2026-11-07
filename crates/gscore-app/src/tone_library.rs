@@ -137,18 +137,32 @@ pub(crate) fn saved_default_for(
             words.push((*word).to_owned());
         }
     }
-    let mut best: Option<(&ChainPreset, usize)> = None;
+    // The acoustic guitars have one saved preset each by kind: every steel-string acoustic
+    // takes the preset named for natural steel, every nylon-string one the classical preset.
+    let preferred: &[&str] = match kind {
+        StringKind::Steel => &["natural", "steel", "acoustic"],
+        StringKind::Nylon => &["classical", "nylon"],
+        StringKind::Electric | StringKind::Bass => &[],
+    };
+    // The rank: the first preferred word found (its place in the list decides: "classical"
+    // before "nylon"), then the most matching words. Ties keep the earlier preset.
+    let mut best: Option<(&ChainPreset, (usize, usize))> = None;
     for preset in saved {
         if kind_from_id(&preset.kind) != Some(kind) {
             continue;
         }
         let name = preset.name.to_lowercase();
+        let preferred_rank = preferred
+            .iter()
+            .position(|word| name.contains(word))
+            .unwrap_or(usize::MAX);
         let score = words
             .iter()
             .filter(|word| name.contains(word.as_str()))
             .count();
-        if best.is_none_or(|(_, best_score)| score > best_score) {
-            best = Some((preset, score));
+        let rank = (preferred_rank, usize::MAX.saturating_sub(score));
+        if best.is_none_or(|(_, best_rank)| rank < best_rank) {
+            best = Some((preset, rank));
         }
     }
     best.map(|(preset, _)| preset)
@@ -197,17 +211,23 @@ fn family_words(family: ToneFamily) -> &'static [&'static str] {
     }
 }
 
-/// Matches the default tones' loudness: the string sound sits at `target_level` (the
-/// machine's level for its kind) and the chain's output trims cancel out, so no default
-/// arrives at the mixer much louder or quieter than another. The trim is taken from one
-/// block's output level (an amp, then a drive, a compressor, a cabinet or a room), never
-/// from its drive or tone.
-pub(crate) fn normalize_default(tone: &mut Tone, target_level: f32) {
+/// Puts a default's string sound at `target_level` (the machine's level for its kind),
+/// leaving its chain exactly as it was dialed in. Saved presets use this: their chain levels
+/// are the owner's, but a clean preset saved lower than the kind's level would sound weak
+/// beside the amp presets.
+pub(crate) fn normalize_string_level(tone: &mut Tone, target_level: f32) {
     tone.sound.level = if target_level.is_finite() {
         target_level.clamp(0.0, 1.0)
     } else {
         tone.sound.level.clamp(0.0, 1.0)
     };
+}
+
+/// Matches a built-in fallback's loudness: the string sound sits at `target_level` and the
+/// chain's output trims cancel out. The trim is taken from one block's output level (an
+/// amp, then a drive, a compressor, a cabinet or a room), never from its drive or tone.
+pub(crate) fn normalize_default(tone: &mut Tone, target_level: f32) {
+    normalize_string_level(tone, target_level);
     let mut trim = 0.0_f32;
     let mut chosen: Option<(u8, usize)> = None;
     for (index, block) in tone.chain.blocks.iter().enumerate() {
@@ -828,11 +848,15 @@ mod tests {
         };
         let saved = vec![
             preset("Electric Guitar 1", StringKind::Electric, 0.35),
+            // A second steel and a second nylon preset: the acoustic mapping still chooses
+            // the natural-steel and classical ones.
+            preset("Steel Strummed 2", StringKind::Steel, 0.5),
             preset("Natural Steel 1", StringKind::Steel, 0.6),
             preset("Clean Bass 1", StringKind::Bass, 0.5),
             preset("Muted Overdriven Guitar", StringKind::Electric, 0.6),
             preset("Metal Guitar 1", StringKind::Electric, 0.6),
             preset("Lead Guitar 1", StringKind::Electric, 0.6),
+            preset("Nylon Folk 2", StringKind::Nylon, 0.5),
             preset("Classical Guitar 1", StringKind::Nylon, 0.4),
         ];
         let name = |program, kind| {
@@ -858,6 +882,23 @@ mod tests {
             default_tone_name(27, StringKind::Electric, &saved),
             "Electric Guitar 1"
         );
+    }
+
+    #[test]
+    fn a_saved_default_keeps_its_chain_levels() {
+        // A saved preset's amp output is the owner's: only the string level is matched, so
+        // a clean preset saved quiet is not left weak beside the amp presets.
+        let mut saved = Tone {
+            kind: StringKind::Electric,
+            sound: StringSound {
+                level: 0.35,
+                ..StringSound::from(gscore_audio::default_string_model(StringKind::Electric))
+            },
+            chain: chain(vec![amp(AmpVoiceSetting::Lead, 0.8, 0.5, 0.5, 0.5, -14.0)]),
+        };
+        normalize_string_level(&mut saved, 0.597);
+        assert!((saved.sound.level - 0.597).abs() < 1e-6);
+        assert!((saved.chain.blocks[0].gain_db - (-14.0)).abs() < 1e-6);
     }
 
     #[test]

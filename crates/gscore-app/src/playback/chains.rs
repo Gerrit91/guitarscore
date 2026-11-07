@@ -310,6 +310,13 @@ impl Playback {
         crate::tone_library::default_tone_name(program, kind, &self.string_presets)
     }
 
+    /// Whether `default_tone_for` falls back to the built-in library (no saved preset of
+    /// that kind): only those need their loudness matched; a saved preset keeps the levels
+    /// the owner dialed in.
+    fn built_in_default(&self, program: u8, kind: StringKind) -> bool {
+        crate::tone_library::saved_default_for(program, kind, &self.string_presets).is_none()
+    }
+
     /// Gives the preset `program` a tone of its own (heard at once, and on every track with
     /// that preset from now on), or forgets it with `None`: the built-in default plays
     /// again. A tone of another kind of string changes which strings its tracks play, so
@@ -534,9 +541,16 @@ impl Playback {
                         .or(preset)
                         .unwrap_or_else(|| self.default_tone_for(target.program, kind));
                     if default {
-                        // The defaults arrive at the mixer at the same loudness.
+                        // A saved preset keeps its chain levels (the owner's); only the
+                        // string level is matched to the kind, so a clean preset saved
+                        // lower is not weak beside an amp preset. A built-in fallback has
+                        // its chain trims matched too.
                         let target_level = self.string_sounds.get(kind).level;
-                        crate::tone_library::normalize_default(&mut tone, target_level);
+                        if self.built_in_default(target.program, kind) {
+                            crate::tone_library::normalize_default(&mut tone, target_level);
+                        } else {
+                            crate::tone_library::normalize_string_level(&mut tone, target_level);
+                        }
                     }
                     // A default tone brings its own string sound too (the owner's saved
                     // preset may differ from the kind's settings); only a SoundFont track
@@ -646,7 +660,11 @@ impl Playback {
             .map(|&kind| {
                 let mut tone = self.default_tone_for(0, kind);
                 let target_level = self.string_sounds.get(kind).level;
-                crate::tone_library::normalize_default(&mut tone, target_level);
+                if self.built_in_default(0, kind) {
+                    crate::tone_library::normalize_default(&mut tone, target_level);
+                } else {
+                    crate::tone_library::normalize_string_level(&mut tone, target_level);
+                }
                 let spec = self.chain_spec(&tone.chain);
                 (kind, tone.sound.model(), spec, tone.chain.knobs())
             })
@@ -658,7 +676,11 @@ impl Playback {
                 let kind = StringKind::for_program(program)?;
                 let mut tone = self.default_tone_for(program, kind);
                 let target_level = self.string_sounds.get(kind).level;
-                crate::tone_library::normalize_default(&mut tone, target_level);
+                if self.built_in_default(program, kind) {
+                    crate::tone_library::normalize_default(&mut tone, target_level);
+                } else {
+                    crate::tone_library::normalize_string_level(&mut tone, target_level);
+                }
                 let spec = self.chain_spec(&tone.chain);
                 Some((program, kind, tone.sound.model(), spec, tone.chain.knobs()))
             })
