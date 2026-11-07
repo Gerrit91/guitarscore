@@ -74,11 +74,49 @@ Today a selection in the song grid is a range of bars across **all** tracks
   carries a track, or a new variant for one track's bars): copy, paste, delete, loop
   playback and the palette act on what is selected (one track or all). Check each of them.
 
+## 6. Copy and paste of notes and beats
+
+The owner, 2026-11-07: copying and pasting selected beats does not work. Two kinds are
+needed, as in Guitar Pro:
+
+- **A single note:** with the cursor on a note and nothing selected, Copy takes that note
+  (its fret and its note effects); Paste puts it on the string under the cursor, in the
+  beat under the cursor, and leaves the beat's other notes alone. Guitar Pro does this: copy
+  fret 2 on one string, paste 2 onto another string. Whether the pasted note keeps the
+  fret or the pitch (the same note on another string needs another fret) follows Guitar
+  Pro: check what it does, the owner's example keeps the fret.
+- **One beat or several beats** (a selection): Paste replaces whole beats from the cursor
+  on (length, notes, beat effects), as `paste_beats` intends.
+
+Pointers (from the review, not proven):
+
+- `crates/gscore-edit/src/selection/clipboard.rs` `copy_selection` needs a selection
+  (`EditError::NothingSelected` without one), so copying with only the cursor on a note
+  does nothing today. The clipboard (`Clipboard`) has no single-note kind yet: add one,
+  and a paste that writes one note (`Command::SetFret` and its effects) into the
+  cursor's beat on the cursor's string.
+- The keys reach the editor (`app/keys.rs` maps egui's `Event::Copy`, `Event::Cut` and
+  `Event::Paste` to Ctrl+C/X/V; `tab_editor.rs` runs `ActionId::Copy` and `Paste`), so first
+  reproduce in the app why a beat selection does not paste: the selection being made in
+  the score but not reaching the editor's (`set_selection`), the paste landing somewhere
+  else, or the copy failing silently (an error that is never shown). The menu entries
+  (`page_menu.rs`, `bars.rs`) must work the same way as the keys.
+- A paste that cannot happen (too few bars left: `paste_beats` refuses) says so in the
+  status line instead of doing nothing.
+- Copy and paste of bars in the grid (section 5) stay as they are and act on one track or
+  all.
+
 ## Tests
 
 - Edit tests (`crates/gscore-edit/tests/`): Left/Right through an empty bar in the middle
   and at the end; Shift+arrows across empty bars; navigation across a repeat with two
   endings in written order; Home/End and Shift+Home/End.
+- Edit tests for copy and paste: a single note copied from one string and pasted onto
+  another string of another beat (the beat's other notes stay, the effects come along);
+  one beat and several beats over a bar line pasted over existing beats (replaced whole);
+  undo of each paste is one step.
 - App tests (`crates/gscore-app/tests/`): a selection over empty bars draws a band over
   each (snapshot); dragging in the grid within one row selects one track, out of the row
-  all tracks, back in one track again; copy and delete act on one track's selection only.
+  all tracks, back in one track again; copy and delete act on one track's selection only;
+  Ctrl+C / Ctrl+V and the menu entries copy and paste a note and a beat selection made in
+  the score.
