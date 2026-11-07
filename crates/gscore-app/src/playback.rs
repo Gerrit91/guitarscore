@@ -112,6 +112,18 @@ impl MidiOutRoute {
 /// What each MIDI-out port plays, by the port requested ([`MidiOutRoute::port`]).
 type MidiSequences = Vec<(Option<String>, Arc<Sequence>)>;
 
+/// One drum part's own tone in a song: its effect chain and its mixing level inside the
+/// drum track.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrackDrumPart {
+    /// Which part of the kit.
+    pub part: crate::chain_settings::DrumPart,
+    /// Its blocks and knobs.
+    pub chain: crate::chain_settings::ChainSetting,
+    /// Its mixing level (0-127, 127 unity).
+    pub level: u8,
+}
+
 /// One MIDI output port that plays MIDI-out tracks.
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug)]
@@ -277,6 +289,9 @@ pub struct Playback {
     preset_tones: Vec<crate::settings::PresetTone>,
     /// The tones set for the parts of a drum kit (kick, snare, ...), local to this machine.
     drum_parts: Vec<crate::settings::DrumPartTone>,
+    /// The drum parts a song gives a drum track of its own (by the song's track index):
+    /// each part's chain and mixing level, over this machine's kit.
+    track_drum_parts: std::collections::BTreeMap<usize, Vec<TrackDrumPart>>,
     /// The tones that came with the open song, by its track index (they win over the
     /// preset's: a shared song keeps its sound).
     tones: std::collections::BTreeMap<usize, crate::chain_settings::Tone>,
@@ -288,7 +303,8 @@ pub struct Playback {
     sent_tones: std::collections::BTreeMap<usize, chains::SentTone>,
     /// What each drum track's parts were given (by song track and part), so a part's
     /// chain is prepared again only when its blocks change.
-    sent_parts: std::collections::BTreeMap<(usize, usize), crate::chain_settings::ChainSetting>,
+    sent_parts:
+        std::collections::BTreeMap<(usize, usize), (crate::chain_settings::ChainSetting, u8)>,
     /// The mixer's reverb bus (a computed reverb or a room, all wet) and its compressor
     /// bus (parallel compression), and what the synthesizer was last given for each.
     reverb_bus: crate::settings::ReverbBus,
@@ -355,6 +371,7 @@ impl Default for Playback {
             string_chains: crate::chain_settings::StringChains::default(),
             preset_tones: Vec::new(),
             drum_parts: Vec::new(),
+            track_drum_parts: std::collections::BTreeMap::new(),
             tones: std::collections::BTreeMap::new(),
             comp_sends: Vec::new(),
             tone_targets: Vec::new(),

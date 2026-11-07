@@ -710,6 +710,7 @@ impl eframe::App for GuitarScoreApp {
         self.sync_midi_routes();
         self.sync_track_tones();
         self.sync_comp_sends();
+        self.sync_track_drum_parts();
         self.sync_song_buses();
         // Keep a loop of the selected measures going; a new selection turns it on.
         self.auto_loop();

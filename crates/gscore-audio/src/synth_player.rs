@@ -323,6 +323,12 @@ impl SynthPlayer {
         self.send(Command::PartChainSettings(track, part, settings))
     }
 
+    /// The mixing level of `part` of the song's drum track `track` (0-127, 127 unity),
+    /// heard at once.
+    pub fn set_part_level(&self, track: usize, part: usize, level: u8) -> Result<(), PlayError> {
+        self.send(Command::PartLevel(track, part, level))
+    }
+
     /// New knob values for the effect chain of `track`, heard at once.
     pub fn set_chain_settings(
         &self,

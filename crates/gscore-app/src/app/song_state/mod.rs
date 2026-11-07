@@ -25,7 +25,8 @@ use gscore_model::{Song, TrackIndex};
 use gscore_play::{StringKind, TrackEngine};
 use serde::{Deserialize, Serialize};
 
-use crate::playback::MidiOutRoute;
+use crate::chain_settings::{ChainSetting, DrumPart};
+use crate::playback::{MidiOutRoute, TrackDrumPart};
 use crate::settings::{CompressorBus, PresetTone, ReverbBus};
 
 /// The old block's opening marker; the version follows, then `]` and the JSON.
@@ -126,6 +127,58 @@ pub(crate) struct TrackSound {
     /// The tone it plays, when it is not the built-in one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tone: Option<PresetTone>,
+    /// The parts of a drum kit the song gives a tone or mixing level of their own; a part
+    /// missing here plays this machine's kit setting (or the built-in tone) at unity.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub drum_parts: Vec<DrumPartSound>,
+}
+
+/// One drum part's own tone in a song: its chain and its mixing level in the drum track.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct DrumPartSound {
+    /// The part's id (`kick`, `snare`, `hi_hat`, `toms`, `cymbals`, `percussion`).
+    pub part: String,
+    /// Its blocks and knobs.
+    #[serde(default)]
+    pub chain: ChainSetting,
+    /// Its mixing level (0-127, 127 unity).
+    #[serde(default = "unity_level", skip_serializing_if = "is_unity")]
+    pub level: u8,
+}
+
+/// The level of a part the song's payload leaves out.
+fn unity_level() -> u8 {
+    127
+}
+
+/// `true` for the unity level, so a default number is not written.
+fn is_unity(level: &u8) -> bool {
+    *level == 127
+}
+
+impl DrumPartSound {
+    /// The state of `part` with `chain` at `level`.
+    pub(crate) fn of(part: DrumPart, chain: &ChainSetting, level: u8) -> Self {
+        DrumPartSound {
+            part: part.id().to_owned(),
+            chain: chain.clone(),
+            level: level.min(127),
+        }
+    }
+
+    /// The part it is for (an unknown id from a newer version is ignored).
+    pub(crate) fn part(&self) -> Option<DrumPart> {
+        DrumPart::from_id(&self.part)
+    }
+
+    /// The part as playback takes it.
+    pub(crate) fn track_part(&self) -> Option<TrackDrumPart> {
+        Some(TrackDrumPart {
+            part: self.part()?,
+            chain: self.chain.clone(),
+            level: self.level.min(127),
+        })
+    }
 }
 
 /// `true` for 0, so a default number is not written.
@@ -193,6 +246,9 @@ impl TrackSound {
     fn sanitized(mut self) -> Self {
         self.comp_send = self.comp_send.min(127);
         self.midi_out = self.midi_out.map(MidiOutRoute::sanitized);
+        for part in &mut self.drum_parts {
+            part.level = part.level.min(127);
+        }
         self
     }
 
@@ -420,7 +476,9 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
     use super::*;
-    use crate::chain_settings::{BlockChoice, BlockSetting, ChainSetting, Tone};
+    use crate::chain_settings::{
+        BlockChoice, BlockSetting, ChainSetting, DrumPart, Tone, default_drum_part_chain,
+    };
     use crate::settings::StringSound;
     use gscore_play::StringKind;
 
@@ -576,6 +634,51 @@ mod tests {
 
         // Buses alone are enough for a state; when everything is default there is none.
         assert!(SongState::new(Vec::new(), Buses::default()).is_none());
+    }
+
+    #[test]
+    fn a_tracks_drum_parts_travel_in_the_block() {
+        let mut chain = default_drum_part_chain(DrumPart::Kick);
+        if let Some(block) = chain.blocks.first_mut() {
+            block.low_cut = 45.0;
+        }
+        let sound = TrackSound {
+            drum_parts: vec![
+                DrumPartSound::of(DrumPart::Kick, &chain, 96),
+                DrumPartSound::of(
+                    DrumPart::Snare,
+                    &default_drum_part_chain(DrumPart::Snare),
+                    127,
+                ),
+            ],
+            ..TrackSound::default()
+        };
+        let state = state_of(vec![TrackState {
+            track: 0,
+            identity: None,
+            sound,
+        }])
+        .expect("the drum parts are state");
+        let notes = encode([], Some(&state));
+        let (kept, back) = split(notes);
+        assert!(kept.is_empty());
+        let back = back.expect("the state is read");
+        let part = back
+            .track(0)
+            .and_then(|track| track.sound.drum_parts.first())
+            .cloned()
+            .expect("the kick");
+        assert_eq!(part.part(), Some(DrumPart::Kick));
+        assert_eq!(part.level, 96);
+        assert_eq!(part.chain, chain);
+        // A part at the unity level writes no level, and comes back at unity.
+        let snare = back
+            .track(0)
+            .and_then(|track| track.sound.drum_parts.get(1))
+            .cloned()
+            .expect("the snare");
+        assert_eq!(snare.level, 127);
+        assert_eq!(back, state);
     }
 
     #[test]

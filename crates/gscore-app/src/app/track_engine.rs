@@ -14,9 +14,9 @@ use gscore_model::{InstrumentKind, TrackIndex};
 use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
-use super::song_state::{Buses, SoundEngine, TrackSound};
-use crate::chain_settings::Tone;
-use crate::playback::MidiOutRoute;
+use super::song_state::{Buses, DrumPartSound, SoundEngine, TrackSound};
+use crate::chain_settings::{ChainSetting, DrumPart, Tone};
+use crate::playback::{MidiOutRoute, TrackDrumPart};
 use crate::settings::{CompressorBus, ReverbBus};
 
 /// What plays a track, and why.
@@ -144,7 +144,7 @@ impl GuitarScoreApp {
         });
         // A drum track with no tone of its own runs the drum bus, as playback does.
         if self.track_player(track).is_some_and(|player| player.drums)
-            && tone.chain == crate::chain_settings::ChainSetting::default()
+            && tone.chain == ChainSetting::default()
         {
             tone.chain = self.playback.drum_bus_chain();
         }
@@ -275,14 +275,79 @@ impl GuitarScoreApp {
     }
 
     /// Hands everything the song says about its sound to playback: what plays each track,
-    /// its MIDI route, its tone, its compressor send and the mixer's buses. Called after
-    /// every edit; the player drops what did not change.
+    /// its MIDI route, its tone, its compressor send, the drum parts it gives its own
+    /// tones, and the mixer's buses. Called after every edit; the player drops what did not
+    /// change.
     pub(super) fn sync_song_sound(&mut self) {
         self.sync_track_engines();
         self.sync_midi_routes();
         self.sync_track_tones();
         self.sync_comp_sends();
+        self.sync_track_drum_parts();
         self.sync_song_buses();
+    }
+
+    /// The chain and mixing level `part` of `track` plays: the song's own, else this
+    /// machine's kit setting (or the built-in tone) at unity.
+    pub(super) fn track_drum_part(&self, track: usize, part: DrumPart) -> (ChainSetting, u8) {
+        let own = self
+            .tabs
+            .get(self.active)
+            .map(|tab| TrackSound::of_song(tab.document.song(), track))
+            .and_then(|sound| {
+                sound
+                    .drum_parts
+                    .into_iter()
+                    .find(|own| own.part() == Some(part))
+            });
+        match own {
+            Some(own) => (own.chain, own.level.min(127)),
+            None => (self.playback.kit_drum_part_chain(part), 127),
+        }
+    }
+
+    /// Gives `part` of `track` a tone of the song's own (a chain and a level), or `None`
+    /// to follow this machine's kit again. An edit, with undo, heard at once.
+    pub(super) fn set_track_drum_part(
+        &mut self,
+        track: usize,
+        part: DrumPart,
+        own: Option<(ChainSetting, u8)>,
+    ) {
+        let Some(song) = self.document().map(|document| document.song().clone()) else {
+            return;
+        };
+        let mut sound = TrackSound::of_song(&song, track);
+        sound.drum_parts.retain(|entry| entry.part() != Some(part));
+        if let Some((chain, level)) = own {
+            sound
+                .drum_parts
+                .push(DrumPartSound::of(part, &chain, level));
+        }
+        // The kit's order, so the payload does not depend on the order parts were edited.
+        sound
+            .drum_parts
+            .sort_by_key(|entry| entry.part().map_or(usize::MAX, DrumPart::index));
+        self.set_track_sound(track, sound, true);
+    }
+
+    /// Hands the drum parts the open document gives its tracks to playback.
+    pub(super) fn sync_track_drum_parts(&mut self) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        let song = tab.document.song();
+        let parts: std::collections::BTreeMap<usize, Vec<TrackDrumPart>> = (0..song.track_count())
+            .filter_map(|track| {
+                let own: Vec<TrackDrumPart> = TrackSound::of_song(song, track)
+                    .drum_parts
+                    .iter()
+                    .filter_map(DrumPartSound::track_part)
+                    .collect();
+                (!own.is_empty()).then_some((track, own))
+            })
+            .collect();
+        self.playback.set_track_drum_parts(parts);
     }
 
     /// The song's own buses, each falling back to this machine's settings when the song

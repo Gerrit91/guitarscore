@@ -344,6 +344,11 @@ impl SynthEngine {
         self.mixer.set_part_chain_settings(track, part, settings);
     }
 
+    /// The mixing level of `part` of the song's drum track `track` (0-127, 127 unity).
+    pub fn set_part_level(&mut self, track: usize, part: usize, level: u8) {
+        self.mixer.set_part_level(track, part, level);
+    }
+
     /// Gives `bus` a prepared chain (`None`: none). Returns the one it replaces, to be
     /// freed elsewhere.
     pub fn set_bus(&mut self, bus: crate::Bus, chain: Option<Box<Chain>>) -> Option<Box<Chain>> {
@@ -399,6 +404,10 @@ impl SynthEngine {
             }
             Command::PartChainSettings(track, part, settings) => {
                 self.set_part_chain_settings(track, part, settings);
+                return None;
+            }
+            Command::PartLevel(track, part, level) => {
+                self.set_part_level(track, part, level);
                 return None;
             }
             Command::Bus(bus, chain) => {

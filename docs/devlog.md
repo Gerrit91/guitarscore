@@ -4021,3 +4021,26 @@ needed for a much larger font); owner listening check.
   cursor (a bus change is an edit like any other); reviewed and updated.
 - Still open: per-track drum part chains and levels; the block round trip through
   GP3/4/5/GPX, recovery and the journal.
+
+## 2026-11-07 — Part A, 7: a drum kit's parts belong to its track
+
+- `TrackSound` gains `drum_parts` (`DrumPartSound`: the part's id, its chain and its
+  level 0-127), so the Sound chain window's part row writes the **song's** copy of the
+  drum track instead of the machine-wide settings: each drum track has its own kick,
+  snare, ... chains and levels, a part the song does not set follows the machine's kit
+  (the old `settings.rs` `drum_parts`, or the built-in tone), and Built-in forgets the
+  song's own again. All of it goes through `Command::SetTrackSound`, so a part is one
+  undo step per drag and travels with the song.
+- The engine gained the part **level**: `SynthEngine::set_part_level` and
+  `Command::PartLevel` scale a part after its chain, and `PartChoice` carries it so WAV
+  export matches playback. `Playback` keeps the song's per-track parts
+  (`TrackDrumPart`, sync'd after every edit) over the machine kit;
+  `track_drum_part_chain`/`track_drum_part_level` resolve the two, and
+  `export_parts` uses them.
+- The part window shows a level slider under the part row; a part the song owns offers
+  Built-in, a part that only follows the kit does not (so the machine's setting is never
+  silently overwritten).
+- Tests: the block round trip with two parts (a chain and a level, one at unity), the
+  window writes the track's payload rather than the settings and Built-in clears it, the
+  mixer's level scales only its part, and `sound_chain_drum_kick` shows the slider.
+- Still open: the block round trip through GP3/4/5/GPX, recovery and the journal.
