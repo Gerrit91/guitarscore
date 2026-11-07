@@ -52,6 +52,7 @@ mod tab_bar;
 mod tile_faces;
 mod tiles;
 mod title_bar;
+mod tone_picker;
 mod toolbar;
 mod track_engine;
 mod track_panel;

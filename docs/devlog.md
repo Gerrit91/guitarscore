@@ -4104,3 +4104,8 @@ needed for a much larger font); owner listening check.
   gets that kind's tone. The per-kind settings remain the fallback for programs without
   a tone. Tests: 27 and 30 start on different electric tones, a bass-switched track gets
   a bass tone, and export resolves every modelled track's model and chain.
+- Part B, step 3: the shared sound picker (`app/tone_picker.rs`): a filterable, scrollable
+  table about eight rows high, grouped by General MIDI family, by drum kit, or by our tone
+  family plus the user's saved tones; the current choice is highlighted and scrolled into
+  view and a tone's description shows on hover. Pure row builders and filter are tested;
+  not wired into a window yet.
