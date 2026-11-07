@@ -283,3 +283,13 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     writes each track's chord diagrams as a `DiagramCollection` property and each beat's
     diagram id as `<Chord>`, which the importer already read; diagrams used to be dropped
     on save. Tests cover both through a GP7 round trip.
+43. Guitar Pro's RSE sound survives saving (`src/io/gpif/mod.rs`, `src/io/gpx/mod.rs`,
+    `src/model/track.rs`, `src/io/gpif_import/mod.rs`, `src/io/gpif_export/mod.rs`,
+    2026-11-07): the reader kept only the MIDI program of a GP7 track's `<Sounds>` and the
+    writer dropped the element, so a save from GuitarScore lost the RSE sound its author
+    chose (path, soundbank patch, pickups, effect chain). A second, lightweight pass over
+    `score.gpif` (`capture_track_raw`) now records each track's `<Sounds>` and
+    `<AudioEngineState>` elements verbatim — CDATA, unknown effects and all — and the GPIF
+    writer emits them back unchanged. `Track` gains `gpif_sounds` and
+    `gpif_audio_engine`; GP3-5/GPX leave them `None`. Tests in
+    `gpif_import/sounds_tests.rs` and `gpif/raw_tests`.

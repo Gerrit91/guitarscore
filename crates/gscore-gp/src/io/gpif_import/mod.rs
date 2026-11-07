@@ -97,6 +97,8 @@ mod page_tests;
 #[cfg(test)]
 mod section_tests;
 #[cfg(test)]
+mod sounds_tests;
+#[cfg(test)]
 mod tuning_tests;
 #[cfg(test)]
 mod vibrato_tests;
@@ -371,6 +373,13 @@ impl SongGpifOps for Song {
                 number: i32::try_from(t_idx.saturating_add(1)).unwrap_or(i32::MAX),
                 ..Default::default()
             };
+
+            // GuitarScore addition: the GP7 elements kept verbatim (the RSE sound and the
+            // audio engine choice), so saving does not lose what Guitar Pro wrote there.
+            if let Some(raw) = gpif.track_raw.get(t_idx) {
+                track.gpif_sounds = raw.sounds.clone();
+                track.gpif_audio_engine = raw.audio_engine.clone();
+            }
 
             // Color
             if let Some(color_str) = &g_track.color {

@@ -91,6 +91,13 @@ pub struct Track {
     /// `drums`, `piano`, ...), independent of the instrument's sound. GP7 files keep it as
     /// a track property (`GuitarScoreSymbol`); older formats drop it.
     pub symbol: Option<String>,
+    /// GuitarScore addition: the track's GP7 `<Sounds>` element exactly as the file had
+    /// it (the RSE sound: its path, bank patch, pickups and effect chain), written back
+    /// unchanged. `None` for formats without one and for new tracks.
+    pub gpif_sounds: Option<String>,
+    /// GuitarScore addition: the track's GP7 `<AudioEngineState>` element exactly as the
+    /// file had it (`RSE` or `MIDI`), written back unchanged.
+    pub gpif_audio_engine: Option<String>,
 }
 
 impl Default for Track {
@@ -125,6 +132,8 @@ impl Default for Track {
             tuning_label: None,
             bars_per_system: None,
             symbol: None,
+            gpif_sounds: None,
+            gpif_audio_engine: None,
         }
     }
 }
