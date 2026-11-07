@@ -2,6 +2,7 @@
 //! their ranges.
 
 use crate::amp::AmpKnobs;
+use crate::compressor::CompressorKnobs;
 use crate::drive::DriveKnobs;
 
 /// The knobs of an impulse response block.
@@ -101,6 +102,7 @@ pub struct BlockSettings {
     pub reverb: ReverbKnobs,
     pub amp: AmpKnobs,
     pub drive: DriveKnobs,
+    pub compressor: CompressorKnobs,
 }
 
 /// The knob ranges, for user interfaces and for sanitizing: `(lowest, highest)`.
@@ -121,6 +123,12 @@ pub mod knob_ranges {
     pub const WIDTH: (f32, f32) = (0.0, 1.0);
     /// An amp's Gain, Bass, Mid, Treble and Speaker; a drive's Drive and Tone.
     pub const AMP: (f32, f32) = (0.0, 1.0);
+    /// A compressor's input and output gain, dB.
+    pub const COMP_GAIN: (f32, f32) = (-24.0, 24.0);
+    /// A compressor's attack, ms.
+    pub const ATTACK: (f32, f32) = (0.02, 0.8);
+    /// A compressor's release, ms.
+    pub const RELEASE: (f32, f32) = (50.0, 1_100.0);
     /// An amp's or a drive's output level, dB.
     pub const LEVEL: (f32, f32) = (-24.0, 12.0);
 }
@@ -141,6 +149,7 @@ impl BlockSettings {
         let r = ReverbKnobs::default();
         let a = AmpKnobs::default();
         let d = DriveKnobs::default();
+        let c = CompressorKnobs::default();
         let amp = |value: f32, fallback: f32| fit(value, knob_ranges::AMP, fallback);
         BlockSettings {
             bypass: self.bypass,
@@ -185,6 +194,22 @@ impl BlockSettings {
                 drive: amp(self.drive.drive, d.drive),
                 tone: amp(self.drive.tone, d.tone),
                 level_db: fit(self.drive.level_db, knob_ranges::LEVEL, d.level_db),
+            },
+            compressor: CompressorKnobs {
+                input_db: fit(self.compressor.input_db, knob_ranges::COMP_GAIN, c.input_db),
+                output_db: fit(
+                    self.compressor.output_db,
+                    knob_ranges::COMP_GAIN,
+                    c.output_db,
+                ),
+                attack_ms: fit(self.compressor.attack_ms, knob_ranges::ATTACK, c.attack_ms),
+                release_ms: fit(
+                    self.compressor.release_ms,
+                    knob_ranges::RELEASE,
+                    c.release_ms,
+                ),
+                ratio: self.compressor.ratio,
+                mix: fit(self.compressor.mix, knob_ranges::MIX, c.mix),
             },
         }
     }

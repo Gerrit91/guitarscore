@@ -11,6 +11,7 @@
 use std::sync::Arc;
 
 use crate::amp::Amp;
+use crate::compressor::Compressor;
 use crate::convolver::{Convolver, PARTITION, Spectra};
 use crate::drive::Drive;
 use crate::filters::Biquad;
@@ -46,6 +47,8 @@ pub enum BlockKind {
     Amp,
     /// An overdrive pedal, computed (see [`crate::DriveKnobs`]): mono, or each side alike.
     Drive,
+    /// A compressor, computed (see [`crate::CompressorKnobs`]): both sides linked.
+    Compressor,
 }
 
 impl BlockKind {
@@ -77,6 +80,7 @@ enum PreparedBlock {
     Reverb,
     Amp,
     Drive,
+    Compressor,
 }
 
 impl ChainSpec {
@@ -104,6 +108,7 @@ impl ChainSpec {
                 BlockKind::Reverb => PreparedBlock::Reverb,
                 BlockKind::Amp => PreparedBlock::Amp,
                 BlockKind::Drive => PreparedBlock::Drive,
+                BlockKind::Compressor => PreparedBlock::Compressor,
             })
         });
         PreparedChain {
@@ -141,6 +146,10 @@ impl PreparedChain {
             Some(PreparedBlock::Amp) => Block::Amp(Box::new(
                 [(); 2].map(|()| Amp::new(rate, crate::AmpKnobs::default())),
             )),
+            Some(PreparedBlock::Compressor) => Block::Compressor(Box::new(Compressor::new(
+                rate,
+                crate::CompressorKnobs::default(),
+            ))),
             Some(PreparedBlock::Drive) => Block::Drive(Box::new(
                 [(); 2].map(|()| Drive::new(rate, crate::DriveKnobs::default())),
             )),
@@ -178,6 +187,8 @@ enum Block {
     Amp(Box<[Amp; 2]>),
     /// Left and right, as an amp's.
     Drive(Box<[Drive; 2]>),
+    /// Both sides at once (linked).
+    Compressor(Box<Compressor>),
 }
 
 /// The computed reverb and the cut filters on its sound, left and right.
@@ -232,6 +243,10 @@ impl Chain {
                     }
                     (None, (0.0, 0.0))
                 }
+                Block::Compressor(compressor) => {
+                    compressor.set_knobs(new.compressor);
+                    (None, (0.0, 0.0))
+                }
                 Block::Empty => (None, (0.0, 0.0)),
             };
             if let Some(filters) = filters {
@@ -244,6 +259,18 @@ impl Chain {
             }
             *slot = new;
         }
+    }
+
+    /// The deepest gain reduction of its compressors since the last call, in dB (0 or
+    /// below): what a compressor's meter shows.
+    pub fn take_gain_reduction(&mut self) -> f32 {
+        self.blocks
+            .iter_mut()
+            .filter_map(|block| match block {
+                Block::Compressor(compressor) => Some(compressor.take_deepest()),
+                _ => None,
+            })
+            .fold(0.0, f32::min)
     }
 
     /// Whether a tail (a reverb, a long response) may still sound after the strings fell
@@ -278,6 +305,7 @@ impl Chain {
                         side.reset();
                     }
                 }
+                Block::Compressor(compressor) => compressor.reset(),
                 Block::Reverb(reverb) => {
                     reverb.reverb.clear();
                     for filter in reverb.cuts.iter_mut().flatten() {
@@ -329,6 +357,10 @@ impl Chain {
                         } else {
                             signal[0]
                         };
+                    }
+                    Block::Compressor(compressor) => {
+                        let (left, right) = compressor.process(signal[0], signal[1], stereo);
+                        signal = [left, right];
                     }
                     Block::Drive(sides) => {
                         let [left, right] = &mut **sides;

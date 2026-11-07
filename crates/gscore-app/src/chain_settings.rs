@@ -242,6 +242,9 @@ impl BlockSetting {
                 tone: self.tone,
                 level_db: self.gain_db,
             },
+            // The compressor block is not offered in the window yet (mixer step 4, see
+            // docs/handoff-mixer.md): its defaults.
+            compressor: gscore_guitar::CompressorKnobs::default(),
         }
         .sanitized()
     }

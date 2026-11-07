@@ -45,11 +45,12 @@ pub(crate) enum Command {
     ),
     /// New knob values for one track's chain.
     ChainSettings(usize, [BlockSettings; BLOCKS]),
-    /// Gives the modelled tracks a prepared reverb bus (`None`: none), which every track
-    /// sends into with its mixer reverb amount.
-    ReverbBus(Option<Box<gscore_guitar::Chain>>),
-    /// New knob values, level and mute for the reverb bus.
-    ReverbBusSettings([BlockSettings; BLOCKS], u8, bool),
+    /// Gives a bus of the mixer its prepared chain (`None`: none).
+    Bus(crate::Bus, Option<Box<gscore_guitar::Chain>>),
+    /// New knob values, level and mute for a bus.
+    BusSettings(crate::Bus, [BlockSettings; BLOCKS], u8, bool),
+    /// A track's (by the song's index) send into the compressor bus.
+    CompSend(usize, u8),
 }
 
 /// Where a transport's events go.
@@ -171,8 +172,9 @@ impl Transport {
             | Command::TrackModel(..)
             | Command::Chain(..)
             | Command::ChainSettings(..)
-            | Command::ReverbBus(..)
-            | Command::ReverbBusSettings(..) => {}
+            | Command::Bus(..)
+            | Command::BusSettings(..)
+            | Command::CompSend(..) => {}
         }
         None
     }

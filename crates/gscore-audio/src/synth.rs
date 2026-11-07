@@ -31,7 +31,7 @@ pub(crate) enum Retired {
     #[allow(dead_code)]
     Chain(Box<Chain>),
     #[allow(dead_code)]
-    ReverbBus(Box<Chain>),
+    Bus(Box<Chain>),
 }
 
 /// Frames rendered between two looks at the schedule.
@@ -309,8 +309,7 @@ impl SynthEngine {
     /// Gives the tracks a reverb bus (`None`: none), a prepared chain that runs all wet.
     /// Returns the one it replaces, to be freed elsewhere.
     pub fn set_reverb_bus(&mut self, chain: Option<Box<Chain>>) -> Option<Box<Chain>> {
-        self.mixer
-            .set_reverb_bus(chain, [BlockSettings::default(); BLOCKS])
+        self.set_bus(crate::Bus::Reverb, chain)
     }
 
     /// New knob values, level and mute for the reverb bus, heard at once.
@@ -320,7 +319,30 @@ impl SynthEngine {
         level: u8,
         muted: bool,
     ) {
-        self.mixer.set_reverb_bus_settings(settings, level, muted);
+        self.set_bus_settings(crate::Bus::Reverb, settings, level, muted);
+    }
+
+    /// Gives `bus` a prepared chain (`None`: none). Returns the one it replaces, to be
+    /// freed elsewhere.
+    pub fn set_bus(&mut self, bus: crate::Bus, chain: Option<Box<Chain>>) -> Option<Box<Chain>> {
+        self.mixer
+            .set_bus(bus, chain, [BlockSettings::default(); BLOCKS])
+    }
+
+    /// New knob values, level and mute for `bus`, heard at once.
+    pub fn set_bus_settings(
+        &mut self,
+        bus: crate::Bus,
+        settings: [BlockSettings; BLOCKS],
+        level: u8,
+        muted: bool,
+    ) {
+        self.mixer.set_bus_settings(bus, settings, level, muted);
+    }
+
+    /// The song's track `track` sends `value` (0-127) into the compressor bus.
+    pub fn set_comp_send(&mut self, track: usize, value: u8) {
+        self.mixer.set_comp_send(track, value);
     }
 
     /// The mixer's meters: every track's level, the reverb bus's and the master's, to be
@@ -348,11 +370,15 @@ impl SynthEngine {
                 self.set_chain_settings(track, settings);
                 return None;
             }
-            Command::ReverbBus(chain) => {
-                return self.set_reverb_bus(chain).map(Retired::ReverbBus);
+            Command::Bus(bus, chain) => {
+                return self.set_bus(bus, chain).map(Retired::Bus);
             }
-            Command::ReverbBusSettings(settings, level, muted) => {
-                self.set_reverb_bus_settings(settings, level, muted);
+            Command::BusSettings(bus, settings, level, muted) => {
+                self.set_bus_settings(bus, settings, level, muted);
+                return None;
+            }
+            Command::CompSend(track, value) => {
+                self.set_comp_send(track, value);
                 return None;
             }
             _ => {}

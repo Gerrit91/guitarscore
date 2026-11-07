@@ -13,6 +13,7 @@
 
 mod amp;
 mod chain;
+mod compressor;
 mod convolver;
 mod delay;
 mod drive;
@@ -30,6 +31,7 @@ mod tail;
 
 pub use amp::{AmpKnobs, AmpVoice};
 pub use chain::{BLOCKS, BlockKind, Chain, ChainSpec, PreparedChain};
+pub use compressor::{CompRatio, CompressorKnobs};
 pub use drive::DriveKnobs;
 pub use impulse::{ImpulseError, ImpulseResponse, MAX_SECONDS};
 pub use knobs::{BlockSettings, ImpulseKnobs, ReverbKnobs, RoomKnobs, knob_ranges};

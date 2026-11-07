@@ -3701,3 +3701,17 @@ needed for a much larger font); owner listening check.
   never on a drum channel), a sequence with two drum tracks and its General MIDI form (and
   a live change), the engine's two drum strips with a chain on one, any channel as drums,
   the wire round trip with tracks, a fader in a sequence sent to the worklet.
+
+## 2026-11-07 — Mixer, step 4 (engine half): the CA-76 compressor and a compressor bus
+
+- `gscore-guitar::compressor`: a compressor after the 1176 family of FET compressors
+  ("CA-76"): input into a fixed threshold, output make-up, attack 20 µs-0.8 ms, release
+  50 ms-1.1 s (program dependent: slows after sustained compression), ratios 4, 8, 12, 20
+  and All (every button in: harder, overshooting, more color), a little FET second
+  harmonic growing with the reduction, mix, stereo linked. A chain block
+  (`BlockKind::Compressor`); `Chain::take_gain_reduction` for a meter.
+- `gscore-audio`: the reverb bus generalized to `Bus::{Reverb, Compressor}`; the
+  compressor bus is stereo and fed by each track's comp send (post-fader). Meters for the
+  bus and gain-reduction needles per track and for the bus.
+- Not done (budget): the app side of the block and the bus, export of the compressor bus,
+  engine tests for the bus. Handed over in `docs/handoff-mixer.md`.

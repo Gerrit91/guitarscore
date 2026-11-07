@@ -24,6 +24,9 @@ const MARK_HOLD: f32 = 1.5;
 const MARK_FALL_SECONDS: f32 = 0.3;
 /// Below this a falling level is shown as silence (-120 dB).
 const FLOOR: f32 = 1e-6;
+/// How quickly a compressor's gain-reduction needle returns toward 0 dB (time constant,
+/// seconds), as the needle of a studio compressor does.
+const NEEDLE_RETURN: f32 = 0.3;
 
 /// One meter's reading, as linear levels (1 is 0 dBFS; above 1 clips).
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -70,7 +73,12 @@ pub struct Meters {
     /// By the song's track index (tracks past [`MAX_TONES`] have none).
     tracks: Vec<Meter>,
     reverb: Meter,
+    compressor: Meter,
     master: Meter,
+    /// The gain reduction of each track's compressors and of the compressor bus, in dB
+    /// (0 or below; `f32` bits).
+    reductions: Vec<AtomicU32>,
+    bus_reduction: AtomicU32,
 }
 
 impl Default for Meters {
@@ -78,7 +86,10 @@ impl Default for Meters {
         Meters {
             tracks: (0..MAX_TONES).map(|_| Meter::default()).collect(),
             reverb: Meter::default(),
+            compressor: Meter::default(),
             master: Meter::default(),
+            reductions: (0..MAX_TONES).map(|_| AtomicU32::new(0)).collect(),
+            bus_reduction: AtomicU32::new(0),
         }
     }
 }
@@ -95,16 +106,40 @@ impl Meters {
         self.reverb.get()
     }
 
+    /// The level of the compressor bus after its fader.
+    pub fn compressor(&self) -> Level {
+        self.compressor.get()
+    }
+
     /// The level of the whole mix (before it is clipped to full scale).
     pub fn master(&self) -> Level {
         self.master.get()
+    }
+
+    /// How far the compressors in the song's track `track`'s chain turn it down, in dB (0
+    /// or below), moving like a compressor's needle.
+    pub fn reduction(&self, track: usize) -> f32 {
+        self.reductions
+            .get(track)
+            .map_or(0.0, |value| f32::from_bits(value.load(Ordering::Relaxed)))
+    }
+
+    /// How far the compressor bus turns its sum down, in dB (0 or below).
+    pub fn bus_reduction(&self) -> f32 {
+        f32::from_bits(self.bus_reduction.load(Ordering::Relaxed))
     }
 
     /// Whether any meter still shows something (an interface keeps redrawing until all
     /// have come to rest).
     pub fn moving(&self) -> bool {
         let shows = |meter: &Meter| meter.get().mark_left > 0.0 || meter.get().mark_right > 0.0;
-        shows(&self.master) || shows(&self.reverb) || self.tracks.iter().any(shows)
+        let reducing = |value: &AtomicU32| f32::from_bits(value.load(Ordering::Relaxed)) < 0.0;
+        shows(&self.master)
+            || shows(&self.reverb)
+            || shows(&self.compressor)
+            || self.tracks.iter().any(shows)
+            || reducing(&self.bus_reduction)
+            || self.reductions.iter().any(reducing)
     }
 }
 
@@ -115,6 +150,7 @@ pub(crate) struct Ballistics {
     bar_fall: f32,
     mark_hold: u32,
     mark_fall: f32,
+    needle_return: f32,
 }
 
 impl Ballistics {
@@ -127,6 +163,7 @@ impl Ballistics {
             bar_fall: 0.1_f32.powf(seconds / FALL_SECONDS),
             mark_hold: blocks(MARK_HOLD),
             mark_fall: 0.1_f32.powf(seconds / MARK_FALL_SECONDS),
+            needle_return: (-seconds / NEEDLE_RETURN).exp(),
         }
     }
 }
@@ -184,11 +221,35 @@ impl Peak {
     }
 }
 
-/// What the audio thread writes: a track's, the reverb bus's or the master's meter.
+/// A gain-reduction needle: it jumps to the deepest reduction of a block and returns
+/// toward 0 dB smoothly.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Needle {
+    db: f32,
+}
+
+impl Needle {
+    /// The needle after a block whose deepest reduction was `deepest` dB (0 or below).
+    pub(crate) fn update(&mut self, deepest: f32, ballistics: Ballistics) {
+        let deepest = if deepest.is_finite() {
+            deepest.min(0.0)
+        } else {
+            0.0
+        };
+        let returned = self.db * ballistics.needle_return;
+        self.db = deepest.min(returned);
+        if self.db > -0.01 {
+            self.db = 0.0;
+        }
+    }
+}
+
+/// What the audio thread writes: a track's, a bus's or the master's meter.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Which {
     Track(usize),
     Reverb,
+    Compressor,
     Master,
 }
 
@@ -198,10 +259,23 @@ impl Meters {
         let meter = match which {
             Which::Track(track) => self.tracks.get(track),
             Which::Reverb => Some(&self.reverb),
+            Which::Compressor => Some(&self.compressor),
             Which::Master => Some(&self.master),
         };
         if let Some(meter) = meter {
             meter.set(peak.level());
+        }
+    }
+
+    /// Publishes the gain reduction of the song's track `track` (`None`: the compressor
+    /// bus).
+    pub(crate) fn publish_reduction(&self, track: Option<usize>, needle: Needle) {
+        let slot = match track {
+            Some(track) => self.reductions.get(track),
+            None => Some(&self.bus_reduction),
+        };
+        if let Some(slot) = slot {
+            slot.store(needle.db.to_bits(), Ordering::Relaxed);
         }
     }
 }
@@ -271,6 +345,37 @@ mod tests {
             peak.update(0.0, 0.0, ballistics);
         }
         assert_eq!(peak.level(), Level::default());
+    }
+
+    #[test]
+    fn a_needle_jumps_to_the_reduction_and_returns_smoothly() {
+        let ballistics = Ballistics::new(RATE, BLOCK);
+        let mut needle = Needle::default();
+        needle.update(-9.0, ballistics);
+        assert_eq!(needle.db, -9.0);
+        // A third of a second later about a third is left (time constant 0.3 s).
+        for _ in 0..blocks(0.3) {
+            needle.update(0.0, ballistics);
+        }
+        assert!(
+            (needle.db + 9.0 / std::f32::consts::E).abs() < 0.3,
+            "{}",
+            needle.db
+        );
+        for _ in 0..blocks(5.0) {
+            needle.update(0.0, ballistics);
+        }
+        assert_eq!(needle.db, 0.0, "rests at 0 dB");
+        needle.update(f32::NAN, ballistics);
+        assert_eq!(needle.db, 0.0);
+        let meters = Meters::default();
+        needle.update(-4.0, ballistics);
+        meters.publish_reduction(Some(2), needle);
+        meters.publish_reduction(None, needle);
+        assert_eq!(meters.reduction(2), -4.0);
+        assert_eq!(meters.bus_reduction(), -4.0);
+        assert_eq!(meters.reduction(MAX_TONES + 1), 0.0);
+        assert!(meters.moving());
     }
 
     #[test]

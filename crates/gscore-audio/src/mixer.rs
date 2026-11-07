@@ -2,10 +2,14 @@
 //! desk.
 //!
 //! ```text
-//!  SoundFont channels ─┐                                ┌──────────────────► master ─► out
-//!  (or the strings)    ├─► chain ─► fader ─► pan ──────┤                       ▲
-//!                      │                                └─► reverb send ─► reverb bus
+//!  SoundFont channels ─┐                                ┌──────────────────────► master ─► out
+//!  (or the strings)    ├─► chain ─► fader ─► pan ──────┼─► reverb send ─► reverb bus ─┤
+//!                      │                                └─► comp send ───► comp bus ───┘
 //! ```
+//!
+//! - **Buses** ([`Bus`]): the reverb bus (a reverb or a room, all wet; it hears the sends
+//!   in mono and makes them stereo) and the compressor bus (a chain, usually a compressor
+//!   driven hard: parallel or "New York" compression, blended in under the dry tracks).
 //!
 //! - **Sources:** a SoundFont track gets the MIDI channels it plays on, each rendered apart
 //!   by our fork of RustySynth (`vendor/rustysynth`): its own channel and those it borrows
@@ -30,7 +34,7 @@ use gscore_guitar::{BLOCKS, BlockSettings, Chain};
 use gscore_play::{MidiEvent, Sequence, controller};
 
 use crate::chains::{MAX_TONES, TrackTones};
-use crate::meters::{Ballistics, Meters, Peak, Which, peak_of};
+use crate::meters::{Ballistics, Meters, Needle, Peak, Which, peak_of};
 use crate::synth::BLOCK;
 
 /// MIDI channels of the synthesizer.
@@ -75,6 +79,48 @@ impl Default for Strip {
     }
 }
 
+/// The mixer's buses: every track sends into them after its fader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Bus {
+    /// The reverb bus: the tracks' Reverb knob (MIDI CC 91) sends into it.
+    Reverb,
+    /// The compressor bus: each track's Comp send feeds it.
+    Compressor,
+}
+
+impl Bus {
+    fn index(self) -> usize {
+        match self {
+            Bus::Reverb => 0,
+            Bus::Compressor => 1,
+        }
+    }
+}
+
+/// One bus: its chain, level (0-127) and mute, what was sent into it this block and what
+/// comes out, and its meters.
+struct BusState {
+    chain: Option<Box<Chain>>,
+    mix: (u8, bool),
+    input: [[f32; BLOCK]; 2],
+    output: [[f32; BLOCK]; 2],
+    peak: Peak,
+    needle: Needle,
+}
+
+impl BusState {
+    fn new() -> Self {
+        BusState {
+            chain: None,
+            mix: (127, false),
+            input: [[0.0; BLOCK]; 2],
+            output: [[0.0; BLOCK]; 2],
+            peak: Peak::default(),
+            needle: Needle::default(),
+        }
+    }
+}
+
 /// What the strings give the mixer: each slot's mono output, and which strip it is.
 pub(crate) trait Strings {
     /// The slot whose strings play the sequence's track `position`, if any.
@@ -97,12 +143,12 @@ pub(crate) struct Mixer {
     sequence: usize,
     /// Each track's chain.
     tones: TrackTones,
-    /// The reverb bus every track sends into (all wet), its level (0-127) and mute.
-    reverb_bus: Option<Box<Chain>>,
-    bus_mix: (u8, bool),
-    bus_in: [f32; BLOCK],
-    bus_out: [[f32; BLOCK]; 2],
-    bus_peak: Peak,
+    /// The buses ([`Bus::index`]).
+    buses: [BusState; 2],
+    /// Each track's send into the compressor bus (0-127), by the song's track index.
+    comp_sends: [u8; MAX_TONES],
+    /// Each track's gain-reduction needle, by the song's track index.
+    needles: [Needle; MAX_TONES],
     master_peak: Peak,
     /// A strip's signal on its way through.
     work: [[f32; BLOCK]; 2],
@@ -130,11 +176,9 @@ impl Mixer {
             count: 0,
             sequence: 0,
             tones: TrackTones::new(),
-            reverb_bus: None,
-            bus_mix: (127, false),
-            bus_in: [0.0; BLOCK],
-            bus_out: [[0.0; BLOCK]; 2],
-            bus_peak: Peak::default(),
+            buses: [BusState::new(), BusState::new()],
+            comp_sends: [0; MAX_TONES],
+            needles: [Needle::default(); MAX_TONES],
             master_peak: Peak::default(),
             work: [[0.0; BLOCK]; 2],
             meters: Arc::new(Meters::default()),
@@ -276,10 +320,11 @@ impl Mixer {
         self.tones.set_settings(track, settings);
     }
 
-    /// Gives the reverb bus `chain` (`None`: none) with its knob values. Returns the chain
-    /// it replaces, to be freed off the audio thread.
-    pub(crate) fn set_reverb_bus(
+    /// Gives `bus` the chain `chain` (`None`: none) with its knob values. Returns the
+    /// chain it replaces, to be freed off the audio thread.
+    pub(crate) fn set_bus(
         &mut self,
+        bus: Bus,
         chain: Option<Box<Chain>>,
         settings: [BlockSettings; BLOCKS],
     ) -> Option<Box<Chain>> {
@@ -287,19 +332,31 @@ impl Mixer {
         if let Some(chain) = &mut chain {
             chain.set_settings(&settings);
         }
-        std::mem::replace(&mut self.reverb_bus, chain)
+        let state = self.buses.get_mut(bus.index())?;
+        std::mem::replace(&mut state.chain, chain)
     }
 
-    /// New knob values, level and mute for the reverb bus, heard at once.
-    pub(crate) fn set_reverb_bus_settings(
+    /// New knob values, level and mute for `bus`, heard at once.
+    pub(crate) fn set_bus_settings(
         &mut self,
+        bus: Bus,
         settings: [BlockSettings; BLOCKS],
         level: u8,
         muted: bool,
     ) {
-        self.bus_mix = (level.min(127), muted);
-        if let Some(bus) = &mut self.reverb_bus {
-            bus.set_settings(&settings);
+        let Some(state) = self.buses.get_mut(bus.index()) else {
+            return;
+        };
+        state.mix = (level.min(127), muted);
+        if let Some(chain) = &mut state.chain {
+            chain.set_settings(&settings);
+        }
+    }
+
+    /// The song's track `track` sends `value` (0-127) into the compressor bus.
+    pub(crate) fn set_comp_send(&mut self, track: usize, value: u8) {
+        if let Some(send) = self.comp_sends.get_mut(track) {
+            *send = value.min(127);
         }
     }
 
@@ -319,8 +376,10 @@ impl Mixer {
         };
         left.fill(0.0);
         right.fill(0.0);
-        if let Some(input) = self.bus_in.get_mut(..frames) {
-            input.fill(0.0);
+        for bus in &mut self.buses {
+            for side in &mut bus.input {
+                side.fill(0.0);
+            }
         }
         // Channels no strip owns (sound left over from a sequence just replaced) go
         // straight out.
@@ -333,7 +392,9 @@ impl Mixer {
         for position in 0..self.count {
             self.mix_strip(position, frames, strings, left, right);
         }
-        self.mix_reverb_bus(frames, left, right);
+        for bus in [Bus::Reverb, Bus::Compressor] {
+            self.mix_bus(bus, frames, left, right);
+        }
     }
 
     /// One strip into `left` and `right` (and its send into the bus).
@@ -382,95 +443,152 @@ impl Mixer {
         let chain = self.tones.chain(strip.song_track);
         let ringing = chain.as_ref().is_some_and(|chain| chain.ringing());
         if !sounding && !ringing {
-            self.settle_meter(position, 0.0, 0.0);
+            self.settle_meter(position, 0.0, 0.0, 0.0);
             return;
         }
-        match chain {
-            Some(chain) => chain.process_in_place(work_left, work_right, stereo),
-            None if !stereo => work_right.copy_from_slice(work_left),
-            None => {}
-        }
-        // The fader and the pan (a balance once the signal is stereo), then the send.
+        let reduction = match chain {
+            Some(chain) => {
+                chain.process_in_place(work_left, work_right, stereo);
+                chain.take_gain_reduction()
+            }
+            None => {
+                if !stereo {
+                    work_right.copy_from_slice(work_left);
+                }
+                0.0
+            }
+        };
+        // The fader and the pan (a balance once the signal is stereo), then the sends.
         let gain = volume_gain(strip.volume);
         let (to_left, to_right) = pan_gains(strip.pan);
-        let send = if self.reverb_bus.is_some() {
-            f32::from(strip.reverb.min(127)) / 127.0
-        } else {
-            0.0
+        let send = |bus: &BusState, value: u8| {
+            if bus.chain.is_some() {
+                f32::from(value.min(127)) / 127.0
+            } else {
+                0.0
+            }
         };
+        let [reverb, compressor] = &mut self.buses;
+        let reverb_send = send(reverb, strip.reverb);
+        let comp_send = send(
+            compressor,
+            self.comp_sends.get(strip.song_track).copied().unwrap_or(0),
+        );
+        let [reverb_in, _] = &mut reverb.input;
+        let [comp_left, comp_right] = &mut compressor.input;
         let (mut peak_left, mut peak_right) = (0.0_f32, 0.0_f32);
-        let bus_in = self.bus_in.get_mut(..frames).unwrap_or_default();
-        for ((((l, r), wl), wr), bus) in left
+        for (index, ((l, r), (wl, wr))) in left
             .iter_mut()
             .zip(right.iter_mut())
-            .zip(work_left.iter())
-            .zip(work_right.iter())
-            .zip(bus_in.iter_mut())
+            .zip(work_left.iter().zip(work_right.iter()))
+            .enumerate()
         {
             let (out_l, out_r) = (wl * gain * to_left, wr * gain * to_right);
             *l += out_l;
             *r += out_r;
             peak_left = peak_left.max(out_l.abs());
             peak_right = peak_right.max(out_r.abs());
-            if send > 0.0 {
-                *bus += 0.5 * (out_l + out_r) * send;
+            // The reverb hears a mono sum (it makes its own stereo); the compressor bus
+            // keeps both sides.
+            if reverb_send > 0.0
+                && let Some(bus) = reverb_in.get_mut(index)
+            {
+                *bus += 0.5 * (out_l + out_r) * reverb_send;
+            }
+            if comp_send > 0.0
+                && let (Some(bus_l), Some(bus_r)) =
+                    (comp_left.get_mut(index), comp_right.get_mut(index))
+            {
+                *bus_l += out_l * comp_send;
+                *bus_r += out_r * comp_send;
             }
         }
-        self.settle_meter(position, peak_left, peak_right);
+        self.settle_meter(position, peak_left, peak_right, reduction);
     }
 
-    /// The meter of strip `position` after a block with these peaks.
-    fn settle_meter(&mut self, position: usize, left: f32, right: f32) {
+    /// The meter of strip `position` after a block with these peaks and its chain's
+    /// deepest gain reduction (dB).
+    fn settle_meter(&mut self, position: usize, left: f32, right: f32, reduction: f32) {
         let fall = self.ballistics;
         let Some(strip) = self.strips.get_mut(position) else {
             return;
         };
         strip.peak.update(left, right, fall);
-        if strip.song_track < MAX_TONES {
-            self.meters
-                .publish(Which::Track(strip.song_track), strip.peak);
+        let track = strip.song_track;
+        if track < MAX_TONES {
+            self.meters.publish(Which::Track(track), strip.peak);
+            if let Some(needle) = self.needles.get_mut(track) {
+                needle.update(reduction, fall);
+                self.meters.publish_reduction(Some(track), *needle);
+            }
         }
     }
 
-    /// Runs the reverb bus (which rings on after the sends stop) and adds it to the mix.
-    fn mix_reverb_bus(&mut self, frames: usize, left: &mut [f32], right: &mut [f32]) {
+    /// Runs `bus` (a reverb rings on after the sends stop) and adds it to the mix.
+    fn mix_bus(&mut self, bus: Bus, frames: usize, left: &mut [f32], right: &mut [f32]) {
         let fall = self.ballistics;
-        let Some(bus) = &mut self.reverb_bus else {
-            self.bus_peak.update(0.0, 0.0, fall);
-            self.meters.publish(Which::Reverb, self.bus_peak);
+        let which = match bus {
+            Bus::Reverb => Which::Reverb,
+            Bus::Compressor => Which::Compressor,
+        };
+        let Some(state) = self.buses.get_mut(bus.index()) else {
             return;
         };
-        let (level, muted) = self.bus_mix;
-        let input = self.bus_in.get(..frames).unwrap_or_default();
-        let sent = input.iter().any(|sample| sample.abs() > 1e-9);
-        // Silent and its tail over: nothing to do (and it may rest).
-        if !sent && !bus.ringing() {
-            self.bus_peak.update(0.0, 0.0, fall);
-            self.meters.publish(Which::Reverb, self.bus_peak);
-            return;
-        }
-        let [out_left, out_right] = &mut self.bus_out;
-        let (out_left, out_right) = (
-            out_left.get_mut(..frames).unwrap_or_default(),
-            out_right.get_mut(..frames).unwrap_or_default(),
+        let [in_left, in_right] = &state.input;
+        let (in_left, in_right) = (
+            in_left.get(..frames).unwrap_or_default(),
+            in_right.get(..frames).unwrap_or_default(),
         );
-        bus.process(input, out_left, out_right);
-        let gain = if muted { 0.0 } else { volume_gain(level) };
+        let sent = in_left
+            .iter()
+            .chain(in_right.iter())
+            .any(|sample| sample.abs() > 1e-9);
+        let mut reduction = 0.0;
+        let played = match &mut state.chain {
+            // Silent and its tail over: nothing to do (and it may rest).
+            Some(chain) if sent || chain.ringing() => {
+                let [out_left, out_right] = &mut state.output;
+                let (out_left, out_right) = (
+                    out_left.get_mut(..frames).unwrap_or_default(),
+                    out_right.get_mut(..frames).unwrap_or_default(),
+                );
+                match bus {
+                    Bus::Reverb => chain.process(in_left, out_left, out_right),
+                    Bus::Compressor => {
+                        out_left.copy_from_slice(in_left);
+                        out_right.copy_from_slice(in_right);
+                        chain.process_stereo(out_left, out_right);
+                    }
+                }
+                reduction = chain.take_gain_reduction();
+                true
+            }
+            _ => false,
+        };
         let (mut peak_left, mut peak_right) = (0.0_f32, 0.0_f32);
-        for (((l, r), bl), br) in left
-            .iter_mut()
-            .zip(right.iter_mut())
-            .zip(out_left.iter())
-            .zip(out_right.iter())
-        {
-            let (out_l, out_r) = (bl * gain, br * gain);
-            *l += out_l;
-            *r += out_r;
-            peak_left = peak_left.max(out_l.abs());
-            peak_right = peak_right.max(out_r.abs());
+        if played {
+            let (level, muted) = state.mix;
+            let gain = if muted { 0.0 } else { volume_gain(level) };
+            let [out_left, out_right] = &state.output;
+            for (((l, r), bl), br) in left
+                .iter_mut()
+                .zip(right.iter_mut())
+                .zip(out_left.iter())
+                .zip(out_right.iter())
+            {
+                let (out_l, out_r) = (bl * gain, br * gain);
+                *l += out_l;
+                *r += out_r;
+                peak_left = peak_left.max(out_l.abs());
+                peak_right = peak_right.max(out_r.abs());
+            }
         }
-        self.bus_peak.update(peak_left, peak_right, fall);
-        self.meters.publish(Which::Reverb, self.bus_peak);
+        state.peak.update(peak_left, peak_right, fall);
+        self.meters.publish(which, state.peak);
+        if bus == Bus::Compressor {
+            state.needle.update(reduction, fall);
+            self.meters.publish_reduction(None, state.needle);
+        }
     }
 
     /// Measures the finished mix (after the metronome is added).

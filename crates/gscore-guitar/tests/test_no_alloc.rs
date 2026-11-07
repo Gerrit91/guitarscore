@@ -60,7 +60,26 @@ fn playing_strings_and_running_a_chain_never_allocate() {
     let mut chain = spec.prepare(48_000).instance(&knobs);
     let (mut left, mut right) = ([0.0_f32; 64], [0.0_f32; 64]);
 
+    let mut compressor_spec = ChainSpec::default();
+    compressor_spec.blocks[0] = Some(BlockKind::Compressor);
+    let mut compressor_knobs = [BlockSettings::default(); BLOCKS];
+    let mut compressor = compressor_spec.prepare(48_000).instance(&compressor_knobs);
+    let loud: Vec<f32> = (0..64).map(|i| (i as f32 * 0.3).sin()).collect();
+
     let region = Region::new(GLOBAL);
+    for round in 0..500_usize {
+        if round % 50 == 0 {
+            compressor_knobs[0].compressor.input_db = (round % 200) as f32 / 10.0;
+            compressor_knobs[0].compressor.ratio =
+                gscore_guitar::CompRatio::ALL_RATIOS[round / 50 % 5];
+            compressor.set_settings(&compressor_knobs);
+        }
+        let (mut left, mut right) = ([0.0_f32; 64], [0.0_f32; 64]);
+        left.copy_from_slice(&loud);
+        right.copy_from_slice(&loud);
+        compressor.process_stereo(&mut left, &mut right);
+        let _ = compressor.take_gain_reduction();
+    }
     for round in 0..2_000_usize {
         if round % 100 == 0 {
             knobs[3].room.mix = (round % 300) as f32 / 300.0;

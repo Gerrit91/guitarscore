@@ -97,6 +97,7 @@ struct ChainRequest {
 /// The reverb bus to prepare on the synth's thread.
 #[derive(Debug)]
 struct BusRequest {
+    bus: crate::Bus,
     spec: ChainSpec,
     settings: [BlockSettings; BLOCKS],
     level: u8,
@@ -293,17 +294,7 @@ impl SynthPlayer {
         level: u8,
         muted: bool,
     ) -> Result<(), PlayError> {
-        if let Some(error) = self.error() {
-            return Err(PlayError::Device(error));
-        }
-        self.bus
-            .try_send(BusRequest {
-                spec,
-                settings,
-                level,
-                muted,
-            })
-            .map_err(|_| PlayError::Device("the synthesizer is not keeping up".to_owned()))
+        self.set_bus(crate::Bus::Reverb, spec, settings, level, muted)
     }
 
     /// New knob values, level and mute for the reverb bus, heard at once.
@@ -313,7 +304,47 @@ impl SynthPlayer {
         level: u8,
         muted: bool,
     ) -> Result<(), PlayError> {
-        self.send(Command::ReverbBusSettings(settings, level, muted))
+        self.set_bus_settings(crate::Bus::Reverb, settings, level, muted)
+    }
+
+    /// Gives `bus` the chain `spec` with `settings`, its level and mute; prepared on the
+    /// synth's own thread, then heard. An empty chain removes it.
+    pub fn set_bus(
+        &self,
+        bus: crate::Bus,
+        spec: ChainSpec,
+        settings: [BlockSettings; BLOCKS],
+        level: u8,
+        muted: bool,
+    ) -> Result<(), PlayError> {
+        if let Some(error) = self.error() {
+            return Err(PlayError::Device(error));
+        }
+        self.bus
+            .try_send(BusRequest {
+                bus,
+                spec,
+                settings,
+                level,
+                muted,
+            })
+            .map_err(|_| PlayError::Device("the synthesizer is not keeping up".to_owned()))
+    }
+
+    /// New knob values, level and mute for `bus`, heard at once.
+    pub fn set_bus_settings(
+        &self,
+        bus: crate::Bus,
+        settings: [BlockSettings; BLOCKS],
+        level: u8,
+        muted: bool,
+    ) -> Result<(), PlayError> {
+        self.send(Command::BusSettings(bus, settings, level, muted))
+    }
+
+    /// The song's track `track` sends `value` (0-127) into the compressor bus.
+    pub fn set_comp_send(&self, track: usize, value: u8) -> Result<(), PlayError> {
+        self.send(Command::CompSend(track, value))
     }
 }
 
@@ -433,15 +464,20 @@ fn run(
                 }
             }
         }
-        // The reverb bus, prepared the same way (one instance, shared by the tracks).
-        if let Ok(request) = house.bus.try_recv() {
+        // The buses, prepared the same way (one instance each, shared by the tracks).
+        while let Ok(request) = house.bus.try_recv() {
             let chain = prepare_chain(&request.spec, &request.settings, rate);
-            if house.commands.send(Command::ReverbBus(chain)).is_err() {
-                break;
+            if house
+                .commands
+                .send(Command::Bus(request.bus, chain))
+                .is_err()
+            {
+                return;
             }
             if house
                 .commands
-                .send(Command::ReverbBusSettings(
+                .send(Command::BusSettings(
+                    request.bus,
                     request.settings,
                     request.level,
                     request.muted,
