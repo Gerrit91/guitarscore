@@ -339,25 +339,29 @@ impl GuitarScoreApp {
                 track: index,
                 comp_send,
                 tone,
+                identity: song_state::TrackIdentity::of(song, index),
             });
         }
         song_state::SongState::new(tracks)
     }
 
     /// Takes the state a song carried: its tracks' compressor sends and the tones they
-    /// play (the song keeps its sound, whatever the presets are set to here).
+    /// play (the song keeps its sound, whatever the presets are set to here). An entry
+    /// whose track was reordered or deleted in another program is matched by name and
+    /// instrument, or dropped.
     pub(super) fn apply_song_state(&mut self, state: &song_state::SongState) {
         if let Some(tab) = self.tabs.get_mut(self.active) {
-            for track in &state.tracks {
+            let resolved = state.resolve(tab.document.song());
+            for (index, track) in resolved {
                 if track.comp_send != 0 {
-                    tab.comp_sends.insert(track.track, track.comp_send.min(127));
+                    tab.comp_sends.insert(index, track.comp_send.min(127));
                 }
                 if let Some(tone) = track
                     .tone
                     .as_ref()
                     .and_then(crate::settings::PresetTone::tone)
                 {
-                    tab.track_tones.insert(track.track, tone);
+                    tab.track_tones.insert(index, tone);
                 }
             }
         }

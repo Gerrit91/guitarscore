@@ -21,6 +21,7 @@
 
 mod codec;
 
+use gscore_model::{Song, TrackIndex};
 use serde::{Deserialize, Serialize};
 
 use crate::settings::PresetTone;
@@ -51,6 +52,39 @@ pub(crate) struct TrackState {
     /// The tone it plays, when it is not its kind's built-in default.
     #[serde(default)]
     pub tone: Option<PresetTone>,
+    /// How the track was recognised when the block was written. `None` in a block from a
+    /// version before this existed: then only the number can be used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<TrackIdentity>,
+}
+
+/// How the block recognises a track after someone reordered or deleted tracks in another
+/// program and kept the notes: its name and instrument.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub(crate) struct TrackIdentity {
+    /// The track's name.
+    #[serde(default)]
+    pub name: String,
+    /// Its General MIDI program (0-127).
+    #[serde(default)]
+    pub program: u8,
+    /// Whether it is a drum kit.
+    #[serde(default)]
+    pub drums: bool,
+}
+
+impl TrackIdentity {
+    /// The identity of track `track` of `song`, or `None` if the song has no such track.
+    pub(crate) fn of(song: &Song, track: usize) -> Option<Self> {
+        let index = TrackIndex::new(track);
+        let view = song.track(index)?;
+        let sound = song.track_sound(index)?;
+        Some(TrackIdentity {
+            name: view.name().to_owned(),
+            program: sound.program,
+            drums: sound.percussion,
+        })
+    }
 }
 
 impl SongState {
@@ -68,6 +102,80 @@ impl SongState {
             .filter(|track| track.comp_send != 0 || track.tone.is_some())
             .collect();
         (!tracks.is_empty()).then_some(SongState { tracks })
+    }
+
+    /// The entries with the track of `song` each belongs to, in the block's order.
+    ///
+    /// An entry goes to the track with its number when that is still the same track;
+    /// otherwise to the one remaining track with the same name and instrument; otherwise
+    /// it is dropped rather than applied to the wrong track. A block written before
+    /// identities existed can only rely on the number.
+    pub(crate) fn resolve<'a>(&'a self, song: &Song) -> Vec<(usize, &'a TrackState)> {
+        // Every track of the song, so a missing one can never shift the indices.
+        let tracks: Vec<TrackIdentity> = (0..song.track_count())
+            .map(|track| TrackIdentity::of(song, track).unwrap_or_default())
+            .collect();
+        self.resolve_in(&tracks)
+    }
+
+    /// [`Self::resolve`] with the tracks given as identities (what the matching sees).
+    fn resolve_in<'a>(&'a self, tracks: &[TrackIdentity]) -> Vec<(usize, &'a TrackState)> {
+        let mut taken = vec![false; tracks.len()];
+        let mut matched: Vec<Option<usize>> = vec![None; self.tracks.len()];
+
+        // First by number, so two reordered tracks cannot take each other's place.
+        for (entry_index, state) in self.tracks.iter().enumerate() {
+            let fits = match &state.identity {
+                Some(identity) => tracks.get(state.track) == Some(identity),
+                None => tracks.get(state.track).is_some(),
+            };
+            if !fits || taken.get(state.track).copied().unwrap_or(true) {
+                continue;
+            }
+            if let Some(slot) = taken.get_mut(state.track) {
+                *slot = true;
+            }
+            if let Some(slot) = matched.get_mut(entry_index) {
+                *slot = Some(state.track);
+            }
+        }
+
+        // Then by the one remaining track with the same name and instrument.
+        for (entry_index, state) in self.tracks.iter().enumerate() {
+            if matched.get(entry_index).is_some_and(Option::is_some) {
+                continue;
+            }
+            let Some(identity) = state.identity.as_ref() else {
+                continue;
+            };
+            let mut found = None;
+            let mut found_count = 0_usize;
+            for (track, candidate) in tracks.iter().enumerate() {
+                if taken.get(track).copied().unwrap_or(true) || candidate != identity {
+                    continue;
+                }
+                found_count = found_count.saturating_add(1);
+                found = Some(track);
+            }
+            // None or several: dropping the entry beats applying it to the wrong track.
+            if found_count != 1 {
+                continue;
+            }
+            if let Some(track) = found {
+                if let Some(slot) = taken.get_mut(track) {
+                    *slot = true;
+                }
+                if let Some(slot) = matched.get_mut(entry_index) {
+                    *slot = Some(track);
+                }
+            }
+        }
+
+        matched
+            .into_iter()
+            .zip(self.tracks.iter())
+            .filter_map(|(track, state)| track.map(|track| (track, state)))
+            .collect()
     }
 }
 
@@ -183,6 +291,7 @@ mod tests {
                     track: index,
                     comp_send: u8::try_from(index % 128).unwrap_or(0),
                     tone: Some(tone),
+                    identity: None,
                 }
             })
             .collect();
@@ -196,17 +305,20 @@ mod tests {
                 track: 0,
                 comp_send: 96,
                 tone: None,
+                identity: None,
             },
             TrackState {
                 track: 2,
                 comp_send: 0,
                 tone: Some(tone()),
+                identity: None,
             },
             // Nothing to keep: dropped.
             TrackState {
                 track: 3,
                 comp_send: 0,
                 tone: None,
+                identity: None,
             },
         ])
         .expect("two tracks have state");
@@ -279,6 +391,7 @@ mod tests {
             track: 0,
             comp_send: 1,
             tone: None,
+            identity: None,
         }])
         .unwrap();
         let good = encode([], Some(&state));
@@ -330,12 +443,14 @@ mod tests {
             track: 0,
             comp_send: 1,
             tone: None,
+            identity: None,
         }])
         .unwrap();
         let two = SongState::new(vec![TrackState {
             track: 0,
             comp_send: 2,
             tone: None,
+            identity: None,
         }])
         .unwrap();
         let notes = [encode([], Some(&one)), encode([], Some(&two))].concat();
@@ -354,6 +469,7 @@ mod tests {
             track: 0,
             comp_send: 0,
             tone: Some(named.clone()),
+            identity: None,
         }])
         .unwrap();
         let notes = encode(["Notizen für die Band".to_owned()], Some(&state));
@@ -376,6 +492,7 @@ mod tests {
             track: 0,
             comp_send: 96,
             tone: None,
+            identity: None,
         }])
         .unwrap();
         let json = serde_json::to_string(&state).unwrap();
@@ -394,5 +511,134 @@ mod tests {
         let (kept, back) = split(vec!["Just notes".to_owned(), future]);
         assert_eq!(kept, vec!["Just notes"]);
         assert!(back.is_none());
+    }
+
+    /// A track as the matching sees it: name, GM program, drum or not.
+    fn identity(name: &str, program: u8, drums: bool) -> TrackIdentity {
+        TrackIdentity {
+            name: name.to_owned(),
+            program,
+            drums,
+        }
+    }
+
+    fn entry(track: usize, comp_send: u8, identity: Option<TrackIdentity>) -> TrackState {
+        TrackState {
+            track,
+            comp_send,
+            tone: None,
+            identity,
+        }
+    }
+
+    /// The track each entry went to.
+    fn resolved(state: &SongState, tracks: &[TrackIdentity]) -> Vec<(usize, u8)> {
+        state
+            .resolve_in(tracks)
+            .into_iter()
+            .map(|(track, state)| (track, state.comp_send))
+            .collect()
+    }
+
+    #[test]
+    fn entries_follow_their_track_when_the_order_changed() {
+        let guitar = identity("Guitar", 25, false);
+        let bass = identity("Bass", 33, false);
+        let state = SongState::new(vec![
+            entry(0, 10, Some(guitar.clone())),
+            entry(1, 20, Some(bass.clone())),
+        ])
+        .unwrap();
+        // Unchanged: by number.
+        assert_eq!(
+            resolved(&state, &[guitar.clone(), bass.clone()]),
+            [(0, 10), (1, 20)]
+        );
+
+        // The guitar moved down: each keeps its own settings.
+        assert_eq!(
+            resolved(&state, &[bass.clone(), guitar.clone()]),
+            [(1, 10), (0, 20)]
+        );
+
+        // A track inserted in between shifts both.
+        assert_eq!(
+            resolved(
+                &state,
+                &[identity("Drums", 0, true), guitar.clone(), bass.clone()]
+            ),
+            [(1, 10), (2, 20)]
+        );
+    }
+
+    #[test]
+    fn an_entry_dropped_or_changed_in_guitar_pro_is_not_applied_to_the_wrong_track() {
+        let guitar = identity("Guitar", 25, false);
+
+        // The guitar was deleted and the piano moved into its place: the entry is dropped.
+        let state = SongState::new(vec![entry(0, 10, Some(guitar.clone()))]).unwrap();
+        assert!(resolved(&state, &[identity("Piano", 0, false)]).is_empty());
+
+        // The instrument changed after we saved (same name, now a piano): a guitar tone
+        // must not land on a piano.
+        assert!(resolved(&state, &[identity("Guitar", 0, false)]).is_empty());
+        assert!(resolved(&state, &[identity("Guitar", 25, true)]).is_empty());
+
+        // The number's track is a different one, but the guitar is still there under
+        // another number: it is found by name and instrument.
+        let tracks = [identity("Piano", 0, false), guitar.clone()];
+        assert_eq!(resolved(&state, &tracks), [(1, 10)]);
+
+        // Two tracks named like it and the number no longer pointing at either: no way
+        // to tell, so the entry is dropped. (When the number still fits, it wins.)
+        let moved = SongState::new(vec![entry(5, 10, Some(guitar.clone()))]).unwrap();
+        let tracks = [guitar.clone(), guitar.clone()];
+        assert!(resolved(&moved, &tracks).is_empty());
+        assert_eq!(
+            resolved(&state, &[guitar.clone(), guitar]),
+            [(0, 10)],
+            "the number still points at a track with that identity"
+        );
+    }
+
+    #[test]
+    fn a_block_from_before_identities_keeps_going_by_number() {
+        let state = SongState::new(vec![entry(1, 40, None)]).unwrap();
+        // Same number: applied as before.
+        assert_eq!(
+            resolved(&state, &[identity("A", 0, false), identity("B", 30, false)]),
+            [(1, 40)]
+        );
+        // Gone: dropped (there is nothing to match it by).
+        assert!(resolved(&state, &[identity("A", 0, false)]).is_empty());
+    }
+
+    #[test]
+    fn two_entries_never_land_on_the_same_track() {
+        // A hand-edited block with the same number twice: the first one wins.
+        let guitar = identity("Guitar", 25, false);
+        let state = SongState::new(vec![
+            entry(0, 10, Some(guitar.clone())),
+            entry(0, 20, Some(guitar.clone())),
+        ])
+        .unwrap();
+        assert_eq!(resolved(&state, &[guitar]), [(0, 10)]);
+    }
+
+    #[test]
+    fn an_identity_survives_the_block() {
+        let state = SongState::new(vec![entry(
+            0,
+            5,
+            Some(TrackIdentity {
+                name: "Grüße & Saiten".to_owned(),
+                program: 30,
+                drums: false,
+            }),
+        )])
+        .unwrap();
+        let notes = encode([], Some(&state));
+        let (_, back) = split(notes);
+        assert_eq!(back, Some(state));
     }
 }

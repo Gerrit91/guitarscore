@@ -3941,3 +3941,17 @@ needed for a much larger font); owner listening check.
   and instrument are not matched on read yet, and the state does not yet live in
   `gscore-model` (so track insert/delete does not move it), nor are song-wide buses and
   drum parts stored.
+
+## 2026-11-07 — Part A, 3: the block knows which track it means
+
+- A track entry now carries its identity as well as its number: the track's name, General
+  MIDI program and whether it is a drum kit (`TrackIdentity`). On opening, an entry goes to
+  the track with its number when that is still the same track; otherwise to the one
+  remaining track with the same name and instrument; otherwise it is dropped, never
+  applied to the wrong track. An instrument changed in Guitar Pro (a guitar tone on a
+  piano) is dropped. Blocks written before identities existed still go by number.
+- Two entries never land on the same track (a hand-edited block with a repeated number
+  keeps the first).
+- Tests: reordered and inserted tracks, a deleted track, a changed instrument, ambiguous
+  names, old blocks without identities, and an identity with non-ASCII text surviving the
+  block.
