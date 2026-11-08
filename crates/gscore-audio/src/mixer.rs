@@ -36,11 +36,11 @@
 
 use std::sync::Arc;
 
-use gscore_guitar::{BLOCKS, BlockSettings, Chain};
+use gscore_guitar::Chain;
 use gscore_play::{MidiEvent, Sequence, controller};
 use rustysynth::PARTS;
 
-use crate::chains::{MAX_TONES, TrackTones};
+use crate::chains::{ChainKnobs, MAX_TONES, TrackTones};
 use crate::meters::{Ballistics, Meters, Needle, Peak, Which, peak_of};
 use crate::synth::BLOCK;
 
@@ -389,14 +389,14 @@ impl Mixer {
         &mut self,
         track: usize,
         chain: Option<Box<Chain>>,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
     ) -> Option<Box<Chain>> {
-        self.tones.set_chain(track, chain, settings)
+        self.tones.set_chain(track, chain, knobs)
     }
 
     /// New knob values for the chain of `track`, heard at once.
-    pub(crate) fn set_chain_settings(&mut self, track: usize, settings: [BlockSettings; BLOCKS]) {
-        self.tones.set_settings(track, settings);
+    pub(crate) fn set_chain_settings(&mut self, track: usize, knobs: ChainKnobs) {
+        self.tones.set_settings(track, knobs);
     }
 
     /// Gives `part` of the song's drum track `track` the chain `chain` (`None`: none) with
@@ -406,11 +406,12 @@ impl Mixer {
         track: usize,
         part: usize,
         chain: Option<Box<Chain>>,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
     ) -> Option<Box<Chain>> {
         let mut chain = chain;
         if let Some(chain) = &mut chain {
-            chain.set_settings(&settings);
+            chain.set_settings(&knobs.settings);
+            chain.set_output_db(knobs.output_db);
         }
         let slot = self
             .part_chains
@@ -420,19 +421,15 @@ impl Mixer {
     }
 
     /// New knob values for `part` of the song's drum track `track`, heard at once.
-    pub(crate) fn set_part_chain_settings(
-        &mut self,
-        track: usize,
-        part: usize,
-        settings: [BlockSettings; BLOCKS],
-    ) {
+    pub(crate) fn set_part_chain_settings(&mut self, track: usize, part: usize, knobs: ChainKnobs) {
         if let Some(chain) = self
             .part_chains
             .get_mut(track)
             .and_then(|parts| parts.get_mut(part))
             .and_then(Option::as_mut)
         {
-            chain.set_settings(&settings);
+            chain.set_settings(&knobs.settings);
+            chain.set_output_db(knobs.output_db);
         }
     }
 
@@ -475,19 +472,21 @@ impl Mixer {
     pub(crate) fn set_master_chain(
         &mut self,
         chain: Option<Box<Chain>>,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
     ) -> Option<Box<Chain>> {
         let mut chain = chain;
         if let Some(chain) = &mut chain {
-            chain.set_settings(&settings);
+            chain.set_settings(&knobs.settings);
+            chain.set_output_db(knobs.output_db);
         }
         std::mem::replace(&mut self.master_chain, chain)
     }
 
     /// New knob values for the master's chain, heard at once.
-    pub(crate) fn set_master_chain_settings(&mut self, settings: [BlockSettings; BLOCKS]) {
+    pub(crate) fn set_master_chain_settings(&mut self, knobs: ChainKnobs) {
         if let Some(chain) = &mut self.master_chain {
-            chain.set_settings(&settings);
+            chain.set_settings(&knobs.settings);
+            chain.set_output_db(knobs.output_db);
         }
     }
 
@@ -497,30 +496,26 @@ impl Mixer {
         &mut self,
         bus: Bus,
         chain: Option<Box<Chain>>,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
     ) -> Option<Box<Chain>> {
         let mut chain = chain;
         if let Some(chain) = &mut chain {
-            chain.set_settings(&settings);
+            chain.set_settings(&knobs.settings);
+            chain.set_output_db(knobs.output_db);
         }
         let state = self.buses.get_mut(bus.index())?;
         std::mem::replace(&mut state.chain, chain)
     }
 
     /// New knob values, level and mute for `bus`, heard at once.
-    pub(crate) fn set_bus_settings(
-        &mut self,
-        bus: Bus,
-        settings: [BlockSettings; BLOCKS],
-        level: u8,
-        muted: bool,
-    ) {
+    pub(crate) fn set_bus_settings(&mut self, bus: Bus, knobs: ChainKnobs, level: u8, muted: bool) {
         let Some(state) = self.buses.get_mut(bus.index()) else {
             return;
         };
         state.mix = (level.min(127), muted);
         if let Some(chain) = &mut state.chain {
-            chain.set_settings(&settings);
+            chain.set_settings(&knobs.settings);
+            chain.set_output_db(knobs.output_db);
         }
     }
 

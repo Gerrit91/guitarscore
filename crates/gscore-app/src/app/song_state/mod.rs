@@ -549,6 +549,7 @@ mod tests {
                         BlockSetting::default(),
                         BlockSetting::default(),
                     ],
+                    output_db: 0.0,
                 },
             },
         )

@@ -130,7 +130,7 @@ impl ChainSpec {
 
 impl PreparedChain {
     /// A chain for one track, its buffers made now. Allocates.
-    pub fn instance(&self, settings: &[BlockSettings; BLOCKS]) -> Chain {
+    pub fn instance(&self, settings: &[BlockSettings; BLOCKS], output_db: f32) -> Chain {
         let rate = self.sample_rate as f32;
         let blocks = self.blocks.clone().map(|block| match block {
             None => Block::Empty,
@@ -174,9 +174,11 @@ impl PreparedChain {
             rate,
             blocks,
             settings: [BlockSettings::default(); BLOCKS],
+            output: 1.0,
             quiet: usize::MAX,
         };
         chain.set_settings(settings);
+        chain.set_output_db(output_db);
         chain
     }
 }
@@ -224,6 +226,9 @@ pub struct Chain {
     rate: f32,
     blocks: [Block; BLOCKS],
     settings: [BlockSettings; BLOCKS],
+    /// The output level of the chain, linear (a scalar after every block, before the
+    /// mixer's fader).
+    output: f32,
     /// Samples of silent output in a row, to know when the tail has died away.
     quiet: usize,
 }
@@ -289,6 +294,18 @@ impl Chain {
             }
             *slot = new;
         }
+    }
+
+    /// Sets the chain's output level in dB, after every block and before the mixer's
+    /// fader. Kept in its range; a value that is not a number means unity.
+    pub fn set_output_db(&mut self, db: f32) {
+        let (low, high) = crate::knob_ranges::OUTPUT;
+        let db = if db.is_finite() {
+            db.clamp(low, high)
+        } else {
+            0.0
+        };
+        self.output = 10.0_f32.powf(db / 20.0);
     }
 
     /// The deepest gain reduction of its compressors since the last call, in dB (0 or
@@ -507,6 +524,8 @@ impl Chain {
             } else {
                 [0.0, 0.0]
             };
+            let out_l = out_l * self.output;
+            let out_r = out_r * self.output;
             *l = out_l;
             *r = out_r;
             peak = peak.max(out_l.abs()).max(out_r.abs());

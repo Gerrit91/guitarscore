@@ -19,10 +19,10 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig};
 use gscore_play::{MidiEvent, PlayError, PlayState, Player, Sequence};
 
-use gscore_guitar::{BLOCKS, BlockSettings, ChainSpec};
+use gscore_guitar::ChainSpec;
 use gscore_play::StringKind;
 
-use crate::chains::prepare_chain;
+use crate::chains::{ChainKnobs, prepare_chain};
 use crate::synth::{Retired, SoundBank, SynthEngine};
 use crate::transport::Command;
 
@@ -98,7 +98,7 @@ struct ChainRequest {
     /// The master's chain (after the tracks and buses).
     master: bool,
     spec: ChainSpec,
-    settings: [BlockSettings; BLOCKS],
+    knobs: ChainKnobs,
 }
 
 /// The reverb bus to prepare on the synth's thread.
@@ -106,7 +106,7 @@ struct ChainRequest {
 struct BusRequest {
     bus: crate::Bus,
     spec: ChainSpec,
-    settings: [BlockSettings; BLOCKS],
+    knobs: ChainKnobs,
     level: u8,
     muted: bool,
 }
@@ -278,7 +278,7 @@ impl SynthPlayer {
         &self,
         track: usize,
         spec: ChainSpec,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
     ) -> Result<(), PlayError> {
         if let Some(error) = self.error() {
             return Err(PlayError::Device(error));
@@ -289,7 +289,7 @@ impl SynthPlayer {
                 part: None,
                 master: false,
                 spec,
-                settings,
+                knobs,
             })
             .map_err(|_| PlayError::Device("the synthesizer is not keeping up".to_owned()))
     }
@@ -297,11 +297,7 @@ impl SynthPlayer {
     /// Gives the master the chain `spec` with `settings`, prepared on the synth's own
     /// thread, then heard. It runs after the tracks and buses, before the metronome's
     /// click. An empty chain removes it.
-    pub fn set_master_chain(
-        &self,
-        spec: ChainSpec,
-        settings: [BlockSettings; BLOCKS],
-    ) -> Result<(), PlayError> {
+    pub fn set_master_chain(&self, spec: ChainSpec, knobs: ChainKnobs) -> Result<(), PlayError> {
         if let Some(error) = self.error() {
             return Err(PlayError::Device(error));
         }
@@ -311,17 +307,14 @@ impl SynthPlayer {
                 part: None,
                 master: true,
                 spec,
-                settings,
+                knobs,
             })
             .map_err(|_| PlayError::Device("the synthesizer is not keeping up".to_owned()))
     }
 
     /// New knob values for the master's chain, heard at once.
-    pub fn set_master_chain_settings(
-        &self,
-        settings: [BlockSettings; BLOCKS],
-    ) -> Result<(), PlayError> {
-        self.send(Command::MasterChainSettings(settings))
+    pub fn set_master_chain_settings(&self, knobs: ChainKnobs) -> Result<(), PlayError> {
+        self.send(Command::MasterChainSettings(knobs))
     }
 
     /// Gives `part` of the song's drum track `track` the chain `spec` with `settings`,
@@ -331,7 +324,7 @@ impl SynthPlayer {
         track: usize,
         part: usize,
         spec: ChainSpec,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
     ) -> Result<(), PlayError> {
         if let Some(error) = self.error() {
             return Err(PlayError::Device(error));
@@ -342,7 +335,7 @@ impl SynthPlayer {
                 part: Some(part),
                 master: false,
                 spec,
-                settings,
+                knobs,
             })
             .map_err(|_| PlayError::Device("the synthesizer is not keeping up".to_owned()))
     }
@@ -352,9 +345,9 @@ impl SynthPlayer {
         &self,
         track: usize,
         part: usize,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
     ) -> Result<(), PlayError> {
-        self.send(Command::PartChainSettings(track, part, settings))
+        self.send(Command::PartChainSettings(track, part, knobs))
     }
 
     /// The mixing level of `part` of the song's drum track `track` (0-127, 127 unity),
@@ -374,12 +367,8 @@ impl SynthPlayer {
     }
 
     /// New knob values for the effect chain of `track`, heard at once.
-    pub fn set_chain_settings(
-        &self,
-        track: usize,
-        settings: [BlockSettings; BLOCKS],
-    ) -> Result<(), PlayError> {
-        self.send(Command::ChainSettings(track, settings))
+    pub fn set_chain_settings(&self, track: usize, knobs: ChainKnobs) -> Result<(), PlayError> {
+        self.send(Command::ChainSettings(track, knobs))
     }
 
     /// Gives the modelled tracks the reverb bus `spec` (a chain that runs all wet), prepared
@@ -388,21 +377,21 @@ impl SynthPlayer {
     pub fn set_reverb_bus(
         &self,
         spec: ChainSpec,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
         level: u8,
         muted: bool,
     ) -> Result<(), PlayError> {
-        self.set_bus(crate::Bus::Reverb, spec, settings, level, muted)
+        self.set_bus(crate::Bus::Reverb, spec, knobs, level, muted)
     }
 
     /// New knob values, level and mute for the reverb bus, heard at once.
     pub fn set_reverb_bus_settings(
         &self,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
         level: u8,
         muted: bool,
     ) -> Result<(), PlayError> {
-        self.set_bus_settings(crate::Bus::Reverb, settings, level, muted)
+        self.set_bus_settings(crate::Bus::Reverb, knobs, level, muted)
     }
 
     /// Gives `bus` the chain `spec` with `settings`, its level and mute; prepared on the
@@ -411,7 +400,7 @@ impl SynthPlayer {
         &self,
         bus: crate::Bus,
         spec: ChainSpec,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
         level: u8,
         muted: bool,
     ) -> Result<(), PlayError> {
@@ -422,7 +411,7 @@ impl SynthPlayer {
             .try_send(BusRequest {
                 bus,
                 spec,
-                settings,
+                knobs,
                 level,
                 muted,
             })
@@ -433,11 +422,11 @@ impl SynthPlayer {
     pub fn set_bus_settings(
         &self,
         bus: crate::Bus,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
         level: u8,
         muted: bool,
     ) -> Result<(), PlayError> {
-        self.send(Command::BusSettings(bus, settings, level, muted))
+        self.send(Command::BusSettings(bus, knobs, level, muted))
     }
 
     /// The song's track `track` sends `value` (0-127) into the compressor bus.
@@ -538,18 +527,15 @@ fn run(
         // Prepare chains as they are asked for (the newest request of a kind wins).
         match house.chains.recv_timeout(HOUSEKEEPING) {
             Ok(request) => {
-                let chain = prepare_chain(&request.spec, &request.settings, rate);
+                let chain = prepare_chain(&request.spec, &request.knobs, rate);
                 let command = if request.master {
-                    Command::MasterChain(chain, Box::new(request.settings))
+                    Command::MasterChain(chain, Box::new(request.knobs))
                 } else {
                     match request.part {
-                        None => Command::Chain(request.track, chain, Box::new(request.settings)),
-                        Some(part) => Command::PartChain(
-                            request.track,
-                            part,
-                            chain,
-                            Box::new(request.settings),
-                        ),
+                        None => Command::Chain(request.track, chain, Box::new(request.knobs)),
+                        Some(part) => {
+                            Command::PartChain(request.track, part, chain, Box::new(request.knobs))
+                        }
                     }
                 };
                 // Waits for room in the queue: this thread may.
@@ -569,7 +555,7 @@ fn run(
         }
         // The buses, prepared the same way (one instance each, shared by the tracks).
         while let Ok(request) = house.bus.try_recv() {
-            let chain = prepare_chain(&request.spec, &request.settings, rate);
+            let chain = prepare_chain(&request.spec, &request.knobs, rate);
             if house
                 .commands
                 .send(Command::Bus(request.bus, chain))
@@ -581,7 +567,7 @@ fn run(
                 .commands
                 .send(Command::BusSettings(
                     request.bus,
-                    request.settings,
+                    request.knobs,
                     request.level,
                     request.muted,
                 ))

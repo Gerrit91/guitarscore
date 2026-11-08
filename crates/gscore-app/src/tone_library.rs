@@ -5,28 +5,30 @@
 //! RSE material, and the names describe a style or a sound, never a person.
 //!
 //! Every General MIDI program has a default tone from this library, so a track starts on a
-//! fitting sound instead of a generic one ([`Self::for_program`]). The built-in tones use
-//! only computed blocks (no impulse responses): a bundled IR would have to travel with the
-//! program and be licensed for it, and there is none yet.
+//! fitting sound instead of a generic one ([`Self::for_program`]). The tones and the program
+//! map live in `data/tones.json`, embedded at build time, so `cargo xtask tones` can add a
+//! saved tone from the owner's settings without touching Rust code. The built-in tones use
+//! computed blocks; for now a tone may also point at an impulse response file, which is not
+//! bundled (the owner is still collecting them), and the chain skips a block whose file is
+//! missing. A bundled IR would have to travel with the program and be licensed for it.
 //!
 //! The user's own saved tones live in the settings (`ChainPreset`); the pickers show them
 //! after the built-in ones, in a group of their own.
 
-// Wired into the track panel and the Sound chain window by the following steps; until
-// then the library is exercised by its tests only.
-#![allow(dead_code)]
-
+use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 use gscore_play::StringKind;
+use serde::{Deserialize, Serialize};
 
-use crate::chain_settings::{
-    AmpVoiceSetting, BlockChoice, BlockSetting, ChainSetting, CompRatioSetting, Tone,
-};
+#[cfg(test)]
+use crate::chain_settings::{AmpVoiceSetting, BlockSetting, CompRatioSetting};
+use crate::chain_settings::{BlockChoice, ChainSetting, Tone};
 use crate::settings::{ChainPreset, PickupSetting, StringSound, kind_from_id};
 
 /// The group a tone appears under in the picker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum ToneFamily {
     Clean,
     Crunch,
@@ -58,6 +60,26 @@ impl ToneFamily {
             ToneFamily::Bass => "Bass",
         }
     }
+
+    /// Its id in the embedded file and on the command line (used by `cargo xtask tones`,
+    /// which only the desktop build has).
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(crate) fn id(self) -> &'static str {
+        match self {
+            ToneFamily::Clean => "clean",
+            ToneFamily::Crunch => "crunch",
+            ToneFamily::Lead => "lead",
+            ToneFamily::HighGain => "high_gain",
+            ToneFamily::Acoustic => "acoustic",
+            ToneFamily::Bass => "bass",
+        }
+    }
+
+    /// The family `id` names, if it names one.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    pub(crate) fn from_id(id: &str) -> Option<ToneFamily> {
+        ToneFamily::ALL.into_iter().find(|family| family.id() == id)
+    }
 }
 
 /// A tone that ships with the program: a full sound with a name, a family and a short
@@ -65,25 +87,89 @@ impl ToneFamily {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct BuiltInTone {
     /// The name the pickers show.
-    pub(crate) name: &'static str,
+    pub(crate) name: String,
     pub(crate) family: ToneFamily,
     /// A short line about the sound, shown on hover.
-    pub(crate) description: &'static str,
+    pub(crate) description: String,
     /// The whole sound: strings, their knobs and the chain.
     pub(crate) tone: Tone,
 }
 
-/// The built-in tones, built once.
-static TONES: LazyLock<Vec<BuiltInTone>> = LazyLock::new(build_tones);
+/// One tone as the embedded file keeps it: the whole sound plus its name, family and
+/// description. The kind is an id (`nylon`, `steel`, `electric`, `bass`), as the settings
+/// keep it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct ToneEntry {
+    /// The name the pickers show.
+    pub(crate) name: String,
+    pub(crate) family: ToneFamily,
+    /// A short line about the sound, shown on hover.
+    pub(crate) description: String,
+    /// The kind of string the tone was dialed in on.
+    pub(crate) kind: String,
+    pub(crate) sound: StringSound,
+    pub(crate) chain: ChainSetting,
+}
+
+/// The embedded library file: every built-in tone and the General MIDI program it starts
+/// on.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub(crate) struct ToneLibraryFile {
+    /// The guitar and bass programs (24-39) and the name of the tone each starts on.
+    #[serde(default)]
+    pub(crate) programs: BTreeMap<u8, String>,
+    #[serde(default)]
+    pub(crate) tones: Vec<ToneEntry>,
+}
+
+impl ToneEntry {
+    /// The built-in tone it stands for, if its kind is one we know.
+    pub(crate) fn built_in(&self) -> Option<BuiltInTone> {
+        Some(BuiltInTone {
+            name: self.name.clone(),
+            family: self.family,
+            description: self.description.clone(),
+            tone: Tone {
+                kind: kind_from_id(&self.kind)?,
+                sound: self.sound,
+                chain: self.chain.clone(),
+            },
+        })
+    }
+}
+
+/// The embedded library, parsed once.
+#[derive(Debug, Default)]
+struct Library {
+    tones: Vec<BuiltInTone>,
+    /// Guitar and bass programs and the name of the tone each starts on.
+    programs: BTreeMap<u8, String>,
+}
+
+/// The built-in tones as the program ships them, embedded at build time.
+pub(crate) const TONES_JSON: &str = include_str!("../data/tones.json");
+
+/// The embedded library, parsed once. A malformed file leaves the library empty and every
+/// program on the plain fallback tone; a test keeps that from happening.
+static LIBRARY: LazyLock<Library> = LazyLock::new(|| {
+    let file: ToneLibraryFile = match serde_json::from_str(TONES_JSON) {
+        Ok(file) => file,
+        Err(_) => return Library::default(),
+    };
+    Library {
+        tones: file.tones.iter().filter_map(ToneEntry::built_in).collect(),
+        programs: file.programs,
+    }
+});
 
 /// Every built-in tone, in family order and within a family in the order designed.
 pub(crate) fn all() -> &'static [BuiltInTone] {
-    &TONES
+    &LIBRARY.tones
 }
 
 /// The built-in tone named `name`, if there is one.
 pub(crate) fn find(name: &str) -> Option<&'static BuiltInTone> {
-    TONES.iter().find(|tone| tone.name == name)
+    LIBRARY.tones.iter().find(|tone| tone.name == name)
 }
 
 /// The built-in tone of `program` (0-127) for strings of `kind`.
@@ -225,74 +311,61 @@ pub(crate) fn normalize_string_level(tone: &mut Tone, target_level: f32) {
     };
 }
 
-/// Matches a built-in fallback's loudness: the string sound sits at `target_level` and the
-/// chain's output trims cancel out. The trim is taken from one block's output level (an
-/// amp, then a drive, a compressor, a cabinet or a room), never from its drive or tone.
-pub(crate) fn normalize_default(tone: &mut Tone, target_level: f32) {
+/// The sum of the blocks' output levels (an amp, a drive, a compressor, a cabinet, a
+/// room): what makes one tone louder than another with the same strings. Drive and tone
+/// knobs are never part of it.
+pub(crate) fn chain_level_trim(chain: &ChainSetting) -> f32 {
+    let sum: f32 = chain
+        .blocks
+        .iter()
+        .filter(|block| {
+            matches!(
+                block.choice,
+                BlockChoice::Amp
+                    | BlockChoice::Drive
+                    | BlockChoice::Compressor
+                    | BlockChoice::Cabinet
+                    | BlockChoice::Room
+            )
+        })
+        .filter(|block| block.gain_db.is_finite())
+        .map(|block| block.gain_db)
+        .sum();
+    // Adding zero turns a negative zero into a positive one, so reports print "0.0".
+    if sum == 0.0 { 0.0 } else { sum }
+}
+
+/// The static leveling, for `cargo xtask tones normalize --static`: the string sound at
+/// `target_level` and the chain's level trims cancelled by the *output* knob, leaving the
+/// blocks' gain staging exactly as dialed in. (Playback no longer levels built-in tones
+/// this way: their output level is measured once and stored with the tone.)
+pub(crate) fn normalize_static(tone: &mut Tone, target_level: f32) {
     normalize_string_level(tone, target_level);
-    let mut trim = 0.0_f32;
-    let mut chosen: Option<(u8, usize)> = None;
-    for (index, block) in tone.chain.blocks.iter().enumerate() {
-        let priority = match block.choice {
-            BlockChoice::Amp => 4,
-            BlockChoice::Drive => 3,
-            BlockChoice::Compressor => 2,
-            BlockChoice::Cabinet | BlockChoice::Room => 1,
-            _ => continue,
-        };
-        if block.gain_db.is_finite() {
-            trim += block.gain_db;
-        }
-        if chosen.is_none_or(|(best, _)| priority > best) {
-            chosen = Some((priority, index));
-        }
-    }
-    if trim.is_finite()
-        && let Some((_, index)) = chosen
-        && let Some(block) = tone.chain.blocks.get_mut(index)
-    {
-        let (low, high) = gscore_guitar::knob_ranges::GAIN;
-        block.gain_db = (block.gain_db - trim).clamp(low, high);
+    let trim = chain_level_trim(&tone.chain);
+    if trim.is_finite() {
+        let (low, high) = gscore_guitar::knob_ranges::OUTPUT;
+        tone.chain.output_db = (-trim).clamp(low, high);
     }
 }
 
-/// A plain electric tone used only if the built-in list somehow lost its entries.
+/// A plain electric tone used only if the embedded library cannot be read.
 fn fallback_tone() -> &'static BuiltInTone {
-    static FALLBACK: LazyLock<BuiltInTone> = LazyLock::new(|| {
-        tone(
-            "Clean",
-            ToneFamily::Clean,
-            "The plain modelled electric guitar.",
-            StringKind::Electric,
-            StringSound::from(gscore_audio::default_string_model(StringKind::Electric)),
-            Vec::new(),
-        )
+    static FALLBACK: LazyLock<BuiltInTone> = LazyLock::new(|| BuiltInTone {
+        name: "Clean".to_owned(),
+        family: ToneFamily::Clean,
+        description: "The plain modelled electric guitar.".to_owned(),
+        tone: Tone {
+            kind: StringKind::Electric,
+            sound: sound(StringKind::Electric, PickupSetting::Unset, 0.0),
+            chain: ChainSetting::default(),
+        },
     });
     &FALLBACK
 }
 
 /// The program's documented tone, before the kind is checked.
 fn program_tone(program: u8) -> Option<&'static BuiltInTone> {
-    let name = match program {
-        // Nylon, steel and the electric guitars.
-        24 => "Nylon Classical",
-        25 => "Steel Fingerpicked",
-        26 => "Warm Jazz",
-        27 => "Clean Single Coil",
-        28 => "Funk Rhythm",
-        29 => "Classic Rock Rhythm",
-        30 => "Modern Metal Rhythm",
-        31 => "80s Lead",
-        // The basses: GM 34 is the picked electric bass, 35 the fretless (a fingerstyle
-        // sound); 36 and 37 slap; 38 and 39 are synth basses, played with a pick here.
-        32 | 33 | 35 => "Clean Finger",
-        34 => "Pick",
-        36 | 37 => "Slap",
-        38 | 39 => "Pick",
-        // Other string programs (banjo, ukulele, ...) take their kind's default instead.
-        _ => return None,
-    };
-    find(name)
+    LIBRARY.programs.get(&program).and_then(|name| find(name))
 }
 
 /// A fresh sound of `kind` with `pickup` and where it sits.
@@ -306,6 +379,7 @@ fn sound(kind: StringKind, pickup: PickupSetting, position: f32) -> StringSound 
 }
 
 /// A chain of `blocks` in the first places.
+#[cfg(test)]
 fn chain(blocks: Vec<BlockSetting>) -> ChainSetting {
     let mut chain = ChainSetting::default();
     for (slot, block) in chain.blocks.iter_mut().zip(blocks) {
@@ -314,26 +388,8 @@ fn chain(blocks: Vec<BlockSetting>) -> ChainSetting {
     chain
 }
 
-/// An EQ block with a low and a high cut and four (frequency, gain, width) bands.
-fn eq(low_cut: f32, high_cut: f32, bands: [(f32, f32, f32); 4]) -> BlockSetting {
-    let mut block = BlockSetting::of(BlockChoice::Eq);
-    block.low_cut = low_cut;
-    block.high_cut = high_cut;
-    for (band, (frequency, gain, width)) in bands.into_iter().enumerate() {
-        if let (Some(slot), Some(level), Some(q)) = (
-            block.eq_band_freq.get_mut(band),
-            block.eq_band_gain.get_mut(band),
-            block.eq_band_q.get_mut(band),
-        ) {
-            *slot = frequency;
-            *level = gain;
-            *q = width;
-        }
-    }
-    block
-}
-
 /// The computed guitar amp: voice, gain, tone stack and output level.
+#[cfg(test)]
 fn amp(
     voice: AmpVoiceSetting,
     gain: f32,
@@ -352,16 +408,8 @@ fn amp(
     block
 }
 
-/// The computed overdrive pedal: drive, tone and level.
-fn drive(drive: f32, tone: f32, level: f32) -> BlockSetting {
-    let mut block = BlockSetting::of(BlockChoice::Drive);
-    block.drive = drive;
-    block.tone = tone;
-    block.gain_db = level;
-    block
-}
-
 /// The FET compressor: ratio, input and output level, attack and release.
+#[cfg(test)]
 fn compressor(
     ratio: CompRatioSetting,
     input: f32,
@@ -378,383 +426,6 @@ fn compressor(
     block
 }
 
-/// The computed reverb: size, decay, pre-delay and mix.
-fn reverb(size: f32, decay: f32, pre_delay: f32, mix: f32) -> BlockSetting {
-    let mut block = BlockSetting::of(BlockChoice::Reverb);
-    block.size = size;
-    block.decay = decay;
-    block.pre_delay = pre_delay;
-    block.mix = mix;
-    block
-}
-
-/// The stereo chorus: speed, depth and mix.
-fn chorus(rate: f32, depth: f32, mix: f32) -> BlockSetting {
-    let mut block = BlockSetting::of(BlockChoice::Chorus);
-    block.chorus_rate = rate;
-    block.chorus_depth = depth;
-    block.mix = mix;
-    block
-}
-
-/// A built-in tone.
-fn tone(
-    name: &'static str,
-    family: ToneFamily,
-    description: &'static str,
-    kind: StringKind,
-    sound: StringSound,
-    blocks: Vec<BlockSetting>,
-) -> BuiltInTone {
-    BuiltInTone {
-        name,
-        family,
-        description,
-        tone: Tone {
-            kind,
-            sound,
-            chain: chain(blocks),
-        },
-    }
-}
-
-/// Every built-in tone, designed as a starting point for the owner to tune by ear.
-fn build_tones() -> Vec<BuiltInTone> {
-    use ToneFamily::{Acoustic, Bass, Clean, Crunch, HighGain, Lead};
-    let electric = StringKind::Electric;
-    let steel = StringKind::Steel;
-    let nylon = StringKind::Nylon;
-    let bass = StringKind::Bass;
-    vec![
-        // Clean: bright single coils, a warm neck, and a compressed funk sound.
-        tone(
-            "Clean Single Coil",
-            Clean,
-            "Bright single-coil bridge with light compression and a little air.",
-            electric,
-            sound(
-                electric,
-                PickupSetting::SingleCoil,
-                gscore_guitar::pickup_positions::BRIDGE,
-            ),
-            vec![
-                compressor(CompRatioSetting::Four, 3.0, -3.0, 15.0, 180.0),
-                eq(
-                    80.0,
-                    12_000.0,
-                    [
-                        (100.0, 0.0, 0.707),
-                        (800.0, 0.0, 1.0),
-                        (3_000.0, 1.0, 1.0),
-                        (8_000.0, 1.5, 0.707),
-                    ],
-                ),
-            ],
-        ),
-        tone(
-            "Glassy Neck",
-            Clean,
-            "Neck single coil, glassy and wide, with a gentle stereo chorus.",
-            electric,
-            sound(
-                electric,
-                PickupSetting::SingleCoil,
-                gscore_guitar::pickup_positions::NECK,
-            ),
-            vec![
-                compressor(CompRatioSetting::Four, 2.5, -2.5, 12.0, 160.0),
-                chorus(0.6, 1.8, 0.25),
-            ],
-        ),
-        tone(
-            "Warm Jazz",
-            Clean,
-            "Neck humbucker with the highs rolled off: round, dark and smooth.",
-            electric,
-            sound(
-                electric,
-                PickupSetting::Humbucker,
-                gscore_guitar::pickup_positions::NECK,
-            ),
-            vec![
-                eq(
-                    90.0,
-                    6_500.0,
-                    [
-                        (100.0, 1.5, 0.707),
-                        (450.0, 1.0, 1.0),
-                        (2_000.0, 0.0, 1.0),
-                        (5_000.0, -2.0, 0.707),
-                    ],
-                ),
-                compressor(CompRatioSetting::Four, 3.0, -3.0, 20.0, 220.0),
-            ],
-        ),
-        tone(
-            "Funk Rhythm",
-            Clean,
-            "Tight single-coil snap with a scooped mid and fast compression.",
-            electric,
-            sound(
-                electric,
-                PickupSetting::SingleCoil,
-                gscore_guitar::pickup_positions::MIDDLE,
-            ),
-            vec![
-                compressor(CompRatioSetting::Eight, 6.0, -6.0, 5.0, 90.0),
-                eq(
-                    120.0,
-                    12_000.0,
-                    [
-                        (150.0, 1.0, 0.707),
-                        (900.0, -2.0, 1.2),
-                        (2_500.0, 1.0, 1.0),
-                        (7_000.0, 2.0, 0.707),
-                    ],
-                ),
-            ],
-        ),
-        // Crunch: a pedal into a breaking-up amp, and two classic amp sounds.
-        tone(
-            "Texas Blues",
-            Crunch,
-            "A pushed combo with a little pedal grit.",
-            electric,
-            sound(
-                electric,
-                PickupSetting::SingleCoil,
-                gscore_guitar::pickup_positions::MIDDLE,
-            ),
-            vec![
-                drive(0.35, 5_000.0, -3.0),
-                amp(AmpVoiceSetting::Crunch, 0.55, 0.55, 0.5, 0.6, -6.0),
-            ],
-        ),
-        tone(
-            "British Crunch",
-            Crunch,
-            "Mid-forward crunchy rhythm with the bass kept firm.",
-            electric,
-            sound(
-                electric,
-                PickupSetting::Humbucker,
-                gscore_guitar::pickup_positions::BRIDGE,
-            ),
-            vec![
-                amp(AmpVoiceSetting::Crunch, 0.65, 0.45, 0.7, 0.55, -5.0),
-                eq(
-                    90.0,
-                    10_000.0,
-                    [
-                        (120.0, 1.0, 0.707),
-                        (500.0, 1.0, 1.0),
-                        (2_500.0, 0.5, 1.0),
-                        (6_000.0, -1.0, 0.707),
-                    ],
-                ),
-            ],
-        ),
-        tone(
-            "Classic Rock Rhythm",
-            Crunch,
-            "A pedal into a cranked amp: thick, even and ready for chords.",
-            electric,
-            sound(
-                electric,
-                PickupSetting::Humbucker,
-                gscore_guitar::pickup_positions::BRIDGE,
-            ),
-            vec![
-                drive(0.5, 4_000.0, -4.0),
-                amp(AmpVoiceSetting::Crunch, 0.7, 0.5, 0.6, 0.5, -6.0),
-            ],
-        ),
-        // Lead: singing sustain and an eighties chorus lead.
-        tone(
-            "80s Lead",
-            Lead,
-            "Smooth lead with a long, even sustain.",
-            electric,
-            sound(
-                electric,
-                PickupSetting::Humbucker,
-                gscore_guitar::pickup_positions::NECK,
-            ),
-            vec![
-                drive(0.45, 4_500.0, -3.0),
-                amp(AmpVoiceSetting::Lead, 0.7, 0.5, 0.55, 0.6, -5.0),
-            ],
-        ),
-        tone(
-            "Singing Sustain",
-            Lead,
-            "Long, even sustain with the compression holding every note.",
-            electric,
-            sound(
-                electric,
-                PickupSetting::Humbucker,
-                gscore_guitar::pickup_positions::BRIDGE,
-            ),
-            vec![
-                compressor(CompRatioSetting::Eight, 8.0, -7.0, 12.0, 250.0),
-                amp(AmpVoiceSetting::Lead, 0.8, 0.5, 0.6, 0.55, -6.0),
-            ],
-        ),
-        // High gain: a tight rhythm and a scooped, percussive djent sound.
-        tone(
-            "Modern Metal Rhythm",
-            HighGain,
-            "High gain with the mud cut out and the attack left sharp.",
-            electric,
-            sound(
-                electric,
-                PickupSetting::Humbucker,
-                gscore_guitar::pickup_positions::BRIDGE,
-            ),
-            vec![
-                drive(0.7, 3_000.0, -6.0),
-                amp(AmpVoiceSetting::Lead, 0.85, 0.4, 0.55, 0.5, -7.0),
-            ],
-        ),
-        tone(
-            "Djent Tight",
-            HighGain,
-            "Very tight lows, a hard compressor and a percussive mid scoop.",
-            electric,
-            sound(
-                electric,
-                PickupSetting::Humbucker,
-                gscore_guitar::pickup_positions::BRIDGE,
-            ),
-            vec![
-                compressor(CompRatioSetting::Twelve, 10.0, -8.0, 3.0, 80.0),
-                amp(AmpVoiceSetting::Lead, 0.9, 0.35, 0.5, 0.55, -7.0),
-            ],
-        ),
-        // Acoustic: two steel sounds and a classical guitar.
-        tone(
-            "Steel Strummed",
-            Acoustic,
-            "A wide steel-string strum with a little compression.",
-            steel,
-            sound(steel, PickupSetting::Unset, 0.0),
-            vec![
-                compressor(CompRatioSetting::Four, 3.0, -3.0, 20.0, 200.0),
-                eq(
-                    70.0,
-                    14_000.0,
-                    [
-                        (100.0, 0.5, 0.707),
-                        (700.0, 0.0, 1.0),
-                        (3_000.0, 1.0, 1.0),
-                        (9_000.0, 1.0, 0.707),
-                    ],
-                ),
-            ],
-        ),
-        tone(
-            "Steel Fingerpicked",
-            Acoustic,
-            "Fingertips on steel, close and detailed, with only a hint of room.",
-            steel,
-            sound(steel, PickupSetting::Unset, 0.0),
-            vec![
-                eq(
-                    60.0,
-                    14_000.0,
-                    [
-                        (100.0, 0.0, 0.707),
-                        (800.0, 0.0, 1.0),
-                        (3_500.0, 0.5, 1.0),
-                        (8_000.0, 1.0, 0.707),
-                    ],
-                ),
-                reverb(0.3, 0.9, 18.0, 0.1),
-            ],
-        ),
-        tone(
-            "Nylon Classical",
-            Acoustic,
-            "Warm nylon strings with a rounded top and a soft room.",
-            nylon,
-            sound(nylon, PickupSetting::Unset, 0.0),
-            vec![
-                eq(
-                    60.0,
-                    9_000.0,
-                    [
-                        (100.0, 0.5, 0.707),
-                        (600.0, 0.5, 1.0),
-                        (2_500.0, 0.0, 1.0),
-                        (6_000.0, -1.0, 0.707),
-                    ],
-                ),
-                reverb(0.4, 1.1, 22.0, 0.14),
-            ],
-        ),
-        // Bass: fingers, pick, slap and a driven sound.
-        tone(
-            "Clean Finger",
-            Bass,
-            "Fingerstyle bass: even lows, a clear attack and no boom.",
-            bass,
-            sound(bass, PickupSetting::Unset, 0.0),
-            vec![
-                compressor(CompRatioSetting::Four, 4.0, -4.0, 15.0, 180.0),
-                eq(
-                    35.0,
-                    7_000.0,
-                    [
-                        (60.0, 1.0, 0.707),
-                        (250.0, 0.5, 1.0),
-                        (900.0, 0.0, 1.0),
-                        (3_000.0, 0.5, 0.707),
-                    ],
-                ),
-            ],
-        ),
-        tone(
-            "Pick",
-            Bass,
-            "A pick on the strings: harder attack and a brighter top.",
-            bass,
-            sound(bass, PickupSetting::Unset, 0.0),
-            vec![compressor(CompRatioSetting::Four, 5.0, -5.0, 8.0, 140.0)],
-        ),
-        tone(
-            "Slap",
-            Bass,
-            "Snappy slap: compressed lows and a bright, popping top.",
-            bass,
-            sound(bass, PickupSetting::Unset, 0.0),
-            vec![
-                compressor(CompRatioSetting::Twelve, 9.0, -8.0, 3.0, 90.0),
-                eq(
-                    45.0,
-                    12_000.0,
-                    [
-                        (80.0, 1.5, 0.707),
-                        (500.0, -2.0, 1.2),
-                        (2_000.0, 1.0, 1.0),
-                        (6_000.0, 2.0, 0.707),
-                    ],
-                ),
-            ],
-        ),
-        tone(
-            "Driven",
-            Bass,
-            "A bass pushed into a warm overdrive, still holding its low end.",
-            bass,
-            sound(bass, PickupSetting::Unset, 0.0),
-            vec![
-                drive(0.4, 2_500.0, -5.0),
-                compressor(CompRatioSetting::Eight, 6.0, -6.0, 10.0, 150.0),
-            ],
-        ),
-    ]
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -763,14 +434,14 @@ mod tests {
 
     #[test]
     fn every_family_has_tones_with_unique_names() {
-        let mut names: Vec<&str> = Vec::new();
+        let mut names: Vec<String> = Vec::new();
         for family in ToneFamily::ALL {
             let count = all().iter().filter(|tone| tone.family == family).count();
             assert!(count > 0, "{} has no tone", family.label());
         }
         for tone in all() {
             assert!(!names.contains(&tone.name), "{} appears twice", tone.name);
-            names.push(tone.name);
+            names.push(tone.name.clone());
             assert!(!tone.description.trim().is_empty(), "{}", tone.name);
         }
         // The owner's list from the handoff is all here.
@@ -801,10 +472,10 @@ mod tests {
     #[test]
     fn a_tone_is_a_complete_sane_sound_and_names_no_person() {
         for tone in all() {
-            // Every knob is in range and there is a real chain (built-ins use no IR file:
-            // there is no bundled one yet).
+            // Every knob is in range and there is a real chain. An impulse response path is
+            // allowed for now (the owner is still collecting the files; the chain skips a
+            // block whose file is missing).
             for block in &tone.tone.chain.blocks {
-                assert!(block.file.is_none(), "{} uses an IR file", tone.name);
                 let knobs = block.knobs();
                 assert_eq!(knobs, knobs.sanitized(), "{}", tone.name);
             }
@@ -913,9 +584,10 @@ mod tests {
     }
 
     #[test]
-    fn normalized_defaults_arrive_at_the_same_level() {
-        // A quiet string sound with an amp trimmed far down, and a loud one with only a
-        // cabinet: both come out at the same string level and with no net chain trim.
+    fn static_leveling_lands_on_the_output_knob_and_leaves_the_blocks_alone() {
+        // A quiet string sound with an amp trimmed far down and a compressor: the static
+        // leveling sets the string level and cancels the trims at the output knob, without
+        // moving the amp's gain staging (its drive, or the level into the cabinet).
         let mut quiet = Tone {
             kind: StringKind::Electric,
             sound: StringSound {
@@ -927,29 +599,30 @@ mod tests {
                 compressor(CompRatioSetting::Four, 4.0, -4.0, 10.0, 150.0),
             ]),
         };
-        normalize_default(&mut quiet, 0.55);
+        normalize_static(&mut quiet, 0.55);
         assert!((quiet.sound.level - 0.55).abs() < 1e-6);
-        let trim: f32 = quiet
-            .chain
-            .blocks
-            .iter()
-            .filter(|block| {
-                matches!(
-                    block.choice,
-                    BlockChoice::Amp
-                        | BlockChoice::Drive
-                        | BlockChoice::Compressor
-                        | BlockChoice::Cabinet
-                        | BlockChoice::Room
-                )
-            })
-            .map(|block| block.gain_db)
-            .sum();
-        assert!(trim.abs() < 1e-4, "{trim}");
-        // The amp's output (the strongest level block) took the adjustment; its voice and
-        // drive did not move.
-        assert!((quiet.chain.blocks[0].gain_db - 4.0).abs() < 1e-4);
+        // -18 + -4 dB of trims are cancelled at the output.
+        assert!(
+            (quiet.chain.output_db - 22.0).abs() < 1e-4,
+            "{}",
+            quiet.chain.output_db
+        );
+        assert!((quiet.chain.blocks[0].gain_db - (-18.0)).abs() < 1e-6);
         assert!((quiet.chain.blocks[0].drive - 0.8).abs() < 1e-6);
+        assert!((quiet.chain.blocks[1].gain_db - (-4.0)).abs() < 1e-6);
+        assert!((chain_level_trim(&quiet.chain) - (-22.0)).abs() < 1e-4);
+    }
+
+    #[test]
+    fn the_embedded_file_parses_and_every_program_names_a_tone() {
+        let file: ToneLibraryFile = serde_json::from_str(TONES_JSON).unwrap();
+        assert!(!all().is_empty());
+        assert_eq!(file.tones.len(), all().len(), "a tone was dropped");
+        assert!(!LIBRARY.programs.is_empty());
+        for (program, name) in &LIBRARY.programs {
+            let tone = find(name).unwrap_or_else(|| panic!("program {program} names {name}"));
+            assert_eq!(&tone.name, name, "program {program}");
+        }
     }
 
     #[test]

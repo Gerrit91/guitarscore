@@ -21,7 +21,7 @@ pub(super) enum PickerChoice {
     /// A drum kit: its program in the SoundFont's percussion bank.
     DrumKit(u8),
     /// One of our built-in tones, by name.
-    BuiltIn(&'static str),
+    BuiltIn(String),
     /// One of the user's saved tones: its kind id and its name.
     Saved { kind: String, name: String },
 }
@@ -448,7 +448,7 @@ pub(super) fn current_tone_choice(
     saved: &[ChainPreset],
 ) -> Option<PickerChoice> {
     if let Some(built_in) = tone_library::all().iter().find(|built| built.tone == *tone) {
-        return Some(PickerChoice::BuiltIn(built_in.name));
+        return Some(PickerChoice::BuiltIn(built_in.name.clone()));
     }
     saved
         .iter()
@@ -586,13 +586,13 @@ pub(super) fn tone_rows(
             .iter()
             .filter(|tone| tone.family == family)
         {
-            let choice = PickerChoice::BuiltIn(tone.name);
+            let choice = PickerChoice::BuiltIn(tone.name.clone());
             rows.push(PickerRow {
                 group: Some(family.label()),
                 label: tone.name.to_owned(),
                 hint: tone.description.to_owned(),
                 selected: selected == Some(&choice),
-                default: default_tone == Some(tone.name),
+                default: default_tone == Some(tone.name.as_str()),
                 choice,
             });
         }
@@ -660,7 +660,7 @@ mod tests {
             chain: crate::chain_settings::ChainSetting::default(),
             engine: String::new(),
         };
-        let selected = PickerChoice::BuiltIn("Djent Tight");
+        let selected = PickerChoice::BuiltIn("Djent Tight".to_owned());
         let rows = tone_rows(
             Some(&selected),
             Some("Modern Metal Rhythm"),

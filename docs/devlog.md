@@ -4260,3 +4260,37 @@ needed for a much larger font); owner listening check.
   Finger. A saved "Clean Bass 1" therefore stands in only for the finger/acoustic bass
   programs; pick and slap programs keep their own built-in Pick and Slap until the owner
   saves presets for them.
+
+## 2026-11-08 — Built-in tones are data, and `cargo xtask tones` imports them
+
+- **The tone library is now `crates/gscore-app/data/tones.json`**, embedded with
+  `include_str!` and parsed once: the 18 designed tones plus the GM 24-39 program map. The
+  library's API (`all`, `find`, `for_program`, `default_for_kind`) is unchanged; the
+  `build_tones()` Rust table and its constructors are gone, so `cargo xtask tones` can edit
+  the data without touching code. A malformed file falls back to the plain `Clean` tone; a
+  test parses the embedded file and checks every program names a tone.
+- **`cargo xtask tones import --preset NAME --program N`** copies a saved tone from
+  `settings.json` into the library: strings, chain, name, family and description, and
+  points program N at it. It is a faithful copy (no level changes). `--ir drop` replaces
+  impulse responses with the computed speaker/nothing; by default the paths are kept and
+  warned about, since the files are not bundled yet.
+- **A chain's output level (`ChainSetting::output_db`) is the leveling point.** It is a
+  scalar after every block and before the mixer's fader, carried through `ChainKnobs` to
+  `gscore-guitar::Chain` (which applies it at the end of `process_in_place`, clamped to
+  ±24 dB), so leveling a tone never changes how hard an amp or a drive is fed. The Sound
+  chain window has a "Chain output" knob under the last box.
+- **`cargo xtask tones normalize [--tone NAME] [--target DB] [--static] [--dry-run]`** is
+  the separate leveling pass. By default it renders a fixed reference note (A2, velocity
+  0.8, 2 s) through each tone's own strings and chain, measures the RMS from 0.2 to 1.5 s,
+  and sets the output knob so the note reaches `--target` (default -24 dBFS RMS); the
+  shipped 18 placeholder tones were leveled this way (outputs from +17.5 to -14.7 dB, the
+  clean sounds up, the high-gain ones down). `--static` keeps the old cheap estimate (the
+  level trims cancelled at the output knob) without rendering. `list` shows the saved
+  tones and the programs they currently stand in for; `check` validates the library.
+- Playback no longer cancels a built-in tone's chain trims: it applies only the machine's
+  string level for the kind, so the measured output level is what plays.
+- The `tone_tool` module is `gscore-app`'s only non-wasm part of the tooling; `xtask`
+  stays dependency-free and shells out to the `tones` example. Tests cover the embedded
+  file, the copy, IR keep/drop, normalization and the dry run.
+- Built-in tones may now point at an impulse response file (a path only, not bundled):
+  `chain_spec` already skips a block whose file cannot be read and shows a notice.

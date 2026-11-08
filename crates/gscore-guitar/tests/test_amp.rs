@@ -74,7 +74,7 @@ fn settings(amp: AmpKnobs) -> [BlockSettings; BLOCKS] {
 
 /// Left channel of `input` through an amp chain with `amp`.
 fn through(input: &[f32], amp: AmpKnobs) -> Vec<f32> {
-    let mut chain = amp_spec().prepare(RATE).instance(&settings(amp));
+    let mut chain = amp_spec().prepare(RATE).instance(&settings(amp), 0.0);
     let mut out = vec![0.0_f32; input.len()];
     let mut right = [0.0_f32; BLOCK];
     for (i, o) in input.chunks(BLOCK).zip(out.chunks_mut(BLOCK)) {
@@ -143,7 +143,7 @@ fn distortion_squashes_the_attack() {
 fn the_tail_ends_and_knobs_are_taken_while_playing() {
     let mut chain = amp_spec()
         .prepare(RATE)
-        .instance(&settings(AmpKnobs::default()));
+        .instance(&settings(AmpKnobs::default()), 0.0);
     let chord = power_chord(0.5);
     let (mut left, mut right) = ([0.0_f32; BLOCK], [0.0_f32; BLOCK]);
     for (index, block) in chord.chunks(BLOCK).enumerate() {
@@ -208,7 +208,7 @@ fn a_drive_in_front_tightens_the_low_end() {
         ..AmpKnobs::default()
     };
     let run = |spec: &ChainSpec, settings: &[BlockSettings; BLOCKS]| {
-        let mut chain = spec.prepare(RATE).instance(settings);
+        let mut chain = spec.prepare(RATE).instance(settings, 0.0);
         let mut out = vec![0.0_f32; chord.len()];
         let mut right = [0.0_f32; BLOCK];
         for (i, o) in chord.chunks(BLOCK).zip(out.chunks_mut(BLOCK)) {
@@ -251,7 +251,7 @@ fn silence_after_a_note_becomes_exact_zeros() {
     spec.blocks[1] = Some(BlockKind::Amp);
     let mut chain = spec
         .prepare(RATE)
-        .instance(&[BlockSettings::default(); BLOCKS]);
+        .instance(&[BlockSettings::default(); BLOCKS], 0.0);
     let (mut left, mut right) = ([0.0_f32; BLOCK], [0.0_f32; BLOCK]);
     for block in power_chord(0.3).chunks(BLOCK) {
         chain.process(block, &mut left, &mut right);

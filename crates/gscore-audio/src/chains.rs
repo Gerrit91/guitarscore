@@ -15,25 +15,35 @@ use gscore_guitar::{BLOCKS, BlockSettings, Chain, ChainSpec};
 /// past it plays its kind's sound, dry.
 pub const MAX_TONES: usize = 64;
 
+/// A chain's knob values: its blocks' and the output level after them, in dB.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ChainKnobs {
+    pub settings: [BlockSettings; BLOCKS],
+    /// After every block, before the mixer's fader.
+    pub output_db: f32,
+}
+
 /// Whether `spec` does nothing (every place empty): then it need not be run at all.
 pub fn chain_is_empty(spec: &ChainSpec) -> bool {
     spec.blocks.iter().all(Option::is_none)
 }
 
-/// `spec` prepared at `sample_rate` with `settings`, ready to run for one track, or
-/// `None` when it does nothing. Allocates: call it off the audio thread.
-pub fn prepare_chain(
-    spec: &ChainSpec,
-    settings: &[BlockSettings; BLOCKS],
-    sample_rate: u32,
-) -> Option<Box<Chain>> {
-    (!chain_is_empty(spec)).then(|| Box::new(spec.prepare(sample_rate).instance(settings)))
+/// `spec` prepared at `sample_rate` with `knobs`, ready to run for one track, or `None`
+/// when it does nothing (an empty chain at unity output).
+pub fn prepare_chain(spec: &ChainSpec, knobs: &ChainKnobs, sample_rate: u32) -> Option<Box<Chain>> {
+    let output = knobs.output_db.is_finite() && knobs.output_db.abs() > 1e-4;
+    (!chain_is_empty(spec) || output).then(|| {
+        Box::new(
+            spec.prepare(sample_rate)
+                .instance(&knobs.settings, knobs.output_db),
+        )
+    })
 }
 
 /// The chains of the tracks, by track index.
 pub(crate) struct TrackTones {
     chains: Vec<Option<Box<Chain>>>,
-    settings: Vec<[BlockSettings; BLOCKS]>,
+    knobs: Vec<ChainKnobs>,
 }
 
 impl std::fmt::Debug for TrackTones {
@@ -49,7 +59,7 @@ impl TrackTones {
     pub(crate) fn new() -> Self {
         TrackTones {
             chains: (0..MAX_TONES).map(|_| None).collect(),
-            settings: vec![[BlockSettings::default(); BLOCKS]; MAX_TONES],
+            knobs: vec![ChainKnobs::default(); MAX_TONES],
         }
     }
 
@@ -58,7 +68,7 @@ impl TrackTones {
         self.chains.get_mut(track).and_then(Option::as_deref_mut)
     }
 
-    /// Gives `track` the chain `chain` (`None`: none) with `settings` (the knob values of
+    /// Gives `track` the chain `chain` (`None`: none) with `knobs` (the knob values of
     /// its own blocks: those kept for the chain it replaces may fit other blocks).
     /// Returns the chain it replaces, to be freed off the audio thread (or `chain` itself
     /// when `track` cannot have one).
@@ -66,27 +76,29 @@ impl TrackTones {
         &mut self,
         track: usize,
         chain: Option<Box<Chain>>,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
     ) -> Option<Box<Chain>> {
         let mut chain = chain;
-        let (Some(slot), Some(kept)) = (self.chains.get_mut(track), self.settings.get_mut(track))
+        let (Some(slot), Some(kept)) = (self.chains.get_mut(track), self.knobs.get_mut(track))
         else {
             return chain;
         };
-        *kept = settings;
+        *kept = knobs;
         if let Some(chain) = &mut chain {
-            chain.set_settings(&settings);
+            chain.set_settings(&knobs.settings);
+            chain.set_output_db(knobs.output_db);
         }
         std::mem::replace(slot, chain)
     }
 
     /// New knob values for the chain of `track`, heard at once.
-    pub(crate) fn set_settings(&mut self, track: usize, settings: [BlockSettings; BLOCKS]) {
-        if let Some(slot) = self.settings.get_mut(track) {
-            *slot = settings;
+    pub(crate) fn set_settings(&mut self, track: usize, knobs: ChainKnobs) {
+        if let Some(slot) = self.knobs.get_mut(track) {
+            *slot = knobs;
         }
         if let Some(Some(chain)) = self.chains.get_mut(track) {
-            chain.set_settings(&settings);
+            chain.set_settings(&knobs.settings);
+            chain.set_output_db(knobs.output_db);
         }
     }
 }

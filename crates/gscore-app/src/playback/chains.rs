@@ -86,16 +86,16 @@ pub(crate) struct ExportTones {
         StringKind,
         StringModel,
         ChainSpec,
-        [BlockSettings; BLOCKS],
+        gscore_audio::ChainKnobs,
     )>,
     presets: Vec<(
         u8,
         StringKind,
         StringModel,
         ChainSpec,
-        [BlockSettings; BLOCKS],
+        gscore_audio::ChainKnobs,
     )>,
-    defaults: Vec<(StringKind, StringModel, ChainSpec, [BlockSettings; BLOCKS])>,
+    defaults: Vec<(StringKind, StringModel, ChainSpec, gscore_audio::ChainKnobs)>,
     /// The same for a program that brings its own built-in tone (an electric guitar
     /// program's is not the generic electric one).
     program_defaults: Vec<(
@@ -103,7 +103,7 @@ pub(crate) struct ExportTones {
         StringKind,
         StringModel,
         ChainSpec,
-        [BlockSettings; BLOCKS],
+        gscore_audio::ChainKnobs,
     )>,
 }
 
@@ -321,13 +321,6 @@ impl Playback {
         crate::tone_library::default_tone_name(program, kind, &self.string_presets)
     }
 
-    /// Whether `default_tone_for` falls back to the built-in library (no saved preset of
-    /// that kind): only those need their loudness matched; a saved preset keeps the levels
-    /// the owner dialed in.
-    fn built_in_default(&self, program: u8, kind: StringKind) -> bool {
-        crate::tone_library::saved_default_for(program, kind, &self.string_presets).is_none()
-    }
-
     /// Gives the preset `program` a tone of its own (heard at once, and on every track with
     /// that preset from now on), or forgets it with `None`: the built-in default plays
     /// again. A tone of another kind of string changes which strings its tracks play, so
@@ -470,11 +463,11 @@ impl Playback {
                 }
                 match sent {
                     Some((sent, ..)) if sent.same_structure(&chain) => {
-                        knobs.push((key, chain.knobs()));
+                        knobs.push((key, chain.chain_knobs()));
                     }
                     _ => {
                         let spec = self.chain_spec(&chain);
-                        prepare.push((key, spec, chain.knobs()));
+                        prepare.push((key, spec, chain.chain_knobs()));
                     }
                 }
                 if !mix_same {
@@ -559,16 +552,12 @@ impl Playback {
                         .or(preset)
                         .unwrap_or_else(|| self.default_tone_for(target.program, kind));
                     if default {
-                        // A saved preset keeps its chain levels (the owner's); only the
-                        // string level is matched to the kind, so a clean preset saved
-                        // lower is not weak beside an amp preset. A built-in fallback has
-                        // its chain trims matched too.
+                        // The tone's loudness is part of the tone (its output level was
+                        // measured when it was added); only the machine's string level
+                        // for the kind is matched, so a tone saved on other strings is
+                        // not weak or loud beside the rest.
                         let target_level = self.string_sounds.get(kind).level;
-                        if self.built_in_default(target.program, kind) {
-                            crate::tone_library::normalize_default(&mut tone, target_level);
-                        } else {
-                            crate::tone_library::normalize_string_level(&mut tone, target_level);
-                        }
+                        crate::tone_library::normalize_string_level(&mut tone, target_level);
                     }
                     // A default tone brings its own string sound too (the owner's saved
                     // preset may differ from the kind's settings); only a SoundFont track
@@ -616,7 +605,7 @@ impl Playback {
     /// Sends the chain `setting` for `track`, to be prepared on the synthesizer's thread.
     fn send_chain(&mut self, track: usize, setting: &ChainSetting) {
         let spec = self.chain_spec(setting);
-        let knobs = setting.knobs();
+        let knobs = setting.chain_knobs();
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(super::Active::Synth(player)) = &self.player
             && let Err(error) = player.set_chain(track, spec, knobs)
@@ -629,7 +618,7 @@ impl Playback {
 
     /// Sends the knob values of `setting` for `track`.
     fn send_chain_knobs(&mut self, track: usize, setting: &ChainSetting) {
-        let knobs = setting.knobs();
+        let knobs = setting.chain_knobs();
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(super::Active::Synth(player)) = &self.player {
             let _ = player.set_chain_settings(track, knobs);
@@ -654,7 +643,7 @@ impl Playback {
                     tone.kind,
                     tone.sound.model(),
                     spec,
-                    tone.chain.knobs(),
+                    tone.chain.chain_knobs(),
                 )
             })
             .collect();
@@ -669,7 +658,7 @@ impl Playback {
                     tone.kind,
                     tone.sound.model(),
                     spec,
-                    tone.chain.knobs(),
+                    tone.chain.chain_knobs(),
                 ))
             })
             .collect();
@@ -678,13 +667,9 @@ impl Playback {
             .map(|&kind| {
                 let mut tone = self.default_tone_for(0, kind);
                 let target_level = self.string_sounds.get(kind).level;
-                if self.built_in_default(0, kind) {
-                    crate::tone_library::normalize_default(&mut tone, target_level);
-                } else {
-                    crate::tone_library::normalize_string_level(&mut tone, target_level);
-                }
+                crate::tone_library::normalize_string_level(&mut tone, target_level);
                 let spec = self.chain_spec(&tone.chain);
-                (kind, tone.sound.model(), spec, tone.chain.knobs())
+                (kind, tone.sound.model(), spec, tone.chain.chain_knobs())
             })
             .collect();
         // The guitar and bass programs, each with the library's tone of its own; a track
@@ -694,13 +679,15 @@ impl Playback {
                 let kind = StringKind::for_program(program)?;
                 let mut tone = self.default_tone_for(program, kind);
                 let target_level = self.string_sounds.get(kind).level;
-                if self.built_in_default(program, kind) {
-                    crate::tone_library::normalize_default(&mut tone, target_level);
-                } else {
-                    crate::tone_library::normalize_string_level(&mut tone, target_level);
-                }
+                crate::tone_library::normalize_string_level(&mut tone, target_level);
                 let spec = self.chain_spec(&tone.chain);
-                Some((program, kind, tone.sound.model(), spec, tone.chain.knobs()))
+                Some((
+                    program,
+                    kind,
+                    tone.sound.model(),
+                    spec,
+                    tone.chain.chain_knobs(),
+                ))
             })
             .collect();
         ExportTones {
@@ -835,6 +822,10 @@ impl Playback {
         }
         let structure = (block.choice, block.file.clone());
         let (spec, settings) = self.bus_parts(block);
+        let knobs = gscore_audio::ChainKnobs {
+            settings,
+            output_db: 0.0,
+        };
         let sent = match which {
             gscore_audio::Bus::Reverb => &mut self.reverb_sent,
             gscore_audio::Bus::Compressor => &mut self.compressor_sent,
@@ -843,8 +834,8 @@ impl Playback {
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(super::Active::Synth(player)) = &self.player {
             if sent.sent && sent.structure.as_ref() == Some(&structure) {
-                let _ = player.set_bus_settings(which, settings, level, muted);
-            } else if let Err(error) = player.set_bus(which, spec, settings, level, muted) {
+                let _ = player.set_bus_settings(which, knobs, level, muted);
+            } else if let Err(error) = player.set_bus(which, spec, knobs, level, muted) {
                 self.chain_notices.push(error.to_string());
             } else {
                 sent.sent = true;
@@ -852,7 +843,7 @@ impl Playback {
             }
         }
         #[cfg(target_arch = "wasm32")]
-        let _ = (which, spec, settings, level, muted);
+        let _ = (which, spec, knobs, level, muted);
     }
 
     /// Prepares the reverb bus on the synthesizer's thread (or sends its knobs).
@@ -893,10 +884,10 @@ impl Playback {
         if let Some(super::Active::Synth(player)) = &self.player {
             match &self.master_sent {
                 Some(sent) if sent.same_structure(&chain) => {
-                    let _ = player.set_master_chain_settings(chain.knobs());
+                    let _ = player.set_master_chain_settings(chain.chain_knobs());
                 }
                 _ => {
-                    if let Err(error) = player.set_master_chain(spec, chain.knobs()) {
+                    if let Err(error) = player.set_master_chain(spec, chain.chain_knobs()) {
                         self.chain_notices.push(error.to_string());
                     }
                 }
@@ -1025,7 +1016,7 @@ impl Playback {
                 let chain = self.track_drum_part_chain(track, part);
                 let level = self.track_drum_part_level(track, part);
                 let spec = self.chain_spec(&chain);
-                parts.push((track, part.index(), level, spec, chain.knobs()));
+                parts.push((track, part.index(), level, spec, chain.chain_knobs()));
             }
         }
         parts
@@ -1073,30 +1064,41 @@ impl Playback {
         gscore_audio::BusChoices {
             reverb: Some(gscore_audio::BusChoice {
                 spec: reverb_spec,
-                settings: reverb_settings,
+                knobs: gscore_audio::ChainKnobs {
+                    settings: reverb_settings,
+                    output_db: 0.0,
+                },
                 level: reverb.level,
                 muted: reverb.muted,
             }),
             compressor: Some(gscore_audio::BusChoice {
                 spec: comp_spec,
-                settings: comp_settings,
+                knobs: gscore_audio::ChainKnobs {
+                    settings: comp_settings,
+                    output_db: 0.0,
+                },
                 level: compressor.level,
                 muted: compressor.muted,
             }),
             chorus: Some(gscore_audio::BusChoice {
                 spec: chorus_spec,
-                settings: chorus_settings,
+                knobs: gscore_audio::ChainKnobs {
+                    settings: chorus_settings,
+                    output_db: 0.0,
+                },
                 level: chorus.level,
                 muted: chorus.muted,
             }),
-            master: (!gscore_audio::chain_is_empty(&master_spec)).then_some(
-                gscore_audio::BusChoice {
+            master: (!gscore_audio::chain_is_empty(&master_spec) || master.output_db.abs() > 1e-4)
+                .then_some(gscore_audio::BusChoice {
                     spec: master_spec,
-                    settings: master_settings,
+                    knobs: gscore_audio::ChainKnobs {
+                        settings: master_settings,
+                        output_db: master.output_db,
+                    },
                     level: 127,
                     muted: false,
-                },
-            ),
+                }),
             // Each track's Comp send, once the mixer has them (step 5).
             comp_sends: Vec::new(),
         }

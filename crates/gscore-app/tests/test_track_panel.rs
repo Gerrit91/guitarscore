@@ -322,6 +322,26 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
             < 1e-6,
         "the typed value is taken"
     );
+    // The chain's output level is a knob of its own, after every block.
+    harness.get_by_label("Chain output value").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Chain output value").type_text("6.0");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert!(
+        (harness
+            .state()
+            .playback()
+            .tone(0, 26, gscore_play::StringKind::Nylon)
+            .chain
+            .output_db
+            - 6.0)
+            .abs()
+            < 1e-4,
+        "the chain's output level is taken"
+    );
     // Back to the MIDI synth: the knobs go.
     harness
         .query_all_by_label_contains("MIDI synth")

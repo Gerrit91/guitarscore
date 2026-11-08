@@ -57,26 +57,28 @@ fn playing_strings_and_running_a_chain_never_allocate() {
         ],
     };
     let mut knobs = [BlockSettings::default(); BLOCKS];
-    let mut chain = spec.prepare(48_000).instance(&knobs);
+    let mut chain = spec.prepare(48_000).instance(&knobs, 0.0);
     let (mut left, mut right) = ([0.0_f32; 64], [0.0_f32; 64]);
 
     // An EQ too: it retunes its bands while it runs.
     let mut eq_spec = ChainSpec::default();
     eq_spec.blocks[0] = Some(BlockKind::Eq);
     let mut eq_knobs = [BlockSettings::default(); BLOCKS];
-    let mut eq = eq_spec.prepare(48_000).instance(&eq_knobs);
+    let mut eq = eq_spec.prepare(48_000).instance(&eq_knobs, 0.0);
 
     let mut compressor_spec = ChainSpec::default();
     compressor_spec.blocks[0] = Some(BlockKind::Compressor);
     let mut compressor_knobs = [BlockSettings::default(); BLOCKS];
-    let mut compressor = compressor_spec.prepare(48_000).instance(&compressor_knobs);
+    let mut compressor = compressor_spec
+        .prepare(48_000)
+        .instance(&compressor_knobs, 0.0);
     let loud: Vec<f32> = (0..64).map(|i| (i as f32 * 0.3).sin()).collect();
 
     // A chorus: its delays are made with it, never while it runs.
     let mut chorus_spec = ChainSpec::default();
     chorus_spec.blocks[0] = Some(BlockKind::Chorus);
     let chorus_knobs = [BlockSettings::default(); BLOCKS];
-    let mut chorus = chorus_spec.prepare(48_000).instance(&chorus_knobs);
+    let mut chorus = chorus_spec.prepare(48_000).instance(&chorus_knobs, 0.0);
 
     let region = Region::new(GLOBAL);
     for _ in 0..200 {

@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use gscore_audio::testing::sine_soundfont;
-use gscore_audio::{Bus, SoundBank, SynthEngine};
+use gscore_audio::{Bus, ChainKnobs, SoundBank, SynthEngine};
 use gscore_guitar::{
     BLOCKS, BlockKind, BlockSettings, ChainSpec, CompRatio, CompressorKnobs, ReverbKnobs,
 };
@@ -21,6 +21,14 @@ use gscore_model::{Song, TrackIndex};
 use gscore_play::{Channel, MidiEvent, Sequence, controller};
 
 const RATE: u32 = 48_000;
+
+/// The chain's knobs at the old unity output, for the calls below.
+fn unity(settings: [BlockSettings; BLOCKS]) -> ChainKnobs {
+    ChainKnobs {
+        settings,
+        output_db: 0.0,
+    }
+}
 
 fn bank() -> SoundBank {
     SoundBank::read(&mut sine_soundfont("Test Sine").as_slice()).unwrap()
@@ -101,8 +109,8 @@ fn a_soundfont_track_has_its_own_chain() {
     let mut plain = engine(&sequence);
     let (plain_left, _) = render(&mut plain, 1.0);
     let mut chained = engine(&sequence);
-    let chain = gscore_audio::prepare_chain(&spec, &settings, RATE);
-    assert!(chained.set_chain(1, chain, settings).is_none());
+    let chain = gscore_audio::prepare_chain(&spec, &unity(settings), RATE);
+    assert!(chained.set_chain(1, chain, unity(settings)).is_none());
     let (chained_left, _) = render(&mut chained, 1.0);
     let meters = chained.meters();
     let first = meters.track(0).left;
@@ -169,8 +177,8 @@ fn a_soundfont_tracks_reverb_send_reaches_the_bus() {
     let tail = |bus: bool| {
         let mut engine = engine(&sequence);
         if bus {
-            engine.set_reverb_bus(Some(Box::new(spec.prepare(RATE).instance(&settings))));
-            engine.set_reverb_bus_settings(settings, 127, false);
+            engine.set_reverb_bus(Some(Box::new(spec.prepare(RATE).instance(&settings, 0.0))));
+            engine.set_reverb_bus_settings(unity(settings), 127, false);
         }
         let (left, _) = render(&mut engine, 2.0);
         (
@@ -260,8 +268,8 @@ fn every_drum_track_has_its_own_strip() {
     settings[0].amp.gain = 0.0;
     settings[0].amp.level_db = -24.0;
     let mut engine = engine(&sequence);
-    let chain = gscore_audio::prepare_chain(&spec, &settings, RATE);
-    assert!(engine.set_chain(1, chain, settings).is_none());
+    let chain = gscore_audio::prepare_chain(&spec, &unity(settings), RATE);
+    assert!(engine.set_chain(1, chain, unity(settings)).is_none());
     let _ = render(&mut engine, 0.5);
     let meters = engine.meters();
     let (kick, snare) = (meters.track(0).left, meters.track(1).left);
@@ -317,9 +325,9 @@ fn a_compressor_bus_is_fed_by_the_comp_sends() {
         let mut engine = engine(&sequence);
         let _ = engine.set_bus(
             Bus::Compressor,
-            Some(Box::new(spec.prepare(RATE).instance(&settings))),
+            Some(Box::new(spec.prepare(RATE).instance(&settings, 0.0))),
         );
-        engine.set_bus_settings(Bus::Compressor, settings, level, muted);
+        engine.set_bus_settings(Bus::Compressor, unity(settings), level, muted);
         for track in 0..2 {
             engine.set_comp_send(track, send);
         }
@@ -353,8 +361,8 @@ fn a_compressor_in_a_tracks_chain_turns_it_down() {
     let mut compressed = engine(&sequence);
     let _ = compressed.set_chain(
         0,
-        Some(Box::new(spec.prepare(RATE).instance(&settings))),
-        settings,
+        Some(Box::new(spec.prepare(RATE).instance(&settings, 0.0))),
+        unity(settings),
     );
     let mut dry = engine(&sequence);
     let (wet_left, _) = render(&mut compressed, 1.0);
@@ -412,8 +420,8 @@ fn a_drum_tracks_parts_have_their_own_chains() {
             let _ = engine.set_part_chain(
                 0,
                 part,
-                Some(Box::new(spec.prepare(RATE).instance(&settings))),
-                settings,
+                Some(Box::new(spec.prepare(RATE).instance(&settings, 0.0))),
+                unity(settings),
             );
         }
         engine.send_event(MidiEvent::NoteOn {
@@ -502,8 +510,8 @@ fn a_tracks_chorus_value_reaches_the_chorus_bus() {
         let _ = song.set_track_chorus(TrackIndex::new(0), send).unwrap();
         let sequence = Sequence::new(&song, None).unwrap();
         let mut engine = engine(&sequence);
-        engine.set_chorus_bus(Some(Box::new(spec.prepare(RATE).instance(&settings))));
-        engine.set_chorus_bus_settings(settings, level, muted);
+        engine.set_chorus_bus(Some(Box::new(spec.prepare(RATE).instance(&settings, 0.0))));
+        engine.set_chorus_bus_settings(unity(settings), level, muted);
         let (left, _) = render(&mut engine, 1.0);
         (engine.meters().chorus().left, left)
     };
@@ -537,8 +545,8 @@ fn the_master_chain_processes_the_sum_but_not_the_click() {
         let (dry_left, _) = render(&mut dry, 1.0);
         let mut quiet = engine(&sequence);
         let _ = quiet.set_master_chain(
-            Some(Box::new(spec.prepare(RATE).instance(&settings))),
-            settings,
+            Some(Box::new(spec.prepare(RATE).instance(&settings, 0.0))),
+            unity(settings),
         );
         let (quiet_left, _) = render(&mut quiet, 1.0);
         (rms(steady(&dry_left)), rms(steady(&quiet_left)))
@@ -554,8 +562,8 @@ fn the_master_chain_processes_the_sum_but_not_the_click() {
         let mut engine = engine(&sequence);
         if chained {
             let _ = engine.set_master_chain(
-                Some(Box::new(spec.prepare(RATE).instance(&settings))),
-                settings,
+                Some(Box::new(spec.prepare(RATE).instance(&settings, 0.0))),
+                unity(settings),
             );
         }
         engine.send_event(MidiEvent::NoteOn {
@@ -650,8 +658,8 @@ fn a_drum_tracks_part_chains_follow_it_when_a_track_before_it_is_muted() {
         engine.load(Arc::new(sequence.clone()));
         engine.play();
         if chained {
-            let chain = Some(Box::new(spec.prepare(RATE).instance(&settings)));
-            let _ = engine.set_part_chain(1, 0, chain, settings);
+            let chain = Some(Box::new(spec.prepare(RATE).instance(&settings, 0.0)));
+            let _ = engine.set_part_chain(1, 0, chain, unity(settings));
         }
         engine.send_event(MidiEvent::NoteOn {
             channel,

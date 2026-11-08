@@ -366,6 +366,9 @@ impl BlockSetting {
 #[serde(default)]
 pub struct ChainSetting {
     pub blocks: [BlockSetting; BLOCKS],
+    /// The output level after every block and before the mixer's fader, in dB. It is the
+    /// tone's own loudness: turning it does not change how hard an amp or a drive is fed.
+    pub output_db: f32,
 }
 
 impl ChainSetting {
@@ -377,6 +380,29 @@ impl ChainSetting {
                 .map(BlockSetting::knobs)
                 .unwrap_or_default()
         })
+    }
+
+    /// The knobs and the output level, as the engine takes them.
+    pub fn chain_knobs(&self) -> gscore_audio::ChainKnobs {
+        gscore_audio::ChainKnobs {
+            settings: self.knobs(),
+            output_db: self.output_db,
+        }
+    }
+
+    /// The output level in range, and not a value that is not a number.
+    pub fn sanitized_output_db(&self) -> f32 {
+        let (low, high) = gscore_guitar::knob_ranges::OUTPUT;
+        if self.output_db.is_finite() {
+            self.output_db.clamp(low, high)
+        } else {
+            0.0
+        }
+    }
+
+    /// Keeps the output level in range (a hand-edited settings file may hold anything).
+    pub fn sanitize(&mut self) {
+        self.output_db = self.sanitized_output_db();
     }
 
     /// Whether `other` needs the chain prepared again.

@@ -3,9 +3,9 @@
 
 use std::io::Write;
 
-use gscore_guitar::{BLOCKS, BlockSettings, ChainSpec, StringModel};
+use gscore_guitar::{ChainSpec, StringModel};
 
-use crate::chains::{chain_is_empty, prepare_chain};
+use crate::chains::{ChainKnobs, prepare_chain};
 use gscore_play::{PlayError, Sequence, StringKind};
 
 use crate::synth::{BLOCK, SoundBank, SynthEngine};
@@ -56,17 +56,17 @@ pub fn write_wav_at(
 
 /// An effect chain to render with: the track (its index in the song), its blocks and their
 /// knobs.
-pub type ChainChoice = (usize, ChainSpec, [BlockSettings; BLOCKS]);
+pub type ChainChoice = (usize, ChainSpec, ChainKnobs);
 
 /// One part of a drum track's chain to render with: the track, the part, its mixing level
 /// (0-127, 127 unity), its blocks and their knobs.
-pub type PartChoice = (usize, usize, u8, ChainSpec, [BlockSettings; BLOCKS]);
+pub type PartChoice = (usize, usize, u8, ChainSpec, ChainKnobs);
 
 /// A mixer bus to render with: its chain, its knob values and its level.
 #[derive(Debug, Clone)]
 pub struct BusChoice {
     pub spec: ChainSpec,
-    pub settings: [BlockSettings; BLOCKS],
+    pub knobs: ChainKnobs,
     /// 0-127, 127 unity.
     pub level: u8,
     pub muted: bool,
@@ -118,14 +118,14 @@ pub fn write_wav_with(
     for &(track, model) in track_models {
         engine.set_track_model(track, Some(model));
     }
-    for (track, spec, settings) in chains {
-        if let Some(chain) = prepare_chain(spec, settings, sample_rate) {
-            let _ = engine.set_chain(*track, Some(chain), *settings);
+    for (track, spec, knobs) in chains {
+        if let Some(chain) = prepare_chain(spec, knobs, sample_rate) {
+            let _ = engine.set_chain(*track, Some(chain), *knobs);
         }
     }
-    for (track, part, level, spec, settings) in parts {
-        if let Some(chain) = prepare_chain(spec, settings, sample_rate) {
-            let _ = engine.set_part_chain(*track, *part, Some(chain), *settings);
+    for (track, part, level, spec, knobs) in parts {
+        if let Some(chain) = prepare_chain(spec, knobs, sample_rate) {
+            let _ = engine.set_part_chain(*track, *part, Some(chain), *knobs);
         }
         engine.set_part_level(*track, *part, *level);
     }
@@ -137,18 +137,15 @@ pub fn write_wav_with(
         let Some(choice) = choice else {
             continue;
         };
-        if chain_is_empty(&choice.spec) {
-            continue;
+        if let Some(chain) = prepare_chain(&choice.spec, &choice.knobs, sample_rate) {
+            engine.set_bus(bus, Some(chain));
         }
-        let chain = choice.spec.prepare(sample_rate).instance(&choice.settings);
-        engine.set_bus(bus, Some(Box::new(chain)));
-        engine.set_bus_settings(bus, choice.settings, choice.level, choice.muted);
+        engine.set_bus_settings(bus, choice.knobs, choice.level, choice.muted);
     }
     if let Some(choice) = &buses.master
-        && !chain_is_empty(&choice.spec)
+        && let Some(chain) = prepare_chain(&choice.spec, &choice.knobs, sample_rate)
     {
-        let chain = choice.spec.prepare(sample_rate).instance(&choice.settings);
-        let _ = engine.set_master_chain(Some(Box::new(chain)), choice.settings);
+        let _ = engine.set_master_chain(Some(chain), choice.knobs);
     }
     for &(track, value) in &buses.comp_sends {
         engine.set_comp_send(track, value);
