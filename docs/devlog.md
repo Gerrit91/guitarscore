@@ -4235,3 +4235,62 @@ needed for a much larger font); owner listening check.
   works at once), and the status bar at the bottom shows the same notice in red beside the
   working spinner and file name (truncated, full text on hover). Test:
   `a_notice_also_shows_in_the_status_bar_beside_the_spinner`.
+
+## 2026-11-07 — Ties on the rhythm slash-notation staff
+
+- A rhythm slash now carries its beat's tie: `slash_column_items` marks the slash's head
+  tied when any note of the beat continues a tie, so `draw_ties` joins it to the slash
+  before it within the measure.
+- Ties across a barline are drawn on the slash staff too (`draw_barline_ties`, through
+  `last_slash_head`), with the same outgoing/incoming fragments at a system break as the
+  notation and tab staves. Tests: `test_staves::slash_notation_shows_a_tie_within_the_measure`
+  and `..._across_a_barline`.
+
+## 2026-11-07 — RSE mapping: the sound's name decides, and GM 34 is a picked bass
+
+- Guitar Pro's RSE sound **name** now decides the instrument and an explicit style before
+  the stored path and effect chain. `sad.gp`'s James track is named "Distortion Guitar" but
+  stored under `Stringed/Electric Guitars/Clean Guitar` with a British stack: it now starts
+  on "Modern Metal Rhythm" instead of "British Crunch". Genre words such as "Blues" do not
+  override a clean chain (`staff.gp` still maps to "Clean Single Coil").
+- The Jason bass in `sad.gp` is named "Electric Bass (pick)" with the same stale guitar
+  path: the name makes it a bass, and "pick" makes it "Pick", so it no longer falls through
+  to an electric-guitar tone.
+- GM program 34 (Electric Bass (pick)) now maps to the built-in **Pick** tone, not Clean
+  Finger. A saved "Clean Bass 1" therefore stands in only for the finger/acoustic bass
+  programs; pick and slap programs keep their own built-in Pick and Slap until the owner
+  saves presets for them.
+
+## 2026-11-08 — Built-in tones are data, and `cargo xtask tones` imports them
+
+- **The tone library is now `crates/gscore-app/data/tones.json`**, embedded with
+  `include_str!` and parsed once: the 18 designed tones plus the GM 24-39 program map. The
+  library's API (`all`, `find`, `for_program`, `default_for_kind`) is unchanged; the
+  `build_tones()` Rust table and its constructors are gone, so `cargo xtask tones` can edit
+  the data without touching code. A malformed file falls back to the plain `Clean` tone; a
+  test parses the embedded file and checks every program names a tone.
+- **`cargo xtask tones import --preset NAME --program N`** copies a saved tone from
+  `settings.json` into the library: strings, chain, name, family and description, and
+  points program N at it. It is a faithful copy (no level changes). `--ir drop` replaces
+  impulse responses with the computed speaker/nothing; by default the paths are kept and
+  warned about, since the files are not bundled yet.
+- **A chain's output level (`ChainSetting::output_db`) is the leveling point.** It is a
+  scalar after every block and before the mixer's fader, carried through `ChainKnobs` to
+  `gscore-guitar::Chain` (which applies it at the end of `process_in_place`, clamped to
+  ±24 dB), so leveling a tone never changes how hard an amp or a drive is fed. The Sound
+  chain window has a "Chain output" knob under the last box.
+- **`cargo xtask tones normalize [--tone NAME] [--target DB] [--static] [--dry-run]`** is
+  the separate leveling pass. By default it renders a fixed reference note (A2, velocity
+  0.8, 2 s) through each tone's own strings and chain, measures the RMS from 0.2 to 1.5 s,
+  and sets the output knob so the note reaches `--target` (default -24 dBFS RMS); the
+  shipped 18 placeholder tones were leveled this way (outputs from +17.5 to -14.7 dB, the
+  clean sounds up, the high-gain ones down). `--static` keeps the old cheap estimate (the
+  level trims cancelled at the output knob) without rendering. `list` shows the saved
+  tones and the programs they currently stand in for; `check` validates the library.
+- Playback no longer cancels a built-in tone's chain trims: it applies only the machine's
+  string level for the kind, so the measured output level is what plays.
+- The `tone_tool` module is `gscore-app`'s only non-wasm part of the tooling; `xtask`
+  stays dependency-free and shells out to the `tones` example. Tests cover the embedded
+  file, the copy, IR keep/drop, normalization and the dry run.
+- Built-in tones may now point at an impulse response file (a path only, not bundled):
+  `chain_spec` already skips a block whose file cannot be read and shows a notice.

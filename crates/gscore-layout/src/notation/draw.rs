@@ -24,7 +24,7 @@ const CLEF_GAPS: (f32, f32) = (0.6, 1.0);
 /// Room before the first measure of a slash staff on its own (it has no clef).
 pub(crate) const SLASH_PREFIX: f32 = 1.5;
 /// Half the length of a rhythm slash along its stroke, and the stroke's thickness.
-const SLASH_HALF: f32 = 0.55;
+pub(crate) const SLASH_HALF: f32 = 0.55;
 const SLASH_THICKNESS: f32 = 0.24;
 /// The line of a hollow (half or whole) rhythm slash's outline.
 const SLASH_OUTLINE: f32 = 0.1;

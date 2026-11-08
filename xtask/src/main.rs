@@ -5,6 +5,7 @@ mod cmd;
 mod layers;
 mod sha256;
 mod source_scan;
+mod tones;
 mod wasm;
 mod web;
 
@@ -21,6 +22,9 @@ Tasks:
   bench [FILE...]       Time opening, layout and editing in a release build and check the
                         performance budgets. Files: the arguments, else GSCORE_BENCH_FILES
                         (separated by ':'), else the files in testdata/basic
+  tones <command> [...] Import a saved tone from the settings into the built-in tone
+                        library (crates/gscore-app/data/tones.json) and map it to a
+                        General MIDI program. `cargo xtask tones help` for the commands
   web [--out DIR] [--debug] [--no-wasm-opt] [--smoke]
       [--soundfont PATH | --no-soundfont]
                         Build the browser app (WebAssembly) and assemble the static site
@@ -54,6 +58,7 @@ fn run(args: &[String]) -> TaskResult {
         "layers" => layers::run(&root, parse_skip_wasm(rest)?),
         "ci" => ci(&root, parse_skip_wasm(rest)?),
         "bench" => bench(&root, rest),
+        "tones" => tones::run(&root, rest),
         "web" => web::run(&root, rest),
         "corpus" => {
             Err("`corpus` is not implemented yet (backlog, AGENTS.md section 9)".to_owned())

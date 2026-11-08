@@ -980,6 +980,26 @@ impl Settings {
             presets.retain(ShapePreset::is_valid);
             presets.truncate(MAX_SHAPE_PRESETS);
         }
+        // Every chain's output level stays in range (a hand-edited file may hold
+        // anything); the blocks' knobs are clamped when they reach the engine.
+        self.master_chain.sanitize();
+        for chain in [
+            &mut self.string_chains.nylon,
+            &mut self.string_chains.steel,
+            &mut self.string_chains.electric,
+            &mut self.string_chains.bass,
+        ] {
+            chain.sanitize();
+        }
+        for preset in &mut self.string_presets {
+            preset.chain.sanitize();
+        }
+        for tone in &mut self.preset_tones {
+            tone.chain.sanitize();
+        }
+        for part in &mut self.drum_parts {
+            part.chain.sanitize();
+        }
         // Chain presets: a name and a known kind, most recent one per name.
         self.string_presets.retain(|preset| {
             !preset.name.trim().is_empty()

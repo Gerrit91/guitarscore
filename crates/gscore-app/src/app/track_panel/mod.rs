@@ -547,7 +547,7 @@ fn tone_of_choice(
     use super::tone_picker::PickerChoice;
     match choice {
         PickerChoice::BuiltIn(name) => {
-            crate::tone_library::find(name).map(|tone| tone.tone.clone())
+            crate::tone_library::find(&name).map(|tone| tone.tone.clone())
         }
         PickerChoice::Saved { kind, name } => {
             let preset = saved

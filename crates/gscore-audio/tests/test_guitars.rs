@@ -18,7 +18,8 @@
 use std::sync::Arc;
 
 use gscore_audio::testing::sine_soundfont;
-use gscore_audio::{SoundBank, SynthEngine};
+use gscore_audio::{ChainKnobs, SoundBank, SynthEngine};
+use gscore_guitar::{BLOCKS, BlockSettings};
 use gscore_model::Song;
 use gscore_model::testing::{self, TestNote};
 use gscore_model::{
@@ -27,6 +28,14 @@ use gscore_model::{
 use gscore_play::{PPQ, Sequence, StringKind, TrackEngine};
 
 const RATE: u32 = 48_000;
+
+/// The chain's knobs at the old unity output, for the calls below.
+fn unity(settings: [BlockSettings; BLOCKS]) -> ChainKnobs {
+    ChainKnobs {
+        settings,
+        output_db: 0.0,
+    }
+}
 
 fn bank() -> SoundBank {
     SoundBank::read(&mut sine_soundfont("Test Sine").as_slice()).unwrap()
@@ -286,8 +295,8 @@ fn two_tracks_of_one_kind_keep_their_own_sound_and_chain() {
     let mut settings = [BlockSettings::default(); BLOCKS];
     settings[0].amp.level_db = -24.0;
     let first_quiet = level(&|engine| {
-        let chain = gscore_audio::prepare_chain(&spec, &settings, RATE);
-        assert!(engine.set_chain(0, chain, settings).is_none());
+        let chain = gscore_audio::prepare_chain(&spec, &unity(settings), RATE);
+        assert!(engine.set_chain(0, chain, unity(settings)).is_none());
     });
     assert!(
         first_quiet < 0.9 * both && first_quiet > 0.3 * both,
@@ -361,9 +370,9 @@ fn the_reverb_bus_carries_the_tracks_send() {
     let tail = |bus: Option<(u8, bool)>| {
         let mut engine = SynthEngine::new(&bank(), RATE).unwrap();
         if let Some((level, muted)) = bus {
-            let chain = spec.prepare(RATE).instance(&settings);
+            let chain = spec.prepare(RATE).instance(&settings, 0.0);
             engine.set_reverb_bus(Some(Box::new(chain)));
-            engine.set_reverb_bus_settings(settings, level, muted);
+            engine.set_reverb_bus_settings(unity(settings), level, muted);
         }
         engine.load(Arc::clone(&sequence));
         engine.play();
@@ -416,9 +425,9 @@ fn a_room_chain_rings_on_after_a_damped_note() {
             ));
             let mut settings = [BlockSettings::default(); BLOCKS];
             settings[1].room.mix = 0.6;
-            let chain = gscore_audio::prepare_chain(&spec, &settings, RATE);
+            let chain = gscore_audio::prepare_chain(&spec, &unity(settings), RATE);
             assert!(chain.is_some());
-            assert!(engine.set_chain(0, chain, settings).is_none());
+            assert!(engine.set_chain(0, chain, unity(settings)).is_none());
         }
         engine.load(Arc::clone(&sequence));
         engine.play();
@@ -452,11 +461,11 @@ fn a_long_tail_after_stop_costs_what_playing_does() {
         ..ReverbKnobs::default()
     };
     let mut engine = SynthEngine::new(&bank(), RATE).unwrap();
-    let chain = gscore_audio::prepare_chain(&spec, &settings, RATE);
-    let _ = engine.set_chain(0, chain, settings);
-    let bus = spec.prepare(RATE).instance(&settings);
+    let chain = gscore_audio::prepare_chain(&spec, &unity(settings), RATE);
+    let _ = engine.set_chain(0, chain, unity(settings));
+    let bus = spec.prepare(RATE).instance(&settings, 0.0);
     engine.set_reverb_bus(Some(Box::new(bus)));
-    engine.set_reverb_bus_settings(settings, 127, false);
+    engine.set_reverb_bus_settings(unity(settings), 127, false);
     engine.load(Arc::clone(&sequence));
     engine.play();
     let mut left = vec![0.0_f32; 512];

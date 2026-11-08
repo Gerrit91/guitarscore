@@ -11,13 +11,14 @@ use std::io::{BufReader, Read};
 use std::path::Path;
 use std::sync::Arc;
 
-use gscore_guitar::{BLOCKS, BlockSettings, Chain, StringModel};
+use gscore_guitar::{Chain, StringModel};
 
 use gscore_play::{
     Channel, MidiEvent, PlayError, PlayState, Sequence, StringKind, TimedEvent, controller,
 };
 use rustysynth::{SoundFont, Synthesizer, SynthesizerSettings};
 
+use crate::chains::ChainKnobs;
 use crate::click::ClickVoice;
 use crate::guitars::Guitars;
 use crate::mixer::{CHANNELS as MIXER_CHANNELS, Mixer};
@@ -296,14 +297,14 @@ impl SynthEngine {
         &mut self,
         track: usize,
         chain: Option<Box<Chain>>,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
     ) -> Option<Box<Chain>> {
-        self.mixer.set_chain(track, chain, settings)
+        self.mixer.set_chain(track, chain, knobs)
     }
 
     /// New knob values for the effect chain of `track`, heard at once.
-    pub fn set_chain_settings(&mut self, track: usize, settings: [BlockSettings; BLOCKS]) {
-        self.mixer.set_chain_settings(track, settings);
+    pub fn set_chain_settings(&mut self, track: usize, knobs: ChainKnobs) {
+        self.mixer.set_chain_settings(track, knobs);
     }
 
     /// Gives the tracks a reverb bus (`None`: none), a prepared chain that runs all wet.
@@ -313,13 +314,8 @@ impl SynthEngine {
     }
 
     /// New knob values, level and mute for the reverb bus, heard at once.
-    pub fn set_reverb_bus_settings(
-        &mut self,
-        settings: [BlockSettings; BLOCKS],
-        level: u8,
-        muted: bool,
-    ) {
-        self.set_bus_settings(crate::Bus::Reverb, settings, level, muted);
+    pub fn set_reverb_bus_settings(&mut self, knobs: ChainKnobs, level: u8, muted: bool) {
+        self.set_bus_settings(crate::Bus::Reverb, knobs, level, muted);
     }
 
     /// Gives the tracks a chorus bus (`None`: none), a prepared chain that runs all wet.
@@ -329,13 +325,8 @@ impl SynthEngine {
     }
 
     /// New knob values, level and mute for the chorus bus, heard at once.
-    pub fn set_chorus_bus_settings(
-        &mut self,
-        settings: [BlockSettings; BLOCKS],
-        level: u8,
-        muted: bool,
-    ) {
-        self.set_bus_settings(crate::Bus::Chorus, settings, level, muted);
+    pub fn set_chorus_bus_settings(&mut self, knobs: ChainKnobs, level: u8, muted: bool) {
+        self.set_bus_settings(crate::Bus::Chorus, knobs, level, muted);
     }
 
     /// Gives the master the chain `chain` (`None`: none) with its knob values, heard at
@@ -343,14 +334,14 @@ impl SynthEngine {
     pub fn set_master_chain(
         &mut self,
         chain: Option<Box<Chain>>,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
     ) -> Option<Box<Chain>> {
-        self.mixer.set_master_chain(chain, settings)
+        self.mixer.set_master_chain(chain, knobs)
     }
 
     /// New knob values for the master's chain, heard at once.
-    pub fn set_master_chain_settings(&mut self, settings: [BlockSettings; BLOCKS]) {
-        self.mixer.set_master_chain_settings(settings);
+    pub fn set_master_chain_settings(&mut self, knobs: ChainKnobs) {
+        self.mixer.set_master_chain_settings(knobs);
     }
 
     /// Mutes or unmutes `part` of the song's drum track `track`, heard at once.
@@ -370,19 +361,14 @@ impl SynthEngine {
         track: usize,
         part: usize,
         chain: Option<Box<Chain>>,
-        settings: [BlockSettings; BLOCKS],
+        knobs: ChainKnobs,
     ) -> Option<Box<Chain>> {
-        self.mixer.set_part_chain(track, part, chain, settings)
+        self.mixer.set_part_chain(track, part, chain, knobs)
     }
 
     /// New knob values for `part` of the song's drum track `track`, heard at once.
-    pub fn set_part_chain_settings(
-        &mut self,
-        track: usize,
-        part: usize,
-        settings: [BlockSettings; BLOCKS],
-    ) {
-        self.mixer.set_part_chain_settings(track, part, settings);
+    pub fn set_part_chain_settings(&mut self, track: usize, part: usize, knobs: ChainKnobs) {
+        self.mixer.set_part_chain_settings(track, part, knobs);
     }
 
     /// The mixing level of `part` of the song's drum track `track` (0-127, 127 unity).
@@ -393,19 +379,12 @@ impl SynthEngine {
     /// Gives `bus` a prepared chain (`None`: none). Returns the one it replaces, to be
     /// freed elsewhere.
     pub fn set_bus(&mut self, bus: crate::Bus, chain: Option<Box<Chain>>) -> Option<Box<Chain>> {
-        self.mixer
-            .set_bus(bus, chain, [BlockSettings::default(); BLOCKS])
+        self.mixer.set_bus(bus, chain, ChainKnobs::default())
     }
 
     /// New knob values, level and mute for `bus`, heard at once.
-    pub fn set_bus_settings(
-        &mut self,
-        bus: crate::Bus,
-        settings: [BlockSettings; BLOCKS],
-        level: u8,
-        muted: bool,
-    ) {
-        self.mixer.set_bus_settings(bus, settings, level, muted);
+    pub fn set_bus_settings(&mut self, bus: crate::Bus, knobs: ChainKnobs, level: u8, muted: bool) {
+        self.mixer.set_bus_settings(bus, knobs, level, muted);
     }
 
     /// The song's track `track` sends `value` (0-127) into the compressor bus.
@@ -431,20 +410,20 @@ impl SynthEngine {
                 self.set_track_model(track, model);
                 return None;
             }
-            Command::Chain(track, chain, settings) => {
-                return self.set_chain(track, chain, *settings).map(Retired::Chain);
+            Command::Chain(track, chain, knobs) => {
+                return self.set_chain(track, chain, *knobs).map(Retired::Chain);
             }
-            Command::ChainSettings(track, settings) => {
-                self.set_chain_settings(track, settings);
+            Command::ChainSettings(track, knobs) => {
+                self.set_chain_settings(track, knobs);
                 return None;
             }
-            Command::PartChain(track, part, chain, settings) => {
+            Command::PartChain(track, part, chain, knobs) => {
                 return self
-                    .set_part_chain(track, part, chain, *settings)
+                    .set_part_chain(track, part, chain, *knobs)
                     .map(Retired::Chain);
             }
-            Command::PartChainSettings(track, part, settings) => {
-                self.set_part_chain_settings(track, part, settings);
+            Command::PartChainSettings(track, part, knobs) => {
+                self.set_part_chain_settings(track, part, knobs);
                 return None;
             }
             Command::PartLevel(track, part, level) => {
@@ -459,18 +438,18 @@ impl SynthEngine {
                 self.set_part_solo(track, part, soloed);
                 return None;
             }
-            Command::MasterChain(chain, settings) => {
-                return self.set_master_chain(chain, *settings).map(Retired::Chain);
+            Command::MasterChain(chain, knobs) => {
+                return self.set_master_chain(chain, *knobs).map(Retired::Chain);
             }
-            Command::MasterChainSettings(settings) => {
-                self.set_master_chain_settings(settings);
+            Command::MasterChainSettings(knobs) => {
+                self.set_master_chain_settings(knobs);
                 return None;
             }
             Command::Bus(bus, chain) => {
                 return self.set_bus(bus, chain).map(Retired::Bus);
             }
-            Command::BusSettings(bus, settings, level, muted) => {
-                self.set_bus_settings(bus, settings, level, muted);
+            Command::BusSettings(bus, knobs, level, muted) => {
+                self.set_bus_settings(bus, knobs, level, muted);
                 return None;
             }
             Command::CompSend(track, value) => {

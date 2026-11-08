@@ -76,6 +76,41 @@ pub(crate) fn draw_barline_ties(
         }
     }
 
+    // The rhythm slash of the first beat carries the tie in slash notation too, from the
+    // last slash of the measure before.
+    if let (Some(origin_top), Some(target_top)) = (origin_tops.slash, target_tops.slash) {
+        for voice in 0..first.slash.len() {
+            let Some(NotationItem::Chord(dest)) = first.slash.get(voice).and_then(Option::as_ref)
+            else {
+                continue;
+            };
+            if !dest.heads.iter().any(|head| head.tied) {
+                continue;
+            }
+            let Some((origin_index, _origin_chord, origin_head)) = last_slash_head(origin, voice)
+            else {
+                continue;
+            };
+            let Some(&ox) = origin_xs.get(origin_index) else {
+                continue;
+            };
+            let up = dest.stem_up();
+            let half = notation::SLASH_HALF;
+            let from_x = ox + half + 0.1;
+            let to_x = target_first_x - half - 0.1;
+            let from_y = notation::y_of(origin_top, origin_head.position);
+            let to_y = notation::y_of(target_top, notation::MIDDLE);
+            if same_system {
+                notation::draw_tie_curve(from_x, from_y, to_x, to_y, up, thickness, ops);
+            } else {
+                let out = (from_x + 1.2).min(origin_right - 0.2);
+                notation::draw_tie_curve(from_x, from_y, out, from_y, up, thickness, ops);
+                let into = (to_x - 1.2).max(target_x);
+                notation::draw_tie_curve(into, to_y, to_x, to_y, up, thickness, ops);
+            }
+        }
+    }
+
     if origin_tops.show_tab && target_tops.show_tab {
         for item in &first.items {
             let Item::Fret(dest) = item else {
@@ -103,6 +138,21 @@ pub(crate) fn draw_barline_ties(
             }
         }
     }
+}
+
+/// The last rhythm slash of `voice` in `measure` (its single middle-line head).
+fn last_slash_head(measure: &MeasureLayout, voice: usize) -> Option<(usize, &Chord, &Head)> {
+    measure
+        .columns
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(index, column)| {
+            let NotationItem::Chord(chord) = column.slash.get(voice)?.as_ref()? else {
+                return None;
+            };
+            chord.heads.first().map(|head| (index, chord, head))
+        })
 }
 
 /// The last chord of `voice` in `measure` with a notehead at `position`.

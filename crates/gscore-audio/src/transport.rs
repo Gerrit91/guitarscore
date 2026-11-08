@@ -7,7 +7,9 @@
 
 use std::sync::Arc;
 
-use gscore_guitar::{BLOCKS, BlockSettings, StringModel};
+use gscore_guitar::StringModel;
+
+use crate::chains::ChainKnobs;
 
 use gscore_play::{MidiEvent, PlayState, Scheduler, Sequence, StringKind, TimedEvent};
 
@@ -38,22 +40,18 @@ pub(crate) enum Command {
     TrackModel(usize, Option<StringModel>),
     /// Gives one track a prepared effect chain (`None`: none) with its knob values; the
     /// synth engine carries it out.
-    Chain(
-        usize,
-        Option<Box<gscore_guitar::Chain>>,
-        Box<[BlockSettings; BLOCKS]>,
-    ),
+    Chain(usize, Option<Box<gscore_guitar::Chain>>, Box<ChainKnobs>),
     /// New knob values for one track's chain.
-    ChainSettings(usize, [BlockSettings; BLOCKS]),
+    ChainSettings(usize, ChainKnobs),
     /// Gives one part of a drum track's chain a prepared chain (`None`: none).
     PartChain(
         usize,
         usize,
         Option<Box<gscore_guitar::Chain>>,
-        Box<[BlockSettings; BLOCKS]>,
+        Box<ChainKnobs>,
     ),
     /// New knob values for one part of a drum track's chain.
-    PartChainSettings(usize, usize, [BlockSettings; BLOCKS]),
+    PartChainSettings(usize, usize, ChainKnobs),
     /// The mixing level (0-127, 127 unity) of one part of a drum track.
     PartLevel(usize, usize, u8),
     /// Mutes or unmutes one part of a drum track.
@@ -61,16 +59,13 @@ pub(crate) enum Command {
     /// Soloes or un-soloes one part of a drum track.
     PartSolo(usize, usize, bool),
     /// Gives the master its prepared chain (`None`: none) with its knob values.
-    MasterChain(
-        Option<Box<gscore_guitar::Chain>>,
-        Box<[BlockSettings; BLOCKS]>,
-    ),
+    MasterChain(Option<Box<gscore_guitar::Chain>>, Box<ChainKnobs>),
     /// New knob values for the master's chain.
-    MasterChainSettings([BlockSettings; BLOCKS]),
+    MasterChainSettings(ChainKnobs),
     /// Gives a bus of the mixer its prepared chain (`None`: none).
     Bus(crate::Bus, Option<Box<gscore_guitar::Chain>>),
     /// New knob values, level and mute for a bus.
-    BusSettings(crate::Bus, [BlockSettings; BLOCKS], u8, bool),
+    BusSettings(crate::Bus, ChainKnobs, u8, bool),
     /// A track's (by the song's index) send into the compressor bus.
     CompSend(usize, u8),
 }

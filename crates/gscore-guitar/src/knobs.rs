@@ -112,6 +112,8 @@ pub mod knob_ranges {
     pub const MIX: (f32, f32) = (0.0, 1.0);
     /// dB.
     pub const GAIN: (f32, f32) = (-24.0, 12.0);
+    /// A chain's output level, dB: after every block, before the mixer's fader.
+    pub const OUTPUT: (f32, f32) = (-24.0, 24.0);
     /// Hz.
     pub const LOW_CUT: (f32, f32) = (20.0, 600.0);
     pub const HIGH_CUT: (f32, f32) = (1_500.0, 20_000.0);

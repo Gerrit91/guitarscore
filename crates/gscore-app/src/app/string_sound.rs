@@ -155,14 +155,6 @@ pub(super) fn round_knob(
         ui.ctx().accesskit_node_builder(field.id, |node| {
             node.set_label(format!("{label} value"));
         });
-        eprintln!(
-            "FIELD {} id {:?} focus {} lost {} text {:?}",
-            label,
-            field.id,
-            field.has_focus(),
-            field.lost_focus(),
-            text
-        );
         let had_focus = *focused;
         if !had_focus {
             field.request_focus();

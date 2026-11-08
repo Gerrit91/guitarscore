@@ -50,6 +50,7 @@ mod web_soundfont;
 #[cfg(target_arch = "wasm32")]
 pub use web_player::WebPlayer;
 
+pub use chains::ChainKnobs;
 #[cfg(not(target_arch = "wasm32"))]
 pub use tuner::TunerPlayer;
 #[cfg(target_arch = "wasm32")]

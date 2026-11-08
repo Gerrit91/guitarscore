@@ -129,7 +129,7 @@ fn a_unit_response_passes_the_signal_one_partition_late() {
         low_cut: 20.0,
         high_cut: 20_000.0,
     };
-    let mut chain = spec.prepare(RATE).instance(&knobs);
+    let mut chain = spec.prepare(RATE).instance(&knobs, 0.0);
     // About 760 Hz: well inside the cut filters, which barely shift its phase.
     let input: Vec<f32> = (0..2_000).map(|i| (i as f32 * 0.1).sin()).collect();
     let (mut left, mut right) = (vec![0.0; 2_000], vec![0.0; 2_000]);
@@ -160,7 +160,7 @@ fn a_room_is_stereo_and_its_tail_rings_on_then_stops() {
         mix: 0.5,
         ..RoomKnobs::default()
     };
-    let mut chain = spec.prepare(RATE).instance(&knobs);
+    let mut chain = spec.prepare(RATE).instance(&knobs, 0.0);
     let mut input = vec![0.0_f32; 4_800];
     input[0] = 1.0;
     let (mut left, mut right) = (vec![0.0; 4_800], vec![0.0; 4_800]);
@@ -203,7 +203,7 @@ fn a_longer_room_rings_on_longer() {
             high_cut: 20_000.0,
             ..RoomKnobs::default()
         };
-        let mut chain = spec.prepare(RATE).instance(&knobs);
+        let mut chain = spec.prepare(RATE).instance(&knobs, 0.0);
         let count = 48_000 * 2;
         let mut input = vec![0.0_f32; count];
         input[0] = 1.0;
@@ -257,7 +257,7 @@ fn gscore_guitar_chain_all_blocks() -> gscore_guitar::Chain {
     };
     let mut knobs = settings();
     knobs[2].reverb.mix = 0.4;
-    spec.prepare(RATE).instance(&knobs)
+    spec.prepare(RATE).instance(&knobs, 0.0)
 }
 
 #[test]
@@ -270,7 +270,7 @@ fn the_reverbs_high_cut_darkens_only_the_reverb() {
         knobs[0].reverb.mix = 1.0;
         knobs[0].reverb.low_cut = 20.0;
         knobs[0].reverb.high_cut = high_cut;
-        let mut chain = spec.prepare(RATE).instance(&knobs);
+        let mut chain = spec.prepare(RATE).instance(&knobs, 0.0);
         let mut state = 7_u32;
         let input: Vec<f32> = (0..48_000)
             .map(|_| {
@@ -309,7 +309,7 @@ fn a_compressor_flattens_a_chords_crest() {
             ratio: CompRatio::Twenty,
             mix: 1.0,
         };
-        let mut chain = spec.prepare(RATE).instance(&knobs);
+        let mut chain = spec.prepare(RATE).instance(&knobs, 0.0);
         // A strummed chord: loud when picked, then ringing out.
         let input: Vec<f32> = (0..RATE as usize)
             .map(|i| {
@@ -331,4 +331,33 @@ fn a_compressor_flattens_a_chords_crest() {
     };
     let (dry, wet) = (crest(false), crest(true));
     assert!(wet < 0.6 * dry, "{wet} against {dry}");
+}
+
+#[test]
+fn the_output_level_scales_the_chain_and_stays_in_range() {
+    let spec = ChainSpec::default();
+    let settings = [BlockSettings::default(); BLOCKS];
+    // +6 dB is about twice the signal; the empty chain is otherwise a passthrough.
+    let mut chain = spec.prepare(RATE).instance(&settings, 6.0);
+    let frames = 64;
+    let mut left = vec![0.1_f32; frames];
+    let mut right = vec![0.1_f32; frames];
+    chain.process_in_place(&mut left, &mut right, false);
+    let last = left.last().copied().unwrap_or(0.0);
+    assert!((last - 0.2).abs() < 1e-3, "{last}");
+    // A value that is not a number means unity; a huge one is clamped to the range, not
+    // applied as it is (the signal would be destroyed).
+    for (db, expected) in [(f32::NAN, 0.1), (f32::INFINITY, 0.1), (1_000.0, 0.1)] {
+        let mut chain = spec.prepare(RATE).instance(&settings, db);
+        let mut left = vec![0.1_f32; frames];
+        let mut right = vec![0.1_f32; frames];
+        chain.process_in_place(&mut left, &mut right, false);
+        let last = left.last().copied().unwrap_or(0.0);
+        if db.is_finite() {
+            // Clamped to +24 dB: about 15.8 times.
+            assert!((last - 0.1 * 15.849).abs() < 0.1, "{db}: {last}");
+        } else {
+            assert!((last - expected).abs() < 1e-4, "{db}: {last}");
+        }
+    }
 }

@@ -15,6 +15,8 @@ mod settings;
 mod state;
 mod tasks;
 mod tone_library;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod tone_tool;
 #[cfg(target_arch = "wasm32")]
 pub mod web;
 

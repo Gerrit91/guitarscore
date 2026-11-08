@@ -17,6 +17,9 @@ gscore-cli gui testdata/basic/note_lengths.gp # start the built app from the com
 cargo xtask web                                # the browser build in dist/web (docs/web.md)
 cargo xtask web --smoke                        # also check it in headless Chromium
 cargo xtask web --soundfont PATH               # ship another .sf2; --no-soundfont for silence
+cargo xtask tones list                         # the saved modelled-guitar tones and their programs
+cargo xtask tones import --preset NAME --program N  # copy one into the built-in library
+cargo xtask tones normalize                    # level the built-in tones with each other
 ```
 
 The app renders with wgpu (Vulkan, Metal or DirectX 12). Its snapshot tests render

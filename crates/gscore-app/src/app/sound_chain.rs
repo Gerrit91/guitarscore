@@ -302,7 +302,7 @@ fn preset_row(
     let (program, kind) = (shown.program, shown.kind);
     let current = super::tone_picker::current_tone_choice(tone, presets);
     let shown_name = match &current {
-        Some(super::tone_picker::PickerChoice::BuiltIn(name)) => (*name).to_owned(),
+        Some(super::tone_picker::PickerChoice::BuiltIn(name)) => name.clone(),
         Some(super::tone_picker::PickerChoice::Saved { name, .. }) => name.clone(),
         // The tone was saved under this name and its knobs moved since.
         None => match window
@@ -428,10 +428,10 @@ fn preset_row(
                 {
                     let selected = tone.name == shown_name;
                     let response = ui
-                        .selectable_label(selected, tone.name)
-                        .on_hover_text(tone.description);
+                        .selectable_label(selected, &tone.name)
+                        .on_hover_text(&tone.description);
                     if response.clicked() {
-                        chosen = Some(super::tone_picker::PickerChoice::BuiltIn(tone.name));
+                        chosen = Some(super::tone_picker::PickerChoice::BuiltIn(tone.name.clone()));
                     }
                 }
             }
@@ -447,7 +447,7 @@ fn preset_row(
         use super::tone_picker::PickerChoice;
         match choice {
             PickerChoice::BuiltIn(name) => {
-                if let Some(built) = crate::tone_library::find(name) {
+                if let Some(built) = crate::tone_library::find(&name) {
                     window.preset = None;
                     actions.preset = Some(ChosenPreset {
                         kind: built.tone.kind,
@@ -1425,6 +1425,30 @@ impl GuitarScoreApp {
                                 window.selected = to.saturating_add(1);
                             }
                         }
+                        // The chain's output level: the tone's own loudness, after every
+                        // block and before the mixer's fader.
+                        ui.add_space(2.0);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                            let mut output_db = chain.output_db;
+                            if round_knob(
+                                ui,
+                                &mut output_db,
+                                knob_ranges::OUTPUT,
+                                "Chain output",
+                                " dB",
+                                0.0,
+                                false,
+                                "The chain's output level, after every block and before the \
+                                 mixer's fader. It is the tone's own loudness: turning it \
+                                 does not change how hard an amp or a drive is fed.",
+                            )
+                            .changed
+                            {
+                                let mut changed = chain.clone();
+                                changed.output_db = output_db;
+                                actions.chain = Some(changed);
+                            }
+                        });
                         ui.separator();
                         match window.selected.checked_sub(1) {
                             None => {

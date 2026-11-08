@@ -54,7 +54,7 @@ fn wet(input: &[f32], knobs: ReverbKnobs) -> (Vec<f32>, Vec<f32>) {
     spec.blocks[0] = Some(BlockKind::Reverb);
     let mut settings = [BlockSettings::default(); BLOCKS];
     settings[0].reverb = ReverbKnobs { mix: 1.0, ..knobs };
-    let mut chain = spec.prepare(RATE).instance(&settings);
+    let mut chain = spec.prepare(RATE).instance(&settings, 0.0);
     let mut left = vec![0.0_f32; input.len()];
     let mut right = vec![0.0_f32; input.len()];
     for ((i, l), r) in input
@@ -126,7 +126,7 @@ fn cost_of_a_dying_tail() {
         mix: 1.0,
         ..ReverbKnobs::default()
     };
-    let mut chain = spec.prepare(RATE).instance(&settings);
+    let mut chain = spec.prepare(RATE).instance(&settings, 0.0);
     let input = chord(1.0);
     let (mut l, mut r) = ([0.0_f32; BLOCK], [0.0_f32; BLOCK]);
     for block in input.chunks(BLOCK) {
