@@ -29,6 +29,9 @@ pub struct EqKnobs {
     pub band_gain: [f32; BANDS],
     /// Their widths (`q`): the bells' width, the shelves' slope (1 is gentle).
     pub band_q: [f32; BANDS],
+    /// Each band's shape. Band 1 is a low shelf or a bell, band 4 a high shelf or a bell,
+    /// and the middle two are always bells ([`BandShape::of`] is each band's default).
+    pub band_shape: [BandShape; BANDS],
 }
 
 impl Default for EqKnobs {
@@ -39,6 +42,7 @@ impl Default for EqKnobs {
             band_freq: [120.0, 400.0, 2_500.0, 6_000.0],
             band_gain: [0.0; BANDS],
             band_q: [0.707, 1.0, 1.0, 0.707],
+            band_shape: std::array::from_fn(BandShape::of),
         }
     }
 }
@@ -52,7 +56,9 @@ pub enum BandShape {
 }
 
 impl BandShape {
-    /// The shape of band `band` (0 to [`BANDS`] - 1).
+    /// The default shape of band `band` (0 to [`BANDS`] - 1): band 1 a low shelf, band 4 a
+    /// high shelf, the middle two bells. The outer bands can be switched to bells with
+    /// [`EqKnobs::band_shape`].
     pub fn of(band: usize) -> BandShape {
         if band == 0 {
             BandShape::LowShelf
@@ -69,6 +75,107 @@ impl BandShape {
             BandShape::LowShelf => "Low shelf",
             BandShape::Bell => "Bell",
             BandShape::HighShelf => "High shelf",
+        }
+    }
+}
+
+/// The filter of band `band`, from `knobs`.
+fn band_filter(rate: f32, band: usize, knobs: &EqKnobs) -> Biquad {
+    let (freq, gain, q) = (
+        knobs.band_freq.get(band).copied().unwrap_or(1_000.0),
+        knobs.band_gain.get(band).copied().unwrap_or(0.0),
+        knobs.band_q.get(band).copied().unwrap_or(1.0),
+    );
+    match knobs.shape(band) {
+        BandShape::LowShelf => Biquad::shelf(rate, freq, gain, false),
+        BandShape::HighShelf => Biquad::shelf(rate, freq, gain, true),
+        BandShape::Bell => Biquad::peaking(rate, freq, q, gain),
+    }
+}
+
+/// A shape a band may actually take: the first band a low shelf or a bell, the last a high
+/// shelf or a bell, the middle two always bells. A hand-edited file may hold any of them.
+fn fitted_shape(band: usize, shape: BandShape) -> BandShape {
+    if band == 0 {
+        match shape {
+            BandShape::Bell => BandShape::Bell,
+            _ => BandShape::LowShelf,
+        }
+    } else if band.saturating_add(1) == BANDS {
+        match shape {
+            BandShape::Bell => BandShape::Bell,
+            _ => BandShape::HighShelf,
+        }
+    } else {
+        BandShape::Bell
+    }
+}
+
+/// An EQ's response at any frequency, without its audio state: each band's gain and the
+/// sum of them all. The Sound chain window draws its curve from this; the filters
+/// themselves use the same coefficients, so the picture is what is heard.
+#[derive(Debug, Clone, Copy)]
+pub struct EqResponse {
+    rate: f32,
+    low_cut: Biquad,
+    high_cut: Biquad,
+    bands: [Biquad; BANDS],
+}
+
+impl EqResponse {
+    /// The response of `knobs` for `sample_rate`. Allocates nothing.
+    pub fn new(sample_rate: f32, knobs: EqKnobs) -> Self {
+        let rate = sample_rate.max(1.0);
+        let knobs = knobs.sanitized();
+        EqResponse {
+            rate,
+            low_cut: Biquad::highpass(rate, knobs.low_cut, 0.707),
+            high_cut: Biquad::lowpass(rate, knobs.high_cut, 0.707),
+            bands: std::array::from_fn(|band| band_filter(rate, band, &knobs)),
+        }
+    }
+
+    /// The gain at `frequency` Hz of one filter, in dB (clamped to something printable).
+    fn db(filter: Biquad, rate: f32, frequency: f32) -> f32 {
+        let frequency = frequency.clamp(1.0, rate * 0.499);
+        let gain = filter.gain_at(rate, frequency);
+        if gain.is_finite() && gain > 1e-12 {
+            20.0 * gain.log10()
+        } else {
+            -240.0
+        }
+    }
+
+    /// The low cut's own gain at `frequency` Hz, in dB.
+    pub fn low_cut_db(&self, frequency: f32) -> f32 {
+        Self::db(self.low_cut, self.rate, frequency)
+    }
+
+    /// The high cut's own gain at `frequency` Hz, in dB.
+    pub fn high_cut_db(&self, frequency: f32) -> f32 {
+        Self::db(self.high_cut, self.rate, frequency)
+    }
+
+    /// Band `band`'s own gain at `frequency` Hz, in dB (0 for a band out of range).
+    pub fn band_db(&self, band: usize, frequency: f32) -> f32 {
+        self.bands
+            .get(band)
+            .copied()
+            .map_or(0.0, |filter| Self::db(filter, self.rate, frequency))
+    }
+
+    /// Every band, both cuts and their sum at `frequency` Hz, in dB.
+    pub fn total_db(&self, frequency: f32) -> f32 {
+        let frequency = frequency.clamp(1.0, self.rate * 0.499);
+        let mut gain = self.low_cut.gain_at(self.rate, frequency);
+        gain *= self.high_cut.gain_at(self.rate, frequency);
+        for band in self.bands {
+            gain *= band.gain_at(self.rate, frequency);
+        }
+        if gain.is_finite() && gain > 1e-12 {
+            20.0 * gain.log10()
+        } else {
+            -240.0
         }
     }
 }
@@ -108,19 +215,7 @@ impl Eq {
             .high_cut
             .retuned(Biquad::lowpass(rate, knobs.high_cut, 0.707));
         for (band, filter) in self.bands.iter_mut().enumerate() {
-            let (Some(freq), Some(gain), Some(q)) = (
-                knobs.band_freq.get(band).copied(),
-                knobs.band_gain.get(band).copied(),
-                knobs.band_q.get(band).copied(),
-            ) else {
-                continue;
-            };
-            let tuned = match BandShape::of(band) {
-                BandShape::LowShelf => Biquad::shelf(rate, freq, gain, false),
-                BandShape::HighShelf => Biquad::shelf(rate, freq, gain, true),
-                BandShape::Bell => Biquad::peaking(rate, freq, q, gain),
-            };
-            *filter = filter.retuned(tuned);
+            *filter = filter.retuned(band_filter(rate, band, &knobs));
         }
         self.knobs = knobs;
     }
@@ -146,6 +241,16 @@ impl Eq {
 }
 
 impl EqKnobs {
+    /// The shape of `band`: what was chosen, fitted to what that band may be.
+    pub fn shape(&self, band: usize) -> BandShape {
+        let shape = self
+            .band_shape
+            .get(band)
+            .copied()
+            .unwrap_or(BandShape::of(band));
+        fitted_shape(band, shape)
+    }
+
     /// Every value in its range (a hand-edited settings file can hold anything).
     pub fn sanitized(self) -> Self {
         let fit = |value: f32, (low, high): (f32, f32), fallback: f32| {
@@ -185,6 +290,15 @@ impl EqKnobs {
                 default_q,
             );
         }
+        let band_shape = std::array::from_fn(|band| {
+            fitted_shape(
+                band,
+                self.band_shape
+                    .get(band)
+                    .copied()
+                    .unwrap_or_else(|| BandShape::of(band)),
+            )
+        });
         EqKnobs {
             low_cut: fit(self.low_cut, crate::knob_ranges::LOW_CUT, default.low_cut),
             high_cut: fit(
@@ -195,6 +309,7 @@ impl EqKnobs {
             band_freq,
             band_gain,
             band_q,
+            band_shape,
         }
     }
 }
@@ -263,6 +378,7 @@ mod tests {
             band_freq: [100.0, 1_000.0, 4_000.0, 10_000.0],
             band_gain: [0.0, 12.0, 0.0, 0.0],
             band_q: [0.707, 6.0, 1.0, 0.707],
+            ..EqKnobs::default()
         };
         let wide = EqKnobs {
             band_q: [0.707, 0.4, 1.0, 0.707],
@@ -315,6 +431,137 @@ mod tests {
     }
 
     #[test]
+    fn the_drawn_response_is_the_filters_gain() {
+        let knobs = EqKnobs {
+            low_cut: 80.0,
+            high_cut: 12_000.0,
+            band_freq: [100.0, 500.0, 2_500.0, 9_000.0],
+            band_gain: [6.0, -4.0, 3.0, -2.0],
+            band_q: [0.707, 2.0, 1.0, 0.707],
+            ..EqKnobs::default()
+        };
+        let eq = Eq::new(RATE, knobs);
+        let response = EqResponse::new(RATE, knobs);
+        for hz in [
+            30.0, 60.0, 100.0, 250.0, 500.0, 1_000.0, 2_500.0, 5_000.0, 9_000.0, 15_000.0, 19_000.0,
+        ] {
+            let expected = eq.low_cut.gain_at(RATE, hz)
+                * eq.high_cut.gain_at(RATE, hz)
+                * eq.bands
+                    .iter()
+                    .map(|filter| filter.gain_at(RATE, hz))
+                    .product::<f32>();
+            let expected_db = 20.0 * expected.log10();
+            assert!(
+                (response.total_db(hz) - expected_db).abs() < 0.01,
+                "{hz} Hz: {} against {expected_db}",
+                response.total_db(hz)
+            );
+            // And each band's own curve is that filter alone.
+            for band in 0..BANDS {
+                let own = 20.0 * eq.bands[band].gain_at(RATE, hz).log10();
+                assert!(
+                    (response.band_db(band, hz) - own).abs() < 0.01,
+                    "band {band} at {hz} Hz"
+                );
+            }
+        }
+        // The same gain a rendered sine gets (a bell's centre, well settled).
+        let measured = gain_db(
+            EqKnobs {
+                band_gain: [0.0, 12.0, 0.0, 0.0],
+                ..knobs
+            },
+            500.0,
+        );
+        let drawn = EqResponse::new(
+            RATE,
+            EqKnobs {
+                band_gain: [0.0, 12.0, 0.0, 0.0],
+                ..knobs
+            },
+        )
+        .total_db(500.0);
+        assert!((measured - drawn).abs() < 0.5, "{measured} against {drawn}");
+    }
+
+    #[test]
+    fn the_outer_bands_switch_between_shelf_and_bell() {
+        let flat = EqKnobs {
+            low_cut: 20.0,
+            high_cut: 20_000.0,
+            ..EqKnobs::default()
+        };
+        let defaults = EqKnobs::default();
+        for band in 0..BANDS {
+            assert_eq!(defaults.shape(band), BandShape::of(band));
+        }
+        // Band 1 as a shelf lifts everything below its corner; as a bell it lifts around
+        // the corner and leaves 30 Hz mostly alone.
+        let shelf = EqKnobs {
+            band_gain: [12.0, 0.0, 0.0, 0.0],
+            ..flat
+        };
+        let bell = EqKnobs {
+            band_shape: [
+                BandShape::Bell,
+                BandShape::Bell,
+                BandShape::Bell,
+                BandShape::HighShelf,
+            ],
+            ..shelf
+        };
+        assert!(gain_db(shelf, 30.0) > 8.0, "{}", gain_db(shelf, 30.0));
+        assert!(gain_db(bell, 30.0) < 4.0, "{}", gain_db(bell, 30.0));
+        assert!(gain_db(bell, 120.0) > 8.0, "{}", gain_db(bell, 120.0));
+        // Band 4 the same the other way: a bell at 6 kHz is not a shelf above it.
+        let highs = EqKnobs {
+            band_gain: [0.0, 0.0, 0.0, 12.0],
+            ..flat
+        };
+        let high_bell = EqKnobs {
+            band_shape: [
+                BandShape::LowShelf,
+                BandShape::Bell,
+                BandShape::Bell,
+                BandShape::Bell,
+            ],
+            ..highs
+        };
+        assert!(
+            gain_db(highs, 12_000.0) > 8.0,
+            "{}",
+            gain_db(highs, 12_000.0)
+        );
+        assert!(
+            gain_db(high_bell, 12_000.0) < gain_db(highs, 12_000.0) - 3.0,
+            "{} against {}",
+            gain_db(high_bell, 12_000.0),
+            gain_db(highs, 12_000.0)
+        );
+        assert!(
+            gain_db(high_bell, 6_000.0) > 8.0,
+            "{}",
+            gain_db(high_bell, 6_000.0)
+        );
+        // The middle bands stay bells, whatever a hand-edited file says.
+        assert_eq!(
+            EqKnobs {
+                band_shape: [
+                    BandShape::LowShelf,
+                    BandShape::LowShelf,
+                    BandShape::HighShelf,
+                    BandShape::HighShelf
+                ],
+                ..flat
+            }
+            .sanitized()
+            .shape(1),
+            BandShape::Bell
+        );
+    }
+
+    #[test]
     fn a_flat_eq_leaves_the_signal_alone_and_never_goes_nan() {
         let flat = EqKnobs {
             low_cut: 20.0,
@@ -329,6 +576,12 @@ mod tests {
             band_freq: [f32::NAN, -5.0, 1e9, f32::INFINITY],
             band_gain: [1e9, f32::NAN, -1e9, 0.0],
             band_q: [0.0, f32::NAN, 1e9, -1.0],
+            band_shape: [
+                BandShape::HighShelf,
+                BandShape::LowShelf,
+                BandShape::HighShelf,
+                BandShape::LowShelf,
+            ],
         }
         .sanitized();
         assert!(broken.low_cut.is_finite() && broken.high_cut.is_finite());
@@ -337,6 +590,11 @@ mod tests {
             assert!(broken.band_gain[band].is_finite());
             assert!(broken.band_q[band] > 0.0);
         }
+        // Only the outer bands may be shelves, each only its own kind.
+        assert_eq!(broken.shape(0), BandShape::LowShelf);
+        assert_eq!(broken.shape(1), BandShape::Bell);
+        assert_eq!(broken.shape(2), BandShape::Bell);
+        assert_eq!(broken.shape(3), BandShape::HighShelf);
         let mut eq = Eq::new(RATE, broken);
         for _ in 0..10_000 {
             let y = eq.process(0.5);

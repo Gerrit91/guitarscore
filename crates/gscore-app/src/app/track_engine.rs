@@ -253,9 +253,9 @@ impl GuitarScoreApp {
         tone
     }
 
-    /// Gives `track` `tone`. A track whose tone came with the song keeps its own (the song
-    /// keeps its sound); otherwise the preset's tone changes, so every track with that
-    /// preset, in every song, plays it from now on (it is kept in the settings).
+    /// Gives `track` `tone` as its own, kept with the song: chosen from the tone picker,
+    /// edited in the Sound chain window, or the preset's tone it was playing. An edit with
+    /// undo, so the change marks the song modified and is replayed after a crash.
     pub(super) fn set_track_tone(&mut self, track: usize, tone: Tone) {
         let Some(player) = self.track_player(track) else {
             return;
@@ -263,20 +263,13 @@ impl GuitarScoreApp {
         let Some(mut sound) = self.open_track_sound(track) else {
             return;
         };
-        if sound.tone.is_some() {
-            sound.tone = Some(crate::settings::PresetTone::of(player.program, &tone));
-            self.set_track_sound(track, sound, true);
-            return;
-        }
-        let Some(tab) = self.tabs.get(self.active) else {
-            return;
-        };
-        if let Err(error) =
-            self.playback
-                .set_preset_tone(tab.document.song(), player.program, Some(tone))
-        {
-            self.notice = Some(error);
-        }
+        // The song keeps what this track now plays, not the preset: a preset tone is a
+        // setting that every song with that program shares, so editing it here would
+        // change other songs without an undo step of its own. Saving already resolved a
+        // preset tone into each track; this makes that explicit and undoable at once.
+        sound.tone = Some(crate::settings::PresetTone::of(player.program, &tone));
+        // One knob drag is one undo step.
+        self.set_track_sound(track, sound, true);
     }
 
     /// Forgets the tone of `track`: the one that came with the song and the preset's own,

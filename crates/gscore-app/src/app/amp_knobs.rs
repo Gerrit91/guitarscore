@@ -1,12 +1,13 @@
 //! The knobs of an amp block in the Sound chain window (its voice, chosen by clicking its
 //! name, then Gain, the tone stack, the speaker and the output level as round knobs), of a
 //! drive pedal, and of a compressor (its ratio buttons, its knobs and its gain-reduction
-//! meter).
+//! meter). The EQ's own editor is in [`super::eq_editor`].
 
-use egui::{RichText, vec2};
+use egui::{Align2, FontId, Rect, RichText, Sense, Stroke, vec2};
 use gscore_guitar::knob_ranges;
 
 use crate::app::string_sound::round_knob;
+use crate::app::style;
 use crate::chain_settings::{AmpVoiceSetting, BlockSetting, CompRatioSetting};
 
 /// What each voice is, for its tooltip.
@@ -241,8 +242,8 @@ pub(super) fn compressor_knobs(
 /// The gain-reduction needle, as a horizontal bar: 0 dB at the left, as far down as
 /// [`METER_FLOOR_DB`] at the right, filled from the left.
 fn gain_reduction_meter(ui: &mut egui::Ui, reduction: f32) {
-    let tokens = crate::app::style::tokens(ui);
-    let (rect, response) = ui.allocate_exact_size(vec2(150.0, 14.0), egui::Sense::hover());
+    let tokens = style::tokens(ui);
+    let (rect, response) = ui.allocate_exact_size(vec2(150.0, 14.0), Sense::hover());
     let reduction = if reduction.is_finite() {
         reduction.clamp(-METER_FLOOR_DB, 0.0)
     } else {
@@ -252,107 +253,24 @@ fn gain_reduction_meter(ui: &mut egui::Ui, reduction: f32) {
     ui.painter().rect_stroke(
         rect,
         3.0,
-        egui::Stroke::new(1.0, tokens.line),
+        Stroke::new(1.0, tokens.line),
         egui::StrokeKind::Inside,
     );
     let filled = rect.width() * (-reduction / METER_FLOOR_DB);
     if filled > 0.5 {
-        let bar = egui::Rect::from_min_size(rect.min, vec2(filled, rect.height()));
+        let bar = Rect::from_min_size(rect.min, vec2(filled, rect.height()));
         ui.painter().rect_filled(bar, 3.0, tokens.solo);
     }
     ui.painter().text(
         rect.center(),
-        egui::Align2::CENTER_CENTER,
+        Align2::CENTER_CENTER,
         format!("{reduction:.1} dB"),
-        egui::FontId::proportional(9.0),
+        FontId::proportional(9.0),
         tokens.text,
     );
     response.on_hover_text(
         "The compressor's gain reduction: how far it turns the signal down right now",
     );
-}
-
-/// The 4-band EQ's knobs: the low cut, each band's frequency and gain (the bells' width
-/// too), and the high cut. Band 1 is a low shelf and band 4 a high shelf.
-pub(super) fn eq_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
-    let mut changed = false;
-    changed |= round_knob(
-        ui,
-        &mut block.low_cut,
-        knob_ranges::LOW_CUT,
-        "Low cut",
-        " Hz",
-        30.0,
-        true,
-        "Takes away everything below this frequency: rumble, a kick's mud, a boom.",
-    )
-    .changed;
-    let default = gscore_guitar::EqKnobs::default();
-    for band in 0..gscore_guitar::BANDS {
-        let shape = gscore_guitar::BandShape::of(band);
-        let number = band.saturating_add(1);
-        let (Some(freq), Some(gain), Some(q)) = (
-            block.eq_band_freq.get_mut(band),
-            block.eq_band_gain.get_mut(band),
-            block.eq_band_q.get_mut(band),
-        ) else {
-            continue;
-        };
-        let (default_freq, default_q) = (
-            default.band_freq.get(band).copied().unwrap_or(1_000.0),
-            default.band_q.get(band).copied().unwrap_or(1.0),
-        );
-        changed |= round_knob(
-            ui,
-            freq,
-            knob_ranges::BAND_FREQ,
-            &format!("{number} Freq"),
-            " Hz",
-            default_freq,
-            true,
-            &format!("Band {number} ({}): where it acts.", shape.label()),
-        )
-        .changed;
-        changed |= round_knob(
-            ui,
-            gain,
-            knob_ranges::EQ_GAIN,
-            &format!("{number} Gain"),
-            " dB",
-            0.0,
-            false,
-            &format!(
-                "Band {number} ({}): up to make this range stand out, down to take it away.",
-                shape.label()
-            ),
-        )
-        .changed;
-        if shape == gscore_guitar::BandShape::Bell {
-            changed |= round_knob(
-                ui,
-                q,
-                knob_ranges::BAND_Q,
-                &format!("{number} Q"),
-                "",
-                default_q,
-                false,
-                &format!("Band {number}'s width: high for a narrow notch, low for a wide lift."),
-            )
-            .changed;
-        }
-    }
-    changed |= round_knob(
-        ui,
-        &mut block.high_cut,
-        knob_ranges::HIGH_CUT,
-        "High cut",
-        " Hz",
-        18_000.0,
-        true,
-        "Takes away everything above this frequency: fizz, hiss, a cymbal's harshness.",
-    )
-    .changed;
-    changed
 }
 
 /// A chorus's knobs: its speed, its swing and, unless it runs all wet (a bus), the mix

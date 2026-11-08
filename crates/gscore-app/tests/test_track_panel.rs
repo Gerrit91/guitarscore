@@ -278,6 +278,235 @@ fn a_click_in_the_song_grid_while_playing_jumps_there() {
 }
 
 #[test]
+fn the_eq_curve_handles_move_the_bands() {
+    use gscore_play::StringKind;
+
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.run();
+    harness.get_by_label("EQ").click();
+    harness.run();
+    // The knobs stand in columns, low cut, the four bands, high cut.
+    for label in [
+        "Low cut", "1 Freq", "1 Gain", "2 Freq", "2 Gain", "2 Q", "4 Freq", "4 Gain", "High cut",
+    ] {
+        assert!(
+            harness.query_all_by_label(label).next().is_some(),
+            "{label}"
+        );
+    }
+    let block_index = first.saturating_sub(1);
+    let chain_block = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .playback()
+            .tone(0, 26, StringKind::Electric)
+            .chain
+            .blocks
+            .get(block_index)
+            .cloned()
+    };
+    let before = chain_block(&harness).expect("the EQ block");
+    // Band 2's handle, dragged right and up: its frequency and gain both move.
+    let handle = harness.get_by_label("Band 2 handle").rect().center();
+    harness.hover_at(handle);
+    harness.run();
+    harness.drag_at(handle);
+    harness.step();
+    harness.hover_at(handle + egui::vec2(40.0, -20.0));
+    harness.step();
+    harness.drop_at(handle + egui::vec2(40.0, -20.0));
+    harness.run();
+    let after = chain_block(&harness).expect("the EQ block");
+    assert!(
+        after.eq_band_freq[1] > before.eq_band_freq[1] * 1.1,
+        "the frequency moved: {} against {}",
+        after.eq_band_freq[1],
+        before.eq_band_freq[1]
+    );
+    assert!(
+        after.eq_band_gain[1] > before.eq_band_gain[1] + 2.0,
+        "the gain moved: {} against {}",
+        after.eq_band_gain[1],
+        before.eq_band_gain[1]
+    );
+}
+
+#[test]
+fn the_outer_bands_switch_between_shelf_and_bell() {
+    use gscore_app::chain_settings::BandShapeSetting;
+    use gscore_play::StringKind;
+
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.run();
+    harness.get_by_label("EQ").click();
+    harness.run();
+    let block_index = first.saturating_sub(1);
+    let shapes = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .playback()
+            .tone(0, 26, StringKind::Electric)
+            .chain
+            .blocks
+            .get(block_index)
+            .map(|block| block.eq_band_shape)
+            .expect("the EQ block")
+    };
+    assert_eq!(shapes(&harness)[0], BandShapeSetting::LowShelf);
+    assert_eq!(shapes(&harness)[3], BandShapeSetting::HighShelf);
+    // A shelf has no width; a bell brings its Q knob.
+    assert!(harness.query_all_by_label("1 Q").next().is_none());
+    // Band 1's buttons come first on the board.
+    harness
+        .query_all_by_label("Bell")
+        .next()
+        .expect("band 1's Bell button")
+        .click();
+    harness.run();
+    assert_eq!(shapes(&harness)[0], BandShapeSetting::Bell);
+    assert!(
+        harness.query_all_by_label("1 Q").next().is_some(),
+        "the bell's width"
+    );
+    harness
+        .query_all_by_label("Shelf")
+        .next()
+        .expect("band 1's Shelf button")
+        .click();
+    harness.run();
+    assert_eq!(shapes(&harness)[0], BandShapeSetting::LowShelf);
+    assert!(harness.query_all_by_label("1 Q").next().is_none());
+    // Band 4's are the second pair.
+    harness
+        .query_all_by_label("Bell")
+        .nth(1)
+        .expect("band 4's Bell button")
+        .click();
+    harness.run();
+    assert_eq!(shapes(&harness)[3], BandShapeSetting::Bell);
+    assert!(harness.query_all_by_label("4 Q").next().is_some());
+    harness
+        .query_all_by_label("Shelf")
+        .nth(1)
+        .expect("band 4's Shelf button")
+        .click();
+    harness.run();
+    assert_eq!(shapes(&harness)[3], BandShapeSetting::HighShelf);
+    assert!(harness.query_all_by_label("4 Q").next().is_none());
+}
+
+#[test]
+fn a_chain_change_is_an_undo_step_and_marks_the_song_modified() {
+    use gscore_play::StringKind;
+
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    // Forget the RSE tone: the track starts from the built-in tone, with no song tone.
+    harness.get_by_label("Built-in").click();
+    harness.run();
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.run();
+    harness.get_by_label("Reverb").click();
+    harness.run();
+    let block_index = first.saturating_sub(1);
+    // The edit became the song's own tone, not the program's preset (a machine setting
+    // every song with that program shares).
+    assert!(
+        harness.state().settings().preset_tones.is_empty(),
+        "the preset's tone was not touched"
+    );
+    let own = harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .track(TrackIndex::new(0))
+        .and_then(|track| track.sound_state().map(str::to_owned))
+        .expect("the chain is kept with the song");
+    assert!(own.contains("\"tone\""), "{own}");
+
+    let chain_mix = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .playback()
+            .tone(0, 26, StringKind::Electric)
+            .chain
+            .blocks
+            .get(block_index)
+            .map(|block| block.mix)
+            .expect("the Reverb block")
+    };
+    let before = chain_mix(&harness);
+    let undo_depth = harness.state().document().unwrap().editor().undo_depth();
+    // One drag of the Reverb's Mix knob is one undo step.
+    let knob = harness
+        .query_all_by_label("Mix")
+        .find(|node| node.rect().center().x < 700.0)
+        .expect("the Reverb's Mix knob")
+        .rect()
+        .center();
+    harness.hover_at(knob);
+    harness.run();
+    harness.drag_at(knob);
+    harness.step();
+    for step in 1..=10 {
+        harness.hover_at(knob + egui::vec2(6.0 * step as f32, 0.0));
+        harness.step();
+    }
+    harness.drop_at(knob + egui::vec2(60.0, 0.0));
+    harness.run();
+    let after = chain_mix(&harness);
+    assert!((after - before).abs() > 0.01, "{before} to {after}");
+    assert_eq!(
+        harness.state().document().unwrap().editor().undo_depth(),
+        undo_depth.saturating_add(1),
+        "one undo step for the whole drag"
+    );
+    assert!(
+        harness.state().document().unwrap().is_dirty(),
+        "the chain change marks the song modified"
+    );
+    assert!(
+        harness.state().settings().preset_tones.is_empty(),
+        "the drag did not edit the preset's tone"
+    );
+
+    // Undo takes the knob back, redo moves it again.
+    let undo = |harness: &mut Harness<'static, GuitarScoreApp>| {
+        harness
+            .state_mut()
+            .document_mut()
+            .unwrap()
+            .editor_mut()
+            .undo()
+            .expect("undo");
+    };
+    undo(&mut harness);
+    harness.run();
+    assert!((chain_mix(&harness) - before).abs() < 1e-6);
+    assert!(
+        harness.state().document().unwrap().is_dirty(),
+        "the block added before the drag is still an unsaved edit"
+    );
+    harness
+        .state_mut()
+        .document_mut()
+        .unwrap()
+        .editor_mut()
+        .redo()
+        .expect("redo");
+    harness.run();
+    assert!((chain_mix(&harness) - after).abs() < 1e-6);
+}
+
+#[test]
 fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
     let mut harness = app_with("basic/note_lengths.gp");
     // The track panel's Sound section opens the Sound chain with its stomp box.
@@ -730,19 +959,19 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
 }
 
 #[test]
-fn a_tone_belongs_to_the_track_preset() {
-    // The owner: a tone dialed in for a preset plays on every track with that preset, in
-    // every song (it is kept in the settings), and another preset keeps its own.
+fn a_dialed_tone_belongs_to_the_track() {
+    // Changing a track's sound in the Sound chain window makes it the song's own tone: it
+    // is kept with the track, undoable, and another track or preset keeps its own.
     use gscore_play::StringKind;
 
     let mut harness = app_with("basic/multi_staff.gp");
-    // Dial the pick position of the tone the shown track's preset plays.
+    // Dial the pick position of the tone the shown track plays.
     let dial = |harness: &mut Harness<'static, GuitarScoreApp>, track: usize, value: &str| {
         harness.state_mut().set_shown_track(track);
         harness.run();
         open_sound_chain(harness);
-        // Forget the tone the song brought (Guitar Pro's RSE sound) so the knobs edit the
-        // preset's tone, which is what this test is about.
+        // Forget the tone the song brought (Guitar Pro's RSE sound) so the knobs start from
+        // the built-in tone.
         harness.get_by_label("Built-in").click();
         harness.run();
         // Played by the strings (if it is not yet), their box selected.
@@ -774,6 +1003,16 @@ fn a_tone_belongs_to_the_track_preset() {
             .sound
             .pick_position
     };
+    let keeps_own_tone = |harness: &Harness<'static, GuitarScoreApp>, track: usize| {
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .track(TrackIndex::new(track))
+            .and_then(|track| track.sound_state().map(str::to_owned))
+            .is_some_and(|state| state.contains("\"tone\""))
+    };
     let bass = harness
         .state()
         .playback()
@@ -796,22 +1035,25 @@ fn a_tone_belongs_to_the_track_preset() {
     harness.get_by_label("Close").click();
     harness.run();
 
-    // The first guitar's preset (27) gets a tone of its own: preset 27's, from now on.
+    // The first guitar gets a tone of its own on the track, not on its preset.
     dial(&mut harness, 0, "0.4");
     assert!(
         (pick(&harness, 0, 27, StringKind::Electric) - 0.4).abs() < 1e-6,
         "{}",
         pick(&harness, 0, 27, StringKind::Electric)
     );
-    // It is kept in the settings for that preset, so every song's 27 plays it.
-    let stored = harness.state().settings().preset_tones.clone();
-    let tone = stored
-        .iter()
-        .find(|tone| tone.program == 27)
-        .expect("kept for preset 27");
     assert!(
-        (tone.tone().expect("a known kind").sound.pick_position - 0.4).abs() < 1e-6,
-        "the settings keep it"
+        keeps_own_tone(&harness, 0),
+        "kept with the track in the song"
+    );
+    assert!(
+        harness
+            .state()
+            .settings()
+            .preset_tones
+            .iter()
+            .all(|tone| tone.program != 27),
+        "the preset's tone is not touched"
     );
     // Another preset is not touched: the bass (33) keeps its own tone.
     assert_eq!(
@@ -841,15 +1083,24 @@ fn a_tone_belongs_to_the_track_preset() {
     assert!((pick(&harness, 2, 30, StringKind::Electric) - 0.2).abs() < 1e-6);
     assert!(
         (pick(&harness, 0, 27, StringKind::Electric) - 0.4).abs() < 1e-6,
-        "the first preset keeps its tone"
+        "the first track keeps its tone"
+    );
+    assert!(keeps_own_tone(&harness, 2));
+    assert!(
+        harness
+            .state()
+            .settings()
+            .preset_tones
+            .iter()
+            .all(|tone| tone.program != 30),
+        "the second preset's tone is not touched either"
     );
 }
 
 #[test]
-fn a_songs_resolved_preset_tone_survives_with_default_settings() {
-    // A tone dialed in for a preset lives in this machine's settings. When the song is
-    // saved, it gets the tone it actually plays, so another machine (with its own default
-    // settings) hears the same.
+fn a_songs_edited_tone_survives_with_default_settings() {
+    // A tone edited in the Sound chain window is the song's own from the start. When the
+    // song is saved, another machine (with its own default settings) hears the same.
     use gscore_play::StringKind;
 
     let dir = std::env::temp_dir().join(format!("gscore-preset-tone-{}", std::process::id()));
@@ -900,14 +1151,25 @@ fn a_songs_resolved_preset_tone_survives_with_default_settings() {
     harness.run();
     harness.get_by_label("Close").click();
     harness.run();
-    // The tone is the preset's: this machine's settings, not the song's block.
+    // The tone is the track's own (kept with the song), not a machine setting.
     assert!(
         harness
             .state()
             .settings()
             .preset_tones
             .iter()
-            .any(|tone| tone.program == 27)
+            .all(|tone| tone.program != 27)
+    );
+    assert!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .track(TrackIndex::new(0))
+            .and_then(|track| track.sound_state().map(str::to_owned))
+            .is_some_and(|state| state.contains("\"tone\"")),
+        "the song keeps the tone"
     );
     // Saved, the song carries the tone it plays.
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::S);
@@ -946,9 +1208,9 @@ fn a_songs_resolved_preset_tone_survives_with_default_settings() {
 }
 
 #[test]
-fn the_built_in_entry_forgets_a_presets_tone() {
-    // Switching back to Built-in drops the local overwrite: the program's built-in tone
-    // plays again.
+fn the_built_in_entry_forgets_a_tracks_tone() {
+    // Switching back to Built-in drops the track's own (the song's) tone: the built-in
+    // tone plays again.
     use gscore_play::StringKind;
 
     let mut harness = app_with("basic/multi_staff.gp");
@@ -972,8 +1234,8 @@ fn the_built_in_entry_forgets_a_presets_tone() {
         .playback()
         .tone(0, 27, StringKind::Electric)
         .sound;
-    assert_ne!(changed, built_in, "the preset has a tone of its own now");
-    // The tone row offers Built-in: the preset's own tone is forgotten.
+    assert_ne!(changed, built_in, "the track has a tone of its own now");
+    // The tone row offers Built-in: the track's own tone is forgotten.
     harness.get_by_label("Built-in").click();
     harness.run();
     assert!(
@@ -983,7 +1245,18 @@ fn the_built_in_entry_forgets_a_presets_tone() {
             .preset_tones
             .iter()
             .all(|tone| tone.program != 27),
-        "the overwrite is gone from the settings"
+        "no preset overwrite either"
+    );
+    assert!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .track(TrackIndex::new(0))
+            .and_then(|track| track.sound_state().map(str::to_owned))
+            .is_none_or(|state| !state.contains("\"tone\"")),
+        "the track's own tone is gone"
     );
     assert_eq!(
         harness

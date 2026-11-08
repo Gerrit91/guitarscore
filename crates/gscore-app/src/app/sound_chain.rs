@@ -322,7 +322,10 @@ fn preset_row(
         let _ = ui.selectable_label(false, format!("Tone: {shown_name}"));
         if ui
             .button("Built-in")
-            .on_hover_text("Forget this preset's tone; its built-in tone plays again")
+            .on_hover_text(
+                "Forget this track's tone (and its preset's local one); the built-in tone \
+                 plays again",
+            )
             .clicked()
         {
             window.preset = None;
@@ -959,6 +962,11 @@ pub(super) fn block_knobs(
     if all_wet {
         block.mix = 1.0;
     }
+    // The EQ is a curve with a column of knobs under it, not a row of knobs.
+    if block.choice == BlockChoice::Eq {
+        moved.changed |= super::eq_editor::eq_knobs(ui, block);
+        return moved;
+    }
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
         match block.choice {
@@ -968,7 +976,7 @@ pub(super) fn block_knobs(
             BlockChoice::Compressor => {
                 moved.changed |= super::amp_knobs::compressor_knobs(ui, block, reduction);
             }
-            BlockChoice::Eq => moved.changed |= super::amp_knobs::eq_knobs(ui, block),
+            BlockChoice::Eq => {}
             BlockChoice::Chorus => {
                 moved.changed |= super::amp_knobs::chorus_knobs(ui, block, all_wet);
             }
@@ -1230,6 +1238,13 @@ impl GuitarScoreApp {
         let Some(mut window) = self.sound_chain.take() else {
             return;
         };
+        // A change applied while the window is drawn (a knob, a block, a source) must be
+        // seen on the next frame: the board and the title are already drawn with the old
+        // state. Ask for that frame; without input after a single click egui would wait.
+        let revision = self
+            .tabs
+            .get(self.active)
+            .map(|tab| tab.document.editor().revision());
         let size = vec2(WIDTH + 32.0, 600.0);
         let pos = *window
             .pos
@@ -1254,13 +1269,21 @@ impl GuitarScoreApp {
         // The title names the track (the MIDI box shows its preset, the General MIDI
         // program); the saved tones are the list at the bottom.
         let title = format!("Sound chain — {}", self.track_name(window.track));
-        // This track's tone: its preset's, or its kind's default (the built-in one). On the
-        // SoundFont only a tone dialed in for the preset brings a chain (the kinds'
-        // defaults are the modelled strings'): shown as it plays.
+        // This track's tone: its song's, its preset's, or its kind's default (the built-in
+        // one).
         let mut tone = self.track_tone(window.track, kind);
-        // On the SoundFont only a tone dialed in for the preset brings a chain (the kinds'
-        // defaults are the modelled strings'); a drum track's own chain is its bus.
-        if !modelled && !player.drums && self.playback.preset_tone(player.program).is_none() {
+        // On the SoundFont only a tone the song carries or one dialed in for the preset
+        // brings a chain (the kinds' defaults are the modelled strings'); a drum track's
+        // own chain is its bus.
+        let song_tone = self
+            .tabs
+            .get(self.active)
+            .is_some_and(|tab| tab.track_sound(window.track).tone.is_some());
+        if !modelled
+            && !player.drums
+            && !song_tone
+            && self.playback.preset_tone(player.program).is_none()
+        {
             tone.chain = ChainSetting::default();
         }
         // How far the track's compressors work, for the block's meter (and a repaint while
@@ -1618,6 +1641,14 @@ impl GuitarScoreApp {
         if tone_chosen {
             // A preset's tone is kept at once: it is not this song's, but this machine's.
             self.save_settings();
+        }
+        if self
+            .tabs
+            .get(self.active)
+            .map(|tab| tab.document.editor().revision())
+            != revision
+        {
+            ctx.request_repaint();
         }
         if actions.close {
             self.save_settings();

@@ -4294,3 +4294,49 @@ needed for a much larger font); owner listening check.
   file, the copy, IR keep/drop, normalization and the dry run.
 - Built-in tones may now point at an impulse response file (a path only, not bundled):
   `chain_spec` already skips a block whose file cannot be read and shows a notice.
+
+## 2026-11-08 — The EQ gets its curve, handles and columns
+
+- **A public EQ response** (`gscore-guitar::EqResponse`): one filter per band and cut, the
+  gain of each and their sum at any frequency. `Biquad::gain_at` is no longer test-only, and
+  `Eq` and `EqResponse` build a band with the same helper, so the picture is the sound. A test
+  checks the drawn response against every filter's gain (and against a rendered sine).
+- **The Sound chain's EQ block** now draws 20 Hz to 20 kHz (log) by ±18 dB: the total curve,
+  each band's own curve faint behind it, both cuts, the 0 dB line and a labelled grid. Each
+  band has a colored dot; dragging it sets frequency and gain, Shift+drag or the wheel sets a
+  bell's Q, and double-click resets the band (a cut resets to its default frequency). The
+  value tooltip follows, and the knobs and handles share the values.
+- **The knobs are columns**, one per cut and band, low to high, each titled in its band's
+  color: Low cut, Band 1 (Freq, Gain, shape), Band 2/3 (Freq, Gain, Q), Band 4 (Freq, Gain,
+  shape), High cut. The EQ is laid out outside the other blocks' wrapped knob row.
+- New snapshot `sound_chain_eq` (a dedicated 1200×1000 harness, since the block is taller than
+  the small snapshot window), and an app test that drags Band 2's handle and checks its
+  frequency and gain in the chain.
+- Outer bands (1 and 4) are switchable between their shelf and a bell: a compact Shelf/Bell
+  toggle in each column sets `BlockSetting::eq_band_shape` (new, serde-defaulted), carried to
+  `EqKnobs::band_shape` and fitted per band (middle bands stay bells; a hand-edited file
+  cannot put a shelf there). An outer bell shows its Q knob and handle like bands 2 and 3.
+  `EqResponse` and the filters use the per-band shape. App test: toggling each outer band
+  changes the song's setting and adds or removes its Q. The cuts' 12 dB/oct slope and a live
+  spectrum are still open (the spectrum needs an analysis path like the meters).
+
+## 2026-11-08 — Sound changes are edits, with undo and "modified"
+
+- **Editing a track's tone, chain or string sound in the Sound chain window is now the
+  song's edit, not a change to the GM preset.** `GuitarScoreApp::set_track_tone` always
+  stores the tone on the track (`Command::SetTrackSound`, mergeable so one knob drag is one
+  undo step). Before, a track with no tone of its own wrote the preset's local tone in the
+  settings, which changed every song with that program without an undo step and without the
+  document turning modified even though a save would resolve it into the song.
+- The Sound chain's board now shows a chain the song carries on a SoundFont track too (it
+  used to require a preset tone), and requests the next frame after applying an edit so a
+  single click (a block added or removed) is on screen at once.
+- Tests: an app test on a track first reset to Built-in adds a Reverb, checks the song's
+  own tone (the preset's settings are untouched), marks the document modified, drags the
+  Mix knob (one undo step), then undoes and redoes it. The old preset-tone tests now check
+  that each track keeps its own tone and that Built-in clears it. `panic_hunt` and the
+  recovery test already cover `Command::SetTrackSound`.
+- A preset's local tone (`preset_tones`) remains a machine setting with no undo; the editor
+  no longer writes it, `cargo xtask tones import` still can.
+
+

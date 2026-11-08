@@ -9,7 +9,7 @@ use crate::app::style;
 use crate::settings::{PickupSetting, StringSound};
 
 /// The space one knob takes: the knob, its name and its value.
-const CELL: Vec2 = vec2(78.0, 60.0);
+pub(super) const CELL: Vec2 = vec2(78.0, 60.0);
 /// The knob's radius and where its centre sits in the cell.
 const RADIUS: f32 = 13.0;
 const CENTRE_Y: f32 = 16.0;

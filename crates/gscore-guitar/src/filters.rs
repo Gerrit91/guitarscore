@@ -210,8 +210,8 @@ impl Biquad {
         }
     }
 
-    /// The gain at `frequency` Hz for `sample_rate` (for tests and level matching).
-    #[cfg(test)]
+    /// The gain at `frequency` Hz for `sample_rate` (for tests, level matching and the
+    /// EQ's drawn curve).
     pub(crate) fn gain_at(&self, sample_rate: f32, frequency: f32) -> f32 {
         let w = TAU * frequency / sample_rate;
         let (c1, s1, c2, s2) = (w.cos(), w.sin(), (2.0 * w).cos(), (2.0 * w).sin());

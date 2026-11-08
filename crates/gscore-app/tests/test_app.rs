@@ -426,14 +426,18 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.run();
     harness.get_by_label("Block 4: Comp");
     harness.snapshot("sound_chain_compressor");
-    // The 4-band EQ in the last place, with a bell lifted.
+    // The 4-band EQ in the last place: its curve and columns have their own snapshot (the
+    // window is taller than this small one).
     harness.get_by_label("Block 5: +").click();
     harness.run();
     harness.get_by_label("EQ").click();
     harness.run();
     harness.get_by_label("Block 5: EQ");
-    harness.snapshot("sound_chain_eq");
     harness.get_by_label("Block 2: Reverb").click();
+    harness.run();
+    // Park the mouse: the snapshot should not depend on whether the last click still
+    // hovers the box.
+    harness.hover_at(egui::pos2(600.0, 690.0));
     harness.run();
     harness.snapshot("sound_chain_reverb");
     // The strings' own window (their box opens it once PM synthesis plays the track).
@@ -464,6 +468,52 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.run();
     harness.get_by_label("Block 0: MIDI out");
     harness.snapshot("sound_chain_midi_out");
+}
+
+#[test]
+fn the_eq_curve_and_its_knob_columns_match_their_snapshot() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1200.0, 1000.0))
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/steel_guitar_dadgad.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(started.elapsed() < Duration::from_secs(30), "timed out");
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness.get_by_label("MIDI synth").click();
+    harness.run();
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    harness.run();
+    harness.get_by_label("Built-in").click();
+    harness.run();
+    harness.get_by_label("Block 2: +").click();
+    harness.run();
+    harness.get_by_label("EQ").click();
+    harness.run();
+    harness.get_by_label("Block 2: EQ");
+    // A bell lifted and another cut, so the curve shows its bands. The knobs type numbers
+    // as the user does: the curve follows them and stays in step with the handles.
+    let type_value = |harness: &mut Harness<'static, GuitarScoreApp>, label: &str, value: &str| {
+        harness.get_by_label(label).click();
+        harness.run();
+        harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+        harness.get_by_label(label).type_text(value);
+        harness.run();
+        harness.key_press(egui::Key::Enter);
+        harness.run();
+    };
+    type_value(&mut harness, "2 Gain value", "8.0");
+    type_value(&mut harness, "2 Q value", "2.0");
+    type_value(&mut harness, "3 Gain value", "-6.0");
+    // Park the mouse off the knobs so no hover highlight depends on the last field.
+    harness.hover_at(egui::pos2(600.0, 990.0));
+    harness.run();
+    harness.snapshot("sound_chain_eq");
 }
 
 #[test]

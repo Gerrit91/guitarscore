@@ -20,6 +20,7 @@ mod edit_palette;
 mod edit_staff;
 mod edit_staff_dialogs;
 mod editing;
+mod eq_editor;
 mod files;
 mod grace_editor;
 mod grid;

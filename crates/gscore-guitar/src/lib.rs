@@ -36,7 +36,7 @@ pub use chain::{BLOCKS, BlockKind, Chain, ChainSpec, PreparedChain};
 pub use chorus::{CENTRE_MS, ChorusKnobs};
 pub use compressor::{CompRatio, CompressorKnobs};
 pub use drive::DriveKnobs;
-pub use eq::{BANDS, BandShape, EqKnobs};
+pub use eq::{BANDS, BandShape, EqKnobs, EqResponse};
 pub use impulse::{ImpulseError, ImpulseResponse, MAX_SECONDS};
 pub use knobs::{BlockSettings, ImpulseKnobs, ReverbKnobs, RoomKnobs, knob_ranges};
 pub use model::{GuitarModel, StringModel, ranges};

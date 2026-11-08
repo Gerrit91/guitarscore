@@ -5,8 +5,8 @@
 use std::path::PathBuf;
 
 use gscore_guitar::{
-    AmpKnobs, AmpVoice, BANDS, BLOCKS, BlockSettings, CompRatio, CompressorKnobs, DriveKnobs,
-    EqKnobs, ImpulseKnobs, LENGTH_RANGE, ReverbKnobs, RoomKnobs,
+    AmpKnobs, AmpVoice, BANDS, BLOCKS, BandShape, BlockSettings, CompRatio, CompressorKnobs,
+    DriveKnobs, EqKnobs, ImpulseKnobs, LENGTH_RANGE, ReverbKnobs, RoomKnobs,
 };
 use gscore_play::StringKind;
 use serde::{Deserialize, Serialize};
@@ -130,6 +130,47 @@ impl CompRatioSetting {
     }
 }
 
+/// An EQ band's shape as the settings file keeps it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BandShapeSetting {
+    LowShelf,
+    Bell,
+    HighShelf,
+}
+
+impl BandShapeSetting {
+    /// The engine's shape.
+    pub fn shape(self) -> BandShape {
+        match self {
+            BandShapeSetting::LowShelf => BandShape::LowShelf,
+            BandShapeSetting::Bell => BandShape::Bell,
+            BandShapeSetting::HighShelf => BandShape::HighShelf,
+        }
+    }
+
+    /// Its name.
+    pub fn label(self) -> &'static str {
+        self.shape().label()
+    }
+}
+
+impl From<BandShape> for BandShapeSetting {
+    fn from(shape: BandShape) -> Self {
+        match shape {
+            BandShape::LowShelf => BandShapeSetting::LowShelf,
+            BandShape::Bell => BandShapeSetting::Bell,
+            BandShape::HighShelf => BandShapeSetting::HighShelf,
+        }
+    }
+}
+
+/// The bands' usual shapes: band 1 a low shelf, the middle two bells, band 4 a high shelf.
+/// Existing settings files that predate the shape get these.
+fn default_eq_band_shape() -> [BandShapeSetting; BANDS] {
+    std::array::from_fn(|band| BandShapeSetting::from(BandShape::of(band)))
+}
+
 /// One place of a chain.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -168,11 +209,13 @@ pub struct BlockSetting {
     pub attack_ms: f32,
     pub release_ms: f32,
     pub comp_ratio: CompRatioSetting,
-    /// An EQ's four bands: their frequencies, gains and widths (the shelves' width is
-    /// their slope). Its cuts are `low_cut` and `high_cut`.
+    /// An EQ's four bands: their frequencies, gains, widths (the shelves' width is their
+    /// slope) and shapes. Its cuts are `low_cut` and `high_cut`.
     pub eq_band_freq: [f32; BANDS],
     pub eq_band_gain: [f32; BANDS],
     pub eq_band_q: [f32; BANDS],
+    #[serde(default = "default_eq_band_shape")]
+    pub eq_band_shape: [BandShapeSetting; BANDS],
     /// A chorus's speed and swing (its mix is `mix`).
     pub chorus_rate: f32,
     pub chorus_depth: f32,
@@ -269,6 +312,7 @@ impl BlockSetting {
             eq_band_freq: EqKnobs::default().band_freq,
             eq_band_gain: EqKnobs::default().band_gain,
             eq_band_q: EqKnobs::default().band_q,
+            eq_band_shape: default_eq_band_shape(),
             chorus_rate: gscore_guitar::ChorusKnobs::default().rate_hz,
             chorus_depth: gscore_guitar::ChorusKnobs::default().depth_ms,
         }
@@ -340,6 +384,7 @@ impl BlockSetting {
                 band_freq: self.eq_band_freq,
                 band_gain: self.eq_band_gain,
                 band_q: self.eq_band_q,
+                band_shape: self.eq_band_shape.map(BandShapeSetting::shape),
             },
             chorus: gscore_guitar::ChorusKnobs {
                 rate_hz: self.chorus_rate,
