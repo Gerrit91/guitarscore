@@ -8,6 +8,7 @@ use std::f32::consts::TAU;
 use crate::delay::{DelayLine, MIN_DELAY};
 use crate::filters::{
     Allpass, OnePole, allpass_delay, one_pole_delay, one_pole_for_ratio, one_pole_gain,
+    shelf_delay, shelf_for_ratio, shelf_gain,
 };
 
 /// Most allpass stages for stiffness.
@@ -16,7 +17,8 @@ pub(crate) const MAX_STIFFNESS_STAGES: usize = 4;
 const BRILLIANCE_AT: f32 = 2_000.0;
 
 /// What a loop is tuned to: its pitch, how long its fundamental and its highs around
-/// 2 kHz take to fall 60 dB, and its stiffness.
+/// 2 kHz take to fall 60 dB, its stiffness, and where a palm keeps the low end (`corner`,
+/// Hz: the loss filter is flat below it and damps everything above; 0 for none).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Tuning {
     pub(crate) frequency: f32,
@@ -24,6 +26,7 @@ pub(crate) struct Tuning {
     pub(crate) high_decay: f32,
     pub(crate) stiffness: f32,
     pub(crate) stages: usize,
+    pub(crate) corner: f32,
 }
 
 /// One loop.
@@ -31,6 +34,8 @@ pub(crate) struct Tuning {
 pub(crate) struct Loop {
     line: DelayLine,
     loss: OnePole,
+    /// A palm's shelf runs twice (twice as steep); open strings use one lowpass.
+    palm: Option<OnePole>,
     stiffness: [Allpass; MAX_STIFFNESS_STAGES],
     stages: usize,
     gain: f32,
@@ -40,8 +45,9 @@ pub(crate) struct Loop {
     glide_left: usize,
     /// The loss filter last designed, and for which pitch and decay times (the design is
     /// a search, so it is only redone when one of them changes).
-    design: (f32, f32, f32),
+    design: (f32, f32, f32, f32),
     darkness: f32,
+    zero: f32,
 }
 
 impl Loop {
@@ -50,6 +56,7 @@ impl Loop {
         Loop {
             line: DelayLine::new(samples),
             loss: OnePole::default(),
+            palm: None,
             stiffness: [Allpass::default(); MAX_STIFFNESS_STAGES],
             stages: 0,
             gain: 0.0,
@@ -57,8 +64,9 @@ impl Loop {
             delay_target: MIN_DELAY,
             delay_step: 0.0,
             glide_left: 0,
-            design: (0.0, 0.0, 0.0),
+            design: (0.0, 0.0, 0.0, 0.0),
             darkness: 0.0,
+            zero: 0.0,
         }
     }
 
@@ -77,26 +85,43 @@ impl Loop {
         // down at their own rate, the same on every string (a low string goes round its
         // loop less often, so a fixed filter would let its highs ring far too long).
         let per_period = |decay: f32| 10.0_f32.powf(-3.0 / (decay.max(0.002) * frequency));
-        let key = (frequency, tuning.decay, tuning.high_decay);
+        let key = (frequency, tuning.decay, tuning.high_decay, tuning.corner);
         if key != self.design {
             self.design = key;
             let high = (TAU * BRILLIANCE_AT / sample_rate).min(3.0);
             let ratio = per_period(tuning.high_decay) / per_period(tuning.decay);
-            self.darkness = if high > w * 1.2 {
-                one_pole_for_ratio(w, high, ratio)
+            let corner = (TAU * tuning.corner / sample_rate).min(3.0);
+            (self.darkness, self.zero) = if high <= w * 1.2 {
+                (0.0, 0.0)
+            } else if tuning.corner > 0.0 && corner > w && corner < high {
+                // Two equal sections, each with half of the ratio (in dB).
+                shelf_for_ratio(w, high, corner, ratio.sqrt())
             } else {
-                0.0
+                (one_pole_for_ratio(w, high, ratio), 0.0)
             };
         }
         let darkness = self.darkness.clamp(0.0, 0.995);
-        self.loss.a = darkness;
-        self.gain = (per_period(tuning.decay) / one_pole_gain(darkness, w)).min(0.999_95);
+        let zero = self.zero.clamp(0.0, darkness);
+        self.loss.set(darkness, zero);
+        let (loss_gain, loss_delay) = if tuning.corner > 0.0 && darkness > 0.0 {
+            // A new second section starts where the first is, so switching adds no click.
+            let palm = self.palm.get_or_insert(self.loss);
+            palm.set(darkness, zero);
+            let (gain, delay) = (
+                shelf_gain(darkness, zero, w),
+                shelf_delay(darkness, zero, w),
+            );
+            (gain * gain, 2.0 * delay)
+        } else {
+            self.palm = None;
+            (one_pole_gain(darkness, w), one_pole_delay(darkness, w))
+        };
+        self.gain = (per_period(tuning.decay) / loss_gain).min(0.999_95);
         self.stages = tuning.stages.min(MAX_STIFFNESS_STAGES);
         for stage in &mut self.stiffness {
             stage.c = tuning.stiffness;
         }
-        let filters =
-            one_pole_delay(darkness, w) + self.stages as f32 * allpass_delay(tuning.stiffness, w);
+        let filters = loss_delay + self.stages as f32 * allpass_delay(tuning.stiffness, w);
         let target = (sample_rate / frequency - filters).clamp(MIN_DELAY, self.line.max_delay());
         self.delay_target = target;
         if glide == 0 {
@@ -110,7 +135,7 @@ impl Loop {
 
     /// Forgets the loss design, so the next update makes it again (a new model).
     pub(crate) fn redesign(&mut self) {
-        self.design = (0.0, 0.0, 0.0);
+        self.design = (0.0, 0.0, 0.0, 0.0);
     }
 
     /// One sample: what leaves the line (before this pass's losses), or `None` when a
@@ -121,7 +146,11 @@ impl Loop {
             self.glide_left = self.glide_left.saturating_sub(1);
         }
         let tap = self.line.read(self.delay);
-        let mut y = self.loss.process(tap) * self.gain;
+        let mut y = self.loss.process(tap);
+        if let Some(palm) = &mut self.palm {
+            y = palm.process(y);
+        }
+        y *= self.gain;
         for stage in self.stiffness.iter_mut().take(self.stages) {
             y = stage.process(y);
         }
@@ -142,6 +171,9 @@ impl Loop {
     pub(crate) fn clear(&mut self) {
         self.line.clear();
         self.loss.reset();
+        if let Some(palm) = &mut self.palm {
+            palm.reset();
+        }
         for stage in &mut self.stiffness {
             stage.reset();
         }

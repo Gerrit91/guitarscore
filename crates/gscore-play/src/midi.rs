@@ -16,6 +16,10 @@ use crate::tempo::PPQ;
 /// How long a borrowed channel stays reserved after its note ends, for the release that
 /// still sounds (and would follow the next note's bend): a quarter note.
 const RELEASE_TICKS: u64 = PPQ as u64;
+/// A General MIDI guitar has no palm-muted samples: a palm-muted note stands in as a
+/// softer note (this share of its velocity, percent) cut dead after an eighth note at most.
+const PALM_MUTE_PERCENT: u32 = 85;
+const PALM_MUTE_TICKS: u64 = PPQ as u64 / 2;
 
 /// What [`derive`] makes of a performance.
 pub(crate) struct Midi {
@@ -50,8 +54,8 @@ pub(crate) fn derive(performance: &Performance) -> Midi {
             sound: track.sound,
         });
     }
-    let base: Vec<Channel> = performance
-        .notes
+    let notes: Vec<PlayedNote> = performance.notes.iter().map(soundfont_note).collect();
+    let base: Vec<Channel> = notes
         .iter()
         .map(|note| {
             tracks
@@ -61,14 +65,27 @@ pub(crate) fn derive(performance: &Performance) -> Midi {
         .collect();
     let mut channels = base.clone();
     let degraded_pitch_bends =
-        assign_pitch_channels(&performance.notes, &mut channels, allocator.free_channels());
-    emit(&performance.notes, &base, &channels, &tracks, &mut events);
+        assign_pitch_channels(&notes, &mut channels, allocator.free_channels());
+    emit(&notes, &base, &channels, &tracks, &mut events);
     Midi {
         tracks,
         events,
         channels,
         degraded_pitch_bends,
     }
+}
+
+/// `note` as a SoundFont plays it: a palm mute shortened and softened (the modelled strings
+/// damp the string instead and play the performance's note as it is).
+fn soundfont_note(note: &PlayedNote) -> PlayedNote {
+    let mut note = *note;
+    if note.palm_mute && !note.dead {
+        note.velocity = crate::effects::scale(note.velocity, PALM_MUTE_PERCENT);
+        let length = note.end.saturating_sub(note.start);
+        note.end = note.start.saturating_add(length.min(PALM_MUTE_TICKS));
+        note.damped = true;
+    }
+    note
 }
 
 /// Gives every note with a pitch shape, a damped end or a fade a borrowed channel in

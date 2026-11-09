@@ -121,7 +121,7 @@ fn a_modelled_track_is_played_by_the_strings_not_the_soundfont() {
 
 #[test]
 fn notes_start_on_time_and_a_damped_note_stops() {
-    // A quarter rest, then a palm-muted quarter E2.
+    // A quarter rest, then a staccato quarter E2.
     let mut song =
         testing::song_with_notes(&[(4, &[]), (4, &[TestNote::new(6, 0)]), (2, &[])]).unwrap();
     let at = BeatPosition {
@@ -134,7 +134,7 @@ fn notes_start_on_time_and_a_damped_note_stops() {
         .set_note_effect(
             at,
             StringNumber::new(6).unwrap(),
-            NoteEffect::PalmMute(true),
+            NoteEffect::Staccato(true),
         )
         .unwrap();
     let out = play(
@@ -149,7 +149,51 @@ fn notes_start_on_time_and_a_damped_note_stops() {
     assert!(rms(seconds(&out, 0.5, 0.6)) > 1e-3, "struck on its beat");
     assert!(
         rms(seconds(&out, 1.3, 1.6)) < 1e-4,
-        "palm muted: gone soon after"
+        "staccato: gone soon after"
+    );
+}
+
+#[test]
+fn a_palm_muted_note_rings_past_an_eighth_until_the_next_note() {
+    // Two palm-muted quarters on the low E string at 120 BPM: E2, then G2.
+    let mut song = testing::song_with_notes(&[
+        (4, &[TestNote::new(6, 0)]),
+        (4, &[TestNote::new(6, 3)]),
+        (2, &[]),
+    ])
+    .unwrap();
+    for beat in 0..2 {
+        let at = BeatPosition {
+            track: TrackIndex::new(0),
+            measure: MeasureIndex::new(0),
+            voice: VoiceIndex::new(0),
+            beat: BeatIndex::new(beat),
+        };
+        let _ = song
+            .set_note_effect(
+                at,
+                StringNumber::new(6).unwrap(),
+                NoteEffect::PalmMute(true),
+            )
+            .unwrap();
+    }
+    let out = play(
+        Sequence::new(&song, None).unwrap().with_modelled_guitars(),
+        1.0,
+    );
+    let (e2, g2) = (82.41, 98.0);
+    // An eighth is a quarter of a second: the E2 still sounds after it, within 30 dB.
+    let early = power(seconds(&out, 0.05, 0.2), e2);
+    let late = power(seconds(&out, 0.3, 0.48), e2);
+    assert!(
+        late > early * 1e-3,
+        "the palm mute holds: {late:e} against {early:e}"
+    );
+    // The G2 on the same string ends it.
+    let next = seconds(&out, 0.6, 0.9);
+    assert!(
+        power(next, g2) > 100.0 * power(next, e2),
+        "only the new note sounds"
     );
 }
 
@@ -339,7 +383,7 @@ fn a_beat_excerpt_plays_with_its_tracks_tone() {
 #[test]
 fn the_reverb_bus_carries_the_tracks_send() {
     use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, ChainSpec, ReverbKnobs};
-    // A palm-muted quarter whose track sends a lot into the reverb (the mixer's knob);
+    // A staccato quarter whose track sends a lot into the reverb (the mixer's knob);
     // the strings alone are silent soon after.
     let mut song = testing::song_with_notes(&[(4, &[TestNote::new(3, 2)]), (2, &[])]).unwrap();
     let at = BeatPosition {
@@ -352,7 +396,7 @@ fn the_reverb_bus_carries_the_tracks_send() {
         .set_note_effect(
             at,
             StringNumber::new(3).unwrap(),
-            NoteEffect::PalmMute(true),
+            NoteEffect::Staccato(true),
         )
         .unwrap();
     let _ = song.set_track_reverb(TrackIndex::new(0), 120).unwrap();
@@ -394,7 +438,7 @@ fn the_reverb_bus_carries_the_tracks_send() {
 #[test]
 fn a_room_chain_rings_on_after_a_damped_note() {
     use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, ChainSpec, ImpulseResponse};
-    // A palm-muted quarter: the strings alone are silent soon after.
+    // A staccato quarter: the strings alone are silent soon after.
     let mut song = testing::song_with_notes(&[(4, &[TestNote::new(3, 2)]), (2, &[])]).unwrap();
     let at = BeatPosition {
         track: TrackIndex::new(0),
@@ -406,7 +450,7 @@ fn a_room_chain_rings_on_after_a_damped_note() {
         .set_note_effect(
             at,
             StringNumber::new(3).unwrap(),
-            NoteEffect::PalmMute(true),
+            NoteEffect::Staccato(true),
         )
         .unwrap();
     let sequence = Arc::new(Sequence::new(&song, None).unwrap().with_modelled_guitars());

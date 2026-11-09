@@ -47,6 +47,24 @@ const SECOND_HIGH_DECAY: f32 = 0.6;
 const BRIDGE_AT: f32 = 1_000.0;
 /// Quality of the low cut (Butterworth).
 const LOW_CUT_Q: f32 = 0.707;
+/// A palm-muted string's 60 dB decay time at the fundamental for a low E (82.4 Hz),
+/// seconds: lower notes ring longer, higher ones shorter (by the square root of the pitch,
+/// within [`PALM_DECAY_RANGE`]). The hand at the bridge takes the highs much sooner
+/// ([`PALM_HIGH_DECAY`] around 2 kHz), so the pitch and the low harmonics stay heard while
+/// the brightness is gone. Starting points to tune by ear.
+const PALM_DECAY: f32 = 0.9;
+const PALM_DECAY_AT: f32 = 82.4;
+const PALM_DECAY_RANGE: (f32, f32) = (0.2, 1.2);
+const PALM_HIGH_DECAY: f32 = 0.03;
+/// The palm keeps the harmonics up to about this one (its loss filter's corner), so the
+/// note's pitch and low mids stay full.
+const PALM_KEEPS: f32 = 5.0;
+/// A chug is played hard, and the hand takes energy out of the string from the start:
+/// the strike of a palm-muted note is this much stronger, so its low end is as full as an
+/// open note's.
+const PALM_STRIKE: f32 = 1.4;
+/// The decay times (fundamental, around 2 kHz) once the fretting finger lets go.
+const RELEASED: (f32, f32) = (0.3, 0.06);
 
 /// How a note is set going.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -75,7 +93,8 @@ pub struct Pluck {
     pub velocity: f32,
     /// How it is set going.
     pub attack: Attack,
-    /// Palm muted: short and dull.
+    /// Palm muted: the hand at the bridge damps the highs at once and the note sooner, but
+    /// the pick's attack, the pitch and the low end stay.
     pub palm_mute: bool,
     /// A dead note: only the strike, no pitch.
     pub dead: bool,
@@ -88,7 +107,7 @@ pub struct Pluck {
 pub enum Release {
     /// The fretting finger lets go: the string fades within a fraction of a second.
     Natural,
-    /// Stopped dead (staccato, palm mute, the end of a dead note).
+    /// Stopped dead (staccato, the end of a dead note or a scrape).
     Damped,
 }
 
@@ -98,6 +117,8 @@ enum Damping {
     Ringing,
     PalmMuted,
     Released,
+    /// Released while the palm still mutes: whichever of the two damps more.
+    PalmReleased,
     Damped,
     Dead,
 }
@@ -244,7 +265,7 @@ impl StringVoice {
         };
         let hardness = if pluck.harmonic {
             hardness * 0.3
-        } else if pluck.dead || pluck.palm_mute {
+        } else if pluck.dead {
             hardness * 0.5
         } else {
             hardness
@@ -252,6 +273,11 @@ impl StringVoice {
         // Harder strikes are brighter; a soft one rounds the edge of the pluck.
         let hardness = (hardness * (0.4 + 0.6 * velocity)).clamp(0.02, 1.0);
         let amplitude = amplitude * velocity.powf(1.3);
+        let amplitude = if pluck.palm_mute && !pluck.dead {
+            amplitude * PALM_STRIKE
+        } else {
+            amplitude
+        };
         self.excite(amplitude, hardness, PICK_CONTACT, noise);
     }
 
@@ -266,6 +292,7 @@ impl StringVoice {
     /// Ends the note.
     pub fn release(&mut self, release: Release) {
         let damping = match release {
+            Release::Natural if self.damping == Damping::PalmMuted => Damping::PalmReleased,
             Release::Natural => Damping::Released,
             Release::Damped => Damping::Damped,
         };
@@ -358,11 +385,25 @@ impl StringVoice {
     fn damping_values(&self, damping: Damping) -> (f32, f32) {
         match damping {
             Damping::Ringing => (self.model.sustain_at(self.frequency), self.model.brilliance),
-            Damping::PalmMuted => (0.18, 0.03),
-            Damping::Released => (0.3, 0.06),
+            Damping::PalmMuted => self.palm_values(),
+            Damping::Released => RELEASED,
+            Damping::PalmReleased => {
+                let (decay, high_decay) = self.palm_values();
+                (decay.min(RELEASED.0), high_decay.min(RELEASED.1))
+            }
             Damping::Damped => (0.04, 0.01),
             Damping::Dead => (0.015, 0.005),
         }
+    }
+
+    /// The palm mute's decay times at the current pitch (never longer than the string rings
+    /// open).
+    fn palm_values(&self) -> (f32, f32) {
+        let (low, high) = PALM_DECAY_RANGE;
+        let decay = (PALM_DECAY * (PALM_DECAY_AT / self.frequency.max(8.0)).sqrt())
+            .clamp(low, high)
+            .min(self.model.sustain_at(self.frequency));
+        (decay, PALM_HIGH_DECAY.min(self.model.brilliance))
     }
 
     /// Sets how the string is damped, at once or settling over a few milliseconds.
@@ -414,6 +455,11 @@ impl StringVoice {
             high_decay: self.high_decay,
             stiffness: self.model.stiffness,
             stages: self.model.stiffness_stages,
+            corner: if matches!(self.damping, Damping::PalmMuted | Damping::PalmReleased) {
+                frequency * PALM_KEEPS
+            } else {
+                0.0
+            },
         };
         // The second vibration: a little detuned (half each way would move the heard
         // pitch; the first stays exact), and it gives its energy to the bridge sooner.

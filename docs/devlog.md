@@ -4372,6 +4372,26 @@ needed for a much larger font); owner listening check.
 - Mixer, drum-part, track-stomp, bus-stomp and bus-window snapshots were regenerated and
   checked.
 
+## 2026-11-09 — Palm mutes: longer, beefier, more of the note (M22 rest, 2.1)
 
-
-
+- **The performance keeps a palm mute's written length and velocity** and no longer stops
+  it dead (`shape_note`). The SoundFont path, which has no palm-muted samples, does what it
+  did: `midi::derive` plays a palm mute as an eighth at most, at 85 %, cut at its end. The
+  MIDI goldens did not change.
+- **The string** damps a palm-muted note with a shelving loss filter (pole plus zero, flat
+  below its corner at the fifth harmonic), run twice in the loop: the highs above a few kHz
+  go within tens of milliseconds while the fundamental rings 0.9 s (60 dB) on a low E,
+  shorter up the neck. The old one-pole could not reach that ratio and clamped the loop
+  gain: the fundamental died in about 0.3 s and the pitch went
+  as much as 10 cents flat (the second, detuned vibration took over). Now within 1.3
+  cents. Open strings compute exactly as before.
+- The palm-muted strike keeps the pick's hardness and is 1.4 times stronger, so the
+  fundamental starts about as loud as an open note's. A note's end while palm muted damps
+  with the stronger of the palm and the finger's release.
+- Tests: against the same note open on electric, steel and bass (fundamental within 6 dB,
+  attack kept, still sounding well past an eighth, highs 20 dB down or more, within 2 cents,
+  low strings ringing longer); a new note on the string ends a palm-muted one (string and
+  engine from a score); the shelf design. Engine tests that used a palm mute only as a short
+  damped note now use staccato.
+- Open: the owner's listening check of the reference passages' chugs and power-chord riff,
+  clean and through the Lead amp with Tight; a palm-mute amount knob if wanted.

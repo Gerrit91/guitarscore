@@ -59,7 +59,7 @@ The score already has every technique; the model plays each one by changing para
 |---|---|
 | Bend, slide, vibrato, whammy | change the delay length while the note sounds |
 | Hammer-on, pull-off, tapping | change the length without a new pluck (keeps the energy) |
-| Palm mute | strong loss filter, short decay |
+| Palm mute | a shelving loss filter: the highs go at once, the pitch and low harmonics ring on |
 | Dead note | very strong damping plus a noise burst |
 | Natural, artificial harmonic | damp at the node (12th fret: middle of the line) |
 | Let ring vs. staccato | damp or not when the next note starts on that string |
@@ -136,12 +136,27 @@ described in the literature below:
   with a light finger tap; on a silent string it is a soft pluck.
 - **Damping** moves two 60 dB decay times, the fundamental's and the harmonics' at
   2 kHz (settling in 4 ms): ringing (the model's sustain, falling with pitch, and its
-  brilliance), palm muted 0.18/0.03 s, released 0.3/0.06 s, damped 0.04/0.01 s, dead
+  brilliance), palm muted (below), released 0.3/0.06 s, damped 0.04/0.01 s, dead
   0.015/0.005 s. The loss filter is designed from both (a bisection, redone only when
   they or the pitch change), so the highs fade at the same rate on every string. Before
   (first version) a fixed filter let a low string's highs ring about four times longer
   than a high string's: the owner heard the low notes as "a synthesizer with slight
   distortion" (2026-11-06).
+- **Palm mute** (2026-11-09, after the owner found it thin and only percussive): the
+  fundamental's decay is 0.9 s for a low E, falling with the square root of the pitch
+  (0.2 to 1.2 s, never longer than the open string), the highs' 0.03 s. A one-pole
+  lowpass cannot do that ratio over so few octaves without killing the fundamental too
+  (its loop gain would need to exceed 1), so a palm-muted loop runs a shelf instead:
+  pole and zero, flat up to its corner at the fifth harmonic, twice in series (the
+  second section exists only while the palm mutes; with no zero the filter is exactly
+  the old lowpass, so open strings are unchanged). The strike keeps the pick's full
+  hardness and is 1.4 times stronger (a chug is played hard and the hand drains the
+  string from the start), so the fundamental starts about as loud as an open note's. The
+  note keeps its written length; at its end the finger's release and the palm together
+  damp it (whichever is stronger), and the next note on the string takes over as usual.
+  Only the SoundFont path (`gscore-play` `midi`, no palm-muted samples) still plays it
+  as an eighth at most, 85 % velocity, stopped dead. The figures are starting points for
+  the owner's ear; a palm-mute amount (light to heavy) is the owner's call.
 - **The strike** blends a sharp pulse (bright) with the string's triangular shape
   (round) by the model's softness, rounded above 400 Hz to 12 kHz by hardness and
   velocity. A resonant lowpass on each string's output stands in for the pickup or body
