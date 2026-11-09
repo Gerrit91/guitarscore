@@ -257,6 +257,11 @@ impl GuitarScoreApp {
     /// edited in the Sound chain window, or the preset's tone it was playing. An edit with
     /// undo, so the change marks the song modified and is replayed after a crash.
     pub(super) fn set_track_tone(&mut self, track: usize, tone: Tone) {
+        self.set_track_tone_merged(track, tone, true);
+    }
+
+    /// [`Self::set_track_tone`]; `merge` continues the previous undo step (one knob drag).
+    fn set_track_tone_merged(&mut self, track: usize, tone: Tone, merge: bool) {
         let Some(player) = self.track_player(track) else {
             return;
         };
@@ -268,8 +273,71 @@ impl GuitarScoreApp {
         // change other songs without an undo step of its own. Saving already resolved a
         // preset tone into each track; this makes that explicit and undoable at once.
         sound.tone = Some(crate::settings::PresetTone::of(player.program, &tone));
-        // One knob drag is one undo step.
-        self.set_track_sound(track, sound, true);
+        self.set_track_sound(track, sound, merge);
+    }
+
+    /// Puts `block` into the first empty place of `track`'s chain: a block dropped on the
+    /// track's mixer strip or copied onto its board. Hears it at once, undoable, and opens
+    /// that chain window so the block is seen.
+    pub(super) fn paste_block_into_track(
+        &mut self,
+        track: usize,
+        block: crate::chain_settings::BlockSetting,
+    ) {
+        let Some(player) = self.track_player(track) else {
+            return;
+        };
+        if player.drums {
+            self.notice = Some(
+                "A drum kit's own chain is its parts: drop the block on a part's strip (Kick, \
+                 Snare, …) or open its sound chain and choose a part."
+                    .to_owned(),
+            );
+            return;
+        }
+        let kind = match player.engine {
+            TrackEngine::Modelled(kind) => kind,
+            TrackEngine::SoundFont | TrackEngine::MidiOut => {
+                player.preset_kind.unwrap_or(StringKind::Steel)
+            }
+        };
+        let mut tone = self.track_tone(track, kind);
+        if let Some(place) = super::sound_chain::first_empty(&tone.chain) {
+            if let Some(slot) = tone.chain.blocks.get_mut(place) {
+                *slot = block;
+            }
+            self.set_track_tone_merged(track, tone, false);
+            self.open_sound_chain(track);
+        } else {
+            self.notice = Some(format!(
+                "{}'s chain has no empty place: open it and paste the block into a place.",
+                self.track_name(track)
+            ));
+        }
+    }
+
+    /// [`Self::paste_block_into_track`] for a drum part's chain (also what a drop on the
+    /// part's strip or its button does).
+    pub(super) fn paste_block_into_part(
+        &mut self,
+        track: usize,
+        part: DrumPart,
+        block: crate::chain_settings::BlockSetting,
+    ) {
+        let mut own = self.track_drum_part(track, part);
+        if let Some(place) = super::sound_chain::first_empty(&own.chain) {
+            if let Some(slot) = own.chain.blocks.get_mut(place) {
+                *slot = block;
+            }
+            self.set_track_drum_part(track, part, Some(own), false);
+            self.open_sound_chain_part(track, part);
+        } else {
+            self.notice = Some(format!(
+                "The {}'s chain has no empty place: open it and paste the block into a \
+                 place.",
+                part.label()
+            ));
+        }
     }
 
     /// Forgets the tone of `track`: the one that came with the song and the preset's own,

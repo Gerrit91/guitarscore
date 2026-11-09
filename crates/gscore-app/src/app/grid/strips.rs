@@ -12,6 +12,7 @@ use crate::settings::{ChorusBus, CompressorBus, ReverbBus};
 use super::mixer::{self, FLOOR_DB, TRACK_UNITY, db_value, volume_from_db};
 use super::rows::TrackRow;
 use super::{GridAction, GridView, ROW_HEIGHT};
+use crate::app::sound_chain::DraggedBlock;
 use crate::app::{icons, instrument, style};
 
 /// One strip's width (four knobs across the top: pan, reverb, chorus, comp).
@@ -177,6 +178,14 @@ fn track_strip(
             measure: view.cursor_measure,
         });
     }
+    // A block dragged from a chain board onto this strip goes into the track's chain.
+    if let Some(drag) = response.dnd_release_payload::<DraggedBlock>() {
+        actions.push(GridAction::PasteBlock {
+            track: index,
+            part: None,
+            block: drag.block.clone(),
+        });
+    }
     let visuals = ui.visuals().clone();
     if index % 2 == 1 {
         ui.painter().rect_filled(rect, 0.0, visuals.faint_bg_color);
@@ -184,6 +193,14 @@ fn track_strip(
     if index == view.shown_track {
         ui.painter()
             .rect_filled(rect, 3.0, visuals.selection.bg_fill.gamma_multiply(0.18));
+    }
+    if response.dnd_hover_payload::<DraggedBlock>().is_some() {
+        ui.painter().rect_stroke(
+            rect,
+            3.0,
+            Stroke::new(2.0, visuals.selection.stroke.color),
+            egui::StrokeKind::Inside,
+        );
     }
     ui.painter().line_segment(
         [rect.right_top(), rect.right_bottom()],
@@ -441,20 +458,8 @@ fn bus_strip(
         Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
     );
     let inner = rect.shrink2(vec2(8.0, 6.0));
-    let (top, fader_area, bottom) = layout(inner);
+    let (_, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
-    // Where a track has its pan and sends: the stomp box into the bus's own window, which
-    // chooses what it runs and holds its knobs. Every strip opens its chain the same way.
-    let button = Rect::from_center_size(pos2(top.center().x, top.top() + 15.0), vec2(26.0, 22.0));
-    if stomp_button(
-        &mut strip,
-        button,
-        id,
-        &format!("Sound chain for the {} bus", name.to_lowercase()),
-        edit_tip,
-    ) {
-        changes.push(BusChange::Edit);
-    }
     fader(
         &mut strip,
         fader_area,
@@ -510,8 +515,22 @@ fn bus_strip(
         Symbol::Waveform,
         visuals.selection.bg_fill,
         !muted,
-        0.0,
+        16.0,
     );
+    // The way into the bus's own window, on the name's row like every other strip's.
+    let stomp = Rect::from_min_size(
+        pos2(bottom.right() - 14.0, bottom.top() + 41.0),
+        vec2(14.0, 14.0),
+    );
+    if stomp_button(
+        &mut strip,
+        stomp,
+        id,
+        &format!("Sound chain for the {} bus", name.to_lowercase()),
+        edit_tip,
+    ) {
+        changes.push(BusChange::Edit);
+    }
 }
 
 /// The reverb bus: the tracks send their mixer reverb amount into it, and its level (and
@@ -665,6 +684,16 @@ impl PartRow {
     }
 }
 
+/// A light wash of `color` for the strips of a drum kit's parts: its color raised toward
+/// white, laid over the dark mixer at a low opacity, so the parts read as one group.
+fn part_wash(color: Color32) -> Color32 {
+    let lift = |channel: u8| -> u8 {
+        let channel = u16::from(channel);
+        u8::try_from((channel * 7 + 255 * 3) / 10).unwrap_or(255)
+    };
+    Color32::from_rgba_unmultiplied(lift(color.r()), lift(color.g()), lift(color.b()), 72)
+}
+
 /// A drum part's strip: its meter, fader, mute, solo and the way into its sound chain.
 #[allow(clippy::too_many_arguments)]
 fn part_strip(
@@ -678,10 +707,31 @@ fn part_strip(
     actions: &mut Vec<GridAction>,
 ) {
     let id = part_id(track, part.part);
-    let (rect, _) = ui.allocate_exact_size(vec2(PART_STRIP_WIDTH, height), Sense::hover());
+    let (rect, response) = ui.allocate_exact_size(vec2(PART_STRIP_WIDTH, height), Sense::hover());
+    // A block dragged from a chain board onto this part's strip goes into its chain.
+    if let Some(drag) = response.dnd_release_payload::<DraggedBlock>() {
+        actions.push(GridAction::PasteBlock {
+            track,
+            part: Some(part.part),
+            block: drag.block.clone(),
+        });
+    }
     let visuals = ui.visuals().clone();
     ui.painter()
         .rect_filled(rect, 0.0, visuals.faint_bg_color.gamma_multiply(0.7));
+    // The kit's parts share a light wash of the drum track's color, so they read as one
+    // group beside its strip.
+    let (red, green, blue) = row.color.parts();
+    ui.painter()
+        .rect_filled(rect, 0.0, part_wash(Color32::from_rgb(red, green, blue)));
+    if response.dnd_hover_payload::<DraggedBlock>().is_some() {
+        ui.painter().rect_stroke(
+            rect,
+            3.0,
+            Stroke::new(2.0, visuals.selection.stroke.color),
+            egui::StrokeKind::Inside,
+        );
+    }
     ui.painter().line_segment(
         [rect.left_top(), rect.left_bottom()],
         Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),

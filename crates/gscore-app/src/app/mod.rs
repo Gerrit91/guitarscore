@@ -146,6 +146,9 @@ pub struct GuitarScoreApp {
     tuner: Option<tuner::TunerState>,
     /// The Sound chain window, while it is open.
     sound_chain: Option<sound_chain::SoundChainWindow>,
+    /// A block or chain copied in a chain board, for pasting into a track, a drum part or
+    /// the master (kept while the app runs).
+    sound_clipboard: Option<sound_chain::SoundClip>,
     /// The reverb bus's window, while it is open.
     reverb_bus_window: Option<reverb_bus_window::ReverbBusWindow>,
     /// The mixer's compressor bus window, while it is open.
@@ -295,6 +298,7 @@ impl GuitarScoreApp {
             about: None,
             tuner: None,
             sound_chain: None,
+            sound_clipboard: None,
             reverb_bus_window: None,
             compressor_bus_window: None,
             chorus_bus_window: None,

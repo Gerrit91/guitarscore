@@ -80,6 +80,10 @@ struct Actions {
     /// string and its name, since names are unique within a kind only).
     save_preset: Option<String>,
     delete_preset: Option<(String, String)>,
+    /// A block or chain copied from a board, for the app's clipboard.
+    copy: Option<SoundClip>,
+    /// A block dropped on a drum part's button (or the kit's), before that part's chain.
+    pasted_part: Option<(Option<DrumPart>, BlockSetting)>,
 }
 
 /// A tone chosen in the list: the whole sound it carries.
@@ -488,6 +492,37 @@ fn preset_row(
     }
 }
 
+/// What a Copy in a chain's menu put on the app's clipboard: one block or the whole chain.
+#[derive(Debug, Clone)]
+pub(super) enum SoundClip {
+    Block(BlockSetting),
+    Chain(Box<ChainSetting>),
+}
+
+/// A block being dragged on a chain board. Its block travels with it, so it can be dropped
+/// on another board (the master's, another track's strip) as a copy.
+#[derive(Debug, Clone)]
+pub(super) struct DraggedBlock {
+    /// Which board the drag started on (a track/part number, or the master's). A drop on
+    /// the same board moves the block; another board gets a copy.
+    pub(super) origin: usize,
+    /// The place it came from (0 to 4).
+    pub(super) place: usize,
+    /// The block itself.
+    pub(super) block: BlockSetting,
+}
+
+/// The origin of the master chain's board (no track can have this number).
+pub(super) const MASTER_BOARD: usize = usize::MAX;
+
+/// The origin number of a track's or drum part's board (they never collide with
+/// [`MASTER_BOARD`]).
+pub(super) fn board_origin(track: usize, part: Option<DrumPart>) -> usize {
+    track
+        .saturating_mul(8)
+        .saturating_add(part.map_or(7, DrumPart::index))
+}
+
 /// What the board asked for.
 #[derive(Default)]
 pub(super) struct BoardActions {
@@ -499,8 +534,24 @@ pub(super) struct BoardActions {
     pub(super) remove: Option<usize>,
     /// The mute under a place was clicked: its bypass flips.
     pub(super) bypass: Option<usize>,
-    /// A block was dropped on another place: (from, to), both places (0 to 4).
+    /// A block was dropped on another place of this board: (from, to), both places.
     pub(super) moved: Option<(usize, usize)>,
+    /// A block or chain to put on the clipboard.
+    pub(super) copy: Option<SoundClip>,
+    /// The clipboard's block goes into this place.
+    pub(super) paste_block: Option<usize>,
+    /// The clipboard's chain replaces this whole board.
+    pub(super) paste_chain: bool,
+    /// A block dragged here from another board: the place and the block.
+    pub(super) dropped: Option<(usize, BlockSetting)>,
+}
+
+/// The first empty place of `chain`, if there is one.
+pub(super) fn first_empty(chain: &ChainSetting) -> Option<usize> {
+    chain
+        .blocks
+        .iter()
+        .position(|block| block.choice == BlockChoice::Empty)
 }
 
 /// Moves the block at place `from` to place `to`, the places in between sliding one place
@@ -538,26 +589,32 @@ fn parts_row(
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new("Part").color(style::tokens(ui).text_weak));
         let kit = part.is_none();
-        if ui
+        let kit_button = ui
             .add(egui::Button::selectable(kit, "Kit"))
-            .on_hover_text("The drum bus: the whole kit's chain, after the parts")
-            .clicked()
-            && !kit
-        {
+            .on_hover_text("The drum bus: the whole kit's chain, after the parts");
+        if let Some(drag) = kit_button.dnd_release_payload::<DraggedBlock>() {
+            *part = None;
+            *selected = 1;
+            actions.pasted_part = Some((None, drag.block.clone()));
+        }
+        if kit_button.clicked() && !kit {
             *part = None;
             *selected = 1;
         }
         for candidate in DrumPart::ALL {
             let chosen = *part == Some(candidate);
-            if ui
+            let button = ui
                 .add(egui::Button::selectable(chosen, candidate.label()))
                 .on_hover_text(format!(
                     "The {}'s own chain, before the kit's: EQ, a compressor, maybe a room",
                     candidate.label()
-                ))
-                .clicked()
-                && !chosen
-            {
+                ));
+            if let Some(drag) = button.dnd_release_payload::<DraggedBlock>() {
+                *part = Some(candidate);
+                *selected = 1;
+                actions.pasted_part = Some((Some(candidate), drag.block.clone()));
+            }
+            if button.clicked() && !chosen {
                 *part = Some(candidate);
                 *selected = 1;
             }
@@ -693,6 +750,8 @@ pub(super) fn board(
     source: (&str, &str),
     chain: &ChainSetting,
     selected: usize,
+    origin: usize,
+    clipboard: Option<&SoundClip>,
 ) -> BoardActions {
     let tokens = style::tokens(ui);
     let (area, _) = ui.allocate_exact_size(vec2(WIDTH, BOARD_HEIGHT), Sense::hover());
@@ -715,8 +774,8 @@ pub(super) fn board(
         }
     }
     let mut actions = BoardActions::default();
-    // The box being dragged (0 the strings, 1 to 5 a place), while one is.
-    let dragging = egui::DragAndDrop::payload::<usize>(ui.ctx()).map(|index| *index);
+    // The block being dragged, while one is.
+    let dragging = egui::DragAndDrop::payload::<DraggedBlock>(ui.ctx());
     for index in 0..count {
         let rect = rect_of(index);
         let block = index
@@ -744,8 +803,16 @@ pub(super) fn board(
             });
         if draggable {
             // What is held while the block is dragged; the place it is let go on takes it.
-            response.dnd_set_drag_payload(index);
-            let held = dragging == Some(index);
+            if let (Some(place), Some(block)) = (index.checked_sub(1), block) {
+                response.dnd_set_drag_payload(DraggedBlock {
+                    origin,
+                    place,
+                    block: block.clone(),
+                });
+            }
+            let held = dragging.as_ref().is_some_and(|drag| {
+                drag.origin == origin && index.checked_sub(1) == Some(drag.place)
+            });
             response = response.on_hover_cursor(if held {
                 egui::CursorIcon::Grabbing
             } else {
@@ -764,18 +831,26 @@ pub(super) fn board(
         // is over it, and the drop moves the block here.
         let mut landing = false;
         if index > 0 {
-            if let Some(from) = response.dnd_hover_payload::<usize>() {
-                landing = *from != index;
+            if let Some(drag) = response.dnd_hover_payload::<DraggedBlock>() {
+                landing = drag.origin != origin || index.checked_sub(1) != Some(drag.place);
             }
-            if let Some(from) = response.dnd_release_payload::<usize>() {
-                actions.moved = Some((from.saturating_sub(1), index.saturating_sub(1)));
+            if let Some(drag) = response.dnd_release_payload::<DraggedBlock>() {
+                let place = index.saturating_sub(1);
+                if drag.origin == origin {
+                    actions.moved = Some((drag.place, place));
+                } else {
+                    actions.dropped = Some((place, drag.block.clone()));
+                }
             }
         }
         let fill = if index == 0 {
             tokens.control_active
         } else if empty {
             tokens.panel
-        } else if dragging == Some(index) {
+        } else if dragging
+            .as_ref()
+            .is_some_and(|drag| drag.origin == origin && index.checked_sub(1) == Some(drag.place))
+        {
             // The block itself is on the mouse: its place waits, empty-looking, for a drop.
             tokens.panel
         } else if response.hovered() {
@@ -809,9 +884,39 @@ pub(super) fn board(
                 // An empty place offers the effects in a menu at the box; the window below
                 // keeps showing what it showed.
                 egui::Popup::menu(&response).show(|ui| {
+                    if let Some(SoundClip::Block(_)) = clipboard
+                        && ui
+                            .button("Paste block")
+                            .on_hover_text("Put the copied block in this place")
+                            .clicked()
+                    {
+                        actions.paste_block = Some(place);
+                        ui.close();
+                    }
                     for (choice, label, tip) in block_choices() {
                         if ui.button(label).on_hover_text(tip).clicked() {
                             actions.fill = Some((place, choice));
+                            ui.close();
+                        }
+                    }
+                    if ui
+                        .button("Copy chain")
+                        .on_hover_text(
+                            "Keep every block of this chain to paste into another track or part",
+                        )
+                        .clicked()
+                    {
+                        actions.copy = Some(SoundClip::Chain(Box::new(chain.clone())));
+                        ui.close();
+                    }
+                    if let Some(SoundClip::Chain(_)) = clipboard {
+                        ui.separator();
+                        if ui
+                            .button("Paste chain")
+                            .on_hover_text("Replace every place of this chain with the copied one")
+                            .clicked()
+                        {
+                            actions.paste_chain = true;
                             ui.close();
                         }
                     }
@@ -844,6 +949,46 @@ pub(super) fn board(
                         actions.remove = Some(place);
                         ui.close();
                     }
+                    ui.separator();
+                    if let Some(block) = block
+                        && ui
+                            .button("Copy block")
+                            .on_hover_text(
+                                "Keep this block to paste into another place, track or part",
+                            )
+                            .clicked()
+                    {
+                        actions.copy = Some(SoundClip::Block(block.clone()));
+                        ui.close();
+                    }
+                    if ui
+                        .button("Copy chain")
+                        .on_hover_text(
+                            "Keep every block of this chain to paste into another track or part",
+                        )
+                        .clicked()
+                    {
+                        actions.copy = Some(SoundClip::Chain(Box::new(chain.clone())));
+                        ui.close();
+                    }
+                    if let Some(SoundClip::Block(_)) = clipboard
+                        && ui
+                            .button("Paste block")
+                            .on_hover_text("Replace this place with the copied block")
+                            .clicked()
+                    {
+                        actions.paste_block = Some(place);
+                        ui.close();
+                    }
+                    if let Some(SoundClip::Chain(_)) = clipboard
+                        && ui
+                            .button("Paste chain")
+                            .on_hover_text("Replace every place of this chain with the copied one")
+                            .clicked()
+                    {
+                        actions.paste_chain = true;
+                        ui.close();
+                    }
                 });
             }
             // Under a block, its mute: the block passes the sound unchanged while it is on.
@@ -869,22 +1014,21 @@ pub(super) fn board(
             }
         }
     }
-    // The block being dragged, at the mouse, above the window.
-    if let Some(index) = dragging
-        && let Some(block) = index
-            .checked_sub(1)
-            .and_then(|place| chain.blocks.get(place))
+    // The block being dragged, at the mouse, above the window (drawn by the board it came
+    // from, once, so two open boards do not paint it twice).
+    if let Some(drag) = &dragging
+        && drag.origin == origin
         && let Some(pointer) = ui.ctx().pointer_interact_pos()
     {
         let layer = egui::LayerId::new(egui::Order::Tooltip, ui.scope_id().with("chain_drag"));
         let painter = ui.ctx().layer_painter(layer);
-        let (title, detail) = box_text(block);
+        let (title, detail) = box_text(&drag.block);
         paint_box(
             &painter,
             Rect::from_center_size(pointer, BOX),
             &BoxFace {
                 empty: false,
-                bypassed: block.bypass,
+                bypassed: drag.block.bypass,
                 title: &title,
                 detail: &detail,
             },
@@ -1180,7 +1324,12 @@ impl GuitarScoreApp {
     /// Opens the Sound chain window for `track`.
     pub(super) fn open_sound_chain(&mut self, track: usize) {
         match &mut self.sound_chain {
-            Some(window) => window.track = track,
+            Some(window) => {
+                if window.track != track {
+                    window.part = None;
+                }
+                window.track = track;
+            }
             None => {
                 self.sound_chain = Some(SoundChainWindow {
                     track,
@@ -1313,6 +1462,7 @@ impl GuitarScoreApp {
                     .collect()
             })
             .unwrap_or_default();
+        let clipboard = self.sound_clipboard.clone();
         egui::Window::new(&title)
             .title_bar(false)
             .collapsible(false)
@@ -1403,6 +1553,8 @@ impl GuitarScoreApp {
                             (source.0.as_str(), source.1.as_str()),
                             &chain,
                             window.selected,
+                            board_origin(window.track, window.part),
+                            clipboard.as_ref(),
                         );
                         if let Some(index) = board.select {
                             window.selected = index;
@@ -1410,6 +1562,32 @@ impl GuitarScoreApp {
                             if index == 0 && window.part.is_some() {
                                 window.part = None;
                             }
+                        }
+                        if let Some(clip) = board.copy {
+                            actions.copy = Some(clip);
+                        }
+                        if let Some(place) = board.paste_block
+                            && let Some(SoundClip::Block(block)) = &clipboard
+                        {
+                            let mut changed = chain.clone();
+                            if let Some(slot) = changed.blocks.get_mut(place) {
+                                *slot = block.clone();
+                            }
+                            actions.chain = Some(changed);
+                            window.selected = place.saturating_add(1);
+                        }
+                        if board.paste_chain
+                            && let Some(SoundClip::Chain(copied)) = &clipboard
+                        {
+                            actions.chain = Some(copied.as_ref().clone());
+                        }
+                        if let Some((place, block)) = board.dropped {
+                            let mut changed = chain.clone();
+                            if let Some(slot) = changed.blocks.get_mut(place) {
+                                *slot = block.clone();
+                            }
+                            actions.chain = Some(changed);
+                            window.selected = place.saturating_add(1);
                         }
                         if let Some(place) = board.remove {
                             let mut changed = chain.clone();
@@ -1515,6 +1693,17 @@ impl GuitarScoreApp {
         // A tone belongs to the track's preset (its General MIDI program): every track with
         // that preset, in every song, plays it. Built-in forgets it.
         let track = window.track;
+        if let Some(clip) = actions.copy.take() {
+            self.sound_clipboard = Some(clip);
+        }
+        // A block dropped on a part's (or the kit's) button: into that board's first free
+        // place, heard at once and undoable.
+        if let Some((part, block)) = actions.pasted_part.take() {
+            match part {
+                Some(part) => self.paste_block_into_part(track, part, block),
+                None => self.paste_block_into_track(track, block),
+            }
+        }
         // A drum part's chain and level belong to the song's copy of the track; Built-in
         // forgets the song's own and follows the kit again.
         if let Some(part) = window.part {

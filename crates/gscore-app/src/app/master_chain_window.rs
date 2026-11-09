@@ -6,7 +6,7 @@
 use egui::{Margin, Pos2, RichText, vec2};
 
 use super::GuitarScoreApp;
-use super::sound_chain::{board, editor, move_block};
+use super::sound_chain::{MASTER_BOARD, SoundClip, board, editor, move_block};
 use super::style;
 use crate::chain_settings::BlockSetting;
 
@@ -61,6 +61,8 @@ impl GuitarScoreApp {
         let mut changed = false;
         let mut load = None;
         let mut close = false;
+        let clipboard = self.sound_clipboard.clone();
+        let mut copied: Option<SoundClip> = None;
         egui::Window::new(title)
             .title_bar(false)
             .collapsible(false)
@@ -90,9 +92,35 @@ impl GuitarScoreApp {
                             ("Master", "After the tracks and buses"),
                             &chain,
                             window.selected,
+                            MASTER_BOARD,
+                            clipboard.as_ref(),
                         );
                         if let Some(index) = shown.select {
                             window.selected = index;
+                        }
+                        if let Some(clip) = shown.copy {
+                            copied = Some(clip);
+                        }
+                        if let Some(place) = shown.paste_block
+                            && let Some(SoundClip::Block(block)) = &clipboard
+                            && let Some(slot) = chain.blocks.get_mut(place)
+                        {
+                            *slot = block.clone();
+                            changed = true;
+                            window.selected = place.saturating_add(1);
+                        }
+                        if shown.paste_chain
+                            && let Some(SoundClip::Chain(copied_chain)) = &clipboard
+                        {
+                            chain = copied_chain.as_ref().clone();
+                            changed = true;
+                        }
+                        if let Some((place, block)) = shown.dropped
+                            && let Some(slot) = chain.blocks.get_mut(place)
+                        {
+                            *slot = block;
+                            changed = true;
+                            window.selected = place.saturating_add(1);
                         }
                         if let Some(place) = shown.remove
                             && let Some(slot) = chain.blocks.get_mut(place)
@@ -169,6 +197,9 @@ impl GuitarScoreApp {
                         });
                     });
             });
+        if let Some(clip) = copied {
+            self.sound_clipboard = Some(clip);
+        }
         if changed {
             self.set_song_master_chain(chain);
         }

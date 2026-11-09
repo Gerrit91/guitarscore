@@ -4339,4 +4339,39 @@ needed for a much larger font); owner listening check.
 - A preset's local tone (`preset_tones`) remains a machine setting with no undo; the editor
   no longer writes it, `cargo xtask tones import` still can.
 
+## 2026-11-08 — Copy/paste and drag for chain blocks and chains
+
+- **Right-click a block** in the Sound chain or the master chain: Copy block, Copy chain,
+  Paste block (replace that place), Paste chain (replace the whole board). An empty place's
+  menu offers Paste block and Paste chain too, plus Copy chain. The clipboard lives in the
+  app for the session, so it travels between tracks, drum parts and the master; it is not a
+  settings file entry.
+- **Drag a block** still moves it on its own board. The payload now carries the block and
+  says which board it came from, so dropping it on another board copies it (the master
+  chain's board, the only other board that can be open beside the Sound chain), dropping it
+  on a drum part's button copies it into that part, and dropping it on a track's or a part's
+  mixer strip copies it into the first empty place and opens that chain so the block is
+  seen. A full chain says so in the status bar; a drum track's own strip points to its parts
+  instead of silently losing the block.
+- Pasting a chain replaces every place and the chain's output level. Pastes and drops go
+  through `SetTrackSound`/`SetSongSound` and are undoable song edits.
+- Tests: a block copied from a track pastes into another track, then its chain pastes into a
+  drum part (undone); a block dragged from a track board onto another track's mixer strip
+  (undone); a Kick block dragged onto the Snare part button (undone). Existing board drag
+  tests still pass with the typed payload.
+
+## 2026-11-09 — Mixer: part strips tinted, bus stomp boxes by the names
+
+- **A drum kit's part strips** now carry a light wash of the drum track's color (the track
+  color lifted toward white at a low opacity), so the parts read as one group beside the
+  strip they belong to. The wash sits over the previous faint strip background and keeps
+  the meters, faders and white labels readable.
+- **The reverb, chorus and compressor bus strips** open their window from the stomp-box icon
+  on the name row, exactly where a track's and the master's icons sit; their top row is
+  free. The bus names reserve room for the icon, as the tracks' do.
+- Mixer, drum-part, track-stomp, bus-stomp and bus-window snapshots were regenerated and
+  checked.
+
+
+
 

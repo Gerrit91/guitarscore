@@ -507,6 +507,259 @@ fn a_chain_change_is_an_undo_step_and_marks_the_song_modified() {
 }
 
 #[test]
+fn a_block_and_a_chain_are_copied_between_tracks_and_a_drum_part() {
+    use gscore_app::chain_settings::{BlockChoice, ChainSetting};
+    use gscore_play::StringKind;
+
+    let mut harness = app_with("basic/multi_staff.gp");
+    // Track 0: an EQ in its first empty place, with a lifted bell so the copy is visible.
+    open_sound_chain(&mut harness);
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.run();
+    harness.get_by_label("EQ").click();
+    harness.run();
+    harness.get_by_label("2 Gain value").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("2 Gain value").type_text("7.0");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    context_click(&mut harness, &format!("Block {first}: EQ"));
+    harness.get_by_label("Copy block").click();
+    harness.run();
+
+    // Another track pastes the block into its first empty place.
+    harness.state_mut().set_shown_track(2);
+    harness.run();
+    open_sound_chain(&mut harness);
+    let second = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {second}: +")).click();
+    harness.run();
+    harness.get_by_label("Paste block").click();
+    harness.run();
+    let pasted = harness
+        .state()
+        .playback()
+        .tone(2, 30, StringKind::Electric)
+        .chain
+        .blocks
+        .get(second.saturating_sub(1))
+        .cloned()
+        .expect("the pasted place");
+    assert_eq!(pasted.choice, BlockChoice::Eq);
+    assert!((pasted.eq_band_gain[1] - 7.0).abs() < 1e-6);
+    assert!(
+        harness.state().document().unwrap().is_dirty(),
+        "pasting a block marks the song modified"
+    );
+
+    // Copy the whole chain of this track, and paste it into a drum part.
+    context_click(&mut harness, &format!("Block {second}: EQ"));
+    harness.get_by_label("Copy chain").click();
+    harness.run();
+    let copied_chain: ChainSetting = harness
+        .state()
+        .playback()
+        .tone(2, 30, StringKind::Electric)
+        .chain;
+    harness.state_mut().set_shown_track(5);
+    harness.run();
+    open_sound_chain(&mut harness);
+    harness.get_by_label("Kick").click();
+    harness.run();
+    let kick_first = empty_block_index(&harness);
+    harness
+        .get_by_label(&format!("Block {kick_first}: +"))
+        .click();
+    harness.run();
+    harness.get_by_label("Paste chain").click();
+    harness.run();
+    let kick = drum_part_chain(&harness, "kick").expect("the Kick's chain");
+    assert_eq!(kick, copied_chain, "the whole chain came over");
+
+    // Undo takes the part's chain back to empty.
+    harness
+        .state_mut()
+        .document_mut()
+        .unwrap()
+        .editor_mut()
+        .undo()
+        .expect("undo");
+    harness.run();
+    assert!(drum_part_chain(&harness, "kick").is_none_or(|chain| {
+        chain
+            .blocks
+            .iter()
+            .all(|block| block.choice == BlockChoice::Empty)
+    }));
+}
+
+/// Right-clicks the node with `label`, opening its context menu.
+fn context_click(harness: &mut Harness<'static, GuitarScoreApp>, label: &str) {
+    let rect = harness.get_by_label(label).rect();
+    harness.hover_at(rect.center());
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos: rect.center(),
+            button: egui::PointerButton::Secondary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+    }
+    harness.run();
+}
+
+/// A drum part's own chain in the drum track's sound payload (the sixth track of
+/// `multi_staff.gp`).
+fn drum_part_chain(
+    harness: &Harness<'static, GuitarScoreApp>,
+    id: &str,
+) -> Option<gscore_app::chain_settings::ChainSetting> {
+    let document = harness.state().document()?;
+    let json = document.song().track(TrackIndex::new(5))?.sound_state()?;
+    let value: serde_json::Value = serde_json::from_str(json).ok()?;
+    let part = value
+        .get("drum_parts")?
+        .as_array()?
+        .iter()
+        .find(|part| part.get("part").and_then(serde_json::Value::as_str) == Some(id))?;
+    serde_json::from_value(part.get("chain")?.clone()).ok()
+}
+
+#[test]
+fn a_block_is_dragged_onto_another_tracks_mixer_strip() {
+    let mut harness = app_with("basic/multi_staff.gp");
+    open_sound_chain(&mut harness);
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.run();
+    harness.get_by_label("EQ").click();
+    harness.run();
+    let source = harness
+        .get_by_label(&format!("Block {first}: EQ"))
+        .rect()
+        .center();
+    // The other track's strip is in the mixer; the floating chain window leaves it visible.
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    let target = harness
+        .get_by_label("Track 2: Rhythm Guitar")
+        .rect()
+        .center();
+    let state = |harness: &Harness<'static, GuitarScoreApp>, track: usize| {
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .track(TrackIndex::new(track))
+            .and_then(|track| track.sound_state().map(str::to_owned))
+    };
+    let before = state(&harness, 1);
+    harness.hover_at(source);
+    harness.run();
+    harness.drag_at(source);
+    harness.step();
+    harness.hover_at(source + egui::vec2(24.0, 0.0));
+    harness.step();
+    harness.hover_at(target);
+    harness.step();
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: target,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    harness.run();
+    let dropped = state(&harness, 1).expect("the track has a chain now");
+    assert!(dropped.contains("\"choice\":\"eq\""), "{dropped}");
+    assert!(
+        state(&harness, 0).is_some_and(|state| state.contains("\"choice\":\"eq\"")),
+        "the source block stays (the drag copies it)"
+    );
+    // The drop is one undoable edit.
+    harness
+        .state_mut()
+        .document_mut()
+        .unwrap()
+        .editor_mut()
+        .undo()
+        .expect("undo");
+    harness.run();
+    assert_eq!(state(&harness, 1), before);
+}
+
+#[test]
+fn a_block_is_dragged_from_one_drum_part_to_another() {
+    use gscore_app::chain_settings::BlockChoice;
+
+    let mut harness = app_with("basic/multi_staff.gp");
+    harness.state_mut().set_shown_track(5);
+    harness.run();
+    open_sound_chain(&mut harness);
+    harness.get_by_label("Kick").click();
+    harness.run();
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.run();
+    harness.get_by_label("EQ").click();
+    harness.run();
+    let source = harness
+        .get_by_label(&format!("Block {first}: EQ"))
+        .rect()
+        .center();
+    let target = harness.get_by_label("Snare").rect().center();
+    harness.hover_at(source);
+    harness.run();
+    harness.drag_at(source);
+    harness.step();
+    harness.hover_at(source + egui::vec2(24.0, 0.0));
+    harness.step();
+    harness.hover_at(target);
+    harness.step();
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: target,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    harness.run();
+    let snare = drum_part_chain(&harness, "snare").expect("the Snare's chain");
+    assert_eq!(
+        snare
+            .blocks
+            .get(first.saturating_sub(1))
+            .map(|block| block.choice),
+        Some(BlockChoice::Eq),
+        "the block went into the Snare's first free place"
+    );
+    assert!(
+        drum_part_chain(&harness, "kick").is_some_and(|kick| kick
+            .blocks
+            .iter()
+            .any(|block| block.choice == BlockChoice::Eq)),
+        "the Kick keeps its block (the drag copies it)"
+    );
+    harness
+        .state_mut()
+        .document_mut()
+        .unwrap()
+        .editor_mut()
+        .undo()
+        .expect("undo");
+    harness.run();
+    assert!(
+        drum_part_chain(&harness, "snare").is_none_or(|snare| snare
+            .blocks
+            .iter()
+            .all(|block| block.choice != BlockChoice::Eq)),
+        "the drop is one undoable edit"
+    );
+}
+
+#[test]
 fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
     let mut harness = app_with("basic/note_lengths.gp");
     // The track panel's Sound section opens the Sound chain with its stomp box.

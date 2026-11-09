@@ -12,7 +12,7 @@ use gscore_model::TrackIndex;
 use super::GuitarScoreApp;
 use super::shape_editor::Outcome;
 use super::style;
-use crate::chain_settings::DrumPart;
+use crate::chain_settings::{BlockSetting, DrumPart};
 use crate::document::GridData;
 use crate::state::MeasureSelection;
 
@@ -110,6 +110,13 @@ pub(super) enum GridAction {
     },
     /// A track's send into the compressor bus (0-127), kept with the song.
     CompSend { track: usize, value: u8 },
+    /// A block dropped on a track's (or part's) mixer strip: into its chain's first free
+    /// place.
+    PasteBlock {
+        track: usize,
+        part: Option<DrumPart>,
+        block: BlockSetting,
+    },
 }
 
 /// The rename window's state.
@@ -412,6 +419,10 @@ impl GuitarScoreApp {
             GridAction::OpenSoundChainPart { track, part } => {
                 self.open_sound_chain_part(track, part);
             }
+            GridAction::PasteBlock { track, part, block } => match part {
+                Some(part) => self.paste_block_into_part(track, part, block),
+                None => self.paste_block_into_track(track, block),
+            },
             GridAction::DrumPart {
                 track,
                 part,
