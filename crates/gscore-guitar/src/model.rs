@@ -62,6 +62,12 @@ pub struct StringModel {
     /// How hard a palm mutes (0 light to 1 heavy; only palm-muted notes): light lets the
     /// note ring on with some of its brightness, heavy is a short, dark chug.
     pub palm_mute: f32,
+    /// How loud the pick's click and scrape are (0 none to 1 full; scaled further by how
+    /// hard the strike is).
+    pub pick_noise: f32,
+    /// How sharp a full-strength pluck starts, in cents (it settles within about 50 ms;
+    /// softer plucks start less sharp, by the square of their strength).
+    pub attack_pitch: f32,
 }
 
 impl GuitarModel {
@@ -87,6 +93,8 @@ impl GuitarModel {
                 pickup: crate::Pickup::None,
                 pickup_position: crate::pickup_positions::BRIDGE,
                 palm_mute: PALM_MUTE,
+                pick_noise: PICK_NOISE,
+                attack_pitch: ATTACK_PITCH,
             },
             GuitarModel::Steel => StringModel {
                 sustain: 9.0,
@@ -107,6 +115,8 @@ impl GuitarModel {
                 pickup: crate::Pickup::None,
                 pickup_position: crate::pickup_positions::BRIDGE,
                 palm_mute: PALM_MUTE,
+                pick_noise: PICK_NOISE,
+                attack_pitch: ATTACK_PITCH,
             },
             GuitarModel::Electric => StringModel {
                 sustain: 8.0,
@@ -129,6 +139,8 @@ impl GuitarModel {
                 pickup: crate::Pickup::Humbucker,
                 pickup_position: crate::pickup_positions::BRIDGE,
                 palm_mute: PALM_MUTE,
+                pick_noise: PICK_NOISE,
+                attack_pitch: ATTACK_PITCH,
             },
             GuitarModel::Bass => StringModel {
                 sustain: 7.0,
@@ -149,6 +161,8 @@ impl GuitarModel {
                 pickup: crate::Pickup::None,
                 pickup_position: crate::pickup_positions::BRIDGE,
                 palm_mute: PALM_MUTE,
+                pick_noise: PICK_NOISE,
+                attack_pitch: ATTACK_PITCH,
             },
         }
     }
@@ -156,6 +170,11 @@ impl GuitarModel {
 
 /// The palm mute of every preset: the middle of the knob.
 const PALM_MUTE: f32 = 0.5;
+/// The pick's click and the sharp start of every preset (a sound saved before these knobs
+/// gets them too, whatever its kind; the model's hardness already makes a nylon's or a
+/// bass's click softer and duller).
+const PICK_NOISE: f32 = 0.5;
+const ATTACK_PITCH: f32 = 4.0;
 
 /// The range of every knob, for user interfaces and for [`StringModel::sanitized`]:
 /// `(lowest, highest)`.
@@ -184,6 +203,9 @@ pub mod ranges {
     pub const PICKUP_POSITION: (f32, f32) = (0.04, 0.35);
     /// Light to heavy.
     pub const PALM_MUTE: (f32, f32) = (0.0, 1.0);
+    pub const PICK_NOISE: (f32, f32) = (0.0, 1.0);
+    /// Cents.
+    pub const ATTACK_PITCH: (f32, f32) = (0.0, 20.0);
 }
 
 impl StringModel {
@@ -226,6 +248,8 @@ impl StringModel {
                 crate::pickup_positions::BRIDGE,
             ),
             palm_mute: fit(self.palm_mute, ranges::PALM_MUTE, PALM_MUTE),
+            pick_noise: fit(self.pick_noise, ranges::PICK_NOISE, PICK_NOISE),
+            attack_pitch: fit(self.attack_pitch, ranges::ATTACK_PITCH, ATTACK_PITCH),
         }
     }
 }

@@ -25,6 +25,7 @@ use std::f32::consts::{PI, TAU};
 
 use crate::filters::{Biquad, DcBlocker, Noise};
 use crate::model::StringModel;
+use crate::pick::{PickNoise, Tension};
 use crate::pickup::PickupComb;
 use crate::string_loop::{Loop, Tuning};
 
@@ -140,6 +141,9 @@ pub struct StringVoice {
     low_cut: Biquad,
     tone: Biquad,
     noise: Noise,
+    /// The pick's click and scrape, and the sharp start of a hard pluck.
+    pick: PickNoise,
+    tension: Tension,
     /// The note's frequency and the bend on top of it (cents).
     frequency: f32,
     bend: f32,
@@ -184,6 +188,8 @@ impl StringVoice {
             low_cut: Biquad::highpass(sample_rate, model.low_cut, LOW_CUT_Q),
             tone: Biquad::lowpass(sample_rate, model.tone, model.resonance),
             noise: Noise::new(0x9E37_79B9),
+            pick: PickNoise::new(sample_rate),
+            tension: Tension::default(),
             frequency: 110.0,
             bend: 0.0,
             damping: Damping::Released,
@@ -253,8 +259,7 @@ impl StringVoice {
         self.frequency = frequency;
         self.set_damping(damping, true);
         self.level = self.level_target;
-        self.update(0);
-        self.retune_pickup(true);
+        self.tension = Tension::default();
         let (amplitude, hardness, noise) = match pluck.attack {
             Attack::Pick => (1.0, self.model.hardness, 0.08),
             Attack::Legato => (0.7, self.model.hardness * 0.5, 0.02),
@@ -262,6 +267,13 @@ impl StringVoice {
             Attack::Slap => (1.2, 1.0, 0.15),
             Attack::Pop => (1.3, 1.0, 0.1),
             Attack::Scrape => (0.6, 1.0, 1.0),
+        };
+        // How much of a pick's click the attack makes: a finger on the fret only a
+        // little, a scrape is all noise already.
+        let click = match pluck.attack {
+            Attack::Pick | Attack::Slap | Attack::Pop => 1.0,
+            Attack::Tap => 0.3,
+            Attack::Legato | Attack::Scrape => 0.0,
         };
         let hardness = if pluck.harmonic {
             hardness * 0.3
@@ -273,11 +285,19 @@ impl StringVoice {
         // Harder strikes are brighter; a soft one rounds the edge of the pluck.
         let hardness = (hardness * (0.4 + 0.6 * velocity)).clamp(0.02, 1.0);
         let amplitude = amplitude * velocity.powf(1.3);
+        self.pick
+            .start(amplitude * click * self.model.pick_noise, hardness);
+        if !pluck.dead && !pluck.harmonic {
+            self.tension.strike(amplitude, self.model.attack_pitch);
+        }
         let amplitude = if pluck.palm_mute && !pluck.dead {
             amplitude * PALM_STRIKE
         } else {
             amplitude
         };
+        // Tuned after the strike, so a hard pluck starts sharp.
+        self.update(0);
+        self.retune_pickup(true);
         self.excite(amplitude, hardness, PICK_CONTACT, noise);
     }
 
@@ -319,6 +339,7 @@ impl StringVoice {
         if !self.sounding || out.is_empty() {
             return;
         }
+        self.tension.settle(out.len(), self.sample_rate);
         self.settle(out.len());
         self.update(out.len());
         self.retune_pickup(false);
@@ -326,6 +347,7 @@ impl StringVoice {
         let level_step = (self.level_target - self.level) / out.len() as f32;
         let second = self.model.second > 0.0;
         let bridge = self.model.bridge;
+        let picking = self.pick.is_active();
         let mut peak = 0.0_f32;
         for sample in out.iter_mut() {
             let [first_loop, second_loop] = &mut self.loops;
@@ -343,9 +365,10 @@ impl StringVoice {
             }
             let force = (swing - self.last) * self.bridge_scale;
             self.last = swing;
+            let click = if picking { self.pick.next() } else { 0.0 };
             let heard = self
                 .pickup
-                .process(pickup, swing * (1.0 - bridge) + force * bridge);
+                .process(pickup, swing * (1.0 - bridge) + force * bridge + click);
             self.level += level_step;
             let out_sample = self
                 .tone
@@ -368,12 +391,19 @@ impl StringVoice {
             string.clear();
         }
         self.dc.reset();
+        self.pick.clear();
+        self.tension = Tension::default();
         self.pickup.clear();
         self.low_cut.reset();
         self.tone.reset();
         self.last = 0.0;
         self.peak = 0.0;
         self.sounding = false;
+    }
+
+    /// The pitch's offset from the note, in cents: the bend and the sharp start of a pluck.
+    fn cents(&self) -> f32 {
+        self.bend + self.tension.cents()
     }
 
     fn glide_samples(&self) -> usize {
@@ -443,7 +473,7 @@ impl StringVoice {
     /// Points the pickup's comb at the current pitch (bend included): at once for a new
     /// note, gliding for a bend.
     fn retune_pickup(&mut self, jump: bool) {
-        let frequency = (self.frequency * (self.bend / 1200.0).exp2()).max(8.0);
+        let frequency = (self.frequency * (self.cents() / 1200.0).exp2()).max(8.0);
         self.pickup.retune(
             self.sample_rate / frequency,
             self.model.pickup_position,
@@ -454,7 +484,7 @@ impl StringVoice {
     /// Retunes both loops for the current pitch and damping; their delays glide to the new
     /// values over `glide` samples (at once if 0).
     fn update(&mut self, glide: usize) {
-        let frequency = (self.frequency * (self.bend / 1200.0).exp2()).max(8.0);
+        let frequency = (self.frequency * (self.cents() / 1200.0).exp2()).max(8.0);
         let first = Tuning {
             frequency,
             decay: self.decay,

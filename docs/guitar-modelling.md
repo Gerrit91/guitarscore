@@ -171,6 +171,27 @@ described in the literature below:
   (round) by the model's softness, rounded above 400 Hz to 12 kHz by hardness and
   velocity. A resonant lowpass on each string's output stands in for the pickup or body
   (tone, resonance) until step 2 and 3 bring the real ones.
+- **The pick's attack** (`pick.rs`, 2026-11-10). The strike's rounding is already the
+  slip-off pulse in the loop: a pulse whose width follows hardness, 0.013 ms for a hard
+  pick up to 0.4 ms for a soft one, since rounding above a frequency is smoothing over
+  that time. On top of it come:
+  - **The click:** one bipolar force pulse (no offset) as wide as the pick takes to slip
+    off, 0.6 ms soft to 0.1 ms hard.
+  - **The scrape:** noise above 1.2 kHz dying with a 6 ms (soft) to 2 ms (hard) time
+    constant.
+
+  The click and the scrape go into what the pickup or bridge hears, not into the loop,
+  so the note is unchanged after about 50 ms. Their level is the strike's amplitude
+  times the **Pick noise** knob (0 to 1, default 0.5), times the attack's share: pick,
+  slap and pop full, a tap 0.3, legato and a scrape none.
+
+  A hard pluck also starts sharp (**Attack pitch**, cents at full strength, default 4,
+  0 to 20). The string's tension rises with its swing, so the rise grows with the square
+  of the strike's amplitude and settles with a 15 ms time constant (within about 50 ms).
+  It goes on top of the bend, retuning both loops and the pickup. Dead notes and
+  harmonics have none.
+
+  Every preset has the same defaults, so sounds saved before these knobs get them too.
 - **Knobs:** every `StringModel` value has a range (`gscore_guitar::ranges`); the Sound
   chain window (track panel › Sound › the stomp box) turns them per kind of string, next
   to the board, heard at once (`Command::StringModel`), kept in the settings, used by WAV

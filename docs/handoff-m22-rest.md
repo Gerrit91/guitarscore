@@ -59,7 +59,9 @@ before the release) are his. This file lists the rest, in a sensible order.
    the same string stops at the new note. Then the palm-muted chugs and the power-chord
    riff of the reference passages (item 1 of section 1), by ear with the owner, clean and
    distorted.
-2. **Pick attack** (owner asked for it after the pickup): the pick pushes the string and
+2. **Pick attack** (done 2026-11-10 on branch `m22-pick-attack`: Pick noise and Attack
+   pitch knobs, see `docs/guitar-modelling.md`; open: the owner's ear. Owner asked for it
+   after the pickup): the pick pushes the string and
    slips off within about a millisecond (a short force pulse whose width follows the
    pick's thickness, `hardness`), a short scrape-and-click noise, and a slightly sharp
    start of a hard pluck that settles within about 50 ms (tension modulation). Today a
@@ -76,6 +78,19 @@ before the release) are his. This file lists the rest, in a sensible order.
    instead of damping the string at a node (`docs/guitar-modelling.md`, "Not yet");
    octave signs (8va, 8vb, 15ma) are not applied in playback (noted when they were added).
    Then listen through every technique of item 1 and fix what sounds wrong.
+
+7. **The amp and the drive were calibrated on a wrong test signal** (found 2026-11-10).
+   Until then, `gscore-guitar/tests/test_amp.rs` `power_chord` summed the strings into a
+   scratch block it never cleared: a running sum of everything played, hugely bass-heavy
+   and about 25 dB too hot (RMS 0.9, peak 3.8; real strings give RMS 0.05, peak 1.45).
+   - `INPUT_PAD` ("the strings come in hot, a chord peaks near 4") and the drive's 720 Hz
+     cut before clipping were tuned against it.
+   - With real strings the drive raises the low E's share instead of tightening it
+     (`a_drive_in_front_tightens_the_low_end` is ignored until this is settled).
+   - The owner hears the same in practice: the drive takes away the chuggy bass and
+     low mids, and gain 10 is "not 100 % metal" (2026-11-10).
+   - Re-calibrating the amp's input and re-voicing the drive (a Tight knob, less cut)
+     changes every tone dialled in by ear: the owner decides.
 
 ## 3. Performance
 

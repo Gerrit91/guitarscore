@@ -25,6 +25,7 @@ mod impulse;
 mod knobs;
 mod model;
 mod oversample;
+mod pick;
 mod pickup;
 mod reverb;
 mod string;

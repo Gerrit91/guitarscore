@@ -4412,3 +4412,38 @@ needed for a much larger font); owner listening check.
   clamps the knob; the knob is in the window. `sound_chain_strings` and
   `sound_chain_pickup` and `mixer_stomp_track` snapshots regenerated (the knob in the
   Strike row).
+
+## 2026-11-10 — The pick's attack (M22 rest, 2.2)
+
+- **Click and scrape** (`gscore-guitar/src/pick.rs`).
+  - The click is a bipolar slip-off pulse, 0.6 ms (soft pick) to 0.1 ms (hard).
+  - The scrape is noise above 1.2 kHz dying in a few milliseconds.
+  - Both go into what the pickup or bridge hears, not into the loop: the note is
+    unchanged after 50 ms.
+  - New knob **Pick noise**, 0 to 1, default 0.5, in the string sound's Strike row.
+- **A hard pluck starts sharp**, by the square of its strength, and settles within about
+  50 ms: tension modulation on top of the bend. New knob **Attack pitch**, cents at full
+  strength, 0 to 20, default 4.
+- The slip-off pulse in the loop is the existing strike rounding: its width already
+  follows hardness.
+- Both knobs are part of the string model and every tone, with the same defaults for every
+  kind of string.
+- Tests:
+  - the click is heard (more level in the first 4 ms, brighter) and the note after 50 ms
+    is the same;
+  - a hammer-on makes no click;
+  - a hard pluck starts sharp, more with the knob and less when soft, and is in tune from
+    80 ms.
+- Snapshots `sound_chain_strings`, `sound_chain_pickup` and `mixer_stomp_track` show the
+  knobs.
+- Strings benchmark (this machine): `main` 335 ms, palm mutes 337, pick attack 341 (budget
+  250; it was already over on `main`).
+- **Found on the way:** `test_amp.rs` `power_chord` never cleared its scratch block, so the
+  "chord" was a running sum of everything played: bass-heavy and about 25 dB too hot.
+  - The pick's scrape left a tiny offset in that sum, which moved the drive test.
+  - Fixed: the strings now add straight into the output.
+  - With a real chord, "a drive in front tightens the low end" is false even on the old
+    code. It is ignored, and the loudness test now checks an absolute bound.
+  - The amp's input pad and the drive were tuned against that signal, which fits the
+    owner's findings (the drive kills the chug, gain 10 not metal). See
+    `docs/handoff-m22-rest.md` 2.7; the owner decides.

@@ -254,6 +254,31 @@ pub(super) fn sound_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
         .changed;
         changed |= round_knob(
             ui,
+            &mut sound.pick_noise,
+            ranges::PICK_NOISE,
+            "Pick noise",
+            "",
+            0.5,
+            false,
+            "The pick's click as it slips off the string and the short scrape of its edge: \
+             0 none, 1 full. Harder strikes click louder; a soft pick (low hardness) clicks \
+             duller and scrapes a little longer.",
+        )
+        .changed;
+        changed |= round_knob(
+            ui,
+            &mut sound.attack_pitch,
+            ranges::ATTACK_PITCH,
+            "Attack pitch",
+            " ct",
+            4.0,
+            false,
+            "How sharp a hard pluck starts, in cents: the string's tension rises with its \
+             swing and settles within about 50 ms. Softer plucks start less sharp.",
+        )
+        .changed;
+        changed |= round_knob(
+            ui,
             &mut sound.palm_mute,
             ranges::PALM_MUTE,
             "Palm mute",

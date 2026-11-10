@@ -210,6 +210,10 @@ pub struct StringSound {
     /// How hard a palm mutes, light (0) to heavy (1); a sound saved before the knob
     /// existed gets the middle (the struct's default, as every preset).
     pub palm_mute: f32,
+    /// The pick's click and the sharp start of a hard pluck; a sound saved before these
+    /// knobs gets the presets' values (the struct's default).
+    pub pick_noise: f32,
+    pub attack_pitch: f32,
 }
 
 impl Default for StringSound {
@@ -241,6 +245,8 @@ impl From<gscore_guitar::StringModel> for StringSound {
             pickup: model.pickup.into(),
             pickup_position: model.pickup_position,
             palm_mute: model.palm_mute,
+            pick_noise: model.pick_noise,
+            attack_pitch: model.attack_pitch,
         }
     }
 }
@@ -267,6 +273,8 @@ impl StringSound {
             pickup: self.pickup.pickup(),
             pickup_position: self.pickup_position,
             palm_mute: self.palm_mute,
+            pick_noise: self.pick_noise,
+            attack_pitch: self.attack_pitch,
         }
         .sanitized()
     }
