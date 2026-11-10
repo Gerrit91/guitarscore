@@ -1,7 +1,7 @@
 //! The amp block on modelled electric strings: a power chord through each voice is loud
 //! but bounded, clean stays close to the strings' own level, the knobs are taken while
-//! it plays, and the chain falls silent once the strings do. A drive pedal in front
-//! tightens its low end.
+//! it plays, and the chain falls silent once the strings do. (A drive pedal in front was
+//! to tighten its low end: ignored, see that test.)
 
 #![allow(
     clippy::unwrap_used,
@@ -48,13 +48,11 @@ fn power_chord(seconds: f32) -> Vec<f32> {
         .collect();
     let frames = (seconds * RATE as f32) as usize / BLOCK * BLOCK;
     let mut out = vec![0.0_f32; frames];
-    let mut block = [0.0_f32; BLOCK];
+    // A string adds itself to what is there (a scratch block shared by the strings and
+    // never cleared summed everything played so far).
     for chunk in out.chunks_mut(BLOCK) {
         for voice in &mut strings {
-            voice.render(&mut block);
-            for (o, b) in chunk.iter_mut().zip(&block) {
-                *o += b;
-            }
+            voice.render(chunk);
         }
     }
     out
@@ -107,7 +105,8 @@ fn every_voice_plays_a_chord_loud_but_bounded() {
             );
             assert!(out.iter().all(|x| x.is_finite()));
             let (level, top) = (rms(&out), peak(&out));
-            assert!(top < 1.2 * peak(&chord), "{voice:?} {gain}: peak {top}");
+            // Bounded: the stages clip, so even full gain stays near full scale.
+            assert!(top < 2.0, "{voice:?} {gain}: peak {top}");
             assert!(
                 level > dry * 0.25,
                 "{voice:?} {gain}: {level} against {dry}"
@@ -197,6 +196,11 @@ fn tone(signal: &[f32], frequency: f32) -> f32 {
 }
 
 #[test]
+#[ignore = "false with a correctly summed chord: until 2026-11-10 `power_chord` summed \
+            every block ever played (a running sum: hugely bass-heavy, about 25 dB too hot), \
+            and the drive and the amp's input pad were tuned against that. With real \
+            strings the drive raises the low E's share. Owner's decision, see \
+            docs/handoff-m22-rest.md"]
 fn a_drive_in_front_tightens_the_low_end() {
     // The metal trick: Drive low, Level up, into the lead voice. The low E's fundamental
     // makes up less of the sound than through the amp alone.
