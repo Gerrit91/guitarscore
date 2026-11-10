@@ -47,18 +47,18 @@ const SECOND_HIGH_DECAY: f32 = 0.6;
 const BRIDGE_AT: f32 = 1_000.0;
 /// Quality of the low cut (Butterworth).
 const LOW_CUT_Q: f32 = 0.707;
-/// A palm-muted string's 60 dB decay time at the fundamental for a low E (82.4 Hz),
-/// seconds: lower notes ring longer, higher ones shorter (by the square root of the pitch,
-/// within [`PALM_DECAY_RANGE`]). The hand at the bridge takes the highs much sooner
-/// ([`PALM_HIGH_DECAY`] around 2 kHz), so the pitch and the low harmonics stay heard while
-/// the brightness is gone. Starting points to tune by ear.
-const PALM_DECAY: f32 = 0.9;
+/// A palm-muted string's 60 dB decay times and how far up it keeps the harmonics, at the
+/// light and the heavy end of the model's palm-mute knob (the middle is their geometric
+/// mean: 0.9 s, 0.03 s and the fifth harmonic). The fundamental's time is for a low E
+/// (82.4 Hz): lower notes ring longer, higher ones shorter (by the square root of the
+/// pitch, within [`PALM_DECAY_RANGE`]). The hand at the bridge takes the highs (around
+/// 2 kHz) much sooner, and above the kept harmonics (the loss filter's corner) everything,
+/// so the pitch and the low mids stay heard while the brightness is gone.
+const PALM_DECAY: (f32, f32) = (2.7, 0.3);
 const PALM_DECAY_AT: f32 = 82.4;
-const PALM_DECAY_RANGE: (f32, f32) = (0.2, 1.2);
-const PALM_HIGH_DECAY: f32 = 0.03;
-/// The palm keeps the harmonics up to about this one (its loss filter's corner), so the
-/// note's pitch and low mids stay full.
-const PALM_KEEPS: f32 = 5.0;
+const PALM_DECAY_RANGE: (f32, f32) = (0.1, 3.0);
+const PALM_HIGH_DECAY: (f32, f32) = (0.075, 0.012);
+const PALM_KEEPS: (f32, f32) = (25.0 / 3.0, 3.0);
 /// A chug is played hard, and the hand takes energy out of the string from the start:
 /// the strike of a palm-muted note is this much stronger, so its low end is as full as an
 /// open note's.
@@ -400,10 +400,16 @@ impl StringVoice {
     /// open).
     fn palm_values(&self) -> (f32, f32) {
         let (low, high) = PALM_DECAY_RANGE;
-        let decay = (PALM_DECAY * (PALM_DECAY_AT / self.frequency.max(8.0)).sqrt())
+        let decay = (self.palm(PALM_DECAY) * (PALM_DECAY_AT / self.frequency.max(8.0)).sqrt())
             .clamp(low, high)
             .min(self.model.sustain_at(self.frequency));
-        (decay, PALM_HIGH_DECAY.min(self.model.brilliance))
+        (decay, self.palm(PALM_HIGH_DECAY).min(self.model.brilliance))
+    }
+
+    /// The value between `(light, heavy)` that the palm-mute knob sets (on a log scale).
+    fn palm(&self, (light, heavy): (f32, f32)) -> f32 {
+        let amount = self.model.palm_mute.clamp(0.0, 1.0);
+        light * (heavy / light).powf(amount)
     }
 
     /// Sets how the string is damped, at once or settling over a few milliseconds.
@@ -456,7 +462,7 @@ impl StringVoice {
             stiffness: self.model.stiffness,
             stages: self.model.stiffness_stages,
             corner: if matches!(self.damping, Damping::PalmMuted | Damping::PalmReleased) {
-                frequency * PALM_KEEPS
+                frequency * self.palm(PALM_KEEPS)
             } else {
                 0.0
             },

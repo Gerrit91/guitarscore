@@ -72,7 +72,8 @@ pub(crate) fn shelf_delay(a: f32, zero: f32, w: f32) -> f32 {
 
 /// The shelf whose pole sits at `corner` (radians per sample) and whose gain at `high` is
 /// `ratio` times its gain at `low`: `(pole, zero)`. When even the plain lowpass at that
-/// corner does not take enough off, the pole moves up instead ([`one_pole_for_ratio`]).
+/// corner does not take that much off, it is that lowpass: the highs go as fast as they
+/// can without taking the low end (moving the pole down would dull the fundamental too).
 pub(crate) fn shelf_for_ratio(low: f32, high: f32, corner: f32, ratio: f32) -> (f32, f32) {
     if !(ratio.is_finite() && ratio < 1.0) || high <= low {
         return (0.0, 0.0);
@@ -80,7 +81,7 @@ pub(crate) fn shelf_for_ratio(low: f32, high: f32, corner: f32, ratio: f32) -> (
     let a = (-corner.max(1e-6)).exp().clamp(0.0, 0.995);
     let r = |zero: f32| shelf_gain(a, zero, high) / shelf_gain(a, zero, low).max(1e-9);
     if r(0.0) >= ratio {
-        return (one_pole_for_ratio(low, high, ratio), 0.0);
+        return (a, 0.0);
     }
     let (mut lo, mut hi) = (0.0_f32, a);
     for _ in 0..24 {
@@ -408,10 +409,10 @@ mod tests {
                 "unity at DC"
             );
         }
-        // Too steep for a shelf at that corner: the plain lowpass, its pole moved up.
+        // Too steep for a shelf at that corner: the plain lowpass at the corner.
         let (a, zero) = shelf_for_ratio(low, high, corner, 0.05);
         assert_eq!(zero, 0.0);
-        assert!((one_pole_gain(a, high) / one_pole_gain(a, low) - 0.05).abs() < 0.01);
+        assert!((a - (-corner).exp()).abs() < 1e-6);
         // Without a zero the shelf is the lowpass, and the filter computes the same.
         assert_eq!(shelf_gain(0.7, 0.0, 0.2), one_pole_gain(0.7, 0.2));
         let (mut plain, mut shelf) = (OnePole::default(), OnePole::default());

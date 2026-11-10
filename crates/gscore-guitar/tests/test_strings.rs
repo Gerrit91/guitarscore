@@ -318,6 +318,7 @@ fn no_parameters_make_nan_or_runaway_output() {
             level: random.wild(),
             pickup: [Pickup::None, Pickup::SingleCoil, Pickup::Humbucker][round % 3],
             pickup_position: random.wild(),
+            palm_mute: random.wild(),
         };
         let rate = [8_000.0, 44_100.0, 192_000.0, random.wild()][round % 4];
         let mut voice = StringVoice::new(rate, random.wild(), model);
@@ -509,6 +510,59 @@ fn a_palm_muted_note_keeps_its_strength_pitch_and_low_end() {
     }
     // Low strings ring longer than high ones.
     assert!(falls[0] < falls[1] && falls[1] < falls[2], "{falls:?}");
+}
+
+#[test]
+fn the_palm_mute_knob_goes_from_light_to_heavy() {
+    let hz = frequency(40, 0.0);
+    // How far the fundamental falls in a tenth of a second (from 0.05 to 0.15 seconds:
+    // a heavy mute is silent by 0.3) and how much is left above 3 kHz, dB, at palm-mute
+    // `amount`.
+    let measure = |amount: f32| {
+        let model = StringModel {
+            palm_mute: amount,
+            ..GuitarModel::Electric.strings()
+        };
+        let mut voice = StringVoice::new(RATE, 20.0, model);
+        voice.pluck(Pluck {
+            palm_mute: true,
+            ..pick(hz)
+        });
+        let out = render(&mut voice, 0.5, |_| {});
+        let fall = 10.0
+            * (power_at(seconds(&out, 0.05, 0.15), hz) / power_at(seconds(&out, 0.15, 0.25), hz))
+                .log10();
+        let highs = 10.0 * power_above(seconds(&out, 0.02, 0.1), 3_000.0).log10();
+        let off = cents_off(seconds(&out, 0.03, 0.2), hz);
+        (fall, highs, off)
+    };
+    let (light, middle, heavy) = (measure(0.0), measure(0.5), measure(1.0));
+    assert!(
+        light.0 < middle.0 && middle.0 < heavy.0,
+        "heavier falls faster: {light:?} {middle:?} {heavy:?}"
+    );
+    assert!(
+        light.1 > middle.1 + 6.0 && middle.1 > heavy.1 + 6.0,
+        "and is darker: {light:?} {middle:?} {heavy:?}"
+    );
+    assert!(light.0 > 1.0, "even light is a mute: {light:?}");
+    // In tune; a heavy mute is gone within about 0.3 seconds, so its pitch is read from a
+    // short window, to a few cents (inaudible on so short a note).
+    for ((fall, _, off), cents) in [(light, 2.0), (middle, 2.0), (heavy, 3.0)] {
+        assert!(fall < 30.0, "the pitch is still heard: {fall:.1} dB");
+        assert!(off.abs() < cents, "in tune: {off:.2} cents");
+    }
+    // The knob changes nothing on a note that is not palm muted.
+    let open = |amount: f32| {
+        let model = StringModel {
+            palm_mute: amount,
+            ..GuitarModel::Electric.strings()
+        };
+        let mut voice = StringVoice::new(RATE, 20.0, model);
+        voice.pluck(pick(hz));
+        render(&mut voice, 0.2, |_| {})
+    };
+    assert_eq!(open(0.0), open(1.0));
 }
 
 #[test]

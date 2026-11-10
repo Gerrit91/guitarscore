@@ -211,7 +211,8 @@ fn value_text(value: f32, unit: &str) -> String {
     }
 }
 
-/// The knobs of one kind of string, in three groups. Returns whether any moved.
+/// The knobs of one kind of string, in groups (the picking hand's, palm mute included,
+/// first). Returns whether any moved.
 pub(super) fn sound_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
     let mut changed = false;
     group(ui, "Strike", |ui| {
@@ -249,6 +250,19 @@ pub(super) fn sound_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
             false,
             "The shape of the strike: a sharp snap (0), bright and buzzy, to a rounded \
              pluck (1), soft. Lower notes sound less synthetic when it is rounder.",
+        )
+        .changed;
+        changed |= round_knob(
+            ui,
+            &mut sound.palm_mute,
+            ranges::PALM_MUTE,
+            "Palm mute",
+            "",
+            0.5,
+            false,
+            "How hard the palm mutes, for palm-muted notes only: light (0), the hand right \
+             at the bridge, the note rings on and keeps some brightness; heavy (1), the hand \
+             further onto the strings, a short, dark, tight chug.",
         )
         .changed;
     });

@@ -4395,3 +4395,20 @@ needed for a much larger font); owner listening check.
   damped note now use staccato.
 - Open: the owner's listening check of the reference passages' chugs and power-chord riff,
   clean and through the Lead amp with Tight; a palm-mute amount knob if wanted.
+
+## 2026-11-10 — A Palm mute knob
+
+- The owner found the palm mute "merely improved" and asked for a knob. **Palm mute** (in
+  the string sound's Strike row, 0 light to 1 heavy, double-click for 0.5) is part of the
+  string model and so of every tone, preset and track sound; sounds saved before it get
+  0.5, which is yesterday's sound exactly. It moves the fundamental's decay (2.7 s to
+  0.3 s on a low E), the highs' (0.075 s to 0.012 s) and how many harmonics the palm keeps
+  (the 8th to the 3rd) on a log scale. Only palm-muted notes on the modelled strings change.
+- The shelf design no longer moves its pole down when the asked-for highs are out of reach
+  at the corner (it took the fundamental too: a heavy mute died before 0.1 s); it stays
+  at the corner.
+- Tests: light to heavy falls faster and is darker, in tune, the pitch still heard; the
+  knob changes nothing on an open note; an old settings entry reads as 0.5 and the model
+  clamps the knob; the knob is in the window. `sound_chain_strings` and
+  `sound_chain_pickup` and `mixer_stomp_track` snapshots regenerated (the knob in the
+  Strike row).

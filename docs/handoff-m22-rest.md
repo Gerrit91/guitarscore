@@ -23,9 +23,10 @@ before the release) are his. This file lists the rest, in a sensible order.
 
 ## 2. The sound
 
-1. **Palm mutes** (done 2026-11-09 on branch `m22-palm-mutes`, see the devlog; open:
-   the owner's listening check clean and distorted, and whether a palm-mute amount knob
-   is wanted. Owner, 2026-11-07: what he dislikes most about the PM sound today):
+1. **Palm mutes** (done 2026-11-09 on branch `m22-palm-mutes`, with a Palm mute knob
+   (light to heavy) added 2026-11-10 after the owner found it "merely improved"; see the
+   devlog; open: the owner's listening check clean and distorted. Owner, 2026-11-07: what
+   he dislikes most about the PM sound today):
    they sound only percussive and thin. A real palm mute is a beefy note: the hand at the
    bridge takes away the highs and shortens the ring, but the note's pitch and much of its
    character stay, and it lasts clearly longer than a click. Today:

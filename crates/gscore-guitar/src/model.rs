@@ -59,6 +59,9 @@ pub struct StringModel {
     /// ...and where it sits, as a share of the string from the bridge
     /// ([`crate::pickup_positions`]).
     pub pickup_position: f32,
+    /// How hard a palm mutes (0 light to 1 heavy; only palm-muted notes): light lets the
+    /// note ring on with some of its brightness, heavy is a short, dark chug.
+    pub palm_mute: f32,
 }
 
 impl GuitarModel {
@@ -83,6 +86,7 @@ impl GuitarModel {
                 detune: 1.0,
                 pickup: crate::Pickup::None,
                 pickup_position: crate::pickup_positions::BRIDGE,
+                palm_mute: PALM_MUTE,
             },
             GuitarModel::Steel => StringModel {
                 sustain: 9.0,
@@ -102,6 +106,7 @@ impl GuitarModel {
                 detune: 1.5,
                 pickup: crate::Pickup::None,
                 pickup_position: crate::pickup_positions::BRIDGE,
+                palm_mute: PALM_MUTE,
             },
             GuitarModel::Electric => StringModel {
                 sustain: 8.0,
@@ -123,6 +128,7 @@ impl GuitarModel {
                 // A humbucker at the bridge, as most rock guitars are played.
                 pickup: crate::Pickup::Humbucker,
                 pickup_position: crate::pickup_positions::BRIDGE,
+                palm_mute: PALM_MUTE,
             },
             GuitarModel::Bass => StringModel {
                 sustain: 7.0,
@@ -142,10 +148,14 @@ impl GuitarModel {
                 detune: 0.8,
                 pickup: crate::Pickup::None,
                 pickup_position: crate::pickup_positions::BRIDGE,
+                palm_mute: PALM_MUTE,
             },
         }
     }
 }
+
+/// The palm mute of every preset: the middle of the knob.
+const PALM_MUTE: f32 = 0.5;
 
 /// The range of every knob, for user interfaces and for [`StringModel::sanitized`]:
 /// `(lowest, highest)`.
@@ -172,6 +182,8 @@ pub mod ranges {
     pub const DETUNE: (f32, f32) = (0.0, 10.0);
     /// Share of the string from the bridge.
     pub const PICKUP_POSITION: (f32, f32) = (0.04, 0.35);
+    /// Light to heavy.
+    pub const PALM_MUTE: (f32, f32) = (0.0, 1.0);
 }
 
 impl StringModel {
@@ -213,6 +225,7 @@ impl StringModel {
                 ranges::PICKUP_POSITION,
                 crate::pickup_positions::BRIDGE,
             ),
+            palm_mute: fit(self.palm_mute, ranges::PALM_MUTE, PALM_MUTE),
         }
     }
 }

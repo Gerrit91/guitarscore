@@ -142,21 +142,31 @@ described in the literature below:
   (first version) a fixed filter let a low string's highs ring about four times longer
   than a high string's: the owner heard the low notes as "a synthesizer with slight
   distortion" (2026-11-06).
-- **Palm mute** (2026-11-09, after the owner found it thin and only percussive): the
-  fundamental's decay is 0.9 s for a low E, falling with the square root of the pitch
-  (0.2 to 1.2 s, never longer than the open string), the highs' 0.03 s. A one-pole
-  lowpass cannot do that ratio over so few octaves without killing the fundamental too
-  (its loop gain would need to exceed 1), so a palm-muted loop runs a shelf instead:
-  pole and zero, flat up to its corner at the fifth harmonic, twice in series (the
-  second section exists only while the palm mutes; with no zero the filter is exactly
-  the old lowpass, so open strings are unchanged). The strike keeps the pick's full
-  hardness and is 1.4 times stronger (a chug is played hard and the hand drains the
-  string from the start), so the fundamental starts about as loud as an open note's. The
-  note keeps its written length; at its end the finger's release and the palm together
-  damp it (whichever is stronger), and the next note on the string takes over as usual.
-  Only the SoundFont path (`gscore-play` `midi`, no palm-muted samples) still plays it
-  as an eighth at most, 85 % velocity, stopped dead. The figures are starting points for
-  the owner's ear; a palm-mute amount (light to heavy) is the owner's call.
+- **Palm mute** (2026-11-09, after the owner found it thin and only percussive): a
+  palm-muted loop runs a shelf instead of the one-pole: pole and zero, flat up to its
+  corner, twice in series (the second section exists only while the palm mutes; with no
+  zero the filter is exactly the old lowpass, so open strings are unchanged). A one-pole
+  cannot take the highs that much faster than the fundamental over so few octaves without
+  killing the fundamental too (its loop gain would need to exceed 1). When even the plain
+  lowpass at the corner cannot reach the asked-for ratio, it stays at the corner: the
+  highs go as fast as they can, the low end is kept. The **Palm mute** knob (string sound,
+  Strike row, 0 light to 1 heavy, 2026-11-10: the owner wanted to dial it) moves three
+  values on a log scale, the middle being the first tuning:
+
+  | | light (0) | middle (0.5) | heavy (1) |
+  |---|---|---|---|
+  | fundamental's decay on a low E | 2.7 s | 0.9 s | 0.3 s |
+  | highs' decay (2 kHz) | 0.075 s | 0.03 s | 0.012 s |
+  | harmonics kept (the corner) | 8.3rd | 5th | 3rd |
+
+  The fundamental's time falls with the square root of the pitch (0.1 to 3 s, never
+  longer than the open string). The strike keeps the pick's full hardness and is 1.4
+  times stronger (a chug is played hard and the hand drains the string from the start),
+  so the fundamental starts about as loud as an open note's. The note keeps its written
+  length; at its end the finger's release and the palm together damp it (whichever is
+  stronger), and the next note on the string takes over as usual. Only the SoundFont
+  path (`gscore-play` `midi`, no palm-muted samples) still plays it as an eighth at most,
+  85 % velocity, stopped dead; the knob does nothing there.
 - **The strike** blends a sharp pulse (bright) with the string's triangular shape
   (round) by the model's softness, rounded above 400 Hz to 12 kHz by hardness and
   velocity. A resonant lowpass on each string's output stands in for the pickup or body

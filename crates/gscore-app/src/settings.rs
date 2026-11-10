@@ -207,6 +207,9 @@ pub struct StringSound {
     pub pickup: PickupSetting,
     #[serde(default)]
     pub pickup_position: f32,
+    /// How hard a palm mutes, light (0) to heavy (1); a sound saved before the knob
+    /// existed gets the middle (the struct's default, as every preset).
+    pub palm_mute: f32,
 }
 
 impl Default for StringSound {
@@ -237,6 +240,7 @@ impl From<gscore_guitar::StringModel> for StringSound {
             detune: model.detune,
             pickup: model.pickup.into(),
             pickup_position: model.pickup_position,
+            palm_mute: model.palm_mute,
         }
     }
 }
@@ -262,6 +266,7 @@ impl StringSound {
             detune: self.detune,
             pickup: self.pickup.pickup(),
             pickup_position: self.pickup_position,
+            palm_mute: self.palm_mute,
         }
         .sanitized()
     }
@@ -1033,6 +1038,28 @@ impl Settings {
 mod tests {
     use super::*;
     use crate::state::ThemeChoice;
+
+    #[test]
+    fn sounds_saved_before_the_palm_mute_knob_get_its_middle() {
+        let mut sound = StringSound::from(gscore_audio::default_string_model(
+            gscore_play::StringKind::Bass,
+        ));
+        sound.palm_mute = 0.9;
+        let mut value = serde_json::to_value(sound).unwrap_or_default();
+        assert!(
+            value
+                .as_object_mut()
+                .and_then(|fields| fields.remove("palm_mute"))
+                .is_some()
+        );
+        let older: StringSound = serde_json::from_value(value).unwrap_or_default();
+        assert_eq!(older.palm_mute, 0.5);
+        assert_eq!(older.model().palm_mute, 0.5);
+        // A chosen amount is kept, and the model keeps it in range.
+        assert_eq!(sound.model().palm_mute, 0.9);
+        sound.palm_mute = 7.0;
+        assert_eq!(sound.model().palm_mute, 1.0);
+    }
 
     #[test]
     fn sounds_saved_before_pickups_get_their_kinds_pickup() {

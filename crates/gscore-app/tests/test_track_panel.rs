@@ -779,6 +779,7 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
         "Brilliance",
         "Bridge",
         "Second vibration",
+        "Palm mute",
     ] {
         assert!(harness.query_all_by_label(knob).next().is_some(), "{knob}");
     }
