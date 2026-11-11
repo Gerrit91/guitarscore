@@ -1,6 +1,6 @@
 //! The measure matrix of the song grid: the ruler with measure numbers, section markers,
-//! repeats and alternative endings, and one row of squares per track. Clicking moves the
-//! cursor; dragging selects measures; the playing measure is highlighted.
+//! repeats and alternative endings, and one row of squares per track. Clicking puts the
+//! cursor on a bar's first beat; dragging selects measures; the playing measure is highlighted.
 
 use egui::{Align2, Color32, FontId, Rect, Response, Sense, Stroke, pos2, vec2};
 
@@ -128,7 +128,8 @@ pub(super) fn ruler(
             }
         }
     }
-    // The ruler always selects whole bars across every track.
+    // A click puts the cursor on the bar (in the cursor's track); shift-click selects
+    // whole bars across every track, from the cursor's bar or the selection's start.
     if response.clicked()
         && let Some(pointer) = response.interact_pointer_pos()
     {
@@ -136,17 +137,19 @@ pub(super) fn ruler(
         if x >= 0.0 {
             let measure = (x / MEASURE_WIDTH) as usize;
             if measure < view.measure_count {
-                let extend = ui.input(|input| input.modifiers.shift);
-                let mut selection = if extend {
-                    view.selection.map_or_else(
-                        || MeasureSelection::new(measure),
-                        |selection| selection.to(measure),
-                    )
+                if ui.input(|input| input.modifiers.shift) {
+                    let mut selection = view
+                        .selection
+                        .unwrap_or_else(|| MeasureSelection::new(view.cursor_measure))
+                        .to(measure);
+                    selection.track = None;
+                    actions.push(GridAction::Select(selection));
                 } else {
-                    MeasureSelection::new(measure)
-                };
-                selection.track = None;
-                actions.push(GridAction::Select(selection));
+                    actions.push(GridAction::Place {
+                        track: view.cursor_track,
+                        measure,
+                    });
+                }
             }
         }
     }
@@ -410,7 +413,8 @@ fn pointer_cell(
     (track < track_count && measure < measure_count).then_some((track, measure))
 }
 
-/// Click moves the cursor, drag selects measures, shift-click extends the selection.
+/// Click puts the cursor on the bar's first beat, drag selects measures, shift-click
+/// extends the selection.
 fn handle_matrix_clicks(
     ui: &egui::Ui,
     response: &Response,
@@ -459,21 +463,20 @@ fn handle_matrix_clicks(
     if response.clicked()
         && let Some(measure) = at
     {
-        let extend = ui.input(|input| input.modifiers.shift);
-        let selection = match (extend, view.selection) {
-            (true, Some(selection)) => selection.to(measure),
-            (true, None) => match cell {
-                Some((track, _)) => MeasureSelection::on(track, measure),
-                None => MeasureSelection::new(measure),
-            },
-            (false, _) => match cell {
-                Some((track, _)) => MeasureSelection::on(track, measure),
-                None => MeasureSelection::new(measure),
-            },
-        };
-        actions.push(GridAction::Select(selection));
-        if let Some((track, measure)) = cell {
-            actions.push(GridAction::MoveCursor { track, measure });
+        if ui.input(|input| input.modifiers.shift) {
+            // Shift-click selects from the selection's start, or else from the cursor's
+            // bar, to this one.
+            let selection = match (view.selection, cell) {
+                (Some(selection), _) => selection.to(measure),
+                (None, Some((track, _))) => {
+                    MeasureSelection::on(track, view.cursor_measure).to(measure)
+                }
+                (None, None) => MeasureSelection::new(view.cursor_measure).to(measure),
+            };
+            actions.push(GridAction::Select(selection));
+        } else if let Some((track, measure)) = cell {
+            // A plain click only places the cursor on the bar's first beat.
+            actions.push(GridAction::Place { track, measure });
         }
     }
 }

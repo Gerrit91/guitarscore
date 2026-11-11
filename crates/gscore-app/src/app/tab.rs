@@ -51,6 +51,9 @@ pub(super) struct Tab {
     /// song plays, the palette keeps showing those notes instead of following the playing
     /// cursor, whose constantly changing tiles are distracting.
     pub(super) palette_anchor: Option<(Cursor, Option<gscore_edit::Selection>)>,
+    /// Where playback started from a stop (the cursor on the first played beat, and the
+    /// selection then), for going back there on Stop; kept over pauses.
+    pub(super) play_origin: Option<PlayOrigin>,
     /// The cursor and revision the view last scrolled to, to scroll only on a change.
     pub(super) shown_cursor: Option<(Cursor, u64)>,
     /// In the page view: the cursor's page and the page count (1-based), for the status bar.
@@ -115,6 +118,7 @@ impl Tab {
             edit_palette: EditPaletteState::default(),
             drag_anchor: None,
             palette_anchor: None,
+            play_origin: None,
             shown_cursor: None,
             page_info: None,
             renaming: None,
@@ -163,4 +167,15 @@ impl Tab {
             None => false,
         }
     }
+}
+
+/// Where playback started: what Stop goes back to when the setting asks for it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct PlayOrigin {
+    /// The cursor on the first played beat.
+    pub(super) cursor: Cursor,
+    /// The score's selection then.
+    pub(super) selection: Option<gscore_edit::Selection>,
+    /// The grid's selection then.
+    pub(super) measures: Option<MeasureSelection>,
 }

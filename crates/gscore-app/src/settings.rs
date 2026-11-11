@@ -753,6 +753,11 @@ pub struct Settings {
     pub shortcut_overrides: Vec<ShortcutSetting>,
     /// Whether a fret typed into the score is played back at once.
     pub audition_notes: bool,
+    /// Whether stopping playback puts the cursor (and selection) back where playback
+    /// started.
+    pub return_on_stop: bool,
+    /// Whether the playing cursor glides from note to note instead of jumping.
+    pub flowing_cursor: bool,
     /// Seconds between recovery snapshots; 0 means only by edit count.
     pub autosave_seconds: u64,
     /// The metronome's volume, 0 to 1.
@@ -763,7 +768,7 @@ pub struct Settings {
     pub count_in_bars: u8,
     /// Whether a looped selection is counted in again each time it starts over.
     pub count_in_loops: bool,
-    /// Playback speed relative to the written tempo (0.5 to 1.2).
+    /// Playback speed relative to the written tempo (0.25 to 1.5).
     pub playback_speed: f32,
     /// Whether the speed trainer raises the speed after every few loop passes.
     pub speed_trainer_enabled: bool,
@@ -771,7 +776,7 @@ pub struct Settings {
     pub speed_trainer_every: u8,
     /// How much faster each step is, in percent.
     pub speed_trainer_step: u8,
-    /// The top speed the trainer works up to (1.0, 1.1 or 1.2).
+    /// The top speed the trainer works up to (within the playback speed's range).
     pub speed_trainer_target: f32,
     /// The SoundFont chosen for the built-in synthesizer, if any.
     pub soundfont_path: Option<PathBuf>,
@@ -837,6 +842,8 @@ impl Default for Settings {
             keymap_path: None,
             shortcut_overrides: Vec::new(),
             audition_notes: true,
+            return_on_stop: false,
+            flowing_cursor: true,
             autosave_seconds: DEFAULT_AUTOSAVE_SECONDS,
             metronome_volume: 1.0,
             click_sound: gscore_play::ClickSound::default().id().to_owned(),

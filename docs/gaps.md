@@ -23,7 +23,7 @@ in AGENTS.md section 9.
    (8 of the owner's 59 files leave 18-116 notes out), and such tracks get no notation
    staff (no tuning), only a tab. Guitar Pro shows them as standard notation only.
 3. **Playback controls.** Fermatas and D.C./D.S./coda are played now, and a speed
-   dropdown (50-120 %) with a speed trainer, WAV export and count-in navigation are in
+   dropdown (25-150 %, any value typed) with a speed trainer, WAV export and count-in navigation are in
    place. Still open: export to audio is only the SoundFont path (no modelled instruments,
    see M22), and WAV has no progress or cancel. Previous/next bar during a count-in counts
    in again (fixed 2026-11-06).

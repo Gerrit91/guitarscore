@@ -4617,3 +4617,40 @@ with the drum track soloed (a band's cover, measured locally only, never in the 
   - a staccato hit on a drum track never leaves the kit's channel;
   - a borrowed channel's setup moves no strip, while a track's own channel still sets
     its strip (a mixer unit test).
+
+
+## 2026-11-11 — Owner's review requests: grid click, Stop, gliding cursor, spacing, tuplets, speed
+
+Branch `review-ux-requests` (off main e9bfca9).
+
+- **Grid click:** a plain click on a bar (matrix or ruler) puts the cursor on its first
+  beat, drops the selection and the loop that came with it, and plays on from there.
+  Shift-click selects from the cursor's bar (or extends the selection); dragging still
+  selects. `GridAction::Place`.
+- **Back to the start on Stop:** Settings › Editor › Playback, off by default. Starting
+  from a stop remembers the first played beat and the selections (`PlayOrigin`, kept over
+  pauses); Stop restores them. Only an explicit Stop; the song ending does not.
+- **Gliding cursor:** Settings › Editor › Playback, on by default. `Sequence::beat_span_at`
+  gives the playing beat with its start/end ticks (swing included); `Places::glide_rect`
+  puts the column that far towards the next beat, or the next bar's first beat when it is
+  played next on the same line, else the barline. Repaint every 16 ms while it glides.
+  The view still follows the beat itself.
+- **Cursor bar:** the cursor's bar gets a 5 % tint of the cursor color (also while
+  playing; not while a selection is shown).
+- **Spacing for fast notes:** below a quarter every halving divides the space by 1.5
+  (`Spacing::halving_ratio`; was 1.3 both ways), min space 1.8 -> 1.5. In the owner's
+  solos the limit was collisions, though: columns kept apart by their widest fret number
+  on any string. Now `measure/gaps.rs` checks string by string: same string keeps the gap,
+  neighbouring strings may not overlap, others only the minimum space; notation is checked
+  on its own staff. Owner's Ballad.gp track 4 (local only): bars 77-80 went from one line
+  each to two per line (bar widths 48.6/46.4/48.2/56.7 spaces before).
+- **Tuplets on the tab** (no notation staff): moved from a 0.9-size number above the staff
+  to the first row under it, number 1.2 in a gap of the bracket, hooks up to the notes;
+  P.M./let ring rows move down a row in those bars. Single-note groups get a bracket wider
+  than the number. The reference picture (imgur) could not be fetched: done after
+  Guitar Pro's usual look, owner to compare.
+- **Speed:** range 25-150 % (was 50-120), the speed list has a typed field on top, the
+  trainer's "Up to" is a typed percentage (`TRAINER_TARGETS` removed).
+- Goldens and app snapshots rewritten (bar tint, spacing, tuplet row): owner to approve.
+- Bench (release): layout note_lengths 0.070 ms, multi_staff all 6 tracks 0.362 ms. The
+  strings bench is over its 250 ms budget as on main.

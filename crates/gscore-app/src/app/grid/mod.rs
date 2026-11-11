@@ -72,6 +72,9 @@ pub(super) enum GridAction {
     BreakMerge,
     /// Move the cursor to the first beat of a track and measure.
     MoveCursor { track: usize, measure: usize },
+    /// A plain click on a bar: drop the selection (and the loop it turned on), put the
+    /// cursor on the bar's first beat and, while playing, play on from there.
+    Place { track: usize, measure: usize },
     /// Replace the selected measures.
     Select(MeasureSelection),
     /// Open the rename window for a track.
@@ -359,6 +362,7 @@ impl GuitarScoreApp {
                 }
             }
             GridAction::MoveCursor { track, measure } => self.move_cursor_to(track, measure),
+            GridAction::Place { track, measure } => self.place_cursor_at(track, measure),
             GridAction::Select(selection) => {
                 if let Some(tab) = self.tabs.get_mut(self.active) {
                     tab.selection = Some(selection);
@@ -472,6 +476,32 @@ impl GuitarScoreApp {
         if !same_measure {
             self.jump_playback_to(track, measure);
         }
+    }
+
+    /// A plain click on a bar: no selection, no loop from it, the cursor on the bar's first
+    /// beat, and playback (while playing) going on from there.
+    fn place_cursor_at(&mut self, track: usize, measure: usize) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        if tab.has_loop_selection() {
+            // Loop came on with that selection; without it, playback goes on normally.
+            self.playback.set_loop_selection(false);
+        }
+        tab.selection = None;
+        tab.had_loop_selection = false;
+        let document = &mut tab.document;
+        document.editor_mut().set_selection(None);
+        let cursor = gscore_edit::Cursor {
+            track: TrackIndex::new(track),
+            measure: gscore_model::MeasureIndex::new(measure),
+            voice: gscore_model::VoiceIndex::new(0),
+            beat: gscore_model::BeatIndex::new(0),
+            ..document.editor().cursor()
+        };
+        document.editor_mut().set_cursor(cursor);
+        tab.track = track;
+        self.jump_playback_to(track, measure);
     }
 
     /// While playing, continues playback at the first beat of `track`, `measure` (after a

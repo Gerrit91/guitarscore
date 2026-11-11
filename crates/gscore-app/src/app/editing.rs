@@ -539,8 +539,17 @@ impl GuitarScoreApp {
         if let Err(error) = self.playback.stop() {
             self.notice = Some(error);
         }
+        let back = self.settings.return_on_stop;
         if let Some(tab) = self.tabs.get_mut(self.active) {
             tab.palette_anchor = None;
+            if let Some(origin) = tab.play_origin.take()
+                && back
+            {
+                tab.document.editor_mut().set_cursor(origin.cursor);
+                tab.document.editor_mut().set_selection(origin.selection);
+                tab.selection = origin.measures;
+                tab.had_loop_selection = tab.has_loop_selection();
+            }
         }
     }
 
@@ -892,8 +901,24 @@ impl GuitarScoreApp {
             return;
         };
         let from = started.unwrap_or_else(|| document.editor().cursor().position());
+        let fresh = self.playback.state() == PlayState::Stopped;
         if let Err(error) = self.playback.play_pause(document.song(), Some(from)) {
             self.notice = Some(error);
+            return;
+        }
+        if fresh && let Some(tab) = self.tabs.get_mut(self.active) {
+            let cursor = tab.document.editor().cursor();
+            tab.play_origin = Some(super::tab::PlayOrigin {
+                cursor: Cursor {
+                    track: from.track,
+                    measure: from.measure,
+                    voice: from.voice,
+                    beat: from.beat,
+                    ..cursor
+                },
+                selection: tab.document.editor().selection(),
+                measures: tab.selection,
+            });
         }
     }
 }

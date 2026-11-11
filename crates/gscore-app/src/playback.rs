@@ -210,11 +210,8 @@ struct Lead {
 /// The speeds the toolbar offers: 50 % to 120 % of the written tempo.
 pub const SPEED_CHOICES: [f32; 8] = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2];
 
-/// The fastest and slowest playback speed.
-pub const SPEED_RANGE: (f32, f32) = (0.5, 1.2);
-
-/// The speeds a speed trainer may work up to.
-pub const TRAINER_TARGETS: [f32; 3] = [1.0, 1.1, 1.2];
+/// The slowest and fastest playback speed (any speed in between can be typed).
+pub const SPEED_RANGE: (f32, f32) = (0.25, 1.5);
 
 /// A playback speed trainer: practise a loop slowly, and raise the speed every few passes.
 #[derive(Debug, Clone, Copy, PartialEq)]

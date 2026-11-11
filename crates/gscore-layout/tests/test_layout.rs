@@ -219,6 +219,7 @@ fn odd_options_do_not_panic() {
             spacing: gscore_layout::Spacing {
                 quarter: -5.0,
                 doubling_ratio: 0.0,
+                halving_ratio: f32::NAN,
                 min_space: f32::NAN,
                 min_gap: -1.0,
                 barline_padding: f32::NAN,

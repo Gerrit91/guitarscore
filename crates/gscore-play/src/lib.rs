@@ -60,7 +60,7 @@ pub use gscore_model::{Fade, HarmonicKind, InstrumentKind, StrokeDirection};
 pub use performance::{Attack, Performance, PerformanceTrack, PlayedNote, StringKind, TrackEngine};
 pub use pitch::PitchShape;
 pub use player::{PlayError, PlayState, Player, Scheduler, TEMPO_SCALE_RANGE};
-pub use sequence::{MeasureSpan, Sequence, SequenceTrack, TimedEvent, sound_events};
+pub use sequence::{BeatSpan, MeasureSpan, Sequence, SequenceTrack, TimedEvent, sound_events};
 pub use smf::{SmfError, to_smf};
 pub use tempo::{PPQ, TempoMap, micros_per_quarter};
 pub use timeline::{Timeline, tempo_at};

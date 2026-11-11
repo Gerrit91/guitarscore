@@ -334,6 +334,19 @@ pub(crate) fn paint_cursor(
     }
 }
 
+/// A very light tint over the cursor's bar, to see at a glance where the cursor (or the
+/// playback) is.
+pub(crate) fn paint_cursor_bar(painter: &Painter, bar: Rect, theme: &Theme) {
+    painter.rect_filled(
+        bar,
+        2.0,
+        color(theme.cursor).gamma_multiply(CURSOR_BAR_ALPHA),
+    );
+}
+
+/// How strongly [`paint_cursor_bar`] tints the bar.
+const CURSOR_BAR_ALPHA: f32 = 0.05;
+
 pub(crate) fn color(rgb: Rgb) -> Color32 {
     Color32::from_rgb(rgb.0, rgb.1, rgb.2)
 }

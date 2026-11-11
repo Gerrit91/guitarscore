@@ -397,8 +397,8 @@ impl GuitarScoreApp {
         }
     }
 
-    /// The playback speed (50 % to 120 % of the written tempo), and whether the speed
-    /// trainer is on.
+    /// The playback speed (25 % to 150 % of the written tempo: typed, or one of the usual
+    /// steps), and whether the speed trainer is on.
     fn speed_control(&mut self, ui: &mut egui::Ui) {
         let mut speed = self.playback.speed();
         let chosen = speed;
@@ -406,7 +406,17 @@ impl GuitarScoreApp {
         let response = egui::ComboBox::from_id_salt("playback_speed")
             .selected_text(format!("{:.0} %", speed * 100.0))
             .width(66.0)
+            // Typing a speed must not close the list.
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show_ui(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Speed");
+                    let typed = ui.add(percent_value(&mut speed));
+                    ui.ctx().accesskit_node_builder(typed.id, |node| {
+                        node.set_label("Speed in percent")
+                    });
+                });
+                ui.separator();
                 for choice in crate::playback::SPEED_CHOICES {
                     ui.selectable_value(&mut speed, choice, format!("{:.0} %", choice * 100.0));
                 }
@@ -713,6 +723,22 @@ fn paint_cross(painter: &egui::Painter, rect: Rect, ink: egui::Color32) {
     painter.line_segment([r.right_top(), r.left_bottom()], stroke);
 }
 
+/// A speed (1 = 100 %) typed or dragged in whole percent, within the playback speed's
+/// range.
+fn percent_value(speed: &mut f32) -> egui::DragValue<'_> {
+    let (low, high) = crate::playback::SPEED_RANGE;
+    egui::DragValue::from_get_set(move |typed| {
+        if let Some(percent) = typed {
+            *speed = (percent / 100.0) as f32;
+        }
+        (f64::from(*speed) * 100.0).round()
+    })
+    .range(f64::from(low) * 100.0..=f64::from(high) * 100.0)
+    .speed(1.0)
+    .fixed_decimals(0)
+    .suffix(" %")
+}
+
 /// The speed trainer's settings: on or off, how often and how much faster, and the top.
 fn speed_trainer_ui(ui: &mut egui::Ui, trainer: &mut crate::playback::SpeedTrainer, passes: u32) {
     ui.checkbox(&mut trainer.enabled, "Raise the speed while a loop plays");
@@ -736,18 +762,7 @@ fn speed_trainer_ui(ui: &mut egui::Ui, trainer: &mut crate::playback::SpeedTrain
         });
         ui.horizontal(|ui| {
             ui.label("Up to");
-            let top = egui::ComboBox::from_id_salt("speed_trainer_target")
-                .selected_text(format!("{:.0} %", trainer.target * 100.0))
-                .show_ui(ui, |ui| {
-                    for target in crate::playback::TRAINER_TARGETS {
-                        ui.selectable_value(
-                            &mut trainer.target,
-                            target,
-                            format!("{:.0} %", target * 100.0),
-                        );
-                    }
-                })
-                .response;
+            let top = ui.add(percent_value(&mut trainer.target));
             ui.ctx()
                 .accesskit_node_builder(top.id, |node| node.set_label("Top speed"));
         });

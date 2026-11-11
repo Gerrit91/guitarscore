@@ -318,6 +318,12 @@ pub(crate) fn whammy_label(quarter_tones: i8) -> String {
 
 /// Draws a `P.M.` or `let ring` row below the staff from `start_x` to `end_x`. `lane` is
 /// the row index below the staff (0 for the first present row).
+/// The baseline of under-staff row `lane` (0 = right under the staff) of a staff whose
+/// top line is at `top`.
+pub(crate) fn under_staff_baseline(lane: usize, top: f32, ctx: &Context<'_>) -> f32 {
+    top + ctx.staff.height() + ANNOTATION_LANE + lane as f32 * ANNOTATION_ROW_GAP
+}
+
 pub(crate) fn draw_under_staff_run(
     start_x: f32,
     end_x: f32,
@@ -327,7 +333,7 @@ pub(crate) fn draw_under_staff_run(
     ctx: &Context<'_>,
     ops: &mut Vec<DrawOp>,
 ) {
-    let baseline = top + ctx.staff.height() + ANNOTATION_LANE + lane as f32 * ANNOTATION_ROW_GAP;
+    let baseline = under_staff_baseline(lane, top, ctx);
     ops.push(DrawOp::Text {
         text: label.to_owned(),
         at: Point::new(start_x, baseline),

@@ -1473,14 +1473,12 @@ fn the_edit_palette_sets_lengths_effects_and_the_measure_header() {
 #[test]
 fn a_measure_selection_is_shared_with_the_editor_for_copy_and_paste() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
-    // Select the first measure in the grid.
+    // Select the first measure in the grid (a click only places the cursor; shift-click
+    // selects from the cursor's bar).
     let rect = harness.get_by_label("Song grid").rect();
     // The matrix now starts under the pinned ruler: its rect is the first track row.
     let pos = rect.left_top() + egui::vec2(24.0 * 0.0 + 12.0, 12.0);
-    harness.hover_at(pos);
-    harness.drag_at(pos);
-    harness.drop_at(pos);
-    harness.run();
+    click_with(&mut harness, pos, egui::Modifiers::SHIFT);
     assert!(matches!(
         harness.state().document().unwrap().editor().selection(),
         Some(gscore_edit::Selection::Measures { .. })
@@ -1506,25 +1504,28 @@ fn the_view_menu_and_the_row_menu_show_the_track_panel() {
 }
 
 #[test]
-fn clicking_the_song_grid_moves_the_cursor_and_selects_measures() {
+fn clicking_the_song_grid_puts_the_cursor_on_the_bar_without_selecting_it() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     let rect = harness.get_by_label("Song grid").rect();
     // The third measure, first track: 24 px square cells (the ruler is a separate strip).
-    let pos = rect.left_top() + egui::vec2(24.0 * 2.0 + 12.0, 12.0);
-    harness.hover_at(pos);
-    harness.drag_at(pos);
-    harness.drop_at(pos);
-    harness.run();
-    let cursor = harness.state().document().unwrap().editor().cursor();
+    let cell = |measure: usize| rect.left_top() + egui::vec2(24.0 * measure as f32 + 12.0, 12.0);
+    // A selection first: the click drops it (and the loop it turned on).
+    click_with(&mut harness, cell(1), egui::Modifiers::SHIFT);
+    assert!(harness.state().selection().is_some());
+    assert!(harness.state().playback().loop_selection());
+    left_click_at(&mut harness, cell(2));
+    let editor = harness.state().document().unwrap().editor();
+    let cursor = editor.cursor();
     assert_eq!(cursor.measure, gscore_model::MeasureIndex::new(2));
+    assert_eq!(cursor.beat, gscore_model::BeatIndex::new(0));
     assert_eq!(cursor.track, gscore_model::TrackIndex::new(0));
-    assert_eq!(
-        harness
-            .state()
-            .selection()
-            .map(gscore_app::MeasureSelection::start),
-        Some(2)
-    );
+    assert!(editor.selection().is_none());
+    assert!(harness.state().selection().is_none());
+    assert!(!harness.state().playback().loop_selection());
+    // Shift-click selects from the cursor's bar.
+    click_with(&mut harness, cell(4), egui::Modifiers::SHIFT);
+    let selected = harness.state().selection().unwrap();
+    assert_eq!((selected.start(), selected.end()), (2, 4));
 }
 
 #[test]
@@ -1575,12 +1576,19 @@ fn dragging_in_the_song_grid_selects_one_track_or_all() {
     harness.drop_at(cell(1, 0));
     harness.run();
 
-    // A click on the ruler selects whole bars across every track.
+    // A click on the ruler places the cursor; shift-click selects whole bars across every
+    // track, from the cursor's bar.
     left_click_at(&mut harness, cell(2, 0) - egui::vec2(0.0, 25.0));
+    assert!(selection(&harness).is_none());
+    click_with(
+        &mut harness,
+        cell(3, 0) - egui::vec2(0.0, 25.0),
+        egui::Modifiers::SHIFT,
+    );
     let selected = selection(&harness).unwrap();
     assert_eq!(
         (selected.start(), selected.end(), selected.track),
-        (2, 2, None)
+        (2, 3, None)
     );
 }
 
@@ -1602,12 +1610,11 @@ fn copy_and_delete_act_on_a_one_track_grid_selection() {
         })
     };
     let rect = harness.get_by_label("Song grid").rect();
+    // One bar of the first track: a click puts the cursor there, shift-click selects it.
     let select = |harness: &mut Harness<'static, GuitarScoreApp>, measure: usize| {
         let cell = rect.left_top() + egui::vec2(24.0 * measure as f32 + 12.0, 12.0);
-        harness.hover_at(cell);
-        harness.drag_at(cell);
-        harness.drop_at(cell);
-        harness.run();
+        left_click_at(harness, cell);
+        click_with(harness, cell, egui::Modifiers::SHIFT);
     };
 
     let source = notes(&harness, 0, 0);
@@ -1650,16 +1657,33 @@ fn right_click_at(harness: &mut Harness<'static, GuitarScoreApp>, pos: egui::Pos
 
 /// Clicks at `pos` with the primary button.
 fn left_click_at(harness: &mut Harness<'static, GuitarScoreApp>, pos: egui::Pos2) {
+    click_with(harness, pos, egui::Modifiers::NONE);
+}
+
+/// Left-clicks at `pos` with `modifiers` held.
+fn click_with(
+    harness: &mut Harness<'static, GuitarScoreApp>,
+    pos: egui::Pos2,
+    modifiers: egui::Modifiers,
+) {
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::ModifiersChanged(modifiers));
     harness.hover_at(pos);
     for pressed in [true, false] {
         harness.input_mut().events.push(egui::Event::PointerButton {
             pos,
             button: egui::PointerButton::Primary,
             pressed,
-            modifiers: egui::Modifiers::NONE,
+            modifiers,
         });
     }
     harness.run();
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
 }
 
 /// Right-clicks the name part of a track row (the controls are on the right).

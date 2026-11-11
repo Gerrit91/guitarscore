@@ -94,157 +94,157 @@
 <text x="12.28" y="67.94" font-family="Noto Sans" font-size="1.1" fill="#404040">4</text>
 <rect x="13.48" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
 <text x="14.49" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
-<path d="M 15.5 81.92 C 21.8 81.92 26.92 80.81 26.92 79.44" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<polygon points="26.92,78.54 27.34,79.44 26.5,79.44" fill="#101010"/>
-<text x="26.92" y="78.04" font-family="Noto Sans" font-size="0.9" text-anchor="middle" fill="#404040">full</text>
+<path d="M 15.5 81.92 C 22.18 81.92 27.6 80.81 27.6 79.44" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<polygon points="27.6,78.54 28.02,79.44 27.18,79.44" fill="#101010"/>
+<text x="27.6" y="78.04" font-family="Noto Sans" font-size="0.9" text-anchor="middle" fill="#404040">full</text>
 <line x1="13.25" y1="67.74" x2="15.74" y2="67.74" stroke="#707070" stroke-width="0.16"/>
 <line x1="13.25" y1="66.74" x2="15.74" y2="66.74" stroke="#707070" stroke-width="0.16"/>
 <text x="13.65" y="66.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadWhole">&#xE0A2;</text>
 <text x="14.49" y="66.14" font-family="Noto Sans" font-size="1" fill="#404040">Bend</text>
-<line x1="27.64" y1="80.74" x2="27.64" y2="88.24" stroke="#303030" stroke-width="0.16"/>
-<line x1="27.64" y1="68.74" x2="27.64" y2="72.74" stroke="#303030" stroke-width="0.16"/>
-<text x="27.72" y="67.94" font-family="Noto Sans" font-size="1.1" fill="#404040">5</text>
-<rect x="28.92" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="29.92" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
-<rect x="34.93" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="35.94" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
-<rect x="40.95" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="41.96" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
-<rect x="46.97" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="47.98" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
-<rect x="52.99" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="54" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">17</text>
-<line x1="52.49" y1="82.78" x2="52.94" y2="81.7" stroke="#101010" stroke-width="0.15"/>
-<rect x="59.12" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="60.13" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
-<line x1="58.62" y1="81.7" x2="59.07" y2="82.78" stroke="#101010" stroke-width="0.15"/>
-<line x1="61.18" y1="82.78" x2="61.63" y2="81.7" stroke="#101010" stroke-width="0.15"/>
-<rect x="65.86" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="66.87" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">17</text>
-<line x1="65.36" y1="81.7" x2="65.81" y2="82.78" stroke="#101010" stroke-width="0.15"/>
-<rect x="71.88" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="72.89" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
-<line x1="73.95" y1="81.7" x2="74.4" y2="82.78" stroke="#101010" stroke-width="0.15"/>
-<line x1="28.93" y1="67.74" x2="30.91" y2="67.74" stroke="#707070" stroke-width="0.16"/>
-<line x1="28.93" y1="66.74" x2="30.91" y2="66.74" stroke="#707070" stroke-width="0.16"/>
-<text x="29.33" y="66.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="29.39" y1="66.41" x2="29.39" y2="70.74" stroke="#101010" stroke-width="0.12"/>
-<line x1="34.95" y1="67.74" x2="36.93" y2="67.74" stroke="#707070" stroke-width="0.16"/>
-<text x="35.35" y="67.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="35.41" y1="67.41" x2="35.41" y2="70.74" stroke="#101010" stroke-width="0.12"/>
-<line x1="40.97" y1="67.74" x2="42.95" y2="67.74" stroke="#707070" stroke-width="0.16"/>
-<text x="41.37" y="67.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="41.43" y1="67.41" x2="41.43" y2="70.74" stroke="#101010" stroke-width="0.12"/>
-<line x1="46.99" y1="67.74" x2="48.97" y2="67.74" stroke="#707070" stroke-width="0.16"/>
-<line x1="46.99" y1="66.74" x2="48.97" y2="66.74" stroke="#707070" stroke-width="0.16"/>
-<text x="47.39" y="66.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="47.45" y1="66.41" x2="47.45" y2="70.74" stroke="#101010" stroke-width="0.12"/>
-<line x1="53.01" y1="67.74" x2="54.99" y2="67.74" stroke="#707070" stroke-width="0.16"/>
-<line x1="53.01" y1="66.74" x2="54.99" y2="66.74" stroke="#707070" stroke-width="0.16"/>
-<line x1="53.01" y1="65.74" x2="54.99" y2="65.74" stroke="#707070" stroke-width="0.16"/>
-<text x="53.41" y="65.74" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="53.47" y1="65.91" x2="53.47" y2="70.74" stroke="#101010" stroke-width="0.12"/>
-<line x1="59.14" y1="67.74" x2="61.12" y2="67.74" stroke="#707070" stroke-width="0.16"/>
-<text x="59.54" y="67.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="59.6" y1="67.41" x2="59.6" y2="70.74" stroke="#101010" stroke-width="0.12"/>
-<line x1="65.88" y1="67.74" x2="67.86" y2="67.74" stroke="#707070" stroke-width="0.16"/>
-<line x1="65.88" y1="66.74" x2="67.86" y2="66.74" stroke="#707070" stroke-width="0.16"/>
-<line x1="65.88" y1="65.74" x2="67.86" y2="65.74" stroke="#707070" stroke-width="0.16"/>
-<text x="66.28" y="65.74" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="66.34" y1="65.91" x2="66.34" y2="70.74" stroke="#101010" stroke-width="0.12"/>
-<line x1="71.9" y1="67.74" x2="73.88" y2="67.74" stroke="#707070" stroke-width="0.16"/>
-<text x="72.3" y="67.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="72.36" y1="67.41" x2="72.36" y2="70.74" stroke="#101010" stroke-width="0.12"/>
-<rect x="29.33" y="70.24" width="6.14" height="0.5" fill="#101010"/>
-<rect x="41.37" y="70.24" width="6.14" height="0.5" fill="#101010"/>
-<rect x="53.41" y="70.24" width="6.25" height="0.5" fill="#101010"/>
-<rect x="66.28" y="70.24" width="6.14" height="0.5" fill="#101010"/>
-<line x1="30.71" y1="66.04" x2="35.15" y2="67.44" stroke="#101010" stroke-width="0.13"/>
-<path d="M 42.11 66.64 C 44.02 66.14 45.92 65.14 47.83 65.64" fill="none" stroke="#101010" stroke-width="0.12" stroke-linecap="round"/>
-<line x1="42.75" y1="67.44" x2="47.19" y2="66.04" stroke="#101010" stroke-width="0.13"/>
-<line x1="52.31" y1="66.24" x2="53.21" y2="65.74" stroke="#101010" stroke-width="0.13"/>
-<line x1="60.92" y1="67.24" x2="61.82" y2="66.74" stroke="#101010" stroke-width="0.13"/>
-<line x1="58.44" y1="66.74" x2="59.34" y2="67.24" stroke="#101010" stroke-width="0.13"/>
-<line x1="65.18" y1="65.24" x2="66.08" y2="65.74" stroke="#101010" stroke-width="0.13"/>
-<line x1="73.68" y1="67.24" x2="74.58" y2="67.74" stroke="#101010" stroke-width="0.13"/>
-<line x1="30.98" y1="81.89" x2="34.88" y2="82.59" stroke="#101010" stroke-width="0.15"/>
-<path d="M 43.02 82.24 C 44.32 81.34 45.62 81.34 46.92 82.24" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<text x="44.97" y="81.04" font-family="Noto Sans" font-size="0.9" text-anchor="middle" fill="#404040">sl.</text>
-<text x="29.92" y="66.14" font-family="Noto Sans" font-size="1" fill="#404040">Slides</text>
-<line x1="78.83" y1="80.74" x2="78.83" y2="88.24" stroke="#303030" stroke-width="0.16"/>
-<line x1="78.83" y1="68.74" x2="78.83" y2="72.74" stroke="#303030" stroke-width="0.16"/>
-<text x="78.91" y="67.94" font-family="Noto Sans" font-size="1.1" fill="#404040">6</text>
-<rect x="80.12" y="83" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="80.7" y="84.28" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">7</text>
-<rect x="87.95" y="83" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="88.53" y="84.28" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">9</text>
-<rect x="95.34" y="83" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="96.35" y="84.28" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">11</text>
-<rect x="103.17" y="83" width="2.02" height="1.47" fill="#ffffff"/>
-<text x="104.18" y="84.28" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">13</text>
-<text x="80.11" y="69.74" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="80.17" y1="69.91" x2="80.17" y2="73.24" stroke="#101010" stroke-width="0.12"/>
-<text x="87.94" y="69.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="88" y1="69.41" x2="88" y2="72.74" stroke="#101010" stroke-width="0.12"/>
-<text x="95.76" y="68.74" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<text x="94.51" y="68.74" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="95.82" y1="68.91" x2="95.82" y2="72.24" stroke="#101010" stroke-width="0.12"/>
-<text x="103.59" y="68.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<text x="102.34" y="68.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="103.65" y1="68.41" x2="103.65" y2="71.74" stroke="#101010" stroke-width="0.12"/>
-<path d="M 80.4 77.74 C 80.56 77.56 80.69 77.56 80.85 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 80.85 77.74 C 81 77.92 81.14 77.92 81.29 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 81.29 77.74 C 81.45 77.56 81.58 77.56 81.74 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 81.74 77.74 C 81.89 77.92 82.03 77.92 82.18 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 82.18 77.74 C 82.34 77.56 82.47 77.56 82.63 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 82.63 77.74 C 82.78 77.92 82.92 77.92 83.07 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 83.07 77.74 C 83.23 77.56 83.36 77.56 83.52 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 83.52 77.74 C 83.67 77.92 83.81 77.92 83.96 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 83.96 77.74 C 84.12 77.56 84.25 77.56 84.41 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 84.41 77.74 C 84.56 77.92 84.7 77.92 84.85 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 84.85 77.74 C 85.01 77.56 85.14 77.56 85.3 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 85.3 77.74 C 85.46 77.92 85.59 77.92 85.74 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 85.74 77.74 C 85.9 77.56 86.03 77.56 86.19 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 86.19 77.74 C 86.35 77.92 86.48 77.92 86.64 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 86.64 77.74 C 86.79 77.56 86.92 77.56 87.08 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 87.08 77.74 C 87.24 77.92 87.37 77.92 87.53 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<line x1="88.23" y1="78.16" x2="88.94" y2="77.32" stroke="#101010" stroke-width="0.15"/>
-<line x1="88.94" y1="77.32" x2="89.65" y2="78.16" stroke="#101010" stroke-width="0.15"/>
-<line x1="89.65" y1="78.16" x2="90.36" y2="77.32" stroke="#101010" stroke-width="0.15"/>
-<line x1="90.36" y1="77.32" x2="91.08" y2="78.16" stroke="#101010" stroke-width="0.15"/>
-<line x1="91.08" y1="78.16" x2="91.79" y2="77.32" stroke="#101010" stroke-width="0.15"/>
-<line x1="91.79" y1="77.32" x2="92.5" y2="78.16" stroke="#101010" stroke-width="0.15"/>
-<line x1="92.5" y1="78.16" x2="93.21" y2="77.32" stroke="#101010" stroke-width="0.15"/>
-<line x1="93.21" y1="77.32" x2="93.93" y2="78.16" stroke="#101010" stroke-width="0.15"/>
-<line x1="93.93" y1="78.16" x2="94.64" y2="77.32" stroke="#101010" stroke-width="0.15"/>
-<line x1="94.64" y1="77.32" x2="95.35" y2="78.16" stroke="#101010" stroke-width="0.15"/>
-<path d="M 96.05 77.74 C 96.21 77.56 96.34 77.56 96.5 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 96.5 77.74 C 96.65 77.92 96.79 77.92 96.94 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 96.94 77.74 C 97.1 77.56 97.23 77.56 97.39 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 97.39 77.74 C 97.54 77.92 97.68 77.92 97.83 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 97.83 77.74 C 97.99 77.56 98.12 77.56 98.28 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 98.28 77.74 C 98.43 77.92 98.57 77.92 98.72 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 98.72 77.74 C 98.88 77.56 99.01 77.56 99.17 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 99.17 77.74 C 99.32 77.92 99.46 77.92 99.61 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 99.61 77.74 C 99.77 77.56 99.9 77.56 100.06 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 100.06 77.74 C 100.21 77.92 100.35 77.92 100.5 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 100.5 77.74 C 100.66 77.56 100.79 77.56 100.95 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 100.95 77.74 C 101.1 77.92 101.24 77.92 101.39 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 101.39 77.74 C 101.55 77.56 101.68 77.56 101.84 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 101.84 77.74 C 102 77.92 102.13 77.92 102.28 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 102.28 77.74 C 102.44 77.56 102.57 77.56 102.73 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 102.73 77.74 C 102.89 77.92 103.02 77.92 103.18 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<line x1="103.88" y1="78.16" x2="104.59" y2="77.32" stroke="#101010" stroke-width="0.15"/>
-<line x1="104.59" y1="77.32" x2="105.3" y2="78.16" stroke="#101010" stroke-width="0.15"/>
-<line x1="105.3" y1="78.16" x2="106.01" y2="77.32" stroke="#101010" stroke-width="0.15"/>
-<line x1="106.01" y1="77.32" x2="106.73" y2="78.16" stroke="#101010" stroke-width="0.15"/>
-<line x1="106.73" y1="78.16" x2="107.44" y2="77.32" stroke="#101010" stroke-width="0.15"/>
-<line x1="107.44" y1="77.32" x2="108.15" y2="78.16" stroke="#101010" stroke-width="0.15"/>
-<line x1="108.15" y1="78.16" x2="108.86" y2="77.32" stroke="#101010" stroke-width="0.15"/>
-<line x1="108.86" y1="77.32" x2="109.58" y2="78.16" stroke="#101010" stroke-width="0.15"/>
-<line x1="109.58" y1="78.16" x2="110.29" y2="77.32" stroke="#101010" stroke-width="0.15"/>
-<line x1="110.29" y1="77.32" x2="111" y2="78.16" stroke="#101010" stroke-width="0.15"/>
-<text x="80.7" y="66.14" font-family="Noto Sans" font-size="1" fill="#404040">Vibratos</text>
+<line x1="28.32" y1="80.74" x2="28.32" y2="88.24" stroke="#303030" stroke-width="0.16"/>
+<line x1="28.32" y1="68.74" x2="28.32" y2="72.74" stroke="#303030" stroke-width="0.16"/>
+<text x="28.4" y="67.94" font-family="Noto Sans" font-size="1.1" fill="#404040">5</text>
+<rect x="29.6" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="30.61" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
+<rect x="35.08" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="36.09" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
+<rect x="40.57" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="41.58" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
+<rect x="46.05" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="47.06" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
+<rect x="51.54" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="52.55" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">17</text>
+<line x1="51.04" y1="82.78" x2="51.49" y2="81.7" stroke="#101010" stroke-width="0.15"/>
+<rect x="57.92" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="58.93" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
+<line x1="57.42" y1="81.7" x2="57.87" y2="82.78" stroke="#101010" stroke-width="0.15"/>
+<line x1="59.99" y1="82.78" x2="60.44" y2="81.7" stroke="#101010" stroke-width="0.15"/>
+<rect x="65.02" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="66.02" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">17</text>
+<line x1="64.52" y1="81.7" x2="64.97" y2="82.78" stroke="#101010" stroke-width="0.15"/>
+<rect x="70.8" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="71.81" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">12</text>
+<line x1="72.87" y1="81.7" x2="73.32" y2="82.78" stroke="#101010" stroke-width="0.15"/>
+<line x1="29.62" y1="67.74" x2="31.6" y2="67.74" stroke="#707070" stroke-width="0.16"/>
+<line x1="29.62" y1="66.74" x2="31.6" y2="66.74" stroke="#707070" stroke-width="0.16"/>
+<text x="30.02" y="66.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="30.08" y1="66.41" x2="30.08" y2="70.74" stroke="#101010" stroke-width="0.12"/>
+<line x1="35.1" y1="67.74" x2="37.08" y2="67.74" stroke="#707070" stroke-width="0.16"/>
+<text x="35.5" y="67.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="35.56" y1="67.41" x2="35.56" y2="70.74" stroke="#101010" stroke-width="0.12"/>
+<line x1="40.59" y1="67.74" x2="42.57" y2="67.74" stroke="#707070" stroke-width="0.16"/>
+<text x="40.99" y="67.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="41.05" y1="67.41" x2="41.05" y2="70.74" stroke="#101010" stroke-width="0.12"/>
+<line x1="46.07" y1="67.74" x2="48.05" y2="67.74" stroke="#707070" stroke-width="0.16"/>
+<line x1="46.07" y1="66.74" x2="48.05" y2="66.74" stroke="#707070" stroke-width="0.16"/>
+<text x="46.47" y="66.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="46.53" y1="66.41" x2="46.53" y2="70.74" stroke="#101010" stroke-width="0.12"/>
+<line x1="51.56" y1="67.74" x2="53.54" y2="67.74" stroke="#707070" stroke-width="0.16"/>
+<line x1="51.56" y1="66.74" x2="53.54" y2="66.74" stroke="#707070" stroke-width="0.16"/>
+<line x1="51.56" y1="65.74" x2="53.54" y2="65.74" stroke="#707070" stroke-width="0.16"/>
+<text x="51.96" y="65.74" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="52.02" y1="65.91" x2="52.02" y2="70.74" stroke="#101010" stroke-width="0.12"/>
+<line x1="57.94" y1="67.74" x2="59.92" y2="67.74" stroke="#707070" stroke-width="0.16"/>
+<text x="58.34" y="67.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="58.4" y1="67.41" x2="58.4" y2="70.74" stroke="#101010" stroke-width="0.12"/>
+<line x1="65.03" y1="67.74" x2="67.01" y2="67.74" stroke="#707070" stroke-width="0.16"/>
+<line x1="65.03" y1="66.74" x2="67.01" y2="66.74" stroke="#707070" stroke-width="0.16"/>
+<line x1="65.03" y1="65.74" x2="67.01" y2="65.74" stroke="#707070" stroke-width="0.16"/>
+<text x="65.43" y="65.74" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="65.49" y1="65.91" x2="65.49" y2="70.74" stroke="#101010" stroke-width="0.12"/>
+<line x1="70.82" y1="67.74" x2="72.8" y2="67.74" stroke="#707070" stroke-width="0.16"/>
+<text x="71.22" y="67.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="71.28" y1="67.41" x2="71.28" y2="70.74" stroke="#101010" stroke-width="0.12"/>
+<rect x="30.02" y="70.24" width="5.61" height="0.5" fill="#101010"/>
+<rect x="40.99" y="70.24" width="5.61" height="0.5" fill="#101010"/>
+<rect x="51.96" y="70.24" width="6.5" height="0.5" fill="#101010"/>
+<rect x="65.43" y="70.24" width="5.91" height="0.5" fill="#101010"/>
+<line x1="31.4" y1="66.04" x2="35.3" y2="67.44" stroke="#101010" stroke-width="0.13"/>
+<path d="M 41.73 66.64 C 43.45 66.14 45.18 65.14 46.91 65.64" fill="none" stroke="#101010" stroke-width="0.12" stroke-linecap="round"/>
+<line x1="42.37" y1="67.44" x2="46.27" y2="66.04" stroke="#101010" stroke-width="0.13"/>
+<line x1="50.86" y1="66.24" x2="51.76" y2="65.74" stroke="#101010" stroke-width="0.13"/>
+<line x1="59.72" y1="67.24" x2="60.62" y2="66.74" stroke="#101010" stroke-width="0.13"/>
+<line x1="57.24" y1="66.74" x2="58.14" y2="67.24" stroke="#101010" stroke-width="0.13"/>
+<line x1="64.33" y1="65.24" x2="65.23" y2="65.74" stroke="#101010" stroke-width="0.13"/>
+<line x1="72.6" y1="67.24" x2="73.5" y2="67.74" stroke="#101010" stroke-width="0.13"/>
+<line x1="31.66" y1="81.89" x2="35.03" y2="82.59" stroke="#101010" stroke-width="0.15"/>
+<path d="M 42.63 82.24 C 43.76 81.34 44.88 81.34 46 82.24" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<text x="44.32" y="81.04" font-family="Noto Sans" font-size="0.9" text-anchor="middle" fill="#404040">sl.</text>
+<text x="30.61" y="66.14" font-family="Noto Sans" font-size="1" fill="#404040">Slides</text>
+<line x1="77.22" y1="80.74" x2="77.22" y2="88.24" stroke="#303030" stroke-width="0.16"/>
+<line x1="77.22" y1="68.74" x2="77.22" y2="72.74" stroke="#303030" stroke-width="0.16"/>
+<text x="77.3" y="67.94" font-family="Noto Sans" font-size="1.1" fill="#404040">6</text>
+<rect x="78.51" y="83" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="79.09" y="84.28" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">7</text>
+<rect x="86.74" y="83" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="87.32" y="84.28" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">9</text>
+<rect x="94.54" y="83" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="95.54" y="84.28" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">11</text>
+<rect x="102.76" y="83" width="2.02" height="1.47" fill="#ffffff"/>
+<text x="103.77" y="84.28" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">13</text>
+<text x="78.5" y="69.74" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="78.56" y1="69.91" x2="78.56" y2="73.24" stroke="#101010" stroke-width="0.12"/>
+<text x="86.73" y="69.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="86.79" y1="69.41" x2="86.79" y2="72.74" stroke="#101010" stroke-width="0.12"/>
+<text x="94.95" y="68.74" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<text x="93.71" y="68.74" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
+<line x1="95.01" y1="68.91" x2="95.01" y2="72.24" stroke="#101010" stroke-width="0.12"/>
+<text x="103.18" y="68.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<text x="101.94" y="68.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
+<line x1="103.24" y1="68.41" x2="103.24" y2="71.74" stroke="#101010" stroke-width="0.12"/>
+<path d="M 78.79 77.74 C 78.95 77.56 79.09 77.56 79.26 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 79.26 77.74 C 79.42 77.92 79.56 77.92 79.73 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 79.73 77.74 C 79.89 77.56 80.03 77.56 80.2 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 80.2 77.74 C 80.36 77.92 80.51 77.92 80.67 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 80.67 77.74 C 80.83 77.56 80.98 77.56 81.14 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 81.14 77.74 C 81.31 77.92 81.45 77.92 81.61 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 81.61 77.74 C 81.78 77.56 81.92 77.56 82.08 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 82.08 77.74 C 82.25 77.92 82.39 77.92 82.55 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 82.55 77.74 C 82.72 77.56 82.86 77.56 83.02 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 83.02 77.74 C 83.19 77.92 83.33 77.92 83.49 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 83.49 77.74 C 83.66 77.56 83.8 77.56 83.96 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 83.96 77.74 C 84.13 77.92 84.27 77.92 84.43 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 84.43 77.74 C 84.6 77.56 84.74 77.56 84.9 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 84.9 77.74 C 85.07 77.92 85.21 77.92 85.38 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 85.38 77.74 C 85.54 77.56 85.68 77.56 85.85 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 85.85 77.74 C 86.01 77.92 86.15 77.92 86.32 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<line x1="87.02" y1="78.16" x2="87.77" y2="77.32" stroke="#101010" stroke-width="0.15"/>
+<line x1="87.77" y1="77.32" x2="88.52" y2="78.16" stroke="#101010" stroke-width="0.15"/>
+<line x1="88.52" y1="78.16" x2="89.27" y2="77.32" stroke="#101010" stroke-width="0.15"/>
+<line x1="89.27" y1="77.32" x2="90.03" y2="78.16" stroke="#101010" stroke-width="0.15"/>
+<line x1="90.03" y1="78.16" x2="90.78" y2="77.32" stroke="#101010" stroke-width="0.15"/>
+<line x1="90.78" y1="77.32" x2="91.53" y2="78.16" stroke="#101010" stroke-width="0.15"/>
+<line x1="91.53" y1="78.16" x2="92.29" y2="77.32" stroke="#101010" stroke-width="0.15"/>
+<line x1="92.29" y1="77.32" x2="93.04" y2="78.16" stroke="#101010" stroke-width="0.15"/>
+<line x1="93.04" y1="78.16" x2="93.79" y2="77.32" stroke="#101010" stroke-width="0.15"/>
+<line x1="93.79" y1="77.32" x2="94.54" y2="78.16" stroke="#101010" stroke-width="0.15"/>
+<path d="M 95.24 77.74 C 95.41 77.56 95.55 77.56 95.71 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 95.71 77.74 C 95.88 77.92 96.02 77.92 96.19 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 96.19 77.74 C 96.35 77.56 96.49 77.56 96.66 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 96.66 77.74 C 96.82 77.92 96.96 77.92 97.13 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 97.13 77.74 C 97.29 77.56 97.43 77.56 97.6 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 97.6 77.74 C 97.76 77.92 97.9 77.92 98.07 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 98.07 77.74 C 98.23 77.56 98.37 77.56 98.54 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 98.54 77.74 C 98.7 77.92 98.84 77.92 99.01 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 99.01 77.74 C 99.17 77.56 99.31 77.56 99.48 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 99.48 77.74 C 99.64 77.92 99.78 77.92 99.95 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 99.95 77.74 C 100.11 77.56 100.25 77.56 100.42 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 100.42 77.74 C 100.58 77.92 100.73 77.92 100.89 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 100.89 77.74 C 101.05 77.56 101.2 77.56 101.36 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 101.36 77.74 C 101.53 77.92 101.67 77.92 101.83 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 101.83 77.74 C 102 77.56 102.14 77.56 102.3 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 102.3 77.74 C 102.47 77.92 102.61 77.92 102.77 77.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<line x1="103.47" y1="78.16" x2="104.22" y2="77.32" stroke="#101010" stroke-width="0.15"/>
+<line x1="104.22" y1="77.32" x2="104.98" y2="78.16" stroke="#101010" stroke-width="0.15"/>
+<line x1="104.98" y1="78.16" x2="105.73" y2="77.32" stroke="#101010" stroke-width="0.15"/>
+<line x1="105.73" y1="77.32" x2="106.48" y2="78.16" stroke="#101010" stroke-width="0.15"/>
+<line x1="106.48" y1="78.16" x2="107.24" y2="77.32" stroke="#101010" stroke-width="0.15"/>
+<line x1="107.24" y1="77.32" x2="107.99" y2="78.16" stroke="#101010" stroke-width="0.15"/>
+<line x1="107.99" y1="78.16" x2="108.74" y2="77.32" stroke="#101010" stroke-width="0.15"/>
+<line x1="108.74" y1="77.32" x2="109.49" y2="78.16" stroke="#101010" stroke-width="0.15"/>
+<line x1="109.49" y1="78.16" x2="110.25" y2="77.32" stroke="#101010" stroke-width="0.15"/>
+<line x1="110.25" y1="77.32" x2="111" y2="78.16" stroke="#101010" stroke-width="0.15"/>
+<text x="79.09" y="66.14" font-family="Noto Sans" font-size="1" fill="#404040">Vibratos</text>
 <line x1="111.92" y1="80.74" x2="111.92" y2="88.24" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="68.74" x2="111.92" y2="72.74" stroke="#303030" stroke-width="0.16"/>
 <line x1="8" y1="112.64" x2="112" y2="112.64" stroke="#707070" stroke-width="0.13"/>
@@ -340,149 +340,149 @@
 <text x="90.65" y="98.04" font-family="Noto Sans" font-size="1" fill="#404040">Dive bomb</text>
 <line x1="111.92" y1="112.64" x2="111.92" y2="120.14" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="100.64" x2="111.92" y2="104.64" stroke="#303030" stroke-width="0.16"/>
-<line x1="8" y1="144.54" x2="74.73" y2="144.54" stroke="#707070" stroke-width="0.13"/>
-<line x1="8" y1="146.04" x2="74.73" y2="146.04" stroke="#707070" stroke-width="0.13"/>
-<line x1="8" y1="147.54" x2="74.73" y2="147.54" stroke="#707070" stroke-width="0.13"/>
-<line x1="8" y1="149.04" x2="74.73" y2="149.04" stroke="#707070" stroke-width="0.13"/>
-<line x1="8" y1="150.54" x2="74.73" y2="150.54" stroke="#707070" stroke-width="0.13"/>
-<line x1="8" y1="152.04" x2="74.73" y2="152.04" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="144.54" x2="71.96" y2="144.54" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="146.04" x2="71.96" y2="146.04" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="147.54" x2="71.96" y2="147.54" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="149.04" x2="71.96" y2="149.04" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="150.54" x2="71.96" y2="150.54" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="152.04" x2="71.96" y2="152.04" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="148.32" font-family="Bravura" font-size="3.97" fill="#101010" data-glyph="6stringTabClef">&#xE06D;</text>
-<line x1="8" y1="132.54" x2="74.73" y2="132.54" stroke="#707070" stroke-width="0.13"/>
-<line x1="8" y1="133.54" x2="74.73" y2="133.54" stroke="#707070" stroke-width="0.13"/>
-<line x1="8" y1="134.54" x2="74.73" y2="134.54" stroke="#707070" stroke-width="0.13"/>
-<line x1="8" y1="135.54" x2="74.73" y2="135.54" stroke="#707070" stroke-width="0.13"/>
-<line x1="8" y1="136.54" x2="74.73" y2="136.54" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="132.54" x2="71.96" y2="132.54" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="133.54" x2="71.96" y2="133.54" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="134.54" x2="71.96" y2="134.54" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="135.54" x2="71.96" y2="135.54" stroke="#707070" stroke-width="0.13"/>
+<line x1="8" y1="136.54" x2="71.96" y2="136.54" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="135.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
 <line x1="8.08" y1="132.54" x2="8.08" y2="152.04" stroke="#303030" stroke-width="0.16"/>
 <text x="12.28" y="131.74" font-family="Noto Sans" font-size="1.1" fill="#404040">10</text>
 <rect x="14.74" y="143.8" width="1.16" height="1.47" fill="#ffffff"/>
 <text x="15.32" y="145.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
-<rect x="18.2" y="143.8" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="18.78" y="145.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">3</text>
-<rect x="21.66" y="143.8" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="22.24" y="145.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">4</text>
-<rect x="25.13" y="143.8" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="25.7" y="145.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">5</text>
-<rect x="28.59" y="143.8" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="29.17" y="145.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">4</text>
-<rect x="32.05" y="143.8" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="32.63" y="145.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">3</text>
-<rect x="35.51" y="143.8" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="36.09" y="145.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<rect x="17.74" y="143.8" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="18.32" y="145.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">3</text>
+<rect x="20.74" y="143.8" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="21.32" y="145.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">4</text>
+<rect x="23.74" y="143.8" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="24.32" y="145.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">5</text>
+<rect x="26.74" y="143.8" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="27.32" y="145.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">4</text>
+<rect x="29.74" y="143.8" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="30.32" y="145.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">3</text>
+<rect x="32.74" y="143.8" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="33.32" y="145.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
 <text x="14.73" y="132.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
 <text x="13.48" y="132.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <line x1="14.79" y1="132.71" x2="14.79" y2="136.04" stroke="#101010" stroke-width="0.12"/>
-<text x="18.19" y="132.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="18.25" y1="132.21" x2="18.25" y2="136.04" stroke="#101010" stroke-width="0.12"/>
-<text x="21.65" y="132.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<text x="20.41" y="132.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="21.71" y1="132.21" x2="21.71" y2="135.54" stroke="#101010" stroke-width="0.12"/>
-<line x1="24.71" y1="131.54" x2="26.69" y2="131.54" stroke="#707070" stroke-width="0.16"/>
-<text x="25.11" y="131.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="25.17" y1="131.71" x2="25.17" y2="135.54" stroke="#101010" stroke-width="0.12"/>
-<text x="28.58" y="132.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="28.64" y1="132.21" x2="28.64" y2="135.54" stroke="#101010" stroke-width="0.12"/>
-<text x="32.04" y="132.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<text x="31.12" y="132.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalNatural">&#xE261;</text>
-<line x1="32.1" y1="132.21" x2="32.1" y2="135.54" stroke="#101010" stroke-width="0.12"/>
-<text x="35.5" y="132.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="35.56" y1="132.71" x2="35.56" y2="136.04" stroke="#101010" stroke-width="0.12"/>
-<rect x="14.73" y="135.54" width="3.58" height="0.5" fill="#101010"/>
-<rect x="21.65" y="135.04" width="3.58" height="0.5" fill="#101010"/>
-<rect x="28.58" y="135.04" width="3.58" height="0.5" fill="#101010"/>
-<path d="M 15.32 131.74 C 22.24 129.94 29.17 129.94 36.09 131.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 14.72 142.64 C 22.04 141.64 29.37 141.64 36.69 142.64" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<text x="17.73" y="132.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="17.79" y1="132.21" x2="17.79" y2="136.04" stroke="#101010" stroke-width="0.12"/>
+<text x="20.73" y="132.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<text x="19.48" y="132.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
+<line x1="20.79" y1="132.21" x2="20.79" y2="135.54" stroke="#101010" stroke-width="0.12"/>
+<line x1="23.33" y1="131.54" x2="25.31" y2="131.54" stroke="#707070" stroke-width="0.16"/>
+<text x="23.73" y="131.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="23.79" y1="131.71" x2="23.79" y2="135.54" stroke="#101010" stroke-width="0.12"/>
+<text x="26.73" y="132.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="26.79" y1="132.21" x2="26.79" y2="135.54" stroke="#101010" stroke-width="0.12"/>
+<text x="29.73" y="132.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<text x="28.81" y="132.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalNatural">&#xE261;</text>
+<line x1="29.79" y1="132.21" x2="29.79" y2="135.54" stroke="#101010" stroke-width="0.12"/>
+<text x="32.73" y="132.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="32.79" y1="132.71" x2="32.79" y2="136.04" stroke="#101010" stroke-width="0.12"/>
+<rect x="14.73" y="135.54" width="3.12" height="0.5" fill="#101010"/>
+<rect x="20.73" y="135.04" width="3.12" height="0.5" fill="#101010"/>
+<rect x="26.73" y="135.04" width="3.12" height="0.5" fill="#101010"/>
+<path d="M 15.32 131.74 C 21.32 129.94 27.32 129.94 33.32 131.74" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
+<path d="M 14.72 142.64 C 21.12 141.64 27.52 141.64 33.92 142.64" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
 <text x="15.32" y="129.94" font-family="Noto Sans" font-size="1" fill="#404040">Legato</text>
-<line x1="40.51" y1="144.54" x2="40.51" y2="152.04" stroke="#303030" stroke-width="0.16"/>
-<line x1="40.51" y1="132.54" x2="40.51" y2="136.54" stroke="#303030" stroke-width="0.16"/>
-<text x="40.59" y="131.74" font-family="Noto Sans" font-size="1.1" fill="#404040">11</text>
-<rect x="41.79" y="146.8" width="2.9" height="1.47" fill="#ffffff"/>
-<text x="43.24" y="148.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">&lt;7&gt;</text>
-<rect x="46.35" y="146.8" width="5.48" height="1.47" fill="#ffffff"/>
-<text x="49.09" y="148.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">7 &lt;19&gt;</text>
-<text x="49.09" y="142.34" font-family="Noto Sans" font-size="1" text-anchor="middle" fill="#101010">PH</text>
-<line x1="42.27" y1="131.54" x2="44.2" y2="131.54" stroke="#707070" stroke-width="0.16"/>
-<line x1="42.27" y1="130.54" x2="44.2" y2="130.54" stroke="#707070" stroke-width="0.16"/>
-<text x="42.67" y="130.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadDiamondWhite">&#xE0DD;</text>
-<line x1="42.73" y1="130.04" x2="42.73" y2="134.54" stroke="#101010" stroke-width="0.12"/>
-<line x1="48.1" y1="131.54" x2="50.08" y2="131.54" stroke="#707070" stroke-width="0.16"/>
-<line x1="48.1" y1="130.54" x2="50.08" y2="130.54" stroke="#707070" stroke-width="0.16"/>
-<text x="48.5" y="130.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadHalf">&#xE0A3;</text>
-<line x1="48.56" y1="130.21" x2="48.56" y2="134.54" stroke="#101010" stroke-width="0.12"/>
-<text x="43.24" y="129.94" font-family="Noto Sans" font-size="1" fill="#404040">Harmonics</text>
-<line x1="54.86" y1="144.54" x2="54.86" y2="152.04" stroke="#303030" stroke-width="0.16"/>
-<line x1="54.86" y1="132.54" x2="54.86" y2="136.54" stroke="#303030" stroke-width="0.16"/>
-<text x="54.94" y="131.74" font-family="Noto Sans" font-size="1.1" fill="#404040">12</text>
-<rect x="56.15" y="149.8" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="56.73" y="151.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
-<rect x="56.15" y="151.3" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="56.73" y="152.58" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="60.65" y="149.8" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="61.23" y="151.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
-<rect x="60.65" y="151.3" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="61.23" y="152.58" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="65.15" y="149.8" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="65.73" y="151.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
-<rect x="65.15" y="151.3" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="65.73" y="152.58" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<rect x="69.65" y="149.8" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="70.23" y="151.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
-<rect x="69.65" y="151.3" width="1.16" height="1.47" fill="#ffffff"/>
-<text x="70.23" y="152.58" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
-<line x1="55.74" y1="139.54" x2="57.72" y2="139.54" stroke="#707070" stroke-width="0.16"/>
-<line x1="55.74" y1="138.54" x2="57.72" y2="138.54" stroke="#707070" stroke-width="0.16"/>
-<line x1="55.74" y1="137.54" x2="57.72" y2="137.54" stroke="#707070" stroke-width="0.16"/>
-<text x="56.14" y="140.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="55.74" y1="137.54" x2="57.72" y2="137.54" stroke="#707070" stroke-width="0.16"/>
-<text x="56.14" y="138.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="57.26" y1="139.87" x2="57.26" y2="134.54" stroke="#101010" stroke-width="0.12"/>
-<line x1="60.24" y1="139.54" x2="62.22" y2="139.54" stroke="#707070" stroke-width="0.16"/>
-<line x1="60.24" y1="138.54" x2="62.22" y2="138.54" stroke="#707070" stroke-width="0.16"/>
-<line x1="60.24" y1="137.54" x2="62.22" y2="137.54" stroke="#707070" stroke-width="0.16"/>
-<text x="60.64" y="140.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="60.24" y1="137.54" x2="62.22" y2="137.54" stroke="#707070" stroke-width="0.16"/>
-<text x="60.64" y="138.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="61.76" y1="139.87" x2="61.76" y2="134.54" stroke="#101010" stroke-width="0.12"/>
-<line x1="64.74" y1="139.54" x2="66.72" y2="139.54" stroke="#707070" stroke-width="0.16"/>
-<line x1="64.74" y1="138.54" x2="66.72" y2="138.54" stroke="#707070" stroke-width="0.16"/>
-<line x1="64.74" y1="137.54" x2="66.72" y2="137.54" stroke="#707070" stroke-width="0.16"/>
-<text x="65.14" y="140.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="64.74" y1="137.54" x2="66.72" y2="137.54" stroke="#707070" stroke-width="0.16"/>
-<text x="65.14" y="138.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="66.26" y1="139.87" x2="66.26" y2="134.54" stroke="#101010" stroke-width="0.12"/>
-<line x1="69.24" y1="139.54" x2="71.22" y2="139.54" stroke="#707070" stroke-width="0.16"/>
-<line x1="69.24" y1="138.54" x2="71.22" y2="138.54" stroke="#707070" stroke-width="0.16"/>
-<line x1="69.24" y1="137.54" x2="71.22" y2="137.54" stroke="#707070" stroke-width="0.16"/>
-<text x="69.64" y="140.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="69.24" y1="137.54" x2="71.22" y2="137.54" stroke="#707070" stroke-width="0.16"/>
-<text x="69.64" y="138.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
-<line x1="70.76" y1="139.87" x2="70.76" y2="134.54" stroke="#101010" stroke-width="0.12"/>
-<text x="56.03" y="154.24" font-family="Noto Sans" font-size="1" font-weight="bold" fill="#404040">P.M.</text>
-<line x1="58.65" y1="153.89" x2="59.15" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="59.45" y1="153.89" x2="59.95" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="60.25" y1="153.89" x2="60.75" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="61.05" y1="153.89" x2="61.55" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="61.85" y1="153.89" x2="62.35" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="62.65" y1="153.89" x2="63.15" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="63.45" y1="153.89" x2="63.95" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="64.25" y1="153.89" x2="64.75" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="65.05" y1="153.89" x2="65.55" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="65.85" y1="153.89" x2="66.35" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="66.65" y1="153.89" x2="67.15" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="67.45" y1="153.89" x2="67.95" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="68.25" y1="153.89" x2="68.75" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="69.05" y1="153.89" x2="69.55" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="69.85" y1="153.89" x2="70.35" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="70.65" y1="153.89" x2="71.15" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="71.45" y1="153.89" x2="71.95" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="72.25" y1="153.89" x2="72.75" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="73.05" y1="153.89" x2="73.55" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="73.85" y1="153.89" x2="74.35" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="74.65" y1="153.89" x2="74.73" y2="153.89" stroke="#404040" stroke-width="0.2"/>
-<line x1="74.73" y1="153.59" x2="74.73" y2="154.19" stroke="#404040" stroke-width="0.2"/>
-<text x="56.73" y="129.94" font-family="Noto Sans" font-size="1" fill="#404040">Palm Mute</text>
-<line x1="73.75" y1="144.54" x2="73.75" y2="152.04" stroke="#303030" stroke-width="0.16"/>
-<line x1="74.48" y1="144.54" x2="74.48" y2="152.04" stroke="#303030" stroke-width="0.5"/>
-<line x1="73.75" y1="132.54" x2="73.75" y2="136.54" stroke="#303030" stroke-width="0.16"/>
-<line x1="74.48" y1="132.54" x2="74.48" y2="136.54" stroke="#303030" stroke-width="0.5"/>
+<line x1="37.74" y1="144.54" x2="37.74" y2="152.04" stroke="#303030" stroke-width="0.16"/>
+<line x1="37.74" y1="132.54" x2="37.74" y2="136.54" stroke="#303030" stroke-width="0.16"/>
+<text x="37.82" y="131.74" font-family="Noto Sans" font-size="1.1" fill="#404040">11</text>
+<rect x="39.02" y="146.8" width="2.9" height="1.47" fill="#ffffff"/>
+<text x="40.47" y="148.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">&lt;7&gt;</text>
+<rect x="43.58" y="146.8" width="5.48" height="1.47" fill="#ffffff"/>
+<text x="46.32" y="148.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">7 &lt;19&gt;</text>
+<text x="46.32" y="142.34" font-family="Noto Sans" font-size="1" text-anchor="middle" fill="#101010">PH</text>
+<line x1="39.5" y1="131.54" x2="41.43" y2="131.54" stroke="#707070" stroke-width="0.16"/>
+<line x1="39.5" y1="130.54" x2="41.43" y2="130.54" stroke="#707070" stroke-width="0.16"/>
+<text x="39.9" y="130.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadDiamondWhite">&#xE0DD;</text>
+<line x1="39.97" y1="130.04" x2="39.97" y2="134.54" stroke="#101010" stroke-width="0.12"/>
+<line x1="45.33" y1="131.54" x2="47.31" y2="131.54" stroke="#707070" stroke-width="0.16"/>
+<line x1="45.33" y1="130.54" x2="47.31" y2="130.54" stroke="#707070" stroke-width="0.16"/>
+<text x="45.73" y="130.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadHalf">&#xE0A3;</text>
+<line x1="45.79" y1="130.21" x2="45.79" y2="134.54" stroke="#101010" stroke-width="0.12"/>
+<text x="40.47" y="129.94" font-family="Noto Sans" font-size="1" fill="#404040">Harmonics</text>
+<line x1="52.09" y1="144.54" x2="52.09" y2="152.04" stroke="#303030" stroke-width="0.16"/>
+<line x1="52.09" y1="132.54" x2="52.09" y2="136.54" stroke="#303030" stroke-width="0.16"/>
+<text x="52.17" y="131.74" font-family="Noto Sans" font-size="1.1" fill="#404040">12</text>
+<rect x="53.38" y="149.8" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="53.96" y="151.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<rect x="53.38" y="151.3" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="53.96" y="152.58" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="57.88" y="149.8" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="58.46" y="151.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<rect x="57.88" y="151.3" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="58.46" y="152.58" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="62.38" y="149.8" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="62.96" y="151.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<rect x="62.38" y="151.3" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="62.96" y="152.58" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<rect x="66.88" y="149.8" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="67.46" y="151.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
+<rect x="66.88" y="151.3" width="1.16" height="1.47" fill="#ffffff"/>
+<text x="67.46" y="152.58" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
+<line x1="52.97" y1="139.54" x2="54.95" y2="139.54" stroke="#707070" stroke-width="0.16"/>
+<line x1="52.97" y1="138.54" x2="54.95" y2="138.54" stroke="#707070" stroke-width="0.16"/>
+<line x1="52.97" y1="137.54" x2="54.95" y2="137.54" stroke="#707070" stroke-width="0.16"/>
+<text x="53.37" y="140.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="52.97" y1="137.54" x2="54.95" y2="137.54" stroke="#707070" stroke-width="0.16"/>
+<text x="53.37" y="138.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="54.49" y1="139.87" x2="54.49" y2="134.54" stroke="#101010" stroke-width="0.12"/>
+<line x1="57.47" y1="139.54" x2="59.45" y2="139.54" stroke="#707070" stroke-width="0.16"/>
+<line x1="57.47" y1="138.54" x2="59.45" y2="138.54" stroke="#707070" stroke-width="0.16"/>
+<line x1="57.47" y1="137.54" x2="59.45" y2="137.54" stroke="#707070" stroke-width="0.16"/>
+<text x="57.87" y="140.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="57.47" y1="137.54" x2="59.45" y2="137.54" stroke="#707070" stroke-width="0.16"/>
+<text x="57.87" y="138.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="58.99" y1="139.87" x2="58.99" y2="134.54" stroke="#101010" stroke-width="0.12"/>
+<line x1="61.97" y1="139.54" x2="63.95" y2="139.54" stroke="#707070" stroke-width="0.16"/>
+<line x1="61.97" y1="138.54" x2="63.95" y2="138.54" stroke="#707070" stroke-width="0.16"/>
+<line x1="61.97" y1="137.54" x2="63.95" y2="137.54" stroke="#707070" stroke-width="0.16"/>
+<text x="62.37" y="140.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="61.97" y1="137.54" x2="63.95" y2="137.54" stroke="#707070" stroke-width="0.16"/>
+<text x="62.37" y="138.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="63.49" y1="139.87" x2="63.49" y2="134.54" stroke="#101010" stroke-width="0.12"/>
+<line x1="66.47" y1="139.54" x2="68.45" y2="139.54" stroke="#707070" stroke-width="0.16"/>
+<line x1="66.47" y1="138.54" x2="68.45" y2="138.54" stroke="#707070" stroke-width="0.16"/>
+<line x1="66.47" y1="137.54" x2="68.45" y2="137.54" stroke="#707070" stroke-width="0.16"/>
+<text x="66.87" y="140.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="66.47" y1="137.54" x2="68.45" y2="137.54" stroke="#707070" stroke-width="0.16"/>
+<text x="66.87" y="138.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
+<line x1="67.99" y1="139.87" x2="67.99" y2="134.54" stroke="#101010" stroke-width="0.12"/>
+<text x="53.26" y="154.24" font-family="Noto Sans" font-size="1" font-weight="bold" fill="#404040">P.M.</text>
+<line x1="55.88" y1="153.89" x2="56.38" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="56.68" y1="153.89" x2="57.18" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="57.48" y1="153.89" x2="57.98" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="58.28" y1="153.89" x2="58.78" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="59.08" y1="153.89" x2="59.58" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="59.88" y1="153.89" x2="60.38" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="60.68" y1="153.89" x2="61.18" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="61.48" y1="153.89" x2="61.98" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="62.28" y1="153.89" x2="62.78" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="63.08" y1="153.89" x2="63.58" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="63.88" y1="153.89" x2="64.38" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="64.68" y1="153.89" x2="65.18" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="65.48" y1="153.89" x2="65.98" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="66.28" y1="153.89" x2="66.78" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="67.08" y1="153.89" x2="67.58" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="67.88" y1="153.89" x2="68.38" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="68.68" y1="153.89" x2="69.18" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="69.48" y1="153.89" x2="69.98" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="70.28" y1="153.89" x2="70.78" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="71.08" y1="153.89" x2="71.58" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="71.88" y1="153.89" x2="71.96" y2="153.89" stroke="#404040" stroke-width="0.2"/>
+<line x1="71.96" y1="153.59" x2="71.96" y2="154.19" stroke="#404040" stroke-width="0.2"/>
+<text x="53.96" y="129.94" font-family="Noto Sans" font-size="1" fill="#404040">Palm Mute</text>
+<line x1="70.98" y1="144.54" x2="70.98" y2="152.04" stroke="#303030" stroke-width="0.16"/>
+<line x1="71.71" y1="144.54" x2="71.71" y2="152.04" stroke="#303030" stroke-width="0.5"/>
+<line x1="70.98" y1="132.54" x2="70.98" y2="136.54" stroke="#303030" stroke-width="0.16"/>
+<line x1="71.71" y1="132.54" x2="71.71" y2="136.54" stroke="#303030" stroke-width="0.5"/>
 </svg>

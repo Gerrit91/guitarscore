@@ -21,7 +21,7 @@ pub(crate) use beat::{
 
 pub(crate) use lines::{
     draw_legato_run, draw_link, draw_pick_slide, draw_tie, draw_tie_fragment, draw_under_staff_run,
-    draw_whammy,
+    draw_whammy, under_staff_baseline,
 };
 pub(crate) use notes::draw_vibrato;
 pub(crate) use symbols::{
