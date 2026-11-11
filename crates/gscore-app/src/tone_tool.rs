@@ -5,6 +5,7 @@
 //!
 //! ```text
 //! cargo xtask tones list
+//! cargo xtask tones programs
 //! cargo xtask tones import --preset "Metal Guitar 1" --program 30 --name "Modern Metal"
 //! cargo xtask tones normalize
 //! cargo xtask tones check
@@ -35,6 +36,10 @@ Commands:
   list [--settings FILE]
       The saved tones in the settings file, with the programs each one currently stands
       in for (the app matches them to the built-in tones by name).
+  programs [--settings FILE] [--file FILE]
+      The guitar and bass programs (24-39) with their General MIDI names, the kind of
+      string each plays, the built-in tone it starts on, and on this machine the saved tone
+      standing in for it or a tone of its own.
   import --preset NAME --program N [options]
       Copy the saved tone NAME into the built-in library exactly as dialed in (its string
       sound and its chain) and make program N (24-39) start on it. Nothing is levelled;
@@ -124,6 +129,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     };
     match command {
         "list" => run_list(parse_options(rest)?),
+        "programs" => run_programs(parse_options(rest)?),
         "import" => run_import(parse_import(rest)?),
         "normalize" => run_normalize(parse_normalize(rest)?),
         "check" => run_check(parse_options(rest)?),
@@ -134,7 +140,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         other => {
             // `--list` and the like: the commands are plain words.
             let word = other.trim_start_matches('-');
-            let hint = if ["list", "import", "normalize", "check"].contains(&word) {
+            let hint = if ["list", "programs", "import", "normalize", "check"].contains(&word) {
                 format!(" (did you mean `{word}`?)")
             } else {
                 String::new()
@@ -278,6 +284,64 @@ fn run_list(options: Options) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn run_programs(options: Options) -> Result<(), String> {
+    let library_path = tones_path(options.file.as_deref());
+    let library = load_library(&library_path)?;
+    // The settings are optional here: without them the built-in tones still list.
+    let settings_file = settings_path(options.settings.as_deref())?;
+    let settings = if settings_file.exists() {
+        Some(load_settings(&settings_file)?)
+    } else {
+        None
+    };
+    println!(
+        "Guitar and bass programs, built-in tones from {}{}:",
+        library_path.display(),
+        match &settings {
+            Some(_) => format!(", this machine's from {}", settings_file.display()),
+            None => String::new(),
+        }
+    );
+    for line in program_lines(&library, settings.as_ref()) {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+/// One line per guitar and bass program (24-39): its number and General MIDI name, the kind
+/// of string it plays, the built-in tone it starts on, and (with `settings`) the saved tone
+/// standing in for it or the tone this machine gives it.
+fn program_lines(library: &ToneLibraryFile, settings: Option<&Settings>) -> Vec<String> {
+    (24..=39_u8)
+        .map(|program| {
+            let kind = StringKind::for_program(program).map_or("-", kind_name);
+            let built_in = library
+                .programs
+                .get(&program)
+                .map_or("(none)", String::as_str);
+            let mut line = format!(
+                "  {program:>3}  {:<20} {kind:<8} {built_in:<20}",
+                gscore_model::program_name(program)
+            );
+            if let Some(settings) = settings {
+                let own = settings
+                    .preset_tones
+                    .iter()
+                    .any(|tone| tone.program == program);
+                let saved = StringKind::for_program(program).and_then(|kind| {
+                    tone_library::saved_default_for(program, kind, &settings.string_presets)
+                });
+                if own {
+                    line.push_str(" [own tone on this machine]");
+                } else if let Some(saved) = saved {
+                    line.push_str(&format!(" [saved: {}]", saved.name));
+                }
+            }
+            line
+        })
+        .collect()
 }
 
 fn run_check(options: Options) -> Result<(), String> {

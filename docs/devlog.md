@@ -4754,3 +4754,12 @@ Branch `review-ux-requests`.
 - `cargo xtask tones --list` names `list` (the commands are plain words).
 - Tests: the Kind tab shows the four kinds and is the first; tests that type into a
   knob choose the Strike tab first. Snapshots of the Sound chain windows regenerated.
+
+## 2026-11-12 — `cargo xtask tones programs`
+
+- Lists the guitar and bass programs (24-39) with their General MIDI names, the kind of
+  string each plays and the built-in tone it starts on.
+- With a settings file (optional here), it also shows the saved tone standing in for a
+  program or that the program has its own tone on this machine.
+- Test: the sixteen programs with their names, kinds and tones, a saved tone and an own
+  tone marked.

@@ -263,3 +263,41 @@ fn a_saved_tone_becomes_a_built_in_one() {
     assert!((tone.sound.level - 0.55).abs() < 1e-6);
     assert!(chain_trim(&tone.chain).abs() < 1e-4);
 }
+
+#[test]
+fn programs_list_their_names_kinds_and_tones() {
+    let library = library();
+    let lines = program_lines(&library, None);
+    assert_eq!(lines.len(), 16, "programs 24 to 39");
+    let nylon = &lines[0];
+    assert!(
+        nylon.contains(" 24 ") && nylon.contains("Nylon Str Guitar"),
+        "{nylon}"
+    );
+    assert!(nylon.contains("nylon"), "{nylon}");
+    assert!(
+        nylon.contains(library.programs.get(&24).unwrap().as_str()),
+        "{nylon}"
+    );
+    assert!(lines[15].contains(" 39 ") && lines[15].contains("bass"));
+    // With settings: a program's own tone, and a saved tone standing in for another.
+    let mut settings = Settings::default();
+    settings.string_presets = vec![preset("Classical Guitar 1", "nylon", 0.4, Vec::new())];
+    settings.preset_tones = vec![crate::settings::PresetTone {
+        program: 30,
+        kind: "electric".to_owned(),
+        sound: crate::settings::StringSound::default(),
+        chain: ChainSetting::default(),
+    }];
+    let lines = program_lines(&library, Some(&settings));
+    assert!(
+        lines[0].contains("[saved: Classical Guitar 1]"),
+        "{}",
+        lines[0]
+    );
+    assert!(
+        lines[6].contains("[own tone on this machine]"),
+        "{}",
+        lines[6]
+    );
+}
