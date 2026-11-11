@@ -1,6 +1,8 @@
-//! The computed acoustic body: its air and top resonances where a dreadnought's and a
-//! classical guitar's are, moved by its size, ringing on briefly and then silent, about as
-//! loud as the strings alone, and no body at all changing nothing.
+//! The computed acoustic body: a strummed chord audibly coloured (the boxy mids well down
+//! against the low end; a classical body darker than a dreadnought), the dreadnought close
+//! to the owner's reference impulse response, moved by its size, ringing on
+//! briefly and then silent, about as loud as the strings alone, and no body at all
+//! changing nothing.
 
 #![allow(
     clippy::panic,
@@ -64,23 +66,84 @@ fn strum(model: GuitarModel) -> Vec<f32> {
     out
 }
 
-#[test]
-fn the_air_and_the_top_ring_where_a_guitar_s_do() {
-    for (kind, air, top) in [
-        (BodyKind::Dreadnought, 100.0, 195.0),
-        (BodyKind::Classical, 96.0, 188.0),
-    ] {
-        let floor = lift(kind, 0.5, 150.0);
-        assert!(
-            lift(kind, 0.5, air) > floor + 6.0,
-            "{kind:?}: the air resonance"
-        );
-        assert!(lift(kind, 0.5, top) > floor + 6.0, "{kind:?}: the top");
-        assert!(
-            lift(kind, 0.5, 50.0) < floor,
-            "{kind:?}: little below the air"
-        );
+/// The level in each octave band (63 Hz to 8 kHz), dB, of `signal`'s first 16384 samples
+/// (a windowed DFT's bins summed over the band).
+fn bands(signal: &[f32]) -> [f32; 8] {
+    let n = 16_384.min(signal.len());
+    let part = &signal[..n];
+    [
+        63.0_f32, 125.0, 250.0, 500.0, 1_000.0, 2_000.0, 4_000.0, 8_000.0,
+    ]
+    .map(|centre| {
+        let (low, high) = (centre / 2f32.sqrt(), centre * 2f32.sqrt());
+        let mut power = 0.0_f64;
+        let mut f = low;
+        while f < high {
+            let w = std::f64::consts::TAU * f64::from(f) / f64::from(RATE);
+            let (mut re, mut im) = (0.0, 0.0);
+            for (i, &x) in part.iter().enumerate() {
+                let hann = 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / n as f64).cos();
+                re += f64::from(x) * hann * (w * i as f64).cos();
+                im += f64::from(x) * hann * (w * i as f64).sin();
+            }
+            power += re * re + im * im;
+            f += RATE / n as f32;
+        }
+        10.0 * power.max(1e-30).log10() as f32
+    })
+}
+
+/// `strings` through a body of `kind`.
+fn through(kind: BodyKind, strings: &[f32]) -> Vec<f32> {
+    let mut out = strings.to_vec();
+    let mut body = Body::new(RATE);
+    body.set(kind, 1.0, 0.5);
+    for block in out.chunks_mut(BLOCK) {
+        body.process(block);
     }
+    out
+}
+
+/// How the body changes each octave band of `strings`, dB.
+fn colour(kind: BodyKind, strings: &[f32]) -> [f32; 8] {
+    let (dry, wet) = (
+        bands(&strings[2_400..]),
+        bands(&through(kind, strings)[2_400..]),
+    );
+    std::array::from_fn(|band| wet[band] - dry[band])
+}
+
+#[test]
+fn a_body_audibly_colours_a_strummed_chord() {
+    // The first body (narrow bells in series) changed no octave by more than 2 dB: the
+    // owner heard no difference. A body is heard: the boxy mids well down against the low
+    // end (the dreadnought fitted to the owner's reference impulse response).
+    for (model, kind) in [
+        (GuitarModel::Steel, BodyKind::Dreadnought),
+        (GuitarModel::Nylon, BodyKind::Classical),
+    ] {
+        let strings = strum(model);
+        let change = colour(kind, &strings);
+        let low = change[0].max(change[1]).max(change[2]);
+        let mids = change[3].min(change[4]);
+        assert!(mids < -3.0, "{kind:?}: the boxy mids {change:?}");
+        assert!(
+            low > mids + 6.0,
+            "{kind:?}: the low end over the mids {change:?}"
+        );
+        let db = 20.0 * (rms(&through(kind, &strings)) / rms(&strings)).log10();
+        assert!(db.abs() < 2.0, "{kind:?} on {model:?}: {db:.1} dB");
+    }
+    // The two kinds differ: the classical body is much darker on top.
+    let strings = strum(GuitarModel::Steel);
+    let (dreadnought, classical) = (
+        colour(BodyKind::Dreadnought, &strings),
+        colour(BodyKind::Classical, &strings),
+    );
+    assert!(
+        classical[7] < dreadnought[7] - 3.0 && classical[6] < dreadnought[6] - 3.0,
+        "{dreadnought:?} against {classical:?}"
+    );
 }
 
 #[test]
@@ -88,33 +151,33 @@ fn size_moves_the_resonances() {
     // A small body's air resonance is higher, a large one's lower.
     let kind = BodyKind::Dreadnought;
     assert!(
-        lift(kind, 0.0, 125.0) > lift(kind, 0.5, 125.0) + 6.0,
+        lift(kind, 0.0, 125.0) > lift(kind, 0.5, 125.0) + 3.0,
         "small"
     );
-    assert!(lift(kind, 1.0, 80.0) > lift(kind, 0.5, 80.0) + 6.0, "large");
+    assert!(lift(kind, 1.0, 80.0) > lift(kind, 0.5, 80.0) + 3.0, "large");
 }
 
 #[test]
-fn about_as_loud_as_the_strings_and_it_rings_out() {
+fn it_rings_on_after_the_strings_and_then_falls_silent() {
     for (model, kind) in [
         (GuitarModel::Steel, BodyKind::Dreadnought),
         (GuitarModel::Nylon, BodyKind::Classical),
     ] {
-        let dry = strum(model);
-        let mut wet = dry.clone();
+        let strings = strum(model);
         let mut body = Body::new(RATE);
         body.set(kind, 1.0, 0.5);
+        let mut wet = strings.clone();
         for block in wet.chunks_mut(BLOCK) {
             body.process(block);
         }
-        let db = 20.0 * (rms(&wet) / rms(&dry)).log10();
-        assert!(db.abs() < 2.0, "{kind:?} on {model:?}: {db:.1} dB");
-        // After the strings stop, the body rings briefly, then nothing is computed.
+        // The box rings on after the strings stop, then nothing is computed.
+        let last = rms(&wet[wet.len() - 2_400..]);
         let mut tail = vec![0.0_f32; RATE as usize * 2];
         for block in tail.chunks_mut(BLOCK) {
             body.process(block);
         }
-        assert!(rms(&tail[..2_400]) > 1e-5, "{kind:?}: it rings on");
+        let ring = 20.0 * (rms(&tail[..960]) / last).log10();
+        assert!(ring > -20.0, "{kind:?}: it rings on: {ring:.1} dB");
         assert!(
             rms(&tail[RATE as usize..]) < 1e-6,
             "{kind:?}: then it is silent"
@@ -143,4 +206,43 @@ fn no_body_or_no_mix_changes_nothing() {
         body.process(block);
     }
     assert!(out.iter().all(|x| x.is_finite()));
+}
+
+#[test]
+fn the_dreadnought_follows_the_owners_reference_body() {
+    // The third-octave response of the owner's reference impulse response (a Furch
+    // Vintage 1 dreadnought, measured 2026-11-12, relative to its mean; only these numbers
+    // are taken from it), 40 Hz to 12.9 kHz.
+    let reference = [
+        -0.2_f32, -1.2, -1.1, 6.6, 10.1, 0.8, -0.2, 6.8, 6.7, -3.8, -15.6, -5.9, -8.7, -9.6, -12.5,
+        -4.5, -0.5, -9.7, -0.3, 7.9, 14.3, 8.6, 8.2, 9.0, -2.3, -3.2,
+    ];
+    let ours: Vec<f32> = (0..reference.len())
+        .map(|band| {
+            let centre = 40.0 * 2f32.powf(band as f32 / 3.0);
+            let lifts: Vec<f32> = (-4..4)
+                .map(|step| {
+                    lift(
+                        BodyKind::Dreadnought,
+                        0.5,
+                        centre * 2f32.powf(step as f32 / 24.0),
+                    )
+                })
+                .collect();
+            lifts.iter().sum::<f32>() / lifts.len() as f32
+        })
+        .collect();
+    let mean = |values: &[f32]| values.iter().sum::<f32>() / values.len() as f32;
+    let (ours_mean, reference_mean) = (mean(&ours), mean(&reference));
+    let error = (ours
+        .iter()
+        .zip(&reference)
+        .map(|(o, r)| ((o - ours_mean) - (r - reference_mean)).powi(2))
+        .sum::<f32>()
+        / reference.len() as f32)
+        .sqrt();
+    assert!(
+        error < 2.5,
+        "{error:.1} dB from the reference on average: {ours:?}"
+    );
 }

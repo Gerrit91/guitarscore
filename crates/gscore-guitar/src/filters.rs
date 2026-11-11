@@ -211,6 +211,23 @@ impl Biquad {
         }
     }
 
+    /// A band-pass at `centre` Hz of quality `q`, 0 dB at its centre (RBJ, constant peak
+    /// gain): one resonance of a body, ringing on for about `q / (pi * centre)` seconds.
+    pub(crate) fn bandpass(sample_rate: f32, centre: f32, q: f32) -> Self {
+        let centre = centre.clamp(20.0, sample_rate * 0.45);
+        let w = TAU * centre / sample_rate;
+        let alpha = w.sin() / (2.0 * q.max(0.1));
+        let a0 = 1.0 + alpha;
+        Biquad {
+            b0: alpha / a0,
+            b1: 0.0,
+            b2: -alpha / a0,
+            a1: -2.0 * w.cos() / a0,
+            a2: (1.0 - alpha) / a0,
+            ..Biquad::default()
+        }
+    }
+
     /// A bell at `centre` Hz, `gain_db` up or down, of quality `q` (RBJ peaking EQ).
     pub(crate) fn peaking(sample_rate: f32, centre: f32, q: f32, gain_db: f32) -> Self {
         let centre = centre.clamp(20.0, sample_rate * 0.45);

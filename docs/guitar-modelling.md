@@ -192,19 +192,30 @@ described in the literature below:
   harmonics have none.
 
   Every preset has the same defaults, so sounds saved before these knobs get them too.
-- **The acoustic body** (`body.rs`, 2026-11-11), computed, no recording.
+- **The acoustic body** (`body.rs`, 2026-11-11, rebuilt 2026-11-12), computed, no
+  recording.
   - Commuted synthesis would excite each string with the body's impulse response. Every
     part is linear, so the body runs once per track on the sum of its strings instead
     (the engine's slot): the same sound for one filter chain per track.
-  - The body is a low cut at 0.7 times the air mode, then eight narrow bells, one per
-    mode, which lift their bands and ring on briefly after the strings' energy passes.
-  - **Dreadnought** (steel): air at 100 Hz (Q 14, +10 dB), top at 195 Hz, back at
-    228 Hz, cross and long dipoles at 390 and 550 Hz, weaker modes at 830 and 1250 Hz, a
-    broad presence at 2.6 kHz.
-  - **Classical** (nylon): air at 96 Hz, top at 188 Hz, back at 240 Hz, and so on, a
-    lighter top, a soft dip at 2.2 kHz.
+  - A low cut, then a **radiation curve** (broad bells and a high shelf: what the body
+    does to every note), and sixteen **modes** side by side, narrow band-passes rung from
+    the curve, each standing a few dB out of it and ringing on briefly.
+  - The first version (eight narrow bells in series) changed a strummed chord by under
+    2 dB in any octave: the owner heard no difference between the bodies.
+  - **Dreadnought** (steel), fitted to the owner's reference, an impulse response of a
+    Furch Vintage 1 dreadnought. Only its third-octave figures and its narrow peaks were
+    taken from it, no samples. It has:
+    - the air near 95 Hz (+13 dB) and the top and back near 240 Hz up;
+    - a deep scoop at 400 Hz, the mids well down, a notch near 2 kHz;
+    - a strong presence from 3 to 9 kHz and little above 10 kHz;
+    - its narrow resonances (480 Hz to 8.9 kHz) ringing for a few milliseconds.
+
+    Within 1.8 dB of the reference per third octave on average (test: under 2.5).
+  - **Classical** (nylon): a softer curve (air near 100 Hz, the top near 200 Hz, a dip at
+    600 Hz, a high shelf at 4 kHz down 4 dB) and denser low modes (96 Hz to 2.5 kHz) that
+    ring longer: warmer and rounder, darker than the dreadnought (test).
   - The trims keep a strummed chord within 2 dB of the bare strings (test).
-  - Knobs in the string sound's Body row: the kind (None, Dreadnought, Classical),
+  - Knobs on the string sound's Body tab: the kind (None, Dreadnought, Classical),
     **Body** (how much is heard, default 0.8) and **Size** (0 a parlour, 1.25 times
     higher; 1 a jumbo, 1.25 times lower; 0.5 the kind's own).
   - Presets: steel a dreadnought, nylon a classical body, electric and bass none. A
