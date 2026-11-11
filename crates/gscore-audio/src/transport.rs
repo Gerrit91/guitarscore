@@ -110,6 +110,11 @@ impl Transport {
         self.scheduler.as_ref().map(Scheduler::sequence)
     }
 
+    /// The tempo it plays at now (with the playback speed), if a sequence is loaded.
+    pub(crate) fn bpm(&self) -> Option<f32> {
+        self.scheduler.as_ref().map(Scheduler::bpm)
+    }
+
     /// The position in ticks (0 without a sequence).
     pub(crate) fn position(&self) -> u64 {
         self.scheduler.as_ref().map_or(0, Scheduler::position)

@@ -88,6 +88,7 @@ fn chain_spec(
             (BlockChoice::Compressor, _) => Some(BlockKind::Compressor),
             (BlockChoice::Eq, _) => Some(BlockKind::Eq),
             (BlockChoice::Chorus, _) => Some(BlockKind::Chorus),
+            (BlockChoice::Delay, _) => Some(BlockKind::Delay),
             (BlockChoice::Cabinet | BlockChoice::Room, None) => None,
             (choice, Some(file)) => match impulse(file, impulses) {
                 Ok(response) if choice == BlockChoice::Room => {

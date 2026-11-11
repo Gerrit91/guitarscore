@@ -226,6 +226,65 @@ fn a_steel_track_sounds_through_its_body() {
 }
 
 #[test]
+fn a_synced_delay_echoes_on_the_beat_as_played_even_after_a_long_silence() {
+    use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, ChainSpec, DelayKnobs, DelayNote};
+    // A staccato eighth at 120 BPM, then rests; a delay synced to a half note echoes it
+    // once (no feedback) a half note later.
+    let mut song = testing::song_with_notes(&[(8, &[TestNote::new(3, 2)]), (1, &[])]).unwrap();
+    let at = BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(0),
+    };
+    let _ = song
+        .set_note_effect(
+            at,
+            StringNumber::new(3).unwrap(),
+            NoteEffect::Staccato(true),
+        )
+        .unwrap();
+    let sequence = Arc::new(Sequence::new(&song, None).unwrap().with_modelled_guitars());
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Delay);
+    let mut settings = [BlockSettings::default(); BLOCKS];
+    settings[0].delay = DelayKnobs {
+        sync: true,
+        note: DelayNote::Half,
+        feedback: 0.0,
+        level: 1.0,
+        ..DelayKnobs::default()
+    };
+    let play = |speed: f32| {
+        let mut engine = SynthEngine::new(&bank(), RATE).unwrap();
+        let chain = gscore_audio::prepare_chain(&spec, &unity(settings), RATE);
+        assert!(engine.set_chain(0, chain, unity(settings)).is_none());
+        engine.load(Arc::clone(&sequence));
+        engine.set_tempo_scale(speed);
+        engine.play();
+        render(&mut engine, 2.6)
+    };
+    // As written: a half note at 120 BPM is a second.
+    let normal = play(1.0);
+    assert!(rms(seconds(&normal, 0.6, 0.95)) < 1e-4, "silent between");
+    assert!(
+        rms(seconds(&normal, 1.0, 1.2)) > 1e-3,
+        "the echo after a second"
+    );
+    // At half speed (60 BPM as played) it comes after two seconds, after a silence far
+    // longer than a chain's usual tail: the delay keeps its chain running.
+    let slow = play(0.5);
+    assert!(
+        rms(seconds(&slow, 1.2, 1.95)) < 1e-4,
+        "still silent at one second"
+    );
+    assert!(
+        rms(seconds(&slow, 2.0, 2.3)) > 1e-3,
+        "the echo after two seconds"
+    );
+}
+
+#[test]
 fn drums_and_other_tracks_stay_on_the_soundfont() {
     let song = testing::song_with_notes_on_tracks(2, &[(1, &[TestNote::new(3, 2)])]).unwrap();
     let mut sequence = Sequence::new(&song, None).unwrap().with_modelled_guitars();

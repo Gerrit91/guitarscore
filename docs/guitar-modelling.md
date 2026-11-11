@@ -286,6 +286,19 @@ described in the literature below:
   chord through the pedal and a lead falls to about half of the amp's alone (the owner
   heard it: "the drive takes away all the chuggy bass/midrange"). Loose keeps it as full
   as the amp alone (test).
+- **Delay** (`gscore-guitar::echo`, 2026-11-11): a digital delay for leads.
+  - Time: **Sync**, a note value at the song's tempo as played (tempo changes and the
+    playback speed included: the engine hands every chain the tempo before each block),
+    1/2 down to 1/16T, dotted and triplets; or **Free**, 1 ms to 2.5 s. A new time
+    glides there over about 40 ms (no click).
+  - **Feedback** up to 0.95; the repeats pass a **Low cut** and a **High cut** each time
+    round, so they get thinner and darker as they fade.
+  - **Level**: the echoes under the dry guitar, which stays at full level, as on a delay
+    pedal.
+  - **Ping-pong**: 0 in the middle, 1 bouncing left, right, left.
+  - The chain counts as ringing while echoes are on their way, so an echo after a long
+    silence (a half note at a slow tempo) is still played.
+  - Not on the mixer's buses.
 - **Calibration** (2026-11-11). Until then the amp's input pad was 0.15 and the drive's
   low cut fixed at 720 Hz. Both were tuned against a test chord that was summed wrongly:
   a scratch block was never cleared, so the "chord" was a running sum of everything

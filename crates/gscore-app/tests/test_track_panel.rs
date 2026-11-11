@@ -1676,3 +1676,41 @@ fn an_external_synth_offers_a_port_a_channel_and_the_programs() {
         "the hardware synth gets the program table too"
     );
 }
+
+#[test]
+fn a_delay_block_syncs_to_a_note_value_or_runs_free() {
+    use gscore_app::chain_settings::{BlockChoice, DelayNoteSetting};
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    // The jazz tone's board: strings, EQ, comp, then three empty places.
+    click_in_chain(&harness, "Block 3: +");
+    harness.run();
+    click_in_chain(&harness, "Delay");
+    harness.run();
+    let delay = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .playback()
+            .tone(0, 26, gscore_play::StringKind::Electric)
+            .chain
+            .blocks[2]
+            .clone()
+    };
+    let block = delay(&harness);
+    assert_eq!(block.choice, BlockChoice::Delay);
+    assert!(block.delay_sync, "synced by default");
+    // A dotted eighth, the lead player's classic.
+    click_in_chain(&harness, "1/8.");
+    harness.run();
+    harness.get_by_label("Block 3: Delay");
+    harness.hover_at(egui::pos2(600.0, 1090.0));
+    harness.run();
+    harness.snapshot("sound_chain_delay");
+    assert_eq!(delay(&harness).delay_note, DelayNoteSetting::DottedEighth);
+    // Free: the time in milliseconds instead of the note values.
+    click_in_chain(&harness, "Free");
+    harness.run();
+    assert!(!delay(&harness).delay_sync);
+    assert!(harness.query_all_by_label("1/8.").next().is_none());
+    assert!(harness.query_all_by_label("Time").next().is_some());
+}

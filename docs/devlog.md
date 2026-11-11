@@ -4508,3 +4508,32 @@ needed for a much larger font); owner listening check.
   - the engine plays a steel track through it (the air resonance heard).
 - Snapshots `sound_chain_strings`, `sound_chain_pickup` and `mixer_stomp_track` show the
   Body row.
+
+## 2026-11-11 — A tempo-synced digital delay block
+
+- Owner's wish for leads, with the acoustic body.
+- **Delay** chain block (`gscore-guitar` `echo.rs`):
+  - Time: **Sync** to a note value (1/2, 1/4., 1/4, 1/4T, 1/8., 1/8, 1/8T, 1/16., 1/16,
+    1/16T; default 1/8) or **Free** (1 ms to 2.5 s; default 350 ms).
+  - **Feedback** (0 to 0.95, default 0.35) and **Level** (the echoes under the full dry
+    signal, default 0.35).
+  - **Low cut** (120 Hz) and **High cut** (6 kHz), passed by every repeat.
+  - **Ping-pong** (0 middle, 1 alternating; default 0).
+  - A changed time glides over about 40 ms.
+- **Tempo:**
+  - `Scheduler::bpm` is the written tempo at the position times the playback speed.
+  - `SynthEngine` hands it to every chain (tracks, drum parts, buses, master) before each
+    block (`Chain::set_tempo`); WAV export renders through the same path.
+  - A delay keeps its chain ringing while echoes are on their way, since the chain's own
+    tail hold (0.5 s of silence) would cut an echo that comes later.
+- Settings: `delay_sync`, `delay_note` (`dotted_eighth`, ...), `delay_ms`, `delay_feedback`;
+  the level, cuts and ping-pong use the block's `mix`, `low_cut`, `high_cut` and `width`.
+- Tests:
+  - an echo on a dotted eighth at 100 BPM, and free time ignoring the tempo;
+  - repeats fading and alternating with ping-pong, and the trail's end known;
+  - a new tempo gliding, and a broken value emptying the lines;
+  - the engine echoing a half note after a second at 120 BPM and after two seconds at
+    half speed (a 1.4 s silence first);
+  - the settings round trip;
+  - the window: sync, a note value, free time.
+- New snapshot `sound_chain_delay`.

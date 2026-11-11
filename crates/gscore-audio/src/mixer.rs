@@ -212,6 +212,23 @@ impl std::fmt::Debug for Mixer {
 }
 
 impl Mixer {
+    /// Tells every chain (tracks, drum parts, buses, master) the tempo played now, quarter
+    /// notes a minute with the playback speed: a synced delay follows it. No allocation.
+    pub(crate) fn set_tempo(&mut self, bpm: f32) {
+        self.tones.set_tempo(bpm);
+        for chain in self.part_chains.iter_mut().flatten().flatten() {
+            chain.set_tempo(bpm);
+        }
+        for bus in &mut self.buses {
+            if let Some(chain) = &mut bus.chain {
+                chain.set_tempo(bpm);
+            }
+        }
+        if let Some(chain) = &mut self.master_chain {
+            chain.set_tempo(bpm);
+        }
+    }
+
     /// A mixer for an engine at `sample_rate`. Allocates.
     pub(crate) fn new(sample_rate: u32) -> Self {
         Mixer {

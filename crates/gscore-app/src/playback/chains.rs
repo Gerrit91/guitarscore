@@ -383,6 +383,7 @@ impl Playback {
                 (BlockChoice::Compressor, _) => Some(BlockKind::Compressor),
                 (BlockChoice::Eq, _) => Some(BlockKind::Eq),
                 (BlockChoice::Chorus, _) => Some(BlockKind::Chorus),
+                (BlockChoice::Delay, _) => Some(BlockKind::Delay),
                 (BlockChoice::Cabinet | BlockChoice::Room, None) => None,
                 (choice, Some(file)) => match self.impulse(file) {
                     Ok(response) if choice == BlockChoice::Room => {
@@ -805,8 +806,13 @@ impl Playback {
                         None
                     }
                 }),
-            // A bus never runs an amp, a drive pedal or an EQ: `sanitized` keeps them out.
-            BlockChoice::Amp | BlockChoice::Drive | BlockChoice::Eq | BlockChoice::Chorus => None,
+            // A bus never runs an amp, a drive pedal, an EQ or a delay: `sanitized` keeps
+            // them out.
+            BlockChoice::Amp
+            | BlockChoice::Drive
+            | BlockChoice::Eq
+            | BlockChoice::Chorus
+            | BlockChoice::Delay => None,
         };
         if let Some(slot) = spec.blocks.first_mut() {
             *slot = prepared;
@@ -1041,6 +1047,7 @@ impl Playback {
                 *slot = match (block.choice, &block.file) {
                     (BlockChoice::Empty, _) => None,
                     (BlockChoice::Chorus, _) => Some(BlockKind::Chorus),
+                    (BlockChoice::Delay, _) => Some(BlockKind::Delay),
                     (BlockChoice::Compressor, _) => Some(BlockKind::Compressor),
                     (BlockChoice::Eq, _) => Some(BlockKind::Eq),
                     (BlockChoice::Amp, _) => Some(BlockKind::Amp),

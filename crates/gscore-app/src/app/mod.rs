@@ -14,6 +14,7 @@ mod chord_editor;
 mod chorus_bus_window;
 mod circle_of_fifths;
 mod compressor_bus_window;
+mod delay_knobs;
 mod edit_dynamics;
 mod edit_effects;
 mod edit_palette;

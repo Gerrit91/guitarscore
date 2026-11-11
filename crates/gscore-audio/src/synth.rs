@@ -515,6 +515,10 @@ impl SynthEngine {
                 &mut self.mixer,
             ),
         );
+        // A synced delay follows the tempo as played (kept when nothing is loaded).
+        if let Some(bpm) = self.transport.bpm() {
+            self.mixer.set_tempo(bpm);
+        }
         if let (Some(l), Some(r)) = (self.left.get_mut(..frames), self.right.get_mut(..frames)) {
             // Each channel apart, for the strips.
             {
