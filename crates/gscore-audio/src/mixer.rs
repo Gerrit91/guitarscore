@@ -398,6 +398,18 @@ impl Mixer {
                     controller::CHORUS => 3,
                     _ => return true,
                 };
+                // A borrowed channel's setup carries its next borrower's values, sent before
+                // that borrower's note takes the channel over: they would land on the strip
+                // that borrowed it last (a drum kit or guitar panned hard to the other side
+                // for a while). A strip takes its values from its own channel only.
+                if !self
+                    .home
+                    .get(usize::from(channel.get()))
+                    .copied()
+                    .unwrap_or(false)
+                {
+                    return false;
+                }
                 let strip = self
                     .channel_strip
                     .get(usize::from(channel.get()))
@@ -960,3 +972,7 @@ fn add(to: &mut [f32], from: &[f32]) {
         *to += from;
     }
 }
+
+#[cfg(test)]
+#[path = "mixer_tests.rs"]
+mod tests;

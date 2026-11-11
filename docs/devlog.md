@@ -4587,3 +4587,33 @@ FluidR3_GM (the owner's SoundFont):
 - The test SoundFont builder takes zones now (`stereo_choke_drum_soundfont`); the old
   fonts come out byte for byte the same.
 - Snapshot `mixer_drum_parts` shows the pan knobs.
+
+## 2026-11-11 — The drum kit wandering left and right with the band
+
+The owner: cymbals wander from left to right in a song with all its tracks playing, not
+with the drum track soloed (a band's cover, measured locally only, never in the repo).
+
+- Through the engine with FluidR3, every drum part's balance was the same with and
+  without the band, but the drum track's own balance swung from -16 to +12 dB with the
+  band (-4 to +1 dB soloed): its strip's pan was being changed.
+- **Cause:**
+  - Short (staccato, so "damped") crashes borrowed a melodic channel like a damped
+    guitar note, which handed that channel to the drum strip.
+  - When a guitar next borrowed the same channel, its setup (its own pan, 21 or 110)
+    came before its note-on and so reached the strip that borrowed it last: the whole
+    kit sat hard left or right until the next time.
+  - Those crashes were also lost: a borrowed channel is melodic (no drums there), and a
+    drum strip only hears its own channel's parts. That was one of the "missing beats".
+  - Two guitars sharing borrowed channels moved each other's pan and volume the same way.
+- **Fixes:**
+  - A drum track's notes always stay on the kit's channel (`midi::drum_note`: no pitch
+    shape, no damped end, no fade; drums do not bend and ring out whatever their
+    note-off). MIDI out and MIDI files get this too.
+  - The mixer takes volume, pan and sends only from a strip's own channel; a borrowed
+    channel's setup no longer reaches any strip.
+- After the fix the drum track's balance with the band equals its soloed balance, and the
+  formerly lost crashes are heard.
+- Tests:
+  - a staccato hit on a drum track never leaves the kit's channel;
+  - a borrowed channel's setup moves no strip, while a track's own channel still sets
+    its strip (a mixer unit test).

@@ -54,7 +54,23 @@ pub(crate) fn derive(performance: &Performance) -> Midi {
             sound: track.sound,
         });
     }
-    let notes: Vec<PlayedNote> = performance.notes.iter().map(soundfont_note).collect();
+    let drums: Vec<bool> = performance
+        .tracks
+        .iter()
+        .map(|track| track.sound.percussion)
+        .collect();
+    let notes: Vec<PlayedNote> = performance
+        .notes
+        .iter()
+        .map(|note| {
+            let note = soundfont_note(note);
+            if drums.get(note.track).copied().unwrap_or(false) {
+                drum_note(note)
+            } else {
+                note
+            }
+        })
+        .collect();
     let base: Vec<Channel> = notes
         .iter()
         .map(|note| {
@@ -85,6 +101,17 @@ fn soundfont_note(note: &PlayedNote) -> PlayedNote {
         note.end = note.start.saturating_add(length.min(PALM_MUTE_TICKS));
         note.damped = true;
     }
+    note
+}
+
+/// A drum track's `note` as MIDI plays it: always on the kit's own channel. A borrowed
+/// channel is a melodic one (no drums there), and the mixer hears a drum track only on its
+/// own channel, so a borrowed hit was lost. Drums need no borrowed channel: they never bend,
+/// a drum rings out whatever its note-off, and a fade is left out.
+fn drum_note(mut note: PlayedNote) -> PlayedNote {
+    note.pitch = None;
+    note.damped = false;
+    note.fade = None;
     note
 }
 

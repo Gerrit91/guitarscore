@@ -217,6 +217,33 @@ fn staccato_stops_dead_on_its_own_channel() {
     assert_eq!(sequence.degraded_pitch_bends, 0);
 }
 
+#[test]
+fn a_drum_note_never_leaves_the_kits_channel() {
+    // A staccato hit on a drum track (a short crash, as in a band's song) used to borrow a
+    // melodic channel like a damped guitar note: there it was no drum, the mixer never
+    // heard it, and the next borrower's pan landed on the drum strip.
+    let mut song = two_beats();
+    let _ = song.set_track_drums(TrackIndex::new(0), true).unwrap();
+    let _ = song
+        .set_note_effect(at(0), string(6), NoteEffect::Staccato(true))
+        .unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let kit = sequence.tracks[0].channel;
+    let channels: Vec<_> = sequence
+        .events
+        .iter()
+        .filter_map(|event| match event.event {
+            MidiEvent::NoteOn { channel, .. } => Some(channel),
+            _ => None,
+        })
+        .collect();
+    assert!(!channels.is_empty());
+    assert!(
+        channels.iter().all(|&channel| channel == kit),
+        "{channels:?}"
+    );
+}
+
 /// Pitch bends on channels other than the track's, in order.
 fn borrowed_bends(sequence: &Sequence) -> Vec<(u64, u16)> {
     let base = sequence.tracks[0].channel;
