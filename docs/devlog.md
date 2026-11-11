@@ -4763,3 +4763,14 @@ Branch `review-ux-requests`.
   program or that the program has its own tone on this machine.
 - Test: the sixteen programs with their names, kinds and tones, a saved tone and an own
   tone marked.
+
+## 2026-11-12 — Generic icons for the kinds of strings
+
+- The owner found the instrument pictures on the Kind tab too busy ("not guitars"): the
+  tiles are small again (100 x 70 px, a 36 px icon and the name).
+- The icons are generic, a few strings lying across, showing what tells the kinds apart:
+  - nylon: three smooth, fairly thick plain strings;
+  - steel: thinner, heavier downwards, the lower two wound;
+  - electric: thin strings over a pickup and its pole pieces;
+  - bass: two heavy wound strings.
+- `instrument.rs` is back as it was.
