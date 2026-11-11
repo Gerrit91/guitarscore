@@ -450,15 +450,13 @@ impl Playback {
             }
             for part in crate::chain_settings::DrumPart::ALL {
                 let chain = self.track_drum_part_chain(target.track, part);
-                let (level, muted, soloed) = self.track_drum_part_mix(target.track, part);
+                let (level, pan, muted, soloed) = self.track_drum_part_mix(target.track, part);
                 let key = (target.track, part.index());
                 let sent = self.sent_parts.get(&key).cloned();
                 let chain_same = sent.as_ref().is_some_and(|(sent, ..)| *sent == chain);
-                let mix_same =
-                    sent.as_ref()
-                        .is_some_and(|(_, sent_level, sent_muted, sent_soloed)| {
-                            (*sent_level, *sent_muted, *sent_soloed) == (level, muted, soloed)
-                        });
+                let mix_same = sent
+                    .as_ref()
+                    .is_some_and(|(_, sent_mix)| *sent_mix == (level, pan, muted, soloed));
                 if chain_same && mix_same {
                     continue;
                 }
@@ -472,9 +470,10 @@ impl Playback {
                     }
                 }
                 if !mix_same {
-                    levels.push((key, level, muted, soloed));
+                    levels.push((key, level, pan, muted, soloed));
                 }
-                self.sent_parts.insert(key, (chain, level, muted, soloed));
+                self.sent_parts
+                    .insert(key, (chain, (level, pan, muted, soloed)));
             }
         }
         #[cfg(not(target_arch = "wasm32"))]
@@ -487,8 +486,9 @@ impl Playback {
             for ((track, part), settings) in knobs {
                 let _ = player.set_part_chain_settings(track, part, settings);
             }
-            for ((track, part), level, muted, soloed) in levels {
+            for ((track, part), level, pan, muted, soloed) in levels {
                 let _ = player.set_part_level(track, part, level);
+                let _ = player.set_part_pan(track, part, pan);
                 let _ = player.set_part_mute(track, part, muted);
                 let _ = player.set_part_solo(track, part, soloed);
             }
@@ -966,19 +966,20 @@ impl Playback {
                 part,
                 chain: ChainSetting::default(),
                 level: 127,
+                pan: 64,
                 muted: false,
                 soloed: false,
             })
     }
 
-    /// The mixing level, mute and solo of `part` of `track`.
+    /// The mixing level, pan, mute and solo of `part` of `track`.
     pub fn track_drum_part_mix(
         &self,
         track: usize,
         part: crate::chain_settings::DrumPart,
-    ) -> (u8, bool, bool) {
+    ) -> (u8, u8, bool, bool) {
         let own = self.track_drum_part(track, part);
-        (own.level.min(127), own.muted, own.soloed)
+        (own.level.min(127), own.pan.min(127), own.muted, own.soloed)
     }
 
     /// Hands the open song's per-track drum parts to playback, heard at once.
@@ -1020,9 +1021,9 @@ impl Playback {
         for track in tracks {
             for part in crate::chain_settings::DrumPart::ALL {
                 let chain = self.track_drum_part_chain(track, part);
-                let level = self.track_drum_part_level(track, part);
+                let (level, pan, ..) = self.track_drum_part_mix(track, part);
                 let spec = self.chain_spec(&chain);
-                parts.push((track, part.index(), level, spec, chain.chain_knobs()));
+                parts.push((track, part.index(), level, pan, spec, chain.chain_knobs()));
             }
         }
         parts

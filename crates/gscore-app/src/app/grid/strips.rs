@@ -671,6 +671,8 @@ pub(super) struct PartRow {
     pub(super) part: DrumPart,
     /// Its mixing level (0-127, 127 unity).
     pub(super) level: u8,
+    /// Its pan inside the kit (0 left, 64 centre, 127 right).
+    pub(super) pan: u8,
     pub(super) muted: bool,
     pub(super) soloed: bool,
     /// Whether anything in the kit is soloed: then only the soloed parts play.
@@ -694,7 +696,8 @@ fn part_wash(color: Color32) -> Color32 {
     Color32::from_rgba_unmultiplied(lift(color.r()), lift(color.g()), lift(color.b()), 72)
 }
 
-/// A drum part's strip: its meter, fader, mute, solo and the way into its sound chain.
+/// A drum part's strip: its pan, meter, fader, mute, solo and the way into its sound
+/// chain.
 #[allow(clippy::too_many_arguments)]
 fn part_strip(
     ui: &mut egui::Ui,
@@ -743,14 +746,39 @@ fn part_strip(
     let inner = rect.shrink2(vec2(8.0, 6.0));
     let (top, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
-    // The part's name where a track has its knobs, so the fader keeps its place.
-    strip.painter().with_clip_rect(top).text(
-        pos2(top.center().x, top.top() + 6.0),
-        Align2::CENTER_TOP,
-        part.part.label(),
-        FontId::proportional(11.0),
-        visuals.strong_text_color(),
+    // The part's pan where a track has its knobs (its name is in the labels below).
+    let pan_rect = Rect::from_center_size(
+        pos2(top.center().x, top.top() + KNOB_SIZE / 2.0 + 2.0),
+        vec2(KNOB_SIZE, KNOB_SIZE),
     );
+    let knob = mixer::pan_knob(
+        &mut strip,
+        pan_rect,
+        part.pan,
+        id,
+        &format!("Pan {}", part.part.label()),
+    );
+    strip.painter().text(
+        pos2(pan_rect.center().x, pan_rect.bottom() + 2.0),
+        Align2::CENTER_TOP,
+        "Pan",
+        FontId::proportional(8.0),
+        visuals.weak_text_color(),
+    );
+    if knob.boundary {
+        actions.push(GridAction::BreakMerge);
+    }
+    if let Some((pan, merge)) = knob.change {
+        actions.push(GridAction::DrumPart {
+            track,
+            part: part.part,
+            level: part.level,
+            pan,
+            muted: part.muted,
+            soloed: part.soloed,
+            merge,
+        });
+    }
     fader(
         &mut strip,
         fader_area,
@@ -764,6 +792,7 @@ fn part_strip(
                 track,
                 part: part.part,
                 level,
+                pan: part.pan,
                 muted: part.muted,
                 soloed: part.soloed,
                 merge,
@@ -787,6 +816,7 @@ fn part_strip(
                 track,
                 part: part.part,
                 level,
+                pan: part.pan,
                 muted: part.muted,
                 soloed: part.soloed,
                 merge: false,
@@ -855,6 +885,7 @@ fn part_mute_solo(
             track,
             part: part.part,
             level: part.level,
+            pan: part.pan,
             muted: !part.muted,
             soloed: part.soloed,
             merge: false,
@@ -869,6 +900,7 @@ fn part_mute_solo(
             track,
             part: part.part,
             level: part.level,
+            pan: part.pan,
             muted: part.muted,
             soloed: !part.soloed,
             merge: false,

@@ -157,6 +157,9 @@ pub(crate) struct DrumPartSound {
     /// Its mixing level (0-127, 127 unity).
     #[serde(default = "unity_level", skip_serializing_if = "is_unity")]
     pub level: u8,
+    /// Its pan inside the kit (0 left, 64 centre, 127 right).
+    #[serde(default = "centre_pan", skip_serializing_if = "is_centre")]
+    pub pan: u8,
     /// Whether the part is muted inside the kit.
     #[serde(default, skip_serializing_if = "is_false")]
     pub muted: bool,
@@ -175,26 +178,31 @@ fn unity_level() -> u8 {
     127
 }
 
+/// The pan of a part the song's payload leaves out: the middle.
+fn centre_pan() -> u8 {
+    64
+}
+
+/// `true` for the middle, so a default pan is not written.
+fn is_centre(pan: &u8) -> bool {
+    *pan == 64
+}
+
 /// `true` for the unity level, so a default number is not written.
 fn is_unity(level: &u8) -> bool {
     *level == 127
 }
 
 impl DrumPartSound {
-    /// The state of `part` with `chain` at `level`, muted or soloed inside the kit.
-    pub(crate) fn of(
-        part: DrumPart,
-        chain: &ChainSetting,
-        level: u8,
-        muted: bool,
-        soloed: bool,
-    ) -> Self {
+    /// The state of `part` as playback has it: its chain, level, pan, mute and solo.
+    pub(crate) fn of(part: &TrackDrumPart) -> Self {
         DrumPartSound {
-            part: part.id().to_owned(),
-            chain: chain.clone(),
-            level: level.min(127),
-            muted,
-            soloed,
+            part: part.part.id().to_owned(),
+            chain: part.chain.clone(),
+            level: part.level.min(127),
+            pan: part.pan.min(127),
+            muted: part.muted,
+            soloed: part.soloed,
         }
     }
 
@@ -209,6 +217,7 @@ impl DrumPartSound {
             part: self.part()?,
             chain: self.chain.clone(),
             level: self.level.min(127),
+            pan: self.pan.min(127),
             muted: self.muted,
             soloed: self.soloed,
         })
@@ -700,14 +709,22 @@ mod tests {
         }
         let sound = TrackSound {
             drum_parts: vec![
-                DrumPartSound::of(DrumPart::Kick, &chain, 96, false, false),
-                DrumPartSound::of(
-                    DrumPart::Snare,
-                    &default_drum_part_chain(DrumPart::Snare),
-                    127,
-                    true,
-                    false,
-                ),
+                DrumPartSound::of(&TrackDrumPart {
+                    part: DrumPart::Kick,
+                    chain: chain.clone(),
+                    level: 96,
+                    pan: 30,
+                    muted: false,
+                    soloed: false,
+                }),
+                DrumPartSound::of(&TrackDrumPart {
+                    part: DrumPart::Snare,
+                    chain: default_drum_part_chain(DrumPart::Snare),
+                    level: 127,
+                    pan: 64,
+                    muted: true,
+                    soloed: false,
+                }),
             ],
             ..TrackSound::default()
         };
@@ -727,15 +744,18 @@ mod tests {
             .cloned()
             .expect("the kick");
         assert_eq!(part.part(), Some(DrumPart::Kick));
-        assert_eq!(part.level, 96);
+        assert_eq!((part.level, part.pan), (96, 30));
         assert_eq!(part.chain, chain);
-        // A part at the unity level writes no level, and comes back at unity.
+        // A part at the unity level in the middle writes no level or pan, and comes back
+        // at unity in the middle (older blocks have no pan either).
+        let text = serde_json::to_string(&state.tracks).unwrap_or_default();
+        assert_eq!(text.matches("\"pan\"").count(), 1, "{text}");
         let snare = back
             .track(0)
             .and_then(|track| track.sound.drum_parts.get(1))
             .cloned()
             .expect("the snare");
-        assert_eq!(snare.level, 127);
+        assert_eq!((snare.level, snare.pan), (127, 64));
         assert_eq!(back, state);
     }
 

@@ -220,3 +220,100 @@ fn a_drum_channels_parts_add_up_to_its_channel() {
     // A melodic channel has no parts (its sound is only in its channel).
     assert!(synth.part_block(0, 0, 0).iter().all(|&x| x == 0.0));
 }
+
+/// A split synthesizer on the stereo choke kit, channel 10 playing drums.
+fn choke_kit() -> Synthesizer {
+    let bytes = gscore_audio::testing::stereo_choke_drum_soundfont("Test Kit");
+    let font = Arc::new(SoundFont::new(&mut bytes.as_slice()).unwrap());
+    let mut settings = SynthesizerSettings::new(RATE);
+    settings.enable_reverb_and_chorus = false;
+    settings.split_channels = true;
+    let mut synth = Synthesizer::new(&font, &settings).unwrap();
+    synth.set_percussion_channel(9, true);
+    synth
+}
+
+#[test]
+fn a_stereo_hit_in_a_choke_group_sounds_on_both_sides_and_chokes_the_last() {
+    // FluidR3's hi-hats are two regions (left and right) in one exclusive class: the
+    // second region took the first one's voice, and the hi-hat sounded on one side only.
+    let mut synth = choke_kit();
+    synth.note_on(9, 42, 100);
+    let out = channels(&mut synth, 4_800);
+    let (left, right) = (energy(&out[9][0]), energy(&out[9][1]));
+    assert!(left > 1.0 && right > 1.0, "both sides: {left} {right}");
+    assert!((left / right - 1.0).abs() < 0.1, "balanced: {left} {right}");
+    assert_eq!(synth.active_voice_count(), 2, "one voice per side");
+    // An open hi-hat (another key of the group) chokes the closed one: still two voices.
+    synth.note_on(9, 46, 100);
+    let _ = channels(&mut synth, 960);
+    assert_eq!(synth.active_voice_count(), 2, "the last hit choked");
+}
+
+#[test]
+fn a_drum_rings_out_past_its_note_off_and_a_new_hit_lets_the_last_go() {
+    // The written length of a drum note does not cut it (a crash on a sixteenth rings); a
+    // melodic channel still releases at its note-off.
+    let tail = |drums: bool| {
+        let mut synth = choke_kit();
+        synth.set_percussion_channel(0, false);
+        let channel = if drums { 9 } else { 0 };
+        synth.note_on(channel, 49, 100);
+        let _ = channels(&mut synth, 960);
+        synth.note_off(channel, 49);
+        let out = channels(&mut synth, 14_400);
+        energy(&out[channel as usize][0][9_600..])
+    };
+    assert!(tail(true) > 1.0, "the drum rings on: {}", tail(true));
+    assert!(tail(false) < 1e-3 * tail(true), "a melodic note stops");
+    // Struck again, the drum's last hit is let go: the voices do not pile up.
+    let mut synth = choke_kit();
+    for _ in 0..20 {
+        synth.note_on(9, 38, 100);
+        let _ = channels(&mut synth, 480);
+    }
+    assert!(
+        synth.active_voice_count() <= 4,
+        "{}",
+        synth.active_voice_count()
+    );
+}
+
+#[test]
+fn a_drum_channels_parts_line_up_with_calls_of_any_size() {
+    // The engine's audio callback need not ask for whole blocks: the parts must be those
+    // of exactly the samples a call gave, or the drums drop and repeat bits.
+    let bytes = gscore_audio::testing::sine_drum_soundfont("Test Drums");
+    let font = Arc::new(SoundFont::new(&mut bytes.as_slice()).unwrap());
+    let mut settings = SynthesizerSettings::new(RATE);
+    settings.enable_reverb_and_chorus = false;
+    settings.split_channels = true;
+    let mut synth = Synthesizer::new(&font, &settings).unwrap();
+    synth.set_percussion_channel(9, true);
+    synth.note_on(9, 36, 100);
+    synth.note_on(9, 42, 80);
+    for frames in [37_usize, 64, 5, 50, 13, 64, 1, 63].iter().cycle().take(40) {
+        let mut out: Vec<[Vec<f32>; 2]> = (0..CHANNELS)
+            .map(|_| [vec![0.0; *frames], vec![0.0; *frames]])
+            .collect();
+        {
+            let (mut lefts, mut rights): (Vec<&mut [f32]>, Vec<&mut [f32]>) = out
+                .iter_mut()
+                .map(|[left, right]| (&mut left[..], &mut right[..]))
+                .unzip();
+            synth.render_channels(&mut lefts, &mut rights);
+        }
+        for (side, rendered) in out[9].iter().enumerate() {
+            assert_eq!(synth.part_block(9, 0, side).len(), *frames);
+            for (index, channel) in rendered.iter().enumerate() {
+                let sum: f32 = (0..rustysynth::PARTS)
+                    .map(|part| synth.part_block(9, part, side)[index])
+                    .sum();
+                assert!(
+                    (sum - channel).abs() < 1e-6,
+                    "{frames}: {sum} against {channel}"
+                );
+            }
+        }
+    }
+}

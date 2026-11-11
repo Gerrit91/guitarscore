@@ -494,6 +494,7 @@ impl GuitarScoreApp {
                 part,
                 chain: self.playback.kit_drum_part_chain(part),
                 level: 127,
+                pan: 64,
                 muted: false,
                 soloed: false,
             }),
@@ -501,13 +502,15 @@ impl GuitarScoreApp {
                 part,
                 chain: self.playback.kit_drum_part_chain(part),
                 level: 127,
+                pan: 64,
                 muted: false,
                 soloed: false,
             },
         }
     }
 
-    /// Gives `part` of `track` settings of the song's own (a chain, level, mute and solo),
+    /// Gives `part` of `track` settings of the song's own (a chain, level, pan, mute and
+    /// solo),
     /// or `None` to follow this machine's kit again. An edit, with undo, heard at once.
     pub(super) fn set_track_drum_part(
         &mut self,
@@ -521,9 +524,9 @@ impl GuitarScoreApp {
         };
         sound.drum_parts.retain(|entry| entry.part() != Some(part));
         if let Some(own) = own {
-            sound.drum_parts.push(DrumPartSound::of(
-                part, &own.chain, own.level, own.muted, own.soloed,
-            ));
+            sound
+                .drum_parts
+                .push(DrumPartSound::of(&TrackDrumPart { part, ..own }));
         }
         // The kit's order, so the payload does not depend on the order parts were edited.
         sound

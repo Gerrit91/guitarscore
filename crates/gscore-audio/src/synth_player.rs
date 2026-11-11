@@ -356,6 +356,12 @@ impl SynthPlayer {
         self.send(Command::PartLevel(track, part, level))
     }
 
+    /// The pan of `part` of the song's drum track `track` (0 left, 64 centre, 127 right),
+    /// heard at once.
+    pub fn set_part_pan(&self, track: usize, part: usize, pan: u8) -> Result<(), PlayError> {
+        self.send(Command::PartPan(track, part, pan))
+    }
+
     /// Mutes or unmutes `part` of the song's drum track `track`, heard at once.
     pub fn set_part_mute(&self, track: usize, part: usize, muted: bool) -> Result<(), PlayError> {
         self.send(Command::PartMute(track, part, muted))

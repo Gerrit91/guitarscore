@@ -122,11 +122,16 @@ pub struct TrackDrumPart {
     pub chain: crate::chain_settings::ChainSetting,
     /// Its mixing level (0-127, 127 unity).
     pub level: u8,
+    /// Its pan inside the kit (0 left, 64 centre, 127 right).
+    pub pan: u8,
     /// Whether the part is muted inside the kit.
     pub muted: bool,
     /// Whether the part is soloed inside the kit (silencing the others).
     pub soloed: bool,
 }
+
+/// What a drum part was last given: its chain, and its level, pan, mute and solo.
+type SentPart = (crate::chain_settings::ChainSetting, (u8, u8, bool, bool));
 
 /// One MIDI output port that plays MIDI-out tracks.
 #[cfg(not(target_arch = "wasm32"))]
@@ -309,10 +314,7 @@ pub struct Playback {
     sent_tones: std::collections::BTreeMap<usize, chains::SentTone>,
     /// What each drum track's parts were given (by song track and part), so a part's
     /// chain is prepared again only when its blocks change.
-    sent_parts: std::collections::BTreeMap<
-        (usize, usize),
-        (crate::chain_settings::ChainSetting, u8, bool, bool),
-    >,
+    sent_parts: std::collections::BTreeMap<(usize, usize), SentPart>,
     /// The mixer's reverb bus (a computed reverb or a room, all wet), its compressor bus
     /// (parallel compression) and its chorus bus, and what the synthesizer was last given
     /// for each.

@@ -493,6 +493,50 @@ fn a_drum_tracks_parts_have_their_own_levels() {
 }
 
 #[test]
+fn a_drum_part_pans_its_whole_hit_and_only_its_own() {
+    // A part's pan moves its stereo image (the far side folds into the near one), centre
+    // leaves it as it is, and the other parts stay where they are.
+    let mut song = testing::song_with_notes_on_tracks(1, &[]).expect("a silent song");
+    let _ = song
+        .set_track_drums(TrackIndex::new(0), true)
+        .expect("a drum track");
+    let sequence = Sequence::new(&song, None).unwrap();
+    let channel = sequence.tracks[0].channel;
+    let sides = |key: u8, part: usize, pan: u8| {
+        let bytes = gscore_audio::testing::sine_drum_soundfont("Test Drums");
+        let bank = SoundBank::read(&mut bytes.as_slice()).unwrap();
+        let mut engine = SynthEngine::new(&bank, RATE).unwrap();
+        engine.load(Arc::new(sequence.clone()));
+        engine.play();
+        engine.set_part_pan(0, part, pan);
+        engine.send_event(MidiEvent::NoteOn {
+            channel,
+            key,
+            velocity: 100,
+        });
+        let (left, right) = render(&mut engine, 1.0);
+        (rms(steady(&left)), rms(steady(&right)))
+    };
+    let (left, right) = sides(42, 2, 64);
+    // (The track's own pan law puts 64 a hair right of the middle.)
+    assert!(
+        left > 0.001 && (left / right - 1.0).abs() < 0.02,
+        "centred: {left} {right}"
+    );
+    let (hard_left, silent) = sides(42, 2, 0);
+    assert!(silent < 1e-6, "nothing on the right: {silent}");
+    assert!(
+        hard_left > left && hard_left < 2.0 * left,
+        "the whole hit on the left, about as loud: {hard_left} against {left}"
+    );
+    let (silent, hard_right) = sides(42, 2, 127);
+    assert!(silent < 1e-6 && hard_right > left, "and on the right");
+    // The hi-hat's pan leaves the snare in the middle.
+    let (snare_left, snare_right) = sides(38, 2, 0);
+    assert!((snare_left / snare_right - 1.0).abs() < 0.02);
+}
+
+#[test]
 fn a_tracks_chorus_value_reaches_the_chorus_bus() {
     // The track's Chorus knob (MIDI CC 93) is a send into the shared chorus, after its
     // fader: the bus runs all wet and only the chorused signal comes back.

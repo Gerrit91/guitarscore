@@ -4537,3 +4537,53 @@ needed for a much larger font); owner listening check.
   - the settings round trip;
   - the window: sync, a note value, free time.
 - New snapshot `sound_chain_delay`.
+
+## 2026-11-11 — Drums: a hi-hat on one side, missing hits, ring, part pans
+
+The owner reported drum beats that sometimes do not play, a sound on one side only for a
+few beats, drums too quiet and too short, and asked for a pan per drum part. Measured on
+FluidR3_GM (the owner's SoundFont):
+
+- **One side only:**
+  - FluidR3's hi-hats (and its snare) are stereo: two regions, panned left and right, in
+    one exclusive class (the choke group).
+  - RustySynth reused any sounding voice of the class, including the voice this very
+    note had just started for the other side, so every hi-hat played on the right only
+    (left 0.0000, right 0.0064).
+  - Fork fix: a note-on id per voice; a region never chokes its own note's voices.
+  - The hi-hat is now on both sides (0.008 / 0.012, as the kit pans it), and the snare,
+    which lost half too, is about 6 dB louder.
+- **Missing hits:**
+  - RustySynth plays 64 voices at most and steals the least important one beyond that.
+  - Five of six band songs reached 64 in busy passages (the MIDI through FluidR3), and a
+    stolen voice is a missing hit or half of a stereo drum.
+  - The engine now asks for 256 (RustySynth's most); the busiest song peaks at 107.
+- **Ring:**
+  - On a drum channel a note-off no longer cuts a one-shot sample: a crash written as a
+    sixteenth rings out. Looped samples still release.
+  - A drum struck again releases its last hit, so voices do not pile up.
+- **Parts lined up:** the mixer read each drum part as the fork's last whole block while the
+  channels were copied from the current read position. An audio callback of another
+  size than 64 frames shifted the parts against the channels (dropped and repeated
+  stretches). The fork now copies the parts with the channels.
+- **Part pans:**
+  - Each drum part strip has a Pan knob where a track has its knobs (its name stays in
+    the labels below).
+  - The pan moves the whole stereo hit: towards a side the far channel fades and folds
+    into the near one at 0.7, so half of a stereo sample is not lost as with a balance.
+  - Kept with the song (`pan` in the part's state, written only off centre), undoable as
+    one step per drag, in WAV export too.
+- Louder: the fixes make the snare and hi-hats about 6 dB louder and every drum ring out.
+  The kit's default part tones are still the owner's to design (they stay dry).
+- Tests:
+  - a stereo hit in a choke group on both sides, and the next hit of the group choking
+    it;
+  - a drum ringing past its note-off while a melodic note stops, and retriggers not
+    piling up;
+  - parts adding up to the channel for calls of any size;
+  - a part's pan moving the whole hit and only its own part;
+  - the pan saved and read back;
+  - the mixer's pan knob as one undo step.
+- The test SoundFont builder takes zones now (`stereo_choke_drum_soundfont`); the old
+  fonts come out byte for byte the same.
+- Snapshot `mixer_drum_parts` shows the pan knobs.

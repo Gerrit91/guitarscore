@@ -63,6 +63,21 @@ pub(crate) fn pan_gains(pan: u8) -> (f32, f32) {
     (angle.cos() * boost, angle.sin() * boost)
 }
 
+/// How a drum part's stereo image moves for `pan` (0 left, 64 centre, 127 right): the
+/// weights `(left from left, left from right, right from right, right from left)`. Towards
+/// a side the far channel fades out and folds into the near one (scaled by about 0.7, so a
+/// hit in the middle stays about as loud), so the whole hit moves instead of half of a
+/// stereo sample being lost as a balance would.
+fn part_pan(pan: u8) -> (f32, f32, f32, f32) {
+    const FOLD: f32 = std::f32::consts::FRAC_1_SQRT_2;
+    let p = ((f32::from(pan.min(127)) - 64.0) / 63.0).clamp(-1.0, 1.0);
+    if p < 0.0 {
+        (1.0, -p * FOLD, 1.0 + p, 0.0)
+    } else {
+        (1.0 - p, 0.0, 1.0, p * FOLD)
+    }
+}
+
 /// One track's strip.
 #[derive(Debug, Clone, Copy)]
 struct Strip {
@@ -181,6 +196,9 @@ pub(crate) struct Mixer {
     part_chains: [[Option<Box<Chain>>; PARTS]; MAX_TONES],
     /// Each drum track's part levels (0-127, 127 unity), by the song's track index.
     part_levels: [[u8; PARTS]; MAX_TONES],
+    /// Each drum track's part pans (0 left, 64 centre, 127 right), by the song's track
+    /// index: a balance, as the parts are stereo.
+    part_pans: [[u8; PARTS]; MAX_TONES],
     /// Each drum track's part mutes and solos, by the song's track index.
     part_mutes: [[bool; PARTS]; MAX_TONES],
     part_solos: [[bool; PARTS]; MAX_TONES],
@@ -241,6 +259,7 @@ impl Mixer {
             tones: TrackTones::new(),
             part_chains: std::array::from_fn(|_| std::array::from_fn(|_| None)),
             part_levels: [[127; PARTS]; MAX_TONES],
+            part_pans: [[64; PARTS]; MAX_TONES],
             part_mutes: [[false; PARTS]; MAX_TONES],
             part_solos: [[false; PARTS]; MAX_TONES],
             part_peaks: [[Peak::default(); PARTS]; MAX_TONES],
@@ -462,6 +481,18 @@ impl Mixer {
         }
     }
 
+    /// The pan of `part` of the song's drum track `track` (0 left, 64 centre, 127 right),
+    /// heard at once.
+    pub(crate) fn set_part_pan(&mut self, track: usize, part: usize, pan: u8) {
+        if let Some(slot) = self
+            .part_pans
+            .get_mut(track)
+            .and_then(|pans| pans.get_mut(part))
+        {
+            *slot = pan.min(127);
+        }
+    }
+
     /// Mutes or unmutes `part` of the song's drum track `track`, heard at once.
     pub(crate) fn set_part_mute(&mut self, track: usize, part: usize, muted: bool) {
         if let Some(slot) = self
@@ -680,13 +711,21 @@ impl Mixer {
                     chain.process_in_place(work_left, work_right, true);
                     part_reduction = part_reduction.min(chain.take_gain_reduction());
                 }
-                if level < 127 {
-                    let gain = f32::from(level) / 127.0;
-                    for sample in work_left.iter_mut() {
-                        *sample *= gain;
-                    }
-                    for sample in work_right.iter_mut() {
-                        *sample *= gain;
+                // The level, and the pan (the part is stereo already: centre leaves it as
+                // it is).
+                let pan = self
+                    .part_pans
+                    .get(strip.song_track)
+                    .and_then(|pans| pans.get(part))
+                    .copied()
+                    .unwrap_or(64);
+                let (ll, lr, rr, rl) = part_pan(pan);
+                let gain = f32::from(level) / 127.0;
+                if level < 127 || pan != 64 {
+                    for (l, r) in work_left.iter_mut().zip(work_right.iter_mut()) {
+                        let (from_l, from_r) = (*l, *r);
+                        *l = (from_l * ll + from_r * lr) * gain;
+                        *r = (from_r * rr + from_l * rl) * gain;
                     }
                 }
                 // The part's meter, after its chain, level and mute.
