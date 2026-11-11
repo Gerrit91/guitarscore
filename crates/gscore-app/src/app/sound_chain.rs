@@ -29,6 +29,15 @@ use crate::settings::{
 
 /// Width of the window's content.
 const WIDTH: f32 = 700.0;
+/// The height of the slot above the board (the tone's two rows, or a drum part's level).
+const HEADER_HEIGHT: f32 = 58.0;
+/// The height of the chosen box's knobs: the tallest editor's (the EQ's curve and its
+/// columns), so the window keeps one size...
+const EDITOR_HEIGHT: f32 = 430.0;
+/// ...unless the screen is too small for it: then it takes what the rest of the window
+/// leaves (about this much), down to this height, and scrolls.
+const EDITOR_ROOM: f32 = 420.0;
+const EDITOR_MIN_HEIGHT: f32 = 200.0;
 /// A box on the board, the gap between boxes (where the cable runs), the board's height.
 const BOX: egui::Vec2 = vec2(86.0, 60.0);
 const GAP: f32 = 36.0;
@@ -50,6 +59,8 @@ pub(super) struct SoundChainWindow {
     /// Which part of a drum kit the board edits (`None`: the track's own chain, the drum
     /// bus).
     part: Option<DrumPart>,
+    /// The string sound's tab shown in the strings' box.
+    strings_tab: super::string_sound::StringsTab,
 }
 
 /// What the user did this frame.
@@ -228,6 +239,7 @@ fn strings_editor(
     player: &TrackPlayer,
     sound: &mut StringSound,
     ports: &[String],
+    tab: &mut super::string_sound::StringsTab,
     actions: &mut Actions,
 ) -> bool {
     let mut changed = false;
@@ -279,7 +291,7 @@ fn strings_editor(
         }
     });
     ui.add_space(2.0);
-    changed |= sound_knobs(ui, sound);
+    changed |= sound_knobs(ui, sound, tab);
     changed
 }
 
@@ -1346,6 +1358,7 @@ impl GuitarScoreApp {
                     saving: None,
                     preset: None,
                     part: None,
+                    strings_tab: super::string_sound::StringsTab::default(),
                 });
             }
         }
@@ -1493,6 +1506,14 @@ impl GuitarScoreApp {
                                 &dialed_in,
                                 &mut actions,
                             );
+                            ui.separator();
+                        }
+                        // A drum part's level, or the tone: which one this preset plays,
+                        // another one, and saving it. Above the board so it stays in reach,
+                        // in a slot of its own height so the board does not jump when a
+                        // part is chosen.
+                        ui.vertical(|ui| {
+                            ui.set_min_height(HEADER_HEIGHT);
                             if let Some(part) = window.part {
                                 ui.horizontal(|ui| {
                                     ui.label(
@@ -1511,28 +1532,24 @@ impl GuitarScoreApp {
                                         actions.part_level = Some(level);
                                     }
                                 });
+                            } else {
+                                let default_tone =
+                                    self.playback.default_tone_name(player.program, kind);
+                                preset_row(
+                                    ui,
+                                    ShownPreset {
+                                        program: player.program,
+                                        kind,
+                                    },
+                                    &default_tone,
+                                    &tone,
+                                    &presets,
+                                    &mut window,
+                                    &mut actions,
+                                );
                             }
-                            ui.separator();
-                        }
-                        // The tone: which one this preset plays, another one, and saving
-                        // it. Above the board so it stays in reach when the window is tall.
-                        if window.part.is_none() {
-                            let default_tone =
-                                self.playback.default_tone_name(player.program, kind);
-                            preset_row(
-                                ui,
-                                ShownPreset {
-                                    program: player.program,
-                                    kind,
-                                },
-                                &default_tone,
-                                &tone,
-                                &presets,
-                                &mut window,
-                                &mut actions,
-                            );
-                            ui.separator();
-                        }
+                        });
+                        ui.separator();
                         let chain = part_chain
                             .as_ref()
                             .map(|own| own.chain.clone())
@@ -1659,24 +1676,43 @@ impl GuitarScoreApp {
                             }
                         });
                         ui.separator();
-                        match window.selected.checked_sub(1) {
-                            None => {
-                                let mut sound = sound;
-                                if strings_editor(ui, &player, &mut sound, &ports, &mut actions) {
-                                    actions.sound = Some(sound);
+                        // The chosen box's knobs, in an area of one height for every block
+                        // (the tallest, the EQ's, if the screen has room), so the window
+                        // keeps its size when another box is chosen.
+                        let editor_height = (ctx.content_rect().height() - EDITOR_ROOM)
+                            .clamp(EDITOR_MIN_HEIGHT, EDITOR_HEIGHT);
+                        egui::ScrollArea::vertical()
+                            .id_salt("sound chain editor")
+                            .auto_shrink([false, false])
+                            .max_height(editor_height)
+                            .show(ui, |ui| {
+                                ui.set_min_height(editor_height);
+                                match window.selected.checked_sub(1) {
+                                    None => {
+                                        let mut sound = sound;
+                                        if strings_editor(
+                                            ui,
+                                            &player,
+                                            &mut sound,
+                                            &ports,
+                                            &mut window.strings_tab,
+                                            &mut actions,
+                                        ) {
+                                            actions.sound = Some(sound);
+                                        }
+                                    }
+                                    Some(place) => {
+                                        let edited = editor(ui, &chain, place, reduction);
+                                        if let Some(changed) = edited.chain {
+                                            actions.chain = Some(changed);
+                                        }
+                                        actions.rebuild |= edited.rebuild;
+                                        if edited.load {
+                                            actions.load = Some(place);
+                                        }
+                                    }
                                 }
-                            }
-                            Some(place) => {
-                                let edited = editor(ui, &chain, place, reduction);
-                                if let Some(changed) = edited.chain {
-                                    actions.chain = Some(changed);
-                                }
-                                actions.rebuild |= edited.rebuild;
-                                if edited.load {
-                                    actions.load = Some(place);
-                                }
-                            }
-                        }
+                            });
                         ui.add_space(6.0);
                         ui.separator();
                         ui.horizontal(|ui| {

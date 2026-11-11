@@ -4686,3 +4686,49 @@ Branch `review-ux-requests`.
   arrow beside it lists 30-150 % in 10 % steps; together as wide as the old dropdown (the
   toolbar's zoom group still fits at 1000 px).
 - Goldens and app snapshots rewritten: owner to approve.
+
+## 2026-11-12 — An audible body, tabs for the strings, a window that keeps its size
+
+- **The body:**
+  - The owner heard no difference between None, Dreadnought and Classical. Measured: the
+    first body (eight narrow bells in series, each a few hertz wide) changed a strummed
+    chord by under 2 dB in any octave band.
+  - Rebuilt (`gscore-guitar` `body.rs`): a low cut, a broad radiation curve (eight
+    filters), and sixteen narrow band-pass modes rung from the curve, each standing out
+    of it by a few dB and ringing on briefly.
+  - At the owner's suggestion the Dreadnought is fitted to his reference tone's impulse
+    response, a Furch Vintage 1 dreadnought. Only its figures were taken: the
+    third-octave response, its narrow peaks and its decay (-20 dB after 16 ms).
+  - It is now within 1.8 dB of the reference per third octave on average: the air near
+    95 Hz up, a deep scoop at 400 Hz, the mids down, a notch near 2 kHz, a strong
+    presence from 3 to 9 kHz.
+  - On a strummed steel chord, against no body: about -10 dB at 500 Hz to 1 kHz and +6 dB
+    from 4 to 8 kHz, about as loud overall.
+  - The Classical is warmer and darker on top.
+  - `Biquad::bandpass` is new.
+  - Tests:
+    - a strummed chord's boxy mids well down against the low end;
+    - the classical body darker on top than the dreadnought;
+    - the dreadnought within 2.5 dB of the reference's figures;
+    - size moving the resonances, the ring and then silence, none or no mix changing
+      nothing;
+    - the engine playing a steel note through it (its fourth harmonic, at the 400 Hz
+      scoop, well down against the fundamental).
+- **Tabs:** the strings' box no longer shows every knob group at once: Strike, String,
+  Pickup, Body and Output are tabs above one row of knobs, and the tab chosen stays while
+  the window is open.
+- **A window that keeps its size:**
+  - The chosen box's knobs sit in an area of one height, the tallest editor's (the EQ's,
+    430 px; less on a small screen, then it scrolls).
+  - The slot above the board (the tone's rows, or a drum part's level) has one height
+    too.
+  - Switching boxes, parts or tabs no longer moves or resizes the window. The strings'
+    and the EQ's window are now equally tall.
+- **CI:** the GitHub runner's GPU anti-aliases the EQ's curve and the compressor bus's
+  needles a little differently. Those two snapshots failed with 20 and 23 pixels off by up
+  to 1.5 (YIQ), none above 2. They now use a colour tolerance of 2 per pixel
+  (`curve_tolerance`), still with no pixel allowed past it.
+- Snapshots: every Sound chain window (the fixed size), the strings' (tabs) and the
+  mixer's stomp-box view were regenerated.
+- Open (owner, for later): in the clef selection window the clefs do not fit into their
+  selection boxes.

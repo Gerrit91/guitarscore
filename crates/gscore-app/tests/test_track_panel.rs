@@ -771,19 +771,40 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
         .query_all_by_label("MIDI synth")
         .next()
         .expect("the sound source switch");
-    // Physical modelling shows the kind of string and its knobs.
+    // Physical modelling shows the kind of string and its knobs, one group per tab (the
+    // picking hand's first).
     harness.snapshot("sound_chain_strings");
-    for knob in [
-        "Pick position",
-        "Roundness",
-        "Brilliance",
-        "Bridge",
-        "Second vibration",
-        "Palm mute",
-        "Pick noise",
-        "Attack pitch",
+    for (tab, knobs) in [
+        ("String", &["Brilliance", "Second vibration"][..]),
+        ("Output", &["Bridge"][..]),
+        ("Body", &["Dreadnought"][..]),
+        ("Pickup", &["Humbucker"][..]),
+        (
+            "Strike",
+            &[
+                "Pick position",
+                "Roundness",
+                "Palm mute",
+                "Pick noise",
+                "Attack pitch",
+            ][..],
+        ),
     ] {
-        assert!(harness.query_all_by_label(knob).next().is_some(), "{knob}");
+        click_in_chain(&harness, tab);
+        harness.run();
+        for knob in knobs {
+            assert!(
+                harness.query_all_by_label(knob).next().is_some(),
+                "{tab}: {knob}"
+            );
+        }
+        // Only the chosen tab's knobs are shown.
+        if tab != "Strike" {
+            assert!(
+                harness.query_all_by_label("Pick position").next().is_none(),
+                "{tab}"
+            );
+        }
     }
     harness.get_by_label("Nylon guitar").click();
     harness.run();
@@ -1277,6 +1298,8 @@ fn a_dialed_tone_belongs_to_the_track() {
     // An electric guitar's strings with their pickup (a single coil at the bridge).
     open_sound_chain(&mut harness);
     harness.get_by_label("Block 0: Strings").click();
+    harness.run();
+    click_in_chain(&harness, "Pickup");
     harness.run();
     harness.snapshot("sound_chain_pickup");
     harness.get_by_label("Neck").click();
