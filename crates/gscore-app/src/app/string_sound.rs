@@ -215,9 +215,11 @@ fn value_text(value: f32, unit: &str) -> String {
 /// made the window too tall).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(super) enum StringsTab {
+    /// Which strings play the track: nylon, steel, electric or bass (shown first).
+    #[default]
+    Kind,
     /// The picking hand: pick position, hardness, roundness, pick noise, attack pitch and
     /// palm mute.
-    #[default]
     Strike,
     String,
     Pickup,
@@ -226,7 +228,8 @@ pub(super) enum StringsTab {
 }
 
 impl StringsTab {
-    const ALL: [StringsTab; 5] = [
+    const ALL: [StringsTab; 6] = [
+        StringsTab::Kind,
         StringsTab::Strike,
         StringsTab::String,
         StringsTab::Pickup,
@@ -236,6 +239,7 @@ impl StringsTab {
 
     fn label(self) -> &'static str {
         match self {
+            StringsTab::Kind => "Kind",
             StringsTab::Strike => "Strike",
             StringsTab::String => "String",
             StringsTab::Pickup => "Pickup",
@@ -246,6 +250,7 @@ impl StringsTab {
 
     fn tip(self) -> &'static str {
         match self {
+            StringsTab::Kind => "Which strings play the track: nylon, steel, electric or bass",
             StringsTab::Strike => {
                 "The picking hand: where and how hard it strikes, the pick's noise and the palm"
             }
@@ -258,7 +263,7 @@ impl StringsTab {
 }
 
 /// The knobs of one kind of string: the group of the chosen tab (`tab`, which the tabs on
-/// top change). Returns whether any moved.
+/// top change; the Kind tab's choice is the caller's). Returns whether any moved.
 pub(super) fn sound_knobs(
     ui: &mut egui::Ui,
     sound: &mut StringSound,

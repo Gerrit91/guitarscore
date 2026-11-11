@@ -31,9 +31,11 @@ use crate::settings::{
 const WIDTH: f32 = 700.0;
 /// The height of the slot above the board (the tone's two rows, or a drum part's level).
 const HEADER_HEIGHT: f32 = 58.0;
-/// The height of the chosen box's knobs: the tallest editor's (the EQ's curve and its
-/// columns), so the window keeps one size...
-const EDITOR_HEIGHT: f32 = 430.0;
+/// The height of the chosen box's knobs: the tallest editor's but the EQ's, so the window
+/// keeps one size whichever box is chosen; a chain with an EQ in it (its curve and
+/// columns) takes the taller one...
+const EDITOR_HEIGHT: f32 = 250.0;
+const EQ_EDITOR_HEIGHT: f32 = 430.0;
 /// ...unless the screen is too small for it: then it takes what the rest of the window
 /// leaves (about this much), down to this height, and scrolls.
 const EDITOR_ROOM: f32 = 420.0;
@@ -271,27 +273,15 @@ fn strings_editor(
     }) else {
         return changed;
     };
-    // Which strings, then their sound: the kind's knobs, right here.
-    ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new("Strings").color(style::tokens(ui).text_weak));
-        for candidate in [
-            StringKind::Nylon,
-            StringKind::Steel,
-            StringKind::Electric,
-            StringKind::Bass,
-        ] {
-            let selected = candidate == kind;
-            if ui
-                .add(egui::Button::selectable(selected, kind_name(candidate)))
-                .clicked()
-                && !selected
-            {
-                actions.engine = Some(TrackEngine::Modelled(candidate));
-            }
-        }
-    });
-    ui.add_space(2.0);
+    // The string sound on tabs, apart from what plays the track: which strings first (the
+    // Kind tab), then their knobs.
+    ui.separator();
     changed |= sound_knobs(ui, sound, tab);
+    if *tab == super::string_sound::StringsTab::Kind
+        && let Some(picked) = super::string_kinds::kind_tiles(ui, kind)
+    {
+        actions.engine = Some(TrackEngine::Modelled(picked));
+    }
     changed
 }
 
@@ -1676,11 +1666,20 @@ impl GuitarScoreApp {
                             }
                         });
                         ui.separator();
-                        // The chosen box's knobs, in an area of one height for every block
-                        // (the tallest, the EQ's, if the screen has room), so the window
-                        // keeps its size when another box is chosen.
+                        // The chosen box's knobs, in an area of one height for every box of
+                        // the chain (taller only for a chain with an EQ, if the screen has
+                        // room), so the window keeps its size when another box is chosen.
+                        let tallest = if chain
+                            .blocks
+                            .iter()
+                            .any(|block| block.choice == BlockChoice::Eq)
+                        {
+                            EQ_EDITOR_HEIGHT
+                        } else {
+                            EDITOR_HEIGHT
+                        };
                         let editor_height = (ctx.content_rect().height() - EDITOR_ROOM)
-                            .clamp(EDITOR_MIN_HEIGHT, EDITOR_HEIGHT);
+                            .clamp(EDITOR_MIN_HEIGHT, tallest);
                         egui::ScrollArea::vertical()
                             .id_salt("sound chain editor")
                             .auto_shrink([false, false])

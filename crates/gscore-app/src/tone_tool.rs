@@ -131,7 +131,16 @@ pub fn run(args: &[String]) -> Result<(), String> {
             println!("{USAGE}");
             Ok(())
         }
-        other => Err(format!("unknown command `{other}`\n\n{USAGE}")),
+        other => {
+            // `--list` and the like: the commands are plain words.
+            let word = other.trim_start_matches('-');
+            let hint = if ["list", "import", "normalize", "check"].contains(&word) {
+                format!(" (did you mean `{word}`?)")
+            } else {
+                String::new()
+            };
+            Err(format!("unknown command `{other}`{hint}\n\n{USAGE}"))
+        }
     }
 }
 

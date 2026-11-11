@@ -3222,6 +3222,9 @@ fn a_songs_mixer_state_travels_in_its_notes() {
     harness.run();
     harness.get_by_label("Block 0: Strings").click();
     harness.run();
+    // The picking hand's knobs are on the Strike tab.
+    harness.get_by_label("Strike").click();
+    harness.run();
     harness.get_by_label("Pick position value").click();
     harness.run();
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);

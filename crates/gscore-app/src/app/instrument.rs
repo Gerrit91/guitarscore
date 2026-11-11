@@ -173,6 +173,63 @@ impl Pen<'_> {
     }
 }
 
+/// The kinds of strings the modelled guitars play, as the Sound chain's Kind tab shows
+/// them: larger pictures in the family's shape language, the two acoustics told apart by
+/// the details a guitarist knows them by. `paper` is the colour behind them (a classical
+/// headstock's open slots).
+pub(crate) fn paint_strings(
+    painter: &Painter,
+    rect: Rect,
+    kind: gscore_play::StringKind,
+    ink: Color32,
+    paper: Color32,
+) {
+    use gscore_play::StringKind;
+    let pen = Pen {
+        painter,
+        center: rect.center(),
+        size: rect.width().min(rect.height()),
+        turn: (1.0, 0.0),
+        ink,
+    };
+    let line = 0.06;
+    match kind {
+        StringKind::Electric => paint(painter, rect, InstrumentSymbol::ElectricGuitar, ink),
+        StringKind::Bass => paint(painter, rect, InstrumentSymbol::Bass, ink),
+        StringKind::Steel => {
+            let pen = pen.diagonal(0.06);
+            // A dreadnought: a broad lower bout, a pickguard under the soundhole, a pin
+            // bridge, a slim neck and a solid headstock with its tuners.
+            pen.ellipse_outline(-0.26, 0.0, 0.16, 0.2, line);
+            pen.ellipse_outline(-0.03, 0.0, 0.1, 0.15, line);
+            pen.ellipse(-0.05, 0.0, 0.045, 0.045);
+            pen.ellipse(-0.11, 0.08, 0.065, 0.045);
+            pen.rect(-0.3, -0.075, -0.265, 0.075);
+            pen.rect(0.07, -0.03, 0.37, 0.03);
+            pen.fill(&[(0.35, -0.055), (0.52, -0.06), (0.52, 0.06), (0.35, 0.055)]);
+            for u in [0.4, 0.45, 0.5] {
+                pen.ellipse(u, -0.08, 0.017, 0.017);
+                pen.ellipse(u, 0.08, 0.017, 0.017);
+            }
+        }
+        StringKind::Nylon => {
+            let pen = pen.diagonal(0.06);
+            // A classical guitar: a rounder body, a rosette around the soundhole, a wide
+            // tie-block bridge, a wider neck and a slotted headstock.
+            pen.ellipse_outline(-0.25, 0.0, 0.15, 0.19, line);
+            pen.ellipse_outline(-0.03, 0.0, 0.11, 0.155, line);
+            pen.ellipse(-0.05, 0.0, 0.04, 0.04);
+            pen.ellipse_outline(-0.05, 0.0, 0.07, 0.07, line * 0.6);
+            pen.rect(-0.31, -0.09, -0.27, 0.09);
+            pen.rect(0.07, -0.038, 0.37, 0.038);
+            pen.fill(&[(0.35, -0.078), (0.56, -0.078), (0.56, 0.078), (0.35, 0.078)]);
+            let slots = Pen { ink: paper, ..pen };
+            slots.rect(0.385, -0.055, 0.535, -0.017);
+            slots.rect(0.385, 0.017, 0.535, 0.055);
+        }
+    }
+}
+
 /// How the string instruments lie: head up to the right.
 const DIAGONAL: f32 = -45.0;
 

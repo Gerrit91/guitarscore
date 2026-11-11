@@ -771,9 +771,12 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
         .query_all_by_label("MIDI synth")
         .next()
         .expect("the sound source switch");
-    // Physical modelling shows the kind of string and its knobs, one group per tab (the
-    // picking hand's first).
+    // Physical modelling shows its tabs: the kind of string first, then the knobs, one
+    // group per tab.
     harness.snapshot("sound_chain_strings");
+    for kind in ["Nylon guitar", "Steel guitar", "Electric guitar", "Bass"] {
+        assert!(harness.query_all_by_label(kind).next().is_some(), "{kind}");
+    }
     for (tab, knobs) in [
         ("String", &["Brilliance", "Second vibration"][..]),
         ("Output", &["Bridge"][..]),
@@ -806,9 +809,14 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
             );
         }
     }
+    click_in_chain(&harness, "Kind");
+    harness.run();
     harness.get_by_label("Nylon guitar").click();
     harness.run();
     // Clicking a knob's value lets one type a number.
+    // The picking hand's knobs are on the Strike tab.
+    harness.get_by_label("Strike").click();
+    harness.run();
     harness.get_by_label("Pick position value").click();
     harness.run();
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
@@ -1261,6 +1269,9 @@ fn a_dialed_tone_belongs_to_the_track() {
             harness.get_by_label("Block 0: Strings").click();
             harness.run();
         }
+        // The picking hand's knobs are on the Strike tab.
+        harness.get_by_label("Strike").click();
+        harness.run();
         harness.get_by_label("Pick position value").click();
         harness.run();
         harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
@@ -1421,6 +1432,9 @@ fn a_songs_edited_tone_survives_with_default_settings() {
         harness.get_by_label("Block 0: Strings").click();
         harness.run();
     }
+    // The picking hand's knobs are on the Strike tab.
+    harness.get_by_label("Strike").click();
+    harness.run();
     harness.get_by_label("Pick position value").click();
     harness.run();
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
@@ -1500,6 +1514,9 @@ fn the_built_in_entry_forgets_a_tracks_tone() {
         .sound;
     open_sound_chain(&mut harness);
     harness.get_by_label("Block 0: Strings").click();
+    harness.run();
+    // The picking hand's knobs are on the Strike tab.
+    harness.get_by_label("Strike").click();
     harness.run();
     harness.get_by_label("Pick position value").click();
     harness.run();

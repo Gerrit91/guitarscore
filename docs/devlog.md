@@ -4732,3 +4732,25 @@ Branch `review-ux-requests`.
   mixer's stomp-box view were regenerated.
 - Open (owner, for later): in the clef selection window the clefs do not fit into their
   selection boxes.
+
+## 2026-11-12 — Kind tab with pictures, a divider, a smaller window
+
+- **Kind tab:** which strings play the track is now the strings' first tab, named Kind
+  (owner: not "Strings", not "Played by").
+  - Four large picture tiles (124 px, the pictures 92 px) in the instrument symbols'
+    flat shape language, with their names below.
+  - Nylon: a classical guitar with a rosette, a wide tie-block bridge and an open
+    slotted headstock. Steel: a dreadnought with a pickguard, a pin bridge and tuners.
+    Electric and Bass: the track panel's own symbols.
+  - Bare on the panel, filled when hovered or chosen, as the palette's tiles
+    (`app/string_kinds.rs`, `instrument::paint_strings`).
+- **A divider** separates "Played by" from the tabs.
+- **Smaller window:**
+  - With the strings' knobs on tabs, the EQ-sized editor area left most windows half
+    empty.
+  - The area is now 250 px, enough for every editor but the EQ's. A chain with an EQ
+    in it takes the EQ's 430 px.
+  - Switching boxes still never resizes the window; only adding or removing an EQ does.
+- `cargo xtask tones --list` names `list` (the commands are plain words).
+- Tests: the Kind tab shows the four kinds and is the first; tests that type into a
+  knob choose the Strike tab first. Snapshots of the Sound chain windows regenerated.
