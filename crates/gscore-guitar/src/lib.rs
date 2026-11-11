@@ -12,6 +12,7 @@
 #![warn(clippy::arithmetic_side_effects)]
 
 mod amp;
+mod body;
 mod chain;
 mod chorus;
 mod compressor;
@@ -33,6 +34,7 @@ mod string_loop;
 mod tail;
 
 pub use amp::{AmpKnobs, AmpVoice};
+pub use body::{Body, BodyKind};
 pub use chain::{BLOCKS, BlockKind, Chain, ChainSpec, PreparedChain};
 pub use chorus::{CENTRE_MS, ChorusKnobs};
 pub use compressor::{CompRatio, CompressorKnobs};

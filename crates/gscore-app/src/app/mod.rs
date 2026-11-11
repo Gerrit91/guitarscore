@@ -47,6 +47,7 @@ mod song_state;
 mod sound_chain;
 mod staff_pickers;
 mod staff_widgets;
+mod string_body;
 mod string_sound;
 mod style;
 mod swatches;

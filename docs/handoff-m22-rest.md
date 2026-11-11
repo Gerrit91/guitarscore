@@ -66,7 +66,9 @@ before the release) are his. This file lists the rest, in a sensible order.
    pick's thickness, `hardness`), a short scrape-and-click noise, and a slightly sharp
    start of a hard pluck that settles within about 50 ms (tension modulation). Today a
    pluck reshapes the loop at once (`gscore-guitar/src/string.rs` `excite`).
-3. **The acoustic body:** a body response for steel and nylon (commuted synthesis, as
+3. **The acoustic body** (done 2026-11-11 on branch `m22-body-delay`: computed modal
+   bodies per track, see `docs/guitar-modelling.md`; open: the owner's ear): a body
+   response for steel and nylon (commuted synthesis, as
    planned). It can be computed (a few body resonances around 100-250 Hz and the
    top's modes) rather than recorded, so it need not wait for the owner's IRs.
 4. **String coupling:** unplayed strings of a track ringing along through the bridge

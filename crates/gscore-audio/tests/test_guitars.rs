@@ -198,6 +198,34 @@ fn a_palm_muted_note_rings_past_an_eighth_until_the_next_note() {
 }
 
 #[test]
+fn a_steel_track_sounds_through_its_body() {
+    // A low A on steel strings (the default kind of a modelled track): its body lifts the
+    // air resonance near 100 Hz; without a body the same note lacks it.
+    let song = testing::song_with_notes(&[(1, &[TestNote::new(5, 0)])]).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap().with_modelled_guitars();
+    let steel = gscore_guitar::GuitarModel::Steel.strings();
+    assert_eq!(steel.body, gscore_guitar::BodyKind::Dreadnought);
+    let play_with = |model: gscore_guitar::StringModel| {
+        let mut engine = SynthEngine::new(&bank(), RATE).unwrap();
+        engine.set_string_model(StringKind::Steel, model);
+        engine.load(Arc::new(sequence.clone()));
+        engine.play();
+        render(&mut engine, 1.0)
+    };
+    let with = play_with(steel);
+    let without = play_with(gscore_guitar::StringModel {
+        body: gscore_guitar::BodyKind::None,
+        ..steel
+    });
+    let air =
+        |out: &[f32]| power(seconds(out, 0.1, 0.6), 100.0) / power(seconds(out, 0.1, 0.6), 110.0);
+    assert!(
+        air(&with) > 2.0 * air(&without),
+        "the air resonance is heard"
+    );
+}
+
+#[test]
 fn drums_and_other_tracks_stay_on_the_soundfont() {
     let song = testing::song_with_notes_on_tracks(2, &[(1, &[TestNote::new(3, 2)])]).unwrap();
     let mut sequence = Sequence::new(&song, None).unwrap().with_modelled_guitars();
@@ -281,10 +309,11 @@ fn a_changed_string_model_is_heard_at_once() {
         ..gscore_audio::default_string_model(StringKind::Steel)
     };
     engine.set_string_model(StringKind::Steel, silent);
-    let after = render(&mut engine, 0.3);
+    // The steel's body rings out briefly after the strings fall silent, as a real one.
+    let after = render(&mut engine, 0.6);
     assert!(rms(&before[4_800..]) > 0.01);
     assert!(
-        rms(&after[4_800..]) < 1e-4,
+        rms(&after[19_200..]) < 1e-4,
         "the level knob took effect while ringing"
     );
     // Another kind is not touched.

@@ -192,6 +192,24 @@ described in the literature below:
   harmonics have none.
 
   Every preset has the same defaults, so sounds saved before these knobs get them too.
+- **The acoustic body** (`body.rs`, 2026-11-11), computed, no recording.
+  - Commuted synthesis would excite each string with the body's impulse response. Every
+    part is linear, so the body runs once per track on the sum of its strings instead
+    (the engine's slot): the same sound for one filter chain per track.
+  - The body is a low cut at 0.7 times the air mode, then eight narrow bells, one per
+    mode, which lift their bands and ring on briefly after the strings' energy passes.
+  - **Dreadnought** (steel): air at 100 Hz (Q 14, +10 dB), top at 195 Hz, back at
+    228 Hz, cross and long dipoles at 390 and 550 Hz, weaker modes at 830 and 1250 Hz, a
+    broad presence at 2.6 kHz.
+  - **Classical** (nylon): air at 96 Hz, top at 188 Hz, back at 240 Hz, and so on, a
+    lighter top, a soft dip at 2.2 kHz.
+  - The trims keep a strummed chord within 2 dB of the bare strings (test).
+  - Knobs in the string sound's Body row: the kind (None, Dreadnought, Classical),
+    **Body** (how much is heard, default 0.8) and **Size** (0 a parlour, 1.25 times
+    higher; 1 a jumbo, 1.25 times lower; 0.5 the kind's own).
+  - Presets: steel a dreadnought, nylon a classical body, electric and bass none. A
+    sound or a built-in tone that does not name a body gets its kind's
+    (`StringSound::for_kind`).
 - **Knobs:** every `StringModel` value has a range (`gscore_guitar::ranges`); the Sound
   chain window (track panel › Sound › the stomp box) turns them per kind of string, next
   to the board, heard at once (`Command::StringModel`), kept in the settings, used by WAV
@@ -224,8 +242,7 @@ described in the literature below:
   single coil sets it to 4.5 kHz, Q 2.2, a humbucker 3 kHz, Q 1.8. Electric preset: a
   humbucker at the bridge, tone 3 kHz, resonance 1.8. Sounds saved before pickups existed
   take their kind's pickup (`StringSound::for_kind`), so an older steel sound gets none.
-- **Not yet:** a real pick attack (next), body, coupling and two polarizations
-  (step 3), noises and feel (step 4). Everything is one generic string model now; a
+- **Not yet:** coupling (step 3), noises and feel (step 4). Everything is one generic string model now; a
   distorted part sounds distorted once its chain has an Amp block (below). Harmonics play the
   harmonic's pitch with a purer pluck rather than damping at a node.
 

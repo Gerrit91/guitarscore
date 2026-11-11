@@ -384,6 +384,9 @@ pub(super) fn sound_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
         .changed;
     });
     group(ui, "Pickup", |ui| changed |= pickup_knobs(ui, sound));
+    group(ui, "Body", |ui| {
+        changed |= super::string_body::body_knobs(ui, sound);
+    });
     // Not "Tone": that is the saved tones' word in the same window.
     group(ui, "Output", |ui| {
         changed |= round_knob(

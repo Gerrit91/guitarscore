@@ -129,10 +129,14 @@ impl ToneEntry {
             name: self.name.clone(),
             family: self.family,
             description: self.description.clone(),
-            tone: Tone {
-                kind: kind_from_id(&self.kind)?,
-                sound: self.sound,
-                chain: self.chain.clone(),
+            tone: {
+                let kind = kind_from_id(&self.kind)?;
+                Tone {
+                    kind,
+                    // A body or pickup the file does not name is the kind's.
+                    sound: self.sound.for_kind(kind),
+                    chain: self.chain.clone(),
+                }
             },
         })
     }

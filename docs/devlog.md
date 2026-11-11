@@ -4483,3 +4483,28 @@ needed for a much larger font); owner listening check.
 - Built-in tones with an amp or a drive: Texas Blues, British Crunch, Classic Rock Rhythm,
   80s Lead, Singing Sustain, Modern Metal Rhythm, Djent Tight. Their knobs are unchanged
   (the owner's designs), so the Crunch ones are clearly dirtier now: for the owner's ear.
+
+## 2026-11-11 — A computed acoustic body (M22 rest, 2.3)
+
+- `gscore-guitar` `Body`: a low cut below the air resonance, then eight narrow bells for
+  the air, top, back and the higher plate modes; Dreadnought and Classical tables.
+  - It runs once per modelled track on the sum of its strings. Commuted synthesis swapped
+    back, since all parts are linear.
+  - It stops computing once silent in and rung out (1 s).
+- String sound › Body row: None, Dreadnought, Classical, with **Body** (mix, 0.8) and
+  **Size** (0.5).
+  - Steel defaults to a dreadnought, nylon to a classical body, electric and bass to none.
+  - Sounds and built-in tones that do not name a body get their kind's (`BodySetting::
+    Unset`, as pickups).
+  - The bodies are not reset on stop or seek: they ring out with the strings' quick fade
+    instead of clicking.
+- Tests:
+  - the air and the top at their frequencies, at least 6 dB over the floor, little below
+    the air;
+  - Size moves them;
+  - a strummed chord within 2 dB of the bare strings, ringing briefly and then silent;
+  - None or no mix change nothing, and broken values stay finite;
+  - an old steel sound gets the dreadnought;
+  - the engine plays a steel track through it (the air resonance heard).
+- Snapshots `sound_chain_strings`, `sound_chain_pickup` and `mixer_stomp_track` show the
+  Body row.
