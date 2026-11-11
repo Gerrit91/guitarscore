@@ -403,27 +403,51 @@ impl GuitarScoreApp {
         let mut speed = self.playback.speed();
         let chosen = speed;
         let trainer = self.playback.trainer();
-        let response = egui::ComboBox::from_id_salt("playback_speed")
-            .selected_text(format!("{:.0} %", speed * 100.0))
-            .width(66.0)
-            // Typing a speed must not close the list.
-            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-            .show_ui(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Speed");
-                    let typed = ui.add(percent_value(&mut speed));
-                    ui.ctx().accesskit_node_builder(typed.id, |node| {
-                        node.set_label("Speed in percent")
-                    });
-                });
-                ui.separator();
-                for choice in crate::playback::SPEED_CHOICES {
-                    ui.selectable_value(&mut speed, choice, format!("{:.0} %", choice * 100.0));
+        // The number takes a typed speed (a click edits it, a drag changes it); the arrow
+        // beside it lists the usual steps.
+        let (response, list) = ui
+            .scope(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.spacing_mut().interact_size.x = 46.0;
+                let typed = ui.add(percent_value(&mut speed));
+                // A slim arrow beside the number opens the list of steps.
+                let height = ui.spacing().interact_size.y;
+                let (rect, list) = ui.allocate_exact_size(vec2(16.0, height), Sense::click());
+                let visuals = ui.style().interact(&list);
+                if list.hovered() {
+                    ui.painter().rect_filled(rect, 2.0, visuals.bg_fill);
                 }
+                let c = rect.center();
+                ui.painter().add(egui::Shape::convex_polygon(
+                    vec![
+                        egui::pos2(c.x - 4.0, c.y - 2.0),
+                        egui::pos2(c.x + 4.0, c.y - 2.0),
+                        egui::pos2(c.x, c.y + 3.0),
+                    ],
+                    visuals.fg_stroke.color,
+                    egui::Stroke::NONE,
+                ));
+                egui::Popup::menu(&list).show(|ui| {
+                    for choice in crate::playback::SPEED_CHOICES {
+                        if ui
+                            .selectable_label(
+                                (speed - choice).abs() < 1e-4,
+                                format!("{:.0} %", choice * 100.0),
+                            )
+                            .clicked()
+                        {
+                            speed = choice;
+                        }
+                    }
+                });
+                (typed, list)
             })
-            .response;
+            .inner;
         ui.ctx()
             .accesskit_node_builder(response.id, |node| node.set_label("Playback speed"));
+        ui.ctx()
+            .accesskit_node_builder(list.id, |node| node.set_label("Speed steps"));
+        list.on_hover_text("The usual speeds, in steps of 10 %");
         let mut tip = "Playback speed; the written tempo stays as it is".to_owned();
         if trainer.enabled {
             tip.push_str(&format!(

@@ -4654,3 +4654,35 @@ Branch `review-ux-requests` (off main e9bfca9).
 - Goldens and app snapshots rewritten (bar tint, spacing, tuplet row): owner to approve.
 - Bench (release): layout note_lengths 0.070 ms, multi_staff all 6 tracks 0.362 ms. The
   strings bench is over its 250 ms budget as on main.
+
+## 2026-11-12 — Review round 2: Stop, smooth cursor, squeezed lines, slurs, speed field
+
+Branch `review-ux-requests`.
+
+- **Back to the start:** the owner stops with Space (play/pause). With the setting on,
+  Space while playing now stops and goes back as well (off: it pauses as before).
+  Also: the synth's state lagged a Stop by one audio buffer, so the cursor could follow
+  "playing" once more. A pause or stop the callback has not carried out yet (sent within
+  300 ms, device open, no error) now reports its own state; a pending Play does not (its
+  seek is not done, the position would be old). The callback counts commands as carried
+  out only after publishing the state they leave. Test: `stop_goes_back_to_...` (real
+  audio, toolbar Stop and Space).
+- **Smooth cursor:** the synth published its position once per buffer, so the gliding
+  cursor moved in steps. `clock.rs`: the callback publishes the buffer's start tick, a
+  time stamp and ticks per second; `Player::display_position` (default: `position`)
+  carries it on to now, at most 250 ms, never back by jitter (< 0.1 s of play). Only the
+  cursor uses it; loops and count-ins keep the exact position. The page glides the beat
+  playing at the frame's own tick (no jump back when the cursor lags a frame).
+- **Squeezed lines:** "battery with intro.gp" (local only) bars 132-135 are one system
+  in the file but 4.4 spaces too wide here, so 135 stood alone on a line. Columns now
+  keep a floor (what the notes need); a line may squeeze the room above the floors to
+  60 % (`MIN_SQUEEZE`) to take another bar. Multi-track systems are not squeezed
+  (aligned columns' floor = their space). The solo track went from 7 to 6 pages.
+- **Hammer-ons/pull-offs** (owner's reference picture): the slur goes over the two fret
+  numbers (under them on the lowest string), the H/P letter in a row above the tab staff,
+  so the numbers can stand close.
+- **Tab tuplets** bolder: bold number 1.25, line 0.16.
+- **Speed field:** the number is a typed field (click to type, drag to change), a slim
+  arrow beside it lists 30-150 % in 10 % steps; together as wide as the old dropdown (the
+  toolbar's zoom group still fits at 1000 px).
+- Goldens and app snapshots rewritten: owner to approve.

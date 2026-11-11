@@ -228,6 +228,11 @@ impl SynthEngine {
         self.transport.state()
     }
 
+    /// The tempo it plays at now (with the playback speed), if a sequence is loaded.
+    pub fn bpm(&self) -> Option<f32> {
+        self.transport.bpm()
+    }
+
     /// Renders the next `left.len()` frames (sounds keep ringing out after a stop). The
     /// slices must be equally long; extra samples of the longer one are set to silence.
     pub fn render(&mut self, left: &mut [f32], right: &mut [f32]) {

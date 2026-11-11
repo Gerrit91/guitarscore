@@ -204,7 +204,7 @@ impl MeasureLayout {
         let mut xs = Vec::with_capacity(self.columns.len());
         for column in &self.columns {
             xs.push(cursor);
-            cursor += column.space * stretch;
+            cursor += column.advance(stretch);
         }
         (xs, cursor)
     }
@@ -503,8 +503,8 @@ impl MeasureLayout {
         ops: &mut Vec<DrawOp>,
     ) {
         /// The number's size, the bracket's line and how far its hooks rise.
-        const SIZE: f32 = 1.2;
-        const THICKNESS: f32 = 0.1;
+        const SIZE: f32 = 1.25;
+        const THICKNESS: f32 = 0.16;
         const HOOK: f32 = 0.45;
         let mut index = 0;
         while index < self.columns.len() {
@@ -551,7 +551,7 @@ impl MeasureLayout {
                 text: label,
                 at: Point::new(middle, baseline),
                 size: SIZE,
-                font: TextFont::Regular,
+                font: TextFont::Bold,
                 anchor: TextAnchor::Middle,
                 color: ColorToken::Notation,
             });

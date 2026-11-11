@@ -945,6 +945,73 @@ fn playback_starts_at_the_cursor_and_resumes_where_it_paused() {
     harness.state_mut().playback_mut().stop().unwrap();
 }
 
+#[test]
+fn stop_goes_back_to_where_playback_started_when_asked() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("return-on-stop");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    harness.state_mut().set_return_on_stop(true);
+    let measure = |app: &GuitarScoreApp| app.document().unwrap().editor().cursor().measure.get();
+
+    cursor_to_measure(&mut harness, 1);
+    // As the user does it: Space, then the toolbar's Stop.
+    harness.key_press(egui::Key::Space);
+    harness.run();
+    let started = step_until(&mut harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    });
+    assert!(started, "did not start");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+    // A bar at 120 bpm lasts two seconds: let the cursor follow into the next one.
+    let moved = (0..60).any(|_| {
+        std::thread::sleep(Duration::from_millis(50));
+        harness.step();
+        measure(harness.state()) >= 2
+    });
+    assert!(moved, "the cursor follows playback");
+    harness.get_by_label("Stop").click();
+    harness.step();
+    // It stays back there, also while the audio thread catches up with the stop.
+    for _ in 0..10 {
+        std::thread::sleep(Duration::from_millis(20));
+        harness.step();
+        assert_eq!(measure(harness.state()), 1);
+    }
+    assert_eq!(
+        harness.state().playback().state(),
+        gscore_play::PlayState::Stopped
+    );
+
+    // Space while playing stops and goes back too.
+    harness.key_press(egui::Key::Space);
+    harness.run();
+    assert!(step_until(&mut harness, 10, |app| app.playback().state()
+        == gscore_play::PlayState::Playing));
+    let moved = (0..60).any(|_| {
+        std::thread::sleep(Duration::from_millis(50));
+        harness.step();
+        measure(harness.state()) >= 2
+    });
+    assert!(moved, "the cursor follows playback again");
+    harness.key_press(egui::Key::Space);
+    harness.run();
+    for _ in 0..10 {
+        std::thread::sleep(Duration::from_millis(20));
+        harness.step();
+        assert_eq!(measure(harness.state()), 1);
+    }
+    assert_ne!(
+        harness.state().playback().state(),
+        gscore_play::PlayState::Playing
+    );
+}
+
 /// The first track of the open document.
 fn first_track<'a>(harness: &'a Harness<'static, GuitarScoreApp>) -> gscore_model::TrackView<'a> {
     harness

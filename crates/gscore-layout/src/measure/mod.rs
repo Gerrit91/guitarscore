@@ -122,6 +122,9 @@ struct Column {
     onset: Duration,
     /// Natural space from this column to the next one (or to the barline).
     space: f32,
+    /// The least of it the notes need (no collisions): a squeezed line takes its columns
+    /// down towards this, never below.
+    floor: f32,
     items: Vec<Item>,
     /// Effects that belong to the beat rather than to one note.
     marks: ColumnMarks,
@@ -182,6 +185,18 @@ enum Item {
     Fret(Fret),
     /// A rest, centered on the staff.
     Rest { glyph: Glyph, dots: u8 },
+}
+
+impl Column {
+    /// Its space in a line stretched by `stretch`: at least 1 multiplies the space; below
+    /// 1 (a squeezed line) only the room beyond the floor shrinks, by that factor.
+    fn advance(&self, stretch: f32) -> f32 {
+        if stretch >= 1.0 {
+            self.space * stretch
+        } else {
+            self.floor + (self.space - self.floor).max(0.0) * stretch.max(0.0)
+        }
+    }
 }
 
 impl MeasureLayout {
@@ -494,6 +509,7 @@ impl MeasureLayout {
                 Column {
                     onset: onsets.get(i).copied().unwrap_or(starts.end),
                     space: space.max(room),
+                    floor: room.min(space.max(room)).max(0.0),
                     items: data.items,
                     marks: data.marks,
                     notation: data.notation,
@@ -623,9 +639,14 @@ impl MeasureLayout {
         self.columns.iter().map(|c| c.space).sum()
     }
 
+    /// The least the stretchable width may be squeezed to: what the notes need.
+    pub(crate) fn floor_width(&self) -> f32 {
+        self.columns.iter().map(|c| c.floor).sum()
+    }
+
     /// The width with the columns stretched by `stretch`.
     pub(crate) fn width(&self, stretch: f32) -> f32 {
-        self.fixed_width() + self.stretchable_width() * stretch
+        self.fixed_width() + self.columns.iter().map(|c| c.advance(stretch)).sum::<f32>()
     }
 }
 

@@ -102,6 +102,7 @@ pub(crate) fn layout_with(
             MeasureWidth {
                 fixed: m.fixed_width() + before + after,
                 stretchable: m.stretchable_width(),
+                floor: m.floor_width(),
             }
         })
         .collect();

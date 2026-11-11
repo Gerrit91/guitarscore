@@ -9,6 +9,12 @@ use gscore_model::{BEND_MAX_POSITION, BendPoint, SlideKind, WhammyShape};
 
 /// How far a slur between two notes dips or rises.
 const SLUR_CURVE: f32 = 0.9;
+/// A hammer-on's slur: how far its ends sit from the string line (a share of the fret
+/// number's size: just clear of the digits), and how much it bows.
+const HAMMER_REACH: f32 = 0.42;
+const HAMMER_CURVE: f32 = 0.55;
+/// The baseline of the H and P letters above the tab staff's top line.
+const HAMMER_LETTER_RISE: f32 = 1.3;
 /// How far a slide line rises or falls on each side of the string line.
 const SLIDE_SLANT: f32 = 0.35;
 /// Height above the top line where a beat-level legato slur starts and ends; above the
@@ -43,6 +49,10 @@ pub(crate) fn draw_link(
     ctx: &Context<'_>,
     ops: &mut Vec<DrawOp>,
 ) {
+    if origin.marks.direct_slide().is_none() && origin.marks.hammer {
+        draw_hammer(origin_x, target_x, top, origin, target, ctx, ops);
+        return;
+    }
     let from_x = origin_x + origin.half_width() + 0.05;
     let to_x = target_x - target.half_width() - 0.05;
     if to_x <= from_x {
@@ -86,30 +96,54 @@ pub(crate) fn draw_link(
                 color: ColorToken::Notation,
             });
         }
-    } else if origin.marks.hammer {
-        // A pull-off and a hammer-on are both written as a slur; the direction follows
-        // from the two frets, and the letter makes it explicit.
-        draw_slur(
-            from_x,
-            y,
-            to_x,
-            top + ctx.staff.line_y(target.line),
-            SLUR_CURVE,
-            ops,
-        );
-        let pull_off = matches!(
-            (origin.fret, target.fret),
-            (Some(from), Some(to)) if to < from
-        );
-        ops.push(DrawOp::Text {
-            text: if pull_off { "P" } else { "H" }.to_owned(),
-            at: Point::new((from_x + to_x) / 2.0, y - 0.45),
-            size: 1.0,
-            font: TextFont::Regular,
-            anchor: TextAnchor::Middle,
-            color: ColorToken::Notation,
-        });
     }
+}
+
+/// A hammer-on or pull-off: a slur over the two fret numbers, from the top of one to the
+/// top of the next (under them on the lowest string), so the numbers may stand close; the
+/// letter (H or P, from the two frets) goes in a row just above the tab staff.
+fn draw_hammer(
+    origin_x: f32,
+    target_x: f32,
+    top: f32,
+    origin: &Fret,
+    target: &Fret,
+    ctx: &Context<'_>,
+    ops: &mut Vec<DrawOp>,
+) {
+    if target_x <= origin_x {
+        return;
+    }
+    let lowest = ctx.staff.lines().saturating_sub(1);
+    let below = origin.line == lowest && target.line == lowest;
+    // Half a fret number's height, and a little air.
+    let reach = ctx.options.fret_size * HAMMER_REACH;
+    let end_y = |line: usize| {
+        let y = top + ctx.staff.line_y(line);
+        if below { y + reach } else { y - reach }
+    };
+    let inset = (target_x - origin_x).min(2.0) * 0.15;
+    let curve = if below { HAMMER_CURVE } else { -HAMMER_CURVE };
+    draw_slur(
+        origin_x + inset,
+        end_y(origin.line),
+        target_x - inset,
+        end_y(target.line),
+        curve,
+        ops,
+    );
+    let pull_off = matches!(
+        (origin.fret, target.fret),
+        (Some(from), Some(to)) if to < from
+    );
+    ops.push(DrawOp::Text {
+        text: if pull_off { "P" } else { "H" }.to_owned(),
+        at: Point::new((origin_x + target_x) / 2.0, top - HAMMER_LETTER_RISE),
+        size: 0.9,
+        font: TextFont::Regular,
+        anchor: TextAnchor::Middle,
+        color: ColorToken::Notation,
+    });
 }
 
 /// Draws the wiggle of a pick slide from the muted note at `origin_x` to the next note at

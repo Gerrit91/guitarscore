@@ -28,6 +28,9 @@ use crate::transport::Command;
 
 /// Commands queued before senders get an error (the callback drains them every few ms).
 const QUEUE: usize = 64;
+/// How long (microseconds) a sent play, pause or stop stands for the state while the
+/// callback has not carried it out: a few buffers at most, unless the device is stuck.
+const PENDING_AT_MOST: u64 = 300_000;
 /// Replaced sequences waiting to be freed.
 const RETIRED: usize = 8;
 /// How often the thread frees replaced sequences and checks for the end.
@@ -41,6 +44,10 @@ const LOAD_SMOOTHING: f32 = 0.05;
 struct Shared {
     position: AtomicU64,
     state: AtomicU8,
+    /// The position carried on between callbacks, for the screen.
+    clock: crate::clock::Clock,
+    /// How many play, pause, stop and load commands the callback has carried out.
+    transports: AtomicU64,
     /// The SoundFont is loading or the device opening.
     loading: AtomicBool,
     /// The device failed; the callback stops playback.
@@ -121,6 +128,14 @@ pub struct SynthPlayer {
     /// The reverb bus to prepare off the audio thread.
     bus: SyncSender<BusRequest>,
     shared: Arc<Shared>,
+    /// How many play, pause, stop and load commands were sent, and the state the last one
+    /// asks for: until the callback has carried them out, that is the state.
+    transports: AtomicU64,
+    requested: AtomicU8,
+    /// When the last of them was sent (microseconds since `epoch`): past
+    /// [`PENDING_AT_MOST`], the callback's own state counts again.
+    asked_at: AtomicU64,
+    epoch: Instant,
     /// Dropping it ends the thread (and the stream).
     quit: Option<SyncSender<()>>,
     thread: Option<JoinHandle<()>>,
@@ -170,6 +185,10 @@ impl SynthPlayer {
             chains,
             bus,
             shared,
+            transports: AtomicU64::new(0),
+            requested: AtomicU8::new(encode(PlayState::Stopped)),
+            asked_at: AtomicU64::new(0),
+            epoch: Instant::now(),
             quit: Some(quit),
             thread: Some(thread),
         })
@@ -239,6 +258,7 @@ impl SynthPlayer {
         if let Some(error) = self.error() {
             return Err(PlayError::Device(error));
         }
+        let asks = transport_state(&command);
         self.commands.try_send(command).map_err(|e| match e {
             TrySendError::Full(_) => {
                 PlayError::Device("the synthesizer is not keeping up; try again".to_owned())
@@ -246,7 +266,13 @@ impl SynthPlayer {
             TrySendError::Disconnected(_) => self
                 .error()
                 .map_or(PlayError::Disconnected, PlayError::Device),
-        })
+        })?;
+        if let Some(state) = asks {
+            self.requested.store(encode(state), Ordering::Release);
+            self.asked_at.store(self.micros(), Ordering::Release);
+            self.transports.fetch_add(1, Ordering::AcqRel);
+        }
+        Ok(())
     }
 }
 
@@ -449,6 +475,13 @@ struct Housekeeping {
     commands: SyncSender<Command>,
 }
 
+impl SynthPlayer {
+    /// Microseconds since the player was made.
+    fn micros(&self) -> u64 {
+        u64::try_from(self.epoch.elapsed().as_micros()).unwrap_or(u64::MAX)
+    }
+}
+
 impl Player for SynthPlayer {
     fn load(&mut self, sequence: Arc<Sequence>) -> Result<(), PlayError> {
         self.send(Command::Load(sequence))
@@ -486,7 +519,38 @@ impl Player for SynthPlayer {
         self.shared.position.load(Ordering::Acquire)
     }
 
+    fn display_position(&self) -> u64 {
+        if self.state() == PlayState::Playing {
+            self.shared.clock.now()
+        } else {
+            self.position()
+        }
+    }
+
     fn state(&self) -> PlayState {
+        // A pause or stop the callback has not carried out yet: what it asks for, so the
+        // app does not see the old state for another buffer. Not while loading (the
+        // commands wait for the device).
+        let running = !self.shared.loading.load(Ordering::Acquire)
+            && !self.shared.failed.load(Ordering::Acquire)
+            && self.shared.sample_rate.load(Ordering::Acquire) > 0
+            && self.error().is_none();
+        let recent = self
+            .micros()
+            .saturating_sub(self.asked_at.load(Ordering::Acquire))
+            < PENDING_AT_MOST;
+        if running
+            && recent
+            && self.shared.transports.load(Ordering::Acquire)
+                < self.transports.load(Ordering::Acquire)
+        {
+            // Only a stop or pause: a play is not playing until its seek is done, or the
+            // position would still be the old one.
+            let requested = decode(self.requested.load(Ordering::Acquire));
+            if requested != PlayState::Playing {
+                return requested;
+            }
+        }
         decode(self.shared.state.load(Ordering::Acquire))
     }
 }
@@ -743,7 +807,12 @@ where
         u64::try_from(latency.as_micros()).unwrap_or(u64::MAX),
         Ordering::Release,
     );
+    // Counted as carried out only once the state they leave is published (below).
+    let mut transports = 0_u64;
     while let Ok(command) = parts.commands.try_recv() {
+        if transport_state(&command).is_some() {
+            transports = transports.saturating_add(1);
+        }
         if let Some(old) = parts.engine.apply(command) {
             // Freed by the thread; if its queue is full, here (rare and small).
             let _ = parts.retired.try_send(old);
@@ -754,6 +823,7 @@ where
     }
     // Reading the clock neither blocks nor allocates.
     let started = Instant::now();
+    let start = parts.engine.position();
     parts
         .engine
         .render_interleaved(data, parts.channels, <T as Sample>::from_sample::<f32>);
@@ -770,7 +840,25 @@ where
     shared
         .position
         .store(parts.engine.position(), Ordering::Release);
+    let playing = parts.engine.state() == PlayState::Playing;
+    shared
+        .clock
+        .publish(start, parts.engine.bpm().filter(|_| playing));
     shared
         .state
         .store(encode(parts.engine.state()), Ordering::Release);
+    if transports > 0 {
+        shared.transports.fetch_add(transports, Ordering::AcqRel);
+    }
+}
+
+/// The state a play, pause, stop or load command leaves the transport in; `None` for the
+/// other commands.
+fn transport_state(command: &Command) -> Option<PlayState> {
+    match command {
+        Command::Play => Some(PlayState::Playing),
+        Command::Pause => Some(PlayState::Paused),
+        Command::Stop | Command::Load(_) => Some(PlayState::Stopped),
+        _ => None,
+    }
 }

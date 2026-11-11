@@ -207,10 +207,12 @@ impl GuitarScoreApp {
         // for the cursor to glide there.
         let glide = if playing && self.settings.flowing_cursor {
             self.playback.sequence().and_then(|sequence| {
-                let tick = self.playback.position();
+                let tick = self.playback.display_position();
                 let span = sequence.beat_span_at(document.song(), cursor.position(), tick)?;
                 let next = sequence.measure_at(span.end).map(|next| next.measure);
-                (span.at == cursor.position()).then(|| (span.progress(tick), next))
+                // The beat playing at this frame's tick, even when the cursor (moved a
+                // moment earlier) is still on the one before: no jump back for a frame.
+                Some((span.at, span.progress(tick), next))
             })
         } else {
             None
@@ -303,8 +305,8 @@ impl GuitarScoreApp {
                 // A gliding cursor is drawn on its way to the next beat; the view still
                 // follows the beat itself.
                 let shown = glide
-                    .and_then(|(progress, next)| {
-                        places.glide_rect(cursor.measure, cursor.voice, cursor.beat, progress, next)
+                    .and_then(|(at, progress, next)| {
+                        places.glide_rect(at.measure, at.voice, at.beat, progress, next)
                     })
                     .map_or(column, to_screen);
                 // Inside the selection, the cursor's band would make its column darker than

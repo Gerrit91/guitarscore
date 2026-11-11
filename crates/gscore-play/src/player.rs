@@ -60,6 +60,12 @@ pub trait Player {
     fn replace(&mut self, sequence: Arc<Sequence>) -> Result<(), PlayError>;
     /// The current position in ticks.
     fn position(&self) -> u64;
+    /// The position for the screen: like [`Player::position`], but moving smoothly from
+    /// frame to frame where the player only learns its position now and then (an audio
+    /// callback per buffer). Never use it for timing decisions.
+    fn display_position(&self) -> u64 {
+        self.position()
+    }
     /// Playing, paused or stopped.
     fn state(&self) -> PlayState;
 }
