@@ -108,3 +108,47 @@ fn a_real_file_places_every_measure() {
         assert_eq!(place.measure, MeasureIndex::new(index));
     }
 }
+
+#[test]
+fn the_gliding_cursor_moves_from_beat_to_beat_and_on_to_the_next_bar() {
+    let song = testing::song(&[GUITAR_6], 12).unwrap();
+    let layout = layout_track(
+        &song,
+        TrackIndex::new(0),
+        &LayoutOptions::default(),
+        &fonts(),
+    )
+    .unwrap();
+    let places = &layout.places;
+    let voice = VoiceIndex::new(0);
+    let m0 = MeasureIndex::new(0);
+    let center = |rect: gscore_layout::Rect| rect.origin.x + rect.width / 2.0;
+    let x = |measure, beat| {
+        center(
+            places
+                .column_rect(measure, voice, BeatIndex::new(beat))
+                .unwrap(),
+        )
+    };
+    let glide = |measure, beat, progress, next| {
+        center(
+            places
+                .glide_rect(measure, voice, BeatIndex::new(beat), progress, next)
+                .unwrap(),
+        )
+    };
+    // Halfway between two beats, at the start, and all the way (never past the next).
+    let half = glide(m0, 0, 0.5, None);
+    assert!((half - (x(m0, 0) + x(m0, 1)) / 2.0).abs() < 1e-3);
+    assert!((glide(m0, 0, 0.0, None) - x(m0, 0)).abs() < 1e-3);
+    assert!((glide(m0, 0, 7.0, None) - x(m0, 1)).abs() < 1e-3);
+    assert!((glide(m0, 0, f32::NAN, None) - x(m0, 0)).abs() < 1e-3);
+    // The last beat glides on to the next bar's first beat on the same line...
+    let m1 = MeasureIndex::new(1);
+    assert!((glide(m0, 3, 1.0, Some(m1)) - x(m1, 0)).abs() < 1e-3);
+    // ...or to its own barline when another bar is played next (a repeat, a new line).
+    let barline = places.measure(m0).unwrap().right;
+    assert!((glide(m0, 3, 1.0, Some(MeasureIndex::new(2))) - barline).abs() < 1e-3);
+    assert!((glide(m0, 3, 1.0, Some(MeasureIndex::new(5))) - barline).abs() < 1e-3);
+    assert!((glide(m0, 3, 1.0, None) - barline).abs() < 1e-3);
+}

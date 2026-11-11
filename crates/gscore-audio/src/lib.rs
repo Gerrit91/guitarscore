@@ -17,6 +17,8 @@ mod guitars;
 mod meters;
 mod mixer;
 pub use mixer::Bus;
+#[cfg(not(target_arch = "wasm32"))]
+mod clock;
 mod soundfont;
 mod synth;
 #[cfg(not(target_arch = "wasm32"))]

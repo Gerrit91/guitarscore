@@ -101,6 +101,9 @@ pub(crate) fn align(measures: &[Arc<MeasureLayout>], spacing: &Spacing) -> Vec<A
             aligned.lead = lead + (times - time_width(measure));
             for (column, &(from, to, _)) in aligned.columns.iter_mut().zip(spans) {
                 column.space = gaps.get(from..to).map_or(0.0, |gaps| gaps.iter().sum());
+                // Lined up across tracks, a column is not squeezed: the tracks' columns
+                // would part.
+                column.floor = column.space;
             }
             Arc::new(aligned)
         })

@@ -765,8 +765,9 @@ impl eframe::App for GuitarScoreApp {
         // The cursor follows the beat being played; the page scrolls with it.
         self.follow_playback();
         if self.playback.state() == gscore_play::PlayState::Playing {
-            // A loop checks its end more often; the position moves every frame otherwise.
-            let millis = if self.playback.loop_selection() {
+            // A loop checks its end more often; the position moves every beat otherwise.
+            // A gliding cursor moves every frame.
+            let millis = if self.playback.loop_selection() || self.settings.flowing_cursor {
                 16
             } else {
                 50

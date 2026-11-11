@@ -204,7 +204,7 @@ impl MeasureLayout {
         let mut xs = Vec::with_capacity(self.columns.len());
         for column in &self.columns {
             xs.push(cursor);
-            cursor += column.space * stretch;
+            cursor += column.advance(stretch);
         }
         (xs, cursor)
     }
@@ -342,11 +342,6 @@ impl MeasureLayout {
                     }
                 }
             }
-            // Without a notation staff, the tab carries the tuplet numbers itself: a
-            // triplet must be visible there too, not only in the standard notation.
-            if tops.notation.is_none() {
-                self.draw_tab_tuplets(&xs, right, top, ops);
-            }
         }
         // Octave signs go over or under the staff that carries the notes.
         let octave_top = tops.notation.unwrap_or(top);
@@ -466,7 +461,7 @@ impl MeasureLayout {
                 self.draw_column_ornaments(&xs, right, &lanes, ctx, ops);
                 // The rows below line up with the notation staff's bottom line.
                 let under = notation_top + notation::staff().height() - ctx.staff.height();
-                self.draw_under_staff(&xs, right, under, ctx, ops);
+                self.draw_under_staff(&xs, right, under, false, ctx, ops);
             }
             return;
         }
@@ -492,12 +487,25 @@ impl MeasureLayout {
         }
         self.draw_column_ornaments(&xs, right, &vec![top; xs.len()], ctx, ops);
         self.draw_legato(&xs, top, ops);
-        self.draw_under_staff(&xs, right, top, ctx, ops);
+        // Without a notation staff, the tab carries the tuplets itself, right under it.
+        self.draw_under_staff(&xs, right, top, tops.notation.is_none(), ctx, ops);
     }
 
-    /// Tuplet brackets above a tab staff that has no notation staff to carry them: one
-    /// number per beat's group, over the columns it spans.
-    fn draw_tab_tuplets(&self, xs: &[f32], right: f32, top: f32, ops: &mut Vec<DrawOp>) {
+    /// Tuplet brackets under a tab staff that has no notation staff to carry them, in the
+    /// row at `baseline`: one per beat's group, over the columns it spans, the number in a
+    /// gap in the middle and the hooks pointing up to the notes.
+    pub(super) fn draw_tab_tuplets(
+        &self,
+        xs: &[f32],
+        right: f32,
+        baseline: f32,
+        ctx: &Context<'_>,
+        ops: &mut Vec<DrawOp>,
+    ) {
+        /// The number's size, the bracket's line and how far its hooks rise.
+        const SIZE: f32 = 1.25;
+        const THICKNESS: f32 = 0.16;
+        const HOOK: f32 = 0.45;
         let mut index = 0;
         while index < self.columns.len() {
             let Some(column) = self.columns.get(index) else {
@@ -519,32 +527,31 @@ impl MeasureLayout {
                 end = end.saturating_add(1);
             }
             let last = xs.get(end).copied().unwrap_or(start);
-            let bracket = (start - 0.5, last + 0.5);
-            let line_y = top - 1.0;
-            let hook = 0.25;
-            ops.push(DrawOp::Line {
-                from: Point::new(bracket.0, line_y + hook),
-                to: Point::new(bracket.0, line_y),
-                thickness: 0.08,
-                color: ColorToken::Notation,
-            });
-            ops.push(DrawOp::Line {
-                from: Point::new(bracket.0, line_y),
-                to: Point::new(bracket.1, line_y),
-                thickness: 0.08,
-                color: ColorToken::Notation,
-            });
-            ops.push(DrawOp::Line {
-                from: Point::new(bracket.1, line_y),
-                to: Point::new(bracket.1, line_y + hook),
-                thickness: 0.08,
-                color: ColorToken::Notation,
-            });
+            let middle = (start + last) / 2.0;
+            let label = enters.to_string();
+            let gap = ctx.fonts.text.width(&label, SIZE) / 2.0 + 0.25;
+            // A group of one column still gets a bracket wider than its number.
+            let half = ((last - start) / 2.0 + 0.5).max(gap + 0.4);
+            let (left, right_end) = (middle - half, middle + half);
+            // The line runs through the middle of the number's digits.
+            let y = baseline - 0.42;
+            let mut line = |from: (f32, f32), to: (f32, f32)| {
+                ops.push(DrawOp::Line {
+                    from: Point::new(from.0, from.1),
+                    to: Point::new(to.0, to.1),
+                    thickness: THICKNESS,
+                    color: ColorToken::Notation,
+                });
+            };
+            line((left, y - HOOK), (left, y));
+            line((right_end, y), (right_end, y - HOOK));
+            line((left, y), (middle - gap, y));
+            line((middle + gap, y), (right_end, y));
             ops.push(DrawOp::Text {
-                text: enters.to_string(),
-                at: Point::new((bracket.0 + bracket.1) / 2.0, line_y - 0.35),
-                size: 0.9,
-                font: TextFont::Regular,
+                text: label,
+                at: Point::new(middle, baseline),
+                size: SIZE,
+                font: TextFont::Bold,
                 anchor: TextAnchor::Middle,
                 color: ColorToken::Notation,
             });

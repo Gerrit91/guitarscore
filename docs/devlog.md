@@ -4617,3 +4617,72 @@ with the drum track soloed (a band's cover, measured locally only, never in the 
   - a staccato hit on a drum track never leaves the kit's channel;
   - a borrowed channel's setup moves no strip, while a track's own channel still sets
     its strip (a mixer unit test).
+
+
+## 2026-11-11 — Owner's review requests: grid click, Stop, gliding cursor, spacing, tuplets, speed
+
+Branch `review-ux-requests` (off main e9bfca9).
+
+- **Grid click:** a plain click on a bar (matrix or ruler) puts the cursor on its first
+  beat, drops the selection and the loop that came with it, and plays on from there.
+  Shift-click selects from the cursor's bar (or extends the selection); dragging still
+  selects. `GridAction::Place`.
+- **Back to the start on Stop:** Settings › Editor › Playback, off by default. Starting
+  from a stop remembers the first played beat and the selections (`PlayOrigin`, kept over
+  pauses); Stop restores them. Only an explicit Stop; the song ending does not.
+- **Gliding cursor:** Settings › Editor › Playback, on by default. `Sequence::beat_span_at`
+  gives the playing beat with its start/end ticks (swing included); `Places::glide_rect`
+  puts the column that far towards the next beat, or the next bar's first beat when it is
+  played next on the same line, else the barline. Repaint every 16 ms while it glides.
+  The view still follows the beat itself.
+- **Cursor bar:** the cursor's bar gets a 5 % tint of the cursor color (also while
+  playing; not while a selection is shown).
+- **Spacing for fast notes:** below a quarter every halving divides the space by 1.5
+  (`Spacing::halving_ratio`; was 1.3 both ways), min space 1.8 -> 1.5. In the owner's
+  solos the limit was collisions, though: columns kept apart by their widest fret number
+  on any string. Now `measure/gaps.rs` checks string by string: same string keeps the gap,
+  neighbouring strings may not overlap, others only the minimum space; notation is checked
+  on its own staff. Owner's Ballad.gp track 4 (local only): bars 77-80 went from one line
+  each to two per line (bar widths 48.6/46.4/48.2/56.7 spaces before).
+- **Tuplets on the tab** (no notation staff): moved from a 0.9-size number above the staff
+  to the first row under it, number 1.2 in a gap of the bracket, hooks up to the notes;
+  P.M./let ring rows move down a row in those bars. Single-note groups get a bracket wider
+  than the number. The reference picture (imgur) could not be fetched: done after
+  Guitar Pro's usual look, owner to compare.
+- **Speed:** range 25-150 % (was 50-120), the speed list has a typed field on top, the
+  trainer's "Up to" is a typed percentage (`TRAINER_TARGETS` removed).
+- Goldens and app snapshots rewritten (bar tint, spacing, tuplet row): owner to approve.
+- Bench (release): layout note_lengths 0.070 ms, multi_staff all 6 tracks 0.362 ms. The
+  strings bench is over its 250 ms budget as on main.
+
+## 2026-11-12 — Review round 2: Stop, smooth cursor, squeezed lines, slurs, speed field
+
+Branch `review-ux-requests`.
+
+- **Back to the start:** the owner stops with Space (play/pause). With the setting on,
+  Space while playing now stops and goes back as well (off: it pauses as before).
+  Also: the synth's state lagged a Stop by one audio buffer, so the cursor could follow
+  "playing" once more. A pause or stop the callback has not carried out yet (sent within
+  300 ms, device open, no error) now reports its own state; a pending Play does not (its
+  seek is not done, the position would be old). The callback counts commands as carried
+  out only after publishing the state they leave. Test: `stop_goes_back_to_...` (real
+  audio, toolbar Stop and Space).
+- **Smooth cursor:** the synth published its position once per buffer, so the gliding
+  cursor moved in steps. `clock.rs`: the callback publishes the buffer's start tick, a
+  time stamp and ticks per second; `Player::display_position` (default: `position`)
+  carries it on to now, at most 250 ms, never back by jitter (< 0.1 s of play). Only the
+  cursor uses it; loops and count-ins keep the exact position. The page glides the beat
+  playing at the frame's own tick (no jump back when the cursor lags a frame).
+- **Squeezed lines:** "battery with intro.gp" (local only) bars 132-135 are one system
+  in the file but 4.4 spaces too wide here, so 135 stood alone on a line. Columns now
+  keep a floor (what the notes need); a line may squeeze the room above the floors to
+  60 % (`MIN_SQUEEZE`) to take another bar. Multi-track systems are not squeezed
+  (aligned columns' floor = their space). The solo track went from 7 to 6 pages.
+- **Hammer-ons/pull-offs** (owner's reference picture): the slur goes over the two fret
+  numbers (under them on the lowest string), the H/P letter in a row above the tab staff,
+  so the numbers can stand close.
+- **Tab tuplets** bolder: bold number 1.25, line 0.16.
+- **Speed field:** the number is a typed field (click to type, drag to change), a slim
+  arrow beside it lists 30-150 % in 10 % steps; together as wide as the old dropdown (the
+  toolbar's zoom group still fits at 1000 px).
+- Goldens and app snapshots rewritten: owner to approve.

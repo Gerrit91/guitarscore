@@ -62,14 +62,18 @@ pub enum EmptyStaves {
 /// How much horizontal space a beat gets, depending on how long it lasts.
 ///
 /// A quarter note gets `quarter`; every doubling of the length multiplies the space by
-/// `doubling_ratio` (and every halving divides it), so long notes do not take
-/// proportionally more room. No beat gets less than `min_space`.
+/// `doubling_ratio`, so long notes do not take proportionally more room. Every halving
+/// divides it by `halving_ratio`, a steeper one, so runs of fast notes sit close together
+/// and a solo's bars still share a line. No beat gets less than `min_space`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Spacing {
     /// Space after a quarter note.
     pub quarter: f32,
-    /// Factor between the space of a note and one twice as long.
+    /// Factor between the space of a note and one twice as long, for a quarter and
+    /// longer.
     pub doubling_ratio: f32,
+    /// Factor between the space of a note and one half as long, below a quarter.
+    pub halving_ratio: f32,
     /// Smallest space after any beat.
     pub min_space: f32,
     /// Smallest gap between the fret numbers of neighbouring beats.
@@ -183,7 +187,8 @@ impl Default for Spacing {
         Spacing {
             quarter: 4.5,
             doubling_ratio: 1.3,
-            min_space: 1.8,
+            halving_ratio: 1.5,
+            min_space: 1.5,
             min_gap: 0.5,
             barline_padding: 1.2,
         }
@@ -198,7 +203,11 @@ impl Spacing {
         }
         // `length * 4` quarters; log2 of it is the number of doublings.
         let doublings = (length * 4.0).log2() as f32;
-        let space = self.quarter * self.doubling_ratio.powf(doublings);
+        let space = if doublings >= 0.0 {
+            self.quarter * self.doubling_ratio.powf(doublings)
+        } else {
+            self.quarter * self.halving_ratio.powf(doublings)
+        };
         if space.is_finite() {
             space.max(self.min_space)
         } else {
@@ -218,6 +227,11 @@ mod tests {
         let half = spacing.after(0.5);
         assert!((quarter - spacing.quarter).abs() < 1e-4);
         assert!(half > quarter && half < 2.0 * quarter);
+        // Fast notes sit closer: a sixteenth gets less than half a quarter's space.
+        let eighth = spacing.after(0.125);
+        let sixteenth = spacing.after(0.0625);
+        assert!(eighth < quarter && sixteenth < eighth);
+        assert!(sixteenth < quarter / 2.0);
         assert_eq!(spacing.after(1.0 / 128.0), spacing.min_space);
         for odd in [0.0, -1.0, f64::NAN, f64::INFINITY] {
             assert_eq!(spacing.after(odd), spacing.min_space);

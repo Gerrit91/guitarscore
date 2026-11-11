@@ -114,24 +114,44 @@ impl MeasureLayout {
         }
     }
 
-    /// How many rows of marks (palm mute, let ring) this measure has below the tab staff.
-    pub(crate) fn under_staff_lanes(&self) -> usize {
-        [UnderRow::PalmMute, UnderRow::LetRing]
+    /// How many rows of marks (tuplets on a tab without notation when `tuplets`, palm
+    /// mute, let ring) this measure has below the tab staff.
+    pub(crate) fn under_staff_lanes(&self, tuplets: bool) -> usize {
+        let marks = [UnderRow::PalmMute, UnderRow::LetRing]
             .into_iter()
             .filter(|row| self.columns.iter().any(|column| row.matches(column)))
-            .count()
+            .count();
+        marks.saturating_add(usize::from(tuplets && self.has_tuplets()))
     }
 
-    /// Palm-mute and let-ring rows below the staff.
+    /// Whether a beat of this measure is in a tuplet.
+    fn has_tuplets(&self) -> bool {
+        self.columns.iter().any(|column| column.tuplet.is_some())
+    }
+
+    /// The rows below the staff: tuplets first (when `tuplets`: a tab without a notation
+    /// staff to carry them), then palm mute and let ring.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_under_staff(
         &self,
         xs: &[f32],
         right: f32,
         top: f32,
+        tuplets: bool,
         ctx: &Context<'_>,
         ops: &mut Vec<DrawOp>,
     ) {
         let mut lane = 0;
+        if tuplets && self.has_tuplets() {
+            self.draw_tab_tuplets(
+                xs,
+                right,
+                ornaments::under_staff_baseline(0, top, ctx),
+                ctx,
+                ops,
+            );
+            lane = 1;
+        }
         for row in [UnderRow::PalmMute, UnderRow::LetRing] {
             // Only rows that occur in this measure take a lane, so a measure with let ring
             // alone keeps it close to the staff.

@@ -512,11 +512,11 @@ fn dynamic_baseline(
                 y
             } else {
                 // Without a tab, the P.M. and let ring rows are under the notation staff.
-                y + layout.under_staff_lanes() as f32 * TAB_LANE_GAP
+                y + layout.under_staff_lanes(false) as f32 * TAB_LANE_GAP
             }
         }
         None => {
-            let lanes = layout.under_staff_lanes() as f32;
+            let lanes = layout.under_staff_lanes(true) as f32;
             tops.tab + ctx.staff.height() + TAB_FIRST_LANE + lanes * TAB_LANE_GAP + TAB_DYNAMIC_DROP
         }
     }
@@ -527,7 +527,8 @@ fn dynamic_baseline(
 pub(crate) fn below_tab_depth(layout: &MeasureLayout, marks: &MeasureMarks, notation: bool) -> f32 {
     /// Half a fret number hangs below the bottom line.
     const FRET_HALF: f32 = 0.7;
-    let lanes = layout.under_staff_lanes();
+    // A tab without notation writes its tuplets in the first row.
+    let lanes = layout.under_staff_lanes(!notation);
     let rows = if lanes == 0 {
         FRET_HALF
     } else {

@@ -519,7 +519,7 @@ impl GuitarScoreApp {
         };
         let document = &mut tab.document;
         let cursor = document.editor().cursor();
-        let tick = self.playback.position();
+        let tick = self.playback.display_position();
         let Some(at) = sequence.beat_at(document.song(), cursor.position(), tick) else {
             return;
         };
@@ -533,14 +533,24 @@ impl GuitarScoreApp {
         }
     }
 
-    /// Stops playback, leaving the cursor on the last played beat.
-    pub(super) fn stop_playback(&mut self) {
+    /// Stops playback, leaving the cursor on the last played beat, or putting it back
+    /// where playback started when the setting asks for it.
+    pub fn stop_playback(&mut self) {
         self.follow_playback();
         if let Err(error) = self.playback.stop() {
             self.notice = Some(error);
         }
+        let back = self.settings.return_on_stop;
         if let Some(tab) = self.tabs.get_mut(self.active) {
             tab.palette_anchor = None;
+            if let Some(origin) = tab.play_origin.take()
+                && back
+            {
+                tab.document.editor_mut().set_cursor(origin.cursor);
+                tab.document.editor_mut().set_selection(origin.selection);
+                tab.selection = origin.measures;
+                tab.had_loop_selection = tab.has_loop_selection();
+            }
         }
     }
 
@@ -701,6 +711,11 @@ impl GuitarScoreApp {
         };
         let last = document.song().measure_count().saturating_sub(1);
         self.goto_measure(last, true);
+    }
+
+    /// Whether Stop puts the cursor and selection back where playback started.
+    pub fn set_return_on_stop(&mut self, back: bool) {
+        self.settings.return_on_stop = back;
     }
 
     /// Turns looping of the selected measures on or off.
@@ -865,6 +880,12 @@ impl GuitarScoreApp {
     /// cursor on the last played beat.
     pub fn play_pause(&mut self) {
         let already_playing = self.playback.state() == PlayState::Playing;
+        if already_playing && self.settings.return_on_stop {
+            // Going back to the start is asked for: Space stops as well (it is the key
+            // users stop with), instead of pausing where it is.
+            self.stop_playback();
+            return;
+        }
         if already_playing {
             self.follow_playback();
         }
@@ -892,8 +913,24 @@ impl GuitarScoreApp {
             return;
         };
         let from = started.unwrap_or_else(|| document.editor().cursor().position());
+        let fresh = self.playback.state() == PlayState::Stopped;
         if let Err(error) = self.playback.play_pause(document.song(), Some(from)) {
             self.notice = Some(error);
+            return;
+        }
+        if fresh && let Some(tab) = self.tabs.get_mut(self.active) {
+            let cursor = tab.document.editor().cursor();
+            tab.play_origin = Some(super::tab::PlayOrigin {
+                cursor: Cursor {
+                    track: from.track,
+                    measure: from.measure,
+                    voice: from.voice,
+                    beat: from.beat,
+                    ..cursor
+                },
+                selection: tab.document.editor().selection(),
+                measures: tab.selection,
+            });
         }
     }
 }

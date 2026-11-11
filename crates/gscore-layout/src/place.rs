@@ -149,6 +149,52 @@ impl Places {
         })
     }
 
+    /// Like [`Places::column_rect`], but `progress` (0 to 1) of the way to where the next
+    /// beat is, for a cursor that glides through the beats while playing. The next beat is
+    /// the voice's next one in the measure; after the last, the first beat of
+    /// `next_measure` (the measure played next) when it is on the same system, or else the
+    /// barline.
+    pub fn glide_rect(
+        &self,
+        measure: MeasureIndex,
+        voice: VoiceIndex,
+        beat: BeatIndex,
+        progress: f32,
+        next_measure: Option<MeasureIndex>,
+    ) -> Option<Rect> {
+        let mut rect = self.column_rect(measure, voice, beat)?;
+        let place = self.measure(measure)?;
+        let x = rect.origin.x + CURSOR_WIDTH / 2.0;
+        let in_measure = place
+            .beats
+            .iter()
+            .filter(|b| b.voice == voice && b.beat > beat)
+            .min_by_key(|b| b.beat)
+            .map(|b| b.x);
+        let target = in_measure
+            .or_else(|| {
+                let next = self.measure(next_measure?)?;
+                // Only the bar right after this one: a jump back (a repeat) ends at the barline.
+                (next.system == place.system && (next.left - place.right).abs() < 0.01).then(|| {
+                    next.beats
+                        .iter()
+                        .filter(|b| b.voice == voice)
+                        .min_by_key(|b| b.beat)
+                        .map_or(next.content, |b| b.x)
+                })
+            })
+            .unwrap_or(place.right);
+        let progress = if progress.is_finite() {
+            progress.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        // Never backwards: a beat drawn left of the last one (another voice's order) holds.
+        let step = (target - x).max(0.0);
+        rect.origin.x += step * progress;
+        Some(rect)
+    }
+
     /// The whole measure from its start to its barline, from the top staff to the tab's
     /// bottom line (the same height as [`Places::column_rect`]).
     pub fn measure_rect(&self, measure: MeasureIndex) -> Option<Rect> {

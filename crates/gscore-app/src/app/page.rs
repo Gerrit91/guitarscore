@@ -203,6 +203,20 @@ impl GuitarScoreApp {
         ) {
             tab.selection = None;
         }
+        // While playing, how far the cursor is through its beat and the bar played next,
+        // for the cursor to glide there.
+        let glide = if playing && self.settings.flowing_cursor {
+            self.playback.sequence().and_then(|sequence| {
+                let tick = self.playback.display_position();
+                let span = sequence.beat_span_at(document.song(), cursor.position(), tick)?;
+                let next = sequence.measure_at(span.end).map(|next| next.measure);
+                // The beat playing at this frame's tick, even when the cursor (moved a
+                // moment earlier) is still on the one before: no jump back for a frame.
+                Some((span.at, span.progress(tick), next))
+            })
+        } else {
+            None
+        };
         let scroll_to_cursor = tab.shown_cursor != Some((cursor, revision));
         ScrollArea::both().auto_shrink(false).show(ui, |ui| {
             let available = ui.available_width();
@@ -277,14 +291,27 @@ impl GuitarScoreApp {
             let string = places
                 .cursor_rect(cursor.measure, cursor.voice, cursor.beat, cursor.string)
                 .map(to_screen);
+            // The cursor's bar, lightly tinted (a selection is marked on its own).
+            if shown_selection.is_none()
+                && let Some(bar) = places.measure_rect(cursor.measure).map(to_screen)
+            {
+                canvas::paint_cursor_bar(&painter, bar, theme);
+            }
             if let (Some(column), Some(string)) = (column, string) {
                 // While playing, the moving column is enough; the string box would only
                 // flicker from note to note.
                 // Inside a selection the whole beat is marked, so the box is hidden too.
                 let string = (!playing && !in_selection).then_some(string);
+                // A gliding cursor is drawn on its way to the next beat; the view still
+                // follows the beat itself.
+                let shown = glide
+                    .and_then(|(at, progress, next)| {
+                        places.glide_rect(at.measure, at.voice, at.beat, progress, next)
+                    })
+                    .map_or(column, to_screen);
                 // Inside the selection, the cursor's band would make its column darker than
                 // the rest; the selection's one shade covers it already.
-                let column_band = (!in_selection).then_some(column);
+                let column_band = (!in_selection).then_some(shown);
                 canvas::paint_cursor(&painter, column_band, string, theme);
                 if scroll_to_cursor {
                     if score_view.pages_side_by_side() {

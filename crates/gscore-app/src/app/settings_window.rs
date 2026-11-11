@@ -619,6 +619,23 @@ impl GuitarScoreApp {
         );
 
         ui.separator();
+        ui.heading("Playback");
+        ui.checkbox(
+            &mut self.settings.return_on_stop,
+            "Go back to where playback started when it stops",
+        )
+        .on_hover_text(
+            "Stop (and Space while playing) puts the cursor and the selection back where \
+             they were when playback started; off, the cursor stays on the last played \
+             beat and Space pauses",
+        );
+        ui.checkbox(
+            &mut self.settings.flowing_cursor,
+            "Cursor glides between the notes while playing",
+        )
+        .on_hover_text("Off, the playing cursor jumps from note to note");
+
+        ui.separator();
         ui.heading("Shortcuts");
         ui.label(
             RichText::new(

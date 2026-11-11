@@ -310,47 +310,78 @@ impl Sequence {
     /// Guitar Pro stores an empty bar without voices, and the cursor must still move onto
     /// it). `None` if `at.track` does not exist.
     pub fn beat_at(&self, song: &Song, at: BeatPosition, tick: u64) -> Option<BeatPosition> {
+        self.beat_span_at(song, at, tick).map(|span| span.at)
+    }
+
+    /// Like [`Self::beat_at`], with the ticks where that beat starts and ends in this pass
+    /// (with swing), so a cursor can glide between beats. A beat 0 standing for an empty
+    /// measure spans the whole measure.
+    pub fn beat_span_at(&self, song: &Song, at: BeatPosition, tick: u64) -> Option<BeatSpan> {
         let span = self.measure_at(tick)?;
         let measure = song.track(at.track)?.measure(span.measure)?;
-        let first = BeatPosition {
+        let position = |beat: usize| BeatPosition {
             track: at.track,
             measure: span.measure,
             voice: at.voice,
-            beat: BeatIndex::new(0),
+            beat: BeatIndex::new(beat),
+        };
+        let whole = BeatSpan {
+            at: position(0),
+            start: span.start,
+            end: span.end,
         };
         let Some(voice) = measure.voice(at.voice) else {
-            return Some(first);
+            return Some(whole);
         };
         let feel = song.feel(span.measure).unwrap_or_default();
         let measure_ticks = span.end.saturating_sub(span.start);
         let mut onset = Duration::new(0, 1).ok()?;
-        let mut last = 0_usize;
+        let mut last = None;
         for (index, beat) in voice.beats().enumerate() {
             if beat.kind() == BeatKind::Empty || beat.is_grace() {
                 continue;
             }
-            last = index;
             let length = beat.duration().ok()?;
             let next = onset.checked_add(length).ok()?;
-            let end =
+            let swung = |at: Duration| {
                 span.start
-                    .saturating_add(swing::swing_offset(ticks(next), measure_ticks, feel));
-            if tick < end {
-                return Some(BeatPosition {
-                    track: at.track,
-                    measure: span.measure,
-                    voice: at.voice,
-                    beat: BeatIndex::new(index),
-                });
+                    .saturating_add(swing::swing_offset(ticks(at), measure_ticks, feel))
+            };
+            let found = BeatSpan {
+                at: position(index),
+                start: swung(onset),
+                end: swung(next),
+            };
+            if tick < found.end {
+                return Some(found);
             }
+            last = Some(found);
             onset = next;
         }
-        Some(BeatPosition {
-            track: at.track,
-            measure: span.measure,
-            voice: at.voice,
-            beat: BeatIndex::new(last),
-        })
+        Some(last.unwrap_or(whole))
+    }
+}
+
+/// A beat being played and the ticks it starts and ends at (see [`Sequence::beat_span_at`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BeatSpan {
+    /// The beat.
+    pub at: BeatPosition,
+    /// Its first tick.
+    pub start: u64,
+    /// The tick the next beat starts at.
+    pub end: u64,
+}
+
+impl BeatSpan {
+    /// How far `tick` is through the beat, 0 to 1.
+    pub fn progress(self, tick: u64) -> f32 {
+        let length = self.end.saturating_sub(self.start);
+        if length == 0 {
+            return 0.0;
+        }
+        let done = tick.saturating_sub(self.start).min(length);
+        (done as f64 / length as f64) as f32
     }
 }
 

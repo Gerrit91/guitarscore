@@ -207,14 +207,13 @@ struct Lead {
     passed: bool,
 }
 
-/// The speeds the toolbar offers: 50 % to 120 % of the written tempo.
-pub const SPEED_CHOICES: [f32; 8] = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2];
+/// The speeds the toolbar lists, in steps of 10 % (any other can be typed).
+pub const SPEED_CHOICES: [f32; 13] = [
+    0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5,
+];
 
-/// The fastest and slowest playback speed.
-pub const SPEED_RANGE: (f32, f32) = (0.5, 1.2);
-
-/// The speeds a speed trainer may work up to.
-pub const TRAINER_TARGETS: [f32; 3] = [1.0, 1.1, 1.2];
+/// The slowest and fastest playback speed (any speed in between can be typed).
+pub const SPEED_RANGE: (f32, f32) = (0.25, 1.5);
 
 /// A playback speed trainer: practise a loop slowly, and raise the speed every few passes.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1766,10 +1765,25 @@ impl Playback {
 
     /// The position in the song, in ticks: during the count-in, where the song will start.
     pub fn position(&self) -> u64 {
+        self.song_position(self.output_position())
+    }
+
+    /// Like [`Self::position`], moving smoothly from frame to frame: for the cursor on the
+    /// screen, never for timing decisions (loops, count-ins).
+    pub fn display_position(&self) -> u64 {
+        let output = self
+            .player
+            .as_ref()
+            .map_or(0, |a| a.player().display_position());
+        self.song_position(output)
+    }
+
+    /// The song's position for the player's own `position` (which runs through a count-in
+    /// bar first).
+    fn song_position(&self, position: u64) -> u64 {
         if let Some(tick) = self.preview {
             return tick;
         }
-        let position = self.output_position();
         match &self.lead {
             Some(lead) if !lead.passed || position < lead.bar => lead.start,
             Some(lead) => position.saturating_sub(lead.bar).saturating_add(lead.start),

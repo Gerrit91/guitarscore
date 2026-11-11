@@ -9,6 +9,7 @@ mod align;
 mod columns;
 mod draw;
 mod effects;
+mod gaps;
 mod grace_marks;
 mod graces;
 
@@ -121,6 +122,9 @@ struct Column {
     onset: Duration,
     /// Natural space from this column to the next one (or to the barline).
     space: f32,
+    /// The least of it the notes need (no collisions): a squeezed line takes its columns
+    /// down towards this, never below.
+    floor: f32,
     items: Vec<Item>,
     /// Effects that belong to the beat rather than to one note.
     marks: ColumnMarks,
@@ -181,6 +185,18 @@ enum Item {
     Fret(Fret),
     /// A rest, centered on the staff.
     Rest { glyph: Glyph, dots: u8 },
+}
+
+impl Column {
+    /// Its space in a line stretched by `stretch`: at least 1 multiplies the space; below
+    /// 1 (a squeezed line) only the room beyond the floor shrinks, by that factor.
+    fn advance(&self, stretch: f32) -> f32 {
+        if stretch >= 1.0 {
+            self.space * stretch
+        } else {
+            self.floor + (self.space - self.floor).max(0.0) * stretch.max(0.0)
+        }
+    }
 }
 
 impl MeasureLayout {
@@ -396,8 +412,9 @@ impl MeasureLayout {
             })
             .collect();
         // Each column's room left of its center for the main note alone, then with its
-        // grace notes before it, and right of its center.
-        let extents: Vec<(f32, f32, f32)> = columns
+        // grace notes before it, and right of its center; and the same per staff and
+        // string, for how close its neighbours may come.
+        let (extents, gaps): (Vec<(f32, f32, f32)>, Vec<gaps::Extent>) = columns
             .iter()
             .enumerate()
             .map(|(index, (data, _, _, _))| {
@@ -429,17 +446,54 @@ impl MeasureLayout {
                     left = left.max(item_left + shift);
                     right = right.max(item_right + shift);
                 }
+                // What spans every string: rests, and the arrows left of the numbers.
+                let mut spanning = data
+                    .items
+                    .iter()
+                    .filter(|item| matches!(item, Item::Rest { .. }))
+                    .map(|item| item.half_width(ctx))
+                    .fold(0.0, f32::max);
+                let mut spanning_left = if tab_left > tab {
+                    tab_left.max(spanning)
+                } else {
+                    spanning
+                };
                 // A dead slapped beat writes a large cross on both staves, so its column
                 // needs room for it even though it has no items.
                 if data.marks.dead_slapped {
                     left = left.max(DEAD_SLAP_HALF);
                     right = right.max(DEAD_SLAP_HALF);
                     tab_left = tab_left.max(DEAD_SLAP_HALF);
+                    spanning = spanning.max(DEAD_SLAP_HALF);
+                    spanning_left = spanning_left.max(DEAD_SLAP_HALF);
                 }
                 let main = tab_left.max(left);
-                (main, main + data.grace_width, tab.max(right))
+                // Grace notes stand before the main note on both staves.
+                let (notation_left, spanning_left) = if data.grace_width > 0.0 {
+                    (left + data.grace_width, tab_left + data.grace_width)
+                } else {
+                    (left, spanning_left)
+                };
+                let frets = data
+                    .items
+                    .iter()
+                    .filter_map(|item| match item {
+                        Item::Fret(fret) => Some((fret.line, fret.half_width())),
+                        Item::Rest { .. } => None,
+                    })
+                    .collect();
+                (
+                    (main, main + data.grace_width, tab.max(right)),
+                    gaps::Extent {
+                        notation_left,
+                        notation_right: right,
+                        tab_left: spanning_left,
+                        tab_right: spanning,
+                        frets,
+                    },
+                )
             })
-            .collect();
+            .unzip();
         let lead = extents
             .first()
             .map_or(MIN_LEAD, |(_, left, _)| (left + edge_padding).max(MIN_LEAD));
@@ -447,19 +501,15 @@ impl MeasureLayout {
             .into_iter()
             .enumerate()
             .map(|(i, (data, space, dynamic, tempo))| {
-                let own = extents.get(i).map_or(0.0, |(_, _, right)| *right);
-                let next = extents
-                    .get(i.saturating_add(1))
-                    .map_or(0.0, |(_, left, _)| *left);
                 // The last column ends at the barline and needs the wider edge padding.
-                let padding = if i.saturating_add(1) < extents.len() {
-                    min_gap
-                } else {
-                    edge_padding
+                let room = match (gaps.get(i), gaps.get(i.saturating_add(1))) {
+                    (Some(own), Some(next)) => gaps::distance(own, next, min_gap),
+                    _ => extents.get(i).map_or(0.0, |(_, _, right)| *right) + edge_padding,
                 };
                 Column {
                     onset: onsets.get(i).copied().unwrap_or(starts.end),
-                    space: space.max(own + next + padding),
+                    space: space.max(room),
+                    floor: room.min(space.max(room)).max(0.0),
                     items: data.items,
                     marks: data.marks,
                     notation: data.notation,
@@ -589,9 +639,14 @@ impl MeasureLayout {
         self.columns.iter().map(|c| c.space).sum()
     }
 
+    /// The least the stretchable width may be squeezed to: what the notes need.
+    pub(crate) fn floor_width(&self) -> f32 {
+        self.columns.iter().map(|c| c.floor).sum()
+    }
+
     /// The width with the columns stretched by `stretch`.
     pub(crate) fn width(&self, stretch: f32) -> f32 {
-        self.fixed_width() + self.stretchable_width() * stretch
+        self.fixed_width() + self.columns.iter().map(|c| c.advance(stretch)).sum::<f32>()
     }
 }
 

@@ -590,6 +590,31 @@ fn a_tick_maps_back_to_the_beat_playing_there() {
 }
 
 #[test]
+fn the_playing_beat_knows_where_it_starts_and_ends() {
+    let at = |measure: usize, beat: usize| BeatPosition {
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(measure),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(beat),
+    };
+    let song = testing::song_with_repeats(3, &[(0, true, -1, 0), (1, false, 1, 0)]).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let span = sequence.beat_span_at(&song, at(0, 0), 1200).unwrap();
+    assert_eq!((span.at, span.start, span.end), (at(0, 1), 960, 1920));
+    assert_eq!(span.progress(960), 0.0);
+    assert_eq!(span.progress(1440), 0.5);
+    assert_eq!(span.progress(5000), 1.0);
+    // The second pass of the repeat has its own ticks.
+    let again = sequence.beat_span_at(&song, at(0, 0), 7680 + 10).unwrap();
+    assert_eq!((again.at, again.start, again.end), (at(0, 0), 7680, 8640));
+    // An empty measure (no such voice) spans the whole measure.
+    let mut voice = at(0, 0);
+    voice.voice = VoiceIndex::new(3);
+    let whole = sequence.beat_span_at(&song, voice, 15_360 + 1000).unwrap();
+    assert_eq!((whole.start, whole.end), (15_360, 19_200));
+}
+
+#[test]
 fn tracks_get_their_own_channels_and_drums_channel_ten() {
     let song = testing::song(&[GUITAR_6, GUITAR_6, GUITAR_6], 1).unwrap();
     let sequence = Sequence::new(&song, None).unwrap();
