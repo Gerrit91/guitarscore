@@ -103,8 +103,21 @@ pub(super) fn drive_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
         "",
         0.3,
         false,
-        "How hard the pedal clips the mids and highs (the lows pass it clean). In front of a \
-         lead amp keep it low and raise Level: a tight, chugging low end.",
+        "How hard the pedal clips what lies above Tight's low cut (the lows below it pass \
+         clean). In front of a lead amp keep it low and raise Level.",
+    )
+    .changed;
+    changed |= round_knob(
+        ui,
+        &mut block.drive_tight,
+        knob_ranges::AMP,
+        "Tight",
+        "",
+        0.5,
+        false,
+        "How much of the low end stays out of the clipping: 1 tight, the classic pedal (only \
+         the mids and highs are driven: a tight but thin chug); 0 loose, the low mids and the \
+         chug's body are driven too.",
     )
     .changed;
     changed |= round_knob(

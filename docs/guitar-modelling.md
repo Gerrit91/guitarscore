@@ -244,8 +244,8 @@ described in the literature below:
   decay, pre-delay, damping, modulation, width, mix, and a low and high cut on its sound.
   *Amp* and *Drive*, computed (below).
 - **Amp** (`gscore-guitar::amp`, 2026-11-06): no capture of a real amp, the parts that
-  make a tube preamp sound as it does. An input pad (the strings come in hot: a power chord
-  picked hard peaks near 4), a low cut before the clipping (*tight*: 40, 90, 160 Hz by
+  make a tube preamp sound as it does. An input pad (0.5: a chord picked hard sustains
+  at about 0.035 RMS after the tight cut; see "Calibration" below), a low cut before the clipping (*tight*: 40, 90, 160 Hz by
   voice) and a mid bell (the lead voice pushes 750 Hz by 7 dB, like a boost pedal in
   front), the Gain knob, then one to three soft-clipping stages, a little lopsided (a
   tube's bias: even harmonics), each followed by a coupling low cut and a plate high
@@ -257,14 +257,30 @@ described in the literature below:
   at 450 Hz, presence at 2.4 kHz, fourth-order roll-off at 5 kHz). The Speaker knob blends
   it out for a cabinet's impulse response in a Cab block after the amp. Voices: *Clean*
   (one stage, the pad given back so it plays at the strings' level), *Crunch* (two),
-  *Lead* (three); their outputs are trimmed to within about 3 dB of one another on a
-  power chord. About 0.9 % of a core per track (release).
+  *Lead* (three). At half gain a crunch is 14 dB and a lead 22 dB louder than the dry
+  chord, as they were before the calibration, so tones and mixes keep their level. About
+  0.9 % of a core per track (release).
 - **Drive** (`gscore-guitar::drive`): an overdrive pedal after the green mid-hump kind.
-  Only the signal above 720 Hz is driven (6 to 42 dB) into a symmetric soft clip (4×
-  oversampled, smoothed at 6.5 kHz); the lows pass clean beside it, then a tone lowpass
-  (900 Hz to 7 kHz) and Level. In front of the Lead voice with Drive low and Level up,
-  the low E's fundamental is a clearly smaller share of the sound (test): the metal
-  player's tight low end.
+  The signal above the **Tight** knob's low cut (2026-11-11: 90 Hz loose to 720 Hz
+  tight, the classic pedal, default 0.5 at about 250 Hz) is driven (6 to 42 dB) into a
+  symmetric soft clip (4× oversampled, smoothed at 6.5 kHz); the lows below it pass clean
+  beside it, then a tone lowpass (900 Hz to 7 kHz) and Level. With some Drive the clipped
+  part stands far above the clean lows, so at Tight 1 the chug thins: the low band of a
+  chord through the pedal and a lead falls to about half of the amp's alone (the owner
+  heard it: "the drive takes away all the chuggy bass/midrange"). Loose keeps it as full
+  as the amp alone (test).
+- **Calibration** (2026-11-11). Until then the amp's input pad was 0.15 and the drive's
+  low cut fixed at 720 Hz. Both were tuned against a test chord that was summed wrongly:
+  a scratch block was never cleared, so the "chord" was a running sum of everything
+  played, bass-heavy and about 25 dB too hot. On real strings the clean and crunch voices
+  played far too clean, and the lead (already saturated) had less gain than meant.
+  - The pad is now 0.5. At half gain a hard chord's peaks stand about 6 times its body
+    through the clean voice (about 7 times dry), twice through a crunch, and less through
+    a lead (test).
+  - The trims keep each voice's level at half gain, and the drive's level at its default
+    Drive, as before.
+  - Tones that used the old Crunch or Lead now sound dirtier at the same Gain.
+
 - **Reverb** (`gscore-guitar::reverb`, 2026-11-06, replacing the Freeverb copy the owner
   did not like): a feedback delay network after Geraint Luff's design for Signalsmith
   Audio (MIT article; no code taken). Pre-delay up to 250 ms; the stereo signal spread to

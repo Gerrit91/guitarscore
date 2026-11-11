@@ -79,7 +79,10 @@ before the release) are his. This file lists the rest, in a sensible order.
    octave signs (8va, 8vb, 15ma) are not applied in playback (noted when they were added).
    Then listen through every technique of item 1 and fix what sounds wrong.
 
-7. **The amp and the drive were calibrated on a wrong test signal** (found 2026-11-10).
+7. **The amp and the drive were calibrated on a wrong test signal** (found 2026-11-10;
+   recalibrated 2026-11-11 on branch `m22-amp-calibration` with the owner's go-ahead:
+   input pad 0.5, trims keeping each voice's level, a Tight knob on the drive; see
+   `docs/guitar-modelling.md`, "Calibration"; open: the owner's ear).
    Until then, `gscore-guitar/tests/test_amp.rs` `power_chord` summed the strings into a
    scratch block it never cleared: a running sum of everything played, hugely bass-heavy
    and about 25 dB too hot (RMS 0.9, peak 3.8; real strings give RMS 0.05, peak 1.45).

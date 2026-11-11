@@ -1,7 +1,7 @@
 //! The amp block on modelled electric strings: a power chord through each voice is loud
 //! but bounded, clean stays close to the strings' own level, the knobs are taken while
-//! it plays, and the chain falls silent once the strings do. (A drive pedal in front was
-//! to tighten its low end: ignored, see that test.)
+//! it plays, and the chain falls silent once the strings do. A drive pedal in front keeps
+//! the chug's low end, or thins it with its Tight knob.
 
 #![allow(
     clippy::unwrap_used,
@@ -184,26 +184,10 @@ fn cost_of_an_amp() {
     assert!(out.iter().all(|x| x.is_finite()));
 }
 
-/// The level of `frequency` in `signal` (one DFT bin).
-fn tone(signal: &[f32], frequency: f32) -> f32 {
-    let (mut re, mut im) = (0.0_f32, 0.0_f32);
-    for (i, x) in signal.iter().enumerate() {
-        let phase = TAU * frequency * i as f32 / RATE as f32;
-        re += x * phase.cos();
-        im += x * phase.sin();
-    }
-    2.0 * re.hypot(im) / signal.len() as f32
-}
-
 #[test]
-#[ignore = "false with a correctly summed chord: until 2026-11-10 `power_chord` summed \
-            every block ever played (a running sum: hugely bass-heavy, about 25 dB too hot), \
-            and the drive and the amp's input pad were tuned against that. With real \
-            strings the drive raises the low E's share. Owner's decision, see \
-            docs/handoff-m22-rest.md"]
-fn a_drive_in_front_tightens_the_low_end() {
-    // The metal trick: Drive low, Level up, into the lead voice. The low E's fundamental
-    // makes up less of the sound than through the amp alone.
+fn a_drive_in_front_keeps_the_chug_unless_tight() {
+    // The metal trick: Drive low, Level up, into the lead voice. Tight sets how much of
+    // the low E's fundamental goes along: loose keeps the chug's body, tight thins it.
     let chord = power_chord(1.0);
     let lead = AmpKnobs {
         voice: AmpVoice::Lead,
@@ -220,29 +204,59 @@ fn a_drive_in_front_tightens_the_low_end() {
         }
         out
     };
+    // The chug's body: the level below about 250 Hz (two one-pole lowpasses) against the
+    // whole, after the attack.
     let low_share = |signal: &[f32]| {
-        let part = &signal[12_000..];
-        tone(part, frequency(40, 0.0)) / rms(part)
+        let a = (-TAU * 250.0 / RATE as f32).exp();
+        let (mut first, mut second) = (0.0_f32, 0.0_f32);
+        let low: Vec<f32> = signal
+            .iter()
+            .map(|&x| {
+                first = (1.0 - a) * x + a * first;
+                second = (1.0 - a) * first + a * second;
+                second
+            })
+            .collect();
+        rms(&low[12_000..]) / rms(&signal[12_000..])
     };
-    let alone = run(&amp_spec(), &settings(lead));
+    let alone = low_share(&run(&amp_spec(), &settings(lead)));
     let mut spec = ChainSpec::default();
     spec.blocks[0] = Some(BlockKind::Drive);
     spec.blocks[1] = Some(BlockKind::Amp);
-    let mut both = [BlockSettings::default(); BLOCKS];
-    both[0].drive = DriveKnobs {
-        drive: 0.0,
-        tone: 0.6,
-        level_db: 6.0,
+    let pushed_at = |drive: f32, tight: f32| {
+        let mut both = [BlockSettings::default(); BLOCKS];
+        both[0].drive = DriveKnobs {
+            drive,
+            tone: 0.6,
+            level_db: 6.0,
+            tight,
+        };
+        both[1].amp = lead;
+        let out = run(&spec, &both);
+        assert!(out.iter().all(|x| x.is_finite()));
+        low_share(&out)
     };
-    both[1].amp = lead;
-    let pushed = run(&spec, &both);
-    assert!(pushed.iter().all(|x| x.is_finite()));
-    assert!(
-        low_share(&pushed) < 0.7 * low_share(&alone),
-        "{} against {}",
-        low_share(&pushed),
-        low_share(&alone)
-    );
+    // With some Drive: the classic tight pedal (what the drive was until 2026-11-11)
+    // thins the chug, the way the owner heard it; loose keeps it as full as the amp alone.
+    for drive in [0.5, 1.0] {
+        let (loose, middle, tight) = (
+            pushed_at(drive, 0.0),
+            pushed_at(drive, 0.5),
+            pushed_at(drive, 1.0),
+        );
+        assert!(
+            loose > middle && middle > tight,
+            "drive {drive}: loose {loose}, middle {middle}, tight {tight}"
+        );
+        assert!(
+            loose > 0.85 * alone,
+            "drive {drive}: {loose} against {alone}"
+        );
+        assert!(
+            tight < 0.7 * alone,
+            "drive {drive}: {tight} against {alone}"
+        );
+    }
 }
 
 #[test]
@@ -269,4 +283,60 @@ fn silence_after_a_note_becomes_exact_zeros() {
         "{:?}",
         &left[..4]
     );
+}
+
+#[test]
+fn real_strings_crunch_at_half_gain_and_stay_clean_on_the_clean_voice() {
+    // The calibration: the strings' own level (the electric preset, a hard chord) is what
+    // the input pad is for. Distortion squashes the chord's peaks against its body.
+    let model = GuitarModel::Electric.strings();
+    let mut strings: Vec<StringVoice> = [40_u8, 47, 52]
+        .iter()
+        .map(|&key| {
+            let mut voice = StringVoice::new(RATE as f32, 20.0, model);
+            voice.pluck(Pluck {
+                frequency: frequency(key, 0.0),
+                velocity: 0.9,
+                attack: Attack::Pick,
+                palm_mute: false,
+                dead: false,
+                harmonic: false,
+            });
+            voice
+        })
+        .collect();
+    let mut chord = vec![0.0_f32; 48_000];
+    for chunk in chord.chunks_mut(BLOCK) {
+        for voice in &mut strings {
+            voice.render(chunk);
+        }
+    }
+    // Peak over the body, after the pick's attack.
+    let crest = |signal: &[f32]| peak(&signal[4_800..]) / rms(&signal[4_800..]);
+    let voiced = |voice: AmpVoice| {
+        crest(&through(
+            &chord,
+            AmpKnobs {
+                voice,
+                gain: 0.5,
+                speaker: 0.0,
+                ..AmpKnobs::default()
+            },
+        ))
+    };
+    let (dry, clean, crunch, lead) = (
+        crest(&chord),
+        voiced(AmpVoice::Clean),
+        voiced(AmpVoice::Crunch),
+        voiced(AmpVoice::Lead),
+    );
+    assert!(
+        clean > 0.75 * dry,
+        "clean stays clean: {clean} against {dry}"
+    );
+    assert!(
+        crunch < 0.4 * dry && crunch > 1.5,
+        "a crunch crunches but keeps some peak: {crunch} against {dry}"
+    );
+    assert!(lead < crunch, "a lead saturates more: {lead}");
 }

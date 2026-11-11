@@ -201,8 +201,10 @@ pub struct BlockSetting {
     pub middle: f32,
     pub treble: f32,
     pub speaker: f32,
-    /// A drive pedal's tone (its Drive is `drive`, its level `gain_db`).
+    /// A drive pedal's tone and Tight (its Drive is `drive`, its level `gain_db`). A
+    /// setting saved before Tight existed gets its default (the struct's default).
     pub tone: f32,
+    pub drive_tight: f32,
     /// A compressor's input drive and its attack and release times (ms); its output level
     /// is `gain_db`, its dry/compressed blend `mix`.
     pub input_db: f32,
@@ -305,6 +307,7 @@ impl BlockSetting {
             treble: amp.treble,
             speaker: amp.speaker,
             tone: DriveKnobs::default().tone,
+            drive_tight: DriveKnobs::default().tight,
             input_db: CompressorKnobs::default().input_db,
             attack_ms: CompressorKnobs::default().attack_ms,
             release_ms: CompressorKnobs::default().release_ms,
@@ -369,6 +372,7 @@ impl BlockSetting {
                 drive: self.drive,
                 tone: self.tone,
                 level_db: self.gain_db,
+                tight: self.drive_tight,
             },
             compressor: CompressorKnobs {
                 input_db: self.input_db,
@@ -569,6 +573,18 @@ mod tests {
         assert!(text.contains("\"voice\":\"lead\""), "{text}");
         let back: StringChains = serde_json::from_str(&text).unwrap();
         assert_eq!(back, chains);
+    }
+
+    #[test]
+    fn a_drive_saved_before_tight_gets_its_middle_and_keeps_a_chosen_one() {
+        let mut drive = BlockSetting::of(BlockChoice::Drive);
+        drive.drive_tight = 0.9;
+        let mut value = serde_json::to_value(&drive).unwrap();
+        assert_eq!(value["drive_tight"], serde_json::json!(0.9_f32));
+        let _ = value.as_object_mut().unwrap().remove("drive_tight");
+        let older: BlockSetting = serde_json::from_value(value).unwrap();
+        assert_eq!(older.knobs().drive.tight, DriveKnobs::default().tight);
+        assert_eq!(drive.knobs().drive.tight, 0.9);
     }
 
     #[test]

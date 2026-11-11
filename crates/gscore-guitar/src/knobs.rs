@@ -208,6 +208,7 @@ impl BlockSettings {
                 drive: amp(self.drive.drive, d.drive),
                 tone: amp(self.drive.tone, d.tone),
                 level_db: fit(self.drive.level_db, knob_ranges::LEVEL, d.level_db),
+                tight: amp(self.drive.tight, d.tight),
             },
             compressor: CompressorKnobs {
                 input_db: fit(self.compressor.input_db, knob_ranges::COMP_GAIN, c.input_db),

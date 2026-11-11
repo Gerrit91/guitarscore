@@ -4447,3 +4447,39 @@ needed for a much larger font); owner listening check.
   - The amp's input pad and the drive were tuned against that signal, which fits the
     owner's findings (the drive kills the chug, gain 10 not metal). See
     `docs/handoff-m22-rest.md` 2.7; the owner decides.
+
+## 2026-11-11 — The amp recalibrated, a Tight knob on the drive
+
+- **Input pad 0.15 → 0.5** (+10.5 dB), measured on real strings: a hard chord on the
+  electric preset's humbucker, peaks against the body (crest factor) at half gain.
+  - The old pad came from a mis-summed test chord (fixed 2026-11-10), so on real strings
+    Clean was untouched and Crunch mild (crest 6.2 and 3.5 against 6.9 dry) while Lead was
+    already saturated (1.4).
+  - Now Clean breaks up a little on a hard chord (5.8), Crunch crunches (1.9), and Lead
+    has 10 dB more gain at every setting.
+  - A first try at 1.6 (+20.6 dB, matching the sustained level the old test chord gave)
+    squashed even the crunch to a square (1.46) and broke up the clean voice: too much.
+- **Trims:**
+  - Clean gives the pad back exactly (unity at no gain).
+  - Crunch and Lead at half gain are as loud as before (+14 and +22 dB over the dry chord),
+    so tones and mixes keep their level.
+  - The drive at its default Drive is as loud as before (-0.2 dB).
+- **Drive › Tight** (0 loose, 90 Hz, to 1 tight, 720 Hz, the old fixed value; default
+  0.5): the low cut of the clipping path.
+  - Measured through a lead at Drive 0.5 and 1, the low band (below about 250 Hz) against
+    the whole: amp alone 0.47; the old drive 0.27 and 0.23 (the chug the owner missed);
+    Tight 1 the same; Tight 0 0.43 and 0.51; the default 0.36 and 0.39.
+  - In the chain window and stored with the block (older settings get 0.5).
+- Tests:
+  - the calibration on real strings (clean stays clean, a crunch crunches but keeps some
+    peak, a lead more);
+  - the voices keep their levels;
+  - Tight keeps the chug loose and thins it tight;
+  - the drive's tests at string level;
+  - the amp's unit tests' sines scaled with the pad so they keep their meaning.
+- Audible change: every amp and drive block. Same loudness at half gain, more
+  distortion for the same knob, and a fuller low end through a drive at the default
+  Tight. Tones dialled in on the old Crunch or Lead may want less Gain.
+- Built-in tones with an amp or a drive: Texas Blues, British Crunch, Classic Rock Rhythm,
+  80s Lead, Singing Sustain, Modern Metal Rhythm, Djent Tight. Their knobs are unchanged
+  (the owner's designs), so the Crunch ones are clearly dirtier now: for the owner's ear.
