@@ -59,7 +59,7 @@ The score already has every technique; the model plays each one by changing para
 |---|---|
 | Bend, slide, vibrato, whammy | change the delay length while the note sounds |
 | Hammer-on, pull-off, tapping | change the length without a new pluck (keeps the energy) |
-| Palm mute | strong loss filter, short decay |
+| Palm mute | a shelving loss filter: the highs go at once, the pitch and low harmonics ring on |
 | Dead note | very strong damping plus a noise burst |
 | Natural, artificial harmonic | damp at the node (12th fret: middle of the line) |
 | Let ring vs. staccato | damp or not when the next note starts on that string |
@@ -136,16 +136,80 @@ described in the literature below:
   with a light finger tap; on a silent string it is a soft pluck.
 - **Damping** moves two 60 dB decay times, the fundamental's and the harmonics' at
   2 kHz (settling in 4 ms): ringing (the model's sustain, falling with pitch, and its
-  brilliance), palm muted 0.18/0.03 s, released 0.3/0.06 s, damped 0.04/0.01 s, dead
+  brilliance), palm muted (below), released 0.3/0.06 s, damped 0.04/0.01 s, dead
   0.015/0.005 s. The loss filter is designed from both (a bisection, redone only when
   they or the pitch change), so the highs fade at the same rate on every string. Before
   (first version) a fixed filter let a low string's highs ring about four times longer
   than a high string's: the owner heard the low notes as "a synthesizer with slight
   distortion" (2026-11-06).
+- **Palm mute** (2026-11-09, after the owner found it thin and only percussive): a
+  palm-muted loop runs a shelf instead of the one-pole: pole and zero, flat up to its
+  corner, twice in series (the second section exists only while the palm mutes; with no
+  zero the filter is exactly the old lowpass, so open strings are unchanged). A one-pole
+  cannot take the highs that much faster than the fundamental over so few octaves without
+  killing the fundamental too (its loop gain would need to exceed 1). When even the plain
+  lowpass at the corner cannot reach the asked-for ratio, it stays at the corner: the
+  highs go as fast as they can, the low end is kept. The **Palm mute** knob (string sound,
+  Strike row, 0 light to 1 heavy, 2026-11-10: the owner wanted to dial it) moves three
+  values on a log scale, the middle being the first tuning:
+
+  | | light (0) | middle (0.5) | heavy (1) |
+  |---|---|---|---|
+  | fundamental's decay on a low E | 2.7 s | 0.9 s | 0.3 s |
+  | highs' decay (2 kHz) | 0.075 s | 0.03 s | 0.012 s |
+  | harmonics kept (the corner) | 8.3rd | 5th | 3rd |
+
+  The fundamental's time falls with the square root of the pitch (0.1 to 3 s, never
+  longer than the open string). The strike keeps the pick's full hardness and is 1.4
+  times stronger (a chug is played hard and the hand drains the string from the start),
+  so the fundamental starts about as loud as an open note's. The note keeps its written
+  length; at its end the finger's release and the palm together damp it (whichever is
+  stronger), and the next note on the string takes over as usual. Only the SoundFont
+  path (`gscore-play` `midi`, no palm-muted samples) still plays it as an eighth at most,
+  85 % velocity, stopped dead; the knob does nothing there.
 - **The strike** blends a sharp pulse (bright) with the string's triangular shape
   (round) by the model's softness, rounded above 400 Hz to 12 kHz by hardness and
   velocity. A resonant lowpass on each string's output stands in for the pickup or body
   (tone, resonance) until step 2 and 3 bring the real ones.
+- **The pick's attack** (`pick.rs`, 2026-11-10). The strike's rounding is already the
+  slip-off pulse in the loop: a pulse whose width follows hardness, 0.013 ms for a hard
+  pick up to 0.4 ms for a soft one, since rounding above a frequency is smoothing over
+  that time. On top of it come:
+  - **The click:** one bipolar force pulse (no offset) as wide as the pick takes to slip
+    off, 0.6 ms soft to 0.1 ms hard.
+  - **The scrape:** noise above 1.2 kHz dying with a 6 ms (soft) to 2 ms (hard) time
+    constant.
+
+  The click and the scrape go into what the pickup or bridge hears, not into the loop,
+  so the note is unchanged after about 50 ms. Their level is the strike's amplitude
+  times the **Pick noise** knob (0 to 1, default 0.5), times the attack's share: pick,
+  slap and pop full, a tap 0.3, legato and a scrape none.
+
+  A hard pluck also starts sharp (**Attack pitch**, cents at full strength, default 4,
+  0 to 20). The string's tension rises with its swing, so the rise grows with the square
+  of the strike's amplitude and settles with a 15 ms time constant (within about 50 ms).
+  It goes on top of the bend, retuning both loops and the pickup. Dead notes and
+  harmonics have none.
+
+  Every preset has the same defaults, so sounds saved before these knobs get them too.
+- **The acoustic body** (`body.rs`, 2026-11-11), computed, no recording.
+  - Commuted synthesis would excite each string with the body's impulse response. Every
+    part is linear, so the body runs once per track on the sum of its strings instead
+    (the engine's slot): the same sound for one filter chain per track.
+  - The body is a low cut at 0.7 times the air mode, then eight narrow bells, one per
+    mode, which lift their bands and ring on briefly after the strings' energy passes.
+  - **Dreadnought** (steel): air at 100 Hz (Q 14, +10 dB), top at 195 Hz, back at
+    228 Hz, cross and long dipoles at 390 and 550 Hz, weaker modes at 830 and 1250 Hz, a
+    broad presence at 2.6 kHz.
+  - **Classical** (nylon): air at 96 Hz, top at 188 Hz, back at 240 Hz, and so on, a
+    lighter top, a soft dip at 2.2 kHz.
+  - The trims keep a strummed chord within 2 dB of the bare strings (test).
+  - Knobs in the string sound's Body row: the kind (None, Dreadnought, Classical),
+    **Body** (how much is heard, default 0.8) and **Size** (0 a parlour, 1.25 times
+    higher; 1 a jumbo, 1.25 times lower; 0.5 the kind's own).
+  - Presets: steel a dreadnought, nylon a classical body, electric and bass none. A
+    sound or a built-in tone that does not name a body gets its kind's
+    (`StringSound::for_kind`).
 - **Knobs:** every `StringModel` value has a range (`gscore_guitar::ranges`); the Sound
   chain window (track panel › Sound › the stomp box) turns them per kind of string, next
   to the board, heard at once (`Command::StringModel`), kept in the settings, used by WAV
@@ -178,8 +242,7 @@ described in the literature below:
   single coil sets it to 4.5 kHz, Q 2.2, a humbucker 3 kHz, Q 1.8. Electric preset: a
   humbucker at the bridge, tone 3 kHz, resonance 1.8. Sounds saved before pickups existed
   take their kind's pickup (`StringSound::for_kind`), so an older steel sound gets none.
-- **Not yet:** a real pick attack (next), body, coupling and two polarizations
-  (step 3), noises and feel (step 4). Everything is one generic string model now; a
+- **Not yet:** coupling (step 3), noises and feel (step 4). Everything is one generic string model now; a
   distorted part sounds distorted once its chain has an Amp block (below). Harmonics play the
   harmonic's pitch with a purer pluck rather than damping at a node.
 
@@ -198,8 +261,8 @@ described in the literature below:
   decay, pre-delay, damping, modulation, width, mix, and a low and high cut on its sound.
   *Amp* and *Drive*, computed (below).
 - **Amp** (`gscore-guitar::amp`, 2026-11-06): no capture of a real amp, the parts that
-  make a tube preamp sound as it does. An input pad (the strings come in hot: a power chord
-  picked hard peaks near 4), a low cut before the clipping (*tight*: 40, 90, 160 Hz by
+  make a tube preamp sound as it does. An input pad (0.5: a chord picked hard sustains
+  at about 0.035 RMS after the tight cut; see "Calibration" below), a low cut before the clipping (*tight*: 40, 90, 160 Hz by
   voice) and a mid bell (the lead voice pushes 750 Hz by 7 dB, like a boost pedal in
   front), the Gain knob, then one to three soft-clipping stages, a little lopsided (a
   tube's bias: even harmonics), each followed by a coupling low cut and a plate high
@@ -211,14 +274,43 @@ described in the literature below:
   at 450 Hz, presence at 2.4 kHz, fourth-order roll-off at 5 kHz). The Speaker knob blends
   it out for a cabinet's impulse response in a Cab block after the amp. Voices: *Clean*
   (one stage, the pad given back so it plays at the strings' level), *Crunch* (two),
-  *Lead* (three); their outputs are trimmed to within about 3 dB of one another on a
-  power chord. About 0.9 % of a core per track (release).
+  *Lead* (three). At half gain a crunch is 14 dB and a lead 22 dB louder than the dry
+  chord, as they were before the calibration, so tones and mixes keep their level. About
+  0.9 % of a core per track (release).
 - **Drive** (`gscore-guitar::drive`): an overdrive pedal after the green mid-hump kind.
-  Only the signal above 720 Hz is driven (6 to 42 dB) into a symmetric soft clip (4×
-  oversampled, smoothed at 6.5 kHz); the lows pass clean beside it, then a tone lowpass
-  (900 Hz to 7 kHz) and Level. In front of the Lead voice with Drive low and Level up,
-  the low E's fundamental is a clearly smaller share of the sound (test): the metal
-  player's tight low end.
+  The signal above the **Tight** knob's low cut (2026-11-11: 90 Hz loose to 720 Hz
+  tight, the classic pedal, default 0.5 at about 250 Hz) is driven (6 to 42 dB) into a
+  symmetric soft clip (4× oversampled, smoothed at 6.5 kHz); the lows below it pass clean
+  beside it, then a tone lowpass (900 Hz to 7 kHz) and Level. With some Drive the clipped
+  part stands far above the clean lows, so at Tight 1 the chug thins: the low band of a
+  chord through the pedal and a lead falls to about half of the amp's alone (the owner
+  heard it: "the drive takes away all the chuggy bass/midrange"). Loose keeps it as full
+  as the amp alone (test).
+- **Delay** (`gscore-guitar::echo`, 2026-11-11): a digital delay for leads.
+  - Time: **Sync**, a note value at the song's tempo as played (tempo changes and the
+    playback speed included: the engine hands every chain the tempo before each block),
+    1/2 down to 1/16T, dotted and triplets; or **Free**, 1 ms to 2.5 s. A new time
+    glides there over about 40 ms (no click).
+  - **Feedback** up to 0.95; the repeats pass a **Low cut** and a **High cut** each time
+    round, so they get thinner and darker as they fade.
+  - **Level**: the echoes under the dry guitar, which stays at full level, as on a delay
+    pedal.
+  - **Ping-pong**: 0 in the middle, 1 bouncing left, right, left.
+  - The chain counts as ringing while echoes are on their way, so an echo after a long
+    silence (a half note at a slow tempo) is still played.
+  - Not on the mixer's buses.
+- **Calibration** (2026-11-11). Until then the amp's input pad was 0.15 and the drive's
+  low cut fixed at 720 Hz. Both were tuned against a test chord that was summed wrongly:
+  a scratch block was never cleared, so the "chord" was a running sum of everything
+  played, bass-heavy and about 25 dB too hot. On real strings the clean and crunch voices
+  played far too clean, and the lead (already saturated) had less gain than meant.
+  - The pad is now 0.5. At half gain a hard chord's peaks stand about 6 times its body
+    through the clean voice (about 7 times dry), twice through a crunch, and less through
+    a lead (test).
+  - The trims keep each voice's level at half gain, and the drive's level at its default
+    Drive, as before.
+  - Tones that used the old Crunch or Lead now sound dirtier at the same Gain.
+
 - **Reverb** (`gscore-guitar::reverb`, 2026-11-06, replacing the Freeverb copy the owner
   did not like): a feedback delay network after Geraint Luff's design for Signalsmith
   Audio (MIT article; no code taken). Pre-delay up to 250 ms; the stereo signal spread to

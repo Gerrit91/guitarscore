@@ -318,6 +318,12 @@ fn no_parameters_make_nan_or_runaway_output() {
             level: random.wild(),
             pickup: [Pickup::None, Pickup::SingleCoil, Pickup::Humbucker][round % 3],
             pickup_position: random.wild(),
+            palm_mute: random.wild(),
+            pick_noise: random.wild(),
+            attack_pitch: random.wild(),
+            body: gscore_guitar::BodyKind::ALL[round % 3],
+            body_mix: random.wild(),
+            body_size: random.wild(),
         };
         let rate = [8_000.0, 44_100.0, 192_000.0, random.wild()][round % 4];
         let mut voice = StringVoice::new(rate, random.wild(), model);
@@ -447,4 +453,223 @@ fn a_bridge_pickup_bites_and_a_neck_pickup_is_round() {
     assert!(humbucker.iter().all(|x| x.is_finite()) && rms(&humbucker) > 0.01);
     let off = cents_off(seconds(&neck, 0.2, 0.8), hz);
     assert!(off.abs() < 2.0, "{off:.2} cents");
+}
+
+/// The power above `from` Hz in `samples`, summed over harmonic-free bins every 50 Hz.
+fn power_above(samples: &[f32], from: f32) -> f64 {
+    let mut total = 0.0;
+    let mut f = from;
+    while f < 10_000.0 {
+        total += power_at(samples, f);
+        f += 50.0;
+    }
+    total
+}
+
+#[test]
+fn a_palm_muted_note_keeps_its_strength_pitch_and_low_end() {
+    // How fast the fundamental falls from 0.1 to 0.3 seconds, dB, per note.
+    let mut falls = Vec::new();
+    for (model, key) in [
+        (GuitarModel::Electric, 40_u8),
+        (GuitarModel::Electric, 52),
+        (GuitarModel::Electric, 64),
+        (GuitarModel::Steel, 40),
+        (GuitarModel::Bass, 28),
+    ] {
+        let hz = frequency(key, 0.0);
+        let play = |palm_mute: bool| {
+            let mut voice = StringVoice::new(RATE, 20.0, model.strings());
+            voice.pluck(Pluck {
+                palm_mute,
+                ..pick(hz)
+            });
+            render(&mut voice, 0.5, |_| {})
+        };
+        let (open, muted) = (play(false), play(true));
+        let fundamental = |out: &[f32], from, to| power_at(seconds(out, from, to), hz);
+        let db = |ratio: f64| 10.0 * ratio.log10();
+        let case = format!("{model:?} key {key}");
+        // As strong: the fundamental as loud as the open note's at first, the pick's
+        // attack kept.
+        let strength = db(fundamental(&muted, 0.0, 0.1) / fundamental(&open, 0.0, 0.1));
+        assert!(strength > -6.0, "{case}: fundamental {strength:.1} dB");
+        let attack = rms(seconds(&muted, 0.0, 0.03)) / rms(seconds(&open, 0.0, 0.03));
+        assert!(
+            attack > 0.6,
+            "{case}: the attack {attack:.2} of the open note's"
+        );
+        // The pitch still sounds well past an eighth note (a quarter of a second at 120
+        // BPM): not even 40 dB down by 0.3 seconds.
+        let fall = db(fundamental(&muted, 0.1, 0.2) / fundamental(&muted, 0.3, 0.4));
+        assert!(fall < 40.0, "{case}: the fundamental falls {fall:.1} dB");
+        assert!(fall > 5.0, "{case}: but it is muted ({fall:.1} dB)");
+        falls.push(fall);
+        // The hand takes the highs: far less above 3 kHz than the open note.
+        let highs = db(power_above(seconds(&muted, 0.02, 0.1), 3_000.0)
+            / power_above(seconds(&open, 0.02, 0.1), 3_000.0));
+        assert!(highs < -20.0, "{case}: highs {highs:.1} dB against open");
+        // The same pitch: the damping does not detune it.
+        let off = cents_off(seconds(&muted, 0.05, 0.35), hz);
+        assert!(off.abs() < 2.0, "{case}: {off:.2} cents off");
+    }
+    // Low strings ring longer than high ones.
+    assert!(falls[0] < falls[1] && falls[1] < falls[2], "{falls:?}");
+}
+
+#[test]
+fn the_palm_mute_knob_goes_from_light_to_heavy() {
+    let hz = frequency(40, 0.0);
+    // How far the fundamental falls in a tenth of a second (from 0.05 to 0.15 seconds:
+    // a heavy mute is silent by 0.3) and how much is left above 3 kHz, dB, at palm-mute
+    // `amount`.
+    let measure = |amount: f32| {
+        let model = StringModel {
+            palm_mute: amount,
+            ..GuitarModel::Electric.strings()
+        };
+        let mut voice = StringVoice::new(RATE, 20.0, model);
+        voice.pluck(Pluck {
+            palm_mute: true,
+            ..pick(hz)
+        });
+        let out = render(&mut voice, 0.5, |_| {});
+        let fall = 10.0
+            * (power_at(seconds(&out, 0.05, 0.15), hz) / power_at(seconds(&out, 0.15, 0.25), hz))
+                .log10();
+        let highs = 10.0 * power_above(seconds(&out, 0.02, 0.1), 3_000.0).log10();
+        let off = cents_off(seconds(&out, 0.03, 0.2), hz);
+        (fall, highs, off)
+    };
+    let (light, middle, heavy) = (measure(0.0), measure(0.5), measure(1.0));
+    assert!(
+        light.0 < middle.0 && middle.0 < heavy.0,
+        "heavier falls faster: {light:?} {middle:?} {heavy:?}"
+    );
+    assert!(
+        light.1 > middle.1 + 6.0 && middle.1 > heavy.1 + 6.0,
+        "and is darker: {light:?} {middle:?} {heavy:?}"
+    );
+    assert!(light.0 > 1.0, "even light is a mute: {light:?}");
+    // In tune; a heavy mute is gone within about 0.3 seconds, so its pitch is read from a
+    // short window, to a few cents (inaudible on so short a note).
+    for ((fall, _, off), cents) in [(light, 2.0), (middle, 2.0), (heavy, 3.0)] {
+        assert!(fall < 30.0, "the pitch is still heard: {fall:.1} dB");
+        assert!(off.abs() < cents, "in tune: {off:.2} cents");
+    }
+    // The knob changes nothing on a note that is not palm muted.
+    let open = |amount: f32| {
+        let model = StringModel {
+            palm_mute: amount,
+            ..GuitarModel::Electric.strings()
+        };
+        let mut voice = StringVoice::new(RATE, 20.0, model);
+        voice.pluck(pick(hz));
+        render(&mut voice, 0.2, |_| {})
+    };
+    assert_eq!(open(0.0), open(1.0));
+}
+
+#[test]
+fn a_new_note_stops_a_palm_muted_one_on_the_same_string() {
+    let (first, second) = (frequency(40, 0.0), frequency(43, 0.0));
+    let mut voice = StringVoice::new(RATE, 20.0, GuitarModel::Electric.strings());
+    let palm = |hz| Pluck {
+        palm_mute: true,
+        ..pick(hz)
+    };
+    voice.pluck(palm(first));
+    let _ = render(&mut voice, 0.25, |_| {});
+    voice.pluck(palm(second));
+    let after = render(&mut voice, 0.3, |_| {});
+    let window = seconds(&after, 0.05, 0.25);
+    assert!(
+        power_at(window, first) < 0.01 * power_at(window, second),
+        "the string sounds the new note only"
+    );
+}
+
+/// A string of `model` at `key`, the pick's knobs set, plucked at `velocity` and rendered
+/// for 0.4 seconds.
+fn picked(
+    model: GuitarModel,
+    key: u8,
+    pick_noise: f32,
+    attack_pitch: f32,
+    velocity: f32,
+) -> Vec<f32> {
+    let strings = StringModel {
+        pick_noise,
+        attack_pitch,
+        ..model.strings()
+    };
+    let mut voice = StringVoice::new(RATE, 20.0, strings);
+    voice.pluck(Pluck {
+        velocity,
+        ..pick(frequency(key, 0.0))
+    });
+    render(&mut voice, 0.4, |_| {})
+}
+
+#[test]
+fn the_pick_clicks_and_scrapes_at_the_start_only() {
+    for (model, key) in [(GuitarModel::Electric, 40_u8), (GuitarModel::Nylon, 52)] {
+        let (none, full) = (
+            picked(model, key, 0.0, 0.0, 1.0),
+            picked(model, key, 1.0, 0.0, 1.0),
+        );
+        let start = |out: &[f32]| rms(seconds(out, 0.0, 0.004));
+        let highs = |out: &[f32]| power_above(seconds(out, 0.0, 0.006), 4_000.0);
+        assert!(
+            start(&full) > 1.3 * start(&none),
+            "{model:?}: the click is heard: {} against {}",
+            start(&full),
+            start(&none)
+        );
+        assert!(
+            highs(&full) > 2.0 * highs(&none),
+            "{model:?}: and it is bright"
+        );
+        // Neither goes into the vibrating string: after 50 ms the note is the same.
+        let difference: Vec<f32> = none.iter().zip(&full).map(|(a, b)| a - b).collect();
+        let late = rms(seconds(&difference, 0.05, 0.1)) / rms(seconds(&none, 0.05, 0.1));
+        assert!(late < 1e-3, "{model:?}: the note is unchanged: {late:e}");
+    }
+    // A hammer-on onto a silent string makes no click.
+    let legato = |pick_noise: f32| {
+        let strings = StringModel {
+            pick_noise,
+            ..GuitarModel::Electric.strings()
+        };
+        let mut voice = StringVoice::new(RATE, 20.0, strings);
+        voice.pluck(Pluck {
+            attack: Attack::Legato,
+            ..pick(frequency(52, 0.0))
+        });
+        render(&mut voice, 0.05, |_| {})
+    };
+    assert_eq!(legato(0.0), legato(1.0));
+}
+
+#[test]
+fn a_hard_pluck_starts_sharp_and_settles() {
+    let key = 64;
+    let hz = frequency(key, 0.0);
+    // How much sharper the first 20 ms are than the settled note, cents.
+    let rise = |attack_pitch: f32, velocity: f32| {
+        let out = picked(GuitarModel::Electric, key, 0.0, attack_pitch, velocity);
+        cents_off(seconds(&out, 0.0, 0.02), hz) - cents_off(seconds(&out, 0.15, 0.35), hz)
+    };
+    let (none, normal, strong) = (rise(0.0, 1.0), rise(4.0, 1.0), rise(20.0, 1.0));
+    assert!(none.abs() < 0.5, "no rise without the knob: {none:.2}");
+    assert!(
+        normal > none + 1.0,
+        "a hard pluck starts sharp: {normal:.2}"
+    );
+    assert!(strong > normal + 4.0, "more with the knob up: {strong:.2}");
+    assert!(rise(20.0, 0.4) < strong * 0.5, "a soft pluck much less");
+    // Settled within about 50 ms: in tune from 80 ms on even at the knob's top.
+    let out = picked(GuitarModel::Electric, key, 0.0, 20.0, 1.0);
+    let off = cents_off(seconds(&out, 0.08, 0.4), hz);
+    assert!(off.abs() < 1.0, "settled: {off:.2} cents");
 }

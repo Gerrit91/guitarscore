@@ -47,15 +47,38 @@ pub fn sine_drum_soundfont(bank: &str) -> Vec<u8> {
     sine_soundfont_at(bank, 128)
 }
 
+/// A drum kit whose every key is a stereo one-shot hit, as a real kit's hi-hat: one
+/// decaying sine (half a second) played by two regions panned hard left and right, both in
+/// exclusive class 1 (the hi-hat's choke group).
+pub fn stereo_choke_drum_soundfont(bank: &str) -> Vec<u8> {
+    // Pan (17) in 0.1 % steps, exclusive class (57), one shot (sample modes 54 = 0),
+    // sample 0 (sample id 53, last in each zone).
+    let side = |pan: i16| vec![(17, pan.cast_unsigned()), (57, 1), (54, 0), (53, 0)];
+    soundfont(bank, 128, &[side(-500), side(500)], false)
+}
+
 /// [`sine_soundfont`]'s body, the preset in `preset_bank` and program 0.
 fn sine_soundfont_at(bank: &str, preset_bank: u16) -> Vec<u8> {
+    // Loop continuously (sampleModes 54 = 1), sample 0 (sampleID 53, last).
+    soundfont(bank, preset_bank, &[vec![(54, 1), (53, 0)]], true)
+}
+
+/// A SoundFont of one sine sample at A4 and one preset (program 0 in `preset_bank`) whose
+/// instrument has `zones` (each a list of generators, the sample id last). A `looped`
+/// sample is a steady tone looped; otherwise it is a half-second hit that dies away.
+fn soundfont(bank: &str, preset_bank: u16, zones: &[Vec<(u16, u16)>], looped: bool) -> Vec<u8> {
     const PERIOD: u32 = 100;
-    const PERIODS: u32 = 40;
-    let samples = PERIOD * PERIODS;
+    let periods: u32 = if looped { 40 } else { 220 };
+    let samples = PERIOD * periods;
     let mut wave: Vec<u8> = (0..samples)
         .flat_map(|i| {
             let phase = f64::from(i) / f64::from(PERIOD) * std::f64::consts::TAU;
-            ((phase.sin() * 16_000.0) as i16).to_le_bytes()
+            let fade = if looped {
+                1.0
+            } else {
+                1.0 - f64::from(i) / f64::from(samples)
+            };
+            ((phase.sin() * fade * 16_000.0) as i16).to_le_bytes()
         })
         .collect();
     // The format asks for 46 silent samples after each sample.
@@ -90,13 +113,27 @@ fn sine_soundfont_at(bank: &str, preset_bank: u16) -> Vec<u8> {
     let pgen = u16s(&[41, 0, 0, 0]);
     let inst = [
         [name("Sine").to_vec(), u16s(&[0])].concat(),
-        [name("EOI").to_vec(), u16s(&[1])].concat(),
+        [
+            name("EOI").to_vec(),
+            u16s(&[u16::try_from(zones.len()).unwrap_or(1)]),
+        ]
+        .concat(),
     ]
     .concat();
-    let ibag = u16s(&[0, 0, 2, 0]);
+    // One bag per zone (its first generator, no modulators), then the terminal bag.
+    let mut ibag = Vec::new();
+    let mut igen = Vec::new();
+    let mut next: u16 = 0;
+    for zone in zones {
+        ibag.extend(u16s(&[next, 0]));
+        for &(operator, amount) in zone {
+            igen.extend(u16s(&[operator, amount]));
+            next = next.saturating_add(1);
+        }
+    }
+    ibag.extend(u16s(&[next, 0]));
+    igen.extend(u16s(&[0, 0]));
     let imod = vec![0; 10];
-    // Loop continuously (sampleModes 54 = 1), sample 0 (sampleID 53, last).
-    let igen = u16s(&[54, 1, 53, 0, 0, 0]);
     let header = |text: &str, start: u32, end: u32, loop_start: u32, loop_end: u32| {
         let mut r = name(text).to_vec();
         for v in [start, end, loop_start, loop_end, 44_000] {

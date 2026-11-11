@@ -55,6 +55,13 @@ impl std::fmt::Debug for TrackTones {
 }
 
 impl TrackTones {
+    /// Tells every chain the tempo played now (a synced delay follows it).
+    pub(crate) fn set_tempo(&mut self, bpm: f32) {
+        for chain in self.chains.iter_mut().flatten() {
+            chain.set_tempo(bpm);
+        }
+    }
+
     /// Room for [`MAX_TONES`] tracks. Allocates.
     pub(crate) fn new() -> Self {
         TrackTones {

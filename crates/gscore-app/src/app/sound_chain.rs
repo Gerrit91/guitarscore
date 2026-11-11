@@ -126,6 +126,8 @@ fn box_text(block: &BlockSetting) -> (String, String) {
         BlockChoice::Compressor => format!("CA-76 · {}", block.comp_ratio.label()),
         BlockChoice::Eq => "4 bands".to_owned(),
         BlockChoice::Chorus => "stereo".to_owned(),
+        BlockChoice::Delay if block.delay_sync => block.delay_note.note().label().to_owned(),
+        BlockChoice::Delay => format!("{:.0} ms", block.delay_ms),
         BlockChoice::Cabinet | BlockChoice::Room => block
             .file
             .as_ref()
@@ -636,7 +638,7 @@ fn parts_row(
 }
 
 /// What an empty place can hold: the block, the name its menu shows, and what it does.
-fn block_choices() -> [(BlockChoice, &'static str, &'static str); 8] {
+fn block_choices() -> [(BlockChoice, &'static str, &'static str); 9] {
     [
         (
             BlockChoice::Drive,
@@ -664,6 +666,11 @@ fn block_choices() -> [(BlockChoice, &'static str, &'static str); 8] {
             BlockChoice::Chorus,
             "Chorus",
             "A stereo chorus: two short delays swinging slowly, mixed under the dry sound",
+        ),
+        (
+            BlockChoice::Delay,
+            "Delay",
+            "A digital delay: echoes at a note value synced to the song's tempo, or free",
         ),
         (
             BlockChoice::Compressor,
@@ -1124,6 +1131,7 @@ pub(super) fn block_knobs(
             BlockChoice::Chorus => {
                 moved.changed |= super::amp_knobs::chorus_knobs(ui, block, all_wet);
             }
+            BlockChoice::Delay => moved.changed |= super::delay_knobs::delay_knobs(ui, block),
             BlockChoice::Cabinet | BlockChoice::Room => {
                 // First the room itself: how long it lasts.
                 if block.choice == BlockChoice::Room {

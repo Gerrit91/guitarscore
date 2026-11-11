@@ -95,7 +95,8 @@ pub(super) fn phrase(kind: StringKind, track: usize) -> Sequence {
                 dead: false,
                 harmonic: None,
                 let_ring: false,
-                damped: step.palm_mute,
+                // A palm mute is damped by the string itself, not stopped dead.
+                damped: false,
                 grace: false,
                 pitch: None,
                 fade: None,

@@ -42,10 +42,17 @@ pub struct Synthesizer {
     // GuitarScore fork: a percussion channel's drum parts, apart (see `drum_part`).
     part_left: Vec<f32>,
     part_right: Vec<f32>,
+    /// GuitarScore fork: the parts of the samples the last `render_channels` call gave,
+    /// lined up with the channels' outputs (the rendered blocks above need not be).
+    part_out_left: Vec<f32>,
+    part_out_right: Vec<f32>,
+    part_out_length: usize,
 
     inverse_block_size: f32,
 
     block_read: usize,
+    /// GuitarScore fork: the last note-on's id (see `Voice::note`).
+    next_note: u64,
 
     master_volume: f32,
 
@@ -138,9 +145,13 @@ impl Synthesizer {
             channel_right: channel_blocks,
             inverse_block_size,
             block_read,
+            next_note: 0,
             master_volume,
             part_left: vec![0.0; part_blocks],
             part_right: vec![0.0; part_blocks],
+            part_out_left: vec![0.0; part_blocks],
+            part_out_right: vec![0.0; part_blocks],
+            part_out_length: 0,
             effects,
         })
     }
@@ -205,8 +216,11 @@ impl Synthesizer {
             return;
         }
 
+        // GuitarScore fork: a drum rings out whatever the note's written length (a crash on
+        // a sixteenth still rings); only a looped sample, which would never end, is released.
+        let drums = self.is_percussion_channel(channel as usize);
         for voice in self.voices.get_active_voices().iter_mut() {
-            if voice.channel() == channel && voice.key() == key {
+            if voice.channel() == channel && voice.key() == key && (!drums || voice.loops()) {
                 voice.end();
             }
         }
@@ -253,6 +267,19 @@ impl Synthesizer {
             }
         }
 
+        // GuitarScore fork: a drum struck again lets its last hit go (with its release), as
+        // the note-off it no longer gets would have; and every voice of this note shares an
+        // id, so the note's own regions never choke one another.
+        if self.is_percussion_channel(channel as usize) {
+            for voice in self.voices.get_active_voices().iter_mut() {
+                if voice.channel() == channel && voice.key() == key {
+                    voice.end();
+                }
+            }
+        }
+        self.next_note = self.next_note.wrapping_add(1);
+        let note = self.next_note;
+
         let preset = &self.sound_font.presets[preset];
         for preset_region in preset.regions.iter() {
             if preset_region.contains(key, velocity) {
@@ -261,8 +288,10 @@ impl Synthesizer {
                     if instrument_region.contains(key, velocity) {
                         let region_pair = RegionPair::new(preset_region, instrument_region);
 
-                        if let Some(value) = self.voices.request_new(instrument_region, channel) {
-                            value.start(&region_pair, channel, key, velocity)
+                        if let Some(value) =
+                            self.voices.request_new(instrument_region, channel, note)
+                        {
+                            value.start(&region_pair, channel, key, velocity, note)
                         }
                     }
                 }
@@ -391,16 +420,23 @@ impl Synthesizer {
         }
     }
 
-    /// GuitarScore fork: one part of a percussion channel's last rendered block, as
-    /// `render_channels` wrote it (`side` 0 left, 1 right).
+    /// GuitarScore fork: one part of a percussion channel for the samples the last
+    /// `render_channels` call gave (`side` 0 left, 1 right): lined up with the channel's
+    /// output, at most a block long (a longer call keeps its first block).
     pub fn part_block(&self, channel: usize, part: usize, side: usize) -> &[f32] {
         let at = (channel * PARTS + part).saturating_mul(self.block_size);
         let blocks = if side == 0 {
-            &self.part_left
+            &self.part_out_left
         } else {
-            &self.part_right
+            &self.part_out_right
         };
-        blocks.get(at..at + self.block_size).unwrap_or(&[])
+        blocks.get(at..at + self.part_out_length).unwrap_or(&[])
+    }
+
+    /// GuitarScore fork: how many voices sound now (at most the settings'
+    /// `maximum_polyphony`; a note past it takes over the least important voice).
+    pub fn active_voice_count(&self) -> usize {
+        self.voices.active_voice_count
     }
 
     /// GuitarScore fork: whether `channel` plays drums.
@@ -426,6 +462,7 @@ impl Synthesizer {
     /// left output's length decides, a shorter one gets what fits.
     pub fn render_channels(&mut self, left: &mut [&mut [f32]], right: &mut [&mut [f32]]) {
         let length = left.first().map_or(0, |output| output.len());
+        self.part_out_length = cmp::min(length, self.block_size);
         let mut wrote = 0;
         while wrote < length {
             if self.block_read == self.block_size {
@@ -443,6 +480,26 @@ impl Synthesizer {
                     self.channel_right.get(channel).map(|block| &block[from.clone()]);
                 Synthesizer::copy_part(out_left, wrote, source_left, rem);
                 Synthesizer::copy_part(out_right, wrote, source_right, rem);
+            }
+            // The drum channels' parts, from the same place: a call that does not line up
+            // with the blocks (an audio callback of another size) still gets the parts of
+            // exactly the samples it mixes.
+            if wrote < self.block_size {
+                let rem = cmp::min(rem, self.block_size - wrote);
+                let block_size = self.block_size;
+                for channel in 0..Synthesizer::CHANNEL_COUNT {
+                    if !self.is_percussion_channel(channel) {
+                        continue;
+                    }
+                    for part in 0..PARTS {
+                        let at = (channel * PARTS + part) * block_size;
+                        let source = at + self.block_read..at + self.block_read + rem;
+                        let target = at + wrote..at + wrote + rem;
+                        self.part_out_left[target.clone()]
+                            .copy_from_slice(&self.part_left[source.clone()]);
+                        self.part_out_right[target].copy_from_slice(&self.part_right[source]);
+                    }
+                }
             }
 
             self.block_read += rem;

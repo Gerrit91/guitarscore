@@ -16,6 +16,10 @@ use crate::tempo::PPQ;
 /// How long a borrowed channel stays reserved after its note ends, for the release that
 /// still sounds (and would follow the next note's bend): a quarter note.
 const RELEASE_TICKS: u64 = PPQ as u64;
+/// A General MIDI guitar has no palm-muted samples: a palm-muted note stands in as a
+/// softer note (this share of its velocity, percent) cut dead after an eighth note at most.
+const PALM_MUTE_PERCENT: u32 = 85;
+const PALM_MUTE_TICKS: u64 = PPQ as u64 / 2;
 
 /// What [`derive`] makes of a performance.
 pub(crate) struct Midi {
@@ -50,8 +54,24 @@ pub(crate) fn derive(performance: &Performance) -> Midi {
             sound: track.sound,
         });
     }
-    let base: Vec<Channel> = performance
+    let drums: Vec<bool> = performance
+        .tracks
+        .iter()
+        .map(|track| track.sound.percussion)
+        .collect();
+    let notes: Vec<PlayedNote> = performance
         .notes
+        .iter()
+        .map(|note| {
+            let note = soundfont_note(note);
+            if drums.get(note.track).copied().unwrap_or(false) {
+                drum_note(note)
+            } else {
+                note
+            }
+        })
+        .collect();
+    let base: Vec<Channel> = notes
         .iter()
         .map(|note| {
             tracks
@@ -61,14 +81,38 @@ pub(crate) fn derive(performance: &Performance) -> Midi {
         .collect();
     let mut channels = base.clone();
     let degraded_pitch_bends =
-        assign_pitch_channels(&performance.notes, &mut channels, allocator.free_channels());
-    emit(&performance.notes, &base, &channels, &tracks, &mut events);
+        assign_pitch_channels(&notes, &mut channels, allocator.free_channels());
+    emit(&notes, &base, &channels, &tracks, &mut events);
     Midi {
         tracks,
         events,
         channels,
         degraded_pitch_bends,
     }
+}
+
+/// `note` as a SoundFont plays it: a palm mute shortened and softened (the modelled strings
+/// damp the string instead and play the performance's note as it is).
+fn soundfont_note(note: &PlayedNote) -> PlayedNote {
+    let mut note = *note;
+    if note.palm_mute && !note.dead {
+        note.velocity = crate::effects::scale(note.velocity, PALM_MUTE_PERCENT);
+        let length = note.end.saturating_sub(note.start);
+        note.end = note.start.saturating_add(length.min(PALM_MUTE_TICKS));
+        note.damped = true;
+    }
+    note
+}
+
+/// A drum track's `note` as MIDI plays it: always on the kit's own channel. A borrowed
+/// channel is a melodic one (no drums there), and the mixer hears a drum track only on its
+/// own channel, so a borrowed hit was lost. Drums need no borrowed channel: they never bend,
+/// a drum rings out whatever its note-off, and a fade is left out.
+fn drum_note(mut note: PlayedNote) -> PlayedNote {
+    note.pitch = None;
+    note.damped = false;
+    note.fade = None;
+    note
 }
 
 /// Gives every note with a pitch shape, a damped end or a fade a borrowed channel in

@@ -48,6 +48,11 @@ const RESET_CONTROLLERS: u8 = 121;
 /// The synthesizer's own volume (rustysynth's default is 0.5); the output is also clipped,
 /// so several loud tracks never wrap around.
 const MASTER_VOLUME: f32 = 0.5;
+/// How many SoundFont voices sound at once, the synthesizer's most. A stereo sample takes
+/// two, and drums ring out (a cymbal for seconds): at RustySynth's default of 64 the
+/// owner's band songs ran out in busy passages, and a stolen voice is a missing hit or
+/// one side of a stereo drum gone. Only sounding voices cost time.
+const POLYPHONY: usize = 256;
 /// The pitch bend wheel at rest, as MIDI data bytes (LSB, MSB).
 const BEND_CENTER: (i32, i32) = (0, 64);
 
@@ -145,6 +150,7 @@ impl SynthEngine {
         settings.block_size = BLOCK;
         settings.split_channels = true;
         settings.enable_reverb_and_chorus = false;
+        settings.maximum_polyphony = POLYPHONY;
         let mut synth = Synthesizer::new(&bank.font, &settings)
             .map_err(|e| PlayError::Device(format!("cannot start the synthesizer: {e}")))?;
         synth.set_master_volume(MASTER_VOLUME);
@@ -376,6 +382,12 @@ impl SynthEngine {
         self.mixer.set_part_level(track, part, level);
     }
 
+    /// The pan of `part` of the song's drum track `track` (0 left, 64 centre, 127 right),
+    /// heard at once.
+    pub fn set_part_pan(&mut self, track: usize, part: usize, pan: u8) {
+        self.mixer.set_part_pan(track, part, pan);
+    }
+
     /// Gives `bus` a prepared chain (`None`: none). Returns the one it replaces, to be
     /// freed elsewhere.
     pub fn set_bus(&mut self, bus: crate::Bus, chain: Option<Box<Chain>>) -> Option<Box<Chain>> {
@@ -428,6 +440,10 @@ impl SynthEngine {
             }
             Command::PartLevel(track, part, level) => {
                 self.set_part_level(track, part, level);
+                return None;
+            }
+            Command::PartPan(track, part, pan) => {
+                self.set_part_pan(track, part, pan);
                 return None;
             }
             Command::PartMute(track, part, muted) => {
@@ -515,6 +531,10 @@ impl SynthEngine {
                 &mut self.mixer,
             ),
         );
+        // A synced delay follows the tempo as played (kept when nothing is loaded).
+        if let Some(bpm) = self.transport.bpm() {
+            self.mixer.set_tempo(bpm);
+        }
         if let (Some(l), Some(r)) = (self.left.get_mut(..frames), self.right.get_mut(..frames)) {
             // Each channel apart, for the strips.
             {

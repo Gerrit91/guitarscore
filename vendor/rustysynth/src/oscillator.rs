@@ -31,6 +31,11 @@ pub(crate) struct Oscillator {
 }
 
 impl Oscillator {
+    /// GuitarScore fork: whether the sample loops (it would sound on until released).
+    pub(crate) fn loops(&self) -> bool {
+        self.looping
+    }
+
     const FRAC_BITS: i32 = 24;
     const FRAC_UNIT: i64 = 1_i64 << Oscillator::FRAC_BITS;
     const FP_TO_SAMPLE: f32 = 1_f32 / (32768 * Oscillator::FRAC_UNIT) as f32;

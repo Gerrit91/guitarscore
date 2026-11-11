@@ -1,6 +1,6 @@
 //! The effect chain after the strings: [`BLOCKS`] places in a fixed order, each empty or
 //! holding a block (an impulse response for a cabinet or a body, a room's impulse response,
-//! an algorithmic reverb, a computed amp or overdrive pedal). The signal is mono from the strings and becomes
+//! an algorithmic reverb, a computed amp or overdrive pedal, a delay). The signal is mono from the strings and becomes
 //! stereo at the first block that makes it so (a room or the reverb).
 //!
 //! Two kinds of change: which blocks are where (and which impulse response, or a room's
@@ -15,6 +15,7 @@ use crate::chorus::Chorus;
 use crate::compressor::Compressor;
 use crate::convolver::{Convolver, PARTITION, Spectra};
 use crate::drive::Drive;
+use crate::echo::Echo;
 use crate::eq::Eq;
 use crate::filters::Biquad;
 use crate::impulse::ImpulseResponse;
@@ -55,6 +56,8 @@ pub enum BlockKind {
     Eq,
     /// The stereo chorus.
     Chorus,
+    /// A digital delay, its time free or synced to the tempo ([`Chain::set_tempo`]).
+    Delay,
 }
 
 impl BlockKind {
@@ -89,6 +92,7 @@ enum PreparedBlock {
     Compressor,
     Eq,
     Chorus,
+    Delay,
 }
 
 impl ChainSpec {
@@ -119,6 +123,7 @@ impl ChainSpec {
                 BlockKind::Compressor => PreparedBlock::Compressor,
                 BlockKind::Eq => PreparedBlock::Eq,
                 BlockKind::Chorus => PreparedBlock::Chorus,
+                BlockKind::Delay => PreparedBlock::Delay,
             })
         });
         PreparedChain {
@@ -166,6 +171,9 @@ impl PreparedChain {
             Some(PreparedBlock::Chorus) => {
                 Block::Chorus(Box::new(Chorus::new(rate, crate::ChorusKnobs::default())))
             }
+            Some(PreparedBlock::Delay) => {
+                Block::Delay(Box::new(Echo::new(rate, crate::DelayKnobs::default())))
+            }
             Some(PreparedBlock::Drive) => Block::Drive(Box::new(
                 [(); 2].map(|()| Drive::new(rate, crate::DriveKnobs::default())),
             )),
@@ -211,6 +219,8 @@ enum Block {
     Eq(Box<[Eq; 2]>),
     /// Both sides at once.
     Chorus(Box<Chorus>),
+    /// Both sides at once.
+    Delay(Box<Echo>),
 }
 
 /// The computed reverb and the cut filters on its sound, left and right.
@@ -282,6 +292,10 @@ impl Chain {
                     chorus.set_knobs(new.chorus);
                     (None, (0.0, 0.0))
                 }
+                Block::Delay(echo) => {
+                    echo.set_knobs(new.delay);
+                    (None, (0.0, 0.0))
+                }
                 Block::Empty => (None, (0.0, 0.0)),
             };
             if let Some(filters) = filters {
@@ -320,10 +334,25 @@ impl Chain {
             .fold(0.0, f32::min)
     }
 
-    /// Whether a tail (a reverb, a long response) may still sound after the strings fell
-    /// silent: then the chain must still be run, with silence going in.
+    /// Whether a tail (a reverb, a long response, a delay's echoes) may still sound after
+    /// the strings fell silent: then the chain must still be run, with silence going in.
+    /// A delay's next echo may come after a longer silence than the others' tails have.
     pub fn ringing(&self) -> bool {
         (self.quiet as f32) < QUIET_HOLD * self.rate
+            || self.blocks.iter().any(|block| match block {
+                Block::Delay(echo) => echo.ringing(),
+                _ => false,
+            })
+    }
+
+    /// The tempo the song plays at now, quarter notes a minute (the playback speed
+    /// included): a delay synced to it follows. No allocation.
+    pub fn set_tempo(&mut self, bpm: f32) {
+        for block in &mut self.blocks {
+            if let Block::Delay(echo) = block {
+                echo.set_tempo(bpm);
+            }
+        }
     }
 
     /// Silence in every block.
@@ -359,6 +388,7 @@ impl Chain {
                     }
                 }
                 Block::Chorus(chorus) => chorus.reset(),
+                Block::Delay(echo) => echo.clear(),
                 Block::Reverb(reverb) => {
                     reverb.reverb.clear();
                     for filter in reverb.cuts.iter_mut().flatten() {
@@ -440,6 +470,13 @@ impl Chain {
                         } else {
                             signal[0]
                         };
+                    }
+                    Block::Delay(echo) => {
+                        let (left, right) = echo.process(signal[0], signal[1], stereo);
+                        // Ping-pong makes the sides differ; without it a mono signal stays
+                        // mono.
+                        stereo = stereo || settings.delay.ping_pong > 0.0;
+                        signal = [left, right];
                     }
                     Block::Impulse(impulse) => {
                         let knobs = settings.impulse;

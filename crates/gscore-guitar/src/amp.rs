@@ -29,9 +29,14 @@ use crate::oversample::{FACTOR as OVERSAMPLE, Oversampler};
 const BUTTERWORTH_4: [f32; 2] = [0.541_196, 1.306_563];
 /// At most this many clipping stages.
 const STAGES: usize = 3;
-/// The strings come in hot (a chord picked hard peaks near 4): this brings them to about
-/// the level a pickup gives an amp's input, where the stages start to clip.
-pub(crate) const INPUT_PAD: f32 = 0.15;
+/// The strings' level into the stages. A chord picked hard on the electric's bridge
+/// humbucker sustains at about 0.035 RMS after the Tight cut (its attack peaks near 1.2).
+/// At this pad a clean voice at half gain barely touches such a chord, a crunch at half
+/// gain crunches (its peaks stand about twice its body, against seven times dry) and a
+/// lead saturates. Until 2026-11-11 it was 0.15, calibrated on a mis-summed test chord
+/// about 25 dB hotter than real strings: the clean and crunch voices played far too
+/// clean, and the lead had 10 dB less gain than now.
+pub(crate) const INPUT_PAD: f32 = 0.5;
 
 /// The character of the amp: how many stages clip, how hard, and how tight.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -69,8 +74,9 @@ impl AmpVoice {
                 stages: 1,
                 bias: 0.05,
                 plate: 9_000.0,
-                // The pad given back, less as the gain rises (it clips by then).
-                trim_db: 16.5,
+                // The pad given back (exactly, so clean is unity at no gain), less as the
+                // gain rises (it clips by then).
+                trim_db: 6.0,
                 trim_follow: 0.7,
             },
             AmpVoice::Crunch => VoiceShape {
@@ -81,7 +87,7 @@ impl AmpVoice {
                 stages: 2,
                 bias: 0.15,
                 plate: 7_000.0,
-                trim_db: -2.0,
+                trim_db: -8.4,
                 trim_follow: 0.0,
             },
             AmpVoice::Lead => VoiceShape {
@@ -92,7 +98,7 @@ impl AmpVoice {
                 stages: 3,
                 bias: 0.2,
                 plate: 6_000.0,
-                trim_db: -3.0,
+                trim_db: -3.6,
                 trim_follow: 0.0,
             },
         }
@@ -115,8 +121,10 @@ struct VoiceShape {
     bias: f32,
     /// The plate's high cut between the stages, Hz.
     plate: f32,
-    /// The output's trim, so the voices come out about as loud as one another and as the
-    /// strings without an amp...
+    /// The output's trim. Clean gives the pad back exactly (as loud as the strings without
+    /// an amp); a crunch and a lead at half gain are as loud as they were before the input
+    /// was recalibrated (2026-11-11: about +14 and +22 dB on a hard chord), so tones and
+    /// mixes dialled in by ear keep their level...
     trim_db: f32,
     /// ...less this share of the drive (dB for dB), for a voice that stays clean long.
     trim_follow: f32,
@@ -339,7 +347,7 @@ mod tests {
     fn more_gain_more_harmonics() {
         // 220 Hz for a whole number of periods in the measured part (0.25 s), quiet
         // enough that the voices differ before all of them clip to a square.
-        let input = sine(220.0, 0.03, 24_000);
+        let input = sine(220.0, 0.009, 24_000);
         let direct = AmpKnobs {
             speaker: 0.0,
             ..AmpKnobs::default()
@@ -371,7 +379,7 @@ mod tests {
     fn little_aliasing() {
         // A high note clipped hard: its harmonics past 24 kHz must not fold back. 3 kHz
         // has harmonics at multiples of 3 kHz only; anything off that grid is aliasing.
-        let input = sine(3_000.0, 0.5, 48_000);
+        let input = sine(3_000.0, 0.15, 48_000);
         let knobs = AmpKnobs {
             voice: AmpVoice::Lead,
             gain: 1.0,
@@ -391,21 +399,28 @@ mod tests {
     }
 
     #[test]
-    fn the_voices_are_about_as_loud_and_silence_stays_silent() {
-        let input = sine(330.0, 0.2, 24_000);
+    fn the_voices_keep_their_levels_and_silence_stays_silent() {
+        // A string's level. Clean comes out as loud as it goes in; a crunch and a lead
+        // louder, as they always were on real strings (their trims keep the levels tones
+        // were dialled in with; a pure sine squares up in the lead, so higher than a chord).
+        let input = sine(330.0, 0.06, 24_000);
         let levels = AmpVoice::ALL.map(|voice| {
             rms(&run(
                 AmpKnobs {
                     voice,
+                    gain: 0.0,
                     ..AmpKnobs::default()
                 },
                 &input,
             )[12_000..])
         });
-        let (low, high) = levels
-            .iter()
-            .fold((f32::MAX, 0.0_f32), |(lo, hi), &l| (lo.min(l), hi.max(l)));
-        assert!(high / low < 4.0, "within 12 dB: {levels:?}");
+        let db = |level: f32| 20.0 * (level / rms(&input[12_000..])).log10();
+        let [clean, crunch, lead] = levels.map(db);
+        assert!(clean.abs() < 3.0, "clean is unity: {clean:.1} dB");
+        assert!(
+            clean < crunch && crunch < lead && lead < 36.0,
+            "{clean:.1} {crunch:.1} {lead:.1} dB"
+        );
         let out = run(AmpKnobs::default(), &[0.0; 4_800]);
         assert!(out.iter().all(|x| x.abs() < 1e-6));
     }

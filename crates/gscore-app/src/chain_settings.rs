@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use gscore_guitar::{
     AmpKnobs, AmpVoice, BANDS, BLOCKS, BandShape, BlockSettings, CompRatio, CompressorKnobs,
-    DriveKnobs, EqKnobs, ImpulseKnobs, LENGTH_RANGE, ReverbKnobs, RoomKnobs,
+    DelayKnobs, DelayNote, DriveKnobs, EqKnobs, ImpulseKnobs, LENGTH_RANGE, ReverbKnobs, RoomKnobs,
 };
 use gscore_play::StringKind;
 use serde::{Deserialize, Serialize};
@@ -33,6 +33,8 @@ pub enum BlockChoice {
     Eq,
     /// The stereo chorus.
     Chorus,
+    /// The digital delay, free or synced to the tempo.
+    Delay,
 }
 
 impl BlockChoice {
@@ -48,12 +50,65 @@ impl BlockChoice {
             BlockChoice::Compressor => "Compressor",
             BlockChoice::Eq => "EQ",
             BlockChoice::Chorus => "Chorus",
+            BlockChoice::Delay => "Delay",
         }
     }
 
     /// Whether it plays an impulse response from a file.
     pub fn uses_file(self) -> bool {
         matches!(self, BlockChoice::Cabinet | BlockChoice::Room)
+    }
+}
+
+/// A delay's note value as the settings file keeps it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DelayNoteSetting {
+    Half,
+    DottedQuarter,
+    Quarter,
+    QuarterTriplet,
+    DottedEighth,
+    #[default]
+    Eighth,
+    EighthTriplet,
+    DottedSixteenth,
+    Sixteenth,
+    SixteenthTriplet,
+}
+
+impl DelayNoteSetting {
+    /// The engine's note value.
+    pub fn note(self) -> DelayNote {
+        match self {
+            DelayNoteSetting::Half => DelayNote::Half,
+            DelayNoteSetting::DottedQuarter => DelayNote::DottedQuarter,
+            DelayNoteSetting::Quarter => DelayNote::Quarter,
+            DelayNoteSetting::QuarterTriplet => DelayNote::QuarterTriplet,
+            DelayNoteSetting::DottedEighth => DelayNote::DottedEighth,
+            DelayNoteSetting::Eighth => DelayNote::Eighth,
+            DelayNoteSetting::EighthTriplet => DelayNote::EighthTriplet,
+            DelayNoteSetting::DottedSixteenth => DelayNote::DottedSixteenth,
+            DelayNoteSetting::Sixteenth => DelayNote::Sixteenth,
+            DelayNoteSetting::SixteenthTriplet => DelayNote::SixteenthTriplet,
+        }
+    }
+}
+
+impl From<DelayNote> for DelayNoteSetting {
+    fn from(note: DelayNote) -> Self {
+        match note {
+            DelayNote::Half => DelayNoteSetting::Half,
+            DelayNote::DottedQuarter => DelayNoteSetting::DottedQuarter,
+            DelayNote::Quarter => DelayNoteSetting::Quarter,
+            DelayNote::QuarterTriplet => DelayNoteSetting::QuarterTriplet,
+            DelayNote::DottedEighth => DelayNoteSetting::DottedEighth,
+            DelayNote::Eighth => DelayNoteSetting::Eighth,
+            DelayNote::EighthTriplet => DelayNoteSetting::EighthTriplet,
+            DelayNote::DottedSixteenth => DelayNoteSetting::DottedSixteenth,
+            DelayNote::Sixteenth => DelayNoteSetting::Sixteenth,
+            DelayNote::SixteenthTriplet => DelayNoteSetting::SixteenthTriplet,
+        }
     }
 }
 
@@ -201,8 +256,10 @@ pub struct BlockSetting {
     pub middle: f32,
     pub treble: f32,
     pub speaker: f32,
-    /// A drive pedal's tone (its Drive is `drive`, its level `gain_db`).
+    /// A drive pedal's tone and Tight (its Drive is `drive`, its level `gain_db`). A
+    /// setting saved before Tight existed gets its default (the struct's default).
     pub tone: f32,
+    pub drive_tight: f32,
     /// A compressor's input drive and its attack and release times (ms); its output level
     /// is `gain_db`, its dry/compressed blend `mix`.
     pub input_db: f32,
@@ -219,6 +276,13 @@ pub struct BlockSetting {
     /// A chorus's speed and swing (its mix is `mix`).
     pub chorus_rate: f32,
     pub chorus_depth: f32,
+    /// A delay's time: synced to the tempo (`delay_note`) or free (`delay_ms`), and its
+    /// feedback. Its echo level is `mix`, its cuts `low_cut` and `high_cut`, its ping-pong
+    /// `width`.
+    pub delay_sync: bool,
+    pub delay_note: DelayNoteSetting,
+    pub delay_ms: f32,
+    pub delay_feedback: f32,
 }
 
 impl Default for BlockSetting {
@@ -265,6 +329,16 @@ impl BlockSetting {
                 let chorus = gscore_guitar::ChorusKnobs::default();
                 (chorus.mix, 0.0, 0.0, 0.0, 1.0)
             }
+            BlockChoice::Delay => {
+                let delay = DelayKnobs::default();
+                (
+                    delay.level,
+                    0.0,
+                    delay.low_cut,
+                    delay.high_cut,
+                    delay.ping_pong,
+                )
+            }
             BlockChoice::Cabinet | BlockChoice::Empty => {
                 let impulse = ImpulseKnobs::default();
                 (
@@ -305,6 +379,7 @@ impl BlockSetting {
             treble: amp.treble,
             speaker: amp.speaker,
             tone: DriveKnobs::default().tone,
+            drive_tight: DriveKnobs::default().tight,
             input_db: CompressorKnobs::default().input_db,
             attack_ms: CompressorKnobs::default().attack_ms,
             release_ms: CompressorKnobs::default().release_ms,
@@ -315,6 +390,10 @@ impl BlockSetting {
             eq_band_shape: default_eq_band_shape(),
             chorus_rate: gscore_guitar::ChorusKnobs::default().rate_hz,
             chorus_depth: gscore_guitar::ChorusKnobs::default().depth_ms,
+            delay_sync: DelayKnobs::default().sync,
+            delay_note: DelayKnobs::default().note.into(),
+            delay_ms: DelayKnobs::default().time_ms,
+            delay_feedback: DelayKnobs::default().feedback,
         }
     }
 
@@ -369,6 +448,7 @@ impl BlockSetting {
                 drive: self.drive,
                 tone: self.tone,
                 level_db: self.gain_db,
+                tight: self.drive_tight,
             },
             compressor: CompressorKnobs {
                 input_db: self.input_db,
@@ -390,6 +470,16 @@ impl BlockSetting {
                 rate_hz: self.chorus_rate,
                 depth_ms: self.chorus_depth,
                 mix: self.mix,
+            },
+            delay: DelayKnobs {
+                sync: self.delay_sync,
+                note: self.delay_note.note(),
+                time_ms: self.delay_ms,
+                feedback: self.delay_feedback,
+                level: self.mix,
+                low_cut: self.low_cut,
+                high_cut: self.high_cut,
+                ping_pong: self.width,
             },
         }
         .sanitized()
@@ -569,6 +659,38 @@ mod tests {
         assert!(text.contains("\"voice\":\"lead\""), "{text}");
         let back: StringChains = serde_json::from_str(&text).unwrap();
         assert_eq!(back, chains);
+    }
+
+    #[test]
+    fn a_delay_keeps_its_knobs_through_the_settings_file() {
+        let fresh = BlockSetting::of(BlockChoice::Delay);
+        assert_eq!(fresh.knobs().delay, DelayKnobs::default());
+        let mut delay = fresh;
+        delay.delay_note = DelayNoteSetting::DottedEighth;
+        delay.delay_feedback = 0.6;
+        delay.width = 1.0;
+        let text = serde_json::to_string(&delay).unwrap();
+        assert!(text.contains("\"delay_note\":\"dotted_eighth\""), "{text}");
+        let back: BlockSetting = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, delay);
+        let knobs = back.knobs().delay;
+        assert_eq!(knobs.note, DelayNote::DottedEighth);
+        assert_eq!((knobs.feedback, knobs.ping_pong), (0.6, 1.0));
+        // A hand-edited feedback above its range is held below runaway.
+        delay.delay_feedback = 3.0;
+        assert!(delay.knobs().delay.feedback < 1.0);
+    }
+
+    #[test]
+    fn a_drive_saved_before_tight_gets_its_middle_and_keeps_a_chosen_one() {
+        let mut drive = BlockSetting::of(BlockChoice::Drive);
+        drive.drive_tight = 0.9;
+        let mut value = serde_json::to_value(&drive).unwrap();
+        assert_eq!(value["drive_tight"], serde_json::json!(0.9_f32));
+        let _ = value.as_object_mut().unwrap().remove("drive_tight");
+        let older: BlockSetting = serde_json::from_value(value).unwrap();
+        assert_eq!(older.knobs().drive.tight, DriveKnobs::default().tight);
+        assert_eq!(drive.knobs().drive.tight, 0.9);
     }
 
     #[test]

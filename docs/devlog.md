@@ -4372,6 +4372,248 @@ needed for a much larger font); owner listening check.
 - Mixer, drum-part, track-stomp, bus-stomp and bus-window snapshots were regenerated and
   checked.
 
+## 2026-11-09 — Palm mutes: longer, beefier, more of the note (M22 rest, 2.1)
 
+- **The performance keeps a palm mute's written length and velocity** and no longer stops
+  it dead (`shape_note`). The SoundFont path, which has no palm-muted samples, does what it
+  did: `midi::derive` plays a palm mute as an eighth at most, at 85 %, cut at its end. The
+  MIDI goldens did not change.
+- **The string** damps a palm-muted note with a shelving loss filter (pole plus zero, flat
+  below its corner at the fifth harmonic), run twice in the loop: the highs above a few kHz
+  go within tens of milliseconds while the fundamental rings 0.9 s (60 dB) on a low E,
+  shorter up the neck. The old one-pole could not reach that ratio and clamped the loop
+  gain: the fundamental died in about 0.3 s and the pitch went
+  as much as 10 cents flat (the second, detuned vibration took over). Now within 1.3
+  cents. Open strings compute exactly as before.
+- The palm-muted strike keeps the pick's hardness and is 1.4 times stronger, so the
+  fundamental starts about as loud as an open note's. A note's end while palm muted damps
+  with the stronger of the palm and the finger's release.
+- Tests: against the same note open on electric, steel and bass (fundamental within 6 dB,
+  attack kept, still sounding well past an eighth, highs 20 dB down or more, within 2 cents,
+  low strings ringing longer); a new note on the string ends a palm-muted one (string and
+  engine from a score); the shelf design. Engine tests that used a palm mute only as a short
+  damped note now use staccato.
+- Open: the owner's listening check of the reference passages' chugs and power-chord riff,
+  clean and through the Lead amp with Tight; a palm-mute amount knob if wanted.
 
+## 2026-11-10 — A Palm mute knob
 
+- The owner found the palm mute "merely improved" and asked for a knob. **Palm mute** (in
+  the string sound's Strike row, 0 light to 1 heavy, double-click for 0.5) is part of the
+  string model and so of every tone, preset and track sound; sounds saved before it get
+  0.5, which is yesterday's sound exactly. It moves the fundamental's decay (2.7 s to
+  0.3 s on a low E), the highs' (0.075 s to 0.012 s) and how many harmonics the palm keeps
+  (the 8th to the 3rd) on a log scale. Only palm-muted notes on the modelled strings change.
+- The shelf design no longer moves its pole down when the asked-for highs are out of reach
+  at the corner (it took the fundamental too: a heavy mute died before 0.1 s); it stays
+  at the corner.
+- Tests: light to heavy falls faster and is darker, in tune, the pitch still heard; the
+  knob changes nothing on an open note; an old settings entry reads as 0.5 and the model
+  clamps the knob; the knob is in the window. `sound_chain_strings` and
+  `sound_chain_pickup` and `mixer_stomp_track` snapshots regenerated (the knob in the
+  Strike row).
+
+## 2026-11-10 — The pick's attack (M22 rest, 2.2)
+
+- **Click and scrape** (`gscore-guitar/src/pick.rs`).
+  - The click is a bipolar slip-off pulse, 0.6 ms (soft pick) to 0.1 ms (hard).
+  - The scrape is noise above 1.2 kHz dying in a few milliseconds.
+  - Both go into what the pickup or bridge hears, not into the loop: the note is
+    unchanged after 50 ms.
+  - New knob **Pick noise**, 0 to 1, default 0.5, in the string sound's Strike row.
+- **A hard pluck starts sharp**, by the square of its strength, and settles within about
+  50 ms: tension modulation on top of the bend. New knob **Attack pitch**, cents at full
+  strength, 0 to 20, default 4.
+- The slip-off pulse in the loop is the existing strike rounding: its width already
+  follows hardness.
+- Both knobs are part of the string model and every tone, with the same defaults for every
+  kind of string.
+- Tests:
+  - the click is heard (more level in the first 4 ms, brighter) and the note after 50 ms
+    is the same;
+  - a hammer-on makes no click;
+  - a hard pluck starts sharp, more with the knob and less when soft, and is in tune from
+    80 ms.
+- Snapshots `sound_chain_strings`, `sound_chain_pickup` and `mixer_stomp_track` show the
+  knobs.
+- Strings benchmark (this machine): `main` 335 ms, palm mutes 337, pick attack 341 (budget
+  250; it was already over on `main`).
+- **Found on the way:** `test_amp.rs` `power_chord` never cleared its scratch block, so the
+  "chord" was a running sum of everything played: bass-heavy and about 25 dB too hot.
+  - The pick's scrape left a tiny offset in that sum, which moved the drive test.
+  - Fixed: the strings now add straight into the output.
+  - With a real chord, "a drive in front tightens the low end" is false even on the old
+    code. It is ignored, and the loudness test now checks an absolute bound.
+  - The amp's input pad and the drive were tuned against that signal, which fits the
+    owner's findings (the drive kills the chug, gain 10 not metal). See
+    `docs/handoff-m22-rest.md` 2.7; the owner decides.
+
+## 2026-11-11 — The amp recalibrated, a Tight knob on the drive
+
+- **Input pad 0.15 → 0.5** (+10.5 dB), measured on real strings: a hard chord on the
+  electric preset's humbucker, peaks against the body (crest factor) at half gain.
+  - The old pad came from a mis-summed test chord (fixed 2026-11-10), so on real strings
+    Clean was untouched and Crunch mild (crest 6.2 and 3.5 against 6.9 dry) while Lead was
+    already saturated (1.4).
+  - Now Clean breaks up a little on a hard chord (5.8), Crunch crunches (1.9), and Lead
+    has 10 dB more gain at every setting.
+  - A first try at 1.6 (+20.6 dB, matching the sustained level the old test chord gave)
+    squashed even the crunch to a square (1.46) and broke up the clean voice: too much.
+- **Trims:**
+  - Clean gives the pad back exactly (unity at no gain).
+  - Crunch and Lead at half gain are as loud as before (+14 and +22 dB over the dry chord),
+    so tones and mixes keep their level.
+  - The drive at its default Drive is as loud as before (-0.2 dB).
+- **Drive › Tight** (0 loose, 90 Hz, to 1 tight, 720 Hz, the old fixed value; default
+  0.5): the low cut of the clipping path.
+  - Measured through a lead at Drive 0.5 and 1, the low band (below about 250 Hz) against
+    the whole: amp alone 0.47; the old drive 0.27 and 0.23 (the chug the owner missed);
+    Tight 1 the same; Tight 0 0.43 and 0.51; the default 0.36 and 0.39.
+  - In the chain window and stored with the block (older settings get 0.5).
+- Tests:
+  - the calibration on real strings (clean stays clean, a crunch crunches but keeps some
+    peak, a lead more);
+  - the voices keep their levels;
+  - Tight keeps the chug loose and thins it tight;
+  - the drive's tests at string level;
+  - the amp's unit tests' sines scaled with the pad so they keep their meaning.
+- Audible change: every amp and drive block. Same loudness at half gain, more
+  distortion for the same knob, and a fuller low end through a drive at the default
+  Tight. Tones dialled in on the old Crunch or Lead may want less Gain.
+- Built-in tones with an amp or a drive: Texas Blues, British Crunch, Classic Rock Rhythm,
+  80s Lead, Singing Sustain, Modern Metal Rhythm, Djent Tight. Their knobs are unchanged
+  (the owner's designs), so the Crunch ones are clearly dirtier now: for the owner's ear.
+
+## 2026-11-11 — A computed acoustic body (M22 rest, 2.3)
+
+- `gscore-guitar` `Body`: a low cut below the air resonance, then eight narrow bells for
+  the air, top, back and the higher plate modes; Dreadnought and Classical tables.
+  - It runs once per modelled track on the sum of its strings. Commuted synthesis swapped
+    back, since all parts are linear.
+  - It stops computing once silent in and rung out (1 s).
+- String sound › Body row: None, Dreadnought, Classical, with **Body** (mix, 0.8) and
+  **Size** (0.5).
+  - Steel defaults to a dreadnought, nylon to a classical body, electric and bass to none.
+  - Sounds and built-in tones that do not name a body get their kind's (`BodySetting::
+    Unset`, as pickups).
+  - The bodies are not reset on stop or seek: they ring out with the strings' quick fade
+    instead of clicking.
+- Tests:
+  - the air and the top at their frequencies, at least 6 dB over the floor, little below
+    the air;
+  - Size moves them;
+  - a strummed chord within 2 dB of the bare strings, ringing briefly and then silent;
+  - None or no mix change nothing, and broken values stay finite;
+  - an old steel sound gets the dreadnought;
+  - the engine plays a steel track through it (the air resonance heard).
+- Snapshots `sound_chain_strings`, `sound_chain_pickup` and `mixer_stomp_track` show the
+  Body row.
+
+## 2026-11-11 — A tempo-synced digital delay block
+
+- Owner's wish for leads, with the acoustic body.
+- **Delay** chain block (`gscore-guitar` `echo.rs`):
+  - Time: **Sync** to a note value (1/2, 1/4., 1/4, 1/4T, 1/8., 1/8, 1/8T, 1/16., 1/16,
+    1/16T; default 1/8) or **Free** (1 ms to 2.5 s; default 350 ms).
+  - **Feedback** (0 to 0.95, default 0.35) and **Level** (the echoes under the full dry
+    signal, default 0.35).
+  - **Low cut** (120 Hz) and **High cut** (6 kHz), passed by every repeat.
+  - **Ping-pong** (0 middle, 1 alternating; default 0).
+  - A changed time glides over about 40 ms.
+- **Tempo:**
+  - `Scheduler::bpm` is the written tempo at the position times the playback speed.
+  - `SynthEngine` hands it to every chain (tracks, drum parts, buses, master) before each
+    block (`Chain::set_tempo`); WAV export renders through the same path.
+  - A delay keeps its chain ringing while echoes are on their way, since the chain's own
+    tail hold (0.5 s of silence) would cut an echo that comes later.
+- Settings: `delay_sync`, `delay_note` (`dotted_eighth`, ...), `delay_ms`, `delay_feedback`;
+  the level, cuts and ping-pong use the block's `mix`, `low_cut`, `high_cut` and `width`.
+- Tests:
+  - an echo on a dotted eighth at 100 BPM, and free time ignoring the tempo;
+  - repeats fading and alternating with ping-pong, and the trail's end known;
+  - a new tempo gliding, and a broken value emptying the lines;
+  - the engine echoing a half note after a second at 120 BPM and after two seconds at
+    half speed (a 1.4 s silence first);
+  - the settings round trip;
+  - the window: sync, a note value, free time.
+- New snapshot `sound_chain_delay`.
+
+## 2026-11-11 — Drums: a hi-hat on one side, missing hits, ring, part pans
+
+The owner reported drum beats that sometimes do not play, a sound on one side only for a
+few beats, drums too quiet and too short, and asked for a pan per drum part. Measured on
+FluidR3_GM (the owner's SoundFont):
+
+- **One side only:**
+  - FluidR3's hi-hats (and its snare) are stereo: two regions, panned left and right, in
+    one exclusive class (the choke group).
+  - RustySynth reused any sounding voice of the class, including the voice this very
+    note had just started for the other side, so every hi-hat played on the right only
+    (left 0.0000, right 0.0064).
+  - Fork fix: a note-on id per voice; a region never chokes its own note's voices.
+  - The hi-hat is now on both sides (0.008 / 0.012, as the kit pans it), and the snare,
+    which lost half too, is about 6 dB louder.
+- **Missing hits:**
+  - RustySynth plays 64 voices at most and steals the least important one beyond that.
+  - Five of six band songs reached 64 in busy passages (the MIDI through FluidR3), and a
+    stolen voice is a missing hit or half of a stereo drum.
+  - The engine now asks for 256 (RustySynth's most); the busiest song peaks at 107.
+- **Ring:**
+  - On a drum channel a note-off no longer cuts a one-shot sample: a crash written as a
+    sixteenth rings out. Looped samples still release.
+  - A drum struck again releases its last hit, so voices do not pile up.
+- **Parts lined up:** the mixer read each drum part as the fork's last whole block while the
+  channels were copied from the current read position. An audio callback of another
+  size than 64 frames shifted the parts against the channels (dropped and repeated
+  stretches). The fork now copies the parts with the channels.
+- **Part pans:**
+  - Each drum part strip has a Pan knob where a track has its knobs (its name stays in
+    the labels below).
+  - The pan moves the whole stereo hit: towards a side the far channel fades and folds
+    into the near one at 0.7, so half of a stereo sample is not lost as with a balance.
+  - Kept with the song (`pan` in the part's state, written only off centre), undoable as
+    one step per drag, in WAV export too.
+- Louder: the fixes make the snare and hi-hats about 6 dB louder and every drum ring out.
+  The kit's default part tones are still the owner's to design (they stay dry).
+- Tests:
+  - a stereo hit in a choke group on both sides, and the next hit of the group choking
+    it;
+  - a drum ringing past its note-off while a melodic note stops, and retriggers not
+    piling up;
+  - parts adding up to the channel for calls of any size;
+  - a part's pan moving the whole hit and only its own part;
+  - the pan saved and read back;
+  - the mixer's pan knob as one undo step.
+- The test SoundFont builder takes zones now (`stereo_choke_drum_soundfont`); the old
+  fonts come out byte for byte the same.
+- Snapshot `mixer_drum_parts` shows the pan knobs.
+
+## 2026-11-11 — The drum kit wandering left and right with the band
+
+The owner: cymbals wander from left to right in a song with all its tracks playing, not
+with the drum track soloed (a band's cover, measured locally only, never in the repo).
+
+- Through the engine with FluidR3, every drum part's balance was the same with and
+  without the band, but the drum track's own balance swung from -16 to +12 dB with the
+  band (-4 to +1 dB soloed): its strip's pan was being changed.
+- **Cause:**
+  - Short (staccato, so "damped") crashes borrowed a melodic channel like a damped
+    guitar note, which handed that channel to the drum strip.
+  - When a guitar next borrowed the same channel, its setup (its own pan, 21 or 110)
+    came before its note-on and so reached the strip that borrowed it last: the whole
+    kit sat hard left or right until the next time.
+  - Those crashes were also lost: a borrowed channel is melodic (no drums there), and a
+    drum strip only hears its own channel's parts. That was one of the "missing beats".
+  - Two guitars sharing borrowed channels moved each other's pan and volume the same way.
+- **Fixes:**
+  - A drum track's notes always stay on the kit's channel (`midi::drum_note`: no pitch
+    shape, no damped end, no fade; drums do not bend and ring out whatever their
+    note-off). MIDI out and MIDI files get this too.
+  - The mixer takes volume, pan and sends only from a strip's own channel; a borrowed
+    channel's setup no longer reaches any strip.
+- After the fix the drum track's balance with the band equals its soloed balance, and the
+  formerly lost crashes are heard.
+- Tests:
+  - a staccato hit on a drum track never leaves the kit's channel;
+  - a borrowed channel's setup moves no strip, while a track's own channel still sets
+    its strip (a mixer unit test).

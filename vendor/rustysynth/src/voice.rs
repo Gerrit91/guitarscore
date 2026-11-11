@@ -50,6 +50,8 @@ pub(crate) struct Voice {
     pub(crate) current_chorus_send: f32,
 
     exclusive_class: i32,
+    /// GuitarScore fork: the note-on that started it (all of a note's regions share it).
+    note: u64,
     channel: i32,
     key: i32,
     velocity: i32,
@@ -103,6 +105,7 @@ impl Voice {
             current_reverb_send: 0_f32,
             current_chorus_send: 0_f32,
             exclusive_class: 0,
+            note: 0,
             channel: 0,
             key: 0,
             velocity: 0,
@@ -127,8 +130,16 @@ impl Voice {
         }
     }
 
-    pub(crate) fn start(&mut self, region: &RegionPair, channel: i32, key: i32, velocity: i32) {
+    pub(crate) fn start(
+        &mut self,
+        region: &RegionPair,
+        channel: i32,
+        key: i32,
+        velocity: i32,
+        note: u64,
+    ) {
         self.exclusive_class = region.get_exclusive_class();
+        self.note = note;
         self.channel = channel;
         self.key = key;
         self.velocity = velocity;
@@ -298,6 +309,16 @@ impl Voice {
 
     pub(crate) fn voice_length(&self) -> usize {
         self.voice_length
+    }
+
+    /// GuitarScore fork: the note-on that started it.
+    pub(crate) fn note(&self) -> u64 {
+        self.note
+    }
+
+    /// GuitarScore fork: whether its sample loops (a one-shot drum hit does not).
+    pub(crate) fn loops(&self) -> bool {
+        self.oscillator.loops()
     }
 
     pub(crate) fn exclusive_class(&self) -> i32 {

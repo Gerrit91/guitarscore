@@ -12,12 +12,14 @@
 #![warn(clippy::arithmetic_side_effects)]
 
 mod amp;
+mod body;
 mod chain;
 mod chorus;
 mod compressor;
 mod convolver;
 mod delay;
 mod drive;
+mod echo;
 mod eq;
 mod fft;
 mod filters;
@@ -25,6 +27,7 @@ mod impulse;
 mod knobs;
 mod model;
 mod oversample;
+mod pick;
 mod pickup;
 mod reverb;
 mod string;
@@ -32,10 +35,12 @@ mod string_loop;
 mod tail;
 
 pub use amp::{AmpKnobs, AmpVoice};
+pub use body::{Body, BodyKind};
 pub use chain::{BLOCKS, BlockKind, Chain, ChainSpec, PreparedChain};
 pub use chorus::{CENTRE_MS, ChorusKnobs};
 pub use compressor::{CompRatio, CompressorKnobs};
 pub use drive::DriveKnobs;
+pub use echo::{DelayKnobs, DelayNote, MAX_DELAY_SECONDS};
 pub use eq::{BANDS, BandShape, EqKnobs, EqResponse};
 pub use impulse::{ImpulseError, ImpulseResponse, MAX_SECONDS};
 pub use knobs::{BlockSettings, ImpulseKnobs, ReverbKnobs, RoomKnobs, knob_ranges};

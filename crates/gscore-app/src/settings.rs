@@ -180,6 +180,52 @@ impl From<gscore_guitar::Pickup> for PickupSetting {
     }
 }
 
+/// The acoustic body of a string sound as the settings file keeps it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BodySetting {
+    /// Not set (a sound saved before bodies existed): its kind's preset decides (a
+    /// dreadnought for steel strings, a classical body for nylon), see
+    /// [`StringSound::for_kind`].
+    #[default]
+    Unset,
+    None,
+    Dreadnought,
+    Classical,
+}
+
+impl BodySetting {
+    /// The bodies a user can choose, in the order the window shows them.
+    pub const CHOICES: [BodySetting; 3] = [
+        BodySetting::None,
+        BodySetting::Dreadnought,
+        BodySetting::Classical,
+    ];
+
+    pub fn body(self) -> gscore_guitar::BodyKind {
+        match self {
+            BodySetting::Unset | BodySetting::None => gscore_guitar::BodyKind::None,
+            BodySetting::Dreadnought => gscore_guitar::BodyKind::Dreadnought,
+            BodySetting::Classical => gscore_guitar::BodyKind::Classical,
+        }
+    }
+
+    /// Its name.
+    pub fn label(self) -> &'static str {
+        self.body().label()
+    }
+}
+
+impl From<gscore_guitar::BodyKind> for BodySetting {
+    fn from(body: gscore_guitar::BodyKind) -> Self {
+        match body {
+            gscore_guitar::BodyKind::None => BodySetting::None,
+            gscore_guitar::BodyKind::Dreadnought => BodySetting::Dreadnought,
+            gscore_guitar::BodyKind::Classical => BodySetting::Classical,
+        }
+    }
+}
+
 /// One kind of modelled string as the user dialed it in: the knobs of
 /// [`gscore_guitar::StringModel`], kept as plain numbers in the settings file.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -207,6 +253,20 @@ pub struct StringSound {
     pub pickup: PickupSetting,
     #[serde(default)]
     pub pickup_position: f32,
+    /// How hard a palm mutes, light (0) to heavy (1); a sound saved before the knob
+    /// existed gets the middle (the struct's default, as every preset).
+    pub palm_mute: f32,
+    /// The pick's click and the sharp start of a hard pluck; a sound saved before these
+    /// knobs gets the presets' values (the struct's default).
+    pub pick_noise: f32,
+    pub attack_pitch: f32,
+    /// The acoustic body, how much of it and its size. A sound saved before bodies
+    /// existed has none set (not the struct's default, an electric's none): its kind
+    /// decides.
+    #[serde(default)]
+    pub body: BodySetting,
+    pub body_mix: f32,
+    pub body_size: f32,
 }
 
 impl Default for StringSound {
@@ -237,6 +297,12 @@ impl From<gscore_guitar::StringModel> for StringSound {
             detune: model.detune,
             pickup: model.pickup.into(),
             pickup_position: model.pickup_position,
+            palm_mute: model.palm_mute,
+            pick_noise: model.pick_noise,
+            attack_pitch: model.attack_pitch,
+            body: model.body.into(),
+            body_mix: model.body_mix,
+            body_size: model.body_size,
         }
     }
 }
@@ -262,17 +328,29 @@ impl StringSound {
             detune: self.detune,
             pickup: self.pickup.pickup(),
             pickup_position: self.pickup_position,
+            palm_mute: self.palm_mute,
+            pick_noise: self.pick_noise,
+            attack_pitch: self.attack_pitch,
+            body: self.body.body(),
+            body_mix: self.body_mix,
+            body_size: self.body_size,
         }
         .sanitized()
     }
 
-    /// This sound for strings of `kind`: a pickup not set comes from the kind's preset
-    /// (an electric's humbucker; none for an acoustic or the bass).
+    /// This sound for strings of `kind`: a pickup or a body not set comes from the kind's
+    /// preset (an electric's humbucker, none for an acoustic or the bass; a dreadnought
+    /// for steel strings, a classical body for nylon, none for the others).
     pub fn for_kind(mut self, kind: gscore_play::StringKind) -> Self {
+        let preset = gscore_audio::default_string_model(kind);
         if self.pickup == PickupSetting::Unset {
-            let preset = gscore_audio::default_string_model(kind);
             self.pickup = preset.pickup.into();
             self.pickup_position = preset.pickup_position;
+        }
+        if self.body == BodySetting::Unset {
+            self.body = preset.body.into();
+            self.body_mix = preset.body_mix;
+            self.body_size = preset.body_size;
         }
         self
     }
@@ -1033,6 +1111,55 @@ impl Settings {
 mod tests {
     use super::*;
     use crate::state::ThemeChoice;
+
+    #[test]
+    fn sounds_saved_before_the_palm_mute_knob_get_its_middle() {
+        let mut sound = StringSound::from(gscore_audio::default_string_model(
+            gscore_play::StringKind::Bass,
+        ));
+        sound.palm_mute = 0.9;
+        let mut value = serde_json::to_value(sound).unwrap_or_default();
+        assert!(
+            value
+                .as_object_mut()
+                .and_then(|fields| fields.remove("palm_mute"))
+                .is_some()
+        );
+        let older: StringSound = serde_json::from_value(value).unwrap_or_default();
+        assert_eq!(older.palm_mute, 0.5);
+        assert_eq!(older.model().palm_mute, 0.5);
+        // A chosen amount is kept, and the model keeps it in range.
+        assert_eq!(sound.model().palm_mute, 0.9);
+        sound.palm_mute = 7.0;
+        assert_eq!(sound.model().palm_mute, 1.0);
+    }
+
+    #[test]
+    fn sounds_saved_before_bodies_get_their_kinds_body() {
+        use gscore_play::StringKind;
+        let sounds = StringSounds::default();
+        let text = serde_json::to_string(&sounds).unwrap_or_default();
+        let mut value: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+        for kind in ["nylon", "steel", "electric", "bass"] {
+            if let Some(sound) = value.get_mut(kind).and_then(|v| v.as_object_mut()) {
+                assert!(sound.remove("body").is_some(), "{kind}");
+                sound.remove("body_mix");
+                sound.remove("body_size");
+            }
+        }
+        let older: StringSounds = serde_json::from_value(value).unwrap_or_default();
+        assert_eq!(older.get(StringKind::Steel).body, BodySetting::Dreadnought);
+        assert_eq!(older.get(StringKind::Nylon).body, BodySetting::Classical);
+        assert_eq!(older.get(StringKind::Electric).body, BodySetting::None);
+        assert_eq!(older.get(StringKind::Bass).body, BodySetting::None);
+        let steel = older.get(StringKind::Steel).model();
+        assert_eq!(steel.body, gscore_guitar::BodyKind::Dreadnought);
+        assert!(steel.body_mix > 0.0);
+        // A chosen "none" on a steel string is kept.
+        let mut chosen = sounds.steel;
+        chosen.body = BodySetting::None;
+        assert_eq!(chosen.for_kind(StringKind::Steel).body, BodySetting::None);
+    }
 
     #[test]
     fn sounds_saved_before_pickups_get_their_kinds_pickup() {

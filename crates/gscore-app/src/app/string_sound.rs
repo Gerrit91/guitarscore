@@ -211,7 +211,8 @@ fn value_text(value: f32, unit: &str) -> String {
     }
 }
 
-/// The knobs of one kind of string, in three groups. Returns whether any moved.
+/// The knobs of one kind of string, in groups (the picking hand's, palm mute included,
+/// first). Returns whether any moved.
 pub(super) fn sound_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
     let mut changed = false;
     group(ui, "Strike", |ui| {
@@ -249,6 +250,44 @@ pub(super) fn sound_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
             false,
             "The shape of the strike: a sharp snap (0), bright and buzzy, to a rounded \
              pluck (1), soft. Lower notes sound less synthetic when it is rounder.",
+        )
+        .changed;
+        changed |= round_knob(
+            ui,
+            &mut sound.pick_noise,
+            ranges::PICK_NOISE,
+            "Pick noise",
+            "",
+            0.5,
+            false,
+            "The pick's click as it slips off the string and the short scrape of its edge: \
+             0 none, 1 full. Harder strikes click louder; a soft pick (low hardness) clicks \
+             duller and scrapes a little longer.",
+        )
+        .changed;
+        changed |= round_knob(
+            ui,
+            &mut sound.attack_pitch,
+            ranges::ATTACK_PITCH,
+            "Attack pitch",
+            " ct",
+            4.0,
+            false,
+            "How sharp a hard pluck starts, in cents: the string's tension rises with its \
+             swing and settles within about 50 ms. Softer plucks start less sharp.",
+        )
+        .changed;
+        changed |= round_knob(
+            ui,
+            &mut sound.palm_mute,
+            ranges::PALM_MUTE,
+            "Palm mute",
+            "",
+            0.5,
+            false,
+            "How hard the palm mutes, for palm-muted notes only: light (0), the hand right \
+             at the bridge, the note rings on and keeps some brightness; heavy (1), the hand \
+             further onto the strings, a short, dark, tight chug.",
         )
         .changed;
     });
@@ -345,6 +384,9 @@ pub(super) fn sound_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
         .changed;
     });
     group(ui, "Pickup", |ui| changed |= pickup_knobs(ui, sound));
+    group(ui, "Body", |ui| {
+        changed |= super::string_body::body_knobs(ui, sound);
+    });
     // Not "Tone": that is the saved tones' word in the same window.
     group(ui, "Output", |ui| {
         changed |= round_knob(

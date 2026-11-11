@@ -150,6 +150,17 @@ impl Scheduler {
         std::mem::replace(&mut self.sequence, sequence)
     }
 
+    /// How much faster (above 1) or slower than written it plays.
+    pub fn tempo_scale(&self) -> f32 {
+        self.tempo_scale
+    }
+
+    /// The tempo it plays at now, quarter notes a minute: the written tempo at the
+    /// position times the tempo scale.
+    pub fn bpm(&self) -> f32 {
+        self.sequence.tempo.bpm_at(self.position) as f32 * self.tempo_scale
+    }
+
     /// Changes the tempo scale (clamped to [`TEMPO_SCALE_RANGE`]) from now on.
     pub fn set_tempo_scale(&mut self, scale: f32, elapsed_micros: u64) {
         let scale = if scale.is_finite() {

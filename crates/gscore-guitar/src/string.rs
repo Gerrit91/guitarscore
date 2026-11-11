@@ -25,6 +25,7 @@ use std::f32::consts::{PI, TAU};
 
 use crate::filters::{Biquad, DcBlocker, Noise};
 use crate::model::StringModel;
+use crate::pick::{PickNoise, Tension};
 use crate::pickup::PickupComb;
 use crate::string_loop::{Loop, Tuning};
 
@@ -47,6 +48,24 @@ const SECOND_HIGH_DECAY: f32 = 0.6;
 const BRIDGE_AT: f32 = 1_000.0;
 /// Quality of the low cut (Butterworth).
 const LOW_CUT_Q: f32 = 0.707;
+/// A palm-muted string's 60 dB decay times and how far up it keeps the harmonics, at the
+/// light and the heavy end of the model's palm-mute knob (the middle is their geometric
+/// mean: 0.9 s, 0.03 s and the fifth harmonic). The fundamental's time is for a low E
+/// (82.4 Hz): lower notes ring longer, higher ones shorter (by the square root of the
+/// pitch, within [`PALM_DECAY_RANGE`]). The hand at the bridge takes the highs (around
+/// 2 kHz) much sooner, and above the kept harmonics (the loss filter's corner) everything,
+/// so the pitch and the low mids stay heard while the brightness is gone.
+const PALM_DECAY: (f32, f32) = (2.7, 0.3);
+const PALM_DECAY_AT: f32 = 82.4;
+const PALM_DECAY_RANGE: (f32, f32) = (0.1, 3.0);
+const PALM_HIGH_DECAY: (f32, f32) = (0.075, 0.012);
+const PALM_KEEPS: (f32, f32) = (25.0 / 3.0, 3.0);
+/// A chug is played hard, and the hand takes energy out of the string from the start:
+/// the strike of a palm-muted note is this much stronger, so its low end is as full as an
+/// open note's.
+const PALM_STRIKE: f32 = 1.4;
+/// The decay times (fundamental, around 2 kHz) once the fretting finger lets go.
+const RELEASED: (f32, f32) = (0.3, 0.06);
 
 /// How a note is set going.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -75,7 +94,8 @@ pub struct Pluck {
     pub velocity: f32,
     /// How it is set going.
     pub attack: Attack,
-    /// Palm muted: short and dull.
+    /// Palm muted: the hand at the bridge damps the highs at once and the note sooner, but
+    /// the pick's attack, the pitch and the low end stay.
     pub palm_mute: bool,
     /// A dead note: only the strike, no pitch.
     pub dead: bool,
@@ -88,7 +108,7 @@ pub struct Pluck {
 pub enum Release {
     /// The fretting finger lets go: the string fades within a fraction of a second.
     Natural,
-    /// Stopped dead (staccato, palm mute, the end of a dead note).
+    /// Stopped dead (staccato, the end of a dead note or a scrape).
     Damped,
 }
 
@@ -98,6 +118,8 @@ enum Damping {
     Ringing,
     PalmMuted,
     Released,
+    /// Released while the palm still mutes: whichever of the two damps more.
+    PalmReleased,
     Damped,
     Dead,
 }
@@ -119,6 +141,9 @@ pub struct StringVoice {
     low_cut: Biquad,
     tone: Biquad,
     noise: Noise,
+    /// The pick's click and scrape, and the sharp start of a hard pluck.
+    pick: PickNoise,
+    tension: Tension,
     /// The note's frequency and the bend on top of it (cents).
     frequency: f32,
     bend: f32,
@@ -163,6 +188,8 @@ impl StringVoice {
             low_cut: Biquad::highpass(sample_rate, model.low_cut, LOW_CUT_Q),
             tone: Biquad::lowpass(sample_rate, model.tone, model.resonance),
             noise: Noise::new(0x9E37_79B9),
+            pick: PickNoise::new(sample_rate),
+            tension: Tension::default(),
             frequency: 110.0,
             bend: 0.0,
             damping: Damping::Released,
@@ -232,8 +259,7 @@ impl StringVoice {
         self.frequency = frequency;
         self.set_damping(damping, true);
         self.level = self.level_target;
-        self.update(0);
-        self.retune_pickup(true);
+        self.tension = Tension::default();
         let (amplitude, hardness, noise) = match pluck.attack {
             Attack::Pick => (1.0, self.model.hardness, 0.08),
             Attack::Legato => (0.7, self.model.hardness * 0.5, 0.02),
@@ -242,9 +268,16 @@ impl StringVoice {
             Attack::Pop => (1.3, 1.0, 0.1),
             Attack::Scrape => (0.6, 1.0, 1.0),
         };
+        // How much of a pick's click the attack makes: a finger on the fret only a
+        // little, a scrape is all noise already.
+        let click = match pluck.attack {
+            Attack::Pick | Attack::Slap | Attack::Pop => 1.0,
+            Attack::Tap => 0.3,
+            Attack::Legato | Attack::Scrape => 0.0,
+        };
         let hardness = if pluck.harmonic {
             hardness * 0.3
-        } else if pluck.dead || pluck.palm_mute {
+        } else if pluck.dead {
             hardness * 0.5
         } else {
             hardness
@@ -252,6 +285,19 @@ impl StringVoice {
         // Harder strikes are brighter; a soft one rounds the edge of the pluck.
         let hardness = (hardness * (0.4 + 0.6 * velocity)).clamp(0.02, 1.0);
         let amplitude = amplitude * velocity.powf(1.3);
+        self.pick
+            .start(amplitude * click * self.model.pick_noise, hardness);
+        if !pluck.dead && !pluck.harmonic {
+            self.tension.strike(amplitude, self.model.attack_pitch);
+        }
+        let amplitude = if pluck.palm_mute && !pluck.dead {
+            amplitude * PALM_STRIKE
+        } else {
+            amplitude
+        };
+        // Tuned after the strike, so a hard pluck starts sharp.
+        self.update(0);
+        self.retune_pickup(true);
         self.excite(amplitude, hardness, PICK_CONTACT, noise);
     }
 
@@ -266,6 +312,7 @@ impl StringVoice {
     /// Ends the note.
     pub fn release(&mut self, release: Release) {
         let damping = match release {
+            Release::Natural if self.damping == Damping::PalmMuted => Damping::PalmReleased,
             Release::Natural => Damping::Released,
             Release::Damped => Damping::Damped,
         };
@@ -292,6 +339,7 @@ impl StringVoice {
         if !self.sounding || out.is_empty() {
             return;
         }
+        self.tension.settle(out.len(), self.sample_rate);
         self.settle(out.len());
         self.update(out.len());
         self.retune_pickup(false);
@@ -299,6 +347,7 @@ impl StringVoice {
         let level_step = (self.level_target - self.level) / out.len() as f32;
         let second = self.model.second > 0.0;
         let bridge = self.model.bridge;
+        let picking = self.pick.is_active();
         let mut peak = 0.0_f32;
         for sample in out.iter_mut() {
             let [first_loop, second_loop] = &mut self.loops;
@@ -316,9 +365,10 @@ impl StringVoice {
             }
             let force = (swing - self.last) * self.bridge_scale;
             self.last = swing;
+            let click = if picking { self.pick.next() } else { 0.0 };
             let heard = self
                 .pickup
-                .process(pickup, swing * (1.0 - bridge) + force * bridge);
+                .process(pickup, swing * (1.0 - bridge) + force * bridge + click);
             self.level += level_step;
             let out_sample = self
                 .tone
@@ -341,12 +391,19 @@ impl StringVoice {
             string.clear();
         }
         self.dc.reset();
+        self.pick.clear();
+        self.tension = Tension::default();
         self.pickup.clear();
         self.low_cut.reset();
         self.tone.reset();
         self.last = 0.0;
         self.peak = 0.0;
         self.sounding = false;
+    }
+
+    /// The pitch's offset from the note, in cents: the bend and the sharp start of a pluck.
+    fn cents(&self) -> f32 {
+        self.bend + self.tension.cents()
     }
 
     fn glide_samples(&self) -> usize {
@@ -358,11 +415,31 @@ impl StringVoice {
     fn damping_values(&self, damping: Damping) -> (f32, f32) {
         match damping {
             Damping::Ringing => (self.model.sustain_at(self.frequency), self.model.brilliance),
-            Damping::PalmMuted => (0.18, 0.03),
-            Damping::Released => (0.3, 0.06),
+            Damping::PalmMuted => self.palm_values(),
+            Damping::Released => RELEASED,
+            Damping::PalmReleased => {
+                let (decay, high_decay) = self.palm_values();
+                (decay.min(RELEASED.0), high_decay.min(RELEASED.1))
+            }
             Damping::Damped => (0.04, 0.01),
             Damping::Dead => (0.015, 0.005),
         }
+    }
+
+    /// The palm mute's decay times at the current pitch (never longer than the string rings
+    /// open).
+    fn palm_values(&self) -> (f32, f32) {
+        let (low, high) = PALM_DECAY_RANGE;
+        let decay = (self.palm(PALM_DECAY) * (PALM_DECAY_AT / self.frequency.max(8.0)).sqrt())
+            .clamp(low, high)
+            .min(self.model.sustain_at(self.frequency));
+        (decay, self.palm(PALM_HIGH_DECAY).min(self.model.brilliance))
+    }
+
+    /// The value between `(light, heavy)` that the palm-mute knob sets (on a log scale).
+    fn palm(&self, (light, heavy): (f32, f32)) -> f32 {
+        let amount = self.model.palm_mute.clamp(0.0, 1.0);
+        light * (heavy / light).powf(amount)
     }
 
     /// Sets how the string is damped, at once or settling over a few milliseconds.
@@ -396,7 +473,7 @@ impl StringVoice {
     /// Points the pickup's comb at the current pitch (bend included): at once for a new
     /// note, gliding for a bend.
     fn retune_pickup(&mut self, jump: bool) {
-        let frequency = (self.frequency * (self.bend / 1200.0).exp2()).max(8.0);
+        let frequency = (self.frequency * (self.cents() / 1200.0).exp2()).max(8.0);
         self.pickup.retune(
             self.sample_rate / frequency,
             self.model.pickup_position,
@@ -407,13 +484,18 @@ impl StringVoice {
     /// Retunes both loops for the current pitch and damping; their delays glide to the new
     /// values over `glide` samples (at once if 0).
     fn update(&mut self, glide: usize) {
-        let frequency = (self.frequency * (self.bend / 1200.0).exp2()).max(8.0);
+        let frequency = (self.frequency * (self.cents() / 1200.0).exp2()).max(8.0);
         let first = Tuning {
             frequency,
             decay: self.decay,
             high_decay: self.high_decay,
             stiffness: self.model.stiffness,
             stages: self.model.stiffness_stages,
+            corner: if matches!(self.damping, Damping::PalmMuted | Damping::PalmReleased) {
+                frequency * self.palm(PALM_KEEPS)
+            } else {
+                0.0
+            },
         };
         // The second vibration: a little detuned (half each way would move the heard
         // pitch; the first stays exact), and it gives its energy to the bridge sooner.

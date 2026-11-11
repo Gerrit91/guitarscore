@@ -105,6 +105,7 @@ pub struct BlockSettings {
     pub compressor: CompressorKnobs,
     pub eq: crate::EqKnobs,
     pub chorus: crate::ChorusKnobs,
+    pub delay: crate::DelayKnobs,
 }
 
 /// The knob ranges, for user interfaces and for sanitizing: `(lowest, highest)`.
@@ -145,6 +146,10 @@ pub mod knob_ranges {
     pub const CHORUS_RATE: (f32, f32) = (0.05, 5.0);
     /// A chorus's swing, ms.
     pub const CHORUS_DEPTH: (f32, f32) = (0.2, 8.0);
+    /// A delay's free time, ms.
+    pub const DELAY_MS: (f32, f32) = (1.0, 2_500.0);
+    /// A delay's feedback: how much of each echo comes back.
+    pub const FEEDBACK: (f32, f32) = (0.0, 0.95);
 }
 
 fn fit(value: f32, (low, high): (f32, f32), fallback: f32) -> f32 {
@@ -208,6 +213,7 @@ impl BlockSettings {
                 drive: amp(self.drive.drive, d.drive),
                 tone: amp(self.drive.tone, d.tone),
                 level_db: fit(self.drive.level_db, knob_ranges::LEVEL, d.level_db),
+                tight: amp(self.drive.tight, d.tight),
             },
             compressor: CompressorKnobs {
                 input_db: fit(self.compressor.input_db, knob_ranges::COMP_GAIN, c.input_db),
@@ -227,6 +233,7 @@ impl BlockSettings {
             },
             eq: self.eq.sanitized(),
             chorus: self.chorus.sanitized(),
+            delay: self.delay.sanitized(),
         }
     }
 }

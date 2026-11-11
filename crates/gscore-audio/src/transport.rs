@@ -54,6 +54,8 @@ pub(crate) enum Command {
     PartChainSettings(usize, usize, ChainKnobs),
     /// The mixing level (0-127, 127 unity) of one part of a drum track.
     PartLevel(usize, usize, u8),
+    /// The pan (0 left, 64 centre, 127 right) of one part of a drum track.
+    PartPan(usize, usize, u8),
     /// Mutes or unmutes one part of a drum track.
     PartMute(usize, usize, bool),
     /// Soloes or un-soloes one part of a drum track.
@@ -108,6 +110,11 @@ impl Transport {
     /// The sequence loaded, if any.
     pub(crate) fn sequence(&self) -> Option<&Arc<Sequence>> {
         self.scheduler.as_ref().map(Scheduler::sequence)
+    }
+
+    /// The tempo it plays at now (with the playback speed), if a sequence is loaded.
+    pub(crate) fn bpm(&self) -> Option<f32> {
+        self.scheduler.as_ref().map(Scheduler::bpm)
     }
 
     /// The position in ticks (0 without a sequence).
@@ -192,6 +199,7 @@ impl Transport {
             | Command::PartChain(..)
             | Command::PartChainSettings(..)
             | Command::PartLevel(..)
+            | Command::PartPan(..)
             | Command::PartMute(..)
             | Command::PartSolo(..)
             | Command::MasterChain(..)

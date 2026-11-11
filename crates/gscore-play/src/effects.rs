@@ -12,13 +12,10 @@ use crate::tempo::PPQ;
 
 /// A quarter note in ticks.
 const QUARTER: u64 = PPQ as u64;
-/// Velocity shares (percent) of a ghost note, a palm-muted note and the two accents.
+/// Velocity shares (percent) of a ghost note and the two accents.
 const GHOST_PERCENT: u32 = 55;
-const PALM_MUTE_PERCENT: u32 = 85;
 const ACCENT_PERCENT: u32 = 125;
 const HEAVY_ACCENT_PERCENT: u32 = 145;
-/// A palm-muted note stops after an eighth note at most.
-const PALM_MUTE_TICKS: u64 = QUARTER / 2;
 /// A staccato note sounds half its length, at most an eighth note.
 const STACCATO_TICKS: u64 = QUARTER / 2;
 /// A let-ring note holds at most this long past its own end when no note follows.
@@ -50,7 +47,9 @@ pub(crate) fn scale(velocity: u8, percent: u32) -> u8 {
     u8::try_from(scaled.clamp(1, 127)).unwrap_or(127)
 }
 
-/// Applies the note's own effects to its velocity and length.
+/// Applies the note's own effects to its velocity and length. A palm mute changes neither
+/// here: the modelled strings play it at full strength and its written length (the palm
+/// damps the string), and the SoundFont path shortens it ([`crate::midi`]).
 pub(crate) fn shape_note(sounding: &mut Sounding, note: &NoteView<'_>) {
     let length = sounding.end.saturating_sub(sounding.start);
     if note.is_ghost() {
@@ -62,11 +61,6 @@ pub(crate) fn shape_note(sounding: &mut Sounding, note: &NoteView<'_>) {
         }
         Some(_) => sounding.velocity = scale(sounding.velocity, ACCENT_PERCENT),
         None => {}
-    }
-    if note.is_palm_muted() {
-        sounding.velocity = scale(sounding.velocity, PALM_MUTE_PERCENT);
-        sounding.end = sounding.start.saturating_add(length.min(PALM_MUTE_TICKS));
-        sounding.damp = true;
     }
     if note.is_staccato() {
         sounding.end = sounding

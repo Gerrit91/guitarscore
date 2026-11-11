@@ -23,3 +23,16 @@ apply to it.
   from the channel's own block, so the mixer can give each drum its own chain and still
   have one strip per drum track. `render_channels` fills them; `part_block(channel, part,
   side)` reads one back. The parts of a channel add up to exactly its block.
+  `part_block` gives the parts of exactly the samples the last `render_channels` call
+  gave (copied from the same read position), so a call that does not line up with the
+  synthesizer's blocks still gets matching parts (2026-11-11; before, it gave the last
+  whole block, and the parts dropped and repeated stretches against the channels).
+- **Exclusive classes and stereo samples** (2026-11-11): every note-on has an id
+  (`Voice::note`), and a region never takes the voice of another region of the same
+  note-on in its exclusive class. A stereo hi-hat is two regions (left, right) of one
+  class; upstream the second took the first's voice, so FluidR3's hi-hats (and snare)
+  played on one side only. Earlier notes of the class are still choked.
+- **Drums ring out** (2026-11-11): on a percussion channel a note-off does not release a
+  one-shot sample (a drum rings whatever the written note's length, as a real one); a
+  looped sample is still released. A drum struck again releases its last hit instead.
+- `Synthesizer::active_voice_count`: how many voices sound (for diagnostics and tests).

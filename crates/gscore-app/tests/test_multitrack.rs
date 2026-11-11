@@ -369,3 +369,43 @@ fn a_selection_looks_the_same_in_the_score_and_on_top_of_the_grid() {
     harness.run();
     harness.snapshot("grid_track_selection");
 }
+
+#[test]
+fn a_drum_parts_pan_knob_moves_it_in_the_kit_as_one_undo_step() {
+    use gscore_app::chain_settings::DrumPart;
+    let mut harness = app_with_mixer_view_at(1900.0);
+    harness.get_by_label("Show the drum parts").click();
+    harness.run();
+    // The drum kit is the sixth track of the file.
+    let pan = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .playback()
+            .track_drum_part_mix(5, DrumPart::HiHat)
+            .1
+    };
+    assert_eq!(pan(&harness), 64, "in the middle");
+    let depth = harness.state().document().unwrap().editor().undo_depth();
+    let start = harness.get_by_label("Pan Hi-hat").rect().center();
+    harness.hover_at(start);
+    harness.drag_at(start);
+    harness.run();
+    for step in 1..=4 {
+        harness.hover_at(start - egui::vec2(10.0 * step as f32, 0.0));
+        harness.run();
+    }
+    harness.drop_at(start - egui::vec2(40.0, 0.0));
+    harness.run();
+    assert!(pan(&harness) < 50, "turned to the left: {}", pan(&harness));
+    let editor = harness.state().document().unwrap().editor();
+    assert_eq!(editor.undo_depth(), depth + 1, "one drag, one undo step");
+    // The other parts stay in the middle.
+    assert_eq!(
+        harness
+            .state()
+            .playback()
+            .track_drum_part_mix(5, DrumPart::Snare)
+            .1,
+        64
+    );
+}

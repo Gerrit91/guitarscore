@@ -29,14 +29,21 @@ impl VoiceCollection {
         &mut self,
         region: &InstrumentRegion,
         channel: i32,
+        note: u64,
     ) -> Option<&mut Voice> {
         // If an exclusive class is assigned to the region, find a voice with the same class.
         // If found, reuse it to avoid playing multiple voices with the same class at a time.
+        // GuitarScore fork: not a voice of this very note (`note`): a stereo sample is two
+        // regions of one class, and the second must not take the first one's place (the
+        // hi-hat played on one side only).
         let exclusive_class = region.get_exclusive_class();
         if exclusive_class != 0 {
             for i in 0..self.active_voice_count {
                 let voice = &self.voices[i];
-                if voice.exclusive_class() == exclusive_class && voice.channel() == channel {
+                if voice.exclusive_class() == exclusive_class
+                    && voice.channel() == channel
+                    && voice.note() != note
+                {
                     return Some(&mut self.voices[i]);
                 }
             }

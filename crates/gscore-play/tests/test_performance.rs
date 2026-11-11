@@ -151,7 +151,11 @@ fn techniques_are_marked_on_the_notes() {
         .set_beat_effect(at(2), BeatEffect::Slap(Some(SlapKind::Popping)))
         .unwrap();
     let played = notes(&song);
-    assert!(played[..2].iter().all(|n| n.palm_mute && n.damped));
+    // The palm mute keeps the written quarter (the stroke only delays its start) and is
+    // not stopped dead: the modelled strings damp it themselves (only the SoundFont path
+    // shortens it).
+    assert!(played[..2].iter().all(|n| n.palm_mute && !n.damped));
+    assert!(played[..2].iter().all(|n| n.end == u64::from(PPQ)));
     assert!(
         played[..2]
             .iter()
@@ -189,7 +193,8 @@ fn a_vibrato_swings_around_the_pitch() {
 }
 
 /// Every note of the performance is one note-on of the MIDI sequence, at the same time and
-/// pitch: both engines play the same notes.
+/// pitch: both engines play the same notes (a palm mute softer on the SoundFont, which has
+/// no palm-muted samples).
 #[test]
 fn the_midi_sequence_plays_the_notes_of_its_performance() {
     for name in ["ornaments", "advanced_ornaments", "multi_staff"] {
@@ -199,7 +204,14 @@ fn the_midi_sequence_plays_the_notes_of_its_performance() {
             .performance
             .notes
             .iter()
-            .map(|n| (n.start, n.key, n.velocity))
+            .map(|n| {
+                let velocity = if n.palm_mute && !n.dead {
+                    (u32::from(n.velocity) * 85 / 100).clamp(1, 127) as u8
+                } else {
+                    n.velocity
+                };
+                (n.start, n.key, velocity)
+            })
             .collect();
         let mut from_midi: Vec<(u64, u8, u8)> = sequence
             .events
