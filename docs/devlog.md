@@ -4774,3 +4774,27 @@ Branch `review-ux-requests`.
   - electric: thin strings over a pickup and its pole pieces;
   - bass: two heavy wound strings.
 - `instrument.rs` is back as it was.
+
+## 2026-11-12 — A built-in cabinet modelled on a Marshall 4×12
+
+- A Cabinet block without a file plays a computed cabinet (`gscore_guitar::
+  built_in_cabinet`). Loading a WAV into the block replaces it, as before.
+- It is modelled after the owner's reference impulse response, a Marshall 1960A with
+  G12M speakers and an MD 421 at the cap. Only its figures were taken: the third-octave
+  response, the breakup peaks and the decay (-20 dB after 13 ms).
+- A chain of 17 filters, fitted within 2.0 dB per third octave on average:
+  - a low cut near 90 Hz, a body from 150 to 400 Hz;
+  - a dip around 1.1 kHz, presence from 2.4 to 4 kHz;
+  - a fourth-order fall above 5 kHz that levels off above 10 kHz;
+  - narrow cone peaks.
+- Rendered once into a 200 ms response, unit energy as a loaded file, and played by the
+  same convolver (mix, gain and cuts as for a file).
+- The board's box says "built-in 4×12" for a cabinet without a file.
+- Tests:
+  - the fit to the reference's figures;
+  - the response made once, at unit energy, died away by 100 ms;
+  - a cabinet without a file plays it, a file replaces it, a room without a file stays
+    empty.
+- Found on the way: `dismissing_an_open_error_shows_the_empty_workspace` fails when the
+  repository sits at a very long path (the notice with the long file path is wider than
+  the test window), also on plain `main`; at the repository's own path it passes.

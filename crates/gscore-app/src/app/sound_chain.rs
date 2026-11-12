@@ -146,7 +146,14 @@ fn box_text(block: &BlockSetting) -> (String, String) {
             .as_ref()
             .and_then(|file| file.file_stem())
             .map_or_else(
-                || "no file".to_owned(),
+                // A cabinet without a file plays the built-in 4×12.
+                || {
+                    if block.choice == BlockChoice::Cabinet {
+                        "built-in 4×12".to_owned()
+                    } else {
+                        "no file".to_owned()
+                    }
+                },
                 |name| name.to_string_lossy().into_owned(),
             ),
     };
@@ -655,8 +662,9 @@ fn block_choices() -> [(BlockChoice, &'static str, &'static str); 9] {
         (
             BlockChoice::Cabinet,
             "Cabinet / body",
-            "An impulse response from a WAV file: an acoustic guitar's body, or a cabinet \
-             after an amp",
+            "A cabinet after an amp: built in, a 4×12 after a Marshall 1960A with G12M \
+             speakers, or an impulse response from a WAV file (a cabinet, or an acoustic \
+             guitar's body)",
         ),
         (
             BlockChoice::Eq,

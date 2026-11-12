@@ -264,6 +264,18 @@ described in the literature below:
   come first and cannot be removed (their box shows the engine, the kind of string and
   their sound in the window itself); the five places after them hold nothing or a block.
   Opened from the track panel's Sound section.
+- **The built-in cabinet** (`gscore-guitar::cabinet`, 2026-11-12): a Cabinet block without
+  a file plays a computed 4×12. It is modelled after the owner's reference, a Marshall 1960A
+  with Celestion G12M speakers and an MD 421 at the cap; only its figures were taken.
+  - A chain of filters fitted to the reference's third-octave response (within 2 dB on
+    average; test under 2.5): the closed back's low cut near 90 Hz with a little thump, a
+    broad body from 150 to 400 Hz, a dip around 1.1 kHz, the presence from 2.4 to 4 kHz,
+    a steep fourth-order fall above 5 kHz levelling off quietly above 10 kHz, and the
+    cone's narrow breakup peaks from 620 Hz to 5.3 kHz.
+  - Rendered once into a 200 ms impulse response at 48 kHz, scaled to unit energy like a
+    loaded file, and played through the same convolution: mix, gain and the cuts work as
+    for a file. Loading a file into the block replaces it; a Room without a file stays
+    empty.
 - **Blocks:** *Cabinet / body*, an impulse response from a WAV file played mono with
   mix, gain, low cut and high cut: what amp modelers call a cab block, and an acoustic
   guitar's body too. *Room*, a room's impulse response (stereo if recorded so): a

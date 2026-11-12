@@ -384,7 +384,11 @@ impl Playback {
                 (BlockChoice::Eq, _) => Some(BlockKind::Eq),
                 (BlockChoice::Chorus, _) => Some(BlockKind::Chorus),
                 (BlockChoice::Delay, _) => Some(BlockKind::Delay),
-                (BlockChoice::Cabinet | BlockChoice::Room, None) => None,
+                // A cabinet without a file of its own plays the built-in one.
+                (BlockChoice::Cabinet, None) => {
+                    Some(BlockKind::Impulse(gscore_guitar::built_in_cabinet()))
+                }
+                (BlockChoice::Room, None) => None,
                 (choice, Some(file)) => match self.impulse(file) {
                     Ok(response) if choice == BlockChoice::Room => {
                         Some(BlockKind::room(response, block.room_length()))
@@ -1054,7 +1058,11 @@ impl Playback {
                     (BlockChoice::Amp, _) => Some(BlockKind::Amp),
                     (BlockChoice::Drive, _) => Some(BlockKind::Drive),
                     (BlockChoice::Reverb, _) => Some(BlockKind::Reverb),
-                    (BlockChoice::Cabinet | BlockChoice::Room, None) => None,
+                    // A cabinet without a file of its own plays the built-in one.
+                    (BlockChoice::Cabinet, None) => {
+                        Some(BlockKind::Impulse(gscore_guitar::built_in_cabinet()))
+                    }
+                    (BlockChoice::Room, None) => None,
                     (choice, Some(file)) => match self.impulse(file) {
                         Ok(response) if choice == BlockChoice::Room => {
                             Some(BlockKind::room(response, block.room_length()))
@@ -1141,6 +1149,38 @@ mod tests {
         out.extend((data.len() as u32).to_le_bytes());
         out.extend(data);
         out
+    }
+
+    #[test]
+    fn a_cabinet_without_a_file_plays_the_built_in_one_and_a_file_replaces_it() {
+        let mut playback = Playback::default();
+        let mut setting = ChainSetting::default();
+        setting.blocks[0] = BlockSetting::of(BlockChoice::Cabinet);
+        setting.blocks[1] = BlockSetting::of(BlockChoice::Room);
+        let spec = playback.chain_spec(&setting);
+        match &spec.blocks[0] {
+            Some(BlockKind::Impulse(response)) => {
+                assert!(Arc::ptr_eq(response, &gscore_guitar::built_in_cabinet()))
+            }
+            other => panic!("the built-in cabinet, not {other:?}"),
+        }
+        assert!(
+            spec.blocks[1].is_none(),
+            "a room without a file stays empty"
+        );
+        // A loaded file replaces it.
+        let dir = std::env::temp_dir().join(format!("gscore-cab-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("cab.wav");
+        std::fs::write(&file, wav()).unwrap();
+        setting.blocks[0].file = Some(file);
+        match &playback.chain_spec(&setting).blocks[0] {
+            Some(BlockKind::Impulse(response)) => {
+                assert!(!Arc::ptr_eq(response, &gscore_guitar::built_in_cabinet()))
+            }
+            other => panic!("the file, not {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
