@@ -4895,3 +4895,23 @@ from a sound's name to one of its tones, filled by the owner:
   too. A tone the song carries still wins on a guitar. The tone must be of the track's kind
   of string, as for a program.
 
+## 2026-11-13 — v0.2.0 preparation
+
+- `tones normalize` measured a tone over 0.2 to 1.5 s of its reference note. A muted tone
+  is over by then, measured silent and got the largest output level (+24 dB: "Muted
+  Guitar"). A note that has died away is now measured over its first 0.2 s, and a tone that
+  makes no sound at all keeps its output level.
+- The browser build compiled with ten dead-code warnings for desktop-only code (audio
+  export, MIDI out, the tone tool's helpers); they are marked as such.
+- `docs/gaps.md` (sound section), `docs/usage.md` (modelled guitars, tones, sound chain,
+  mixer) and the README brought up to date; version 0.2.0.
+- A save test waited for the save before the Ctrl+S key had been handled (the key is
+  queued until the next frame), so on a slow machine the song was reopened before it was
+  written (`a_songs_mixer_state_travels_in_its_notes` on CI). The three tests that save
+  this way step one frame first.
+- Hammer-on and pull-off slurs in the tab touched the fret numbers: their ends sat 0.42 of
+  the number's size from the string line, about the digits' top. Now 0.62, with a flatter
+  bow (0.4) so the slur stays under the next string.
+- "Return to where playback started on Stop" is on by default for v0.2.0 (the gliding
+  cursor already was). A settings file that stores the choice keeps it.
+

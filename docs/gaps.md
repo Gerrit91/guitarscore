@@ -1,21 +1,31 @@
 # Known Gaps
 
 Known shortfalls of the current state, most important first. Rewritten 2026-11-06 after
-the v0.1.0 release; the history behind each item is in `docs/devlog.md`. Planned work is
+the v0.1.0 release, sound section updated 2026-11-13 for v0.2.0; the history behind each item is in `docs/devlog.md`. Planned work is
 in AGENTS.md section 9.
 
 ## Sound and playback
 
-1. **Playback is still General MIDI for most instruments.** Guitar and bass tracks now
-   play by default through physically modelled strings with the built-in tone library
-   (chosen per track in the track panel, starting from the nearest match to a GP7 file's
-   RSE sound), but every other instrument, and every track set to the MIDI synth, still
-   plays through a SoundFont (`rustysynth`; release archives bundle FluidR3 GM, the browser
-   GeneralUser GS 2.0.3). Distorted guitars and basses are not yet judged comparable to
-   Guitar Pro's RSE on every passage; the library waits for the owner's ear. This is M22
-   (modelled guitars and basses, `docs/guitar-modelling.md`). The built-in tones use only
-   computed blocks: no licence-free impulse responses are bundled yet, so cabinets and
-   rooms still refer to machine-local files.
+1. **Modelled guitars and basses are a first version.** Guitar and bass tracks play by
+   default through physically modelled strings and an effect chain; every other
+   instrument, the drums, and every track set to the MIDI synth still play through a
+   SoundFont (`rustysynth`; release archives bundle FluidR3 GM, the browser GeneralUser GS
+   2.0.3). This is M22 (`docs/guitar-modelling.md`); it is not yet judged comparable to
+   Guitar Pro's RSE on every passage.
+   - The built-in tone library is small: nine tones the owner dialed in, one per guitar
+     program and one clean bass for all eight bass programs (no picked, slap or fretless
+     bass yet). A program without a tone plays its plain strings, no effects.
+   - Guitar Pro's RSE sounds can be mapped to built-in tones by name
+     (`cargo xtask tones rse`), but no mapping ships yet: a track starts on its program's
+     tone whatever RSE sound the file names.
+   - No impulse responses are bundled. The Cab block has three computed cabinets (Rock,
+     Acoustic, Classical); a room or a cabinet from a WAV file is stored by its path on
+     this machine and skipped on another.
+   - A bass ignores a tone the song carries and always plays its program's tone.
+   - The strings benchmark (`cargo xtask bench`, 16 tracks × 6 strings ringing) is over its
+     250 ms budget for a second of audio; CI does not run it.
+   - The browser build runs no effect chains: it has no Sound chain window, and the
+     built-in tones' chains and the buses are not sent to its synthesizer.
 2. **Pitched tracks without strings are read as string and fret.** GP7 stores the real
    pitch of a voice, synth, piano or strings note (`Midi`, `ConcertPitch`) and only
    leftover string and fret values against a guitar tuning, often negative. We read the
@@ -24,8 +34,8 @@ in AGENTS.md section 9.
    staff (no tuning), only a tab. Guitar Pro shows them as standard notation only.
 3. **Playback controls.** Fermatas and D.C./D.S./coda are played now, and a speed
    dropdown (25-150 %, any value typed) with a speed trainer, WAV export and count-in navigation are in
-   place. Still open: export to audio is only the SoundFont path (no modelled instruments,
-   see M22), and WAV has no progress or cancel. Previous/next bar during a count-in counts
+   place. Audio export renders the modelled tracks, their chains and the buses as playback
+   does. Still open: WAV has no progress or cancel. Previous/next bar during a count-in counts
    in again (fixed 2026-11-06).
 4. **Player limits.** Pause and resume do not re-trigger notes that were sounding;
    stopping `gscore-cli play --port` with Ctrl+C can leave notes hanging in an external

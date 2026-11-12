@@ -44,6 +44,37 @@ the toolbar's "Output" menu switches between the synthesizer, "Choose SoundFont�
 MIDI ports. Play starts at the cursor's note; after a pause it resumes, unless the cursor
 was moved meanwhile.
 
+### Modelled guitars and basses
+
+Guitar and bass tracks (General MIDI programs 24 to 39) are played by modelled strings
+instead of the SoundFont (Settings → Audio I/O, "Modelled guitars and basses (PM
+synthesis)", on by default). Every other instrument, and the drums, stay on the SoundFont.
+
+- **Tone.** A tone is the whole sound of a track: the kind of string (nylon, steel,
+  electric, bass), the strings' own knobs and the effect chain after them. Each guitar and
+  bass program starts on a built-in tone. The track panel on the right lists the built-in
+  tones and the ones you saved; clicking one gives it to the track.
+- **Sound chain.** The track panel's "Sound chain" button (also on a mixer strip) opens
+  the chain of the track: "Played by" chooses the strings or the SoundFont, the strings'
+  tabs set how they are plucked and ring, and up to five blocks follow: Drive, Amp, Cab,
+  Room, Reverb, Comp, EQ, Chorus and Delay. The Amp plays direct; put a Cab block after it
+  for its speaker (a built-in cabinet, or an impulse response from a WAV file). "Save
+  tone" and "Save as…" keep the sound under a name for other tracks and songs.
+- **With the song.** A tone you change on a track is saved with the song (inside the
+  Guitar Pro 7 file, in a block of the song's notes that Guitar Pro leaves alone). A track
+  you never touched keeps following its program's built-in tone. A bass always plays its
+  program's tone.
+- **Guitar Pro's sounds.** A Guitar Pro 7 file names the RSE sound of each track. Where the
+  tone library maps that name to a built-in tone, the track starts on it.
+
+### Mixer
+
+The grid's "Mixer view" shows one strip per track: fader and pan after the track's chain,
+sends into the reverb, compressor and chorus buses, mute and solo, and a level meter
+measured in the engine. Each drum track can be split into its kit parts with a chain and
+a level of their own. The buses have their own windows; the master strip has a chain too.
+There is no limiter yet: a mix that is too loud clips.
+
 ```bash
 gscore-cli play testdata/basic/note_lengths.gp                        # built-in synthesizer
 gscore-cli play testdata/basic/note_lengths.gp --soundfont my.sf2    # with this SoundFont

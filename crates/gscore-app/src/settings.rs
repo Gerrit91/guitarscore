@@ -774,7 +774,7 @@ impl Default for Settings {
             keymap_path: None,
             shortcut_overrides: Vec::new(),
             audition_notes: true,
-            return_on_stop: false,
+            return_on_stop: true,
             flowing_cursor: true,
             autosave_seconds: DEFAULT_AUTOSAVE_SECONDS,
             metronome_volume: 1.0,

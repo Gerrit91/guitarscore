@@ -10,9 +10,10 @@ use gscore_model::{BEND_MAX_POSITION, BendPoint, SlideKind, WhammyShape};
 /// How far a slur between two notes dips or rises.
 const SLUR_CURVE: f32 = 0.9;
 /// A hammer-on's slur: how far its ends sit from the string line (a share of the fret
-/// number's size: just clear of the digits), and how much it bows.
-const HAMMER_REACH: f32 = 0.42;
-const HAMMER_CURVE: f32 = 0.55;
+/// number's size: clear of the digits with some air, two-digit numbers too), and how much
+/// it bows.
+const HAMMER_REACH: f32 = 0.62;
+const HAMMER_CURVE: f32 = 0.4;
 /// The baseline of the H and P letters above the tab staff's top line.
 const HAMMER_LETTER_RISE: f32 = 1.3;
 /// How far a slide line rises or falls on each side of the string line.

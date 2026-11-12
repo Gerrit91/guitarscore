@@ -35,6 +35,8 @@ const AUDITION_LENGTH: Duration = Duration::from_millis(450);
 const AUDITION_CHANNEL: u8 = 15;
 
 /// A note sounding because it was just entered.
+// The browser has no MIDI-out port to read back.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 #[derive(Debug, Clone)]
 struct Audition {
     channel: Channel,
@@ -1565,6 +1567,7 @@ impl Playback {
 
     /// How late the main output's sound reaches the ears, for holding the MIDI-out tracks
     /// back by the same time.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     fn latency(&self) -> Option<Duration> {
         #[cfg(not(target_arch = "wasm32"))]
         {

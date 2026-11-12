@@ -895,6 +895,8 @@ fn playback_starts_at_the_cursor_and_resumes_where_it_paused() {
     std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.state_mut().playback_mut().use_soundfont(path);
+    // With "return on stop" (the default) Space stops; pausing is what is tested here.
+    harness.state_mut().set_return_on_stop(false);
     let playing = |app: &GuitarScoreApp| {
         app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
     };
@@ -3236,6 +3238,8 @@ fn a_songs_mixer_state_travels_in_its_notes() {
     harness.run();
     // Saved, the song carries both in its notes.
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::S);
+    // The key is handled on the next frame: only then is the save running, and waited for.
+    harness.step();
     let started = Instant::now();
     while harness.state().is_busy() {
         assert!(

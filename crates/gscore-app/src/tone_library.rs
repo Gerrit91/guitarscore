@@ -243,6 +243,7 @@ pub(crate) fn normalize_string_level(tone: &mut Tone, target_level: f32) {
 /// The sum of the blocks' output levels (an amp, a drive, a compressor, a cabinet, a
 /// room): what makes one tone louder than another with the same strings. Drive and tone
 /// knobs are never part of it.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub(crate) fn chain_level_trim(chain: &ChainSetting) -> f32 {
     let sum: f32 = chain
         .blocks
@@ -268,6 +269,7 @@ pub(crate) fn chain_level_trim(chain: &ChainSetting) -> f32 {
 /// `target_level` and the chain's level trims cancelled by the *output* knob, leaving the
 /// blocks' gain staging exactly as dialed in. (Playback no longer levels built-in tones
 /// this way: their output level is measured once and stored with the tone.)
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub(crate) fn normalize_static(tone: &mut Tone, target_level: f32) {
     normalize_string_level(tone, target_level);
     let trim = chain_level_trim(&tone.chain);

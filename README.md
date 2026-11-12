@@ -14,8 +14,10 @@ built never to lose your work.
   older Guitar Pro versions, MIDI and PDF.
 - **Never lose work.** Every edit goes to a recovery journal first; after a crash the next
   start offers your document back, undo history included.
-- **Hear it.** A built-in synthesizer plays every track with its techniques, or send it
-  to any MIDI synthesizer. A tuner is included.
+- **Hear it.** Guitars and basses play on modelled strings through an effect chain you
+  dial in (drive, amp, cabinet, EQ, compressor, chorus, delay, reverb); a built-in
+  synthesizer plays everything else, and a mixer with buses and meters brings it together.
+  Or send any track to a MIDI synthesizer. A tuner is included.
 - **Keyboard first.** Type a fret, press `+` for a shorter note, arrow on. Every action
   has a key, and every key can be rebound.
 - **The whole score.** Notation and tab, all techniques with their own editors, several

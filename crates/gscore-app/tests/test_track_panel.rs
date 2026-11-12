@@ -1482,6 +1482,8 @@ fn a_songs_edited_tone_survives_with_default_settings() {
     );
     // Saved, the song carries the tone it plays.
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::S);
+    // The key is handled on the next frame: only then is the save running, and waited for.
+    harness.step();
     let started = Instant::now();
     while harness.state().is_busy() {
         assert!(
@@ -1616,6 +1618,8 @@ fn a_tone_clicked_in_the_track_panel_belongs_to_that_track_and_survives_saving()
     assert_eq!(after.get(&1), before.get(&1), "only that track got it");
     // It travels in the song: a fresh app with default settings hears the same tone.
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::S);
+    // The key is handled on the next frame: only then is the save running, and waited for.
+    harness.step();
     let started = Instant::now();
     while harness.state().is_busy() {
         assert!(

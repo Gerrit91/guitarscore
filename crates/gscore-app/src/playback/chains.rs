@@ -66,6 +66,8 @@ fn targets(sequence: &Sequence) -> Vec<ToneTarget> {
 
 /// The tones to render an audio export with: the song's own, the programs' built-in ones
 /// and each kind's plain strings, resolved against the export's sequence once it is built.
+// Desktop only: the browser build has no audio export, MIDI out or tone tool.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ExportTones {
     /// The tones that came with the song, by track.
@@ -100,6 +102,7 @@ pub(crate) struct ExportTones {
 impl ExportTones {
     /// The own string models and the chains of `sequence`'s modelled tracks, by the song's
     /// track index.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(crate) fn resolve(
         &self,
         sequence: &Sequence,
@@ -822,7 +825,7 @@ impl Playback {
             }
         }
         #[cfg(target_arch = "wasm32")]
-        let _ = (which, spec, knobs, level, muted);
+        let _ = (which, spec, knobs, level, muted, structure, sent);
     }
 
     /// Prepares the reverb bus on the synthesizer's thread (or sends its knobs).
