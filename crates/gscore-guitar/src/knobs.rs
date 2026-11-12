@@ -126,7 +126,7 @@ pub mod knob_ranges {
     pub const PRE_DELAY: (f32, f32) = (0.0, 250.0);
     pub const MODULATION: (f32, f32) = (0.0, 1.0);
     pub const WIDTH: (f32, f32) = (0.0, 1.0);
-    /// An amp's Gain, Bass, Mid, Treble and Speaker; a drive's Drive and Tone.
+    /// An amp's Gain, Bass, Mid and Treble; a drive's Drive and Tone.
     pub const AMP: (f32, f32) = (0.0, 1.0);
     /// A compressor's input and output gain, dB.
     pub const COMP_GAIN: (f32, f32) = (-24.0, 24.0);
@@ -207,7 +207,6 @@ impl BlockSettings {
                 mid: amp(self.amp.mid, a.mid),
                 treble: amp(self.amp.treble, a.treble),
                 level_db: fit(self.amp.level_db, knob_ranges::LEVEL, a.level_db),
-                speaker: amp(self.amp.speaker, a.speaker),
             },
             drive: DriveKnobs {
                 drive: amp(self.drive.drive, d.drive),

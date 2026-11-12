@@ -59,8 +59,8 @@ Commands:
       --description TEXT   the line shown on hover
       --rse SOUND          also start tracks made with Guitar Pro's RSE sound SOUND on
                            it (see `rse`; may be given more than once)
-      --ir drop|keep       `drop` replaces a preset's impulse responses (cabinet, room,
-                           body) with the computed blocks; `keep` (the default) stores the
+      --ir drop|keep       `drop` takes a preset's impulse responses out: a Cab block
+                           plays its built-in cabinet, a room block goes; `keep` (the default) stores the
                            paths and warns, since the files are not bundled yet
       --dry-run            print what would change, write nothing
   update [--dry-run]
@@ -478,9 +478,7 @@ fn find_preset<'a>(settings: &'a Settings, name: &str) -> Result<&'a ChainPreset
     ))
 }
 
-/// Replaces every impulse response with the computed blocks: a cabinet after an amp turns
-/// the amp's computed speaker back on; a room or body block simply goes. Returns what it
-/// dropped, for the report.
+/// The level the chain's blocks add in all, dB.
 fn chain_trim(chain: &ChainSetting) -> f32 {
     let sum: f32 = chain
         .blocks
@@ -500,13 +498,6 @@ fn chain_trim(chain: &ChainSetting) -> f32 {
         .sum();
     // Adding zero turns a negative zero into a positive one, so the report prints "0.0".
     if sum == 0.0 { 0.0 } else { sum }
-}
-
-fn tone_has_amp(chain: &ChainSetting) -> bool {
-    chain
-        .blocks
-        .iter()
-        .any(|block| block.choice == BlockChoice::Amp)
 }
 
 /// The family a program's tone belongs to, as the pickers group them.

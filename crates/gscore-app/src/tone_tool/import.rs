@@ -149,16 +149,6 @@ pub(super) fn run_import(args: ImportArgs) -> Result<(), String> {
     for file in &dropped {
         println!("  dropped: {file}");
     }
-    if dropped
-        .iter()
-        .any(|dropped| dropped.starts_with(BlockChoice::Cabinet.label()))
-        && !tone_has_amp(&entry.chain)
-    {
-        println!(
-            "  warning: the dropped cabinet/body had no amp to take its place; the tone \
-             has no body of its own now"
-        );
-    }
     for sound in &args.rse {
         println!("  tracks made with the RSE sound \"{sound}\" start on it too");
     }
@@ -222,7 +212,6 @@ pub(super) fn source_state(source: &ToneSource, settings: &Settings) -> SourceSt
 
 pub(super) fn drop_impulse_responses(tone: &mut Tone) -> Vec<String> {
     let mut dropped = Vec::new();
-    let mut last_amp: Option<usize> = None;
     for index in 0..tone.chain.blocks.len() {
         let (choice, file) = match tone.chain.blocks.get(index) {
             Some(block) => (
@@ -231,24 +220,19 @@ pub(super) fn drop_impulse_responses(tone: &mut Tone) -> Vec<String> {
             ),
             None => continue,
         };
-        if choice == BlockChoice::Amp {
-            last_amp = Some(index);
-            continue;
-        }
         if !matches!(choice, BlockChoice::Cabinet | BlockChoice::Room) {
             continue;
         }
         let Some(file) = file else {
             continue;
         };
-        if choice == BlockChoice::Cabinet
-            && let Some(amp) = last_amp.and_then(|amp| tone.chain.blocks.get_mut(amp))
-        {
-            // The IR followed the amp: the computed speaker takes its place.
-            amp.speaker = 1.0;
-        }
         if let Some(slot) = tone.chain.blocks.get_mut(index) {
-            *slot = BlockSetting::of(BlockChoice::Empty);
+            if choice == BlockChoice::Cabinet {
+                // The Cab block stays and plays its built-in cabinet.
+                slot.file = None;
+            } else {
+                *slot = BlockSetting::of(BlockChoice::Empty);
+            }
         }
         dropped.push(format!("{} {file}", choice.label()));
     }

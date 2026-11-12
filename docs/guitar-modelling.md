@@ -291,10 +291,9 @@ described in the literature below:
   cut. The stages run 4× oversampled (sixth-order Butterworth up and down), so the
   harmonics they make above half the sample rate do not fold back as fizz (test: a 3 kHz
   tone clipped hard leaves under 3 % between its harmonics). After them the tone stack
-  (bass shelf 120 Hz, mid bell 700 Hz, treble shelf 3 kHz, ±12 dB each) and a built-in
-  speaker: a closed 4×12 approximated by filters (low cut 75 Hz, 110 Hz resonance, a dip
-  at 450 Hz, presence at 2.4 kHz, fourth-order roll-off at 5 kHz). The Speaker knob blends
-  it out for a cabinet's impulse response in a Cab block after the amp. Voices: *Clean*
+  (bass shelf 120 Hz, mid bell 700 Hz, treble shelf 3 kHz, ±12 dB each). The amp plays
+  direct; its speaker is a Cab block after it (the amp's own speaker filter and its
+  Speaker knob went on 2026-11-13, once the Cab block had a built-in cabinet). Voices: *Clean*
   (one stage, the pad given back so it plays at the strings' level), *Crunch* (two),
   *Lead* (three). At half gain a crunch is 14 dB and a lead 22 dB louder than the dry
   chord, as they were before the calibration, so tones and mixes keep their level. About

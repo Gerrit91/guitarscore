@@ -149,7 +149,7 @@ fn importing_keeps_an_ir_path_and_normalize_levels_the_tone() {
 }
 
 #[test]
-fn ir_drop_replaces_the_file_and_turns_the_speaker_on() {
+fn ir_drop_takes_the_file_out_and_keeps_the_cab_block() {
     let dir = scratch("drop");
     let mut saved = preset(
         "My Lead",
@@ -174,7 +174,7 @@ fn ir_drop_replaces_the_file_and_turns_the_speaker_on() {
         .find(|tone| tone.name == "My Lead")
         .unwrap();
     assert!(entry.chain.blocks.iter().all(|block| block.file.is_none()));
-    assert!((entry.chain.blocks[0].speaker - 1.0).abs() < 1e-6);
+    assert_eq!(entry.chain.blocks[2].choice, BlockChoice::Cabinet);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -202,9 +202,10 @@ fn a_dry_run_writes_nothing() {
 }
 
 #[test]
-fn dropping_a_cabinet_turns_the_amps_speaker_on() {
-    let mut amp = BlockSetting::of(BlockChoice::Amp);
-    amp.speaker = 0.0;
+fn dropping_a_cabinet_file_leaves_the_built_in_cabinet_and_a_room_goes() {
+    let amp = BlockSetting::of(BlockChoice::Amp);
+    let mut room = BlockSetting::of(BlockChoice::Room);
+    room.file = Some(PathBuf::from("/tmp/room.wav"));
     let mut cabinet = BlockSetting::of(BlockChoice::Cabinet);
     cabinet.file = Some(PathBuf::from("/tmp/cab.wav"));
     let mut tone = Tone {
@@ -215,16 +216,18 @@ fn dropping_a_cabinet_turns_the_amps_speaker_on() {
                 let mut array = std::array::from_fn(|_| BlockSetting::default());
                 array[0] = amp;
                 array[1] = cabinet;
+                array[2] = room;
                 array
             },
             output_db: 0.0,
         },
     };
     let dropped = drop_impulse_responses(&mut tone);
-    assert_eq!(dropped.len(), 1);
-    assert!((tone.chain.blocks[0].speaker - 1.0).abs() < 1e-6);
-    assert_eq!(tone.chain.blocks[1].choice, BlockChoice::Empty);
+    assert_eq!(dropped.len(), 2);
+    assert_eq!(tone.chain.blocks[1].choice, BlockChoice::Cabinet);
     assert!(tone.chain.blocks[1].file.is_none());
+    assert!(tone.chain.blocks[1].built_in_cabinet().is_some());
+    assert_eq!(tone.chain.blocks[2].choice, BlockChoice::Empty);
 }
 
 #[test]

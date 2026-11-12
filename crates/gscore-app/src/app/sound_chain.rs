@@ -662,7 +662,8 @@ fn block_choices() -> [(BlockChoice, &'static str, &'static str); 9] {
         (
             BlockChoice::Amp,
             "Amp",
-            "A computed guitar amp: clean, crunch or lead, with a tone stack and a speaker",
+            "A computed guitar amp: clean, crunch or lead, with a tone stack. It plays direct: put \
+             a Cab block after it for its speaker",
         ),
         (
             BlockChoice::Cabinet,

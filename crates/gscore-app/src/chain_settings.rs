@@ -313,7 +313,6 @@ pub struct BlockSetting {
     pub bass: f32,
     pub middle: f32,
     pub treble: f32,
-    pub speaker: f32,
     /// A drive pedal's tone and Tight (its Drive is `drive`, its level `gain_db`). A
     /// setting saved before Tight existed gets its default (the struct's default).
     pub tone: f32,
@@ -437,7 +436,6 @@ impl BlockSetting {
             bass: amp.bass,
             middle: amp.mid,
             treble: amp.treble,
-            speaker: amp.speaker,
             tone: DriveKnobs::default().tone,
             drive_tight: DriveKnobs::default().tight,
             input_db: CompressorKnobs::default().input_db,
@@ -503,7 +501,6 @@ impl BlockSetting {
                 mid: self.middle,
                 treble: self.treble,
                 level_db: self.gain_db,
-                speaker: self.speaker,
             },
             drive: DriveKnobs {
                 drive: self.drive,
