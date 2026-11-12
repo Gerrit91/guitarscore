@@ -147,8 +147,7 @@ impl Sequence {
     }
 
     /// The same, the kind of string each preset (General MIDI program) starts from decided
-    /// by `kind_of`: a preset the user gave a tone of its own plays that tone's kind of
-    /// string, the rest their program's family.
+    /// by `kind_of` (`None`: the SoundFont plays it).
     pub fn with_modelled_guitars_where(
         mut self,
         kind_of: impl Fn(u8) -> Option<StringKind>,

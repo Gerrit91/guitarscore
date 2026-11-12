@@ -5,7 +5,11 @@
 //!
 //! ```text
 //! cargo xtask tones list
+//! cargo xtask tones programs
 //! cargo xtask tones import --preset "Metal Guitar 1" --program 30 --name "Modern Metal"
+//! cargo xtask tones update
+//! cargo xtask tones rse ~/tabs
+//! cargo xtask tones rse --map "Distortion Guitar/Hard Rock" --tone "Modern Metal"
 //! cargo xtask tones normalize
 //! cargo xtask tones check
 //! ```
@@ -17,36 +21,64 @@ use gscore_play::StringKind;
 
 use crate::chain_settings::{BlockChoice, ChainSetting};
 use crate::settings::{ChainPreset, Settings};
-use crate::tone_library::{self, ToneEntry, ToneFamily, ToneLibraryFile};
+use crate::tone_library::{ToneEntry, ToneFamily, ToneLibraryFile};
 
 mod import;
 mod measure;
 mod normalize;
+mod rse;
 #[cfg(test)]
 mod tests;
+mod update;
 
-use import::{parse_import, run_import};
+use import::{SourceState, parse_import, run_import, source_state};
 use normalize::{parse_normalize, run_normalize};
+use rse::{parse_rse, run_rse};
+use update::{parse_update, run_update};
 
 const USAGE: &str = "\
 Usage: cargo xtask tones <command> [options]
 
 Commands:
-  list [--settings FILE]
-      The saved tones in the settings file, with the programs each one currently stands
-      in for (the app matches them to the built-in tones by name).
+  list [--settings FILE] [--file FILE]
+      The saved tones in the settings file, with the built-in tones imported from each
+      one and the programs that start on them.
+  programs [--settings FILE] [--file FILE]
+      The guitar and bass programs (24-39) with their General MIDI names, the kind of
+      string each plays and the built-in tone it starts on; `(none)` plays the plain
+      strings. `[saved: NAME]` is the saved tone the built-in one was imported from; it
+      says so when that saved tone has changed since (run `update`) or is gone.
   import --preset NAME --program N [options]
       Copy the saved tone NAME into the built-in library exactly as dialed in (its string
-      sound and its chain) and make program N (24-39) start on it. Nothing is levelled;
-      run `normalize` afterwards for that.
+      sound and its chain) and make program N (24-39) start on it. The built-in tone
+      remembers the saved tone it came from. Nothing is levelled; run `normalize`
+      afterwards for that.
       --name NAME          the shipped name (default: the preset's)
       --family FAMILY      clean, crunch, lead, high_gain, acoustic or bass
                            (default: the program's family)
       --description TEXT   the line shown on hover
-      --ir drop|keep       `drop` replaces a preset's impulse responses (cabinet, room,
-                           body) with the computed blocks; `keep` (the default) stores the
+      --rse SOUND          also start tracks made with Guitar Pro's RSE sound SOUND on
+                           it (see `rse`; may be given more than once)
+      --ir drop|keep       `drop` takes a preset's impulse responses out: a Cab block
+                           plays its built-in cabinet, a room block goes; `keep` (the default) stores the
                            paths and warns, since the files are not bundled yet
       --dry-run            print what would change, write nothing
+  update [--dry-run]
+      Copy every imported tone's saved tone again where it has changed since the import
+      (`programs` shows which). The built-in name, family and description stay; a tone
+      whose saved tone is gone is left as it is. Run `normalize` afterwards.
+  rse [PATH...]
+      Guitar Pro's RSE sounds as placeholders for the built-in tones. Without a PATH: the
+      sounds mapped to a tone. With Guitar Pro files or folders: every RSE sound their
+      guitar and bass tracks use (`Distortion Guitar/Hard Rock`: the instrument and the
+      sound's name), how many tracks use it, the kind of string and the tone it starts
+      on. A track made with a mapped sound starts on that tone instead of its program's;
+      a tone the song carries still wins.
+  rse --map SOUND --tone NAME [--dry-run]
+      Start tracks made with the RSE sound SOUND on the built-in tone NAME (`--map` may
+      be given more than once). The tone must be of the kind of string the track plays.
+  rse --unmap SOUND [--dry-run]
+      Forget the tone of the RSE sound SOUND.
   normalize [--tone NAME] [--target DB] [--static] [--dry-run]
       Level every built-in tone with the others. By default each tone renders a fixed
       reference note through its own strings and chain and its output level is set so that
@@ -85,6 +117,15 @@ struct ImportArgs {
     description: Option<String>,
     /// Replace a preset's impulse responses with the computed blocks.
     drop_irs: bool,
+    /// Guitar Pro's RSE sounds that start on the imported tone too.
+    rse: Vec<String>,
+    dry_run: bool,
+}
+
+/// What `update` was asked to do.
+#[derive(Debug, Default)]
+struct UpdateArgs {
+    options: Options,
     dry_run: bool,
 }
 
@@ -124,14 +165,36 @@ pub fn run(args: &[String]) -> Result<(), String> {
     };
     match command {
         "list" => run_list(parse_options(rest)?),
+        "programs" => run_programs(parse_options(rest)?),
         "import" => run_import(parse_import(rest)?),
+        "update" => run_update(parse_update(rest)?),
+        "rse" => run_rse(parse_rse(rest)?),
         "normalize" => run_normalize(parse_normalize(rest)?),
         "check" => run_check(parse_options(rest)?),
         "help" | "--help" | "-h" => {
             println!("{USAGE}");
             Ok(())
         }
-        other => Err(format!("unknown command `{other}`\n\n{USAGE}")),
+        other => {
+            // `--list` and the like: the commands are plain words.
+            let word = other.trim_start_matches('-');
+            let hint = if [
+                "list",
+                "programs",
+                "import",
+                "update",
+                "rse",
+                "normalize",
+                "check",
+            ]
+            .contains(&word)
+            {
+                format!(" (did you mean `{word}`?)")
+            } else {
+                String::new()
+            };
+            Err(format!("unknown command `{other}`{hint}\n\n{USAGE}"))
+        }
     }
 }
 
@@ -218,18 +281,41 @@ fn run_list(options: Options) -> Result<(), String> {
         println!("  (none)");
         return Ok(());
     }
-    // Which programs each saved tone currently stands in for: the app matches them to the
-    // built-in tones by name words (`tone_library::saved_default_for`).
-    let mut local: BTreeMap<String, Vec<u8>> = BTreeMap::new();
-    for program in 24..=39_u8 {
-        let Some(kind) = StringKind::for_program(program) else {
+    // The built-in tones imported from each saved tone, with the programs starting on
+    // them (the library is optional here: without it the saved tones still list).
+    let library_path = tones_path(options.file.as_deref());
+    let library = if library_path.exists() {
+        load_library(&library_path)?
+    } else {
+        ToneLibraryFile::default()
+    };
+    let mut imported: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    for tone in &library.tones {
+        let Some(source) = &tone.source else {
             continue;
         };
-        if let Some(preset) =
-            tone_library::saved_default_for(program, kind, &settings.string_presets)
-        {
-            local.entry(preset.name.clone()).or_default().push(program);
-        }
+        let programs: Vec<String> = library
+            .programs
+            .iter()
+            .filter(|(_, name)| **name == tone.name)
+            .map(|(&program, _)| format!("{program} ({})", gscore_model::program_name(program)))
+            .collect();
+        imported
+            .entry(source.preset.as_str())
+            .or_default()
+            .push(format!(
+                "\"{}\"{}{}",
+                tone.name,
+                if programs.is_empty() {
+                    ", on no program".to_owned()
+                } else {
+                    format!(" for {}", programs.join(", "))
+                },
+                match source_state(source, &settings) {
+                    SourceState::Changed => "; changed since: run `tones update`",
+                    SourceState::Current | SourceState::Missing => "",
+                }
+            ));
     }
     for preset in &settings.string_presets {
         let blocks: Vec<&str> = preset
@@ -260,15 +346,72 @@ fn run_list(options: Options) -> Result<(), String> {
             line.push_str(&format!("  [{irs} impulse response(s)]"));
         }
         println!("{line}");
-        if let Some(programs) = local.get(&preset.name) {
-            let names: Vec<String> = programs
-                .iter()
-                .map(|&program| format!("{program} ({})", gscore_model::program_name(program)))
-                .collect();
-            println!("      stands in for {}", names.join(", "));
+        for tone in imported.get(preset.name.as_str()).into_iter().flatten() {
+            println!("      imported as {tone}");
         }
     }
     Ok(())
+}
+
+fn run_programs(options: Options) -> Result<(), String> {
+    let library_path = tones_path(options.file.as_deref());
+    let library = load_library(&library_path)?;
+    // The settings are optional here: without them the built-in tones still list.
+    let settings_file = settings_path(options.settings.as_deref())?;
+    let settings = if settings_file.exists() {
+        Some(load_settings(&settings_file)?)
+    } else {
+        None
+    };
+    println!(
+        "Guitar and bass programs, built-in tones from {}{}:",
+        library_path.display(),
+        match &settings {
+            Some(_) => format!(", this machine's from {}", settings_file.display()),
+            None => String::new(),
+        }
+    );
+    for line in program_lines(&library, settings.as_ref()) {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+/// One line per guitar and bass program (24-39): its number and General MIDI name, the kind
+/// of string it plays and the built-in tone it starts on; then the saved tone that one was
+/// imported from (with `settings`: whether it has changed since or is gone).
+fn program_lines(library: &ToneLibraryFile, settings: Option<&Settings>) -> Vec<String> {
+    (24..=39_u8)
+        .map(|program| {
+            let kind = StringKind::for_program(program).map_or("-", kind_name);
+            let built_in = library
+                .programs
+                .get(&program)
+                .map_or("(none)", String::as_str);
+            let mut line = format!(
+                "  {program:>3}  {:<20} {kind:<8} {built_in:<20}",
+                gscore_model::program_name(program)
+            );
+            let source = library
+                .tones
+                .iter()
+                .find(|tone| tone.name == built_in)
+                .and_then(|tone| tone.source.as_ref());
+            if let Some(source) = source {
+                let state = settings.map(|settings| source_state(source, settings));
+                line.push_str(&format!(
+                    " [saved: {}{}]",
+                    source.preset,
+                    match state {
+                        Some(SourceState::Changed) => ", changed: run `tones update`",
+                        Some(SourceState::Missing) => ", no longer in the settings",
+                        Some(SourceState::Current) | None => "",
+                    }
+                ));
+            }
+            line.trim_end().to_owned()
+        })
+        .collect()
 }
 
 fn run_check(options: Options) -> Result<(), String> {
@@ -276,10 +419,11 @@ fn run_check(options: Options) -> Result<(), String> {
     let file = load_library(&path)?;
     validate(&file)?;
     println!(
-        "{}: {} tone(s), {} program(s)",
+        "{}: {} tone(s), {} program(s), {} RSE sound(s)",
         path.display(),
         file.tones.len(),
-        file.programs.len()
+        file.programs.len(),
+        file.rse.len()
     );
     for warning in ir_warnings(&file) {
         println!("  warning: {warning}");
@@ -334,9 +478,7 @@ fn find_preset<'a>(settings: &'a Settings, name: &str) -> Result<&'a ChainPreset
     ))
 }
 
-/// Replaces every impulse response with the computed blocks: a cabinet after an amp turns
-/// the amp's computed speaker back on; a room or body block simply goes. Returns what it
-/// dropped, for the report.
+/// The level the chain's blocks add in all, dB.
 fn chain_trim(chain: &ChainSetting) -> f32 {
     let sum: f32 = chain
         .blocks
@@ -356,13 +498,6 @@ fn chain_trim(chain: &ChainSetting) -> f32 {
         .sum();
     // Adding zero turns a negative zero into a positive one, so the report prints "0.0".
     if sum == 0.0 { 0.0 } else { sum }
-}
-
-fn tone_has_amp(chain: &ChainSetting) -> bool {
-    chain
-        .blocks
-        .iter()
-        .any(|block| block.choice == BlockChoice::Amp)
 }
 
 /// The family a program's tone belongs to, as the pickers group them.
@@ -394,9 +529,6 @@ fn kind_name(kind: StringKind) -> &'static str {
 /// Checks the library before it is written or embedded: the same invariants the tone
 /// library's tests hold it to.
 fn validate(file: &ToneLibraryFile) -> Result<(), String> {
-    if file.tones.is_empty() {
-        return Err("the library has no tones".to_owned());
-    }
     let mut names: BTreeSet<&str> = BTreeSet::new();
     for entry in &file.tones {
         if entry.name.trim().is_empty() {
@@ -421,6 +553,13 @@ fn validate(file: &ToneLibraryFile) -> Result<(), String> {
         if !names.contains(name.as_str()) {
             return Err(format!(
                 "program {program} starts on \"{name}\", which is not in the library"
+            ));
+        }
+    }
+    for (sound, name) in &file.rse {
+        if !names.contains(name.as_str()) {
+            return Err(format!(
+                "the RSE sound \"{sound}\" starts on \"{name}\", which is not in the library"
             ));
         }
     }

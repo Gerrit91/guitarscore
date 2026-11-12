@@ -1,5 +1,5 @@
 //! The knobs of an amp block in the Sound chain window (its voice, chosen by clicking its
-//! name, then Gain, the tone stack, the speaker and the output level as round knobs), of a
+//! name, then Gain, the tone stack and the output level as round knobs), of a
 //! drive pedal, and of a compressor (its ratio buttons, its knobs and its gain-reduction
 //! meter). The EQ's own editor is in [`super::eq_editor`].
 
@@ -67,18 +67,6 @@ pub(super) fn amp_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
     for (value, label, tip) in knobs {
         changed |= round_knob(ui, value, knob_ranges::AMP, label, "", 0.5, false, tip).changed;
     }
-    changed |= round_knob(
-        ui,
-        &mut block.speaker,
-        knob_ranges::AMP,
-        "Speaker",
-        "",
-        1.0,
-        false,
-        "The built-in 4×12 speaker: 1 through it, 0 direct. Turn it to 0 when a Cab block with \
-         a cabinet's impulse response follows the amp.",
-    )
-    .changed;
     changed |= round_knob(
         ui,
         &mut block.gain_db,

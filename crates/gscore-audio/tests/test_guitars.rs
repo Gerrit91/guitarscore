@@ -198,30 +198,39 @@ fn a_palm_muted_note_rings_past_an_eighth_until_the_next_note() {
 }
 
 #[test]
-fn a_steel_track_sounds_through_its_body() {
-    // A low A on steel strings (the default kind of a modelled track): its body lifts the
-    // air resonance near 100 Hz; without a body the same note lacks it.
+fn a_steel_track_sounds_through_an_acoustic_cab() {
+    use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, BodyKind, ChainSpec, body_response};
+    // A low A on steel strings through a Cab block playing the built-in Acoustic body,
+    // against the same note without it.
     let song = testing::song_with_notes(&[(1, &[TestNote::new(5, 0)])]).unwrap();
-    let sequence = Sequence::new(&song, None).unwrap().with_modelled_guitars();
-    let steel = gscore_guitar::GuitarModel::Steel.strings();
-    assert_eq!(steel.body, gscore_guitar::BodyKind::Dreadnought);
-    let play_with = |model: gscore_guitar::StringModel| {
+    let sequence = Arc::new(Sequence::new(&song, None).unwrap().with_modelled_guitars());
+    let play = |body: bool| {
         let mut engine = SynthEngine::new(&bank(), RATE).unwrap();
-        engine.set_string_model(StringKind::Steel, model);
-        engine.load(Arc::new(sequence.clone()));
+        if body {
+            let mut spec = ChainSpec::default();
+            spec.blocks[0] = Some(BlockKind::Impulse(
+                body_response(BodyKind::Dreadnought).unwrap(),
+            ));
+            let settings = [BlockSettings::default(); BLOCKS];
+            let chain = gscore_audio::prepare_chain(&spec, &unity(settings), RATE);
+            assert!(engine.set_chain(0, chain, unity(settings)).is_none());
+        }
+        engine.load(Arc::clone(&sequence));
         engine.play();
         render(&mut engine, 1.0)
     };
-    let with = play_with(steel);
-    let without = play_with(gscore_guitar::StringModel {
-        body: gscore_guitar::BodyKind::None,
-        ..steel
-    });
-    let air =
-        |out: &[f32]| power(seconds(out, 0.1, 0.6), 100.0) / power(seconds(out, 0.1, 0.6), 110.0);
+    let (with, without) = (play(true), play(false));
+    // The body's scoop around 400 Hz takes the fourth harmonic (440 Hz) well down against
+    // the fundamental, which its air resonance lifts.
+    let boxy = |out: &[f32]| {
+        let part = seconds(out, 0.1, 0.6);
+        power(part, 440.0) / power(part, 110.0)
+    };
     assert!(
-        air(&with) > 2.0 * air(&without),
-        "the air resonance is heard"
+        boxy(&with) < 0.25 * boxy(&without),
+        "the body is heard: {} against {}",
+        boxy(&with),
+        boxy(&without)
     );
 }
 

@@ -498,7 +498,7 @@ fn sound(
             }
             let rows = super::tone_picker::tone_rows(
                 panel.current.as_ref(),
-                Some(panel.default_tone.as_str()),
+                panel.default_tone.as_deref(),
                 &panel.saved,
             );
             if let Some(choice) = super::tone_picker::picker(ui, "track_tone_picker", &rows, picker)

@@ -19,6 +19,10 @@ cargo xtask web --smoke                        # also check it in headless Chrom
 cargo xtask web --soundfont PATH               # ship another .sf2; --no-soundfont for silence
 cargo xtask tones list                         # the saved modelled-guitar tones and their programs
 cargo xtask tones import --preset NAME --program N  # copy one into the built-in library
+cargo xtask tones programs                     # the programs, their built-in tones and where those came from
+cargo xtask tones update                       # copy changed saved tones into the built-in library again
+cargo xtask tones rse ~/tabs                   # the RSE sounds Guitar Pro files use, and the tone each starts on
+cargo xtask tones rse --map "Distortion Guitar/Lead" --tone "Heavy Lead"   # start that RSE sound on a built-in tone
 cargo xtask tones normalize                    # level the built-in tones with each other
 ```
 

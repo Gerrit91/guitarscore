@@ -293,10 +293,8 @@ pub struct Playback {
     string_sounds: crate::settings::StringSounds,
     /// The effect chain after each kind of string on a track without a tone of its own.
     string_chains: crate::chain_settings::StringChains,
-    /// The user's saved tones: the defaults a program without a tone of its own starts on.
+    /// The user's saved tones (the Sound chain window's list).
     string_presets: Vec<crate::settings::ChainPreset>,
-    /// The tones set for track presets (by General MIDI program), local to this machine.
-    preset_tones: Vec<crate::settings::PresetTone>,
     /// The tones set for the parts of a drum kit (kick, snare, ...), local to this machine.
     drum_parts: Vec<crate::settings::DrumPartTone>,
     /// The drum parts a song gives a drum track of its own (by the song's track index):
@@ -305,6 +303,10 @@ pub struct Playback {
     /// The tones that came with the open song, by its track index (they win over the
     /// preset's: a shared song keeps its sound).
     tones: std::collections::BTreeMap<usize, crate::chain_settings::Tone>,
+    /// The built-in tone the tone library maps a track's Guitar Pro sound to, by the
+    /// song's track index and by the tone's name: that track's default, ahead of its
+    /// program's.
+    rse_tones: std::collections::BTreeMap<usize, String>,
     /// Each track's send into the compressor bus (0-127), by the song's track index.
     comp_sends: Vec<(usize, u8)>,
     /// The modelled tracks of the sequence the synthesizer has, and what each place of it
@@ -385,10 +387,10 @@ impl Default for Playback {
             string_sounds: crate::settings::StringSounds::default(),
             string_chains: crate::chain_settings::StringChains::default(),
             string_presets: Vec::new(),
-            preset_tones: Vec::new(),
             drum_parts: Vec::new(),
             track_drum_parts: std::collections::BTreeMap::new(),
             tones: std::collections::BTreeMap::new(),
+            rse_tones: std::collections::BTreeMap::new(),
             comp_sends: Vec::new(),
             tone_targets: Vec::new(),
             sent_tones: std::collections::BTreeMap::new(),
@@ -1388,12 +1390,7 @@ impl Playback {
     /// `sequence` with the engines chosen: the settings' default for guitar and bass
     /// tracks, then each track's own choice (modelled strings only for string tracks).
     pub(crate) fn engines(&self, sequence: Sequence) -> Sequence {
-        with_engines(
-            sequence,
-            self.modelled_guitars,
-            &self.track_engines,
-            &self.preset_tones,
-        )
+        with_engines(sequence, self.modelled_guitars, &self.track_engines)
     }
 
     /// The tracks' own engine choices (by track index).
@@ -2070,12 +2067,9 @@ pub(crate) fn with_engines(
     sequence: Sequence,
     modelled: bool,
     engines: &[(usize, gscore_play::TrackEngine)],
-    preset_tones: &[crate::settings::PresetTone],
 ) -> Sequence {
     let mut sequence = if modelled {
-        // A preset the user gave a tone of its own plays that tone's kind of string.
-        sequence
-            .with_modelled_guitars_where(|program| chains::preset_kind_of(preset_tones, program))
+        sequence.with_modelled_guitars()
     } else {
         sequence
     };

@@ -4686,3 +4686,212 @@ Branch `review-ux-requests`.
   arrow beside it lists 30-150 % in 10 % steps; together as wide as the old dropdown (the
   toolbar's zoom group still fits at 1000 px).
 - Goldens and app snapshots rewritten: owner to approve.
+
+## 2026-11-12 — An audible body, tabs for the strings, a window that keeps its size
+
+- **The body:**
+  - The owner heard no difference between None, Dreadnought and Classical. Measured: the
+    first body (eight narrow bells in series, each a few hertz wide) changed a strummed
+    chord by under 2 dB in any octave band.
+  - Rebuilt (`gscore-guitar` `body.rs`): a low cut, a broad radiation curve (eight
+    filters), and sixteen narrow band-pass modes rung from the curve, each standing out
+    of it by a few dB and ringing on briefly.
+  - At the owner's suggestion the Dreadnought is fitted to his reference tone's impulse
+    response, a Furch Vintage 1 dreadnought. Only its figures were taken: the
+    third-octave response, its narrow peaks and its decay (-20 dB after 16 ms).
+  - It is now within 1.8 dB of the reference per third octave on average: the air near
+    95 Hz up, a deep scoop at 400 Hz, the mids down, a notch near 2 kHz, a strong
+    presence from 3 to 9 kHz.
+  - On a strummed steel chord, against no body: about -10 dB at 500 Hz to 1 kHz and +6 dB
+    from 4 to 8 kHz, about as loud overall.
+  - The Classical is warmer and darker on top.
+  - `Biquad::bandpass` is new.
+  - Tests:
+    - a strummed chord's boxy mids well down against the low end;
+    - the classical body darker on top than the dreadnought;
+    - the dreadnought within 2.5 dB of the reference's figures;
+    - size moving the resonances, the ring and then silence, none or no mix changing
+      nothing;
+    - the engine playing a steel note through it (its fourth harmonic, at the 400 Hz
+      scoop, well down against the fundamental).
+- **Tabs:** the strings' box no longer shows every knob group at once: Strike, String,
+  Pickup, Body and Output are tabs above one row of knobs, and the tab chosen stays while
+  the window is open.
+- **A window that keeps its size:**
+  - The chosen box's knobs sit in an area of one height, the tallest editor's (the EQ's,
+    430 px; less on a small screen, then it scrolls).
+  - The slot above the board (the tone's rows, or a drum part's level) has one height
+    too.
+  - Switching boxes, parts or tabs no longer moves or resizes the window. The strings'
+    and the EQ's window are now equally tall.
+- **CI:** the GitHub runner's GPU anti-aliases the EQ's curve and the compressor bus's
+  needles a little differently. Those two snapshots failed with 20 and 23 pixels off by up
+  to 1.5 (YIQ), none above 2. They now use a colour tolerance of 2 per pixel
+  (`curve_tolerance`), still with no pixel allowed past it.
+- Snapshots: every Sound chain window (the fixed size), the strings' (tabs) and the
+  mixer's stomp-box view were regenerated.
+- Open (owner, for later): in the clef selection window the clefs do not fit into their
+  selection boxes.
+
+## 2026-11-12 — Kind tab with pictures, a divider, a smaller window
+
+- **Kind tab:** which strings play the track is now the strings' first tab, named Kind
+  (owner: not "Strings", not "Played by").
+  - Four large picture tiles (124 px, the pictures 92 px) in the instrument symbols'
+    flat shape language, with their names below.
+  - Nylon: a classical guitar with a rosette, a wide tie-block bridge and an open
+    slotted headstock. Steel: a dreadnought with a pickguard, a pin bridge and tuners.
+    Electric and Bass: the track panel's own symbols.
+  - Bare on the panel, filled when hovered or chosen, as the palette's tiles
+    (`app/string_kinds.rs`, `instrument::paint_strings`).
+- **A divider** separates "Played by" from the tabs.
+- **Smaller window:**
+  - With the strings' knobs on tabs, the EQ-sized editor area left most windows half
+    empty.
+  - The area is now 250 px, enough for every editor but the EQ's. A chain with an EQ
+    in it takes the EQ's 430 px.
+  - Switching boxes still never resizes the window; only adding or removing an EQ does.
+- `cargo xtask tones --list` names `list` (the commands are plain words).
+- Tests: the Kind tab shows the four kinds and is the first; tests that type into a
+  knob choose the Strike tab first. Snapshots of the Sound chain windows regenerated.
+
+## 2026-11-12 — `cargo xtask tones programs`
+
+- Lists the guitar and bass programs (24-39) with their General MIDI names, the kind of
+  string each plays and the built-in tone it starts on.
+- With a settings file (optional here), it also shows the saved tone standing in for a
+  program or that the program has its own tone on this machine.
+- Test: the sixteen programs with their names, kinds and tones, a saved tone and an own
+  tone marked.
+
+## 2026-11-12 — Imported tones remember their saved tone; `cargo xtask tones update`
+
+- The owner imported a saved tone for program 28 and the list still said "own tone on
+  this machine", while another imported program said "saved": the two notes were about
+  this machine's settings, not about the import.
+- `import` now records on the built-in tone which saved tone it came from, with a
+  fingerprint of that saved tone (`source` in `tones.json`; only the tool reads it).
+- `programs` shows `[saved: NAME]` for an imported tone, with "changed: run `tones
+  update`" when the saved tone was edited since, or "no longer in the settings".
+- What plays on this machine instead of the built-in tone is a separate note:
+  `[this machine: own tone]` or `[this machine: NAME]` (a saved tone matched by name).
+- `update [--dry-run]` copies every changed saved tone again; the built-in name, family
+  and description stay, and a tone whose saved tone is gone is left alone.
+- Tones imported before this carry no reference: importing them once more links them.
+- Test: an import is listed as saved, a changed and a deleted saved tone are marked, a
+  dry run writes nothing, the update copies the changed one and keeps its description.
+
+## 2026-11-12 — A program plays an imported tone or its plain strings, nothing else
+
+- The owner's model: a program's default is a built-in tone imported from one of his
+  saved tones, or nothing. Three other mechanisms are gone:
+  - **Per-program tones in the settings** (`preset_tones`), leftovers of the one day
+    (7 November) when the Sound chain window wrote them. They overrode the default and
+    even decided a program's kind of string. An older settings file's list is ignored
+    and gone at the next save; `PresetTone` stays as the song's per-track tone.
+  - **The eighteen made-up tones** in `tones.json` ("none of them should be used, it's
+    better to have an empty sound"). A program without a tone plays the kind's strings
+    as the settings have them, with no effects. An empty library is valid.
+  - **Name matching**: a saved tone no longer stands in for a default because its name
+    resembles the built-in one's (`saved_default_for`).
+- With the made-up tones went the mapping of Guitar Pro's RSE sound to the nearest of
+  them (`song_state/rse.rs`): a GP7 file opens on its programs' defaults. Songs that
+  already carry a tone keep it.
+- A bass still ignores a tone the song carries and plays its program's default.
+- `tones list` shows what was imported from each saved tone; `tones programs` shows
+  `(none)` for a program without a tone and no "this machine" notes any more.
+- Tests no longer depend on which tones the library holds: lookups and the picker's rows
+  are tested on a small library made in the test, the window tests pick a saved tone.
+  The snapshots that show the track panel's tone table were regenerated; they still
+  show the embedded library, so an import changes them.
+
+## 2026-11-12 — Generic icons for the kinds of strings
+
+- The owner found the instrument pictures on the Kind tab too busy ("not guitars"): the
+  tiles are small again (100 x 70 px, a 36 px icon and the name).
+- The icons are generic, a few strings lying across, showing what tells the kinds apart:
+  - nylon: three smooth, fairly thick plain strings;
+  - steel: thinner, heavier downwards, the lower two wound;
+  - electric: thin strings over a pickup and its pole pieces;
+  - bass: two heavy wound strings.
+- `instrument.rs` is back as it was.
+
+## 2026-11-12 — A built-in cabinet modelled on a Marshall 4×12
+
+- A Cabinet block without a file plays a computed cabinet (`gscore_guitar::
+  built_in_cabinet`). Loading a WAV into the block replaces it, as before.
+- It is modelled after the owner's reference impulse response, a Marshall 1960A with
+  G12M speakers and an MD 421 at the cap. Only its figures were taken: the third-octave
+  response, the breakup peaks and the decay (-20 dB after 13 ms).
+- A chain of 17 filters, fitted within 2.0 dB per third octave on average:
+  - a low cut near 90 Hz, a body from 150 to 400 Hz;
+  - a dip around 1.1 kHz, presence from 2.4 to 4 kHz;
+  - a fourth-order fall above 5 kHz that levels off above 10 kHz;
+  - narrow cone peaks.
+- Rendered once into a 200 ms response, unit energy as a loaded file, and played by the
+  same convolver (mix, gain and cuts as for a file).
+- The board's box says "built-in 4×12" for a cabinet without a file.
+- Tests:
+  - the fit to the reference's figures;
+  - the response made once, at unit energy, died away by 100 ms;
+  - a cabinet without a file plays it, a file replaces it, a room without a file stays
+    empty.
+- Found on the way: `dismissing_an_open_error_shows_the_empty_workspace` fails when the
+  repository sits at a very long path (the notice with the long file path is wider than
+  the test window), also on plain `main`; at the repository's own path it passes.
+
+## 2026-11-12 — The Cab block: built-in responses in a dropdown, the bodies moved there
+
+- The block is called **Cab** in its menu, on the board and in its editor (was "Cabinet /
+  body").
+- Choosing a Cab no longer opens the file dialog: it starts on its built-in response.
+  Only a Room still asks for its file.
+- The editor's dropdown offers:
+  - **Rock**, the 4×12 after the owner's Marshall 1960A / G12M impulse response;
+  - **Acoustic**, the dreadnought body;
+  - **Classical**, the classical body;
+  - **Load file…**.
+
+  A loaded file shows its name there; picking a built-in one drops the file. The choice is
+  stored as `cabinet` (`rock`, `acoustic`, `classical`); older blocks read as Rock.
+  Another built-in response is a structural change, so the chain is prepared again.
+- **The acoustic bodies moved into the Cab block** (owner's wish):
+  - `body_response` renders each body once into a 0.4 s impulse response at unit
+    energy.
+  - The string sound's Body tab, `StringModel`'s and `StringSound`'s body fields and the
+    engine's body per track are gone.
+  - Saved sounds keep their old body fields, unread.
+  - The body's Size knob is gone (a response is fixed); its Body knob is the block's
+    Mix.
+- **Open for the owner:** the built-in acoustic tones in `data/tones.json` played through
+  the string sound's body. They need a Cab block on Acoustic or Classical to sound the same
+  again. The library was left alone: the owner has uncommitted changes in it.
+- Tests:
+  - the bodies as shared responses at unit energy that fade to silence;
+  - a steel track through an Acoustic cab (its 400 Hz scoop heard);
+  - a file-less cab playing its chosen response, another response being a structural
+    change, a file replacing it;
+  - the window: a Cab starts on Rock with no dialog, and the dropdown offers the bodies
+    and loading a file.
+- New snapshot `sound_chain_cab`; the strings' tabs (no Body), the menu and the windows
+  regenerated.
+
+## 2026-11-12 — Guitar Pro's RSE sounds as placeholders for the built-in tones
+
+A GP7 file names the RSE sound of every track. The made-up mapping from those sounds to
+made-up tones is gone; in its place the tone library (`data/tones.json`) has a table `rse`
+from a sound's name to one of its tones, filled by the owner:
+
+- The name is the instrument (the last part of the sound's path) and the sound's own name,
+  `Distortion Guitar/Hard Rock` (`rse_sound::key`). Only the first sound of a track counts.
+  Nothing of the RSE preset itself is read or used.
+- `cargo xtask tones rse PATH...` lists the sounds the guitar and bass tracks of Guitar Pro
+  files use, how often, on which kind of string, and the tone each starts on.
+  `rse --map SOUND --tone NAME` and `rse --unmap SOUND` edit the table; `import --rse SOUND`
+  maps while importing. `check` refuses a mapping to a tone that is not in the library.
+- A track whose sound is mapped starts on that tone, ahead of its program's
+  (`Playback::track_default_tone`), in playback and in audio export. It is a default: nothing
+  is stored in the song, so a changed mapping is heard the next time, and a bass follows it
+  too. A tone the song carries still wins on a guitar. The tone must be of the track's kind
+  of string, as for a program.
+

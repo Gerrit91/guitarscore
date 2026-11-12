@@ -180,52 +180,6 @@ impl From<gscore_guitar::Pickup> for PickupSetting {
     }
 }
 
-/// The acoustic body of a string sound as the settings file keeps it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum BodySetting {
-    /// Not set (a sound saved before bodies existed): its kind's preset decides (a
-    /// dreadnought for steel strings, a classical body for nylon), see
-    /// [`StringSound::for_kind`].
-    #[default]
-    Unset,
-    None,
-    Dreadnought,
-    Classical,
-}
-
-impl BodySetting {
-    /// The bodies a user can choose, in the order the window shows them.
-    pub const CHOICES: [BodySetting; 3] = [
-        BodySetting::None,
-        BodySetting::Dreadnought,
-        BodySetting::Classical,
-    ];
-
-    pub fn body(self) -> gscore_guitar::BodyKind {
-        match self {
-            BodySetting::Unset | BodySetting::None => gscore_guitar::BodyKind::None,
-            BodySetting::Dreadnought => gscore_guitar::BodyKind::Dreadnought,
-            BodySetting::Classical => gscore_guitar::BodyKind::Classical,
-        }
-    }
-
-    /// Its name.
-    pub fn label(self) -> &'static str {
-        self.body().label()
-    }
-}
-
-impl From<gscore_guitar::BodyKind> for BodySetting {
-    fn from(body: gscore_guitar::BodyKind) -> Self {
-        match body {
-            gscore_guitar::BodyKind::None => BodySetting::None,
-            gscore_guitar::BodyKind::Dreadnought => BodySetting::Dreadnought,
-            gscore_guitar::BodyKind::Classical => BodySetting::Classical,
-        }
-    }
-}
-
 /// One kind of modelled string as the user dialed it in: the knobs of
 /// [`gscore_guitar::StringModel`], kept as plain numbers in the settings file.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -260,13 +214,6 @@ pub struct StringSound {
     /// knobs gets the presets' values (the struct's default).
     pub pick_noise: f32,
     pub attack_pitch: f32,
-    /// The acoustic body, how much of it and its size. A sound saved before bodies
-    /// existed has none set (not the struct's default, an electric's none): its kind
-    /// decides.
-    #[serde(default)]
-    pub body: BodySetting,
-    pub body_mix: f32,
-    pub body_size: f32,
 }
 
 impl Default for StringSound {
@@ -300,9 +247,6 @@ impl From<gscore_guitar::StringModel> for StringSound {
             palm_mute: model.palm_mute,
             pick_noise: model.pick_noise,
             attack_pitch: model.attack_pitch,
-            body: model.body.into(),
-            body_mix: model.body_mix,
-            body_size: model.body_size,
         }
     }
 }
@@ -331,26 +275,18 @@ impl StringSound {
             palm_mute: self.palm_mute,
             pick_noise: self.pick_noise,
             attack_pitch: self.attack_pitch,
-            body: self.body.body(),
-            body_mix: self.body_mix,
-            body_size: self.body_size,
         }
         .sanitized()
     }
 
-    /// This sound for strings of `kind`: a pickup or a body not set comes from the kind's
-    /// preset (an electric's humbucker, none for an acoustic or the bass; a dreadnought
-    /// for steel strings, a classical body for nylon, none for the others).
+    /// This sound for strings of `kind`: a pickup not set comes from the kind's preset (an
+    /// electric's humbucker; none for an acoustic or the bass). (A body is a Cab block's
+    /// now; a sound saved with one keeps it in the file, unread.)
     pub fn for_kind(mut self, kind: gscore_play::StringKind) -> Self {
         let preset = gscore_audio::default_string_model(kind);
         if self.pickup == PickupSetting::Unset {
             self.pickup = preset.pickup.into();
             self.pickup_position = preset.pickup_position;
-        }
-        if self.body == BodySetting::Unset {
-            self.body = preset.body.into();
-            self.body_mix = preset.body_mix;
-            self.body_size = preset.body_size;
         }
         self
     }
@@ -375,9 +311,10 @@ pub struct ChainPreset {
     pub engine: String,
 }
 
-/// A tone the user set for a track preset (its General MIDI program): what its strings
-/// sound like and the chain after them. Kept in the settings, so it plays on every track
-/// with that preset, in every song; "Built-in" in the Sound chain window removes it.
+/// A track's own tone as the song keeps it: what its strings sound like and the chain
+/// after them, with the General MIDI program the track had when it was set. (The settings
+/// once kept one per program too; a `preset_tones` list in an older settings file is
+/// ignored and gone at the next save.)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PresetTone {
     /// The preset's General MIDI program (0 to 127).
@@ -474,8 +411,6 @@ fn fit_panel(size: Option<f32>, (low, high): (f32, f32)) -> Option<f32> {
 /// The most string sound presets kept, and the longest name.
 pub(crate) const MAX_STRING_PRESETS: usize = 100;
 pub(crate) const MAX_STRING_PRESET_NAME: usize = 60;
-/// How many track presets (General MIDI programs) there are.
-pub(crate) const MAX_PROGRAMS: u8 = 128;
 
 /// The four kinds of modelled string, as dialed in.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -792,9 +727,6 @@ pub struct Settings {
     pub string_sounds: StringSounds,
     /// Chains (with their string sound) saved under a name, by the Sound chain window.
     pub string_presets: Vec<ChainPreset>,
-    /// The tones set for track presets (by General MIDI program), local to this machine:
-    /// a track whose preset has one plays it, in every song.
-    pub preset_tones: Vec<PresetTone>,
     /// The tones set for the parts of a drum kit (kick, snare, ...), local to this
     /// machine: every drum track's parts play them.
     pub drum_parts: Vec<DrumPartTone>,
@@ -865,7 +797,6 @@ impl Default for Settings {
             chorus_bus: ChorusBus::default(),
             master_chain: crate::chain_settings::ChainSetting::default(),
             string_presets: Vec::new(),
-            preset_tones: Vec::new(),
             drum_parts: Vec::new(),
             midi_port: None,
             bend_presets: Vec::new(),
@@ -1079,9 +1010,6 @@ impl Settings {
         for preset in &mut self.string_presets {
             preset.chain.sanitize();
         }
-        for tone in &mut self.preset_tones {
-            tone.chain.sanitize();
-        }
         for part in &mut self.drum_parts {
             part.chain.sanitize();
         }
@@ -1099,18 +1027,6 @@ impl Settings {
         let mut parts = std::collections::BTreeSet::new();
         self.drum_parts
             .retain(|tone| tone.part().is_some_and(|part| parts.insert(part.index())));
-        // Per-preset tones: a program the board has and a known kind, one per program.
-        let mut programs = std::collections::BTreeSet::new();
-        self.preset_tones.retain(|tone| {
-            tone.program < MAX_PROGRAMS
-                && kind_from_id(&tone.kind).is_some()
-                && programs.insert(tone.program)
-        });
-        for tone in &mut self.preset_tones {
-            if let Some(kind) = kind_from_id(&tone.kind) {
-                tone.sound = tone.sound.for_kind(kind);
-            }
-        }
     }
 }
 
@@ -1139,33 +1055,6 @@ mod tests {
         assert_eq!(sound.model().palm_mute, 0.9);
         sound.palm_mute = 7.0;
         assert_eq!(sound.model().palm_mute, 1.0);
-    }
-
-    #[test]
-    fn sounds_saved_before_bodies_get_their_kinds_body() {
-        use gscore_play::StringKind;
-        let sounds = StringSounds::default();
-        let text = serde_json::to_string(&sounds).unwrap_or_default();
-        let mut value: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
-        for kind in ["nylon", "steel", "electric", "bass"] {
-            if let Some(sound) = value.get_mut(kind).and_then(|v| v.as_object_mut()) {
-                assert!(sound.remove("body").is_some(), "{kind}");
-                sound.remove("body_mix");
-                sound.remove("body_size");
-            }
-        }
-        let older: StringSounds = serde_json::from_value(value).unwrap_or_default();
-        assert_eq!(older.get(StringKind::Steel).body, BodySetting::Dreadnought);
-        assert_eq!(older.get(StringKind::Nylon).body, BodySetting::Classical);
-        assert_eq!(older.get(StringKind::Electric).body, BodySetting::None);
-        assert_eq!(older.get(StringKind::Bass).body, BodySetting::None);
-        let steel = older.get(StringKind::Steel).model();
-        assert_eq!(steel.body, gscore_guitar::BodyKind::Dreadnought);
-        assert!(steel.body_mix > 0.0);
-        // A chosen "none" on a steel string is kept.
-        let mut chosen = sounds.steel;
-        chosen.body = BodySetting::None;
-        assert_eq!(chosen.for_kind(StringKind::Steel).body, BodySetting::None);
     }
 
     #[test]
@@ -1239,44 +1128,18 @@ mod tests {
     }
 
     #[test]
-    fn preset_tones_round_trip_and_a_broken_one_is_dropped() {
-        use gscore_play::StringKind;
-
-        let mut settings = Settings::default();
-        // A tone saved before pickups existed: its kind's pickup comes back.
-        let mut sound = settings.string_sounds.get(StringKind::Electric);
-        sound.pickup = PickupSetting::Unset;
-        let tone = |program: u8, kind: &str, sound: StringSound| PresetTone {
-            program,
-            kind: kind.to_owned(),
-            sound,
-            chain: crate::chain_settings::ChainSetting::default(),
-        };
-        settings.preset_tones.push(tone(27, "electric", sound));
-        // A broken settings file: a program past the board, an unknown kind, and a second
-        // tone for one program (the first one is kept).
-        settings.preset_tones.push(tone(200, "electric", sound));
-        settings.preset_tones.push(tone(28, "banjo", sound));
-        settings.preset_tones.push(tone(27, "bass", sound));
-        let text = serde_json::to_string(&settings).unwrap_or_default();
-        let mut back: Settings = serde_json::from_str(&text).unwrap_or_default();
-        back.sanitize();
-        assert_eq!(back.preset_tones.len(), 1, "{:?}", back.preset_tones);
-        let kept = back.preset_tones.first().expect("kept");
-        assert_eq!((kept.program, kept.kind.as_str()), (27, "electric"));
-        let tone = kept.tone().expect("a known kind");
-        assert_eq!(tone.kind, StringKind::Electric);
-        assert_eq!(tone.sound.pickup, PickupSetting::Humbucker);
-        // An older settings file without preset tones reads with none.
-        let mut value: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
-        assert!(
-            value
-                .as_object_mut()
-                .and_then(|object| object.remove("preset_tones"))
-                .is_some()
-        );
+    fn an_older_files_per_program_tones_are_ignored() {
+        let mut value = serde_json::to_value(Settings::default()).unwrap_or_default();
+        if let Some(object) = value.as_object_mut() {
+            object.insert(
+                "preset_tones".to_owned(),
+                serde_json::json!([{ "program": 28, "kind": "electric", "sound": {} }]),
+            );
+        }
         let older: Settings = serde_json::from_value(value).unwrap_or_default();
-        assert!(older.preset_tones.is_empty());
+        assert_eq!(older, Settings::default());
+        let text = serde_json::to_string(&older).unwrap_or_default();
+        assert!(!text.contains("preset_tones"), "{text}");
     }
 
     #[test]

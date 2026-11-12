@@ -17,7 +17,8 @@ use serde::{Deserialize, Serialize};
 pub enum BlockChoice {
     #[default]
     Empty,
-    /// An impulse response of a cabinet or a guitar body.
+    /// A cab: a built-in one (see [`CabinetSetting`]) or an impulse response from a file
+    /// (a cabinet or a guitar body).
     Cabinet,
     /// An impulse response of a room (a convolution reverb).
     Room,
@@ -42,7 +43,7 @@ impl BlockChoice {
     pub fn label(self) -> &'static str {
         match self {
             BlockChoice::Empty => "Empty",
-            BlockChoice::Cabinet => "Cabinet / body",
+            BlockChoice::Cabinet => "Cab",
             BlockChoice::Room => "Room",
             BlockChoice::Reverb => "Reverb",
             BlockChoice::Amp => "Amp",
@@ -57,6 +58,63 @@ impl BlockChoice {
     /// Whether it plays an impulse response from a file.
     pub fn uses_file(self) -> bool {
         matches!(self, BlockChoice::Cabinet | BlockChoice::Room)
+    }
+}
+
+/// What a Cab block without a file of its own plays: a built-in response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CabinetSetting {
+    /// A 4×12 after a Marshall 1960A with G12M speakers (`gscore_guitar::cabinet`).
+    #[default]
+    Rock,
+    /// A steel-string dreadnought's body.
+    Acoustic,
+    /// A classical guitar's body.
+    Classical,
+}
+
+impl CabinetSetting {
+    /// Every built-in one, in the order the window offers them.
+    pub const ALL: [CabinetSetting; 3] = [
+        CabinetSetting::Rock,
+        CabinetSetting::Acoustic,
+        CabinetSetting::Classical,
+    ];
+
+    /// Its name.
+    pub fn label(self) -> &'static str {
+        match self {
+            CabinetSetting::Rock => "Rock",
+            CabinetSetting::Acoustic => "Acoustic",
+            CabinetSetting::Classical => "Classical",
+        }
+    }
+
+    /// What it is, for a tooltip.
+    pub fn tip(self) -> &'static str {
+        match self {
+            CabinetSetting::Rock => {
+                "A 4×12 cabinet after a Marshall 1960A with G12M speakers, miked at the cap: \
+                 after an amp"
+            }
+            CabinetSetting::Acoustic => {
+                "A steel-string dreadnought's body: the air, the top and the wood ringing along"
+            }
+            CabinetSetting::Classical => "A classical guitar's body: warmer and rounder",
+        }
+    }
+
+    /// Its impulse response (made once, shared).
+    pub fn response(self) -> std::sync::Arc<gscore_guitar::ImpulseResponse> {
+        let body = |kind| {
+            gscore_guitar::body_response(kind).unwrap_or_else(gscore_guitar::built_in_cabinet)
+        };
+        match self {
+            CabinetSetting::Rock => gscore_guitar::built_in_cabinet(),
+            CabinetSetting::Acoustic => body(gscore_guitar::BodyKind::Dreadnought),
+            CabinetSetting::Classical => body(gscore_guitar::BodyKind::Classical),
+        }
     }
 }
 
@@ -255,7 +313,6 @@ pub struct BlockSetting {
     pub bass: f32,
     pub middle: f32,
     pub treble: f32,
-    pub speaker: f32,
     /// A drive pedal's tone and Tight (its Drive is `drive`, its level `gain_db`). A
     /// setting saved before Tight existed gets its default (the struct's default).
     pub tone: f32,
@@ -283,6 +340,8 @@ pub struct BlockSetting {
     pub delay_note: DelayNoteSetting,
     pub delay_ms: f32,
     pub delay_feedback: f32,
+    /// A Cab block's built-in response, played while no file is loaded.
+    pub cabinet: CabinetSetting,
 }
 
 impl Default for BlockSetting {
@@ -377,7 +436,6 @@ impl BlockSetting {
             bass: amp.bass,
             middle: amp.mid,
             treble: amp.treble,
-            speaker: amp.speaker,
             tone: DriveKnobs::default().tone,
             drive_tight: DriveKnobs::default().tight,
             input_db: CompressorKnobs::default().input_db,
@@ -394,6 +452,7 @@ impl BlockSetting {
             delay_note: DelayKnobs::default().note.into(),
             delay_ms: DelayKnobs::default().time_ms,
             delay_feedback: DelayKnobs::default().feedback,
+            cabinet: CabinetSetting::default(),
         }
     }
 
@@ -442,7 +501,6 @@ impl BlockSetting {
                 mid: self.middle,
                 treble: self.treble,
                 level_db: self.gain_db,
-                speaker: self.speaker,
             },
             drive: DriveKnobs {
                 drive: self.drive,
@@ -492,7 +550,18 @@ impl BlockSetting {
     /// applied when the length knob is let go (`Playback::rebuild_chain`) instead of on
     /// every step of a drag, which would rebuild the room dozens of times.
     pub fn same_structure(&self, other: &BlockSetting) -> bool {
-        self.choice == other.choice && (!self.choice.uses_file() || self.file == other.file)
+        self.choice == other.choice
+            && (!self.choice.uses_file() || self.file == other.file)
+            // Another built-in cab is another response.
+            && (self.choice != BlockChoice::Cabinet
+                || self.file.is_some()
+                || self.cabinet == other.cabinet)
+    }
+
+    /// The built-in response a Cab block plays: its chosen one while it has no file.
+    pub fn built_in_cabinet(&self) -> Option<std::sync::Arc<gscore_guitar::ImpulseResponse>> {
+        (self.choice == BlockChoice::Cabinet && self.file.is_none())
+            .then(|| self.cabinet.response())
     }
 }
 

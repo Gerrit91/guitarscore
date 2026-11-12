@@ -321,9 +321,6 @@ fn no_parameters_make_nan_or_runaway_output() {
             palm_mute: random.wild(),
             pick_noise: random.wild(),
             attack_pitch: random.wild(),
-            body: gscore_guitar::BodyKind::ALL[round % 3],
-            body_mix: random.wild(),
-            body_size: random.wild(),
         };
         let rate = [8_000.0, 44_100.0, 192_000.0, random.wild()][round % 4];
         let mut voice = StringVoice::new(rate, random.wild(), model);

@@ -1,30 +1,44 @@
-//! An acoustic guitar's body, computed: the air in the box and the wood's main modes as
-//! resonances on the strings' sound, the way the body colours what the bridge drives
-//! into it.
+//! An acoustic guitar's body, computed: how the box colours what the bridge drives into it,
+//! and the wood and air ringing on after every note.
 //!
 //! Commuted synthesis takes a body's impulse response as the strings' excitation; every
 //! part is linear, so the order can be swapped. Here the body runs once per track on the
 //! sum of its strings: the same sound for a fraction of the cost, and no recording needed.
 //!
 //! ```text
-//!  strings ─┬───────────────────────────────────────────────────────┬─► mix ─► out
-//!           └─► low cut ─► [ air ─► top ─► back ─► … modes ] ─► trim ─┘
+//!           ┌─► low cut ─► radiation (broad bells and a shelf) ────────────┐
+//!  strings ─┤                                                              ├─► mix ─► out
+//!           └─► [ mode 1 ‖ mode 2 ‖ … ‖ mode 16 ] (narrow band-passes) ─► ring ┘
 //! ```
 //!
-//! Each mode is a narrow bell (a peaking filter): it lifts its band and rings on for a
-//! moment after the string's energy passes, as a real body does. The tables are typical
-//! measurements of the two body styles, rounded: the air (Helmholtz) resonance near
-//! 100 Hz, the top's first mode near 190 Hz with the back a little above it, the top's
-//! cross and long dipoles around 400 and 550 Hz, and weaker modes higher up. Size scales
-//! every frequency (a smaller body sounds higher, a jumbo lower).
+//! - **Radiation:** what the body does to every note, broadly: the air (Helmholtz) and the
+//!   top's first mode make a full low end around 100-200 Hz, the box a dip in the boxy
+//!   mids, the top's radiation a presence (steel) or a softer top end (nylon).
+//! - **Modes:** sixteen resonances side by side, each a narrow band-pass that rings on
+//!   for tens of milliseconds after the strings' energy passes it: the "box" a real body
+//!   adds, which a broad curve alone cannot. The frequencies are typical measurements of
+//!   the two body styles, rounded (the air near 100 Hz, the top near 190 Hz with the back
+//!   a little above it, the cross and long dipoles near 400 and 550 Hz, and the plate's
+//!   higher modes), their strength falling with frequency.
+//!
+//! The first version (2026-11-11) was eight narrow bells in series: each lifted only a
+//! few hertz, so a strummed chord changed by under 2 dB in any octave and the owner heard
+//! no difference between the bodies.
+//!
+//! Size scales every frequency (a smaller body sounds higher, a jumbo lower).
+//!
+//! Since 2026-11-12 the bodies are a Cabinet block's built-in responses (Acoustic and
+//! Classical, beside the Rock cabinet): [`body_response`] renders a body at its own size
+//! once into an impulse response, played by the block's convolver like a loaded file.
+
+use std::sync::{Arc, LazyLock};
 
 use crate::filters::Biquad;
+use crate::impulse::ImpulseResponse;
 
-/// How many modes a body has at most.
-const MODES: usize = 8;
-/// Below the air resonance a body radiates little: its low cut, as a share of the air
-/// mode's frequency.
-const LOW_CUT_SHARE: f32 = 0.7;
+/// How many broad radiation filters and ringing modes a body has.
+const RADIATION: usize = 8;
+const MODES: usize = 16;
 /// Size 0 (a parlour) to 1 (a jumbo) scales the modes by this much up and down.
 const SIZE_SPAN: f32 = 1.25;
 
@@ -40,6 +54,25 @@ pub enum BodyKind {
     Classical,
 }
 
+/// One broad radiation filter: a bell (frequency, quality, gain) or a high shelf.
+#[derive(Debug, Clone, Copy)]
+enum Shape {
+    Bell(f32, f32, f32),
+    HighShelf(f32, f32),
+}
+
+/// A body's tables: its low cut (below the air resonance a body radiates little), the
+/// radiation curve, the modes (frequency, quality, and how far each stands out of the
+/// curve around it, dB), how strongly they ring, and the trim that keeps the body about as
+/// loud as the strings alone.
+struct Tables {
+    low_cut: f32,
+    radiation: [Shape; RADIATION],
+    modes: [(f32, f32, f32); MODES],
+    ring: f32,
+    trim_db: f32,
+}
+
 impl BodyKind {
     /// Every kind, in the order a user interface shows them.
     pub const ALL: [BodyKind; 3] = [BodyKind::None, BodyKind::Dreadnought, BodyKind::Classical];
@@ -53,39 +86,80 @@ impl BodyKind {
         }
     }
 
-    /// The modes: frequency (Hz), quality, lift (dB); and the trim (dB) that keeps the
-    /// body about as loud as the strings alone.
-    fn modes(self) -> ([(f32, f32, f32); MODES], f32) {
+    fn tables(self) -> Tables {
         match self {
-            BodyKind::None => ([(1_000.0, 1.0, 0.0); MODES], 0.0),
-            BodyKind::Dreadnought => (
-                [
-                    (100.0, 14.0, 10.0),
-                    (195.0, 20.0, 8.0),
-                    (228.0, 18.0, 4.0),
-                    (390.0, 22.0, 3.0),
-                    (550.0, 22.0, 3.5),
-                    (830.0, 20.0, 2.0),
-                    (1_250.0, 16.0, 2.0),
-                    // The top's radiation: a broad presence.
-                    (2_600.0, 1.2, 2.5),
+            // Fitted to the owner's reference, an impulse response of a Furch Vintage 1
+            // dreadnought (measured 2026-11-12, only these figures taken from it): the air
+            // near 95 Hz and the top and back around 200-280 Hz up, a deep scoop at
+            // 400 Hz, the mids well down, a notch near 2 kHz, a strong presence from 3 to
+            // 9 kHz and little above 10 kHz; its narrow resonances, each standing a few dB
+            // out of the curve, ring for only a few milliseconds.
+            BodyKind::None | BodyKind::Dreadnought => Tables {
+                low_cut: 28.0,
+                radiation: [
+                    Shape::Bell(95.0, 3.5, 13.0),
+                    Shape::Bell(238.0, 1.8, 11.0),
+                    Shape::Bell(400.0, 2.8, -17.0),
+                    Shape::Bell(900.0, 0.9, -11.0),
+                    Shape::Bell(2_050.0, 3.0, -13.0),
+                    Shape::Bell(4_100.0, 2.0, 12.0),
+                    Shape::Bell(7_500.0, 1.3, 9.0),
+                    Shape::HighShelf(9_500.0, -8.0),
                 ],
-                -0.7,
-            ),
-            BodyKind::Classical => (
-                [
-                    (96.0, 12.0, 8.0),
-                    (188.0, 18.0, 8.5),
-                    (240.0, 16.0, 4.0),
-                    (410.0, 20.0, 3.0),
-                    (600.0, 20.0, 2.0),
-                    (950.0, 18.0, 2.0),
-                    (1_500.0, 14.0, 1.0),
-                    // Warmer than a steel string: a soft dip in the upper mids.
-                    (2_200.0, 1.0, -1.5),
+                modes: [
+                    (479.0, 9.0, 6.0),
+                    (554.0, 7.0, 3.0),
+                    (806.0, 5.0, 4.0),
+                    (879.0, 11.0, 6.0),
+                    (1_208.0, 12.0, 2.5),
+                    (1_356.0, 17.0, 7.0),
+                    (1_660.0, 17.0, 8.0),
+                    (1_759.0, 7.0, 8.0),
+                    (2_635.0, 8.0, 5.0),
+                    (2_792.0, 9.0, 2.0),
+                    (3_320.0, 17.0, 6.0),
+                    (4_064.0, 12.0, 4.0),
+                    (4_833.0, 17.0, 6.0),
+                    (6_451.0, 7.0, 2.0),
+                    (7_671.0, 7.0, 2.6),
+                    (8_863.0, 12.0, 6.0),
                 ],
-                -0.7,
-            ),
+                ring: 1.0,
+                trim_db: -4.0,
+            },
+            BodyKind::Classical => Tables {
+                low_cut: 62.0,
+                radiation: [
+                    Shape::Bell(100.0, 1.0, 6.0),
+                    Shape::Bell(200.0, 1.3, 4.5),
+                    Shape::Bell(600.0, 1.0, -4.0),
+                    Shape::Bell(1_800.0, 1.0, 1.0),
+                    Shape::Bell(1_000.0, 1.0, 0.0),
+                    Shape::Bell(1_000.0, 1.0, 0.0),
+                    Shape::Bell(1_000.0, 1.0, 0.0),
+                    Shape::HighShelf(4_000.0, -4.0),
+                ],
+                modes: [
+                    (96.0, 18.0, 8.9),
+                    (188.0, 24.0, 8.9),
+                    (240.0, 22.0, 7.1),
+                    (300.0, 26.0, 6.1),
+                    (410.0, 28.0, 6.1),
+                    (480.0, 28.0, 5.1),
+                    (600.0, 30.0, 5.1),
+                    (700.0, 30.0, 4.3),
+                    (800.0, 32.0, 3.9),
+                    (950.0, 32.0, 3.6),
+                    (1_100.0, 34.0, 3.2),
+                    (1_300.0, 34.0, 2.9),
+                    (1_500.0, 36.0, 2.4),
+                    (1_800.0, 36.0, 2.0),
+                    (2_100.0, 38.0, 1.6),
+                    (2_500.0, 38.0, 1.3),
+                ],
+                ring: 1.0,
+                trim_db: -4.0,
+            },
         }
     }
 }
@@ -98,7 +172,10 @@ pub struct Body {
     mix: f32,
     trim: f32,
     low_cut: Biquad,
+    radiation: [Biquad; RADIATION],
     modes: [Biquad; MODES],
+    /// Each mode's gain, the ring level included.
+    gains: [f32; MODES],
     /// Samples since the body's output was last above silence, to stop computing it.
     quiet: usize,
 }
@@ -117,7 +194,9 @@ impl Body {
             mix: 0.0,
             trim: 1.0,
             low_cut: Biquad::default(),
+            radiation: [Biquad::default(); RADIATION],
             modes: [Biquad::default(); MODES],
+            gains: [0.0; MODES],
             quiet: usize::MAX,
         }
     }
@@ -145,17 +224,33 @@ impl Body {
         }
         // A smaller body sounds higher: size 0 scales up by the span, 1 down.
         let scale = SIZE_SPAN.powf(1.0 - 2.0 * size);
-        let (modes, trim_db) = kind.modes();
-        let nyquist = self.rate * 0.45;
-        for (filter, (frequency, q, gain)) in self.modes.iter_mut().zip(modes) {
-            let frequency = (frequency * scale).min(nyquist);
-            *filter = filter.retuned(Biquad::peaking(self.rate, frequency, q, gain));
+        let tables = kind.tables();
+        let rate = self.rate;
+        let nyquist = rate * 0.45;
+        self.low_cut = self
+            .low_cut
+            .retuned(Biquad::highpass(rate, tables.low_cut * scale, 0.707));
+        for (filter, shape) in self.radiation.iter_mut().zip(tables.radiation) {
+            let design = match shape {
+                Shape::Bell(frequency, q, gain) => {
+                    Biquad::peaking(rate, (frequency * scale).min(nyquist), q, gain)
+                }
+                // The top's high end does not move with the body's size.
+                Shape::HighShelf(frequency, gain) => {
+                    Biquad::shelf(rate, frequency.min(nyquist), gain, true)
+                }
+            };
+            *filter = filter.retuned(design);
         }
-        let air = modes.first().map_or(100.0, |mode| mode.0) * scale;
-        self.low_cut =
-            self.low_cut
-                .retuned(Biquad::highpass(self.rate, air * LOW_CUT_SHARE, 0.707));
-        self.trim = 10.0_f32.powf(trim_db / 20.0);
+        for ((filter, gain), (frequency, q, db)) in
+            self.modes.iter_mut().zip(&mut self.gains).zip(tables.modes)
+        {
+            *filter = filter.retuned(Biquad::bandpass(rate, (frequency * scale).min(nyquist), q));
+            // A mode rung from the curve adds to it in phase at its centre: standing `db`
+            // out of it takes `10^(db/20) - 1` of it.
+            *gain = tables.ring * (10.0_f32.powf(db / 20.0) - 1.0).max(0.0);
+        }
+        self.trim = 10.0_f32.powf(tables.trim_db / 20.0);
     }
 
     /// Whether the body changes the sound at all.
@@ -176,11 +271,18 @@ impl Body {
         let mut peak = 0.0_f32;
         for sample in samples.iter_mut() {
             let dry = *sample;
-            let wet = self
+            let cut = self.low_cut.process(dry);
+            let radiated = self
+                .radiation
+                .iter_mut()
+                .fold(cut, |value, filter| filter.process(value));
+            let ring: f32 = self
                 .modes
                 .iter_mut()
-                .fold(self.low_cut.process(dry), |value, mode| mode.process(value))
-                * self.trim;
+                .zip(&self.gains)
+                .map(|(mode, gain)| mode.process(radiated) * gain)
+                .sum();
+            let wet = (radiated + ring) * self.trim;
             let out = dry + (wet - dry) * self.mix;
             peak = peak.max(out.abs());
             *sample = if out.is_finite() { out } else { 0.0 };
@@ -199,9 +301,50 @@ impl Body {
     /// Silence in every resonance.
     pub fn reset(&mut self) {
         self.low_cut.reset();
-        for mode in &mut self.modes {
-            mode.reset();
+        for filter in self.radiation.iter_mut().chain(self.modes.iter_mut()) {
+            filter.reset();
         }
         self.quiet = usize::MAX;
     }
+}
+
+/// The rate a body's response is rendered at (the engine resamples it like a file).
+const RESPONSE_RATE: u32 = 48_000;
+/// Its length: long enough for the classical body's low modes to ring out.
+const RESPONSE_SECONDS: f32 = 0.4;
+
+/// The impulse response of a body of `kind` at its own size, made once and shared (`None`
+/// for no body).
+pub fn body_response(kind: BodyKind) -> Option<Arc<ImpulseResponse>> {
+    static DREADNOUGHT: LazyLock<Option<Arc<ImpulseResponse>>> =
+        LazyLock::new(|| render(BodyKind::Dreadnought));
+    static CLASSICAL: LazyLock<Option<Arc<ImpulseResponse>>> =
+        LazyLock::new(|| render(BodyKind::Classical));
+    match kind {
+        BodyKind::None => None,
+        BodyKind::Dreadnought => DREADNOUGHT.clone(),
+        BodyKind::Classical => CLASSICAL.clone(),
+    }
+}
+
+/// An impulse through a whole body of `kind`, faded out over its last tenth.
+fn render(kind: BodyKind) -> Option<Arc<ImpulseResponse>> {
+    let mut body = Body::new(RESPONSE_RATE as f32);
+    body.set(kind, 1.0, 0.5);
+    let length = (RESPONSE_SECONDS * RESPONSE_RATE as f32) as usize;
+    let mut samples = vec![0.0_f32; length];
+    if let Some(first) = samples.first_mut() {
+        *first = 1.0;
+    }
+    for block in samples.chunks_mut(64) {
+        body.process(block);
+    }
+    let fade = (length / 10).max(1);
+    for (index, sample) in samples.iter_mut().enumerate() {
+        let left = length.saturating_sub(index.saturating_add(1)) as f32 / fade as f32;
+        *sample *= left.min(1.0);
+    }
+    ImpulseResponse::from_samples(&samples, RESPONSE_RATE)
+        .ok()
+        .map(Arc::new)
 }

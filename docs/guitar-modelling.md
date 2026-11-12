@@ -192,24 +192,33 @@ described in the literature below:
   harmonics have none.
 
   Every preset has the same defaults, so sounds saved before these knobs get them too.
-- **The acoustic body** (`body.rs`, 2026-11-11), computed, no recording.
-  - Commuted synthesis would excite each string with the body's impulse response. Every
-    part is linear, so the body runs once per track on the sum of its strings instead
-    (the engine's slot): the same sound for one filter chain per track.
-  - The body is a low cut at 0.7 times the air mode, then eight narrow bells, one per
-    mode, which lift their bands and ring on briefly after the strings' energy passes.
-  - **Dreadnought** (steel): air at 100 Hz (Q 14, +10 dB), top at 195 Hz, back at
-    228 Hz, cross and long dipoles at 390 and 550 Hz, weaker modes at 830 and 1250 Hz, a
-    broad presence at 2.6 kHz.
-  - **Classical** (nylon): air at 96 Hz, top at 188 Hz, back at 240 Hz, and so on, a
-    lighter top, a soft dip at 2.2 kHz.
+- **The acoustic body** (`body.rs`, 2026-11-11, rebuilt 2026-11-12), computed, no
+  recording.
+  - Since 2026-11-12 a body is a Cab block's built-in response (Acoustic, Classical), not
+    part of the string sound: `body_response` renders it once at its own size into an
+    impulse response, played by the block's convolver. Every part is linear, so this is
+    commuted synthesis in the other order. The Body tab and its Size knob are gone; the
+    block's Mix is how much of it is heard.
+  - A low cut, then a **radiation curve** (broad bells and a high shelf: what the body
+    does to every note), and sixteen **modes** side by side, narrow band-passes rung from
+    the curve, each standing a few dB out of it and ringing on briefly.
+  - The first version (eight narrow bells in series) changed a strummed chord by under
+    2 dB in any octave: the owner heard no difference between the bodies.
+  - **Dreadnought** (steel), fitted to the owner's reference, an impulse response of a
+    Furch Vintage 1 dreadnought. Only its third-octave figures and its narrow peaks were
+    taken from it, no samples. It has:
+    - the air near 95 Hz (+13 dB) and the top and back near 240 Hz up;
+    - a deep scoop at 400 Hz, the mids well down, a notch near 2 kHz;
+    - a strong presence from 3 to 9 kHz and little above 10 kHz;
+    - its narrow resonances (480 Hz to 8.9 kHz) ringing for a few milliseconds.
+
+    Within 1.8 dB of the reference per third octave on average (test: under 2.5).
+  - **Classical** (nylon): a softer curve (air near 100 Hz, the top near 200 Hz, a dip at
+    600 Hz, a high shelf at 4 kHz down 4 dB) and denser low modes (96 Hz to 2.5 kHz) that
+    ring longer: warmer and rounder, darker than the dreadnought (test).
   - The trims keep a strummed chord within 2 dB of the bare strings (test).
-  - Knobs in the string sound's Body row: the kind (None, Dreadnought, Classical),
-    **Body** (how much is heard, default 0.8) and **Size** (0 a parlour, 1.25 times
-    higher; 1 a jumbo, 1.25 times lower; 0.5 the kind's own).
-  - Presets: steel a dreadnought, nylon a classical body, electric and bass none. A
-    sound or a built-in tone that does not name a body gets its kind's
-    (`StringSound::for_kind`).
+  - A string sound saved with a body keeps those fields in the file, unread. A tone
+    that should sound through a body needs a Cab block on Acoustic or Classical.
 - **Knobs:** every `StringModel` value has a range (`gscore_guitar::ranges`); the Sound
   chain window (track panel › Sound › the stomp box) turns them per kind of string, next
   to the board, heard at once (`Command::StringModel`), kept in the settings, used by WAV
@@ -253,6 +262,19 @@ described in the literature below:
   come first and cannot be removed (their box shows the engine, the kind of string and
   their sound in the window itself); the five places after them hold nothing or a block.
   Opened from the track panel's Sound section.
+- **The built-in cabinet** (`gscore-guitar::cabinet`, 2026-11-12): the Cab block's **Rock**
+  response, a computed 4×12 (the block's dropdown: Rock, Acoustic, Classical, or Load
+  file…; choosing a Cab opens no file dialog, it starts on Rock). It is modelled after the owner's reference, a Marshall 1960A
+  with Celestion G12M speakers and an MD 421 at the cap; only its figures were taken.
+  - A chain of filters fitted to the reference's third-octave response (within 2 dB on
+    average; test under 2.5): the closed back's low cut near 90 Hz with a little thump, a
+    broad body from 150 to 400 Hz, a dip around 1.1 kHz, the presence from 2.4 to 4 kHz,
+    a steep fourth-order fall above 5 kHz levelling off quietly above 10 kHz, and the
+    cone's narrow breakup peaks from 620 Hz to 5.3 kHz.
+  - Rendered once into a 200 ms impulse response at 48 kHz, scaled to unit energy like a
+    loaded file, and played through the same convolution: mix, gain and the cuts work as
+    for a file. Loading a file into the block replaces it; a Room without a file stays
+    empty.
 - **Blocks:** *Cabinet / body*, an impulse response from a WAV file played mono with
   mix, gain, low cut and high cut: what amp modelers call a cab block, and an acoustic
   guitar's body too. *Room*, a room's impulse response (stereo if recorded so): a
@@ -269,10 +291,9 @@ described in the literature below:
   cut. The stages run 4× oversampled (sixth-order Butterworth up and down), so the
   harmonics they make above half the sample rate do not fold back as fizz (test: a 3 kHz
   tone clipped hard leaves under 3 % between its harmonics). After them the tone stack
-  (bass shelf 120 Hz, mid bell 700 Hz, treble shelf 3 kHz, ±12 dB each) and a built-in
-  speaker: a closed 4×12 approximated by filters (low cut 75 Hz, 110 Hz resonance, a dip
-  at 450 Hz, presence at 2.4 kHz, fourth-order roll-off at 5 kHz). The Speaker knob blends
-  it out for a cabinet's impulse response in a Cab block after the amp. Voices: *Clean*
+  (bass shelf 120 Hz, mid bell 700 Hz, treble shelf 3 kHz, ±12 dB each). The amp plays
+  direct; its speaker is a Cab block after it (the amp's own speaker filter and its
+  Speaker knob went on 2026-11-13, once the Cab block had a built-in cabinet). Voices: *Clean*
   (one stage, the pad given back so it plays at the strings' level), *Crunch* (two),
   *Lead* (three). At half gain a crunch is 14 dB and a lead 22 dB louder than the dry
   chord, as they were before the calibration, so tones and mixes keep their level. About

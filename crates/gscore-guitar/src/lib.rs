@@ -13,6 +13,7 @@
 
 mod amp;
 mod body;
+mod cabinet;
 mod chain;
 mod chorus;
 mod compressor;
@@ -35,7 +36,8 @@ mod string_loop;
 mod tail;
 
 pub use amp::{AmpKnobs, AmpVoice};
-pub use body::{Body, BodyKind};
+pub use body::{Body, BodyKind, body_response};
+pub use cabinet::built_in_cabinet;
 pub use chain::{BLOCKS, BlockKind, Chain, ChainSpec, PreparedChain};
 pub use chorus::{CENTRE_MS, ChorusKnobs};
 pub use compressor::{CompRatio, CompressorKnobs};

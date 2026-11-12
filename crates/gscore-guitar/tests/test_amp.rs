@@ -126,7 +126,6 @@ fn distortion_squashes_the_attack() {
         AmpKnobs {
             voice: AmpVoice::Lead,
             gain: 0.7,
-            speaker: 0.0,
             ..AmpKnobs::default()
         },
     );
@@ -192,7 +191,6 @@ fn a_drive_in_front_keeps_the_chug_unless_tight() {
     let lead = AmpKnobs {
         voice: AmpVoice::Lead,
         gain: 0.6,
-        speaker: 0.0,
         ..AmpKnobs::default()
     };
     let run = |spec: &ChainSpec, settings: &[BlockSettings; BLOCKS]| {
@@ -319,7 +317,6 @@ fn real_strings_crunch_at_half_gain_and_stay_clean_on_the_clean_voice() {
             AmpKnobs {
                 voice,
                 gain: 0.5,
-                speaker: 0.0,
                 ..AmpKnobs::default()
             },
         ))

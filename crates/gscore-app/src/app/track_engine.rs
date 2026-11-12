@@ -47,8 +47,8 @@ pub(super) struct SoundPanel {
     pub(super) player: TrackPlayer,
     /// The built-in or saved tone that matches `tone` exactly, when one does.
     pub(super) current: Option<PickerChoice>,
-    /// The built-in tone the track's program starts on.
-    pub(super) default_tone: String,
+    /// The built-in tone the track's program starts on, if it has one.
+    pub(super) default_tone: Option<String>,
     /// The user's saved tones, for the picker's own group.
     pub(super) saved: Vec<ChainPreset>,
     /// The MIDI output ports this machine has (for the external source).
@@ -69,9 +69,8 @@ impl GuitarScoreApp {
         let sound = song.track_sound(TrackIndex::new(track))?;
         let own = tab.track_sound(track);
         let strings = view.instrument_kind() == InstrumentKind::Strings && !sound.percussion;
-        // The kind its preset's tone was dialed in on (the owner's Clean Guitar plays steel
-        // strings), otherwise its program's family.
-        let preset_kind = self.playback.preset_kind(sound.program).filter(|_| strings);
+        // The kind of string its program stands for.
+        let preset_kind = StringKind::for_program(sound.program).filter(|_| strings);
         let default = match preset_kind {
             Some(kind) if self.playback.modelled_guitars() => TrackEngine::Modelled(kind),
             _ => TrackEngine::SoundFont,
@@ -107,7 +106,9 @@ impl GuitarScoreApp {
             }
         };
         let tone = self.track_tone(track, kind);
-        let default_tone = self.playback.default_tone_name(player.program, kind);
+        let default_tone = self
+            .playback
+            .track_default_tone_name(track, player.program, kind);
         Some(SoundPanel {
             player,
             current: current_tone_choice(&tone, &self.settings.string_presets),
@@ -221,7 +222,7 @@ impl GuitarScoreApp {
     }
 
     /// The tone `track` of the open document plays as `kind`: the one that came with the
-    /// song, else its preset's, else the kind's default.
+    /// song, else its program's default.
     pub(super) fn track_tone(&self, track: usize, kind: StringKind) -> Tone {
         match self.tabs.get(self.active) {
             Some(tab) => self.track_tone_in(tab, track, kind),
@@ -231,8 +232,8 @@ impl GuitarScoreApp {
 
     /// [`Self::track_tone`] for `track` of `tab`'s document.
     pub(super) fn track_tone_in(&self, tab: &Tab, track: usize, kind: StringKind) -> Tone {
-        // A bass track always plays the saved bass preset (see `Playback::tone`), so the
-        // tone the song carries (an RSE Pick, say) is not shown as the current one.
+        // A bass track always plays its program's built-in tone (see `Playback::tone`), so
+        // the tone the song carries is not shown as the current one.
         let own = if kind == StringKind::Bass {
             None
         } else {
@@ -254,7 +255,7 @@ impl GuitarScoreApp {
     }
 
     /// Gives `track` `tone` as its own, kept with the song: chosen from the tone picker,
-    /// edited in the Sound chain window, or the preset's tone it was playing. An edit with
+    /// or edited in the Sound chain window. An edit with
     /// undo, so the change marks the song modified and is replayed after a crash.
     pub(super) fn set_track_tone(&mut self, track: usize, tone: Tone) {
         self.set_track_tone_merged(track, tone, true);
@@ -268,10 +269,7 @@ impl GuitarScoreApp {
         let Some(mut sound) = self.open_track_sound(track) else {
             return;
         };
-        // The song keeps what this track now plays, not the preset: a preset tone is a
-        // setting that every song with that program shares, so editing it here would
-        // change other songs without an undo step of its own. Saving already resolved a
-        // preset tone into each track; this makes that explicit and undoable at once.
+        // The song keeps what this track now plays, undoable at once.
         sound.tone = Some(crate::settings::PresetTone::of(player.program, &tone));
         self.set_track_sound(track, sound, merge);
     }
@@ -340,27 +338,14 @@ impl GuitarScoreApp {
         }
     }
 
-    /// Forgets the tone of `track`: the one that came with the song and the preset's own,
-    /// so it plays its built-in default again (the kind's sound and chain from the
-    /// settings).
+    /// Forgets the tone that came with the song for `track`, so it plays its program's
+    /// default again.
     pub(super) fn reset_track_tone(&mut self, track: usize) {
         let Some(mut sound) = self.open_track_sound(track) else {
             return;
         };
         if sound.tone.take().is_some() {
             self.set_track_sound(track, sound, false);
-        }
-        let Some(player) = self.track_player(track) else {
-            return;
-        };
-        let Some(tab) = self.tabs.get(self.active) else {
-            return;
-        };
-        if let Err(error) = self
-            .playback
-            .set_preset_tone(tab.document.song(), player.program, None)
-        {
-            self.notice = Some(error);
         }
     }
 
@@ -403,7 +388,17 @@ impl GuitarScoreApp {
             .enumerate()
             .filter_map(|(track, sound)| Some((track, sound.tone.as_ref()?.tone()?)))
             .collect();
+        // A track made with a Guitar Pro sound the tone library maps to a tone starts on
+        // that tone instead of its program's.
+        let song = tab.document.song();
+        let rse_tones: std::collections::BTreeMap<usize, String> = (0..song.track_count())
+            .filter_map(|track| {
+                let key = crate::rse_sound::of_track(song, track)?;
+                Some((track, crate::tone_library::for_rse(&key)?.name.clone()))
+            })
+            .collect();
         self.playback.set_track_tones(&tones);
+        self.playback.set_track_rse_tones(rse_tones);
     }
 
     /// Hands the open document's MIDI-out port and channel choices to playback. A track

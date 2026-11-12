@@ -211,11 +211,77 @@ fn value_text(value: f32, unit: &str) -> String {
     }
 }
 
-/// The knobs of one kind of string, in groups (the picking hand's, palm mute included,
-/// first). Returns whether any moved.
-pub(super) fn sound_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
+/// The groups of a string sound's knobs, each on a tab of its own (all of them at once
+/// made the window too tall).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) enum StringsTab {
+    /// Which strings play the track: nylon, steel, electric or bass (shown first).
+    #[default]
+    Kind,
+    /// The picking hand: pick position, hardness, roundness, pick noise, attack pitch and
+    /// palm mute.
+    Strike,
+    String,
+    Pickup,
+    Output,
+}
+
+impl StringsTab {
+    const ALL: [StringsTab; 5] = [
+        StringsTab::Kind,
+        StringsTab::Strike,
+        StringsTab::String,
+        StringsTab::Pickup,
+        StringsTab::Output,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            StringsTab::Kind => "Kind",
+            StringsTab::Strike => "Strike",
+            StringsTab::String => "String",
+            StringsTab::Pickup => "Pickup",
+            StringsTab::Output => "Output",
+        }
+    }
+
+    fn tip(self) -> &'static str {
+        match self {
+            StringsTab::Kind => "Which strings play the track: nylon, steel, electric or bass",
+            StringsTab::Strike => {
+                "The picking hand: where and how hard it strikes, the pick's noise and the palm"
+            }
+            StringsTab::String => "How the string rings: sustain, brilliance and stiffness",
+            StringsTab::Pickup => "A magnetic pickup and where it sits",
+            StringsTab::Output => "What the bridge passes, the tone and the level",
+        }
+    }
+}
+
+/// The knobs of one kind of string: the group of the chosen tab (`tab`, which the tabs on
+/// top change; the Kind tab's choice is the caller's). Returns whether any moved.
+pub(super) fn sound_knobs(
+    ui: &mut egui::Ui,
+    sound: &mut StringSound,
+    tab: &mut StringsTab,
+) -> bool {
     let mut changed = false;
-    group(ui, "Strike", |ui| {
+    ui.horizontal(|ui| {
+        for candidate in StringsTab::ALL {
+            let chosen = *tab == candidate;
+            let text = RichText::new(candidate.label());
+            if ui
+                .selectable_label(chosen, if chosen { text.strong() } else { text })
+                .on_hover_text(candidate.tip())
+                .clicked()
+            {
+                *tab = candidate;
+            }
+        }
+    });
+    ui.add_space(4.0);
+    let tab = *tab;
+    group(ui, tab, StringsTab::Strike, |ui| {
         changed |= round_knob(
             ui,
             &mut sound.pick_position,
@@ -291,7 +357,7 @@ pub(super) fn sound_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
         )
         .changed;
     });
-    group(ui, "String", |ui| {
+    group(ui, tab, StringsTab::String, |ui| {
         changed |= round_knob(
             ui,
             &mut sound.sustain,
@@ -383,12 +449,11 @@ pub(super) fn sound_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
         )
         .changed;
     });
-    group(ui, "Pickup", |ui| changed |= pickup_knobs(ui, sound));
-    group(ui, "Body", |ui| {
-        changed |= super::string_body::body_knobs(ui, sound);
+    group(ui, tab, StringsTab::Pickup, |ui| {
+        changed |= pickup_knobs(ui, sound)
     });
     // Not "Tone": that is the saved tones' word in the same window.
-    group(ui, "Output", |ui| {
+    group(ui, tab, StringsTab::Output, |ui| {
         changed |= round_knob(
             ui,
             &mut sound.bridge,
@@ -536,9 +601,11 @@ fn pickup_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
     changed
 }
 
-/// A named row of knobs.
-fn group(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
-    ui.label(RichText::new(title).strong());
+/// A row of knobs, drawn only while its tab (`this`) is the one `shown`.
+fn group(ui: &mut egui::Ui, shown: StringsTab, this: StringsTab, add: impl FnOnce(&mut egui::Ui)) {
+    if shown != this {
+        return;
+    }
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
         add(ui);

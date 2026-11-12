@@ -20,7 +20,9 @@ use super::GuitarScoreApp;
 use crate::app::string_sound::{kind_name, round_knob, sound_knobs};
 use crate::app::style::{self, Tokens};
 use crate::app::track_engine::TrackPlayer;
-use crate::chain_settings::{BlockChoice, BlockSetting, ChainSetting, DrumPart, Tone};
+use crate::chain_settings::{
+    BlockChoice, BlockSetting, CabinetSetting, ChainSetting, DrumPart, Tone,
+};
 use crate::playback::{Heard, MidiOutRoute};
 use crate::settings::{
     ChainPreset, MAX_STRING_PRESET_NAME, MAX_STRING_PRESETS, StringSound, engine_from_id,
@@ -29,6 +31,17 @@ use crate::settings::{
 
 /// Width of the window's content.
 const WIDTH: f32 = 700.0;
+/// The height of the slot above the board (the tone's two rows, or a drum part's level).
+const HEADER_HEIGHT: f32 = 58.0;
+/// The height of the chosen box's knobs: the tallest editor's but the EQ's, so the window
+/// keeps one size whichever box is chosen; a chain with an EQ in it (its curve and
+/// columns) takes the taller one...
+const EDITOR_HEIGHT: f32 = 250.0;
+const EQ_EDITOR_HEIGHT: f32 = 430.0;
+/// ...unless the screen is too small for it: then it takes what the rest of the window
+/// leaves (about this much), down to this height, and scrolls.
+const EDITOR_ROOM: f32 = 420.0;
+const EDITOR_MIN_HEIGHT: f32 = 200.0;
 /// A box on the board, the gap between boxes (where the cable runs), the board's height.
 const BOX: egui::Vec2 = vec2(86.0, 60.0);
 const GAP: f32 = 36.0;
@@ -50,6 +63,8 @@ pub(super) struct SoundChainWindow {
     /// Which part of a drum kit the board edits (`None`: the track's own chain, the drum
     /// bus).
     part: Option<DrumPart>,
+    /// The string sound's tab shown in the strings' box.
+    strings_tab: super::string_sound::StringsTab,
 }
 
 /// What the user did this frame.
@@ -70,7 +85,7 @@ struct Actions {
     /// A saved tone was chosen for the track's preset: its string sound, its chain and
     /// what plays the strings.
     preset: Option<ChosenPreset>,
-    /// Back to the built-in tone: the preset's own tone is forgotten.
+    /// Back to the program's default: the track's own tone is forgotten.
     reset_tone: bool,
     /// Back to the built-in tone of the drum part the window shows.
     reset_part: bool,
@@ -133,14 +148,19 @@ fn box_text(block: &BlockSetting) -> (String, String) {
             .as_ref()
             .and_then(|file| file.file_stem())
             .map_or_else(
-                || "no file".to_owned(),
+                // A cab without a file plays its built-in response.
+                || {
+                    if block.choice == BlockChoice::Cabinet {
+                        block.cabinet.label().to_owned()
+                    } else {
+                        "no file".to_owned()
+                    }
+                },
                 |name| name.to_string_lossy().into_owned(),
             ),
     };
     let title = match block.choice {
         BlockChoice::Empty => "+".to_owned(),
-        // "Cabinet / body" does not fit a box.
-        BlockChoice::Cabinet => "Cab".to_owned(),
         BlockChoice::Compressor => "Comp".to_owned(),
         other => other.label().to_owned(),
     };
@@ -228,6 +248,7 @@ fn strings_editor(
     player: &TrackPlayer,
     sound: &mut StringSound,
     ports: &[String],
+    tab: &mut super::string_sound::StringsTab,
     actions: &mut Actions,
 ) -> bool {
     let mut changed = false;
@@ -259,27 +280,15 @@ fn strings_editor(
     }) else {
         return changed;
     };
-    // Which strings, then their sound: the kind's knobs, right here.
-    ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new("Strings").color(style::tokens(ui).text_weak));
-        for candidate in [
-            StringKind::Nylon,
-            StringKind::Steel,
-            StringKind::Electric,
-            StringKind::Bass,
-        ] {
-            let selected = candidate == kind;
-            if ui
-                .add(egui::Button::selectable(selected, kind_name(candidate)))
-                .clicked()
-                && !selected
-            {
-                actions.engine = Some(TrackEngine::Modelled(candidate));
-            }
-        }
-    });
-    ui.add_space(2.0);
-    changed |= sound_knobs(ui, sound);
+    // The string sound on tabs, apart from what plays the track: which strings first (the
+    // Kind tab), then their knobs.
+    ui.separator();
+    changed |= sound_knobs(ui, sound, tab);
+    if *tab == super::string_sound::StringsTab::Kind
+        && let Some(picked) = super::string_kinds::kind_tiles(ui, kind)
+    {
+        actions.engine = Some(TrackEngine::Modelled(picked));
+    }
     changed
 }
 
@@ -299,7 +308,7 @@ struct ShownPreset {
 fn preset_row(
     ui: &mut egui::Ui,
     shown: ShownPreset,
-    default_tone: &str,
+    default_tone: Option<&str>,
     tone: &Tone,
     presets: &[ChainPreset],
     window: &mut SoundChainWindow,
@@ -446,9 +455,14 @@ fn preset_row(
             }
         });
     combo.response.clone().on_hover_text(format!(
-        "The tone this track's preset ({}: {}) plays; its built-in one is {default_tone}",
+        "The tone this track's preset ({}: {}) plays; {}",
         program,
-        gscore_model::program_name(program)
+        gscore_model::program_name(program),
+        match default_tone {
+            Some(name) => format!("its built-in one is {name}"),
+            None =>
+                "it has no built-in one, so without a tone it plays its plain strings".to_owned(),
+        }
     ));
     ui.ctx()
         .accesskit_node_builder(combo.response.id, |node| node.set_label("Tone"));
@@ -648,13 +662,15 @@ fn block_choices() -> [(BlockChoice, &'static str, &'static str); 9] {
         (
             BlockChoice::Amp,
             "Amp",
-            "A computed guitar amp: clean, crunch or lead, with a tone stack and a speaker",
+            "A computed guitar amp: clean, crunch or lead, with a tone stack. It plays direct: put \
+             a Cab block after it for its speaker",
         ),
         (
             BlockChoice::Cabinet,
-            "Cabinet / body",
-            "An impulse response from a WAV file: an acoustic guitar's body, or a cabinet \
-             after an amp",
+            "Cab",
+            "A cabinet or a guitar's body: built in Rock (a 4×12 after a Marshall 1960A), \
+             Acoustic (a dreadnought's body) or Classical, or an impulse response from a WAV \
+             file",
         ),
         (
             BlockChoice::Eq,
@@ -1047,6 +1063,60 @@ pub(super) fn board(
     actions
 }
 
+/// What was picked in a Cab block's dropdown.
+enum CabChoice {
+    BuiltIn(CabinetSetting),
+    Load,
+}
+
+/// A Cab block's dropdown: the built-in responses, then loading a file; the file's name
+/// while one is loaded.
+fn cabinet_choice(ui: &mut egui::Ui, block: &BlockSetting) -> Option<CabChoice> {
+    let mut picked = None;
+    let shown = block.file.as_ref().map_or_else(
+        || block.cabinet.label().to_owned(),
+        |file| {
+            file.file_name().map_or_else(
+                || file.display().to_string(),
+                |name| short(&name.to_string_lossy(), 40),
+            )
+        },
+    );
+    ui.horizontal(|ui| {
+        let combo = egui::ComboBox::from_id_salt("cab response")
+            .selected_text(shown)
+            .width(260.0)
+            .show_ui(ui, |ui| {
+                for cabinet in CabinetSetting::ALL {
+                    let chosen = block.file.is_none() && block.cabinet == cabinet;
+                    if ui
+                        .selectable_label(chosen, cabinet.label())
+                        .on_hover_text(cabinet.tip())
+                        .clicked()
+                        && !chosen
+                    {
+                        picked = Some(CabChoice::BuiltIn(cabinet));
+                    }
+                }
+                ui.separator();
+                if ui
+                    .selectable_label(false, "Load file…")
+                    .on_hover_text("An impulse response from a WAV file: a cabinet or a body")
+                    .clicked()
+                {
+                    picked = Some(CabChoice::Load);
+                }
+            });
+        ui.ctx().accesskit_node_builder(combo.response.id, |node| {
+            node.set_label("Cab response");
+        });
+        if let Some(file) = &block.file {
+            combo.response.on_hover_text(file.display().to_string());
+        }
+    });
+    picked
+}
+
 /// The selected place's choices (when empty) or knobs.
 pub(super) fn editor(
     ui: &mut egui::Ui,
@@ -1068,7 +1138,18 @@ pub(super) fn editor(
         );
     } else {
         ui.label(RichText::new(block.choice.label()).strong());
-        if block.choice.uses_file() {
+        if block.choice == BlockChoice::Cabinet {
+            let picked = cabinet_choice(ui, block);
+            match picked {
+                Some(CabChoice::BuiltIn(cabinet)) => {
+                    edited.cabinet = cabinet;
+                    edited.file = None;
+                    changed = true;
+                }
+                Some(CabChoice::Load) => load = true,
+                None => {}
+            }
+        } else if block.choice.uses_file() {
             ui.horizontal(|ui| {
                 let name = block.file.as_ref().map_or_else(
                     || "No impulse response loaded".to_owned(),
@@ -1346,6 +1427,7 @@ impl GuitarScoreApp {
                     saving: None,
                     preset: None,
                     part: None,
+                    strings_tab: super::string_sound::StringsTab::default(),
                 });
             }
         }
@@ -1426,21 +1508,15 @@ impl GuitarScoreApp {
         // The title names the track (the MIDI box shows its preset, the General MIDI
         // program); the saved tones are the list at the bottom.
         let title = format!("Sound chain — {}", self.track_name(window.track));
-        // This track's tone: its song's, its preset's, or its kind's default (the built-in
-        // one).
+        // This track's tone: its song's, or its program's default.
         let mut tone = self.track_tone(window.track, kind);
-        // On the SoundFont only a tone the song carries or one dialed in for the preset
-        // brings a chain (the kinds' defaults are the modelled strings'); a drum track's
-        // own chain is its bus.
+        // On the SoundFont only a tone the song carries brings a chain (the defaults are
+        // the modelled strings'); a drum track's own chain is its bus.
         let song_tone = self
             .tabs
             .get(self.active)
             .is_some_and(|tab| tab.track_sound(window.track).tone.is_some());
-        if !modelled
-            && !player.drums
-            && !song_tone
-            && self.playback.preset_tone(player.program).is_none()
-        {
+        if !modelled && !player.drums && !song_tone {
             tone.chain = ChainSetting::default();
         }
         // How far the track's compressors work, for the block's meter (and a repaint while
@@ -1493,6 +1569,14 @@ impl GuitarScoreApp {
                                 &dialed_in,
                                 &mut actions,
                             );
+                            ui.separator();
+                        }
+                        // A drum part's level, or the tone: which one this preset plays,
+                        // another one, and saving it. Above the board so it stays in reach,
+                        // in a slot of its own height so the board does not jump when a
+                        // part is chosen.
+                        ui.vertical(|ui| {
+                            ui.set_min_height(HEADER_HEIGHT);
                             if let Some(part) = window.part {
                                 ui.horizontal(|ui| {
                                     ui.label(
@@ -1511,28 +1595,27 @@ impl GuitarScoreApp {
                                         actions.part_level = Some(level);
                                     }
                                 });
-                            }
-                            ui.separator();
-                        }
-                        // The tone: which one this preset plays, another one, and saving
-                        // it. Above the board so it stays in reach when the window is tall.
-                        if window.part.is_none() {
-                            let default_tone =
-                                self.playback.default_tone_name(player.program, kind);
-                            preset_row(
-                                ui,
-                                ShownPreset {
-                                    program: player.program,
+                            } else {
+                                let default_tone = self.playback.track_default_tone_name(
+                                    window.track,
+                                    player.program,
                                     kind,
-                                },
-                                &default_tone,
-                                &tone,
-                                &presets,
-                                &mut window,
-                                &mut actions,
-                            );
-                            ui.separator();
-                        }
+                                );
+                                preset_row(
+                                    ui,
+                                    ShownPreset {
+                                        program: player.program,
+                                        kind,
+                                    },
+                                    default_tone.as_deref(),
+                                    &tone,
+                                    &presets,
+                                    &mut window,
+                                    &mut actions,
+                                );
+                            }
+                        });
+                        ui.separator();
                         let chain = part_chain
                             .as_ref()
                             .map(|own| own.chain.clone())
@@ -1612,7 +1695,8 @@ impl GuitarScoreApp {
                             }
                             actions.chain = Some(changed);
                             window.selected = place.saturating_add(1);
-                            if choice.uses_file() {
+                            // A room needs its file; a cab starts on its built-in response.
+                            if choice == BlockChoice::Room {
                                 actions.load = Some(place);
                             }
                         }
@@ -1659,24 +1743,52 @@ impl GuitarScoreApp {
                             }
                         });
                         ui.separator();
-                        match window.selected.checked_sub(1) {
-                            None => {
-                                let mut sound = sound;
-                                if strings_editor(ui, &player, &mut sound, &ports, &mut actions) {
-                                    actions.sound = Some(sound);
+                        // The chosen box's knobs, in an area of one height for every box of
+                        // the chain (taller only for a chain with an EQ, if the screen has
+                        // room), so the window keeps its size when another box is chosen.
+                        let tallest = if chain
+                            .blocks
+                            .iter()
+                            .any(|block| block.choice == BlockChoice::Eq)
+                        {
+                            EQ_EDITOR_HEIGHT
+                        } else {
+                            EDITOR_HEIGHT
+                        };
+                        let editor_height = (ctx.content_rect().height() - EDITOR_ROOM)
+                            .clamp(EDITOR_MIN_HEIGHT, tallest);
+                        egui::ScrollArea::vertical()
+                            .id_salt("sound chain editor")
+                            .auto_shrink([false, false])
+                            .max_height(editor_height)
+                            .show(ui, |ui| {
+                                ui.set_min_height(editor_height);
+                                match window.selected.checked_sub(1) {
+                                    None => {
+                                        let mut sound = sound;
+                                        if strings_editor(
+                                            ui,
+                                            &player,
+                                            &mut sound,
+                                            &ports,
+                                            &mut window.strings_tab,
+                                            &mut actions,
+                                        ) {
+                                            actions.sound = Some(sound);
+                                        }
+                                    }
+                                    Some(place) => {
+                                        let edited = editor(ui, &chain, place, reduction);
+                                        if let Some(changed) = edited.chain {
+                                            actions.chain = Some(changed);
+                                        }
+                                        actions.rebuild |= edited.rebuild;
+                                        if edited.load {
+                                            actions.load = Some(place);
+                                        }
+                                    }
                                 }
-                            }
-                            Some(place) => {
-                                let edited = editor(ui, &chain, place, reduction);
-                                if let Some(changed) = edited.chain {
-                                    actions.chain = Some(changed);
-                                }
-                                actions.rebuild |= edited.rebuild;
-                                if edited.load {
-                                    actions.load = Some(place);
-                                }
-                            }
-                        }
+                            });
                         ui.add_space(6.0);
                         ui.separator();
                         ui.horizontal(|ui| {
@@ -1732,7 +1844,7 @@ impl GuitarScoreApp {
                     self.set_track_drum_part(track, part, Some(own), true);
                 }
             }
-            // The strings' sound and the preset tones belong to the track, not the part.
+            // The strings' sound and the chosen tone belong to the track, not the part.
             actions.sound = None;
             actions.preset = None;
             actions.reset_tone = false;
@@ -1836,7 +1948,7 @@ impl GuitarScoreApp {
             }
         }
         if tone_chosen {
-            // A preset's tone is kept at once: it is not this song's, but this machine's.
+            // What the window remembers of the choice is this machine's: keep it at once.
             self.save_settings();
         }
         if self

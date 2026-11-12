@@ -48,7 +48,7 @@ mod song_state;
 mod sound_chain;
 mod staff_pickers;
 mod staff_widgets;
-mod string_body;
+mod string_kinds;
 mod string_sound;
 mod style;
 mod swatches;
@@ -328,8 +328,6 @@ impl GuitarScoreApp {
         app.playback
             .store_string_presets(app.settings.string_presets.clone());
         app.playback
-            .store_preset_tones(app.settings.preset_tones.clone());
-        app.playback
             .store_drum_parts(app.settings.drum_parts.clone());
         app.playback
             .store_reverb_bus(app.settings.reverb_bus.clone());
@@ -353,9 +351,8 @@ impl GuitarScoreApp {
     }
 
     /// The state to keep in a song's notes: each track's sound settings that are not at
-    /// their defaults. A track plays its song's tone, else the preset tone of this
-    /// machine, else the built-in one; the song gets the tone it actually plays whenever
-    /// that is not built-in, so it sounds the same on another machine.
+    /// their defaults. A track plays its song's tone, else its program's default; the
+    /// song gets the tone it actually plays whenever that is not the default.
     fn song_state(&self, tab: &Tab) -> Option<song_state::SongState> {
         let song = tab.document.song();
         let tracks: Vec<song_state::TrackState> = (0..song.track_count())
@@ -367,8 +364,8 @@ impl GuitarScoreApp {
                     if sound.engine.is_none() && player.engine != player.default {
                         sound.engine = Some(song_state::SoundEngine::of(player.engine));
                     }
-                    // The tone it plays: the song's own, the preset's on this machine, or
-                    // the built-in one. Only the last needs no entry.
+                    // The tone it plays: the song's own or its program's default. Only the
+                    // last needs no entry.
                     let kind = match player.engine {
                         gscore_play::TrackEngine::Modelled(kind) => Some(kind),
                         gscore_play::TrackEngine::SoundFont | gscore_play::TrackEngine::MidiOut => {
@@ -379,7 +376,11 @@ impl GuitarScoreApp {
                         && let Some(kind) = kind
                     {
                         let tone = self.track_tone_in(tab, index, kind);
-                        if tone != self.playback.default_tone_for(player.program, kind) {
+                        if tone
+                            != self
+                                .playback
+                                .track_default_tone(index, player.program, kind)
+                        {
                             sound.tone =
                                 Some(crate::settings::PresetTone::of(player.program, &tone));
                         }
@@ -425,7 +426,6 @@ impl GuitarScoreApp {
         settings.sample_rate = self.playback.sample_rate();
         settings.string_sounds = self.playback.string_sounds();
         settings.string_chains = self.playback.string_chains().clone();
-        settings.preset_tones = self.playback.preset_tones().to_vec();
         settings.drum_parts = self.playback.drum_parts().to_vec();
         settings.midi_port = self.playback.port().map(str::to_owned);
         // Remember every tab backed by a real file, and which one was active. Setting the

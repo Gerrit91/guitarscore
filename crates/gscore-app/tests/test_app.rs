@@ -394,7 +394,7 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.get_by_label("Sound chain").click();
     harness.run();
     harness.run();
-    // Forget the tone the RSE sound brought, so the chain starts empty for the editors.
+    // Forget a tone the song carries, so the chain starts from the default for the editors.
     harness.get_by_label("Built-in").click();
     harness.run();
     harness.get_by_label("Block 2: +").click();
@@ -513,7 +513,9 @@ fn the_eq_curve_and_its_knob_columns_match_their_snapshot() {
     // Park the mouse off the knobs so no hover highlight depends on the last field.
     harness.hover_at(egui::pos2(600.0, 990.0));
     harness.run();
-    harness.snapshot("sound_chain_eq");
+    // A curve (or needle) drawn anti-aliased differs a little between GPUs: on the CI
+    // runner a few pixels are off by up to 1.5 (YIQ distance), none above 2.
+    harness.snapshot_options("sound_chain_eq", &curve_tolerance());
 }
 
 #[test]
@@ -2927,7 +2929,9 @@ fn the_compressor_bus_is_a_strip_and_a_window() {
     // its knobs and its gain-reduction meter.
     harness.get_by_label("Sound chain for the comp bus").click();
     harness.run();
-    harness.snapshot("compressor_bus_window");
+    // A curve (or needle) drawn anti-aliased differs a little between GPUs: on the CI
+    // runner a few pixels are off by up to 1.5 (YIQ distance), none above 2.
+    harness.snapshot_options("compressor_bus_window", &curve_tolerance());
     let bus = harness.state().playback().compressor_bus();
     assert_eq!(bus.block.choice, BlockChoice::Compressor);
     assert_eq!(bus.block.comp_ratio, CompRatioSetting::All);
@@ -3218,6 +3222,9 @@ fn a_songs_mixer_state_travels_in_its_notes() {
     harness.run();
     harness.get_by_label("Block 0: Strings").click();
     harness.run();
+    // The picking hand's knobs are on the Strike tab.
+    harness.get_by_label("Strike").click();
+    harness.run();
     harness.get_by_label("Pick position value").click();
     harness.run();
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
@@ -3365,4 +3372,12 @@ fn a_drum_tracks_window_edits_the_kits_parts() {
     harness.get_by_label("Block 1: +");
     harness.get_by_label("Close").click();
     harness.run();
+}
+
+/// Snapshot options for a picture with anti-aliased curves, whose edge pixels vary a
+/// little between GPUs and drivers: a colour tolerance of 2 (YIQ distance) per pixel
+/// instead of 0.6, and still no pixel allowed past it (a moved line or border differs by
+/// far more).
+fn curve_tolerance() -> egui_kittest::SnapshotOptions {
+    egui_kittest::SnapshotOptions::new().threshold(2.0)
 }
