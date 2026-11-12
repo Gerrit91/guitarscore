@@ -26,8 +26,15 @@
 //! no difference between the bodies.
 //!
 //! Size scales every frequency (a smaller body sounds higher, a jumbo lower).
+//!
+//! Since 2026-11-12 the bodies are a Cabinet block's built-in responses (Acoustic and
+//! Classical, beside the Rock cabinet): [`body_response`] renders a body at its own size
+//! once into an impulse response, played by the block's convolver like a loaded file.
+
+use std::sync::{Arc, LazyLock};
 
 use crate::filters::Biquad;
+use crate::impulse::ImpulseResponse;
 
 /// How many broad radiation filters and ringing modes a body has.
 const RADIATION: usize = 8;
@@ -299,4 +306,45 @@ impl Body {
         }
         self.quiet = usize::MAX;
     }
+}
+
+/// The rate a body's response is rendered at (the engine resamples it like a file).
+const RESPONSE_RATE: u32 = 48_000;
+/// Its length: long enough for the classical body's low modes to ring out.
+const RESPONSE_SECONDS: f32 = 0.4;
+
+/// The impulse response of a body of `kind` at its own size, made once and shared (`None`
+/// for no body).
+pub fn body_response(kind: BodyKind) -> Option<Arc<ImpulseResponse>> {
+    static DREADNOUGHT: LazyLock<Option<Arc<ImpulseResponse>>> =
+        LazyLock::new(|| render(BodyKind::Dreadnought));
+    static CLASSICAL: LazyLock<Option<Arc<ImpulseResponse>>> =
+        LazyLock::new(|| render(BodyKind::Classical));
+    match kind {
+        BodyKind::None => None,
+        BodyKind::Dreadnought => DREADNOUGHT.clone(),
+        BodyKind::Classical => CLASSICAL.clone(),
+    }
+}
+
+/// An impulse through a whole body of `kind`, faded out over its last tenth.
+fn render(kind: BodyKind) -> Option<Arc<ImpulseResponse>> {
+    let mut body = Body::new(RESPONSE_RATE as f32);
+    body.set(kind, 1.0, 0.5);
+    let length = (RESPONSE_SECONDS * RESPONSE_RATE as f32) as usize;
+    let mut samples = vec![0.0_f32; length];
+    if let Some(first) = samples.first_mut() {
+        *first = 1.0;
+    }
+    for block in samples.chunks_mut(64) {
+        body.process(block);
+    }
+    let fade = (length / 10).max(1);
+    for (index, sample) in samples.iter_mut().enumerate() {
+        let left = length.saturating_sub(index.saturating_add(1)) as f32 / fade as f32;
+        *sample *= left.min(1.0);
+    }
+    ImpulseResponse::from_samples(&samples, RESPONSE_RATE)
+        .ok()
+        .map(Arc::new)
 }

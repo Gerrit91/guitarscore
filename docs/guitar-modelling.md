@@ -194,9 +194,11 @@ described in the literature below:
   Every preset has the same defaults, so sounds saved before these knobs get them too.
 - **The acoustic body** (`body.rs`, 2026-11-11, rebuilt 2026-11-12), computed, no
   recording.
-  - Commuted synthesis would excite each string with the body's impulse response. Every
-    part is linear, so the body runs once per track on the sum of its strings instead
-    (the engine's slot): the same sound for one filter chain per track.
+  - Since 2026-11-12 a body is a Cab block's built-in response (Acoustic, Classical), not
+    part of the string sound: `body_response` renders it once at its own size into an
+    impulse response, played by the block's convolver. Every part is linear, so this is
+    commuted synthesis in the other order. The Body tab and its Size knob are gone; the
+    block's Mix is how much of it is heard.
   - A low cut, then a **radiation curve** (broad bells and a high shelf: what the body
     does to every note), and sixteen **modes** side by side, narrow band-passes rung from
     the curve, each standing a few dB out of it and ringing on briefly.
@@ -215,12 +217,8 @@ described in the literature below:
     600 Hz, a high shelf at 4 kHz down 4 dB) and denser low modes (96 Hz to 2.5 kHz) that
     ring longer: warmer and rounder, darker than the dreadnought (test).
   - The trims keep a strummed chord within 2 dB of the bare strings (test).
-  - Knobs on the string sound's Body tab: the kind (None, Dreadnought, Classical),
-    **Body** (how much is heard, default 0.8) and **Size** (0 a parlour, 1.25 times
-    higher; 1 a jumbo, 1.25 times lower; 0.5 the kind's own).
-  - Presets: steel a dreadnought, nylon a classical body, electric and bass none. A
-    sound or a built-in tone that does not name a body gets its kind's
-    (`StringSound::for_kind`).
+  - A string sound saved with a body keeps those fields in the file, unread. A tone
+    that should sound through a body needs a Cab block on Acoustic or Classical.
 - **Knobs:** every `StringModel` value has a range (`gscore_guitar::ranges`); the Sound
   chain window (track panel › Sound › the stomp box) turns them per kind of string, next
   to the board, heard at once (`Command::StringModel`), kept in the settings, used by WAV
@@ -264,8 +262,9 @@ described in the literature below:
   come first and cannot be removed (their box shows the engine, the kind of string and
   their sound in the window itself); the five places after them hold nothing or a block.
   Opened from the track panel's Sound section.
-- **The built-in cabinet** (`gscore-guitar::cabinet`, 2026-11-12): a Cabinet block without
-  a file plays a computed 4×12. It is modelled after the owner's reference, a Marshall 1960A
+- **The built-in cabinet** (`gscore-guitar::cabinet`, 2026-11-12): the Cab block's **Rock**
+  response, a computed 4×12 (the block's dropdown: Rock, Acoustic, Classical, or Load
+  file…; choosing a Cab opens no file dialog, it starts on Rock). It is modelled after the owner's reference, a Marshall 1960A
   with Celestion G12M speakers and an MD 421 at the cap; only its figures were taken.
   - A chain of filters fitted to the reference's third-octave response (within 2 dB on
     average; test under 2.5): the closed back's low cut near 90 Hz with a little thump, a

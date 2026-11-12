@@ -4798,3 +4798,39 @@ Branch `review-ux-requests`.
 - Found on the way: `dismissing_an_open_error_shows_the_empty_workspace` fails when the
   repository sits at a very long path (the notice with the long file path is wider than
   the test window), also on plain `main`; at the repository's own path it passes.
+
+## 2026-11-12 — The Cab block: built-in responses in a dropdown, the bodies moved there
+
+- The block is called **Cab** in its menu, on the board and in its editor (was "Cabinet /
+  body").
+- Choosing a Cab no longer opens the file dialog: it starts on its built-in response.
+  Only a Room still asks for its file.
+- The editor's dropdown offers:
+  - **Rock**, the 4×12 after the owner's Marshall 1960A / G12M impulse response;
+  - **Acoustic**, the dreadnought body;
+  - **Classical**, the classical body;
+  - **Load file…**.
+
+  A loaded file shows its name there; picking a built-in one drops the file. The choice is
+  stored as `cabinet` (`rock`, `acoustic`, `classical`); older blocks read as Rock.
+  Another built-in response is a structural change, so the chain is prepared again.
+- **The acoustic bodies moved into the Cab block** (owner's wish):
+  - `body_response` renders each body once into a 0.4 s impulse response at unit
+    energy.
+  - The string sound's Body tab, `StringModel`'s and `StringSound`'s body fields and the
+    engine's body per track are gone.
+  - Saved sounds keep their old body fields, unread.
+  - The body's Size knob is gone (a response is fixed); its Body knob is the block's
+    Mix.
+- **Open for the owner:** the built-in acoustic tones in `data/tones.json` played through
+  the string sound's body. They need a Cab block on Acoustic or Classical to sound the same
+  again. The library was left alone: the owner has uncommitted changes in it.
+- Tests:
+  - the bodies as shared responses at unit energy that fade to silence;
+  - a steel track through an Acoustic cab (its 400 Hz scoop heard);
+  - a file-less cab playing its chosen response, another response being a structural
+    change, a file replacing it;
+  - the window: a Cab starts on Rock with no dialog, and the dropdown offers the bodies
+    and loading a file.
+- New snapshot `sound_chain_cab`; the strings' tabs (no Body), the menu and the windows
+  regenerated.

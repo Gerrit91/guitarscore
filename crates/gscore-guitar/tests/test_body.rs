@@ -246,3 +246,27 @@ fn the_dreadnought_follows_the_owners_reference_body() {
         "{error:.1} dB from the reference on average: {ours:?}"
     );
 }
+
+#[test]
+fn the_bodies_are_built_in_responses_for_a_cab_block() {
+    use gscore_guitar::body_response;
+    assert!(body_response(BodyKind::None).is_none());
+    for kind in [BodyKind::Dreadnought, BodyKind::Classical] {
+        let response = body_response(kind).unwrap();
+        assert!(
+            std::sync::Arc::ptr_eq(&response, &body_response(kind).unwrap()),
+            "shared"
+        );
+        let samples = response.mono_at_rate(48_000);
+        let energy: f32 = samples.iter().map(|x| x * x).sum();
+        assert!(
+            (energy - 1.0).abs() < 0.01,
+            "{kind:?}: unit energy {energy}"
+        );
+        assert_eq!(
+            samples.last().copied(),
+            Some(0.0),
+            "{kind:?}: it fades to silence"
+        );
+    }
+}

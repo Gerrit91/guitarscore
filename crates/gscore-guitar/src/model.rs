@@ -68,12 +68,6 @@ pub struct StringModel {
     /// How sharp a full-strength pluck starts, in cents (it settles within about 50 ms;
     /// softer plucks start less sharp, by the square of their strength).
     pub attack_pitch: f32,
-    /// The acoustic body the strings drive (none for an electric or a bass), how much of
-    /// it is heard (0 to 1) and its size (0 small to 1 large, 0.5 the kind's own); see
-    /// [`crate::Body`].
-    pub body: crate::BodyKind,
-    pub body_mix: f32,
-    pub body_size: f32,
 }
 
 impl GuitarModel {
@@ -101,9 +95,6 @@ impl GuitarModel {
                 palm_mute: PALM_MUTE,
                 pick_noise: PICK_NOISE,
                 attack_pitch: ATTACK_PITCH,
-                body: crate::BodyKind::Classical,
-                body_mix: BODY_MIX,
-                body_size: BODY_SIZE,
             },
             GuitarModel::Steel => StringModel {
                 sustain: 9.0,
@@ -126,9 +117,6 @@ impl GuitarModel {
                 palm_mute: PALM_MUTE,
                 pick_noise: PICK_NOISE,
                 attack_pitch: ATTACK_PITCH,
-                body: crate::BodyKind::Dreadnought,
-                body_mix: BODY_MIX,
-                body_size: BODY_SIZE,
             },
             GuitarModel::Electric => StringModel {
                 sustain: 8.0,
@@ -153,9 +141,6 @@ impl GuitarModel {
                 palm_mute: PALM_MUTE,
                 pick_noise: PICK_NOISE,
                 attack_pitch: ATTACK_PITCH,
-                body: crate::BodyKind::None,
-                body_mix: BODY_MIX,
-                body_size: BODY_SIZE,
             },
             GuitarModel::Bass => StringModel {
                 sustain: 7.0,
@@ -178,9 +163,6 @@ impl GuitarModel {
                 palm_mute: PALM_MUTE,
                 pick_noise: PICK_NOISE,
                 attack_pitch: ATTACK_PITCH,
-                body: crate::BodyKind::None,
-                body_mix: BODY_MIX,
-                body_size: BODY_SIZE,
             },
         }
     }
@@ -193,9 +175,6 @@ const PALM_MUTE: f32 = 0.5;
 /// bass's click softer and duller).
 const PICK_NOISE: f32 = 0.5;
 const ATTACK_PITCH: f32 = 4.0;
-/// How much body every preset has, and its size (the kind's own).
-const BODY_MIX: f32 = 0.8;
-const BODY_SIZE: f32 = 0.5;
 
 /// The range of every knob, for user interfaces and for [`StringModel::sanitized`]:
 /// `(lowest, highest)`.
@@ -227,8 +206,6 @@ pub mod ranges {
     pub const PICK_NOISE: (f32, f32) = (0.0, 1.0);
     /// Cents.
     pub const ATTACK_PITCH: (f32, f32) = (0.0, 20.0);
-    pub const BODY_MIX: (f32, f32) = (0.0, 1.0);
-    pub const BODY_SIZE: (f32, f32) = (0.0, 1.0);
 }
 
 impl StringModel {
@@ -273,9 +250,6 @@ impl StringModel {
             palm_mute: fit(self.palm_mute, ranges::PALM_MUTE, PALM_MUTE),
             pick_noise: fit(self.pick_noise, ranges::PICK_NOISE, PICK_NOISE),
             attack_pitch: fit(self.attack_pitch, ranges::ATTACK_PITCH, ATTACK_PITCH),
-            body: self.body,
-            body_mix: fit(self.body_mix, ranges::BODY_MIX, BODY_MIX),
-            body_size: fit(self.body_size, ranges::BODY_SIZE, BODY_SIZE),
         }
     }
 }

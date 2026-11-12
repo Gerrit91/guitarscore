@@ -780,7 +780,6 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
     for (tab, knobs) in [
         ("String", &["Brilliance", "Second vibration"][..]),
         ("Output", &["Bridge"][..]),
-        ("Body", &["Dreadnought"][..]),
         ("Pickup", &["Humbucker"][..]),
         (
             "Strike",
@@ -1753,4 +1752,43 @@ fn a_delay_block_syncs_to_a_note_value_or_runs_free() {
     assert!(!delay(&harness).delay_sync);
     assert!(harness.query_all_by_label("1/8.").next().is_none());
     assert!(harness.query_all_by_label("Time").next().is_some());
+}
+
+#[test]
+fn a_cab_starts_on_its_built_in_response_and_offers_the_others_in_a_dropdown() {
+    use gscore_app::chain_settings::{BlockChoice, CabinetSetting};
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    click_in_chain(&harness, "Block 3: +");
+    harness.run();
+    click_in_chain(&harness, "Cab");
+    harness.run();
+    // No file dialog: the cab plays its built-in Rock response at once.
+    assert!(!harness.state().is_busy(), "no file dialog");
+    let cab = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .playback()
+            .tone(0, 26, gscore_play::StringKind::Electric)
+            .chain
+            .blocks[2]
+            .clone()
+    };
+    let block = cab(&harness);
+    assert_eq!(block.choice, BlockChoice::Cabinet);
+    assert_eq!(
+        (block.cabinet, block.file.is_none()),
+        (CabinetSetting::Rock, true)
+    );
+    harness.get_by_label("Block 3: Cab");
+    // The dropdown offers the acoustic bodies and loading a file.
+    harness.get_by_label("Cab response").click();
+    harness.run();
+    assert!(harness.query_all_by_label("Load file…").next().is_some());
+    harness.get_by_label("Acoustic").click();
+    harness.run();
+    assert_eq!(cab(&harness).cabinet, CabinetSetting::Acoustic);
+    harness.hover_at(egui::pos2(600.0, 1090.0));
+    harness.run();
+    harness.snapshot("sound_chain_cab");
 }

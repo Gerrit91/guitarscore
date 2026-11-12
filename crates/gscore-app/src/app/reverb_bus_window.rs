@@ -113,7 +113,7 @@ impl GuitarScoreApp {
                                     new_block.file = block.file.clone();
                                     block = new_block;
                                     rebuilt = true;
-                                    load = choice.uses_file() && block.file.is_none();
+                                    load = choice == BlockChoice::Room && block.file.is_none();
                                 }
                             }
                         });

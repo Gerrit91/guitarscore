@@ -135,7 +135,8 @@ impl GuitarScoreApp {
                                 changed = true;
                             }
                             window.selected = place.saturating_add(1);
-                            if choice.uses_file() {
+                            // A room needs its file; a cab starts on its built-in one.
+                            if choice == crate::chain_settings::BlockChoice::Room {
                                 load = Some(place);
                             }
                         }

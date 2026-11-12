@@ -385,9 +385,7 @@ impl Playback {
                 (BlockChoice::Chorus, _) => Some(BlockKind::Chorus),
                 (BlockChoice::Delay, _) => Some(BlockKind::Delay),
                 // A cabinet without a file of its own plays the built-in one.
-                (BlockChoice::Cabinet, None) => {
-                    Some(BlockKind::Impulse(gscore_guitar::built_in_cabinet()))
-                }
+                (BlockChoice::Cabinet, None) => block.built_in_cabinet().map(BlockKind::Impulse),
                 (BlockChoice::Room, None) => None,
                 (choice, Some(file)) => match self.impulse(file) {
                     Ok(response) if choice == BlockChoice::Room => {
@@ -1060,7 +1058,7 @@ impl Playback {
                     (BlockChoice::Reverb, _) => Some(BlockKind::Reverb),
                     // A cabinet without a file of its own plays the built-in one.
                     (BlockChoice::Cabinet, None) => {
-                        Some(BlockKind::Impulse(gscore_guitar::built_in_cabinet()))
+                        block.built_in_cabinet().map(BlockKind::Impulse)
                     }
                     (BlockChoice::Room, None) => None,
                     (choice, Some(file)) => match self.impulse(file) {
@@ -1168,6 +1166,20 @@ mod tests {
             spec.blocks[1].is_none(),
             "a room without a file stays empty"
         );
+        // The other built-in responses: the acoustic bodies, each a structure of its own.
+        let mut acoustic = setting.clone();
+        acoustic.blocks[0].cabinet = crate::chain_settings::CabinetSetting::Classical;
+        assert!(
+            !acoustic.same_structure(&setting),
+            "another response, prepared again"
+        );
+        match &playback.chain_spec(&acoustic).blocks[0] {
+            Some(BlockKind::Impulse(response)) => assert!(Arc::ptr_eq(
+                response,
+                &gscore_guitar::body_response(gscore_guitar::BodyKind::Classical).unwrap()
+            )),
+            other => panic!("the classical body, not {other:?}"),
+        }
         // A loaded file replaces it.
         let dir = std::env::temp_dir().join(format!("gscore-cab-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();

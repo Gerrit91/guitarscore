@@ -223,17 +223,15 @@ pub(super) enum StringsTab {
     Strike,
     String,
     Pickup,
-    Body,
     Output,
 }
 
 impl StringsTab {
-    const ALL: [StringsTab; 6] = [
+    const ALL: [StringsTab; 5] = [
         StringsTab::Kind,
         StringsTab::Strike,
         StringsTab::String,
         StringsTab::Pickup,
-        StringsTab::Body,
         StringsTab::Output,
     ];
 
@@ -243,7 +241,6 @@ impl StringsTab {
             StringsTab::Strike => "Strike",
             StringsTab::String => "String",
             StringsTab::Pickup => "Pickup",
-            StringsTab::Body => "Body",
             StringsTab::Output => "Output",
         }
     }
@@ -256,7 +253,6 @@ impl StringsTab {
             }
             StringsTab::String => "How the string rings: sustain, brilliance and stiffness",
             StringsTab::Pickup => "A magnetic pickup and where it sits",
-            StringsTab::Body => "An acoustic guitar's body around the strings",
             StringsTab::Output => "What the bridge passes, the tone and the level",
         }
     }
@@ -455,9 +451,6 @@ pub(super) fn sound_knobs(
     });
     group(ui, tab, StringsTab::Pickup, |ui| {
         changed |= pickup_knobs(ui, sound)
-    });
-    group(ui, tab, StringsTab::Body, |ui| {
-        changed |= super::string_body::body_knobs(ui, sound);
     });
     // Not "Tone": that is the saved tones' word in the same window.
     group(ui, tab, StringsTab::Output, |ui| {

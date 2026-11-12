@@ -90,9 +90,7 @@ fn chain_spec(
             (BlockChoice::Chorus, _) => Some(BlockKind::Chorus),
             (BlockChoice::Delay, _) => Some(BlockKind::Delay),
             // A cabinet without a file of its own plays the built-in one.
-            (BlockChoice::Cabinet, None) => {
-                Some(BlockKind::Impulse(gscore_guitar::built_in_cabinet()))
-            }
+            (BlockChoice::Cabinet, None) => block.built_in_cabinet().map(BlockKind::Impulse),
             (BlockChoice::Room, None) => None,
             (choice, Some(file)) => match impulse(file, impulses) {
                 Ok(response) if choice == BlockChoice::Room => {

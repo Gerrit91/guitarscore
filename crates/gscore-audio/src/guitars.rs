@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use gscore_guitar::{
-    Attack as StrikeKind, Body, GuitarModel, Pluck, Release, StringModel, StringVoice, frequency,
+    Attack as StrikeKind, GuitarModel, Pluck, Release, StringModel, StringVoice, frequency,
 };
 use gscore_play::{Attack, Fade, Performance, PlayedNote, Sequence, StringKind, TrackEngine};
 
@@ -58,9 +58,6 @@ pub(crate) struct Guitars {
     resync: bool,
     /// Each slot's strings this block (mono), for the mixer.
     outputs: [[f32; BLOCK]; SLOTS],
-    /// Each slot's acoustic body (none for an electric or a bass): the strings' sum runs
-    /// through it, as commuted synthesis would through each string.
-    bodies: [Body; SLOTS],
 }
 
 impl std::fmt::Debug for Guitars {
@@ -137,7 +134,6 @@ impl Guitars {
             resync: true,
             outputs: [[0.0; BLOCK]; SLOTS],
             track_models: vec![None; MAX_TONES],
-            bodies: std::array::from_fn(|_| Body::new(rate)),
         }
     }
 
@@ -179,9 +175,6 @@ impl Guitars {
             {
                 voice.set_model(model);
             }
-            if let Some(body) = self.bodies.get_mut(index) {
-                body.set(model.body, model.body_mix, model.body_size);
-            }
         }
     }
 
@@ -204,7 +197,6 @@ impl Guitars {
 
     /// Stops every string quickly (stop, pause, seek, a new sequence).
     pub(crate) fn silence(&mut self) {
-        // The bodies ring out with the strings' quick fade (no reset: no click).
         for voice in &mut self.voices {
             voice.silence();
         }
@@ -249,12 +241,6 @@ impl Guitars {
                 continue;
             }
             let model = new.map(|slot| self.model_for(slot));
-            if let Some(body) = self.bodies.get_mut(index) {
-                body.reset();
-                if let Some(model) = model {
-                    body.set(model.body, model.body_mix, model.body_size);
-                }
-            }
             let first = index.saturating_mul(STRINGS);
             for string in first..first.saturating_add(STRINGS) {
                 if let Some(voice) = self.voices.get_mut(string) {
@@ -300,9 +286,6 @@ impl Guitars {
                 .unwrap_or_default()
             {
                 voice.render(output);
-            }
-            if let Some(body) = self.bodies.get_mut(index) {
-                body.process(output);
             }
         }
     }
