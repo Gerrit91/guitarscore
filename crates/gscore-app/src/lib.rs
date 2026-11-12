@@ -11,6 +11,7 @@ mod export;
 mod fonts;
 mod keys;
 mod playback;
+mod rse_sound;
 mod settings;
 mod state;
 mod tasks;

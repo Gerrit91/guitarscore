@@ -4764,6 +4764,47 @@ Branch `review-ux-requests`.
 - Test: the sixteen programs with their names, kinds and tones, a saved tone and an own
   tone marked.
 
+## 2026-11-12 — Imported tones remember their saved tone; `cargo xtask tones update`
+
+- The owner imported a saved tone for program 28 and the list still said "own tone on
+  this machine", while another imported program said "saved": the two notes were about
+  this machine's settings, not about the import.
+- `import` now records on the built-in tone which saved tone it came from, with a
+  fingerprint of that saved tone (`source` in `tones.json`; only the tool reads it).
+- `programs` shows `[saved: NAME]` for an imported tone, with "changed: run `tones
+  update`" when the saved tone was edited since, or "no longer in the settings".
+- What plays on this machine instead of the built-in tone is a separate note:
+  `[this machine: own tone]` or `[this machine: NAME]` (a saved tone matched by name).
+- `update [--dry-run]` copies every changed saved tone again; the built-in name, family
+  and description stay, and a tone whose saved tone is gone is left alone.
+- Tones imported before this carry no reference: importing them once more links them.
+- Test: an import is listed as saved, a changed and a deleted saved tone are marked, a
+  dry run writes nothing, the update copies the changed one and keeps its description.
+
+## 2026-11-12 — A program plays an imported tone or its plain strings, nothing else
+
+- The owner's model: a program's default is a built-in tone imported from one of his
+  saved tones, or nothing. Three other mechanisms are gone:
+  - **Per-program tones in the settings** (`preset_tones`), leftovers of the one day
+    (7 November) when the Sound chain window wrote them. They overrode the default and
+    even decided a program's kind of string. An older settings file's list is ignored
+    and gone at the next save; `PresetTone` stays as the song's per-track tone.
+  - **The eighteen made-up tones** in `tones.json` ("none of them should be used, it's
+    better to have an empty sound"). A program without a tone plays the kind's strings
+    as the settings have them, with no effects. An empty library is valid.
+  - **Name matching**: a saved tone no longer stands in for a default because its name
+    resembles the built-in one's (`saved_default_for`).
+- With the made-up tones went the mapping of Guitar Pro's RSE sound to the nearest of
+  them (`song_state/rse.rs`): a GP7 file opens on its programs' defaults. Songs that
+  already carry a tone keep it.
+- A bass still ignores a tone the song carries and plays its program's default.
+- `tones list` shows what was imported from each saved tone; `tones programs` shows
+  `(none)` for a program without a tone and no "this machine" notes any more.
+- Tests no longer depend on which tones the library holds: lookups and the picker's rows
+  are tested on a small library made in the test, the window tests pick a saved tone.
+  The snapshots that show the track panel's tone table were regenerated; they still
+  show the embedded library, so an import changes them.
+
 ## 2026-11-12 — Generic icons for the kinds of strings
 
 - The owner found the instrument pictures on the Kind tab too busy ("not guitars"): the
@@ -4834,3 +4875,23 @@ Branch `review-ux-requests`.
     and loading a file.
 - New snapshot `sound_chain_cab`; the strings' tabs (no Body), the menu and the windows
   regenerated.
+
+## 2026-11-12 — Guitar Pro's RSE sounds as placeholders for the built-in tones
+
+A GP7 file names the RSE sound of every track. The made-up mapping from those sounds to
+made-up tones is gone; in its place the tone library (`data/tones.json`) has a table `rse`
+from a sound's name to one of its tones, filled by the owner:
+
+- The name is the instrument (the last part of the sound's path) and the sound's own name,
+  `Distortion Guitar/Hard Rock` (`rse_sound::key`). Only the first sound of a track counts.
+  Nothing of the RSE preset itself is read or used.
+- `cargo xtask tones rse PATH...` lists the sounds the guitar and bass tracks of Guitar Pro
+  files use, how often, on which kind of string, and the tone each starts on.
+  `rse --map SOUND --tone NAME` and `rse --unmap SOUND` edit the table; `import --rse SOUND`
+  maps while importing. `check` refuses a mapping to a tone that is not in the library.
+- A track whose sound is mapped starts on that tone, ahead of its program's
+  (`Playback::track_default_tone`), in playback and in audio export. It is a default: nothing
+  is stored in the song, so a changed mapping is heard the next time, and a bass follows it
+  too. A tone the song carries still wins on a guitar. The tone must be of the track's kind
+  of string, as for a program.
+

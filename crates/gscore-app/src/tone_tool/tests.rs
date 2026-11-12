@@ -2,9 +2,12 @@
 
 use crate::chain_settings::{BlockSetting, Tone};
 use crate::settings::kind_from_id;
+use crate::tone_library;
 
 use super::import::{drop_impulse_responses, run_import};
 use super::normalize::run_normalize;
+use super::rse::{RseArgs, run_rse};
+use super::update::run_update;
 use super::*;
 
 fn library() -> ToneLibraryFile {
@@ -276,28 +279,199 @@ fn programs_list_their_names_kinds_and_tones() {
     );
     assert!(nylon.contains("nylon"), "{nylon}");
     assert!(
-        nylon.contains(library.programs.get(&24).unwrap().as_str()),
+        nylon.contains(library.programs.get(&24).map_or("(none)", String::as_str)),
         "{nylon}"
     );
     assert!(lines[15].contains(" 39 ") && lines[15].contains("bass"));
-    // With settings: a program's own tone, and a saved tone standing in for another.
-    let mut settings = Settings::default();
-    settings.string_presets = vec![preset("Classical Guitar 1", "nylon", 0.4, Vec::new())];
-    settings.preset_tones = vec![crate::settings::PresetTone {
-        program: 30,
-        kind: "electric".to_owned(),
-        sound: crate::settings::StringSound::default(),
-        chain: ChainSetting::default(),
-    }];
-    let lines = program_lines(&library, Some(&settings));
+    // A program without a tone says so, and an empty library is a valid one.
+    let empty = ToneLibraryFile::default();
+    assert!(validate(&empty).is_ok());
+    let lines = program_lines(&empty, Some(&Settings::default()));
     assert!(
-        lines[0].contains("[saved: Classical Guitar 1]"),
+        lines.iter().all(|line| line.trim_end().ends_with("(none)")),
+        "{lines:?}"
+    );
+}
+
+#[test]
+fn an_import_is_remembered_and_update_copies_a_changed_saved_tone_again() {
+    let dir = scratch("update");
+    let saved = preset(
+        "My Lead",
+        "electric",
+        0.3,
+        vec![BlockSetting::of(BlockChoice::Amp)],
+    );
+    let other = preset("My Clean", "electric", 0.5, Vec::new());
+    let settings = write_settings(&dir, &[saved.clone(), other.clone()]);
+    let library = write_library(&dir);
+    run_import(ImportArgs {
+        name: Some("Shipped Lead".to_owned()),
+        description: Some("A lead.".to_owned()),
+        ..import_args(&settings, &library)
+    })
+    .unwrap();
+    run_import(ImportArgs {
+        preset: Some("My Clean".to_owned()),
+        program: Some(27),
+        ..import_args(&settings, &library)
+    })
+    .unwrap();
+    let lines = |settings: &Path| {
+        program_lines(
+            &load_library(&library).unwrap(),
+            Some(&load_settings(settings).unwrap()),
+        )
+    };
+    // Freshly imported: the program names the saved tone it came from, and nothing more.
+    let listed = lines(&settings);
+    assert!(listed[7].ends_with("[saved: My Lead]"), "{}", listed[7]);
+    assert!(listed[3].ends_with("[saved: My Clean]"), "{}", listed[3]);
+
+    // The saved lead is dialed in further and the clean one deleted: the list says so.
+    let mut louder = saved;
+    louder.sound.level = 0.45;
+    let settings = write_settings(&dir, &[louder]);
+    let listed = lines(&settings);
+    assert!(
+        listed[7].contains("[saved: My Lead, changed: run `tones update`]"),
         "{}",
-        lines[0]
+        listed[7]
     );
     assert!(
-        lines[6].contains("[own tone on this machine]"),
+        listed[3].contains("[saved: My Clean, no longer in the settings]"),
         "{}",
-        lines[6]
+        listed[3]
     );
+
+    // A dry run writes nothing; the update copies the lead again under its shipped name
+    // and leaves the tone whose saved tone is gone.
+    let update = |dry_run| {
+        run_update(UpdateArgs {
+            options: Options {
+                settings: Some(settings.clone()),
+                file: Some(library.clone()),
+            },
+            dry_run,
+        })
+    };
+    update(true).unwrap();
+    assert!(lines(&settings)[7].contains("changed"));
+    update(false).unwrap();
+    let written = load_library(&library).unwrap();
+    let entry = |name: &str| written.tones.iter().find(|tone| tone.name == name).unwrap();
+    assert!((entry("Shipped Lead").sound.level - 0.45).abs() < 1e-6);
+    assert_eq!(entry("Shipped Lead").description, "A lead.");
+    assert!((entry("My Clean").sound.level - other.sound.level).abs() < 1e-6);
+    let listed = lines(&settings);
+    assert!(listed[7].ends_with("[saved: My Lead]"), "{}", listed[7]);
+    assert!(
+        listed[3].contains("no longer in the settings"),
+        "{}",
+        listed[3]
+    );
+}
+
+#[test]
+fn an_rse_sound_is_mapped_to_a_tone_listed_and_forgotten_again() {
+    let dir = scratch("rse");
+    let settings = write_settings(
+        &dir,
+        &[preset(
+            "My Lead",
+            "electric",
+            0.4,
+            vec![BlockSetting::of(BlockChoice::Drive)],
+        )],
+    );
+    let path = dir.join("tones.json");
+    std::fs::write(&path, "{}").unwrap();
+    // An import can name the Guitar Pro sounds that start on the tone too.
+    run_import(ImportArgs {
+        rse: vec!["Distortion Guitar/Lead".to_owned()],
+        ..import_args(&settings, &path)
+    })
+    .unwrap();
+    let rse_args = |map: &[&str], tone: Option<&str>, unmap: &[&str]| RseArgs {
+        options: Options {
+            settings: None,
+            file: Some(path.clone()),
+        },
+        map: map.iter().map(|&sound| sound.to_owned()).collect(),
+        tone: tone.map(str::to_owned),
+        unmap: unmap.iter().map(|&sound| sound.to_owned()).collect(),
+        ..RseArgs::default()
+    };
+    // And a sound can be mapped to a tone the library already has.
+    run_rse(rse_args(
+        &["Overdrive Guitar/Blues", "Clean Bass/Rock"],
+        Some("My Lead"),
+        &[],
+    ))
+    .unwrap();
+    let file = load_library(&path).unwrap();
+    assert_eq!(
+        file.rse.keys().map(String::as_str).collect::<Vec<_>>(),
+        [
+            "Clean Bass/Rock",
+            "Distortion Guitar/Lead",
+            "Overdrive Guitar/Blues"
+        ]
+    );
+    assert!(file.rse.values().all(|tone| tone == "My Lead"));
+
+    // The sounds of a song: mapped ones name their tone, a tone of another kind of string
+    // says it is not played, the rest have none.
+    let mut found = rse::Found::default();
+    for name in ["basic/staff.gp", "basic/steel_guitar_dadgad.gp"] {
+        let song = gscore_session::open(
+            &Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../testdata")
+                .join(name),
+        )
+        .unwrap()
+        .song;
+        found.add(&song);
+    }
+    let lines = rse::found_lines(&file, &found);
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("Overdrive Guitar/Blues") && line.ends_with("My Lead")),
+        "{lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("steel") && line.ends_with("(none)")),
+        "{lines:?}"
+    );
+    let bass = rse::Found {
+        sounds: BTreeMap::from([(("Clean Bass/Rock".to_owned(), Some("bass")), 2)]),
+        ..rse::Found::default()
+    };
+    assert!(
+        rse::found_lines(&file, &bass)
+            .iter()
+            .any(|line| line.contains("not played on bass strings")),
+    );
+
+    // A tone that is not in the library, or a sound that is not mapped, is refused.
+    assert!(run_rse(rse_args(&["Jazz Guitar/Jazz ES"], Some("Gone"), &[])).is_err());
+    assert!(run_rse(rse_args(&["Jazz Guitar/Jazz ES"], None, &[])).is_err());
+    assert!(run_rse(rse_args(&[], None, &["Jazz Guitar/Jazz ES"])).is_err());
+    run_rse(rse_args(&[], None, &["Clean Bass/Rock"])).unwrap();
+    assert!(
+        !load_library(&path)
+            .unwrap()
+            .rse
+            .contains_key("Clean Bass/Rock")
+    );
+    // A library whose mapping names a tone that is gone does not validate.
+    let mut broken = load_library(&path).unwrap();
+    broken
+        .rse
+        .insert("Slap Bass/Chorus".to_owned(), "Gone".to_owned());
+    assert!(validate(&broken).is_err());
+    let _ = std::fs::remove_dir_all(dir);
 }

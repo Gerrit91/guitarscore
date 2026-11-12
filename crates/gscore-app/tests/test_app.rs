@@ -394,7 +394,7 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.get_by_label("Sound chain").click();
     harness.run();
     harness.run();
-    // Forget the tone the RSE sound brought, so the chain starts empty for the editors.
+    // Forget a tone the song carries, so the chain starts from the default for the editors.
     harness.get_by_label("Built-in").click();
     harness.run();
     harness.get_by_label("Block 2: +").click();

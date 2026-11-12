@@ -170,6 +170,9 @@ guitarists (trademarks and personality rights). Our tones are named by style and
 
 ### The library
 
+- *(Changed 2026-11-12: the made-up tones named below are gone. The library holds only
+  tones the owner dialed in and imported with `cargo xtask tones import`; a program
+  without one plays its plain strings. See the devlog.)*
 - **Built-in tones**, designed by the owner, grouped by family, for example:
   Clean (Clean Single Coil, Glassy Neck, Warm Jazz, Funk Rhythm), Crunch (Texas Blues,
   British Crunch, Classic Rock Rhythm), Lead (80s Lead, Singing Sustain), High gain
@@ -214,6 +217,9 @@ Below the switch, depending on the source:
   is one widget used in both places (and maybe in the new-track dialog).
 
 ### Reading Guitar Pro's choice
+
+*(Removed 2026-11-12 together with the made-up tones it mapped to; the `<Sounds>` round
+trip stays. A mapping from RSE sound names to the owner's own tones is an open idea.)*
 
 A GP7 file records the RSE sound chosen for a track (`<Sounds>`: its path such as
 "Stringed/Electric Guitars/Clean Guitar", its bank patch, pickups, effect chain with amp

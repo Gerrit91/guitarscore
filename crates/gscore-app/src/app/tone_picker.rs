@@ -560,6 +560,16 @@ pub(super) fn tone_rows(
     default_tone: Option<&str>,
     saved: &[ChainPreset],
 ) -> Vec<PickerRow> {
+    tone_rows_of(selected, default_tone, saved, tone_library::all())
+}
+
+/// [`tone_rows`] with `built_in` as the built-in library.
+fn tone_rows_of(
+    selected: Option<&PickerChoice>,
+    default_tone: Option<&str>,
+    saved: &[ChainPreset],
+    built_in: &[tone_library::BuiltInTone],
+) -> Vec<PickerRow> {
     let mut rows: Vec<PickerRow> = Vec::new();
     let mut saved: Vec<&ChainPreset> = saved.iter().collect();
     saved.sort_by_cached_key(|preset| preset.name.to_lowercase());
@@ -582,10 +592,7 @@ pub(super) fn tone_rows(
         });
     }
     for family in ToneFamily::ALL {
-        for tone in tone_library::all()
-            .iter()
-            .filter(|tone| tone.family == family)
-        {
+        for tone in built_in.iter().filter(|tone| tone.family == family) {
             let choice = PickerChoice::BuiltIn(tone.name.clone());
             rows.push(PickerRow {
                 group: Some(family.label()),
@@ -651,8 +658,32 @@ mod tests {
         );
     }
 
+    /// A small library: one tone per family, named for it, in no family order.
+    fn library() -> Vec<tone_library::BuiltInTone> {
+        let tone = |name: &str, family| tone_library::BuiltInTone {
+            name: name.to_owned(),
+            family,
+            description: format!("The {name} tone."),
+            tone: crate::chain_settings::Tone {
+                kind: gscore_play::StringKind::Electric,
+                sound: StringSound::default(),
+                chain: crate::chain_settings::ChainSetting::default(),
+            },
+        };
+        vec![
+            tone("Thump", ToneFamily::Bass),
+            tone("Djent Tight", ToneFamily::HighGain),
+            tone("Modern Metal Rhythm", ToneFamily::HighGain),
+            tone("Sparkle", ToneFamily::Clean),
+            tone("Grit", ToneFamily::Crunch),
+            tone("Solo", ToneFamily::Lead),
+            tone("Strum", ToneFamily::Acoustic),
+        ]
+    }
+
     #[test]
     fn the_tone_rows_hold_the_saved_ones_first_then_every_built_in_tone() {
+        let library = library();
         let saved = ChainPreset {
             name: "My Lead".to_owned(),
             kind: "electric".to_owned(),
@@ -661,13 +692,13 @@ mod tests {
             engine: String::new(),
         };
         let selected = PickerChoice::BuiltIn("Djent Tight".to_owned());
-        let rows = tone_rows(
+        let rows = tone_rows_of(
             Some(&selected),
             Some("Modern Metal Rhythm"),
             std::slice::from_ref(&saved),
+            &library,
         );
-        let built_in = tone_library::all().len();
-        assert_eq!(rows.len(), built_in + 1);
+        assert_eq!(rows.len(), library.len() + 1);
         assert_eq!(rows.first().and_then(|row| row.group), Some("Saved"));
         assert_eq!(rows.first().map(|row| row.label.as_str()), Some("My Lead"));
         // Exactly one row is current, and the preset's default is marked separately.
@@ -679,13 +710,14 @@ mod tests {
                 .is_some_and(|row| row.label == "Modern Metal Rhythm")
         );
         // A saved default is marked on its own row.
-        let saved_default = tone_rows(
+        let saved_default = tone_rows_of(
             Some(&PickerChoice::Saved {
                 kind: "electric".to_owned(),
                 name: "My Lead".to_owned(),
             }),
             Some("My Lead"),
             std::slice::from_ref(&saved),
+            &library,
         );
         assert!(
             saved_default
@@ -728,7 +760,9 @@ mod tests {
         assert!(matching("guitar").len() > 1, "the family is searched");
         assert!(matching("no such sound").is_empty());
         assert_eq!(matching("  NYLON  "), vec!["24: Nylon Str Guitar"]);
-        let tones = tone_rows(None, None, &[]);
+        let tones = tone_rows_of(None, None, &[], &library());
+        // The embedded library lists every one of its tones, whatever it holds.
+        assert_eq!(tone_rows(None, None, &[]).len(), tone_library::all().len());
         let found = tones
             .iter()
             .filter(|row| matches(row, "djent"))

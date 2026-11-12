@@ -85,7 +85,7 @@ struct Actions {
     /// A saved tone was chosen for the track's preset: its string sound, its chain and
     /// what plays the strings.
     preset: Option<ChosenPreset>,
-    /// Back to the built-in tone: the preset's own tone is forgotten.
+    /// Back to the program's default: the track's own tone is forgotten.
     reset_tone: bool,
     /// Back to the built-in tone of the drum part the window shows.
     reset_part: bool,
@@ -308,7 +308,7 @@ struct ShownPreset {
 fn preset_row(
     ui: &mut egui::Ui,
     shown: ShownPreset,
-    default_tone: &str,
+    default_tone: Option<&str>,
     tone: &Tone,
     presets: &[ChainPreset],
     window: &mut SoundChainWindow,
@@ -455,9 +455,14 @@ fn preset_row(
             }
         });
     combo.response.clone().on_hover_text(format!(
-        "The tone this track's preset ({}: {}) plays; its built-in one is {default_tone}",
+        "The tone this track's preset ({}: {}) plays; {}",
         program,
-        gscore_model::program_name(program)
+        gscore_model::program_name(program),
+        match default_tone {
+            Some(name) => format!("its built-in one is {name}"),
+            None =>
+                "it has no built-in one, so without a tone it plays its plain strings".to_owned(),
+        }
     ));
     ui.ctx()
         .accesskit_node_builder(combo.response.id, |node| node.set_label("Tone"));
@@ -1502,21 +1507,15 @@ impl GuitarScoreApp {
         // The title names the track (the MIDI box shows its preset, the General MIDI
         // program); the saved tones are the list at the bottom.
         let title = format!("Sound chain — {}", self.track_name(window.track));
-        // This track's tone: its song's, its preset's, or its kind's default (the built-in
-        // one).
+        // This track's tone: its song's, or its program's default.
         let mut tone = self.track_tone(window.track, kind);
-        // On the SoundFont only a tone the song carries or one dialed in for the preset
-        // brings a chain (the kinds' defaults are the modelled strings'); a drum track's
-        // own chain is its bus.
+        // On the SoundFont only a tone the song carries brings a chain (the defaults are
+        // the modelled strings'); a drum track's own chain is its bus.
         let song_tone = self
             .tabs
             .get(self.active)
             .is_some_and(|tab| tab.track_sound(window.track).tone.is_some());
-        if !modelled
-            && !player.drums
-            && !song_tone
-            && self.playback.preset_tone(player.program).is_none()
-        {
+        if !modelled && !player.drums && !song_tone {
             tone.chain = ChainSetting::default();
         }
         // How far the track's compressors work, for the block's meter (and a repaint while
@@ -1596,15 +1595,18 @@ impl GuitarScoreApp {
                                     }
                                 });
                             } else {
-                                let default_tone =
-                                    self.playback.default_tone_name(player.program, kind);
+                                let default_tone = self.playback.track_default_tone_name(
+                                    window.track,
+                                    player.program,
+                                    kind,
+                                );
                                 preset_row(
                                     ui,
                                     ShownPreset {
                                         program: player.program,
                                         kind,
                                     },
-                                    &default_tone,
+                                    default_tone.as_deref(),
                                     &tone,
                                     &presets,
                                     &mut window,
@@ -1841,7 +1843,7 @@ impl GuitarScoreApp {
                     self.set_track_drum_part(track, part, Some(own), true);
                 }
             }
-            // The strings' sound and the preset tones belong to the track, not the part.
+            // The strings' sound and the chosen tone belong to the track, not the part.
             actions.sound = None;
             actions.preset = None;
             actions.reset_tone = false;
@@ -1945,7 +1947,7 @@ impl GuitarScoreApp {
             }
         }
         if tone_chosen {
-            // A preset's tone is kept at once: it is not this song's, but this machine's.
+            // What the window remembers of the choice is this machine's: keep it at once.
             self.save_settings();
         }
         if self

@@ -2,7 +2,7 @@
 
 use crate::chain_settings::{BlockChoice, BlockSetting, Tone};
 use crate::settings::kind_from_id;
-use crate::tone_library::ToneEntry;
+use crate::tone_library::{ToneEntry, ToneSource};
 
 use super::*;
 
@@ -27,6 +27,7 @@ pub(super) fn parse_import(args: &[String]) -> Result<ImportArgs, String> {
                         .ok_or_else(|| format!("`{text}` is not a family; try one of clean, crunch, lead, high_gain, acoustic, bass"))?,
                 );
             }
+            "--rse" => import.rse.push(next_value(&mut rest, argument)?),
             "--description" => import.description = Some(next_value(&mut rest, argument)?),
             "--ir" => {
                 let text = next_value(&mut rest, argument)?;
@@ -109,6 +110,11 @@ pub(super) fn run_import(args: ImportArgs) -> Result<(), String> {
         kind: crate::settings::kind_id(kind).to_owned(),
         sound: tone.sound,
         chain: tone.chain,
+        source: Some(ToneSource {
+            preset: preset.name.clone(),
+            digest: preset_digest(preset),
+            drop_irs: args.drop_irs,
+        }),
     };
 
     let path = tones_path(args.options.file.as_deref());
@@ -119,6 +125,9 @@ pub(super) fn run_import(args: ImportArgs) -> Result<(), String> {
         file.tones.push(entry.clone());
     }
     file.programs.insert(program, entry.name.clone());
+    for sound in &args.rse {
+        file.rse.insert(sound.clone(), entry.name.clone());
+    }
     validate(&file)?;
 
     println!(
@@ -150,6 +159,9 @@ pub(super) fn run_import(args: ImportArgs) -> Result<(), String> {
              has no body of its own now"
         );
     }
+    for sound in &args.rse {
+        println!("  tracks made with the RSE sound \"{sound}\" start on it too");
+    }
     println!("  run `cargo xtask tones normalize` to level it with the others");
     if let Some(expected) = StringKind::for_program(program)
         && expected != kind
@@ -169,6 +181,43 @@ pub(super) fn run_import(args: ImportArgs) -> Result<(), String> {
     write_library(&path, &file)?;
     println!("wrote {}", path.display());
     Ok(())
+}
+
+/// A fingerprint of a saved tone: its kind, strings and chain. An imported tone keeps the
+/// one it was copied at, so a later change to the saved tone shows (FNV-1a over the JSON
+/// text, which is the same on every machine).
+pub(super) fn preset_digest(preset: &ChainPreset) -> String {
+    let text =
+        serde_json::to_string(&(&preset.kind, &preset.sound, &preset.chain)).unwrap_or_default();
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in text.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// How an imported tone's saved tone stands in the settings now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SourceState {
+    /// The saved tone is as it was when it was copied.
+    Current,
+    /// The saved tone has changed since: `update` copies it again.
+    Changed,
+    /// The settings have no saved tone of that name any more.
+    Missing,
+}
+
+pub(super) fn source_state(source: &ToneSource, settings: &Settings) -> SourceState {
+    match settings
+        .string_presets
+        .iter()
+        .find(|preset| preset.name == source.preset)
+    {
+        None => SourceState::Missing,
+        Some(preset) if preset_digest(preset) == source.digest => SourceState::Current,
+        Some(_) => SourceState::Changed,
+    }
 }
 
 pub(super) fn drop_impulse_responses(tone: &mut Tone) -> Vec<String> {
