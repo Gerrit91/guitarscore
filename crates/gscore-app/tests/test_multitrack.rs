@@ -226,7 +226,7 @@ fn the_master_strip_opens_its_sound_chain() {
     let mut harness = app_with_mixer_view_at(1900.0);
     harness.get_by_label("Sound chain for the master").click();
     harness.run();
-    harness.snapshot("mixer_stomp_master");
+    harness.snapshot_options("mixer_stomp_master", &meter_tolerance());
 }
 
 #[test]
@@ -235,7 +235,7 @@ fn a_drum_tracks_parts_open_and_close_beside_its_strip() {
     // The arrow opens the kit's parts as narrower strips right beside the drum track.
     harness.get_by_label("Show the drum parts").click();
     harness.run();
-    harness.snapshot("mixer_drum_parts");
+    harness.snapshot_options("mixer_drum_parts", &meter_tolerance());
     assert!(harness.query_by_label("Kick level").is_some());
     assert!(harness.query_by_label("Mute Kick").is_some());
     // The same arrow closes them again.
@@ -408,4 +408,12 @@ fn a_drum_parts_pan_knob_moves_it_in_the_kit_as_one_undo_step() {
             .1,
         64
     );
+}
+
+/// Snapshot options for a wide mixer with many thin meters and needles, whose edge pixels
+/// the GitHub runner's software GPU anti-aliases a little differently (11 and 13 pixels
+/// past 0.6, none past 1.5): a colour tolerance of 2 (YIQ distance) per pixel, as for the
+/// EQ curve in `test_app.rs`. A moved strip or border differs by far more.
+fn meter_tolerance() -> egui_kittest::SnapshotOptions {
+    egui_kittest::SnapshotOptions::new().threshold(2.0)
 }
