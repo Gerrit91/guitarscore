@@ -61,9 +61,12 @@ in AGENTS.md section 9.
 
 ## Files
 
-5. **Second staves are not read.** A GP7 track with two staves (a piano's or synth's
-   treble and bass) keeps its first staff only. The tracks after it read their own bars
-   (fixed 2026-11-05; bars are listed per staff, not per track).
+5. **Second staves are read, kept and played, not yet drawn or edited.** A GP6/GP7 track
+   with two staves (a piano's or synth's treble and bass) keeps every staff since
+   2026-11-13 (saving used to drop the second: data loss in five of the owner's band
+   files); inserting or deleting bars and signatures act on every staff, and both staves
+   play. The score still shows only the first staff, and notes can be entered on it only
+   (`docs/handoff-staves.md`). GP3-5 exports leave further staves out and say so.
 6. **Lyrics and fingerings** can be shown and edited: five lyric lines under the tab, per
    syllable on the beats, and left/right-hand fingerings in the notation. Chord diagrams
    can be created, shown in the score, edited and removed. Still open: lyric editing is
@@ -74,9 +77,10 @@ in AGENTS.md section 9.
    tuplets), artificial-harmonic frets, GuitarScore's brush and arpeggio timing (kept in
    GP7 properties only), fermatas and more. Saving (as opposed to exporting) is GP7 only.
    Whether Guitar Pro opens every file we write is checked by hand, not by a test.
-8. **GP6 instruments and drums.** GP6 stores only an instrument id, so its tracks count
-   as string instruments unless they are percussion; GP6 drum notes (element and
-   variation) are not read, so `multi_staff.gpx`'s drums are silent.
+8. **GP6 instruments.** GP6 stores only an instrument id, so its tracks count as string
+   instruments unless they are percussion. GP6 drum notes (kit element and variation)
+   are read since 2026-11-13 and play as the GP7 file does; exporting to GP6 writes drum
+   notes the GP7 way (fret and string), which Guitar Pro 6 may not read.
 9. **Complex bends are simplified outside playback.** Playback and the bend editor use
    every point; `dump` and the save comparison still use the highest point, so they cannot
    tell a bend-and-release from a bend.

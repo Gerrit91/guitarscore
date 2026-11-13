@@ -331,7 +331,9 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
 - Pitched tracks without strings (voice, synth, piano, strings): notes keep their own
   pitch (GP7's `Midi`/`ConcertPitch`), standard notation only, no "?" for leftover
   negative frets (`Ballad.gp`).
-- Second staves (a piano's or synth's bass staff); lyrics (read, shown, edited).
+- Second staves (a piano's or synth's bass staff): read, kept and played since
+  2026-11-13; drawing and editing them is next (`docs/handoff-staves.md`). Lyrics (read,
+  shown, edited).
 - Beat text colliding with high notes in the notation.
 - Automated corpus tests (`cargo xtask corpus`), fuzzing with `cargo-fuzz`, a JSON control channel, a fretboard view, MusicXML import
   and export.

@@ -5068,3 +5068,25 @@ from a sound's name to one of its tones, filled by the owner:
 - Not done: a limiter meter or block, a storage-backed journal in the browser (copies are
   in memory only), the amp's cost.
 
+## 2026-11-13 — Second staves kept and played; GP6 drums
+
+- **Data loss found:** saving a GP7 file dropped every track's second staff (a piano's
+  or synth's bass): `DrDr.gp` lost 426 synth and 61 piano notes, and the save check
+  could not see it because the staves were never read. Affected band files: Ballad,
+  NewBallad-Gerrit, DistortedDreams, DrDr and its two variants.
+- Owner chose a full staves model (every staff equal everywhere). Stage 1 (86478aa):
+  `gscore-gp` `Track::staves`, GPIF read/write of every staff; `gscore-model`
+  `StaffIndex`, `StaffView`, every measure edit and its undo on every staff, a new bar
+  keeps its staff's clef, validation and the save comparison per staff. All 26 band
+  files round-trip with every staff note for note the same (checked per staff against
+  the original XML).
+- Stage 3 (78116c9): `TrackView::on_staff`; playback walks every staff at its own
+  tuning, a staff's strings numbered from 12 × its index so staves never cut each other.
+- Stages 2b (positions with a staff, editing) and 4 (drawing) are in
+  `docs/handoff-staves.md`.
+- **GP6 drums** (78c9853): element and variation mapped to GP7 articulations, checked
+  against `multi_staff.gpx` and its GP7 twin: its drum events now equal the GP7 file's
+  (golden rewritten; one kick differs, edited in the GP7 file). Drum bars are written
+  with the `Neutral` clef (were `G2`).
+- Not done: GPX export writes drum notes the GP7 way; drawing and editing second staves.
+
