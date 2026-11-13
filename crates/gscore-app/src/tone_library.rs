@@ -5,11 +5,12 @@
 //! RSE material, and the names describe a style or a sound, never a person.
 //!
 //! A guitar or bass program may start on a tone from this library ([`for_program`]); a
-//! program without one plays the plain strings of its kind, with no effects. Every tone
-//! here was dialed in by the owner and imported with `cargo xtask tones import`, which
-//! also remembers the saved tone it came from; none is made up. The tones and the program
-//! map live in `data/tones.json`, embedded at build time, so the tool can add one without
-//! touching Rust code. A tone may point at an impulse response file, which is not bundled
+//! program without one plays the plain strings of its kind, with no effects. Every program
+//! has a tone of its own whose name, family and description are fixed here
+//! ([`PROGRAM_TONES`]); its sound was dialed in by the owner and imported with `cargo
+//! xtask tones import`, which also remembers the saved tone it came from, but never
+//! renames it. The sounds and the program map live in `data/tones.json`, embedded at
+//! build time. A tone may point at an impulse response file, which is not bundled
 //! (the owner is still collecting them), and the chain skips a block whose file is
 //! missing. A bundled IR would have to travel with the program and be licensed for it.
 //!
@@ -75,12 +76,145 @@ impl ToneFamily {
             ToneFamily::Bass => "bass",
         }
     }
+}
 
-    /// The family `id` names, if it names one.
-    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-    pub(crate) fn from_id(id: &str) -> Option<ToneFamily> {
-        ToneFamily::ALL.into_iter().find(|family| family.id() == id)
+/// The fixed name, family and description of a guitar or bass program's built-in tone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ProgramTone {
+    /// The General MIDI program (24-39).
+    pub(crate) program: u8,
+    /// The name the pickers show; it describes a style, never a person or a saved tone.
+    pub(crate) name: &'static str,
+    pub(crate) family: ToneFamily,
+    /// A short line about the sound, shown on hover.
+    pub(crate) description: &'static str,
+}
+
+/// Every built-in tone, one per guitar and bass program, with its fixed name (owner
+/// decision 2026-11-13: the names are the library's, not the saved tones'). `cargo xtask
+/// tones import --program N` fills program N's tone with a saved tone's sound and keeps
+/// the name; every tone stands on its own, even when two have the same settings. A new
+/// or renamed tone is a change here, in code.
+pub(crate) const PROGRAM_TONES: [ProgramTone; 16] = {
+    use ToneFamily::{Acoustic, Bass, Clean, Crunch, HighGain, Lead};
+    const fn tone(
+        program: u8,
+        name: &'static str,
+        family: ToneFamily,
+        description: &'static str,
+    ) -> ProgramTone {
+        ProgramTone {
+            program,
+            name,
+            family,
+            description,
+        }
     }
+    [
+        tone(
+            24,
+            "Nylon Classical",
+            Acoustic,
+            "Warm nylon strings with a rounded top and a soft room.",
+        ),
+        tone(
+            25,
+            "Steel Fingerpicked",
+            Acoustic,
+            "Fingertips on steel, close and detailed, with only a hint of room.",
+        ),
+        tone(
+            26,
+            "Warm Jazz",
+            Clean,
+            "Neck humbucker with the highs rolled off: round, dark and smooth.",
+        ),
+        tone(
+            27,
+            "Clean Single Coil",
+            Clean,
+            "Bright single-coil bridge with light compression and a little air.",
+        ),
+        tone(
+            28,
+            "Muted Overdriven Guitar",
+            Clean,
+            "Palm-muted strings into a light overdrive: a tight, dry chug.",
+        ),
+        tone(
+            29,
+            "Classic Rock Rhythm",
+            Crunch,
+            "A pedal into a cranked amp: thick, even and ready for chords.",
+        ),
+        tone(
+            30,
+            "Modern Metal Rhythm",
+            HighGain,
+            "High gain with the mud cut out and the attack left sharp.",
+        ),
+        tone(
+            31,
+            "80s Lead",
+            Lead,
+            "Smooth lead with a long, even sustain.",
+        ),
+        tone(
+            32,
+            "Round Acoustic",
+            Bass,
+            "An acoustic bass: woody, round and soft at the attack.",
+        ),
+        tone(
+            33,
+            "Clean Finger",
+            Bass,
+            "Fingerstyle bass: even lows, a clear attack and no boom.",
+        ),
+        tone(
+            34,
+            "Pick",
+            Bass,
+            "A pick on the strings: harder attack and a brighter top.",
+        ),
+        tone(
+            35,
+            "Smooth Fretless",
+            Bass,
+            "Fretless glide: a soft attack and a singing sustain.",
+        ),
+        tone(
+            36,
+            "Slap",
+            Bass,
+            "Snappy slap: compressed lows and a bright, popping top.",
+        ),
+        tone(
+            37,
+            "Bright Slap",
+            Bass,
+            "A brighter slap with more pop and a lighter low end.",
+        ),
+        tone(
+            38,
+            "Driven",
+            Bass,
+            "A bass pushed into a warm overdrive, still holding its low end.",
+        ),
+        tone(
+            39,
+            "Deep Round",
+            Bass,
+            "A deep, round bass with the top rolled off.",
+        ),
+    ]
+};
+
+/// The fixed tone of `program`, if it is a guitar or bass program (24-39). Only the
+/// desktop's `cargo xtask tones` asks.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+pub(crate) fn program_tone(program: u8) -> Option<&'static ProgramTone> {
+    PROGRAM_TONES.iter().find(|tone| tone.program == program)
 }
 
 /// A tone that ships with the program: a full sound with a name, a family and a short
@@ -413,6 +547,31 @@ mod tests {
                 for_program(program, kind).map(|tone| &tone.name),
                 Some(name)
             );
+        }
+    }
+
+    #[test]
+    fn every_program_has_its_own_tone_under_its_fixed_name() {
+        let file: ToneLibraryFile = serde_json::from_str(TONES_JSON).unwrap();
+        assert_eq!(
+            file.tones.len(),
+            PROGRAM_TONES.len(),
+            "one tone per program"
+        );
+        for fixed in &PROGRAM_TONES {
+            assert_eq!(
+                file.programs.get(&fixed.program).map(String::as_str),
+                Some(fixed.name),
+                "program {}",
+                fixed.program
+            );
+            let entry = file
+                .tones
+                .iter()
+                .find(|tone| tone.name == fixed.name)
+                .unwrap();
+            assert_eq!(entry.family, fixed.family, "{}", fixed.name);
+            assert_eq!(entry.description, fixed.description, "{}", fixed.name);
         }
     }
 

@@ -21,7 +21,7 @@ use std::sync::Arc;
 use gscore_play::{MidiEvent, PlayError, PlayState, Player, Sequence, encode_sequence};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{AudioContext, AudioWorkletNode, MessageEvent, MessagePort};
+use web_sys::{AudioContext, AudioWorkletNode, AudioWorkletNodeOptions, MessageEvent, MessagePort};
 
 use gscore_guitar::ChainSpec;
 
@@ -197,7 +197,16 @@ fn start_worklet(context: AudioContext, shared: Rc<Shared>) {
             JsFuture::from(added)
                 .await
                 .map_err(|_| "the AudioWorklet module did not load".to_owned())?;
-            let node = AudioWorkletNode::new(&context, "gscore-synth")
+            // A source with a stereo output. Left to its defaults the node has one input,
+            // and its output takes the channel count of that (unconnected) input: one. The
+            // right channel was then dropped, so a track lost level the further right it
+            // was panned.
+            let options = AudioWorkletNodeOptions::new();
+            options.set_number_of_inputs(0);
+            options.set_number_of_outputs(1);
+            let channels = js_sys::Array::of1(&JsValue::from_f64(2.0));
+            options.set_output_channel_count(&channels);
+            let node = AudioWorkletNode::new_with_options(&context, "gscore-synth", &options)
                 .map_err(|_| "cannot create the synthesizer node".to_owned())?;
             let port = node
                 .port()

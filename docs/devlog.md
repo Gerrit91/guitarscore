@@ -4929,6 +4929,17 @@ from a sound's name to one of its tones, filled by the owner:
   messages the app posts were replayed into the built worklet in Node; after choosing
   "Overdriven Guitar 1" the same note came out six times louder with a crest factor of 3
   instead of 17.
+- `docs/gaps.md` has the browser build's gaps in one section (sound, files, app), for
+  later work.
+- Browser: tracks panned right lost level and a hard-right track was silent. The
+  AudioWorklet node was made with its defaults (one input, one output), and such a node's
+  output has as many channels as its unconnected input: one, so the right channel the
+  worklet rendered was dropped. The node is now a source (no input) with a stereo output.
+- Without measured levels (MIDI output, the browser) the mixer showed the compressor and
+  chorus buses as silent whatever was sent into them (a leftover from before the Comp
+  knobs existed). They are estimated like the reverb bus now: the loudest send, through
+  the bus's level. The sends themselves did reach the browser's synthesizer (recorded:
+  `CompSend` messages while the knob is dragged; the replayed note is louder with it).
 
 
 ## 2026-11-13 — Update check and release checksums
@@ -4952,3 +4963,24 @@ from a sound's name to one of its tones, filled by the owner:
   `update_available`; `--ignored github` test does the real request (passed).
 - Open: verifying a download against SHA256SUMS in the app only makes sense once it
   downloads; signing (M20) before any self-update.
+
+## 2026-11-13 — Built-in tones under fixed names again
+
+- Since 9a0cb5b the built-in tones were named after the saved tone they were imported
+  from (`tones import` took the preset's name unless `--name` was given), so the pickers
+  showed "Metal Guitar 1", "Clean Bass 1" and the like. Owner: the names are fixed, an
+  import must not change them, and every tone stands on its own even when two have the
+  same settings.
+- `tone_library::PROGRAM_TONES`: one tone per program 24-39 with a fixed name, family and
+  description (the pre-9a0cb5b names: Nylon Classical, Steel Fingerpicked, Warm Jazz,
+  Clean Single Coil, Classic Rock Rhythm, Modern Metal Rhythm, 80s Lead,
+  Clean Finger, Pick, Slap, Driven; 28 is Muted Overdriven Guitar (owner's name); new for the bass programs that had none: 32 Round
+  Acoustic, 35 Smooth Fretless, 37 Bright Slap, 39 Deep Round). `import --program N`
+  fills program N's tone and keeps its name; `--name`, `--family` and `--description`
+  are refused; a saved tone of another kind of string than the program's is refused.
+  `validate` (`tones check`, and every write) refuses a tone that is not a program's,
+  under another name, or with another family or description.
+- `data/tones.json` migrated: each program's sound copied into its own tone (26 and 27
+  both carry the "Clean 1" sound, all eight basses "Clean Bass 1"; the source link is
+  kept, so `tones update` refreshes each). "Natural Steel 1" had no program and is gone
+  (in git history). The tool writes the file back byte-identical.
