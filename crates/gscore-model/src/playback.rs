@@ -213,10 +213,11 @@ impl Song {
 impl TrackView<'_> {
     /// The capo fret (0 without a capo).
     pub fn capo(&self) -> Result<u8, ModelError> {
-        u8::try_from(self.inner.offset)
+        let offset = self.staff_data().offset;
+        u8::try_from(offset)
             .ok()
             .filter(|&capo| i64::from(capo) <= MIDI_MAX)
-            .ok_or_else(|| ModelError::Invalid(format!("capo at fret {}", self.inner.offset)))
+            .ok_or_else(|| ModelError::Invalid(format!("capo at fret {offset}")))
     }
 
     /// The pitch `note` sounds at: the open string's pitch plus fret and capo, or the

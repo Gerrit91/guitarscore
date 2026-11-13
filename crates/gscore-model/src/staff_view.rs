@@ -4,104 +4,63 @@
 //! measure for each of the song's measures.
 
 use crate::error::ModelError;
-use crate::position::{MeasureIndex, Pitch, StaffIndex, StringNumber, TrackIndex};
+use crate::position::{MeasureIndex, StaffIndex, TrackIndex};
 use crate::views::{MeasureView, StringTuning, TrackView};
 
-/// A staff of a track.
+/// A staff of a track: the track seen through it ([`TrackView::on_staff`]).
 #[derive(Debug, Clone, Copy)]
 pub struct StaffView<'a> {
-    track: TrackIndex,
-    index: StaffIndex,
-    measures: &'a [gscore_gp::Measure],
-    strings: &'a [(i8, i8)],
-    has_tuning: bool,
-    capo: i32,
+    view: TrackView<'a>,
 }
 
 impl<'a> StaffView<'a> {
     /// The track's staff `index`, if it has one.
     pub(crate) fn of(track: &TrackView<'a>, index: StaffIndex) -> Option<Self> {
-        let inner = track.inner;
-        let (measures, strings, has_tuning, capo) = match index.get() {
-            0 => (
-                inner.measures.as_slice(),
-                inner.strings.as_slice(),
-                inner.has_tuning,
-                inner.offset,
-            ),
-            n => {
-                let staff = inner.staves.get(n.checked_sub(1)?)?;
-                (
-                    staff.measures.as_slice(),
-                    staff.strings.as_slice(),
-                    staff.has_tuning,
-                    staff.offset,
-                )
-            }
-        };
-        Some(StaffView {
-            track: track.index(),
-            index,
-            measures,
-            strings,
-            has_tuning,
-            capo,
-        })
+        track.on_staff(index).map(|view| StaffView { view })
+    }
+
+    /// The track seen through this staff: its measures, strings, tuning and capo are the
+    /// staff's.
+    pub fn view(&self) -> TrackView<'a> {
+        self.view
     }
 
     /// The track it belongs to.
     pub fn track(&self) -> TrackIndex {
-        self.track
+        self.view.index()
     }
 
     /// Its position in the track.
     pub fn index(&self) -> StaffIndex {
-        self.index
+        self.view.staff_index()
     }
 
     /// All its measures, in order.
     pub fn measures(&self) -> impl ExactSizeIterator<Item = MeasureView<'a>> + use<'a> {
-        self.measures
-            .iter()
-            .enumerate()
-            .map(|(i, m)| MeasureView::new(MeasureIndex::new(i), m))
+        self.view.measures()
     }
 
     /// One measure, or `None` if the index is out of range.
     pub fn measure(&self, index: MeasureIndex) -> Option<MeasureView<'a>> {
-        self.measures
-            .get(index.get())
-            .map(|m| MeasureView::new(index, m))
+        self.view.measure(index)
     }
 
     /// How many strings its notes are placed on.
     pub fn string_count(&self) -> usize {
-        self.strings.len()
+        self.view.string_count()
     }
 
     /// The strings its notes are written on (1 = highest) and their open pitches: a
     /// string instrument's tuning, or for a keyboard's or a voice's staff the stand-in
     /// tuning Guitar Pro stores, whose strings and frets give the notes' pitches. `None`
-    /// when the file stores none.
+    /// when the file stores none (and for drums).
     pub fn note_tuning(&self) -> Result<Option<Vec<StringTuning>>, ModelError> {
-        if !self.has_tuning {
-            return Ok(None);
-        }
-        self.strings
-            .iter()
-            .map(|&(string, pitch)| {
-                Ok(StringTuning {
-                    string: StringNumber::from_gp(string)?,
-                    pitch: Pitch::from_gp(pitch)?,
-                })
-            })
-            .collect::<Result<Vec<_>, ModelError>>()
-            .map(Some)
+        self.view.note_tuning()
     }
 
     /// The capo fret, as stored.
     pub fn capo_fret(&self) -> i32 {
-        self.capo
+        self.view.staff_data().offset
     }
 }
 

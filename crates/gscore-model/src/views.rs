@@ -22,11 +22,24 @@ pub struct StringTuning {
     pub pitch: Pitch,
 }
 
-/// A track (instrument part).
+/// A track (instrument part), seen through one of its staves: its measures, strings,
+/// tuning and capo are that staff's (the first, unless [`TrackView::on_staff`] chose
+/// another); everything else (name, sound, instrument) is the track's.
 #[derive(Debug, Clone, Copy)]
 pub struct TrackView<'a> {
     index: TrackIndex,
     pub(crate) inner: &'a gscore_gp::Track,
+    /// The staff seen; always one the track has.
+    staff: usize,
+}
+
+/// What a staff has of its own.
+pub(crate) struct StaffData<'a> {
+    pub(crate) measures: &'a [gscore_gp::Measure],
+    pub(crate) strings: &'a [(i8, i8)],
+    pub(crate) has_tuning: bool,
+    pub(crate) tuning_label: Option<&'a String>,
+    pub(crate) offset: i32,
 }
 
 /// A track name as GP3, GP4 and GP5 read it back after a save: in their single-byte code
@@ -38,7 +51,51 @@ pub fn track_name_in_binary_formats(name: &str) -> String {
 
 impl<'a> TrackView<'a> {
     pub(crate) fn new(index: TrackIndex, inner: &'a gscore_gp::Track) -> Self {
-        TrackView { index, inner }
+        TrackView {
+            index,
+            inner,
+            staff: 0,
+        }
+    }
+
+    /// The same track seen through staff `staff` (its measures, strings, tuning and capo),
+    /// or `None` if it has no such staff.
+    pub fn on_staff(&self, staff: crate::StaffIndex) -> Option<TrackView<'a>> {
+        let index = staff.get();
+        (index <= self.inner.staves.len()).then_some(TrackView {
+            staff: index,
+            ..*self
+        })
+    }
+
+    /// The staff it is seen through.
+    pub fn staff_index(&self) -> crate::StaffIndex {
+        crate::StaffIndex::new(self.staff)
+    }
+
+    /// The seen staff's own data.
+    pub(crate) fn staff_data(&self) -> StaffData<'a> {
+        let track = self.inner;
+        match self
+            .staff
+            .checked_sub(1)
+            .and_then(|index| track.staves.get(index))
+        {
+            Some(staff) => StaffData {
+                measures: &staff.measures,
+                strings: &staff.strings,
+                has_tuning: staff.has_tuning,
+                tuning_label: staff.tuning_label.as_ref(),
+                offset: staff.offset,
+            },
+            None => StaffData {
+                measures: &track.measures,
+                strings: &track.strings,
+                has_tuning: track.has_tuning,
+                tuning_label: track.tuning_label.as_ref(),
+                offset: track.offset,
+            },
+        }
     }
 
     /// This track's index in the song.
@@ -66,7 +123,7 @@ impl<'a> TrackView<'a> {
 
     /// Number of strings (4 for a bass, 6 for a guitar, ...).
     pub fn string_count(&self) -> usize {
-        self.inner.strings.len()
+        self.staff_data().strings.len()
     }
 
     /// The broad kind of instrument: string instrument, drums, or other.
@@ -113,7 +170,7 @@ impl<'a> TrackView<'a> {
     /// tracks), the file stores no tuning, or every string is at pitch 0 (drum kits).
     /// The track still has [`Self::string_count`] strings for placing notes.
     pub fn tuning(&self) -> Result<Option<Vec<StringTuning>>, ModelError> {
-        if !self.inner.has_tuning || self.instrument_kind() != InstrumentKind::Strings {
+        if !self.staff_data().has_tuning || self.instrument_kind() != InstrumentKind::Strings {
             return Ok(None);
         }
         let strings = self.strings()?;
@@ -128,7 +185,7 @@ impl<'a> TrackView<'a> {
     /// Pro stores (its notes are a string and a fret on it, the fret possibly negative).
     /// `None` for drums and for tracks that store no pitches at all.
     pub fn note_tuning(&self) -> Result<Option<Vec<StringTuning>>, ModelError> {
-        if self.is_percussion() || !self.inner.has_tuning {
+        if self.is_percussion() || !self.staff_data().has_tuning {
             return Ok(None);
         }
         let strings = self.strings()?;
@@ -145,7 +202,7 @@ impl<'a> TrackView<'a> {
         let Some(strings) = self.tuning()? else {
             return Ok(None);
         };
-        if let Some(label) = &self.inner.tuning_label {
+        if let Some(label) = self.staff_data().tuning_label {
             return Ok(Some(label.clone()));
         }
         let low_to_high: Vec<Pitch> = strings.iter().rev().map(|s| s.pitch).collect();
@@ -154,7 +211,7 @@ impl<'a> TrackView<'a> {
 
     /// The strings as stored, including placeholder pitches of tracks without a tuning.
     pub(crate) fn strings(&self) -> Result<Vec<StringTuning>, ModelError> {
-        self.inner
+        self.staff_data()
             .strings
             .iter()
             .map(|&(string, pitch)| {
@@ -197,7 +254,7 @@ impl<'a> TrackView<'a> {
 
     /// All measures, in order.
     pub fn measures(&self) -> impl ExactSizeIterator<Item = MeasureView<'a>> + use<'a> {
-        self.inner
+        self.staff_data()
             .measures
             .iter()
             .enumerate()
@@ -206,7 +263,7 @@ impl<'a> TrackView<'a> {
 
     /// One measure, or `None` if the index is out of range.
     pub fn measure(&self, index: MeasureIndex) -> Option<MeasureView<'a>> {
-        self.inner
+        self.staff_data()
             .measures
             .get(index.get())
             .map(|m| MeasureView::new(index, m))
