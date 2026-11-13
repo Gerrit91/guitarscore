@@ -26,7 +26,10 @@ built never to lose your work.
 ## Installation
 
 Builds for Linux, Windows and macOS are attached to
-[GitHub Releases](https://github.com/Gerrit91/guitarscore/releases). 
+[GitHub Releases](https://github.com/Gerrit91/guitarscore/releases). Each release
+also has a `SHA256SUMS` file to check a download with: `sha256sum -c --ignore-missing
+SHA256SUMS` on Linux, `shasum -a 256 -c --ignore-missing SHA256SUMS` on macOS, or
+`Get-FileHash <file>` in PowerShell on Windows (compare it with the file's line).
 
 ## Status
 
