@@ -97,11 +97,43 @@ protocol (a small dependency-free client in `xtask/src/cdp.rs`, because `--dump-
 not wait for wasm and AudioWorklet loading). It checks:
 
 - the app page sets `data-guitarscore-ready` and saves `smoke.png`;
+- a song dropped on the page (a synthetic drop event) and a typed fret leave a rescue copy
+  of the edited song with the page (`smoke-edited.png`), and the crash screen a panic shows
+  offers it for download (`smoke-crashed.png`), see "Crashes" below;
+- a deploy: once the service worker controls the page, the built `sw.js` and `index.html`
+  are changed as a new build's would be, and one visit later the page must run the new
+  build (the files are put back afterwards);
 - `worklet-check.html` loads the AudioWorklet module, instantiates the synth wasm, loads
   the bundled SoundFont, plays middle C through an analyser, requires non-silent samples,
   and saves `smoke-worklet.png`.
 
 It needs Chromium and Python 3 (`http.server`), not a display.
+
+## Crashes
+
+A panic aborts the wasm instance (`panic = abort` on `wasm32-unknown-unknown`; nothing
+unwinds, so the desktop's `catch_unwind` containment does not exist here). Two things keep
+the user's work:
+
+- **Rescue copies.** Every tab with unsaved edits hands the page a Guitar Pro 7 copy of its
+  song (the bytes Save would download) once its edits have rested for a second
+  (`crates/gscore-app/src/app/web_rescue.rs`). The copies live in the page's JavaScript,
+  `globalThis.guitarscoreRescue`, outside the instance; a saved or closed tab takes its
+  copy back. They are in memory only: a closed tab or a reload loses them (a
+  storage-backed journal is still open, `docs/gaps.md`).
+- **The crash screen.** The panic hook (`web.rs`) calls the page's `guitarscoreCrashed`,
+  which hides the canvas and offers each copy for download, then Reload (asking first if a
+  copy was not downloaded). An uncaught `WebAssembly.RuntimeError` after the editor started
+  (an abort whose hook could not run) shows the same screen.
+
+## Updates
+
+`cargo xtask web` stamps a cache name unique to the build into `sw.js` (version and build
+time). The worker fetches the app shell with `cache: "reload"`, so the browser's HTTP cache
+cannot hand it the previous build's files. The visit after a deploy is still served by the
+old worker; when the new one takes over, the page reloads itself once (`controllerchange`
+in `index.html`; the unsaved-edits guard asks first), so the new build runs at that visit
+rather than the one after.
 
 ## Docker
 

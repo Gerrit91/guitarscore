@@ -99,17 +99,17 @@ before the release) are his. This file lists the rest, in a sensible order.
 
 ## 3. Performance
 
-- The strings benchmark (`cargo xtask bench`: 16 tracks × 6 strings ringing) is over its
-  250 ms budget (about 280 ms on a busy machine, since the pickup). Cheaper pickup: read
-  the pickup's tap from the string's own delay line instead of a second one
-  (`gscore-guitar/src/pickup.rs`).
-- The benchmark measures the strings only. Add a whole-engine benchmark: a 16-track song
-  with chains on every track (an amp, an EQ, a compressor, a room), the reverb,
-  compressor and chorus buses and a drum track with its parts, rendered by `SynthEngine`;
-  the milestone asks for a 16-track song in real time with headroom on the owner's
-  machine.
-- Skip a drum part whose input is silent and whose chain does not ring (today every part
-  chain of every drum track runs every block).
+Done 2026-11-13 (see the devlog): the strings benchmark went from about 358 to 231 ms of
+its 250 ms budget, a whole-engine benchmark exists (`gscore-audio`'s `engine_bench`
+example, run by `cargo xtask bench`: about 403 ms of a 500 ms budget for 15 modelled
+tracks with full chains, the buses, a drum kit with part chains and a master chain), and a
+silent drum part no longer runs its chain. Left:
+
+- The amp is the most expensive block (4× oversampled, about 9 ms per track per second);
+  a cheaper oversampler (polyphase halfband filters) would change its sound slightly, so
+  it waits for the owner's ear.
+- The pickup still keeps a delay line of its own; reading its tap from the string's own
+  line was the idea, but measured it costs only about 13 ms of the 231.
 
 ## 4. Smaller fixes from the review
 

@@ -5021,3 +5021,50 @@ from a sound's name to one of its tones, filled by the owner:
   `fortississimo_is_only_a_little_louder_than_forte`).
 - Not changed: tracks on the SoundFont synth follow the SF2 standard curve (fff 5 dB
   above f); the velocities themselves stay Guitar Pro's (15 to 127).
+
+## 2026-11-13 — Gaps 6 to 9: pitched tracks, a limiter, performance, browser crashes
+
+- **Pitched tracks (gap 2, was "6" in the owner's list):** already fixed on 2026-11-06
+  (13d748d); the gap entry was older. Checked all 26 band files: every first-staff note's
+  string and fret on the stand-in tuning gives its GP7 `Midi` pitch, `gscore-cli midi`
+  skips no note, and a voice track draws as notation only (its clefs follow the file).
+  Gap rewritten; what is left is note entry on stand-in strings and second staves.
+- **Safety limiter** (`gscore-audio/src/limiter.rs`): stereo-linked peak limiter without
+  look-ahead at the very end of `SynthEngine::render_block`, after the master meter:
+  ceiling -0.5 dBFS, hold 10 ms, release 150 ms; bit-exact below the ceiling (the gain is
+  kept as a deficit below 1, which does not stall in f32 near 1). Desktop, WAV export and
+  the worklet all get it. Sixteen loud tracks: the mix reaches 1.49 × full scale, the
+  output stays at 0.944. Tests: unit tests plus `tests/test_limiter.rs`.
+- **Strings 358 → 231 ms** (`cargo xtask bench`, budget 250): `floor` in the delay line's
+  read was a libm call (x86-64 without SSE4.1) → truncation; the Lagrange weights are kept
+  while the delay holds (a "glide" whose step is below one ulp keeps them too) and worked
+  out directly while it really moves (keeping them then was slower); the loss filter is
+  solved as a quadratic instead of 24 bisection steps (redesigned every block while a
+  string bends). All bit-exact except the loss design (within 1e-5 of the old search; a
+  test keeps the search for comparison). Measured by switching parts off (no profiler on
+  this machine): the second vibration costs about 105 ms of the old 358, the output's
+  three filters 52, the pickup 13.
+- **Whole-engine benchmark** (`gscore-audio/examples/engine_bench.rs`, `--check` in
+  `cargo xtask bench`, budget 500 ms per second): 470 ms at first. The built-in cabinet
+  was 200 ms long; past 40 ms it is 84 dB down, and at 1 920 samples the convolver needs
+  only its first stage: 403 ms. A silent drum part with its tail over no longer runs its
+  chain. Per track per second: amp about 9 ms, cabinet 4, compressor 2.7, EQ 1.2, a
+  computed reverb 14 (left out: rooms belong on the bus).
+- **Browser crash screen** (gap 30): the panic hook calls the page's `guitarscoreCrashed`,
+  which hides the canvas and offers the unsaved songs for download. The app hands the page
+  a GP7 copy of each tab with unsaved edits once they rest for a second
+  (`app/web_rescue.rs`), kept in JavaScript outside the wasm instance. `song_with_state`
+  now builds the song for Save and for the copies alike.
+- **Stale browser build** (gap 31): the worker's install fetched the shell through the
+  HTTP cache, and the visit after a deploy was served by the old worker. Shell fetched with
+  `cache: "reload"`; the page reloads once on `controllerchange` (not on a first visit).
+- **Smoke test** (`xtask/src/web/page_checks.rs`): a song dropped on the canvas and a
+  typed fret give a rescue copy (6 845 bytes, a zip); the crash screen offers it; a
+  simulated deploy runs at the next visit (with the reload switched off it fails: "still
+  runs the previous build"). The deploy check runs last on the app page: putting the built
+  files back is one more deploy to the page.
+- Seen on the way: `cargo clippy` for wasm fails in `gscore-session` (`drop(File)` is
+  `drop_non_drop` there); CI checks wasm with `cargo check` only, so it is not caught.
+- Not done: a limiter meter or block, a storage-backed journal in the browser (copies are
+  in memory only), the amp's cost.
+
