@@ -21,7 +21,8 @@ Tasks:
   ci [--skip-wasm]      Run the full definition-of-done: fmt, clippy, test, layers
   bench [FILE...]       Time opening, layout and editing in a release build and check the
                         performance budgets. Files: the arguments, else GSCORE_BENCH_FILES
-                        (separated by ':'), else the files in testdata/basic
+                        (separated by ':'), else the files in testdata/basic. Then the
+                        modelled strings and the whole sound engine on a busy song
   tones <command> [...] Import a saved tone from the settings into the built-in tone
                         library (crates/gscore-app/data/tones.json) and map it to a
                         General MIDI program. `cargo xtask tones help` for the commands
@@ -112,7 +113,8 @@ fn ci(root: &std::path::Path, skip_wasm: bool) -> TaskResult {
 }
 
 /// `gscore-cli bench --check` in a release build on the given files, the files in
-/// `GSCORE_BENCH_FILES`, or the test files.
+/// `GSCORE_BENCH_FILES`, or the test files; then the whole engine's benchmark
+/// (`gscore-audio`'s `engine_bench` example).
 fn bench(root: &std::path::Path, files: &[String]) -> TaskResult {
     let mut files: Vec<String> = files.to_vec();
     if files.is_empty()
@@ -145,5 +147,21 @@ fn bench(root: &std::path::Path, files: &[String]) -> TaskResult {
         "--check",
     ];
     args.extend(files.iter().map(String::as_str));
-    cmd::run_status(&cmd::cargo(), &args, root)
+    cmd::run_status(&cmd::cargo(), &args, root)?;
+    // The whole sound engine on a busy song (an example, as it needs the test SoundFont).
+    cmd::run_status(
+        &cmd::cargo(),
+        &[
+            "run",
+            "--release",
+            "--quiet",
+            "--package",
+            "gscore-audio",
+            "--example",
+            "engine_bench",
+            "--",
+            "--check",
+        ],
+        root,
+    )
 }

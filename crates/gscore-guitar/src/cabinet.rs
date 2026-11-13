@@ -20,8 +20,10 @@ use crate::impulse::ImpulseResponse;
 
 /// The rate the response is rendered at (the engine resamples it like a loaded file).
 const RATE: u32 = 48_000;
-/// Its length: as long as the reference.
-const LENGTH: usize = 9_600;
+/// Its length, 40 ms: by then what is left of it is 84 dB down (its loudest sample 93 dB
+/// below the response's), and the convolver needs only its first, cheapest stage (the
+/// reference's 200 ms made a cabinet cost twice as much: `engine_bench`, 2026-11-13).
+const LENGTH: usize = 1_920;
 
 /// One filter of the model.
 #[derive(Debug, Clone, Copy)]
@@ -165,6 +167,6 @@ mod tests {
         let energy: f32 = samples.iter().map(|x| x * x).sum();
         assert!((energy - 1.0).abs() < 0.01, "unit energy: {energy}");
         let tail: f32 = samples[LENGTH / 2..].iter().map(|x| x * x).sum();
-        assert!(tail < 1e-4, "it has died away by 100 ms: {tail}");
+        assert!(tail < 1e-4, "it has died away by 20 ms: {tail}");
     }
 }
