@@ -11,6 +11,13 @@ pub(crate) struct DelayLine {
     write: usize,
 }
 
+/// A read position of a [`DelayLine`] and its interpolation weights.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Taps {
+    back: usize,
+    weights: [f32; 4],
+}
+
 /// The shortest delay [`DelayLine::read`] handles: the interpolator needs one sample after
 /// the read position and two before it.
 pub(crate) const MIN_DELAY: f32 = 2.0;
@@ -47,25 +54,47 @@ impl DelayLine {
 
     /// The signal `delay` samples before the next one to be written, interpolated
     /// (`delay` is clamped to [`MIN_DELAY`] and [`DelayLine::max_delay`]).
+    #[inline]
     pub(crate) fn read(&self, delay: f32) -> f32 {
+        self.read_at(&self.taps(delay))
+    }
+
+    /// Where and how [`DelayLine::read`] reads at `delay`: worked out once for a delay that
+    /// holds (the string's pitch between bends), read with [`DelayLine::read_at`].
+    #[inline]
+    pub(crate) fn taps(&self, delay: f32) -> Taps {
         let delay = if delay.is_finite() {
             delay.clamp(MIN_DELAY, self.max_delay())
         } else {
             MIN_DELAY
         };
-        let whole = delay.floor();
-        let fraction = delay - whole;
-        let back = whole as usize;
-        // Four points around the read position; `t` is the position from the first.
+        // The delay is at least `MIN_DELAY`, so truncating is `floor` (which is a library
+        // call on x86-64 without SSE4.1, a sixth of a string's time in `cargo xtask bench`).
+        let back = delay as usize;
+        let fraction = delay - back as f32;
+        // Third-order Lagrange weights of four points around the read position; `t` is
+        // the position from the first.
+        let t = 1.0 + fraction;
+        Taps {
+            back,
+            weights: [
+                -(t - 1.0) * (t - 2.0) * (t - 3.0) / 6.0,
+                t * (t - 2.0) * (t - 3.0) / 2.0,
+                -t * (t - 1.0) * (t - 3.0) / 2.0,
+                t * (t - 1.0) * (t - 2.0) / 6.0,
+            ],
+        }
+    }
+
+    /// The signal at `taps`, interpolated.
+    #[inline]
+    pub(crate) fn read_at(&self, taps: &Taps) -> f32 {
+        let back = taps.back;
+        let [h0, h1, h2, h3] = taps.weights;
         let p0 = self.at(back.saturating_sub(1));
         let p1 = self.at(back);
         let p2 = self.at(back.saturating_add(1));
         let p3 = self.at(back.saturating_add(2));
-        let t = 1.0 + fraction;
-        let h0 = -(t - 1.0) * (t - 2.0) * (t - 3.0) / 6.0;
-        let h1 = t * (t - 2.0) * (t - 3.0) / 2.0;
-        let h2 = -t * (t - 1.0) * (t - 3.0) / 2.0;
-        let h3 = t * (t - 1.0) * (t - 2.0) / 6.0;
         h0 * p0 + h1 * p1 + h2 * p2 + h3 * p3
     }
 
