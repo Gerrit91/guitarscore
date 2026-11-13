@@ -670,3 +670,23 @@ fn a_hard_pluck_starts_sharp_and_settles() {
     let off = cents_off(seconds(&out, 0.08, 0.4), hz);
     assert!(off.abs() < 1.0, "settled: {off:.2} cents");
 }
+
+/// Forte (velocity 95) and fortississimo (127) are not far apart: about 2.5 dB of level
+/// (owner, 2026-11-13: 3.3 dB and a much harder strike sounded like a jump).
+#[test]
+fn fortississimo_is_only_a_little_louder_than_forte() {
+    let rms = |velocity: f32| {
+        let mut voice = StringVoice::new(RATE, 20.0, GuitarModel::Electric.strings());
+        voice.pluck(Pluck {
+            velocity,
+            ..pick(frequency(52, 0.0))
+        });
+        let out = render(&mut voice, 1.0, |_| {});
+        (out.iter().map(|s| f64::from(*s).powi(2)).sum::<f64>() / out.len() as f64).sqrt()
+    };
+    let forte = rms(95.0 / 127.0);
+    let fff = rms(1.0);
+    let db = 20.0 * (fff / forte).log10();
+    eprintln!("f to fff: {db:.2} dB");
+    assert!(db > 1.5 && db < 3.0, "f to fff: {db:.2} dB");
+}

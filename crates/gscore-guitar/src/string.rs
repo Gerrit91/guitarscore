@@ -64,6 +64,13 @@ const PALM_KEEPS: (f32, f32) = (25.0 / 3.0, 3.0);
 /// the strike of a palm-muted note is this much stronger, so its low end is as full as an
 /// open note's.
 const PALM_STRIKE: f32 = 1.4;
+/// How the strike's level follows the velocity (0 to 1): `velocity ^ this`. 1.3 made fff
+/// 3.3 dB louder than f, too far apart (owner, 2026-11-13); at 1.0 it is 2.5 dB, and ppp to
+/// fff spans about 18.5 dB.
+const VELOCITY_LEVEL_EXPONENT: f32 = 1.0;
+/// How bright the softest and the hardest strike are, as shares of the pick's hardness:
+/// a soft one rounds the edge of the pluck (was 0.4 to 1.0).
+const VELOCITY_HARDNESS: (f32, f32) = (0.55, 1.0);
 /// The decay times (fundamental, around 2 kHz) once the fretting finger lets go.
 const RELEASED: (f32, f32) = (0.3, 0.06);
 
@@ -283,8 +290,9 @@ impl StringVoice {
             hardness
         };
         // Harder strikes are brighter; a soft one rounds the edge of the pluck.
-        let hardness = (hardness * (0.4 + 0.6 * velocity)).clamp(0.02, 1.0);
-        let amplitude = amplitude * velocity.powf(1.3);
+        let (soft, hard) = VELOCITY_HARDNESS;
+        let hardness = (hardness * (soft + (hard - soft) * velocity)).clamp(0.02, 1.0);
+        let amplitude = amplitude * velocity.powf(VELOCITY_LEVEL_EXPONENT);
         self.pick
             .start(amplitude * click * self.model.pick_noise, hardness);
         if !pluck.dead && !pluck.harmonic {

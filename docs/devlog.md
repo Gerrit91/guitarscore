@@ -5010,3 +5010,14 @@ from a sound's name to one of its tones, filled by the owner:
   `build::collect` makes a tempo map for it). The playback speed slider still slows it
   along with the song. Event goldens rewritten (only pitch bends changed).
 - Not done: a vibrato that fades in after the attack, as a player's often does.
+
+## 2026-11-13 — Closer dynamics on the modelled strings
+
+- Owner: fff is too far from f. The strike's level followed `velocity ^ 1.3` and its
+  hardness `0.4 + 0.6 × velocity`: fff measured 3.47 dB above f (RMS over a second, low
+  E, electric) and much brighter. Now `velocity ^ 1.0` and `0.55 + 0.45 × velocity`:
+  2.68 dB, and a smaller jump in brightness; ppp to fff spans about 18.5 dB instead of 24
+  (`VELOCITY_LEVEL_EXPONENT`, `VELOCITY_HARDNESS` in gscore-guitar's string.rs; test
+  `fortississimo_is_only_a_little_louder_than_forte`).
+- Not changed: tracks on the SoundFont synth follow the SF2 standard curve (fff 5 dB
+  above f); the velocities themselves stay Guitar Pro's (15 to 127).
