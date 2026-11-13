@@ -1040,6 +1040,8 @@ fn export_midi(song: &Song, path: &std::path::Path) -> Result<String, String> {
 /// How audio is exported: the SoundFont (or one found on disk), whether guitars and basses
 /// play on the modelled strings and how those sound, and the sample rate (`None`: the
 /// WAV default).
+// Desktop only: the browser build has no audio export, MIDI out or tone tool.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AudioExport {
     pub(crate) soundfont: Option<PathBuf>,
@@ -1058,6 +1060,7 @@ pub(crate) struct AudioExport {
 }
 
 /// The work of [`Tasks::export_wav`]: the status message, or why it failed.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 fn export_wav(song: &Song, path: &std::path::Path, audio: &AudioExport) -> Result<String, String> {
     let soundfont = audio
         .soundfont

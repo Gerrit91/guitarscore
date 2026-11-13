@@ -345,6 +345,25 @@ fn the_page_matches_its_snapshot_in_both_themes() {
 }
 
 #[test]
+fn the_first_start_asks_about_updates_and_remembers_a_no() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .wgpu()
+        .build_eframe(|cc| {
+            let mut app = GuitarScoreApp::new(&cc.egui_ctx, None);
+            app.enable_automatic_update_check();
+            app
+        });
+    harness.run();
+    harness.snapshot("update_question");
+    // "Don't check": nothing is sent, and the answer is kept.
+    harness.get_by_label("Don't check").click();
+    harness.run();
+    assert_eq!(harness.state().settings().check_for_updates, Some(false));
+    assert!(harness.query_by_label("Check daily").is_none());
+}
+
+#[test]
 fn the_track_dialogs_match_their_snapshots() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))
@@ -895,6 +914,8 @@ fn playback_starts_at_the_cursor_and_resumes_where_it_paused() {
     std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.state_mut().playback_mut().use_soundfont(path);
+    // With "return on stop" (the default) Space stops; pausing is what is tested here.
+    harness.state_mut().set_return_on_stop(false);
     let playing = |app: &GuitarScoreApp| {
         app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
     };
@@ -3236,6 +3257,8 @@ fn a_songs_mixer_state_travels_in_its_notes() {
     harness.run();
     // Saved, the song carries both in its notes.
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::S);
+    // The key is handled on the next frame: only then is the save running, and waited for.
+    harness.step();
     let started = Instant::now();
     while harness.state().is_busy() {
         assert!(

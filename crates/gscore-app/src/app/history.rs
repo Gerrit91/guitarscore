@@ -2,7 +2,7 @@
 //! the song to that point in time (undoing or redoing as many steps as needed), so the edit
 //! history is visible instead of hidden behind two shortcuts.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use crate::{SystemTime, UNIX_EPOCH};
 
 use egui::{Align2, FontId, Margin, Rect, RichText, Sense, Stroke, UiBuilder, pos2, vec2};
 use gscore_edit::{Action, ActionId};

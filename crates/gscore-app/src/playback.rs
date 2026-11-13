@@ -15,6 +15,23 @@ use gscore_audio::{MidiOutPlayer, SynthPlayer, midi_output_ports};
 use gscore_model::{
     BeatIndex, BeatPosition, MeasureIndex, NoteKind, Song, StringNumber, TrackIndex, VoiceIndex,
 };
+
+/// The connected synthesizer that takes the song's sound (string models, chains, buses,
+/// drum parts): the built-in one on the desktop, the AudioWorklet's in a browser; `None`
+/// for a MIDI port or nothing connected. Both take the same calls. A macro, not a method,
+/// so only the `player` field is borrowed and the caller may still note what it sent.
+macro_rules! sound_player {
+    ($playback:expr) => {
+        match &$playback.player {
+            #[cfg(not(target_arch = "wasm32"))]
+            Some($crate::playback::Active::Synth(player)) => Some(player),
+            #[cfg(target_arch = "wasm32")]
+            Some($crate::playback::Active::Web(player)) => Some(player),
+            _ => None,
+        }
+    };
+}
+
 mod chains;
 
 pub(crate) use chains::ExportTones;
@@ -35,6 +52,8 @@ const AUDITION_LENGTH: Duration = Duration::from_millis(450);
 const AUDITION_CHANNEL: u8 = 15;
 
 /// A note sounding because it was just entered.
+// The browser has no MIDI-out port to read back.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 #[derive(Debug, Clone)]
 struct Audition {
     channel: Channel,
@@ -605,12 +624,9 @@ impl Playback {
 
     /// Sends the model of `kind` to the running synthesizer, if any.
     fn send_string_model(&self, kind: gscore_play::StringKind) {
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(Active::Synth(player)) = &self.player {
+        if let Some(player) = sound_player!(self) {
             let _ = player.set_string_model(kind, self.string_sounds.get(kind).model());
         }
-        #[cfg(target_arch = "wasm32")]
-        let _ = kind;
     }
 
     /// The sample rate chosen for the built-in synthesizer (`None`: the device's own).
@@ -1565,6 +1581,7 @@ impl Playback {
 
     /// How late the main output's sound reaches the ears, for holding the MIDI-out tracks
     /// back by the same time.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     fn latency(&self) -> Option<Duration> {
         #[cfg(not(target_arch = "wasm32"))]
         {

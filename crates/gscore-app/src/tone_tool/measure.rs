@@ -23,11 +23,16 @@ const VELOCITY: f32 = 0.8;
 const SECONDS: f32 = 2.0;
 const FROM: f32 = 0.2;
 const TO: f32 = 1.5;
+/// Below this level a stretch counts as silent, dBFS.
+pub(super) const SILENT_DB: f32 = -100.0;
 
 /// A tone's level measured over the reference note.
 pub(super) struct Measurement {
     /// RMS of the chain's output, dBFS.
     pub(super) rms_db: f32,
+    /// The note had died away before the usual stretch (a muted, short string), so its
+    /// first [`FROM`] seconds were measured instead.
+    pub(super) short: bool,
     /// Impulse responses the chain could not load (their place was left empty, as playback
     /// does, so the measurement is of what would be heard without them).
     pub(super) skipped: Vec<String>,
@@ -64,11 +69,24 @@ pub(super) fn measure(
     if window.is_empty() {
         return Err("the reference note is too short to measure".to_owned());
     }
-    let sum: f32 = window.iter().map(|sample| sample * sample).sum();
-    let rms = (sum / window.len() as f32).sqrt();
-    // A silent tone has no level to match; the caller decides what to do with it.
-    let rms_db = 20.0 * rms.max(1e-9).log10();
-    Ok(Measurement { rms_db, skipped })
+    let level = |window: &[f32]| {
+        let sum: f32 = window.iter().map(|sample| sample * sample).sum();
+        let rms = (sum / window.len().max(1) as f32).sqrt();
+        20.0 * rms.max(1e-9).log10()
+    };
+    let mut rms_db = level(window);
+    // A string that is over before the stretch begins (a muted tone) is measured where it
+    // sounds: its first moments. A tone silent there too has no level to match; the
+    // caller decides what to do with it.
+    let short = rms_db < SILENT_DB;
+    if short {
+        rms_db = level(left.get(..from).unwrap_or_default());
+    }
+    Ok(Measurement {
+        rms_db,
+        short,
+        skipped,
+    })
 }
 
 /// The engine's chain for `setting`, with impulse responses loaded from disk (a missing or

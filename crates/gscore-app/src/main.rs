@@ -98,6 +98,8 @@ fn main() -> ExitCode {
                 settings,
                 settings_path_for_app,
             );
+            // Asks once whether to look for updates daily (nothing is sent before a yes).
+            app.enable_automatic_update_check();
             if let Some(problem) = settings_problem.or(loaded.problem) {
                 app.set_notice(problem);
             }

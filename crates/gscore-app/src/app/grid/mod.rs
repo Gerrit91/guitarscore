@@ -206,22 +206,37 @@ impl GuitarScoreApp {
             })
             .collect();
         let meters = self.playback.meters();
-        // The bus's meter: the loudest send into it, through its own (square-law) level.
-        let bus_level = if reverb_bus.muted {
-            0.0
-        } else {
-            let loudest = rows
-                .iter()
-                .enumerate()
-                .filter(|(index, _)| !midi_out.get(*index).copied().unwrap_or(false))
-                .map(|(index, row)| {
-                    f32::from(row.reverb.min(127)) / 127.0
+        // A bus's meter without measured levels: the loudest send into it, through its own
+        // (square-law) level.
+        let estimate_bus = |sends: &dyn Fn(usize) -> u8, level: u8, muted: bool| {
+            if muted {
+                return 0.0;
+            }
+            let loudest = (0..rows.len())
+                .filter(|index| !midi_out.get(*index).copied().unwrap_or(false))
+                .map(|index| {
+                    f32::from(sends(index).min(127)) / 127.0
                         * estimates.get(index).copied().unwrap_or(0.0)
                 })
                 .fold(0.0_f32, f32::max);
-            let level = f32::from(reverb_bus.level.min(127)) / 127.0;
+            let level = f32::from(level.min(127)) / 127.0;
             loudest * level * level
         };
+        let bus_level = estimate_bus(
+            &|index| rows.get(index).map_or(0, |row| row.reverb),
+            reverb_bus.level,
+            reverb_bus.muted,
+        );
+        let compressor_level = estimate_bus(
+            &|index| comp_sends.get(index).copied().unwrap_or(0),
+            compressor_bus.level,
+            compressor_bus.muted,
+        );
+        let chorus_level = estimate_bus(
+            &|index| rows.get(index).map_or(0, |row| row.chorus),
+            chorus_bus.level,
+            chorus_bus.muted,
+        );
         // What the meters show: measured by the built-in synthesizer, or estimated from the
         // notes (MIDI output, the browser).
         let readings = match &meters {
@@ -272,9 +287,8 @@ impl GuitarScoreApp {
                     .map(|parts| vec![strips::Reading::estimated(0.0, 64); parts.len()])
                     .collect(),
                 bus: strips::Reading::estimated(bus_level, 64),
-                // No Comp knobs yet (step 5): nothing is sent into it, so it is silent.
-                compressor: strips::Reading::estimated(0.0, 64),
-                chorus: strips::Reading::estimated(0.0, 64),
+                compressor: strips::Reading::estimated(compressor_level, 64),
+                chorus: strips::Reading::estimated(chorus_level, 64),
                 master: strips::Reading::estimated(
                     estimates
                         .iter()

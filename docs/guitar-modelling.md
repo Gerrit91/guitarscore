@@ -377,7 +377,11 @@ described in the literature below:
   Room block's *Length* knob sets the factor (0.5-4). Because it changes the response
   itself, not a value the audio thread can take, the room is built again when the knob is
   let go (a click or an arrow key applies at once), not on every step of a drag.
-- **Not yet:** the browser build has no chains (no file dialog, no message for them). A
+- **Browser:** the worklet's synthesizer gets the string models, the chains, the buses
+  and the drum parts as `gscore_audio::SoundMessage` bytes (`sound_wire.rs`; an impulse
+  response travels as its samples) and prepares a chain itself. No file dialog for
+  impulse responses there.
+- **Not yet:** A
   preset's tone is local to this machine (the settings file): it does not travel with the
   song, and the impulse responses it names are absolute paths. The tones set for presets
   are kept per machine, which is what the owner wants for his own library.

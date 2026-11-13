@@ -103,9 +103,18 @@ pub(super) fn run_normalize(args: NormalizeArgs) -> Result<(), String> {
                 tone.chain.output_db = 0.0;
                 let measurement = measure::measure(&tone, &mut impulses)?;
                 let (low, high) = gscore_guitar::knob_ranges::OUTPUT;
-                tone.chain.output_db = (target_db - measurement.rms_db).clamp(low, high);
-                let mut note = if measurement.rms_db < -100.0 {
-                    "  warning: the reference note was silent".to_owned()
+                let silent = measurement.rms_db < measure::SILENT_DB;
+                // A tone that makes no sound has no level to match: its output stays.
+                tone.chain.output_db = if silent {
+                    output_before
+                } else {
+                    (target_db - measurement.rms_db).clamp(low, high)
+                };
+                let mut note = if silent {
+                    "  warning: the reference note was silent; the output level is left as it is"
+                        .to_owned()
+                } else if measurement.short {
+                    "  note: a short tone, measured over its first 0.2 s".to_owned()
                 } else {
                     String::new()
                 };

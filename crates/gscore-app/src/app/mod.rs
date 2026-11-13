@@ -63,6 +63,8 @@ mod track_engine;
 mod track_panel;
 mod tuner;
 mod tuplet_dialog;
+#[cfg(not(target_arch = "wasm32"))]
+mod updates;
 
 use std::collections::VecDeque;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -179,6 +181,9 @@ pub struct GuitarScoreApp {
     /// The browser's SoundFont state last written to the page (`loaded` or `error: …`).
     #[cfg(target_arch = "wasm32")]
     browser_sound: Option<String>,
+    /// The update check (desktop only: the browser always serves the latest build).
+    #[cfg(not(target_arch = "wasm32"))]
+    updates: updates::Updates,
 }
 
 /// A side panel's width: the remembered one (or `default`), in 200..`room`, whatever a
@@ -313,6 +318,8 @@ impl GuitarScoreApp {
             sound_synced: None,
             #[cfg(target_arch = "wasm32")]
             browser_sound: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            updates: updates::Updates::default(),
         };
         app.playback
             .store_metronome_volume(app.settings.metronome_volume);
@@ -925,6 +932,8 @@ impl eframe::App for GuitarScoreApp {
         self.show_shape_editors(&ctx);
         self.show_staff_dialogs(&ctx);
         self.show_tuplet_dialog(&ctx);
+        #[cfg(not(target_arch = "wasm32"))]
+        self.show_updates(&ctx);
         // Every edit of this frame goes to the recovery journal (one per open document).
         let mut journal_error = None;
         for tab in &mut self.tabs {

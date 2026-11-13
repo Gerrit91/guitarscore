@@ -442,12 +442,30 @@ const DRUM_KITS: [(u8, &str); 9] = [
     (56, "Sound effects"),
 ];
 
-/// The built-in or saved tone that exactly matches `tone`, if one does.
+/// The built-in or saved tone that exactly matches `tone`, if one does. Several built-in
+/// tones can have the same settings (every program has a tone of its own); then the one
+/// named `prefer` (the track's default) is the one, else the first.
 pub(super) fn current_tone_choice(
     tone: &crate::chain_settings::Tone,
+    prefer: Option<&str>,
     saved: &[ChainPreset],
 ) -> Option<PickerChoice> {
-    if let Some(built_in) = tone_library::all().iter().find(|built| built.tone == *tone) {
+    current_tone_choice_of(tone, prefer, saved, tone_library::all())
+}
+
+/// [`current_tone_choice`] with `built_in` as the built-in library.
+fn current_tone_choice_of(
+    tone: &crate::chain_settings::Tone,
+    prefer: Option<&str>,
+    saved: &[ChainPreset],
+    built_in: &[tone_library::BuiltInTone],
+) -> Option<PickerChoice> {
+    let mut matching = built_in.iter().filter(|built| built.tone == *tone);
+    let first = matching.clone().next();
+    if let Some(built_in) = matching
+        .find(|built| Some(built.name.as_str()) == prefer)
+        .or(first)
+    {
         return Some(PickerChoice::BuiltIn(built_in.name.clone()));
     }
     saved
@@ -679,6 +697,23 @@ mod tests {
             tone("Solo", ToneFamily::Lead),
             tone("Strum", ToneFamily::Acoustic),
         ]
+    }
+
+    #[test]
+    fn of_built_in_tones_with_the_same_settings_the_tracks_default_is_current() {
+        let library = library();
+        let tone = &library[1].tone;
+        // Every tone of the test library has the same settings.
+        let named = |prefer| current_tone_choice_of(tone, prefer, &[], &library);
+        assert_eq!(
+            named(Some("Modern Metal Rhythm")),
+            Some(PickerChoice::BuiltIn("Modern Metal Rhythm".to_owned()))
+        );
+        assert_eq!(named(None), Some(PickerChoice::BuiltIn("Thump".to_owned())));
+        assert_eq!(
+            named(Some("Not in the library")),
+            Some(PickerChoice::BuiltIn("Thump".to_owned()))
+        );
     }
 
     #[test]

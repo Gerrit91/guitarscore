@@ -318,7 +318,9 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
   GeneralUser GS (browser); a smaller default for the source build.
 - **M20 (release):** signing and notarizing (Windows, macOS), the macOS file-dialog fix
   (`docs/gaps.md`), the name check (section 11), a user guide, a public test-file set,
-  the real app icon (placeholder for now).
+  the real app icon (placeholder for now). *Done 2026-11-13:* SHA256SUMS with every
+  release, an update check (asked at the first start, daily after a yes, Help › Check for
+  updates; it links to the release page, nothing is downloaded or replaced).
 - **M21 backlog** (owner, 2026-11-05): native printing, a bracket or brace, rotated names
   on later pages, the bars-per-line limit and the Settings preview for several tracks,
   remembering the shown tracks, moving multitrack breaks when bars are inserted or

@@ -4895,3 +4895,108 @@ from a sound's name to one of its tones, filled by the owner:
   too. A tone the song carries still wins on a guitar. The tone must be of the track's kind
   of string, as for a program.
 
+## 2026-11-13 — v0.2.0 preparation
+
+- `tones normalize` measured a tone over 0.2 to 1.5 s of its reference note. A muted tone
+  is over by then, measured silent and got the largest output level (+24 dB: "Muted
+  Guitar"). A note that has died away is now measured over its first 0.2 s, and a tone that
+  makes no sound at all keeps its output level.
+- The browser build compiled with ten dead-code warnings for desktop-only code (audio
+  export, MIDI out, the tone tool's helpers); they are marked as such.
+- `docs/gaps.md` (sound section), `docs/usage.md` (modelled guitars, tones, sound chain,
+  mixer) and the README brought up to date; version 0.2.0.
+- A save test waited for the save before the Ctrl+S key had been handled (the key is
+  queued until the next frame), so on a slow machine the song was reopened before it was
+  written (`a_songs_mixer_state_travels_in_its_notes` on CI). The three tests that save
+  this way step one frame first.
+- Hammer-on and pull-off slurs in the tab touched the fret numbers: their ends sat 0.42 of
+  the number's size from the string line, about the digits' top. Now 0.62, with a flatter
+  bow (0.4) so the slur stays under the next string.
+- "Return to where playback started on Stop" is on by default for v0.2.0 (the gliding
+  cursor already was). A settings file that stores the choice keeps it.
+- The browser build crashed on every edit ("RuntimeError: unreachable"): the edit history
+  stamps each entry with `std::time::SystemTime::now()`, which panics on
+  `wasm32-unknown-unknown`, and after a panic the page is dead, so Play "crashed" too. The
+  app now reads the time through `crate::SystemTime` (`web_time` in the browser), and a
+  test forbids the `std` clocks in the app's sources. Checked in headless Chromium: new
+  song, a tone from the track panel, typed frets, Play.
+- The browser played every guitar clean: the app sent the string models, tones' chains,
+  buses and drum parts only to the desktop synthesizer. They now cross to the worklet as
+  `gscore_audio::SoundMessage` bytes (`sound_wire.rs`, round-trip tested;
+  `SynthEngine::apply_sound` prepares the chain), through `WebPlayer`'s calls, which
+  mirror `SynthPlayer`'s; the app picks the player with `sound_player!`. The worklet keeps
+  the sound for a SoundFont that arrives later. Checked in headless Chromium: the
+  messages the app posts were replayed into the built worklet in Node; after choosing
+  "Overdriven Guitar 1" the same note came out six times louder with a crest factor of 3
+  instead of 17.
+- `docs/gaps.md` has the browser build's gaps in one section (sound, files, app), for
+  later work.
+- Browser: tracks panned right lost level and a hard-right track was silent. The
+  AudioWorklet node was made with its defaults (one input, one output), and such a node's
+  output has as many channels as its unconnected input: one, so the right channel the
+  worklet rendered was dropped. The node is now a source (no input) with a stereo output.
+- Without measured levels (MIDI output, the browser) the mixer showed the compressor and
+  chorus buses as silent whatever was sent into them (a leftover from before the Comp
+  knobs existed). They are estimated like the reverb bus now: the loudest send, through
+  the bus's level. The sends themselves did reach the browser's synthesizer (recorded:
+  `CompSend` messages while the knob is dragged; the replayed note is louder with it).
+
+
+## 2026-11-13 — Update check and release checksums
+
+- Releases get a `SHA256SUMS` file (every asset's SHA-256, written by the release job);
+  README says how to check a download with it on each system.
+- Update check (owner decisions: notify and link only, never download or replace itself;
+  asked once at the first start; `ureq` 3.5 with rustls/ring and Mozilla's roots, desktop
+  only). `update.rs` asks `api.github.com/.../releases/latest` on a thread of its own
+  (20 s timeout, answer capped at 1 MB, user agent `GuitarScore/<version>`, nothing else
+  sent) and compares by semantic versioning; a `git describe` build counts as its tag,
+  `-dev` as its version. The link must be this project's releases page, notes are cut at
+  4000 characters. `app/updates.rs`: the first-start question (after crash recovery and
+  other questions; dismissing asks again next start), a daily check after a yes (quiet
+  when offline), Help › Check for updates (says "latest version" or why it failed), the
+  "Update available" window with the notes (headings and bullets lightly formatted) and
+  Skip this version / Later / Download (opens the release page). Settings › Editor ›
+  Updates switches the daily check. Settings: `check_for_updates`, `update_checked_at`,
+  `skipped_update`. Only the desktop binary asks (`enable_automatic_update_check`), so
+  tests and the snapshot tool never contact anyone. New snapshots `update_question`,
+  `update_available`; `--ignored github` test does the real request (passed).
+- Open: verifying a download against SHA256SUMS in the app only makes sense once it
+  downloads; signing (M20) before any self-update.
+
+## 2026-11-13 — Built-in tones under fixed names again
+
+- Since 9a0cb5b the built-in tones were named after the saved tone they were imported
+  from (`tones import` took the preset's name unless `--name` was given), so the pickers
+  showed "Metal Guitar 1", "Clean Bass 1" and the like. Owner: the names are fixed, an
+  import must not change them, and every tone stands on its own even when two have the
+  same settings.
+- `tone_library::PROGRAM_TONES`: one tone per program 24-39 with a fixed name, family and
+  description (the pre-9a0cb5b names: Nylon Classical, Steel Fingerpicked, Warm Jazz,
+  Clean Single Coil, Classic Rock Rhythm, Modern Metal Rhythm, 80s Lead,
+  Clean Finger, Pick, Slap, Driven; 28 is Muted Overdriven Guitar (owner's name); new for the bass programs that had none: 32 Round
+  Acoustic, 35 Smooth Fretless, 37 Bright Slap, 39 Deep Round). `import --program N`
+  fills program N's tone and keeps its name; `--name`, `--family` and `--description`
+  are refused; a saved tone of another kind of string than the program's is refused.
+  `validate` (`tones check`, and every write) refuses a tone that is not a program's,
+  under another name, or with another family or description.
+- `data/tones.json` migrated: each program's sound copied into its own tone (26 and 27
+  both carry the "Clean 1" sound, all eight basses "Clean Bass 1"; the source link is
+  kept, so `tones update` refreshes each). "Natural Steel 1" had no program and is gone
+  (in git history). The tool writes the file back byte-identical.
+
+## 2026-11-13 — Review fixes (update check, tone names)
+
+- Tones with the same settings (26/27 "Clean 1", every bass "Clean Bass 1") were named by
+  the first match, so every bass track showed "Round Acoustic" and every program 27 track
+  "Warm Jazz". `current_tone_choice` now prefers the track's default tone among equal
+  ones. Still open: choosing a non-default tone with the same settings as the default
+  shows the default (the song keeps a track's tone by its settings, not by name); it goes
+  away once the owner dials in their own sounds.
+- `tones check`/`import`/`update` refuse a tone of another kind of string than its
+  program's (`update` could copy a saved tone whose strings changed, and the tone would
+  never play).
+- Update check: a yes to the first-start question checks at once (it waited for the next
+  start), and an app left open checks again a day later.
+- Not fixed (browser, other session's code): `gscore-worklet` keeps every sound message
+  after the SoundFont loaded, though they are only replayed once.

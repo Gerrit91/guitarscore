@@ -5,6 +5,7 @@
 //   {type: "soundfont", bytes: ArrayBuffer}   load a SoundFont (SF2)
 //   {type: "sequence", bytes: ArrayBuffer}    load a song (gscore-play's wire format)
 //   {type: "replace", bytes: ArrayBuffer}     swap in a rebuilt song (live mixer changes)
+//   {type: "sound", bytes: ArrayBuffer}       a string model, a chain, a bus, a drum part
 //   {type: "midi", status, data1, data2}      one MIDI message now
 //   {type: "command", name, value?}           play, pause, stop, seek, tempo
 // Messages to the app:
@@ -67,6 +68,9 @@ class GuitarScoreSynth extends AudioWorkletProcessor {
           break;
         case "replace":
           this.synth.replace_sequence(new Uint8Array(message.bytes));
+          break;
+        case "sound":
+          this.synth.sound(new Uint8Array(message.bytes));
           break;
         case "midi":
           this.synth.send_midi(

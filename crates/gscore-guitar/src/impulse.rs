@@ -162,6 +162,12 @@ impl ImpulseResponse {
         self.channels.len()
     }
 
+    /// The samples of channel `index` (0, or 1 of a stereo response), at
+    /// [`Self::sample_rate`].
+    pub fn channel(&self, index: usize) -> Option<&[f32]> {
+        self.channels.get(index).map(Vec::as_slice)
+    }
+
     /// How long it is, in seconds.
     pub fn seconds(&self) -> f32 {
         let length = self.channels.first().map_or(0, Vec::len);

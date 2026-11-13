@@ -21,9 +21,12 @@ use std::sync::Arc;
 use gscore_play::{MidiEvent, PlayError, PlayState, Player, Sequence, encode_sequence};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{AudioContext, AudioWorkletNode, MessageEvent, MessagePort};
+use web_sys::{AudioContext, AudioWorkletNode, AudioWorkletNodeOptions, MessageEvent, MessagePort};
+
+use gscore_guitar::ChainSpec;
 
 use crate::web_soundfont;
+use crate::{ChainKnobs, SoundMessage};
 
 /// What the worklet reports back.
 #[derive(Debug)]
@@ -140,6 +143,20 @@ impl WebPlayer {
         self.shared.post(message);
     }
 
+    /// Sends `message` to the worklet's synthesizer (a string model, a chain, a bus, ...).
+    /// What is sent before the SoundFont has loaded waits there and is applied in order.
+    fn sound(&self, message: &SoundMessage) -> Result<(), PlayError> {
+        if let Some(error) = self.error() {
+            return Err(PlayError::Device(error));
+        }
+        let bytes = crate::encode_sound(message);
+        let array = js_sys::Uint8Array::from(&bytes[..]);
+        let posted = object("sound");
+        set(&posted, "bytes", &array.buffer().into());
+        self.send(posted.into());
+        Ok(())
+    }
+
     fn command(&self, name: &str, value: Option<f64>) -> Result<(), PlayError> {
         if let Some(error) = self.error() {
             return Err(PlayError::Device(error));
@@ -180,7 +197,16 @@ fn start_worklet(context: AudioContext, shared: Rc<Shared>) {
             JsFuture::from(added)
                 .await
                 .map_err(|_| "the AudioWorklet module did not load".to_owned())?;
-            let node = AudioWorkletNode::new(&context, "gscore-synth")
+            // A source with a stereo output. Left to its defaults the node has one input,
+            // and its output takes the channel count of that (unconnected) input: one. The
+            // right channel was then dropped, so a track lost level the further right it
+            // was panned.
+            let options = AudioWorkletNodeOptions::new();
+            options.set_number_of_inputs(0);
+            options.set_number_of_outputs(1);
+            let channels = js_sys::Array::of1(&JsValue::from_f64(2.0));
+            options.set_output_channel_count(&channels);
+            let node = AudioWorkletNode::new_with_options(&context, "gscore-synth", &options)
                 .map_err(|_| "cannot create the synthesizer node".to_owned())?;
             let port = node
                 .port()
@@ -408,5 +434,122 @@ impl Player for WebPlayer {
 
     fn state(&self) -> PlayState {
         *self.shared.state.borrow()
+    }
+}
+
+/// The sound of the song, as [`crate::SynthPlayer`] takes it on the desktop: the same
+/// calls, sent to the worklet's synthesizer as [`crate::SoundMessage`]s. A chain is
+/// prepared there, on the audio thread (a browser gives the worklet no other).
+impl WebPlayer {
+    /// Makes the modelled strings of `kind` sound as `model`.
+    pub fn set_string_model(
+        &self,
+        kind: gscore_play::StringKind,
+        model: gscore_guitar::StringModel,
+    ) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::StringModel(kind, model))
+    }
+
+    /// Gives `track` its own string model (`None`: its kind's again).
+    pub fn set_track_model(
+        &self,
+        track: usize,
+        model: Option<gscore_guitar::StringModel>,
+    ) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::TrackModel(track, model))
+    }
+
+    /// Gives `track` the effect chain `spec` with `knobs`; an empty chain removes it.
+    pub fn set_chain(
+        &self,
+        track: usize,
+        spec: ChainSpec,
+        knobs: ChainKnobs,
+    ) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::Chain(track, spec, knobs))
+    }
+
+    /// New knob values for the effect chain of `track`.
+    pub fn set_chain_settings(&self, track: usize, knobs: ChainKnobs) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::ChainSettings(track, knobs))
+    }
+
+    /// Gives the master the chain `spec` with `knobs`.
+    pub fn set_master_chain(&self, spec: ChainSpec, knobs: ChainKnobs) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::MasterChain(spec, knobs))
+    }
+
+    /// New knob values for the master's chain.
+    pub fn set_master_chain_settings(&self, knobs: ChainKnobs) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::MasterChainSettings(knobs))
+    }
+
+    /// Gives `part` of the song's drum track `track` the chain `spec` with `knobs`.
+    pub fn set_part_chain(
+        &self,
+        track: usize,
+        part: usize,
+        spec: ChainSpec,
+        knobs: ChainKnobs,
+    ) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::PartChain(track, part, spec, knobs))
+    }
+
+    /// New knob values for `part` of the song's drum track `track`.
+    pub fn set_part_chain_settings(
+        &self,
+        track: usize,
+        part: usize,
+        knobs: ChainKnobs,
+    ) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::PartChainSettings(track, part, knobs))
+    }
+
+    /// The mixing level of `part` of the song's drum track `track` (0-127, 127 unity).
+    pub fn set_part_level(&self, track: usize, part: usize, level: u8) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::PartLevel(track, part, level))
+    }
+
+    /// The pan of `part` of the song's drum track `track` (0 left, 64 centre, 127 right).
+    pub fn set_part_pan(&self, track: usize, part: usize, pan: u8) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::PartPan(track, part, pan))
+    }
+
+    /// Mutes or unmutes `part` of the song's drum track `track`.
+    pub fn set_part_mute(&self, track: usize, part: usize, muted: bool) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::PartMute(track, part, muted))
+    }
+
+    /// Soloes or un-soloes `part` of the song's drum track `track`.
+    pub fn set_part_solo(&self, track: usize, part: usize, soloed: bool) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::PartSolo(track, part, soloed))
+    }
+
+    /// Gives `bus` the chain `spec` with `knobs`, its level (0-127) and mute.
+    pub fn set_bus(
+        &self,
+        bus: crate::Bus,
+        spec: ChainSpec,
+        knobs: ChainKnobs,
+        level: u8,
+        muted: bool,
+    ) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::Bus(bus, spec, knobs, level, muted))
+    }
+
+    /// New knob values, level and mute for `bus`.
+    pub fn set_bus_settings(
+        &self,
+        bus: crate::Bus,
+        knobs: ChainKnobs,
+        level: u8,
+        muted: bool,
+    ) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::BusSettings(bus, knobs, level, muted))
+    }
+
+    /// The song's track `track` sends `value` (0-127) into the compressor bus.
+    pub fn set_comp_send(&self, track: usize, value: u8) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::CompSend(track, value))
     }
 }

@@ -91,9 +91,9 @@ fn importing_keeps_an_ir_path_and_normalize_levels_the_tone() {
     let entry = written
         .tones
         .iter()
-        .find(|tone| tone.name == "My Lead")
+        .find(|tone| tone.name == "80s Lead")
         .unwrap();
-    assert_eq!(written.programs.get(&31), Some(&"My Lead".to_owned()));
+    assert_eq!(written.programs.get(&31), Some(&"80s Lead".to_owned()));
     assert!((entry.sound.level - 0.3).abs() < 1e-6);
     assert!(entry.chain.blocks.iter().any(|block| block.file.is_some()));
 
@@ -103,7 +103,7 @@ fn importing_keeps_an_ir_path_and_normalize_levels_the_tone() {
             settings: Some(settings.clone()),
             file: Some(library.clone()),
         },
-        tone: Some("My Lead".to_owned()),
+        tone: Some("80s Lead".to_owned()),
         ..NormalizeArgs::default()
     })
     .unwrap();
@@ -111,7 +111,7 @@ fn importing_keeps_an_ir_path_and_normalize_levels_the_tone() {
     let entry = written
         .tones
         .iter()
-        .find(|tone| tone.name == "My Lead")
+        .find(|tone| tone.name == "80s Lead")
         .unwrap();
     let expected = crate::settings::StringSounds::default()
         .get(StringKind::Electric)
@@ -133,7 +133,7 @@ fn importing_keeps_an_ir_path_and_normalize_levels_the_tone() {
             settings: Some(settings.clone()),
             file: Some(library.clone()),
         },
-        tone: Some("My Lead".to_owned()),
+        tone: Some("80s Lead".to_owned()),
         static_levels: true,
         ..NormalizeArgs::default()
     })
@@ -142,7 +142,7 @@ fn importing_keeps_an_ir_path_and_normalize_levels_the_tone() {
         .unwrap()
         .tones
         .into_iter()
-        .find(|tone| tone.name == "My Lead")
+        .find(|tone| tone.name == "80s Lead")
         .unwrap();
     assert!((entry.chain.output_db - (-chain_trim(&entry.chain))).abs() < 1e-4);
     let _ = std::fs::remove_dir_all(&dir);
@@ -171,7 +171,7 @@ fn ir_drop_takes_the_file_out_and_keeps_the_cab_block() {
     let entry = written
         .tones
         .iter()
-        .find(|tone| tone.name == "My Lead")
+        .find(|tone| tone.name == "80s Lead")
         .unwrap();
     assert!(entry.chain.blocks.iter().all(|block| block.file.is_none()));
     assert_eq!(entry.chain.blocks[2].choice, BlockChoice::Cabinet);
@@ -243,6 +243,86 @@ fn a_program_naming_a_missing_tone_is_refused() {
 }
 
 #[test]
+fn a_renamed_or_extra_tone_is_refused() {
+    // A tone under another name than its program's fixed one.
+    let mut file = library();
+    let first = file.tones.first().unwrap().name.clone();
+    file.tones[0].name = "Metal Guitar 1".to_owned();
+    for name in file.programs.values_mut() {
+        if *name == first {
+            "Metal Guitar 1".clone_into(name);
+        }
+    }
+    assert!(validate(&file).is_err());
+    // A tone no program has.
+    let mut file = library();
+    let mut extra = file.tones[0].clone();
+    extra.name = "Natural Steel 1".to_owned();
+    file.tones.push(extra);
+    assert!(validate(&file).is_err());
+    // A changed description.
+    let mut file = library();
+    file.tones[0].description = "Mine.".to_owned();
+    assert!(validate(&file).is_err());
+    // A tone switched to another kind of string than its program's (as `update` would
+    // copy a saved tone whose strings changed).
+    let mut file = library();
+    let bass = file
+        .tones
+        .iter()
+        .position(|tone| tone.kind == "bass")
+        .unwrap();
+    "electric".clone_into(&mut file.tones[bass].kind);
+    assert!(validate(&file).is_err());
+}
+
+#[test]
+fn an_import_keeps_the_programs_fixed_name_and_each_program_gets_its_own_tone() {
+    let dir = scratch("fixed-names");
+    let saved = preset("Clean Bass 1", "bass", 0.4, Vec::new());
+    let settings = write_settings(&dir, std::slice::from_ref(&saved));
+    let library = write_library(&dir);
+    for program in [33, 36] {
+        run_import(ImportArgs {
+            preset: Some("Clean Bass 1".to_owned()),
+            program: Some(program),
+            ..import_args(&settings, &library)
+        })
+        .unwrap();
+    }
+    let written = load_library(&library).unwrap();
+    validate(&written).unwrap();
+    let finger = written
+        .tones
+        .iter()
+        .find(|tone| tone.name == "Clean Finger")
+        .unwrap();
+    let slap = written
+        .tones
+        .iter()
+        .find(|tone| tone.name == "Slap")
+        .unwrap();
+    // Two tones of their own with the same sound, neither named after the saved tone.
+    assert_eq!(finger.sound, slap.sound);
+    assert_eq!(finger.family, tone_library::ToneFamily::Bass);
+    assert!(!written.tones.iter().any(|tone| tone.name == "Clean Bass 1"));
+    assert_eq!(written.tones.len(), tone_library::PROGRAM_TONES.len());
+    // The names cannot be given on the command line any more.
+    for option in ["--name", "--family", "--description"] {
+        let args = [option.to_owned(), "X".to_owned()];
+        assert!(parse_import(&args).is_err(), "{option}");
+    }
+    // A saved tone of another kind of string does not fit the program.
+    let guitar = preset("My Lead", "electric", 0.3, Vec::new());
+    let settings = write_settings(&dir, &[guitar]);
+    let refused = run_import(ImportArgs {
+        program: Some(33),
+        ..import_args(&settings, &library)
+    });
+    assert!(refused.is_err());
+}
+
+#[test]
 fn a_duplicate_name_is_refused() {
     let mut file = library();
     if let Some(entry) = file.tones.first().cloned() {
@@ -308,12 +388,7 @@ fn an_import_is_remembered_and_update_copies_a_changed_saved_tone_again() {
     let other = preset("My Clean", "electric", 0.5, Vec::new());
     let settings = write_settings(&dir, &[saved.clone(), other.clone()]);
     let library = write_library(&dir);
-    run_import(ImportArgs {
-        name: Some("Shipped Lead".to_owned()),
-        description: Some("A lead.".to_owned()),
-        ..import_args(&settings, &library)
-    })
-    .unwrap();
+    run_import(import_args(&settings, &library)).unwrap();
     run_import(ImportArgs {
         preset: Some("My Clean".to_owned()),
         program: Some(27),
@@ -363,9 +438,19 @@ fn an_import_is_remembered_and_update_copies_a_changed_saved_tone_again() {
     update(false).unwrap();
     let written = load_library(&library).unwrap();
     let entry = |name: &str| written.tones.iter().find(|tone| tone.name == name).unwrap();
-    assert!((entry("Shipped Lead").sound.level - 0.45).abs() < 1e-6);
-    assert_eq!(entry("Shipped Lead").description, "A lead.");
-    assert!((entry("My Clean").sound.level - other.sound.level).abs() < 1e-6);
+    // The tones keep their fixed names, not the saved tones'.
+    assert!((entry("80s Lead").sound.level - 0.45).abs() < 1e-6);
+    assert_eq!(
+        entry("80s Lead").description,
+        tone_library::program_tone(31).unwrap().description
+    );
+    assert!((entry("Clean Single Coil").sound.level - other.sound.level).abs() < 1e-6);
+    assert!(
+        !written
+            .tones
+            .iter()
+            .any(|tone| tone.name.starts_with("My "))
+    );
     let listed = lines(&settings);
     assert!(listed[7].ends_with("[saved: My Lead]"), "{}", listed[7]);
     assert!(
@@ -408,7 +493,7 @@ fn an_rse_sound_is_mapped_to_a_tone_listed_and_forgotten_again() {
     // And a sound can be mapped to a tone the library already has.
     run_rse(rse_args(
         &["Overdrive Guitar/Blues", "Clean Bass/Rock"],
-        Some("My Lead"),
+        Some("80s Lead"),
         &[],
     ))
     .unwrap();
@@ -421,7 +506,7 @@ fn an_rse_sound_is_mapped_to_a_tone_listed_and_forgotten_again() {
             "Overdrive Guitar/Blues"
         ]
     );
-    assert!(file.rse.values().all(|tone| tone == "My Lead"));
+    assert!(file.rse.values().all(|tone| tone == "80s Lead"));
 
     // The sounds of a song: mapped ones name their tone, a tone of another kind of string
     // says it is not played, the rest have none.
@@ -440,7 +525,7 @@ fn an_rse_sound_is_mapped_to_a_tone_listed_and_forgotten_again() {
     assert!(
         lines
             .iter()
-            .any(|line| line.contains("Overdrive Guitar/Blues") && line.ends_with("My Lead")),
+            .any(|line| line.contains("Overdrive Guitar/Blues") && line.ends_with("80s Lead")),
         "{lines:?}"
     );
     assert!(

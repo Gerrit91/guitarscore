@@ -66,6 +66,8 @@ fn targets(sequence: &Sequence) -> Vec<ToneTarget> {
 
 /// The tones to render an audio export with: the song's own, the programs' built-in ones
 /// and each kind's plain strings, resolved against the export's sequence once it is built.
+// Desktop only: the browser build has no audio export, MIDI out or tone tool.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ExportTones {
     /// The tones that came with the song, by track.
@@ -100,6 +102,7 @@ pub(crate) struct ExportTones {
 impl ExportTones {
     /// The own string models and the chains of `sequence`'s modelled tracks, by the song's
     /// track index.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(crate) fn resolve(
         &self,
         sequence: &Sequence,
@@ -289,8 +292,7 @@ impl Playback {
 
     /// Gives the running synthesizer every track's comp send (a new one starts with none).
     pub(super) fn send_comp_sends(&mut self) {
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(super::Active::Synth(player)) = &self.player {
+        if let Some(player) = sound_player!(self) {
             for &(track, value) in &self.comp_sends {
                 let _ = player.set_comp_send(track, value);
             }
@@ -383,14 +385,7 @@ impl Playback {
 
     /// Whether the built-in synthesizer is connected (the tones play only there).
     pub(super) fn synth_running(&self) -> bool {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            matches!(self.player, Some(super::Active::Synth(_)))
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            false
-        }
+        sound_player!(self).is_some()
     }
 
     /// Follows the sequence the synthesizer has loaded: its modelled tracks get their
@@ -457,8 +452,7 @@ impl Playback {
                     .insert(key, (chain, (level, pan, muted, soloed)));
             }
         }
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(super::Active::Synth(player)) = &self.player {
+        if let Some(player) = sound_player!(self) {
             for ((track, part), spec, settings) in prepare {
                 if let Err(error) = player.set_part_chain(track, part, spec, settings) {
                     self.chain_notices.push(error.to_string());
@@ -474,8 +468,6 @@ impl Playback {
                 let _ = player.set_part_solo(track, part, soloed);
             }
         }
-        #[cfg(target_arch = "wasm32")]
-        let _ = (prepare, knobs, levels);
     }
 
     /// Forgets what the synthesizer was given (a new one starts with nothing).
@@ -559,39 +551,30 @@ impl Playback {
 
     /// Gives `track` its own string sound (`None`: its kind's).
     fn send_track_model(&mut self, track: usize, sound: Option<StringSound>) {
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(super::Active::Synth(player)) = &self.player
+        if let Some(player) = sound_player!(self)
             && let Err(error) = player.set_track_model(track, sound.map(|sound| sound.model()))
         {
             self.chain_notices.push(error.to_string());
         }
-        #[cfg(target_arch = "wasm32")]
-        let _ = (track, sound);
     }
 
     /// Sends the chain `setting` for `track`, to be prepared on the synthesizer's thread.
     fn send_chain(&mut self, track: usize, setting: &ChainSetting) {
         let spec = self.chain_spec(setting);
         let knobs = setting.chain_knobs();
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(super::Active::Synth(player)) = &self.player
+        if let Some(player) = sound_player!(self)
             && let Err(error) = player.set_chain(track, spec, knobs)
         {
             self.chain_notices.push(error.to_string());
         }
-        #[cfg(target_arch = "wasm32")]
-        let _ = (track, spec, knobs);
     }
 
     /// Sends the knob values of `setting` for `track`.
     fn send_chain_knobs(&mut self, track: usize, setting: &ChainSetting) {
         let knobs = setting.chain_knobs();
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(super::Active::Synth(player)) = &self.player {
+        if let Some(player) = sound_player!(self) {
             let _ = player.set_chain_settings(track, knobs);
         }
-        #[cfg(target_arch = "wasm32")]
-        let _ = (track, knobs);
     }
 
     /// The tones to render audio export with.
@@ -810,8 +793,7 @@ impl Playback {
             gscore_audio::Bus::Compressor => &mut self.compressor_sent,
             gscore_audio::Bus::Chorus => &mut self.chorus_sent,
         };
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(super::Active::Synth(player)) = &self.player {
+        if let Some(player) = sound_player!(self) {
             if sent.sent && sent.structure.as_ref() == Some(&structure) {
                 let _ = player.set_bus_settings(which, knobs, level, muted);
             } else if let Err(error) = player.set_bus(which, spec, knobs, level, muted) {
@@ -821,8 +803,6 @@ impl Playback {
                 sent.structure = Some(structure);
             }
         }
-        #[cfg(target_arch = "wasm32")]
-        let _ = (which, spec, knobs, level, muted);
     }
 
     /// Prepares the reverb bus on the synthesizer's thread (or sends its knobs).
@@ -859,8 +839,7 @@ impl Playback {
             return;
         }
         let spec = self.chain_spec(&chain);
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(super::Active::Synth(player)) = &self.player {
+        if let Some(player) = sound_player!(self) {
             match &self.master_sent {
                 Some(sent) if sent.same_structure(&chain) => {
                     let _ = player.set_master_chain_settings(chain.chain_knobs());
@@ -873,8 +852,6 @@ impl Playback {
             }
             self.master_sent = Some(chain);
         }
-        #[cfg(target_arch = "wasm32")]
-        let _ = (spec, chain);
     }
 
     /// The chain a drum track with no tone of its own runs: the drum bus (a light

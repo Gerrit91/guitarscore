@@ -19,16 +19,14 @@ pub(super) fn parse_import(args: &[String]) -> Result<ImportArgs, String> {
             }
             "--preset" => import.preset = Some(next_value(&mut rest, argument)?),
             "--program" => import.program = Some(parse_program(&next_value(&mut rest, argument)?)?),
-            "--name" => import.name = Some(next_value(&mut rest, argument)?),
-            "--family" => {
-                let text = next_value(&mut rest, argument)?;
-                import.family = Some(
-                    ToneFamily::from_id(&text)
-                        .ok_or_else(|| format!("`{text}` is not a family; try one of clean, crunch, lead, high_gain, acoustic, bass"))?,
-                );
+            "--name" | "--family" | "--description" => {
+                return Err(format!(
+                    "`{argument}` is gone: every program's tone has a fixed name, family and \
+                     description (`cargo xtask tones programs` lists them); `import` only \
+                     fills in its sound"
+                ));
             }
             "--rse" => import.rse.push(next_value(&mut rest, argument)?),
-            "--description" => import.description = Some(next_value(&mut rest, argument)?),
             "--ir" => {
                 let text = next_value(&mut rest, argument)?;
                 match text.as_str() {
@@ -70,6 +68,18 @@ pub(super) fn run_import(args: ImportArgs) -> Result<(), String> {
             preset.name, preset.kind
         )
     })?;
+    // A program only ever plays its own kind of string: a tone of another kind would never
+    // be heard.
+    if let Some(expected) = StringKind::for_program(program)
+        && expected != kind
+    {
+        return Err(format!(
+            "program {program} plays {} strings, but \"{}\" is for {} strings",
+            kind_name(expected),
+            preset.name,
+            kind_name(kind)
+        ));
+    }
     let mut tone = Tone {
         kind,
         sound: preset.sound.for_kind(kind),
@@ -98,11 +108,13 @@ pub(super) fn run_import(args: ImportArgs) -> Result<(), String> {
     };
     let kept = if args.drop_irs { Vec::new() } else { files };
 
-    let name = args.name.unwrap_or_else(|| preset.name.clone());
-    let family = args.family.unwrap_or_else(|| default_family(program, kind));
-    let description = args
-        .description
-        .unwrap_or_else(|| format!("The {name} tone."));
+    // The program's tone keeps its fixed name, family and description: an import fills in
+    // the sound only.
+    let fixed = crate::tone_library::program_tone(program)
+        .ok_or_else(|| format!("program {program} has no built-in tone"))?;
+    let name = fixed.name.to_owned();
+    let family = fixed.family;
+    let description = fixed.description.to_owned();
     let entry = ToneEntry {
         name: name.clone(),
         family,
@@ -153,17 +165,6 @@ pub(super) fn run_import(args: ImportArgs) -> Result<(), String> {
         println!("  tracks made with the RSE sound \"{sound}\" start on it too");
     }
     println!("  run `cargo xtask tones normalize` to level it with the others");
-    if let Some(expected) = StringKind::for_program(program)
-        && expected != kind
-    {
-        println!(
-            "  warning: program {program} is for {} strings, not {}; the app falls back to \
-             that kind's default instead",
-            kind_name(expected),
-            entry.kind
-        );
-    }
-
     if args.dry_run {
         println!("dry run: {} not written", path.display());
         return Ok(());

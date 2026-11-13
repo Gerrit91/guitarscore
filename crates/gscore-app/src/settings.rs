@@ -746,6 +746,13 @@ pub struct Settings {
     pub bend_presets: Vec<ShapePreset>,
     /// Whammy shapes saved as presets in the whammy editor.
     pub whammy_presets: Vec<ShapePreset>,
+    /// Whether the app looks for a new version once a day; `None` until the user was
+    /// asked (at the first start of a desktop build). Help › Check for updates always works.
+    pub check_for_updates: Option<bool>,
+    /// When the last automatic update check ran, in seconds since 1970.
+    pub update_checked_at: Option<u64>,
+    /// A release the user chose to skip (its tag); automatic checks do not offer it again.
+    pub skipped_update: Option<String>,
 }
 
 impl Default for Settings {
@@ -774,7 +781,7 @@ impl Default for Settings {
             keymap_path: None,
             shortcut_overrides: Vec::new(),
             audition_notes: true,
-            return_on_stop: false,
+            return_on_stop: true,
             flowing_cursor: true,
             autosave_seconds: DEFAULT_AUTOSAVE_SECONDS,
             metronome_volume: 1.0,
@@ -801,6 +808,9 @@ impl Default for Settings {
             midi_port: None,
             bend_presets: Vec::new(),
             whammy_presets: Vec::new(),
+            check_for_updates: None,
+            update_checked_at: None,
+            skipped_update: None,
         }
     }
 }

@@ -19,6 +19,7 @@ mod mixer;
 pub use mixer::Bus;
 #[cfg(not(target_arch = "wasm32"))]
 mod clock;
+mod sound_wire;
 mod soundfont;
 mod synth;
 #[cfg(not(target_arch = "wasm32"))]
@@ -36,6 +37,7 @@ pub use chains::{MAX_TONES, chain_is_empty, prepare_chain};
 pub use meters::{Level, Meters};
 #[cfg(not(target_arch = "wasm32"))]
 pub use midi_out::{MidiOutPlayer, midi_output_ports};
+pub use sound_wire::{SoundMessage, decode_sound, encode_sound};
 pub use soundfont::{
     SOUNDFONT_ENV, available_soundfonts, available_soundfonts_in, find_soundfont, find_soundfont_in,
 };

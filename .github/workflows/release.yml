@@ -9,7 +9,8 @@
 #
 # The archives are named `guitarscore-<tag>-<target>`, and each contains both the
 # `guitarscore` app and the `gscore-cli` command-line tool, the bundled FluidR3 GM
-# SoundFont, and the license texts. Linux also gets a single-file AppImage.
+# SoundFont, and the license texts. Linux also gets a single-file AppImage. A SHA256SUMS
+# file lists the checksum of every asset.
 #
 # The fonts (Bravura, Noto Sans) are compiled into the binaries (see crates/gscore-app/src/
 # fonts.rs). The SoundFont is fetched once from the distro (MIT, ~140 MB) and shared with
@@ -344,6 +345,15 @@ jobs:
           pattern: guitarscore-*
           path: dist
           merge-multiple: true
+
+      # One SHA256SUMS file for every asset, so users (and later the app's update check)
+      # can verify a download: `sha256sum -c --ignore-missing SHA256SUMS`.
+      - name: Write checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v3

@@ -6,10 +6,10 @@
 //! ```text
 //! cargo xtask tones list
 //! cargo xtask tones programs
-//! cargo xtask tones import --preset "Metal Guitar 1" --program 30 --name "Modern Metal"
+//! cargo xtask tones import --preset "Metal Guitar 1" --program 30
 //! cargo xtask tones update
 //! cargo xtask tones rse ~/tabs
-//! cargo xtask tones rse --map "Distortion Guitar/Hard Rock" --tone "Modern Metal"
+//! cargo xtask tones rse --map "Distortion Guitar/Hard Rock" --tone "Modern Metal Rhythm"
 //! cargo xtask tones normalize
 //! cargo xtask tones check
 //! ```
@@ -21,7 +21,7 @@ use gscore_play::StringKind;
 
 use crate::chain_settings::{BlockChoice, ChainSetting};
 use crate::settings::{ChainPreset, Settings};
-use crate::tone_library::{ToneEntry, ToneFamily, ToneLibraryFile};
+use crate::tone_library::{ToneEntry, ToneLibraryFile};
 
 mod import;
 mod measure;
@@ -49,14 +49,13 @@ Commands:
       strings. `[saved: NAME]` is the saved tone the built-in one was imported from; it
       says so when that saved tone has changed since (run `update`) or is gone.
   import --preset NAME --program N [options]
-      Copy the saved tone NAME into the built-in library exactly as dialed in (its string
-      sound and its chain) and make program N (24-39) start on it. The built-in tone
-      remembers the saved tone it came from. Nothing is levelled; run `normalize`
+      Copy the saved tone NAME exactly as dialed in (its string sound and its chain) into
+      program N's (24-39) built-in tone. The tone keeps its fixed name, family and
+      description (`programs` lists them; they are changed in code, never by an import)
+      and remembers the saved tone it came from. Every program's tone stands on its own:
+      importing one saved tone for two programs makes two tones. The saved tone must be
+      of the kind of string the program plays. Nothing is levelled; run `normalize`
       afterwards for that.
-      --name NAME          the shipped name (default: the preset's)
-      --family FAMILY      clean, crunch, lead, high_gain, acoustic or bass
-                           (default: the program's family)
-      --description TEXT   the line shown on hover
       --rse SOUND          also start tracks made with Guitar Pro's RSE sound SOUND on
                            it (see `rse`; may be given more than once)
       --ir drop|keep       `drop` takes a preset's impulse responses out: a Cab block
@@ -87,8 +86,8 @@ Commands:
       deviation of every tone. --static cancels the chains' level trims at the output knob
       instead (no rendering), --tone limits it to one tone, --dry-run writes nothing.
   check [--file FILE]
-      Validate the embedded library (unique names, known kinds, every program naming a
-      tone) and list the impulse responses it still points at.
+      Validate the embedded library (every tone under its program's fixed name, family
+      and description, known kinds) and list the impulse responses it still points at.
 
 Options common to every command:
   --settings FILE   the settings.json to read (default: the app's config file)
@@ -112,9 +111,6 @@ struct ImportArgs {
     options: Options,
     preset: Option<String>,
     program: Option<u8>,
-    name: Option<String>,
-    family: Option<ToneFamily>,
-    description: Option<String>,
     /// Replace a preset's impulse responses with the computed blocks.
     drop_irs: bool,
     /// Guitar Pro's RSE sounds that start on the imported tone too.
@@ -500,23 +496,6 @@ fn chain_trim(chain: &ChainSetting) -> f32 {
     if sum == 0.0 { 0.0 } else { sum }
 }
 
-/// The family a program's tone belongs to, as the pickers group them.
-fn default_family(program: u8, kind: StringKind) -> ToneFamily {
-    match program {
-        24 | 25 => ToneFamily::Acoustic,
-        26..=28 => ToneFamily::Clean,
-        29 => ToneFamily::Crunch,
-        30 => ToneFamily::HighGain,
-        31 => ToneFamily::Lead,
-        32..=39 => ToneFamily::Bass,
-        _ => match kind {
-            StringKind::Nylon | StringKind::Steel => ToneFamily::Acoustic,
-            StringKind::Bass => ToneFamily::Bass,
-            StringKind::Electric => ToneFamily::Clean,
-        },
-    }
-}
-
 fn kind_name(kind: StringKind) -> &'static str {
     match kind {
         StringKind::Nylon => "nylon",
@@ -553,6 +532,53 @@ fn validate(file: &ToneLibraryFile) -> Result<(), String> {
         if !names.contains(name.as_str()) {
             return Err(format!(
                 "program {program} starts on \"{name}\", which is not in the library"
+            ));
+        }
+        // A program starts on its own tone, under its fixed name.
+        let fixed = crate::tone_library::program_tone(*program)
+            .ok_or_else(|| format!("program {program} is no guitar or bass program"))?;
+        if name != fixed.name {
+            return Err(format!(
+                "program {program} must start on \"{}\", not \"{name}\"",
+                fixed.name
+            ));
+        }
+    }
+    // Every tone is a program's, with that program's fixed family and description.
+    for entry in &file.tones {
+        let Some(fixed) = crate::tone_library::PROGRAM_TONES
+            .iter()
+            .find(|fixed| fixed.name == entry.name)
+        else {
+            return Err(format!(
+                "\"{}\" is no built-in tone name; the names are fixed per program \
+                 (`programs` lists them)",
+                entry.name
+            ));
+        };
+        if file.programs.get(&fixed.program) != Some(&entry.name) {
+            return Err(format!(
+                "\"{}\" is program {}'s tone, but that program does not start on it",
+                entry.name, fixed.program
+            ));
+        }
+        // A tone of another kind of string than its program's would never be heard (the
+        // app plays a program's tone only on the program's strings).
+        if let Some(expected) = StringKind::for_program(fixed.program)
+            && crate::settings::kind_from_id(&entry.kind) != Some(expected)
+        {
+            return Err(format!(
+                "\"{}\" is for {} strings, but program {} plays {} strings",
+                entry.name,
+                entry.kind,
+                fixed.program,
+                kind_name(expected)
+            ));
+        }
+        if entry.family != fixed.family || entry.description != fixed.description {
+            return Err(format!(
+                "\"{}\" must keep its fixed family and description",
+                entry.name
             ));
         }
     }

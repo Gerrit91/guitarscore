@@ -1,5 +1,5 @@
 //! Questions the app asks in a modal window (unsaved changes, recovery after a crash,
-//! what a format cannot keep): the app's own title bar with its close button, a large
+//! what a format cannot keep, updates): the app's own title bar with its close button, a large
 //! icon, a headline, a few lines of text and the answers, the main one in the accent
 //! color.
 
@@ -14,6 +14,8 @@ pub(super) enum AlertIcon {
     Warning,
     /// A circular arrow round a clock: work can be brought back.
     Restore,
+    /// An arrow down into a tray, in a ring: a new version.
+    Update,
 }
 
 /// One answer: its text and whether it is the main one (accent color, Enter).
@@ -119,6 +121,7 @@ fn paint_icon(painter: &Painter, rect: Rect, icon: AlertIcon, accent: Color32) {
     match icon {
         AlertIcon::Warning => paint_warning(painter, rect),
         AlertIcon::Restore => paint_restore(painter, rect, accent),
+        AlertIcon::Update => paint_update(painter, rect, accent),
     }
 }
 
@@ -184,4 +187,32 @@ fn paint_restore(painter: &Painter, rect: Rect, accent: Color32) {
     painter.line_segment([center, center - vec2(0.0, radius * 0.55)], hands);
     painter.line_segment([center, center + vec2(radius * 0.4, radius * 0.2)], hands);
     painter.circle_filled(center, 3.0, accent);
+}
+
+/// A ring with an arrow pointing down onto a short tray: a download.
+fn paint_update(painter: &Painter, rect: Rect, accent: Color32) {
+    let center = rect.center();
+    let radius = rect.width() * 0.4;
+    painter.circle_stroke(center, radius, Stroke::new(4.5, accent));
+    let stroke = Stroke::new(4.5, accent);
+    let top = center - vec2(0.0, radius * 0.55);
+    let tip = center + vec2(0.0, radius * 0.3);
+    painter.line_segment([top, tip - vec2(0.0, 4.0)], stroke);
+    painter.add(Shape::convex_polygon(
+        vec![
+            tip + vec2(0.0, 3.0),
+            tip + vec2(-radius * 0.32, -radius * 0.3),
+            tip + vec2(radius * 0.32, -radius * 0.3),
+        ],
+        accent,
+        Stroke::NONE,
+    ));
+    let tray = center.y + radius * 0.55;
+    painter.line_segment(
+        [
+            Pos2::new(center.x - radius * 0.4, tray),
+            Pos2::new(center.x + radius * 0.4, tray),
+        ],
+        Stroke::new(3.5, accent),
+    );
 }

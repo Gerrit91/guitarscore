@@ -33,6 +33,7 @@ web-sys = { version = "0.3", features = [
     "AudioNode",
     "AudioWorklet",
     "AudioWorkletNode",
+    "AudioWorkletNodeOptions",
     "BaseAudioContext",
     "Headers",
     "MessageEvent",
