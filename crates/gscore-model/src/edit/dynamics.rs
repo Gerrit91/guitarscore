@@ -15,7 +15,7 @@ impl Song {
         at: BeatPosition,
         dynamic: Dynamic,
     ) -> Result<Change, ModelError> {
-        self.edit_measure(at.track, at.measure, |measure| {
+        self.edit_measure_at(at, |measure| {
             let beat = beat_in(measure, at)?;
             if beat.notes.is_empty() {
                 return Err(ModelError::Invalid(format!(

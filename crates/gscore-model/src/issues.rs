@@ -9,7 +9,7 @@ use std::fmt;
 
 use crate::duration::Duration;
 use crate::error::ModelError;
-use crate::position::{BeatIndex, MeasureIndex, StringNumber, TrackIndex, VoiceIndex};
+use crate::position::{BeatIndex, MeasureIndex, StaffIndex, StringNumber, TrackIndex, VoiceIndex};
 use crate::song::Song;
 use crate::validate::MAX_STRINGS;
 use crate::views::{BeatView, VoiceView};
@@ -19,6 +19,8 @@ use crate::views::{BeatView, VoiceView};
 pub struct Issue {
     /// The track.
     pub track: TrackIndex,
+    /// Which staff of it (0 for most tracks).
+    pub staff: StaffIndex,
     /// The measure.
     pub measure: MeasureIndex,
     /// The voice.
@@ -64,7 +66,11 @@ pub enum IssueKind {
 
 impl fmt::Display for Issue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}, {}, {}", self.track, self.measure, self.voice)?;
+        write!(f, "{}", self.track)?;
+        if self.staff.get() > 0 {
+            write!(f, ", {}", self.staff)?;
+        }
+        write!(f, ", {}, {}", self.measure, self.voice)?;
         if let Some(beat) = self.beat {
             write!(f, ", {beat}")?;
         }
@@ -91,31 +97,36 @@ impl fmt::Display for Issue {
     }
 }
 
-/// Finds every issue in the song, in track, measure, voice, beat order.
+/// Finds every issue in the song, in track, staff, measure, voice, beat order.
 pub(crate) fn find(song: &Song) -> Vec<Issue> {
     let mut issues = Vec::new();
     for track in song.tracks() {
-        let string_count = track.string_count();
-        for measure in track.measures() {
-            for voice in measure.voices() {
-                let mut push = |beat: Option<BeatIndex>, kind: IssueKind| {
-                    issues.push(Issue {
-                        track: track.index(),
-                        measure: measure.index(),
-                        voice: voice.index(),
-                        beat,
-                        kind,
-                    });
-                };
-                // Validated on creation; an error here would only skip the check.
-                if let Ok(signature) = measure.time_signature()
-                    && let Some(kind) = fill_issue(&voice, signature.measure_length())
-                {
-                    push(None, kind);
-                }
-                for beat in voice.beats() {
-                    for kind in note_issues(&beat, string_count) {
-                        push(Some(beat.index()), kind);
+        // Every staff has its own strings and measures: a bass staff's notes are not on
+        // the treble staff's strings.
+        for staff in track.all_staves() {
+            let string_count = staff.string_count();
+            for measure in staff.measures() {
+                for voice in measure.voices() {
+                    let mut push = |beat: Option<BeatIndex>, kind: IssueKind| {
+                        issues.push(Issue {
+                            track: track.index(),
+                            staff: staff.index(),
+                            measure: measure.index(),
+                            voice: voice.index(),
+                            beat,
+                            kind,
+                        });
+                    };
+                    // Validated on creation; an error here would only skip the check.
+                    if let Ok(signature) = measure.time_signature()
+                        && let Some(kind) = fill_issue(&voice, signature.measure_length())
+                    {
+                        push(None, kind);
+                    }
+                    for beat in voice.beats() {
+                        for kind in note_issues(&beat, string_count) {
+                            push(Some(beat.index()), kind);
+                        }
                     }
                 }
             }

@@ -254,6 +254,7 @@ fn start_playing(harness: &mut Harness<'static, GuitarScoreApp>) -> bool {
 /// The first beat of `measure` in track 1.
 fn measure_start(measure: usize) -> gscore_model::BeatPosition {
     gscore_model::BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: gscore_model::MeasureIndex::new(measure),
         voice: gscore_model::VoiceIndex::new(0),

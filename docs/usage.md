@@ -26,6 +26,7 @@ has the overview.
 | Shift+H | History |
 | Shift+L | Lyrics |
 | F11 | Full screen |
+| F3 | Mixer in the bottom panel (again for the measure grid) |
 
 Change any key in Settings → Editor. The keymap can also live in a text file
 (`~/.config/guitarscore/keymap.txt` on Linux): `gscore-cli keymap` prints the built-in one

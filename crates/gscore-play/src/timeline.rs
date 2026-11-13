@@ -242,6 +242,7 @@ mod tests {
         let sequence = crate::Sequence::new(&song, None).unwrap();
         for measure in 0..4 {
             let at = BeatPosition {
+                staff: gscore_model::StaffIndex::new(0),
                 track: TrackIndex::new(0),
                 measure: MeasureIndex::new(measure),
                 voice: gscore_model::VoiceIndex::new(0),

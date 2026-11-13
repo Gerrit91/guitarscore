@@ -452,8 +452,14 @@ impl Command {
     pub fn to_line(&self) -> String {
         let one = |index: usize| index.saturating_add(1);
         let at = |at: &BeatPosition| {
+            // The staff is written only when it is not the track's first: a line without
+            // one (from a journal written before staves were editable) means staff 1.
+            let staff = match at.staff.get() {
+                0 => String::new(),
+                index => format!(" staff={}", one(index)),
+            };
             format!(
-                "track={} measure={} voice={} beat={}",
+                "track={}{staff} measure={} voice={} beat={}",
                 one(at.track.get()),
                 one(at.measure.get()),
                 one(at.voice.get()),
@@ -1086,7 +1092,7 @@ impl Command {
             Command::InsertBeat { at, .. } => {
                 // `apply` creates voice 1 of a measure that has no voices (GP7 empty
                 // bars import that way), so the first beat of such a measure is editable.
-                let Some(measure) = song.track(at.track).and_then(|t| t.measure(at.measure)) else {
+                let Some(measure) = song.measure_at(*at) else {
                     return false;
                 };
                 let voices = measure.voices().len();
@@ -1387,7 +1393,7 @@ impl Command {
 /// The beat at `at`, if it exists and the track has `string`. Both must hold before a note
 /// can be set or cleared.
 fn note_target(song: &Song, at: BeatPosition, string: StringNumber) -> Option<BeatView<'_>> {
-    let track = song.track(at.track)?;
+    let track = song.staff(at.track, at.staff)?;
     if usize::from(string.get()) > track.string_count() {
         return None;
     }

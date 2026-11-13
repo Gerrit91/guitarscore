@@ -8,6 +8,7 @@ use gscore_model::{
 
 fn at(track: usize, measure: usize, voice: usize, beat: usize) -> BeatPosition {
     BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(track),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(voice),
@@ -520,6 +521,7 @@ fn ids_may_be_repeated_in_scripts_with_their_own_errors() {
 #[test]
 fn every_command_writes_a_line_that_parses_back_to_it() {
     let at = |track, measure, voice, beat| BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(track),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(voice),

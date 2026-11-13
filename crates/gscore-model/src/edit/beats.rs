@@ -14,7 +14,7 @@ pub(super) fn set_duration(
     at: BeatPosition,
     length: NoteValue,
 ) -> Result<Change, ModelError> {
-    song.edit_measure(at.track, at.measure, |measure| {
+    song.edit_measure_at(at, |measure| {
         let beat = beat_in(measure, at)?;
         if beat.status == BeatStatus::Empty {
             // Guitar Pro stores placeholders in unused voices and the writer drops them; a
@@ -37,7 +37,7 @@ pub(super) fn insert(
     at: BeatPosition,
     length: NoteValue,
 ) -> Result<Change, ModelError> {
-    song.edit_measure(at.track, at.measure, |measure| {
+    song.edit_measure_at(at, |measure| {
         let (voice, created_voice) = voice_in_or_create(measure, at)?;
         let index = at.beat.get();
         if index > voice.beats.len() {
@@ -62,7 +62,7 @@ pub(super) fn insert(
 
 /// Removes the beat at `at.beat`.
 pub(super) fn delete(song: &mut Song, at: BeatPosition) -> Result<Change, ModelError> {
-    song.edit_measure(at.track, at.measure, |measure| {
+    song.edit_measure_at(at, |measure| {
         let voice = voice_in(measure, at)?;
         let index = at.beat.get();
         if index >= voice.beats.len() {

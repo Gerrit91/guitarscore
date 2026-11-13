@@ -69,10 +69,13 @@ pub(crate) fn clef_of(clef: gscore_model::Clef) -> Clef {
     }
 }
 
-/// Notation settings of a track: its clef and where its notes' pitches come from.
+/// Notation settings of a track: its clef, whether its notes are written an octave above
+/// where they sound (a string instrument), and where its pitches come from.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Notation<'a> {
     pub(crate) clef: Clef,
+    /// Guitar and bass music is written an octave up; a keyboard's and a voice's is not.
+    pub(crate) octave_up: bool,
     pub(crate) track: TrackView<'a>,
 }
 
@@ -84,6 +87,7 @@ impl<'a> Notation<'a> {
         if track.is_percussion() {
             return Ok(Some(Notation {
                 clef: Clef::Percussion,
+                octave_up: false,
                 track,
             }));
         }
@@ -95,6 +99,9 @@ impl<'a> Notation<'a> {
         let lowest = tuning.iter().map(|s| s.pitch.get()).min().unwrap_or(40);
         Ok(Some(Notation {
             clef: Clef::for_lowest_string(lowest),
+            // A guitar or a bass is written an octave up; a keyboard, a voice or another
+            // instrument at pitch.
+            octave_up: track.instrument_kind() == gscore_model::InstrumentKind::Strings,
             track,
         }))
     }
@@ -461,7 +468,8 @@ fn beat_item(
                         ..Head::plain()
                     }
                 } else {
-                    let (spelled, position) = notation.clef.place(pitch.get(), key);
+                    let (spelled, position) =
+                        notation.clef.place(pitch.get(), key, notation.octave_up);
                     Head {
                         position,
                         step: spelled.step,

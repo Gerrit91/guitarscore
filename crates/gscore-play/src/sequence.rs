@@ -319,6 +319,7 @@ impl Sequence {
         let span = self.measure_at(tick)?;
         let measure = song.track(at.track)?.measure(span.measure)?;
         let position = |beat: usize| BeatPosition {
+            staff: gscore_model::StaffIndex::new(0),
             track: at.track,
             measure: span.measure,
             voice: at.voice,

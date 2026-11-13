@@ -65,7 +65,9 @@ index_type!(
 pub struct BeatPosition {
     /// The track.
     pub track: TrackIndex,
-    /// The measure within the track.
+    /// Which staff of the track (0 for most tracks; a keyboard's treble is 0, its bass 1).
+    pub staff: StaffIndex,
+    /// The measure within the staff.
     pub measure: MeasureIndex,
     /// The voice within the measure.
     pub voice: VoiceIndex,
@@ -75,11 +77,12 @@ pub struct BeatPosition {
 
 impl fmt::Display for BeatPosition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}, {}, {}, {}",
-            self.track, self.measure, self.voice, self.beat
-        )
+        write!(f, "{}", self.track)?;
+        // A later staff is named; the first one is the track's own and stays implicit.
+        if self.staff.get() > 0 {
+            write!(f, ", {}", self.staff)?;
+        }
+        write!(f, ", {}, {}, {}", self.measure, self.voice, self.beat)
     }
 }
 

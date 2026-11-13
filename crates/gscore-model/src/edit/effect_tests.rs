@@ -15,6 +15,7 @@ use crate::{Song, differences};
 
 fn at(beat: usize) -> BeatPosition {
     BeatPosition {
+        staff: crate::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),

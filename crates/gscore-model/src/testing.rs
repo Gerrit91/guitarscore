@@ -102,6 +102,9 @@ pub fn song_with_two_staves() -> Result<Song, ModelError> {
         .ok_or_else(|| ModelError::Invalid("no track".to_owned()))?;
     piano.name = "Piano".to_owned();
     piano.instrument_type = Some("acousticPiano".to_owned());
+    // The display name a GP7 file stores next to the type, so a save-reload round trip
+    // does not add one.
+    piano.instrument_name = Some("Acoustic Piano".to_owned());
     piano.measures = vec![bar(whole(1), gscore_gp::MeasureClef::Treble)];
     piano.staves.push(gscore_gp::Staff {
         measures: vec![bar(whole(1), gscore_gp::MeasureClef::Bass)],

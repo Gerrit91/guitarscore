@@ -335,6 +335,7 @@ mod tests {
         let track = song.track(TrackIndex::new(0)).unwrap();
         let beat = song
             .beat(BeatPosition {
+                staff: crate::StaffIndex::new(0),
                 track: TrackIndex::new(0),
                 measure: MeasureIndex::new(0),
                 voice: VoiceIndex::new(0),

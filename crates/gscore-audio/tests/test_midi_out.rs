@@ -39,6 +39,7 @@ fn four_notes() -> Arc<Sequence> {
     let mut song = testing::song(&[GUITAR_6], 1).unwrap();
     for (beat, string) in [(0, 6), (1, 5), (2, 4), (3, 3)] {
         let at = BeatPosition {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(0),
             measure: MeasureIndex::new(0),
             voice: VoiceIndex::new(0),

@@ -48,6 +48,7 @@ fn base_song() -> Song {
 fn nth_edit(i: usize, measures: usize) -> Command {
     Command::SetFret {
         at: BeatPosition {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(0),
             measure: MeasureIndex::new(i % measures),
             voice: VoiceIndex::new(0),

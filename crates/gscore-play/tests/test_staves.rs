@@ -50,3 +50,33 @@ fn the_midi_sequence_plays_both_staves() {
     keys.sort_unstable();
     assert_eq!(keys, vec![43, 64]);
 }
+
+#[test]
+fn a_beat_excerpt_plays_only_the_staff_that_was_edited() {
+    let song = testing::song_with_two_staves().unwrap();
+    let at = |staff: usize| gscore_model::BeatPosition {
+        track: gscore_model::TrackIndex::new(0),
+        staff: gscore_model::StaffIndex::new(staff),
+        measure: gscore_model::MeasureIndex::new(0),
+        voice: gscore_model::VoiceIndex::new(0),
+        beat: gscore_model::BeatIndex::new(0),
+    };
+    // Each staff's excerpt holds that staff's note only: E4 on the treble staff, G2 on
+    // the bass.
+    let keys = |staff: usize| {
+        let mut keys: Vec<u8> = Sequence::beat_excerpt(&song, at(staff))
+            .unwrap()
+            .expect("the beat sounds")
+            .events
+            .iter()
+            .filter_map(|event| match event.event {
+                MidiEvent::NoteOn { key, .. } => Some(key),
+                _ => None,
+            })
+            .collect();
+        keys.sort_unstable();
+        keys
+    };
+    assert_eq!(keys(0), vec![64], "the treble staff's E4");
+    assert_eq!(keys(1), vec![43], "the bass staff's G2");
+}

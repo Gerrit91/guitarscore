@@ -118,6 +118,9 @@ pub enum Glyph {
     Repeat1Bar,
     /// Repeat the previous two bars (`repeat2Bars`).
     Repeat2Bars,
+    /// The brace joining the staves of one track (a piano's treble and bass), stretched
+    /// over the group (`brace`).
+    Brace,
 }
 
 /// A flag: how many beams it stands for (1 for an eighth, up to 5 for a 128th) and
@@ -241,6 +244,7 @@ impl Glyph {
             Glyph::ParenthesisRight,
             Glyph::Repeat1Bar,
             Glyph::Repeat2Bars,
+            Glyph::Brace,
         ]
         .into_iter()
         .chain(digits)
@@ -339,6 +343,7 @@ impl Glyph {
             Glyph::ParenthesisRight => "noteheadParenthesisRight",
             Glyph::Repeat1Bar => "repeat1Bar",
             Glyph::Repeat2Bars => "repeat2Bars",
+            Glyph::Brace => "brace",
         }
     }
 
@@ -418,6 +423,7 @@ impl Glyph {
             Glyph::ParenthesisRight => 0xE0F6,
             Glyph::Repeat1Bar => 0xE500,
             Glyph::Repeat2Bars => 0xE501,
+            Glyph::Brace => 0xE000,
         };
         // All codes above are in the Private Use Area, which is valid `char` range.
         char::from_u32(code).unwrap_or(char::REPLACEMENT_CHARACTER)

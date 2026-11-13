@@ -25,6 +25,7 @@ const RATE: u32 = 44_100;
 
 fn at() -> BeatPosition {
     BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),

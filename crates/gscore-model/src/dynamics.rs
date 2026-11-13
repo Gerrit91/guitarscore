@@ -151,7 +151,7 @@ impl Song {
     /// with notes in the same track and voice, else the default (mezzo-forte). New notes are
     /// entered with it, as in Guitar Pro, where a dynamic lasts until the next one.
     pub fn dynamic_at(&self, at: BeatPosition) -> Dynamic {
-        let Some(track) = self.track(at.track) else {
+        let Some(track) = self.staff(at.track, at.staff) else {
             return Dynamic::DEFAULT;
         };
         // Only real positions are looked up: walking back from a hostile measure index

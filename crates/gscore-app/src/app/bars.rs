@@ -149,6 +149,23 @@ impl GuitarScoreApp {
             });
             ui.menu_button("View", |ui| {
                 ui.checkbox(&mut self.view.show_track_grid, "Track grid");
+                // The bottom panel shows the measure grid or the mixer (F3 switches them).
+                let key = self
+                    .keymap
+                    .keys_for(ActionId::ToggleMixer)
+                    .first()
+                    .map(ToString::to_string)
+                    .unwrap_or_default();
+                if ui
+                    .add(egui::Button::selectable(self.view.grid_mixer, "Mixer").shortcut_text(key))
+                    .on_hover_text(
+                        "The mixer strips in the bottom panel, instead of the measure grid",
+                    )
+                    .clicked()
+                {
+                    self.toggle_mixer();
+                    ui.close();
+                }
                 ui.checkbox(&mut self.view.show_track_panel, "Track panel");
                 ui.checkbox(&mut self.view.show_edit_panel, "Edit palette");
                 if ui

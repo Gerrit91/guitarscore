@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use super::part::Part;
+use super::{NAME_GAP, NAME_SIZE};
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
 use crate::glyph::Glyph;
 use crate::marks::{self, MeasureMarks, Rows};
@@ -13,7 +14,7 @@ use crate::notation;
 use crate::ornaments;
 use crate::place::{Places, SystemPlace};
 use crate::staff::Staff;
-use crate::{MEASURE_NUMBER_RISE, REPEAT_COUNT_GAP};
+use crate::{Fonts, MEASURE_NUMBER_RISE, REPEAT_COUNT_GAP};
 use gscore_model::SimileMark;
 
 /// One system as one track draws it.
@@ -35,6 +36,9 @@ pub(super) struct System {
     pub(super) clef: notation::Clef,
     /// How many measures the score has (the last one ends with a final barline).
     pub(super) last_measure: usize,
+    /// Whether to draw the line joining this part's staves at the system's start (a
+    /// track's staves are joined by one line drawn around them all).
+    pub(super) join: bool,
 }
 
 /// What a track's drawing leaves for later: its places, and where each measure went (for
@@ -307,26 +311,23 @@ pub(super) fn draw_part(
         slash_line.draw_lines(slash_line_top(slash_top), left, x, font, ops);
     }
     // One line joins the staves of a track at the system's start, from the topmost
-    // staff to the lowest.
-    let first = tops
-        .slash
-        .map(slash_frame_top)
-        .or(tops.notation)
-        .unwrap_or(tab_top);
-    let last = if show_tab {
-        tab_top + ctx.staff.height()
-    } else if let Some(notation_top) = tops.notation {
-        notation_top + notation_staff.height()
-    } else {
-        tops.slash.map_or(tab_top, slash_frame_top) + slash_frame.height()
-    };
-    let thin = font.engraving().thin_barline_thickness;
-    ops.push(DrawOp::Line {
-        from: Point::new(left + thin / 2.0, first),
-        to: Point::new(left + thin / 2.0, last),
-        thickness: thin,
-        color: ColorToken::Barline,
-    });
+    // staff to the lowest. A track with several staves gets one line around all of them
+    // (drawn by the score once every staff of the track is placed).
+    if system.join {
+        let thin = font.engraving().thin_barline_thickness;
+        ops.push(DrawOp::Line {
+            from: Point::new(
+                left + thin / 2.0,
+                part.join_top(top, system.plan_measures.clone()),
+            ),
+            to: Point::new(
+                left + thin / 2.0,
+                part.join_bottom(top, system.plan_measures.clone()),
+            ),
+            thickness: thin,
+            color: ColorToken::Barline,
+        });
+    }
     ops.append(&mut content);
 }
 
@@ -386,4 +387,81 @@ pub(super) fn draw_barline_ties(part: &Part<'_>, drawn: &Drawn, ops: &mut Vec<Dr
             ops,
         );
     }
+}
+
+/// Where a track's staff group stands in a system: the top line of its first staff and of
+/// its last, how tall the group is, and whether it has several staves (then one line and a
+/// brace join them).
+pub(super) struct Group {
+    pub(super) top: f32,
+    pub(super) last_top: f32,
+    /// From the first staff's top line to the last staff's bottom line.
+    pub(super) height: f32,
+    pub(super) joined: bool,
+}
+
+/// Space between the brace and the line joining a track's staves.
+const BRACE_GAP: f32 = 0.35;
+
+/// Finishes a track's staves in a system: one line around them all and a brace beside it
+/// (a track with several staves), and the track's name in the margin of `left`, centered on
+/// the group.
+pub(super) fn draw_group(
+    part: &Part<'_>,
+    group: Group,
+    measures: std::ops::Range<usize>,
+    name: Option<&String>,
+    left: f32,
+    fonts: &Fonts,
+    ops: &mut Vec<DrawOp>,
+) {
+    // Where the joining line starts and ends (the staff frames may reach past the lines).
+    let top = part.join_top(group.top, measures.clone());
+    let bottom = part.join_bottom(group.last_top, measures);
+    if group.joined {
+        let thin = fonts.music.engraving().thin_barline_thickness;
+        ops.push(DrawOp::Line {
+            from: Point::new(left + thin / 2.0, top),
+            to: Point::new(left + thin / 2.0, bottom),
+            thickness: thin,
+            color: ColorToken::Barline,
+        });
+        draw_brace(top, bottom, left, &fonts.music, ops);
+    }
+    let Some(name) = name else {
+        return;
+    };
+    // The name stands beside the group, centered on all its staves.
+    let middle = if group.joined {
+        (top + bottom) / 2.0
+    } else {
+        group.top + group.height / 2.0
+    };
+    ops.push(DrawOp::Text {
+        text: name.clone(),
+        at: Point::new(left - NAME_GAP, middle + NAME_SIZE * 0.35),
+        size: NAME_SIZE,
+        font: TextFont::Regular,
+        anchor: TextAnchor::End,
+        color: ColorToken::Annotation,
+    });
+}
+
+/// The brace joining a track's staves at the system's start, stretched from `top` to
+/// `bottom`, left of the line at `left`.
+fn draw_brace(top: f32, bottom: f32, left: f32, font: &MusicFont, ops: &mut Vec<DrawOp>) {
+    let glyph = Glyph::Brace;
+    let bbox = font.bbox(glyph);
+    let natural = (bbox.y_max - bbox.y_min).max(f32::MIN_POSITIVE);
+    let height = (bottom - top).max(0.0);
+    // Stretched only vertically enough to reach both staves: the glyph is drawn in one
+    // scale, so a tall group gets a wide brace, as engraved braces do.
+    let scale = (height / natural).max(f32::MIN_POSITIVE);
+    let advance = font.advance(glyph) * scale;
+    ops.push(DrawOp::Glyph {
+        glyph,
+        at: Point::new(left - advance - BRACE_GAP, bottom - bbox.y_min * scale),
+        scale,
+        color: ColorToken::Barline,
+    });
 }

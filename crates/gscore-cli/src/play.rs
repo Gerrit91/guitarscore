@@ -240,6 +240,7 @@ fn start_tick(song: &Song, sequence: &Sequence, from: usize) -> Result<u64, CliE
             ))
         })?;
     let at = BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(0),

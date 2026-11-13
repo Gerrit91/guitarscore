@@ -145,3 +145,114 @@ fn a_staff_out_of_step_is_refused() {
     gp.tracks[0].staves[0].measures.pop();
     assert!(from_gp(gp).is_err());
 }
+
+/// The position of beat `beat` of `measure` on `staff` of track 0.
+fn at(staff: usize, measure: usize, beat: usize) -> BeatPosition {
+    BeatPosition {
+        track: TrackIndex::new(0),
+        staff: StaffIndex::new(staff),
+        measure: MeasureIndex::new(measure),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(beat),
+    }
+}
+
+#[test]
+fn a_note_is_entered_on_the_staff_the_position_addresses() {
+    let mut song = two_staves();
+    let before = song.clone();
+    // The bass staff's note (string 4, fret 7) becomes fret 9.
+    let change = song
+        .set_note(
+            at(1, 0, 0),
+            StringNumber::new(4).unwrap(),
+            Fret::new(9).unwrap(),
+        )
+        .unwrap();
+    // The bass staff's note changed; the treble staff's did not.
+    let fret = |song: &Song, staff: usize| {
+        second_or_first(song, staff)
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .voices()
+            .next()
+            .unwrap()
+            .beats()
+            .next()
+            .unwrap()
+            .notes()
+            .next()
+            .unwrap()
+            .fret()
+            .unwrap()
+            .get()
+    };
+    assert_eq!((fret(&song, 0), fret(&song, 1)), (5, 9));
+    song.revert(&change).unwrap();
+    assert!(differences(&before, &song).is_empty());
+}
+
+/// Staff `staff` of the piano track.
+fn second_or_first(song: &Song, staff: usize) -> StaffView<'_> {
+    song.track(TrackIndex::new(0))
+        .unwrap()
+        .staff(StaffIndex::new(staff))
+        .unwrap()
+}
+
+#[test]
+fn a_position_addresses_the_beat_on_its_own_staff() {
+    let song = two_staves();
+    // Both staves have a note on the first beat, at different frets: 5 on string 1 of the
+    // treble staff, 7 on string 4 of the bass.
+    let fret = |staff: usize| {
+        song.beat(at(staff, 0, 0))
+            .unwrap()
+            .notes()
+            .next()
+            .unwrap()
+            .fret()
+            .unwrap()
+            .get()
+    };
+    assert_eq!((fret(0), fret(1)), (5, 7));
+    // A staff the track does not have is no position at all.
+    assert!(song.beat(at(2, 0, 0)).is_none());
+    assert!(song.measure_at(at(2, 0, 0)).is_none());
+    assert!(song.measure_at(at(1, 9, 0)).is_none());
+}
+
+#[test]
+fn inserting_a_beat_on_the_second_staff_keeps_the_first_as_it_was() {
+    let mut song = two_staves();
+    let before = song.clone();
+    let length = NoteValue::new(4, 0, None).unwrap();
+    let change = song.insert_beat(at(1, 0, 1), length).unwrap();
+    let beats = |song: &Song, staff: usize| {
+        second_or_first(song, staff)
+            .measure(MeasureIndex::new(0))
+            .unwrap()
+            .voices()
+            .next()
+            .unwrap()
+            .beats()
+            .count()
+    };
+    assert_eq!((beats(&song, 0), beats(&song, 1)), (1, 2));
+    song.revert(&change).unwrap();
+    assert!(differences(&before, &song).is_empty());
+    assert_eq!((beats(&song, 0), beats(&song, 1)), (1, 1));
+}
+
+#[test]
+fn an_edit_on_a_staff_the_track_lacks_fails_and_changes_nothing() {
+    let mut song = two_staves();
+    let before = song.clone();
+    let result = song.set_note(
+        at(2, 0, 0),
+        StringNumber::new(1).unwrap(),
+        Fret::new(3).unwrap(),
+    );
+    assert!(result.is_err());
+    assert!(differences(&before, &song).is_empty());
+}

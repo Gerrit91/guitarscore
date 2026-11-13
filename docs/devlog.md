@@ -5090,3 +5090,42 @@ from a sound's name to one of its tones, filled by the owner:
   with the `Neutral` clef (were `G2`).
 - Not done: GPX export writes drum notes the GP7 way; drawing and editing second staves.
 
+
+## 2026-11-13 — Second staves drawn and edited
+
+- **Layout** (`gscore-layout`): a row of a system is a (track, staff) pair; `layout_with`
+  makes one `Part` per staff through `TrackView::on_staff`. A track's staves stack closer
+  than tracks (4 vs 5 spaces), each in its own clef with its own key and time signatures,
+  joined by one line and a SMuFL `brace` (stretched over the group), with the name once
+  beside them; a track with several staves is notation only, as Guitar Pro writes a
+  keyboard. `LayoutCache` and `Places`/`TrackPlaces`/`Hit` carry the staff
+  (`staff_places`, `hit_in_voice_on`). Fix on the way: `Notation::octave_up` is now set
+  for string instruments only, so a piano's bass staff is written at pitch instead of an
+  octave high. New golden `two_staves.all.svg` (owner approval of the picture still
+  needed) and `tests/test_second_staff.rs`; no existing golden changed.
+- **Positions** (`gscore-model`, `gscore-edit`, `gscore-app`): `BeatPosition.staff`,
+  `Song::beat`/`measure_at`/`staff`, `edit_measure_at`/`edit_measure_of` (every edit that
+  takes a position uses them), `Cursor.staff`, `Selection::Beats.staff`. Up/Down cross
+  from one staff to the next and back; clicks, right-clicks and drags take the staff under
+  the pointer; the cursor, its scroll and the page readout use that staff's places.
+  `Command::to_line` writes `staff=` only for a later staff (an old line means staff 1),
+  and the parser reads it. Number of touched files is large because every `BeatPosition`
+  literal gained `staff: StaffIndex::new(0)`; staff 0 behaves exactly as before.
+- **The rest**: measure copy/paste takes every staff of a track; `Song::issues` walks
+  every staff (with its own strings) and `Issue` carries the staff; the track panel lists
+  each staff's tuning; `beat_excerpt` plays only the staff being edited. The two-staff
+  song is in `common::test_songs()`, so apply/undo and `panic_hunt` run on it, plus a hunt
+  over `staff=2` for every command with a position.
+- `cargo xtask ci` green. Not done: the tuning dialog still edits the first staff only,
+  MusicXML with staves, `gscore-cli dump` and the lyrics editor per staff.
+
+## 2026-11-13 — The mixer in the View menu, on F3
+
+- New action `toggle_mixer` (label "Mixer", bound to F3 in the built-in keymap) shows the
+  mixer in the bottom panel instead of the measure grid and back; the grid's own
+  Mixer/Grid button and the new View entry run the same code
+  (`GuitarScoreApp::toggle_mixer`), so the choice is saved to the settings as before. The
+  View menu entry is selectable (ticked while the mixer shows) and writes F3 beside it;
+  the action needs no open song, like the other view actions. App test:
+  `f3_and_the_view_menu_switch_between_the_song_grid_and_the_mixer` (key and menu, both
+  ways, remembered in the settings). `docs/usage.md` lists F3.

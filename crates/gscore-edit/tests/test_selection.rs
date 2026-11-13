@@ -36,6 +36,7 @@ fn spot(measure: usize, beat: usize) -> BeatSpot {
 
 fn at(measure: usize, beat: usize) -> BeatPosition {
     BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(0),
@@ -91,6 +92,7 @@ fn shift_arrows_extend_the_selection_across_bar_lines() {
     assert_eq!(
         e.selection(),
         Some(Selection::Beats {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(0),
             voice: VoiceIndex::new(0),
             anchor: spot(0, 2),
@@ -171,6 +173,7 @@ fn a_selection_over_a_bar_line_copies_and_pastes_bar_by_bar() {
     go(&mut e, 1, 0);
     e.perform(Action::Digit(7), 0).unwrap();
     e.set_selection(Some(Selection::Beats {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         voice: VoiceIndex::new(0),
         anchor: spot(0, 3),
@@ -217,6 +220,7 @@ fn pasted_notes_keep_their_dynamic() {
     })
     .unwrap();
     e.set_selection(Some(Selection::Beats {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         voice: VoiceIndex::new(0),
         anchor: spot(0, 0),
@@ -308,6 +312,7 @@ fn a_selection_over_a_bar_line_replaces_existing_beats_whole() {
     })
     .unwrap();
     e.set_selection(Some(Selection::Beats {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         voice: VoiceIndex::new(0),
         anchor: spot(0, 0),
@@ -413,6 +418,7 @@ fn cutting_a_selection_over_a_bar_line_leaves_rests() {
     go(&mut e, 1, 0);
     e.perform(Action::Digit(7), 0).unwrap();
     e.set_selection(Some(Selection::Beats {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         voice: VoiceIndex::new(0),
         anchor: spot(1, 0),
@@ -463,6 +469,7 @@ fn shift_up_and_down_ask_the_page_for_the_neighbouring_line() {
     assert_eq!(
         e.selection(),
         Some(Selection::Beats {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(0),
             voice: VoiceIndex::new(0),
             anchor: spot(0, 1),

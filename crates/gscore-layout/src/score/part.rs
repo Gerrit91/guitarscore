@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use gscore_model::{LyricSyllable, Song, TrackIndex, TrackView};
+use gscore_model::{LyricSyllable, Song, StaffIndex, TrackIndex, TrackView};
 
 use super::NAME_SIZE;
 use crate::marks::MeasureMarks;
@@ -13,9 +13,14 @@ use crate::notation::{self, Clef, Notation};
 use crate::staff::Staff;
 use crate::{Context, Fonts, LayoutError, LayoutOptions, MeasureSource};
 
-/// One track of the score, set up for layout.
+/// One staff of a track, in the score, set up for layout: its measures and marks, and what
+/// a system needs to know about it (the room before its first measure, how far its notes
+/// reach beyond its staves).
 pub(super) struct Part<'a> {
     pub(super) track: TrackIndex,
+    /// Which staff of the track this is (0 is the track's own).
+    pub(super) staff: StaffIndex,
+    /// The track seen through its staff: its measures, strings, tuning and capo.
     pub(super) view: TrackView<'a>,
     pub(super) ctx: Context<'a>,
     pub(super) show_tab: bool,
@@ -23,7 +28,8 @@ pub(super) struct Part<'a> {
     pub(super) show_slash: bool,
     pub(super) measures: Vec<Arc<MeasureLayout>>,
     pub(super) marks: Vec<MeasureMarks>,
-    /// The lyric syllables of each measure, in measure order.
+    /// The lyric syllables of each measure, in measure order (the track's, kept on its
+    /// first staff).
     pub(super) lyrics: Vec<Vec<LyricSyllable>>,
     /// From the top staff's top line to the tab's at the least (0 without notation): the
     /// gap between the staves grows in a system whose low notes or dynamics need it.
@@ -53,25 +59,32 @@ impl<'a> Part<'a> {
     pub(super) fn new(
         song: &'a Song,
         track: TrackIndex,
+        staff: StaffIndex,
         options: &'a LayoutOptions,
         fonts: &'a Fonts,
         measure_layout: &mut MeasureSource<'_>,
     ) -> Result<Self, LayoutError> {
-        let view = song.track(track).ok_or(LayoutError::NoSuchTrack(track))?;
-        let staves = view.staves();
+        let track_view = song.track(track).ok_or(LayoutError::NoSuchTrack(track))?;
+        let view = track_view
+            .on_staff(staff)
+            .ok_or(LayoutError::NoSuchStaff(track, staff))?;
+        let staves = track_view.staves();
         // Drums are always written on a percussion staff: their "frets" are drum sounds,
-        // which a tab staff cannot show.
+        // which a tab staff cannot show. A track with several staves (a keyboard's treble
+        // and bass) is written in standard notation only, as Guitar Pro shows it.
         let drums = view.is_percussion();
-        let notation = if drums || (options.notation && staves.notation()) {
+        let keyboard = track_view.staff_count() > 1;
+        let notation = if drums || keyboard || (options.notation && staves.notation()) {
             Notation::for_track(view)?
         } else {
             None
         };
         // Slash notation is a staff of its own, with or without notation and tab. Drums
-        // already have their percussion staff.
-        let slash = !drums && staves.slash();
+        // already have their percussion staff, and a keyboard's staves are notation.
+        let slash = !drums && !keyboard && staves.slash();
         // A track showing neither notation nor slash always keeps its tab.
-        let show_tab = !drums && (staves.tablature() || (notation.is_none() && !slash));
+        let show_tab =
+            !drums && !keyboard && (staves.tablature() || (notation.is_none() && !slash));
         let ctx = Context {
             options,
             fonts,
@@ -80,10 +93,13 @@ impl<'a> Part<'a> {
             slash,
         };
         let mut measures = Vec::with_capacity(view.measures().len());
+        // Lyrics belong to the track: they are written under its first staff only.
         let mut lyrics: Vec<Vec<LyricSyllable>> = vec![Vec::new(); view.measures().len()];
-        for syllable in song.lyric_syllables(track) {
-            if let Some(slot) = lyrics.get_mut(syllable.measure.get()) {
-                slot.push(syllable);
+        if staff.get() == 0 {
+            for syllable in song.lyric_syllables(track) {
+                if let Some(slot) = lyrics.get_mut(syllable.measure.get()) {
+                    slot.push(syllable);
+                }
             }
         }
         let mut previous_signature = None;
@@ -108,6 +124,7 @@ impl<'a> Part<'a> {
             };
             measures.push(measure_layout(
                 track,
+                staff,
                 measure,
                 show,
                 free_time,
@@ -130,6 +147,7 @@ impl<'a> Part<'a> {
         };
         Ok(Part {
             track,
+            staff,
             view,
             ctx,
             show_tab,
@@ -297,6 +315,34 @@ impl<'a> Part<'a> {
             staves
         } else {
             staves + self.ink_below_lowest(measures) + LYRIC_GAP + LYRIC_LINE * lines as f32
+        }
+    }
+
+    /// Where the line joining this staff's staves at the start of a system begins, below
+    /// the part's top: at the topmost staff's top line (the slash staff's frame reaches a
+    /// space above its line).
+    pub(super) fn join_top(&self, top: f32, measures: std::ops::Range<usize>) -> f32 {
+        if self.show_slash {
+            top + notation::staff().line_y(1)
+        } else if self.ctx.notation.is_some() {
+            top + self.below_slash(measures)
+        } else {
+            top + self.tab_offset(measures)
+        }
+    }
+
+    /// Where it ends: the bottom line of the lowest staff.
+    pub(super) fn join_bottom(&self, top: f32, measures: std::ops::Range<usize>) -> f32 {
+        let notation_staff = notation::staff();
+        if self.show_tab {
+            top + self.tab_offset(measures) + self.ctx.staff.height()
+        } else if self.ctx.notation.is_some() {
+            top + self.below_slash(measures) + notation_staff.height()
+        } else {
+            // The slash staff is one line in the middle of a five-line staff's room; the
+            // frame its barlines use reaches a space above and below the line.
+            let frame = Staff::new(3, notation_staff.spacing());
+            top + notation_staff.line_y(1) + frame.height()
         }
     }
 

@@ -266,6 +266,7 @@ pub(crate) fn cursor_in_track(song: &Song, from: Cursor, track: usize, top: bool
         }
     }
     Cursor {
+        staff: gscore_model::StaffIndex::new(0),
         track,
         measure: from.measure,
         voice,

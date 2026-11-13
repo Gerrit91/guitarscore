@@ -138,8 +138,7 @@ pub(crate) fn spell_in_key(midi: u8, key: i8) -> Spelled {
     }
 }
 
-/// The clef of a notation staff. Guitar and bass music is written an octave above where
-/// it sounds, as Guitar Pro and most guitar notation do.
+/// The clef of a notation staff.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Clef {
     /// Treble clef: guitars.
@@ -207,8 +206,16 @@ impl Clef {
 
     /// Where a note sounding at `midi` is written in `key`: its spelling and its staff
     /// position (0 = bottom line, 1 = first space, 8 = top line; negative below the staff).
-    pub(crate) fn place(self, midi: u8, key: i8) -> (Spelled, i32) {
-        let spelled = spell_in_key(midi.saturating_add(WRITTEN_OCTAVE_UP), key);
+    /// A string instrument (`octave_up`: guitar and bass music) is written an octave above
+    /// where it sounds, as Guitar Pro and most guitar notation do; a keyboard, a voice or
+    /// another instrument is written at pitch.
+    pub(crate) fn place(self, midi: u8, key: i8, octave_up: bool) -> (Spelled, i32) {
+        let written = if octave_up {
+            midi.saturating_add(WRITTEN_OCTAVE_UP)
+        } else {
+            midi
+        };
+        let spelled = spell_in_key(written, key);
         (
             spelled,
             spelled.step.saturating_sub(self.bottom_line_step()),
@@ -218,8 +225,8 @@ impl Clef {
     /// Where a grace note sounding at `midi` is written in `key`: its staff position and
     /// the accidental it shows (when its letter differs from the key signature). Grace
     /// notes do not take part in the measure's accidental bookkeeping.
-    pub(crate) fn place_grace(self, midi: u8, key: i8) -> (i32, Option<Glyph>) {
-        let (spelled, position) = self.place(midi, key);
+    pub(crate) fn place_grace(self, midi: u8, key: i8, octave_up: bool) -> (i32, Option<Glyph>) {
+        let (spelled, position) = self.place(midi, key, octave_up);
         let letter = usize::try_from(spelled.step.rem_euclid(7)).unwrap_or(0);
         let in_key = key_alters(key)
             .get(letter)
@@ -317,11 +324,14 @@ mod tests {
     #[test]
     fn guitar_notes_are_written_an_octave_up_on_the_treble_staff() {
         // Low E (E2, 40) is written E3: three ledger lines below the staff.
-        assert_eq!(Clef::Treble.place(40, 0).1, -7);
+        assert_eq!(Clef::Treble.place(40, 0, true).1, -7);
         // Open B string (B3, 59) is written B4: the middle line.
-        assert_eq!(Clef::Treble.place(59, 0).1, 4);
+        assert_eq!(Clef::Treble.place(59, 0, true).1, 4);
         // Bass low E (E1, 28) is written E2 in the bass clef: below the bottom line G2.
-        assert_eq!(Clef::Bass.place(28, 0).1, -2);
+        assert_eq!(Clef::Bass.place(28, 0, true).1, -2);
+        // A piano's bass staff is written at pitch: G2 is the bottom line of the bass clef.
+        assert_eq!(Clef::Bass.place(43, 0, false).1, 0);
+        assert_eq!(Clef::Treble.place(64, 0, false).1, 0);
         assert_eq!(Clef::for_lowest_string(28), Clef::Bass);
         assert_eq!(Clef::for_lowest_string(23), Clef::Bass); // 5-string bass, B0
         assert_eq!(Clef::for_lowest_string(30), Clef::Treble); // 8-string guitar, F#1

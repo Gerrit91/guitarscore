@@ -39,7 +39,7 @@ in AGENTS.md section 9.
    agrees with its `Midi`): such tracks play every note and show standard notation only,
    as Guitar Pro does (fixed 2026-11-06; this entry was older). Still open: notes are
    entered on those stand-in strings (a voice track's tab, if switched on, shows a fret
-   below the lowest string as "?"), and a second staff is not read (item 5).
+   below the lowest string as "?").
 3. **Playback controls.** Fermatas and D.C./D.S./coda are played now, and a speed
    dropdown (25-150 %, any value typed) with a speed trainer, WAV export and count-in navigation are in
    place. Audio export renders the modelled tracks, their chains and the buses as playback
@@ -61,12 +61,15 @@ in AGENTS.md section 9.
 
 ## Files
 
-5. **Second staves are read, kept and played, not yet drawn or edited.** A GP6/GP7 track
-   with two staves (a piano's or synth's treble and bass) keeps every staff since
-   2026-11-13 (saving used to drop the second: data loss in five of the owner's band
-   files); inserting or deleting bars and signatures act on every staff, and both staves
-   play. The score still shows only the first staff, and notes can be entered on it only
-   (`docs/handoff-staves.md`). GP3-5 exports leave further staves out and say so.
+5. **Second staves are drawn and edited** since 2026-11-13 (read and played since
+   2026-11-13). A GP6/GP7 track with two staves (a piano's or synth's treble and bass)
+   stacks them in the score, one row per staff, in their own clefs, joined by a brace and
+   one barline and named once; each is notation only, as Guitar Pro writes a keyboard.
+   Positions, the cursor (Up/Down cross from one staff to the next), clicks, undo, the
+   recovery journal (`staff=`), copy/paste and issues all address a staff. Still open: the
+   tuning dialog edits the first staff only (the panel lists every staff's tuning);
+   MusicXML with second staves; `gscore-cli dump` and the lyrics editor show the first
+   staff only. GP3-5 exports leave further staves out and say so.
 6. **Lyrics and fingerings** can be shown and edited: five lyric lines under the tab, per
    syllable on the beats, and left/right-hand fingerings in the notation. Chord diagrams
    can be created, shown in the score, edited and removed. Still open: lyric editing is

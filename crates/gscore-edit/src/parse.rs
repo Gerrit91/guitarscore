@@ -538,11 +538,14 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
 /// The beat address from `track` (default 1), `measure`, `voice` (default 1) and `beat`.
 fn position(args: &mut Args) -> Result<BeatPosition, ParseError> {
     let track = optional_position(args, "track")?.unwrap_or(0);
+    // A line written before staves existed (or for a one-staff track) means staff 1.
+    let staff = optional_position(args, "staff")?.unwrap_or(0);
     let measure = required_position(args, "measure")?;
     let voice = optional_position(args, "voice")?.unwrap_or(0);
     let beat = required_position(args, "beat")?;
     Ok(BeatPosition {
         track: TrackIndex::new(track),
+        staff: gscore_model::StaffIndex::new(staff),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(voice),
         beat: BeatIndex::new(beat),

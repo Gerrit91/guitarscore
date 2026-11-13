@@ -20,6 +20,7 @@ use gscore_model::{
 /// A position in the first track.
 pub(crate) fn pos(measure: usize, voice: usize, beat: usize) -> BeatPosition {
     BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(voice),
@@ -153,5 +154,7 @@ pub(crate) fn test_songs() -> Vec<(&'static str, Song)> {
             testing::song(&[testing::GUITAR_8], 2).unwrap(),
         ),
         ("huge", testing::song(&[testing::GUITAR_6], 256).unwrap()),
+        // A piano: a track with a second staff (its bass), and a guitar after it.
+        ("two staves", testing::song_with_two_staves().unwrap()),
     ]
 }

@@ -210,6 +210,11 @@ impl GuitarScoreApp {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!fullscreen));
                     return;
                 }
+                ActionId::ToggleMixer => {
+                    self.toggle_mixer();
+                    ctx.request_repaint();
+                    return;
+                }
                 // Windows and files: they work without an open document too.
                 ActionId::ShowHistory => {
                     self.open_history();
@@ -604,6 +609,7 @@ impl GuitarScoreApp {
             .and_then(|timeline| timeline.measure_range(selection.start(), selection.end()));
         // The loop's first beat, where a count-in leads each pass.
         let first = BeatPosition {
+            staff: gscore_model::StaffIndex::new(0),
             track: tab.document.editor().cursor().track,
             measure: MeasureIndex::new(selection.start()),
             voice: VoiceIndex::new(0),
@@ -647,6 +653,7 @@ impl GuitarScoreApp {
         };
         document.editor_mut().set_cursor(at);
         let target = BeatPosition {
+            staff: at.staff,
             track: at.track,
             measure: at.measure,
             voice: at.voice,
@@ -832,7 +839,7 @@ impl GuitarScoreApp {
         };
         let cursor = tab.document.editor().cursor();
         let target = tab.document.shown_layout().and_then(|layout| {
-            let places = layout.places_of(cursor.track)?;
+            let places = layout.staff_places(cursor.track, cursor.staff)?;
             Some(super::page::line_spot(
                 places,
                 gscore_edit::BeatSpot::of(cursor),
@@ -869,6 +876,7 @@ impl GuitarScoreApp {
         let tab = self.tabs.get(self.active)?;
         let measures = tab.loop_measures()?;
         Some(BeatPosition {
+            staff: gscore_model::StaffIndex::new(0),
             track: tab.document.editor().cursor().track,
             measure: MeasureIndex::new(measures.start()),
             voice: VoiceIndex::new(0),
@@ -923,6 +931,7 @@ impl GuitarScoreApp {
             tab.play_origin = Some(super::tab::PlayOrigin {
                 cursor: Cursor {
                     track: from.track,
+                    staff: from.staff,
                     measure: from.measure,
                     voice: from.voice,
                     beat: from.beat,
@@ -969,6 +978,7 @@ fn needs_no_song(action: Action) -> bool {
                 | ActionId::ZoomOut
                 | ActionId::ZoomReset
                 | ActionId::ToggleFullscreen
+                | ActionId::ToggleMixer
         )
     )
 }

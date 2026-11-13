@@ -10,21 +10,23 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use gscore_model::{Song, StringTuning, TrackIndex};
+use gscore_model::{Song, StaffIndex, StringTuning, TrackIndex};
 
 use crate::measure::MeasureLayout;
 use crate::score::layout_with;
 use crate::{Fonts, Layout, LayoutError, LayoutOptions};
 
-/// What every measure's layout of one track depends on besides the measure.
+/// What every measure's layout of one staff depends on besides the measure.
 #[derive(Debug, Clone, PartialEq)]
-struct TrackKey {
+struct StaffKey {
     options: LayoutOptions,
     strings: usize,
     tuning: Option<Vec<StringTuning>>,
     capo: Option<u8>,
     /// Drum kits are written on a percussion staff.
     percussion: bool,
+    /// A track with several staves shows them in notation only.
+    keyboard: bool,
 }
 
 /// A measure's cache entry: its stamp, whether the time signature is shown, the key and
@@ -45,15 +47,15 @@ type Aligned = (Vec<Arc<MeasureLayout>>, Vec<Arc<MeasureLayout>>);
 /// One track's measure layouts.
 #[derive(Debug)]
 struct TrackCache {
-    key: TrackKey,
+    key: StaffKey,
     measures: HashMap<Entry, Arc<MeasureLayout>>,
 }
 
-/// Measure layouts kept between calls, per track (a track whose settings changed starts
+/// Measure layouts kept between calls, per staff (a staff whose settings changed starts
 /// afresh). Use one cache per open song; the fonts must stay the same.
 #[derive(Debug, Default)]
 pub struct LayoutCache {
-    tracks: HashMap<TrackIndex, TrackCache>,
+    staves: HashMap<(TrackIndex, StaffIndex), TrackCache>,
     /// Measures lined up across tracks, by measure index: the tracks' layouts they were
     /// made from (kept alive, so an unchanged measure is recognised by identity) and the
     /// result.
@@ -89,24 +91,31 @@ impl LayoutCache {
         // A measure's layout does not depend on the pages: switching between pages and the
         // endless page, or changing the page setup, keeps the cache.
         let measure_options = options.for_measures();
-        let mut old: HashMap<TrackIndex, HashMap<Entry, Arc<MeasureLayout>>> = HashMap::new();
-        let mut kept: HashMap<TrackIndex, (TrackKey, HashMap<Entry, Arc<MeasureLayout>>)> =
-            HashMap::new();
+        type Key = (TrackIndex, StaffIndex);
+        let mut old: HashMap<Key, HashMap<Entry, Arc<MeasureLayout>>> = HashMap::new();
+        let mut kept: HashMap<Key, (StaffKey, HashMap<Entry, Arc<MeasureLayout>>)> = HashMap::new();
         for &track in tracks {
             let view = song.track(track).ok_or(LayoutError::NoSuchTrack(track))?;
-            let key = TrackKey {
-                options: measure_options.clone(),
-                strings: view.string_count(),
-                tuning: view.tuning().ok().flatten(),
-                capo: view.capo().ok(),
-                percussion: view.is_percussion(),
-            };
-            if let Some(cache) = self.tracks.remove(&track)
-                && cache.key == key
-            {
-                old.insert(track, cache.measures);
+            // A track with several staves shows them in notation only.
+            let keyboard = view.staff_count() > 1;
+            for staff in view.all_staves() {
+                let staff_view = staff.view();
+                let key = StaffKey {
+                    options: measure_options.clone(),
+                    strings: staff_view.string_count(),
+                    tuning: staff_view.tuning().ok().flatten(),
+                    capo: staff_view.capo().ok(),
+                    percussion: staff_view.is_percussion(),
+                    keyboard,
+                };
+                let at = (track, staff.index());
+                if let Some(cache) = self.staves.remove(&at)
+                    && cache.key == key
+                {
+                    old.insert(at, cache.measures);
+                }
+                kept.insert(at, (key, HashMap::new()));
             }
-            kept.insert(track, (key, HashMap::new()));
         }
         let mut laid_out = 0_usize;
         let old_aligned = std::mem::take(&mut self.aligned);
@@ -118,7 +127,16 @@ impl LayoutCache {
             primary,
             options,
             fonts,
-            &mut |track, measure, show, free_time, key, previous_key, clef, previous_clef, ctx| {
+            &mut |track,
+                  staff,
+                  measure,
+                  show,
+                  free_time,
+                  key,
+                  previous_key,
+                  clef,
+                  previous_clef,
+                  ctx| {
                 let entry = (
                     song.measure_stamp(measure.index()),
                     show,
@@ -128,7 +146,8 @@ impl LayoutCache {
                     clef,
                     previous_clef,
                 );
-                let cached = old.get(&track).and_then(|measures| measures.get(&entry));
+                let at = (track, staff);
+                let cached = old.get(&at).and_then(|measures| measures.get(&entry));
                 let layout = match cached {
                     Some(cached) if cached.index() == measure.index() => Arc::clone(cached),
                     Some(cached) => Arc::new(cached.moved_to(measure.index())),
@@ -146,7 +165,7 @@ impl LayoutCache {
                         )?)
                     }
                 };
-                if let Some((_, measures)) = kept.get_mut(&track) {
+                if let Some((_, measures)) = kept.get_mut(&at) {
                     measures.insert(entry, Arc::clone(&layout));
                 }
                 Ok(layout)
@@ -169,8 +188,8 @@ impl LayoutCache {
         );
         self.aligned = aligned;
         // Keep only what this layout used: deleted and edited measures go.
-        for (track, (key, measures)) in kept {
-            self.tracks.insert(track, TrackCache { key, measures });
+        for (at, (key, measures)) in kept {
+            self.staves.insert(at, TrackCache { key, measures });
         }
         self.laid_out = laid_out;
         layout

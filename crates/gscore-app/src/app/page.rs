@@ -173,7 +173,8 @@ impl GuitarScoreApp {
         // The cursor's page, for the status bar.
         tab.page_info = score_view.on_pages().then(|| {
             let y = layout
-                .places
+                .staff_places(cursor.track, cursor.staff)
+                .unwrap_or(&layout.places)
                 .column_rect(cursor.measure, cursor.voice, cursor.beat)
                 .map_or(0.0, |rect| rect.origin.y);
             let page = layout
@@ -284,7 +285,10 @@ impl GuitarScoreApp {
                     Vec2::new(r.width, r.height) * scale,
                 )
             };
-            let places = &layout.places;
+            // A track with several staves draws its cursor on the staff it is on.
+            let places = layout
+                .staff_places(cursor.track, cursor.staff)
+                .unwrap_or(&layout.places);
             let column = places
                 .column_rect(cursor.measure, cursor.voice, cursor.beat)
                 .map(to_screen);
@@ -356,6 +360,7 @@ impl GuitarScoreApp {
                 && let Some((track, hit)) = hit
             {
                 let target = Cursor {
+                    staff: hit.staff,
                     track,
                     measure: hit.measure,
                     voice: hit.voice,
@@ -385,6 +390,7 @@ impl GuitarScoreApp {
             {
                 tab.track = track.get();
                 let anchor = Cursor {
+                    staff: hit.staff,
                     track,
                     measure: hit.measure,
                     voice: hit.voice,
@@ -397,7 +403,8 @@ impl GuitarScoreApp {
             if response.dragged()
                 && let Some(anchor) = tab.drag_anchor
                 && let Some(pos) = response.interact_pointer_pos()
-                && let Some(hit) = layout.hit_in_voice(to_layout(pos), anchor.track, anchor.voice)
+                && let Some(hit) =
+                    layout.hit_in_voice_on(to_layout(pos), anchor.track, anchor.staff, anchor.voice)
             {
                 drag_to = Some(Cursor {
                     measure: hit.measure,
@@ -408,6 +415,7 @@ impl GuitarScoreApp {
             }
             if let (Some(anchor), Some(focus)) = (tab.drag_anchor, drag_to) {
                 document.editor_mut().set_selection(Some(Selection::Beats {
+                    staff: anchor.staff,
                     track: anchor.track,
                     voice: anchor.voice,
                     anchor: BeatSpot::of(anchor),
@@ -436,6 +444,7 @@ impl GuitarScoreApp {
             // there.
             tab.track = track.get();
             document.editor_mut().set_cursor(Cursor {
+                staff: hit.staff,
                 track,
                 measure: hit.measure,
                 voice: hit.voice,
@@ -588,16 +597,18 @@ fn layout_selection_bands(
     selection: Selection,
 ) -> Vec<gscore_layout::Rect> {
     match selection {
-        Selection::Beats { track, .. } => layout
-            .places_of(track)
+        Selection::Beats { track, staff, .. } => layout
+            .staff_places(track, staff)
             .map(|places| selection_bands(places, song, selection, track))
             .unwrap_or_default(),
         Selection::Measures {
             track: Some(track), ..
         } => layout
-            .places_of(track)
-            .map(|places| selection_bands(places, song, selection, track))
-            .unwrap_or_default(),
+            .tracks
+            .iter()
+            .filter(|places| places.track == track)
+            .flat_map(|places| selection_bands(&places.places, song, selection, track))
+            .collect(),
         Selection::Measures { track: None, .. } => layout
             .tracks
             .iter()
@@ -618,11 +629,12 @@ fn selection_bands(
     let rects: Vec<gscore_layout::Rect> = match selection {
         Selection::Beats {
             track: selected,
+            staff,
             voice,
             anchor,
             focus,
         } => {
-            if selected != track {
+            if selected != track || staff != places.staff {
                 return Vec::new();
             }
             let first = anchor.min(focus);
@@ -778,7 +790,7 @@ mod tests {
         );
     }
     use gscore_model::testing::{self, GUITAR_6};
-    use gscore_model::{BeatIndex, MeasureIndex, TrackIndex, VoiceIndex};
+    use gscore_model::{BeatIndex, MeasureIndex, StaffIndex, TrackIndex, VoiceIndex};
 
     use super::selection_bands;
 
@@ -805,6 +817,7 @@ mod tests {
                 .collect(),
         };
         Places {
+            staff: StaffIndex::new(0),
             systems: vec![system(0.0), system(30.0)],
             measures: vec![measure(0, 0), measure(1, 1)],
         }
@@ -816,6 +829,7 @@ mod tests {
             beat: BeatIndex::new(beat),
         };
         Selection::Beats {
+            staff: StaffIndex::new(0),
             track: TrackIndex::new(0),
             voice: VoiceIndex::new(0),
             anchor: spot(from),
@@ -896,6 +910,7 @@ mod tests {
             },
         };
         Places {
+            staff: StaffIndex::new(0),
             systems: vec![system],
             measures: vec![measure(0), measure(1), measure(2)],
         }

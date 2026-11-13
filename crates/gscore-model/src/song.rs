@@ -4,9 +4,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::error::ModelError;
 use crate::issues::{self, Issue};
-use crate::position::{BeatPosition, MeasureIndex, TrackIndex};
+use crate::position::{BeatPosition, MeasureIndex, StaffIndex, TrackIndex};
 use crate::validate;
-use crate::views::{BeatView, TrackView};
+use crate::views::{BeatView, MeasureView, TrackView};
 
 /// A complete score: metadata and tracks.
 ///
@@ -70,7 +70,7 @@ impl Song {
         self.stamps.get(measure.get()).copied().unwrap_or(0)
     }
 
-    /// Runs `edit` on a copy of one measure of one track, and swaps the copy in only when
+    /// Runs `edit` on a copy of one measure of one staff, and swaps the copy in only when
     /// the edit and the measure's invariant check both succeeded (AGENTS.md rule 8:
     /// commands are transactional). Only that measure is copied and checked, so an edit
     /// costs the same in a long song as in a short one.
@@ -80,15 +80,44 @@ impl Song {
         measure: MeasureIndex,
         edit: impl FnOnce(&mut gscore_gp::Measure) -> Result<T, ModelError>,
     ) -> Result<T, ModelError> {
+        self.edit_measure_of(track, StaffIndex::new(0), measure, edit)
+    }
+
+    /// [`Self::edit_measure`] for the staff a position addresses.
+    pub(crate) fn edit_measure_at<T>(
+        &mut self,
+        at: BeatPosition,
+        edit: impl FnOnce(&mut gscore_gp::Measure) -> Result<T, ModelError>,
+    ) -> Result<T, ModelError> {
+        self.edit_measure_of(at.track, at.staff, at.measure, edit)
+    }
+
+    /// Runs `edit` on a copy of one measure of one staff of one track.
+    pub(crate) fn edit_measure_of<T>(
+        &mut self,
+        track: TrackIndex,
+        staff: StaffIndex,
+        measure: MeasureIndex,
+        edit: impl FnOnce(&mut gscore_gp::Measure) -> Result<T, ModelError>,
+    ) -> Result<T, ModelError> {
         let tracks = self.inner.tracks.len();
-        let slot = self
-            .inner
-            .tracks
-            .get_mut(track.get())
-            .ok_or_else(|| ModelError::Invalid(format!("{track}: the song has {tracks} track(s)")))?
-            .measures
-            .get_mut(measure.get())
-            .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
+        let tracks_slot = self.inner.tracks.get_mut(track.get()).ok_or_else(|| {
+            ModelError::Invalid(format!("{track}: the song has {tracks} track(s)"))
+        })?;
+        let slot = if staff.get() == 0 {
+            tracks_slot.measures.get_mut(measure.get())
+        } else {
+            let staves = tracks_slot.staves.len();
+            tracks_slot
+                .staves
+                .get_mut(staff.get().saturating_sub(1))
+                .ok_or_else(|| {
+                    ModelError::Invalid(format!("{track} has no {staff} (it has {staves})"))
+                })?
+                .measures
+                .get_mut(measure.get())
+        }
+        .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
         let mut candidate = slot.clone();
         let value = edit(&mut candidate)?;
         validate::check_measure_data(measure, &candidate)
@@ -282,6 +311,17 @@ impl Song {
             .map(|t| TrackView::new(index, t))
     }
 
+    /// One staff of one track (the track seen through its staff: its measures, strings,
+    /// tuning and capo), or `None` if the track or the staff is out of range.
+    pub fn staff(&self, track: TrackIndex, staff: StaffIndex) -> Option<TrackView<'_>> {
+        self.track(track)?.on_staff(staff)
+    }
+
+    /// The measure a position addresses (on its staff), or `None` if it is out of range.
+    pub fn measure_at(&self, at: BeatPosition) -> Option<MeasureView<'_>> {
+        self.staff(at.track, at.staff)?.measure(at.measure)
+    }
+
     /// The key signature in effect at `measure`, or `None` if there is no such measure.
     pub fn key_signature(&self, measure: MeasureIndex) -> Option<crate::style::KeySignature> {
         let header = self.inner.measure_headers.get(measure.get())?;
@@ -313,7 +353,7 @@ impl Song {
 
     /// The beat at `position`, or `None` if any part of it is out of range.
     pub fn beat(&self, position: BeatPosition) -> Option<BeatView<'_>> {
-        self.track(position.track)?
+        self.staff(position.track, position.staff)?
             .measure(position.measure)?
             .voice(position.voice)?
             .beat(position.beat)

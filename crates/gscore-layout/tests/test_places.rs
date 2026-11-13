@@ -56,6 +56,7 @@ fn every_measure_and_beat_has_a_place_and_clicks_find_them_again() {
                             voice: beat.voice,
                             beat: beat.beat,
                             string,
+                            staff: places.staff,
                         })
                     );
                 }
