@@ -189,7 +189,9 @@ fn a_vibrato_swings_around_the_pitch() {
     let swings: Vec<f64> = (0..u64::from(PPQ)).map(|t| shape.cents_at(t)).collect();
     let high = swings.iter().copied().fold(f64::MIN, f64::max);
     let low = swings.iter().copied().fold(f64::MAX, f64::min);
-    assert!(high > 90.0 && low < -90.0, "{low}..{high}");
+    // A wide vibrato swings ±50 cents.
+    assert!(high > 45.0 && low < -45.0, "{low}..{high}");
+    assert!(high <= 50.0 && low >= -50.0, "{low}..{high}");
 }
 
 /// Every note of the performance is one note-on of the MIDI sequence, at the same time and

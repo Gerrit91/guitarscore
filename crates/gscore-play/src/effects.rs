@@ -8,7 +8,7 @@ use gscore_model::{AccentKind, NoteView, StrokeDirection, TremoloSpeed, TrillSpe
 use crate::performance::Attack;
 use crate::pitch::{PitchShape, Wave};
 use crate::sounding::Sounding;
-use crate::tempo::PPQ;
+use crate::tempo::{PPQ, TempoMap};
 
 /// A quarter note in ticks.
 const QUARTER: u64 = PPQ as u64;
@@ -35,11 +35,14 @@ const RASGUEADO_STEP: u64 = SIXTY_FOURTH;
 /// Velocity shares of the later rasgueado strikes (percent).
 const RASGUEADO_SECOND_PERCENT: u32 = 85;
 const RASGUEADO_THIRD_PERCENT: u32 = 70;
-/// Vibrato: how far the pitch swings (cents) and one swing's length, slight and wide.
-const SLIGHT_DEPTH_CENTS: u16 = 50;
-const WIDE_DEPTH_CENTS: u16 = 100;
-const SLIGHT_PERIOD: u64 = QUARTER / 3;
-const WIDE_PERIOD: u64 = QUARTER / 2;
+/// Vibrato: how far the pitch swings either way (cents) and how fast (thousandths of a
+/// hertz), slight and wide. A hand shakes the string at about the same speed whatever the
+/// tempo, so the rate is in time, not in beats (it was a third and a half of a beat, ±50
+/// and ±100 cents: 10 Hz at 200 BPM and far too deep; owner, 2026-11-13).
+const SLIGHT_DEPTH_CENTS: u16 = 25;
+const WIDE_DEPTH_CENTS: u16 = 50;
+const SLIGHT_RATE_MILLIHZ: u64 = 5_000;
+const WIDE_RATE_MILLIHZ: u64 = 4_000;
 
 /// `velocity` scaled to `percent`, kept within MIDI's 1 to 127.
 pub(crate) fn scale(velocity: u8, percent: u32) -> u8 {
@@ -446,19 +449,31 @@ pub(crate) fn rasgueados(notes: Vec<Sounding>) -> Vec<Sounding> {
     out
 }
 
-/// Adds the vibrato to each shaking note's pitch shape (a steady one if it has none).
-pub(crate) fn apply_vibrato(notes: &mut [Sounding]) {
+/// One vibrato swing at `rate_millihz`, in ticks at `bpm` (at least one tick).
+fn vibrato_period(bpm: u32, rate_millihz: u64) -> u64 {
+    // Ticks per second are bpm × PPQ / 60; a swing lasts 1000 / rate_millihz of a second.
+    let ticks = u64::from(bpm.max(1))
+        .saturating_mul(QUARTER)
+        .saturating_mul(1000)
+        .checked_div(rate_millihz.saturating_mul(60))
+        .unwrap_or(QUARTER);
+    ticks.max(1)
+}
+
+/// Adds the vibrato to each shaking note's pitch shape (a steady one if it has none). Its
+/// speed is set in time, at the tempo where the note starts.
+pub(crate) fn apply_vibrato(notes: &mut [Sounding], tempo: &TempoMap) {
     for note in notes {
         let Some(vibrato) = note.vibrato else {
             continue;
         };
-        let (depth_cents, period) = match vibrato {
-            Vibrato::Wide => (WIDE_DEPTH_CENTS, WIDE_PERIOD),
-            _ => (SLIGHT_DEPTH_CENTS, SLIGHT_PERIOD),
+        let (depth_cents, rate) = match vibrato {
+            Vibrato::Wide => (WIDE_DEPTH_CENTS, WIDE_RATE_MILLIHZ),
+            _ => (SLIGHT_DEPTH_CENTS, SLIGHT_RATE_MILLIHZ),
         };
         let wave = Wave {
             depth_cents,
-            period,
+            period: vibrato_period(tempo.bpm_at(note.start), rate),
             length: note.end.saturating_sub(note.start),
         };
         note.shape = Some(
@@ -529,10 +544,40 @@ pub(crate) mod tests {
 
     #[test]
     fn vibrato_gives_a_note_a_shaking_shape() {
-        let mut notes = [note(1, 0, QUARTER)];
+        let mut notes = [note(1, 0, 4 * QUARTER)];
         notes[0].vibrato = Some(Vibrato::Wide);
-        apply_vibrato(&mut notes);
+        apply_vibrato(&mut notes, &TempoMap::new(120));
         let events = notes[0].shape.unwrap().events(Channel::new(0).unwrap(), 0);
         assert!(events.len() > 10);
+    }
+
+    #[test]
+    fn vibrato_shakes_at_the_same_speed_and_depth_at_every_tempo() {
+        let wave = |vibrato, bpm| {
+            let mut notes = [note(1, 0, 4 * QUARTER)];
+            notes[0].vibrato = Some(vibrato);
+            apply_vibrato(&mut notes, &TempoMap::new(bpm));
+            notes[0].shape.unwrap().vibrato.unwrap()
+        };
+        // Seconds per swing at `bpm`: ticks / (bpm × PPQ / 60).
+        let seconds =
+            |period: u64, bpm: u32| period as f64 * 60.0 / (f64::from(bpm) * QUARTER as f64);
+        for bpm in [60, 120, 200, 300] {
+            let slight = wave(Vibrato::Slight, bpm);
+            assert!(
+                (seconds(slight.period, bpm) - 0.2).abs() < 0.002,
+                "slight at {bpm}"
+            );
+            assert_eq!(slight.depth_cents, 25);
+            let wide = wave(Vibrato::Wide, bpm);
+            assert!(
+                (seconds(wide.period, bpm) - 0.25).abs() < 0.002,
+                "wide at {bpm}"
+            );
+            assert_eq!(wide.depth_cents, 50);
+        }
+        // A broken tempo never gives a zero-length swing.
+        assert!(vibrato_period(0, SLIGHT_RATE_MILLIHZ) >= 1);
+        assert!(vibrato_period(u32::MAX, 0) >= 1);
     }
 }

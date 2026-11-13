@@ -218,24 +218,20 @@ measure 0 0..3840 pause 0
 1920 t0 bend ch4 8192
 1920 t0 bend ch4 8192
 1920 t0 on ch4 60 95
-1946 t0 bend ch4 8525
-1972 t0 bend ch4 8774
-1998 t0 bend ch4 8874
-2024 t0 bend ch4 8800
-2050 t0 bend ch4 8571
-2076 t0 bend ch4 8245
-2102 t0 bend ch4 7907
-2128 t0 bend ch4 7640
-2154 t0 bend ch4 7515
-2180 t0 bend ch4 7562
-2206 t0 bend ch4 7770
-2232 t0 bend ch4 8086
-2258 t0 bend ch4 8428
-2284 t0 bend ch4 8711
-2310 t0 bend ch4 8861
-2336 t0 bend ch4 8841
-2362 t0 bend ch4 8655
-2388 t0 bend ch4 8351
+1952 t0 bend ch4 8362
+1984 t0 bend ch4 8487
+2016 t0 bend ch4 8533
+2048 t0 bend ch4 8487
+2080 t0 bend ch4 8362
+2112 t0 bend ch4 8192
+2144 t0 bend ch4 8022
+2176 t0 bend ch4 7897
+2208 t0 bend ch4 7851
+2240 t0 bend ch4 7897
+2272 t0 bend ch4 8022
+2304 t0 bend ch4 8192
+2336 t0 bend ch4 8362
+2368 t0 bend ch4 8487
 2400 t0 off ch4 60
 2400 t0 program ch5 25
 2400 t0 cc ch5 7 104
@@ -252,17 +248,17 @@ measure 0 0..3840 pause 0
 2400 t0 bend ch5 8192
 2400 t0 bend ch5 8192
 2400 t0 on ch5 62 95
-2440 t0 bend ch5 8874
-2480 t0 bend ch5 9374
-2520 t0 bend ch5 9557
-2560 t0 bend ch5 9374
-2600 t0 bend ch5 8874
+2440 t0 bend ch5 8533
+2480 t0 bend ch5 8783
+2520 t0 bend ch5 8874
+2560 t0 bend ch5 8783
+2600 t0 bend ch5 8533
 2640 t0 bend ch5 8192
-2680 t0 bend ch5 7510
-2720 t0 bend ch5 7010
-2760 t0 bend ch5 6827
-2800 t0 bend ch5 7010
-2840 t0 bend ch5 7510
+2680 t0 bend ch5 7851
+2720 t0 bend ch5 7601
+2760 t0 bend ch5 7510
+2800 t0 bend ch5 7601
+2840 t0 bend ch5 7851
 2880 t0 off ch5 62
 2880 t0 program ch6 25
 2880 t0 cc ch6 7 104
@@ -279,17 +275,17 @@ measure 0 0..3840 pause 0
 2880 t0 bend ch6 8192
 2880 t0 bend ch6 8192
 2880 t0 on ch6 64 95
-2920 t0 bend ch6 8874
-2960 t0 bend ch6 9374
-3000 t0 bend ch6 9557
-3040 t0 bend ch6 9374
-3080 t0 bend ch6 8874
+2920 t0 bend ch6 8533
+2960 t0 bend ch6 8783
+3000 t0 bend ch6 8874
+3040 t0 bend ch6 8783
+3080 t0 bend ch6 8533
 3120 t0 bend ch6 8192
-3160 t0 bend ch6 7510
-3200 t0 bend ch6 7010
-3240 t0 bend ch6 6827
-3280 t0 bend ch6 7010
-3320 t0 bend ch6 7510
+3160 t0 bend ch6 7851
+3200 t0 bend ch6 7601
+3240 t0 bend ch6 7510
+3280 t0 bend ch6 7601
+3320 t0 bend ch6 7851
 3360 t0 off ch6 64
 3360 t0 on ch0 62 95
 3840 t0 off ch0 62
@@ -539,24 +535,20 @@ tempo 0 500000
 0 t0 bend ch1 8192
 0 t0 bend ch1 8192
 0 t0 on ch1 60 95
-26 t0 bend ch1 8525
-52 t0 bend ch1 8774
-78 t0 bend ch1 8874
-104 t0 bend ch1 8800
-130 t0 bend ch1 8571
-156 t0 bend ch1 8245
-182 t0 bend ch1 7907
-208 t0 bend ch1 7640
-234 t0 bend ch1 7515
-260 t0 bend ch1 7562
-286 t0 bend ch1 7770
-312 t0 bend ch1 8086
-338 t0 bend ch1 8428
-364 t0 bend ch1 8711
-390 t0 bend ch1 8861
-416 t0 bend ch1 8841
-442 t0 bend ch1 8655
-468 t0 bend ch1 8351
+32 t0 bend ch1 8362
+64 t0 bend ch1 8487
+96 t0 bend ch1 8533
+128 t0 bend ch1 8487
+160 t0 bend ch1 8362
+192 t0 bend ch1 8192
+224 t0 bend ch1 8022
+256 t0 bend ch1 7897
+288 t0 bend ch1 7851
+320 t0 bend ch1 7897
+352 t0 bend ch1 8022
+384 t0 bend ch1 8192
+416 t0 bend ch1 8362
+448 t0 bend ch1 8487
 480 t0 off ch1 60
 4319 t0 cc ch1 11 0
 4320 t0 cc ch1 120 0
@@ -585,17 +577,17 @@ tempo 0 500000
 0 t0 bend ch1 8192
 0 t0 bend ch1 8192
 0 t0 on ch1 62 95
-40 t0 bend ch1 8874
-80 t0 bend ch1 9374
-120 t0 bend ch1 9557
-160 t0 bend ch1 9374
-200 t0 bend ch1 8874
+40 t0 bend ch1 8533
+80 t0 bend ch1 8783
+120 t0 bend ch1 8874
+160 t0 bend ch1 8783
+200 t0 bend ch1 8533
 240 t0 bend ch1 8192
-280 t0 bend ch1 7510
-320 t0 bend ch1 7010
-360 t0 bend ch1 6827
-400 t0 bend ch1 7010
-440 t0 bend ch1 7510
+280 t0 bend ch1 7851
+320 t0 bend ch1 7601
+360 t0 bend ch1 7510
+400 t0 bend ch1 7601
+440 t0 bend ch1 7851
 480 t0 off ch1 62
 4319 t0 cc ch1 11 0
 4320 t0 cc ch1 120 0
@@ -624,17 +616,17 @@ tempo 0 500000
 0 t0 bend ch1 8192
 0 t0 bend ch1 8192
 0 t0 on ch1 64 95
-40 t0 bend ch1 8874
-80 t0 bend ch1 9374
-120 t0 bend ch1 9557
-160 t0 bend ch1 9374
-200 t0 bend ch1 8874
+40 t0 bend ch1 8533
+80 t0 bend ch1 8783
+120 t0 bend ch1 8874
+160 t0 bend ch1 8783
+200 t0 bend ch1 8533
 240 t0 bend ch1 8192
-280 t0 bend ch1 7510
-320 t0 bend ch1 7010
-360 t0 bend ch1 6827
-400 t0 bend ch1 7010
-440 t0 bend ch1 7510
+280 t0 bend ch1 7851
+320 t0 bend ch1 7601
+360 t0 bend ch1 7510
+400 t0 bend ch1 7601
+440 t0 bend ch1 7851
 480 t0 off ch1 64
 4319 t0 cc ch1 11 0
 4320 t0 cc ch1 120 0
