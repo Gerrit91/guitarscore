@@ -39,6 +39,12 @@ index_type!(
     "track"
 );
 index_type!(
+    /// Position of a staff in a track: 0 is the first (the only one of most tracks; a
+    /// piano's treble), 1 the next (its bass).
+    StaffIndex,
+    "staff"
+);
+index_type!(
     /// Position of a measure (bar) in a track; the same for every track.
     MeasureIndex,
     "measure"

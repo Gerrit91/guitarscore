@@ -104,6 +104,98 @@ pub struct Track {
     /// Living on the track means every track edit (insert, delete, duplicate, move) and
     /// its undo carry it along like the name or the color.
     pub sound_state: Option<String>,
+    /// GuitarScore addition: the track's staves after the first, as GP6 and GP7 store them
+    /// (a piano's or synth's bass staff). The first staff is the track's own `measures`,
+    /// `strings`, `offset` and tuning fields, as in GP3-5, which have one staff only; each
+    /// further staff has the same number of measures. Until 2026-11-13 they were not read,
+    /// and saving dropped them.
+    pub staves: Vec<Staff>,
+}
+
+/// GuitarScore addition: one staff of a track as the passes over every staff need it.
+#[derive(Debug)]
+pub struct StaffMut<'a> {
+    /// The staff's strings, highest first.
+    pub strings: &'a [(i8, i8)],
+    /// The capo fret.
+    pub offset: i32,
+    pub measures: &'a mut Vec<Measure>,
+}
+
+impl Track {
+    /// GuitarScore addition: every staff's measures, the first staff's first.
+    pub fn all_measures(&self) -> impl Iterator<Item = &Measure> {
+        self.measures
+            .iter()
+            .chain(self.staves.iter().flat_map(|staff| staff.measures.iter()))
+    }
+
+    /// GuitarScore addition: every staff's measures, to change.
+    pub fn all_measures_mut(&mut self) -> impl Iterator<Item = &mut Measure> {
+        self.measures.iter_mut().chain(
+            self.staves
+                .iter_mut()
+                .flat_map(|staff| staff.measures.iter_mut()),
+        )
+    }
+
+    /// GuitarScore addition: each staff's measures, the first staff's first.
+    pub fn measure_lists(&self) -> impl Iterator<Item = &Vec<Measure>> {
+        std::iter::once(&self.measures).chain(self.staves.iter().map(|staff| &staff.measures))
+    }
+
+    /// GuitarScore addition: each staff's measures, to change (insert or remove a measure
+    /// in every staff alike).
+    pub fn measure_lists_mut(&mut self) -> impl Iterator<Item = &mut Vec<Measure>> {
+        std::iter::once(&mut self.measures)
+            .chain(self.staves.iter_mut().map(|staff| &mut staff.measures))
+    }
+
+    /// GuitarScore addition: every staff with its strings and capo, the first staff's
+    /// first.
+    pub fn staves_mut(&mut self) -> Vec<StaffMut<'_>> {
+        let mut staves = vec![StaffMut {
+            strings: &self.strings,
+            offset: self.offset,
+            measures: &mut self.measures,
+        }];
+        for staff in &mut self.staves {
+            staves.push(StaffMut {
+                strings: &staff.strings,
+                offset: staff.offset,
+                measures: &mut staff.measures,
+            });
+        }
+        staves
+    }
+}
+
+/// GuitarScore addition: a staff after a track's first (see [`Track::staves`]).
+#[derive(Debug, Clone)]
+pub struct Staff {
+    /// One per measure header, as the track's own.
+    pub measures: Vec<Measure>,
+    /// The staff's strings (number, open pitch), highest first: its notes are a string and
+    /// a fret on them (for a keyboard's staff, a stand-in tuning that gives the pitches).
+    pub strings: Vec<(i8, i8)>,
+    /// Whether the file stored a tuning for the staff (see [`Track::has_tuning`]).
+    pub has_tuning: bool,
+    /// The tuning's name, if the file gave one.
+    pub tuning_label: Option<String>,
+    /// The capo fret.
+    pub offset: i32,
+}
+
+impl Default for Staff {
+    fn default() -> Self {
+        Staff {
+            measures: Vec::new(),
+            strings: vec![(1, 64), (2, 59), (3, 55), (4, 50), (5, 45), (6, 40)],
+            has_tuning: false,
+            tuning_label: None,
+            offset: 0,
+        }
+    }
 }
 
 impl Default for Track {
@@ -141,6 +233,7 @@ impl Default for Track {
             gpif_sounds: None,
             gpif_audio_engine: None,
             sound_state: None,
+            staves: Vec::new(),
         }
     }
 }

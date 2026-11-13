@@ -11,7 +11,7 @@
 
 use crate::model::{
     Beat, BeatStatus, Duration, GraceEffect, GraceEffectTransition, Note, NoteEffect, NoteType,
-    SlideType, Song,
+    SlideType, Song, Track,
 };
 
 /// The written values a grace note can have (64th, 32nd, 16th), as GP3-5 store them.
@@ -213,7 +213,7 @@ impl Song {
         for voice in self
             .tracks
             .iter_mut()
-            .flat_map(|track| track.measures.iter_mut())
+            .flat_map(Track::all_measures_mut)
             .flat_map(|measure| measure.voices.iter_mut())
         {
             let _ = fold_grace_beats(&mut voice.beats);
@@ -234,7 +234,7 @@ impl Song {
     fn beats(&self) -> impl Iterator<Item = &Beat> {
         self.tracks
             .iter()
-            .flat_map(|track| track.measures.iter())
+            .flat_map(Track::all_measures)
             .flat_map(|measure| measure.voices.iter())
             .flat_map(|voice| voice.beats.iter())
     }
@@ -249,7 +249,7 @@ impl Song {
         for voice in song
             .tracks
             .iter_mut()
-            .flat_map(|track| track.measures.iter_mut())
+            .flat_map(Track::all_measures_mut)
             .flat_map(|measure| measure.voices.iter_mut())
         {
             voice.beats = unfold_grace_notes(&voice.beats);
@@ -269,7 +269,7 @@ impl Song {
         for voice in song
             .tracks
             .iter_mut()
-            .flat_map(|track| track.measures.iter_mut())
+            .flat_map(Track::all_measures_mut)
             .flat_map(|measure| measure.voices.iter_mut())
         {
             voice.beats.retain(|beat| !beat.grace);
@@ -371,7 +371,7 @@ mod tests {
     #[test]
     fn writing_gp5_drops_grace_beats_that_do_not_fold() {
         let mut song = Song::default();
-        let mut track = crate::model::Track::default();
+        let mut track = Track::default();
         let measure = crate::model::Measure {
             voices: vec![crate::model::Voice {
                 beats: vec![

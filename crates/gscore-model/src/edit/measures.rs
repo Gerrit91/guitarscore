@@ -1,4 +1,4 @@
-//! Measure edits: inserting and removing a measure in every track.
+//! Measure edits: inserting and removing a measure in every staff of every track.
 
 use gscore_gp::{
     Beat as GpBeat, BeatStatus, KeySignature, Measure as GpMeasure,
@@ -38,14 +38,7 @@ pub(super) fn insert(song: &mut Song, at: MeasureIndex) -> Result<Change, ModelE
         if count >= usize::from(u16::MAX) {
             return Err(ModelError::Invalid("too many measures".to_owned()));
         }
-        for track in &inner.tracks {
-            if at.get() > track.measures.len() {
-                return Err(ModelError::Invalid(format!(
-                    "{at}: a track has only {} measure(s)",
-                    track.measures.len()
-                )));
-            }
-        }
+        check_lengths(inner, at, true)?;
 
         let source = header_source(inner, at);
         let time_signature =
@@ -62,36 +55,46 @@ pub(super) fn insert(song: &mut Song, at: MeasureIndex) -> Result<Change, ModelE
             triplet_feel,
             ..GpMeasureHeader::default()
         };
-        // Every new measure is built and checked before anything changes.
-        let mut new_measures = Vec::with_capacity(inner.tracks.len());
-        for track_index in 0..inner.tracks.len() {
-            // Voice 1 is filled with rests; further voices stay empty (one placeholder beat,
-            // as Guitar Pro stores unused voices), so no rests appear in voice 2.
-            let voices = (0..voice_count)
-                .map(|index| GpVoice {
-                    beats: if index == 0 {
-                        rests.clone()
-                    } else {
-                        vec![placeholder_beat()]
-                    },
-                    ..GpVoice::default()
-                })
-                .collect();
-            let measure = GpMeasure {
-                number: 1, // renumbered below
-                track_index,
-                header_index: at.get(),
-                time_signature: time_signature.clone(),
-                key_signature: key_signature.clone(),
-                voices,
-                ..GpMeasure::default()
-            };
-            validate::check_measure_data(at, &measure)?;
-            new_measures.push(measure);
+        // Every new measure is built and checked before anything changes: one per staff,
+        // in the clef its staff has there.
+        let mut new_measures: Vec<Vec<GpMeasure>> = Vec::with_capacity(inner.tracks.len());
+        for (track_index, track) in inner.tracks.iter().enumerate() {
+            let mut staves = Vec::new();
+            for measures in track.measure_lists() {
+                // Voice 1 is filled with rests; further voices stay empty (one placeholder
+                // beat, as Guitar Pro stores unused voices), so no rests appear in voice 2.
+                let voices = (0..voice_count)
+                    .map(|index| GpVoice {
+                        beats: if index == 0 {
+                            rests.clone()
+                        } else {
+                            vec![placeholder_beat()]
+                        },
+                        ..GpVoice::default()
+                    })
+                    .collect();
+                let clef = neighbour(measures, at).map(|measure| measure.clef.clone());
+                let defaults = GpMeasure::default();
+                let measure = GpMeasure {
+                    number: 1, // renumbered below
+                    track_index,
+                    header_index: at.get(),
+                    time_signature: time_signature.clone(),
+                    key_signature: key_signature.clone(),
+                    voices,
+                    clef: clef.unwrap_or(defaults.clef.clone()),
+                    ..defaults
+                };
+                validate::check_measure_data(at, &measure)?;
+                staves.push(measure);
+            }
+            new_measures.push(staves);
         }
         inner.measure_headers.insert(at.get(), header);
-        for (track, measure) in inner.tracks.iter_mut().zip(new_measures) {
-            track.measures.insert(at.get(), measure);
+        for (track, staves) in inner.tracks.iter_mut().zip(new_measures) {
+            for (measures, measure) in track.measure_lists_mut().zip(staves) {
+                measures.insert(at.get(), measure);
+            }
         }
         renumber(inner);
         let change = Change {
@@ -115,19 +118,13 @@ pub(super) fn delete(song: &mut Song, at: MeasureIndex) -> Result<Change, ModelE
                 "{at}: the song has {count} measure(s)"
             )));
         }
-        for track in &inner.tracks {
-            if at.get() >= track.measures.len() {
-                return Err(ModelError::Invalid(format!(
-                    "{at}: a track has only {} measure(s)",
-                    track.measures.len()
-                )));
-            }
-        }
+        check_lengths(inner, at, false)?;
         let header = inner.measure_headers.remove(at.get());
         let measures = inner
             .tracks
             .iter_mut()
-            .map(|track| track.measures.remove(at.get()))
+            .flat_map(gscore_gp::Track::measure_lists_mut)
+            .map(|measures| measures.remove(at.get()))
             .collect();
         renumber(inner);
         let change = Change {
@@ -149,23 +146,20 @@ pub(super) fn remove(song: &mut GpSong, at: MeasureIndex) -> Result<((), Moved),
             song.measure_headers.len()
         )));
     }
-    for track in &song.tracks {
-        if at.get() >= track.measures.len() {
-            return Err(ModelError::Invalid(format!(
-                "{at}: a track has only {} measure(s)",
-                track.measures.len()
-            )));
-        }
-    }
+    check_lengths(song, at, false)?;
     song.measure_headers.remove(at.get());
-    for track in &mut song.tracks {
-        track.measures.remove(at.get());
+    for measures in song
+        .tracks
+        .iter_mut()
+        .flat_map(gscore_gp::Track::measure_lists_mut)
+    {
+        measures.remove(at.get());
     }
     renumber(song);
     Ok(((), Moved::Removed(at)))
 }
 
-/// Reverts a removed measure by putting its header and every track's measure back.
+/// Reverts a removed measure by putting its header and every staff's measure back.
 pub(super) fn restore(
     song: &mut GpSong,
     at: MeasureIndex,
@@ -178,19 +172,17 @@ pub(super) fn restore(
             song.measure_headers.len()
         )));
     }
-    if measures.len() != song.tracks.len() {
+    let staves: usize = song
+        .tracks
+        .iter()
+        .map(|track| track.staves.len().saturating_add(1))
+        .sum();
+    if measures.len() != staves {
         return Err(ModelError::Invalid(
-            "the undo data does not match the song's tracks".to_owned(),
+            "the undo data does not match the song's staves".to_owned(),
         ));
     }
-    for track in &song.tracks {
-        if at.get() > track.measures.len() {
-            return Err(ModelError::Invalid(format!(
-                "{at}: a track has only {} measure(s)",
-                track.measures.len()
-            )));
-        }
-    }
+    check_lengths(song, at, true)?;
     if song.measure_headers.len() >= usize::from(u16::MAX) {
         return Err(ModelError::Invalid("too many measures".to_owned()));
     }
@@ -198,8 +190,13 @@ pub(super) fn restore(
         validate::check_measure_data(at, measure)?;
     }
     song.measure_headers.insert(at.get(), header.clone());
-    for (track, measure) in song.tracks.iter_mut().zip(measures) {
-        track.measures.insert(at.get(), measure.clone());
+    for (list, measure) in song
+        .tracks
+        .iter_mut()
+        .flat_map(gscore_gp::Track::measure_lists_mut)
+        .zip(measures)
+    {
+        list.insert(at.get(), measure.clone());
     }
     renumber(song);
     Ok(((), Moved::Inserted(at)))
@@ -212,12 +209,42 @@ fn renumber(song: &mut GpSong) {
         header.number = u16::try_from(index.saturating_add(1)).unwrap_or(u16::MAX);
     }
     for (track_index, track) in song.tracks.iter_mut().enumerate() {
-        for (measure_index, measure) in track.measures.iter_mut().enumerate() {
-            measure.number = measure_index.saturating_add(1);
-            measure.header_index = measure_index;
-            measure.track_index = track_index;
+        for measures in track.measure_lists_mut() {
+            for (measure_index, measure) in measures.iter_mut().enumerate() {
+                measure.number = measure_index.saturating_add(1);
+                measure.header_index = measure_index;
+                measure.track_index = track_index;
+            }
         }
     }
+}
+
+/// Fails unless every staff of every track has a measure at `at` (or, `inserting`, at
+/// least `at` measures): a song whose staves are out of step is not edited further.
+fn check_lengths(song: &GpSong, at: MeasureIndex, inserting: bool) -> Result<(), ModelError> {
+    for measures in song.tracks.iter().flat_map(gscore_gp::Track::measure_lists) {
+        let fits = if inserting {
+            at.get() <= measures.len()
+        } else {
+            at.get() < measures.len()
+        };
+        if !fits {
+            return Err(ModelError::Invalid(format!(
+                "{at}: a staff has only {} measure(s)",
+                measures.len()
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// The measure of a staff whose clef a measure inserted at `at` continues: the one before
+/// it, or the one it pushes aside at the beginning.
+fn neighbour(measures: &[GpMeasure], at: MeasureIndex) -> Option<&GpMeasure> {
+    at.get()
+        .checked_sub(1)
+        .and_then(|index| measures.get(index))
+        .or_else(|| measures.get(at.get()))
 }
 
 /// The header whose time/key signature is in effect at `at`: the previous measure, or the

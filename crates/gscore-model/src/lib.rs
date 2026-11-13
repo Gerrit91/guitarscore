@@ -36,6 +36,7 @@ mod page;
 mod playback;
 mod position;
 mod song;
+mod staff_view;
 mod style;
 mod techniques;
 #[cfg(feature = "test-support")]
@@ -74,9 +75,11 @@ pub use page::{
 };
 pub use playback::{MASTER_UNITY, MasterMix, Repeat, TrackSound};
 pub use position::{
-    BeatIndex, BeatPosition, Fret, MeasureIndex, Pitch, StringNumber, TrackIndex, VoiceIndex,
+    BeatIndex, BeatPosition, Fret, MeasureIndex, Pitch, StaffIndex, StringNumber, TrackIndex,
+    VoiceIndex,
 };
 pub use song::Song;
+pub use staff_view::StaffView;
 pub use style::{Clef, KeySignature, Section, SimileMark, TrackColor, TrackStaves};
 pub use techniques::{
     ChordDiagram, Fade, Finger, Hand, MAX_BEAT_TEXT_CHARS, TremoloSpeed, Trill, TrillSpeed,

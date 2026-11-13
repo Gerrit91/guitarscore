@@ -228,7 +228,7 @@ impl TripletFeel {
 /// An enumeration of available clefs
 #[allow(dead_code)]
 #[repr(u8)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MeasureClef {
     Treble,
     Bass,

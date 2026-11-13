@@ -61,13 +61,13 @@ fn reverb_and_chorus_sends_survive_saving_and_are_absent_when_unset() {
 }
 
 /// The multi-track test file, embedded at build time.
-const MULTI_STAFF: &[u8] = include_bytes!(concat!(
+pub(super) const MULTI_STAFF: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../testdata/basic/multi_staff.gp"
 ));
 
 /// `gp` with `edit` applied to its `Content/score.gpif`.
-fn with_gpif(gp: &[u8], edit: impl Fn(&str) -> String) -> Vec<u8> {
+pub(super) fn with_gpif(gp: &[u8], edit: impl Fn(&str) -> String) -> Vec<u8> {
     use std::io::{Read, Write};
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(gp)).expect("a zip");
     let mut out = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
