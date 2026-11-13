@@ -821,7 +821,7 @@ fn an_effect_chosen_in_the_palette_plays_its_beat_and_play_still_plays_the_song(
         }
     }
     let shaking = excerpt.events.iter().any(|event| {
-        matches!(event.event, gscore_play::MidiEvent::PitchBend { value, .. } if value > 8192 + 500)
+        matches!(event.event, gscore_play::MidiEvent::PitchBend { value, .. } if value > 8192 + 200)
     });
     assert!(shaking, "the excerpt has no vibrato: {:?}", excerpt.events);
     assert_eq!(

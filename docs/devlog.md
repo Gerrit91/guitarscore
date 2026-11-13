@@ -5000,3 +5000,13 @@ from a sound's name to one of its tones, filled by the owner:
   start), and an app left open checks again a day later.
 - Not fixed (browser, other session's code): `gscore-worklet` keeps every sound message
   after the SoundFont loaded, though they are only replayed once.
+
+## 2026-11-13 — A calmer vibrato
+
+- Owner: the vibrato was too strong and hectic. It swung ±50 cents (slight) and ±100
+  cents (wide), a whole semitone and more, and its speed was a third and a half of a
+  beat: 6 Hz at 120 BPM but 10 Hz at 200 BPM. Now ±25 and ±50 cents at 5 and 4 Hz,
+  whatever the tempo (`effects::vibrato_period`, from the tempo where the note starts;
+  `build::collect` makes a tempo map for it). The playback speed slider still slows it
+  along with the song. Event goldens rewritten (only pitch bends changed).
+- Not done: a vibrato that fades in after the attack, as a player's often does.

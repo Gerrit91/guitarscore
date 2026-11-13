@@ -291,7 +291,21 @@ pub(crate) fn collect(
     notes = effects::pick_slides(notes);
     notes = effects::rasgueados(notes);
     sounding::apply_bends(&mut notes);
-    effects::apply_vibrato(&mut notes);
+    // The vibrato's speed is in time: it needs the tempo where each note starts (the
+    // song's, a bar's, or a beat's change).
+    let mut changes: Vec<(u64, u32)> = vec![(0, song.tempo())];
+    changes.extend(
+        measures
+            .iter()
+            .filter_map(|span| song.tempo_change(span.measure).map(|bpm| (span.start, bpm))),
+    );
+    changes.extend(tempo_changes.iter().copied());
+    changes.sort_by_key(|&(tick, _)| tick);
+    let mut tempo = crate::tempo::TempoMap::new(song.tempo());
+    for (tick, bpm) in changes {
+        tempo.set(tick, bpm);
+    }
+    effects::apply_vibrato(&mut notes, &tempo);
     Ok(Collected {
         tracks,
         notes: notes.iter().map(Sounding::played).collect(),

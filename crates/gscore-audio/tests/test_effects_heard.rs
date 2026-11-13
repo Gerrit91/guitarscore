@@ -99,8 +99,9 @@ fn a_vibrato_is_heard_as_a_changing_pitch() {
         spread(&shaking)
     );
     assert!(spread(&plain) < 1.02, "a plain note holds its pitch");
-    // About a semitone between the highest and lowest pitch (±50 cents).
-    assert!(spread(&shaking) > 1.04, "the vibrato is not heard");
+    // About a quarter tone between the highest and lowest pitch (±25 cents: a ratio of
+    // 1.029).
+    assert!(spread(&shaking) > 1.022, "the vibrato is not heard");
 }
 
 #[test]
