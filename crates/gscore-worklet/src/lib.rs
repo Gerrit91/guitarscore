@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use wasm_bindgen::prelude::*;
 
-use gscore_audio::{SoundBank, SynthEngine};
+use gscore_audio::{SoundBank, SoundMessage, SynthEngine, decode_sound};
 use gscore_play::{PlayState, Sequence, decode_sequence, encode_sequence};
 
 /// The synthesizer, as the worklet's JavaScript sees it.
@@ -36,6 +36,11 @@ pub struct Synth {
     sequence: Option<Arc<Sequence>>,
     /// What was asked before there was an engine, applied when the SoundFont arrives.
     pending: Pending,
+    /// The sound so far (string models, chains, buses, ...), in the order it came: a new
+    /// engine (the first SoundFont, or one that replaces it) is given all of it again.
+    /// Knob changes are folded into what they change, so it does not grow while a knob
+    /// is dragged.
+    sounds: Vec<SoundMessage>,
 }
 
 /// Playback requests made while the SoundFont was still loading.
@@ -72,6 +77,7 @@ impl Synth {
             engine: None,
             sequence: None,
             pending: Pending::default(),
+            sounds: Vec::new(),
         })
     }
 
@@ -81,6 +87,9 @@ impl Synth {
         let bank = SoundBank::from_bytes(bytes).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let mut engine = SynthEngine::new(&bank, self.sample_rate)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        for sound in &self.sounds {
+            engine.apply_sound(sound.clone());
+        }
         if let Some(sequence) = &self.sequence {
             let _ = engine.load(Arc::clone(sequence));
         }
@@ -120,6 +129,17 @@ impl Synth {
             None => {}
         }
         self.sequence = Some(sequence);
+        Ok(())
+    }
+
+    /// Takes one change to the sound (`gscore_audio::encode_sound`): a string model, a
+    /// track's chain, a bus, a drum part. Heard at once, and kept for a later SoundFont.
+    pub fn sound(&mut self, bytes: &[u8]) -> Result<(), JsValue> {
+        let message = decode_sound(bytes).map_err(|e| JsValue::from_str(&e))?;
+        if let Some(engine) = &mut self.engine {
+            engine.apply_sound(message.clone());
+        }
+        remember(&mut self.sounds, message);
         Ok(())
     }
 
@@ -234,4 +254,45 @@ impl Synth {
         let sequence = decode_sequence(bytes).map_err(|e| JsValue::from_str(&e))?;
         Ok(encode_sequence(&sequence))
     }
+}
+
+/// Keeps `message` in `sounds` for a later engine: it takes the place of an earlier one
+/// for the same thing (the same track's chain, the same bus), so the list holds one entry
+/// per thing, not one per knob step.
+fn remember(sounds: &mut Vec<SoundMessage>, message: SoundMessage) {
+    use SoundMessage as M;
+    // What a message is about: its kind and the track, part or bus it names.
+    fn key(message: &SoundMessage) -> (u8, usize, usize) {
+        match message {
+            M::StringModel(kind, _) => (0, *kind as usize, 0),
+            M::TrackModel(track, _) => (1, *track, 0),
+            M::Chain(track, ..) => (2, *track, 0),
+            M::ChainSettings(track, _) => (3, *track, 0),
+            M::PartChain(track, part, ..) => (4, *track, *part),
+            M::PartChainSettings(track, part, _) => (5, *track, *part),
+            M::PartLevel(track, part, _) => (6, *track, *part),
+            M::PartPan(track, part, _) => (7, *track, *part),
+            M::PartMute(track, part, _) => (8, *track, *part),
+            M::PartSolo(track, part, _) => (9, *track, *part),
+            M::MasterChain(..) => (10, 0, 0),
+            M::MasterChainSettings(_) => (11, 0, 0),
+            M::Bus(bus, ..) => (12, *bus as usize, 0),
+            M::BusSettings(bus, ..) => (13, *bus as usize, 0),
+            M::CompSend(track, _) => (14, *track, 0),
+        }
+    }
+    let new = key(&message);
+    // A new chain makes the knob values sent for the old one void (it brings its own).
+    let voided = match new.0 {
+        2 => Some(3),
+        4 => Some(5),
+        10 => Some(11),
+        12 => Some(13),
+        _ => None,
+    };
+    sounds.retain(|old| {
+        let old = key(old);
+        old != new && Some(old) != voided.map(|kind| (kind, new.1, new.2))
+    });
+    sounds.push(message);
 }

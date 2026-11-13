@@ -24,8 +24,9 @@ in AGENTS.md section 9.
    - A bass ignores a tone the song carries and always plays its program's tone.
    - The strings benchmark (`cargo xtask bench`, 16 tracks × 6 strings ringing) is over its
      250 ms budget for a second of audio; CI does not run it.
-   - The browser build runs no effect chains: it has no Sound chain window, and the
-     built-in tones' chains and the buses are not sent to its synthesizer.
+   - In the browser a chain is prepared on the audio thread (the worklet has no other),
+     so changing a tone with a long room while playing can click; impulse responses
+     from files cannot be loaded there (no file access), only the built-in cabinets.
 2. **Pitched tracks without strings are read as string and fret.** GP7 stores the real
    pitch of a voice, synth, piano or strings note (`Midi`, `ConcertPitch`) and only
    leftover string and fret values against a guitar tuning, often negative. We read the

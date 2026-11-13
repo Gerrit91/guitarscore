@@ -4920,4 +4920,13 @@ from a sound's name to one of its tones, filled by the owner:
   app now reads the time through `crate::SystemTime` (`web_time` in the browser), and a
   test forbids the `std` clocks in the app's sources. Checked in headless Chromium: new
   song, a tone from the track panel, typed frets, Play.
+- The browser played every guitar clean: the app sent the string models, tones' chains,
+  buses and drum parts only to the desktop synthesizer. They now cross to the worklet as
+  `gscore_audio::SoundMessage` bytes (`sound_wire.rs`, round-trip tested;
+  `SynthEngine::apply_sound` prepares the chain), through `WebPlayer`'s calls, which
+  mirror `SynthPlayer`'s; the app picks the player with `sound_player!`. The worklet keeps
+  the sound for a SoundFont that arrives later. Checked in headless Chromium: the
+  messages the app posts were replayed into the built worklet in Node; after choosing
+  "Overdriven Guitar 1" the same note came out six times louder with a crest factor of 3
+  instead of 17.
 
