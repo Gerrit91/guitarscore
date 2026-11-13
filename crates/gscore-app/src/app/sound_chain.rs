@@ -315,7 +315,7 @@ fn preset_row(
     actions: &mut Actions,
 ) {
     let (program, kind) = (shown.program, shown.kind);
-    let current = super::tone_picker::current_tone_choice(tone, presets);
+    let current = super::tone_picker::current_tone_choice(tone, default_tone, presets);
     let shown_name = match &current {
         Some(super::tone_picker::PickerChoice::BuiltIn(name)) => name.clone(),
         Some(super::tone_picker::PickerChoice::Saved { name, .. }) => name.clone(),

@@ -264,6 +264,16 @@ fn a_renamed_or_extra_tone_is_refused() {
     let mut file = library();
     file.tones[0].description = "Mine.".to_owned();
     assert!(validate(&file).is_err());
+    // A tone switched to another kind of string than its program's (as `update` would
+    // copy a saved tone whose strings changed).
+    let mut file = library();
+    let bass = file
+        .tones
+        .iter()
+        .position(|tone| tone.kind == "bass")
+        .unwrap();
+    "electric".clone_into(&mut file.tones[bass].kind);
+    assert!(validate(&file).is_err());
 }
 
 #[test]

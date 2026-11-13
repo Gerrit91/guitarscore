@@ -21,12 +21,10 @@ pub(super) struct Updates {
     automatic: bool,
     /// The first-start question was answered or dismissed in this run.
     asked: bool,
-    /// The automatic check of this run was started (or was not due).
-    auto_started: bool,
     /// The check that is running, if any.
     running: Option<Running>,
-    /// A newer release to tell the user about, and whether they asked for the check.
-    found: Option<(Release, bool)>,
+    /// A newer release to tell the user about.
+    found: Option<Release>,
     /// This build's version (another one in tests, so snapshots do not follow the commit).
     current: Current,
     /// A newer release given by a test instead of GitHub.
@@ -103,18 +101,19 @@ impl GuitarScoreApp {
         self.receive_update_answer();
         // Questions about the user's work (unsaved changes, crash recovery) go first.
         let busy = self.dialog.is_some() || !self.recoverable.is_empty();
-        if self.updates.automatic && !self.updates.asked && !busy {
+        if self.updates.automatic && !busy {
             match self.settings.check_for_updates {
-                None => self.ask_about_updates(ctx),
-                Some(true) if !self.updates.auto_started => {
-                    self.updates.auto_started = true;
+                None if !self.updates.asked => self.ask_about_updates(ctx),
+                // Right after a yes, and again once a day while the app stays open: the
+                // time of the last check is stored when one starts.
+                Some(true) if self.updates.running.is_none() => {
                     let now = update::now_seconds();
                     if update::check_due(self.settings.update_checked_at, now) {
                         self.settings.update_checked_at = Some(now);
                         self.start_update_check(ctx, false);
                     }
                 }
-                Some(_) => {}
+                _ => {}
             }
         }
         if !busy && self.updates.found.is_some() {
@@ -139,7 +138,7 @@ impl GuitarScoreApp {
             Ok(Some(release)) => {
                 let skipped = self.settings.skipped_update.as_deref() == Some(&release.tag);
                 if manual || !skipped {
-                    self.updates.found = Some((release, manual));
+                    self.updates.found = Some(release);
                 }
             }
             Ok(None) if manual => {
@@ -199,7 +198,7 @@ impl GuitarScoreApp {
 
     /// The window about a newer release: its notes, and a button to its download page.
     fn show_new_release(&mut self, ctx: &egui::Context) {
-        let Some((release, _)) = &self.updates.found else {
+        let Some(release) = &self.updates.found else {
             return;
         };
         let release = release.clone();
@@ -306,9 +305,8 @@ mod tests {
     fn a_newer_release_is_shown() {
         let mut app = app_answering(answer("v99.0.0"));
         checked(&mut app, false);
-        let (release, manual) = app.updates.found.clone().unwrap();
+        let release = app.updates.found.clone().unwrap();
         assert_eq!(release.tag, "v99.0.0");
-        assert!(!manual);
     }
 
     #[test]
@@ -371,17 +369,14 @@ mod tests {
             .build_eframe(|cc| {
                 let mut app = GuitarScoreApp::new(&cc.egui_ctx, None);
                 app.updates.current = Current("v0.2.0");
-                app.updates.found = Some((
-                    Release {
+                app.updates.found = Some(Release {
                         tag: "v0.3.0".to_owned(),
                         title: "GuitarScore 0.3.0".to_owned(),
                         url: PAGE.to_owned(),
                         notes: "## What's new\n- Tones for every instrument\n- Faster \
                                 opening of large files\n- Fixes for GP5 import\n\n**Full Changelog**: v0.2.0...v0.3.0"
                             .to_owned(),
-                    },
-                    false,
-                ));
+                });
                 app
             });
         harness.run();
@@ -391,6 +386,18 @@ mod tests {
         let app = harness.state();
         assert!(app.updates.found.is_none());
         assert_eq!(app.settings.skipped_update.as_deref(), Some("v0.3.0"));
+    }
+
+    #[test]
+    fn a_yes_to_the_question_checks_at_once() {
+        let ctx = egui::Context::default();
+        let mut app = app_answering(answer("v99.0.0"));
+        app.enable_automatic_update_check();
+        // As after "Check daily" was clicked in this run.
+        app.updates.asked = true;
+        app.settings.check_for_updates = Some(true);
+        app.show_updates(&ctx);
+        assert!(app.updates.running.is_some());
     }
 
     #[test]
@@ -411,6 +418,14 @@ mod tests {
         assert!(app.settings.update_checked_at.is_some());
         app.updates.running = None;
         app.show_updates(&ctx);
-        assert!(app.updates.running.is_none(), "only once per run");
+        assert!(app.updates.running.is_none(), "not again within the day");
+        // The app stays open for a day: it checks again.
+        app.settings.update_checked_at =
+            Some(update::now_seconds().saturating_sub(update::CHECK_EVERY_SECONDS));
+        app.show_updates(&ctx);
+        assert!(
+            app.updates.running.is_some(),
+            "a day later, while still open"
+        );
     }
 }

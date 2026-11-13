@@ -562,6 +562,19 @@ fn validate(file: &ToneLibraryFile) -> Result<(), String> {
                 entry.name, fixed.program
             ));
         }
+        // A tone of another kind of string than its program's would never be heard (the
+        // app plays a program's tone only on the program's strings).
+        if let Some(expected) = StringKind::for_program(fixed.program)
+            && crate::settings::kind_from_id(&entry.kind) != Some(expected)
+        {
+            return Err(format!(
+                "\"{}\" is for {} strings, but program {} plays {} strings",
+                entry.name,
+                entry.kind,
+                fixed.program,
+                kind_name(expected)
+            ));
+        }
         if entry.family != fixed.family || entry.description != fixed.description {
             return Err(format!(
                 "\"{}\" must keep its fixed family and description",

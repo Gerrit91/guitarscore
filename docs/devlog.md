@@ -4984,3 +4984,19 @@ from a sound's name to one of its tones, filled by the owner:
   both carry the "Clean 1" sound, all eight basses "Clean Bass 1"; the source link is
   kept, so `tones update` refreshes each). "Natural Steel 1" had no program and is gone
   (in git history). The tool writes the file back byte-identical.
+
+## 2026-11-13 — Review fixes (update check, tone names)
+
+- Tones with the same settings (26/27 "Clean 1", every bass "Clean Bass 1") were named by
+  the first match, so every bass track showed "Round Acoustic" and every program 27 track
+  "Warm Jazz". `current_tone_choice` now prefers the track's default tone among equal
+  ones. Still open: choosing a non-default tone with the same settings as the default
+  shows the default (the song keeps a track's tone by its settings, not by name); it goes
+  away once the owner dials in their own sounds.
+- `tones check`/`import`/`update` refuse a tone of another kind of string than its
+  program's (`update` could copy a saved tone whose strings changed, and the tone would
+  never play).
+- Update check: a yes to the first-start question checks at once (it waited for the next
+  start), and an app left open checks again a day later.
+- Not fixed (browser, other session's code): `gscore-worklet` keeps every sound message
+  after the SoundFont loaded, though they are only replayed once.

@@ -111,7 +111,11 @@ impl GuitarScoreApp {
             .track_default_tone_name(track, player.program, kind);
         Some(SoundPanel {
             player,
-            current: current_tone_choice(&tone, &self.settings.string_presets),
+            current: current_tone_choice(
+                &tone,
+                default_tone.as_deref(),
+                &self.settings.string_presets,
+            ),
             default_tone,
             saved: self.settings.string_presets.clone(),
             ports: self.playback.ports().to_vec(),
