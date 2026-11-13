@@ -19,7 +19,7 @@ impl Song {
         effect.validate()?;
         let tracks = self.track_count();
         let string_count = self
-            .track(at.track)
+            .staff(at.track, at.staff)
             .ok_or_else(|| ModelError::Invalid(format!("{at}: the song has {tracks} track(s)")))?
             .string_count();
         if usize::from(string.get()) > string_count {
@@ -29,7 +29,7 @@ impl Song {
         }
         let gp_string = i8::try_from(string.get())
             .map_err(|_| ModelError::Invalid(format!("{at}: {string} is out of range")))?;
-        self.edit_measure(at.track, at.measure, |measure| {
+        self.edit_measure_at(at, |measure| {
             let beat = beat_in(measure, at)?;
             let note = beat
                 .notes
@@ -56,7 +56,7 @@ impl Song {
         effect: BeatEffect,
     ) -> Result<Change, ModelError> {
         effect.validate()?;
-        self.edit_measure(at.track, at.measure, |measure| {
+        self.edit_measure_at(at, |measure| {
             let beat = beat_in(measure, at)?;
             let previous = Box::new(beat.effect.clone());
             effect.apply(beat)?;

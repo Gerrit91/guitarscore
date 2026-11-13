@@ -119,6 +119,7 @@ ctrl++ = zoom_in
 ctrl+- = zoom_out
 ctrl+0 = zoom_reset
 F11 = toggle_fullscreen
+F3 = toggle_mixer
 ";
 
 /// A key that types nothing, bound by name.

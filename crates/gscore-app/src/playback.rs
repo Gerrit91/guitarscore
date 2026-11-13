@@ -2062,6 +2062,7 @@ fn silent_clicks(clicks: &Sequence) -> Arc<Sequence> {
 /// The first beat of the song, for a count-in without a cursor position.
 fn first_beat() -> BeatPosition {
     BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),

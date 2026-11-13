@@ -282,6 +282,7 @@ impl Song {
             .into_iter()
             .filter_map(|(measure, beat)| {
                 let at = BeatPosition {
+                    staff: crate::StaffIndex::new(0),
                     track,
                     measure: MeasureIndex::new(measure),
                     voice: VoiceIndex::new(0),
@@ -401,6 +402,9 @@ pub(crate) fn restore_line(
 }
 
 /// Every beat of `track` with lyric texts (including empty lines), in measure order.
+///
+/// A track's lyrics are written on its first staff only (as Guitar Pro shows them), so
+/// this and the edits above work on the track's own measures.
 fn beat_lyrics(song: &Song, track: TrackIndex) -> Vec<(MeasureIndex, BeatIndex, Vec<String>)> {
     let mut found = Vec::new();
     let Some(view) = song.track(track) else {
@@ -595,6 +599,7 @@ mod tests {
         // The syllables are on the beats for GP6/GP7 too.
         assert_eq!(
             song.beat(BeatPosition {
+                staff: crate::StaffIndex::new(0),
                 track: TrackIndex::new(0),
                 measure: MeasureIndex::new(0),
                 voice: VoiceIndex::new(0),
@@ -661,6 +666,7 @@ mod tests {
         let mut song = crate::interop::from_gp(gp).unwrap();
         assert!(
             song.beat(BeatPosition {
+                staff: crate::StaffIndex::new(0),
                 track: TrackIndex::new(0),
                 measure: MeasureIndex::new(0),
                 voice: VoiceIndex::new(0),
@@ -674,6 +680,7 @@ mod tests {
         song.synchronize_lyrics();
         assert_eq!(
             song.beat(BeatPosition {
+                staff: crate::StaffIndex::new(0),
                 track: TrackIndex::new(0),
                 measure: MeasureIndex::new(0),
                 voice: VoiceIndex::new(0),

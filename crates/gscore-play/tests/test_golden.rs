@@ -155,6 +155,7 @@ fn excerpts_text(song: &Song) -> String {
             for voice in bar.voices() {
                 for beat in 0..voice.beats().count() {
                     let at = BeatPosition {
+                        staff: gscore_model::StaffIndex::new(0),
                         track: TrackIndex::new(track),
                         measure: MeasureIndex::new(measure),
                         voice: voice.index(),
@@ -209,6 +210,7 @@ fn metronome_and_count_in_play_as_their_golden_events() {
     let with_click = Sequence::with_click(&song, None, Some(click)).unwrap();
     dump(&with_click, &mut out);
     let at = BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(2),
         voice: VoiceIndex::new(0),
@@ -225,6 +227,7 @@ fn metronome_and_count_in_play_as_their_golden_events() {
 
 fn at(beat: usize) -> BeatPosition {
     BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),

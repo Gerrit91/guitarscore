@@ -82,6 +82,7 @@ fn the_capo_moves_the_sounding_pitch_and_undo_restores_it() {
         let track = song.track(TrackIndex::new(0)).unwrap();
         let beat = song
             .beat(crate::BeatPosition {
+                staff: crate::StaffIndex::new(0),
                 track: TrackIndex::new(0),
                 measure: crate::MeasureIndex::new(0),
                 voice: crate::VoiceIndex::new(0),
@@ -133,6 +134,7 @@ fn removing_strings_with_notes_on_them_is_refused_but_undo_works() {
     // The same reduction is fine once the notes on the removed strings are gone.
     let cleared = song.clear_note(
         crate::BeatPosition {
+            staff: crate::StaffIndex::new(0),
             track: TrackIndex::new(0),
             measure: crate::MeasureIndex::new(0),
             voice: crate::VoiceIndex::new(0),

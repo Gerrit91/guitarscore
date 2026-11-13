@@ -2,14 +2,16 @@
 //! song, and [`Cursor::clamp`] pulls a cursor back into a song that changed under it.
 
 use gscore_model::{
-    BeatIndex, BeatPosition, MeasureIndex, Song, StringNumber, TrackIndex, VoiceIndex,
+    BeatIndex, BeatPosition, MeasureIndex, Song, StaffIndex, StringNumber, TrackIndex, VoiceIndex,
 };
 
-/// Where the next note goes: one string of one beat.
+/// Where the next note goes: one string of one beat, on one staff of a track.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cursor {
     /// The track.
     pub track: TrackIndex,
+    /// Which staff of the track (0 for most tracks; a keyboard's bass is 1).
+    pub staff: StaffIndex,
     /// The measure.
     pub measure: MeasureIndex,
     /// The voice (voice 1 for now).
@@ -22,10 +24,11 @@ pub struct Cursor {
 }
 
 impl Cursor {
-    /// The first beat of `track`, on its highest string.
+    /// The first beat of `track`, on its first staff's highest string.
     pub fn start(track: TrackIndex) -> Self {
         Cursor {
             track,
+            staff: StaffIndex::new(0),
             measure: MeasureIndex::new(0),
             voice: VoiceIndex::new(0),
             beat: BeatIndex::new(0),
@@ -36,6 +39,7 @@ impl Cursor {
     /// The beat the cursor is on.
     pub fn position(&self) -> BeatPosition {
         BeatPosition {
+            staff: self.staff,
             track: self.track,
             measure: self.measure,
             voice: self.voice,
@@ -59,6 +63,7 @@ impl Cursor {
         if self.measure.get() >= measures {
             self.measure = MeasureIndex::new(measures.saturating_sub(1));
         }
+        self.staff = self.clamped_staff(song);
         let beats = self.beat_count(song);
         if self.beat.get() >= beats {
             self.beat = BeatIndex::new(beats.saturating_sub(1));
@@ -75,17 +80,32 @@ impl Cursor {
                 self.beat = BeatIndex::new(beat);
             }
         }
-        let strings = song
-            .track(self.track)
-            .map_or(1, |t| t.string_count())
-            .max(1);
-        let strings = u8::try_from(strings).unwrap_or(u8::MAX);
+        let strings = self.string_count(song);
         self.string = self.string.clamp(1, strings);
+    }
+
+    /// The track's staff the cursor is on, pulled back into the track when it lost staves.
+    fn clamped_staff(&self, song: &Song) -> StaffIndex {
+        let staves = song
+            .track(self.track)
+            .map_or(1, |track| track.staff_count())
+            .max(1);
+        let index = self.staff.get().min(staves.saturating_sub(1));
+        StaffIndex::new(index)
+    }
+
+    /// How many strings the cursor's staff has (at least one).
+    fn string_count(&self, song: &Song) -> u8 {
+        let strings = song
+            .staff(self.track, self.staff)
+            .map_or(1, |staff| staff.string_count())
+            .max(1);
+        u8::try_from(strings).unwrap_or(u8::MAX)
     }
 
     /// Beats in the cursor's voice of `measure` (0 if the measure or voice is missing).
     pub fn beats_in(&self, song: &Song, measure: MeasureIndex) -> usize {
-        song.track(self.track)
+        song.staff(self.track, self.staff)
             .and_then(|t| t.measure(measure))
             .and_then(|m| m.voice(self.voice))
             .map_or(0, |v| v.beats().len())
@@ -97,7 +117,7 @@ impl Cursor {
 
     /// Whether the beat at `beat` of `measure` in the cursor's voice is a grace-note beat.
     fn is_grace(&self, song: &Song, measure: MeasureIndex, beat: usize) -> bool {
-        song.track(self.track)
+        song.staff(self.track, self.staff)
             .and_then(|track| track.measure(measure))
             .and_then(|measure| measure.voice(self.voice))
             .and_then(|voice| voice.beat(BeatIndex::new(beat)))
@@ -225,24 +245,36 @@ impl Cursor {
         true
     }
 
-    /// One string up (towards string 1); stays on string 1.
-    pub fn up(&mut self) -> bool {
+    /// One string up (towards string 1); from a staff's top string to the lowest string of
+    /// the staff above it (a piano's bass to its treble), else stays.
+    pub fn up(&mut self, song: &Song) -> bool {
         if self.string > 1 {
             self.string = self.string.saturating_sub(1);
-            true
-        } else {
-            false
+            return true;
         }
+        let Some(above) = self.staff.get().checked_sub(1) else {
+            return false;
+        };
+        self.staff = StaffIndex::new(above);
+        self.string = self.string_count(song);
+        true
     }
 
-    /// One string down; stays on the track's lowest string.
+    /// One string down; from a staff's lowest string to the top string of the staff below
+    /// it, else stays.
     pub fn down(&mut self, song: &Song) -> bool {
-        let strings = song.track(self.track).map_or(1, |t| t.string_count());
-        if usize::from(self.string) < strings {
+        if self.string < self.string_count(song) {
             self.string = self.string.saturating_add(1);
-            true
-        } else {
-            false
+            return true;
         }
+        let staves = song
+            .track(self.track)
+            .map_or(1, |track| track.staff_count());
+        let Some(below) = self.staff.get().checked_add(1).filter(|&at| at < staves) else {
+            return false;
+        };
+        self.staff = StaffIndex::new(below);
+        self.string = 1;
+        true
     }
 }

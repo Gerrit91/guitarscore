@@ -233,33 +233,39 @@ impl WriteGpifInGpifStringOrder for Song {
                     gpif_import::SLASH_PROPERTY
                 ));
             }
-            // GuitarScore addition: the capo fret (GP6/GP7 store it as a staff property).
-            xml.push_str(&format!(
-                "<Property name=\"CapoFret\"><Fret>{}</Fret></Property>",
-                track.offset.clamp(0, 127)
+            // GuitarScore addition: the capo fret (GP6/GP7 store it as a staff property),
+            // and the tuning (only a tuning the file had, see `Track::has_tuning`).
+            xml.push_str(&staff_properties(
+                &track.strings,
+                track.has_tuning,
+                track.tuning_label.as_deref(),
+                track.offset,
             ));
-            // GuitarScore: only write a tuning the file had (see `Track::has_tuning`).
-            if track.has_tuning {
-                // GuitarScore fix: GPIF lists pitches from the lowest string up; `strings`
-                // starts at string 1, the highest.
-                let pitches: Vec<String> = track
-                    .strings
-                    .iter()
-                    .rev()
-                    .map(|(_, p)| p.to_string())
-                    .collect();
-                // GuitarScore addition: the tuning's name, if the file gave one.
-                let label = track
-                    .tuning_label
-                    .as_deref()
-                    .map(|l| format!("<Label>{}</Label>", escape_xml(l)))
-                    .unwrap_or_default();
-                xml.push_str(&format!(
-                    "<Property name=\"Tuning\"><Pitches>{}</Pitches>{label}</Property>",
-                    pitches.join(" ")
-                ));
-            }
             xml.push_str("</Properties>");
+            // GuitarScore addition: a track with several staves (a piano's treble and bass)
+            // lists each with its own capo and tuning; a one-staff track is written as
+            // before, its staff's properties on the track.
+            if !track.staves.is_empty() {
+                xml.push_str("<Staves><Staff><Properties>");
+                xml.push_str(&staff_properties(
+                    &track.strings,
+                    track.has_tuning,
+                    track.tuning_label.as_deref(),
+                    track.offset,
+                ));
+                xml.push_str("</Properties></Staff>");
+                for staff in &track.staves {
+                    xml.push_str("<Staff><Properties>");
+                    xml.push_str(&staff_properties(
+                        &staff.strings,
+                        staff.has_tuning,
+                        staff.tuning_label.as_deref(),
+                        staff.offset,
+                    ));
+                    xml.push_str("</Properties></Staff>");
+                }
+                xml.push_str("</Staves>");
+            }
             // The track's sound: GP7 reads the program from `GeneralMidi` here and the
             // mixer from the RSE channel strip; GP3-5 keep both in the song's channel
             // table, so fall back to the channel (a save from those formats would
@@ -360,83 +366,107 @@ impl WriteGpifInGpifStringOrder for Song {
         let mut next_note_id: i32 = 0;
         let mut next_rhythm_id: i32 = 0;
 
-        // bar_id = t_idx * num_measures + m_idx
+        // A master bar lists one bar per staff, each track's staves in turn: the bar of
+        // staff `s` of track `t` in measure `m` is number `(first_staff[t] + s) * measures + m`.
+        let first_staff: Vec<usize> = self
+            .tracks
+            .iter()
+            .scan(0_usize, |next, track| {
+                let at = *next;
+                *next = next.saturating_add(track.staves.len().saturating_add(1));
+                Some(at)
+            })
+            .collect();
         for (t_idx, track) in self.tracks.iter().enumerate() {
-            // Velocity persists across all measures/voices for a given track
-            let mut prev_velocity: i16 = FORTE;
+            let first = first_staff.get(t_idx).copied().unwrap_or(0);
+            let staves = std::iter::once(&track.measures)
+                .chain(track.staves.iter().map(|staff| &staff.measures));
+            for (s_idx, measures) in staves.enumerate() {
+                // Velocity persists across all measures/voices of a staff
+                let mut prev_velocity: i16 = FORTE;
 
-            for m_idx in 0..num_measures {
-                let bar_id = bar_id(t_idx, num_measures, m_idx)?;
-                let measure = track.measures.get(m_idx).ok_or_else(|| {
-                    GpError::FormatError(format!(
-                        "track {} has fewer measures than the song ({num_measures})",
-                        t_idx.saturating_add(1)
-                    ))
-                })?;
-                let mut voice_ids: Vec<String> = Vec::new();
+                for m_idx in 0..num_measures {
+                    let bar_id = bar_id(first.saturating_add(s_idx), num_measures, m_idx)?;
+                    let measure = measures.get(m_idx).ok_or_else(|| {
+                        GpError::FormatError(format!(
+                            "track {} has fewer measures than the song ({num_measures})",
+                            t_idx.saturating_add(1)
+                        ))
+                    })?;
+                    let mut voice_ids: Vec<String> = Vec::new();
 
-                for voice in &measure.voices {
-                    // GuitarScore fix: a voice holding only placeholder beats (as GP3-5 store
-                    // unused voices) is empty; writing the placeholders made them real beats.
-                    if voice.beats.iter().all(|b| b.status == BeatStatus::Empty) {
-                        voice_ids.push("-1".to_string());
-                        continue;
+                    for voice in &measure.voices {
+                        // GuitarScore fix: a voice holding only placeholder beats (as GP3-5
+                        // store unused voices) is empty; writing the placeholders made them
+                        // real beats.
+                        if voice.beats.iter().all(|b| b.status == BeatStatus::Empty) {
+                            voice_ids.push("-1".to_string());
+                            continue;
+                        }
+
+                        let voice_id = next_id(&mut next_voice_id)?;
+                        let mut beat_ids: Vec<i32> = Vec::new();
+
+                        for beat in voice.beats.iter().filter(|b| b.status != BeatStatus::Empty) {
+                            let beat_id = next_id(&mut next_beat_id)?;
+                            let rhythm_id = next_id(&mut next_rhythm_id)?;
+                            beat_ids.push(beat_id);
+                            let chord_id = beat
+                                .chord_diagram
+                                .as_ref()
+                                .and_then(|chord| {
+                                    track_diagrams
+                                        .get(t_idx)?
+                                        .iter()
+                                        .position(|candidate| candidate == chord)
+                                })
+                                .and_then(|index| i32::try_from(index).ok());
+
+                            let export = build_beat_xml(
+                                beat,
+                                beat_id,
+                                rhythm_id,
+                                chord_id,
+                                &mut next_note_id,
+                                &mut prev_velocity,
+                            )?;
+                            beats_xml.push(export.beat_xml);
+                            rhythms_xml.push(export.rhythm_xml);
+                            notes_xml.extend(export.note_xmls);
+                        }
+
+                        let beat_ids_str: Vec<String> =
+                            beat_ids.iter().map(|id| id.to_string()).collect();
+                        voices_xml.push(format!(
+                            "<Voice id=\"{voice_id}\"><Beats>{}</Beats></Voice>",
+                            beat_ids_str.join(" ")
+                        ));
+                        voice_ids.push(voice_id.to_string());
                     }
 
-                    let voice_id = next_id(&mut next_voice_id)?;
-                    let mut beat_ids: Vec<i32> = Vec::new();
-
-                    for beat in voice.beats.iter().filter(|b| b.status != BeatStatus::Empty) {
-                        let beat_id = next_id(&mut next_beat_id)?;
-                        let rhythm_id = next_id(&mut next_rhythm_id)?;
-                        beat_ids.push(beat_id);
-                        let chord_id = beat
-                            .chord_diagram
-                            .as_ref()
-                            .and_then(|chord| {
-                                track_diagrams
-                                    .get(t_idx)?
-                                    .iter()
-                                    .position(|candidate| candidate == chord)
-                            })
-                            .and_then(|index| i32::try_from(index).ok());
-
-                        let export = build_beat_xml(
-                            beat,
-                            beat_id,
-                            rhythm_id,
-                            chord_id,
-                            &mut next_note_id,
-                            &mut prev_velocity,
-                        )?;
-                        beats_xml.push(export.beat_xml);
-                        rhythms_xml.push(export.rhythm_xml);
-                        notes_xml.extend(export.note_xmls);
-                    }
-
-                    let beat_ids_str: Vec<String> =
-                        beat_ids.iter().map(|id| id.to_string()).collect();
-                    voices_xml.push(format!(
-                        "<Voice id=\"{voice_id}\"><Beats>{}</Beats></Voice>",
-                        beat_ids_str.join(" ")
+                    // GuitarScore fix: a drum staff has the neutral (percussion) clef, as
+                    // Guitar Pro writes it; it was written as a treble clef.
+                    let clef = match measure.clef {
+                        _ if track.percussion_track => "Neutral",
+                        MeasureClef::Bass => "F4",
+                        MeasureClef::Alto => "C4",
+                        MeasureClef::Tenor => "C3",
+                        MeasureClef::Treble => "G2",
+                    };
+                    bars.push((
+                        bar_id,
+                        voice_ids.join(" "),
+                        measure.simile_mark.clone(),
+                        clef,
                     ));
-                    voice_ids.push(voice_id.to_string());
                 }
-
-                let clef = match measure.clef {
-                    MeasureClef::Bass => "F4",
-                    MeasureClef::Alto => "C4",
-                    MeasureClef::Tenor => "C3",
-                    MeasureClef::Treble => "G2",
-                };
-                bars.push((
-                    bar_id,
-                    voice_ids.join(" "),
-                    measure.simile_mark.clone(),
-                    clef,
-                ));
             }
         }
+        let staff_count = self
+            .tracks
+            .iter()
+            .map(|track| track.staves.len().saturating_add(1))
+            .sum::<usize>();
 
         // MasterBars
         xml.push_str("<MasterBars>");
@@ -455,8 +485,8 @@ impl WriteGpifInGpifStringOrder for Song {
                 "<Key><AccidentalCount>{}</AccidentalCount><Mode>{mode}</Mode></Key>",
                 mh.key_signature.key
             ));
-            let bar_ids = (0..self.tracks.len())
-                .map(|t| bar_id(t, num_measures, m_idx).map(|id| id.to_string()))
+            let bar_ids = (0..staff_count)
+                .map(|staff| bar_id(staff, num_measures, m_idx).map(|id| id.to_string()))
                 .collect::<GpResult<Vec<String>>>()?;
             xml.push_str(&format!("<Bars>{}</Bars>", bar_ids.join(" ")));
 
@@ -567,7 +597,7 @@ impl WriteGpifInGpifStringOrder for Song {
 /// The chord diagrams of a track's beats, each once, in beat order.
 fn collect_diagrams(track: &Track) -> Vec<ChordDiagram> {
     let mut diagrams: Vec<ChordDiagram> = Vec::new();
-    for measure in &track.measures {
+    for measure in track.all_measures() {
         for voice in &measure.voices {
             for beat in &voice.beats {
                 let Some(chord) = &beat.chord_diagram else {
@@ -626,4 +656,31 @@ fn systems_layout(measures: &[Measure]) -> Option<String> {
         from = start;
     }
     Some(counts.join(" "))
+}
+
+/// A staff's capo and tuning as GPIF properties (the tuning only when the file had one).
+fn staff_properties(
+    strings: &[(i8, i8)],
+    has_tuning: bool,
+    label: Option<&str>,
+    capo: i32,
+) -> String {
+    let mut xml = format!(
+        "<Property name=\"CapoFret\"><Fret>{}</Fret></Property>",
+        capo.clamp(0, 127)
+    );
+    if has_tuning {
+        // GuitarScore fix: GPIF lists pitches from the lowest string up; `strings` starts
+        // at string 1, the highest.
+        let pitches: Vec<String> = strings.iter().rev().map(|(_, p)| p.to_string()).collect();
+        // GuitarScore addition: the tuning's name, if the file gave one.
+        let label = label
+            .map(|l| format!("<Label>{}</Label>", escape_xml(l)))
+            .unwrap_or_default();
+        xml.push_str(&format!(
+            "<Property name=\"Tuning\"><Pitches>{}</Pitches>{label}</Property>",
+            pitches.join(" ")
+        ));
+    }
+    xml
 }

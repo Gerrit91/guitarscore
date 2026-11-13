@@ -52,6 +52,9 @@ struct TrackPanel {
     /// Whether the notes have pitches to write as standard notation (also a voice's).
     has_pitches: bool,
     tuning_name: Option<String>,
+    /// Each staff's tuning, for a track with several staves (a piano's treble and bass):
+    /// its name, or its notes, with the staff's number. Empty for one-staff tracks.
+    staff_tunings: Vec<(usize, String)>,
     capo: u8,
     string_count: usize,
     percussion: bool,
@@ -69,6 +72,14 @@ impl TrackPanel {
             tuning: track.tuning().ok().flatten().unwrap_or_default(),
             has_pitches: track.note_tuning().ok().flatten().is_some(),
             tuning_name: track.tuning_name().ok().flatten(),
+            staff_tunings: if track.staff_count() > 1 {
+                track
+                    .all_staves()
+                    .filter_map(|staff| Some((staff.index().get(), staff_tuning(&staff)?)))
+                    .collect()
+            } else {
+                Vec::new()
+            },
             capo: track.capo().unwrap_or(0),
             string_count: track.string_count(),
             percussion: track.is_percussion(),
@@ -76,6 +87,20 @@ impl TrackPanel {
             instrument: instrument::derived(track, song.track_sound(track.index())),
         }
     }
+}
+
+/// A staff's tuning, from its lowest string up: its name ("E standard") or its notes
+/// ("E2 A2 D3 G3 B3 E4"); `None` for a staff without a tuning (drums).
+fn staff_tuning(staff: &gscore_model::StaffView<'_>) -> Option<String> {
+    let strings = staff.note_tuning().ok().flatten()?;
+    let notes: Vec<&str> = strings.iter().rev().map(|s| s.pitch.note_name()).collect();
+    let name = staff
+        .view()
+        .tuning_name()
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| notes.join(" "));
+    Some(name)
 }
 
 impl GuitarScoreApp {
@@ -116,6 +141,15 @@ impl GuitarScoreApp {
                 style::section(ui, "track_instrument", "Instrument", |ui| {
                     instrument(ui, index, &snapshot, &mut commands);
                     tuning::button(ui, &snapshot, &mut open_tuning);
+                    // A track with several staves (a piano's treble and bass) has a tuning
+                    // per staff.
+                    for (staff, tuning) in &snapshot.staff_tunings {
+                        ui.label(
+                            RichText::new(format!("Staff {}: {tuning}", staff.saturating_add(1)))
+                                .small()
+                                .weak(),
+                        );
+                    }
                 });
                 style::section(ui, "track_look", "Appearance", |ui| {
                     look::staves(ui, index, &snapshot, &mut commands);

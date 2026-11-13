@@ -231,6 +231,8 @@ pub enum ActionId {
     ZoomReset,
     /// Switch the window to full screen and back.
     ToggleFullscreen,
+    /// Show the mixer in the bottom panel instead of the measure grid, and back.
+    ToggleMixer,
     /// Show every track of the song together, or only the cursor's track again.
     ToggleMultitrack,
     /// Open the edit history window.
@@ -629,6 +631,7 @@ pub const ACTIONS: &[ActionInfo] = &[
         "toggle_fullscreen",
         "Full screen",
     ),
+    info(ActionId::ToggleMixer, "toggle_mixer", "Mixer"),
     info(
         ActionId::ToggleMultitrack,
         "toggle_multitrack",
@@ -715,6 +718,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 116, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 117, "one entry per ActionId variant");
     }
 }

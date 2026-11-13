@@ -2,7 +2,8 @@
 //! batch.
 
 use gscore_model::{
-    BeatEffect, BeatIndex, BeatPosition, MeasureIndex, NoteEffect, Song, TrackIndex, VoiceIndex,
+    BeatEffect, BeatIndex, BeatPosition, MeasureIndex, NoteEffect, Song, StaffIndex, TrackIndex,
+    VoiceIndex,
 };
 
 use super::BeatSpot;
@@ -137,7 +138,7 @@ pub(super) fn paste_beats(
         let measure = MeasureIndex::new(at.measure.get().saturating_add(offset));
         let first = if offset == 0 { at.beat.get() } else { 0 };
         let mut existing = song
-            .track(at.track)
+            .staff(at.track, at.staff)
             .and_then(|track| track.measure(measure))
             .and_then(|measure| measure.voice(at.voice))
             .map_or(0, |voice| voice.beats().len());
@@ -176,9 +177,9 @@ const MAX_VOICES: usize = 4;
 pub(super) fn paste_measures(
     song: &Song,
     start: MeasureIndex,
-    tracks: &[(TrackIndex, Vec<MeasureClip>)],
+    staves: &[(TrackIndex, StaffIndex, Vec<MeasureClip>)],
 ) -> Result<Vec<Command>, EditError> {
-    let count = tracks.first().map_or(0, |(_, measures)| measures.len());
+    let count = staves.first().map_or(0, |(_, _, measures)| measures.len());
     if count == 0 {
         return Err(EditError::NothingToPaste);
     }
@@ -189,11 +190,11 @@ pub(super) fn paste_measures(
         ));
     }
     let mut commands = Vec::new();
-    // The header data is the same in every track's copy: take the first track's.
-    for (offset, clip) in tracks
+    // The header data is the same in every track's and staff's copy: take the first's.
+    for (offset, clip) in staves
         .first()
         .into_iter()
-        .flat_map(|(_, measures)| measures)
+        .flat_map(|(_, _, measures)| measures)
         .enumerate()
     {
         let measure = MeasureIndex::new(start.get().saturating_add(offset));
@@ -214,13 +215,13 @@ pub(super) fn paste_measures(
             None => commands.push(Command::ClearSection { measure }),
         }
     }
-    for (track_at, measures) in tracks {
-        let Some(track) = song.track(*track_at) else {
+    for (track_at, staff_at, measures) in staves {
+        let Some(staff) = song.staff(*track_at, *staff_at) else {
             continue;
         };
         for (offset, clip) in measures.iter().enumerate() {
             let measure = MeasureIndex::new(start.get().saturating_add(offset));
-            let Some(target) = track.measure(measure) else {
+            let Some(target) = staff.measure(measure) else {
                 continue;
             };
             let mut voices_now = target.voices().len();
@@ -230,6 +231,7 @@ pub(super) fn paste_measures(
                 let beats = clip.voices.get(voice_index).map_or(&[][..], Vec::as_slice);
                 let position = |beat: usize| BeatPosition {
                     track: *track_at,
+                    staff: *staff_at,
                     measure,
                     voice,
                     beat: BeatIndex::new(beat),

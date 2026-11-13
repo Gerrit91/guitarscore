@@ -305,3 +305,23 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     the name or the color. `gscore-model` exposes it through `TrackView::sound_state` and
     `Song::set_track_sound_state`; a new track starts without one. Test:
     `edit::tests::a_tracks_sound_state_follows_insert_delete_duplicate_and_move`.
+45. A track's staves after the first (`src/model/track.rs` `Track::staves` and `Staff`,
+    `src/io/gpif_import/staves.rs`, `src/io/gpif_export/mod.rs`, 2026-11-13). GPIF lists
+    one bar per staff in each master bar; the reader kept only each track's first staff,
+    and saving dropped the others (a piano's or synth's bass staff: 426 and 61 notes of
+    the owner's `DrDr.gp`). Every staff's bars are read now, a further staff with its own
+    tuning, tuning name and capo; the writer writes `<Staves>` (one `<Staff>` with capo and
+    tuning per staff) and a bar per staff for tracks with more than one, and one-staff
+    tracks exactly as before. The first staff stays on the track itself (`measures`,
+    `strings`, `offset`), as GP3-5 have one staff only; `Track::all_measures`,
+    `measure_lists` and `staves_mut` walk every staff, and the string flip, trill and
+    grace passes use them. GP3-5 writers write the first staff only (the save check
+    reports the rest). Tests: `gpif_import/staves_tests.rs`.
+46. GP6 drum notes (`src/io/gpif_import/gp6_drums.rs`, 2026-11-13): GP6 stores a kit
+    element and a variation instead of a fret; they were read as fret 0 (silent). They
+    become GP7's articulation number, on the string GP7 gives that kind of drum, checked
+    against `multi_staff.gpx` and its GP7 twin. Writing GPX still writes GP7-style drum
+    notes (fret and string).
+47. Drum staves are written with the `Neutral` clef (`src/io/gpif_export/mod.rs`,
+    2026-11-13); they were written as treble (`G2`).
+

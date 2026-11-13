@@ -13,6 +13,7 @@ use gscore_model::{Fret, MeasureIndex, Song, StringNumber, TrackIndex, TrackStav
 fn song_with(staves: TrackStaves) -> Song {
     let mut song = testing::song(&[GUITAR_6], 2).unwrap();
     let at = gscore_model::BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: gscore_model::VoiceIndex::new(0),
@@ -74,6 +75,7 @@ fn each_choice_shows_its_staves() {
 fn slash_notation_shows_a_tie_within_the_measure() {
     let mut song = testing::song(&[GUITAR_6], 1).unwrap();
     let at = |beat| gscore_model::BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: gscore_model::VoiceIndex::new(0),
@@ -103,6 +105,7 @@ fn slash_notation_shows_a_tie_within_the_measure() {
 fn slash_notation_shows_a_tie_across_a_barline() {
     let mut song = testing::song(&[GUITAR_6], 2).unwrap();
     let at = |measure, beat| gscore_model::BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(measure),
         voice: gscore_model::VoiceIndex::new(0),

@@ -13,6 +13,7 @@ use crate::*;
 
 fn at(beat: usize) -> BeatPosition {
     BeatPosition {
+        staff: StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),
@@ -481,6 +482,7 @@ fn measure_stamps_change_only_for_the_edited_measure() {
 
     // A note in measure 2 of the bass: only measure 2's stamp changes.
     let at = BeatPosition {
+        staff: StaffIndex::new(0),
         track: TrackIndex::new(1),
         measure: MeasureIndex::new(1),
         voice: VoiceIndex::new(0),

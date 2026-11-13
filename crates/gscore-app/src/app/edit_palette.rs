@@ -634,6 +634,7 @@ impl GuitarScoreApp {
         let selection = document.editor().selection()?;
         if let Selection::Measures { track, .. } = selection {
             return Some(BeatPosition {
+                staff: gscore_model::StaffIndex::new(0),
                 track: track.unwrap_or(cursor.track),
                 measure: selection.first_measure(),
                 voice: VoiceIndex::new(0),

@@ -385,6 +385,7 @@ mod tests {
     fn the_song_follows_its_count_in_without_a_gap() {
         let song = testing::song(&[GUITAR_6], 3).unwrap();
         let at = |measure: usize| BeatPosition {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(0),
             measure: MeasureIndex::new(measure),
             voice: VoiceIndex::new(0),
@@ -430,6 +431,7 @@ mod tests {
     fn the_count_in_is_one_bar_at_the_songs_tempo() {
         let song = testing::song(&[GUITAR_6], 1).unwrap();
         let at = BeatPosition {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(0),
             measure: MeasureIndex::new(0),
             voice: VoiceIndex::new(0),

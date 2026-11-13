@@ -302,6 +302,7 @@ fn beat_in_middle(song: &Song, track: TrackIndex) -> Option<BeatPosition> {
             let voice = view.measure(measure)?.voice(VoiceIndex::new(0))?;
             let beat = voice.beats().find(|b| b.kind() != BeatKind::Empty)?;
             Some(BeatPosition {
+                staff: gscore_model::StaffIndex::new(0),
                 track,
                 measure,
                 voice: VoiceIndex::new(0),

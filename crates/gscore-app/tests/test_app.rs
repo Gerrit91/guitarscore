@@ -1688,6 +1688,7 @@ fn copy_and_delete_act_on_a_one_track_grid_selection() {
     let notes = |harness: &Harness<'static, GuitarScoreApp>, track: usize, measure: usize| {
         let document = harness.state().document().unwrap();
         let at = gscore_model::BeatPosition {
+            staff: gscore_model::StaffIndex::new(0),
             track: gscore_model::TrackIndex::new(track),
             measure: gscore_model::MeasureIndex::new(measure),
             voice: gscore_model::VoiceIndex::new(0),
@@ -2122,6 +2123,7 @@ fn an_interrupted_count_in_starts_again_where_the_cursor_is_now() {
     // A click on the score while the song plays counts in again, then plays from there.
     let song = harness.state().document().unwrap().song().clone();
     let at = gscore_model::BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: gscore_model::TrackIndex::new(0),
         measure: gscore_model::MeasureIndex::new(3),
         voice: gscore_model::VoiceIndex::new(0),
@@ -2445,6 +2447,7 @@ fn a_looped_note_selection_starts_at_its_first_bar() {
     document
         .editor_mut()
         .set_selection(Some(gscore_edit::Selection::Beats {
+            staff: gscore_model::StaffIndex::new(0),
             track: gscore_model::TrackIndex::new(0),
             voice: gscore_model::VoiceIndex::new(0),
             anchor: spot(2),
@@ -2657,6 +2660,7 @@ fn the_loop_button_works_without_a_selection() {
         .unwrap()
         .editor_mut()
         .set_selection(Some(gscore_edit::Selection::Beats {
+            staff: gscore_model::StaffIndex::new(0),
             track: gscore_model::TrackIndex::new(0),
             voice: gscore_model::VoiceIndex::new(0),
             anchor: gscore_edit::BeatSpot {

@@ -400,10 +400,12 @@ pub(super) fn renumber(song: &mut GpSong) -> Result<(), ModelError> {
     for (index, track) in song.tracks.iter_mut().enumerate() {
         track.number = i32::try_from(index.saturating_add(1))
             .map_err(|_| ModelError::Invalid("too many tracks".to_owned()))?;
-        for (measure_index, measure) in track.measures.iter_mut().enumerate() {
-            measure.track_index = index;
-            measure.header_index = measure_index;
-            measure.number = measure_index.saturating_add(1);
+        for list in track.measure_lists_mut() {
+            for (measure_index, measure) in list.iter_mut().enumerate() {
+                measure.track_index = index;
+                measure.header_index = measure_index;
+                measure.number = measure_index.saturating_add(1);
+            }
         }
     }
     Ok(())

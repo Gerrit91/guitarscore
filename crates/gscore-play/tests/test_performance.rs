@@ -23,6 +23,7 @@ use gscore_play::{
 
 fn at(beat: usize) -> BeatPosition {
     BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),

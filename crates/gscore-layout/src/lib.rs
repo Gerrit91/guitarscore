@@ -44,7 +44,7 @@ mod theme;
 
 use std::sync::Arc;
 
-use gscore_model::{MeasureView, Song, TrackIndex};
+use gscore_model::{MeasureView, Song, StaffIndex, TrackIndex};
 
 // The golden tests open the owner's files with `gscore-io`; this marks the test-only
 // dependency for the library test target's unused-dependency check.
@@ -114,26 +114,33 @@ pub struct Layout {
     pub tracks: Vec<TrackPlaces>,
 }
 
-/// Where one track's systems, measures and beats are.
+/// Where one staff's systems, measures and beats are.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TrackPlaces {
     /// The track.
     pub track: TrackIndex,
+    /// Which staff of it (0 is the track's own; a keyboard's treble).
+    pub staff: StaffIndex,
     /// Its places.
     pub places: Places,
 }
 
 impl Layout {
-    /// The places of `track`, if it is shown.
+    /// The places of `track`'s first staff, if it is shown.
     pub fn places_of(&self, track: TrackIndex) -> Option<&Places> {
+        self.staff_places(track, StaffIndex::new(0))
+    }
+
+    /// The places of `staff` of `track`, if it is shown.
+    pub fn staff_places(&self, track: TrackIndex, staff: StaffIndex) -> Option<&Places> {
         self.tracks
             .iter()
-            .find(|t| t.track == track)
+            .find(|t| t.track == track && t.staff == staff)
             .map(|t| &t.places)
     }
 
     /// The track and the beat and string under `point`: on the staves the point is on, or
-    /// else the nearest track's whose system it is near.
+    /// else the nearest staff's whose system it is near.
     pub fn hit(&self, point: Point) -> Option<(TrackIndex, Hit)> {
         self.hit_where(point, |places| places.hit(point))
     }
@@ -141,7 +148,18 @@ impl Layout {
     /// Like [`Layout::hit`], but within `track` only and among beats of `voice` (a drag
     /// that selects beats).
     pub fn hit_in_voice(&self, point: Point, track: TrackIndex, voice: VoiceIndex) -> Option<Hit> {
-        self.places_of(track)?.hit_in_voice(point, voice)
+        self.hit_in_voice_on(point, track, StaffIndex::new(0), voice)
+    }
+
+    /// Like [`Layout::hit_in_voice`], on `staff` of `track`.
+    pub fn hit_in_voice_on(
+        &self,
+        point: Point,
+        track: TrackIndex,
+        staff: StaffIndex,
+        voice: VoiceIndex,
+    ) -> Option<Hit> {
+        self.staff_places(track, staff)?.hit_in_voice(point, voice)
     }
 
     fn hit_where(
@@ -198,7 +216,7 @@ pub fn layout_tracks(
         primary,
         options,
         fonts,
-        &mut |_, measure, show, free_time, key, prev, clef, previous_clef, ctx| {
+        &mut |_, _, measure, show, free_time, key, prev, clef, previous_clef, ctx| {
             MeasureLayout::new(
                 measure,
                 show,
@@ -219,10 +237,11 @@ pub fn layout_tracks(
 /// tracks: [`measure::align`], or a cache of it.
 type AlignSource<'s> = dyn FnMut(usize, &[Arc<MeasureLayout>]) -> Vec<Arc<MeasureLayout>> + 's;
 
-/// Lays out one measure: its track, the measure, whether it shows its time signature, its
-/// key, the key before it, and the context.
+/// Lays out one measure: its track, its staff, the measure, whether it shows its time
+/// signature, its key, the key before it, and the context.
 type MeasureSource<'s> = dyn FnMut(
         TrackIndex,
+        StaffIndex,
         MeasureView<'_>,
         bool,
         bool,

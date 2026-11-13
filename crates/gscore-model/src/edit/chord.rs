@@ -22,7 +22,7 @@ impl Song {
             .ok_or_else(|| ModelError::Invalid(format!("{at}: no such beat")))?
             .chord_diagram();
         let diagram = diagram.map(ChordDiagram::to_gp);
-        self.edit_measure(at.track, at.measure, move |measure| {
+        self.edit_measure_at(at, move |measure| {
             beat_in(measure, at)?.chord_diagram = diagram.clone();
             Ok(Change::chord_diagram(at, previous))
         })
@@ -57,6 +57,7 @@ mod tests {
 
     fn at(beat: usize) -> BeatPosition {
         BeatPosition {
+            staff: crate::StaffIndex::new(0),
             track: TrackIndex::new(0),
             measure: MeasureIndex::new(0),
             voice: VoiceIndex::new(0),

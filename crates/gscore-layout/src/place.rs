@@ -2,7 +2,7 @@
 //! draw the edit cursor and to find the beat and string under a mouse click, without
 //! looking into the draw operations.
 
-use gscore_model::{BeatIndex, MeasureIndex, VoiceIndex};
+use gscore_model::{BeatIndex, MeasureIndex, StaffIndex, VoiceIndex};
 
 use crate::draw::{Point, Rect};
 
@@ -76,15 +76,29 @@ pub struct Hit {
     pub beat: BeatIndex,
     /// The string, 1 = highest.
     pub string: u8,
+    /// Which staff of the track the point was on (0 for most tracks).
+    pub staff: StaffIndex,
 }
 
-/// Where the systems, measures and beats of a page are.
-#[derive(Debug, Clone, Default, PartialEq)]
+/// Where the systems, measures and beats of one staff are.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Places {
+    /// The track's staff these places are of.
+    pub staff: StaffIndex,
     /// The systems, top to bottom.
     pub systems: Vec<SystemPlace>,
     /// The measures, in order.
     pub measures: Vec<MeasurePlace>,
+}
+
+impl Default for Places {
+    fn default() -> Self {
+        Places {
+            staff: StaffIndex::new(0),
+            systems: Vec::new(),
+            measures: Vec::new(),
+        }
+    }
 }
 
 impl Places {
@@ -271,6 +285,7 @@ impl Places {
             voice,
             beat,
             string: line.saturating_add(1),
+            staff: self.staff,
         })
     }
 }

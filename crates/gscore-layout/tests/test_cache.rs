@@ -21,6 +21,7 @@ use gscore_model::{
 
 fn first_beat(song: &Song, measure: usize) -> BeatPosition {
     BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(0),

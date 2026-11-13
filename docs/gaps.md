@@ -1,7 +1,8 @@
 # Known Gaps
 
 Known shortfalls of the current state, most important first. Rewritten 2026-11-06 after
-the v0.1.0 release, sound section updated 2026-11-13 for v0.2.0; the history behind each item is in `docs/devlog.md`. Planned work is
+the v0.1.0 release, sound section updated 2026-11-13 for v0.2.0 (items 2, 4, the
+benchmark and the browser's crashes and updates again later that day); the history behind each item is in `docs/devlog.md`. Planned work is
 in AGENTS.md section 9.
 
 ## Sound and playback
@@ -23,15 +24,22 @@ in AGENTS.md section 9.
      Acoustic, Classical); a room or a cabinet from a WAV file is stored by its path on
      this machine and skipped on another.
    - A bass ignores a tone the song carries and always plays its program's tone.
-   - The strings benchmark (`cargo xtask bench`, 16 tracks × 6 strings ringing) is over its
-     250 ms budget for a second of audio; CI does not run it.
+   - `cargo xtask bench` times the strings (16 tracks × 6 strings ringing, with vibrato:
+     about 231 ms of its 250 ms budget for a second of audio) and the whole engine (15
+     modelled tracks through compressor, amp, cabinet and EQ, the three buses, a drum
+     track with six part chains and a master chain: about 403 ms of 500), both on the
+     owner's machine (2026-11-13). CI does not run it. The amp (4× oversampled, about a
+     third of the engine's chain time) is the next thing to make cheaper; a computed
+     reverb on every track adds about 14 ms each.
    - The browser build has its own list of gaps below ("Browser build").
-2. **Pitched tracks without strings are read as string and fret.** GP7 stores the real
-   pitch of a voice, synth, piano or strings note (`Midi`, `ConcertPitch`) and only
-   leftover string and fret values against a guitar tuning, often negative. We read the
-   string and fret: notes below that tuning's lowest string show as "?" and are silent
-   (8 of the owner's 59 files leave 18-116 notes out), and such tracks get no notation
-   staff (no tuning), only a tab. Guitar Pro shows them as standard notation only.
+2. **Pitched tracks without strings are kept as string and fret.** GP7 stores a voice's,
+   synth's or piano's note as its pitch (`Midi`, `ConcertPitch`) and as a string and fret
+   on a stand-in guitar tuning, the fret often negative. We keep the string and fret, which
+   give the same pitch (checked on all 26 band files, 2026-11-13: every first-staff note
+   agrees with its `Midi`): such tracks play every note and show standard notation only,
+   as Guitar Pro does (fixed 2026-11-06; this entry was older). Still open: notes are
+   entered on those stand-in strings (a voice track's tab, if switched on, shows a fret
+   below the lowest string as "?").
 3. **Playback controls.** Fermatas and D.C./D.S./coda are played now, and a speed
    dropdown (25-150 %, any value typed) with a speed trainer, WAV export and count-in navigation are in
    place. Audio export renders the modelled tracks, their chains and the buses as playback
@@ -44,16 +52,24 @@ in AGENTS.md section 9.
    own sound for the metronome (GM keys 33/34), which a GM1-only synth may not have.
    A per-track MIDI-out route lives in the open tab, not in the song, and the hardware's
    audio never returns: its strip shows note activity, and its chain and bus sends do not
-   apply (volume, pan, program and reverb/chorus CCs are sent to the device). The master
-   chain has no limiter block yet, so an over-loud mix is still hard-clipped to -1..1; the
-   kit's built-in part tones are empty until the owner designs them (2026-11-07). Every
-   drum part's chain still runs every block, even in silence (the proposed skip is open).
+   apply (volume, pan, program and reverb/chorus CCs are sent to the device). An over-loud
+   mix is held at -0.5 dBFS by a safety limiter at the very end (instant, held 10 ms,
+   released over 150 ms; it never touches a mix below that, 2026-11-13); the master strip's
+   meter shows the overs, nothing shows how far the limiter works, and there is no limiter
+   block to put in a chain yet. The kit's built-in part tones are empty until the owner
+   designs them (2026-11-07).
 
 ## Files
 
-5. **Second staves are not read.** A GP7 track with two staves (a piano's or synth's
-   treble and bass) keeps its first staff only. The tracks after it read their own bars
-   (fixed 2026-11-05; bars are listed per staff, not per track).
+5. **Second staves are drawn and edited** since 2026-11-13 (read and played since
+   2026-11-13). A GP6/GP7 track with two staves (a piano's or synth's treble and bass)
+   stacks them in the score, one row per staff, in their own clefs, joined by a brace and
+   one barline and named once; each is notation only, as Guitar Pro writes a keyboard.
+   Positions, the cursor (Up/Down cross from one staff to the next), clicks, undo, the
+   recovery journal (`staff=`), copy/paste and issues all address a staff. Still open: the
+   tuning dialog edits the first staff only (the panel lists every staff's tuning);
+   MusicXML with second staves; `gscore-cli dump` and the lyrics editor show the first
+   staff only. GP3-5 exports leave further staves out and say so.
 6. **Lyrics and fingerings** can be shown and edited: five lyric lines under the tab, per
    syllable on the beats, and left/right-hand fingerings in the notation. Chord diagrams
    can be created, shown in the score, edited and removed. Still open: lyric editing is
@@ -64,9 +80,10 @@ in AGENTS.md section 9.
    tuplets), artificial-harmonic frets, GuitarScore's brush and arpeggio timing (kept in
    GP7 properties only), fermatas and more. Saving (as opposed to exporting) is GP7 only.
    Whether Guitar Pro opens every file we write is checked by hand, not by a test.
-8. **GP6 instruments and drums.** GP6 stores only an instrument id, so its tracks count
-   as string instruments unless they are percussion; GP6 drum notes (element and
-   variation) are not read, so `multi_staff.gpx`'s drums are silent.
+8. **GP6 instruments.** GP6 stores only an instrument id, so its tracks count as string
+   instruments unless they are percussion. GP6 drum notes (kit element and variation)
+   are read since 2026-11-13 and play as the GP7 file does; exporting to GP6 writes drum
+   notes the GP7 way (fret and string), which Guitar Pro 6 may not read.
 9. **Complex bends are simplified outside playback.** Playback and the bend editor use
    every point; `dump` and the save comparison still use the highest point, so they cannot
    tell a bend-and-release from a bend.
@@ -162,9 +179,10 @@ testing the built site in headless Chromium; what could only be judged by ear is
 
 ### Files
 
-26. **No recovery journal.** Settings and shortcuts live in `localStorage`, but a crash
-    or a closed tab loses unsaved edits; the page only asks before it is left. Needs a
-    storage-backed journal (IndexedDB).
+26. **No recovery journal.** Settings and shortcuts live in `localStorage`, but a closed
+    tab or a reload loses unsaved edits; the page only asks before it is left. After a
+    crash the crash screen offers the unsaved songs for download (item 30), from memory.
+    Needs a storage-backed journal (IndexedDB).
 27. **No export.** PDF, MIDI, the older Guitar Pro formats and audio (WAV) report
     "exporting ... is not available in the browser build yet" (`tasks.rs`). Saving as
     Guitar Pro 7 works, as a download.
@@ -178,19 +196,23 @@ testing the built site in headless Chromium; what could only be judged by ear is
 
 ### App
 
-30. **Any panic kills the page.** The wasm build aborts on panic; the hook only logs it
-    ("GuitarScore panicked: ..." in the console) and the page shows "RuntimeError:
-    unreachable". The desktop's containment (`catch_unwind` around commands, layout and
-    drawing) does not exist there. Found this way on 2026-11-13: `SystemTime::now()` in
-    the edit history crashed the page on every edit; a test now keeps the `std` clocks out
-    of the app. Other `std` calls that panic or fail on wasm (threads, `std::fs`) are
-    gated by hand, not by a check: `cargo xtask layers` scans only the core crates.
-31. **An old build stays cached.** The service worker (`web/sw.js`) kept serving the
-    previous wasm after a rebuild during testing; a normal reload was not enough. Needs a
-    cache name tied to the build, or a check for a new version on load.
-32. **No automated browser test of playing or editing.** The smoke test
-    (`docs/web.md`) waits for the page and the SoundFont; nothing clicks Play, types a
-    note or chooses a tone. The checks of 2026-11-13 were done by hand with headless
+30. **A panic still ends the page.** The wasm build aborts on panic; the desktop's
+    containment (`catch_unwind` around commands, layout and drawing) does not exist there.
+    Since 2026-11-13 the page shows a crash screen instead of a frozen canvas and offers
+    every song with unsaved edits for download, as of the last second-long pause in editing
+    (`docs/web.md`, "Crashes"); the editor itself is gone until a reload. Found on
+    2026-11-13: `SystemTime::now()` in the edit history crashed the page on every edit; a
+    test now keeps the `std` clocks out of the app. Other `std` calls that panic or fail on
+    wasm (threads, `std::fs`) are gated by hand, not by a check: `cargo xtask layers` scans
+    only the core crates.
+31. ~~An old build stays cached.~~ Fixed 2026-11-13: the shell is fetched past the HTTP
+    cache, and the page reloads into a new build when its worker takes over, so the visit
+    after a deploy runs it (`docs/web.md`, "Updates"; the smoke test plays a deploy). The
+    reload happens a moment after the page opened, before most edits; with unsaved edits
+    the browser asks first.
+32. **Little automated browser testing of playing or editing.** The smoke test
+    (`docs/web.md`) waits for the page and the SoundFont, drops a song and types one fret
+    (2026-11-13); nothing clicks Play or chooses a tone. The checks of 2026-11-13 were done by hand with headless
     Chromium over the DevTools protocol (the messages posted to the worklet were recorded
     and replayed into the built worklet in Node); that could become a test.
 33. **Not looked at in the browser:** the Sound chain window, the string sound tabs, the

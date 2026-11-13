@@ -14,6 +14,7 @@ mod midi_out;
 mod chains;
 mod click;
 mod guitars;
+mod limiter;
 mod meters;
 mod mixer;
 pub use mixer::Bus;

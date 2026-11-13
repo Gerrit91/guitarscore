@@ -714,11 +714,15 @@ impl Mixer {
                 ) {
                     *work = *sample;
                 }
+                // A part that is silent with its chain's tail over is not run (a kit has
+                // six parts, and most of them rest most of the time), as a strip's chain.
+                let hit = peak_of(work_left) > 0.0 || peak_of(work_right) > 0.0;
                 if let Some(chain) = self
                     .part_chains
                     .get_mut(strip.song_track)
                     .and_then(|parts| parts.get_mut(part))
                     .and_then(Option::as_mut)
+                    .filter(|chain| hit || chain.ringing())
                 {
                     chain.process_in_place(work_left, work_right, true);
                     part_reduction = part_reduction.min(chain.take_gain_reduction());

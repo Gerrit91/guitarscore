@@ -27,7 +27,7 @@ impl Song {
             .text()
             .to_owned();
         let text = text.to_owned();
-        self.edit_measure(at.track, at.measure, move |measure| {
+        self.edit_measure_at(at, move |measure| {
             beat_mut(measure, at)?.text = text;
             Ok(Change {
                 kind: ChangeKind::BeatText { at, previous },
@@ -44,7 +44,7 @@ impl Song {
             .inner
             .status
             .clone();
-        self.edit_measure(at.track, at.measure, |measure| {
+        self.edit_measure_at(at, |measure| {
             let beat = beat_mut(measure, at)?;
             let notes = std::mem::take(&mut beat.notes);
             beat.status = BeatStatus::Rest;
@@ -65,7 +65,7 @@ impl Song {
         string: StringNumber,
         dead: bool,
     ) -> Result<Change, ModelError> {
-        self.edit_measure(at.track, at.measure, |measure| {
+        self.edit_measure_at(at, |measure| {
             let beat = beat_mut(measure, at)?;
             let note = beat
                 .notes
@@ -126,7 +126,7 @@ impl Song {
         let strings = self.tieable_strings(at).ok_or_else(|| {
             ModelError::Invalid(format!("{at}: no note to tie to the previous beat"))
         })?;
-        self.edit_measure(at.track, at.measure, |measure| {
+        self.edit_measure_at(at, |measure| {
             let beat = beat_mut(measure, at)?;
             let mut changes = Vec::new();
             for note in &mut beat.notes {
@@ -167,7 +167,7 @@ impl Song {
         string: StringNumber,
         tie: bool,
     ) -> Result<Change, ModelError> {
-        self.edit_measure(at.track, at.measure, |measure| {
+        self.edit_measure_at(at, |measure| {
             let beat = beat_mut(measure, at)?;
             let note = beat
                 .notes
@@ -190,7 +190,7 @@ impl Song {
 /// The beat before `at` in the same voice, also across a barline; `Empty` placeholders
 /// are skipped.
 fn previous_beat(song: &Song, at: BeatPosition) -> Option<BeatPosition> {
-    let track = song.track(at.track)?;
+    let track = song.staff(at.track, at.staff)?;
     if at.beat.get() > 0 {
         let voice = track.measure(at.measure)?.voice(at.voice)?;
         // A hostile command may carry a huge beat index: never search past the voice.

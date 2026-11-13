@@ -21,6 +21,7 @@ use rustysynth::{SoundFont, Synthesizer, SynthesizerSettings};
 use crate::chains::ChainKnobs;
 use crate::click::ClickVoice;
 use crate::guitars::Guitars;
+use crate::limiter::Limiter;
 use crate::mixer::{CHANNELS as MIXER_CHANNELS, Mixer};
 use crate::transport::{Command, Sink, Transport};
 
@@ -45,8 +46,8 @@ const FULL_VOLUME: i32 = 127;
 const CENTRE: i32 = 64;
 /// MIDI's "reset all controllers".
 const RESET_CONTROLLERS: u8 = 121;
-/// The synthesizer's own volume (rustysynth's default is 0.5); the output is also clipped,
-/// so several loud tracks never wrap around.
+/// The synthesizer's own volume (rustysynth's default is 0.5); the output also goes through
+/// the safety limiter, so several loud tracks never clip or wrap around.
 const MASTER_VOLUME: f32 = 0.5;
 /// How many SoundFont voices sound at once, the synthesizer's most. A stereo sample takes
 /// two, and drums ring out (a cymbal for seconds): at RustySynth's default of 64 the
@@ -124,6 +125,8 @@ pub struct SynthEngine {
     guitars: Guitars,
     /// Every track's strip: chain, fader, pan, sends; the buses and the meters.
     mixer: Mixer,
+    /// Keeps the finished mix below full scale (instead of the device clipping it).
+    limiter: Limiter,
     /// The sequence the synthesizer's drum channels were set for (by address).
     drums_for: usize,
     /// One block of samples per side, rendered before interleaving.
@@ -163,6 +166,7 @@ impl SynthEngine {
             click: ClickVoice::new(sample_rate),
             guitars: Guitars::new(sample_rate),
             mixer: Mixer::new(sample_rate),
+            limiter: Limiter::new(sample_rate),
             drums_for: 0,
             left: [0.0; BLOCK],
             right: [0.0; BLOCK],
@@ -565,7 +569,10 @@ impl SynthEngine {
             );
             self.mixer.mix(frames, &self.guitars, &self.synth, l, r);
             self.click.add(l, r);
+            // The meter shows the mix as it is, overs included; the limiter then keeps
+            // what is heard below full scale.
             self.mixer.meter_master(l, r);
+            self.limiter.process(l, r);
         }
         self.frames = self.frames.saturating_add(frames as u64);
     }

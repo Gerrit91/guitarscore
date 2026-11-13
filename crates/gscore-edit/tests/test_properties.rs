@@ -53,6 +53,7 @@ fn random_command(rng: &mut Rng, song: &Song) -> Command {
     let track = rng.below(song.track_count().saturating_add(2));
     let measure = rng.below(song.measure_count().saturating_add(2));
     let at = BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(track),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(rng.below(3)),

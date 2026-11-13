@@ -150,6 +150,17 @@ fn compare_track(diff: &mut Diffs, a: &TrackView<'_>, b: &TrackView<'_>) {
     for (ma, mb) in a.measures().zip(b.measures()) {
         compare_measure(diff, &at, &ma, &mb);
     }
+    // The staves after the first (a piano's bass), which older formats cannot hold.
+    diff.check(&at, "staves", a.staff_count(), b.staff_count());
+    for (sa, sb) in a.all_staves().zip(b.all_staves()).skip(1) {
+        let at = format!("{at}, {}", sa.index());
+        diff.check(&at, "tuning", sa.note_tuning().ok(), sb.note_tuning().ok());
+        diff.check(&at, "capo", sa.capo_fret(), sb.capo_fret());
+        diff.check(&at, "measures", sa.measures().len(), sb.measures().len());
+        for (ma, mb) in sa.measures().zip(sb.measures()) {
+            compare_measure(diff, &at, &ma, &mb);
+        }
+    }
 }
 
 fn compare_measure(diff: &mut Diffs, track: &str, a: &MeasureView<'_>, b: &MeasureView<'_>) {

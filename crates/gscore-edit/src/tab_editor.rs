@@ -285,7 +285,7 @@ impl TabEditor {
         match id {
             ActionId::CursorLeft => Ok(moved(self.cursor.left(song))),
             ActionId::CursorRight => self.cursor_right(),
-            ActionId::CursorUpString => Ok(moved(self.cursor.up())),
+            ActionId::CursorUpString => Ok(moved(self.cursor.up(song))),
             ActionId::CursorDownString => Ok(moved(self.cursor.down(song))),
             ActionId::PreviousMeasure => Ok(moved(self.cursor.to_measure(song, false))),
             ActionId::NextMeasure => Ok(moved(self.cursor.to_measure(song, true))),
@@ -344,6 +344,7 @@ impl TabEditor {
             | ActionId::ZoomOut
             | ActionId::ZoomReset
             | ActionId::ToggleFullscreen
+            | ActionId::ToggleMixer
             | ActionId::ToggleMultitrack
             | ActionId::ShowHistory
             | ActionId::NewSong
@@ -583,7 +584,7 @@ impl TabEditor {
     fn remaining_in_measure(&self) -> Result<Option<gscore_model::Duration>, ModelError> {
         let song = self.editor.song();
         let Some(measure) = song
-            .track(self.cursor.track)
+            .staff(self.cursor.track, self.cursor.staff)
             .and_then(|t| t.measure(self.cursor.measure))
         else {
             return Ok(None);

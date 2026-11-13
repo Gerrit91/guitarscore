@@ -76,6 +76,7 @@ pub(crate) fn layout_tab_only(song: &Song, track: usize) -> Layout {
 pub(crate) fn with_notes(mut song: Song, notes: &[(usize, usize, u8, u8)]) -> Song {
     for &(measure, beat, string, fret) in notes {
         let at = BeatPosition {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(0),
             measure: MeasureIndex::new(measure),
             voice: VoiceIndex::new(0),

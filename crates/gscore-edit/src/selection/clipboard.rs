@@ -3,7 +3,8 @@
 
 use gscore_model::{
     BeatEffect, BeatKind, BeatView, Dynamic, Fade, Fret, Hand, MeasureIndex, NoteEffect, NoteKind,
-    NoteValue, NoteView, Section, SlideKind, StringNumber, StrokeKind, TimeSignature, TrackIndex,
+    NoteValue, NoteView, Section, SlideKind, StaffIndex, StringNumber, StrokeKind, TimeSignature,
+    TrackIndex,
 };
 
 use super::paste::{paste_beats, paste_measures};
@@ -55,8 +56,9 @@ pub(crate) enum Clipboard {
     /// Copied beats of one voice, grouped by the measure they came from, so a paste keeps
     /// the bar lines where they were.
     Beats(Vec<Vec<BeatClip>>),
-    /// Copied measures, each with the track it belongs to (all tracks, or only one).
-    Measures(Vec<(TrackIndex, Vec<MeasureClip>)>),
+    /// Copied measures, each with the track and staff it belongs to (all tracks, or only
+    /// one; every staff of a track).
+    Measures(Vec<(TrackIndex, StaffIndex, Vec<MeasureClip>)>),
 }
 
 impl TabEditor {
@@ -77,9 +79,18 @@ impl TabEditor {
             Clipboard::Note(note) if note.dead => "a dead note".to_owned(),
             Clipboard::Note(note) => format!("fret {}", note.fret.get()),
             Clipboard::Beats(groups) => plural(groups.iter().map(Vec::len).sum(), "beat", "beats"),
-            Clipboard::Measures(tracks) => {
-                let bars = tracks.first().map_or(0, |(_, bars)| bars.len());
+            Clipboard::Measures(staves) => {
+                let bars = staves.first().map_or(0, |(_, _, bars)| bars.len());
                 let mut text = plural(bars, "bar", "bars");
+                let tracks: Vec<TrackIndex> = staves.iter().map(|(track, _, _)| *track).fold(
+                    Vec::new(),
+                    |mut tracks, track| {
+                        if !tracks.contains(&track) {
+                            tracks.push(track);
+                        }
+                        tracks
+                    },
+                );
                 if tracks.len() > 1 {
                     text.push_str(&format!(" of {} tracks", tracks.len()));
                 }
@@ -199,6 +210,7 @@ impl TabEditor {
                 let at = cursor.position();
                 let (commands, last) = paste_beats(self.song(), at, &groups)?;
                 self.selection = Some(Selection::Beats {
+                    staff: at.staff,
                     track: at.track,
                     voice: at.voice,
                     anchor: BeatSpot::of(cursor),
@@ -211,9 +223,9 @@ impl TabEditor {
                     .selection
                     .map(Selection::first_measure)
                     .unwrap_or_else(|| self.cursor().measure);
-                let count = tracks.first().map_or(0, |(_, measures)| measures.len());
+                let count = tracks.first().map_or(0, |(_, _, measures)| measures.len());
                 let track = match tracks.as_slice() {
-                    [(track, _)] => Some(*track),
+                    [(track, _, _)] => Some(*track),
                     _ => None,
                 };
                 let commands = paste_measures(self.song(), first, &tracks)?;
@@ -245,12 +257,14 @@ impl TabEditor {
         match selection {
             Selection::Beats {
                 track,
+                staff,
                 voice,
                 anchor,
                 focus,
             } => {
                 let first = anchor.min(focus);
                 cursor.track = track;
+                cursor.staff = staff;
                 cursor.voice = voice;
                 cursor.measure = first.measure;
                 cursor.beat = first.beat;
@@ -307,38 +321,43 @@ impl TabEditor {
                     Some(_) => return Err(EditError::NothingSelected),
                     None => (0..song.track_count()).collect(),
                 };
-                let mut tracks = Vec::new();
+                let mut staves = Vec::new();
                 for track_index in indices {
                     let track_at = TrackIndex::new(track_index);
                     let Some(track) = song.track(track_at) else {
                         continue;
                     };
-                    let mut measures = Vec::new();
-                    for index in first..=last {
-                        let measure_index = MeasureIndex::new(index);
-                        let Some(measure) = track.measure(measure_index) else {
-                            continue;
-                        };
-                        let voices = measure
-                            .voices()
-                            .map(|voice| {
-                                voice
-                                    .beats()
-                                    .filter_map(|beat| beat_clip(&beat).transpose())
-                                    .collect::<Result<Vec<_>, _>>()
-                            })
-                            .collect::<Result<Vec<_>, _>>()?;
-                        let time_signature = measure.time_signature().map_err(EditError::Model)?;
-                        measures.push(MeasureClip {
-                            voices,
-                            time_signature,
-                            tempo: song.tempo_change(measure_index),
-                            section: song.section(measure_index),
-                        });
+                    // Every staff of the track: a measure of a piano takes its treble and
+                    // its bass.
+                    for staff in track.all_staves() {
+                        let mut measures = Vec::new();
+                        for index in first..=last {
+                            let measure_index = MeasureIndex::new(index);
+                            let Some(measure) = staff.measure(measure_index) else {
+                                continue;
+                            };
+                            let voices = measure
+                                .voices()
+                                .map(|voice| {
+                                    voice
+                                        .beats()
+                                        .filter_map(|beat| beat_clip(&beat).transpose())
+                                        .collect::<Result<Vec<_>, _>>()
+                                })
+                                .collect::<Result<Vec<_>, _>>()?;
+                            let time_signature =
+                                measure.time_signature().map_err(EditError::Model)?;
+                            measures.push(MeasureClip {
+                                voices,
+                                time_signature,
+                                tempo: song.tempo_change(measure_index),
+                                section: song.section(measure_index),
+                            });
+                        }
+                        staves.push((track_at, staff.index(), measures));
                     }
-                    tracks.push((track_at, measures));
                 }
-                Ok(Clipboard::Measures(tracks))
+                Ok(Clipboard::Measures(staves))
             }
         }
     }

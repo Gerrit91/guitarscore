@@ -345,6 +345,13 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Shows the mixer in the bottom panel instead of the measure grid, and back (the
+    /// View menu, F3 and the grid's own button). The choice is remembered.
+    pub(super) fn toggle_mixer(&mut self) {
+        self.view.grid_mixer = !self.view.grid_mixer;
+        self.save_settings();
+    }
+
     /// Runs one action from the grid (or the score's right-click menu).
     pub(super) fn apply_grid_action(&mut self, action: GridAction) {
         match action {
@@ -366,10 +373,7 @@ impl GuitarScoreApp {
                 }
             }
             GridAction::NewTrack { at } => self.begin_new_track(at),
-            GridAction::ToggleMixer => {
-                self.view.grid_mixer = !self.view.grid_mixer;
-                self.save_settings();
-            }
+            GridAction::ToggleMixer => self.toggle_mixer(),
             GridAction::BreakMerge => {
                 if let Some(tab) = self.tabs.get_mut(self.active) {
                     tab.document.editor_mut().break_merge();
@@ -526,6 +530,7 @@ impl GuitarScoreApp {
         };
         let document = &tab.document;
         let at = gscore_model::BeatPosition {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(track),
             measure: gscore_model::MeasureIndex::new(measure),
             voice: gscore_model::VoiceIndex::new(0),

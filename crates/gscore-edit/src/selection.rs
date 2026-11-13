@@ -6,7 +6,9 @@
 //! (and its entry in the recovery journal) is one line and one undo step. Placeholder beats
 //! (Guitar Pro's unused-voice fillers, which saving drops) are never selected or copied.
 
-use gscore_model::{BeatIndex, BeatKind, BeatPosition, MeasureIndex, Song, TrackIndex, VoiceIndex};
+use gscore_model::{
+    BeatIndex, BeatKind, BeatPosition, MeasureIndex, Song, StaffIndex, TrackIndex, VoiceIndex,
+};
 
 mod clipboard;
 mod paste;
@@ -45,6 +47,8 @@ pub enum Selection {
     Beats {
         /// The track.
         track: TrackIndex,
+        /// Which staff of it (0 for most tracks).
+        staff: StaffIndex,
         /// The voice.
         voice: VoiceIndex,
         /// Where the selection started.
@@ -86,12 +90,13 @@ impl Selection {
     pub fn positions(self, song: &Song) -> Vec<BeatPosition> {
         let mut positions = Vec::new();
         let mut push_measure = |track: TrackIndex,
+                                staff: StaffIndex,
                                 measure: MeasureIndex,
                                 voice: VoiceIndex,
                                 from: usize,
                                 to: Option<usize>| {
             let Some(view) = song
-                .track(track)
+                .staff(track, staff)
                 .and_then(|t| t.measure(measure))
                 .and_then(|m| m.voice(voice))
             else {
@@ -102,6 +107,7 @@ impl Selection {
                 if inside && beat.kind() != BeatKind::Empty && !beat.is_grace() {
                     positions.push(BeatPosition {
                         track,
+                        staff,
                         measure,
                         voice,
                         beat: BeatIndex::new(index),
@@ -112,6 +118,7 @@ impl Selection {
         match self {
             Selection::Beats {
                 track,
+                staff,
                 voice,
                 anchor,
                 focus,
@@ -127,7 +134,7 @@ impl Selection {
                         0
                     };
                     let to = (measure == last.measure).then_some(last.beat.get());
-                    push_measure(track, measure, voice, from, to);
+                    push_measure(track, staff, measure, voice, from, to);
                 }
             }
             Selection::Measures {
@@ -143,20 +150,28 @@ impl Selection {
                     None => (0..song.track_count()).collect(),
                 };
                 for track in tracks {
-                    for index in first..=last {
-                        let measure = MeasureIndex::new(index);
-                        let voices = song
-                            .track(TrackIndex::new(track))
-                            .and_then(|t| t.measure(measure))
-                            .map_or(0, |m| m.voices().len());
-                        for voice in 0..voices {
-                            push_measure(
-                                TrackIndex::new(track),
-                                measure,
-                                VoiceIndex::new(voice),
-                                0,
-                                None,
-                            );
+                    // Every staff of the track: a measure selection takes whole bars of
+                    // the whole track.
+                    let staves = song
+                        .track(TrackIndex::new(track))
+                        .map_or(1, |t| t.staff_count());
+                    for staff in 0..staves {
+                        for index in first..=last {
+                            let measure = MeasureIndex::new(index);
+                            let voices = song
+                                .staff(TrackIndex::new(track), StaffIndex::new(staff))
+                                .and_then(|t| t.measure(measure))
+                                .map_or(0, |m| m.voices().len());
+                            for voice in 0..voices {
+                                push_measure(
+                                    TrackIndex::new(track),
+                                    StaffIndex::new(staff),
+                                    measure,
+                                    VoiceIndex::new(voice),
+                                    0,
+                                    None,
+                                );
+                            }
                         }
                     }
                 }
@@ -182,10 +197,16 @@ impl TabEditor {
         match self.selection {
             Some(Selection::Beats {
                 track,
+                staff,
                 voice,
                 anchor,
                 ..
-            }) if track == self.cursor.track && voice == self.cursor.voice => Some(anchor),
+            }) if track == self.cursor.track
+                && staff == self.cursor.staff
+                && voice == self.cursor.voice =>
+            {
+                Some(anchor)
+            }
             _ => None,
         }
     }
@@ -204,6 +225,7 @@ impl TabEditor {
         }
         self.selection = Some(Selection::Beats {
             track: self.cursor.track,
+            staff: self.cursor.staff,
             voice: self.cursor.voice,
             anchor,
             focus: BeatSpot::of(self.cursor),
@@ -228,6 +250,7 @@ impl TabEditor {
         self.cursor.clamp(song);
         self.selection = Some(Selection::Beats {
             track: self.cursor.track,
+            staff: self.cursor.staff,
             voice: self.cursor.voice,
             anchor,
             focus: BeatSpot::of(self.cursor),
@@ -249,6 +272,7 @@ impl TabEditor {
         }
         self.selection = Some(Selection::Beats {
             track: self.cursor.track,
+            staff: self.cursor.staff,
             voice: self.cursor.voice,
             anchor,
             focus: BeatSpot::of(self.cursor),
@@ -268,6 +292,7 @@ impl TabEditor {
         }
         self.selection = Some(Selection::Beats {
             track: self.cursor.track,
+            staff: self.cursor.staff,
             voice: self.cursor.voice,
             anchor: spot,
             focus: spot,

@@ -364,6 +364,7 @@ fn spot(measure: usize, beat: usize) -> BeatSpot {
 
 fn at(measure: usize, beat: usize) -> BeatPosition {
     BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(measure),
         voice: gscore_model::VoiceIndex::new(0),
@@ -379,6 +380,7 @@ fn a_beat_selection_copies_and_pastes_in_one_undo_step() {
     plain(&mut e, ActionId::CursorRight);
     e.perform(Action::Digit(5), 0).unwrap();
     e.set_selection(Some(Selection::Beats {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         voice: gscore_model::VoiceIndex::new(0),
         anchor: spot(0, 0),
@@ -447,6 +449,7 @@ fn a_pasted_note_keeps_its_effects() {
     )
     .unwrap();
     e.set_selection(Some(Selection::Beats {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         voice: gscore_model::VoiceIndex::new(0),
         anchor: spot(0, 0),

@@ -335,6 +335,7 @@ fn odd_notes_open_and_are_reported_as_issues() {
         assert_eq!(issues[0].beat, Some(BeatIndex::new(0)));
         // The note itself is kept.
         let beat = song.beat(BeatPosition {
+            staff: StaffIndex::new(0),
             track: TrackIndex::new(0),
             measure: MeasureIndex::new(0),
             voice: VoiceIndex::new(0),
@@ -427,6 +428,7 @@ fn unfilled_and_overfilled_measures_are_reported() {
         under,
         [Issue {
             track: TrackIndex::new(0),
+            staff: StaffIndex::new(0),
             measure: MeasureIndex::new(0),
             voice: VoiceIndex::new(0),
             beat: None,
@@ -473,6 +475,7 @@ fn beats_are_found_by_position() {
     ]);
     let song = from_gp(gp).unwrap();
     let pos = BeatPosition {
+        staff: StaffIndex::new(0),
         track: TrackIndex::new(1),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),
@@ -593,6 +596,7 @@ fn song_with_note(edit: impl FnOnce(&mut gscore_gp::Note)) -> Song {
 
 fn first_note<T>(song: &Song, read: impl FnOnce(NoteView<'_>) -> T) -> T {
     let position = BeatPosition {
+        staff: StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),
@@ -710,6 +714,7 @@ fn beat_effects() {
     effect.fade_in = true;
     let song = from_gp(gp).unwrap();
     let position = BeatPosition {
+        staff: StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),

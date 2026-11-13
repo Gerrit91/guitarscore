@@ -62,7 +62,11 @@ pub(super) fn from_note(note: NoteView<'_>, ctx: &Context<'_>, key: i8) -> Optio
             return None;
         }
         let pitch = notation.track.sounding_pitch(&note).ok()?;
-        Some(notation.clef.place_grace(pitch.get(), key))
+        Some(
+            notation
+                .clef
+                .place_grace(pitch.get(), key, notation.octave_up),
+        )
     });
     let fret = note.fret().ok().map(|fret| fret.get());
     let text = if dead {
@@ -99,7 +103,11 @@ pub(super) fn from_effect(
             .pitch_at(string, effect.fret)
             .or_else(|_| notation.track.sounding_pitch(&note))
             .ok()?;
-        Some(notation.clef.place_grace(pitch.get(), key))
+        Some(
+            notation
+                .clef
+                .place_grace(pitch.get(), key, notation.octave_up),
+        )
     });
     let text = if effect.dead {
         "x".to_owned()

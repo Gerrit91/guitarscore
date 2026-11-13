@@ -277,6 +277,7 @@ fn a_stroke_speed_and_timing_survive_gp7_and_gp5() {
         .find(|beat| beat.kind() == BeatKind::Normal && beat.notes().next().is_some())
         .expect("note_lengths has a note in its first bar");
     let at = BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),

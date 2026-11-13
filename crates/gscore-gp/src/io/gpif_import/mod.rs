@@ -13,7 +13,7 @@ use crate::io::primitive::{
     round_f64_to_i32, truncate_f64_to_i32,
 };
 use crate::model::{
-    beat::{Beat as SongBeat, LegatoEffect, Voice as SongVoice},
+    beat::{Beat as SongBeat, LegatoEffect},
     chord::ChordDiagram,
     effects::*,
     enums::*,
@@ -31,6 +31,8 @@ pub(crate) trait SongGpifOps {
 }
 
 mod beats;
+mod gp6_drums;
+mod staves;
 
 /// The chord diagrams of a GP7 track's staves, by their id.
 fn extract_diagrams(track: &Track) -> HashMap<i32, ChordDiagram> {
@@ -98,6 +100,8 @@ mod page_tests;
 mod section_tests;
 #[cfg(test)]
 mod sounds_tests;
+#[cfg(test)]
+mod staves_tests;
 #[cfg(test)]
 mod tuning_tests;
 #[cfg(test)]
@@ -207,34 +211,23 @@ impl SongGpifOps for Song {
         }
 
         // 3. Build lookup maps
-        let bars_map: HashMap<i32, &Bar> = gpif.bars.bars.iter().map(|b| (b.id, b)).collect();
-        let voices_map: HashMap<i32, &Voice> =
-            gpif.voices.voices.iter().map(|v| (v.id, v)).collect();
-        let beats_map: HashMap<i32, &Beat> = gpif.beats.beats.iter().map(|b| (b.id, b)).collect();
-        let notes_map: HashMap<i32, &Note> = gpif.notes.notes.iter().map(|n| (n.id, n)).collect();
-        let rhythms_map: HashMap<i32, &Rhythm> =
-            gpif.rhythms.rhythms.iter().map(|r| (r.id, r)).collect();
+        let lookup = staves::Lookup {
+            bars: gpif.bars.bars.iter().map(|b| (b.id, b)).collect(),
+            voices: gpif.voices.voices.iter().map(|v| (v.id, v)).collect(),
+            beats: gpif.beats.beats.iter().map(|b| (b.id, b)).collect(),
+            notes: gpif.notes.notes.iter().map(|n| (n.id, n)).collect(),
+            rhythms: gpif.rhythms.rhythms.iter().map(|r| (r.id, r)).collect(),
+        };
 
         // 4. Measure Headers (MasterBars) — also collects per-track bar IDs
         self.measure_headers.clear();
-        let num_tracks = gpif.tracks.tracks.len();
-        let mut track_bar_ids: Vec<Vec<i32>> = vec![Vec::new(); num_tracks];
-        // A master bar lists one bar per staff, not per track: a track with two staves (a
-        // piano's or synth's treble and bass) takes two places. Each track reads the bar of
-        // its first staff (a second staff is not read yet: docs/gaps.md).
-        let first_staff: Vec<usize> = gpif
-            .tracks
-            .tracks
+        // A master bar lists one bar per staff: each track's staves take consecutive places
+        // (`staves`). By track, by staff, by measure.
+        let first_staff = staves::first_staves(&gpif.tracks.tracks);
+        let staff_counts: Vec<usize> = gpif.tracks.tracks.iter().map(staves::staff_count).collect();
+        let mut track_bar_ids: Vec<Vec<Vec<i32>>> = staff_counts
             .iter()
-            .scan(0_usize, |next, track| {
-                let at = *next;
-                let staves = track
-                    .staves
-                    .as_ref()
-                    .map_or(1, |staves| staves.staves.len().max(1));
-                *next = next.saturating_add(staves);
-                Some(at)
-            })
+            .map(|&count| vec![Vec::new(); count])
             .collect();
 
         for (mh_idx, mb) in gpif.master_bars.master_bars.iter().enumerate() {
@@ -353,15 +346,16 @@ impl SongGpifOps for Song {
 
             // Per-track bar IDs
             let bar_ids = parse_ids(&mb.bars);
-            for (ids, &staff) in track_bar_ids.iter_mut().zip(&first_staff) {
-                // A missing entry is an empty bar, so the track's later bars stay in place.
-                ids.push(bar_ids.get(staff).copied().unwrap_or(-1));
+            for (track_ids, &first) in track_bar_ids.iter_mut().zip(&first_staff) {
+                for (offset, ids) in track_ids.iter_mut().enumerate() {
+                    // A missing entry is an empty bar, so the staff's later bars stay in place.
+                    let at = first.saturating_add(offset);
+                    ids.push(bar_ids.get(at).copied().unwrap_or(-1));
+                }
             }
 
             self.measure_headers.push(mh);
         }
-
-        let num_measures = self.measure_headers.len();
 
         // 5. Tracks
         self.tracks.clear();
@@ -522,73 +516,19 @@ impl SongGpifOps for Song {
             apply_track_mix(&mut self.channels, track.channel_index, volume, pan);
             apply_track_sends(&mut self.channels, track.channel_index, sends);
 
-            // Current dynamic (persists across beats)
-            let mut current_velocity: i16 = FORTE;
-
-            // Measures
-            for m_idx in 0..num_measures {
-                let mut measure = Measure {
-                    number: m_idx.saturating_add(1),
-                    track_index: t_idx,
-                    ..Default::default()
-                };
-
-                if let Some(header) = self.measure_headers.get(m_idx) {
-                    measure.time_signature = header.time_signature.clone();
-                    measure.key_signature = header.key_signature.clone();
-                }
-
-                let bar_id = track_bar_ids
-                    .get(t_idx)
-                    .and_then(|ids| ids.get(m_idx))
-                    .copied()
-                    .unwrap_or(-1);
-
-                if let Some(bar) = bars_map.get(&bar_id) {
-                    measure.simile_mark = bar.simile_mark.clone();
-                    measure.has_clef = bar.clef.is_some();
-                    measure.clef = match bar.clef.as_deref() {
-                        Some("F4") => MeasureClef::Bass,
-                        Some("C4") => MeasureClef::Alto,
-                        Some("C3") => MeasureClef::Tenor,
-                        _ => MeasureClef::Treble,
-                    };
-                    let voice_ids = parse_ids(&bar.voices);
-                    measure.voices.clear();
-
-                    for &vid in &voice_ids {
-                        if vid < 0 {
-                            continue;
-                        }
-                        let mut s_voice = SongVoice::default();
-
-                        if let Some(g_voice) = voices_map.get(&vid) {
-                            let beat_ids = parse_ids(&g_voice.beats);
-
-                            for &bid in &beat_ids {
-                                if let Some(g_beat) = beats_map.get(&bid) {
-                                    let mut s_beat = convert_beat(
-                                        g_beat,
-                                        &rhythms_map,
-                                        &notes_map,
-                                        &mut current_velocity,
-                                    );
-                                    if let Some(id) = g_beat
-                                        .chord
-                                        .as_deref()
-                                        .and_then(|id| id.trim().parse::<i32>().ok())
-                                    {
-                                        s_beat.chord_diagram = diagrams.get(&id).cloned();
-                                    }
-                                    s_voice.beats.push(s_beat);
-                                }
-                            }
-                        }
-                        measure.voices.push(s_voice);
-                    }
-                }
-                track.measures.push(measure);
-            }
+            // Every staff's bars, the first staff's on the track itself.
+            let bar_ids = track_bar_ids.get(t_idx).map_or(&[][..], Vec::as_slice);
+            let first_ids = bar_ids.first().map_or(&[][..], Vec::as_slice);
+            track.measures =
+                staves::measures(&lookup, &self.measure_headers, t_idx, first_ids, &diagrams);
+            track.staves = staves::further_staves(
+                &lookup,
+                &self.measure_headers,
+                t_idx,
+                g_track,
+                bar_ids,
+                &diagrams,
+            );
             track.bars_per_system = g_track.bars_per_system.filter(|bars| *bars > 0);
             apply_breaks(
                 &mut track.measures,

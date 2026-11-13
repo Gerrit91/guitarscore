@@ -125,6 +125,7 @@ fn notes_start_on_time_and_a_damped_note_stops() {
     let mut song =
         testing::song_with_notes(&[(4, &[]), (4, &[TestNote::new(6, 0)]), (2, &[])]).unwrap();
     let at = BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),
@@ -164,6 +165,7 @@ fn a_palm_muted_note_rings_past_an_eighth_until_the_next_note() {
     .unwrap();
     for beat in 0..2 {
         let at = BeatPosition {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(0),
             measure: MeasureIndex::new(0),
             voice: VoiceIndex::new(0),
@@ -241,6 +243,7 @@ fn a_synced_delay_echoes_on_the_beat_as_played_even_after_a_long_silence() {
     // once (no feedback) a half note later.
     let mut song = testing::song_with_notes(&[(8, &[TestNote::new(3, 2)]), (1, &[])]).unwrap();
     let at = BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),
@@ -451,6 +454,7 @@ fn a_beat_excerpt_plays_with_its_tracks_tone() {
     // track, yet it keeps the second track's tone, not the first one's.
     let song = testing::song_with_notes_on_tracks(2, &[(1, &[TestNote::new(3, 2)])]).unwrap();
     let at = BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(1),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),
@@ -484,6 +488,7 @@ fn the_reverb_bus_carries_the_tracks_send() {
     // the strings alone are silent soon after.
     let mut song = testing::song_with_notes(&[(4, &[TestNote::new(3, 2)]), (2, &[])]).unwrap();
     let at = BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),
@@ -538,6 +543,7 @@ fn a_room_chain_rings_on_after_a_damped_note() {
     // A staccato quarter: the strings alone are silent soon after.
     let mut song = testing::song_with_notes(&[(4, &[TestNote::new(3, 2)]), (2, &[])]).unwrap();
     let at = BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),

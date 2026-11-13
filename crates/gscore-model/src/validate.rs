@@ -43,15 +43,38 @@ fn check_track(song: &Song, track: &TrackView<'_>) -> Result<(), ModelError> {
             )));
         }
     }
-    if track.measures().len() != song.measure_count() {
-        return Err(ModelError::Invalid(format!(
-            "{} measures, but the song has {}",
-            track.measures().len(),
-            song.measure_count()
-        )));
-    }
-    for measure in track.measures() {
-        check_measure(&measure).map_err(|e| locate(e, &measure.index().to_string()))?;
+    // Every staff (the first is the track's own) has a measure for each of the song's.
+    for staff in track.all_staves() {
+        let at = staff.index().to_string();
+        if !(1..=MAX_STRINGS).contains(&staff.string_count()) {
+            return Err(locate(
+                ModelError::Invalid(format!(
+                    "{} strings (supported: 1 to {MAX_STRINGS})",
+                    staff.string_count()
+                )),
+                &at,
+            ));
+        }
+        if staff.measures().len() != song.measure_count() {
+            return Err(locate(
+                ModelError::Invalid(format!(
+                    "{} measures, but the song has {}",
+                    staff.measures().len(),
+                    song.measure_count()
+                )),
+                &at,
+            ));
+        }
+        for measure in staff.measures() {
+            check_measure(&measure).map_err(|e| {
+                let place = if staff.index().get() == 0 {
+                    measure.index().to_string()
+                } else {
+                    format!("{at}, {}", measure.index())
+                };
+                locate(e, &place)
+            })?;
+        }
     }
     Ok(())
 }

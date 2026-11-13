@@ -482,6 +482,7 @@ impl GuitarScoreApp {
                 self.playback.position()
             } else {
                 let at = BeatPosition {
+                    staff: cursor.staff,
                     track: cursor.track,
                     measure: cursor.measure,
                     voice: cursor.voice,
@@ -813,6 +814,7 @@ mod tests {
 
     fn at(beat: usize) -> BeatPosition {
         BeatPosition {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(0),
             measure: MeasureIndex::new(0),
             voice: VoiceIndex::new(0),

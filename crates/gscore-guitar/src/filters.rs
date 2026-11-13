@@ -141,25 +141,29 @@ pub(crate) fn allpass_delay(c: f32, w: f32) -> f32 {
 
 /// Finds the [`OnePole`] coefficient whose gain at `high` is `ratio` times its gain at
 /// `low` (both in radians per sample, `ratio` from 0 to 1): the loss filter that makes high
-/// harmonics die at the rate asked for. Bisection, so any input gives an answer.
+/// harmonics die at the rate asked for. Any input gives an answer from 0 to 0.995.
+///
+/// Solved, not searched (a string redesigns it every block while it bends): the squared
+/// gain is `(1 - a)² / (1 - 2a cos w + a²)`, so the squared ratio `R` asks for
+/// `a² - 2qa + 1 = 0` with `q = (cos low - R cos high) / (1 - R)`. The roots multiply to 1;
+/// the one below 1 is `1 / (q + sqrt(q² - 1))`. With `q` under 1 not even the darkest
+/// filter takes that much off, and the darkest is the answer.
 pub(crate) fn one_pole_for_ratio(low: f32, high: f32, ratio: f32) -> f32 {
     if !(ratio.is_finite() && ratio < 1.0) || high <= low {
         return 0.0;
     }
-    let ratio = ratio.max(1e-6);
-    let (mut lo, mut hi) = (0.0_f32, 0.995_f32);
-    for _ in 0..24 {
-        let mid = 0.5 * (lo + hi);
-        let r = one_pole_gain(mid, high) / one_pole_gain(mid, low).max(1e-9);
-        // A larger coefficient takes more off the highs.
-        if r > ratio {
-            lo = mid;
-        } else {
-            hi = mid;
-        }
+    let ratio = f64::from(ratio.max(1e-6));
+    let squared = ratio * ratio;
+    let q = (f64::from(low).cos() - squared * f64::from(high).cos()) / (1.0 - squared);
+    if !(q.is_finite() && q > 1.0) {
+        return MAX_ONE_POLE;
     }
-    0.5 * (lo + hi)
+    let a = 1.0 / (q + (q * q - 1.0).sqrt());
+    (a as f32).clamp(0.0, MAX_ONE_POLE)
 }
+
+/// The darkest loss filter [`one_pole_for_ratio`] gives.
+const MAX_ONE_POLE: f32 = 0.995;
 
 /// A second-order lowpass with resonance (RBJ cookbook): the tone of the pickup or the
 /// body on the string's output.
@@ -411,6 +415,37 @@ mod tests {
             "highs below the fundamental"
         );
         assert_eq!(one_pole_for_ratio(0.01, 0.2, f32::NAN), 0.0);
+    }
+
+    #[test]
+    fn the_solved_loss_design_is_the_bisection_it_replaced() {
+        // The search the string used until 2026-11-13 (24 halvings of 0 to 0.995).
+        let bisection = |low: f32, high: f32, ratio: f32| {
+            let (mut lo, mut hi) = (0.0_f32, 0.995_f32);
+            for _ in 0..24 {
+                let mid = 0.5 * (lo + hi);
+                if one_pole_gain(mid, high) / one_pole_gain(mid, low).max(1e-9) > ratio {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            0.5 * (lo + hi)
+        };
+        let high = TAU * 2_000.0 / 48_000.0;
+        for note in [30.0_f32, 82.4, 110.0, 440.0, 1_200.0] {
+            let low = TAU * note / 48_000.0;
+            for ratio in [0.999_f32, 0.9, 0.5, 0.1, 1e-3, 1e-5] {
+                let (solved, searched) = (
+                    one_pole_for_ratio(low, high, ratio),
+                    bisection(low, high, ratio),
+                );
+                assert!(
+                    (solved - searched).abs() < 1e-5,
+                    "{note} Hz, {ratio}: {solved} {searched}"
+                );
+            }
+        }
     }
 
     #[test]

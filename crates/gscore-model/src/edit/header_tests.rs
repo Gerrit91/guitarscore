@@ -13,6 +13,7 @@ use crate::{Change, Song, differences};
 
 fn at(beat: usize) -> BeatPosition {
     BeatPosition {
+        staff: crate::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),
@@ -382,6 +383,7 @@ fn a_second_voice_is_created_for_its_first_beat() {
     .unwrap();
     let quarter = NoteValue::new(4, 0, None).unwrap();
     let at = BeatPosition {
+        staff: crate::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(1),

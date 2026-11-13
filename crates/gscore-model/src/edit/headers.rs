@@ -211,8 +211,13 @@ impl Song {
             let header = header_mut(inner, measure)?;
             let previous_header = header.time_signature.clone();
             header.time_signature = gp.clone();
-            for track in &mut inner.tracks {
-                if let Some(slot) = track.measures.get_mut(measure.get()) {
+            // Every staff's copy of the signature.
+            for list in inner
+                .tracks
+                .iter_mut()
+                .flat_map(gscore_gp::Track::measure_lists_mut)
+            {
+                if let Some(slot) = list.get_mut(measure.get()) {
                     slot.time_signature = gp.clone();
                 }
             }
@@ -262,8 +267,13 @@ impl Song {
                 is_minor: minor,
             };
             header.key_signature = signature.clone();
-            for track in &mut inner.tracks {
-                if let Some(slot) = track.measures.get_mut(measure.get()) {
+            // Every staff's copy of the signature.
+            for list in inner
+                .tracks
+                .iter_mut()
+                .flat_map(gscore_gp::Track::measure_lists_mut)
+            {
+                if let Some(slot) = list.get_mut(measure.get()) {
                     slot.key_signature = signature.clone();
                 }
             }
@@ -375,34 +385,32 @@ fn header_mut(
         .ok_or_else(|| ModelError::Invalid(format!("{measure}: the song has {count} measure(s)")))
 }
 
-/// Each track's time signature copy for `measure`.
+/// Each staff's time signature copy for `measure` (every track's staves in turn).
 fn measures_time_signatures(
     song: &GpSong,
     measure: MeasureIndex,
 ) -> Result<Vec<GpTimeSignature>, ModelError> {
     song.tracks
         .iter()
-        .map(|track| {
-            track
-                .measures
-                .get(measure.get())
+        .flat_map(gscore_gp::Track::measure_lists)
+        .map(|list| {
+            list.get(measure.get())
                 .map(|m| m.time_signature.clone())
                 .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))
         })
         .collect()
 }
 
-/// Each track's key signature copy for `measure`.
+/// Each staff's key signature copy for `measure` (every track's staves in turn).
 fn measures_key_signatures(
     song: &GpSong,
     measure: MeasureIndex,
 ) -> Result<Vec<GpKeySignature>, ModelError> {
     song.tracks
         .iter()
-        .map(|track| {
-            track
-                .measures
-                .get(measure.get())
+        .flat_map(gscore_gp::Track::measure_lists)
+        .map(|list| {
+            list.get(measure.get())
                 .map(|m| m.key_signature.clone())
                 .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))
         })

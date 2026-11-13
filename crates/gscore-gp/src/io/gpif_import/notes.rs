@@ -50,6 +50,26 @@ pub(super) fn convert_note(
     let mut bend_dest_offset: Option<f64> = None;
     let mut harmonic_fret: Option<f64> = None;
 
+    // GuitarScore addition: a GP6 drum note (kit element and variation, no fret).
+    let property = |name: &str| {
+        g_note
+            .properties
+            .properties
+            .iter()
+            .find(|prop| prop.name == name)
+    };
+    if let Some(element) = property("Element").and_then(|prop| prop.element)
+        && let Some((articulation, string)) = gp6_drums::articulation(
+            element,
+            property("Variation")
+                .and_then(|prop| prop.variation)
+                .unwrap_or(0),
+        )
+    {
+        s_note.value = articulation;
+        s_note.string = string.saturating_add(1);
+    }
+
     for prop in &g_note.properties.properties {
         match prop.name.as_str() {
             "Fret" => {

@@ -68,6 +68,53 @@ pub fn song(tunings: &[&[i8]], measures: usize) -> Result<Song, ModelError> {
     })
 }
 
+/// A piano as Guitar Pro 7 stores one: a track with two staves, a treble staff on a
+/// guitar's stand-in tuning and a bass staff (bass clef) on a five-string bass's, then a
+/// guitar track. In its one 4/4 measure each staff plays one whole note on its string 1,
+/// open: E4 (64) on the treble staff, G2 (43) on the bass staff.
+pub fn song_with_two_staves() -> Result<Song, ModelError> {
+    let whole = |string: i8| Beat {
+        duration: GpDuration {
+            value: 1,
+            ..GpDuration::default()
+        },
+        status: BeatStatus::Normal,
+        notes: vec![GpNote {
+            string,
+            value: 0,
+            kind: NoteType::Normal,
+            ..GpNote::default()
+        }],
+        ..Beat::default()
+    };
+    let bar = |beat: Beat, clef: gscore_gp::MeasureClef| Measure {
+        voices: vec![Voice {
+            beats: vec![beat],
+            ..Voice::default()
+        }],
+        clef,
+        ..Measure::default()
+    };
+    let mut inner = song(&[GUITAR_6, GUITAR_6], 1)?.inner().clone();
+    let piano = inner
+        .tracks
+        .first_mut()
+        .ok_or_else(|| ModelError::Invalid("no track".to_owned()))?;
+    piano.name = "Piano".to_owned();
+    piano.instrument_type = Some("acousticPiano".to_owned());
+    // The display name a GP7 file stores next to the type, so a save-reload round trip
+    // does not add one.
+    piano.instrument_name = Some("Acoustic Piano".to_owned());
+    piano.measures = vec![bar(whole(1), gscore_gp::MeasureClef::Treble)];
+    piano.staves.push(gscore_gp::Staff {
+        measures: vec![bar(whole(1), gscore_gp::MeasureClef::Bass)],
+        strings: vec![(1, 43), (2, 38), (3, 33), (4, 28), (5, 23)],
+        has_tuning: true,
+        ..gscore_gp::Staff::default()
+    });
+    Song::from_inner(inner)
+}
+
 /// A one-track, one-measure 4/4 guitar song.
 pub fn one_measure() -> Result<Song, ModelError> {
     song(&[GUITAR_6], 1)

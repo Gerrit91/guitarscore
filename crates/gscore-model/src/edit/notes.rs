@@ -16,7 +16,7 @@ pub(super) fn set(
 ) -> Result<Change, ModelError> {
     let tracks = song.track_count();
     let string_count = song
-        .track(at.track)
+        .staff(at.track, at.staff)
         .ok_or_else(|| ModelError::Invalid(format!("{at}: the song has {tracks} track(s)")))?
         .string_count();
     if usize::from(string.get()) > string_count {
@@ -28,7 +28,7 @@ pub(super) fn set(
         .map_err(|_| ModelError::Invalid(format!("{at}: {string} is out of range")))?;
     // A new note is as loud as the music around it: the dynamic in effect there.
     let velocity = song.dynamic_at(at).raw_velocity();
-    song.edit_measure(at.track, at.measure, |measure| {
+    song.edit_measure_at(at, |measure| {
         let beat = beat_in(measure, at)?;
         let previous_status = beat.status.clone();
         let previous = replace_or_add(beat, gp_string, fret, velocity).map(Box::new);
@@ -52,7 +52,7 @@ pub(super) fn clear(
 ) -> Result<Change, ModelError> {
     let gp_string = i8::try_from(string.get())
         .map_err(|_| ModelError::Invalid(format!("{at}: {string} is out of range")))?;
-    song.edit_measure(at.track, at.measure, |measure| {
+    song.edit_measure_at(at, |measure| {
         let beat = beat_in(measure, at)?;
         let index = find(beat, gp_string)
             .ok_or_else(|| ModelError::Invalid(format!("{at}: no note on {string}")))?;

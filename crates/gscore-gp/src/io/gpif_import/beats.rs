@@ -11,9 +11,9 @@ use super::*;
 /// legacy order (1 = highest). Its own inverse, so import and export use the same function.
 /// Notes outside the track's strings (e.g. mapped piano notes) are left unchanged.
 pub(crate) fn flip_note_strings(tracks: &mut [SongTrack]) {
-    for track in tracks {
-        let count = i8::try_from(track.strings.len()).unwrap_or(i8::MAX);
-        for measure in &mut track.measures {
+    for staff in tracks.iter_mut().flat_map(SongTrack::staves_mut) {
+        let count = i8::try_from(staff.strings.len()).unwrap_or(i8::MAX);
+        for measure in staff.measures.iter_mut() {
             for voice in &mut measure.voices {
                 for beat in &mut voice.beats {
                     for note in &mut beat.notes {
@@ -60,10 +60,10 @@ pub(crate) fn tremolo_text(value: u16) -> &'static str {
 /// 1 = highest): to frets on import, back to pitches (`to_pitch`) on export. The capo is
 /// part of the pitch.
 pub(crate) fn convert_trills(tracks: &mut [SongTrack], to_pitch: bool) {
-    for track in tracks {
-        let capo = track.offset;
-        let tuning: Vec<(i8, i8)> = track.strings.clone();
-        for measure in &mut track.measures {
+    for staff in tracks.iter_mut().flat_map(SongTrack::staves_mut) {
+        let capo = staff.offset;
+        let tuning: Vec<(i8, i8)> = staff.strings.to_vec();
+        for measure in staff.measures.iter_mut() {
             for voice in &mut measure.voices {
                 for beat in &mut voice.beats {
                     for note in &mut beat.notes {

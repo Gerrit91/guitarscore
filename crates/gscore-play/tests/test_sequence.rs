@@ -242,6 +242,7 @@ fn tied_notes_are_held_and_dead_notes_are_short() {
 #[test]
 fn a_tie_across_a_barline_is_held() {
     let at = |measure: usize, beat: usize| BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(0),
@@ -283,6 +284,7 @@ fn a_tie_across_a_barline_is_held() {
 #[test]
 fn every_voice_plays() {
     let at = |voice: usize| BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(voice),
@@ -314,6 +316,7 @@ fn every_voice_plays() {
 #[test]
 fn a_tie_does_not_extend_another_voice_s_note() {
     let at = |measure: usize, beat: usize, voice: usize| BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(voice),
@@ -425,6 +428,7 @@ fn a_grace_note_cuts_the_note_ringing_on_its_string() {
 fn a_beat_excerpt_plays_its_grace_notes_first() {
     let song = testing::song_with_graces(&[(&[], &[(1, 0)]), (&[(1, 2)], &[(1, 4)])]).unwrap();
     let at = BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),
@@ -524,6 +528,7 @@ fn repeats_play_measures_again_in_time() {
 #[test]
 fn beats_map_to_the_tick_of_their_first_pass() {
     let at = |measure: usize, beat: usize| BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(0),
@@ -558,6 +563,7 @@ fn beats_map_to_the_tick_of_their_first_pass() {
 #[test]
 fn a_tick_maps_back_to_the_beat_playing_there() {
     let at = |measure: usize, beat: usize| BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(0),
@@ -592,6 +598,7 @@ fn a_tick_maps_back_to_the_beat_playing_there() {
 #[test]
 fn the_playing_beat_knows_where_it_starts_and_ends() {
     let at = |measure: usize, beat: usize| BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(0),
@@ -1037,6 +1044,7 @@ fn every_drum_track_plays_on_a_channel_of_its_own_and_on_ten_for_general_midi() 
 fn swing_feel_moves_the_off_beats() {
     let mut song = testing::song(&[GUITAR_6], 1).unwrap();
     let at = |beat: usize| BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(0),
         voice: VoiceIndex::new(0),

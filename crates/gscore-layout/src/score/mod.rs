@@ -1,36 +1,42 @@
-//! A score of one or more tracks: every shown track's staves stacked in each system, with
-//! the measures of all tracks on one time grid ([`crate::measure::align`]), broken into
-//! systems together and put onto pages.
+//! A score of one or more tracks: every staff of every shown track stacked in each
+//! system, with the measures of all of them on one time grid ([`crate::measure::align`]),
+//! broken into systems together and put onto pages.
 //!
-//! The top track of a system carries what belongs to the whole system: measure numbers,
-//! section names, tempo marks and alternative endings. Every track keeps its own staves,
-//! barlines, repeat signs, dynamics, fermatas and beat effects. With several tracks, the
-//! tracks' short names stand in the left margin before each system, one line joins all
-//! their staves, and the song's multitrack line breaks apply instead of a track's own.
+//! One row of a system is one staff of one track: a track with several staves (a keyboard's
+//! treble and bass) takes a row per staff, its staves one under the other, joined by one
+//! line and a brace and named once. The top staff of a system carries what belongs to the
+//! whole system: measure numbers, section names, tempo marks and alternative endings. Every
+//! staff keeps its own clef, barlines, repeat signs, dynamics, fermatas and beat effects.
+//! With several tracks, the tracks' short names stand in the left margin before each system,
+//! one line joins all their staves, and the song's multitrack line breaks apply instead of a
+//! track's own.
 
 mod draw;
 mod part;
 
 use std::sync::Arc;
 
-use gscore_model::{Song, SystemBreak, TrackIndex, TrackView};
+use gscore_model::{Song, StaffIndex, SystemBreak, TrackIndex, TrackView};
 
-use self::draw::{Drawn, System, draw_barline_ties, draw_part};
+use self::draw::{Drawn, Group, System, draw_barline_ties, draw_group, draw_part};
 use self::part::Part;
-use crate::draw::{ColorToken, DrawOp, Point, Rect, TextAnchor, TextFont};
+use crate::draw::{ColorToken, DrawOp, Point, Rect};
 use crate::marks::{self, Rows};
 use crate::measure::MeasureLayout;
 use crate::options::EmptyStaves;
 use crate::pages::{PageDecor, place_systems};
 use crate::system::{Breaks, MeasureWidth, break_systems};
 use crate::{
-    AlignSource, Fonts, HEADER_GAP, Layout, LayoutError, LayoutOptions, MeasureSource, TrackPlaces,
-    header,
+    AlignSource, Fonts, HEADER_GAP, Layout, LayoutError, LayoutOptions, MeasureSource, Places,
+    TrackPlaces, header,
 };
 
 /// Space between the lowest staff of one track and the rows above the next track's staves
 /// in a system (room for what hangs below a staff: P.M. and let ring rows, dynamics).
 const TRACK_GAP: f32 = 5.0;
+/// Space between two staves of one track (a keyboard's treble and bass): less than between
+/// two tracks, more than the lines of one staff.
+const STAFF_GAP: f32 = 4.0;
 /// Gap between a track's name and the start of its staves.
 const NAME_GAP: f32 = 1.2;
 /// Font size of the track names before a system.
@@ -38,8 +44,9 @@ pub(super) const NAME_SIZE: f32 = 1.2;
 /// Room kept between a track's name and the page edge.
 const NAME_MARGIN: f32 = 0.5;
 
-/// Lays out `tracks` of `song` (top to bottom) in shared systems; the result's
-/// [`Layout::places`] are those of `primary` (the first track if it is not shown).
+/// Lays out `tracks` of `song` (top to bottom, every staff of each) in shared systems; the
+/// result's [`Layout::places`] are those of `primary`'s first staff (the first track's if
+/// it is not shown).
 pub(crate) fn layout_with(
     song: &Song,
     tracks: &[TrackIndex],
@@ -50,17 +57,41 @@ pub(crate) fn layout_with(
     align: &mut AlignSource<'_>,
 ) -> Result<Layout, LayoutError> {
     let first = *tracks.first().ok_or(LayoutError::NoSuchTrack(primary))?;
-    let mut parts = tracks
+    // A row of a system is one staff of one track.
+    let mut parts = Vec::new();
+    for &track in tracks {
+        let view = song.track(track).ok_or(LayoutError::NoSuchTrack(track))?;
+        let staves = view.staff_count().max(1);
+        for staff in 0..staves {
+            parts.push(Part::new(
+                song,
+                track,
+                StaffIndex::new(staff),
+                options,
+                fonts,
+                measure_layout,
+            )?);
+        }
+    }
+    // Which rows belong to a track with several staves (they are joined and named as a
+    // group).
+    let several: Vec<bool> = parts
         .iter()
-        .map(|&track| Part::new(song, track, options, fonts, measure_layout))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|part| {
+            song.track(part.track)
+                .is_some_and(|view| view.staff_count() > 1)
+        })
+        .collect();
     let count = parts
         .iter()
         .map(|part| part.measures.len())
         .min()
         .unwrap_or(0);
-    let multi = parts.len() > 1;
-    if multi {
+    // Several tracks share the song's breaks and carry their names in the margin; a single
+    // track (however many staves) breaks where it does on its own.
+    let multi = tracks.len() > 1;
+    // Every staff's measures line up: a piano's bass notes fall under its treble's.
+    if parts.len() > 1 {
         for index in 0..count {
             let column: Vec<Arc<MeasureLayout>> = parts
                 .iter()
@@ -82,7 +113,12 @@ pub(crate) fn layout_with(
     };
 
     let mut ops = Vec::new();
-    let views: Vec<TrackView<'_>> = parts.iter().map(|part| part.view).collect();
+    // The header names and tunes each track once, not once per staff.
+    let views: Vec<TrackView<'_>> = parts
+        .iter()
+        .filter(|part| part.staff.get() == 0)
+        .map(|part| part.view)
+        .collect();
     let header_end = header::draw(song, &views, &top.ctx, &mut ops)?;
 
     let keys: Vec<i8> = (0..count)
@@ -91,8 +127,8 @@ pub(crate) fn layout_with(
                 .map_or(0, |key| key.key)
         })
         .collect();
-    // After aligning, a measure is equally wide in every track; repeat signs are the
-    // song's, so the top track's marks size them for all.
+    // After aligning, a measure is equally wide on every staff; repeat signs are the
+    // song's, so the top staff's marks size them for all.
     let widths: Vec<MeasureWidth> = top
         .measures
         .iter()
@@ -119,7 +155,11 @@ pub(crate) fn layout_with(
     // it, as Guitar Pro writes them (the header lists the full names).
     let names: Vec<String> = if multi {
         let room = options.margin_left - NAME_GAP - NAME_MARGIN;
-        parts.iter().map(|part| part.margin_name(room)).collect()
+        parts
+            .iter()
+            .filter(|part| part.staff.get() == 0)
+            .map(|part| part.margin_name(room))
+            .collect()
     } else {
         Vec::new()
     };
@@ -169,22 +209,40 @@ pub(crate) fn layout_with(
         },
     );
     // Per system, which tracks are drawn: all, unless empty staves are hidden; then a
-    // track without a note in the system's bars is left out, except on the first system
-    // and the primary track (the cursor's, which must stay reachable).
-    let shown: Vec<Vec<bool>> = plans
+    // track without a note in the system's bars is left out, with all its staves, except
+    // on the first system and the primary track (the cursor's, which must stay reachable).
+    let shown_tracks: Vec<Vec<bool>> = plans
         .iter()
         .map(|plan| {
-            parts
+            tracks
                 .iter()
-                .map(|part| {
+                .map(|&track| {
                     let keep = match options.empty_staves {
                         EmptyStaves::Shown => true,
                         EmptyStaves::Hidden => false,
-                        EmptyStaves::HiddenButPrimary => part.track == primary,
+                        EmptyStaves::HiddenButPrimary => track == primary,
                     };
                     keep || !multi
                         || plan.measures.start == 0
-                        || part.has_notes(plan.measures.clone())
+                        || parts.iter().any(|part| {
+                            part.track == track && part.has_notes(plan.measures.clone())
+                        })
+                })
+                .collect()
+        })
+        .collect();
+    let shown: Vec<Vec<bool>> = plans
+        .iter()
+        .enumerate()
+        .map(|(system, _)| {
+            parts
+                .iter()
+                .map(|part| {
+                    tracks
+                        .iter()
+                        .position(|&track| track == part.track)
+                        .and_then(|at| shown_tracks.get(system).and_then(|s| s.get(at)).copied())
+                        .unwrap_or(true)
                 })
                 .collect()
         })
@@ -201,8 +259,8 @@ pub(crate) fn layout_with(
             .and_then(|shown| shown.iter().rposition(|&on| on))
             .unwrap_or(0)
     };
-    // Per system, the rows above each track's staves; the topmost shown track carries the
-    // system's own marks.
+    // Per system, the rows above each staff; only a system's top staff carries the marks
+    // that belong to the whole system (sections, tempo, endings).
     let rows: Vec<Vec<Rows>> = plans
         .iter()
         .enumerate()
@@ -215,16 +273,16 @@ pub(crate) fn layout_with(
                         part.marks.get(plan.measures.clone()).unwrap_or_default(),
                         part.ctx.notation.is_some(),
                         part.show_tab,
-                        index == first_shown(system),
+                        index == first_shown(system) && part.staff.get() == 0,
                     )
                 })
                 .collect()
         })
         .collect();
-    // Per system and track: the room above its staves (its rows; for a track below the
-    // top one also its notes that reach above the staff) and below them before the next
-    // track (more when a notation staff is lowest and its notes hang below it).
-    // A track not shown takes no room.
+    // Per system and staff: the room above it (its rows; for a staff below the top one
+    // also its notes that reach above) and below it before what comes next (more when a
+    // notation staff is lowest and its notes hang below it; less between two staves of one
+    // track than between two tracks). A track not shown takes no room.
     let rooms: Vec<Vec<Option<(f32, f32)>>> = plans
         .iter()
         .zip(&rows)
@@ -249,12 +307,17 @@ pub(crate) fn layout_with(
                     } else {
                         rows.height().max(reach_above)
                     };
+                    // The next staff of the same track stays close.
+                    let same_track = parts.get(index.saturating_add(1)).is_some_and(|next| {
+                        next.track == part.track && next.staff.get() > part.staff.get()
+                    });
+                    let gap = if same_track { STAFF_GAP } else { TRACK_GAP };
                     let below = if index == last_shown(system) {
                         0.0
                     } else if part.show_tab {
-                        TRACK_GAP
+                        gap
                     } else {
-                        TRACK_GAP + reach_below
+                        gap + reach_below
                     };
                     Some((above, below))
                 })
@@ -301,6 +364,9 @@ pub(crate) fn layout_with(
                 .unwrap_or_default();
         let mut y = placement.tops.get(index).copied().unwrap_or(bottom);
         let mut system_top = None;
+        // Where the track being drawn (its first staff) starts in this system, to join and
+        // name its staves as a group.
+        let mut group_top: Option<f32> = None;
         for (part_index, (part, drawn)) in parts.iter().zip(&mut drawn).enumerate() {
             let part_rows = rows
                 .get(index)
@@ -314,7 +380,7 @@ pub(crate) fn layout_with(
                 .unwrap_or(Some((0.0, 0.0)))
             else {
                 // Hidden in this system: it keeps a place without measures, so its
-                // system numbers stay in step with the other tracks'.
+                // system numbers stay in step with the other staves'.
                 drawn.skip(y);
                 continue;
             };
@@ -335,23 +401,41 @@ pub(crate) fn layout_with(
                     .get(plan.measures.start)
                     .map_or(crate::notation::Clef::Treble, |measure| measure.clef()),
                 last_measure: count,
+                // A track with several staves gets one line around them all, below.
+                join: !several.get(part_index).copied().unwrap_or(false),
             };
             draw_part(part, &system, drawn, &mut ops);
-            if let Some(name) = names.get(part_index).filter(|name| !name.is_empty()) {
-                ops.push(DrawOp::Text {
-                    text: name.clone(),
-                    at: Point::new(
-                        left - NAME_GAP,
-                        top + part.staves_height(plan.measures.clone()) / 2.0 + NAME_SIZE * 0.35,
-                    ),
-                    size: NAME_SIZE,
-                    font: TextFont::Regular,
-                    anchor: TextAnchor::End,
-                    color: ColorToken::Annotation,
-                });
-            }
-            bottom = top + part.staves_height(plan.measures.clone());
+            let tallest = part.staves_height(plan.measures.clone());
+            bottom = top + tallest;
+            group_top.get_or_insert(top);
             y = bottom + below;
+            // The last staff of a track: join its staves and write its name once.
+            let last_of_track = parts
+                .get(part_index.saturating_add(1))
+                .is_none_or(|next| next.track != part.track);
+            if !last_of_track {
+                continue;
+            }
+            let group_top = group_top.take().unwrap_or(top);
+            let name = tracks
+                .iter()
+                .position(|&track| track == part.track)
+                .and_then(|at| names.get(at))
+                .filter(|name| !name.is_empty());
+            draw_group(
+                part,
+                Group {
+                    top: group_top,
+                    last_top: top,
+                    height: bottom - group_top,
+                    joined: several.get(part_index).copied().unwrap_or(false),
+                },
+                plan.measures.clone(),
+                name,
+                left,
+                fonts,
+                &mut ops,
+            );
         }
         // One line joins the staves of all tracks at the system's start.
         if multi && let Some(system_top) = system_top {
@@ -404,12 +488,17 @@ pub(crate) fn layout_with(
         .zip(drawn)
         .map(|(part, drawn)| TrackPlaces {
             track: part.track,
-            places: drawn.places,
+            staff: part.staff,
+            places: Places {
+                staff: part.staff,
+                ..drawn.places
+            },
         })
         .collect();
     let places = tracks
         .iter()
-        .find(|t| t.track == primary)
+        .find(|t| t.track == primary && t.staff.get() == 0)
+        .or_else(|| tracks.iter().find(|t| t.track == primary))
         .or(tracks.first())
         .map(|t| t.places.clone())
         .unwrap_or_default();

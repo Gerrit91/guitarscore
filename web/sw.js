@@ -6,7 +6,9 @@
 // would download again for nothing. The soundfont cache survives app-cache changes and is
 // pruned to the manifest's current file when a new worker activates.
 //
-// Bump CACHE when the build changes; `cargo xtask web` stamps the version into this file.
+// CACHE is unique to each build: `cargo xtask web` stamps the version and the build time
+// into this file, so every build is a new worker and a new cache. The page reloads once
+// when the new worker takes over (index.html).
 const CACHE = "guitarscore-__VERSION__";
 const SOUNDFONT_CACHE = "guitarscore-soundfonts";
 const SOUNDFONT_DIR = "./assets/soundfonts/";
@@ -30,7 +32,11 @@ self.addEventListener("install", (event) => {
       .open(CACHE)
       // A missing optional file must not fail the install. The SoundFont is not here: the
       // install would wait for 30 MB.
-      .then((cache) => Promise.allSettled(SHELL.map((url) => cache.add(url))))
+      // `reload` skips the browser's HTTP cache: otherwise a new build's cache could be
+      // filled with the previous build's files (seen in testing, 2026-11-13).
+      .then((cache) =>
+        Promise.allSettled(SHELL.map((url) => cache.add(new Request(url, { cache: "reload" })))),
+      )
       .then(() => self.skipWaiting()),
   );
 });

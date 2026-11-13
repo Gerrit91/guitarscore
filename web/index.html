@@ -52,6 +52,64 @@
         white-space: pre-wrap;
         text-align: center;
       }
+      #crashed {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        align-items: center;
+        justify-content: center;
+        padding: 0 1.5em;
+        color: #d8dade;
+        font: 15px/1.5 system-ui, sans-serif;
+        text-align: center;
+        background: #181a1f;
+      }
+      #crashed[hidden] {
+        display: none;
+      }
+      #crashed .title {
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      #crashed p {
+        max-width: 36em;
+        margin: 0;
+      }
+      #crashed .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+      }
+      #crashed button {
+        padding: 7px 16px;
+        border: 1px solid #4a4f5a;
+        border-radius: 4px;
+        color: #d8dade;
+        font: inherit;
+        background: #23262d;
+        cursor: pointer;
+      }
+      #crashed button:hover {
+        background: #2d313a;
+      }
+      #crashed button.primary {
+        border-color: #3d7fd9;
+        background: #2b5d9e;
+      }
+      #crashed button.primary:hover {
+        background: #3168b0;
+      }
+      #crash-details {
+        max-width: 42em;
+        color: #8d929c;
+        font-size: 13px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
       noscript {
         color: #d8dade;
         font: 15px/1.5 system-ui, sans-serif;
@@ -64,6 +122,15 @@
       <div class="title">GuitarScore</div>
       <div>Loading the editor…</div>
       <div id="status"></div>
+    </div>
+    <div id="crashed" hidden role="alertdialog" aria-labelledby="crash-title">
+      <div class="title" id="crash-title">GuitarScore stopped</div>
+      <p id="crash-text">An internal error stopped the editor. Reload the page to go on.</p>
+      <div class="actions" id="crash-rescue"></div>
+      <div class="actions">
+        <button type="button" id="crash-reload">Reload</button>
+      </div>
+      <div id="crash-details"></div>
     </div>
     <noscript>GuitarScore needs JavaScript and WebAssembly.</noscript>
     <script type="module">
@@ -79,7 +146,67 @@
         loading.classList.remove("hidden");
       };
 
+      // The crash screen. A panic aborts the editor's WebAssembly instance; its panic hook
+      // calls this. The editor keeps a copy of every song with unsaved edits here
+      // (globalThis.guitarscoreRescue, by tab), outside the instance, so it survives.
+      let crashed = false;
+      const download = (name, bytes) => {
+        const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = name;
+        anchor.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      };
+      globalThis.guitarscoreCrashed = (message) => {
+        if (crashed) return;
+        crashed = true;
+        loading.classList.add("hidden");
+        document.getElementById("guitarscore").style.visibility = "hidden";
+        const screen = document.getElementById("crashed");
+        const rescue = document.getElementById("crash-rescue");
+        const copies = Object.values(globalThis.guitarscoreRescue ?? {}).filter(
+          (copy) => copy && typeof copy.name === "string" && copy.bytes instanceof Uint8Array,
+        );
+        const pending = new Set(copies);
+        if (copies.length > 0) {
+          document.getElementById("crash-text").textContent =
+            "An internal error stopped the editor. Your unsaved songs are kept as of your " +
+            "last pause in editing (about a second): download them before you reload.";
+          for (const copy of copies) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "primary";
+            button.textContent = `Download ${copy.name}`;
+            button.addEventListener("click", () => {
+              download(copy.name, copy.bytes);
+              pending.delete(copy);
+            });
+            rescue.appendChild(button);
+          }
+        }
+        document.getElementById("crash-reload").addEventListener("click", () => {
+          if (
+            pending.size > 0 &&
+            !confirm("A song with unsaved edits has not been downloaded. Reload anyway?")
+          ) {
+            return;
+          }
+          location.reload();
+        });
+        document.getElementById("crash-details").textContent = String(message ?? "");
+        screen.hidden = false;
+      };
+
       window.addEventListener("error", (event) => {
+        // Once the editor runs, an uncaught error is the instance aborting (a panic whose
+        // hook could not run, or running out of memory): the same crash screen.
+        if (document.body.dataset.guitarscoreReady === "true") {
+          if (event.error instanceof WebAssembly.RuntimeError || /unreachable/i.test(event.message ?? "")) {
+            globalThis.guitarscoreCrashed(event.message);
+          }
+          return;
+        }
         if (event.message) showError(event.message);
       });
       window.addEventListener("unhandledrejection", (event) => {
@@ -107,6 +234,17 @@
       // Installable app / offline use. Registration is optional: a plain HTTP server or a
       // file:// copy still runs the editor.
       if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+        // A new build takes over while this page still runs the old one (the old worker
+        // served it). Reload once into the new build, so a deploy is seen at the next
+        // visit, not the one after; the editor's own guard asks first if a song has
+        // unsaved edits. A first visit (no worker yet) has nothing to replace.
+        const replacing = Boolean(navigator.serviceWorker.controller);
+        let reloading = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (!replacing || reloading || crashed) return;
+          reloading = true;
+          location.reload();
+        });
         navigator.serviceWorker.register("./sw.js").catch(() => {});
       }
     </script>

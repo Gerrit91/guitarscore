@@ -5021,3 +5021,111 @@ from a sound's name to one of its tones, filled by the owner:
   `fortississimo_is_only_a_little_louder_than_forte`).
 - Not changed: tracks on the SoundFont synth follow the SF2 standard curve (fff 5 dB
   above f); the velocities themselves stay Guitar Pro's (15 to 127).
+
+## 2026-11-13 — Gaps 6 to 9: pitched tracks, a limiter, performance, browser crashes
+
+- **Pitched tracks (gap 2, was "6" in the owner's list):** already fixed on 2026-11-06
+  (13d748d); the gap entry was older. Checked all 26 band files: every first-staff note's
+  string and fret on the stand-in tuning gives its GP7 `Midi` pitch, `gscore-cli midi`
+  skips no note, and a voice track draws as notation only (its clefs follow the file).
+  Gap rewritten; what is left is note entry on stand-in strings and second staves.
+- **Safety limiter** (`gscore-audio/src/limiter.rs`): stereo-linked peak limiter without
+  look-ahead at the very end of `SynthEngine::render_block`, after the master meter:
+  ceiling -0.5 dBFS, hold 10 ms, release 150 ms; bit-exact below the ceiling (the gain is
+  kept as a deficit below 1, which does not stall in f32 near 1). Desktop, WAV export and
+  the worklet all get it. Sixteen loud tracks: the mix reaches 1.49 × full scale, the
+  output stays at 0.944. Tests: unit tests plus `tests/test_limiter.rs`.
+- **Strings 358 → 231 ms** (`cargo xtask bench`, budget 250): `floor` in the delay line's
+  read was a libm call (x86-64 without SSE4.1) → truncation; the Lagrange weights are kept
+  while the delay holds (a "glide" whose step is below one ulp keeps them too) and worked
+  out directly while it really moves (keeping them then was slower); the loss filter is
+  solved as a quadratic instead of 24 bisection steps (redesigned every block while a
+  string bends). All bit-exact except the loss design (within 1e-5 of the old search; a
+  test keeps the search for comparison). Measured by switching parts off (no profiler on
+  this machine): the second vibration costs about 105 ms of the old 358, the output's
+  three filters 52, the pickup 13.
+- **Whole-engine benchmark** (`gscore-audio/examples/engine_bench.rs`, `--check` in
+  `cargo xtask bench`, budget 500 ms per second): 470 ms at first. The built-in cabinet
+  was 200 ms long; past 40 ms it is 84 dB down, and at 1 920 samples the convolver needs
+  only its first stage: 403 ms. A silent drum part with its tail over no longer runs its
+  chain. Per track per second: amp about 9 ms, cabinet 4, compressor 2.7, EQ 1.2, a
+  computed reverb 14 (left out: rooms belong on the bus).
+- **Browser crash screen** (gap 30): the panic hook calls the page's `guitarscoreCrashed`,
+  which hides the canvas and offers the unsaved songs for download. The app hands the page
+  a GP7 copy of each tab with unsaved edits once they rest for a second
+  (`app/web_rescue.rs`), kept in JavaScript outside the wasm instance. `song_with_state`
+  now builds the song for Save and for the copies alike.
+- **Stale browser build** (gap 31): the worker's install fetched the shell through the
+  HTTP cache, and the visit after a deploy was served by the old worker. Shell fetched with
+  `cache: "reload"`; the page reloads once on `controllerchange` (not on a first visit).
+- **Smoke test** (`xtask/src/web/page_checks.rs`): a song dropped on the canvas and a
+  typed fret give a rescue copy (6 845 bytes, a zip); the crash screen offers it; a
+  simulated deploy runs at the next visit (with the reload switched off it fails: "still
+  runs the previous build"). The deploy check runs last on the app page: putting the built
+  files back is one more deploy to the page.
+- Seen on the way: `cargo clippy` for wasm fails in `gscore-session` (`drop(File)` is
+  `drop_non_drop` there); CI checks wasm with `cargo check` only, so it is not caught.
+- Not done: a limiter meter or block, a storage-backed journal in the browser (copies are
+  in memory only), the amp's cost.
+
+## 2026-11-13 — Second staves kept and played; GP6 drums
+
+- **Data loss found:** saving a GP7 file dropped every track's second staff (a piano's
+  or synth's bass): `DrDr.gp` lost 426 synth and 61 piano notes, and the save check
+  could not see it because the staves were never read. Affected band files: Ballad,
+  NewBallad-Gerrit, DistortedDreams, DrDr and its two variants.
+- Owner chose a full staves model (every staff equal everywhere). Stage 1 (86478aa):
+  `gscore-gp` `Track::staves`, GPIF read/write of every staff; `gscore-model`
+  `StaffIndex`, `StaffView`, every measure edit and its undo on every staff, a new bar
+  keeps its staff's clef, validation and the save comparison per staff. All 26 band
+  files round-trip with every staff note for note the same (checked per staff against
+  the original XML).
+- Stage 3 (78116c9): `TrackView::on_staff`; playback walks every staff at its own
+  tuning, a staff's strings numbered from 12 × its index so staves never cut each other.
+- Stages 2b (positions with a staff, editing) and 4 (drawing) are in
+  `docs/handoff-staves.md`.
+- **GP6 drums** (78c9853): element and variation mapped to GP7 articulations, checked
+  against `multi_staff.gpx` and its GP7 twin: its drum events now equal the GP7 file's
+  (golden rewritten; one kick differs, edited in the GP7 file). Drum bars are written
+  with the `Neutral` clef (were `G2`).
+- Not done: GPX export writes drum notes the GP7 way; drawing and editing second staves.
+
+
+## 2026-11-13 — Second staves drawn and edited
+
+- **Layout** (`gscore-layout`): a row of a system is a (track, staff) pair; `layout_with`
+  makes one `Part` per staff through `TrackView::on_staff`. A track's staves stack closer
+  than tracks (4 vs 5 spaces), each in its own clef with its own key and time signatures,
+  joined by one line and a SMuFL `brace` (stretched over the group), with the name once
+  beside them; a track with several staves is notation only, as Guitar Pro writes a
+  keyboard. `LayoutCache` and `Places`/`TrackPlaces`/`Hit` carry the staff
+  (`staff_places`, `hit_in_voice_on`). Fix on the way: `Notation::octave_up` is now set
+  for string instruments only, so a piano's bass staff is written at pitch instead of an
+  octave high. New golden `two_staves.all.svg` (owner approval of the picture still
+  needed) and `tests/test_second_staff.rs`; no existing golden changed.
+- **Positions** (`gscore-model`, `gscore-edit`, `gscore-app`): `BeatPosition.staff`,
+  `Song::beat`/`measure_at`/`staff`, `edit_measure_at`/`edit_measure_of` (every edit that
+  takes a position uses them), `Cursor.staff`, `Selection::Beats.staff`. Up/Down cross
+  from one staff to the next and back; clicks, right-clicks and drags take the staff under
+  the pointer; the cursor, its scroll and the page readout use that staff's places.
+  `Command::to_line` writes `staff=` only for a later staff (an old line means staff 1),
+  and the parser reads it. Number of touched files is large because every `BeatPosition`
+  literal gained `staff: StaffIndex::new(0)`; staff 0 behaves exactly as before.
+- **The rest**: measure copy/paste takes every staff of a track; `Song::issues` walks
+  every staff (with its own strings) and `Issue` carries the staff; the track panel lists
+  each staff's tuning; `beat_excerpt` plays only the staff being edited. The two-staff
+  song is in `common::test_songs()`, so apply/undo and `panic_hunt` run on it, plus a hunt
+  over `staff=2` for every command with a position.
+- `cargo xtask ci` green. Not done: the tuning dialog still edits the first staff only,
+  MusicXML with staves, `gscore-cli dump` and the lyrics editor per staff.
+
+## 2026-11-13 — The mixer in the View menu, on F3
+
+- New action `toggle_mixer` (label "Mixer", bound to F3 in the built-in keymap) shows the
+  mixer in the bottom panel instead of the measure grid and back; the grid's own
+  Mixer/Grid button and the new View entry run the same code
+  (`GuitarScoreApp::toggle_mixer`), so the choice is saved to the settings as before. The
+  View menu entry is selectable (ticked while the mixer shows) and writes F3 beside it;
+  the action needs no open song, like the other view actions. App test:
+  `f3_and_the_view_menu_switch_between_the_song_grid_and_the_mixer` (key and menu, both
+  ways, remembered in the settings). `docs/usage.md` lists F3.

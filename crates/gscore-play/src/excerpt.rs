@@ -34,13 +34,27 @@ impl Sequence {
         let Some(start) = crate::sequence::beat_tick(&measures, song, at) else {
             return Ok(None);
         };
-        // The beat's notes at the first pass of its measure (later passes repeat them).
+        // The beat's notes at the first pass of its measure (later passes repeat them),
+        // and only those of the staff being edited: a piano's bass staff is heard on its
+        // own, not with its treble.
         let keep = |note: &crate::sounding::Sounding| note.onset == start;
         let collected = build::collect(song, &[at.track], &measures, Some(&keep), Some(start))?;
-        if collected.notes.is_empty() {
+        // A staff's strings are numbered from `STAFF_STRINGS` times its index: keep the
+        // notes of `at`'s staff.
+        let first = u8::try_from(at.staff.get())
+            .ok()
+            .and_then(|staff| staff.checked_mul(build::STAFF_STRINGS));
+        let on_staff = |note: &crate::performance::PlayedNote| {
+            let note_string = note.string;
+            first.is_some_and(|first| {
+                note_string >= first && note_string < first.saturating_add(build::STAFF_STRINGS)
+            })
+        };
+        let mut notes: Vec<crate::performance::PlayedNote> =
+            collected.notes.into_iter().filter(on_staff).collect();
+        if notes.is_empty() {
             return Ok(None);
         }
-        let mut notes = collected.notes;
         // Grace notes before the beat belong to it: the excerpt starts with the first.
         let origin = notes.iter().map(|note| note.start).fold(start, u64::min);
         for note in &mut notes {

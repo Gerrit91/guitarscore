@@ -33,6 +33,7 @@ fn go(editor: &mut TabEditor, measure: usize, beat: usize) {
 /// Removes every beat of `measure`, as Guitar Pro's empty GP7 bar has none.
 fn empty_measure(editor: &mut TabEditor, measure: usize) {
     let at = gscore_model::BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: editor.cursor().track,
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(0),
@@ -111,6 +112,7 @@ fn shift_home_and_shift_end_extend_the_selection_to_the_track_ends() {
     assert_eq!(
         e.selection(),
         Some(Selection::Beats {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(0),
             voice: VoiceIndex::new(0),
             anchor: spot(1, 2),
@@ -123,6 +125,7 @@ fn shift_home_and_shift_end_extend_the_selection_to_the_track_ends() {
     assert_eq!(
         e.selection(),
         Some(Selection::Beats {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(0),
             voice: VoiceIndex::new(0),
             anchor: spot(1, 2),
@@ -149,6 +152,7 @@ fn shift_arrows_extend_the_selection_through_empty_measures() {
     assert_eq!(
         e.selection(),
         Some(Selection::Beats {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(0),
             voice: VoiceIndex::new(0),
             anchor: spot(0, 2),
@@ -164,6 +168,7 @@ fn shift_arrows_extend_the_selection_through_empty_measures() {
     assert_eq!(
         e.selection(),
         Some(Selection::Beats {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(0),
             voice: VoiceIndex::new(0),
             anchor: spot(0, 2),

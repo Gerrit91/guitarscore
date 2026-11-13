@@ -31,6 +31,13 @@ fn app_with_multi_staff() -> Harness<'static, GuitarScoreApp> {
     harness
 }
 
+/// Parks the pointer outside the window, so a snapshot does not show the fake cursor where
+/// the last click left it (a menu entry moving would otherwise change the picture).
+fn park_pointer(harness: &mut Harness<'static, GuitarScoreApp>) {
+    harness.hover_at(egui::pos2(700.0, 884.0));
+    harness.run();
+}
+
 fn view_menu(harness: &mut Harness<'static, GuitarScoreApp>, item: &str) {
     harness.get_by_label("View").click();
     harness.run();
@@ -109,6 +116,7 @@ fn all_tracks_match_their_snapshot() {
         document.editor_mut().set_cursor(cursor);
     }
     harness.run();
+    park_pointer(&mut harness);
     harness.snapshot("multi_staff_all_tracks");
 }
 
@@ -287,6 +295,7 @@ fn the_screen_view_matches_its_snapshot() {
     harness.run();
     view_menu(&mut harness, "Screen view (vertical)");
     // Paper from edge to edge, as wide as the room between the panels and no wider.
+    park_pointer(&mut harness);
     harness.snapshot("screen_view");
 }
 

@@ -13,7 +13,7 @@ use gscore_session::FoundSession;
 
 use super::GuitarScoreApp;
 use super::alert::{AlertIcon, Answer, Reply, alert};
-use super::tab::TabId;
+use super::tab::{Tab, TabId};
 use crate::document::Document;
 use crate::tasks::{Event, SaveFailure};
 
@@ -358,6 +358,15 @@ impl GuitarScoreApp {
         }
     }
 
+    /// `tab`'s song as Save writes it: our own state travels in the song's free-text notes
+    /// ("Notices"), which Guitar Pro shows and keeps when it saves the file again.
+    pub(super) fn song_with_state(&self, tab: &Tab) -> gscore_model::Song {
+        let song = tab.document.song().clone();
+        let state = self.song_state(tab);
+        let notes = super::song_state::encode(song.notes().map(str::to_owned), state.as_ref());
+        song.with_notes(notes)
+    }
+
     /// Saves the tab being saved to `path` in the background.
     fn start_save(&mut self, path: PathBuf, allow_losses: bool, ctx: &egui::Context) {
         // The tab may have been closed meanwhile (while the file dialog was open).
@@ -369,14 +378,7 @@ impl GuitarScoreApp {
             self.abandon_save();
             return;
         };
-        let mut song = tab.document.song().clone();
-        // Our own state travels in the song's free-text notes ("Notices"), which Guitar
-        // Pro shows and keeps when it saves the file again.
-        let state = self.song_state(tab);
-        song = song.with_notes(super::song_state::encode(
-            song.notes().map(str::to_owned),
-            state.as_ref(),
-        ));
+        let song = self.song_with_state(tab);
         let revision = tab.document.editor().revision();
         if let Err(error) = self.tasks.save(song, path, revision, allow_losses, ctx) {
             self.notice = Some(error);
@@ -563,7 +565,7 @@ impl GuitarScoreApp {
         self.playback.preload_synth();
         let id = self.next_tab_id;
         self.next_tab_id = self.next_tab_id.wrapping_add(1);
-        self.tabs.push(super::tab::Tab::new(id, document));
+        self.tabs.push(Tab::new(id, document));
         self.active = self.tabs.len() - 1;
     }
 

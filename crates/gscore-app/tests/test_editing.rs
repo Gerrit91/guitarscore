@@ -109,6 +109,7 @@ fn notes_at(
 ) -> Vec<(u8, u8)> {
     let document = harness.state().document().unwrap();
     let at = BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(0),
@@ -904,6 +905,7 @@ fn the_rest_tile_enters_a_rest_of_the_chosen_length_in_an_empty_bar() {
     harness.get_by_label("New song").click();
     settle(&mut harness);
     let at = |measure: usize| BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
         track: TrackIndex::new(0),
         measure: MeasureIndex::new(measure),
         voice: VoiceIndex::new(0),
@@ -1186,6 +1188,37 @@ fn the_score_and_the_menu_bar_edit_bars_and_tracks() {
         (measures + 1, tracks),
         "the menu bar adds a bar"
     );
+}
+
+#[test]
+fn f3_and_the_view_menu_switch_between_the_song_grid_and_the_mixer() {
+    let mut harness = app_with(&testdata("basic/steel_guitar_dadgad.gp"));
+    assert!(!harness.state().view().grid_mixer, "the measure grid first");
+    // F3 shows the mixer, and F3 again goes back.
+    harness.key_press(Key::F3);
+    harness.run();
+    assert!(harness.state().view().grid_mixer);
+    harness.get_by_label("Volume Steel Guitar");
+    harness.key_press(Key::F3);
+    harness.run();
+    assert!(!harness.state().view().grid_mixer);
+    harness.get_by_label("Output activity Steel Guitar");
+
+    // The View menu has the same switch, with F3 beside it (the label includes the key).
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Mixer F3").click();
+    harness.run();
+    assert!(harness.state().view().grid_mixer);
+    assert!(
+        harness.state().settings().grid_mixer,
+        "remembered in the settings"
+    );
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Mixer F3").click();
+    harness.run();
+    assert!(!harness.state().view().grid_mixer);
 }
 
 #[test]
@@ -1856,6 +1889,7 @@ fn ctrl_c_and_ctrl_v_copy_one_note_and_a_beat_selection() {
             .unwrap()
             .song()
             .beat(BeatPosition {
+                staff: gscore_model::StaffIndex::new(0),
                 track: TrackIndex::new(0),
                 measure: MeasureIndex::new(0),
                 voice: VoiceIndex::new(0),
@@ -2002,6 +2036,7 @@ fn a_paste_that_needs_more_bars_says_so() {
     document
         .editor_mut()
         .set_selection(Some(gscore_edit::Selection::Beats {
+            staff: gscore_model::StaffIndex::new(0),
             track: TrackIndex::new(0),
             voice: VoiceIndex::new(0),
             anchor: gscore_edit::BeatSpot {
@@ -2027,4 +2062,78 @@ fn a_paste_that_needs_more_bars_says_so() {
     harness.run();
     let notice = harness.state().notice().unwrap_or_default();
     assert!(notice.contains("insert measures first"), "{notice}");
+}
+
+#[test]
+fn a_fret_typed_on_the_second_staff_lands_there_and_the_click_finds_it() {
+    // A piano (a track with two staves) and a guitar, written as GP7 and opened again.
+    let song = gscore_model::testing::song_with_two_staves().unwrap();
+    let bytes = gscore_io::export_to_bytes(&song, gscore_io::FileFormat::Gp).unwrap();
+    let dir = std::env::temp_dir().join(format!("gscore-app-staves-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("piano.gp");
+    std::fs::write(&file, bytes).unwrap();
+    let mut harness = app_with(&file);
+    // The score shows the shown track's two staves (the page follows the cursor's track).
+    let layout = harness
+        .state()
+        .document()
+        .unwrap()
+        .shown_layout()
+        .expect("the page was drawn");
+    let staves: Vec<usize> = layout
+        .tracks
+        .iter()
+        .map(|places| places.staff.get())
+        .collect();
+    assert_eq!(staves, [0, 1], "the piano's treble and bass");
+    // The cursor moves to the bass staff, and what is typed goes there.
+    let document = harness.state_mut().document_mut().unwrap();
+    let cursor = document.editor().cursor();
+    document.editor_mut().set_cursor(gscore_edit::Cursor {
+        staff: gscore_model::StaffIndex::new(1),
+        string: 2,
+        ..cursor
+    });
+    harness.run();
+    type_char(&mut harness, "7", Modifiers::NONE);
+    let app = harness.state();
+    let document = app.document().unwrap();
+    let at = document.editor().cursor().position();
+    assert_eq!(at.staff, gscore_model::StaffIndex::new(1));
+    let fret = |at: BeatPosition| -> Vec<(u8, u8)> {
+        let Some(beat) = document.song().beat(at) else {
+            return Vec::new();
+        };
+        beat.notes()
+            .map(|note| (note.string().unwrap().get(), note.fret().unwrap().get()))
+            .collect()
+    };
+    assert!(
+        fret(at).contains(&(2, 7)),
+        "the bass staff has the typed note: {:?}",
+        fret(at)
+    );
+    // The treble staff's first beat keeps its open note.
+    let treble = BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
+        ..at
+    };
+    assert_eq!(fret(treble), [(1, 0)]);
+    // A click on the bass staff's staves finds that staff.
+    let layout = document.shown_layout().expect("the page was drawn again");
+    let bass = layout
+        .staff_places(TrackIndex::new(0), gscore_model::StaffIndex::new(1))
+        .expect("the bass staff is drawn");
+    let system = &bass.systems[0];
+    let measure = &bass.measures[0];
+    let hit = bass
+        .hit(gscore_layout::Point::new(
+            measure.content,
+            (system.top + system.tab_bottom()) / 2.0,
+        ))
+        .expect("a click on the bass staff");
+    assert_eq!(hit.staff, gscore_model::StaffIndex::new(1));
+    let _ = std::fs::remove_dir_all(&dir);
 }

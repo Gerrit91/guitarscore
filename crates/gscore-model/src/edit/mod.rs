@@ -146,7 +146,8 @@ enum ChangeKind {
     BeatRemoved { at: BeatPosition, beat: Box<GpBeat> },
     /// A measure was inserted at `at` in every track.
     MeasureInserted { at: MeasureIndex },
-    /// Measures were removed at `at`, one from every track, plus the measure header.
+    /// Measures were removed at `at`, one from every staff of every track (in that order),
+    /// plus the measure header.
     MeasureRemoved {
         at: MeasureIndex,
         header: Box<GpMeasureHeader>,
@@ -525,11 +526,11 @@ fn beat_size(beat: &GpBeat) -> usize {
     size_of::<GpBeat>().saturating_add(beat.notes.len().saturating_mul(size_of::<GpNote>()))
 }
 
-/// About how many bytes a track, its name and its measures take.
+/// About how many bytes a track, its name and every staff's measures take.
 fn track_size(track: &GpTrack) -> usize {
     size_of::<GpTrack>()
         .saturating_add(track.name.len())
-        .saturating_add(track.measures.iter().map(measure_size).sum())
+        .saturating_add(track.all_measures().map(measure_size).sum())
 }
 
 /// About how many bytes a measure and its beats take.
@@ -615,7 +616,7 @@ impl Song {
                 string,
                 previous,
                 previous_status,
-            } => self.edit_measure(at.track, at.measure, |measure| {
+            } => self.edit_measure_at(*at, |measure| {
                 notes::restore(measure, *at, *string, previous.as_deref())?;
                 beat_in(measure, *at)?.status = previous_status.clone();
                 Ok(())
@@ -625,19 +626,17 @@ impl Song {
                 string,
                 note,
                 previous_status,
-            } => self.edit_measure(at.track, at.measure, |measure| {
+            } => self.edit_measure_at(*at, |measure| {
                 notes::restore(measure, *at, *string, Some(note.as_ref()))?;
                 beat_in(measure, *at)?.status = previous_status.clone();
                 Ok(())
             }),
-            ChangeKind::DurationSet { at, previous } => {
-                self.edit_measure(at.track, at.measure, |measure| {
-                    beat_in(measure, *at)?.duration = previous.clone();
-                    Ok(())
-                })
-            }
+            ChangeKind::DurationSet { at, previous } => self.edit_measure_at(*at, |measure| {
+                beat_in(measure, *at)?.duration = previous.clone();
+                Ok(())
+            }),
             ChangeKind::BeatInserted { at, created_voice } => {
-                self.edit_measure(at.track, at.measure, |measure| {
+                self.edit_measure_at(*at, |measure| {
                     let voice = voice_in(measure, *at)?;
                     let index = at.beat.get();
                     if index >= voice.beats.len() {
@@ -652,17 +651,15 @@ impl Song {
                     Ok(())
                 })
             }
-            ChangeKind::BeatRemoved { at, beat } => {
-                self.edit_measure(at.track, at.measure, |measure| {
-                    let voice = voice_in(measure, *at)?;
-                    let index = at.beat.get();
-                    if index > voice.beats.len() {
-                        return Err(ModelError::Invalid(format!("{at}: no such beat")));
-                    }
-                    voice.beats.insert(index, beat.as_ref().clone());
-                    Ok(())
-                })
-            }
+            ChangeKind::BeatRemoved { at, beat } => self.edit_measure_at(*at, |measure| {
+                let voice = voice_in(measure, *at)?;
+                let index = at.beat.get();
+                if index > voice.beats.len() {
+                    return Err(ModelError::Invalid(format!("{at}: no such beat")));
+                }
+                voice.beats.insert(index, beat.as_ref().clone());
+                Ok(())
+            }),
             ChangeKind::MeasureInserted { at } => {
                 self.edit_structure(|inner| measures::remove(inner, *at))
             }
@@ -859,12 +856,10 @@ impl Song {
                 }
                 Ok(())
             }),
-            ChangeKind::BeatText { at, previous } => {
-                self.edit_measure(at.track, at.measure, |measure| {
-                    beat_in(measure, *at)?.text = previous.clone();
-                    Ok(())
-                })
-            }
+            ChangeKind::BeatText { at, previous } => self.edit_measure_at(*at, |measure| {
+                beat_in(measure, *at)?.text = previous.clone();
+                Ok(())
+            }),
             ChangeKind::LyricLine {
                 line,
                 previous,
@@ -874,27 +869,23 @@ impl Song {
                 crate::lyrics::restore_line(self, *line, previous, *previous_track, previous_beats);
                 Ok(())
             }
-            ChangeKind::ChordDiagram { at, previous } => {
-                self.edit_measure(at.track, at.measure, |measure| {
-                    beat_in(measure, *at)?.chord_diagram =
-                        previous.as_ref().map(|diagram| diagram.to_gp());
-                    Ok(())
-                })
-            }
+            ChangeKind::ChordDiagram { at, previous } => self.edit_measure_at(*at, |measure| {
+                beat_in(measure, *at)?.chord_diagram =
+                    previous.as_ref().map(|diagram| diagram.to_gp());
+                Ok(())
+            }),
             ChangeKind::BeatRest {
                 at,
                 previous_status,
                 notes,
-            } => self.edit_measure(at.track, at.measure, |measure| {
+            } => self.edit_measure_at(*at, |measure| {
                 let beat = beat_in(measure, *at)?;
                 beat.notes.clone_from(notes);
                 beat.status = previous_status.clone();
                 Ok(())
             }),
             ChangeKind::BeatDynamic { at, previous } => {
-                self.edit_measure(at.track, at.measure, |measure| {
-                    dynamics::restore(measure, *at, previous)
-                })
+                self.edit_measure_at(*at, |measure| dynamics::restore(measure, *at, previous))
             }
             ChangeKind::NoteTie {
                 at,
@@ -905,7 +896,7 @@ impl Song {
                 at,
                 string,
                 previous,
-            } => self.edit_measure(at.track, at.measure, |measure| {
+            } => self.edit_measure_at(*at, |measure| {
                 let beat = beat_in(measure, *at)?;
                 let note = beat
                     .notes
@@ -921,7 +912,7 @@ impl Song {
                 at,
                 string,
                 previous,
-            } => self.edit_measure(at.track, at.measure, |measure| {
+            } => self.edit_measure_at(*at, |measure| {
                 let beat = beat_in(measure, *at)?;
                 let note = beat
                     .notes
@@ -933,12 +924,10 @@ impl Song {
                 note.effect = previous.as_ref().clone();
                 Ok(())
             }),
-            ChangeKind::BeatEffect { at, previous } => {
-                self.edit_measure(at.track, at.measure, |measure| {
-                    beat_in(measure, *at)?.effect = previous.as_ref().clone();
-                    Ok(())
-                })
-            }
+            ChangeKind::BeatEffect { at, previous } => self.edit_measure_at(*at, |measure| {
+                beat_in(measure, *at)?.effect = previous.as_ref().clone();
+                Ok(())
+            }),
             ChangeKind::MeasureTempo {
                 measure,
                 previous,
@@ -967,8 +956,12 @@ impl Song {
                             ModelError::Invalid(format!("{measure}: no such measure"))
                         })?;
                     header.time_signature = previous_header.clone();
-                    for (track, previous) in inner.tracks.iter_mut().zip(previous_measures) {
-                        if let Some(slot) = track.measures.get_mut(measure.get()) {
+                    let lists = inner
+                        .tracks
+                        .iter_mut()
+                        .flat_map(gscore_gp::Track::measure_lists_mut);
+                    for (list, previous) in lists.zip(previous_measures) {
+                        if let Some(slot) = list.get_mut(measure.get()) {
                             slot.time_signature = previous.clone();
                         }
                     }
@@ -988,8 +981,12 @@ impl Song {
                     .get_mut(measure.get())
                     .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
                 header.key_signature = previous_header.clone();
-                for (track, previous) in inner.tracks.iter_mut().zip(previous_measures) {
-                    if let Some(slot) = track.measures.get_mut(measure.get()) {
+                let lists = inner
+                    .tracks
+                    .iter_mut()
+                    .flat_map(gscore_gp::Track::measure_lists_mut);
+                for (list, previous) in lists.zip(previous_measures) {
+                    if let Some(slot) = list.get_mut(measure.get()) {
                         slot.key_signature = previous.clone();
                     }
                 }
@@ -1175,6 +1172,8 @@ mod page_tests;
 mod reach_tests;
 #[cfg(test)]
 mod song_tests;
+#[cfg(test)]
+mod staff_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

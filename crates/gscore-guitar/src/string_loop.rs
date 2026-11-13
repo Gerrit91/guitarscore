@@ -5,7 +5,7 @@
 
 use std::f32::consts::TAU;
 
-use crate::delay::{DelayLine, MIN_DELAY};
+use crate::delay::{DelayLine, MIN_DELAY, Taps};
 use crate::filters::{
     Allpass, OnePole, allpass_delay, one_pole_delay, one_pole_for_ratio, one_pole_gain,
     shelf_delay, shelf_for_ratio, shelf_gain,
@@ -40,6 +40,10 @@ pub(crate) struct Loop {
     stages: usize,
     gain: f32,
     delay: f32,
+    /// The line's read position for `taps_for`, the delay it was worked out for (so a
+    /// delay that holds is not worked out again every sample).
+    taps: Taps,
+    taps_for: f32,
     delay_target: f32,
     delay_step: f32,
     glide_left: usize,
@@ -53,8 +57,11 @@ pub(crate) struct Loop {
 impl Loop {
     /// A loop holding at least `samples` of delay.
     pub(crate) fn new(samples: usize) -> Self {
+        let line = DelayLine::new(samples);
         Loop {
-            line: DelayLine::new(samples),
+            taps: line.taps(MIN_DELAY),
+            taps_for: MIN_DELAY,
+            line,
             loss: OnePole::default(),
             palm: None,
             stiffness: [Allpass::default(); MAX_STIFFNESS_STAGES],
@@ -124,7 +131,8 @@ impl Loop {
         let filters = loss_delay + self.stages as f32 * allpass_delay(tuning.stiffness, w);
         let target = (sample_rate / frequency - filters).clamp(MIN_DELAY, self.line.max_delay());
         self.delay_target = target;
-        if glide == 0 {
+        // Already there: no glide (adding a step of 0 every sample would change nothing).
+        if glide == 0 || target.to_bits() == self.delay.to_bits() {
             self.delay = target;
             self.glide_left = 0;
         } else {
@@ -145,7 +153,20 @@ impl Loop {
             self.delay += self.delay_step;
             self.glide_left = self.glide_left.saturating_sub(1);
         }
-        let tap = self.line.read(self.delay);
+        // The read position is worked out once for a delay that holds; a slow settle
+        // moves the delay by less than a bit for many samples, so it holds then too. While
+        // it really moves (a bend, a slide) it is worked out every sample without keeping
+        // it (keeping it costs more than it saves). Compared bit for bit, so a delay that
+        // is not a number (never equal to itself) goes to `taps`.
+        let tap = if self.delay.to_bits() == self.taps_for.to_bits() {
+            self.line.read_at(&self.taps)
+        } else if self.glide_left > 0 {
+            self.line.read(self.delay)
+        } else {
+            self.taps = self.line.taps(self.delay);
+            self.taps_for = self.delay;
+            self.line.read_at(&self.taps)
+        };
         let mut y = self.loss.process(tap);
         if let Some(palm) = &mut self.palm {
             y = palm.process(y);

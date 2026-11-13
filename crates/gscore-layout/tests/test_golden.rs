@@ -91,6 +91,28 @@ fn every_track_together_matches_its_golden_svg() {
 }
 
 #[test]
+fn a_piano_with_two_staves_and_the_track_after_it_match_their_golden_svg() {
+    let song = testing::song_with_two_staves().unwrap();
+    let tracks: Vec<_> = song.tracks().map(|track| track.index()).collect();
+    let layout = gscore_layout::layout_tracks(
+        &song,
+        &tracks,
+        tracks[0],
+        &LayoutOptions::default(),
+        &gscore_layout::Fonts::bundled().unwrap(),
+    )
+    .unwrap();
+    check(
+        "two_staves.all",
+        &to_svg(
+            &layout,
+            &Theme::LIGHT,
+            LayoutOptions::default().staff_space_mm,
+        ),
+    );
+}
+
+#[test]
 fn the_dark_theme_only_changes_colors() {
     let song = common::open("basic/steel_guitar_dadgad.gp");
     let dark = svg(&song, &Theme::DARK);
