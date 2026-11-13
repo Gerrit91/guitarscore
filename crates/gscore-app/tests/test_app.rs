@@ -345,6 +345,25 @@ fn the_page_matches_its_snapshot_in_both_themes() {
 }
 
 #[test]
+fn the_first_start_asks_about_updates_and_remembers_a_no() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .wgpu()
+        .build_eframe(|cc| {
+            let mut app = GuitarScoreApp::new(&cc.egui_ctx, None);
+            app.enable_automatic_update_check();
+            app
+        });
+    harness.run();
+    harness.snapshot("update_question");
+    // "Don't check": nothing is sent, and the answer is kept.
+    harness.get_by_label("Don't check").click();
+    harness.run();
+    assert_eq!(harness.state().settings().check_for_updates, Some(false));
+    assert!(harness.query_by_label("Check daily").is_none());
+}
+
+#[test]
 fn the_track_dialogs_match_their_snapshots() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))

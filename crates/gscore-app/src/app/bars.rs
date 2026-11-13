@@ -224,6 +224,22 @@ impl GuitarScoreApp {
                 });
             }
             ui.menu_button("Help", |ui| {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let checking = self.checking_for_updates();
+                    let label = if checking {
+                        "Checking for updates…"
+                    } else {
+                        "Check for updates…"
+                    };
+                    if ui
+                        .add_enabled(!checking, egui::Button::new(label))
+                        .clicked()
+                    {
+                        self.check_for_updates(ui.ctx());
+                        ui.close();
+                    }
+                }
                 if ui.button("About GuitarScore").clicked() {
                     self.open_about();
                     ui.close();

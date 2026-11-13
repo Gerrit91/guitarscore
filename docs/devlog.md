@@ -4930,3 +4930,25 @@ from a sound's name to one of its tones, filled by the owner:
   "Overdriven Guitar 1" the same note came out six times louder with a crest factor of 3
   instead of 17.
 
+
+## 2026-11-13 — Update check and release checksums
+
+- Releases get a `SHA256SUMS` file (every asset's SHA-256, written by the release job);
+  README says how to check a download with it on each system.
+- Update check (owner decisions: notify and link only, never download or replace itself;
+  asked once at the first start; `ureq` 3.5 with rustls/ring and Mozilla's roots, desktop
+  only). `update.rs` asks `api.github.com/.../releases/latest` on a thread of its own
+  (20 s timeout, answer capped at 1 MB, user agent `GuitarScore/<version>`, nothing else
+  sent) and compares by semantic versioning; a `git describe` build counts as its tag,
+  `-dev` as its version. The link must be this project's releases page, notes are cut at
+  4000 characters. `app/updates.rs`: the first-start question (after crash recovery and
+  other questions; dismissing asks again next start), a daily check after a yes (quiet
+  when offline), Help › Check for updates (says "latest version" or why it failed), the
+  "Update available" window with the notes (headings and bullets lightly formatted) and
+  Skip this version / Later / Download (opens the release page). Settings › Editor ›
+  Updates switches the daily check. Settings: `check_for_updates`, `update_checked_at`,
+  `skipped_update`. Only the desktop binary asks (`enable_automatic_update_check`), so
+  tests and the snapshot tool never contact anyone. New snapshots `update_question`,
+  `update_available`; `--ignored github` test does the real request (passed).
+- Open: verifying a download against SHA256SUMS in the app only makes sense once it
+  downloads; signing (M20) before any self-update.

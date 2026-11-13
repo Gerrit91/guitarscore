@@ -657,6 +657,26 @@ impl GuitarScoreApp {
         );
         ui.label(RichText::new("Files that are no longer there are skipped.").weak());
 
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            ui.separator();
+            ui.heading("Updates");
+            let mut daily = self.settings.check_for_updates == Some(true);
+            if ui
+                .checkbox(&mut daily, "Check for a new version once a day")
+                .changed()
+            {
+                self.settings.check_for_updates = Some(daily);
+            }
+            ui.label(
+                RichText::new(
+                    "Asks GitHub for the latest release; nothing about you or your songs is \
+                     sent. A newer version is shown with a link to its download page.",
+                )
+                .weak(),
+            );
+        }
+
         ui.separator();
         ui.heading("Autosave");
         ui.horizontal(|ui| {

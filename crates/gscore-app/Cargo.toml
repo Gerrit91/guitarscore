@@ -47,6 +47,10 @@ web-time = "1.1"
 # Native file dialogs (XDG desktop portal on Linux, no GTK).
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.17"
+# The update check: one HTTPS request to GitHub's latest release (owner decision
+# 2026-11-13). Blocking, run on a thread of its own; rustls (with ring) and Mozilla's root
+# certificates, no OpenSSL. No gzip: the answer is a few kilobytes.
+ureq = { version = "3.5", default-features = false, features = ["rustls"] }
 
 # Browser APIs: the wasm entry point, dialogs, downloads and persistent storage.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
