@@ -365,6 +365,12 @@ pub(crate) struct Property {
     /// GuitarScore addition: a chord-diagram collection's items.
     #[serde(rename = "Items", default)]
     pub items: Option<DiagramItems>,
+    /// GuitarScore addition: a GP6 drum note's kit element (which drum)...
+    #[serde(rename = "Element", default)]
+    pub element: Option<i32>,
+    /// ...and its variation (how it is struck).
+    #[serde(rename = "Variation", default)]
+    pub variation: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -31,6 +31,7 @@ pub(crate) trait SongGpifOps {
 }
 
 mod beats;
+mod gp6_drums;
 mod staves;
 
 /// The chord diagrams of a GP7 track's staves, by their id.

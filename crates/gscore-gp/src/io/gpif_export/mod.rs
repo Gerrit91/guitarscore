@@ -444,7 +444,10 @@ impl WriteGpifInGpifStringOrder for Song {
                         voice_ids.push(voice_id.to_string());
                     }
 
+                    // GuitarScore fix: a drum staff has the neutral (percussion) clef, as
+                    // Guitar Pro writes it; it was written as a treble clef.
                     let clef = match measure.clef {
+                        _ if track.percussion_track => "Neutral",
                         MeasureClef::Bass => "F4",
                         MeasureClef::Alto => "C4",
                         MeasureClef::Tenor => "C3",
