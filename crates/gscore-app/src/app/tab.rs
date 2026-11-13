@@ -23,6 +23,14 @@ use super::track_panel::TrackPanelState;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct TabId(u64);
 
+impl TabId {
+    /// Its number (unique while the app runs), for names outside the app.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    pub(crate) fn number(self) -> u64 {
+        self.0
+    }
+}
+
 /// One open song and the view state that belongs to it.
 /// GuitarScore's own sound state of a document, read from its JSON payloads once.
 #[derive(Debug, Default)]

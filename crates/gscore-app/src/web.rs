@@ -23,7 +23,8 @@ pub(crate) fn set_unsaved(unsaved: bool) {
 }
 
 /// Makes the browser ask before the page is closed or reloaded while a song has unsaved
-/// edits. There is no recovery journal in the browser yet, so this is the only guard.
+/// edits. There is no recovery journal in the browser yet: this and the crash screen's
+/// copies (see [`install_panic_hook`]) are the only guards.
 fn warn_before_leaving(window: &web_sys::Window) -> Result<(), JsValue> {
     let handler = Closure::<dyn FnMut(web_sys::BeforeUnloadEvent)>::new(
         |event: web_sys::BeforeUnloadEvent| {
@@ -40,12 +41,24 @@ fn warn_before_leaving(window: &web_sys::Window) -> Result<(), JsValue> {
     Ok(())
 }
 
-/// Logs a panic to the browser console instead of losing it silently. Panics abort the
-/// wasm instance, so this is a diagnostic aid, not containment (AGENTS.md "Portability").
+/// Logs a panic to the browser console and shows the page's crash screen, which offers
+/// the copies of unsaved songs the app handed it (`app/web_rescue.rs`). Panics abort the
+/// wasm instance, so this cannot contain one (AGENTS.md "Portability"): it only makes
+/// sure the user sees what happened and can keep their work.
 fn install_panic_hook() {
     std::panic::set_hook(Box::new(|info| {
-        web_sys::console::error_1(&JsValue::from_str(&format!("GuitarScore panicked: {info}")));
+        let message = format!("GuitarScore panicked: {info}");
+        web_sys::console::error_1(&JsValue::from_str(&message));
+        show_crash_screen(&message);
     }));
+}
+
+/// Calls the page's `guitarscoreCrashed(message)` (in `web/index.html`), if it has one.
+fn show_crash_screen(message: &str) {
+    let crashed = js_sys::Reflect::get(&js_sys::global(), &"guitarscoreCrashed".into());
+    if let Ok(function) = crashed.and_then(|value| value.dyn_into::<js_sys::Function>()) {
+        let _ = function.call1(&JsValue::NULL, &JsValue::from_str(message));
+    }
 }
 
 /// Starts the app in the page's `#guitarscore` canvas. The returned promise rejects if the

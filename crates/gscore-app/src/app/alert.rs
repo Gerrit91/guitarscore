@@ -14,7 +14,8 @@ pub(super) enum AlertIcon {
     Warning,
     /// A circular arrow round a clock: work can be brought back.
     Restore,
-    /// An arrow down into a tray, in a ring: a new version.
+    /// An arrow down into a tray, in a ring: a new version (the desktop's update check).
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     Update,
 }
 

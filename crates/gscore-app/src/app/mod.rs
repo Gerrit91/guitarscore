@@ -65,6 +65,8 @@ mod tuner;
 mod tuplet_dialog;
 #[cfg(not(target_arch = "wasm32"))]
 mod updates;
+#[cfg(target_arch = "wasm32")]
+mod web_rescue;
 
 use std::collections::VecDeque;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -126,6 +128,9 @@ pub struct GuitarScoreApp {
     closing_window: bool,
     /// Unsaved changes were dealt with: the window may close.
     may_close: bool,
+    /// The copies of unsaved songs handed to the page, for its crash screen.
+    #[cfg(target_arch = "wasm32")]
+    rescue: web_rescue::Rescue,
     /// Where documents' recovery journals go; `None` keeps no journal.
     recovery_dir: Option<PathBuf>,
     /// Whether the recovery directory was searched for crashed documents yet.
@@ -292,6 +297,8 @@ impl GuitarScoreApp {
             saving_tab: None,
             next_tab_id: 0,
             closing_window: false,
+            #[cfg(target_arch = "wasm32")]
+            rescue: web_rescue::Rescue::default(),
             may_close: false,
             recovery_dir,
             recovery_searched: false,
@@ -725,7 +732,11 @@ impl eframe::App for GuitarScoreApp {
         // The page asks before it is left while a song has unsaved edits: the browser
         // build has no recovery journal yet.
         #[cfg(target_arch = "wasm32")]
-        crate::web::set_unsaved(self.tabs.iter().any(|tab| tab.document.is_dirty()));
+        {
+            crate::web::set_unsaved(self.tabs.iter().any(|tab| tab.document.is_dirty()));
+            // A panic ends the page: its crash screen offers these copies instead.
+            self.keep_rescue_copies(&ctx);
+        }
         // A file dropped on the window opens like File > Open (asking about unsaved work).
         // A browser drop is read asynchronously; a native one is a path to read.
         #[cfg(target_arch = "wasm32")]

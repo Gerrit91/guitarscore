@@ -12,12 +12,13 @@
 //! ```
 //!
 //! `--smoke` opens the built page in a headless Chromium, waits for the editor's ready
-//! marker, and saves a screenshot.
+//! marker, checks the SoundFont, an edit and the crash screen, and saves screenshots.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+mod page_checks;
 mod soundfont;
 
 use crate::{TaskResult, cmd};
@@ -440,6 +441,35 @@ fn run_headless(browser: &std::ffi::OsString, out: &Path, port: u16) -> TaskResu
         started.elapsed().as_secs_f32()
     );
 
+    // Editing: a dropped song, a typed fret, and the rescue copy the page keeps of it;
+    // then the crash screen a panic shows, offering that copy (`web/page_checks.rs`).
+    let copy = page_checks::edit_leaves_a_rescue_copy(&mut browser).map_err(|e| {
+        format!(
+            "editing in the browser: {e}{}",
+            console_log(browser.events())
+        )
+    })?;
+    println!("web: an edit left a rescue copy ({copy})");
+    browser.screenshot(&out.join("smoke-edited.png"))?;
+    page_checks::crash_screen_offers_the_copies(&mut browser).map_err(|e| {
+        format!(
+            "the browser's crash screen: {e}{}",
+            console_log(browser.events())
+        )
+    })?;
+    browser.screenshot(&out.join("smoke-crashed.png"))?;
+    println!("web: crash screen OK");
+
+    // A deploy: the next visit must run the new build, not the cached one. (Last on the
+    // app page: putting the built files back looks like one more deploy to the page.)
+    page_checks::new_build_takes_over(&mut browser, out, &url).map_err(|e| {
+        format!(
+            "a new build in the browser: {e}{}",
+            console_log(browser.events())
+        )
+    })?;
+    println!("web: a new build takes over at the first visit");
+
     // The audio worklet page: its module and second wasm instance must load, the
     // SoundFont must play a note, and the analyser must see samples (not silence).
     let worklet = "new Promise((resolve) => { const started = Date.now(); \
@@ -464,8 +494,9 @@ fn run_headless(browser: &std::ffi::OsString, out: &Path, port: u16) -> TaskResu
     println!("web: worklet sound OK ({result})");
     browser.screenshot(&out.join("smoke-worklet.png"))?;
     println!(
-        "web: smoke tests OK; screenshots at {} and {}",
+        "web: smoke tests OK; screenshots at {}, {} and {}",
         out.join("smoke.png").display(),
+        out.join("smoke-crashed.png").display(),
         out.join("smoke-worklet.png").display()
     );
     Ok(())
