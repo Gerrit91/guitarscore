@@ -1,8 +1,8 @@
 //! Keys and actions: key presses go through the keymap to the document's editor; what the
 //! editor hands back (play, save) is done here.
 
+use crate::SystemTime;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::time::SystemTime;
 
 use gscore_edit::{Action, ActionId, Command, Cursor, Outcome, Request};
 use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, TrackIndex, VoiceIndex};

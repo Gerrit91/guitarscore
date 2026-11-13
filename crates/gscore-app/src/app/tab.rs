@@ -2,10 +2,10 @@
 //! track, the measure selection, and the panel drafts. What is shared between tabs (theme,
 //! zoom, which panels are visible) stays on the app.
 
+use crate::SystemTime;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::SystemTime;
 
 use gscore_edit::Cursor;
 

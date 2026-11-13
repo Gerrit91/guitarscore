@@ -4914,4 +4914,10 @@ from a sound's name to one of its tones, filled by the owner:
   bow (0.4) so the slur stays under the next string.
 - "Return to where playback started on Stop" is on by default for v0.2.0 (the gliding
   cursor already was). A settings file that stores the choice keeps it.
+- The browser build crashed on every edit ("RuntimeError: unreachable"): the edit history
+  stamps each entry with `std::time::SystemTime::now()`, which panics on
+  `wasm32-unknown-unknown`, and after a panic the page is dead, so Play "crashed" too. The
+  app now reads the time through `crate::SystemTime` (`web_time` in the browser), and a
+  test forbids the `std` clocks in the app's sources. Checked in headless Chromium: new
+  song, a tone from the track panel, typed frets, Play.
 
