@@ -538,9 +538,6 @@ pub(super) fn section(
                     "Start a new line or page here",
                     snapshot.system_break != SystemBreak::None,
                 ),
-                // Guitar Pro's design mode, beside the line-break tile: the page's layout
-                // is edited by hand there.
-                StaffTile::Design,
                 dialog(
                     Dialog::Bars,
                     Face::Bars,
@@ -548,6 +545,10 @@ pub(super) fn section(
                     "How many bars a line holds",
                     snapshot.bars_per_system.is_some(),
                 ),
+                // Guitar Pro's design mode closes the row: the line break and the bars per
+                // line are one pair, and the design mode is where a line is laid out by
+                // hand.
+                StaffTile::Design,
             ];
             let measure = snapshot.measure.get();
             let mark = snapshot.similes.get(measure).copied().flatten();
