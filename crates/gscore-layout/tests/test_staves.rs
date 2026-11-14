@@ -372,3 +372,40 @@ fn the_layout_reports_its_clickable_marks() {
     // A point beside the page's marks finds none.
     assert_eq!(layout.mark_at(Point::new(-5.0, -5.0)), None);
 }
+
+/// A drum track is written on a percussion staff alone; with the drum tab asked for, a
+/// tablature below it carries each hit's MIDI drum note.
+#[test]
+fn a_drum_track_gets_a_tablature_only_when_asked() {
+    let song = common::open("basic/multi_staff.gp");
+    let fonts = Fonts::bundled().unwrap();
+    let drums = song
+        .tracks()
+        .find(|track| track.is_percussion())
+        .expect("a drum track")
+        .index();
+    let fret_numbers = |drum_tab: bool| -> Vec<String> {
+        let options = LayoutOptions {
+            drum_tab,
+            ..LayoutOptions::default()
+        };
+        layout_track(&song, drums, &options, &fonts)
+            .unwrap()
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text {
+                    text,
+                    color: ColorToken::FretNumber,
+                    ..
+                } => Some(text.clone()),
+                _ => None,
+            })
+            .collect()
+    };
+    assert!(fret_numbers(false).is_empty(), "no tab by default");
+    let numbers = fret_numbers(true);
+    // The closed hi-hat (42) and the bass drum (35) of the first bar.
+    assert!(numbers.iter().any(|number| number == "42"), "{numbers:?}");
+    assert!(numbers.iter().any(|number| number == "35"), "{numbers:?}");
+}

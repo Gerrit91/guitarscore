@@ -2,7 +2,7 @@
 //! "Verify UI changes visually"):
 //!
 //! ```text
-//! cargo run -p gscore-app --example snapshot -- <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH] [--settings] [--history] [--mixer] [--new-track] [--scale S] [--click LABEL]...
+//! cargo run -p gscore-app --example snapshot -- <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH] [--settings] [--history] [--mixer] [--drum-tab] [--new-track] [--scale S] [--click LABEL]...
 //! ```
 
 // An example is a small tool: failing loudly with a message is fine here.
@@ -26,13 +26,14 @@ const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let usage = "usage: snapshot <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH] [--settings] [--history] [--mixer] [--new-track] [--scale S] [--click LABEL]...";
+    let usage = "usage: snapshot <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH] [--settings] [--history] [--mixer] [--drum-tab] [--new-track] [--scale S] [--click LABEL]...";
     let file = PathBuf::from(args.next().expect(usage));
     let out = PathBuf::from(args.next().expect(usage));
     let (mut dark, mut track, mut zoom, mut size) = (false, 1_usize, 1.0_f32, (1100.0, 800.0));
     let mut settings = false;
     let mut history = false;
     let mut mixer = false;
+    let mut drum_tab = false;
     let mut new_track = false;
     let mut scale = 1.0_f32;
     let mut clicks = Vec::new();
@@ -42,6 +43,7 @@ fn main() {
             "--settings" => settings = true,
             "--history" => history = true,
             "--mixer" => mixer = true,
+            "--drum-tab" => drum_tab = true,
             "--new-track" => new_track = true,
             "--track" => track = args.next().and_then(|t| t.parse().ok()).expect(usage),
             "--scale" => scale = args.next().and_then(|s| s.parse().ok()).expect(usage),
@@ -87,6 +89,7 @@ fn main() {
             };
             view.set_zoom(zoom);
             view.grid_mixer = mixer;
+            view.drum_tab = drum_tab;
         }
         app.set_shown_track(track.saturating_sub(1));
         if settings {

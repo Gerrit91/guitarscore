@@ -113,6 +113,10 @@ impl super::GuitarScoreApp {
                 "With several tracks: leave a track out of a line where it plays nothing \
                  (the first line and the cursor's track always show)",
             );
+        ui.checkbox(&mut self.view.drum_tab, "Drum tablature")
+            .on_hover_text(
+                "Below a drum track's staff: each hit's MIDI drum note on the line of the kit                  it is stored on",
+            );
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };

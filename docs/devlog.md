@@ -5625,3 +5625,15 @@ A click on the fretboard, the keyboard or the drum map applied its command witho
 the note. It now auditions the entered note like a typed fret (`GuitarScoreApp::audition`,
 under the "hear entered notes" setting); taking a note out stays silent. Tested with the
 sine SoundFont, like the typed fret.
+
+## 2026-11-14 — Drum tablature (View › Drum tablature)
+
+A drum track can show a tablature below its percussion staff: each hit's MIDI drum note on
+the line of the kit it is stored on, as Guitar Pro's drum tab does, so the notes behind the
+noteheads can be read and checked against the drum map. It is a view option
+(`ViewState::drum_tab`, `LayoutOptions::drum_tab`), off by default and remembered in the
+settings, and it applies to the page, the print and the PDF export. It is not a track
+setting: the files' tablature flag is on for most drum tracks, so following it would have
+given every drum track a tab. The staff, its bracket, the cursor and clicks work as on any
+notation-and-tab track. The snapshot example has `--drum-tab`. Tests: the layout's fret
+numbers with and without the option; the View menu entry, its setting and a snapshot.

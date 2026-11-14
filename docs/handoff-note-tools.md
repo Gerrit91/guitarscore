@@ -31,9 +31,10 @@ merged). This file says what is there and what is left.
   notes sounding while playing.
 - An entered note is heard (like a typed fret), but there is no "listen only" mode that
   sounds a fret, key or drum without entering it.
-- Drum tracks have no tablature (they are always written on a percussion staff, see
-  `gscore-layout/src/score/part.rs`), so the MIDI numbers of a drum part are visible only
-  in the drum map, for the cursor's beat. A drum tab is the owner's call.
+- The drum tab (View › Drum tablature, `LayoutOptions::drum_tab`) is one switch for every
+  drum track and every song, kept in the settings; it is not stored per track or in the
+  file. It shows the stored MIDI numbers on the kit's "strings" as they are, with a TAB
+  clef; there are no drum names beside the lines.
 - The fretboard is right-handed only, shows no capo, no scale or chord overlay, and its
   note names have no octave. A keyboard track with two staves shows the cursor's staff.
 - The keyboard's range is fixed (C1 to C7); pitches outside it are not shown.

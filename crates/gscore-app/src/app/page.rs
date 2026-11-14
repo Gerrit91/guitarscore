@@ -186,6 +186,7 @@ impl GuitarScoreApp {
         };
         // Empty staves may be left out, but never the cursor's: it must stay editable.
         let options = gscore_layout::LayoutOptions {
+            drum_tab: self.view.drum_tab,
             empty_staves: if self.view.hide_empty_staves {
                 gscore_layout::EmptyStaves::HiddenButPrimary
             } else {

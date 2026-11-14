@@ -219,3 +219,23 @@ fn the_note_tools_match_their_snapshot() {
     }
     harness.snapshot("note_tools");
 }
+
+/// View > Drum tablature shows the MIDI drum notes below a drum track's staff, and the
+/// choice is remembered in the settings.
+#[test]
+fn the_view_menu_switches_the_drum_tablature() {
+    let mut harness = app_with("basic/multi_staff.gp");
+    assert!(!harness.state().view().drum_tab);
+    harness.get_by_label("View").click();
+    harness.run();
+    harness.get_by_label("Drum tablature").click();
+    harness.run();
+    assert!(harness.state().view().drum_tab);
+    assert!(harness.state().settings().drum_tab, "remembered");
+    // The drum track lays out with its tab, without a complaint.
+    harness.state_mut().set_shown_track(5);
+    harness.run();
+    harness.run();
+    assert_eq!(harness.state().notice(), None);
+    harness.snapshot("drum_tablature");
+}
