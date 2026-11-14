@@ -20,7 +20,6 @@
 <line x1="8" y1="42.24" x2="112" y2="42.24" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="43.24" x2="112" y2="43.24" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="42.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
-<line x1="8.08" y1="39.24" x2="8.08" y2="58.74" stroke="#303030" stroke-width="0.16"/>
 <text x="12.28" y="38.44" font-family="Noto Sans" font-size="1.1" fill="#404040">1</text>
 <text x="13.38" y="40.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
 <text x="13.38" y="42.24" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
@@ -106,6 +105,10 @@
 <text x="66.37" y="36.64" font-family="Noto Sans" font-size="1" fill="#404040">Tuplet</text>
 <line x1="111.92" y1="51.24" x2="111.92" y2="58.74" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="39.24" x2="111.92" y2="43.24" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="39.24" x2="8.08" y2="58.74" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.5" y1="39.24" x2="7.5" y2="58.74" stroke="#303030" stroke-width="0.5"/>
+<text x="7.25" y="39.24" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketTop">&#xE003;</text>
+<text x="7.25" y="58.74" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketBottom">&#xE004;</text>
 <line x1="8" y1="83.14" x2="112" y2="83.14" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="84.64" x2="112" y2="84.64" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="86.14" x2="112" y2="86.14" stroke="#707070" stroke-width="0.13"/>
@@ -119,7 +122,6 @@
 <line x1="8" y1="74.14" x2="112" y2="74.14" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="75.14" x2="112" y2="75.14" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="74.14" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
-<line x1="8.08" y1="71.14" x2="8.08" y2="90.64" stroke="#303030" stroke-width="0.16"/>
 <text x="12.28" y="70.34" font-family="Noto Sans" font-size="1.1" fill="#404040">5</text>
 <line x1="13.48" y1="82.84" x2="16.28" y2="90.94" stroke="#101010" stroke-width="0.22"/>
 <line x1="13.48" y1="90.94" x2="16.28" y2="82.84" stroke="#101010" stroke-width="0.22"/>
@@ -265,6 +267,10 @@
 <text x="89.21" y="68.54" font-family="Noto Sans" font-size="1" fill="#404040">Left hand tap</text>
 <line x1="111.92" y1="83.14" x2="111.92" y2="90.64" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="71.14" x2="111.92" y2="75.14" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="71.14" x2="8.08" y2="90.64" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.5" y1="71.14" x2="7.5" y2="90.64" stroke="#303030" stroke-width="0.5"/>
+<text x="7.25" y="71.14" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketTop">&#xE003;</text>
+<text x="7.25" y="90.64" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketBottom">&#xE004;</text>
 <line x1="8" y1="115.04" x2="112" y2="115.04" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="116.54" x2="112" y2="116.54" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="118.04" x2="112" y2="118.04" stroke="#707070" stroke-width="0.13"/>
@@ -278,7 +284,6 @@
 <line x1="8" y1="106.04" x2="112" y2="106.04" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="107.04" x2="112" y2="107.04" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="106.04" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
-<line x1="8.08" y1="103.04" x2="8.08" y2="122.54" stroke="#303030" stroke-width="0.16"/>
 <text x="12.28" y="102.24" font-family="Noto Sans" font-size="1.1" fill="#404040">8</text>
 <rect x="14.13" y="118.8" width="1.16" height="1.47" fill="#ffffff"/>
 <text x="14.71" y="120.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
@@ -547,6 +552,10 @@
 <text x="93.6" y="100.44" font-family="Noto Sans" font-size="1" fill="#404040">Up/Downstroke</text>
 <line x1="111.92" y1="115.04" x2="111.92" y2="122.54" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="103.04" x2="111.92" y2="107.04" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="103.04" x2="8.08" y2="122.54" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.5" y1="103.04" x2="7.5" y2="122.54" stroke="#303030" stroke-width="0.5"/>
+<text x="7.25" y="103.04" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketTop">&#xE003;</text>
+<text x="7.25" y="122.54" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketBottom">&#xE004;</text>
 <line x1="8" y1="149.34" x2="112" y2="149.34" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="150.84" x2="112" y2="150.84" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="152.34" x2="112" y2="152.34" stroke="#707070" stroke-width="0.13"/>
@@ -560,7 +569,6 @@
 <line x1="8" y1="140.34" x2="112" y2="140.34" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="141.34" x2="112" y2="141.34" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="140.34" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
-<line x1="8.08" y1="137.34" x2="8.08" y2="156.84" stroke="#303030" stroke-width="0.16"/>
 <text x="12.28" y="136.54" font-family="Noto Sans" font-size="1.1" fill="#404040">12</text>
 <rect x="13.75" y="154.6" width="1.16" height="1.47" fill="#ffffff"/>
 <text x="14.33" y="155.88" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
@@ -638,6 +646,10 @@
 <path d="M 92.96 152.34 C 93.31 151.84 93.66 151.84 94.01 152.34" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
 <line x1="111.92" y1="149.34" x2="111.92" y2="156.84" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="137.34" x2="111.92" y2="141.34" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="137.34" x2="8.08" y2="156.84" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.5" y1="137.34" x2="7.5" y2="156.84" stroke="#303030" stroke-width="0.5"/>
+<text x="7.25" y="137.34" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketTop">&#xE003;</text>
+<text x="7.25" y="156.84" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketBottom">&#xE004;</text>
 <line x1="8" y1="183.64" x2="58.92" y2="183.64" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="185.14" x2="58.92" y2="185.14" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="186.64" x2="58.92" y2="186.64" stroke="#707070" stroke-width="0.13"/>
@@ -651,7 +663,6 @@
 <line x1="8" y1="174.64" x2="58.92" y2="174.64" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="175.64" x2="58.92" y2="175.64" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="174.64" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
-<line x1="8.08" y1="171.64" x2="8.08" y2="191.14" stroke="#303030" stroke-width="0.16"/>
 <text x="12.28" y="170.84" font-family="Noto Sans" font-size="1.1" fill="#404040">15</text>
 <rect x="13.48" y="185.9" width="3.79" height="1.47" fill="#ffffff"/>
 <text x="15.38" y="187.18" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2 (4)</text>
@@ -724,6 +735,10 @@
 <line x1="58.67" y1="183.64" x2="58.67" y2="191.14" stroke="#303030" stroke-width="0.5"/>
 <line x1="57.94" y1="171.64" x2="57.94" y2="175.64" stroke="#303030" stroke-width="0.16"/>
 <line x1="58.67" y1="171.64" x2="58.67" y2="175.64" stroke="#303030" stroke-width="0.5"/>
+<line x1="8.08" y1="171.64" x2="8.08" y2="191.14" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.5" y1="171.64" x2="7.5" y2="191.14" stroke="#303030" stroke-width="0.5"/>
+<text x="7.25" y="171.64" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketTop">&#xE003;</text>
+<text x="7.25" y="191.14" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketBottom">&#xE004;</text>
 <path d="M 20.39 43.84 C 24.9 44.34 29.42 44.34 33.93 43.84" fill="none" stroke="#101010" stroke-width="0.12" stroke-linecap="round"/>
 <path d="M 20.39 42.84 C 24.9 43.34 29.42 43.34 33.93 42.84" fill="none" stroke="#101010" stroke-width="0.12" stroke-linecap="round"/>
 <path d="M 20.39 41.84 C 24.9 42.34 29.42 42.34 33.93 41.84" fill="none" stroke="#101010" stroke-width="0.12" stroke-linecap="round"/>

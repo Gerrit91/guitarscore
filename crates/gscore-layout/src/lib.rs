@@ -37,6 +37,7 @@ mod pages;
 mod pdf;
 mod place;
 mod score;
+mod score_mark;
 mod staff;
 mod svg;
 mod system;
@@ -44,7 +45,7 @@ mod theme;
 
 use std::sync::Arc;
 
-use gscore_model::{MeasureView, Song, StaffIndex, TrackIndex};
+use gscore_model::{MeasureView, Song, SongTextField, StaffIndex, TrackIndex};
 
 // The golden tests open the owner's files with `gscore-io`; this marks the test-only
 // dependency for the library test target's unused-dependency check.
@@ -56,10 +57,12 @@ pub use draw::{ColorToken, DrawOp, Point, Rect, TextAnchor, TextFont};
 pub use error::LayoutError;
 pub use glyph::{Digit, Flag, Glyph};
 use gscore_model::VoiceIndex;
+pub use header::HeaderText;
 pub use metrics::{EngravingDefaults, GlyphBox, MusicFont, TextMetrics};
 pub use options::{EmptyStaves, LayoutOptions, Spacing};
 pub use pdf::{PdfFonts, to_pdf};
 pub use place::{BeatPlace, Hit, MeasurePlace, Places, SystemPlace};
+pub use score_mark::{ScoreMark, ScoreMarkKind};
 pub use svg::to_svg;
 pub use theme::{Rgb, Theme};
 
@@ -112,6 +115,12 @@ pub struct Layout {
     pub places: Places,
     /// The same for every track shown, top to bottom (one entry for a single track).
     pub tracks: Vec<TrackPlaces>,
+    /// The song texts the header shows (title, artist, credits), with where they are, so a
+    /// click can edit one in place.
+    pub header_texts: Vec<HeaderText>,
+    /// The marks a click can open an editor for (tempo marks, section names, time and key
+    /// signatures, the header's tuning), with where they are.
+    pub marks: Vec<ScoreMark>,
 }
 
 /// Where one staff's systems, measures and beats are.
@@ -143,6 +152,27 @@ impl Layout {
     /// else the nearest staff's whose system it is near.
     pub fn hit(&self, point: Point) -> Option<(TrackIndex, Hit)> {
         self.hit_where(point, |places| places.hit(point))
+    }
+
+    /// The header's song text under `point` (the title, the artist, a credit), if any.
+    pub fn header_text_at(&self, point: Point) -> Option<SongTextField> {
+        self.header_texts
+            .iter()
+            .find(|text| {
+                point.x >= text.rect.origin.x
+                    && point.x <= text.rect.origin.x + text.rect.width
+                    && point.y >= text.rect.origin.y
+                    && point.y <= text.rect.origin.y + text.rect.height
+            })
+            .map(|text| text.field)
+    }
+
+    /// The mark under `point` that a click can open an editor for, if any.
+    pub fn mark_at(&self, point: Point) -> Option<ScoreMarkKind> {
+        self.marks
+            .iter()
+            .find(|mark| mark.contains(point))
+            .map(|mark| mark.kind)
     }
 
     /// Like [`Layout::hit`], but within `track` only and among beats of `voice` (a drag

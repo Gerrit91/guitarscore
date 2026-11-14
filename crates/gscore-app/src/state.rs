@@ -257,6 +257,14 @@ impl ViewState {
         self.set_zoom(self.zoom / ZOOM_STEP);
     }
 
+    /// Zooms by `factor` (a trackpad pinch or Ctrl+wheel). A factor that is not a positive
+    /// number is ignored; the result is clamped to [`ZOOM_RANGE`].
+    pub fn zoom_by(&mut self, factor: f32) {
+        if factor.is_finite() && factor > 0.0 {
+            self.set_zoom(self.zoom * factor);
+        }
+    }
+
     /// Sets the song grid's measure width factor, clamped to [`GRID_ZOOM_RANGE`];
     /// nonsense values reset it to 1.
     pub fn set_grid_zoom(&mut self, zoom: f32) {
@@ -287,6 +295,21 @@ mod tests {
         assert_eq!(view.zoom(), 1.0);
         view.set_zoom(f32::INFINITY);
         assert_eq!(view.zoom(), 1.0);
+    }
+
+    #[test]
+    fn a_pinch_zooms_by_its_factor_and_nonsense_factors_are_ignored() {
+        let mut view = ViewState::default();
+        view.zoom_by(2.0);
+        assert!((view.zoom() - 2.0).abs() < 1e-6);
+        view.zoom_by(0.5);
+        assert!((view.zoom() - 1.0).abs() < 1e-6);
+        for factor in [f32::NAN, f32::INFINITY, 0.0, -2.0] {
+            view.zoom_by(factor);
+            assert!((view.zoom() - 1.0).abs() < 1e-6, "{factor}");
+        }
+        view.zoom_by(1_000.0);
+        assert_eq!(view.zoom(), ZOOM_RANGE.1);
     }
 
     #[test]

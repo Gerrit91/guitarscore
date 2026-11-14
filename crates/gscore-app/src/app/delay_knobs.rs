@@ -1,7 +1,6 @@
 //! A delay block's knobs in the Sound chain window: its time (a note value synced to the
 //! song's tempo, or free in milliseconds), feedback, echo level, cuts and ping-pong.
 
-use egui::{RichText, vec2};
 use gscore_guitar::{DelayNote, knob_ranges};
 
 use super::string_sound::round_knob;
@@ -35,59 +34,50 @@ fn note_tip(note: DelayNote) -> String {
     )
 }
 
-/// A choice shown as a label, strong when chosen; whether it was clicked (and not chosen
-/// before).
-fn choice(ui: &mut egui::Ui, chosen: bool, label: &str, tip: &str) -> bool {
-    let text = RichText::new(label);
-    ui.selectable_label(chosen, if chosen { text.strong() } else { text })
-        .on_hover_text(tip)
-        .clicked()
-        && !chosen
-}
-
 /// The delay's time: Sync or Free, then the note values or the milliseconds.
 fn time(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
     let mut changed = false;
-    ui.vertical(|ui| {
-        ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
-        if choice(
-            ui,
-            block.delay_sync,
+    let items = [
+        (
+            "Sync",
             "Sync",
             "The time is a note value at the song's tempo: it follows tempo changes and the \
              playback speed",
-        ) {
-            block.delay_sync = true;
+            true,
+        ),
+        ("Free", "Free", "The time in milliseconds", true),
+    ];
+    let chosen = usize::from(!block.delay_sync);
+    if let Some(index) = super::tiles::segments_with_tips_vertical(ui, &items, chosen) {
+        let sync = index == 0;
+        if sync != block.delay_sync {
+            block.delay_sync = sync;
             changed = true;
         }
-        if choice(ui, !block.delay_sync, "Free", "The time in milliseconds") {
-            block.delay_sync = false;
-            changed = true;
-        }
-    });
+    }
     ui.add_space(6.0);
     if block.delay_sync {
         // Two rows: the longer values, then the shorter ones.
-        ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
-            for row in DelayNote::ALL.chunks(5) {
-                ui.horizontal(|ui| {
-                    for &note in row {
-                        let setting = DelayNoteSetting::from(note);
-                        if choice(
-                            ui,
-                            block.delay_note == setting,
-                            note.label(),
-                            &note_tip(note),
-                        ) {
-                            block.delay_note = setting;
-                            changed = true;
-                        }
-                    }
-                });
+        for row in DelayNote::ALL.chunks(5) {
+            let tips: Vec<String> = row.iter().map(|note| note_tip(*note)).collect();
+            let items: Vec<(&str, &str, &str, bool)> = row
+                .iter()
+                .zip(&tips)
+                .map(|(note, tip)| (note.label(), note.label(), tip.as_str(), true))
+                .collect();
+            let chosen = row
+                .iter()
+                .position(|note| block.delay_note == DelayNoteSetting::from(*note))
+                .unwrap_or(0);
+            if let Some(index) = super::tiles::segments_with_tips_enabled(ui, &items, chosen)
+                && let Some(note) = row.get(index)
+            {
+                block.delay_note = DelayNoteSetting::from(*note);
+                changed = true;
             }
-        });
-        ui.add_space(6.0);
+            ui.add_space(2.0);
+        }
+        ui.add_space(4.0);
     } else {
         changed |= round_knob(
             ui,

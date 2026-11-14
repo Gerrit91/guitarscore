@@ -13,6 +13,8 @@ use crate::chain_settings::BlockSetting;
 /// Width of the window's content (the same as the Sound chain window, whose board it
 /// shows).
 const WIDTH: f32 = 700.0;
+/// The window's [`egui::Area`] id.
+const WINDOW_ID: &str = "gscore_master_chain";
 
 /// The window while it is open.
 #[derive(Debug)]
@@ -64,6 +66,7 @@ impl GuitarScoreApp {
         let clipboard = self.sound_clipboard.clone();
         let mut copied: Option<SoundClip> = None;
         egui::Window::new(title)
+            .id(egui::Id::unique(WINDOW_ID))
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
@@ -209,6 +212,9 @@ impl GuitarScoreApp {
         {
             self.notice = Some(error);
         }
+        // Escape closes the window the user is looking at (a popup or a text field gets it
+        // first).
+        close |= style::escape_closes(ctx, egui::Id::unique(WINDOW_ID));
         if close {
             self.master_chain_window = None;
         } else {

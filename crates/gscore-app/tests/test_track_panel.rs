@@ -889,12 +889,213 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
     );
     // Back to the MIDI synth: the knobs go.
     harness
-        .query_all_by_label_contains("MIDI synth")
+        .query_all_by_label("MIDI synth")
         .next()
         .unwrap()
         .click();
     harness.run();
     assert!(harness.query_all_by_label("Brilliance").next().is_none());
+}
+
+#[test]
+fn the_sound_section_lists_the_chain_blocks_and_opens_one() {
+    use gscore_app::chain_settings::BlockChoice;
+    use gscore_play::StringKind;
+
+    let mut harness = app_with("basic/note_lengths.gp");
+    let blocks = harness
+        .state()
+        .playback()
+        .tone(0, 26, StringKind::Electric)
+        .chain
+        .blocks;
+    let first = blocks
+        .iter()
+        .position(|block| block.choice != BlockChoice::Empty)
+        .expect("a block in the tone's chain");
+    let title = blocks
+        .get(first)
+        .map(|block| block.choice.label())
+        .expect("the first block");
+    // The Sound section has the block as a row, and the tone table has its own section.
+    let row = format!("Chain block {}: {title}", first.saturating_add(1));
+    harness.get_by_label(&row);
+    assert!(
+        harness
+            .query_all_by_label_contains("TONE PRESETS")
+            .next()
+            .is_some(),
+        "the tone table moved to its own section"
+    );
+    // Clicking the row opens the Sound chain window at that block, its editor showing.
+    harness.get_by_label(&row).click();
+    harness.run();
+    harness.run();
+    assert!(
+        harness.query_all_by_label(title).next().is_some(),
+        "the block's editor is shown"
+    );
+}
+
+#[test]
+fn a_chain_block_is_muted_removed_and_added_from_the_sound_section() {
+    use gscore_app::chain_settings::BlockChoice;
+    use gscore_play::StringKind;
+
+    let mut harness = app_with("basic/note_lengths.gp");
+    let chain = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .playback()
+            .tone(0, 26, StringKind::Electric)
+            .chain
+    };
+    let blocks = chain(&harness).blocks;
+    let first = blocks
+        .iter()
+        .position(|block| block.choice != BlockChoice::Empty)
+        .expect("a block in the tone's chain");
+    let second = blocks
+        .iter()
+        .enumerate()
+        .skip(first.saturating_add(1))
+        .find(|(_, block)| block.choice != BlockChoice::Empty)
+        .map(|(place, block)| (place, block.choice))
+        .expect("a second block");
+    // The mute bypasses the block, and undo puts it back.
+    harness
+        .get_by_label(&format!("Mute block {}", first.saturating_add(1)))
+        .click();
+    harness.run();
+    assert!(chain(&harness).blocks.get(first).is_some_and(|b| b.bypass));
+    undo(&mut harness);
+    assert!(chain(&harness).blocks.get(first).is_some_and(|b| !b.bypass));
+
+    // The trash can empties the block's place, undoably.
+    harness
+        .get_by_label(&format!("Remove block {}", second.0.saturating_add(1)))
+        .click();
+    harness.run();
+    assert_eq!(
+        chain(&harness).blocks.get(second.0).map(|b| b.choice),
+        Some(BlockChoice::Empty)
+    );
+    undo(&mut harness);
+    assert_eq!(
+        chain(&harness).blocks.get(second.0).map(|b| b.choice),
+        Some(second.1)
+    );
+
+    // "+" adds a block in the first free place and opens it in the Sound chain window.
+    let free = chain(&harness)
+        .blocks
+        .iter()
+        .position(|block| block.choice == BlockChoice::Empty)
+        .expect("a free place");
+    harness.get_by_label("Add a sound chain block").click();
+    harness.run();
+    harness.get_by_label("Reverb").click();
+    // The popup closes and the window opens; a few frames settle both.
+    harness.run_steps(8);
+    assert_eq!(chain(&harness).blocks[free].choice, BlockChoice::Reverb);
+    assert!(
+        harness.query_all_by_label("Decay").next().is_some(),
+        "the new block's knobs show in the Sound chain window"
+    );
+}
+
+/// The MIDI synth's track has no chain until the song gives it one: a block added from the
+/// Sound section is then the only one (the program's default tone, which is the modelled
+/// strings', does not come along).
+#[test]
+fn a_block_added_to_a_midi_synth_track_is_its_only_block() {
+    use gscore_app::chain_settings::BlockChoice;
+    use gscore_play::StringKind;
+
+    let mut harness = app_with("basic/note_lengths.gp");
+    harness.get_by_label("MIDI synth").scroll_to_me();
+    harness.run();
+    harness.get_by_label("MIDI synth").click();
+    harness.run();
+    assert!(
+        harness
+            .query_all_by_label_contains("Chain block")
+            .next()
+            .is_none(),
+        "the MIDI synth's chain starts empty"
+    );
+    harness
+        .get_by_label("Add a sound chain block")
+        .scroll_to_me();
+    harness.run();
+    harness.get_by_label("Add a sound chain block").click();
+    harness.run();
+    harness.get_by_label("Reverb").click();
+    harness.run_steps(8);
+    let blocks: Vec<BlockChoice> = harness
+        .state()
+        .playback()
+        .tone(0, 26, StringKind::Electric)
+        .chain
+        .blocks
+        .iter()
+        .map(|block| block.choice)
+        .filter(|choice| *choice != BlockChoice::Empty)
+        .collect();
+    assert_eq!(blocks, [BlockChoice::Reverb]);
+}
+
+#[test]
+fn escape_closes_the_sound_chain_window() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    harness.get_by_label("Block 0: Strings");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert!(
+        harness.query_by_label("Block 0: Strings").is_none(),
+        "Escape closed the Sound chain window"
+    );
+}
+
+#[test]
+fn the_tone_presets_show_the_source_that_plays_the_track() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    // PM by default: the built-in and saved tones.
+    harness.get_by_label("Filter the tone presets");
+    assert!(harness.query_by_label("Filter the programs").is_none());
+
+    // The MIDI synth: the Tone presets table becomes the General MIDI programs, while the
+    // Sound section keeps the empty chain with its add row.
+    harness.get_by_label("MIDI synth").scroll_to_me();
+    harness.run();
+    harness.get_by_label("MIDI synth").click();
+    harness.run();
+    assert!(harness.query_by_label("Filter the programs").is_some());
+    assert!(harness.query_by_label("Filter the tone presets").is_none());
+    assert!(
+        harness
+            .query_all_by_label_contains("Warm Jazz")
+            .next()
+            .is_none(),
+        "the tone library is not shown for the MIDI synth"
+    );
+    assert!(harness.query_by_label("Add a sound chain block").is_some());
+
+    // A hardware synthesizer: the programs stay in Tone presets, the Sound section has
+    // only the port and channel (no chain, no add row, no stomp box).
+    harness.get_by_label("MIDI out").scroll_to_me();
+    harness.run();
+    harness.get_by_label("MIDI out").click();
+    harness.run();
+    assert!(harness.query_by_label("Filter the programs").is_some());
+    assert!(harness.query_by_label("Port").is_some());
+    assert!(harness.query_by_label("Channel").is_some());
+    assert!(harness.query_by_label("Add a sound chain block").is_none());
+    assert!(
+        harness.query_by_label("Sound chain").is_none(),
+        "no sound chain for a hardware synthesizer"
+    );
 }
 
 #[test]
@@ -1395,11 +1596,11 @@ fn a_dialed_tone_belongs_to_the_track() {
     harness.run();
     harness.get_by_label("MIDI synth").click();
     harness.run();
-    harness.get_by_label("Filter the sounds").click();
+    harness.get_by_label("Filter the programs").click();
     harness.run();
-    harness.get_by_label("Filter sounds").focus();
+    harness.get_by_label("Filter programs").focus();
     harness
-        .get_by_label("Filter sounds")
+        .get_by_label("Filter programs")
         .type_text("Distortion Guitar");
     harness.run();
     harness.get_by_label("30: Distortion Guitar").click();
@@ -1569,10 +1770,25 @@ fn the_built_in_entry_forgets_a_tracks_tone() {
 
 /// Types `text` into the track panel's picker filter and clicks the row `row`.
 fn pick_in_track_panel(harness: &mut Harness<'static, GuitarScoreApp>, text: &str, row: &str) {
-    harness.get_by_label("Filter the sounds").click();
+    harness.get_by_label("Filter the tone presets").click();
     harness.run();
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
-    harness.get_by_label("Filter sounds").type_text(text);
+    harness.get_by_label("Filter tone presets").type_text(text);
+    harness.run();
+    harness.get_by_label(row).click();
+    harness.run();
+}
+
+/// Types `text` into the track panel's General MIDI program filter and clicks the row `row`.
+fn pick_program_in_track_panel(
+    harness: &mut Harness<'static, GuitarScoreApp>,
+    text: &str,
+    row: &str,
+) {
+    harness.get_by_label("Filter the programs").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Filter programs").type_text(text);
     harness.run();
     harness.get_by_label(row).click();
     harness.run();
@@ -1660,7 +1876,7 @@ fn switching_the_source_keeps_the_program_and_the_tone() {
     // To the MIDI synth and another General MIDI program.
     harness.get_by_label("MIDI synth").click();
     harness.run();
-    pick_in_track_panel(&mut harness, "24: Nylon", "24: Nylon Str Guitar");
+    pick_program_in_track_panel(&mut harness, "24: Nylon", "24: Nylon Str Guitar");
     let program = |harness: &Harness<'static, GuitarScoreApp>| {
         harness
             .state()

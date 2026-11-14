@@ -74,6 +74,7 @@ impl GuitarScoreApp {
             || self.new_song_dialog.is_some()
             || tab.is_some_and(|tab| tab.new_track.is_some())
             || tab.is_some_and(|tab| tab.renaming.is_some())
+            || tab.is_some_and(|tab| tab.song_text.is_some())
             || tab.is_some_and(|tab| tab.track_panel.tuning_open())
             || tab.is_some_and(|tab| tab.edit_palette.staff.is_open())
             || tab.is_some_and(|tab| tab.edit_palette.takes_keys())

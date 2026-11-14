@@ -6,7 +6,7 @@
 
 mod common;
 
-use gscore_layout::{ColorToken, DrawOp, Fonts, Glyph, Layout, LayoutOptions, layout_track};
+use gscore_layout::{ColorToken, DrawOp, Fonts, Glyph, Layout, LayoutOptions, Point, layout_track};
 use gscore_model::testing::{self, GUITAR_6};
 use gscore_model::{Fret, MeasureIndex, Song, StringNumber, TrackIndex, TrackStaves};
 
@@ -171,6 +171,76 @@ fn tab_only_shows_tuplet_numbers() {
     }
 }
 
+/// A single staff shown as several rows (standard notation and TAB) is joined by a bracket
+/// at the system's start (a thick bar with a curved wing at each end); one row gets none.
+#[test]
+fn a_staff_shown_as_notation_and_tab_gets_a_bracket() {
+    // The bracket's bar (its two ends) and where its wings stand.
+    type Bracket = (Vec<(Point, Point)>, Vec<(Glyph, Point)>);
+    let bracket = |layout: &Layout| -> Bracket {
+        // A thick barline is as thick as the bar, but stands inside the measures.
+        let first_left = layout.places.measures[0].left;
+        let bars = layout
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Line {
+                    from,
+                    to,
+                    thickness,
+                    color: ColorToken::Barline,
+                } if (*thickness - 0.5).abs() < 1e-6
+                    && (from.x - to.x).abs() < 1e-6
+                    && from.x < first_left =>
+                {
+                    Some((*from, *to))
+                }
+                _ => None,
+            })
+            .collect();
+        let wings = layout
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Glyph {
+                    glyph: glyph @ (Glyph::BracketTop | Glyph::BracketBottom),
+                    at,
+                    ..
+                } => Some((*glyph, *at)),
+                _ => None,
+            })
+            .collect();
+        (bars, wings)
+    };
+    let both = layout(TrackStaves::NOTATION_AND_TAB);
+    let (bars, wings) = bracket(&both);
+    let systems = both.places.systems.len();
+    assert_eq!(bars.len(), systems, "one bar per system: {bars:?}");
+    assert_eq!(wings.len(), 2 * systems, "two wings per system: {wings:?}");
+    let (from, to) = bars[0];
+    assert!(to.y - from.y > 8.0, "the bar spans both rows");
+    // The wings sit at the bar's ends, starting at its left edge.
+    let (top, top_at) = wings[0];
+    let (bottom, bottom_at) = wings[1];
+    assert_eq!((top, bottom), (Glyph::BracketTop, Glyph::BracketBottom));
+    assert!((top_at.y - from.y).abs() < 1e-6 && (bottom_at.y - to.y).abs() < 1e-6);
+    assert!((top_at.x - (from.x - 0.25)).abs() < 1e-6);
+    // The bar stands left of the line that joins the rows.
+    let joining = both.ops.iter().any(|op| {
+        matches!(op, DrawOp::Line { from: start, to: end, color: ColorToken::Barline, .. }
+            if (start.x - end.x).abs() < 1e-6
+                && start.x > from.x + 0.25
+                && (start.y - from.y).abs() < 1e-6
+                && (end.y - to.y).abs() < 1e-6)
+    });
+    assert!(joining, "the joining line stands right of the bracket");
+    // One row alone has no bracket.
+    for staves in [TrackStaves::TAB_ONLY, TrackStaves::NOTATION_ONLY] {
+        let (bars, wings) = bracket(&layout(staves));
+        assert!(bars.is_empty() && wings.is_empty());
+    }
+}
+
 /// Slash notation is a staff of its own: rhythm slashes on one line, without a clef, and
 /// it combines with the other two staves as the top one, joined to them at the start.
 #[test]
@@ -267,4 +337,38 @@ fn a_single_line_layout_is_wider_than_the_page() {
         one_line.width,
         broken.width
     );
+}
+
+/// The layout reports the marks a click can open an editor for: the header's tempo and
+/// tunings, the section names and the first bar's time signature.
+#[test]
+fn the_layout_reports_its_clickable_marks() {
+    use gscore_layout::ScoreMarkKind;
+
+    let song = common::open("basic/multi_staff.gp");
+    let fonts = Fonts::bundled().unwrap();
+    let layout =
+        layout_track(&song, TrackIndex::new(0), &LayoutOptions::default(), &fonts).unwrap();
+    let has = |kind: ScoreMarkKind| layout.marks.iter().any(|mark| mark.kind == kind);
+    let first = MeasureIndex::new(0);
+    assert!(has(ScoreMarkKind::Tempo { measure: first }));
+    assert!(has(ScoreMarkKind::Section { measure: first }));
+    assert!(has(ScoreMarkKind::Section {
+        measure: MeasureIndex::new(4)
+    }));
+    assert!(has(ScoreMarkKind::TimeSignature { measure: first }));
+    assert!(has(ScoreMarkKind::Tuning {
+        track: TrackIndex::new(0)
+    }));
+    // Every mark has a box, and a point in it finds the mark again.
+    for mark in &layout.marks {
+        assert!(mark.rect.width > 0.0 && mark.rect.height > 0.0, "{mark:?}");
+        let middle = Point::new(
+            mark.rect.origin.x + mark.rect.width / 2.0,
+            mark.rect.origin.y + mark.rect.height / 2.0,
+        );
+        assert!(layout.mark_at(middle).is_some());
+    }
+    // A point beside the page's marks finds none.
+    assert_eq!(layout.mark_at(Point::new(-5.0, -5.0)), None);
 }

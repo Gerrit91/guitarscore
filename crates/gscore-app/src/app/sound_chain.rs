@@ -49,6 +49,8 @@ const TRIM_RANGE: (f32, f32) = (-24.0, 24.0);
 const BOX: egui::Vec2 = vec2(86.0, 60.0);
 const GAP: f32 = 36.0;
 const BOARD_HEIGHT: f32 = 96.0;
+/// The window's [`egui::Area`] id: stable even when the track named in its title changes.
+const WINDOW_ID: &str = "gscore_sound_chain";
 
 /// The window while it is open.
 #[derive(Debug)]
@@ -674,7 +676,7 @@ fn parts_row(
 }
 
 /// What an empty place can hold: the block, the name its menu shows, and what it does.
-fn block_choices() -> [(BlockChoice, &'static str, &'static str); 9] {
+pub(super) fn block_choices() -> [(BlockChoice, &'static str, &'static str); 9] {
     [
         (
             BlockChoice::Drive,
@@ -1455,6 +1457,16 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Opens the Sound chain window for `track`, showing `place` of its chain (0 the first
+    /// place after the strings) selected, so its knobs are in front of the user.
+    pub(super) fn open_sound_chain_at(&mut self, track: usize, place: usize) {
+        self.open_sound_chain(track);
+        if let Some(window) = &mut self.sound_chain {
+            window.part = None;
+            window.selected = place.saturating_add(1).min(BLOCKS);
+        }
+    }
+
     /// Opens the Sound chain window for `track`, showing `part` of a drum kit (its own
     /// board and level); from the mixer's part strip.
     pub(super) fn open_sound_chain_part(&mut self, track: usize, part: DrumPart) {
@@ -1531,16 +1543,9 @@ impl GuitarScoreApp {
         // program); the saved tones are the list at the bottom.
         let title = format!("Sound chain — {}", self.track_name(window.track));
         // This track's tone: its song's, or its program's default.
-        let mut tone = self.track_tone(window.track, kind);
         // On the SoundFont only a tone the song carries brings a chain (the defaults are
         // the modelled strings'); a drum track's own chain is its bus.
-        let song_tone = self
-            .tabs
-            .get(self.active)
-            .is_some_and(|tab| tab.track_sound(window.track).tone.is_some());
-        if !modelled && !player.drums && !song_tone {
-            tone.chain = ChainSetting::default();
-        }
+        let tone = self.track_chain_tone(window.track, &player, kind);
         // How far the track's compressors work, for the block's meter (and a repaint while
         // the needle moves).
         let meters = self.playback.meters();
@@ -1584,6 +1589,7 @@ impl GuitarScoreApp {
             .as_ref()
             .map_or_else(Default::default, |meters| meters.chain_output(window.track));
         egui::Window::new(&title)
+            .id(egui::Id::unique(WINDOW_ID))
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
@@ -1902,6 +1908,11 @@ impl GuitarScoreApp {
                         });
                     });
             });
+        // Escape closes the window the user is looking at (a popup or a text field gets it
+        // first).
+        if style::escape_closes(ctx, egui::Id::unique(WINDOW_ID)) {
+            actions.close = true;
+        }
         // A tone belongs to the track's preset (its General MIDI program): every track with
         // that preset, in every song, plays it. Built-in forgets it.
         let track = window.track;

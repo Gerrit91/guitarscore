@@ -3,7 +3,7 @@
 //! drive pedal, and of a compressor (its ratio buttons, its knobs and its gain-reduction
 //! meter). The EQ's own editor is in [`super::eq_editor`].
 
-use egui::{Align2, FontId, Rect, RichText, Sense, Stroke, vec2};
+use egui::{Align2, FontId, Rect, Sense, Stroke, vec2};
 use gscore_guitar::knob_ranges;
 
 use crate::app::string_sound::round_knob;
@@ -24,24 +24,22 @@ fn voice_tip(voice: AmpVoiceSetting) -> &'static str {
 /// The amp's voice and knobs; whether anything changed.
 pub(super) fn amp_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
     let mut changed = false;
-    // The voices stacked like a channel switch, left of the knobs.
-    ui.vertical(|ui| {
-        ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
-        for voice in AmpVoiceSetting::ALL {
-            let chosen = block.voice == voice;
-            let text = RichText::new(voice.label());
-            if ui
-                .selectable_label(chosen, if chosen { text.strong() } else { text })
-                .on_hover_text(voice_tip(voice))
-                .clicked()
-                && !chosen
-            {
-                block.voice = voice;
-                changed = true;
-            }
-        }
-    });
-    ui.add_space(8.0);
+    // The voices as one segment row, above the knobs.
+    let items: Vec<(&str, &str, &str, bool)> = AmpVoiceSetting::ALL
+        .iter()
+        .map(|voice| (voice.label(), voice.label(), voice_tip(*voice), true))
+        .collect();
+    let chosen = AmpVoiceSetting::ALL
+        .iter()
+        .position(|voice| *voice == block.voice)
+        .unwrap_or(0);
+    if let Some(index) = super::tiles::segments_with_tips_vertical(ui, &items, chosen)
+        && let Some(voice) = AmpVoiceSetting::ALL.get(index)
+    {
+        block.voice = *voice;
+        changed = true;
+    }
+    ui.add_space(4.0);
     let knobs: [(&mut f32, &str, &str); 4] = [
         (
             &mut block.drive,
@@ -159,24 +157,22 @@ pub(super) fn compressor_knobs(
     reduction: f32,
 ) -> bool {
     let mut changed = false;
-    // The ratio buttons stacked like the amp's voices, left of the knobs.
-    ui.vertical(|ui| {
-        ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
-        for ratio in CompRatioSetting::ALL {
-            let chosen = block.comp_ratio == ratio;
-            let text = RichText::new(ratio.label());
-            if ui
-                .selectable_label(chosen, if chosen { text.strong() } else { text })
-                .on_hover_text(ratio_tip(ratio))
-                .clicked()
-                && !chosen
-            {
-                block.comp_ratio = ratio;
-                changed = true;
-            }
-        }
-    });
-    ui.add_space(8.0);
+    // The ratios as one segment row, above the knobs.
+    let items: Vec<(&str, &str, &str, bool)> = CompRatioSetting::ALL
+        .iter()
+        .map(|ratio| (ratio.label(), ratio.label(), ratio_tip(*ratio), true))
+        .collect();
+    let chosen = CompRatioSetting::ALL
+        .iter()
+        .position(|ratio| *ratio == block.comp_ratio)
+        .unwrap_or(0);
+    if let Some(index) = super::tiles::segments_with_tips_vertical(ui, &items, chosen)
+        && let Some(ratio) = CompRatioSetting::ALL.get(index)
+    {
+        block.comp_ratio = *ratio;
+        changed = true;
+    }
+    ui.add_space(4.0);
     changed |= round_knob(
         ui,
         &mut block.input_db,

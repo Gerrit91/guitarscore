@@ -1,16 +1,18 @@
 //! The page view: the laid-out track, the edit cursor over it, scrolling to the cursor when
 //! it moves, and clicks that move the cursor.
 
-use std::path::PathBuf;
-
-use egui::{Align, Layout, Rect, RichText, ScrollArea, Sense, Vec2};
+use egui::{Align, Rect, ScrollArea, Sense, Vec2};
 use gscore_edit::Command;
 use gscore_edit::{BeatSpot, Cursor, Selection};
-use gscore_layout::{Places, Point};
-use gscore_model::{BeatIndex, MeasureIndex, Song, TrackIndex, VoiceIndex};
+use gscore_layout::{Places, Point, ScoreMarkKind};
+use gscore_model::{
+    BeatIndex, MAX_SONG_TEXT_CHARS, MeasureIndex, Song, SongTextField, TrackIndex, VoiceIndex,
+};
 use gscore_play::PlayState;
 
 use super::GuitarScoreApp;
+use super::edit_palette::PaletteSnapshot;
+use super::edit_staff::Dialog;
 use super::page_menu::{self, MenuChoice};
 use crate::canvas::{self, Arrangement, POINTS_PER_SPACE};
 use crate::state::ScoreView;
@@ -24,6 +26,37 @@ const PAGE_MARGIN: f32 = 32.0;
 /// Room kept above the playing line when the view turns over during playback, in staff
 /// spaces: the bar numbers, section names and tempo marks above the staff stay in view.
 const TURN_HEADROOM: f32 = 7.0;
+
+/// A song text of the score's header being typed in place (the title, the artist, a
+/// credit), with the text typed so far.
+#[derive(Debug)]
+pub(super) struct SongTextEdit {
+    /// The song field the text belongs to.
+    pub(super) field: SongTextField,
+    /// The text being typed.
+    pub(super) text: String,
+    /// Whether the field has taken the keyboard yet (it takes it as soon as it opens, so
+    /// typing continues without a click).
+    focused: bool,
+}
+
+/// What a clickable mark of the page is called in its tooltip and accessible name.
+fn mark_name(kind: ScoreMarkKind) -> String {
+    let bar = |measure: MeasureIndex| measure.get().saturating_add(1);
+    match kind {
+        ScoreMarkKind::Tempo { measure } => format!("tempo of bar {}", bar(measure)),
+        ScoreMarkKind::Section { measure } => format!("section of bar {}", bar(measure)),
+        ScoreMarkKind::TimeSignature { measure } => {
+            format!("time signature of bar {}", bar(measure))
+        }
+        ScoreMarkKind::KeySignature { measure } => {
+            format!("key signature of bar {}", bar(measure))
+        }
+        ScoreMarkKind::Tuning { track } => {
+            format!("tuning of track {}", track.get().saturating_add(1))
+        }
+    }
+}
 
 /// How the view scrolls to the cursor's column `column` when `visible` is shown. While
 /// playing, nothing moves until the column leaves the view; then the view turns over like
@@ -190,6 +223,16 @@ impl GuitarScoreApp {
         let mut clicked: Option<Point> = None;
         let mut drag_to: Option<Cursor> = None;
         let mut choices: Vec<MenuChoice> = Vec::new();
+        // The header text being typed in place: committed (field and text) or cancelled,
+        // and whether this frame opened another one (which must stay open).
+        let mut text_commit: Option<(SongTextField, String)> = None;
+        let mut text_cancel = false;
+        let mut text_opened = false;
+        // A mark of the page that was clicked (a tempo, a section name, a signature, a
+        // tuning): its editor opens once the page's borrows are done.
+        let mut mark_clicked: Option<ScoreMarkKind> = None;
+        // A trackpad pinch (or Ctrl+wheel) over the page zooms the score, not the app.
+        let mut zoom_gesture = 1.0_f32;
         // Guitar Pro's design mode: the commands its handles and buttons made this frame.
         let design_mode = self.view.design_mode;
         let mut design_commands: Vec<Command> = Vec::new();
@@ -246,6 +289,16 @@ impl GuitarScoreApp {
             let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
             ui.ctx()
                 .accesskit_node_builder(response.id, |node| node.set_label("Score page"));
+            // A pinch (or Ctrl+wheel) over the score view zooms it; the gesture is applied
+            // once the page's borrows are done. The pointer may be beside the page (on the
+            // canvas around it), but not over a panel or a window: Ctrl+wheel there belongs
+            // to what is under the pointer.
+            if ui.rect_contains_pointer(ui.clip_rect()) {
+                let delta = ui.input(|input| input.zoom_delta());
+                if delta.is_finite() && delta > 0.0 {
+                    zoom_gesture *= delta;
+                }
+            }
             let origin = egui::pos2(rect.center().x - page.x / 2.0, rect.top() + PAGE_MARGIN);
             // The screen views are paper from edge to edge: no pages, no canvas around them.
             let surface = if score_view.on_pages() {
@@ -291,6 +344,105 @@ impl GuitarScoreApp {
                     Vec2::new(r.width, r.height) * scale,
                 )
             };
+            // The header's song texts (the title, the artist, the credits) can be clicked
+            // to change them by typing right there.
+            for text in &layout.header_texts {
+                let rect = to_screen(text.rect);
+                let response = ui
+                    .interact(
+                        rect,
+                        ui.scope_id().with(("header_text", text.field.id())),
+                        Sense::click(),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::Text)
+                    .on_hover_text(format!(
+                        "Click to edit the {}",
+                        text.field.label().to_lowercase()
+                    ));
+                ui.ctx().accesskit_node_builder(response.id, |node| {
+                    node.set_role(egui::Role::Button);
+                    node.set_label(format!("Edit {}", text.field.label().to_lowercase()));
+                });
+                if response.clicked() {
+                    // A text being typed in another field is kept before switching.
+                    if let Some(open) = &tab.song_text
+                        && open.field != text.field
+                    {
+                        text_commit = Some((open.field, open.text.trim_end().to_owned()));
+                    }
+                    let info = document.song().info();
+                    tab.song_text = Some(SongTextEdit {
+                        field: text.field,
+                        text: text.field.get(&info),
+                        focused: false,
+                    });
+                    text_opened = true;
+                }
+            }
+            // The marks with an editor of their own (tempo marks, section names, time and
+            // key signatures, the header's tunings) open it on a click. Design mode keeps
+            // its handles to itself.
+            if !design_mode {
+                for (index, mark) in layout.marks.iter().enumerate() {
+                    let what = mark_name(mark.kind);
+                    let response = ui
+                        .interact(
+                            to_screen(mark.rect),
+                            ui.scope_id().with(("score_mark", index)),
+                            Sense::click(),
+                        )
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .on_hover_text(format!("Click to edit the {what}"));
+                    ui.ctx().accesskit_node_builder(response.id, |node| {
+                        node.set_role(egui::Role::Button);
+                        node.set_label(format!("Edit the {what}"));
+                    });
+                    if response.clicked() {
+                        mark_clicked = Some(mark.kind);
+                    }
+                }
+            }
+            // The text being typed: a field over the text it replaces, in its size.
+            if let Some(edit) = &mut tab.song_text
+                && let Some(header) = layout
+                    .header_texts
+                    .iter()
+                    .find(|text| text.field == edit.field)
+            {
+                let drawn = to_screen(header.rect);
+                let field = Rect::from_center_size(
+                    drawn.center(),
+                    egui::vec2(
+                        (drawn.width().max(60.0) + 24.0).max(90.0),
+                        (drawn.height() + 6.0).max(22.0),
+                    ),
+                );
+                let response = ui.put(
+                    field,
+                    egui::TextEdit::singleline(&mut edit.text)
+                        .font(egui::FontId::proportional(
+                            (drawn.height() / 1.3).clamp(12.0, 40.0),
+                        ))
+                        .align(egui::Align2::CENTER_CENTER)
+                        .char_limit(MAX_SONG_TEXT_CHARS)
+                        .margin(egui::Margin::symmetric(4, 2)),
+                );
+                ui.ctx().accesskit_node_builder(response.id, |node| {
+                    node.set_label(format!("Score {}", edit.field.label().to_lowercase()));
+                });
+                if !edit.focused {
+                    response.request_focus();
+                    edit.focused = true;
+                }
+                // Enter or a click elsewhere keeps the typed text, Escape drops it.
+                let escape = ui.input(|input| input.key_pressed(egui::Key::Escape));
+                let enter = ui.input(|input| input.key_pressed(egui::Key::Enter));
+                if escape {
+                    text_cancel = true;
+                } else if enter || response.lost_focus() {
+                    text_commit = Some((edit.field, edit.text.trim_end().to_owned()));
+                }
+            }
             // A track with several staves draws its cursor on the staff it is on.
             let places = layout
                 .staff_places(cursor.track, cursor.staff)
@@ -467,15 +619,34 @@ impl GuitarScoreApp {
             }
             if response.clicked() && !designing {
                 tab.drag_anchor = None;
-                // A click clears a selection and moves the cursor.
-                document.editor_mut().set_selection(None);
-                tab.selection = None;
-                if let Some(pos) = response.interact_pointer_pos() {
-                    clicked = Some(to_layout(pos));
+                let point = response.interact_pointer_pos().map(to_layout);
+                // A click on a song text of the header edits it in place; it does not
+                // move the cursor.
+                if let Some(field) = point.and_then(|point| layout.header_text_at(point)) {
+                    let info = document.song().info();
+                    tab.song_text = Some(SongTextEdit {
+                        field,
+                        text: field.get(&info),
+                        focused: false,
+                    });
+                    text_opened = true;
+                    ui.ctx().request_repaint();
+                } else {
+                    // A click clears a selection and moves the cursor.
+                    document.editor_mut().set_selection(None);
+                    tab.selection = None;
+                    if let Some(pos) = response.interact_pointer_pos() {
+                        clicked = Some(to_layout(pos));
+                    }
                 }
             }
         });
         tab.shown_cursor = Some((cursor, revision));
+        // The pinch changed the zoom: the next frame lays the page out at the new size.
+        if (zoom_gesture - 1.0).abs() > f32::EPSILON {
+            self.view.zoom_by(zoom_gesture);
+            ui.ctx().request_repaint();
+        }
         if let Some(point) = clicked
             && let Some((track, hit)) = layout.hit(point)
         {
@@ -510,73 +681,80 @@ impl GuitarScoreApp {
             let revision = tab.document.editor().revision();
             tab.shown_cursor = Some((cursor, revision));
         }
+        // A header text typed in place: Enter (or a click elsewhere) keeps it, Escape
+        // drops it. The song text change is one undo step of its own.
+        if text_commit.is_some() || text_cancel {
+            if let Some((field, text)) = text_commit {
+                self.apply_command(Command::SetSongText { field, text }, false);
+            }
+            // A text opened this frame (another one was clicked) stays open.
+            if !text_opened && let Some(tab) = self.tabs.get_mut(self.active) {
+                tab.song_text = None;
+            }
+        }
+        if let Some(kind) = mark_clicked {
+            self.open_score_mark(kind);
+        }
         let ctx = ui.ctx().clone();
         self.run_menu_choices(choices, &ctx);
     }
 
-    /// What the page shows with no song open: how to open one, and the most recently edited
-    /// files as links.
+    /// Opens the editor of a mark that was clicked on the page: the bar's staff dialog
+    /// (tempo, section, time or key signature) with the cursor moved to that bar, since the
+    /// dialog edits the cursor's bar, or the track's tuning dialog.
+    fn open_score_mark(&mut self, kind: ScoreMarkKind) {
+        let (dialog, measure) = match kind {
+            ScoreMarkKind::Tuning { track } => {
+                self.open_tuning_dialog(track.get());
+                return;
+            }
+            ScoreMarkKind::Tempo { measure } => (Dialog::Tempo, measure),
+            ScoreMarkKind::Section { measure } => (Dialog::Section, measure),
+            ScoreMarkKind::TimeSignature { measure } => (Dialog::Time, measure),
+            ScoreMarkKind::KeySignature { measure } => (Dialog::Key, measure),
+        };
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let mut cursor = tab.document.editor().cursor();
+        if cursor.measure != measure {
+            cursor.measure = measure;
+            cursor.beat = BeatIndex::new(0);
+            tab.document.editor_mut().set_cursor(cursor);
+            tab.document.editor_mut().set_selection(None);
+            tab.selection = None;
+            cursor = tab.document.editor().cursor();
+        }
+        let snapshot = PaletteSnapshot::of(tab.document.song(), cursor, None);
+        tab.edit_palette.staff.open_dialog(dialog, &snapshot);
+    }
+
+    /// What the page shows with no song open: the way to start a new score or open a file,
+    /// the recent songs with a search field, and a preview of the chosen one's first page.
     fn empty_workspace(&mut self, ui: &mut egui::Ui) {
-        if self.tasks.busy() {
+        if self.tasks.open_progress().is_some() {
             ui.centered_and_justified(|ui| {
                 ui.add(egui::Spinner::new().size(18.0));
                 ui.label("Opening…");
             });
             return;
         }
-        let mut open: Option<PathBuf> = None;
-        let recent = &self.settings.recent_files;
-        ui.vertical_centered(|ui| {
-            ui.add_space((ui.available_height() * 0.18).max(16.0));
-            ui.heading("Open a song");
-            ui.add_space(6.0);
-            ui.label(
-                RichText::new("File › Open… opens a Guitar Pro file; you can also drop one here.")
-                    .weak(),
-            );
-            if recent.is_empty() {
-                return;
-            }
-            ui.add_space(22.0);
-            ui.label(RichText::new("Recent files").strong());
-            ui.add_space(6.0);
-            let width = ui.available_width().min(480.0);
-            ui.allocate_ui_with_layout(
-                egui::vec2(width, 0.0),
-                Layout::top_down(Align::Min),
-                |ui| {
-                    for path in recent.iter().take(8) {
-                        let name = path.file_name().map_or_else(
-                            || path.display().to_string(),
-                            |n| n.to_string_lossy().into_owned(),
-                        );
-                        let folder = path
-                            .parent()
-                            .and_then(|parent| parent.file_name())
-                            .map(|name| name.to_string_lossy().into_owned())
-                            .unwrap_or_default();
-                        ui.horizontal(|ui| {
-                            if ui
-                                .link(name)
-                                .on_hover_text(path.display().to_string())
-                                .clicked()
-                            {
-                                open = Some(path.clone());
-                            }
-                            if !folder.is_empty() {
-                                ui.add(
-                                    egui::Label::new(RichText::new(folder).weak().small())
-                                        .truncate(),
-                                );
-                            }
-                        });
-                    }
-                },
-            );
-        });
-        if let Some(path) = open {
-            let ctx = ui.ctx().clone();
+        let ctx = ui.ctx().clone();
+        let recent = self.settings.recent_files.clone();
+        let actions = super::recent::show(ui, &mut self.recent, &recent);
+        if actions.new_song {
+            self.new_song(&ctx);
+        }
+        if actions.ask_open {
+            self.ask_open(&ctx);
+        }
+        if let Some(path) = actions.open {
             self.open(path, &ctx);
+        }
+        if let Some(path) = actions.preview
+            && let Err(error) = self.tasks.preview(path.clone(), &ctx)
+        {
+            self.recent.failed(path, error);
         }
     }
 }

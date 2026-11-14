@@ -13,6 +13,7 @@ use crate::metrics::MusicFont;
 use crate::notation;
 use crate::ornaments;
 use crate::place::{Places, SystemPlace};
+use crate::score_mark::{ScoreMark, ScoreMarkKind};
 use crate::staff::Staff;
 use crate::{Fonts, MEASURE_NUMBER_RISE, REPEAT_COUNT_GAP};
 use gscore_model::SimileMark;
@@ -48,6 +49,8 @@ pub(super) struct Drawn {
     pub(super) measure_x: Vec<f32>,
     pub(super) measure_stretch: Vec<f32>,
     pub(super) measure_tops: Vec<Option<Tops>>,
+    /// The marks a click can open an editor for.
+    pub(super) marks: Vec<ScoreMark>,
 }
 
 impl Drawn {
@@ -68,6 +71,7 @@ impl Drawn {
             measure_x: vec![0.0; count],
             measure_stretch: vec![1.0; count],
             measure_tops: vec![None; count],
+            marks: Vec::new(),
         }
     }
 }
@@ -174,6 +178,25 @@ pub(super) fn draw_part(
             ctx,
             &mut content,
         );
+        // The bar's key and time signature can be clicked.
+        let boxes = measure.signature_boxes(content_x, tops, offset == 0, ctx);
+        let kinds = [
+            ScoreMarkKind::KeySignature {
+                measure: measure.index(),
+            },
+            ScoreMarkKind::TimeSignature {
+                measure: measure.index(),
+            },
+        ];
+        for (kind, (left, top, right, bottom)) in kinds
+            .into_iter()
+            .zip(boxes)
+            .filter_map(|(kind, found)| Some((kind, found?)))
+        {
+            drawn
+                .marks
+                .push(ScoreMark::new(kind, left, top, right, bottom));
+        }
         if let Some(syllables) = part.lyrics.get(index)
             && !syllables.is_empty()
         {
@@ -211,6 +234,7 @@ pub(super) fn draw_part(
             tops,
             ctx,
             &mut content,
+            &mut drawn.marks,
         );
         let is_final = system
             .plan_measures
@@ -390,22 +414,38 @@ pub(super) fn draw_barline_ties(part: &Part<'_>, drawn: &Drawn, ops: &mut Vec<Dr
 }
 
 /// Where a track's staff group stands in a system: the top line of its first staff and of
-/// its last, how tall the group is, and whether it has several staves (then one line and a
-/// brace join them).
+/// its last, how tall the group is, and how its rows are joined at the system's start.
 pub(super) struct Group {
     pub(super) top: f32,
     pub(super) last_top: f32,
     /// From the first staff's top line to the last staff's bottom line.
     pub(super) height: f32,
-    pub(super) joined: bool,
+    pub(super) join: GroupJoin,
+}
+
+/// How a track's rows are joined at the start of a system.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum GroupJoin {
+    /// One row: nothing joins it.
+    None,
+    /// A track with several stored staves (a piano's treble and bass): a curly brace.
+    Brace,
+    /// One staff shown as several rows (standard notation and TAB, say): a bracket (a thick
+    /// bar with a curved wing at each end).
+    Bracket,
 }
 
 /// Space between the brace and the line joining a track's staves.
 const BRACE_GAP: f32 = 0.35;
 
-/// Finishes a track's staves in a system: one line around them all and a brace beside it
-/// (a track with several staves), and the track's name in the margin of `left`, centered on
-/// the group.
+/// The bracket that joins one staff's rows: the space between it and the line joining the
+/// rows, and the thickness of its bar (SMuFL's `bracketThickness`).
+const BRACKET_GAP: f32 = 0.25;
+const BRACKET_THICKNESS: f32 = 0.5;
+
+/// Finishes a track's staves in a system: one line around them all and a brace or bracket
+/// beside it (a track with several rows), and the track's name in the margin of `left`,
+/// centered on the group.
 pub(super) fn draw_group(
     part: &Part<'_>,
     group: Group,
@@ -418,7 +458,7 @@ pub(super) fn draw_group(
     // Where the joining line starts and ends (the staff frames may reach past the lines).
     let top = part.join_top(group.top, measures.clone());
     let bottom = part.join_bottom(group.last_top, measures);
-    if group.joined {
+    if group.join != GroupJoin::None {
         let thin = fonts.music.engraving().thin_barline_thickness;
         ops.push(DrawOp::Line {
             from: Point::new(left + thin / 2.0, top),
@@ -426,13 +466,17 @@ pub(super) fn draw_group(
             thickness: thin,
             color: ColorToken::Barline,
         });
-        draw_brace(top, bottom, left, &fonts.music, ops);
+        match group.join {
+            GroupJoin::Brace => draw_brace(top, bottom, left, &fonts.music, ops),
+            GroupJoin::Bracket => draw_bracket(top, bottom, left, ops),
+            GroupJoin::None => {}
+        }
     }
     let Some(name) = name else {
         return;
     };
-    // The name stands beside the group, centered on all its staves.
-    let middle = if group.joined {
+    // The name stands beside the group, centered on all its rows.
+    let middle = if group.join != GroupJoin::None {
         (top + bottom) / 2.0
     } else {
         group.top + group.height / 2.0
@@ -445,6 +489,29 @@ pub(super) fn draw_group(
         anchor: TextAnchor::End,
         color: ColorToken::Annotation,
     });
+}
+
+/// The bracket joining one staff's rows at the system's start, as engraved scores draw it:
+/// a thick bar from `top` to `bottom`, left of the line at `left`, with a curved wing at
+/// each end that reaches back over the staves.
+fn draw_bracket(top: f32, bottom: f32, left: f32, ops: &mut Vec<DrawOp>) {
+    // The wings' glyphs start at the bar's left edge.
+    let edge = left - BRACKET_GAP - BRACKET_THICKNESS;
+    let x = edge + BRACKET_THICKNESS / 2.0;
+    ops.push(DrawOp::Line {
+        from: Point::new(x, top),
+        to: Point::new(x, bottom),
+        thickness: BRACKET_THICKNESS,
+        color: ColorToken::Barline,
+    });
+    for (glyph, y) in [(Glyph::BracketTop, top), (Glyph::BracketBottom, bottom)] {
+        ops.push(DrawOp::Glyph {
+            glyph,
+            at: Point::new(edge, y),
+            scale: 1.0,
+            color: ColorToken::Barline,
+        });
+    }
 }
 
 /// The brace joining a track's staves at the system's start, stretched from `top` to

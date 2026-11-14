@@ -5412,3 +5412,189 @@ signal, and the bus's 150 Hz low cut takes the kick's body (about 3 dB of a kit)
   -14 dBFS: about 7 dB of gain reduction swinging 6 dB between hits (was 16 dB swinging
   21 dB: the pumping). A Default button in the bus window brings it back; a bus saved in
   the settings or a song keeps its own knobs.
+
+## 2026-11-14 — Quick chain blocks, in-place song texts, resizable panels, a richer start
+
+- The track panel's **Sound** section now lists the chain's blocks ("Amp", "Cab", …) as
+  rows: a click opens the Sound chain window with that block selected, the mute bypasses
+  it, the trash can empties its place and a "+ Add a block" row adds one (a room opens its
+  file dialog and then the chain window). Each is the same `set_track_tone` edit as in the
+  window, so each is one undo step. The tone table moved to its own **Tone presets**
+  section; the General MIDI programs stay in Sound. Drum kits and MIDI-out tracks show no
+  block rows (their chains are the parts' and none).
+- Clicking the **title, subtitle, artist, album or a credit** on the page edits that song
+  text in place (Enter or a click elsewhere keeps it, Escape drops it). `gscore-layout`
+  now reports each header text's box (`Layout::header_texts`), so the app places the field
+  over the text it replaces; the text is one `SetSongText` undo step and the field takes
+  the keyboard at once (keys do not reach the score meanwhile).
+- A side panel could be shrunk by dragging its edge but never widened again: its
+  remembered width was also its `max_size`. The remembered width is only the starting
+  size now; the room left beside the score is the drag limit. Both the track panel and the
+  edit palette.
+- With no song open, the workspace now offers **New song…** and **Open song…**, lists the
+  recent songs in a searchable table (song and folder, most recent first, double-click or
+  "Open selected song"), and shows a print-style preview of the chosen song's first page.
+  The preview is read, imported and laid out in a background task (`Tasks::preview`) and
+  cached for the chosen row; the table stays usable while it prepares.
+- Tests: the chain rows (open, mute, remove, add), the in-place title (typing, Escape,
+  undo), both panels shrink-then-grow, and the empty workspace (buttons, search, preview,
+  opening) with a snapshot. Snapshots that include the track panel were regenerated.
+
+## 2026-11-14 — Section order, a segmented source switch, blue block rows, Escape
+
+- **Sound** is the track panel's last section (after Tone presets): the block rows and the
+  stomp box sit at the bottom. On a short window they need a scroll; the panel scrolls
+  as before.
+- The chain's block rows are ordinary buttons at rest and turn blue (the accent) under
+  the pointer; a bypassed block's text stays weak until hovered.
+- The source switch is one segmented control: **MIDI | PM | MIDI out**, touching, with only
+  the outer corners rounded. The accessible names stay descriptive ("MIDI synth", "PM
+  Synthesis").
+- Escape closes the window the user is looking at (`style::escape_closes`): it is gated on
+  the topmost floating window, and a popup, a question (modal) or a focused text field gets
+  the key first. Sound chain, reverb/compressor/chorus bus and master chain windows now
+  have stable Area ids and close on Escape; the other windows already did.
+- Tests: Escape closes the Sound chain and the compressor bus window; the source-switch
+  tests use the accessible names; snapshots regenerated for the moved section and the
+  segmented switch.
+
+## 2026-11-14 — A square bracket joins a staff's notation and TAB rows
+
+A track written on one staff but shown as several rows (standard notation and TAB, with or
+without slash notation) now gets the square bracket Guitar Pro draws at every system's
+start, instead of only the plain joining line. `Part::row_count` counts the rows the staff
+switches draw; the group logic uses it next to the stored extra staves (a piano keeps its
+curly brace). Header names, join line and bracket span the whole group. Layout goldens
+updated; a unit test checks the bracket on notation+TAB and its absence on a single row.
+
+## 2026-11-14 — The source switch keeps its default color on hover
+
+The three segments of MIDI / PM / MIDI out are one control: a hovered segment now keeps
+the resting button color instead of lighting up on its own, so only the chosen source is
+filled in the accent color. Tooltips still say what each source plays.
+
+## 2026-11-14 — The empty workspace's preview placeholder wraps
+
+"Choose a recent song to see its first page." is laid out with wrapping inside the preview
+page now, instead of running past its edges. The two start-screen snapshots show it on two
+lines.
+
+## 2026-11-14 — Trackpad pinch zooms the score
+
+A pinch over the page (winit's `PinchGesture`, which egui reports as `Event::Zoom`) scales
+the score through `ViewState::zoom_by`, within the existing 25-400 % range; Ctrl+wheel over
+the page does the same. The gesture is read only while the pointer is over the page, and
+nonsense factors are ignored. Tested at the view level and through a `Event::Zoom` in the
+app.
+
+## 2026-11-14 — The source switch looks like the voice selector
+
+MIDI / PM / MIDI out now uses the same segment row as the voice picker: a brighter
+`control` frame around the segments, 2 px gaps, rounded segment corners, the chosen source
+in the accent color, and a disabled segment in weak text (PM on a drum kit). The shared
+helper (`tiles::segments_with_tips_enabled`) sizes each segment to its text and carries an
+enabled flag; accessible names stay "MIDI synth" / "PM Synthesis" / "MIDI out". Snapshots
+showing the track panel or the Sound chain were regenerated.
+
+## 2026-11-14 — Pinch zoom reads the gesture anywhere in the page view
+
+The zoom gesture no longer waits for the pointer to be inside the page's rectangle: a pinch
+(or Ctrl+scroll) anywhere in the score view zooms the score. That matters because a pinch
+reports no pointer position of its own, and on Linux the winit 0.30 stack does not deliver
+trackpad pinch gestures at all (only winit's macOS/iOS backends emit `PinchGesture`); the
+equivalent there is Ctrl + two-finger scroll, which the test now covers. The zoom
+percentage tooltip mentions both gestures.
+
+## 2026-11-14 — Tone presets stay while MIDI or MIDI out plays the track
+
+The Tone presets section belongs to every string track, not only to one played by modelled
+strings: switching the source to **MIDI** (or MIDI out) keeps the table, and choosing a
+preset switches the track back to PM (a weak line above the table says so). Each table now
+has its own picker state (`TrackPanelState::tone_picker` beside `sound_picker`), so the
+program filter no longer hides or scrolls the tone table; the funnel and field ids include
+the table's name too (the two tables had clashed on the same id, which egui flags with its
+debug marker). Filter labels are now "Filter the tone presets" and "Filter the programs".
+
+## 2026-11-14 — The Tone presets table follows the source; Sound follows its chain
+
+Tone presets is the one preset table, and its contents follow the source: **PM** shows the
+built-in and saved tones; **MIDI** and **MIDI out** show the General MIDI programs (the
+percussion bank's kits for a drum track). The Sound section holds the source switch and,
+for PM and MIDI, the chain rows (empty at first, with "+ Add a block") and the stomp box;
+a drum kit's chain stays its parts. For **MIDI out** Sound holds only the port and channel:
+no chain rows, no add row, no stomp box, since the hardware synth's sound never returns
+through the chain. One picker state serves the table (its filter resets when the source
+changes), labelled "Filter the tone presets" or "Filter the programs".
+
+## 2026-11-14 — The segment selector reaches the sound chain and the grid
+
+- The same brighter segment row as the note-input voices and the source switch now draws
+  the Sound chain's tabs (Kind/Strike/String/Pickup/Output), the pickup kind and position,
+  the amp's voices and the compressor's ratios (these last three stay in their original
+  vertical columns, with a stacked segment variant), the delay's Sync/Free (vertical) and
+  its two rows of note values (horizontal), and the EQ's Shelf/Bell choice (a compact
+  variant that fits the band columns). The PM kind's icon tiles are kept as they were.
+- The grid view's M and S buttons no longer overlap: their tight padding fits each 18 px
+  slot, in the track rows and the master row.
+- In the mixer view the header's delete-track trash can is gone (the row context menu still
+  deletes); the grid view keeps it next to the zoom.
+
+## 2026-11-14 — Mute and solo have the same width
+
+The M and S toggle letters are drawn in the monospace font, so both buttons come out
+exactly as wide in every place (the grid's rows and master row, the mixer strips and the
+chain blocks' mutes). The selected fill and stroke do not change the layout. Snapshots
+regenerated.
+
+## 2026-11-14 — Review of the editor polish: bracket, grid toggles, zoom, chain rows
+
+- The joining mark of a staff's notation and TAB rows is now an **engraved bracket**: a
+  thick bar (SMuFL's `bracketThickness`, 0.5 spaces) left of the joining line with Bravura's
+  `bracketTop` and `bracketBottom` wings at its ends, instead of a thin line with two
+  hooks. Two glyphs were added (`Glyph::BracketTop`, `Glyph::BracketBottom`). Layout
+  goldens and the app snapshots that show a page were regenerated.
+- The grid view's **M and S buttons** have slots of their own again (24 by 18 px, 2 px
+  apart) and fill them, like a mixer strip's; the row's controls moved 8 px to the left to
+  make the room. The tight-padding helper that shrank them is gone.
+- **Ctrl+wheel** (and a pinch) zooms the score only while the pointer is over the score
+  view; over a panel or a window it no longer changes the score's zoom.
+- A trackpad **pinch still does not arrive on Linux** (the zoom tooltip names it only on
+  macOS now): winit 0.30 (which egui 0.37 pins)
+  reports `PinchGesture` only on macOS and iOS, on neither Wayland nor X11. Reading
+  Wayland's pointer-gestures protocol ourselves needs the window's `wl_display` pointer,
+  which is `unsafe` (`Backend::from_foreign_display`); that is the owner's decision
+  (AGENTS.md, no `unsafe`). Ctrl + two-finger scroll works.
+- A block added, bypassed or removed in the track panel's **Sound rows** on a MIDI-synth
+  track started from the program's default tone, so adding one block brought that tone's
+  chain along (and replaced its first block). The rows, the Sound chain window and a block
+  dropped on a strip now share `track_chain_tone`, which is empty until the song gives the
+  track a tone.
+- Tests: the bracket's bar and wings, Ctrl+wheel over a panel, a block added to a
+  MIDI-synth track. `dismissing_an_open_error_shows_the_empty_workspace` fails when the
+  checkout's path is very long (also on `main`); not changed here.
+
+## 2026-11-14 — A click on a mark of the page opens its dialog
+
+- Clicking a **tempo mark** (the header's, or a bar's), a **section name**, a **time
+  signature** or a bar's **key signature** opens the staff dialog that edits it, on that
+  bar: the cursor moves there first, since the dialogs edit the cursor's bar. Clicking a
+  **tuning** in the header opens that track's tuning dialog (and shows the track). The
+  pointer turns into a hand over these marks, with a tooltip.
+- `gscore-layout` reports the marks with their boxes (`Layout::marks`, `ScoreMark`,
+  `ScoreMarkKind`, `Layout::mark_at`), next to the header texts. Nothing is drawn
+  differently, so no golden or snapshot changed.
+- Not clickable: a tempo change inside a bar (it belongs to a beat, not the bar), the key
+  signature repeated at a system's start, and the clef. Design mode keeps its own handles.
+- Tests: the layout's marks and `mark_at`; in the app, the header's tempo, a time
+  signature, a section name and a tuning each open their dialog.
+
+## 2026-11-14 — Staff lines start exactly at the system's start line
+
+Zoomed out, the staff lines could stick out a pixel to the left of the vertical line that
+starts their system. egui snaps each horizontal or vertical line to the pixel grid by its
+own middle, so two lines that share an edge in the layout could land a pixel apart. The
+canvas now paints such lines as boxes whose edges are rounded from where the layout puts
+them (`canvas::crisp_line`): the ends, and the side the thickness starts at. The thickness
+is a whole number of pixels, and a line thinner than a pixel is drawn lighter, as before.
+Slanted lines are unchanged. Snapshots that show a page were regenerated (line edges moved
+by under a pixel); unit tests cover the shared edge at several zooms and pixel densities.

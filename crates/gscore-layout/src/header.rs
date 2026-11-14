@@ -1,11 +1,23 @@
 //! The top of the first page: title block, credits, tuning and tempo.
 
-use gscore_model::{Song, TrackView};
+use gscore_model::{MeasureIndex, Song, SongTextField, TrackView};
 
 use crate::Context;
-use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
+use crate::draw::{ColorToken, DrawOp, Point, Rect, TextAnchor, TextFont};
 use crate::error::LayoutError;
 use crate::glyph::Glyph;
+use crate::score_mark::{ScoreMark, ScoreMarkKind};
+
+/// A text of the score's header that can be clicked to edit it in place: which song field
+/// it shows, and where it lies on the page.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HeaderText {
+    /// The song text field the text shows.
+    pub field: SongTextField,
+    /// Where the text is, in staff spaces (the drawn text's box, a little roomy for a
+    /// click).
+    pub rect: Rect,
+}
 
 /// How a line of header text looks.
 struct Style {
@@ -57,6 +69,10 @@ const TEMPO_NOTE_GAP: f32 = 0.4;
 struct Lines<'o> {
     y: f32,
     ops: &'o mut Vec<DrawOp>,
+    /// The editable texts written so far, and where they are.
+    texts: &'o mut Vec<HeaderText>,
+    /// The marks a click opens an editor for (the tunings and the tempo).
+    marks: &'o mut Vec<ScoreMark>,
 }
 
 impl Lines<'_> {
@@ -72,49 +88,86 @@ impl Lines<'_> {
             color: style.color,
         });
     }
+
+    /// [`Self::push`] for a song text field's value, remembering where the text is (with
+    /// `width` in staff spaces) so a click can edit that field in place.
+    fn push_field(&mut self, field: SongTextField, text: &str, width: f32, x: f32, style: &Style) {
+        self.push(text, x, style);
+        let left = match style.anchor {
+            TextAnchor::Start => x,
+            TextAnchor::Middle => x - width / 2.0,
+            TextAnchor::End => x - width,
+        };
+        self.texts.push(HeaderText {
+            field,
+            rect: Rect {
+                origin: Point::new(left, self.y - style.size),
+                width,
+                height: style.size * LINE_HEIGHT,
+            },
+        });
+    }
 }
 
 /// Gap between two tracks' blocks of name and tuning.
 const BLOCK_GAP: f32 = 3.0;
 
-/// Draws the header for `tracks` of `song` and returns where it ends (y). One track gets
-/// its tuning on one line; several get a block each (name, then tuning), side by side.
+/// Draws the header for `tracks` of `song` and returns where it ends (y), the texts a
+/// click can edit and the marks a click opens an editor for (each tuning, the tempo). One track gets its tuning on one line; several get a block each (name,
+/// then tuning), side by side.
 pub(crate) fn draw(
     song: &Song,
     tracks: &[TrackView<'_>],
     ctx: &Context<'_>,
     ops: &mut Vec<DrawOp>,
-) -> Result<f32, LayoutError> {
+) -> Result<(f32, Vec<HeaderText>, Vec<ScoreMark>), LayoutError> {
     let options = ctx.options;
     let left = options.margin_left;
     let right = options.page_width - options.margin_right;
     let center = (left + right) / 2.0;
+    let mut texts = Vec::new();
+    let mut marks = Vec::new();
     let mut lines = Lines {
         y: options.margin_top,
         ops,
+        texts: &mut texts,
+        marks: &mut marks,
     };
 
     if !song.title().is_empty() {
-        lines.push(song.title(), center, &TITLE);
+        let width = ctx.fonts.text.width(song.title(), TITLE.size);
+        lines.push_field(SongTextField::Title, song.title(), width, center, &TITLE);
         lines.y += TITLE_GAP;
     }
-    for (text, style) in [
-        (song.subtitle(), &SUBTITLE),
-        (song.artist(), &ARTIST),
-        (song.album(), &SUBTITLE),
+    for (field, text, style) in [
+        (SongTextField::Subtitle, song.subtitle(), &SUBTITLE),
+        (SongTextField::Artist, song.artist(), &ARTIST),
+        (SongTextField::Album, song.album(), &SUBTITLE),
     ] {
         if !text.is_empty() {
-            lines.push(text, center, style);
+            let width = ctx.fonts.text.width(text, style.size);
+            lines.push_field(field, text, width, center, style);
         }
     }
-    for credit in credits(song.lyricist(), song.composer()) {
-        lines.push(&credit, right, &CREDIT);
+    for (field, credit) in credits(song.lyricist(), song.composer()) {
+        let width = ctx.fonts.text.width(&credit, CREDIT.size);
+        lines.push_field(field, &credit, width, right, &CREDIT);
     }
     lines.y += INFO.size;
     match tracks {
         [track] => {
             if let Some(tuning) = tuning_text(*track)? {
                 lines.push(&tuning, left, &INFO);
+                let width = ctx.fonts.text.width(&tuning, INFO.size);
+                lines.marks.push(ScoreMark::new(
+                    ScoreMarkKind::Tuning {
+                        track: track.index(),
+                    },
+                    left,
+                    lines.y - INFO.size,
+                    left + width,
+                    lines.y - INFO.size + INFO.size * LINE_HEIGHT,
+                ));
             }
         }
         _ => track_blocks(tracks, &mut lines, left, right, ctx)?,
@@ -127,15 +180,26 @@ pub(crate) fn draw(
     let stem = font.bbox(note).y_max * TEMPO_NOTE_SCALE;
     lines.y += stem.max(TEMPO.size * LINE_HEIGHT) - TEMPO.size * LINE_HEIGHT + 0.5;
     let text_x = left + font.advance(note) * TEMPO_NOTE_SCALE + TEMPO_NOTE_GAP;
-    lines.push(&format!("= {}", song.tempo()), text_x, &TEMPO);
+    let tempo = format!("= {}", song.tempo());
+    lines.push(&tempo, text_x, &TEMPO);
     let y = lines.y;
+    // The header's tempo is the one the first bar starts at.
+    lines.marks.push(ScoreMark::new(
+        ScoreMarkKind::Tempo {
+            measure: MeasureIndex::new(0),
+        },
+        left,
+        y - stem.max(TEMPO.size),
+        text_x + ctx.fonts.text.width(&tempo, TEMPO.size) * 1.08,
+        y + 0.3,
+    ));
     ops.push(DrawOp::Glyph {
         glyph: note,
         at: Point::new(left, y),
         scale: TEMPO_NOTE_SCALE,
         color: ColorToken::Annotation,
     });
-    Ok(y)
+    Ok((y, texts, marks))
 }
 
 /// Each track's name with its tuning below, in blocks from left to right that wrap onto
@@ -150,21 +214,25 @@ fn track_blocks(
     let mut blocks = Vec::with_capacity(tracks.len());
     for track in tracks {
         let mut block = vec![track.name().trim().to_owned()];
-        if let Some(tuning) = block_tuning(*track)? {
-            block.push(tuning);
-        }
+        let tuned = match block_tuning(*track)? {
+            Some(tuning) => {
+                block.push(tuning);
+                true
+            }
+            None => false,
+        };
         let width = block
             .iter()
             .map(|line| ctx.fonts.text.width(line, INFO.size))
             .fold(0.0_f32, f32::max);
-        blocks.push((block, width));
+        blocks.push((block, width, tuned.then(|| track.index())));
     }
     let line_height = INFO.size * LINE_HEIGHT;
     let row_top = lines.y;
     let mut x = left;
     let mut top = row_top;
     let mut tallest = 0_usize;
-    for (block, width) in blocks {
+    for (block, width, tuned) in blocks {
         if x > left && x + width > right {
             top += tallest as f32 * line_height;
             x = left;
@@ -179,6 +247,16 @@ fn track_blocks(
                 anchor: INFO.anchor,
                 color: INFO.color,
             });
+        }
+        // The tuning is the block's second line.
+        if let Some(track) = tuned {
+            lines.marks.push(ScoreMark::new(
+                ScoreMarkKind::Tuning { track },
+                x,
+                top + 2.0 * line_height - INFO.size,
+                x + width,
+                top + 2.0 * line_height + 0.3,
+            ));
         }
         tallest = tallest.max(block.len());
         x += width + BLOCK_GAP;
@@ -205,17 +283,21 @@ fn block_tuning(track: TrackView<'_>) -> Result<Option<String>, LayoutError> {
     }))
 }
 
-/// "Words & Music by X" when one person wrote both, otherwise one line per role.
-fn credits(lyricist: &str, composer: &str) -> Vec<String> {
+/// "Words & Music by X" when one person wrote both, otherwise one line per role; with the
+/// song field each line shows (the combined line shows the composer's name).
+fn credits(lyricist: &str, composer: &str) -> Vec<(SongTextField, String)> {
     match (lyricist.is_empty(), composer.is_empty()) {
-        (false, false) if lyricist == composer => vec![format!("Words & Music by {composer}")],
+        (false, false) if lyricist == composer => vec![(
+            SongTextField::Composer,
+            format!("Words & Music by {composer}"),
+        )],
         (lyrics_missing, music_missing) => {
             let mut lines = Vec::new();
             if !lyrics_missing {
-                lines.push(format!("Words by {lyricist}"));
+                lines.push((SongTextField::Lyricist, format!("Words by {lyricist}")));
             }
             if !music_missing {
-                lines.push(format!("Music by {composer}"));
+                lines.push((SongTextField::Composer, format!("Music by {composer}")));
             }
             lines
         }
@@ -241,9 +323,23 @@ mod tests {
 
     #[test]
     fn credits_combine_one_author_and_list_two() {
-        assert_eq!(credits("A", "A"), ["Words & Music by A"]);
-        assert_eq!(credits("A", "B"), ["Words by A", "Music by B"]);
-        assert_eq!(credits("", "B"), ["Music by B"]);
+        let texts =
+            |lyricist, composer| credits(lyricist, composer).into_iter().collect::<Vec<_>>();
+        assert_eq!(
+            texts("A", "A"),
+            [(SongTextField::Composer, "Words & Music by A".to_owned())]
+        );
+        assert_eq!(
+            texts("A", "B"),
+            [
+                (SongTextField::Lyricist, "Words by A".to_owned()),
+                (SongTextField::Composer, "Music by B".to_owned()),
+            ]
+        );
+        assert_eq!(
+            texts("", "B"),
+            [(SongTextField::Composer, "Music by B".to_owned())]
+        );
         assert!(credits("", "").is_empty());
     }
 }

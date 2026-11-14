@@ -90,13 +90,15 @@ fn matches(row: &PickerRow, filter: &str) -> bool {
 }
 
 /// Shows the picker and returns the row clicked this frame, with the usual eight rows.
+/// `what` names the table ("tone presets", "programs") for its filter's labels.
 pub(super) fn picker(
     ui: &mut egui::Ui,
     id_salt: &str,
+    what: &str,
     rows: &[PickerRow],
     state: &mut TonePickerState,
 ) -> Option<PickerChoice> {
-    picker_rows(ui, id_salt, rows, state, VISIBLE_ROWS, None)
+    picker_rows(ui, id_salt, what, rows, state, VISIBLE_ROWS, None)
 }
 
 /// Shows the picker with `visible` rows at once and returns the row clicked this frame.
@@ -105,6 +107,7 @@ pub(super) fn picker(
 pub(super) fn picker_rows(
     ui: &mut egui::Ui,
     id_salt: &str,
+    what: &str,
     rows: &[PickerRow],
     state: &mut TonePickerState,
     visible: usize,
@@ -212,12 +215,12 @@ pub(super) fn picker_rows(
     // The funnel sits over the table's top-right corner and opens the filter field.
     let filter = ui.interact(
         filter_rect,
-        ui.scope_id().with("tone_filter"),
+        ui.scope_id().with((id_salt, "tone_filter")),
         Sense::click(),
     );
     ui.ctx().accesskit_node_builder(filter.id, |node| {
         node.set_role(egui::Role::Button);
-        node.set_label("Filter the sounds");
+        node.set_label(format!("Filter the {what}"));
     });
     let filter_on = !state.filter.is_empty();
     if filter.hovered() || filter_on {
@@ -237,7 +240,7 @@ pub(super) fn picker_rows(
         tokens.text_weak,
         super::icons::Icon::Filter,
     );
-    let filter = filter.on_hover_text("Filter the sounds by name or family");
+    let filter = filter.on_hover_text(format!("Filter the {what} by name or family"));
     if filter.clicked() {
         state.filter_open = !state.filter_open;
         state.filter_focus = state.filter_open;
@@ -249,7 +252,7 @@ pub(super) fn picker_rows(
             (filter_rect.left() - 206.0).max(ui.max_rect().left()),
             filter_rect.top(),
         );
-        egui::Area::new(ui.scope_id().with("tone_filter_field"))
+        egui::Area::new(ui.scope_id().with((id_salt, "tone_filter_field")))
             .order(egui::Order::Foreground)
             .fixed_pos(at)
             .show(ui.ctx(), |ui| {
@@ -263,7 +266,7 @@ pub(super) fn picker_rows(
                                     .desired_width(160.0),
                             );
                             ui.ctx().accesskit_node_builder(edit.id, |node| {
-                                node.set_label("Filter sounds")
+                                node.set_label(format!("Filter {what}"))
                             });
                             if state.filter_focus {
                                 edit.request_focus();
@@ -491,44 +494,40 @@ pub(super) fn source_switch(
     strings: bool,
 ) -> Option<gscore_play::TrackEngine> {
     use gscore_play::TrackEngine;
-    let mut chosen = None;
-    ui.horizontal_wrapped(|ui| {
-        let mut choice = |ui: &mut egui::Ui, candidate: TrackEngine, label: &str, enabled: bool| {
-            let selected = match (engine, candidate) {
-                (TrackEngine::Modelled(_), TrackEngine::Modelled(_)) => true,
-                _ => engine == candidate,
-            };
-            let response = ui
-                .add_enabled(enabled, egui::Button::selectable(selected, label))
-                .on_hover_text(match candidate {
-                    TrackEngine::SoundFont => {
-                        "The internal synth plays the track with the SoundFont (General MIDI)"
-                    }
-                    TrackEngine::Modelled(_) => {
-                        "Physical modelling: the strings are synthesized and played through \
-                         the chain"
-                    }
-                    TrackEngine::MidiOut => {
-                        "A hardware synthesizer on a MIDI output port plays the track; its \
-                         sound does not come back through the mixer"
-                    }
-                });
-            if !enabled {
-                response.clone().on_hover_text(
-                    "Only string instruments that are not drum kits can be played by \
-                     modelled strings",
-                );
-            }
-            if response.clicked() {
-                chosen = Some(candidate);
-            }
-        };
-        choice(ui, TrackEngine::SoundFont, "MIDI synth", true);
-        choice(ui, pm, "PM Synthesis", strings);
+    const MIDI_TIP: &str = "The internal synth plays the track with the SoundFont (General MIDI)";
+    const PM_TIP: &str =
+        "Physical modelling: the strings are synthesized and played through the chain";
+    const PM_DISABLED_TIP: &str = "Physical modelling: the strings are synthesized and played \
+         through the chain\nOnly string instruments that are not drum kits can be played by \
+         modelled strings";
+    const MIDI_OUT_TIP: &str = "A hardware synthesizer on a MIDI output port plays the track; its sound does not come \
+         back through the mixer";
+    // The short names are visible; the accessible names say what each source is.
+    let mut items = vec![
+        ("MIDI", "MIDI synth", MIDI_TIP, true),
+        (
+            "PM",
+            "PM Synthesis",
+            if strings { PM_TIP } else { PM_DISABLED_TIP },
+            strings,
+        ),
+    ];
+    #[cfg(not(target_arch = "wasm32"))]
+    items.push(("MIDI out", "MIDI out", MIDI_OUT_TIP, true));
+    let chosen = match engine {
+        TrackEngine::SoundFont => 0,
+        TrackEngine::Modelled(_) => 1,
         #[cfg(not(target_arch = "wasm32"))]
-        choice(ui, TrackEngine::MidiOut, "MIDI out", true);
-    });
-    chosen
+        TrackEngine::MidiOut => 2,
+        #[cfg(target_arch = "wasm32")]
+        TrackEngine::MidiOut => 0,
+    };
+    let clicked = super::tiles::segments_with_tips_enabled(ui, &items, chosen)?;
+    Some(match clicked {
+        0 => TrackEngine::SoundFont,
+        1 => pm,
+        _ => TrackEngine::MidiOut,
+    })
 }
 
 /// The General MIDI programs (or, for a drum track, the percussion bank's kits), grouped by

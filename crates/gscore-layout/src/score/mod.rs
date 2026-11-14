@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use gscore_model::{Song, StaffIndex, SystemBreak, TrackIndex, TrackView};
 
-use self::draw::{Drawn, Group, System, draw_barline_ties, draw_group, draw_part};
+use self::draw::{Drawn, Group, GroupJoin, System, draw_barline_ties, draw_group, draw_part};
 use self::part::Part;
 use crate::draw::{ColorToken, DrawOp, Point, Rect};
 use crate::marks::{self, Rows};
@@ -82,6 +82,14 @@ pub(crate) fn layout_with(
                 .is_some_and(|view| view.staff_count() > 1)
         })
         .collect();
+    // A single stored staff shown as several rows (standard notation and TAB, say) is a
+    // group too, joined by a square bracket instead of a brace.
+    let row_groups: Vec<bool> = parts.iter().map(|part| part.row_count() > 1).collect();
+    let grouped: Vec<bool> = several
+        .iter()
+        .zip(&row_groups)
+        .map(|(many_staffs, many_rows)| *many_staffs || *many_rows)
+        .collect();
     let count = parts
         .iter()
         .map(|part| part.measures.len())
@@ -119,7 +127,7 @@ pub(crate) fn layout_with(
         .filter(|part| part.staff.get() == 0)
         .map(|part| part.view)
         .collect();
-    let header_end = header::draw(song, &views, &top.ctx, &mut ops)?;
+    let (header_end, header_texts, mut marks) = header::draw(song, &views, &top.ctx, &mut ops)?;
 
     let keys: Vec<i8> = (0..count)
         .map(|index| {
@@ -406,8 +414,9 @@ pub(crate) fn layout_with(
                     .get(plan.measures.start)
                     .map_or(crate::notation::Clef::Treble, |measure| measure.clef()),
                 last_measure: count,
-                // A track with several staves gets one line around them all, below.
-                join: !several.get(part_index).copied().unwrap_or(false),
+                // A track with several staves, or one staff shown as several rows, gets one
+                // line around them all, below.
+                join: !grouped.get(part_index).copied().unwrap_or(false),
             };
             draw_part(part, &system, drawn, &mut ops);
             let tallest = part.staves_height(plan.measures.clone());
@@ -433,7 +442,13 @@ pub(crate) fn layout_with(
                     top: group_top,
                     last_top: top,
                     height: bottom - group_top,
-                    joined: several.get(part_index).copied().unwrap_or(false),
+                    join: if several.get(part_index).copied().unwrap_or(false) {
+                        GroupJoin::Brace
+                    } else if row_groups.get(part_index).copied().unwrap_or(false) {
+                        GroupJoin::Bracket
+                    } else {
+                        GroupJoin::None
+                    },
                 },
                 plan.measures.clone(),
                 name,
@@ -488,6 +503,9 @@ pub(crate) fn layout_with(
         (placement.pages, height)
     };
 
+    for drawn in &mut drawn {
+        marks.append(&mut drawn.marks);
+    }
     let tracks: Vec<TrackPlaces> = parts
         .iter()
         .zip(drawn)
@@ -514,5 +532,7 @@ pub(crate) fn layout_with(
         ops,
         places,
         tracks,
+        header_texts,
+        marks,
     })
 }

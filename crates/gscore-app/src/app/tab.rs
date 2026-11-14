@@ -70,6 +70,9 @@ pub(super) struct Tab {
     pub(super) page_info: Option<(usize, usize)>,
     /// The track being renamed, while the rename window is open.
     pub(super) renaming: Option<RenameTrack>,
+    /// A song text of the score's header being typed in place (the title, the artist, a
+    /// credit).
+    pub(super) song_text: Option<super::page::SongTextEdit>,
     /// State of the mixer view between frames (the decibel field being typed).
     pub(super) mixer: MixerState,
     /// Wall-clock time when each history entry was first seen, by the entry's stable id.
@@ -133,6 +136,7 @@ impl Tab {
             shown_cursor: None,
             page_info: None,
             renaming: None,
+            song_text: None,
             mixer: MixerState::default(),
             history_stamps: HashMap::new(),
             new_track: None,

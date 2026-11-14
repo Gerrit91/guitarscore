@@ -475,6 +475,7 @@ impl GuitarScoreApp {
                     Err(error) => self.notice = Some(error),
                 },
                 Event::FoundRecoverable(sessions) => self.found_recoverable(sessions),
+                Event::Previewed { path, result } => self.recent.previewed(&path, result),
                 Event::Recovered { session, result } => self.recovered(&session, result),
                 Event::PickedSave(Some(picked)) => {
                     let path = if picked.path.extension().is_some_and(|e| e == "gp") {
@@ -552,6 +553,8 @@ impl GuitarScoreApp {
                     }
                 },
                 Event::Failed(error) => {
+                    // A preview that panicked stops waiting for its page.
+                    self.recent.stop_waiting();
                     self.notice = Some(error);
                     self.abandon_save();
                 }
@@ -599,6 +602,8 @@ impl GuitarScoreApp {
         // Start loading the synthesizer's SoundFont now, not on the first note: it takes
         // seconds, and it does so on its own thread.
         self.playback.preload_synth();
+        // The empty workspace's preview page is no longer needed.
+        self.recent.forget_preview();
         let id = self.next_tab_id;
         self.next_tab_id = self.next_tab_id.wrapping_add(1);
         self.tabs.push(Tab::new(id, document));

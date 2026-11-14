@@ -1,7 +1,7 @@
 //! The knobs of the modelled strings and of the chain's blocks, as the Sound chain window
 //! shows them: round knobs with their name and value under them, the details on hover.
 
-use egui::{Align2, FontId, RichText, Sense, Stroke, Vec2, pos2, vec2};
+use egui::{Align2, FontId, Sense, Stroke, Vec2, pos2, vec2};
 use gscore_guitar::ranges;
 use gscore_play::StringKind;
 
@@ -266,19 +266,19 @@ pub(super) fn sound_knobs(
     tab: &mut StringsTab,
 ) -> bool {
     let mut changed = false;
-    ui.horizontal(|ui| {
-        for candidate in StringsTab::ALL {
-            let chosen = *tab == candidate;
-            let text = RichText::new(candidate.label());
-            if ui
-                .selectable_label(chosen, if chosen { text.strong() } else { text })
-                .on_hover_text(candidate.tip())
-                .clicked()
-            {
-                *tab = candidate;
-            }
-        }
-    });
+    let items: Vec<(&str, &str, &str, bool)> = StringsTab::ALL
+        .iter()
+        .map(|candidate| (candidate.label(), candidate.label(), candidate.tip(), true))
+        .collect();
+    let chosen = StringsTab::ALL
+        .iter()
+        .position(|candidate| *candidate == *tab)
+        .unwrap_or(0);
+    if let Some(index) = super::tiles::segments_with_tips_enabled(ui, &items, chosen)
+        && let Some(candidate) = StringsTab::ALL.get(index)
+    {
+        *tab = *candidate;
+    }
     ui.add_space(4.0);
     let tab = *tab;
     group(ui, tab, StringsTab::Strike, |ui| {
@@ -541,28 +541,28 @@ fn pickup_tip(pickup: PickupSetting) -> &'static str {
 /// where it sits; whether anything changed.
 fn pickup_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
     let mut changed = false;
-    ui.vertical(|ui| {
-        ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
-        for (pickup, label) in PickupSetting::CHOICES {
-            let chosen = sound.pickup == pickup
-                || (pickup == PickupSetting::None && sound.pickup == PickupSetting::Unset);
-            let text = RichText::new(label);
-            if ui
-                .selectable_label(chosen, if chosen { text.strong() } else { text })
-                .on_hover_text(pickup_tip(pickup))
-                .clicked()
-                && !chosen
-            {
-                sound.pickup = pickup;
-                match pickup {
-                    PickupSetting::SingleCoil => (sound.tone, sound.resonance) = (4_500.0, 2.2),
-                    PickupSetting::Humbucker => (sound.tone, sound.resonance) = (3_000.0, 1.8),
-                    PickupSetting::None | PickupSetting::Unset => {}
-                }
-                changed = true;
-            }
+    let items: Vec<(&str, &str, &str, bool)> = PickupSetting::CHOICES
+        .iter()
+        .map(|(pickup, label)| (*label, *label, pickup_tip(*pickup), true))
+        .collect();
+    let chosen = PickupSetting::CHOICES
+        .iter()
+        .position(|(pickup, _)| {
+            sound.pickup == *pickup
+                || (*pickup == PickupSetting::None && sound.pickup == PickupSetting::Unset)
+        })
+        .unwrap_or(0);
+    if let Some(index) = super::tiles::segments_with_tips_vertical(ui, &items, chosen)
+        && let Some((pickup, _)) = PickupSetting::CHOICES.get(index).copied()
+    {
+        sound.pickup = pickup;
+        match pickup {
+            PickupSetting::SingleCoil => (sound.tone, sound.resonance) = (4_500.0, 2.2),
+            PickupSetting::Humbucker => (sound.tone, sound.resonance) = (3_000.0, 1.8),
+            PickupSetting::None | PickupSetting::Unset => {}
         }
-    });
+        changed = true;
+    }
     if matches!(sound.pickup, PickupSetting::None | PickupSetting::Unset) {
         return changed;
     }
@@ -580,24 +580,38 @@ fn pickup_knobs(ui: &mut egui::Ui, sound: &mut StringSound) -> bool {
          round and warm.",
     )
     .changed;
-    ui.vertical(|ui| {
-        ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
-        for (label, position) in [
-            ("Bridge", gscore_guitar::pickup_positions::BRIDGE),
-            ("Middle", gscore_guitar::pickup_positions::MIDDLE),
-            ("Neck", gscore_guitar::pickup_positions::NECK),
-        ] {
-            let chosen = (sound.pickup_position - position).abs() < 1e-3;
-            if ui
-                .selectable_label(chosen, label)
-                .on_hover_text(format!("The {} pickup's place", label.to_lowercase()))
-                .clicked()
-            {
-                sound.pickup_position = position;
-                changed = true;
-            }
-        }
-    });
+    const PLACES: [(&str, f32); 3] = [
+        ("Bridge", gscore_guitar::pickup_positions::BRIDGE),
+        ("Middle", gscore_guitar::pickup_positions::MIDDLE),
+        ("Neck", gscore_guitar::pickup_positions::NECK),
+    ];
+    let items: Vec<(&str, &str, &str, bool)> = PLACES
+        .iter()
+        .map(|(label, _)| {
+            (
+                *label,
+                *label,
+                if *label == "Bridge" {
+                    "The pickup at the bridge: nasal and biting"
+                } else if *label == "Middle" {
+                    "The pickup in the middle: hollow"
+                } else {
+                    "The pickup at the neck: round and warm"
+                },
+                true,
+            )
+        })
+        .collect();
+    let chosen = PLACES
+        .iter()
+        .position(|(_, position)| (sound.pickup_position - position).abs() < 1e-3)
+        .unwrap_or(0);
+    if let Some(index) = super::tiles::segments_with_tips_vertical(ui, &items, chosen)
+        && let Some((_, position)) = PLACES.get(index)
+    {
+        sound.pickup_position = *position;
+        changed = true;
+    }
     changed
 }
 

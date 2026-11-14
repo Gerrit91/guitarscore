@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="packaging/guitarscore-logo-dark.svg">
+    <img src="packaging/guitarscore-logo.svg" width="330" alt="gscore logo: a G bent from a steel fingerpick, beside the name">
+  </picture>
+</p>
+
 # GuitarScore
 
 **A fast, free guitar tablature editor.** Write tabs at the speed you think, hear them as
