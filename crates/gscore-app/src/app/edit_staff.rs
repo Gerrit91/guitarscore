@@ -408,6 +408,7 @@ pub(super) fn faces() -> Vec<Face<'static>> {
         Face::Fermata,
         Face::DoubleBar,
         Face::Break,
+        Face::Design,
         Face::Bars,
         Face::SimileSingle,
         Face::SimileDouble,
@@ -430,6 +431,8 @@ enum StaffTile<'a> {
     Lyrics,
     DoubleBar,
     FreeTime,
+    /// Guitar Pro's design mode: a switch on the page's layout handles.
+    Design,
     BarRepeat {
         double: bool,
     },
@@ -443,6 +446,7 @@ pub(super) fn section(
     snapshot: &PaletteSnapshot,
     hint: &dyn Fn(ActionId) -> String,
     commands: &mut Vec<Command>,
+    design_mode: &mut bool,
 ) -> Option<ActionId> {
     let mut action = None;
     style::section(ui, "staff", "Staff", |ui| {
@@ -541,6 +545,10 @@ pub(super) fn section(
                     "How many bars a line holds",
                     snapshot.bars_per_system.is_some(),
                 ),
+                // Guitar Pro's design mode closes the row: the line break and the bars per
+                // line are one pair, and the design mode is where a line is laid out by
+                // hand.
+                StaffTile::Design,
             ];
             let measure = snapshot.measure.get();
             let mark = snapshot.similes.get(measure).copied().flatten();
@@ -612,6 +620,24 @@ pub(super) fn section(
                                 measure: snapshot.measure,
                                 double_bar: !snapshot.double_bar,
                             });
+                        }
+                    }
+                    StaffTile::Design => {
+                        // A switch: the page shows the layout's handles (and the bar's own
+                        // width and moved beats can be dragged).
+                        if tiles::tile(
+                            ui,
+                            Face::Design,
+                            *design_mode,
+                            true,
+                            "Design mode",
+                            "Design mode: drag a beat or a bar line above the staff to \
+                             fine-tune the layout; + and - at the end of a line fit fewer or \
+                             more bars, and x puts a line's layout back",
+                        )
+                        .clicked()
+                        {
+                            *design_mode = !*design_mode;
                         }
                     }
                     StaffTile::FreeTime => {

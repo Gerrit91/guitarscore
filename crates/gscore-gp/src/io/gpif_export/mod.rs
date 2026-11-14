@@ -20,6 +20,15 @@ use beats::*;
 use helpers::*;
 use notes::*;
 
+/// One bar to write: its id, voices, simile mark, clef and Guitar Pro's layout properties.
+struct BarXml {
+    id: i32,
+    voices: String,
+    simile: Option<String>,
+    clef: &'static str,
+    properties: Vec<XProperty>,
+}
+
 pub(crate) trait SongGpifExportOps {
     /// Serialize this `Song` to a GPIF XML string (GP6 flavour).
     fn write_gpif_xml(&self) -> GpResult<String>;
@@ -354,8 +363,7 @@ impl WriteGpifInGpifStringOrder for Song {
         // Build all bars/voices/beats/notes/rhythms with sequential IDs
         let num_measures = self.measure_headers.len();
 
-        // (bar id, voice ids, simile mark, clef)
-        let mut bars: Vec<(i32, String, Option<String>, &'static str)> = Vec::new();
+        let mut bars: Vec<BarXml> = Vec::new();
         let mut voices_xml: Vec<String> = Vec::new();
         let mut beats_xml: Vec<String> = Vec::new();
         let mut notes_xml: Vec<String> = Vec::new();
@@ -453,12 +461,13 @@ impl WriteGpifInGpifStringOrder for Song {
                         MeasureClef::Tenor => "C3",
                         MeasureClef::Treble => "G2",
                     };
-                    bars.push((
-                        bar_id,
-                        voice_ids.join(" "),
-                        measure.simile_mark.clone(),
+                    bars.push(BarXml {
+                        id: bar_id,
+                        voices: voice_ids.join(" "),
+                        simile: measure.simile_mark.clone(),
                         clef,
-                    ));
+                        properties: measure.x_properties.clone(),
+                    });
                 }
             }
         }
@@ -542,6 +551,9 @@ impl WriteGpifInGpifStringOrder for Song {
                     direction_sign_str(dir)
                 ));
             }
+            // GuitarScore addition: Guitar Pro's layout properties (the design mode's
+            // song-wide bar width, beaming rules), written back as they were read.
+            xml.push_str(&xproperties_xml(&mh.x_properties));
             xml.push_str("</MasterBar>");
         }
         xml.push_str("</MasterBars>");
@@ -550,13 +562,17 @@ impl WriteGpifInGpifStringOrder for Song {
         xml.push_str("<Bars>");
         // GuitarScore fix: the simile mark is stored, not parsed back out of a string (the
         // slicing could panic on a quote in the value), and it is escaped.
-        for (bar_id, voices, simile, clef) in &bars {
+        for bar in &bars {
             xml.push_str(&format!(
-                "<Bar id=\"{bar_id}\"><Clef>{clef}</Clef><Voices>{voices}</Voices>"
+                "<Bar id=\"{}\"><Clef>{}</Clef><Voices>{}</Voices>",
+                bar.id, bar.clef, bar.voices
             ));
-            if let Some(simile) = simile {
+            if let Some(simile) = &bar.simile {
                 xml.push_str(&format!("<SimileMark>{}</SimileMark>", escape_xml(simile)));
             }
+            // GuitarScore addition: Guitar Pro's layout properties (the design mode's bar
+            // width), written back as they were read.
+            xml.push_str(&xproperties_xml(&bar.properties));
             xml.push_str("</Bar>");
         }
         xml.push_str("</Bars>");
@@ -656,6 +672,31 @@ fn systems_layout(measures: &[Measure]) -> Option<String> {
         from = start;
     }
     Some(counts.join(" "))
+}
+
+/// GuitarScore addition: Guitar Pro's opaque layout properties (`<XProperties>`), written
+/// back exactly as they were read (the design mode's bar scale is one of them). Empty when
+/// there are none.
+fn xproperties_xml(properties: &[XProperty]) -> String {
+    if properties.is_empty() {
+        return String::new();
+    }
+    let mut xml = String::from("<XProperties>");
+    for property in properties {
+        let value = escape_xml(&property.value);
+        let element = match property.kind.as_str() {
+            "Int" => "Int",
+            "Float" => "Float",
+            "Text" => "Text",
+            _ => "Double",
+        };
+        xml.push_str(&format!(
+            "<XProperty id=\"{}\"><{element}>{value}</{element}></XProperty>",
+            escape_xml(&property.id)
+        ));
+    }
+    xml.push_str("</XProperties>");
+    xml
 }
 
 /// A staff's capo and tuning as GPIF properties (the tuning only when the file had one).

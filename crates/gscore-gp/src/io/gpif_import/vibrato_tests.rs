@@ -87,6 +87,7 @@ fn beat_vibrato_survives_reading_and_writing() {
         properties: Some(BeatPropertiesWrapper {
             properties: vec![property],
         }),
+        x_properties: None,
     };
     let mut velocity = 0;
     let song_beat = super::convert_beat(&beat, &HashMap::new(), &HashMap::new(), &mut velocity);
@@ -144,6 +145,7 @@ fn beat_legato_survives_reading_and_writing() {
         arpeggio: None,
         dead_slapped: None,
         properties: None,
+        x_properties: None,
     };
     let mut velocity = 0;
     let song_beat = super::convert_beat(&beat, &HashMap::new(), &HashMap::new(), &mut velocity);

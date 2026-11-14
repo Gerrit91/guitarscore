@@ -55,6 +55,8 @@ pub(super) struct Tab {
     pub(super) edit_palette: EditPaletteState,
     /// Where a drag on the page started, while selecting beats.
     pub(super) drag_anchor: Option<Cursor>,
+    /// Guitar Pro's design mode on the page: the drag in progress between frames.
+    pub(super) design: super::design::DesignState,
     /// The cursor and selection the edit palette showed when playback started. While the
     /// song plays, the palette keeps showing those notes instead of following the playing
     /// cursor, whose constantly changing tiles are distracting.
@@ -125,6 +127,7 @@ impl Tab {
             track_panel: TrackPanelState::default(),
             edit_palette: EditPaletteState::default(),
             drag_anchor: None,
+            design: super::design::DesignState::default(),
             palette_anchor: None,
             play_origin: None,
             shown_cursor: None,

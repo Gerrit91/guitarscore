@@ -1108,3 +1108,68 @@ fn choosing_staves_is_undoable() {
         gscore_model::TrackStaves::NOTATION_AND_TAB
     );
 }
+
+#[test]
+fn a_bar_width_is_set_for_the_song_and_for_one_staff_and_undone() {
+    let song = testing::song(&[testing::GUITAR_6], 2).unwrap();
+    let measure = MeasureIndex::new(0);
+    let staff = gscore_model::StaffIndex::new(0);
+    for track in [None, Some(TrackIndex::new(0))] {
+        let command = Command::SetMeasureScale {
+            track,
+            staff,
+            measure,
+            percent: Some(150),
+        };
+        let mut editor = Editor::new(song.clone());
+        editor.execute(command.clone()).unwrap();
+        let scale = editor
+            .song()
+            .measure_scale(TrackIndex::new(0), staff, measure);
+        assert!((scale - 1.5).abs() < 1e-6, "{scale}");
+        apply_then_undo(&song, &command);
+    }
+    // Back to the natural width: a bar that had one loses its property.
+    let mut widened = song.clone();
+    let _ = widened
+        .set_measure_scale(gscore_model::ScaleScope::Song, measure, Some(1.25))
+        .unwrap();
+    let command = Command::SetMeasureScale {
+        track: None,
+        staff,
+        measure,
+        percent: None,
+    };
+    let mut editor = Editor::new(widened.clone());
+    editor.execute(command.clone()).unwrap();
+    assert_eq!(editor.song().song_measure_scale(measure), None);
+    apply_then_undo(&widened, &command);
+}
+
+#[test]
+fn a_moved_beat_column_is_one_undoable_step() {
+    let song = testing::song(&[testing::GUITAR_6], 1).unwrap();
+    let command = Command::SetBeatSpacing {
+        at: pos(0, 0, 1),
+        offset: Some(50),
+    };
+    let mut editor = Editor::new(song.clone());
+    editor.execute(command.clone()).unwrap();
+    let spacing = editor
+        .song()
+        .beat(pos(0, 0, 1))
+        .and_then(|beat| beat.spacing());
+    assert_eq!(spacing, Some(0.5));
+    apply_then_undo(&song, &command);
+    // Out of range is refused before the song changes.
+    let mut editor = Editor::new(song.clone());
+    assert!(
+        editor
+            .execute(Command::SetBeatSpacing {
+                at: pos(0, 0, 0),
+                offset: Some(401),
+            })
+            .is_err()
+    );
+    assert!(editor.song().beat(pos(0, 0, 0)).is_some());
+}

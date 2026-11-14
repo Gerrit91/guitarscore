@@ -5,6 +5,8 @@
 
 use serde::Deserialize;
 
+use crate::model::{MAX_XPROPERTIES, XProperty};
+
 // ---------------------------------------------------------------------------
 // MasterBars (measure headers)
 // ---------------------------------------------------------------------------
@@ -40,6 +42,66 @@ pub(crate) struct MasterBar {
     pub free_time: Option<String>,
     #[serde(rename = "Directions", default)]
     pub directions: Option<DirectionsWrapper>,
+    /// GuitarScore addition: Guitar Pro's opaque layout properties (the design mode's
+    /// song-wide bar scale, beaming rules), kept verbatim.
+    #[serde(rename = "XProperties", default)]
+    pub x_properties: Option<XPropertiesWrapper>,
+}
+
+/// The `<XProperties>` of a master bar, bar or beat.
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct XPropertiesWrapper {
+    #[serde(rename = "XProperty", default)]
+    pub properties: Vec<XPropertyTag>,
+}
+
+/// One `<XProperty id="...">` with its value in a typed child element. Every value is read
+/// as text: it is kept verbatim (a number is written back exactly as Guitar Pro wrote it),
+/// and a value that is not a valid number cannot make the whole file fail to open; the
+/// ids GuitarScore understands parse their number when they are used.
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct XPropertyTag {
+    #[serde(rename = "@id", default)]
+    pub id: String,
+    #[serde(rename = "Int", default)]
+    pub int: Option<String>,
+    #[serde(rename = "Double", default)]
+    pub double: Option<String>,
+    #[serde(rename = "Float", default)]
+    pub float: Option<String>,
+    #[serde(rename = "Text", default)]
+    pub text: Option<String>,
+}
+
+impl XPropertyTag {
+    /// This property as the model keeps it: the value's element name and its text. `None`
+    /// for a value this code does not know (it cannot be written back faithfully).
+    pub(crate) fn to_xproperty(&self) -> Option<XProperty> {
+        let (kind, value) = match (&self.int, &self.double, &self.float, &self.text) {
+            (Some(value), _, _, _) => ("Int", value.trim().to_owned()),
+            (_, Some(value), _, _) => ("Double", value.trim().to_owned()),
+            (_, _, Some(value), _) => ("Float", value.trim().to_owned()),
+            (_, _, _, Some(value)) => ("Text", value.clone()),
+            _ => return None,
+        };
+        Some(XProperty {
+            id: self.id.clone(),
+            kind: kind.to_owned(),
+            value,
+        })
+    }
+}
+
+/// The properties of a `<XProperties>` wrapper, bounded to what one bar may keep.
+pub(crate) fn xproperties(wrapper: Option<&XPropertiesWrapper>) -> Vec<XProperty> {
+    wrapper.map_or_else(Vec::new, |wrapper| {
+        wrapper
+            .properties
+            .iter()
+            .filter_map(XPropertyTag::to_xproperty)
+            .take(MAX_XPROPERTIES)
+            .collect()
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -119,6 +181,10 @@ pub(crate) struct Bar {
     pub clef: Option<String>,
     #[serde(rename = "SimileMark", default)]
     pub simile_mark: Option<String>,
+    /// GuitarScore addition: Guitar Pro's opaque layout properties for this bar (the
+    /// design mode's width scale), kept verbatim.
+    #[serde(rename = "XProperties", default)]
+    pub x_properties: Option<XPropertiesWrapper>,
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +260,10 @@ pub(crate) struct Beat {
     pub dead_slapped: Option<EnableTag>,
     #[serde(rename = "Properties", default)]
     pub properties: Option<BeatPropertiesWrapper>,
+    /// GuitarScore addition: Guitar Pro's opaque layout properties for this beat (beam
+    /// overrides and GP8's design-mode data), kept verbatim.
+    #[serde(rename = "XProperties", default)]
+    pub x_properties: Option<XPropertiesWrapper>,
 }
 
 /// The `<Lyrics>` of a beat: one syllable per lyric line (often empty).

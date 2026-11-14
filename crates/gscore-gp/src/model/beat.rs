@@ -205,6 +205,14 @@ pub struct Beat {
     /// GuitarScore addition: the lyric syllables written on this beat, one per lyric line
     /// (GP6/GP7's repeated `<Lyrics>`; GP3-5 keep them per measure instead).
     pub lyrics: Vec<String>,
+    /// GuitarScore addition: extra room before this beat's column, in staff spaces
+    /// (negative moves it left). Guitar Pro's design mode moves beats; the GPIF format has
+    /// no field this code knows for it, so it is kept in a GuitarScore property.
+    pub spacing: Option<f32>,
+    /// GuitarScore addition: Guitar Pro's opaque layout properties for this beat
+    /// (`<XProperties>`), kept verbatim: beam overrides, and whatever Guitar Pro 8 writes
+    /// where this code does not yet know a field (a design-mode beat offset, perhaps).
+    pub x_properties: Vec<XProperty>,
 }
 
 impl Default for Beat {
@@ -221,6 +229,8 @@ impl Default for Beat {
             grace: false,
             chord_diagram: None,
             lyrics: Vec::new(),
+            spacing: None,
+            x_properties: Vec::new(),
         }
     }
 }

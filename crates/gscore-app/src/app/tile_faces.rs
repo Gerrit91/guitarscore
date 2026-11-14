@@ -109,6 +109,8 @@ pub(crate) enum Face<'a> {
     SimileSingle,
     /// A two-bar repetition: two slashes between two dots.
     SimileDouble,
+    /// The design mode: two guides with a drag handle above the first.
+    Design,
 }
 
 /// The music font at `size`.
@@ -429,6 +431,25 @@ pub(super) fn paint_face(painter: &Painter, rect: Rect, face: Face<'_>, ink: Col
             painter.line_segment([at(-10.0, 7.0), at(10.0, 7.0)], stroke);
             for dx in [-6.0, 0.0, 6.0] {
                 painter.line_segment([at(dx, -8.0), at(dx, 7.0)], stroke);
+            }
+        }
+        Face::Design => {
+            // The design mode: a bar line and a beat's guide (dashed), each with its drag
+            // handle above it.
+            let stroke = Stroke::new(1.5, ink);
+            painter.line_segment([at(-9.0, 8.0), at(9.0, 8.0)], stroke);
+            painter.line_segment([at(6.0, -3.0), at(6.0, 8.0)], stroke);
+            let mut y = -3.0;
+            while y < 8.0 {
+                painter.line_segment([at(-6.0, y), at(-6.0, (y + 2.5).min(8.0))], stroke);
+                y += 4.5;
+            }
+            for dx in [-6.0, 6.0] {
+                painter.add(Shape::convex_polygon(
+                    vec![at(dx - 3.0, -5.0), at(dx + 3.0, -5.0), at(dx, -9.5)],
+                    ink,
+                    Stroke::NONE,
+                ));
             }
         }
         Face::Tempo => {

@@ -216,7 +216,8 @@ pub fn layout_tracks(
         primary,
         options,
         fonts,
-        &mut |_, _, measure, show, free_time, key, prev, clef, previous_clef, ctx| {
+        &mut |track, staff, measure, show, free_time, key, prev, clef, previous_clef, ctx| {
+            let scale = song.measure_scale(track, staff, measure.index());
             MeasureLayout::new(
                 measure,
                 show,
@@ -225,6 +226,7 @@ pub fn layout_tracks(
                 prev,
                 clef,
                 previous_clef,
+                scale,
                 ctx,
             )
             .map(Arc::new)

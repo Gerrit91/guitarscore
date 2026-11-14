@@ -5315,3 +5315,75 @@ Fixed from a review of the branch:
 Icons: the gear is drawn like the ⚙️ emoji (solid body, small hole, broad teeth); the trash
 can has a handle, a tapered body and visible ribs. 45 app snapshots changed by those icons
 only (71–99 pixels each).
+
+## 2026-11-14 — Design mode: bar widths and moved beat columns
+
+Guitar Pro's design mode (its "Design mode", GP7's bar sizing and GP8's beat moving) is
+live on a branch, `feature/design-mode`, in four steps:
+
+- **Format.** GP7/8 keep a resized bar as opaque `<XProperty>` pairs on `<Bar>` and
+  `<MasterBar>`; the reader dropped them and the writer never wrote them, so a save from
+  GuitarScore reset every resized bar. `Measure` and `MeasureHeader` now keep every
+  property verbatim (bounded to 64, unknown value types skipped) and write them back, and
+  read the width scale (ids `1124139520` / `1124073984`) as `display_scale`, clamped to
+  0.25-4. A moved beat has no id alphaTab's GPIF reader knows; it travels in GuitarScore's
+  own `GuitarScoreSpacing` beat property (staff spaces, -4 to 4). Tests:
+  `gpif_import/design_tests.rs` (read, save, hostile values, setting a scale in the model).
+- **Model.** `Song::measure_scale(track, staff, measure)` resolves a bar's width (the
+  staff's own bar, else the song's master bar, else 1);
+  `set_measure_scale(ScaleScope::Song | Staff { .. })` and `set_beat_spacing(at, ..)` are
+  checked, transactional and undoable (offsets rounded to 1/1000 of a staff space). The
+  safe-save comparison now reports a lost bar width (settings) or beat offset (music).
+- **Layout.** A bar's scale multiplies its columns' natural space (never below what the
+  notes need), so a resized bar breaks lines and justifies like any other; a column's
+  offset is added after justification (a dragged beat stays put) and takes the columns
+  after it and the barline with it; offsets are fixed room, never squeezed, and cannot
+  cross the previous column. The layout cache keys the scale, so a song-wide (header)
+  scale is laid out again. New: `tests/test_design.rs` (6 tests). Goldens unchanged
+  (scale 1, no offsets).
+- **Commands and app.** `set_measure_scale` (`width=` in percent or `auto`, `track`
+  omitted for the song's) and `set_beat_spacing` (`offset=` in hundredths), with
+  round-trip, `panic_hunt` and undo tests. The palette's Staff row has a design tile
+  (right after the line-break tile, a guide with its drag handle) that shows dashed guides
+  and drag handles; a barline drag sets
+  the bar's width, a column drag moves the beat, both merged into one undo step; a yellow
+  guide snaps to a nearby bar line; `+` ends the line one bar earlier (its remaining bars
+  stretch into the room), `-` gives the next line's first bar back (or, when no break holds
+  it, narrows the line's bars by 10 % per press until one more fits), `x` clears the line's
+  widths and offsets as one batch. The buttons stack vertically inside the page's margin;
+  as a row they ran off the paper and out of egui's interaction area. Handles take the pointer, so no beat is selected while designing.
+  Unit tests for the drag maths, the snap and the reset. 39 app snapshots changed by the
+  new palette button only (checked by eye); `cargo xtask ci` green.
+
+Open: what GP8 itself writes for a moved beat (needs a GP8-saved file), only horizontal
+movement (as in Guitar Pro), the exact width step of `+`/`-` (ours is 10 %), and native
+printing of the result.
+
+## 2026-11-14 — GP8's own beat layout properties are kept
+
+No Guitar Pro 8 licence is available here (the trial has expired), so the design mode's
+own beat offset cannot be probed; the plan stays: GuitarScore's `GuitarScoreSpacing`
+property until a GP8-saved file shows the format's field. What could be fixed blind is the
+loss: GP8 writes `<XProperties>` on a `<Beat>` too (alphaTab reads three beaming ids), and
+the reader dropped them. `Beat::x_properties` now keeps them verbatim and the GPIF writer
+writes them back, like a bar's and a master bar's, so a GP8 file's design data survives a
+save even where we cannot interpret it. Test: `gpif_import/design_tests.rs`
+(`guitar_pros_own_beat_layout_properties_survive_saving`).
+
+## 2026-11-14 — Review fixes on feature/design-mode
+
+- CI: `mixer_stomp_track` takes the meter tolerance the other wide mixer snapshots have
+  (the GitHub runner's software GPU anti-aliases thin lines differently: 11 pixels past 0.6).
+- Several tracks: a column moved in one track moves every track's column at that time (and
+  the barline after a track's last column, `tail_spacing`); a bar's width scale shrinks the
+  aligned gaps too (the widest track's scale), so "-" and a barline drag narrow a bar.
+- A squeezed bar never puts its columns below the room their notes need.
+- Line breaking counts a moved column's room once, as fixed width (the larger of its room
+  at a natural and a squeezed line), so a planned line never runs past the margin.
+- Drags: the target is where the drag started plus the pointer's whole movement (a
+  justified line no longer makes a held handle creep); a barline drag scales the bar's
+  columns, not its signatures; each drag is one undo step of its own.
+- "-" with several tracks starts from the song's width; reset clears the cursor staff's own
+  width and moved beats (was staff 1's).
+- `<XProperty>` values are read as text: an odd number no longer stops a file from opening,
+  and every value is written back exactly as the file had it.

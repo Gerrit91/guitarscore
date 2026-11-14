@@ -18,6 +18,7 @@ pub mod page;
 pub mod rse;
 pub mod song;
 pub mod track;
+pub mod xproperty;
 
 pub use beat::*;
 pub use chord::*;
@@ -35,3 +36,4 @@ pub use page::*;
 pub use rse::*;
 pub use song::*;
 pub use track::*;
+pub use xproperty::*;

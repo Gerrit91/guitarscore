@@ -173,8 +173,10 @@ pub(super) fn build_beat_xml(
     let has_rasg = beat.effect.has_rasgueado;
     let has_vibrato = beat.effect.vibrato;
     let has_arpeggio = !matches!(beat.effect.arpeggio, BeatStrokeDirection::None);
+    // GuitarScore addition: the design mode's offset of this beat's column.
+    let spacing = beat.spacing;
 
-    if has_brush || has_pick || has_rasg || has_vibrato || has_arpeggio {
+    if has_brush || has_pick || has_rasg || has_vibrato || has_arpeggio || spacing.is_some() {
         bxml.push_str("<Properties>");
         if has_brush {
             let dir = if matches!(beat.effect.stroke.direction, BeatStrokeDirection::Down) {
@@ -243,8 +245,17 @@ pub(super) fn build_beat_xml(
                 "<Property name=\"VibratoWTremBar\"><Strength>{strength}</Strength></Property>"
             ));
         }
+        if let Some(spacing) = spacing {
+            bxml.push_str(&format!(
+                "<Property name=\"GuitarScoreSpacing\"><Float>{spacing:.4}</Float></Property>"
+            ));
+        }
         bxml.push_str("</Properties>");
     }
+
+    // GuitarScore addition: Guitar Pro's own beat layout properties, written back as they
+    // were read.
+    bxml.push_str(&xproperties_xml(&beat.x_properties));
 
     // Rhythm reference
     bxml.push_str(&format!("<Rhythm ref=\"{rhythm_id}\"/>"));

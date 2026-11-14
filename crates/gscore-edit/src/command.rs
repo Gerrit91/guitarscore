@@ -3,8 +3,9 @@
 use gscore_model::{
     BeatEffect, BeatKind, BeatPosition, BeatView, Change, ChordDiagram, Clef, Dynamic, Feel,
     Fermata, Fret, InstrumentSymbol, MAX_BARS_PER_SYSTEM, MAX_SECTION_TITLE_CHARS, MAX_TEMPO,
-    MeasureIndex, ModelError, NoteEffect, NoteValue, PageSetup, Pitch, Repeat, SimileMark, Song,
-    SongTextField, StringNumber, SystemBreak, TimeSignature, TrackColor, TrackIndex, TrackStaves,
+    MeasureIndex, ModelError, NoteEffect, NoteValue, PageSetup, Pitch, Repeat, ScaleScope,
+    SimileMark, Song, SongTextField, StaffIndex, StringNumber, SystemBreak, TimeSignature,
+    TrackColor, TrackIndex, TrackStaves,
 };
 
 use crate::info::{
@@ -21,8 +22,8 @@ use crate::info::{
     TRANSPOSE_TRACK, UNDO,
 };
 use crate::info::{
-    SET_BARS_PER_SYSTEM, SET_PAGE_SETUP, SET_SCORE_LINE_BREAK, SET_SYSTEM_BREAK,
-    SET_TRANSPOSE_ACTIVE, SET_TRANSPOSITION,
+    SET_BARS_PER_SYSTEM, SET_BEAT_SPACING, SET_MEASURE_SCALE, SET_PAGE_SETUP, SET_SCORE_LINE_BREAK,
+    SET_SYSTEM_BREAK, SET_TRANSPOSE_ACTIVE, SET_TRANSPOSITION,
 };
 
 /// One edit, with every parameter already checked for syntax and range.
@@ -256,6 +257,27 @@ pub enum Command {
         track: TrackIndex,
         /// The limit, 1 to 32.
         bars: Option<u8>,
+    },
+    /// Guitar Pro's design mode: a bar's width, in percent of its natural width
+    /// (`None`: natural). With `track` none the whole song's bars at that measure change;
+    /// else that staff's own bar, which overrides the song's.
+    SetMeasureScale {
+        /// The track whose bar it is, or `None` for the song's.
+        track: Option<TrackIndex>,
+        /// Which staff of the track (0 for most tracks).
+        staff: StaffIndex,
+        /// The measure.
+        measure: MeasureIndex,
+        /// The width in percent, 25 to 400, or `None` for the natural width.
+        percent: Option<u16>,
+    },
+    /// Guitar Pro's design mode: move a beat's column, in hundredths of a staff space
+    /// (negative moves it left; `None` puts it back).
+    SetBeatSpacing {
+        /// The beat.
+        at: BeatPosition,
+        /// The offset in hundredths of a staff space, -400 to 400.
+        offset: Option<i16>,
     },
     /// Set one text field of the song.
     SetSongText {
@@ -631,6 +653,33 @@ impl Command {
                 one(track.get()),
                 bars.map_or_else(|| "auto".to_owned(), |bars| bars.to_string())
             ),
+            Command::SetMeasureScale {
+                track,
+                staff,
+                measure,
+                percent,
+            } => {
+                let width = percent.map_or_else(|| "auto".to_owned(), |p| p.to_string());
+                match track {
+                    Some(track) if staff.get() > 0 => format!(
+                        "{id} track={} staff={} measure={} width={width}",
+                        one(track.get()),
+                        // The staff is written 1-based, like a position's.
+                        one(staff.get()),
+                        one(measure.get())
+                    ),
+                    Some(track) => format!(
+                        "{id} track={} measure={} width={width}",
+                        one(track.get()),
+                        one(measure.get())
+                    ),
+                    None => format!("{id} measure={} width={width}", one(measure.get())),
+                }
+            }
+            Command::SetBeatSpacing { at: p, offset } => {
+                let offset = offset.map_or_else(|| "0".to_owned(), |o| o.to_string());
+                format!("{id} {} offset={offset}", at(p))
+            }
             Command::SetTempo { tempo } => format!("{id} tempo={tempo}"),
             Command::SetTransposition { semitones } => format!("{id} semitones={semitones}"),
             Command::TransposeSong { semitones } => format!("{id} semitones={semitones}"),
@@ -798,6 +847,7 @@ impl Command {
             | Command::ClearNote { at, .. }
             | Command::SetDuration { at, .. }
             | Command::InsertBeat { at, .. }
+            | Command::SetBeatSpacing { at, .. }
             | Command::DeleteBeat { at } => Some(*at),
             _ => None,
         }
@@ -850,6 +900,8 @@ impl Command {
             Command::SetPageSetup { .. } => &SET_PAGE_SETUP,
             Command::SetSystemBreak { .. } => &SET_SYSTEM_BREAK,
             Command::SetBarsPerSystem { .. } => &SET_BARS_PER_SYSTEM,
+            Command::SetMeasureScale { .. } => &SET_MEASURE_SCALE,
+            Command::SetBeatSpacing { .. } => &SET_BEAT_SPACING,
             Command::SetScoreLineBreak { .. } => &SET_SCORE_LINE_BREAK,
             Command::SetTempo { .. } => &SET_TEMPO,
             Command::TransposeSong { .. } => &TRANSPOSE_SONG,
@@ -1048,6 +1100,8 @@ impl Command {
             | Command::SetPageSetup { .. }
             | Command::SetSystemBreak { .. }
             | Command::SetBarsPerSystem { .. }
+            | Command::SetMeasureScale { .. }
+            | Command::SetBeatSpacing { .. }
             | Command::SetScoreLineBreak { .. }
             | Command::SetTrackStaves { .. }
             | Command::SetSection { .. }
@@ -1110,6 +1164,30 @@ impl Command {
                 Command::SetTrackColor { track: first, .. },
                 Command::SetTrackColor { track: second, .. },
             ) => first == second,
+            // A handle dragged in Guitar Pro's design mode sends many values of the same
+            // column or bar; they are one undo step.
+            (
+                Command::SetBeatSpacing { at: first, .. },
+                Command::SetBeatSpacing { at: second, .. },
+            ) => first == second,
+            (
+                Command::SetMeasureScale {
+                    track: first_track,
+                    staff: first_staff,
+                    measure: first_measure,
+                    ..
+                },
+                Command::SetMeasureScale {
+                    track: second_track,
+                    staff: second_staff,
+                    measure: second_measure,
+                    ..
+                },
+            ) => {
+                first_track == second_track
+                    && first_staff == second_staff
+                    && first_measure == second_measure
+            }
             // A track's sound state changes continuously while a knob or slider is dragged.
             (
                 Command::SetTrackSound { track: first, .. },
@@ -1229,6 +1307,26 @@ impl Command {
             Command::SetBarsPerSystem { track, bars } => {
                 track.get() < song.track_count()
                     && bars.is_none_or(|bars| (1..=MAX_BARS_PER_SYSTEM).contains(&bars))
+            }
+            Command::SetMeasureScale {
+                track,
+                staff,
+                measure,
+                percent,
+            } => {
+                let inside = percent.is_none_or(|percent| (25..=400).contains(&percent));
+                inside
+                    && match track {
+                        None => measure.get() < song.measure_count(),
+                        Some(track) => song
+                            .staff(*track, *staff)
+                            .and_then(|view| view.measure(*measure))
+                            .is_some(),
+                    }
+            }
+            Command::SetBeatSpacing { at, offset } => {
+                song.beat(*at).is_some()
+                    && offset.is_none_or(|offset| (-400..=400).contains(&offset))
             }
             Command::SetTempo { tempo } => (1..=MAX_TEMPO).contains(tempo),
             Command::TransposeSong { semitones } => {
@@ -1387,6 +1485,26 @@ impl Command {
                 kind,
             } => song.set_system_break(*track, *measure, *kind),
             Command::SetBarsPerSystem { track, bars } => song.set_bars_per_system(*track, *bars),
+            Command::SetMeasureScale {
+                track,
+                staff,
+                measure,
+                percent,
+            } => {
+                let scale = percent.map(|percent| f32::from(percent) / 100.0);
+                let scope = match track {
+                    Some(track) => ScaleScope::Staff {
+                        track: *track,
+                        staff: *staff,
+                    },
+                    None => ScaleScope::Song,
+                };
+                song.set_measure_scale(scope, *measure, scale)
+            }
+            Command::SetBeatSpacing { at, offset } => {
+                let spacing = offset.map(|offset| f32::from(offset) / 100.0);
+                song.set_beat_spacing(*at, spacing)
+            }
             Command::SetScoreLineBreak { measure, on } => song.set_score_line_break(*measure, *on),
             Command::SetTempo { tempo } => song.set_tempo(*tempo),
             Command::TransposeSong { semitones } => song.transpose_by(*semitones),

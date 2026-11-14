@@ -218,6 +218,8 @@ pub(super) fn column_items(
         chord: None,
         beats: Vec::new(),
         text,
+        // Guitar Pro's design mode: the first moved beat of the column moves it.
+        spacing: beats.iter().find_map(|beat| beat.spacing()),
     })
 }
 

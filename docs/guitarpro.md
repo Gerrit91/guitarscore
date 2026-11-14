@@ -325,3 +325,22 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
 47. Drum staves are written with the `Neutral` clef (`src/io/gpif_export/mod.rs`,
     2026-11-13); they were written as treble (`G2`).
 
+48. Guitar Pro's design-mode layout data (`src/model/xproperty.rs` (new),
+    `src/io/gpif/bars.rs`, `src/io/gpif_import/{mod,staves,beats}.rs`,
+    `src/io/gpif_export/{mod,beats}.rs`, 2026-11-14): GP7 and later write the layout a
+    user sets up in the design mode as opaque `<XProperty>` key/value pairs (numeric ids)
+    on `<Bar>` and `<MasterBar>`, and both were dropped on load, so saving from
+    GuitarScore silently reset every resized bar. `Measure` and `MeasureHeader` gain
+    `x_properties`, the properties the file had, kept verbatim and written back in the
+    same order and shape (`Int`, `Double`, `Float`, `Text`); at most
+    `MAX_XPROPERTIES` (64) per bar are kept, and a value this code cannot name is skipped.
+    GP8 writes the same `<XProperties>` on a `<Beat>` too (beam overrides, and whatever its
+    design mode needs); those are kept verbatim as well (`Beat::x_properties`), so a GP8
+    file's own layout data survives a save even where this code cannot interpret it.
+    The one id the model understands is the bar's width scale (`BAR_SCALE` 1124139520 on
+    a bar, `MASTER_BAR_SCALE` 1124073984 on a master bar), read as
+    `Measure::display_scale` / `MeasureHeader::display_scale`, clamped to
+    `SCALE_RANGE` (0.25 to 4). A beat's design-mode offset has no id this code knows, so
+    it is kept in GuitarScore's own `GuitarScoreSpacing` beat property (a `<Float>`, in
+    staff spaces, clamped to `SPACING_RANGE`), which Guitar Pro ignores. Tests:
+    `gpif_import/design_tests.rs`.

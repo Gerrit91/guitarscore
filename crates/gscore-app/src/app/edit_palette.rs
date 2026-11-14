@@ -336,6 +336,7 @@ impl GuitarScoreApp {
                     &snapshot,
                     &hint,
                     &mut commands,
+                    &mut self.view.design_mode,
                 );
                 if beat_text == Some(ActionId::EditBeatText) {
                     tab.edit_palette.effects.open_beat_text(&snapshot);

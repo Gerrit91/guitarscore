@@ -30,7 +30,7 @@ struct StaffKey {
 }
 
 /// A measure's cache entry: its stamp, whether the time signature is shown, the key and
-/// the key before, and the clef and the clef before.
+/// the key before, the clef and the clef before, and its width scale in thousandths.
 type Entry = (
     u64,
     bool,
@@ -39,6 +39,7 @@ type Entry = (
     Option<i8>,
     crate::notation::Clef,
     Option<crate::notation::Clef>,
+    i64,
 );
 
 /// One measure lined up across tracks: from these layouts, this result.
@@ -137,6 +138,7 @@ impl LayoutCache {
                   clef,
                   previous_clef,
                   ctx| {
+                let scale = song.measure_scale(track, staff, measure.index());
                 let entry = (
                     song.measure_stamp(measure.index()),
                     show,
@@ -145,6 +147,8 @@ impl LayoutCache {
                     previous_key,
                     clef,
                     previous_clef,
+                    // Thousandths: the key must be an integer.
+                    (scale * 1000.0).round() as i64,
                 );
                 let at = (track, staff);
                 let cached = old.get(&at).and_then(|measures| measures.get(&entry));
@@ -161,6 +165,7 @@ impl LayoutCache {
                             previous_key,
                             clef,
                             previous_clef,
+                            scale,
                             ctx,
                         )?)
                     }
