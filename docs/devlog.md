@@ -5545,3 +5545,30 @@ The M and S toggle letters are drawn in the monospace font, so both buttons come
 exactly as wide in every place (the grid's rows and master row, the mixer strips and the
 chain blocks' mutes). The selected fill and stroke do not change the layout. Snapshots
 regenerated.
+
+## 2026-11-14 — Review of the editor polish: bracket, grid toggles, zoom, chain rows
+
+- The joining mark of a staff's notation and TAB rows is now an **engraved bracket**: a
+  thick bar (SMuFL's `bracketThickness`, 0.5 spaces) left of the joining line with Bravura's
+  `bracketTop` and `bracketBottom` wings at its ends, instead of a thin line with two
+  hooks. Two glyphs were added (`Glyph::BracketTop`, `Glyph::BracketBottom`). Layout
+  goldens and the app snapshots that show a page were regenerated.
+- The grid view's **M and S buttons** have slots of their own again (24 by 18 px, 2 px
+  apart) and fill them, like a mixer strip's; the row's controls moved 8 px to the left to
+  make the room. The tight-padding helper that shrank them is gone.
+- **Ctrl+wheel** (and a pinch) zooms the score only while the pointer is over the score
+  view; over a panel or a window it no longer changes the score's zoom.
+- A trackpad **pinch still does not arrive on Linux** (the zoom tooltip names it only on
+  macOS now): winit 0.30 (which egui 0.37 pins)
+  reports `PinchGesture` only on macOS and iOS, on neither Wayland nor X11. Reading
+  Wayland's pointer-gestures protocol ourselves needs the window's `wl_display` pointer,
+  which is `unsafe` (`Backend::from_foreign_display`); that is the owner's decision
+  (AGENTS.md, no `unsafe`). Ctrl + two-finger scroll works.
+- A block added, bypassed or removed in the track panel's **Sound rows** on a MIDI-synth
+  track started from the program's default tone, so adding one block brought that tone's
+  chain along (and replaced its first block). The rows, the Sound chain window and a block
+  dropped on a strip now share `track_chain_tone`, which is empty until the song gives the
+  track a tone.
+- Tests: the bracket's bar and wings, Ctrl+wheel over a panel, a block added to a
+  MIDI-synth track. `dismissing_an_open_error_shows_the_empty_workspace` fails when the
+  checkout's path is very long (also on `main`); not changed here.

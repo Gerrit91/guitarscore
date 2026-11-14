@@ -178,7 +178,7 @@ fn toggle(ui: &mut egui::Ui, rect: Rect, which: Toggle, label: &str, on: bool, t
         Toggle::Mute => style::mute_button(on),
         Toggle::Solo => style::solo_button(on),
     };
-    let response = mixer::put_toggle(ui, rect, button).on_hover_text(tip);
+    let response = ui.put(rect, button).on_hover_text(tip);
     ui.ctx()
         .accesskit_node_builder(response.id, |node| node.set_label(label));
     response.clicked()

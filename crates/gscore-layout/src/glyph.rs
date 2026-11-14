@@ -121,6 +121,10 @@ pub enum Glyph {
     /// The brace joining the staves of one track (a piano's treble and bass), stretched
     /// over the group (`brace`).
     Brace,
+    /// The upper wing of the bracket joining one staff's rows (`bracketTop`).
+    BracketTop,
+    /// The lower wing of that bracket (`bracketBottom`).
+    BracketBottom,
 }
 
 /// A flag: how many beams it stands for (1 for an eighth, up to 5 for a 128th) and
@@ -245,6 +249,8 @@ impl Glyph {
             Glyph::Repeat1Bar,
             Glyph::Repeat2Bars,
             Glyph::Brace,
+            Glyph::BracketTop,
+            Glyph::BracketBottom,
         ]
         .into_iter()
         .chain(digits)
@@ -344,6 +350,8 @@ impl Glyph {
             Glyph::Repeat1Bar => "repeat1Bar",
             Glyph::Repeat2Bars => "repeat2Bars",
             Glyph::Brace => "brace",
+            Glyph::BracketTop => "bracketTop",
+            Glyph::BracketBottom => "bracketBottom",
         }
     }
 
@@ -424,6 +432,8 @@ impl Glyph {
             Glyph::Repeat1Bar => 0xE500,
             Glyph::Repeat2Bars => 0xE501,
             Glyph::Brace => 0xE000,
+            Glyph::BracketTop => 0xE003,
+            Glyph::BracketBottom => 0xE004,
         };
         // All codes above are in the Private Use Area, which is valid `char` range.
         char::from_u32(code).unwrap_or(char::REPLACEMENT_CHARACTER)

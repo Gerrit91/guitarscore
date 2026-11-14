@@ -6,47 +6,37 @@ use egui::{Align2, Color32, FontId, Rect, Sense, Stroke, Vec2, pos2};
 /// The x range the mixer controls get in a track row.
 pub(super) fn controls_rect(row: Rect) -> Rect {
     Rect::from_min_max(
-        pos2(row.right() - 224.0, row.top()),
+        pos2(row.right() - 232.0, row.top()),
         pos2(row.right() - 18.0, row.bottom()),
     )
 }
 
+/// Width and height of a row's mute or solo button: wide enough for the button's own
+/// padding, so the two stand side by side like a mixer strip's.
+const TOGGLE_SIZE: Vec2 = Vec2::new(24.0, 18.0);
+
 /// The mute button's slot in a row (track rows and the master row share it, so the
 /// buttons form one column).
 pub(super) fn mute_rect(row: Rect) -> Rect {
-    Rect::from_center_size(
-        pos2(controls_rect(row).left() + 10.0, row.center().y),
-        Vec2::splat(18.0),
+    Rect::from_min_size(
+        pos2(
+            controls_rect(row).left(),
+            row.center().y - TOGGLE_SIZE.y / 2.0,
+        ),
+        TOGGLE_SIZE,
     )
 }
 
-/// The solo button's slot in a row, right of [`mute_rect`].
+/// The solo button's slot in a row, right of [`mute_rect`] with a small gap.
 pub(super) fn solo_rect(row: Rect) -> Rect {
-    Rect::from_center_size(
-        pos2(controls_rect(row).left() + 32.0, row.center().y),
-        Vec2::splat(18.0),
-    )
-}
-
-/// Places a small mute or solo button in `rect` with tight side padding, so the two slots
-/// (22 px apart) show two separate buttons instead of overlapping ones.
-pub(super) fn put_toggle(
-    ui: &mut egui::Ui,
-    rect: Rect,
-    button: egui::Button<'static>,
-) -> egui::Response {
-    ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
-        ui.spacing_mut().button_padding = egui::vec2(2.0, 0.0);
-        ui.add(button)
-    })
-    .inner
+    mute_rect(row).translate(Vec2::new(TOGGLE_SIZE.x + 2.0, 0.0))
 }
 
 /// The volume slider's slot in a row.
 pub(super) fn volume_rect(row: Rect) -> Rect {
     let controls = controls_rect(row);
     Rect::from_min_size(
-        pos2(controls.left() + 46.0, row.center().y - 8.0),
+        pos2(controls.left() + 54.0, row.center().y - 8.0),
         Vec2::new(80.0, 16.0),
     )
 }
@@ -55,7 +45,7 @@ pub(super) fn volume_rect(row: Rect) -> Rect {
 fn db_rect(row: Rect) -> Rect {
     let controls = controls_rect(row);
     Rect::from_min_size(
-        pos2(controls.left() + 132.0, row.center().y - 8.0),
+        pos2(controls.left() + 140.0, row.center().y - 8.0),
         Vec2::new(48.0, 16.0),
     )
 }
@@ -64,7 +54,7 @@ fn db_rect(row: Rect) -> Rect {
 pub(super) fn pan_rect(row: Rect) -> Rect {
     let controls = controls_rect(row);
     Rect::from_center_size(
-        pos2(controls.left() + 192.0, row.center().y),
+        pos2(controls.left() + 200.0, row.center().y),
         Vec2::splat(16.0),
     )
 }

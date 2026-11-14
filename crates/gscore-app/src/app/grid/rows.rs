@@ -215,7 +215,8 @@ fn track_header(
     // Mute and solo, on the right of the name: red and amber, filled while engaged.
     let mute = mixer::mute_rect(rect);
     let solo = mixer::solo_rect(rect);
-    if mixer::put_toggle(ui, mute, style::mute_button(row.muted))
+    if ui
+        .put(mute, style::mute_button(row.muted))
         .on_hover_text("Mute this track")
         .clicked()
     {
@@ -227,7 +228,8 @@ fn track_header(
             merge: false,
         });
     }
-    if mixer::put_toggle(ui, solo, style::solo_button(row.soloed))
+    if ui
+        .put(solo, style::solo_button(row.soloed))
         .on_hover_text("Solo this track")
         .clicked()
     {

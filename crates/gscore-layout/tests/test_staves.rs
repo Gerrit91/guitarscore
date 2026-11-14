@@ -6,7 +6,7 @@
 
 mod common;
 
-use gscore_layout::{ColorToken, DrawOp, Fonts, Glyph, Layout, LayoutOptions, layout_track};
+use gscore_layout::{ColorToken, DrawOp, Fonts, Glyph, Layout, LayoutOptions, Point, layout_track};
 use gscore_model::testing::{self, GUITAR_6};
 use gscore_model::{Fret, MeasureIndex, Song, StringNumber, TrackIndex, TrackStaves};
 
@@ -171,12 +171,16 @@ fn tab_only_shows_tuplet_numbers() {
     }
 }
 
-/// A single staff shown as several rows (standard notation and TAB) is joined by a square
-/// bracket at the system's start, like Guitar Pro draws it; one row gets none.
+/// A single staff shown as several rows (standard notation and TAB) is joined by a bracket
+/// at the system's start (a thick bar with a curved wing at each end); one row gets none.
 #[test]
-fn a_staff_shown_as_notation_and_tab_gets_a_square_bracket() {
-    let bracket_lines = |layout: &Layout| -> Vec<(gscore_layout::Point, gscore_layout::Point)> {
-        layout
+fn a_staff_shown_as_notation_and_tab_gets_a_bracket() {
+    // The bracket's bar (its two ends) and where its wings stand.
+    type Bracket = (Vec<(Point, Point)>, Vec<(Glyph, Point)>);
+    let bracket = |layout: &Layout| -> Bracket {
+        // A thick barline is as thick as the bar, but stands inside the measures.
+        let first_left = layout.places.measures[0].left;
+        let bars = layout
             .ops
             .iter()
             .filter_map(|op| match op {
@@ -185,31 +189,56 @@ fn a_staff_shown_as_notation_and_tab_gets_a_square_bracket() {
                     to,
                     thickness,
                     color: ColorToken::Barline,
-                } if (*thickness - 0.22).abs() < 1e-6 => Some((*from, *to)),
+                } if (*thickness - 0.5).abs() < 1e-6
+                    && (from.x - to.x).abs() < 1e-6
+                    && from.x < first_left =>
+                {
+                    Some((*from, *to))
+                }
                 _ => None,
             })
-            .collect()
+            .collect();
+        let wings = layout
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Glyph {
+                    glyph: glyph @ (Glyph::BracketTop | Glyph::BracketBottom),
+                    at,
+                    ..
+                } => Some((*glyph, *at)),
+                _ => None,
+            })
+            .collect();
+        (bars, wings)
     };
     let both = layout(TrackStaves::NOTATION_AND_TAB);
-    let lines = bracket_lines(&both);
-    assert_eq!(lines.len(), 3, "a vertical line and two hooks: {lines:?}");
-    let vertical = lines
-        .iter()
-        .find(|(from, to)| (from.x - to.x).abs() < 1e-6)
-        .expect("the bracket's vertical line");
-    assert!(vertical.1.y - vertical.0.y > 8.0, "it spans both rows");
-    for (from, to) in &lines {
-        if (from.x - to.x).abs() < 1e-6 {
-            continue;
-        }
-        assert!((from.y - to.y).abs() < 1e-6, "a horizontal hook");
-        assert!(to.x > from.x, "the hooks reach towards the staves");
-    }
+    let (bars, wings) = bracket(&both);
+    let systems = both.places.systems.len();
+    assert_eq!(bars.len(), systems, "one bar per system: {bars:?}");
+    assert_eq!(wings.len(), 2 * systems, "two wings per system: {wings:?}");
+    let (from, to) = bars[0];
+    assert!(to.y - from.y > 8.0, "the bar spans both rows");
+    // The wings sit at the bar's ends, starting at its left edge.
+    let (top, top_at) = wings[0];
+    let (bottom, bottom_at) = wings[1];
+    assert_eq!((top, bottom), (Glyph::BracketTop, Glyph::BracketBottom));
+    assert!((top_at.y - from.y).abs() < 1e-6 && (bottom_at.y - to.y).abs() < 1e-6);
+    assert!((top_at.x - (from.x - 0.25)).abs() < 1e-6);
+    // The bar stands left of the line that joins the rows.
+    let joining = both.ops.iter().any(|op| {
+        matches!(op, DrawOp::Line { from: start, to: end, color: ColorToken::Barline, .. }
+            if (start.x - end.x).abs() < 1e-6
+                && start.x > from.x + 0.25
+                && (start.y - from.y).abs() < 1e-6
+                && (end.y - to.y).abs() < 1e-6)
+    });
+    assert!(joining, "the joining line stands right of the bracket");
     // One row alone has no bracket.
-    let tab = layout(TrackStaves::TAB_ONLY);
-    assert!(bracket_lines(&tab).is_empty());
-    let notation = layout(TrackStaves::NOTATION_ONLY);
-    assert!(bracket_lines(&notation).is_empty());
+    for staves in [TrackStaves::TAB_ONLY, TrackStaves::NOTATION_ONLY] {
+        let (bars, wings) = bracket(&layout(staves));
+        assert!(bars.is_empty() && wings.is_empty());
+    }
 }
 
 /// Slash notation is a staff of its own: rhythm slashes on one line, without a clef, and

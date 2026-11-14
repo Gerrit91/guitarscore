@@ -195,8 +195,9 @@ impl GuitarScoreApp {
         }
         // The blocks of the chain, as the Sound section's rows edit them: the same tone
         // the Sound chain window edits, so an undo takes each change back.
-        let kind = self
-            .track_player(index)
+        let player = self.track_player(index);
+        let kind = player
+            .as_ref()
             .map_or(gscore_play::StringKind::Steel, |player| {
                 match player.engine {
                     gscore_play::TrackEngine::Modelled(kind) => kind,
@@ -205,25 +206,31 @@ impl GuitarScoreApp {
                     }
                 }
             });
+        // The chain the rows show: empty on the MIDI synth until the song gives the track a
+        // tone, so a block added there does not bring the program's default chain along.
+        let chain_tone = |app: &Self| match &player {
+            Some(player) => app.track_chain_tone(index, player, kind),
+            None => app.track_tone(index, kind),
+        };
         if let Some(place) = sound_actions.open_at {
             self.open_sound_chain_at(index, place);
         }
         if let Some(place) = sound_actions.bypass {
-            let mut tone = self.track_tone(index, kind);
+            let mut tone = chain_tone(self);
             if let Some(block) = tone.chain.blocks.get_mut(place) {
                 block.bypass = !block.bypass;
             }
             self.set_track_tone(index, tone);
         }
         if let Some(place) = sound_actions.remove {
-            let mut tone = self.track_tone(index, kind);
+            let mut tone = chain_tone(self);
             if let Some(slot) = tone.chain.blocks.get_mut(place) {
                 *slot = BlockSetting::default();
             }
             self.set_track_tone(index, tone);
         }
         if let Some((place, choice)) = sound_actions.add {
-            let mut tone = self.track_tone(index, kind);
+            let mut tone = chain_tone(self);
             if let Some(slot) = tone.chain.blocks.get_mut(place) {
                 *slot = BlockSetting::of(choice);
             }

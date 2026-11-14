@@ -34,6 +34,13 @@ const TEMPO_WIDTH: f32 = 54.0;
 /// loop), which come before the readout.
 const TRANSPORT_BUTTONS: f32 = 255.0;
 
+/// How the score is zoomed without the toolbar. A trackpad pinch reaches the app only on
+/// macOS (winit reports the gesture on no other desktop), so it is named only there.
+#[cfg(target_os = "macos")]
+const ZOOM_GESTURE_TIP: &str = "A trackpad pinch or Cmd+scroll zooms the score in and out";
+#[cfg(not(target_os = "macos"))]
+const ZOOM_GESTURE_TIP: &str = "Ctrl+scroll zooms the score in and out";
+
 impl GuitarScoreApp {
     /// " (ctrl+z)": the keys bound to `action`, for a tooltip.
     pub(super) fn key_hint(&self, action: ActionId) -> String {
@@ -288,7 +295,7 @@ impl GuitarScoreApp {
                         .min_size(vec2(44.0, 22.0)),
                 )
                 .on_hover_text(format!(
-                    "Back to 100 %{}\nA trackpad pinch or Ctrl+scroll zooms the score in and out",
+                    "Back to 100 %{}\n{ZOOM_GESTURE_TIP}",
                     self.key_hint(ActionId::ZoomReset)
                 ));
             ui.ctx()

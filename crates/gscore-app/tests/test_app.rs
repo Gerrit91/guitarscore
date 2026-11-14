@@ -1859,6 +1859,26 @@ fn a_trackpad_pinch_over_the_score_zooms_it() {
     );
 }
 
+/// Ctrl+wheel belongs to what is under the pointer: over a side panel it leaves the
+/// score's zoom alone.
+#[test]
+fn ctrl_scroll_over_a_panel_does_not_zoom_the_score() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let before = harness.state().view().zoom();
+    // The edit palette fills the left edge of the window.
+    harness.hover_at(egui::pos2(60.0, 300.0));
+    harness.run();
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, 80.0),
+        phase: egui::TouchPhase::Move,
+        source: egui::MouseWheelSource::Trackpad,
+        modifiers: egui::Modifiers::COMMAND,
+    });
+    harness.run_steps(20);
+    assert!((harness.state().view().zoom() - before).abs() < 1e-6);
+}
+
 #[test]
 fn ctrl_zooms_the_score_and_ctrl_shift_the_interface() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));

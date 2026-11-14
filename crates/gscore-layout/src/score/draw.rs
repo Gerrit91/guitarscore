@@ -406,19 +406,18 @@ pub(super) enum GroupJoin {
     None,
     /// A track with several stored staves (a piano's treble and bass): a curly brace.
     Brace,
-    /// One staff shown as several rows (standard notation and TAB, say): a square bracket,
-    /// as Guitar Pro draws it.
+    /// One staff shown as several rows (standard notation and TAB, say): a bracket (a thick
+    /// bar with a curved wing at each end).
     Bracket,
 }
 
 /// Space between the brace and the line joining a track's staves.
 const BRACE_GAP: f32 = 0.35;
 
-/// The square bracket that joins one staff's rows: its distance left of the staves, the
-/// length of its end hooks (towards the staves), and its line thickness.
-const BRACKET_GAP: f32 = 0.75;
-const BRACKET_HOOK: f32 = 0.6;
-const BRACKET_WIDTH: f32 = 0.22;
+/// The bracket that joins one staff's rows: the space between it and the line joining the
+/// rows, and the thickness of its bar (SMuFL's `bracketThickness`).
+const BRACKET_GAP: f32 = 0.25;
+const BRACKET_THICKNESS: f32 = 0.5;
 
 /// Finishes a track's staves in a system: one line around them all and a brace or bracket
 /// beside it (a track with several rows), and the track's name in the margin of `left`,
@@ -468,21 +467,24 @@ pub(super) fn draw_group(
     });
 }
 
-/// The square bracket joining one staff's rows at the system's start, from `top` to
-/// `bottom`, left of the staves at `left` (its hooks reach back towards them).
+/// The bracket joining one staff's rows at the system's start, as engraved scores draw it:
+/// a thick bar from `top` to `bottom`, left of the line at `left`, with a curved wing at
+/// each end that reaches back over the staves.
 fn draw_bracket(top: f32, bottom: f32, left: f32, ops: &mut Vec<DrawOp>) {
-    let x = left - BRACKET_GAP;
+    // The wings' glyphs start at the bar's left edge.
+    let edge = left - BRACKET_GAP - BRACKET_THICKNESS;
+    let x = edge + BRACKET_THICKNESS / 2.0;
     ops.push(DrawOp::Line {
         from: Point::new(x, top),
         to: Point::new(x, bottom),
-        thickness: BRACKET_WIDTH,
+        thickness: BRACKET_THICKNESS,
         color: ColorToken::Barline,
     });
-    for y in [top, bottom] {
-        ops.push(DrawOp::Line {
-            from: Point::new(x, y),
-            to: Point::new(x + BRACKET_HOOK, y),
-            thickness: BRACKET_WIDTH,
+    for (glyph, y) in [(Glyph::BracketTop, top), (Glyph::BracketBottom, bottom)] {
+        ops.push(DrawOp::Glyph {
+            glyph,
+            at: Point::new(edge, y),
+            scale: 1.0,
             color: ColorToken::Barline,
         });
     }
