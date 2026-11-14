@@ -5466,3 +5466,9 @@ start, instead of only the plain joining line. `Part::row_count` counts the rows
 switches draw; the group logic uses it next to the stored extra staves (a piano keeps its
 curly brace). Header names, join line and bracket span the whole group. Layout goldens
 updated; a unit test checks the bracket on notation+TAB and its absence on a single row.
+
+## 2026-11-14 — The source switch keeps its default color on hover
+
+The three segments of MIDI / PM / MIDI out are one control: a hovered segment now keeps
+the resting button color instead of lighting up on its own, so only the chosen source is
+filled in the accent color. Tooltips still say what each source plays.

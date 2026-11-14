@@ -494,6 +494,10 @@ pub(super) fn source_switch(
     let mut chosen = None;
     ui.horizontal_wrapped(|ui| {
         // One segmented control: the choices touch, and only the outer corners are round.
+        // Hovering a segment keeps the control's default color, so the three read as one
+        // button; only the chosen one is filled in the accent color.
+        let resting = ui.visuals().widgets.inactive;
+        ui.visuals_mut().widgets.hovered = resting;
         ui.spacing_mut().item_spacing.x = 0.0;
         let left = egui::CornerRadius {
             nw: 4,
