@@ -27,7 +27,9 @@ const TOP_HEIGHT: f32 = 68.0;
 const TOP_ONE_ROW: f32 = 40.0;
 /// A knob's diameter, and the distance between knob centres.
 const KNOB_SIZE: f32 = 20.0;
-const KNOB_SPACING: f32 = 32.0;
+const KNOB_SPACING: f32 = 28.0;
+/// The left column of a track's top: its sound chain's stomp box, centered.
+const CHAIN_COLUMN: f32 = 30.0;
 /// Height of the fixed block under the fader (dB, mute/solo, name, preset, color).
 const BOTTOM_HEIGHT: f32 = 80.0;
 /// The gain marks beside a fader, in dB. The fader's travel is logarithmic (see
@@ -219,9 +221,13 @@ fn track_strip(
     let inner = rect.shrink2(vec2(8.0, 6.0));
     let (top, fader_area, bottom) = layout(inner, TOP_HEIGHT);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
+    // Two columns: the sound chain's stomp box (centered) on the left, all the sends on
+    // the right.
+    let chain_column = Rect::from_min_size(top.min, vec2(CHAIN_COLUMN, top.height()));
+    let sends = Rect::from_min_max(pos2(chain_column.right() + 2.0, top.top()), top.max);
     knobs(
         &mut strip,
-        top,
+        sends,
         index,
         row.pan,
         Some((row.reverb, row.chorus, comp_send)),
@@ -229,6 +235,15 @@ fn track_strip(
         &row.name,
         actions,
     );
+    if stomp_icon(
+        &mut strip,
+        Rect::from_center_size(chain_column.center(), vec2(22.0, 22.0)),
+        index,
+        &format!("Sound chain for {}", row.name),
+        "Open this track's sound chain: its blocks, its strings and the tone",
+    ) {
+        actions.push(GridAction::OpenSoundChain { track: index });
+    }
     fader(
         &mut strip,
         fader_area,
@@ -318,9 +333,11 @@ fn master_strip(
     let inner = rect.shrink2(vec2(8.0, 6.0));
     let (top, fader_area, bottom) = layout(inner, TOP_ONE_ROW);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
+    let chain_column = Rect::from_min_size(top.min, vec2(CHAIN_COLUMN, top.height()));
+    let sends = Rect::from_min_max(pos2(chain_column.right() + 2.0, top.top()), top.max);
     knobs(
         &mut strip,
-        top,
+        sends,
         usize::MAX,
         master.pan,
         None,
@@ -328,6 +345,15 @@ fn master_strip(
         "Master",
         actions,
     );
+    if stomp_icon(
+        &mut strip,
+        Rect::from_center_size(chain_column.center(), vec2(22.0, 22.0)),
+        usize::MAX,
+        "Sound chain for the master",
+        "Open the master's sound chain (after the tracks and buses)",
+    ) {
+        actions.push(GridAction::OpenMasterChain);
+    }
     fader(
         &mut strip,
         fader_area,
@@ -1129,17 +1155,6 @@ fn knobs(
         }
     }
     let Some((reverb, chorus, comp)) = sends else {
-        // The master has one row: its pan and the way into its chain.
-        let stomp = at(step / 2.0, row1);
-        if stomp_icon(
-            ui,
-            stomp,
-            index,
-            "Sound chain for the master",
-            "Open the master's sound chain (after the tracks and buses)",
-        ) {
-            actions.push(GridAction::OpenMasterChain);
-        }
         return;
     };
     let track = TrackIndex::new(index);
@@ -1186,9 +1201,9 @@ fn knobs(
     // The send into the mixer's compressor bus (parallel compression): it is the song's,
     // kept in its notes, so it is no undoable command.
     let comp_rect = if room.is_some() {
-        at(-step, row2)
+        at(-KNOB_SPACING / 2.0, row2)
     } else {
-        at(-step / 2.0, row2)
+        at(0.0, row2)
     };
     let knob = mixer::send_knob(
         ui,
@@ -1207,7 +1222,7 @@ fn knobs(
         });
     }
     if let Some(room) = room {
-        let room_rect = at(0.0, row2);
+        let room_rect = at(KNOB_SPACING / 2.0, row2);
         let knob = mixer::send_knob(
             ui,
             room_rect,
@@ -1227,21 +1242,6 @@ fn knobs(
                 value,
             });
         }
-    }
-    // The sound chain's stomp box, in the sends' row and without text.
-    let stomp_rect = if room.is_some() {
-        at(step, row2)
-    } else {
-        at(step / 2.0, row2)
-    };
-    if stomp_icon(
-        ui,
-        stomp_rect,
-        index,
-        &format!("Sound chain for {name}"),
-        "Open this track's sound chain: its blocks, its strings and the tone",
-    ) {
-        actions.push(GridAction::OpenSoundChain { track: index });
     }
 }
 

@@ -5277,3 +5277,12 @@ from a sound's name to one of its tones, filled by the owner:
 - Tests: grid zoom out and the 100 % reset (a zoomed-out snapshot), the header's delete
   button, plus the existing voice and mixer tests; snapshots regenerated for the moved
   voice row, the new header buttons, the mixer and the gear.
+
+## 2026-11-14 — The mixer's two columns: the sound chain on the left, the sends on the right
+
+- A track strip's top is split in two: a narrow left column with the sound chain's stomp
+  box, centered, and a right column with all the sends in two rows — pan, reverb and
+  chorus above; comp and (for a kit) room below. A drum part's strip and the master use the
+  same two columns with their one row of knobs; a bus (no sends) keeps its stomp centered
+  in the top. This is what the earlier one-row bar and the icon-in-the-grid variants were
+  trying to be. Mixer snapshots regenerated.
