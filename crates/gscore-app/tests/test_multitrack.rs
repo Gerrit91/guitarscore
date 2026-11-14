@@ -13,6 +13,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use gscore_app::GuitarScoreApp;
 
+mod common;
+
 fn app_with_multi_staff() -> Harness<'static, GuitarScoreApp> {
     let file =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/basic/multi_staff.gp");
@@ -92,6 +94,7 @@ fn up_and_down_past_the_outer_strings_move_between_tracks() {
 
 #[test]
 fn all_tracks_match_their_snapshot() {
+    let _gpu = common::lock_gpu();
     let file =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/basic/multi_staff.gp");
     let mut harness = Harness::builder()
@@ -188,6 +191,7 @@ fn empty_staves_can_be_hidden_from_the_view_menu() {
 
 #[test]
 fn the_mixer_matches_its_snapshot() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with_mixer_view();
     // The tracks, the master (a waveform for all tracks) and the metronome's fader.
     harness.snapshot_options("mixer_view", &meter_tolerance());
@@ -195,6 +199,7 @@ fn the_mixer_matches_its_snapshot() {
 
 #[test]
 fn the_mixer_shows_what_plays_and_what_does_not() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with_mixer_view();
     // A muted track and, while another one is soloed, a track that a solo silences: both
     // recede, their mute buttons red and the solo button amber.
@@ -211,6 +216,7 @@ fn the_mixer_shows_what_plays_and_what_does_not() {
 
 #[test]
 fn every_mixer_strip_opens_its_sound_chain_from_the_stomp_box() {
+    let _gpu = common::lock_gpu();
     // A track's stomp box opens the Sound chain window.
     let mut harness = app_with_mixer_view();
     harness.get_by_label("Sound chain for Clean Guitar").click();
@@ -220,6 +226,7 @@ fn every_mixer_strip_opens_its_sound_chain_from_the_stomp_box() {
 
 #[test]
 fn a_bus_strip_opens_its_window_from_the_stomp_box() {
+    let _gpu = common::lock_gpu();
     // The reverb bus's strip opens the bus window (what it runs and its knobs).
     let mut harness = app_with_mixer_view();
     harness
@@ -231,6 +238,7 @@ fn a_bus_strip_opens_its_window_from_the_stomp_box() {
 
 #[test]
 fn the_master_strip_opens_its_sound_chain() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with_mixer_view_at(1900.0);
     harness.get_by_label("Sound chain for the master").click();
     harness.run();
@@ -239,6 +247,7 @@ fn the_master_strip_opens_its_sound_chain() {
 
 #[test]
 fn a_drum_tracks_parts_open_and_close_beside_its_strip() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with_mixer_view_at(1900.0);
     // The arrow opens the kit's parts as narrower strips right beside the drum track.
     harness.get_by_label("Show the drum parts").click();
@@ -280,6 +289,7 @@ fn app_with_mixer_view_at(width: f32) -> Harness<'static, GuitarScoreApp> {
 
 #[test]
 fn the_screen_view_matches_its_snapshot() {
+    let _gpu = common::lock_gpu();
     let file =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/basic/multi_staff.gp");
     let mut harness = Harness::builder()
@@ -301,6 +311,7 @@ fn the_screen_view_matches_its_snapshot() {
 
 #[test]
 fn a_click_on_a_strip_selects_its_track() {
+    let _gpu = common::lock_gpu();
     // The mixer strips behave like the track rows of the song grid: clicking the
     // background selects the track (the cursor goes there and the panel shows it).
     let mut harness = app_with_multi_staff();
@@ -340,6 +351,7 @@ fn a_click_on_a_strip_selects_its_track() {
 
 #[test]
 fn a_selection_looks_the_same_in_the_score_and_on_top_of_the_grid() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with_mixer_view();
     harness.get_by_label("Grid view").click();
     harness.run();
@@ -381,6 +393,7 @@ fn a_selection_looks_the_same_in_the_score_and_on_top_of_the_grid() {
 
 #[test]
 fn a_drum_parts_pan_knob_moves_it_in_the_kit_as_one_undo_step() {
+    let _gpu = common::lock_gpu();
     use gscore_app::chain_settings::DrumPart;
     let mut harness = app_with_mixer_view_at(1900.0);
     harness.get_by_label("Show the drum parts").click();
@@ -421,6 +434,7 @@ fn a_drum_parts_pan_knob_moves_it_in_the_kit_as_one_undo_step() {
 
 #[test]
 fn a_drum_parts_room_knob_sends_it_into_the_kits_room_as_one_undo_step() {
+    let _gpu = common::lock_gpu();
     use gscore_app::chain_settings::DrumPart;
     let mut harness = app_with_mixer_view_at(1900.0);
     harness.get_by_label("Show the drum parts").click();
@@ -493,6 +507,7 @@ fn drum_track_soloed(harness: &Harness<'static, GuitarScoreApp>) -> bool {
 
 #[test]
 fn a_drum_parts_solo_also_solos_its_track() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with_mixer_view_at(1900.0);
     harness.get_by_label("Show the drum parts").click();
     harness.run();
@@ -518,6 +533,7 @@ fn a_drum_parts_solo_also_solos_its_track() {
 
 #[test]
 fn a_drum_kits_room_knob_sends_the_whole_kit_as_one_undo_step() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with_mixer_view_at(1900.0);
     assert_eq!(song_room_send(&harness), 0, "dry to begin with");
     let depth = harness.state().document().unwrap().editor().undo_depth();
@@ -538,6 +554,7 @@ fn a_drum_kits_room_knob_sends_the_whole_kit_as_one_undo_step() {
 
 #[test]
 fn the_grid_header_deletes_the_shown_track_and_zooms_the_song() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with_multi_staff();
     // The grid starts at 100 %; a step smaller is a step the whole song can use.
     assert!((harness.state().view().grid_zoom - 1.0).abs() < 1e-6);

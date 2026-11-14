@@ -22,6 +22,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable};
 use gscore_app::{GuitarScoreApp, Keymap, Output, Settings, ThemeChoice};
 
+mod common;
+
 fn testdata(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../testdata")
@@ -149,6 +151,7 @@ fn the_empty_workspace_offers_new_song_open_song_and_a_searchable_recent_list() 
 
 #[test]
 fn the_empty_workspace_matches_its_snapshot() {
+    let _gpu = common::lock_gpu();
     let settings = Settings {
         recent_files: vec![
             testdata("basic/note_lengths.gp"),
@@ -628,6 +631,7 @@ fn help_about_shows_the_version() {
 
 #[test]
 fn the_page_matches_its_snapshot_in_both_themes() {
+    let _gpu = common::lock_gpu();
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))
         .wgpu()
@@ -652,6 +656,7 @@ fn the_page_matches_its_snapshot_in_both_themes() {
 
 #[test]
 fn the_design_mode_overlay_matches_its_snapshot() {
+    let _gpu = common::lock_gpu();
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))
         .wgpu()
@@ -802,6 +807,7 @@ fn a_barline_dragged_in_the_design_mode_widens_the_bar() {
 
 #[test]
 fn the_first_start_asks_about_updates_and_remembers_a_no() {
+    let _gpu = common::lock_gpu();
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))
         .wgpu()
@@ -821,6 +827,7 @@ fn the_first_start_asks_about_updates_and_remembers_a_no() {
 
 #[test]
 fn the_track_dialogs_match_their_snapshots() {
+    let _gpu = common::lock_gpu();
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))
         .wgpu()
@@ -949,6 +956,7 @@ fn the_track_dialogs_match_their_snapshots() {
 
 #[test]
 fn the_eq_curve_and_its_knob_columns_match_their_snapshot() {
+    let _gpu = common::lock_gpu();
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1200.0, 1000.0))
         .build_eframe(|cc| {
@@ -997,6 +1005,7 @@ fn the_eq_curve_and_its_knob_columns_match_their_snapshot() {
 
 #[test]
 fn section_titles_sit_in_the_master_row() {
+    let _gpu = common::lock_gpu();
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))
         .wgpu()
@@ -1025,6 +1034,7 @@ fn section_titles_sit_in_the_master_row() {
 
 #[test]
 fn the_brush_dialog_sets_speed_and_timing() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
     harness.get_by_label("Brush (strum) down").scroll_to_me();
     harness.run();
@@ -1052,6 +1062,7 @@ fn the_brush_dialog_sets_speed_and_timing() {
 
 #[test]
 fn the_staff_dialogs_match_their_snapshots() {
+    let _gpu = common::lock_gpu();
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))
         .wgpu()
@@ -3441,6 +3452,7 @@ fn the_mixer_has_a_reverb_bus_the_tracks_send_into() {
 
 #[test]
 fn the_reverb_bus_window_chooses_the_reverb() {
+    let _gpu = common::lock_gpu();
     use gscore_app::chain_settings::BlockChoice;
 
     let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
@@ -3550,6 +3562,7 @@ fn every_change_in_a_bus_window_is_its_own_undo_step_and_a_drag_is_one() {
 
 #[test]
 fn the_compressor_bus_is_a_strip_and_a_window() {
+    let _gpu = common::lock_gpu();
     use gscore_app::chain_settings::{BlockChoice, CompRatioSetting};
 
     // A wide window, so the strips after the tracks (the two buses) are on screen.
@@ -3633,6 +3646,7 @@ fn the_compressor_bus_is_a_strip_and_a_window() {
 
 #[test]
 fn the_mixer_has_a_chorus_bus_the_tracks_send_into() {
+    let _gpu = common::lock_gpu();
     use gscore_app::chain_settings::BlockChoice;
 
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
@@ -3962,6 +3976,7 @@ fn a_songs_mixer_state_travels_in_its_notes() {
 
 #[test]
 fn a_drum_tracks_window_edits_the_kits_parts() {
+    let _gpu = common::lock_gpu();
     use gscore_app::chain_settings::{BlockChoice, DrumPart};
 
     // A tall window: the track panel's Sound section (the stomp box) is below the mixer.

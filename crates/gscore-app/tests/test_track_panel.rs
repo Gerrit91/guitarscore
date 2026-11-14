@@ -18,6 +18,8 @@ use egui_kittest::kittest::{NodeT as _, Queryable};
 use gscore_app::GuitarScoreApp;
 use gscore_model::{MasterMix, Song, TrackIndex, TrackStaves};
 
+mod common;
+
 fn testdata(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../testdata")
@@ -793,6 +795,7 @@ fn a_block_is_dragged_from_one_drum_part_to_another() {
 
 #[test]
 fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with("basic/note_lengths.gp");
     // The track panel's Sound section opens the Sound chain with its stomp box.
     open_sound_chain(&mut harness);
@@ -1288,6 +1291,7 @@ fn choose_chain_tone(harness: &mut Harness<'static, GuitarScoreApp>, name: &str)
 
 #[test]
 fn a_saved_chain_preset_brings_back_the_whole_chain() {
+    let _gpu = common::lock_gpu();
     use gscore_app::chain_settings::BlockChoice;
 
     let mut harness = app_with("basic/note_lengths.gp");
@@ -1484,6 +1488,7 @@ fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
 
 #[test]
 fn a_dialed_tone_belongs_to_the_track() {
+    let _gpu = common::lock_gpu();
     // Changing a track's sound in the Sound chain window makes it the song's own tone: it
     // is kept with the track, undoable, and another track or preset keeps its own.
     use gscore_play::StringKind;
@@ -1938,6 +1943,7 @@ fn an_external_synth_offers_a_port_a_channel_and_the_programs() {
 
 #[test]
 fn a_delay_block_syncs_to_a_note_value_or_runs_free() {
+    let _gpu = common::lock_gpu();
     use gscore_app::chain_settings::{BlockChoice, DelayNoteSetting};
     let mut harness = app_with("basic/note_lengths.gp");
     open_sound_chain(&mut harness);
@@ -1976,6 +1982,7 @@ fn a_delay_block_syncs_to_a_note_value_or_runs_free() {
 
 #[test]
 fn a_cab_starts_on_its_built_in_response_and_offers_the_others_in_a_dropdown() {
+    let _gpu = common::lock_gpu();
     use gscore_app::chain_settings::{BlockChoice, CabinetSetting};
     let mut harness = app_with("basic/note_lengths.gp");
     open_sound_chain(&mut harness);

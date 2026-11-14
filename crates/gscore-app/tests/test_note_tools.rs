@@ -20,6 +20,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use gscore_app::GuitarScoreApp;
 
+mod common;
+
 /// The app with a test file opened, in a window with room for the three tools.
 fn app_with(file: &str) -> Harness<'static, GuitarScoreApp> {
     let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -212,6 +214,7 @@ fn the_drum_map_lists_the_kit_and_enters_drums_on_a_drum_track() {
 
 #[test]
 fn the_note_tools_match_their_snapshot() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with("basic/steel_guitar_dadgad.gp");
     for tool in ["Fretboard", "Keyboard", "Drum map"] {
         harness.get_by_label(tool).click();
@@ -224,6 +227,7 @@ fn the_note_tools_match_their_snapshot() {
 /// tablature on (the MIDI drum notes below the percussion staff), as one undo step.
 #[test]
 fn the_track_panel_switches_a_drum_tracks_tablature() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with("basic/multi_staff.gp");
     harness.state_mut().set_shown_track(5);
     harness.run();

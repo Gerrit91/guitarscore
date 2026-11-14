@@ -5671,3 +5671,16 @@ meters that `meter_tolerance()` (threshold 2.0) was added for on the master and
 drum-parts snapshots. Every mixer snapshot now uses it, `mixer_selected_track` included
 (it had not failed yet); the grid's `grid_mute_solo` stays strict because it shows no
 meters.
+
+## 2026-11-14 — One wgpu device at a time in the app's snapshot tests
+
+CI's `test_multitrack` died with SIGSEGV after 12 of its 20 tests (all passing, no panic)
+on the runner image's software Vulkan (Ubuntu 26.04, lavapipe 26.0.8): four test threads
+were building, rendering with and dropping a wgpu/Vulkan device each, at once. The app
+itself has one. Every test in `gscore-app` that owns a renderer (35 snapshot or `.wgpu()`
+tests across `test_app`, `test_multitrack`, `test_track_panel` and `test_note_tools`) now
+holds a `GPU` mutex from `tests/common/mod.rs` for its whole life, the pattern
+`test_midi_out` already uses for its ALSA port; each test file is its own process, so the
+lock is per binary. The app's tests take 55 s here instead of 30 s. Not reproducible here
+(190 runs of the crashing binary, including with the runner's exact lavapipe build, 4 test
+threads on 4 cores), so this is a workaround for the runner's driver.
