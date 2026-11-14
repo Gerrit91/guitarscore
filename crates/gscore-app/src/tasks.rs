@@ -74,6 +74,15 @@ pub(crate) enum Event {
         /// recovery journal, or why it could not be opened.
         result: Result<Opened, String>,
     },
+    /// A recent song's first page was laid out for the empty workspace's preview, or why
+    /// it could not be.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    Previewed {
+        /// The file.
+        path: PathBuf,
+        /// Its first page's layout, shared with the UI.
+        result: Result<Arc<gscore_layout::Layout>, String>,
+    },
     /// Documents a crash left behind, found at startup.
     FoundRecoverable(Vec<FoundSession>),
     /// A document was recovered (into a new journal), or could not be.
@@ -309,6 +318,40 @@ impl Tasks {
         });
         self.deliver(Event::Opened { path, result }, ctx);
         Ok(())
+    }
+
+    /// Reads and imports `path` and lays out the first page of its first track, for the
+    /// empty workspace's preview. The empty workspace asks once per chosen song; a result
+    /// for a row that is no longer chosen is dropped there.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn preview(&mut self, path: PathBuf, ctx: &egui::Context) -> Result<(), String> {
+        self.spawn("preview", ctx, move || {
+            // A panic still reports as this preview's failure, so the row stops waiting.
+            let result = catch_unwind(AssertUnwindSafe(
+                || -> Result<Arc<gscore_layout::Layout>, String> {
+                    let imported =
+                        gscore_session::open(&path).map_err(|error| error.to_string())?;
+                    let song = imported.song;
+                    let fonts =
+                        gscore_layout::Fonts::bundled().map_err(|error| error.to_string())?;
+                    let options = gscore_layout::LayoutOptions::default()
+                        .with_page_setup(&song.page_setup())
+                        .on_pages();
+                    let layout = gscore_layout::LayoutCache::default()
+                        .layout(&song, gscore_model::TrackIndex::new(0), &options, &fonts)
+                        .map_err(|error| error.to_string())?;
+                    Ok(Arc::new(layout))
+                },
+            ))
+            .unwrap_or_else(|_| Err("the preview failed unexpectedly".to_owned()));
+            Event::Previewed { path, result }
+        })
+    }
+
+    /// The browser build cannot read a recent file's path: there is nothing to preview.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn preview(&mut self, _path: PathBuf, _ctx: &egui::Context) -> Result<(), String> {
+        Err("a preview needs a file on disk, which the browser build cannot read".to_owned())
     }
 
     /// Remembers a picked file's bytes until the open starts (a browser picker always

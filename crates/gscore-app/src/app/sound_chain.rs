@@ -49,6 +49,8 @@ const TRIM_RANGE: (f32, f32) = (-24.0, 24.0);
 const BOX: egui::Vec2 = vec2(86.0, 60.0);
 const GAP: f32 = 36.0;
 const BOARD_HEIGHT: f32 = 96.0;
+/// The window's [`egui::Area`] id: stable even when the track named in its title changes.
+const WINDOW_ID: &str = "gscore_sound_chain";
 
 /// The window while it is open.
 #[derive(Debug)]
@@ -674,7 +676,7 @@ fn parts_row(
 }
 
 /// What an empty place can hold: the block, the name its menu shows, and what it does.
-fn block_choices() -> [(BlockChoice, &'static str, &'static str); 9] {
+pub(super) fn block_choices() -> [(BlockChoice, &'static str, &'static str); 9] {
     [
         (
             BlockChoice::Drive,
@@ -1455,6 +1457,16 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Opens the Sound chain window for `track`, showing `place` of its chain (0 the first
+    /// place after the strings) selected, so its knobs are in front of the user.
+    pub(super) fn open_sound_chain_at(&mut self, track: usize, place: usize) {
+        self.open_sound_chain(track);
+        if let Some(window) = &mut self.sound_chain {
+            window.part = None;
+            window.selected = place.saturating_add(1).min(BLOCKS);
+        }
+    }
+
     /// Opens the Sound chain window for `track`, showing `part` of a drum kit (its own
     /// board and level); from the mixer's part strip.
     pub(super) fn open_sound_chain_part(&mut self, track: usize, part: DrumPart) {
@@ -1584,6 +1596,7 @@ impl GuitarScoreApp {
             .as_ref()
             .map_or_else(Default::default, |meters| meters.chain_output(window.track));
         egui::Window::new(&title)
+            .id(egui::Id::unique(WINDOW_ID))
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
@@ -1902,6 +1915,11 @@ impl GuitarScoreApp {
                         });
                     });
             });
+        // Escape closes the window the user is looking at (a popup or a text field gets it
+        // first).
+        if style::escape_closes(ctx, egui::Id::unique(WINDOW_ID)) {
+            actions.close = true;
+        }
         // A tone belongs to the track's preset (its General MIDI program): every track with
         // that preset, in every song, plays it. Built-in forgets it.
         let track = window.track;

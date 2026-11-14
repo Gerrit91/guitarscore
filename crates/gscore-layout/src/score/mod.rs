@@ -119,7 +119,7 @@ pub(crate) fn layout_with(
         .filter(|part| part.staff.get() == 0)
         .map(|part| part.view)
         .collect();
-    let header_end = header::draw(song, &views, &top.ctx, &mut ops)?;
+    let (header_end, header_texts) = header::draw(song, &views, &top.ctx, &mut ops)?;
 
     let keys: Vec<i8> = (0..count)
         .map(|index| {
@@ -514,5 +514,6 @@ pub(crate) fn layout_with(
         ops,
         places,
         tracks,
+        header_texts,
     })
 }

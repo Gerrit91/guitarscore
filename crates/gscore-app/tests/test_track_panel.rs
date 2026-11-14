@@ -889,12 +889,132 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
     );
     // Back to the MIDI synth: the knobs go.
     harness
-        .query_all_by_label_contains("MIDI synth")
+        .query_all_by_label("MIDI synth")
         .next()
         .unwrap()
         .click();
     harness.run();
     assert!(harness.query_all_by_label("Brilliance").next().is_none());
+}
+
+#[test]
+fn the_sound_section_lists_the_chain_blocks_and_opens_one() {
+    use gscore_app::chain_settings::BlockChoice;
+    use gscore_play::StringKind;
+
+    let mut harness = app_with("basic/note_lengths.gp");
+    let blocks = harness
+        .state()
+        .playback()
+        .tone(0, 26, StringKind::Electric)
+        .chain
+        .blocks;
+    let first = blocks
+        .iter()
+        .position(|block| block.choice != BlockChoice::Empty)
+        .expect("a block in the tone's chain");
+    let title = blocks
+        .get(first)
+        .map(|block| block.choice.label())
+        .expect("the first block");
+    // The Sound section has the block as a row, and the tone table has its own section.
+    let row = format!("Chain block {}: {title}", first.saturating_add(1));
+    harness.get_by_label(&row);
+    assert!(
+        harness
+            .query_all_by_label_contains("TONE PRESETS")
+            .next()
+            .is_some(),
+        "the tone table moved to its own section"
+    );
+    // Clicking the row opens the Sound chain window at that block, its editor showing.
+    harness.get_by_label(&row).click();
+    harness.run();
+    harness.run();
+    assert!(
+        harness.query_all_by_label(title).next().is_some(),
+        "the block's editor is shown"
+    );
+}
+
+#[test]
+fn a_chain_block_is_muted_removed_and_added_from_the_sound_section() {
+    use gscore_app::chain_settings::BlockChoice;
+    use gscore_play::StringKind;
+
+    let mut harness = app_with("basic/note_lengths.gp");
+    let chain = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .playback()
+            .tone(0, 26, StringKind::Electric)
+            .chain
+    };
+    let blocks = chain(&harness).blocks;
+    let first = blocks
+        .iter()
+        .position(|block| block.choice != BlockChoice::Empty)
+        .expect("a block in the tone's chain");
+    let second = blocks
+        .iter()
+        .enumerate()
+        .skip(first.saturating_add(1))
+        .find(|(_, block)| block.choice != BlockChoice::Empty)
+        .map(|(place, block)| (place, block.choice))
+        .expect("a second block");
+    // The mute bypasses the block, and undo puts it back.
+    harness
+        .get_by_label(&format!("Mute block {}", first.saturating_add(1)))
+        .click();
+    harness.run();
+    assert!(chain(&harness).blocks.get(first).is_some_and(|b| b.bypass));
+    undo(&mut harness);
+    assert!(chain(&harness).blocks.get(first).is_some_and(|b| !b.bypass));
+
+    // The trash can empties the block's place, undoably.
+    harness
+        .get_by_label(&format!("Remove block {}", second.0.saturating_add(1)))
+        .click();
+    harness.run();
+    assert_eq!(
+        chain(&harness).blocks.get(second.0).map(|b| b.choice),
+        Some(BlockChoice::Empty)
+    );
+    undo(&mut harness);
+    assert_eq!(
+        chain(&harness).blocks.get(second.0).map(|b| b.choice),
+        Some(second.1)
+    );
+
+    // "+" adds a block in the first free place and opens it in the Sound chain window.
+    let free = chain(&harness)
+        .blocks
+        .iter()
+        .position(|block| block.choice == BlockChoice::Empty)
+        .expect("a free place");
+    harness.get_by_label("Add a sound chain block").click();
+    harness.run();
+    harness.get_by_label("Reverb").click();
+    // The popup closes and the window opens; a few frames settle both.
+    harness.run_steps(8);
+    assert_eq!(chain(&harness).blocks[free].choice, BlockChoice::Reverb);
+    assert!(
+        harness.query_all_by_label("Decay").next().is_some(),
+        "the new block's knobs show in the Sound chain window"
+    );
+}
+
+#[test]
+fn escape_closes_the_sound_chain_window() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    harness.get_by_label("Block 0: Strings");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert!(
+        harness.query_by_label("Block 0: Strings").is_none(),
+        "Escape closed the Sound chain window"
+    );
 }
 
 #[test]

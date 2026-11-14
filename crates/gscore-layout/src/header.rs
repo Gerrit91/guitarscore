@@ -1,11 +1,22 @@
 //! The top of the first page: title block, credits, tuning and tempo.
 
-use gscore_model::{Song, TrackView};
+use gscore_model::{Song, SongTextField, TrackView};
 
 use crate::Context;
-use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
+use crate::draw::{ColorToken, DrawOp, Point, Rect, TextAnchor, TextFont};
 use crate::error::LayoutError;
 use crate::glyph::Glyph;
+
+/// A text of the score's header that can be clicked to edit it in place: which song field
+/// it shows, and where it lies on the page.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HeaderText {
+    /// The song text field the text shows.
+    pub field: SongTextField,
+    /// Where the text is, in staff spaces (the drawn text's box, a little roomy for a
+    /// click).
+    pub rect: Rect,
+}
 
 /// How a line of header text looks.
 struct Style {
@@ -57,6 +68,8 @@ const TEMPO_NOTE_GAP: f32 = 0.4;
 struct Lines<'o> {
     y: f32,
     ops: &'o mut Vec<DrawOp>,
+    /// The editable texts written so far, and where they are.
+    texts: &'o mut Vec<HeaderText>,
 }
 
 impl Lines<'_> {
@@ -72,43 +85,68 @@ impl Lines<'_> {
             color: style.color,
         });
     }
+
+    /// [`Self::push`] for a song text field's value, remembering where the text is (with
+    /// `width` in staff spaces) so a click can edit that field in place.
+    fn push_field(&mut self, field: SongTextField, text: &str, width: f32, x: f32, style: &Style) {
+        self.push(text, x, style);
+        let left = match style.anchor {
+            TextAnchor::Start => x,
+            TextAnchor::Middle => x - width / 2.0,
+            TextAnchor::End => x - width,
+        };
+        self.texts.push(HeaderText {
+            field,
+            rect: Rect {
+                origin: Point::new(left, self.y - style.size),
+                width,
+                height: style.size * LINE_HEIGHT,
+            },
+        });
+    }
 }
 
 /// Gap between two tracks' blocks of name and tuning.
 const BLOCK_GAP: f32 = 3.0;
 
-/// Draws the header for `tracks` of `song` and returns where it ends (y). One track gets
-/// its tuning on one line; several get a block each (name, then tuning), side by side.
+/// Draws the header for `tracks` of `song` and returns where it ends (y) and the texts a
+/// click can edit. One track gets its tuning on one line; several get a block each (name,
+/// then tuning), side by side.
 pub(crate) fn draw(
     song: &Song,
     tracks: &[TrackView<'_>],
     ctx: &Context<'_>,
     ops: &mut Vec<DrawOp>,
-) -> Result<f32, LayoutError> {
+) -> Result<(f32, Vec<HeaderText>), LayoutError> {
     let options = ctx.options;
     let left = options.margin_left;
     let right = options.page_width - options.margin_right;
     let center = (left + right) / 2.0;
+    let mut texts = Vec::new();
     let mut lines = Lines {
         y: options.margin_top,
         ops,
+        texts: &mut texts,
     };
 
     if !song.title().is_empty() {
-        lines.push(song.title(), center, &TITLE);
+        let width = ctx.fonts.text.width(song.title(), TITLE.size);
+        lines.push_field(SongTextField::Title, song.title(), width, center, &TITLE);
         lines.y += TITLE_GAP;
     }
-    for (text, style) in [
-        (song.subtitle(), &SUBTITLE),
-        (song.artist(), &ARTIST),
-        (song.album(), &SUBTITLE),
+    for (field, text, style) in [
+        (SongTextField::Subtitle, song.subtitle(), &SUBTITLE),
+        (SongTextField::Artist, song.artist(), &ARTIST),
+        (SongTextField::Album, song.album(), &SUBTITLE),
     ] {
         if !text.is_empty() {
-            lines.push(text, center, style);
+            let width = ctx.fonts.text.width(text, style.size);
+            lines.push_field(field, text, width, center, style);
         }
     }
-    for credit in credits(song.lyricist(), song.composer()) {
-        lines.push(&credit, right, &CREDIT);
+    for (field, credit) in credits(song.lyricist(), song.composer()) {
+        let width = ctx.fonts.text.width(&credit, CREDIT.size);
+        lines.push_field(field, &credit, width, right, &CREDIT);
     }
     lines.y += INFO.size;
     match tracks {
@@ -135,7 +173,7 @@ pub(crate) fn draw(
         scale: TEMPO_NOTE_SCALE,
         color: ColorToken::Annotation,
     });
-    Ok(y)
+    Ok((y, texts))
 }
 
 /// Each track's name with its tuning below, in blocks from left to right that wrap onto
@@ -205,17 +243,21 @@ fn block_tuning(track: TrackView<'_>) -> Result<Option<String>, LayoutError> {
     }))
 }
 
-/// "Words & Music by X" when one person wrote both, otherwise one line per role.
-fn credits(lyricist: &str, composer: &str) -> Vec<String> {
+/// "Words & Music by X" when one person wrote both, otherwise one line per role; with the
+/// song field each line shows (the combined line shows the composer's name).
+fn credits(lyricist: &str, composer: &str) -> Vec<(SongTextField, String)> {
     match (lyricist.is_empty(), composer.is_empty()) {
-        (false, false) if lyricist == composer => vec![format!("Words & Music by {composer}")],
+        (false, false) if lyricist == composer => vec![(
+            SongTextField::Composer,
+            format!("Words & Music by {composer}"),
+        )],
         (lyrics_missing, music_missing) => {
             let mut lines = Vec::new();
             if !lyrics_missing {
-                lines.push(format!("Words by {lyricist}"));
+                lines.push((SongTextField::Lyricist, format!("Words by {lyricist}")));
             }
             if !music_missing {
-                lines.push(format!("Music by {composer}"));
+                lines.push((SongTextField::Composer, format!("Music by {composer}")));
             }
             lines
         }
@@ -241,9 +283,23 @@ mod tests {
 
     #[test]
     fn credits_combine_one_author_and_list_two() {
-        assert_eq!(credits("A", "A"), ["Words & Music by A"]);
-        assert_eq!(credits("A", "B"), ["Words by A", "Music by B"]);
-        assert_eq!(credits("", "B"), ["Music by B"]);
+        let texts =
+            |lyricist, composer| credits(lyricist, composer).into_iter().collect::<Vec<_>>();
+        assert_eq!(
+            texts("A", "A"),
+            [(SongTextField::Composer, "Words & Music by A".to_owned())]
+        );
+        assert_eq!(
+            texts("A", "B"),
+            [
+                (SongTextField::Lyricist, "Words by A".to_owned()),
+                (SongTextField::Composer, "Music by B".to_owned()),
+            ]
+        );
+        assert_eq!(
+            texts("", "B"),
+            [(SongTextField::Composer, "Music by B".to_owned())]
+        );
         assert!(credits("", "").is_empty());
     }
 }

@@ -493,13 +493,35 @@ pub(super) fn source_switch(
     use gscore_play::TrackEngine;
     let mut chosen = None;
     ui.horizontal_wrapped(|ui| {
-        let mut choice = |ui: &mut egui::Ui, candidate: TrackEngine, label: &str, enabled: bool| {
+        // One segmented control: the choices touch, and only the outer corners are round.
+        ui.spacing_mut().item_spacing.x = 0.0;
+        let left = egui::CornerRadius {
+            nw: 4,
+            sw: 4,
+            ne: 0,
+            se: 0,
+        };
+        let middle = egui::CornerRadius::ZERO;
+        let right = egui::CornerRadius {
+            nw: 0,
+            sw: 0,
+            ne: 4,
+            se: 4,
+        };
+        let mut choice = |ui: &mut egui::Ui,
+                          candidate: TrackEngine,
+                          label: &str,
+                          enabled: bool,
+                          corners: egui::CornerRadius| {
             let selected = match (engine, candidate) {
                 (TrackEngine::Modelled(_), TrackEngine::Modelled(_)) => true,
                 _ => engine == candidate,
             };
             let response = ui
-                .add_enabled(enabled, egui::Button::selectable(selected, label))
+                .add_enabled(
+                    enabled,
+                    egui::Button::selectable(selected, label).corner_radius(corners),
+                )
                 .on_hover_text(match candidate {
                     TrackEngine::SoundFont => {
                         "The internal synth plays the track with the SoundFont (General MIDI)"
@@ -513,6 +535,15 @@ pub(super) fn source_switch(
                          sound does not come back through the mixer"
                     }
                 });
+            // The button shows a short name; the accessible one says what the source is.
+            let accessible = match candidate {
+                TrackEngine::SoundFont => "MIDI synth",
+                TrackEngine::Modelled(_) => "PM Synthesis",
+                TrackEngine::MidiOut => "MIDI out",
+            };
+            ui.ctx().accesskit_node_builder(response.id, |node| {
+                node.set_label(accessible);
+            });
             if !enabled {
                 response.clone().on_hover_text(
                     "Only string instruments that are not drum kits can be played by \
@@ -523,10 +554,13 @@ pub(super) fn source_switch(
                 chosen = Some(candidate);
             }
         };
-        choice(ui, TrackEngine::SoundFont, "MIDI synth", true);
-        choice(ui, pm, "PM Synthesis", strings);
+        choice(ui, TrackEngine::SoundFont, "MIDI", true, left);
         #[cfg(not(target_arch = "wasm32"))]
-        choice(ui, TrackEngine::MidiOut, "MIDI out", true);
+        choice(ui, pm, "PM", strings, middle);
+        #[cfg(target_arch = "wasm32")]
+        choice(ui, pm, "PM", strings, right);
+        #[cfg(not(target_arch = "wasm32"))]
+        choice(ui, TrackEngine::MidiOut, "MIDI out", true, right);
     });
     chosen
 }

@@ -5412,3 +5412,48 @@ signal, and the bus's 150 Hz low cut takes the kick's body (about 3 dB of a kit)
   -14 dBFS: about 7 dB of gain reduction swinging 6 dB between hits (was 16 dB swinging
   21 dB: the pumping). A Default button in the bus window brings it back; a bus saved in
   the settings or a song keeps its own knobs.
+
+## 2026-11-14 — Quick chain blocks, in-place song texts, resizable panels, a richer start
+
+- The track panel's **Sound** section now lists the chain's blocks ("Amp", "Cab", …) as
+  rows: a click opens the Sound chain window with that block selected, the mute bypasses
+  it, the trash can empties its place and a "+ Add a block" row adds one (a room opens its
+  file dialog and then the chain window). Each is the same `set_track_tone` edit as in the
+  window, so each is one undo step. The tone table moved to its own **Tone presets**
+  section; the General MIDI programs stay in Sound. Drum kits and MIDI-out tracks show no
+  block rows (their chains are the parts' and none).
+- Clicking the **title, subtitle, artist, album or a credit** on the page edits that song
+  text in place (Enter or a click elsewhere keeps it, Escape drops it). `gscore-layout`
+  now reports each header text's box (`Layout::header_texts`), so the app places the field
+  over the text it replaces; the text is one `SetSongText` undo step and the field takes
+  the keyboard at once (keys do not reach the score meanwhile).
+- A side panel could be shrunk by dragging its edge but never widened again: its
+  remembered width was also its `max_size`. The remembered width is only the starting
+  size now; the room left beside the score is the drag limit. Both the track panel and the
+  edit palette.
+- With no song open, the workspace now offers **New song…** and **Open song…**, lists the
+  recent songs in a searchable table (song and folder, most recent first, double-click or
+  "Open selected song"), and shows a print-style preview of the chosen song's first page.
+  The preview is read, imported and laid out in a background task (`Tasks::preview`) and
+  cached for the chosen row; the table stays usable while it prepares.
+- Tests: the chain rows (open, mute, remove, add), the in-place title (typing, Escape,
+  undo), both panels shrink-then-grow, and the empty workspace (buttons, search, preview,
+  opening) with a snapshot. Snapshots that include the track panel were regenerated.
+
+## 2026-11-14 — Section order, a segmented source switch, blue block rows, Escape
+
+- **Sound** is the track panel's last section (after Tone presets): the block rows and the
+  stomp box sit at the bottom. On a short window they need a scroll; the panel scrolls
+  as before.
+- The chain's block rows are ordinary buttons at rest and turn blue (the accent) under
+  the pointer; a bypassed block's text stays weak until hovered.
+- The source switch is one segmented control: **MIDI | PM | MIDI out**, touching, with only
+  the outer corners rounded. The accessible names stay descriptive ("MIDI synth", "PM
+  Synthesis").
+- Escape closes the window the user is looking at (`style::escape_closes`): it is gated on
+  the topmost floating window, and a popup, a question (modal) or a focused text field gets
+  the key first. Sound chain, reverb/compressor/chorus bus and master chain windows now
+  have stable Area ids and close on Escape; the other windows already did.
+- Tests: Escape closes the Sound chain and the compressor bus window; the source-switch
+  tests use the accessible names; snapshots regenerated for the moved section and the
+  segmented switch.

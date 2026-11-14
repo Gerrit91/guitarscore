@@ -44,7 +44,7 @@ mod theme;
 
 use std::sync::Arc;
 
-use gscore_model::{MeasureView, Song, StaffIndex, TrackIndex};
+use gscore_model::{MeasureView, Song, SongTextField, StaffIndex, TrackIndex};
 
 // The golden tests open the owner's files with `gscore-io`; this marks the test-only
 // dependency for the library test target's unused-dependency check.
@@ -56,6 +56,7 @@ pub use draw::{ColorToken, DrawOp, Point, Rect, TextAnchor, TextFont};
 pub use error::LayoutError;
 pub use glyph::{Digit, Flag, Glyph};
 use gscore_model::VoiceIndex;
+pub use header::HeaderText;
 pub use metrics::{EngravingDefaults, GlyphBox, MusicFont, TextMetrics};
 pub use options::{EmptyStaves, LayoutOptions, Spacing};
 pub use pdf::{PdfFonts, to_pdf};
@@ -112,6 +113,9 @@ pub struct Layout {
     pub places: Places,
     /// The same for every track shown, top to bottom (one entry for a single track).
     pub tracks: Vec<TrackPlaces>,
+    /// The song texts the header shows (title, artist, credits), with where they are, so a
+    /// click can edit one in place.
+    pub header_texts: Vec<HeaderText>,
 }
 
 /// Where one staff's systems, measures and beats are.
@@ -143,6 +147,19 @@ impl Layout {
     /// else the nearest staff's whose system it is near.
     pub fn hit(&self, point: Point) -> Option<(TrackIndex, Hit)> {
         self.hit_where(point, |places| places.hit(point))
+    }
+
+    /// The header's song text under `point` (the title, the artist, a credit), if any.
+    pub fn header_text_at(&self, point: Point) -> Option<SongTextField> {
+        self.header_texts
+            .iter()
+            .find(|text| {
+                point.x >= text.rect.origin.x
+                    && point.x <= text.rect.origin.x + text.rect.width
+                    && point.y >= text.rect.origin.y
+                    && point.y <= text.rect.origin.y + text.rect.height
+            })
+            .map(|text| text.field)
     }
 
     /// Like [`Layout::hit`], but within `track` only and among beats of `voice` (a drag

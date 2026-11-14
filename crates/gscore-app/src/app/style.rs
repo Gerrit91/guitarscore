@@ -319,6 +319,23 @@ pub(crate) fn window_title_bar(
     close.clicked()
 }
 
+/// Whether Escape should close the window whose [`egui::Area`] id is `window_id`: it is the
+/// topmost floating window (the one the user is looking at), no popup or question covers
+/// it, and no text field has the keyboard. The key is taken out of the input, so only that
+/// one window closes.
+pub(crate) fn escape_closes(ctx: &egui::Context, window_id: egui::Id) -> bool {
+    if ctx.egui_wants_keyboard_input()
+        || egui::Popup::is_any_open(ctx)
+        || ctx.memory(|memory| memory.top_modal_layer().is_some())
+    {
+        return false;
+    }
+    if ctx.top_layer_id() != Some(egui::LayerId::new(egui::Order::Middle, window_id)) {
+        return false;
+    }
+    ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+}
+
 /// A titled section of a panel that can be folded away; its content is indented by the
 /// panel's margin. The title is small, bold and muted, like a property-sheet group.
 pub(crate) fn section<R>(

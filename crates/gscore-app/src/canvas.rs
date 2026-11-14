@@ -435,6 +435,7 @@ mod tests {
             ops: Vec::new(),
             places: gscore_layout::Places::default(),
             tracks: Vec::new(),
+            header_texts: Vec::new(),
         }
     }
 

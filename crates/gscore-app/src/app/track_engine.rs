@@ -40,11 +40,14 @@ pub(super) struct TrackPlayer {
     pub(super) midi_out: MidiOutRoute,
 }
 
-/// What the track panel's Sound section shows: what plays the track, the tone it plays now,
-/// and the choices its picker offers.
+/// What the track panel's Sound section shows: what plays the track, the chain its sound
+/// passes through, the tone it plays now, and the choices its picker offers.
 #[derive(Debug, Clone)]
 pub(super) struct SoundPanel {
     pub(super) player: TrackPlayer,
+    /// The chain the track's sound passes through, as the Sound chain window shows it
+    /// (empty for a MIDI-synth track with no tone of its own, which has none yet).
+    pub(super) chain: ChainSetting,
     /// The built-in or saved tone that matches `tone` exactly, when one does.
     pub(super) current: Option<PickerChoice>,
     /// The built-in tone the track's program starts on, if it has one.
@@ -105,12 +108,23 @@ impl GuitarScoreApp {
                 player.preset_kind.unwrap_or(StringKind::Steel)
             }
         };
-        let tone = self.track_tone(track, kind);
+        let mut tone = self.track_tone(track, kind);
+        // Only a modelled track (or a track whose song carries a tone) has effects: the
+        // MIDI synth's preset has none until the song gives it one.
+        let modelled = matches!(player.engine, TrackEngine::Modelled(_));
+        let song_tone = self
+            .tabs
+            .get(self.active)
+            .is_some_and(|tab| tab.track_sound(track).tone.is_some());
+        if !modelled && !player.drums && !song_tone {
+            tone.chain = ChainSetting::default();
+        }
         let default_tone = self
             .playback
             .track_default_tone_name(track, player.program, kind);
         Some(SoundPanel {
             player,
+            chain: tone.chain.clone(),
             current: current_tone_choice(
                 &tone,
                 default_tone.as_deref(),

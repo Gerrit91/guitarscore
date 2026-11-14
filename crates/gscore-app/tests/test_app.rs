@@ -83,6 +83,113 @@ fn without_a_file_the_app_explains_how_to_open_one() {
 }
 
 #[test]
+fn the_empty_workspace_offers_new_song_open_song_and_a_searchable_recent_list() {
+    let settings = Settings {
+        recent_files: vec![
+            testdata("basic/note_lengths.gp"),
+            testdata("basic/steel_guitar_dadgad.gp"),
+        ],
+        ..Settings::default()
+    };
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1100.0, 800.0))
+        .build_eframe(|cc| {
+            GuitarScoreApp::with_settings(
+                &cc.egui_ctx,
+                None,
+                Keymap::default(),
+                None,
+                settings.clone(),
+                None,
+            )
+        });
+    harness.run();
+    // The two ways to start, and both recent songs.
+    harness.get_by_label("New song…");
+    harness.get_by_label("Open song…");
+    harness.get_by_label("note_lengths.gp");
+    harness.get_by_label("steel_guitar_dadgad.gp");
+    // The search narrows the table to what it matches.
+    harness.get_by_label("Search recent songs").focus();
+    harness
+        .get_by_label("Search recent songs")
+        .type_text("note");
+    harness.run();
+    assert!(harness.query_by_label("note_lengths.gp").is_some());
+    assert!(
+        harness.query_by_label("steel_guitar_dadgad.gp").is_none(),
+        "the search hid the other song"
+    );
+    // Choosing a song prepares its first page next to the table.
+    harness.get_by_label("note_lengths.gp").click();
+    harness.step();
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "the preview timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness.get_by_label("Recent song preview");
+    // The chosen song opens from the workspace.
+    harness.get_by_label("Open selected song").click();
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run_steps(8);
+    let document = harness.state().document().expect("the song opened");
+    assert_eq!(document.display_title(), "Note Lengths");
+}
+
+#[test]
+fn the_empty_workspace_matches_its_snapshot() {
+    let settings = Settings {
+        recent_files: vec![
+            testdata("basic/note_lengths.gp"),
+            testdata("basic/steel_guitar_dadgad.gp"),
+        ],
+        ..Settings::default()
+    };
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1100.0, 800.0))
+        .wgpu()
+        .build_eframe(|cc| {
+            GuitarScoreApp::with_settings(
+                &cc.egui_ctx,
+                None,
+                Keymap::default(),
+                None,
+                settings.clone(),
+                None,
+            )
+        });
+    harness.run();
+    // Choose the first song so its first page shows next to the table.
+    harness.get_by_label("note_lengths.gp").click();
+    harness.step();
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "the preview timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness.snapshot("empty_workspace");
+}
+
+#[test]
 fn a_new_empty_workspace_comes_from_the_tab_strip() {
     // Short frames: a double click must land within egui's 0.3 s window, and the default
     // frame is a quarter of a second long.
@@ -229,6 +336,119 @@ fn the_track_panel_does_not_grow_by_itself() {
         (after.0 - before.0).abs() < 0.5 && (after.1 - before.1).abs() < 0.5,
         "the panel grew: {before:?} -> {after:?}"
     );
+}
+
+/// Drags the edge of a panel from `from_x` to `to_x` and lets go.
+fn drag_panel_edge(harness: &mut Harness<'static, GuitarScoreApp>, from_x: f32, to_x: f32) {
+    let y = 300.0;
+    let from = egui::pos2(from_x, y);
+    harness.hover_at(from);
+    harness.run();
+    harness.drag_at(from);
+    harness.step();
+    // The drag starts once the mouse has moved with the button held.
+    harness.hover_at(egui::pos2(from_x + (to_x - from_x) * 0.5, y));
+    harness.step();
+    harness.hover_at(egui::pos2(to_x, y));
+    harness.step();
+    harness.drop_at(egui::pos2(to_x, y));
+    harness.run();
+}
+
+#[test]
+fn a_panel_shrunk_by_dragging_can_be_made_wider_again() {
+    // The remembered width sets where the panel starts, not how far it may be dragged:
+    // shrinking it must not narrow its own maximum.
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let palette_width = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .settings()
+            .edit_panel_width
+            .expect("the palette's width")
+    };
+    let start = palette_width(&harness);
+    // The palette is on the left: its right edge is the resize handle.
+    drag_panel_edge(&mut harness, start - 2.0, start - 40.0);
+    let narrow = palette_width(&harness);
+    assert!(
+        narrow < start - 20.0,
+        "the palette shrank: {start} -> {narrow}"
+    );
+    // And back out again: the bug let it shrink but never grow.
+    drag_panel_edge(&mut harness, narrow - 2.0, narrow + 120.0);
+    let wide = palette_width(&harness);
+    assert!(
+        wide > narrow + 20.0,
+        "the palette grew again: {narrow} -> {wide}"
+    );
+}
+
+#[test]
+fn the_track_panel_can_also_be_made_wider_after_shrinking() {
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    let panel_width = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .settings()
+            .track_panel_width
+            .expect("the track panel's width")
+    };
+    let start = panel_width(&harness);
+    // The track panel is on the right (in a 1000 px window): its left edge is the handle.
+    drag_panel_edge(&mut harness, 1000.0 - start + 2.0, 1000.0 - (start + 60.0));
+    let narrow = panel_width(&harness);
+    assert!(
+        narrow > start + 20.0,
+        "the track panel shrank: {start} -> {narrow}"
+    );
+    drag_panel_edge(
+        &mut harness,
+        1000.0 - narrow + 2.0,
+        1000.0 - (narrow - 120.0),
+    );
+    let wide = panel_width(&harness);
+    assert!(
+        wide < narrow - 20.0,
+        "the track panel grew again: {narrow} -> {wide}"
+    );
+}
+
+#[test]
+fn a_click_on_the_score_title_edits_it_in_place() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let title = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .song()
+            .title()
+            .to_owned()
+    };
+    assert_eq!(title(&harness), "Note Lengths");
+    // The title on the page can be clicked to type a new one.
+    harness.get_by_label("Edit title").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Score title").type_text("My Song");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(title(&harness), "My Song");
+    assert!(harness.state().document().unwrap().is_dirty());
+    // Escape drops what was typed.
+    harness.get_by_label("Edit title").click();
+    harness.run();
+    harness.get_by_label("Score title").type_text("Nope");
+    harness.run();
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert_eq!(title(&harness), "My Song", "Escape leaves the title alone");
+    // The rename was one undo step.
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+    harness.run();
+    assert_eq!(title(&harness), "Note Lengths");
 }
 
 #[test]
@@ -581,7 +801,9 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.key_press(egui::Key::Escape);
     harness.run();
     // The Sound chain with an empty chain (the MIDI synth plays it), then the strings'
-    // own dialog.
+    // own dialog. The Sound section is last in the panel: bring it into view first.
+    harness.get_by_label("MIDI synth").scroll_to_me();
+    harness.run();
     harness.get_by_label("MIDI synth").click();
     harness.run();
     harness.get_by_label("Sound chain").click();
@@ -815,6 +1037,8 @@ fn the_staff_dialogs_match_their_snapshots() {
 #[test]
 fn a_track_can_be_played_by_a_hardware_synthesizer() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.get_by_label("Sound chain").scroll_to_me();
+    harness.run();
     harness.get_by_label("Sound chain").click();
     harness.run();
     harness.run();
@@ -981,6 +1205,8 @@ fn a_broken_soundfont_is_reported_and_editing_goes_on() {
     std::fs::write(&path, "not a soundfont").unwrap();
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     // The SoundFont must actually play the track (PM synthesis is the default for strings).
+    harness.get_by_label("MIDI synth").scroll_to_me();
+    harness.run();
     harness.get_by_label("MIDI synth").click();
     harness.run();
     harness.state_mut().playback_mut().use_soundfont(path);
@@ -1331,6 +1557,8 @@ fn the_track_panel_edits_the_shown_track() {
 
     // The General MIDI program changes and is undoable: the MIDI synth's table lists it.
     let before = first_sound(&harness).program;
+    harness.get_by_label("MIDI synth").scroll_to_me();
+    harness.run();
     harness.get_by_label("MIDI synth").click();
     harness.run();
     assert!(
@@ -1561,9 +1789,13 @@ fn the_empty_workspace_suggests_recent_files() {
     };
     let mut harness = app_with_settings(settings);
     assert!(harness.state().document().is_none());
-    // The empty workspace lists the recent files; a click opens one.
-    harness.get_by_label("Recent files");
+    // The empty workspace lists the recent songs; choosing one previews its first page,
+    // and the open button opens it.
+    harness.get_by_label("Recent songs");
     harness.get_by_label("note_lengths.gp").click();
+    settle(&mut harness);
+    harness.get_by_label("Recent song preview");
+    harness.get_by_label("Open selected song").click();
     settle(&mut harness);
     assert_eq!(
         harness.state().document().unwrap().display_title(),
@@ -3263,8 +3495,13 @@ fn the_compressor_bus_is_a_strip_and_a_window() {
     harness.get_by_label("Default").click();
     harness.run();
     assert_eq!(harness.state().playback().compressor_bus().block, bus.block);
-    harness.get_by_label("Close").click();
+    // Escape closes the window, as it does for the app's other windows.
+    harness.key_press(egui::Key::Escape);
     harness.run();
+    assert!(
+        harness.query_by_label("Input").is_none(),
+        "Escape closed the compressor bus window"
+    );
 }
 
 #[test]

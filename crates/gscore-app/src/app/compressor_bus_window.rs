@@ -12,6 +12,8 @@ use crate::chain_settings::{BlockChoice, BlockSetting};
 
 /// Width of the window's content.
 const WIDTH: f32 = 620.0;
+/// The window's [`egui::Area`] id.
+const WINDOW_ID: &str = "gscore_compressor_bus";
 
 /// The window while it is open.
 #[derive(Debug)]
@@ -50,6 +52,7 @@ impl GuitarScoreApp {
         let mut rebuilt = false;
         let mut close = false;
         egui::Window::new(title)
+            .id(egui::Id::unique(WINDOW_ID))
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
@@ -146,6 +149,9 @@ impl GuitarScoreApp {
         if rebuilt || edited != bus {
             self.set_song_compressor_bus(edited);
         }
+        // Escape closes the window the user is looking at (a popup or a text field gets it
+        // first).
+        close |= style::escape_closes(ctx, egui::Id::unique(WINDOW_ID));
         if close {
             self.compressor_bus_window = None;
         } else {
