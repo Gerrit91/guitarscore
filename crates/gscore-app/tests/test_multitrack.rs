@@ -568,3 +568,44 @@ fn the_grid_header_deletes_the_shown_track_and_zooms_the_song() {
 fn meter_tolerance() -> egui_kittest::SnapshotOptions {
     egui_kittest::SnapshotOptions::new().threshold(2.0)
 }
+
+#[test]
+fn only_a_track_the_modelled_strings_play_starts_with_a_lower_trim() {
+    // The modelled strings' plucks are hot, so their track starts 6 dB lower before its
+    // chain; a SoundFont track (the drum kit always) is already at its level.
+    let mut harness = app_with_multi_staff();
+    let (guitar, drums) = {
+        let song = harness.state().document().unwrap().song();
+        let guitar = song
+            .tracks()
+            .position(|track| {
+                !track.is_percussion()
+                    && track.instrument_kind() == gscore_model::InstrumentKind::Strings
+            })
+            .unwrap();
+        let drums = song
+            .tracks()
+            .position(|track| track.is_percussion())
+            .unwrap();
+        (guitar, drums)
+    };
+    let trim = |harness: &Harness<'static, GuitarScoreApp>, track: usize| {
+        harness
+            .state()
+            .playback()
+            .trims()
+            .iter()
+            .find(|(index, _)| *index == track)
+            .map(|&(_, db)| db)
+            .unwrap()
+    };
+    harness.state_mut().set_modelled_guitars(true);
+    harness.run();
+    assert_eq!(trim(&harness, guitar), -6.0);
+    assert_eq!(trim(&harness, drums), 0.0);
+    // The SoundFont plays the guitar now: it starts at 0 dB too.
+    harness.state_mut().set_modelled_guitars(false);
+    harness.run();
+    assert_eq!(trim(&harness, guitar), 0.0);
+    assert_eq!(trim(&harness, drums), 0.0);
+}

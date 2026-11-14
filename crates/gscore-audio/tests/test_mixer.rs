@@ -196,6 +196,54 @@ fn a_soundfont_tracks_reverb_send_reaches_the_bus() {
 }
 
 #[test]
+fn a_full_reverb_send_returns_about_as_loud_as_the_track() {
+    // A 100 % send through the bus at unity: the reverb's sound carries about the dry
+    // track's energy (its peaks read lower, as a reverb spreads them over its tail). A
+    // held note builds the hall up over its length, so it comes back a little louder
+    // than the note (4 dB here; a drum kit's hits about 1.5 dB); before the bus's return
+    // gain it came back under it.
+    let mut song = testing::song_with_notes(&[(1, &[TestNote::new(3, 2)])]).unwrap();
+    let _ = song.set_track_reverb(TrackIndex::new(0), 127).unwrap();
+    let sequence = Sequence::new(&song, None).unwrap();
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Reverb);
+    let mut settings = [BlockSettings::default(); BLOCKS];
+    // The app's reverb bus: a large hall, all wet.
+    settings[0].reverb = ReverbKnobs {
+        size: 0.9,
+        decay: 5.0,
+        pre_delay: 30.0,
+        mix: 1.0,
+        ..ReverbKnobs::default()
+    };
+    let play = |bus: bool| {
+        let mut engine = engine(&sequence);
+        if bus {
+            engine.set_reverb_bus(Some(Box::new(spec.prepare(RATE).instance(&settings, 0.0))));
+            engine.set_reverb_bus_settings(unity(settings), 127, false);
+        }
+        render(&mut engine, 2.0).0
+    };
+    let dry = play(false);
+    let with_bus = play(true);
+    let wet: Vec<f32> = with_bus
+        .iter()
+        .zip(&dry)
+        .map(|(all, dry)| all - dry)
+        .collect();
+    // Over the note, once the reverb has built up.
+    let (dry, wet) = (
+        rms(&dry[RATE as usize / 2..]),
+        rms(&wet[RATE as usize / 2..]),
+    );
+    let db = 20.0 * (wet / dry).log10();
+    assert!(
+        (1.0..=6.0).contains(&db),
+        "the return is {db:+.1} dB from the track"
+    );
+}
+
+#[test]
 fn a_live_fader_move_is_heard_at_once() {
     let song = song(1);
     let sequence = Sequence::new(&song, None).unwrap();

@@ -1572,14 +1572,11 @@ impl GuitarScoreApp {
         let clipboard = self.sound_clipboard.clone();
         // The track's input trim and the level before its chain, for setting how hard an
         // amp or a compressor is driven.
-        let trim_db =
-            self.tabs
-                .get(self.active)
-                .map_or(crate::chain_settings::DEFAULT_TRIM_DB, |tab| {
-                    tab.track_sound(window.track)
-                        .trim_db
-                        .unwrap_or(crate::chain_settings::DEFAULT_TRIM_DB)
-                });
+        let trim_db = self
+            .tabs
+            .get(self.active)
+            .map_or(0.0, |tab| self.track_trim_db_in(tab, window.track));
+        let default_trim = self.default_trim_db(window.track);
         let input = meters
             .as_ref()
             .map_or_else(Default::default, |meters| meters.input(window.track));
@@ -1785,7 +1782,7 @@ impl GuitarScoreApp {
                                 TRIM_RANGE,
                                 "Input trim",
                                 " dB",
-                                crate::chain_settings::DEFAULT_TRIM_DB,
+                                default_trim,
                                 false,
                                 "The track's input trim, before its chain's first block: turn it up \
                                  to drive an amp or a compressor harder, or down to clean \

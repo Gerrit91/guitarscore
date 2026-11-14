@@ -55,6 +55,12 @@ pub(crate) fn volume_gain(volume: u8) -> f32 {
     share * share
 }
 
+/// How much louder the reverb bus returns than its reverb plays, in dB. The reverb block is
+/// voiced 4-6 dB under the dry signal when all wet (right for an insert), so on the bus a
+/// full send came back well under the track; with this a 100 % send returns at about the
+/// dry track's loudness (a reverb's peaks still read lower: it spreads a hit over its tail).
+pub(crate) const REVERB_RETURN_DB: f32 = 6.0;
+
 /// Left and right gains for a pan (0 left, 64 middle, 127 right), equal power, 1 in the
 /// middle.
 pub(crate) fn pan_gains(pan: u8) -> (f32, f32) {
@@ -1156,7 +1162,13 @@ impl Mixer {
         let (mut peak_left, mut peak_right) = (0.0_f32, 0.0_f32);
         if played {
             let (level, muted) = state.mix;
-            let gain = if muted { 0.0 } else { volume_gain(level) };
+            let gain = if muted {
+                0.0
+            } else if bus == Bus::Reverb {
+                volume_gain(level) * 10.0_f32.powf(REVERB_RETURN_DB / 20.0)
+            } else {
+                volume_gain(level)
+            };
             let [out_left, out_right] = &state.output;
             for (((l, r), bl), br) in left
                 .iter_mut()

@@ -3231,8 +3231,8 @@ fn the_compressor_bus_is_a_strip_and_a_window() {
     assert!(harness.state().playback().compressor_bus().muted);
     harness.get_by_label("Mute comp bus").click();
     harness.run();
-    // Its window holds the CA-76: a default at "All", driven hard and made up short, with
-    // its knobs and its gain-reduction meter.
+    // Its window holds the CA-76: a default at 4:1 for a whole kit (not "All", which
+    // pumps), with its knobs and its gain-reduction meter.
     harness.get_by_label("Sound chain for the comp bus").click();
     harness.run();
     // A curve (or needle) drawn anti-aliased differs a little between GPUs: on the CI
@@ -3240,8 +3240,8 @@ fn the_compressor_bus_is_a_strip_and_a_window() {
     harness.snapshot_options("compressor_bus_window", &curve_tolerance());
     let bus = harness.state().playback().compressor_bus();
     assert_eq!(bus.block.choice, BlockChoice::Compressor);
-    assert_eq!(bus.block.comp_ratio, CompRatioSetting::All);
-    assert!(bus.block.input_db > 0.0);
+    assert_eq!(bus.block.comp_ratio, CompRatioSetting::Four);
+    assert!(bus.block.input_db > 0.0 && bus.block.input_db < 18.0);
     for knob in ["Input", "Output", "Attack", "Release", "Mix"] {
         assert!(harness.query_all_by_label(knob).next().is_some(), "{knob}");
     }
@@ -3258,6 +3258,11 @@ fn the_compressor_bus_is_a_strip_and_a_window() {
         harness.state().playback().compressor_bus().block.choice,
         BlockChoice::Compressor
     );
+    // A fresh CA-76 has its plain knobs; Default brings back the bus's built-in setting.
+    assert_ne!(harness.state().playback().compressor_bus(), bus);
+    harness.get_by_label("Default").click();
+    harness.run();
+    assert_eq!(harness.state().playback().compressor_bus().block, bus.block);
     harness.get_by_label("Close").click();
     harness.run();
 }
