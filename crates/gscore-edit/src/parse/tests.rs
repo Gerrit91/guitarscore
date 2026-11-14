@@ -875,6 +875,29 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
     for semitones in [-12, -3, 0, 5, 12] {
         commands.push(Command::SetTransposition { semitones });
     }
+    // Guitar Pro's design mode: a bar's width (song-wide and one staff's own) and a moved
+    // beat column, back to its natural place included.
+    for (track, staff, percent) in [
+        (None, 0, Some(150)),
+        (Some(track), 0, Some(25)),
+        (Some(track), 1, Some(400)),
+        (Some(track), 0, None),
+        (None, 0, None),
+    ] {
+        commands.push(Command::SetMeasureScale {
+            track,
+            staff: gscore_model::StaffIndex::new(staff),
+            measure: MeasureIndex::new(4),
+            percent,
+        });
+    }
+    // An offset of zero is the natural place: the model keeps it as none.
+    for offset in [None, Some(1), Some(-400), Some(400)] {
+        commands.push(Command::SetBeatSpacing {
+            at: at(1, 3, 0, 2),
+            offset,
+        });
+    }
     // Every command id is covered.
     for info in crate::COMMANDS {
         assert!(

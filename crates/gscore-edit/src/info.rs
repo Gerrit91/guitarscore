@@ -708,6 +708,46 @@ pub(crate) const SET_BARS_PER_SYSTEM: CommandInfo = CommandInfo {
     params: &[TRACK, BARS],
 };
 
+const STAFF: ParamInfo = ParamInfo {
+    name: "staff",
+    required: false,
+    default: Some("1"),
+    help: "Staff of the track, 1-based (a piano has two)",
+};
+
+const WIDTH: ParamInfo = ParamInfo {
+    name: "width",
+    required: true,
+    default: None,
+    help: "Bar width in percent of its natural width, 25 to 400, or auto",
+};
+
+const OFFSET: ParamInfo = ParamInfo {
+    name: "offset",
+    required: true,
+    default: None,
+    help: "Beat offset in hundredths of a staff space, -400 to 400 (negative moves it left), or 0",
+};
+
+pub(crate) const SET_MEASURE_SCALE: CommandInfo = CommandInfo {
+    id: "set_measure_scale",
+    aliases: &["set_bar_width"],
+    label: "Set a bar's width",
+    help: "Guitar Pro's design mode: makes a bar narrower or wider than its natural width. \
+Without track, every track's bar at that measure changes; with one, that staff's own bar \
+overrides the song's.",
+    params: &[TRACK, STAFF, MEASURE, WIDTH],
+};
+
+pub(crate) const SET_BEAT_SPACING: CommandInfo = CommandInfo {
+    id: "set_beat_spacing",
+    aliases: &["move_beat"],
+    label: "Move a beat's column",
+    help: "Guitar Pro's design mode: moves a beat (and the columns after it) left or right, \
+to make a bar easier to read. The offset is in hundredths of a staff space; 0 puts it back.",
+    params: &[TRACK, MEASURE, VOICE, BEAT, OFFSET],
+};
+
 const ON: ParamInfo = ParamInfo {
     name: "on",
     required: true,
@@ -1062,6 +1102,8 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_PAGE_SETUP,
     SET_SYSTEM_BREAK,
     SET_BARS_PER_SYSTEM,
+    SET_MEASURE_SCALE,
+    SET_BEAT_SPACING,
     SET_SCORE_LINE_BREAK,
     SET_TEMPO,
     TRANSPOSE_SONG,

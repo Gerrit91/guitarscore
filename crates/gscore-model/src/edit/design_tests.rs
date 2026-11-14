@@ -154,3 +154,35 @@ fn hostile_values_are_refused_and_change_nothing() {
             .is_ok()
     );
 }
+
+#[test]
+fn a_bar_width_or_moved_column_is_a_setting_the_save_check_reports() {
+    let mut song = song();
+    let before = song.clone();
+    let scale = song
+        .set_measure_scale(ScaleScope::Song, MeasureIndex::new(0), Some(1.5))
+        .unwrap();
+    let spacing = song.set_beat_spacing(at(1), Some(0.5)).unwrap();
+    // The save check compares the music and, apart from it, what a format may lose: a bar's
+    // width is one of those, a moved column is part of the music's layout.
+    let settings: Vec<String> = crate::settings_differences(&before, &song)
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert!(
+        settings.iter().any(|text| text.contains("bar width")),
+        "{settings:?}"
+    );
+    let music: Vec<String> = crate::differences(&before, &song)
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert!(
+        music.iter().any(|text| text.contains("beat offset")),
+        "{music:?}"
+    );
+    song.revert(&spacing).unwrap();
+    song.revert(&scale).unwrap();
+    assert!(crate::settings_differences(&before, &song).is_empty());
+    assert!(crate::differences(&before, &song).is_empty());
+}

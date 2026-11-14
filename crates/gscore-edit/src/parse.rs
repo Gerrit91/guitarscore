@@ -339,6 +339,16 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
             bars: bars_arg(args)?,
         }),
+        "set_measure_scale" | "set_bar_width" => Ok(Command::SetMeasureScale {
+            track: optional_position(args, "track")?.map(TrackIndex::new),
+            staff: gscore_model::StaffIndex::new(optional_position(args, "staff")?.unwrap_or(0)),
+            measure: MeasureIndex::new(required_position(args, "measure")?),
+            percent: width_arg(args)?,
+        }),
+        "set_beat_spacing" | "move_beat" => Ok(Command::SetBeatSpacing {
+            at: position(args)?,
+            offset: offset_arg(args)?,
+        }),
         "set_tempo" => Ok(Command::SetTempo {
             tempo: tempo_arg(args)?,
         }),
@@ -732,6 +742,39 @@ fn bars_arg(args: &mut Args) -> Result<Option<u8>, ParseError> {
         return Err(bad(args.command, "bars", &text, expected));
     }
     Ok(Some(bars))
+}
+
+/// The `width` parameter of a bar's width scale: percent of its natural width, or `auto`.
+fn width_arg(args: &mut Args) -> Result<Option<u16>, ParseError> {
+    let text = args.required("width")?;
+    if text == "auto" {
+        return Ok(None);
+    }
+    let expected = "a whole number from 25 to 400 (percent of the natural width), or auto";
+    let percent: u16 = text
+        .parse()
+        .map_err(|_| bad(args.command, "width", &text, expected))?;
+    if !(25..=400).contains(&percent) {
+        return Err(bad(args.command, "width", &text, expected));
+    }
+    Ok(Some(percent))
+}
+
+/// The `offset` parameter of a moved beat: hundredths of a staff space; `0` (or `none`) puts
+/// the column back.
+fn offset_arg(args: &mut Args) -> Result<Option<i16>, ParseError> {
+    let text = args.required("offset")?;
+    if text == "none" {
+        return Ok(None);
+    }
+    let expected = "a whole number from -400 to 400 (hundredths of a staff space), or 0";
+    let offset: i16 = text
+        .parse()
+        .map_err(|_| bad(args.command, "offset", &text, expected))?;
+    if !(-400..=400).contains(&offset) {
+        return Err(bad(args.command, "offset", &text, expected));
+    }
+    Ok((offset != 0).then_some(offset))
 }
 
 /// A whole number parameter, or `default` when it is left out.
