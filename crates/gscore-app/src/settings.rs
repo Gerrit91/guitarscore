@@ -666,8 +666,6 @@ pub struct Settings {
     pub legacy_page_view: Option<bool>,
     /// With several tracks shown, whether empty staves are left out of a line.
     pub hide_empty_staves: bool,
-    /// Whether drum tracks show a tablature of MIDI drum notes below their staff.
-    pub drum_tab: bool,
     /// Height the song grid was dragged to; `None`: it follows the number of tracks. (The
     /// key is new: the old `grid_height_chosen` held whatever the panel happened to be.)
     pub grid_height_chosen: Option<f32>,
@@ -777,7 +775,6 @@ impl Default for Settings {
             score_view: crate::state::ScoreView::PageVertical,
             legacy_page_view: None,
             hide_empty_staves: false,
-            drum_tab: false,
             grid_height_chosen: None,
             mixer_height_chosen: None,
             track_panel_width: None,
@@ -846,7 +843,6 @@ impl Settings {
         self.score_view = view.score_view;
         self.legacy_page_view = None;
         self.hide_empty_staves = view.hide_empty_staves;
-        self.drum_tab = view.drum_tab;
     }
 
     /// Applies the stored theme, zoom and panel visibility to `view`.
@@ -864,7 +860,6 @@ impl Settings {
             _ => self.score_view,
         };
         view.hide_empty_staves = self.hide_empty_staves;
-        view.drum_tab = self.drum_tab;
     }
 
     /// Puts `path` first in the recent files, without duplicates.

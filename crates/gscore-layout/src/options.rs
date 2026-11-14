@@ -36,10 +36,6 @@ pub struct LayoutOptions {
     pub system_gap: f32,
     /// Show standard notation above the tab (for tracks with a tuning).
     pub notation: bool,
-    /// Show a tablature below a drum track's percussion staff: each hit's MIDI drum note
-    /// on the kit's line it is stored on, as Guitar Pro's drum tab does. Off by default,
-    /// since the percussion staff already says which drum is hit.
-    pub drum_tab: bool,
     /// Space between the notation staff's bottom line and the tab's top line.
     pub notation_gap: f32,
     /// With several tracks: whether a track is left out of a system where it has no note.
@@ -179,7 +175,6 @@ impl Default for LayoutOptions {
             spacing: Spacing::default(),
             system_gap: 6.0,
             notation: true,
-            drum_tab: false,
             notation_gap: 8.0,
             empty_staves: EmptyStaves::Shown,
             single_line: false,

@@ -69,10 +69,10 @@ impl<'a> Part<'a> {
             .on_staff(staff)
             .ok_or(LayoutError::NoSuchStaff(track, staff))?;
         let staves = track_view.staves();
-        // Drums are always written on a percussion staff; their "frets" are MIDI drum
-        // notes, which a tab staff shows only when the drum tab is asked for. A track with
-        // several staves (a keyboard's treble
-        // and bass) is written in standard notation only, as Guitar Pro shows it.
+        // Drums are always written on a percussion staff. Their "frets" are MIDI drum
+        // notes; the track's tablature switch adds a drum tab that shows them, as Guitar
+        // Pro does. A track with several staves (a keyboard's treble and bass) is written
+        // in standard notation only, as Guitar Pro shows it.
         let drums = view.is_percussion();
         let keyboard = track_view.staff_count() > 1;
         let notation = if drums || keyboard || (options.notation && staves.notation()) {
@@ -85,7 +85,7 @@ impl<'a> Part<'a> {
         let slash = !drums && !keyboard && staves.slash();
         // A track showing neither notation nor slash always keeps its tab.
         let show_tab = if drums {
-            options.drum_tab
+            staves.tablature()
         } else {
             !keyboard && (staves.tablature() || (notation.is_none() && !slash))
         };

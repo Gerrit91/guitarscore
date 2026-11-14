@@ -201,6 +201,9 @@ enum ChangeKind {
         previous: bool,
         previous_type: Option<String>,
         previous_name: Option<String>,
+        /// The staff switches the track had (notation, tablature, slash): a new kit starts
+        /// on its percussion staff alone.
+        previous_staves: (bool, bool, bool),
         /// The GP7 sound the track had, when it became or stopped being a kit and it was
         /// dropped.
         previous_rse: Option<RseSound>,
@@ -783,10 +786,16 @@ impl Song {
                 previous,
                 previous_type,
                 previous_name,
+                previous_staves,
                 previous_rse,
             } => self.edit_track_settings(|inner| {
                 let track = track_mut(inner, *at)?;
                 track.percussion_track = *previous;
+                (
+                    track.settings.notation,
+                    track.settings.tablature,
+                    track.settings.slash,
+                ) = *previous_staves;
                 track.instrument_type.clone_from(previous_type);
                 track.instrument_name.clone_from(previous_name);
                 if let Some(rse) = previous_rse {

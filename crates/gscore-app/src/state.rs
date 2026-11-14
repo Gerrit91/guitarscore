@@ -183,9 +183,6 @@ pub struct ViewState {
     /// With several tracks shown, whether a track is left out of a line where it has no
     /// note (the cursor's track always stays).
     pub hide_empty_staves: bool,
-    /// Whether a drum track shows a tablature of MIDI drum notes below its percussion
-    /// staff.
-    pub drum_tab: bool,
     /// Guitar Pro's design mode: dashed guides and drag handles for every beat column and
     /// barline, with the buttons that set how many bars a line holds. A view mode, not part
     /// of the song.
@@ -205,7 +202,6 @@ impl Default for ViewState {
             show_edit_panel: true,
             score_view: ScoreView::PageVertical,
             hide_empty_staves: false,
-            drum_tab: false,
             design_mode: false,
         }
     }

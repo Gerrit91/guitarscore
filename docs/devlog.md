@@ -5626,14 +5626,17 @@ the note. It now auditions the entered note like a typed fret (`GuitarScoreApp::
 under the "hear entered notes" setting); taking a note out stays silent. Tested with the
 sine SoundFont, like the typed fret.
 
-## 2026-11-14 — Drum tablature (View › Drum tablature)
+## 2026-11-14 — Drum tablature, per track
 
-A drum track can show a tablature below its percussion staff: each hit's MIDI drum note on
-the line of the kit it is stored on, as Guitar Pro's drum tab does, so the notes behind the
-noteheads can be read and checked against the drum map. It is a view option
-(`ViewState::drum_tab`, `LayoutOptions::drum_tab`), off by default and remembered in the
-settings, and it applies to the page, the print and the PDF export. It is not a track
-setting: the files' tablature flag is on for most drum tracks, so following it would have
-given every drum track a tab. The staff, its bracket, the cursor and clicks work as on any
-notation-and-tab track. The snapshot example has `--drum-tab`. Tests: the layout's fret
-numbers with and without the option; the View menu entry, its setting and a snapshot.
+A drum track's tablature switch now shows a drum tab below its percussion staff: each
+hit's MIDI drum note on the line of the kit it is stored on, as Guitar Pro's does, so the
+notes behind the noteheads can be read and checked against the drum map. The switch is
+the track's own (`TrackStaves::tablature`, stored in the file), in the track panel's
+Appearance section beside "Percussion staff". A first version made it a View option for
+all drum tracks, on the guess that most files have the switch on; of the 50 drum tracks in
+the test and band files, 48 have it off, so the track's switch is the right place and the
+View option is gone. `Song::set_track_drums` turns the tablature off (and notation on)
+when a track becomes a kit, undone with it, so a new kit starts on its percussion staff
+alone. A file whose kit has the switch on now opens with the drum tab. Tests: the layout
+with the switch on and off, the model's switch on becoming a kit, the panel's tile with
+undo and a snapshot.

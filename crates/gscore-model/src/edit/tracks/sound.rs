@@ -51,7 +51,8 @@ impl Song {
     }
 
     /// Makes the track a drum kit (or an ordinary instrument again). A drum kit's notes are
-    /// General MIDI drum sounds on the percussion channel.
+    /// General MIDI drum sounds on the percussion channel. A track that becomes a kit starts
+    /// on its percussion staff alone: its tablature switch (the drum tab) goes off.
     pub fn set_track_drums(&mut self, at: TrackIndex, drums: bool) -> Result<Change, ModelError> {
         self.edit_track_settings(|inner| {
             let track = track_mut(inner, at)?;
@@ -64,6 +65,15 @@ impl Song {
             } else {
                 Some(RseSound::take(track))
             };
+            let previous_staves = (
+                track.settings.notation,
+                track.settings.tablature,
+                track.settings.slash,
+            );
+            if drums && !previous {
+                track.settings.notation = true;
+                track.settings.tablature = false;
+            }
             track.percussion_track = drums;
             if drums {
                 // GP7 stores the kit in the instrument, not only in the flag; otherwise a
@@ -80,6 +90,7 @@ impl Song {
                     previous,
                     previous_type,
                     previous_name,
+                    previous_staves,
                     previous_rse,
                 },
             })

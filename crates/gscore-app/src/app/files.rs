@@ -376,7 +376,6 @@ impl GuitarScoreApp {
             .on_pages();
         // Printed, every empty staff may go (there is no cursor to keep).
         let options = gscore_layout::LayoutOptions {
-            drum_tab: self.view.drum_tab,
             empty_staves: if self.view.hide_empty_staves {
                 gscore_layout::EmptyStaves::Hidden
             } else {
