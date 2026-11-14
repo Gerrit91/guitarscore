@@ -5684,3 +5684,10 @@ holds a `GPU` mutex from `tests/common/mod.rs` for its whole life, the pattern
 lock is per binary. The app's tests take 55 s here instead of 30 s. Not reproducible here
 (190 runs of the crashing binary, including with the runner's exact lavapipe build, 4 test
 threads on 4 cores), so this is a workaround for the runner's driver.
+
+## 2026-11-15 — The gliding cursor in the player bar
+
+The player bar has a button for the gliding cursor after the loop button (a cursor bar
+with motion lines, `Icon::GlidingCursor`): it switches the same setting as Settings ›
+"Cursor glides between the notes while playing", which stays. Snapshots that show the
+player bar were regenerated.

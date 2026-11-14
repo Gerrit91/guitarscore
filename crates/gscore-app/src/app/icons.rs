@@ -18,6 +18,8 @@ pub(crate) enum Icon {
     CountIn,
     /// Loop (two arrows going round a circle).
     Loop,
+    /// The gliding playing cursor (a cursor bar with motion lines behind it).
+    GlidingCursor,
     /// Go to the top of the score (a bar and a left-pointing triangle).
     ToStart,
     /// One bar back (two left-pointing triangles).
@@ -334,6 +336,23 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             let deg = |d: f32| d.to_radians();
             paint_arc_arrow(painter, center, radius, deg(195.0), deg(325.0), size, color);
             paint_arc_arrow(painter, center, radius, deg(15.0), deg(145.0), size, color);
+        }
+        Icon::GlidingCursor => {
+            // The playing cursor as a bar, moving right: three motion lines trail behind
+            // it, shorter the further they are from the bar.
+            let bar_x = center.x + size * 0.22;
+            painter.line_segment(
+                [
+                    pos2(bar_x, center.y - size * 0.42),
+                    pos2(bar_x, center.y + size * 0.42),
+                ],
+                Stroke::new(stroke.width * 1.6, color),
+            );
+            for (dy, length) in [(-0.22_f32, 0.38_f32), (0.0, 0.52), (0.22, 0.38)] {
+                let y = center.y + size * dy;
+                let end = bar_x - size * 0.14;
+                painter.line_segment([pos2(end - size * length, y), pos2(end, y)], stroke);
+            }
         }
         Icon::ToStart => {
             let x = rect.left() + size * 0.22;

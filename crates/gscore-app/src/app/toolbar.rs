@@ -479,6 +479,18 @@ impl GuitarScoreApp {
             {
                 toggle_loop = true;
             }
+            let gliding = self.settings.flowing_cursor;
+            if icons::toggle_button(
+                ui,
+                Icon::GlidingCursor,
+                "Gliding cursor",
+                "The playing cursor glides between the notes; off, it jumps from note to note",
+                gliding,
+            )
+            .clicked()
+            {
+                self.settings.flowing_cursor = !gliding;
+            }
             // The position, measure and tempo are the first to go when the window is too
             // narrow for them; the transport's own buttons always stay.
             self.position_readout(ui, readout_room);

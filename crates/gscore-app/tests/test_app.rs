@@ -1883,6 +1883,19 @@ fn the_empty_workspace_suggests_recent_files() {
     );
 }
 
+/// The player bar's gliding-cursor button switches the setting the Settings window has.
+#[test]
+fn the_player_bar_switches_the_gliding_cursor() {
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
+    let gliding = harness.state().settings().flowing_cursor;
+    harness.get_by_label("Gliding cursor").click();
+    harness.run();
+    assert_eq!(harness.state().settings().flowing_cursor, !gliding);
+    harness.get_by_label("Gliding cursor").click();
+    harness.run();
+    assert_eq!(harness.state().settings().flowing_cursor, gliding);
+}
+
 #[test]
 fn ctrl_equals_zooms_and_ctrl_zero_resets() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
