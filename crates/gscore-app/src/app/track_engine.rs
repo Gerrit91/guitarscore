@@ -364,6 +364,36 @@ impl GuitarScoreApp {
         self.set_track_sound(track, sound, true);
     }
 
+    /// Sets `track`'s input trim before its chain, in dB, heard at once. It is kept with
+    /// the song, not with the settings.
+    pub(super) fn set_track_trim(&mut self, track: usize, db: f32) {
+        let Some(mut sound) = self.open_track_sound(track) else {
+            return;
+        };
+        sound.trim_db = if db.is_finite() {
+            db.clamp(-24.0, 24.0)
+        } else {
+            0.0
+        };
+        // One slider drag is one undo step.
+        self.set_track_sound(track, sound, true);
+    }
+
+    /// Hands the open document's input trims to playback, so they are heard.
+    pub(super) fn sync_trims(&mut self) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        let trims: Vec<(usize, f32)> = tab
+            .sound()
+            .tracks
+            .iter()
+            .enumerate()
+            .map(|(track, sound)| (track, sound.trim_db))
+            .collect();
+        self.playback.set_trims(trims);
+    }
+
     /// Hands the open document's comp sends to playback, so they are heard.
     pub(super) fn sync_comp_sends(&mut self) {
         let Some(tab) = self.tabs.get(self.active) else {
@@ -448,14 +478,15 @@ impl GuitarScoreApp {
     }
 
     /// Hands everything the song says about its sound to playback: what plays each track,
-    /// its MIDI route, its tone, its compressor send, the drum parts it gives its own
-    /// tones, and the mixer's buses. Called after every edit; the player drops what did not
+    /// its MIDI route, its tone, its compressor send, its input trim, the drum parts it
+    /// gives its own tones, and the mixer's buses. Called after every edit; the player drops what did not
     /// change.
     pub(super) fn sync_song_sound(&mut self) {
         self.sync_track_engines();
         self.sync_midi_routes();
         self.sync_track_tones();
         self.sync_comp_sends();
+        self.sync_trims();
         self.sync_track_drum_parts();
         self.sync_song_buses();
         self.sound_synced = self.sound_key();
@@ -496,6 +527,7 @@ impl GuitarScoreApp {
                 pan: 64,
                 muted: false,
                 soloed: false,
+                room: 0,
             }),
             None => TrackDrumPart {
                 part,
@@ -504,6 +536,7 @@ impl GuitarScoreApp {
                 pan: 64,
                 muted: false,
                 soloed: false,
+                room: 0,
             },
         }
     }

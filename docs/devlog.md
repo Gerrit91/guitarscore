@@ -5162,3 +5162,35 @@ from a sound's name to one of its tones, filled by the owner:
   a note that cannot move, the switch, undo), command round trips and `panic_hunt`, and app
   tests for the toolbar control, the window and the tuning play/stop buttons. App snapshots
   regenerated: the menu bar gained Tools, the toolbar gained the transposition control.
+
+## 2026-11-14 — A drum room, stems, input trim and meters, solo-safe buses
+
+- **Drum room.** Each drum kit's parts now send into one short room of the kit's own
+  (`gscore_audio::drum_room_spec`/`drum_room_knobs`: a computed reverb, size 0.25, decay
+  0.6 s, no meaningful pre-delay, all wet), the way a room's overheads glue a kit
+  together. The mixer keeps one prepared chain per drum track (built on the synth's
+  housekeeping thread like the other chains, never in the callback), accumulates the
+  parts' post-fader sends into its input, runs it while it rings, and adds its return to
+  the kit *before* the track's own chain, fader and bus sends — so the kit's processing
+  and its reverb/compressor sends hear the room, and a bus stem's sends do too. Every part
+  has a **Room** knob (0-127, 0 dry) in its mixer strip and beside its level in the sound
+  chain window; it is saved in the song's drum-part block (`DrumPartSound::room`) and
+  exported (`PartChoice`/`StemPart`, `SoundMessage::DrumRoom`/`PartRoom`). Web, wire and
+  worklet carry the two messages.
+- **Input meter and trim.** Every track has a trim before its chain (−24..+24 dB,
+  `TrackSound::trim_db`, saved with the song and used by the WAV export), and an input
+  meter that shows what reaches the chain after it (`Meters::input`, `Which::Input`,
+  `SoundMessage::Trim`). The Sound chain window has the "Input trim" knob and the small
+  stereo "in" meter beside the chain output, so an amp or a compressor can be driven by
+  how hard the input hits it instead of the track's level.
+- **Stems.** File › Export › Stems (WAV)… writes one WAV per track (its own sound through
+  its chain, fader and pan, without the buses or the master) and one per mixer bus (only
+  what the bus returns, through `StemPart::Buses` and the mixer's `dry` switch), into a
+  chosen folder; `gscore-cli wav <file> --stems DIR` writes the tracks' files.
+- **Solo-safe buses.** Checked and pinned: solo filters only the sequence, so a soloed
+  track's sends still reach the reverb, compressor and chorus buses, and solo never mutes
+  a bus (`a_soloed_track_keeps_its_sends_in_the_buses`).
+- Tests: the room's tail and its proportion to the send, the trim against the input meter,
+  `PartRoom`/`DrumRoom`/`Trim` wire round trips, the part Room knob as one undo step, and
+  bus stems carrying only the bus. App snapshots regenerated for the trim row and the
+  parts' Room knob.

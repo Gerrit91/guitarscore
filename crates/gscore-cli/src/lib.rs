@@ -97,9 +97,9 @@ enum Command {
     Wav {
         /// The Guitar Pro file to read
         file: PathBuf,
-        /// The WAV file to write
-        #[arg(short, long)]
-        output: PathBuf,
+        /// The WAV file to write (not with --stems)
+        #[arg(short, long, required_unless_present = "stems")]
+        output: Option<PathBuf>,
         /// Only these tracks (1-based; repeat for several)
         #[arg(long = "track", value_name = "N")]
         tracks: Vec<usize>,
@@ -109,6 +109,10 @@ enum Command {
         /// Play guitar and bass tracks with the modelled strings (experimental, M22)
         #[arg(long)]
         modelled: bool,
+        /// Write one WAV per track into this folder instead of one file (stems, for mixing
+        /// elsewhere); `--output` is not used then
+        #[arg(long, value_name = "DIR", conflicts_with = "output")]
+        stems: Option<PathBuf>,
     },
     /// List the MIDI output ports `play` can use
     Ports,
@@ -383,7 +387,14 @@ where
             tracks,
             soundfont,
             modelled,
-        } => play::export_wav(&file, &output, &tracks, soundfont, modelled),
+            stems,
+        } => match (stems, output) {
+            (Some(folder), _) => play::export_stems(&file, &folder, &tracks, soundfont, modelled),
+            (None, Some(output)) => play::export_wav(&file, &output, &tracks, soundfont, modelled),
+            (None, None) => Err(CliError::Usage(
+                "give --output <file.wav> or --stems <DIR>\n".to_owned(),
+            )),
+        },
         Command::Ports => play::ports(),
         Command::Play {
             file,

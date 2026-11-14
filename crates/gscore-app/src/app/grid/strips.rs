@@ -673,6 +673,8 @@ pub(super) struct PartRow {
     pub(super) level: u8,
     /// Its pan inside the kit (0 left, 64 centre, 127 right).
     pub(super) pan: u8,
+    /// Its send into the kit's one short room (0-127, 0: dry).
+    pub(super) room: u8,
     pub(super) muted: bool,
     pub(super) soloed: bool,
     /// Whether anything in the kit is soloed: then only the soloed parts play.
@@ -746,9 +748,15 @@ fn part_strip(
     let inner = rect.shrink2(vec2(8.0, 6.0));
     let (top, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
-    // The part's pan where a track has its knobs (its name is in the labels below).
+    // The part's pan and its Room send (into the kit's one short room), where a track has
+    // its knobs (their names are in the labels below).
+    let knob_y = top.top() + KNOB_SIZE / 2.0 + 2.0;
     let pan_rect = Rect::from_center_size(
-        pos2(top.center().x, top.top() + KNOB_SIZE / 2.0 + 2.0),
+        pos2(top.center().x - 18.0, knob_y),
+        vec2(KNOB_SIZE, KNOB_SIZE),
+    );
+    let room_rect = Rect::from_center_size(
+        pos2(top.center().x + 18.0, knob_y),
         vec2(KNOB_SIZE, KNOB_SIZE),
     );
     let knob = mixer::pan_knob(
@@ -758,14 +766,25 @@ fn part_strip(
         id,
         &format!("Pan {}", part.part.label()),
     );
-    strip.painter().text(
-        pos2(pan_rect.center().x, pan_rect.bottom() + 2.0),
-        Align2::CENTER_TOP,
-        "Pan",
-        FontId::proportional(8.0),
-        visuals.weak_text_color(),
+    let room_knob = mixer::send_knob(
+        &mut strip,
+        room_rect,
+        part.room,
+        ("room", id),
+        &format!("Room {}", part.part.label()),
+        "Room send",
+        0,
     );
-    if knob.boundary {
+    for (rect, name) in [(pan_rect, "Pan"), (room_rect, "Room")] {
+        strip.painter().text(
+            pos2(rect.center().x, rect.bottom() + 2.0),
+            Align2::CENTER_TOP,
+            name,
+            FontId::proportional(8.0),
+            visuals.weak_text_color(),
+        );
+    }
+    if knob.boundary || room_knob.boundary {
         actions.push(GridAction::BreakMerge);
     }
     if let Some((pan, merge)) = knob.change {
@@ -774,6 +793,19 @@ fn part_strip(
             part: part.part,
             level: part.level,
             pan,
+            room: part.room,
+            muted: part.muted,
+            soloed: part.soloed,
+            merge,
+        });
+    }
+    if let Some((room, merge)) = room_knob.change {
+        actions.push(GridAction::DrumPart {
+            track,
+            part: part.part,
+            level: part.level,
+            pan: part.pan,
+            room,
             muted: part.muted,
             soloed: part.soloed,
             merge,
@@ -793,6 +825,7 @@ fn part_strip(
                 part: part.part,
                 level,
                 pan: part.pan,
+                room: part.room,
                 muted: part.muted,
                 soloed: part.soloed,
                 merge,
@@ -817,6 +850,7 @@ fn part_strip(
                 part: part.part,
                 level,
                 pan: part.pan,
+                room: part.room,
                 muted: part.muted,
                 soloed: part.soloed,
                 merge: false,
@@ -886,6 +920,7 @@ fn part_mute_solo(
             part: part.part,
             level: part.level,
             pan: part.pan,
+            room: part.room,
             muted: !part.muted,
             soloed: part.soloed,
             merge: false,
@@ -901,6 +936,7 @@ fn part_mute_solo(
             part: part.part,
             level: part.level,
             pan: part.pan,
+            room: part.room,
             muted: part.muted,
             soloed: !part.soloed,
             merge: false,
@@ -1318,14 +1354,14 @@ fn paint_segment(ui: &egui::Ui, rect: Rect, fill: f32) {
 /// What one strip's meter shows: left and right bars with their peak marks, measured by
 /// the built-in synthesizer or estimated from the notes.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub(super) struct Reading {
-    pub(super) level: gscore_audio::Level,
-    pub(super) measured: bool,
+pub(crate) struct Reading {
+    pub(crate) level: gscore_audio::Level,
+    pub(crate) measured: bool,
 }
 
 impl Reading {
     /// A measured level.
-    pub(super) fn measured(level: gscore_audio::Level) -> Self {
+    pub(crate) fn measured(level: gscore_audio::Level) -> Self {
         Reading {
             level,
             measured: true,
@@ -1368,7 +1404,7 @@ pub(super) struct Readings {
 
 /// Left and right meter segments, each with its peak mark (a line, when it stands above
 /// the bar).
-fn paint_meter(ui: &egui::Ui, rect: Rect, reading: Reading) {
+pub(crate) fn paint_meter(ui: &egui::Ui, rect: Rect, reading: Reading) {
     let gap = 2.0;
     let width = (rect.width() - gap) / 2.0;
     let left = Rect::from_min_size(rect.min, vec2(width, rect.height()));

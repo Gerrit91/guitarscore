@@ -54,6 +54,12 @@ pub enum SoundMessage {
     BusSettings(Bus, ChainKnobs, u8, bool),
     /// A track's send into the compressor bus (0-127).
     CompSend(usize, u8),
+    /// A track's input trim before its chain, in dB (0: as recorded).
+    Trim(usize, f32),
+    /// A drum track's room, built by the engine (one short room for the kit's parts).
+    DrumRoom(usize),
+    /// A drum part's send into its kit's room (0-127).
+    PartRoom(usize, usize, u8),
 }
 
 impl SynthEngine {
@@ -94,6 +100,12 @@ impl SynthEngine {
                 self.set_bus_settings(bus, knobs, level, muted);
             }
             SoundMessage::CompSend(track, value) => self.set_comp_send(track, value),
+            SoundMessage::Trim(track, db) => self.set_trim(track, db),
+            SoundMessage::DrumRoom(track) => {
+                let room = crate::chains::prepare_drum_room(self.sample_rate());
+                self.set_track_room(track, room);
+            }
+            SoundMessage::PartRoom(track, part, value) => self.set_part_room(track, part, value),
         }
     }
 }
@@ -192,6 +204,21 @@ pub fn encode_sound(message: &SoundMessage) -> Vec<u8> {
             out.index(*track);
             out.u8(*value);
         }
+        SoundMessage::Trim(track, db) => {
+            out.u8(15);
+            out.index(*track);
+            out.f32(*db);
+        }
+        SoundMessage::DrumRoom(track) => {
+            out.u8(16);
+            out.index(*track);
+        }
+        SoundMessage::PartRoom(track, part, value) => {
+            out.u8(17);
+            out.index(*track);
+            out.index(*part);
+            out.u8(*value);
+        }
     }
     out.0
 }
@@ -242,6 +269,9 @@ pub fn decode_sound(bytes: &[u8]) -> Result<SoundMessage, String> {
             input.bool()?,
         ),
         14 => SoundMessage::CompSend(input.index()?, input.u8()?),
+        15 => SoundMessage::Trim(input.index()?, input.f32()?),
+        16 => SoundMessage::DrumRoom(input.index()?),
+        17 => SoundMessage::PartRoom(input.index()?, input.index()?, input.u8()?),
         other => return Err(format!("unknown sound message {other}")),
     };
     if input.at != bytes.len() {
@@ -887,6 +917,9 @@ mod tests {
             SoundMessage::Bus(Bus::Chorus, spec, knobs, 90, true),
             SoundMessage::BusSettings(Bus::Compressor, knobs, 64, false),
             SoundMessage::CompSend(7, 33),
+            SoundMessage::Trim(7, -6.5),
+            SoundMessage::DrumRoom(2),
+            SoundMessage::PartRoom(2, 1, 64),
         ]
     }
 

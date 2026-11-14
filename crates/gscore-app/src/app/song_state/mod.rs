@@ -142,6 +142,10 @@ pub(crate) struct TrackSound {
     /// stay as they are.
     #[serde(default, skip_serializing_if = "is_zero_i32")]
     pub transpose: i32,
+    /// Its input trim before the effect chain, in dB (0: as it comes): how hard an amp or
+    /// a compressor is driven.
+    #[serde(default, skip_serializing_if = "is_zero_f32")]
+    pub trim_db: f32,
 }
 
 /// One drum part's own tone in a song: its chain and its mixing level in the drum track.
@@ -161,6 +165,9 @@ pub(crate) struct DrumPartSound {
     /// Whether the part is muted inside the kit.
     #[serde(default, skip_serializing_if = "is_false")]
     pub muted: bool,
+    /// Its send into the kit's one short room (0-127, 0: dry).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub room: u8,
     /// Whether the part is soloed inside the kit.
     #[serde(default, skip_serializing_if = "is_false")]
     pub soloed: bool,
@@ -201,6 +208,7 @@ impl DrumPartSound {
             pan: part.pan.min(127),
             muted: part.muted,
             soloed: part.soloed,
+            room: part.room.min(127),
         }
     }
 
@@ -218,6 +226,7 @@ impl DrumPartSound {
             pan: self.pan.min(127),
             muted: self.muted,
             soloed: self.soloed,
+            room: self.room.min(127),
         })
     }
 }
@@ -230,6 +239,10 @@ fn is_zero_i32(value: &i32) -> bool {
 
 fn is_zero(value: &u8) -> bool {
     *value == 0
+}
+
+fn is_zero_f32(value: &f32) -> bool {
+    *value == 0.0
 }
 
 /// What plays a track, as the block writes it: a plain word, not an enum's variant name.
@@ -302,6 +315,11 @@ impl TrackSound {
         self.transpose = self
             .transpose
             .clamp(-gscore_model::MAX_TRANSPOSE, gscore_model::MAX_TRANSPOSE);
+        self.trim_db = if self.trim_db.is_finite() {
+            self.trim_db.clamp(-24.0, 24.0)
+        } else {
+            0.0
+        };
         for part in &mut self.drum_parts {
             part.level = part.level.min(127);
         }
@@ -737,6 +755,7 @@ mod tests {
                     pan: 30,
                     muted: false,
                     soloed: false,
+                    room: 40,
                 }),
                 DrumPartSound::of(&TrackDrumPart {
                     part: DrumPart::Snare,
@@ -745,6 +764,7 @@ mod tests {
                     pan: 64,
                     muted: true,
                     soloed: false,
+                    room: 0,
                 }),
             ],
             ..TrackSound::default()

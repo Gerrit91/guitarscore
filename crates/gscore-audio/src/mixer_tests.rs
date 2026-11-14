@@ -7,7 +7,36 @@ use std::sync::Arc;
 use gscore_model::testing;
 use gscore_play::{Channel, MidiEvent, Sequence, controller};
 
-use super::Mixer;
+use super::{Bus, Mixer};
+
+/// Solo keeps the buses: the soloed track is the only one in the sequence, and its strip
+/// still carries its reverb and compressor sends, which the mixer takes after every strip
+/// (the buses themselves know nothing of solo), so they keep playing its sends.
+#[test]
+fn a_soloed_track_keeps_its_sends_in_the_buses() {
+    use gscore_model::TrackIndex;
+
+    let mut song = testing::song(&[testing::GUITAR_6, testing::GUITAR_6], 1).unwrap();
+    let soloed = TrackIndex::new(0);
+    let _ = song.set_track_reverb(soloed, 100).unwrap();
+    let _ = song.set_track_solo(soloed, true).unwrap();
+    // The sound the mixer takes the sends from, as the engine is given it.
+    let sequence = Arc::new(Sequence::new(&song, None).unwrap());
+    assert_eq!(sequence.tracks.len(), 1, "only the soloed track plays");
+    assert_eq!(sequence.tracks[0].sound.reverb, 100);
+
+    let mut mixer = Mixer::new(48_000);
+    mixer.follow(&sequence);
+    mixer.set_comp_send(0, 100);
+    // The strip the engine plays the soloed track's channel on still has its reverb send
+    // (the compressor send is the mixer's own, above), and the buses are separate strips
+    // of their own:
+    assert_eq!(mixer.strips[0].song_track, 0);
+    assert_eq!(mixer.strips[0].reverb, 100);
+    assert_eq!(mixer.comp_sends[0], 100);
+    // A busy board is no reason to silence a bus: none of the three is muted by solo.
+    assert!(Bus::ALL.iter().all(|bus| !mixer.buses[bus.index()].mix.1));
+}
 
 #[test]
 fn a_borrowed_channels_setup_never_moves_another_strip() {

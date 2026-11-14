@@ -80,6 +80,7 @@ impl GuitarScoreApp {
                     self.save_as_active(ui.ctx());
                 }
                 let mut export = None;
+                let mut stems = false;
                 ui.add_enabled_ui(has_document, |ui| {
                     ui.menu_button("Export", |ui| {
                         for format in crate::export::ExportFormat::ALL {
@@ -92,8 +93,23 @@ impl GuitarScoreApp {
                                 ui.close();
                             }
                         }
+                        ui.separator();
+                        if ui
+                            .button("Stems (WAV)…")
+                            .on_hover_text(
+                                "One WAV per track (through its chain and fader) and one per mixer \
+                                 bus, into a folder, for mixing elsewhere",
+                            )
+                            .clicked()
+                        {
+                            stems = true;
+                            ui.close();
+                        }
                     });
                 });
+                if stems {
+                    self.ask_export_stems(ui.ctx());
+                }
                 if let Some(format) = export {
                     self.ask_export(format, ui.ctx());
                 }

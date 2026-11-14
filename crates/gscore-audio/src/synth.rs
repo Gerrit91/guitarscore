@@ -409,6 +409,33 @@ impl SynthEngine {
     }
 
     /// The song's track `track` sends `value` (0-127) into the compressor bus.
+    /// Sets the input trim of the song's track `track`, in dB, before its chain.
+    pub fn set_trim(&mut self, track: usize, db: f32) {
+        self.mixer.set_trim(track, db);
+    }
+
+    /// Gives the song's drum track `track` its room (`None`: none). Returns the chain it
+    /// replaces, to be freed off the audio thread.
+    pub fn set_track_room(
+        &mut self,
+        track: usize,
+        chain: Option<Box<Chain>>,
+    ) -> Option<Box<Chain>> {
+        self.mixer.set_track_room(track, chain)
+    }
+
+    /// The song's drum part `part` of track `track` sends `value` (0-127) into the kit's
+    /// room.
+    pub fn set_part_room(&mut self, track: usize, part: usize, value: u8) {
+        self.mixer.set_part_room(track, part, value);
+    }
+
+    /// Whether the tracks' own sound goes to the output (`true`) or is left out so only the
+    /// buses' returns are rendered (`false`, a bus stem).
+    pub fn set_dry(&mut self, dry: bool) {
+        self.mixer.set_dry(dry);
+    }
+
     pub fn set_comp_send(&mut self, track: usize, value: u8) {
         self.mixer.set_comp_send(track, value);
     }
@@ -479,6 +506,17 @@ impl SynthEngine {
             }
             Command::CompSend(track, value) => {
                 self.set_comp_send(track, value);
+                return None;
+            }
+            Command::Trim(track, db) => {
+                self.set_trim(track, db);
+                return None;
+            }
+            Command::TrackRoom(track, chain) => {
+                return self.set_track_room(track, chain).map(Retired::Chain);
+            }
+            Command::PartRoom(track, part, value) => {
+                self.mixer.set_part_room(track, part, value);
                 return None;
             }
             _ => {}

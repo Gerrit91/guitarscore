@@ -17,6 +17,7 @@ use gscore_guitar::{BLOCKS, knob_ranges};
 use gscore_play::{StringKind, TrackEngine};
 
 use super::GuitarScoreApp;
+use super::grid::strips;
 use crate::app::string_sound::{kind_name, round_knob, sound_knobs};
 use crate::app::style::{self, Tokens};
 use crate::app::track_engine::TrackPlayer;
@@ -42,6 +43,8 @@ const EQ_EDITOR_HEIGHT: f32 = 430.0;
 /// leaves (about this much), down to this height, and scrolls.
 const EDITOR_ROOM: f32 = 420.0;
 const EDITOR_MIN_HEIGHT: f32 = 200.0;
+/// How far a track's input trim goes either way, in dB.
+const TRIM_RANGE: (f32, f32) = (-24.0, 24.0);
 /// A box on the board, the gap between boxes (where the cable runs), the board's height.
 const BOX: egui::Vec2 = vec2(86.0, 60.0);
 const GAP: f32 = 36.0;
@@ -91,6 +94,10 @@ struct Actions {
     reset_part: bool,
     /// A drum part's mixing level (0-127), while its slider moves.
     part_level: Option<u8>,
+    /// A drum part's send into the kit's room (0-127), while its slider moves.
+    part_room: Option<u8>,
+    /// The track's input trim before its chain, in dB, while its knob turns.
+    trim: Option<f32>,
     /// Save the sound and the chain under this name, or delete that preset (its kind of
     /// string and its name, since names are unique within a kind only).
     save_preset: Option<String>,
@@ -1534,6 +1541,7 @@ impl GuitarScoreApp {
             .part
             .map(|part| self.track_drum_part(window.track, part));
         let part_level = part_chain.as_ref().map(|own| own.level);
+        let part_room = part_chain.as_ref().map(|own| own.room);
         let dialed_in: Vec<DrumPart> = self
             .tabs
             .get(self.active)
@@ -1547,6 +1555,15 @@ impl GuitarScoreApp {
             })
             .unwrap_or_default();
         let clipboard = self.sound_clipboard.clone();
+        // The track's input trim and the level before its chain, for setting how hard an
+        // amp or a compressor is driven.
+        let trim_db = self
+            .tabs
+            .get(self.active)
+            .map_or(0.0, |tab| tab.track_sound(window.track).trim_db);
+        let input = meters
+            .as_ref()
+            .map_or_else(Default::default, |meters| meters.input(window.track));
         egui::Window::new(&title)
             .title_bar(false)
             .collapsible(false)
@@ -1593,6 +1610,22 @@ impl GuitarScoreApp {
                                         .changed()
                                     {
                                         actions.part_level = Some(level);
+                                    }
+                                    ui.add_space(16.0);
+                                    ui.label(
+                                        RichText::new("Room")
+                                            .color(style::tokens(ui).text_weak),
+                                    );
+                                    let mut room = part_room.unwrap_or(0);
+                                    if ui
+                                        .add(egui::Slider::new(&mut room, 0..=127))
+                                        .on_hover_text(
+                                            "How much of the part goes into the kit's one short \
+                                             shared room, which glues a kit together (0 is dry)",
+                                        )
+                                        .changed()
+                                    {
+                                        actions.part_room = Some(room);
                                     }
                                 });
                             } else {
@@ -1718,29 +1751,57 @@ impl GuitarScoreApp {
                                 window.selected = to.saturating_add(1);
                             }
                         }
-                        // The chain's output level: the tone's own loudness, after every
-                        // block and before the mixer's fader.
+                        // The input trim and its meter (how hard the chain is fed) on the
+                        // left; the chain's output level on the right: the tone's own
+                        // loudness, after every block and before the mixer's fader.
                         ui.add_space(2.0);
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                            let mut output_db = chain.output_db;
+                        ui.horizontal(|ui| {
+                            let mut trim = trim_db;
                             if round_knob(
                                 ui,
-                                &mut output_db,
-                                knob_ranges::OUTPUT,
-                                "Chain output",
+                                &mut trim,
+                                TRIM_RANGE,
+                                "Input trim",
                                 " dB",
                                 0.0,
                                 false,
-                                "The chain's output level, after every block and before the \
-                                 mixer's fader. It is the tone's own loudness: turning it \
-                                 does not change how hard an amp or a drive is fed.",
+                                "The track's input trim, before its chain's first block: turn it up \
+                                 to drive an amp or a compressor harder, or down to clean \
+                                 them up. It does not change the track's level.",
                             )
                             .changed
                             {
-                                let mut changed = chain.clone();
-                                changed.output_db = output_db;
-                                actions.chain = Some(changed);
+                                actions.trim = Some(trim);
                             }
+                            let (rect, response) =
+                                ui.allocate_exact_size(vec2(10.0, 30.0), Sense::hover());
+                            strips::paint_meter(ui, rect, strips::Reading::measured(input));
+                            response.on_hover_text(
+                                "The level before the chain (after the input trim), left and \
+                                 right",
+                            );
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                                let mut output_db = chain.output_db;
+                                if round_knob(
+                                    ui,
+                                    &mut output_db,
+                                    knob_ranges::OUTPUT,
+                                    "Chain output",
+                                    " dB",
+                                    0.0,
+                                    false,
+                                    "The chain's output level, after every block and \
+                                         before the mixer's fader. It is the tone's own \
+                                         loudness: turning it does not change how hard an \
+                                         amp or a drive is fed.",
+                                )
+                                .changed
+                                {
+                                    let mut changed = chain.clone();
+                                    changed.output_db = output_db;
+                                    actions.chain = Some(changed);
+                                }
+                            });
                         });
                         ui.separator();
                         // The chosen box's knobs, in an area of one height for every box of
@@ -1840,6 +1901,10 @@ impl GuitarScoreApp {
                     own.level = edited;
                     changed = true;
                 }
+                if let Some(edited) = actions.part_room.take() {
+                    own.room = edited;
+                    changed = true;
+                }
                 if changed {
                     self.set_track_drum_part(track, part, Some(own), true);
                 }
@@ -1892,6 +1957,10 @@ impl GuitarScoreApp {
                 tone.chain = chain;
             }
             self.set_track_tone(track, tone);
+        }
+        // The track's input trim, before whichever chain its sound goes through.
+        if let Some(db) = actions.trim.take() {
+            self.set_track_trim(track, db);
         }
         // A room's length changes its prepared response, so the chain is built again now
         // that the knob has been let go (after the new value is stored).

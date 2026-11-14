@@ -50,6 +50,7 @@ pub fn write_wav_at(
         &[],
         &[],
         &[],
+        &[],
         &BusChoices::default(),
     )
 }
@@ -59,8 +60,9 @@ pub fn write_wav_at(
 pub type ChainChoice = (usize, ChainSpec, ChainKnobs);
 
 /// One part of a drum track's chain to render with: the track, the part, its mixing level
-/// (0-127, 127 unity), its pan (0 left, 64 centre, 127 right), its blocks and their knobs.
-pub type PartChoice = (usize, usize, u8, u8, ChainSpec, ChainKnobs);
+/// (0-127, 127 unity), its pan (0 left, 64 centre, 127 right), its room send (0-127), its
+/// blocks and their knobs.
+pub type PartChoice = (usize, usize, u8, u8, u8, ChainSpec, ChainKnobs);
 
 /// A mixer bus to render with: its chain, its knob values and its level.
 #[derive(Debug, Clone)]
@@ -89,11 +91,54 @@ pub struct BusChoices {
     pub comp_sends: Vec<(usize, u8)>,
 }
 
-/// Like [`write_wav_at`], with the modelled strings of each listed kind sounding as its
+/// What a stem leaves in its file: the tracks' own sound, or only the mixer's buses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StemPart {
+    /// The tracks' own sound (their chains, faders and pans); the caller passes the buses
+    /// it wants with it (none for a plain track stem, all for the whole mix).
+    Tracks,
+    /// Only the buses' returns (the tracks' sends through them), without the dry tracks: a
+    /// bus stem. The caller passes one bus's chain (and no master chain).
+    Buses,
+}
+
+/// Like [`write_wav_with`], with the modelled strings of each listed kind sounding as its
 /// model (the others keep their presets), each listed track with its own model, each listed
-/// track through its effect chain (the others have none), and the mixer's buses.
+/// track through its effect chain (the others have none), each listed track's input trim
+/// (in dB, before its chain), and the mixer's buses.
 #[allow(clippy::too_many_arguments)]
 pub fn write_wav_with(
+    writer: impl Write,
+    sequence: &Sequence,
+    bank: &SoundBank,
+    sample_rate: u32,
+    models: &[(StringKind, StringModel)],
+    track_models: &[(usize, StringModel)],
+    chains: &[ChainChoice],
+    trims: &[(usize, f32)],
+    parts: &[PartChoice],
+    buses: &BusChoices,
+) -> Result<WavInfo, PlayError> {
+    write_wav_part_with(
+        writer,
+        sequence,
+        bank,
+        sample_rate,
+        models,
+        track_models,
+        chains,
+        trims,
+        parts,
+        buses,
+        StemPart::Tracks,
+    )
+}
+
+/// [`write_wav_with`] for a stem: `part` says whether the tracks' own sound is written
+/// ([`StemPart::Tracks`], as the whole mix) or only the buses' returns
+/// ([`StemPart::Buses`], a bus stem). Everything else is as there.
+#[allow(clippy::too_many_arguments)]
+pub fn write_wav_part_with(
     mut writer: impl Write,
     sequence: &Sequence,
     bank: &SoundBank,
@@ -101,8 +146,10 @@ pub fn write_wav_with(
     models: &[(StringKind, StringModel)],
     track_models: &[(usize, StringModel)],
     chains: &[ChainChoice],
+    trims: &[(usize, f32)],
     parts: &[PartChoice],
     buses: &BusChoices,
+    part: StemPart,
 ) -> Result<WavInfo, PlayError> {
     let frames = frames_for(sequence, sample_rate)?;
     let data_bytes = frames
@@ -112,6 +159,7 @@ pub fn write_wav_with(
     write_header(&mut writer, sample_rate, data_bytes)?;
 
     let mut engine = SynthEngine::new(bank, sample_rate)?;
+    engine.set_dry(part == StemPart::Tracks);
     for &(kind, model) in models {
         engine.set_string_model(kind, model);
     }
@@ -123,12 +171,26 @@ pub fn write_wav_with(
             let _ = engine.set_chain(*track, Some(chain), *knobs);
         }
     }
-    for (track, part, level, pan, spec, knobs) in parts {
+    for &(track, db) in trims {
+        engine.set_trim(track, db);
+    }
+    // Each kit's one short shared room, behind its parts' Room sends.
+    let mut room_tracks: Vec<usize> = Vec::new();
+    for (track, _, _, _, room, _, _) in parts {
+        if *room > 0 && !room_tracks.contains(track) {
+            room_tracks.push(*track);
+        }
+    }
+    for track in room_tracks {
+        let _ = engine.set_track_room(track, crate::chains::prepare_drum_room(sample_rate));
+    }
+    for (track, part, level, pan, room, spec, knobs) in parts {
         if let Some(chain) = prepare_chain(spec, knobs, sample_rate) {
             let _ = engine.set_part_chain(*track, *part, Some(chain), *knobs);
         }
         engine.set_part_level(*track, *part, *level);
         engine.set_part_pan(*track, *part, *pan);
+        engine.set_part_room(*track, *part, *room);
     }
     for (bus, choice) in [
         (crate::Bus::Reverb, &buses.reverb),
@@ -265,6 +327,55 @@ mod tests {
         assert_eq!(info.frames, 4 * 16_000);
         // Something was rendered (a sine SoundFont plays it).
         assert!(out[44..].iter().any(|&byte| byte != 0));
+    }
+
+    #[test]
+    fn a_bus_stem_carries_only_what_the_bus_returns() {
+        use gscore_guitar::{BlockKind, ChainSpec};
+        use gscore_model::TrackIndex;
+        use gscore_model::testing::{self, TestNote};
+        use gscore_play::Sequence;
+
+        let bytes = sine_soundfont("Sine");
+        let bank = SoundBank::from_bytes(&bytes).unwrap();
+        let mut song = testing::song_with_notes(&[(1, &[TestNote::new(1, 5)]), (4, &[])]).unwrap();
+        // The track sends into the reverb bus.
+        let _ = song.set_track_reverb(TrackIndex::new(0), 100).unwrap();
+        let sequence = Sequence::new(&song, None).unwrap();
+        let reverb = BusChoices {
+            reverb: Some(BusChoice {
+                spec: ChainSpec {
+                    blocks: [Some(BlockKind::Reverb), None, None, None, None],
+                },
+                knobs: ChainKnobs::default(),
+                level: 127,
+                muted: false,
+            }),
+            ..BusChoices::default()
+        };
+        let render = |buses: &BusChoices, part| {
+            let mut out = Vec::new();
+            write_wav_part_with(
+                &mut out,
+                &sequence,
+                &bank,
+                16_000,
+                &[],
+                &[],
+                &[],
+                &[],
+                &[],
+                buses,
+                part,
+            )
+            .unwrap();
+            out[44..].iter().any(|&byte| byte != 0)
+        };
+        // The track's stem has the note; without a bus the bus stem is silence (the dry
+        // signal is left out), and with one it carries the reverb's return.
+        assert!(render(&BusChoices::default(), StemPart::Tracks));
+        assert!(!render(&BusChoices::default(), StemPart::Buses));
+        assert!(render(&reverb, StemPart::Buses));
     }
 
     #[test]

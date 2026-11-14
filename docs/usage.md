@@ -82,6 +82,11 @@ synthesis)", on by default). Every other instrument, and the drums, stay on the 
   Room, Reverb, Comp, EQ, Chorus and Delay. The Amp plays direct; put a Cab block after it
   for its speaker (a built-in cabinet, or an impulse response from a WAV file). "Save
   tone" and "Save as…" keep the sound under a name for other tracks and songs.
+- **Input trim and meter.** Under the chain's board, the "Input trim" knob sets how hard
+  the first block is fed (−24 to +24 dB) and the small meter beside it shows that level
+  before the chain (after the trim), left and right. Turn it up to drive an amp or a
+  compressor harder, down to clean them up; the track's own level does not change. The
+  trim is saved with the song.
 - **With the song.** A tone you change on a track is saved with the song (inside the
   Guitar Pro 7 file, in a block of the song's notes that Guitar Pro leaves alone). A track
   you never touched keeps following its program's built-in tone. A bass always plays its
@@ -94,8 +99,10 @@ synthesis)", on by default). Every other instrument, and the drums, stay on the 
 The grid's "Mixer view" shows one strip per track: fader and pan after the track's chain,
 sends into the reverb, compressor and chorus buses, mute and solo, and a level meter
 measured in the engine. Each drum track can be split into its kit parts with a chain and
-a level of their own. The buses have their own windows; the master strip has a chain too.
-There is no limiter yet: a mix that is too loud clips.
+a level of their own; the "Room" knob on every part sends it into one short room the whole
+kit shares (as a room's overheads glue a kit together), and the kit's own strip is the
+drum bus. The buses have their own windows; the master strip has a chain too. There is no
+limiter yet: a mix that is too loud clips.
 
 ```bash
 gscore-cli play testdata/basic/note_lengths.gp                        # built-in synthesizer
@@ -130,7 +137,10 @@ Previous and next bar during a count-in count in again at the new bar.
 
 File › Export › Audio (WAV) renders the song with the chosen SoundFont (16-bit stereo,
 44.1 kHz); `gscore-cli wav song.gp -o song.wav --soundfont FluidR3_GM.sf2` does the same
-without the window.
+without the window. File › Export › Stems (WAV) writes one file per track (through its
+chain, fader and pan) and one per mixer bus (what the tracks send through it) into a
+folder, for mixing elsewhere; `gscore-cli wav song.gp --stems DIR` writes the tracks'
+files from the command line.
 
 The Staff tiles hold Beat text and Lyrics (Shift+L): five lines of syllables, written
 under the notation staff (above the tab when both are shown). Spaces separate syllables,

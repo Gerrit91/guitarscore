@@ -273,6 +273,46 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Asks for a folder and then writes the active tab's stems (one WAV per track and per
+    /// bus) into it, in the background.
+    pub(super) fn ask_export_stems(&mut self, ctx: &egui::Context) {
+        if let Err(error) = self.tasks.pick_stems_folder(ctx) {
+            self.notice = Some(error);
+        }
+    }
+
+    /// Starts the stem export of the active tab into `folder`.
+    fn start_stems_export(&mut self, folder: PathBuf, ctx: &egui::Context) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        let song = tab.document.song().clone();
+        let base = tab.document.path().file_stem().map_or_else(
+            || "Untitled".to_owned(),
+            |s| s.to_string_lossy().into_owned(),
+        );
+        let audio = self.audio_export();
+        if let Err(error) = self.tasks.export_stems(song, base, folder, audio, ctx) {
+            self.notice = Some(error);
+        }
+    }
+
+    /// The export settings the player has now (the engine, tones, buses), for rendering
+    /// audio files.
+    pub(super) fn audio_export(&mut self) -> crate::tasks::AudioExport {
+        crate::tasks::AudioExport {
+            soundfont: self.playback.soundfont().map(Path::to_path_buf),
+            modelled: self.playback.modelled_guitars(),
+            sample_rate: self.playback.sample_rate(),
+            models: self.playback.string_models(),
+            engines: self.playback.track_engines(),
+            tones: self.playback.export_tones(),
+            trims: self.playback.trims().to_vec(),
+            parts: self.playback.export_parts(),
+            buses: self.playback.export_buses(),
+        }
+    }
+
     /// Starts the export of the active tab in `format` to `path`, in the background.
     fn start_export(
         &mut self,
@@ -297,16 +337,7 @@ impl GuitarScoreApp {
                     return;
                 };
                 let song = tab.document.song().clone();
-                let audio = crate::tasks::AudioExport {
-                    soundfont: self.playback.soundfont().map(Path::to_path_buf),
-                    modelled: self.playback.modelled_guitars(),
-                    sample_rate: self.playback.sample_rate(),
-                    models: self.playback.string_models(),
-                    engines: self.playback.track_engines(),
-                    tones: self.playback.export_tones(),
-                    parts: self.playback.export_parts(),
-                    buses: self.playback.export_buses(),
-                };
+                let audio = self.audio_export();
                 if let Err(error) = self.tasks.export_wav(song, path, audio, ctx) {
                     self.notice = Some(error);
                 }
@@ -452,6 +483,10 @@ impl GuitarScoreApp {
                     };
                     self.start_save(path, false, ctx);
                 }
+                Event::PickedStemsFolder(Some(folder)) => {
+                    self.start_stems_export(folder, ctx);
+                }
+                Event::PickedStemsFolder(None) => {}
                 Event::PickedSoundFont(Some(picked)) => self.playback.use_soundfont(picked.path),
                 Event::PickedSoundFont(None) => {}
                 Event::PickedImpulse {

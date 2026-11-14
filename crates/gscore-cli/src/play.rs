@@ -131,6 +131,87 @@ pub(crate) fn export_wav(
     Ok(out)
 }
 
+/// Writes one WAV per track of the song into `folder` (stems, for mixing elsewhere).
+pub(crate) fn export_stems(
+    input: &Path,
+    folder: &Path,
+    tracks: &[usize],
+    soundfont: Option<PathBuf>,
+    modelled: bool,
+) -> Result<String, CliError> {
+    let soundfont = soundfont.or_else(find_soundfont).ok_or_else(|| {
+        CliError::Failed(
+            "no SoundFont found; pass --soundfont <file.sf2> or set GSCORE_SOUNDFONT\n".to_owned(),
+        )
+    })?;
+    let bank =
+        gscore_audio::SoundBank::open(&soundfont).map_err(|e| CliError::Failed(e.to_string()))?;
+    let song = crate::input::read_song(input)?.song;
+    std::fs::create_dir_all(folder)
+        .map_err(|e| CliError::Failed(format!("cannot make {}: {e}", folder.display())))?;
+    let base = input
+        .file_stem()
+        .map_or_else(|| "stems".to_owned(), |s| s.to_string_lossy().into_owned());
+    let mut written = 0_usize;
+    for track in 0..song.track_count() {
+        let at = TrackIndex::new(track);
+        let Some(view) = song.track(at) else {
+            continue;
+        };
+        if !tracks.is_empty() && !tracks.contains(&track.saturating_add(1)) {
+            continue;
+        }
+        let name = view.name().trim();
+        let name = if name.is_empty() {
+            format!("Track {}", track.saturating_add(1))
+        } else {
+            name.to_owned()
+        };
+        // One track alone, as the mix plays it (its fader, pan and sends).
+        let mut only = song.clone();
+        for other in 0..only.track_count() {
+            if other != track {
+                let _ = only.set_track_mute(TrackIndex::new(other), true);
+            }
+        }
+        let mut sequence = sequence(&only, &[])?;
+        if modelled {
+            sequence = sequence.with_modelled_guitars();
+        }
+        let path = folder.join(format!("{base} - {}.wav", file_name(&name)));
+        let file = std::fs::File::create(&path)
+            .map_err(|e| CliError::Failed(format!("cannot write {}: {e}", path.display())))?;
+        let mut writer = std::io::BufWriter::new(file);
+        gscore_audio::write_wav(&mut writer, &sequence, &bank)
+            .map_err(|e| CliError::Failed(e.to_string()))?;
+        written = written.saturating_add(1);
+    }
+    Ok(format!(
+        "Wrote {written} stem(s) into {}\n",
+        folder.display()
+    ))
+}
+
+/// A name a file system can hold, or "Track".
+fn file_name(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| {
+            if c.is_control() || "/\\:*?\"<>|".contains(c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let cleaned = cleaned.trim().trim_matches('.').to_owned();
+    if cleaned.is_empty() {
+        "Track".to_owned()
+    } else {
+        cleaned
+    }
+}
+
 /// Lists the MIDI output ports.
 pub(crate) fn ports() -> Result<String, CliError> {
     let ports = midi_output_ports().map_err(|e| CliError::Failed(e.to_string()))?;

@@ -419,6 +419,46 @@ fn a_drum_parts_pan_knob_moves_it_in_the_kit_as_one_undo_step() {
     );
 }
 
+#[test]
+fn a_drum_parts_room_knob_sends_it_into_the_kits_room_as_one_undo_step() {
+    use gscore_app::chain_settings::DrumPart;
+    let mut harness = app_with_mixer_view_at(1900.0);
+    harness.get_by_label("Show the drum parts").click();
+    harness.run();
+    // The drum kit is the sixth track of the file.
+    let room = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .playback()
+            .track_drum_part_mix(5, DrumPart::HiHat)
+            .4
+    };
+    assert_eq!(room(&harness), 0, "dry to begin with");
+    let depth = harness.state().document().unwrap().editor().undo_depth();
+    let start = harness.get_by_label("Room Hi-hat").rect().center();
+    harness.hover_at(start);
+    harness.drag_at(start);
+    harness.run();
+    for step in 1..=4 {
+        harness.hover_at(start + egui::vec2(8.0 * step as f32, 0.0));
+        harness.run();
+    }
+    harness.drop_at(start + egui::vec2(32.0, 0.0));
+    harness.run();
+    assert!(room(&harness) > 0, "sent into the room");
+    let editor = harness.state().document().unwrap().editor();
+    assert_eq!(editor.undo_depth(), depth + 1, "one drag, one undo step");
+    // The kit's other parts stay dry.
+    assert_eq!(
+        harness
+            .state()
+            .playback()
+            .track_drum_part_mix(5, DrumPart::Snare)
+            .4,
+        0
+    );
+}
+
 /// Snapshot options for a wide mixer with many thin meters and needles, whose edge pixels
 /// the GitHub runner's software GPU anti-aliases a little differently (11 and 13 pixels
 /// past 0.6, none past 1.5): a colour tolerance of 2 (YIQ distance) per pixel, as for the

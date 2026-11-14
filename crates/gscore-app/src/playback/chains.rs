@@ -299,6 +299,30 @@ impl Playback {
         }
     }
 
+    /// The tracks' input trims (0 dB where none is given), heard at once.
+    pub fn set_trims(&mut self, trims: Vec<(usize, f32)>) {
+        if self.trims == trims {
+            return;
+        }
+        self.trims = trims;
+        self.send_trims();
+    }
+
+    /// The tracks' input trims before their chains, by the song's track index (only the
+    /// tracks that have one).
+    pub fn trims(&self) -> &[(usize, f32)] {
+        &self.trims
+    }
+
+    /// Gives the running synthesizer every track's input trim (a new one starts at 0 dB).
+    pub(super) fn send_trims(&mut self) {
+        if let Some(player) = sound_player!(self) {
+            for &(track, db) in &self.trims {
+                let _ = player.set_trim(track, db);
+            }
+        }
+    }
+
     /// The kind's default tone: the sound and chain from the settings (what a preset
     /// without a tone of its own plays).
     pub fn default_tone(&self, kind: StringKind) -> Tone {
@@ -420,19 +444,25 @@ impl Playback {
         let mut prepare = Vec::new();
         let mut knobs = Vec::new();
         let mut levels = Vec::new();
+        let mut rooms = Vec::new();
         for target in self.tone_targets.clone() {
             if !target.drums {
                 continue;
             }
+            // The kit's one short room, behind all its parts (once per synthesizer).
+            if self.sent_rooms.insert(target.track) {
+                rooms.push(target.track);
+            }
             for part in crate::chain_settings::DrumPart::ALL {
                 let chain = self.track_drum_part_chain(target.track, part);
-                let (level, pan, muted, soloed) = self.track_drum_part_mix(target.track, part);
+                let (level, pan, muted, soloed, room) =
+                    self.track_drum_part_mix(target.track, part);
                 let key = (target.track, part.index());
                 let sent = self.sent_parts.get(&key).cloned();
                 let chain_same = sent.as_ref().is_some_and(|(sent, ..)| *sent == chain);
                 let mix_same = sent
                     .as_ref()
-                    .is_some_and(|(_, sent_mix)| *sent_mix == (level, pan, muted, soloed));
+                    .is_some_and(|(_, sent_mix)| *sent_mix == (level, pan, muted, soloed, room));
                 if chain_same && mix_same {
                     continue;
                 }
@@ -446,13 +476,20 @@ impl Playback {
                     }
                 }
                 if !mix_same {
-                    levels.push((key, level, pan, muted, soloed));
+                    levels.push((key, level, pan, muted, soloed, room));
                 }
                 self.sent_parts
-                    .insert(key, (chain, (level, pan, muted, soloed)));
+                    .insert(key, (chain, (level, pan, muted, soloed, room)));
             }
         }
         if let Some(player) = sound_player!(self) {
+            for track in rooms {
+                let spec = gscore_audio::drum_room_spec();
+                let knobs = gscore_audio::drum_room_knobs();
+                if let Err(error) = player.set_track_room(track, spec, knobs) {
+                    self.chain_notices.push(error.to_string());
+                }
+            }
             for ((track, part), spec, settings) in prepare {
                 if let Err(error) = player.set_part_chain(track, part, spec, settings) {
                     self.chain_notices.push(error.to_string());
@@ -461,11 +498,12 @@ impl Playback {
             for ((track, part), settings) in knobs {
                 let _ = player.set_part_chain_settings(track, part, settings);
             }
-            for ((track, part), level, pan, muted, soloed) in levels {
+            for ((track, part), level, pan, muted, soloed, room) in levels {
                 let _ = player.set_part_level(track, part, level);
                 let _ = player.set_part_pan(track, part, pan);
                 let _ = player.set_part_mute(track, part, muted);
                 let _ = player.set_part_solo(track, part, soloed);
+                let _ = player.set_part_room(track, part, room);
             }
         }
     }
@@ -474,6 +512,7 @@ impl Playback {
     pub(super) fn forget_sent_tones(&mut self) {
         self.sent_tones.clear();
         self.sent_parts.clear();
+        self.sent_rooms.clear();
     }
 
     /// Sends each modelled track of the loaded sequence what differs between its tone and
@@ -919,17 +958,24 @@ impl Playback {
                 pan: 64,
                 muted: false,
                 soloed: false,
+                room: 0,
             })
     }
 
-    /// The mixing level, pan, mute and solo of `part` of `track`.
+    /// The mixing level, pan, mute, solo and room send of `part` of `track`.
     pub fn track_drum_part_mix(
         &self,
         track: usize,
         part: crate::chain_settings::DrumPart,
-    ) -> (u8, u8, bool, bool) {
+    ) -> (u8, u8, bool, bool, u8) {
         let own = self.track_drum_part(track, part);
-        (own.level.min(127), own.pan.min(127), own.muted, own.soloed)
+        (
+            own.level.min(127),
+            own.pan.min(127),
+            own.muted,
+            own.soloed,
+            own.room.min(127),
+        )
     }
 
     /// Hands the open song's per-track drum parts to playback, heard at once.
@@ -971,9 +1017,17 @@ impl Playback {
         for track in tracks {
             for part in crate::chain_settings::DrumPart::ALL {
                 let chain = self.track_drum_part_chain(track, part);
-                let (level, pan, ..) = self.track_drum_part_mix(track, part);
+                let (level, pan, _, _, room) = self.track_drum_part_mix(track, part);
                 let spec = self.chain_spec(&chain);
-                parts.push((track, part.index(), level, pan, spec, chain.chain_knobs()));
+                parts.push((
+                    track,
+                    part.index(),
+                    level,
+                    pan,
+                    room,
+                    spec,
+                    chain.chain_knobs(),
+                ));
             }
         }
         parts

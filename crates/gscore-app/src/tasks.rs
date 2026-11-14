@@ -52,6 +52,9 @@ pub(crate) enum Event {
         /// The file the user chose.
         picked: Option<Picked>,
     },
+    /// The folder dialog for exporting stems closed; `None` if it was cancelled.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    PickedStemsFolder(Option<PathBuf>),
     /// An export finished (a message for the status bar) or failed (why).
     Exported(Result<String, String>),
     /// A save finished or failed.
@@ -702,6 +705,48 @@ impl Tasks {
         })
     }
 
+    /// Asks for a folder to write the stems of `song` (one WAV per track and per bus) into,
+    /// in the background.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn pick_stems_folder(&mut self, ctx: &egui::Context) -> Result<(), String> {
+        self.spawn("stems folder dialog", ctx, || {
+            Event::PickedStemsFolder(
+                rfd::FileDialog::new()
+                    .set_title("Export stems into")
+                    .pick_folder(),
+            )
+        })
+    }
+
+    /// The stems folder cannot be chosen in the browser build yet.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn pick_stems_folder(&mut self, _ctx: &egui::Context) -> Result<(), String> {
+        Err("exporting audio is not available in the browser build yet".to_owned())
+    }
+
+    /// Writes one WAV per track and one per mixer bus of `song` into `folder`, named
+    /// `<base> - <track>.wav` and `<base> - <bus>.wav`, as `audio` says, in the background.
+    pub(crate) fn export_stems(
+        &mut self,
+        song: Song,
+        base: String,
+        folder: PathBuf,
+        audio: AudioExport,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (song, base, folder, audio, ctx);
+            Err("exporting audio is not available in the browser build yet".to_owned())
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.spawn("stem export", ctx, move || {
+                Event::Exported(export_stems(&song, &base, &folder, &audio))
+            })
+        }
+    }
+
     /// Renders every track of `song` to a WAV file at `path` as `audio` says, in the
     /// background.
     pub(crate) fn export_wav(
@@ -1053,10 +1098,194 @@ pub(crate) struct AudioExport {
     pub(crate) engines: Vec<(usize, gscore_play::TrackEngine)>,
     /// The tracks' own tones, the programs' built-in ones and each kind's plain strings.
     pub(crate) tones: crate::playback::ExportTones,
+    /// Each track's input trim before its chain, in dB (only the tracks that have one).
+    pub(crate) trims: Vec<(usize, f32)>,
     /// The drum parts' chains (the built-in part tones).
     pub(crate) parts: Vec<gscore_audio::PartChoice>,
     /// The mixer's buses (reverb and compressor), rendered as they are set.
     pub(crate) buses: gscore_audio::BusChoices,
+}
+
+/// The work of [`Tasks::export_stems`]: the status message, or why it failed.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+fn export_stems(
+    song: &Song,
+    base: &str,
+    folder: &std::path::Path,
+    audio: &AudioExport,
+) -> Result<String, String> {
+    let soundfont = audio
+        .soundfont
+        .clone()
+        .or_else(gscore_audio::find_soundfont)
+        .ok_or_else(|| "no SoundFont found; choose one in Settings › Audio I/O".to_owned())?;
+    let bank = gscore_audio::SoundBank::open(&soundfont).map_err(|e| e.to_string())?;
+    let rate = audio.sample_rate.unwrap_or(gscore_audio::WAV_SAMPLE_RATE);
+    // Every track goes into its stem, as in the mix and the MIDI export.
+    let mut song = song.clone();
+    for index in 0..song.track_count() {
+        let track = gscore_model::TrackIndex::new(index);
+        let _ = song
+            .set_track_mute(track, false)
+            .map_err(|e| e.to_string())?;
+        let _ = song
+            .set_track_solo(track, false)
+            .map_err(|e| e.to_string())?;
+    }
+    std::fs::create_dir_all(folder)
+        .map_err(|e| format!("cannot make {}: {e}", folder.display()))?;
+
+    let mut written = 0_usize;
+    // One file per track: its own sound through its chain, fader and pan, without the
+    // mixer's buses (the bus stems carry those) and without the master chain (the mix does).
+    let names: Vec<String> = song
+        .tracks()
+        .map(|track| {
+            let name = track.name().trim();
+            if name.is_empty() {
+                format!("Track {}", track.index().get().saturating_add(1))
+            } else {
+                name.to_owned()
+            }
+        })
+        .collect();
+    for (index, name) in names.iter().enumerate() {
+        let mut track_song = song.clone();
+        for other in 0..track_song.track_count() {
+            if other != index {
+                let at = gscore_model::TrackIndex::new(other);
+                let _ = track_song.set_track_mute(at, true);
+            }
+        }
+        let sequence = crate::playback::with_engines(
+            Sequence::new(&track_song, None).map_err(|e| e.to_string())?,
+            audio.modelled,
+            &audio.engines,
+        );
+        let (track_models, chains) = audio.tones.resolve(&sequence);
+        let path = folder.join(format!("{base} - {}.wav", file_name(name)));
+        write_stem(
+            &path,
+            &sequence,
+            &bank,
+            rate,
+            audio,
+            &track_models,
+            &chains,
+            &gscore_audio::BusChoices::default(),
+            gscore_audio::StemPart::Tracks,
+        )?;
+        written = written.saturating_add(1);
+    }
+    // One file per bus: the tracks' sends through it, without the dry tracks.
+    let whole = crate::playback::with_engines(
+        Sequence::new(&song, None).map_err(|e| e.to_string())?,
+        audio.modelled,
+        &audio.engines,
+    );
+    let (track_models, chains) = audio.tones.resolve(&whole);
+    for (label, choice) in [
+        ("Reverb", &audio.buses.reverb),
+        ("Compressor", &audio.buses.compressor),
+        ("Chorus", &audio.buses.chorus),
+    ] {
+        let Some(choice) = choice else {
+            continue;
+        };
+        let mut buses = gscore_audio::BusChoices {
+            reverb: None,
+            compressor: None,
+            chorus: None,
+            master: None,
+            comp_sends: audio.buses.comp_sends.clone(),
+        };
+        match label {
+            "Reverb" => buses.reverb = Some(choice.clone()),
+            "Compressor" => buses.compressor = Some(choice.clone()),
+            _ => buses.chorus = Some(choice.clone()),
+        }
+        let path = folder.join(format!("{base} - {label}.wav"));
+        write_stem(
+            &path,
+            &whole,
+            &bank,
+            rate,
+            audio,
+            &track_models,
+            &chains,
+            &buses,
+            gscore_audio::StemPart::Buses,
+        )?;
+        written = written.saturating_add(1);
+    }
+    Ok(format!("Wrote {written} stem(s) into {}", folder.display()))
+}
+
+/// A name a file system can hold (no path separators or control characters), or "Track".
+fn file_name(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| {
+            if c.is_control() || "/\\:*?\"<>|".contains(c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let cleaned = cleaned.trim().trim_matches('.').to_owned();
+    if cleaned.is_empty() {
+        "Track".to_owned()
+    } else {
+        cleaned
+    }
+}
+
+/// Writes one stem to `path` (through a temporary file, so a failure leaves no half one).
+#[allow(clippy::too_many_arguments)]
+fn write_stem(
+    path: &std::path::Path,
+    sequence: &Sequence,
+    bank: &gscore_audio::SoundBank,
+    rate: u32,
+    audio: &AudioExport,
+    track_models: &[(usize, gscore_guitar::StringModel)],
+    chains: &[gscore_audio::ChainChoice],
+    buses: &gscore_audio::BusChoices,
+    part: gscore_audio::StemPart,
+) -> Result<(), String> {
+    let temp = path.with_extension("wav.part");
+    let written = std::fs::File::create(&temp)
+        .map_err(|e| format!("cannot write {}: {e}", temp.display()))
+        .and_then(|file| {
+            let mut writer = std::io::BufWriter::new(file);
+            gscore_audio::write_wav_part_with(
+                &mut writer,
+                sequence,
+                bank,
+                rate,
+                &audio.models,
+                track_models,
+                chains,
+                &audio.trims,
+                &audio.parts,
+                buses,
+                part,
+            )
+            .and_then(|_info| {
+                std::io::Write::flush(&mut writer).map_err(|e| {
+                    gscore_play::PlayError::Device(format!("cannot write the WAV file: {e}"))
+                })?;
+                std::fs::rename(&temp, path).map_err(|e| {
+                    gscore_play::PlayError::Device(format!("cannot write {}: {e}", path.display()))
+                })
+            })
+            .map_err(|e| e.to_string())
+        });
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    written
 }
 
 /// The work of [`Tasks::export_wav`]: the status message, or why it failed.
@@ -1099,6 +1328,7 @@ fn export_wav(song: &Song, path: &std::path::Path, audio: &AudioExport) -> Resul
                 &audio.models,
                 &track_models,
                 &chains,
+                &audio.trims,
                 &audio.parts,
                 &audio.buses,
             )

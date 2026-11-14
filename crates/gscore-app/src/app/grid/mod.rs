@@ -22,7 +22,7 @@ mod bar;
 mod matrix;
 pub(super) mod mixer;
 mod rows;
-mod strips;
+pub(super) mod strips;
 
 pub(crate) use strips::MixerState;
 
@@ -101,12 +101,13 @@ pub(super) enum GridAction {
     OpenSoundChain { track: usize },
     /// Open the sound chain of `part` of a drum track.
     OpenSoundChainPart { track: usize, part: DrumPart },
-    /// A drum part's level, pan, mute or solo, kept with the song.
+    /// A drum part's level, pan, room send, mute or solo, kept with the song.
     DrumPart {
         track: usize,
         part: DrumPart,
         level: u8,
         pan: u8,
+        room: u8,
         muted: bool,
         soloed: bool,
         /// A fader drag continues the previous undo step.
@@ -197,6 +198,7 @@ impl GuitarScoreApp {
                             part,
                             level: entry.map_or(127, |entry| entry.level.min(127)),
                             pan: entry.map_or(64, |entry| entry.pan.min(127)),
+                            room: entry.map_or(0, |entry| entry.room.min(127)),
                             muted: entry.is_some_and(|entry| entry.muted),
                             soloed: entry.is_some_and(|entry| entry.soloed),
                             any_soloed,
@@ -452,6 +454,7 @@ impl GuitarScoreApp {
                 part,
                 level,
                 pan,
+                room,
                 muted,
                 soloed,
                 merge,
@@ -459,6 +462,7 @@ impl GuitarScoreApp {
                 let mut own = self.track_drum_part(track, part);
                 own.level = level.min(127);
                 own.pan = pan.min(127);
+                own.room = room.min(127);
                 own.muted = muted;
                 own.soloed = soloed;
                 self.set_track_drum_part(track, part, Some(own), merge);
