@@ -1164,6 +1164,30 @@ impl Command {
                 Command::SetTrackColor { track: first, .. },
                 Command::SetTrackColor { track: second, .. },
             ) => first == second,
+            // A handle dragged in Guitar Pro's design mode sends many values of the same
+            // column or bar; they are one undo step.
+            (
+                Command::SetBeatSpacing { at: first, .. },
+                Command::SetBeatSpacing { at: second, .. },
+            ) => first == second,
+            (
+                Command::SetMeasureScale {
+                    track: first_track,
+                    staff: first_staff,
+                    measure: first_measure,
+                    ..
+                },
+                Command::SetMeasureScale {
+                    track: second_track,
+                    staff: second_staff,
+                    measure: second_measure,
+                    ..
+                },
+            ) => {
+                first_track == second_track
+                    && first_staff == second_staff
+                    && first_measure == second_measure
+            }
             // A track's sound state changes continuously while a knob or slider is dragged.
             (
                 Command::SetTrackSound { track: first, .. },

@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 
 use egui::{Align, Layout, Rect, RichText, ScrollArea, Sense, Vec2};
+use gscore_edit::Command;
 use gscore_edit::{BeatSpot, Cursor, Selection};
 use gscore_layout::{Places, Point};
 use gscore_model::{BeatIndex, MeasureIndex, Song, TrackIndex, VoiceIndex};
@@ -189,6 +190,11 @@ impl GuitarScoreApp {
         let mut clicked: Option<Point> = None;
         let mut drag_to: Option<Cursor> = None;
         let mut choices: Vec<MenuChoice> = Vec::new();
+        // Guitar Pro's design mode: the commands its handles and buttons made this frame.
+        let design_mode = self.view.design_mode;
+        let mut design_commands: Vec<Command> = Vec::new();
+        let mut design_drag: Option<Command> = None;
+        let mut designing = false;
         let playing = self.playback.state() == PlayState::Playing;
         // The vertical views turn over while playing: once the playing line leaves the
         // view, it goes to the top. Pages side by side turn page by page, and the
@@ -350,6 +356,37 @@ impl GuitarScoreApp {
                     }
                 }
             }
+            let point_to_screen = |p: Point| origin + arrangement.to_display(p) * scale;
+            // Guitar Pro's design mode: dashed guides, drag handles and the buttons that
+            // set how many bars a line holds. Its handles take the pointer, so the page
+            // does not select beats while one is dragged.
+            if design_mode && shown_selection.is_none() {
+                let design = super::design::Overlay {
+                    song: document.song(),
+                    track: cursor.track,
+                    staff: cursor.staff,
+                    scope: if shown.len() > 1 {
+                        None
+                    } else {
+                        Some(cursor.track)
+                    },
+                };
+                super::design::overlay(
+                    ui,
+                    &painter,
+                    places,
+                    &point_to_screen,
+                    ui.clip_rect(),
+                    zoom,
+                    theme,
+                    &design,
+                    &mut tab.design,
+                    &mut design_drag,
+                    &mut design_commands,
+                );
+                designing =
+                    tab.design.dragging() || design_drag.is_some() || !design_commands.is_empty();
+            }
             // What the pointer is on: the beat and string of whichever track's staves.
             let hit = response
                 .interact_pointer_pos()
@@ -384,8 +421,10 @@ impl GuitarScoreApp {
                 });
             });
             // A drag selects beats of the voice it started in, across bar lines and system
-            // lines; the cursor follows the drag so the keyboard can go on from there.
-            if response.drag_started()
+            // lines; the cursor follows the drag so the keyboard can go on from there. In
+            // the design mode the drag edits the layout instead.
+            if !designing
+                && response.drag_started()
                 && let Some((track, hit)) = hit
             {
                 tab.track = track.get();
@@ -426,7 +465,7 @@ impl GuitarScoreApp {
             if response.drag_stopped() {
                 tab.drag_anchor = None;
             }
-            if response.clicked() {
+            if response.clicked() && !designing {
                 tab.drag_anchor = None;
                 // A click clears a selection and moves the cursor.
                 document.editor_mut().set_selection(None);
@@ -456,6 +495,20 @@ impl GuitarScoreApp {
             if let Err(error) = self.playback.jump_to(document.song(), at) {
                 self.notice = Some(error);
             }
+        }
+        // The design mode's edits, once the page's own borrows are done: a drag continues
+        // one undo step; a button's batch is one step of its own.
+        let design_edited = design_drag.is_some() || !design_commands.is_empty();
+        if let Some(command) = design_drag {
+            self.apply_command(command, true);
+        }
+        if !design_commands.is_empty() {
+            self.apply_commands(design_commands);
+        }
+        if design_edited && let Some(tab) = self.tabs.get_mut(self.active) {
+            let cursor = tab.document.editor().cursor();
+            let revision = tab.document.editor().revision();
+            tab.shown_cursor = Some((cursor, revision));
         }
         let ctx = ui.ctx().clone();
         self.run_menu_choices(choices, &ctx);
