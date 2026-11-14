@@ -330,7 +330,7 @@ fn preview(ui: &mut egui::Ui, state: &RecentFiles, opening: bool) -> bool {
     false
 }
 
-/// An empty page-shaped box with `text` in it.
+/// An empty page-shaped box with `text` in it, wrapped to the page's width.
 fn placeholder(ui: &mut egui::Ui, text: &str) {
     let (rect, _) = ui.allocate_exact_size(
         egui::vec2(PREVIEW_WIDTH, PREVIEW_WIDTH * 297.0 / 210.0),
@@ -338,11 +338,15 @@ fn placeholder(ui: &mut egui::Ui, text: &str) {
     );
     ui.painter()
         .rect_filled(rect, 2.0, ui.visuals().faint_bg_color);
-    ui.painter().text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        text,
+    let galley = ui.painter().layout(
+        text.to_owned(),
         egui::FontId::proportional(12.0),
+        ui.visuals().weak_text_color(),
+        rect.width() - 24.0,
+    );
+    ui.painter().galley(
+        rect.center() - galley.size() / 2.0,
+        galley,
         ui.visuals().weak_text_color(),
     );
 }

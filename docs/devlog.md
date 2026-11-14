@@ -5472,3 +5472,9 @@ updated; a unit test checks the bracket on notation+TAB and its absence on a sin
 The three segments of MIDI / PM / MIDI out are one control: a hovered segment now keeps
 the resting button color instead of lighting up on its own, so only the chosen source is
 filled in the accent color. Tooltips still say what each source plays.
+
+## 2026-11-14 — The empty workspace's preview placeholder wraps
+
+"Choose a recent song to see its first page." is laid out with wrapping inside the preview
+page now, instead of running past its edges. The two start-screen snapshots show it on two
+lines.
