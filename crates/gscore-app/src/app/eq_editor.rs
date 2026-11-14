@@ -467,36 +467,38 @@ pub(super) fn eq_knobs(ui: &mut egui::Ui, block: &mut BlockSetting) -> bool {
                 .changed;
                 if band == 0 || band.saturating_add(1) == gscore_guitar::BANDS {
                     // An outer band is a shelf or a bell; the row is its Shape knob.
-                    ui.scope(|ui| {
-                        ui.spacing_mut().button_padding = vec2(2.0, 1.0);
-                        ui.spacing_mut().item_spacing = vec2(2.0, 1.0);
-                        ui.horizontal(|ui| {
-                            for choice in outer_shapes(band) {
-                                let label = if choice == BandShapeSetting::Bell {
-                                    "Bell"
-                                } else {
-                                    "Shelf"
-                                };
-                                let chosen = shape == choice.shape();
-                                let text = RichText::new(label).font(FontId::proportional(8.0));
-                                let text = if chosen { text } else { text.color(color) };
-                                if ui
-                                    .selectable_label(chosen, text)
-                                    .on_hover_text(format!(
-                                        "Band {number}: make it a {}",
-                                        choice.label().to_lowercase()
-                                    ))
-                                    .clicked()
-                                    && !chosen
-                                {
-                                    if let Some(slot) = block.eq_band_shape.get_mut(band) {
-                                        *slot = choice;
-                                    }
-                                    moved = true;
-                                }
-                            }
-                        });
-                    });
+                    let choices = outer_shapes(band);
+                    let label = |choice: BandShapeSetting| {
+                        if choice == BandShapeSetting::Bell {
+                            "Bell"
+                        } else {
+                            "Shelf"
+                        }
+                    };
+                    let tips: Vec<String> = choices
+                        .iter()
+                        .map(|choice| {
+                            format!("Band {number}: make it a {}", choice.label().to_lowercase())
+                        })
+                        .collect();
+                    let items: Vec<(&str, &str, &str, bool)> = choices
+                        .iter()
+                        .zip(&tips)
+                        .map(|(choice, tip)| (label(*choice), label(*choice), tip.as_str(), true))
+                        .collect();
+                    let chosen = choices
+                        .iter()
+                        .position(|choice| choice.shape() == shape)
+                        .unwrap_or(0);
+                    if let Some(index) =
+                        super::tiles::segments_compact_with_tips(ui, &items, chosen)
+                        && let Some(choice) = choices.get(index)
+                    {
+                        if let Some(slot) = block.eq_band_shape.get_mut(band) {
+                            *slot = *choice;
+                        }
+                        moved = true;
+                    }
                 }
                 if shape == BandShape::Bell {
                     moved |= round_knob(

@@ -28,6 +28,20 @@ pub(super) fn solo_rect(row: Rect) -> Rect {
     )
 }
 
+/// Places a small mute or solo button in `rect` with tight side padding, so the two slots
+/// (22 px apart) show two separate buttons instead of overlapping ones.
+pub(super) fn put_toggle(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    button: egui::Button<'static>,
+) -> egui::Response {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+        ui.spacing_mut().button_padding = egui::vec2(2.0, 0.0);
+        ui.add(button)
+    })
+    .inner
+}
+
 /// The volume slider's slot in a row.
 pub(super) fn volume_rect(row: Rect) -> Rect {
     let controls = controls_rect(row);

@@ -87,40 +87,36 @@ pub(super) fn header(
             }
         });
     });
-    // The right end of the header: the way to delete the shown track, then the grid's
-    // zoom (the score's magnifier buttons and its 100 % reset).
-    let right = rect.right() - 8.0;
-    let zoom_width = 106.0;
-    let zoom_left = if view.mixer {
-        right
-    } else {
-        right - zoom_width
-    };
-    let delete = Rect::from_min_size(
-        pos2(zoom_left - 6.0 - 26.0, rect.center().y - 11.0),
-        vec2(26.0, 22.0),
-    );
-    bar.scope_builder(egui::UiBuilder::new().max_rect(delete), |ui| {
-        ui.add_enabled_ui(rows.len() > 1, |ui| {
-            if icons::button(
-                ui,
-                Icon::Delete,
-                "Delete the shown track",
-                "Delete the shown track",
-            )
-            .clicked()
-            {
-                actions.push(GridAction::Command {
-                    command: Command::DeleteTrack {
-                        track: TrackIndex::new(shown),
-                    },
-                    merge: false,
-                });
-            }
-        });
-    });
-    // Only the measure columns change width; the squares stretch or shrink.
+    // The right end of the header in the grid view: the way to delete the shown track,
+    // then the grid's zoom (the score's magnifier buttons and its 100 % reset). The mixer
+    // view has neither: deleting is in its context menu, and its columns are the faders.
     if !view.mixer {
+        let zoom_width = 106.0;
+        let zoom_left = rect.right() - 8.0 - zoom_width;
+        let delete = Rect::from_min_size(
+            pos2(zoom_left - 6.0 - 26.0, rect.center().y - 11.0),
+            vec2(26.0, 22.0),
+        );
+        bar.scope_builder(egui::UiBuilder::new().max_rect(delete), |ui| {
+            ui.add_enabled_ui(rows.len() > 1, |ui| {
+                if icons::button(
+                    ui,
+                    Icon::Delete,
+                    "Delete the shown track",
+                    "Delete the shown track",
+                )
+                .clicked()
+                {
+                    actions.push(GridAction::Command {
+                        command: Command::DeleteTrack {
+                            track: TrackIndex::new(shown),
+                        },
+                        merge: false,
+                    });
+                }
+            });
+        });
+        // Only the measure columns change width; the squares stretch or shrink.
         let group = Rect::from_min_size(
             pos2(zoom_left, rect.center().y - 11.0),
             vec2(zoom_width, 22.0),
@@ -182,7 +178,7 @@ fn toggle(ui: &mut egui::Ui, rect: Rect, which: Toggle, label: &str, on: bool, t
         Toggle::Mute => style::mute_button(on),
         Toggle::Solo => style::solo_button(on),
     };
-    let response = ui.put(rect, button).on_hover_text(tip);
+    let response = mixer::put_toggle(ui, rect, button).on_hover_text(tip);
     ui.ctx()
         .accesskit_node_builder(response.id, |node| node.set_label(label));
     response.clicked()

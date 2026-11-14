@@ -5525,3 +5525,16 @@ a drum kit's chain stays its parts. For **MIDI out** Sound holds only the port a
 no chain rows, no add row, no stomp box, since the hardware synth's sound never returns
 through the chain. One picker state serves the table (its filter resets when the source
 changes), labelled "Filter the tone presets" or "Filter the programs".
+
+## 2026-11-14 — The segment selector reaches the sound chain and the grid
+
+- The same brighter segment row as the note-input voices and the source switch now draws
+  the Sound chain's tabs (Kind/Strike/String/Pickup/Output), the pickup kind and position,
+  the amp's voices and the compressor's ratios (these last three stay in their original
+  vertical columns, with a stacked segment variant), the delay's Sync/Free (vertical) and
+  its two rows of note values (horizontal), and the EQ's Shelf/Bell choice (a compact
+  variant that fits the band columns). The PM kind's icon tiles are kept as they were.
+- The grid view's M and S buttons no longer overlap: their tight padding fits each 18 px
+  slot, in the track rows and the master row.
+- In the mixer view the header's delete-track trash can is gone (the row context menu still
+  deletes); the grid view keeps it next to the zoom.
