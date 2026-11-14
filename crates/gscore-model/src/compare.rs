@@ -203,6 +203,8 @@ struct BeatContent {
     dead_slapped: bool,
     rasgueado: bool,
     text: String,
+    /// Guitar Pro's design mode: how far the beat's column is moved, in staff spaces.
+    spacing: Option<f32>,
     notes: Vec<NoteContent>,
 }
 
@@ -284,6 +286,7 @@ fn beats(voice: Option<VoiceView<'_>>) -> Vec<BeatContent> {
                 dead_slapped: beat.is_dead_slapped(),
                 rasgueado: beat.has_rasgueado(),
                 text: beat.text().to_owned(),
+                spacing: beat.spacing(),
                 notes,
             }
         })
@@ -303,6 +306,7 @@ fn compare_beat(diff: &mut Diffs, at: &str, a: &BeatContent, b: &BeatContent) {
     diff.check(at, "dead slapped", a.dead_slapped, b.dead_slapped);
     diff.check(at, "rasgueado", a.rasgueado, b.rasgueado);
     diff.check(at, "text", &a.text, &b.text);
+    diff.check(at, "beat offset", a.spacing, b.spacing);
     diff.check(at, "whammy bar", a.whammy_bar, b.whammy_bar);
     diff.check(at, "legato", a.legato, b.legato);
     diff.check(at, "vibrato", a.vibrato, b.vibrato);
@@ -363,6 +367,15 @@ pub fn settings_differences(before: &Song, after: &Song) -> Vec<Difference> {
         before.score_line_breaks(),
         after.score_line_breaks(),
     );
+    for index in 0..before.measure_count().max(after.measure_count()) {
+        let measure = MeasureIndex::new(index);
+        diff.check(
+            &format!("song, {measure}"),
+            "bar width",
+            before.song_measure_scale(measure),
+            after.song_measure_scale(measure),
+        );
+    }
     for (a, b) in before.tracks().zip(after.tracks()) {
         let at = a.index().to_string();
         diff.check(
@@ -377,6 +390,12 @@ pub fn settings_differences(before: &Song, after: &Song) -> Vec<Difference> {
                 "line break",
                 old.system_break(),
                 new.system_break(),
+            );
+            diff.check(
+                &format!("{at}, {}", old.index()),
+                "bar width",
+                old.display_scale(),
+                new.display_scale(),
             );
         }
         diff.check(&at, "color", a.color(), b.color());

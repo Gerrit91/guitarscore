@@ -368,6 +368,13 @@ impl<'a> MeasureView<'a> {
             .and_then(crate::style::SimileMark::from_gp)
     }
 
+    /// This bar's own width scale (Guitar Pro's design mode; 1 is its natural width), or
+    /// `None` when the track has no scale of its own and the song's applies. Use
+    /// [`Song::measure_scale`] for the scale that applies.
+    pub fn display_scale(&self) -> Option<f32> {
+        self.inner.display_scale()
+    }
+
     /// The clef this measure's standard-notation staff is written in, if the file stored
     /// one (GP6/GP7 do; GP3-5 do not, and the layout derives it from the instrument).
     pub fn clef(&self) -> Option<crate::style::Clef> {
@@ -504,6 +511,13 @@ impl<'a> BeatView<'a> {
             .chord_diagram
             .as_ref()
             .map(crate::techniques::ChordDiagram::from_gp)
+    }
+
+    /// Guitar Pro's design mode: how far this beat's column is moved from its natural place
+    /// (in staff spaces, negative for left), or `None` when it is not moved. The layout
+    /// reads the first moved beat of a column.
+    pub fn spacing(&self) -> Option<f32> {
+        self.inner.spacing
     }
 
     /// The octave sign on this beat, if any.

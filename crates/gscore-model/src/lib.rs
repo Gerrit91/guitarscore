@@ -55,7 +55,8 @@ pub use compare::{Difference, differences, settings_differences};
 pub use duration::{Duration, NoteValue, TimeSignature};
 pub use dynamics::Dynamic;
 pub use edit::{
-    Change, MAX_SECTION_TITLE_CHARS, MAX_STRINGS, MAX_TRACK_NAME_CHARS, MAX_TRACKS, MAX_TRANSPOSE,
+    Change, DESIGN_SCALE_RANGE, DESIGN_SPACING_RANGE, MAX_SECTION_TITLE_CHARS, MAX_STRINGS,
+    MAX_TRACK_NAME_CHARS, MAX_TRACKS, MAX_TRANSPOSE, ScaleScope,
 };
 pub use effects::{
     AccentKind, BEND_MAX_POSITION, BEND_MAX_VALUE, BeatEffect, Bend, BendKind, BendPoint,

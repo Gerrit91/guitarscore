@@ -13,6 +13,7 @@
 mod beat_flags;
 mod beats;
 mod chord;
+mod design;
 mod dynamics;
 mod effect_edits;
 mod headers;
@@ -24,6 +25,7 @@ mod song;
 mod tracks;
 
 pub use crate::validate::MAX_STRINGS;
+pub use design::{DESIGN_SCALE_RANGE, DESIGN_SPACING_RANGE, ScaleScope};
 pub use headers::MAX_SECTION_TITLE_CHARS;
 pub(crate) use page::system_break;
 pub use tracks::{MAX_TRACK_NAME_CHARS, MAX_TRACKS};
@@ -251,6 +253,18 @@ enum ChangeKind {
     },
     /// A beat's text changed; `previous` is the text before.
     BeatText { at: BeatPosition, previous: String },
+    /// A bar's width scale changed (Guitar Pro's design mode); `previous` is the scale the
+    /// file had, `None` for the natural width.
+    MeasureScale {
+        scope: ScaleScope,
+        measure: MeasureIndex,
+        previous: Option<f32>,
+    },
+    /// A beat column's offset changed; `previous` is the offset before.
+    BeatSpacing {
+        at: BeatPosition,
+        previous: Option<f32>,
+    },
     /// A lyric line changed; `previous` is its starting measure and text before.
     LyricLine {
         line: u8,
@@ -514,7 +528,9 @@ impl Change {
                 .iter()
                 .map(Change::size_estimate)
                 .fold(0_usize, usize::saturating_add),
-            ChangeKind::TrackInserted { .. }
+            ChangeKind::MeasureScale { .. }
+            | ChangeKind::BeatSpacing { .. }
+            | ChangeKind::TrackInserted { .. }
             | ChangeKind::TrackMoved { .. }
             | ChangeKind::TrackColor { .. }
             | ChangeKind::TrackFlag { .. }
@@ -919,6 +935,32 @@ impl Song {
                 beat_in(measure, *at)?.text = previous.clone();
                 Ok(())
             }),
+            ChangeKind::MeasureScale {
+                scope,
+                measure,
+                previous,
+            } => match scope {
+                ScaleScope::Song => self.edit_headers(|inner| {
+                    let header = inner
+                        .measure_headers
+                        .get_mut(measure.get())
+                        .ok_or_else(|| {
+                            ModelError::Invalid(format!("{measure}: no such measure"))
+                        })?;
+                    header.set_display_scale(*previous);
+                    Ok(())
+                }),
+                ScaleScope::Staff { track, staff } => {
+                    self.edit_measure_of(*track, *staff, *measure, |measure| {
+                        measure.set_display_scale(*previous);
+                        Ok(())
+                    })
+                }
+            },
+            ChangeKind::BeatSpacing { at, previous } => self.edit_measure_at(*at, |measure| {
+                beat_in(measure, *at)?.spacing = *previous;
+                Ok(())
+            }),
             ChangeKind::LyricLine {
                 line,
                 previous,
@@ -1217,6 +1259,8 @@ fn beat_in(measure: &mut GpMeasure, at: BeatPosition) -> Result<&mut GpBeat, Mod
         .ok_or_else(|| ModelError::Invalid(format!("{at}: the voice has {beats} beat(s)")))
 }
 
+#[cfg(test)]
+mod design_tests;
 #[cfg(test)]
 mod dynamic_tests;
 #[cfg(test)]
