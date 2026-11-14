@@ -1,4 +1,9 @@
-<p align="center"><img src="packaging/guitarscore.svg" width="112" height="112" alt="GuitarScore icon: a G bent from a steel fingerpick"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="packaging/guitarscore-logo-dark.svg">
+    <img src="packaging/guitarscore-logo.svg" width="330" alt="gscore logo: a G bent from a steel fingerpick, beside the name">
+  </picture>
+</p>
 
 # GuitarScore
 
