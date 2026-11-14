@@ -5640,3 +5640,9 @@ when a track becomes a kit, undone with it, so a new kit starts on its percussio
 alone. A file whose kit has the switch on now opens with the drum tab. Tests: the layout
 with the switch on and off, the model's switch on becoming a kit, the panel's tile with
 undo and a snapshot.
+
+## 2026-11-14 — A tile for the percussion staff
+
+A drum track's Appearance section shows the percussion staff as a tile with the percussion
+clef (on and fixed, since a kit always has it) beside the drum tab's tile, in place of the
+"Percussion staff" text; its tooltip says why it cannot be switched off.

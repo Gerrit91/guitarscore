@@ -55,6 +55,12 @@ pub(in crate::app) const TABLATURE_FACE: Face<'static> = Face::Glyph {
     size: 17.0,
     baseline: 0.0,
 };
+/// The tile of a drum kit's percussion staff: the percussion clef.
+const PERCUSSION_FACE: Face<'static> = Face::Glyph {
+    text: "\u{E069}",
+    size: 17.0,
+    baseline: 0.0,
+};
 /// The tile of slash notation: a rhythm slash, as the slash staff writes a beat.
 pub(in crate::app) const SLASH_FACE: Face<'static> = Face::Glyph {
     text: "\u{E101}",
@@ -71,13 +77,22 @@ pub(super) fn staves(
     commands: &mut Vec<(Command, bool)>,
 ) {
     ui.add_space(4.0);
-    // A drum kit is always written on a percussion staff; its one choice is the drum tab
-    // below it, which shows each hit's MIDI drum note.
+    // A drum kit is always written on a percussion staff (its tile is on and fixed); its
+    // one choice is the drum tab below it, which shows each hit's MIDI drum note.
     if snapshot.percussion {
         let staves = snapshot.staves;
         let on = staves.tablature();
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.spacing_mut().item_spacing.x = 2.0;
+            // The percussion staff, like a guitar's notation tile; a kit always shows it.
+            tiles::tile(
+                ui,
+                PERCUSSION_FACE,
+                true,
+                false,
+                "Percussion staff",
+                "The percussion staff\nA drum kit is always written on it",
+            );
             let response = tiles::tile(
                 ui,
                 TABLATURE_FACE,
@@ -87,7 +102,6 @@ pub(super) fn staves(
                 "Show a tablature below the percussion staff: each hit's MIDI drum note on \
                  the line of the kit it is stored on",
             );
-            ui.label(egui::RichText::new("Percussion staff").color(style::tokens(ui).text_weak));
             if response.clicked() {
                 // The percussion staff always shows, so the notation switch stays on with
                 // the tab off (a track must keep one staff).
