@@ -297,3 +297,170 @@ fn a_drum_kit_is_not_moved() {
     let _ = song.transpose_notes(None, 12).unwrap();
     assert_eq!(song.track(drums).unwrap().transposition(), 0);
 }
+
+/// One guitar measure with a single beat of `notes` as `(string, fret)`, `edit` changing
+/// its notes before the song is wrapped.
+fn one_beat(notes: &[(i8, i16)], edit: impl FnOnce(&mut Vec<gscore_gp::Note>)) -> Song {
+    let mut gp = test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure((4, 4), vec![vec![beat(1, notes)]])],
+    )]);
+    if let Some(beat) = gp
+        .tracks
+        .first_mut()
+        .and_then(|track| track.measures.first_mut())
+        .and_then(|measure| measure.voices.first_mut())
+        .and_then(|voice| voice.beats.first_mut())
+    {
+        edit(&mut beat.notes);
+    }
+    from_gp(gp).unwrap()
+}
+
+/// The first beat's notes as `(string, fret, written pitch)`, by string.
+fn placed(song: &Song) -> Vec<(u8, u8, u8)> {
+    let track = song.track(TrackIndex::new(0)).unwrap();
+    let beat = track
+        .measure(MeasureIndex::new(0))
+        .unwrap()
+        .voice(VoiceIndex::new(0))
+        .unwrap()
+        .beat(BeatIndex::new(0))
+        .unwrap();
+    let mut notes: Vec<(u8, u8, u8)> = beat
+        .notes()
+        .map(|note| {
+            (
+                note.string().unwrap().get(),
+                note.fret().unwrap().get(),
+                track.written_pitch(&note).unwrap().get(),
+            )
+        })
+        .collect();
+    notes.sort_unstable();
+    notes
+}
+
+#[test]
+fn a_chord_keeps_its_notes_on_separate_strings() {
+    // Open D (string 4) and C on string 5 fret 3, a whole tone down: the C becomes A# on
+    // its own string (fret 1), so the D, now a C, cannot take string 5 as it would alone;
+    // it goes to string 6 fret 8.
+    let mut song = one_beat(&[(4, 0), (5, 3)], |_| {});
+    let change = song.transpose_notes(None, -2).unwrap();
+    assert_eq!(placed(&song), [(5, 1, 46), (6, 8, 48)]);
+    song.revert(&change).unwrap();
+    assert_eq!(placed(&song), [(4, 0, 50), (5, 3, 48)]);
+}
+
+#[test]
+fn a_chord_that_cannot_be_spread_over_the_strings_stops_the_edit() {
+    // F on string 6 and the open A, a semitone down: E and G# both fit only on string 6.
+    let mut song = one_beat(&[(6, 1), (5, 0)], |_| {});
+    let before = song.clone();
+    let error = song.transpose_notes(None, -1).unwrap_err().to_string();
+    assert!(error.contains("separate strings"), "{error}");
+    assert!(differences(&before, &song).is_empty());
+}
+
+#[test]
+fn a_grace_note_follows_its_main_note_to_another_string() {
+    // Open A (string 5) with a grace note at fret 2 (B), a semitone down: the main note goes
+    // to string 6 fret 4 (G#), the grace note to string 6 fret 6 (A#).
+    let mut song = one_beat(&[(5, 0)], |notes| {
+        if let Some(note) = notes.first_mut() {
+            note.effect.grace = Some(gscore_gp::GraceEffect {
+                fret: 2,
+                ..gscore_gp::GraceEffect::default()
+            });
+        }
+    });
+    let _ = song.transpose_notes(None, -1).unwrap();
+    assert_eq!(placed(&song), [(6, 4, 44)]);
+    let grace = song.inner().tracks[0].measures[0].voices[0].beats[0].notes[0]
+        .effect
+        .grace
+        .as_ref()
+        .map(|grace| grace.fret);
+    assert_eq!(grace, Some(6));
+}
+
+/// A natural harmonic at `fret` on `string`.
+fn natural_harmonic(string: i8, fret: i16) -> Song {
+    one_beat(&[(string, fret)], |notes| {
+        if let Some(note) = notes.first_mut() {
+            note.effect.harmonic = Some(gscore_gp::HarmonicEffect::default());
+        }
+    })
+}
+
+#[test]
+fn a_natural_harmonic_moves_to_the_string_whose_open_note_it_needs() {
+    // The octave harmonic over low E (E3), a fourth up: the same harmonic over the A string.
+    let mut song = natural_harmonic(6, 12);
+    let _ = song.transpose_notes(None, 5).unwrap();
+    assert_eq!(placed(&song), [(5, 12, 57)]);
+}
+
+#[test]
+fn a_natural_harmonic_with_no_open_string_becomes_an_artificial_one() {
+    // A semitone up no open string is F: it is fretted at 1 and touched 12 frets higher.
+    let mut song = natural_harmonic(6, 12);
+    let _ = song.transpose_notes(None, 1).unwrap();
+    assert_eq!(placed(&song), [(6, 1, 53)]);
+    let harmonic = song.inner().tracks[0].measures[0].voices[0].beats[0].notes[0]
+        .effect
+        .harmonic
+        .clone()
+        .unwrap();
+    assert_eq!(harmonic.kind, gscore_gp::HarmonicType::Artificial);
+    assert_eq!(harmonic.fret, Some(12));
+}
+
+#[test]
+fn a_file_transposed_beyond_an_octave_only_comes_back() {
+    let mut gp = test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure((4, 4), vec![vec![beat(1, &[(1, 0)])]])],
+    )]);
+    gp.tracks[0].transpose_sound = 20;
+    let mut song = from_gp(gp).unwrap();
+    assert!(!song.can_transpose(1), "not further out");
+    assert!(song.can_transpose(-1));
+    let change = song.transpose_by(-1).unwrap();
+    assert_eq!(song.transposition(), Some(19), "one step, not a jump");
+    song.revert(&change).unwrap();
+    assert_eq!(
+        song.transposition(),
+        Some(20),
+        "undo puts back what was stored"
+    );
+}
+
+#[test]
+fn a_song_saved_transposed_opens_switched_on() {
+    let mut gp = test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure((4, 4), vec![vec![beat(1, &[(1, 0)])]])],
+    )]);
+    gp.tracks[0].transpose_sound = 2;
+    let song = from_gp(gp).unwrap();
+    assert!(song.transpose_active());
+    assert!(song.is_transposed());
+    assert!(!two_tracks().transpose_active());
+    assert!(!two_tracks().is_transposed());
+}
+
+#[test]
+fn tracks_transposed_differently_still_count_as_transposed() {
+    let mut song = two_tracks();
+    let _ = song.transpose_track_to(TrackIndex::new(0), 3).unwrap();
+    assert!(
+        song.transpose_active(),
+        "set as a saved song's setting, it plays"
+    );
+    assert!(song.is_transposed());
+}

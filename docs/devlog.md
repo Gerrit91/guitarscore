@@ -5295,3 +5295,23 @@ from a sound's name to one of its tones, filled by the owner:
   buttons that are already there. Bus strips have their mute and the stomp there too, and
   the master's mute/solo-all row ends with it; part strips do the same. Mixer snapshots
   regenerated.
+
+## 2026-11-14 — Review fixes on transpose-tools; gear and trash can icons
+
+Fixed from a review of the branch:
+- Moving notes fingers a beat's notes together: no two land on one string (notes that can
+  keep their own string do; the others go around them), and a chord that cannot be spread
+  fails the edit unchanged. A grace note's fret follows its main note to another string. A
+  natural harmonic moves to the string whose open note it needs, else becomes an artificial
+  harmonic with the same node.
+- One transposition limit: a file storing more than an octave only steps back towards it,
+  and undo restores the stored value (was a jump to ±12).
+- A song saved transposed opens switched on; the on/off switch works when tracks differ
+  (`Song::is_transposed`). Undo/redo no longer report the opposite transposition. Dragging
+  the toolbar value is one edit when the drag ends; a failure shows in the status bar.
+- Stems: distinct file names (`gscore_audio::stem_names`: duplicates and bus names get the
+  track number); the CLI clears the file's mute and solo first, as the app does.
+
+Icons: the gear is drawn like the ⚙️ emoji (solid body, small hole, broad teeth); the trash
+can has a handle, a tapered body and visible ribs. 45 app snapshots changed by those icons
+only (71–99 pixels each).

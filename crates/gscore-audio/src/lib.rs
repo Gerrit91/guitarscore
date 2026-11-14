@@ -22,6 +22,8 @@ pub use mixer::Bus;
 mod clock;
 mod sound_wire;
 mod soundfont;
+mod stem_names;
+pub use stem_names::{BUS_STEM_NAMES, stem_names};
 mod synth;
 #[cfg(not(target_arch = "wasm32"))]
 mod synth_player;

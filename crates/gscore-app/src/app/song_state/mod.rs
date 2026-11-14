@@ -415,19 +415,12 @@ impl SongState {
     /// [`Self::resolve`]) and the buses on the song. Called once when a song opens, before
     /// it can be edited.
     pub(crate) fn apply_to_song(&self, song: &mut Song) {
-        let resolved: Vec<(usize, Option<String>)> = self
-            .resolve(song)
-            .into_iter()
-            .map(|(track, state)| (track, state.sound.json()))
-            .collect();
-        for (track, state) in resolved {
-            let _ = song.set_track_sound_state(TrackIndex::new(track), state);
-        }
-        // The transposition travels in the block but is applied to the document, where
-        // playback reads it.
         for (track, state) in self.resolve(song) {
+            let at = TrackIndex::new(track);
+            let _ = song.set_track_sound_state(at, state.sound.json());
+            // The transposition travels in the block but is applied to the document, where
+            // playback reads it (switched on, so the song plays as it was saved).
             if state.sound.transpose != 0 {
-                let at = TrackIndex::new(track);
                 let _ = song.transpose_track_to(at, state.sound.transpose);
             }
         }

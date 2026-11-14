@@ -140,19 +140,22 @@ impl GuitarScoreApp {
     /// value in semitones, then one small button for a semitone down over one for a semitone
     /// up. The written notes and the tablature stay as they are.
     fn transpose_controls(&mut self, ui: &mut egui::Ui) {
-        let (value, active, down, up) =
-            self.document().map_or((None, false, false, false), |doc| {
-                let song = doc.song();
-                (
-                    song.transposition(),
-                    song.transpose_active(),
-                    song.can_transpose(-1),
-                    song.can_transpose(1),
-                )
-            });
+        let (value, active, down, up, transposed) =
+            self.document()
+                .map_or((None, false, false, false, false), |doc| {
+                    let song = doc.song();
+                    (
+                        song.transposition(),
+                        song.transpose_active(),
+                        song.can_transpose(-1),
+                        song.can_transpose(1),
+                        song.is_transposed(),
+                    )
+                });
         let has_song = self.document().is_some();
-        // The switch is only useful once there is a transposition to hear or bypass.
-        let switchable = has_song && value.is_some_and(|step| step != 0);
+        // The switch is only useful once there is a transposition to hear or bypass (also
+        // when the tracks are transposed differently).
+        let switchable = has_song && transposed;
         style::toolbar_group(ui, |ui| {
             // A small split pair: a semitone down over a semitone up.
             let spacing = ui.spacing().item_spacing;
@@ -182,8 +185,13 @@ impl GuitarScoreApp {
             };
             // The value: click it to type one (drag also works), 0 to 12 semitones either
             // way. The written notes stay as they are.
-            let mut typed = value.unwrap_or(0);
-            let shown = typed;
+            // While the value is dragged it is only shown; it becomes one edit (one undo
+            // step, one playback rebuild) when the drag ends.
+            let shown = value.unwrap_or(0);
+            let pending_id = ui.scope_id().with("transposition_dragged");
+            let mut typed = ui
+                .data(|data| data.get_temp::<i32>(pending_id))
+                .unwrap_or(shown);
             let field = ui.add_sized(
                 vec2(30.0, 22.0),
                 egui::DragValue::new(&mut typed)
@@ -201,10 +209,18 @@ impl GuitarScoreApp {
             ui.ctx().accesskit_node_builder(field.id, |node| {
                 node.set_label(format!("Transposition: {text} semitones"));
             });
-            if typed != shown {
-                self.run_command_from_window(Command::SetTransposition { semitones: typed })
-                    .ok();
-                ui.ctx().request_repaint();
+            if field.dragged() {
+                ui.data_mut(|data| data.insert_temp(pending_id, typed));
+            } else {
+                ui.data_mut(|data| data.remove_temp::<i32>(pending_id));
+                if typed != shown {
+                    if let Err(failure) =
+                        self.run_command_from_window(Command::SetTransposition { semitones: typed })
+                    {
+                        self.status = Some(format!("Cannot transpose: {failure}"));
+                    }
+                    ui.ctx().request_repaint();
+                }
             }
             field.on_hover_text(match value {
                 Some(step) => format!("The song sounds {step:+} semitones from what is written"),

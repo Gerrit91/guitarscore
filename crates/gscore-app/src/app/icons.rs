@@ -583,24 +583,35 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             }
         }
         Icon::Settings => {
-            // A gear as the emoji draws it: a thick body with a hole, and eight stubby
-            // teeth around it.
-            let ring = Stroke::new((size * 0.13).max(1.4), stroke.color);
-            painter.circle_stroke(center, size * 0.27, ring);
+            // A gear as the emoji draws it: a solid body with a small hole in the middle,
+            // and eight broad teeth that grow out of it.
+            let hole = size * 0.14;
+            let body = size * 0.32;
+            // The body is a thick ring: a closed path (stroked about its middle, unlike a
+            // circle's stroke) reaching from the hole to the body's rim.
+            let middle = (hole + body) * 0.5;
+            let ring: Vec<Pos2> = (0..48)
+                .map(|step| {
+                    center + Vec2::angled(std::f32::consts::TAU * step as f32 / 48.0) * middle
+                })
+                .collect();
+            painter.add(Shape::closed_line(
+                ring,
+                Stroke::new(body - hole, stroke.color),
+            ));
             let teeth = 8;
             for step in 0..teeth {
                 let angle = std::f32::consts::TAU * (step as f32) / (teeth as f32);
                 let direction = Vec2::angled(angle);
-                let across = Vec2::angled(angle + std::f32::consts::FRAC_PI_2) * (size * 0.07);
-                let tip_across = across * 0.7;
-                let inner = center + direction * (size * 0.30);
-                let outer = center + direction * (size * 0.46);
+                let across = Vec2::angled(angle + std::f32::consts::FRAC_PI_2);
+                let inner = center + direction * (body - size * 0.04);
+                let outer = center + direction * (size * 0.48);
                 painter.add(Shape::convex_polygon(
                     vec![
-                        inner - across,
-                        inner + across,
-                        outer + tip_across,
-                        outer - tip_across,
+                        inner - across * (size * 0.115),
+                        inner + across * (size * 0.115),
+                        outer + across * (size * 0.08),
+                        outer - across * (size * 0.08),
                     ],
                     stroke.color,
                     Stroke::NONE,
@@ -613,44 +624,44 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             painter.line_segment([center - vec2(0.0, half), center + vec2(0.0, half)], stroke);
         }
         Icon::Delete => {
-            // A trash can: its lid and handle, the tapered body and two ribs.
-            let top = center.y - size * 0.20;
-            let bottom = center.y + size * 0.34;
-            let half = size * 0.30;
-            painter.line_segment(
-                [pos2(center.x - half, top), pos2(center.x + half, top)],
-                stroke,
-            );
+            // A trash can: a lid with its handle, and below it a slightly tapered body with
+            // two ribs.
+            let lid = center.y - size * 0.24;
+            let lid_half = size * 0.38;
             painter.line_segment(
                 [
-                    pos2(center.x - half * 0.42, top - size * 0.09),
-                    pos2(center.x + half * 0.42, top - size * 0.09),
+                    pos2(center.x - lid_half, lid),
+                    pos2(center.x + lid_half, lid),
                 ],
                 stroke,
             );
-            for (from, to) in [(0.82, 0.64), (-0.82, -0.64)] {
+            let handle = size * 0.13;
+            painter.add(Shape::line(
+                vec![
+                    pos2(center.x - handle, lid),
+                    pos2(center.x - handle, lid - size * 0.13),
+                    pos2(center.x + handle, lid - size * 0.13),
+                    pos2(center.x + handle, lid),
+                ],
+                stroke,
+            ));
+            let top = lid + size * 0.12;
+            let bottom = center.y + size * 0.42;
+            let (top_half, bottom_half) = (size * 0.29, size * 0.23);
+            painter.add(Shape::line(
+                vec![
+                    pos2(center.x - top_half, top),
+                    pos2(center.x - bottom_half, bottom),
+                    pos2(center.x + bottom_half, bottom),
+                    pos2(center.x + top_half, top),
+                ],
+                stroke,
+            ));
+            for side in [-1.0, 1.0] {
+                let x = center.x + side * size * 0.09;
                 painter.line_segment(
-                    [
-                        pos2(center.x + half * from, top),
-                        pos2(center.x + half * to, bottom),
-                    ],
+                    [pos2(x, top + size * 0.08), pos2(x, bottom - size * 0.1)],
                     stroke,
-                );
-            }
-            painter.line_segment(
-                [
-                    pos2(center.x - half * 0.64, bottom),
-                    pos2(center.x + half * 0.64, bottom),
-                ],
-                stroke,
-            );
-            for side in [-0.20, 0.20] {
-                painter.line_segment(
-                    [
-                        pos2(center.x + size * side, top + size * 0.08),
-                        pos2(center.x + size * side, bottom - size * 0.08),
-                    ],
-                    Stroke::new(1.0, stroke.color),
                 );
             }
         }

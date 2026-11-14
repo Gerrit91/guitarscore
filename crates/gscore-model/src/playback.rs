@@ -327,7 +327,7 @@ const NODE_TOLERANCE: f64 = 0.05;
 /// The interval in semitones of the harmonic touched `frets` frets above the string's
 /// root, if a harmonic node lies there. Fret 12 is the 2nd harmonic (an octave), 7 and
 /// 19 the 3rd (+19), 5 and 24 the 4th (+24), 4, 9 and 16 the 5th (+28), ...
-fn harmonic_interval(frets: u8) -> Option<u16> {
+pub(crate) fn harmonic_interval(frets: u8) -> Option<u16> {
     // Where the fret divides the string, measured from the nut (0 nut, 1 bridge).
     let position = 1.0 - 2_f64.powf(-f64::from(frets) / 12.0);
     (2..=MAX_HARMONIC).find_map(|harmonic| {

@@ -316,15 +316,18 @@ impl GuitarScoreApp {
                     _ => None,
                 };
                 // A transposition is not visible in the score (the notes stay as written);
-                // say what happened in the status bar.
-                let transposed =
-                    document
+                // say what happened in the status bar. Undo and redo replay the command, so
+                // its step would say the opposite of what an undo did: they stay quiet.
+                let transposed = match action {
+                    Action::Plain(id) if !matches!(id, ActionId::Undo | ActionId::Redo) => document
                         .editor()
                         .last_command()
                         .and_then(|command| match command {
                             Command::TransposeSong { semitones } => Some(*semitones),
                             _ => None,
-                        });
+                        }),
+                    _ => None,
+                };
                 self.after_edit(effect, layout);
                 if let Some(semitones) = transposed {
                     self.status = Some(transpose_status(semitones));

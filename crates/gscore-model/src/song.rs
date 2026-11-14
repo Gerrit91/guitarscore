@@ -39,10 +39,15 @@ impl Song {
     /// Wraps Guitar Pro song data after checking the invariants.
     pub(crate) fn from_inner(inner: gscore_gp::Song) -> Result<Self, ModelError> {
         let stamps = inner.measure_headers.iter().map(|_| new_stamp()).collect();
+        // A song saved transposed plays transposed when it is opened again.
+        let transpose_active = inner
+            .tracks
+            .iter()
+            .any(|track| !track.percussion_track && track.transpose_sound != 0);
         let song = Song {
             inner,
             stamps,
-            transpose_active: false,
+            transpose_active,
             sound_state: None,
         };
         validate::check(&song)?;

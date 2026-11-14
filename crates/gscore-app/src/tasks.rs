@@ -1140,17 +1140,12 @@ fn export_stems(
     let mut written = 0_usize;
     // One file per track: its own sound through its chain, fader and pan, without the
     // mixer's buses (the bus stems carry those) and without the master chain (the mix does).
-    let names: Vec<String> = song
-        .tracks()
-        .map(|track| {
-            let name = track.name().trim();
-            if name.is_empty() {
-                format!("Track {}", track.index().get().saturating_add(1))
-            } else {
-                name.to_owned()
-            }
-        })
-        .collect();
+    let names = gscore_audio::stem_names(
+        &song
+            .tracks()
+            .map(|track| track.name().to_owned())
+            .collect::<Vec<_>>(),
+    );
     for (index, name) in names.iter().enumerate() {
         let mut track_song = song.clone();
         for other in 0..track_song.track_count() {
@@ -1165,7 +1160,7 @@ fn export_stems(
             &audio.engines,
         );
         let (track_models, chains) = audio.tones.resolve(&sequence);
-        let path = folder.join(format!("{base} - {}.wav", file_name(name)));
+        let path = folder.join(format!("{base} - {name}.wav"));
         write_stem(
             &path,
             &sequence,
@@ -1186,10 +1181,11 @@ fn export_stems(
         &audio.engines,
     );
     let (track_models, chains) = audio.tones.resolve(&whole);
+    let [reverb, compressor, chorus] = gscore_audio::BUS_STEM_NAMES;
     for (label, choice) in [
-        ("Reverb", &audio.buses.reverb),
-        ("Compressor", &audio.buses.compressor),
-        ("Chorus", &audio.buses.chorus),
+        (reverb, &audio.buses.reverb),
+        (compressor, &audio.buses.compressor),
+        (chorus, &audio.buses.chorus),
     ] {
         let Some(choice) = choice else {
             continue;
@@ -1201,10 +1197,12 @@ fn export_stems(
             master: None,
             comp_sends: audio.buses.comp_sends.clone(),
         };
-        match label {
-            "Reverb" => buses.reverb = Some(choice.clone()),
-            "Compressor" => buses.compressor = Some(choice.clone()),
-            _ => buses.chorus = Some(choice.clone()),
+        if label == reverb {
+            buses.reverb = Some(choice.clone());
+        } else if label == compressor {
+            buses.compressor = Some(choice.clone());
+        } else {
+            buses.chorus = Some(choice.clone());
         }
         let path = folder.join(format!("{base} - {label}.wav"));
         write_stem(
@@ -1221,26 +1219,6 @@ fn export_stems(
         written = written.saturating_add(1);
     }
     Ok(format!("Wrote {written} stem(s) into {}", folder.display()))
-}
-
-/// A name a file system can hold (no path separators or control characters), or "Track".
-fn file_name(name: &str) -> String {
-    let cleaned: String = name
-        .chars()
-        .map(|c| {
-            if c.is_control() || "/\\:*?\"<>|".contains(c) {
-                '_'
-            } else {
-                c
-            }
-        })
-        .collect();
-    let cleaned = cleaned.trim().trim_matches('.').to_owned();
-    if cleaned.is_empty() {
-        "Track".to_owned()
-    } else {
-        cleaned
-    }
 }
 
 /// Writes one stem to `path` (through a temporary file, so a failure leaves no half one).

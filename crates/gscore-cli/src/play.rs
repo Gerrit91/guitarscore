@@ -152,21 +152,25 @@ pub(crate) fn export_stems(
     let base = input
         .file_stem()
         .map_or_else(|| "stems".to_owned(), |s| s.to_string_lossy().into_owned());
-    let mut written = 0_usize;
+    // Every track goes into its stem, as in the app: the file's own mute and solo are
+    // cleared first (a soloed track would otherwise silence every other stem).
+    let mut song = song;
     for track in 0..song.track_count() {
         let at = TrackIndex::new(track);
-        let Some(view) = song.track(at) else {
-            continue;
-        };
+        let _ = song.set_track_mute(at, false);
+        let _ = song.set_track_solo(at, false);
+    }
+    let names = gscore_audio::stem_names(
+        &song
+            .tracks()
+            .map(|track| track.name().to_owned())
+            .collect::<Vec<_>>(),
+    );
+    let mut written = 0_usize;
+    for (track, name) in names.iter().enumerate() {
         if !tracks.is_empty() && !tracks.contains(&track.saturating_add(1)) {
             continue;
         }
-        let name = view.name().trim();
-        let name = if name.is_empty() {
-            format!("Track {}", track.saturating_add(1))
-        } else {
-            name.to_owned()
-        };
         // One track alone, as the mix plays it (its fader, pan and sends).
         let mut only = song.clone();
         for other in 0..only.track_count() {
@@ -178,7 +182,7 @@ pub(crate) fn export_stems(
         if modelled {
             sequence = sequence.with_modelled_guitars();
         }
-        let path = folder.join(format!("{base} - {}.wav", file_name(&name)));
+        let path = folder.join(format!("{base} - {name}.wav"));
         let file = std::fs::File::create(&path)
             .map_err(|e| CliError::Failed(format!("cannot write {}: {e}", path.display())))?;
         let mut writer = std::io::BufWriter::new(file);
@@ -190,26 +194,6 @@ pub(crate) fn export_stems(
         "Wrote {written} stem(s) into {}\n",
         folder.display()
     ))
-}
-
-/// A name a file system can hold, or "Track".
-fn file_name(name: &str) -> String {
-    let cleaned: String = name
-        .chars()
-        .map(|c| {
-            if c.is_control() || "/\\:*?\"<>|".contains(c) {
-                '_'
-            } else {
-                c
-            }
-        })
-        .collect();
-    let cleaned = cleaned.trim().trim_matches('.').to_owned();
-    if cleaned.is_empty() {
-        "Track".to_owned()
-    } else {
-        cleaned
-    }
 }
 
 /// Lists the MIDI output ports.
