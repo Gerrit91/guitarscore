@@ -5486,3 +5486,12 @@ the score through `ViewState::zoom_by`, within the existing 25-400 % range; Ctrl
 the page does the same. The gesture is read only while the pointer is over the page, and
 nonsense factors are ignored. Tested at the view level and through a `Event::Zoom` in the
 app.
+
+## 2026-11-14 — The source switch looks like the voice selector
+
+MIDI / PM / MIDI out now uses the same segment row as the voice picker: a brighter
+`control` frame around the segments, 2 px gaps, rounded segment corners, the chosen source
+in the accent color, and a disabled segment in weak text (PM on a drum kit). The shared
+helper (`tiles::segments_with_tips_enabled`) sizes each segment to its text and carries an
+enabled flag; accessible names stay "MIDI synth" / "PM Synthesis" / "MIDI out". Snapshots
+showing the track panel or the Sound chain were regenerated.

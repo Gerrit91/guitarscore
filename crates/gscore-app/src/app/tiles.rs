@@ -121,51 +121,31 @@ pub(crate) fn segments(
     chosen: usize,
     tip: &str,
 ) -> Option<usize> {
-    let tokens = style::tokens(ui);
-    let mut clicked = None;
-    egui::Frame::new()
-        .fill(tokens.control)
-        .corner_radius(5)
-        .inner_margin(2)
-        .show(ui, |ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
-            ui.horizontal(|ui| {
-                for (index, (text, label)) in items.iter().enumerate() {
-                    let on = index == chosen;
-                    let galley_width = 12.0 + 7.0 * text.chars().count() as f32;
-                    let (rect, response) =
-                        ui.allocate_exact_size(vec2(galley_width.max(36.0), 22.0), Sense::click());
-                    response.widget_info(|| {
-                        egui::WidgetInfo::selected(egui::Role::Button, true, on, *label)
-                    });
-                    let fill = if on {
-                        tokens.accent
-                    } else if response.hovered() {
-                        tokens.control_hover
-                    } else {
-                        Color32::TRANSPARENT
-                    };
-                    ui.painter().rect_filled(rect, 4.0, fill);
-                    ui.painter().text(
-                        rect.center(),
-                        Align2::CENTER_CENTER,
-                        *text,
-                        FontId::proportional(12.0),
-                        if on { tokens.on_accent } else { tokens.text },
-                    );
-                    if response.on_hover_text(tip).clicked() {
-                        clicked = Some(index);
-                    }
-                }
-            });
-        });
-    clicked
+    let items: Vec<(&str, &str, &str, bool)> = items
+        .iter()
+        .map(|(text, label)| (*text, *label, tip, true))
+        .collect();
+    segments_with_tips_enabled(ui, &items, chosen)
 }
 
 /// Like [`segments`], with a tooltip of its own for each item: `(text, label, tip)`.
 pub(crate) fn segments_with_tips(
     ui: &mut egui::Ui,
     items: &[(&str, &str, &str)],
+    chosen: usize,
+) -> Option<usize> {
+    let items: Vec<(&str, &str, &str, bool)> = items
+        .iter()
+        .map(|(text, label, tip)| (*text, *label, *tip, true))
+        .collect();
+    segments_with_tips_enabled(ui, &items, chosen)
+}
+
+/// [`segments_with_tips`] where an item can be disabled (weak text, no click), for a
+/// choice that does not apply to the track: `(text, label, tip, enabled)`.
+pub(crate) fn segments_with_tips_enabled(
+    ui: &mut egui::Ui,
+    items: &[(&str, &str, &str, bool)],
     chosen: usize,
 ) -> Option<usize> {
     let tokens = style::tokens(ui);
@@ -177,28 +157,38 @@ pub(crate) fn segments_with_tips(
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
             ui.horizontal(|ui| {
-                for (index, (text, label, tip)) in items.iter().enumerate() {
+                for (index, (text, label, tip, enabled)) in items.iter().enumerate() {
                     let on = index == chosen;
-                    let (rect, response) = ui.allocate_exact_size(vec2(36.0, 22.0), Sense::click());
+                    let galley_width = 12.0 + 7.0 * text.chars().count() as f32;
+                    let (rect, response) =
+                        ui.allocate_exact_size(vec2(galley_width.max(36.0), 22.0), Sense::click());
                     response.widget_info(|| {
-                        egui::WidgetInfo::selected(egui::Role::Button, true, on, *label)
+                        egui::WidgetInfo::selected(egui::Role::Button, *enabled, on, *label)
                     });
                     let fill = if on {
                         tokens.accent
-                    } else if response.hovered() {
+                    } else if *enabled && response.hovered() {
                         tokens.control_hover
                     } else {
                         Color32::TRANSPARENT
                     };
                     ui.painter().rect_filled(rect, 4.0, fill);
+                    let ink = if !*enabled {
+                        tokens.text_weak
+                    } else if on {
+                        tokens.on_accent
+                    } else {
+                        tokens.text
+                    };
                     ui.painter().text(
                         rect.center(),
                         Align2::CENTER_CENTER,
                         *text,
                         FontId::proportional(12.0),
-                        if on { tokens.on_accent } else { tokens.text },
+                        ink,
                     );
-                    if response.on_hover_text(*tip).clicked() {
+                    let response = response.on_hover_text(*tip);
+                    if *enabled && response.clicked() {
                         clicked = Some(index);
                     }
                 }

@@ -491,82 +491,40 @@ pub(super) fn source_switch(
     strings: bool,
 ) -> Option<gscore_play::TrackEngine> {
     use gscore_play::TrackEngine;
-    let mut chosen = None;
-    ui.horizontal_wrapped(|ui| {
-        // One segmented control: the choices touch, and only the outer corners are round.
-        // Hovering a segment keeps the control's default color, so the three read as one
-        // button; only the chosen one is filled in the accent color.
-        let resting = ui.visuals().widgets.inactive;
-        ui.visuals_mut().widgets.hovered = resting;
-        ui.spacing_mut().item_spacing.x = 0.0;
-        let left = egui::CornerRadius {
-            nw: 4,
-            sw: 4,
-            ne: 0,
-            se: 0,
-        };
-        let middle = egui::CornerRadius::ZERO;
-        let right = egui::CornerRadius {
-            nw: 0,
-            sw: 0,
-            ne: 4,
-            se: 4,
-        };
-        let mut choice = |ui: &mut egui::Ui,
-                          candidate: TrackEngine,
-                          label: &str,
-                          enabled: bool,
-                          corners: egui::CornerRadius| {
-            let selected = match (engine, candidate) {
-                (TrackEngine::Modelled(_), TrackEngine::Modelled(_)) => true,
-                _ => engine == candidate,
-            };
-            let response = ui
-                .add_enabled(
-                    enabled,
-                    egui::Button::selectable(selected, label).corner_radius(corners),
-                )
-                .on_hover_text(match candidate {
-                    TrackEngine::SoundFont => {
-                        "The internal synth plays the track with the SoundFont (General MIDI)"
-                    }
-                    TrackEngine::Modelled(_) => {
-                        "Physical modelling: the strings are synthesized and played through \
-                         the chain"
-                    }
-                    TrackEngine::MidiOut => {
-                        "A hardware synthesizer on a MIDI output port plays the track; its \
-                         sound does not come back through the mixer"
-                    }
-                });
-            // The button shows a short name; the accessible one says what the source is.
-            let accessible = match candidate {
-                TrackEngine::SoundFont => "MIDI synth",
-                TrackEngine::Modelled(_) => "PM Synthesis",
-                TrackEngine::MidiOut => "MIDI out",
-            };
-            ui.ctx().accesskit_node_builder(response.id, |node| {
-                node.set_label(accessible);
-            });
-            if !enabled {
-                response.clone().on_hover_text(
-                    "Only string instruments that are not drum kits can be played by \
-                     modelled strings",
-                );
-            }
-            if response.clicked() {
-                chosen = Some(candidate);
-            }
-        };
-        choice(ui, TrackEngine::SoundFont, "MIDI", true, left);
+    const MIDI_TIP: &str = "The internal synth plays the track with the SoundFont (General MIDI)";
+    const PM_TIP: &str =
+        "Physical modelling: the strings are synthesized and played through the chain";
+    const PM_DISABLED_TIP: &str = "Physical modelling: the strings are synthesized and played \
+         through the chain\nOnly string instruments that are not drum kits can be played by \
+         modelled strings";
+    const MIDI_OUT_TIP: &str = "A hardware synthesizer on a MIDI output port plays the track; its sound does not come \
+         back through the mixer";
+    // The short names are visible; the accessible names say what each source is.
+    let mut items = vec![
+        ("MIDI", "MIDI synth", MIDI_TIP, true),
+        (
+            "PM",
+            "PM Synthesis",
+            if strings { PM_TIP } else { PM_DISABLED_TIP },
+            strings,
+        ),
+    ];
+    #[cfg(not(target_arch = "wasm32"))]
+    items.push(("MIDI out", "MIDI out", MIDI_OUT_TIP, true));
+    let chosen = match engine {
+        TrackEngine::SoundFont => 0,
+        TrackEngine::Modelled(_) => 1,
         #[cfg(not(target_arch = "wasm32"))]
-        choice(ui, pm, "PM", strings, middle);
+        TrackEngine::MidiOut => 2,
         #[cfg(target_arch = "wasm32")]
-        choice(ui, pm, "PM", strings, right);
-        #[cfg(not(target_arch = "wasm32"))]
-        choice(ui, TrackEngine::MidiOut, "MIDI out", true, right);
-    });
-    chosen
+        TrackEngine::MidiOut => 0,
+    };
+    let clicked = super::tiles::segments_with_tips_enabled(ui, &items, chosen)?;
+    Some(match clicked {
+        0 => TrackEngine::SoundFont,
+        1 => pm,
+        _ => TrackEngine::MidiOut,
+    })
 }
 
 /// The General MIDI programs (or, for a drum track, the percussion bank's kits), grouped by
