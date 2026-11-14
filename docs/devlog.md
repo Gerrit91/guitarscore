@@ -5343,8 +5343,9 @@ live on a branch, `feature/design-mode`, in four steps:
   (scale 1, no offsets).
 - **Commands and app.** `set_measure_scale` (`width=` in percent or `auto`, `track`
   omitted for the song's) and `set_beat_spacing` (`offset=` in hundredths), with
-  round-trip, `panic_hunt` and undo tests. The palette's design switch (a grid icon under
-  the voices, as in Guitar Pro) shows dashed guides and drag handles; a barline drag sets
+  round-trip, `panic_hunt` and undo tests. The palette's Staff row has a design tile
+  (right after the line-break tile, a guide with its drag handle) that shows dashed guides
+  and drag handles; a barline drag sets
   the bar's width, a column drag moves the beat, both merged into one undo step; a yellow
   guide snaps to a nearby bar line; `+` ends the line one bar earlier (its remaining bars
   stretch into the room), `-` gives the next line's first bar back (or, when no break holds

@@ -17,7 +17,6 @@ use super::GuitarScoreApp;
 use super::edit_dynamics::{self, DynamicsSnapshot};
 use super::edit_effects::{BeatState, EffectsState, LyricsPreview, NoteState};
 use super::edit_staff::{self, StaffState};
-use super::icons::{self, Icon};
 use super::style;
 use super::tiles::{self, Face};
 use super::toolbar::key_hint;
@@ -337,6 +336,7 @@ impl GuitarScoreApp {
                     &snapshot,
                     &hint,
                     &mut commands,
+                    &mut self.view.design_mode,
                 );
                 if beat_text == Some(ActionId::EditBeatText) {
                     tab.edit_palette.effects.open_beat_text(&snapshot);
@@ -365,10 +365,6 @@ impl GuitarScoreApp {
                             snapshot.cursor.voice.get(),
                         ) {
                             tab.edit_palette.pending_voice = Some(voice);
-                        }
-                        // Guitar Pro's design-mode switch, beside the voices.
-                        if design_toggle(ui, self.view.design_mode) {
-                            self.view.design_mode = !self.view.design_mode;
                         }
                     });
                     note_length(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
@@ -1134,19 +1130,4 @@ fn note_value_label(value: u16) -> String {
     } else {
         format!("1/{value}")
     }
-}
-
-/// Guitar Pro's design-mode switch (under the voices, where Guitar Pro keeps it): whether
-/// the page shows the layout handles. True when it was clicked this frame.
-fn design_toggle(ui: &mut egui::Ui, on: bool) -> bool {
-    icons::toggle_button(
-        ui,
-        Icon::Grid,
-        "Design mode",
-        "Design mode: drag the handles above the staff to move a beat or change a bar's \
-         width; + and - at the end of a line fit fewer or more bars, and x puts a line's \
-         layout back.",
-        on,
-    )
-    .clicked()
 }
