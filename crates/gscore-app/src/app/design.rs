@@ -160,6 +160,18 @@ pub(super) fn overlay(
                 );
                 let id = ui.scope_id().with(("design_handle", handle_key(handle)));
                 let response = ui.interact(rect, id, Sense::click_and_drag());
+                let label = match handle {
+                    Handle::Column(at) => format!(
+                        "Move beat {} of measure {}",
+                        at.beat.get().saturating_add(1),
+                        at.measure.get().saturating_add(1)
+                    ),
+                    Handle::Barline(measure) => {
+                        format!("Barline of measure {}", measure.get().saturating_add(1))
+                    }
+                };
+                response
+                    .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
                 let hot = active || response.hovered();
                 if response.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
@@ -221,6 +233,13 @@ pub(super) fn overlay(
             let rect = Rect::from_center_size(end + Vec2::new(offset, 0.0), Vec2::new(16.0, 16.0));
             let id = ui.scope_id().with(("design_button", system_index, index));
             let response = ui.interact(rect, id, Sense::click());
+            let description = match *label {
+                "+" => "Widen the line's bars",
+                "-" => "Narrow the line's bars",
+                _ => "Reset the line's layout",
+            };
+            response
+                .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, description));
             if response.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }

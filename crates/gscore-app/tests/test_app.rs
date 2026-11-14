@@ -369,6 +369,97 @@ fn the_page_matches_its_snapshot_in_both_themes() {
 }
 
 #[test]
+fn the_design_mode_overlay_matches_its_snapshot() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .wgpu()
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/steel_guitar_dadgad.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    // The design mode's guides, handles and buttons (a view mode, not part of the song).
+    harness.state_mut().view_mut().design_mode = true;
+    harness.run();
+    harness.snapshot("design_mode");
+    harness.state_mut().view_mut().theme = ThemeChoice::Dark;
+    harness.run();
+    harness.snapshot("design_mode_dark");
+}
+
+#[test]
+fn the_design_mode_buttons_widen_and_reset_a_line() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    harness.state_mut().view_mut().design_mode = true;
+    harness.run();
+    let scale = |harness: &Harness<'_, GuitarScoreApp>| {
+        harness
+            .state()
+            .document()
+            .expect("a document")
+            .song()
+            .measure_scale(
+                gscore_model::TrackIndex::new(0),
+                gscore_model::StaffIndex::new(0),
+                gscore_model::MeasureIndex::new(0),
+            )
+    };
+    assert!((scale(&harness) - 1.0).abs() < 1e-6);
+    harness.get_by_label("Widen the line's bars").click();
+    harness.run();
+    assert!(scale(&harness) > 1.0, "{}", scale(&harness));
+    // One undo puts the whole press back (the Edit menu, as a user would).
+    harness.get_by_label("Edit").click();
+    harness.run();
+    harness.get_by_label_contains("Undo ctrl+z").click();
+    harness.run();
+    assert!((scale(&harness) - 1.0).abs() < 1e-6);
+    // The other way, then the reset button puts the line back.
+    harness.get_by_label("Narrow the line's bars").click();
+    harness.run();
+    assert!(scale(&harness) < 1.0, "{}", scale(&harness));
+    harness.get_by_label("Reset the line's layout").click();
+    harness.run();
+    assert!((scale(&harness) - 1.0).abs() < 1e-6, "{}", scale(&harness));
+}
+
+#[test]
+fn a_barline_dragged_in_the_design_mode_widens_the_bar() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    harness.state_mut().view_mut().design_mode = true;
+    harness.run();
+    let from = harness.get_by_label("Barline of measure 1").rect().center();
+    harness.drag_at(from);
+    harness.step();
+    let to = from + egui::vec2(60.0, 0.0);
+    harness.hover_at(to);
+    harness.step();
+    harness.hover_at(to);
+    harness.step();
+    harness.drop_at(to);
+    harness.run();
+    let scale = harness
+        .state()
+        .document()
+        .expect("a document")
+        .song()
+        .measure_scale(
+            gscore_model::TrackIndex::new(0),
+            gscore_model::StaffIndex::new(0),
+            gscore_model::MeasureIndex::new(0),
+        );
+    assert!(scale > 1.05, "the drag widened the bar: {scale}");
+}
+
+#[test]
 fn the_first_start_asks_about_updates_and_remembers_a_no() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))
