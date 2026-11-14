@@ -18,6 +18,12 @@ mod limiter;
 mod meters;
 mod mixer;
 pub use mixer::Bus;
+
+/// The kit part a General MIDI drum note is mixed in: 0 kick, 1 snare, 2 hi-hat, 3 toms,
+/// 4 cymbals, 5 the rest (the order of a drum track's parts).
+pub fn drum_part(key: u8) -> usize {
+    rustysynth::drum_part(i32::from(key))
+}
 #[cfg(not(target_arch = "wasm32"))]
 mod clock;
 mod sound_wire;

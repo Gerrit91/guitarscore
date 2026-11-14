@@ -10,6 +10,7 @@ use gscore_play::Timeline;
 
 use super::GuitarScoreApp;
 use super::icons::{self, Icon};
+use super::note_tools::NoteTool;
 use super::style;
 use super::tiles;
 use crate::state::MeasureSelection;
@@ -40,6 +41,15 @@ const TRANSPORT_BUTTONS: f32 = 255.0;
 const ZOOM_GESTURE_TIP: &str = "A trackpad pinch or Cmd+scroll zooms the score in and out";
 #[cfg(not(target_os = "macos"))]
 const ZOOM_GESTURE_TIP: &str = "Ctrl+scroll zooms the score in and out";
+
+/// The note tools' toolbar buttons, right to left, and the narrowest toolbar that still
+/// shows them.
+const NOTE_TOOL_BUTTONS: [(NoteTool, Icon); 3] = [
+    (NoteTool::Drums, Icon::DrumMap),
+    (NoteTool::Keyboard, Icon::PianoKeys),
+    (NoteTool::Fretboard, Icon::Fretboard),
+];
+const NOTE_TOOLS_MIN_WIDTH: f32 = 1100.0;
 
 impl GuitarScoreApp {
     /// " (ctrl+z)": the keys bound to `action`, for a tooltip.
@@ -96,6 +106,20 @@ impl GuitarScoreApp {
                     self.open_tuner();
                 }
                 self.transpose_controls(ui);
+                // The note tools, right to left so they read fretboard, keyboard, drums.
+                // A narrow window leaves them to the Tools menu, so the player keeps its
+                // room in the middle.
+                let tools: &[(NoteTool, Icon)] = if row.width() >= NOTE_TOOLS_MIN_WIDTH {
+                    &NOTE_TOOL_BUTTONS
+                } else {
+                    &[]
+                };
+                for &(tool, icon) in tools {
+                    let open = self.note_tools.is_open(tool);
+                    if icons::toggle_button(ui, icon, tool.title(), tool.tip(), open).clicked() {
+                        self.toggle_note_tool(tool);
+                    }
+                }
                 if icons::toolbar_button(ui, Icon::History, "History", "Edit history…").clicked()
                 {
                     self.open_history();

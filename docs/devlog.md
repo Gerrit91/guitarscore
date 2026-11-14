@@ -5598,3 +5598,23 @@ them (`canvas::crisp_line`): the ends, and the side the thickness starts at. The
 is a whole number of pixels, and a line thinner than a pixel is drawn lighter, as before.
 Slanted lines are unchanged. Snapshots that show a page were regenerated (line edges moved
 by under a pixel); unit tests cover the shared edge at several zooms and pixel densities.
+
+## 2026-11-14 — Note tools: fretboard, keyboard and drum map
+
+- Three floating windows show the notes of the cursor's beat (`app/note_tools.rs`): a
+  **fretboard** (the staff's strings, 24 frets spaced as on a neck, each note a circle
+  with its name), a **piano keyboard** (C1 to C7, the beat's keys in the accent blue) and
+  a **drum map** (General MIDI notes 35 to 81 with their names and the kit part each is
+  mixed in; the beat's drums marked).
+- A click enters a note, or takes out the note that is there: a fret on a string; a key,
+  which goes to the lowest fret on a string the beat does not use; a drum (on a drum
+  track), which goes on a free string of the kit. Each is one `SetFret` or `ClearNote`,
+  so one undo step, heard like a typed note.
+- They open and close from three toolbar buttons at the top right (new icons; left to the
+  Tools menu when the toolbar is narrower than 1100 points, so the player keeps its room)
+  and from Tools, and close on Escape. They do not take the keyboard: typing in the score
+  goes on while they are open.
+- `gscore-audio::drum_part` exposes the synthesizer fork's note-to-part map to the app.
+- Tests: the board's and the keyboard's geometry, the drum names and parts, where a key
+  goes; in the app, each tool opens, shows the beat and enters and removes a note, plus a
+  snapshot. Snapshots of windows wide enough for the new buttons were regenerated.

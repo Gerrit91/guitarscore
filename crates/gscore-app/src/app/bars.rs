@@ -278,6 +278,19 @@ impl GuitarScoreApp {
                     self.open_tuner();
                     ui.close();
                 }
+                ui.separator();
+                // The note tools: each entry opens its window, or closes it again.
+                for tool in super::note_tools::NoteTool::ALL {
+                    let mut open = self.note_tools.is_open(tool);
+                    if ui
+                        .checkbox(&mut open, tool.title())
+                        .on_hover_text(tool.tip())
+                        .clicked()
+                    {
+                        self.toggle_note_tool(tool);
+                        ui.close();
+                    }
+                }
             });
             ui.menu_button("Help", |ui| {
                 #[cfg(not(target_arch = "wasm32"))]
