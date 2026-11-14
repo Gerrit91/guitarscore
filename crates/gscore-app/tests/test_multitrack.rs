@@ -190,7 +190,7 @@ fn empty_staves_can_be_hidden_from_the_view_menu() {
 fn the_mixer_matches_its_snapshot() {
     let mut harness = app_with_mixer_view();
     // The tracks, the master (a waveform for all tracks) and the metronome's fader.
-    harness.snapshot("mixer_view");
+    harness.snapshot_options("mixer_view", &meter_tolerance());
 }
 
 #[test]
@@ -202,7 +202,7 @@ fn the_mixer_shows_what_plays_and_what_does_not() {
     harness.run();
     harness.get_by_label("Solo Rhythm Guitar").click();
     harness.run();
-    harness.snapshot("mixer_mute_solo");
+    harness.snapshot_options("mixer_mute_solo", &meter_tolerance());
     // The same in the song grid: the muted and the unsoloed rows' squares and names dim.
     harness.get_by_label("Grid view").click();
     harness.run();
@@ -226,7 +226,7 @@ fn a_bus_strip_opens_its_window_from_the_stomp_box() {
         .get_by_label("Sound chain for the reverb bus")
         .click();
     harness.run();
-    harness.snapshot("mixer_stomp_reverb_bus");
+    harness.snapshot_options("mixer_stomp_reverb_bus", &meter_tolerance());
 }
 
 #[test]
@@ -325,7 +325,7 @@ fn a_click_on_a_strip_selects_its_track() {
         .cursor();
     assert_eq!(cursor.track.get(), 2);
     // The strip now carries the selection's background (the snapshot shows it).
-    harness.snapshot("mixer_selected_track");
+    harness.snapshot_options("mixer_selected_track", &meter_tolerance());
     // A click on the first strip's background goes back.
     let strip = harness.get_by_label("Track 1: Clean Guitar").rect();
     let at = egui::pos2(strip.left() + 6.0, strip.center().y);
@@ -561,10 +561,11 @@ fn the_grid_header_deletes_the_shown_track_and_zooms_the_song() {
     );
 }
 
-/// Snapshot options for a wide mixer with many thin meters and needles, whose edge pixels
-/// the GitHub runner's software GPU anti-aliases a little differently (11 and 13 pixels
-/// past 0.6, none past 1.5): a colour tolerance of 2 (YIQ distance) per pixel, as for the
-/// EQ curve in `test_app.rs`. A moved strip or border differs by far more.
+/// Snapshot options for a mixer: many thin meters and needles, whose edge pixels the GitHub
+/// runner's software GPU anti-aliases a little differently (11 to 13 pixels past the 0.6
+/// threshold, none past 1.5, measured on the master, drum-parts, plain, mute/solo and bus
+/// snapshots): a colour tolerance of 2 (YIQ distance) per pixel, as for the EQ curve in
+/// `test_app.rs`. A moved strip or border differs by far more.
 fn meter_tolerance() -> egui_kittest::SnapshotOptions {
     egui_kittest::SnapshotOptions::new().threshold(2.0)
 }

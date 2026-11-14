@@ -5662,3 +5662,12 @@ with the note, so it is one undo step. Tested on the fretboard and the drum map.
 `while is_busy()` wait after "Open selected song" never stepped and an open still running
 was never awaited; 8 fixed frames were not always enough. It now uses `settle` (steps
 first, then waits for background jobs), and a failure reports the notice.
+
+## 2026-11-14 — The remaining mixer snapshots allow the runner's meter edges
+
+CI failed `mixer_view`, `mixer_mute_solo` and `mixer_stomp_reverb_bus` with 12 pixels past
+the 0.6 threshold each, none past 1.5: the same software-GPU anti-aliasing of the thin
+meters that `meter_tolerance()` (threshold 2.0) was added for on the master and
+drum-parts snapshots. Every mixer snapshot now uses it, `mixer_selected_track` included
+(it had not failed yet); the grid's `grid_mute_solo` stays strict because it shows no
+meters.
