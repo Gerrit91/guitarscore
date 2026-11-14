@@ -500,6 +500,10 @@ impl GuitarScoreApp {
             }
         };
         self.apply_command(command, false);
+        // A note put in is heard, like a typed fret; taking one out is silent.
+        if !there {
+            self.audition(beat.at, string, ctx);
+        }
     }
 }
 

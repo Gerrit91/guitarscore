@@ -29,8 +29,11 @@ merged). This file says what is there and what is left.
 
 - The windows show only the cursor's beat, not a selection of several beats, and not the
   notes sounding while playing.
-- A click is not heard on its own beyond what entering a note already plays; there is no
-  "listen only" mode.
+- An entered note is heard (like a typed fret), but there is no "listen only" mode that
+  sounds a fret, key or drum without entering it.
+- Drum tracks have no tablature (they are always written on a percussion staff, see
+  `gscore-layout/src/score/part.rs`), so the MIDI numbers of a drum part are visible only
+  in the drum map, for the cursor's beat. A drum tab is the owner's call.
 - The fretboard is right-handed only, shows no capo, no scale or chord overlay, and its
   note names have no octave. A keyboard track with two staves shows the cursor's staff.
 - The keyboard's range is fixed (C1 to C7); pitches outside it are not shown.

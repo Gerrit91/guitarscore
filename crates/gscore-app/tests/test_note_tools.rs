@@ -104,6 +104,56 @@ fn the_fretboard_shows_the_beat_and_a_click_enters_a_note() {
     assert!(harness.query_by_label_contains("Fretboard: ").is_none());
 }
 
+/// A note entered with a tool is heard like a typed fret; taking it out is silent.
+#[test]
+fn a_note_entered_on_the_fretboard_is_heard() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = std::env::temp_dir().join(format!("gscore-note-tools-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let font = dir.join("sine.sf2");
+    std::fs::write(&font, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = app_with("basic/steel_guitar_dadgad.gp");
+    harness.state_mut().playback_mut().use_soundfont(font);
+    harness.get_by_label("Fretboard").click();
+    harness.run();
+    // The first note starts the synthesizer; notes are heard once the SoundFont is loaded.
+    harness.get_by_label_contains("Fretboard: ").click();
+    harness.run();
+    let started = Instant::now();
+    while harness.state().playback().is_loading() && harness.state().playback().error().is_none() {
+        assert!(started.elapsed() < Duration::from_secs(10), "never loaded");
+        harness.step();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    if let Some(error) = harness.state().playback().error() {
+        eprintln!("skipped: no usable audio device ({error})");
+        std::fs::remove_dir_all(dir).ok();
+        return;
+    }
+    // Let the first note end, then take it out (silent) and put it in again (heard).
+    let started = Instant::now();
+    while harness.state().playback().auditioning().is_some() {
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "the note kept sounding"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    harness.get_by_label_contains("Fretboard: ").click();
+    harness.run();
+    assert_eq!(beat_notes(&harness), [(6, 0)]);
+    assert_eq!(harness.state().playback().auditioning(), None);
+    harness.get_by_label_contains("Fretboard: ").click();
+    harness.run();
+    assert_eq!(beat_notes(&harness).len(), 2);
+    assert!(
+        harness.state().playback().auditioning().is_some(),
+        "the entered note is heard"
+    );
+    std::fs::remove_dir_all(dir).ok();
+}
+
 #[test]
 fn the_keyboard_shows_the_beat_and_a_click_enters_a_note() {
     let mut harness = app_with("basic/steel_guitar_dadgad.gp");

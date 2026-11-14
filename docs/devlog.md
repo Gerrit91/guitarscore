@@ -5618,3 +5618,10 @@ by under a pixel); unit tests cover the shared edge at several zooms and pixel d
 - Tests: the board's and the keyboard's geometry, the drum names and parts, where a key
   goes; in the app, each tool opens, shows the beat and enters and removes a note, plus a
   snapshot. Snapshots of windows wide enough for the new buttons were regenerated.
+
+## 2026-11-14 — A note entered with a note tool is heard
+
+A click on the fretboard, the keyboard or the drum map applied its command without sounding
+the note. It now auditions the entered note like a typed fret (`GuitarScoreApp::audition`,
+under the "hear entered notes" setting); taking a note out stays silent. Tested with the
+sine SoundFont, like the typed fret.
