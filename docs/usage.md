@@ -77,7 +77,7 @@ synthesis)", on by default). Every other instrument, and the drums, stay on the 
   bass program starts on a built-in tone. The track panel on the right lists the built-in
   tones and the ones you saved; clicking one gives it to the track.
 - **Sound chain.** The track panel's "Sound chain" button (and the "Sound chain" bar
-  under the knobs of every mixer strip) opens the chain of the track: "Played by" chooses the strings or the SoundFont, the strings'
+  under the two rows of knobs on every mixer strip) opens the chain of the track: "Played by" chooses the strings or the SoundFont, the strings'
   tabs set how they are plucked and ring, and up to five blocks follow: Drive, Amp, Cab,
   Room, Reverb, Comp, EQ, Chorus and Delay. The Amp plays direct; put a Cab block after it
   for its speaker (a built-in cabinet, or an impulse response from a WAV file). "Save

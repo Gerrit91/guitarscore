@@ -5246,3 +5246,14 @@ from a sound's name to one of its tones, filled by the owner:
   cost every strip (buses too) 40 points of fader and still needed a label; the bar is a
   larger target than the icon and says what it does. The chain is also still reachable from
   the track panel. Mixer snapshots regenerated.
+
+## 2026-11-14 — Two rows of knobs on a mixer strip; a larger way into the sound chain
+
+- The one-row strip with a thin "Sound chain" bar still read as cramped, so the strip now
+  has two knob rows: pan, reverb and chorus above; the compressor send and (for a kit) its
+  Room send below, with full captions. Under them the "Sound chain" bar is taller (26
+  points, 12-point text, a larger stomp box), and the faders still have room. Bus strips,
+  which have no knobs of their own, use their whole top for a large "Edit…" button instead
+  of a thin bar; the master keeps its pan and the chain bar. The drum part strips keep
+  their pan and Room knobs and the same bar, aligned with the tracks. The mixer snapshots
+  were regenerated.

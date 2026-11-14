@@ -15,20 +15,21 @@ use super::{GridAction, GridView, ROW_HEIGHT};
 use crate::app::sound_chain::DraggedBlock;
 use crate::app::{icons, instrument, style};
 
-/// One strip's width (four knobs across the top: pan, reverb, chorus, comp).
+/// One strip's width (two rows of knobs at the top: pan and the sends).
 const STRIP_WIDTH: f32 = 140.0;
 /// A drum part's strip, narrower than a track's (its fader still fits: the fixed parts of
 /// the fader take 100 points).
 const PART_STRIP_WIDTH: f32 = 116.0;
-/// Height of the knob row at the top of a strip (pan, reverb, chorus and their labels).
-const TOP_HEIGHT: f32 = 40.0;
+/// Height of the two knob rows at the top of a strip (pan, reverb, chorus above; comp and
+/// a kit's room below, with their labels).
+const TOP_HEIGHT: f32 = 76.0;
 /// A knob's diameter, and the distance between knob centres.
-const KNOB_SIZE: f32 = 20.0;
-const KNOB_SPACING: f32 = 32.0;
+const KNOB_SIZE: f32 = 24.0;
+const KNOB_SPACING: f32 = 40.0;
 /// The bar under the knobs: the way into the strip's sound chain (or a bus's window). It
 /// is wide and named, so it is found without hunting for a small icon.
-const CHAIN_HEIGHT: f32 = 17.0;
-const CHAIN_GAP: f32 = 4.0;
+const CHAIN_HEIGHT: f32 = 26.0;
+const CHAIN_GAP: f32 = 2.0;
 /// Height of the fixed block under the fader (dB, mute/solo, name, preset, color).
 const BOTTOM_HEIGHT: f32 = 80.0;
 /// The gain marks beside a fader, in dB. The fader's travel is logarithmic (see
@@ -464,11 +465,17 @@ fn bus_strip(
         Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
     );
     let inner = rect.shrink2(vec2(8.0, 6.0));
-    let (_, chain, fader_area, bottom) = layout(inner);
+    let (top, _, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
+    // A bus has no knobs of its own, so the whole top is its way into its window: a large,
+    // named button rather than a small icon or a thin bar.
+    let edit = Rect::from_center_size(
+        pos2(top.center().x, top.top() + 30.0),
+        vec2(inner.width() - 2.0, 40.0),
+    );
     if chain_button(
         &mut strip,
-        chain,
+        edit,
         id,
         &format!("Sound chain for the {} bus", name.to_lowercase()),
         "Edit…",
@@ -1056,7 +1063,7 @@ fn chain_button(
     let color = visuals.fg_stroke.color;
     let galley = ui
         .painter()
-        .layout_no_wrap(text.to_owned(), FontId::proportional(10.0), color);
+        .layout_no_wrap(text.to_owned(), FontId::proportional(12.0), color);
     let total = 12.0 + 4.0 + galley.size().x;
     let start = rect.center().x - total / 2.0;
     let icon = Rect::from_min_size(pos2(start, rect.center().y - 6.0), vec2(12.0, 12.0));
@@ -1113,8 +1120,8 @@ fn parts_arrow(ui: &mut egui::Ui, rect: Rect, track: usize, open: bool) -> bool 
         .clicked()
 }
 
-/// The knob row: pan, and for a track its reverb and chorus sends (the master has only its
-/// pan). Each knob has a small caption underneath.
+/// The two knob rows: pan, reverb and chorus above; the compressor send and, for a drum
+/// kit, its own Room send below. Each knob has a caption underneath.
 #[allow(clippy::too_many_arguments)]
 fn knobs(
     ui: &mut egui::Ui,
@@ -1126,33 +1133,27 @@ fn knobs(
     name: &str,
     actions: &mut Vec<GridAction>,
 ) {
-    let knob_y = area.top() + KNOB_SIZE / 2.0 + 2.0;
-    let at = |dx: f32| {
-        Rect::from_center_size(
-            pos2(area.center().x + dx, knob_y),
-            vec2(KNOB_SIZE, KNOB_SIZE),
-        )
+    let row1 = area.top() + KNOB_SIZE / 2.0 + 2.0;
+    let row2 = row1 + 36.0;
+    let at = |dx: f32, y: f32| {
+        Rect::from_center_size(pos2(area.center().x + dx, y), vec2(KNOB_SIZE, KNOB_SIZE))
     };
     let caption = |ui: &egui::Ui, rect: Rect, text: &str| {
         ui.painter().text(
             pos2(rect.center().x, rect.bottom() + 2.0),
             Align2::CENTER_TOP,
             text,
-            FontId::proportional(8.0),
+            FontId::proportional(8.5),
             ui.visuals().weak_text_color(),
         );
     };
-    // Four knobs side by side (pan, reverb, chorus, comp), or five for a drum kit (its own
-    // Room send beside them); the captions fit under them.
-    let step = match (sends.is_some(), room.is_some()) {
-        (true, true) => 24.5,
-        (true, false) => 30.0,
-        _ => KNOB_SPACING,
-    };
-    let pan_rect = match (sends.is_some(), room.is_some()) {
-        (true, true) => at(-2.0 * step),
-        (true, false) => at(-1.5 * step),
-        _ => at(0.0),
+    // Two rows of knobs: pan, reverb and chorus above; the compressor send and a kit's
+    // Room send below. The wider spacing fits the full names.
+    let step = KNOB_SPACING;
+    let pan_rect = if sends.is_some() {
+        at(-step, row1)
+    } else {
+        at(0.0, row1)
     };
     let knob = mixer::pan_knob(ui, pan_rect, pan, index, &format!("Pan {name}"));
     caption(ui, pan_rect, "Pan");
@@ -1179,8 +1180,71 @@ fn knobs(
         return;
     };
     let track = TrackIndex::new(index);
+    let reverb_rect = at(0.0, row1);
+    let knob = mixer::send_knob(
+        ui,
+        reverb_rect,
+        reverb,
+        ("reverb", index),
+        &format!("Reverb {name}"),
+        "Reverb send (into the reverb bus, whatever plays the track)",
+        0,
+    );
+    caption(ui, reverb_rect, "Reverb");
+    if knob.boundary {
+        actions.push(GridAction::BreakMerge);
+    }
+    if let Some((reverb, merge)) = knob.change {
+        actions.push(GridAction::Command {
+            command: Command::SetTrackReverb { track, reverb },
+            merge,
+        });
+    }
+    let chorus_rect = at(step, row1);
+    let knob = mixer::send_knob(
+        ui,
+        chorus_rect,
+        chorus,
+        ("chorus", index),
+        &format!("Chorus {name}"),
+        "Chorus send (into the shared chorus bus)",
+        0,
+    );
+    caption(ui, chorus_rect, "Chorus");
+    if knob.boundary {
+        actions.push(GridAction::BreakMerge);
+    }
+    if let Some((chorus, merge)) = knob.change {
+        actions.push(GridAction::Command {
+            command: Command::SetTrackChorus { track, chorus },
+            merge,
+        });
+    }
+    // The send into the mixer's compressor bus (parallel compression): it is the song's,
+    // kept in its notes, so it is no undoable command.
+    let comp_rect = if room.is_some() {
+        at(-step, row2)
+    } else {
+        at(0.0, row2)
+    };
+    let knob = mixer::send_knob(
+        ui,
+        comp_rect,
+        comp,
+        ("comp", index),
+        &format!("Comp {name}"),
+        "Send into the compressor bus (parallel compression)",
+        0,
+    );
+    caption(ui, comp_rect, "Comp");
+    if let Some((comp, _)) = knob.change {
+        actions.push(GridAction::CompSend {
+            track: index,
+            value: comp,
+        });
+    }
     if let Some(room) = room {
-        let room_rect = at(-step);
+        let room_rect = at(0.0, row2);
         let knob = mixer::send_knob(
             ui,
             room_rect,
@@ -1200,85 +1264,6 @@ fn knobs(
                 value,
             });
         }
-    }
-    let reverb_rect = if room.is_some() {
-        at(0.0)
-    } else {
-        at(-0.5 * step)
-    };
-    let knob = mixer::send_knob(
-        ui,
-        reverb_rect,
-        reverb,
-        ("reverb", index),
-        &format!("Reverb {name}"),
-        "Reverb send (into the reverb bus, whatever plays the track)",
-        0,
-    );
-    caption(
-        ui,
-        reverb_rect,
-        if room.is_some() { "Rev" } else { "Reverb" },
-    );
-    if knob.boundary {
-        actions.push(GridAction::BreakMerge);
-    }
-    if let Some((reverb, merge)) = knob.change {
-        actions.push(GridAction::Command {
-            command: Command::SetTrackReverb { track, reverb },
-            merge,
-        });
-    }
-    let chorus_rect = if room.is_some() {
-        at(1.0 * step)
-    } else {
-        at(0.5 * step)
-    };
-    let knob = mixer::send_knob(
-        ui,
-        chorus_rect,
-        chorus,
-        ("chorus", index),
-        &format!("Chorus {name}"),
-        "Chorus send (into the shared chorus bus)",
-        0,
-    );
-    caption(
-        ui,
-        chorus_rect,
-        if room.is_some() { "Cho" } else { "Chorus" },
-    );
-    if knob.boundary {
-        actions.push(GridAction::BreakMerge);
-    }
-    if let Some((chorus, merge)) = knob.change {
-        actions.push(GridAction::Command {
-            command: Command::SetTrackChorus { track, chorus },
-            merge,
-        });
-    }
-    // The send into the mixer's compressor bus (parallel compression): it is the song's,
-    // kept in its notes, so it is no undoable command.
-    let comp_rect = if room.is_some() {
-        at(2.0 * step)
-    } else {
-        at(1.5 * step)
-    };
-    let knob = mixer::send_knob(
-        ui,
-        comp_rect,
-        comp,
-        ("comp", index),
-        &format!("Comp {name}"),
-        "Send into the compressor bus (parallel compression)",
-        0,
-    );
-    caption(ui, comp_rect, "Comp");
-    if let Some((comp, _)) = knob.change {
-        actions.push(GridAction::CompSend {
-            track: index,
-            value: comp,
-        });
     }
 }
 
