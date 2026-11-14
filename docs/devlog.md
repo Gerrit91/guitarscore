@@ -5495,3 +5495,12 @@ in the accent color, and a disabled segment in weak text (PM on a drum kit). The
 helper (`tiles::segments_with_tips_enabled`) sizes each segment to its text and carries an
 enabled flag; accessible names stay "MIDI synth" / "PM Synthesis" / "MIDI out". Snapshots
 showing the track panel or the Sound chain were regenerated.
+
+## 2026-11-14 — Pinch zoom reads the gesture anywhere in the page view
+
+The zoom gesture no longer waits for the pointer to be inside the page's rectangle: a pinch
+(or Ctrl+scroll) anywhere in the score view zooms the score. That matters because a pinch
+reports no pointer position of its own, and on Linux the winit 0.30 stack does not deliver
+trackpad pinch gestures at all (only winit's macOS/iOS backends emit `PinchGesture`); the
+equivalent there is Ctrl + two-finger scroll, which the test now covers. The zoom
+percentage tooltip mentions both gestures.

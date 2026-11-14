@@ -1834,6 +1834,22 @@ fn a_trackpad_pinch_over_the_score_zooms_it() {
         .push(egui::Event::Zoom(2.0 / 3.0));
     harness.run();
     assert!((harness.state().view().zoom() - before).abs() < 1e-4);
+
+    // Ctrl + two-finger scroll (how a pinch arrives on desktops without a pinch event)
+    // zooms the same way; egui smooths the wheel over a few frames.
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, 80.0),
+        phase: egui::TouchPhase::Move,
+        source: egui::MouseWheelSource::Trackpad,
+        modifiers: egui::Modifiers::COMMAND,
+    });
+    harness.run_steps(20);
+    let wheeled = harness.state().view().zoom();
+    assert!(
+        wheeled > before + 0.01,
+        "Ctrl+scroll did not zoom: {wheeled}"
+    );
 }
 
 #[test]

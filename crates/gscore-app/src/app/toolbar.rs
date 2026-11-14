@@ -288,7 +288,7 @@ impl GuitarScoreApp {
                         .min_size(vec2(44.0, 22.0)),
                 )
                 .on_hover_text(format!(
-                    "Back to 100 %{}",
+                    "Back to 100 %{}\nA trackpad pinch or Ctrl+scroll zooms the score in and out",
                     self.key_hint(ActionId::ZoomReset)
                 ));
             ui.ctx()

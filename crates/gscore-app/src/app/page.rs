@@ -267,12 +267,11 @@ impl GuitarScoreApp {
             ui.ctx()
                 .accesskit_node_builder(response.id, |node| node.set_label("Score page"));
             // A pinch (or Ctrl+wheel) over the score zooms it; the gesture is applied once
-            // the page's borrows are done.
-            if ui.rect_contains_pointer(rect) {
-                let delta = ui.input(|input| input.zoom_delta());
-                if delta.is_finite() && delta > 0.0 {
-                    zoom_gesture *= delta;
-                }
+            // the page's borrows are done. It is read wherever the pointer is: the score is
+            // the one document, and a pinch reports no useful pointer position of its own.
+            let delta = ui.input(|input| input.zoom_delta());
+            if delta.is_finite() && delta > 0.0 {
+                zoom_gesture *= delta;
             }
             let origin = egui::pos2(rect.center().x - page.x / 2.0, rect.top() + PAGE_MARGIN);
             // The screen views are paper from edge to edge: no pages, no canvas around them.
