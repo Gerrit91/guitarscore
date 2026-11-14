@@ -5286,3 +5286,12 @@ from a sound's name to one of its tones, filled by the owner:
   same two columns with their one row of knobs; a bus (no sends) keeps its stomp centered
   in the top. This is what the earlier one-row bar and the icon-in-the-grid variants were
   trying to be. Mixer snapshots regenerated.
+
+## 2026-11-14 — Back to one row of sends; the sound chain beside mute/solo
+
+- The two-column top did not look right either. The send knobs are back in the one row they
+  started in (pan, reverb, chorus and comp, plus a kit's room), and the sound chain's stomp
+  box — no text — sits at the right of the mute/solo row, a 20-point target beside the
+  buttons that are already there. Bus strips have their mute and the stomp there too, and
+  the master's mute/solo-all row ends with it; part strips do the same. Mixer snapshots
+  regenerated.

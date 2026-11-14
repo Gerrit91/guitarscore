@@ -20,16 +20,11 @@ const STRIP_WIDTH: f32 = 140.0;
 /// A drum part's strip, narrower than a track's (its fader still fits: the fixed parts of
 /// the fader take 100 points).
 const PART_STRIP_WIDTH: f32 = 116.0;
-/// Height of the two knob rows at the top of a track strip (pan, reverb, chorus above;
-/// comp, a kit's room and the sound chain below, with their labels).
-const TOP_HEIGHT: f32 = 68.0;
-/// Height of one knob row (a drum part, the master, the buses and the metronome).
-const TOP_ONE_ROW: f32 = 40.0;
+/// Height of the knob row at the top of a strip (pan, the sends and their labels).
+const TOP_HEIGHT: f32 = 40.0;
 /// A knob's diameter, and the distance between knob centres.
 const KNOB_SIZE: f32 = 20.0;
-const KNOB_SPACING: f32 = 28.0;
-/// The left column of a track's top: its sound chain's stomp box, centered.
-const CHAIN_COLUMN: f32 = 30.0;
+const KNOB_SPACING: f32 = 32.0;
 /// Height of the fixed block under the fader (dB, mute/solo, name, preset, color).
 const BOTTOM_HEIGHT: f32 = 80.0;
 /// The gain marks beside a fader, in dB. The fader's travel is logarithmic (see
@@ -219,15 +214,11 @@ fn track_strip(
         Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
     );
     let inner = rect.shrink2(vec2(8.0, 6.0));
-    let (top, fader_area, bottom) = layout(inner, TOP_HEIGHT);
+    let (top, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
-    // Two columns: the sound chain's stomp box (centered) on the left, all the sends on
-    // the right.
-    let chain_column = Rect::from_min_size(top.min, vec2(CHAIN_COLUMN, top.height()));
-    let sends = Rect::from_min_max(pos2(chain_column.right() + 2.0, top.top()), top.max);
     knobs(
         &mut strip,
-        sends,
+        top,
         index,
         row.pan,
         Some((row.reverb, row.chorus, comp_send)),
@@ -235,15 +226,6 @@ fn track_strip(
         &row.name,
         actions,
     );
-    if stomp_icon(
-        &mut strip,
-        Rect::from_center_size(chain_column.center(), vec2(22.0, 22.0)),
-        index,
-        &format!("Sound chain for {}", row.name),
-        "Open this track's sound chain: its blocks, its strings and the tone",
-    ) {
-        actions.push(GridAction::OpenSoundChain { track: index });
-    }
     fader(
         &mut strip,
         fader_area,
@@ -288,7 +270,17 @@ fn track_strip(
         pos2(bottom.left(), bottom.top() + 18.0),
         vec2(bottom.width(), 20.0),
     );
+    let (buttons, stomp) = buttons_and_stomp(buttons);
     mute_solo(&mut strip, buttons, index, row, actions);
+    if stomp_icon(
+        &mut strip,
+        stomp,
+        index,
+        &format!("Sound chain for {}", row.name),
+        "Open this track's sound chain: its blocks, its strings and the tone",
+    ) {
+        actions.push(GridAction::OpenSoundChain { track: index });
+    }
     let (red, green, blue) = row.color.parts();
     labels(
         &mut strip,
@@ -331,13 +323,11 @@ fn master_strip(
         Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
     );
     let inner = rect.shrink2(vec2(8.0, 6.0));
-    let (top, fader_area, bottom) = layout(inner, TOP_ONE_ROW);
+    let (top, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
-    let chain_column = Rect::from_min_size(top.min, vec2(CHAIN_COLUMN, top.height()));
-    let sends = Rect::from_min_max(pos2(chain_column.right() + 2.0, top.top()), top.max);
     knobs(
         &mut strip,
-        sends,
+        top,
         usize::MAX,
         master.pan,
         None,
@@ -345,15 +335,6 @@ fn master_strip(
         "Master",
         actions,
     );
-    if stomp_icon(
-        &mut strip,
-        Rect::from_center_size(chain_column.center(), vec2(22.0, 22.0)),
-        usize::MAX,
-        "Sound chain for the master",
-        "Open the master's sound chain (after the tracks and buses)",
-    ) {
-        actions.push(GridAction::OpenMasterChain);
-    }
     fader(
         &mut strip,
         fader_area,
@@ -392,6 +373,7 @@ fn master_strip(
         pos2(bottom.left(), bottom.top() + 18.0),
         vec2(bottom.width(), 20.0),
     );
+    let (buttons, stomp) = buttons_and_stomp(buttons);
     mute_solo_all(
         &mut strip,
         buttons,
@@ -400,6 +382,15 @@ fn master_strip(
         all_soloed,
         actions,
     );
+    if stomp_icon(
+        &mut strip,
+        stomp,
+        usize::MAX,
+        "Sound chain for the master",
+        "Open the master's sound chain (after the tracks and buses)",
+    ) {
+        actions.push(GridAction::OpenMasterChain);
+    }
     labels(
         &mut strip,
         bottom,
@@ -469,23 +460,8 @@ fn bus_strip(
         Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
     );
     let inner = rect.shrink2(vec2(8.0, 6.0));
-    let (top, fader_area, bottom) = layout(inner, TOP_ONE_ROW);
+    let (_, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
-    // A bus has no knobs of its own: its stomp box sits where the knobs would be.
-    let stomp_size = 26.0;
-    let stomp = Rect::from_center_size(
-        pos2(top.center().x, top.top() + stomp_size / 2.0 + 2.0),
-        vec2(stomp_size, stomp_size),
-    );
-    if stomp_icon(
-        &mut strip,
-        stomp,
-        id,
-        &format!("Sound chain for the {} bus", name.to_lowercase()),
-        edit_tip,
-    ) {
-        changes.push(BusChange::Edit);
-    }
     fader(
         &mut strip,
         fader_area,
@@ -514,6 +490,7 @@ fn bus_strip(
         pos2(bottom.left(), bottom.top() + 18.0),
         vec2(bottom.width(), 20.0),
     );
+    let (buttons, stomp) = buttons_and_stomp(buttons);
     let response = strip
         .put(buttons, style::mute_button(muted))
         .on_hover_text(if muted {
@@ -532,6 +509,15 @@ fn bus_strip(
     });
     if response.clicked() {
         changes.push(BusChange::Mute(!muted));
+    }
+    if stomp_icon(
+        &mut strip,
+        stomp,
+        id,
+        &format!("Sound chain for the {} bus", name.to_lowercase()),
+        edit_tip,
+    ) {
+        changes.push(BusChange::Edit);
     }
     labels(
         &mut strip,
@@ -758,19 +744,17 @@ fn part_strip(
         Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
     );
     let inner = rect.shrink2(vec2(8.0, 6.0));
-    let (top, fader_area, bottom) = layout(inner, TOP_ONE_ROW);
+    let (top, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
     // The part's pan and its Room send (into the kit's one short room), where a track has
     // its knobs (their names are in the labels below).
     let knob_y = top.top() + KNOB_SIZE / 2.0 + 2.0;
     let pan_rect = Rect::from_center_size(
-        pos2(top.center().x - 32.0, knob_y),
+        pos2(top.center().x - 18.0, knob_y),
         vec2(KNOB_SIZE, KNOB_SIZE),
     );
-    let room_rect =
-        Rect::from_center_size(pos2(top.center().x, knob_y), vec2(KNOB_SIZE, KNOB_SIZE));
-    let stomp_rect = Rect::from_center_size(
-        pos2(top.center().x + 32.0, knob_y),
+    let room_rect = Rect::from_center_size(
+        pos2(top.center().x + 18.0, knob_y),
         vec2(KNOB_SIZE, KNOB_SIZE),
     );
     let knob = mixer::pan_knob(
@@ -825,21 +809,7 @@ fn part_strip(
             merge,
         });
     }
-    if stomp_icon(
-        &mut strip,
-        stomp_rect,
-        id,
-        &format!(
-            "Sound chain for the {} part",
-            part.part.label().to_lowercase()
-        ),
-        "Open this part's sound chain: its blocks, before the kit's",
-    ) {
-        actions.push(GridAction::OpenSoundChainPart {
-            track,
-            part: part.part,
-        });
-    }
+
     fader(
         &mut strip,
         fader_area,
@@ -890,7 +860,23 @@ fn part_strip(
         pos2(bottom.left(), bottom.top() + 18.0),
         vec2(bottom.width(), 20.0),
     );
+    let (buttons, stomp) = buttons_and_stomp(buttons);
     part_mute_solo(&mut strip, buttons, track, part, actions);
+    if stomp_icon(
+        &mut strip,
+        stomp,
+        id,
+        &format!(
+            "Sound chain for the {} part",
+            part.part.label().to_lowercase()
+        ),
+        "Open this part's sound chain: its blocks, before the kit's",
+    ) {
+        actions.push(GridAction::OpenSoundChainPart {
+            track,
+            part: part.part,
+        });
+    }
     let (red, green, blue) = row.color.parts();
     labels(
         &mut strip,
@@ -975,7 +961,7 @@ fn metronome_strip(
         Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
     );
     let inner = rect.shrink2(vec2(8.0, 6.0));
-    let (_, fader_area, bottom) = layout(inner, TOP_ONE_ROW);
+    let (_, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
     let value = (volume.clamp(0.0, 1.0) * 127.0).round();
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -1019,8 +1005,8 @@ fn metronome_strip(
 
 /// The top rows, fader area and fixed bottom block of a strip. A track has two knob rows;
 /// the other strips one.
-fn layout(inner: Rect, top_height: f32) -> (Rect, Rect, Rect) {
-    let top = Rect::from_min_size(inner.min, vec2(inner.width(), top_height));
+fn layout(inner: Rect) -> (Rect, Rect, Rect) {
+    let top = Rect::from_min_size(inner.min, vec2(inner.width(), TOP_HEIGHT));
     let bottom = Rect::from_min_max(
         pos2(inner.left(), inner.bottom() - BOTTOM_HEIGHT),
         inner.max,
@@ -1033,8 +1019,17 @@ fn layout(inner: Rect, top_height: f32) -> (Rect, Rect, Rect) {
     (top, fader, bottom)
 }
 
-/// The sound chain's stomp box, knob-sized and without text, in the sends' row. True when
-/// clicked.
+/// The mute/solo row, and the sound chain's stomp box at its right.
+fn buttons_and_stomp(row: Rect) -> (Rect, Rect) {
+    let stomp = Rect::from_min_size(pos2(row.right() - 20.0, row.top()), vec2(20.0, 20.0));
+    let buttons = Rect::from_min_max(
+        row.min,
+        pos2((stomp.left() - 4.0).max(row.left()), row.bottom()),
+    );
+    (buttons, stomp)
+}
+
+/// The sound chain's stomp box, knob-sized and without text. True when clicked.
 fn stomp_icon(ui: &mut egui::Ui, rect: Rect, id: usize, label: &str, tip: &str) -> bool {
     let response = ui.interact(rect, ui.scope_id().with(("stomp", id)), Sense::click());
     ui.ctx().accesskit_node_builder(response.id, |node| {
@@ -1098,8 +1093,7 @@ fn parts_arrow(ui: &mut egui::Ui, rect: Rect, track: usize, open: bool) -> bool 
         .clicked()
 }
 
-/// The two knob rows: pan, reverb and chorus above; the compressor send and, for a drum
-/// kit, its own Room send below. Each knob has a caption underneath.
+/// pan). Each knob has a small caption underneath.
 #[allow(clippy::too_many_arguments)]
 fn knobs(
     ui: &mut egui::Ui,
@@ -1111,10 +1105,12 @@ fn knobs(
     name: &str,
     actions: &mut Vec<GridAction>,
 ) {
-    let row1 = area.top() + KNOB_SIZE / 2.0 + 2.0;
-    let row2 = row1 + 32.0;
-    let at = |dx: f32, y: f32| {
-        Rect::from_center_size(pos2(area.center().x + dx, y), vec2(KNOB_SIZE, KNOB_SIZE))
+    let knob_y = area.top() + KNOB_SIZE / 2.0 + 2.0;
+    let at = |dx: f32| {
+        Rect::from_center_size(
+            pos2(area.center().x + dx, knob_y),
+            vec2(KNOB_SIZE, KNOB_SIZE),
+        )
     };
     let caption = |ui: &egui::Ui, rect: Rect, text: &str| {
         ui.painter().text(
@@ -1125,13 +1121,17 @@ fn knobs(
             ui.visuals().weak_text_color(),
         );
     };
-    // Two rows of knobs: pan, reverb and chorus above; the compressor send and a kit's
-    // Room send below. The wider spacing fits the full names.
-    let step = KNOB_SPACING;
-    let pan_rect = if sends.is_some() {
-        at(-step, row1)
-    } else {
-        at(-step / 2.0, row1)
+    // Four knobs side by side (pan, reverb, chorus, comp), or five for a drum kit (its own
+    // Room send beside them); the captions fit under them.
+    let step = match (sends.is_some(), room.is_some()) {
+        (true, true) => 24.5,
+        (true, false) => 30.0,
+        _ => KNOB_SPACING,
+    };
+    let pan_rect = match (sends.is_some(), room.is_some()) {
+        (true, true) => at(-2.0 * step),
+        (true, false) => at(-1.5 * step),
+        _ => at(0.0),
     };
     let knob = mixer::pan_knob(ui, pan_rect, pan, index, &format!("Pan {name}"));
     caption(ui, pan_rect, "Pan");
@@ -1158,71 +1158,8 @@ fn knobs(
         return;
     };
     let track = TrackIndex::new(index);
-    let reverb_rect = at(0.0, row1);
-    let knob = mixer::send_knob(
-        ui,
-        reverb_rect,
-        reverb,
-        ("reverb", index),
-        &format!("Reverb {name}"),
-        "Reverb send (into the reverb bus, whatever plays the track)",
-        0,
-    );
-    caption(ui, reverb_rect, "Reverb");
-    if knob.boundary {
-        actions.push(GridAction::BreakMerge);
-    }
-    if let Some((reverb, merge)) = knob.change {
-        actions.push(GridAction::Command {
-            command: Command::SetTrackReverb { track, reverb },
-            merge,
-        });
-    }
-    let chorus_rect = at(step, row1);
-    let knob = mixer::send_knob(
-        ui,
-        chorus_rect,
-        chorus,
-        ("chorus", index),
-        &format!("Chorus {name}"),
-        "Chorus send (into the shared chorus bus)",
-        0,
-    );
-    caption(ui, chorus_rect, "Chorus");
-    if knob.boundary {
-        actions.push(GridAction::BreakMerge);
-    }
-    if let Some((chorus, merge)) = knob.change {
-        actions.push(GridAction::Command {
-            command: Command::SetTrackChorus { track, chorus },
-            merge,
-        });
-    }
-    // The send into the mixer's compressor bus (parallel compression): it is the song's,
-    // kept in its notes, so it is no undoable command.
-    let comp_rect = if room.is_some() {
-        at(-KNOB_SPACING / 2.0, row2)
-    } else {
-        at(0.0, row2)
-    };
-    let knob = mixer::send_knob(
-        ui,
-        comp_rect,
-        comp,
-        ("comp", index),
-        &format!("Comp {name}"),
-        "Send into the compressor bus (parallel compression)",
-        0,
-    );
-    caption(ui, comp_rect, "Comp");
-    if let Some((comp, _)) = knob.change {
-        actions.push(GridAction::CompSend {
-            track: index,
-            value: comp,
-        });
-    }
     if let Some(room) = room {
-        let room_rect = at(KNOB_SPACING / 2.0, row2);
+        let room_rect = at(-step);
         let knob = mixer::send_knob(
             ui,
             room_rect,
@@ -1242,6 +1179,85 @@ fn knobs(
                 value,
             });
         }
+    }
+    let reverb_rect = if room.is_some() {
+        at(0.0)
+    } else {
+        at(-0.5 * step)
+    };
+    let knob = mixer::send_knob(
+        ui,
+        reverb_rect,
+        reverb,
+        ("reverb", index),
+        &format!("Reverb {name}"),
+        "Reverb send (into the reverb bus, whatever plays the track)",
+        0,
+    );
+    caption(
+        ui,
+        reverb_rect,
+        if room.is_some() { "Rev" } else { "Reverb" },
+    );
+    if knob.boundary {
+        actions.push(GridAction::BreakMerge);
+    }
+    if let Some((reverb, merge)) = knob.change {
+        actions.push(GridAction::Command {
+            command: Command::SetTrackReverb { track, reverb },
+            merge,
+        });
+    }
+    let chorus_rect = if room.is_some() {
+        at(1.0 * step)
+    } else {
+        at(0.5 * step)
+    };
+    let knob = mixer::send_knob(
+        ui,
+        chorus_rect,
+        chorus,
+        ("chorus", index),
+        &format!("Chorus {name}"),
+        "Chorus send (into the shared chorus bus)",
+        0,
+    );
+    caption(
+        ui,
+        chorus_rect,
+        if room.is_some() { "Cho" } else { "Chorus" },
+    );
+    if knob.boundary {
+        actions.push(GridAction::BreakMerge);
+    }
+    if let Some((chorus, merge)) = knob.change {
+        actions.push(GridAction::Command {
+            command: Command::SetTrackChorus { track, chorus },
+            merge,
+        });
+    }
+    // The send into the mixer's compressor bus (parallel compression): it is the song's,
+    // kept in its notes, so it is no undoable command.
+    let comp_rect = if room.is_some() {
+        at(2.0 * step)
+    } else {
+        at(1.5 * step)
+    };
+    let knob = mixer::send_knob(
+        ui,
+        comp_rect,
+        comp,
+        ("comp", index),
+        &format!("Comp {name}"),
+        "Send into the compressor bus (parallel compression)",
+        0,
+    );
+    caption(ui, comp_rect, "Comp");
+    if let Some((comp, _)) = knob.change {
+        actions.push(GridAction::CompSend {
+            track: index,
+            value: comp,
+        });
     }
 }
 

@@ -76,9 +76,8 @@ synthesis)", on by default). Every other instrument, and the drums, stay on the 
   electric, bass), the strings' own knobs and the effect chain after them. Each guitar and
   bass program starts on a built-in tone. The track panel on the right lists the built-in
   tones and the ones you saved; clicking one gives it to the track.
-- **Sound chain.** The track panel's "Sound chain" button (and the stomp box in the left
-  column of every mixer strip, beside the two rows of send knobs) opens the chain of the
-  track: "Played by" chooses the strings or the SoundFont, the strings'
+- **Sound chain.** The track panel's "Sound chain" button (and the stomp box beside the
+  mute and solo buttons of every mixer strip) opens the chain of the track: "Played by" chooses the strings or the SoundFont, the strings'
   tabs set how they are plucked and ring, and up to five blocks follow: Drive, Amp, Cab,
   Room, Reverb, Comp, EQ, Chorus and Delay. The Amp plays direct; put a Cab block after it
   for its speaker (a built-in cabinet, or an impulse response from a WAV file). "Save
