@@ -134,19 +134,16 @@ fn the_empty_workspace_offers_new_song_open_song_and_a_searchable_recent_list() 
     }
     harness.run();
     harness.get_by_label("Recent song preview");
-    // The chosen song opens from the workspace.
+    // The chosen song opens from the workspace. The click is only queued until the next
+    // frame, so `settle` steps first (and waits while the open runs).
     harness.get_by_label("Open selected song").click();
-    let started = Instant::now();
-    while harness.state().is_busy() {
-        assert!(
-            started.elapsed() < Duration::from_secs(30),
-            "opening timed out"
+    settle(&mut harness);
+    let Some(document) = harness.state().document() else {
+        panic!(
+            "the song did not open (notice: {:?})",
+            harness.state().notice()
         );
-        harness.step();
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    harness.run_steps(8);
-    let document = harness.state().document().expect("the song opened");
+    };
     assert_eq!(document.display_title(), "Note Lengths");
 }
 

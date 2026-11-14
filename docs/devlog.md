@@ -5654,3 +5654,11 @@ click in a note tool there failed with "invalid song: ... the measure has 0 voic
 because `SetFret` needs its beat. The tools now do what a typed fret does: the beat is
 made first (`InsertBeat` with the entry value, `TabEditor::new_beat_value`), in one batch
 with the note, so it is one undo step. Tested on the fretboard and the drum map.
+
+## 2026-11-14 — A flaky empty-workspace test waits for its open
+
+`the_empty_workspace_offers_new_song_open_song_and_a_searchable_recent_list` failed in CI
+(one of 97) at "the song opened": `Node::click` only queues pointer events, so the
+`while is_busy()` wait after "Open selected song" never stepped and an open still running
+was never awaited; 8 fixed frames were not always enough. It now uses `settle` (steps
+first, then waits for background jobs), and a failure reports the notice.
