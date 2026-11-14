@@ -1,3 +1,5 @@
+<p align="center"><img src="packaging/guitarscore.svg" width="112" height="112" alt="GuitarScore icon: a G bent from a steel fingerpick"></p>
+
 # GuitarScore
 
 **A fast, free guitar tablature editor.** Write tabs at the speed you think, hear them as
