@@ -1018,6 +1018,34 @@ fn escape_closes_the_sound_chain_window() {
 }
 
 #[test]
+fn the_tone_presets_stay_when_the_midi_synth_plays_the_track() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    harness.get_by_label("MIDI synth").scroll_to_me();
+    harness.run();
+    harness.get_by_label("MIDI synth").click();
+    harness.run();
+    // Both tables are there, each with its own filter.
+    assert!(
+        harness
+            .query_all_by_label_contains("TONE PRESETS")
+            .next()
+            .is_some(),
+        "the tone table stays"
+    );
+    assert!(harness.query_by_label("Filter the tone presets").is_some());
+    assert!(harness.query_by_label("Filter the programs").is_some());
+    // Filtering the programs does not filter the tone table.
+    pick_program_in_track_panel(&mut harness, "24: Nylon", "24: Nylon Str Guitar");
+    assert!(
+        harness
+            .query_all_by_label_contains("Warm Jazz")
+            .next()
+            .is_some(),
+        "the tone table keeps its own filter"
+    );
+}
+
+#[test]
 fn the_tone_table_folds_its_groups() {
     let mut harness = app_with_saved_tone(testdata("basic/steel_guitar_dadgad.gp"));
     // The track plays the saved tone, so the table shows its group (the first one)
@@ -1515,11 +1543,11 @@ fn a_dialed_tone_belongs_to_the_track() {
     harness.run();
     harness.get_by_label("MIDI synth").click();
     harness.run();
-    harness.get_by_label("Filter the sounds").click();
+    harness.get_by_label("Filter the programs").click();
     harness.run();
-    harness.get_by_label("Filter sounds").focus();
+    harness.get_by_label("Filter programs").focus();
     harness
-        .get_by_label("Filter sounds")
+        .get_by_label("Filter programs")
         .type_text("Distortion Guitar");
     harness.run();
     harness.get_by_label("30: Distortion Guitar").click();
@@ -1689,10 +1717,25 @@ fn the_built_in_entry_forgets_a_tracks_tone() {
 
 /// Types `text` into the track panel's picker filter and clicks the row `row`.
 fn pick_in_track_panel(harness: &mut Harness<'static, GuitarScoreApp>, text: &str, row: &str) {
-    harness.get_by_label("Filter the sounds").click();
+    harness.get_by_label("Filter the tone presets").click();
     harness.run();
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
-    harness.get_by_label("Filter sounds").type_text(text);
+    harness.get_by_label("Filter tone presets").type_text(text);
+    harness.run();
+    harness.get_by_label(row).click();
+    harness.run();
+}
+
+/// Types `text` into the track panel's General MIDI program filter and clicks the row `row`.
+fn pick_program_in_track_panel(
+    harness: &mut Harness<'static, GuitarScoreApp>,
+    text: &str,
+    row: &str,
+) {
+    harness.get_by_label("Filter the programs").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Filter programs").type_text(text);
     harness.run();
     harness.get_by_label(row).click();
     harness.run();
@@ -1780,7 +1823,7 @@ fn switching_the_source_keeps_the_program_and_the_tone() {
     // To the MIDI synth and another General MIDI program.
     harness.get_by_label("MIDI synth").click();
     harness.run();
-    pick_in_track_panel(&mut harness, "24: Nylon", "24: Nylon Str Guitar");
+    pick_program_in_track_panel(&mut harness, "24: Nylon", "24: Nylon Str Guitar");
     let program = |harness: &Harness<'static, GuitarScoreApp>| {
         harness
             .state()

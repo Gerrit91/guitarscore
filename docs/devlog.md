@@ -5504,3 +5504,13 @@ reports no pointer position of its own, and on Linux the winit 0.30 stack does n
 trackpad pinch gestures at all (only winit's macOS/iOS backends emit `PinchGesture`); the
 equivalent there is Ctrl + two-finger scroll, which the test now covers. The zoom
 percentage tooltip mentions both gestures.
+
+## 2026-11-14 — Tone presets stay while MIDI or MIDI out plays the track
+
+The Tone presets section belongs to every string track, not only to one played by modelled
+strings: switching the source to **MIDI** (or MIDI out) keeps the table, and choosing a
+preset switches the track back to PM (a weak line above the table says so). Each table now
+has its own picker state (`TrackPanelState::tone_picker` beside `sound_picker`), so the
+program filter no longer hides or scrolls the tone table; the funnel and field ids include
+the table's name too (the two tables had clashed on the same id, which egui flags with its
+debug marker). Filter labels are now "Filter the tone presets" and "Filter the programs".

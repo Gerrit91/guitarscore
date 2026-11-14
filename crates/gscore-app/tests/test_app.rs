@@ -1577,6 +1577,13 @@ fn the_track_panel_edits_the_shown_track() {
     assert_eq!(first_sound(&harness).program, before);
 
     // The drum-kit flag (the label text and the checkbox share the name; click the box).
+    // It is in the Instrument section, above the Sound section the panel was scrolled to.
+    harness
+        .get_all_by_role_and_label(egui::Role::CheckBox, "Drum kit")
+        .next()
+        .unwrap()
+        .scroll_to_me();
+    harness.run();
     harness
         .get_all_by_role_and_label(egui::Role::CheckBox, "Drum kit")
         .next()

@@ -90,13 +90,15 @@ fn matches(row: &PickerRow, filter: &str) -> bool {
 }
 
 /// Shows the picker and returns the row clicked this frame, with the usual eight rows.
+/// `what` names the table ("tone presets", "programs") for its filter's labels.
 pub(super) fn picker(
     ui: &mut egui::Ui,
     id_salt: &str,
+    what: &str,
     rows: &[PickerRow],
     state: &mut TonePickerState,
 ) -> Option<PickerChoice> {
-    picker_rows(ui, id_salt, rows, state, VISIBLE_ROWS, None)
+    picker_rows(ui, id_salt, what, rows, state, VISIBLE_ROWS, None)
 }
 
 /// Shows the picker with `visible` rows at once and returns the row clicked this frame.
@@ -105,6 +107,7 @@ pub(super) fn picker(
 pub(super) fn picker_rows(
     ui: &mut egui::Ui,
     id_salt: &str,
+    what: &str,
     rows: &[PickerRow],
     state: &mut TonePickerState,
     visible: usize,
@@ -212,12 +215,12 @@ pub(super) fn picker_rows(
     // The funnel sits over the table's top-right corner and opens the filter field.
     let filter = ui.interact(
         filter_rect,
-        ui.scope_id().with("tone_filter"),
+        ui.scope_id().with((id_salt, "tone_filter")),
         Sense::click(),
     );
     ui.ctx().accesskit_node_builder(filter.id, |node| {
         node.set_role(egui::Role::Button);
-        node.set_label("Filter the sounds");
+        node.set_label(format!("Filter the {what}"));
     });
     let filter_on = !state.filter.is_empty();
     if filter.hovered() || filter_on {
@@ -237,7 +240,7 @@ pub(super) fn picker_rows(
         tokens.text_weak,
         super::icons::Icon::Filter,
     );
-    let filter = filter.on_hover_text("Filter the sounds by name or family");
+    let filter = filter.on_hover_text(format!("Filter the {what} by name or family"));
     if filter.clicked() {
         state.filter_open = !state.filter_open;
         state.filter_focus = state.filter_open;
@@ -249,7 +252,7 @@ pub(super) fn picker_rows(
             (filter_rect.left() - 206.0).max(ui.max_rect().left()),
             filter_rect.top(),
         );
-        egui::Area::new(ui.scope_id().with("tone_filter_field"))
+        egui::Area::new(ui.scope_id().with((id_salt, "tone_filter_field")))
             .order(egui::Order::Foreground)
             .fixed_pos(at)
             .show(ui.ctx(), |ui| {
@@ -263,7 +266,7 @@ pub(super) fn picker_rows(
                                     .desired_width(160.0),
                             );
                             ui.ctx().accesskit_node_builder(edit.id, |node| {
-                                node.set_label("Filter sounds")
+                                node.set_label(format!("Filter {what}"))
                             });
                             if state.filter_focus {
                                 edit.request_focus();
