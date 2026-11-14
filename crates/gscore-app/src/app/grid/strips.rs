@@ -25,6 +25,10 @@ const TOP_HEIGHT: f32 = 40.0;
 /// A knob's diameter, and the distance between knob centres.
 const KNOB_SIZE: f32 = 20.0;
 const KNOB_SPACING: f32 = 32.0;
+/// The bar under the knobs: the way into the strip's sound chain (or a bus's window). It
+/// is wide and named, so it is found without hunting for a small icon.
+const CHAIN_HEIGHT: f32 = 17.0;
+const CHAIN_GAP: f32 = 4.0;
 /// Height of the fixed block under the fader (dB, mute/solo, name, preset, color).
 const BOTTOM_HEIGHT: f32 = 80.0;
 /// The gain marks beside a fader, in dB. The fader's travel is logarithmic (see
@@ -214,7 +218,7 @@ fn track_strip(
         Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
     );
     let inner = rect.shrink2(vec2(8.0, 6.0));
-    let (top, fader_area, bottom) = layout(inner);
+    let (top, chain, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
     knobs(
         &mut strip,
@@ -226,6 +230,16 @@ fn track_strip(
         &row.name,
         actions,
     );
+    if chain_button(
+        &mut strip,
+        chain,
+        index,
+        &format!("Sound chain for {}", row.name),
+        "Sound chain",
+        "Open this track's sound chain: its blocks, its strings and the tone",
+    ) {
+        actions.push(GridAction::OpenSoundChain { track: index });
+    }
     fader(
         &mut strip,
         fader_area,
@@ -282,20 +296,6 @@ fn track_strip(
         row.audible,
         16.0,
     );
-    // The way into this track's sound chain, on the name's row.
-    let stomp = Rect::from_min_size(
-        pos2(bottom.right() - 14.0, bottom.top() + 41.0),
-        vec2(14.0, 14.0),
-    );
-    if stomp_button(
-        &mut strip,
-        stomp,
-        index,
-        &format!("Sound chain for {}", row.name),
-        "Open this track's sound chain",
-    ) {
-        actions.push(GridAction::OpenSoundChain { track: index });
-    }
     // A drum track's kit opens beside it as part strips.
     if row.drums {
         let arrow = Rect::from_min_size(
@@ -327,7 +327,7 @@ fn master_strip(
         Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
     );
     let inner = rect.shrink2(vec2(8.0, 6.0));
-    let (top, fader_area, bottom) = layout(inner);
+    let (top, chain, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
     knobs(
         &mut strip,
@@ -339,6 +339,16 @@ fn master_strip(
         "Master",
         actions,
     );
+    if chain_button(
+        &mut strip,
+        chain,
+        usize::MAX,
+        "Sound chain for the master",
+        "Sound chain",
+        "Open the master's sound chain (after the tracks and buses)",
+    ) {
+        actions.push(GridAction::OpenMasterChain);
+    }
     fader(
         &mut strip,
         fader_area,
@@ -395,19 +405,6 @@ fn master_strip(
         !all_muted,
         16.0,
     );
-    let stomp = Rect::from_min_size(
-        pos2(bottom.right() - 14.0, bottom.top() + 41.0),
-        vec2(14.0, 14.0),
-    );
-    if stomp_button(
-        &mut strip,
-        stomp,
-        usize::MAX,
-        "Sound chain for the master",
-        "Open the master's sound chain (after the tracks and buses)",
-    ) {
-        actions.push(GridAction::OpenMasterChain);
-    }
 }
 
 /// The mixer's buses as the strips show them.
@@ -467,8 +464,18 @@ fn bus_strip(
         Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
     );
     let inner = rect.shrink2(vec2(8.0, 6.0));
-    let (_, fader_area, bottom) = layout(inner);
+    let (_, chain, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
+    if chain_button(
+        &mut strip,
+        chain,
+        id,
+        &format!("Sound chain for the {} bus", name.to_lowercase()),
+        "Edit…",
+        edit_tip,
+    ) {
+        changes.push(BusChange::Edit);
+    }
     fader(
         &mut strip,
         fader_area,
@@ -526,20 +533,6 @@ fn bus_strip(
         !muted,
         16.0,
     );
-    // The way into the bus's own window, on the name's row like every other strip's.
-    let stomp = Rect::from_min_size(
-        pos2(bottom.right() - 14.0, bottom.top() + 41.0),
-        vec2(14.0, 14.0),
-    );
-    if stomp_button(
-        &mut strip,
-        stomp,
-        id,
-        &format!("Sound chain for the {} bus", name.to_lowercase()),
-        edit_tip,
-    ) {
-        changes.push(BusChange::Edit);
-    }
 }
 
 /// The reverb bus: the tracks send their mixer reverb amount into it, and its level (and
@@ -755,7 +748,7 @@ fn part_strip(
         Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
     );
     let inner = rect.shrink2(vec2(8.0, 6.0));
-    let (top, fader_area, bottom) = layout(inner);
+    let (top, chain, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
     // The part's pan and its Room send (into the kit's one short room), where a track has
     // its knobs (their names are in the labels below).
@@ -820,6 +813,22 @@ fn part_strip(
             merge,
         });
     }
+    if chain_button(
+        &mut strip,
+        chain,
+        id,
+        &format!(
+            "Sound chain for the {} part",
+            part.part.label().to_lowercase()
+        ),
+        "Sound chain",
+        "Open this part's sound chain: its blocks, before the kit's",
+    ) {
+        actions.push(GridAction::OpenSoundChainPart {
+            track,
+            part: part.part,
+        });
+    }
     fader(
         &mut strip,
         fader_area,
@@ -882,22 +891,6 @@ fn part_strip(
         part.audible(),
         16.0,
     );
-    let stomp = Rect::from_min_size(
-        pos2(bottom.right() - 14.0, bottom.top() + 41.0),
-        vec2(14.0, 14.0),
-    );
-    if stomp_button(
-        &mut strip,
-        stomp,
-        id,
-        &format!("Sound chain for the {} part", part.part.label()),
-        "Open this part's sound chain",
-    ) {
-        actions.push(GridAction::OpenSoundChainPart {
-            track,
-            part: part.part,
-        });
-    }
 }
 
 /// A stable control id for a drum part (away from the tracks', buses' and master's).
@@ -971,7 +964,7 @@ fn metronome_strip(
         Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3)),
     );
     let inner = rect.shrink2(vec2(8.0, 6.0));
-    let (_, fader_area, bottom) = layout(inner);
+    let (_, _chain, fader_area, bottom) = layout(inner);
     let mut strip = ui.new_child(UiBuilder::new().max_rect(inner));
     let value = (volume.clamp(0.0, 1.0) * 127.0).round();
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -1013,36 +1006,65 @@ fn metronome_strip(
     );
 }
 
-/// The top row, fader area and fixed bottom block of a strip.
-fn layout(inner: Rect) -> (Rect, Rect, Rect) {
+/// The top row, chain bar, fader area and fixed bottom block of a strip.
+fn layout(inner: Rect) -> (Rect, Rect, Rect, Rect) {
     let top = Rect::from_min_size(inner.min, vec2(inner.width(), TOP_HEIGHT));
     let bottom = Rect::from_min_max(
         pos2(inner.left(), inner.bottom() - BOTTOM_HEIGHT),
         inner.max,
     );
-    let fader = Rect::from_min_max(
-        pos2(inner.left(), top.bottom() + 6.0),
-        pos2(inner.right(), bottom.top() - 6.0),
+    let chain = Rect::from_min_size(
+        pos2(inner.left(), top.bottom() + 2.0),
+        vec2(inner.width(), CHAIN_HEIGHT),
     );
-    (top, fader, bottom)
+    let fader_top = (chain.bottom() + CHAIN_GAP).min(bottom.top());
+    let fader = Rect::from_min_max(
+        pos2(inner.left(), fader_top),
+        pos2(inner.right(), (bottom.top() - 4.0).max(fader_top)),
+    );
+    (top, chain, fader, bottom)
 }
 
-/// A small stomp-box icon that opens a strip's sound chain. True when clicked.
-fn stomp_button(ui: &mut egui::Ui, rect: Rect, id: usize, label: &str, tip: &str) -> bool {
-    let response = ui.interact(rect, ui.scope_id().with(("stomp", id)), Sense::click());
+/// The bar under a strip's knobs: the way into its sound chain (or a bus's window), with
+/// its stomp box and a name. True when clicked.
+fn chain_button(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    id: usize,
+    label: &str,
+    text: &str,
+    tip: &str,
+) -> bool {
+    let response = ui.interact(rect, ui.scope_id().with(("chain", id)), Sense::click());
     ui.ctx().accesskit_node_builder(response.id, |node| {
         node.set_label(label);
         node.set_role(egui::Role::Button);
     });
     let visuals = ui.style().interact(&response);
-    if response.hovered() || response.has_focus() {
-        ui.painter().rect_filled(rect, 3.0, visuals.weak_bg_fill);
-    }
-    icons::paint(
-        ui.painter(),
-        rect.shrink(2.0),
-        visuals.fg_stroke.color,
-        icons::Icon::StompBox,
+    let fill = if response.hovered() || response.has_focus() {
+        visuals.weak_bg_fill
+    } else {
+        ui.visuals().faint_bg_color.gamma_multiply(0.7)
+    };
+    ui.painter().rect_filled(rect, 3.0, fill);
+    ui.painter().rect_stroke(
+        rect,
+        3.0,
+        Stroke::new(1.0, ui.visuals().weak_text_color().gamma_multiply(0.5)),
+        egui::StrokeKind::Inside,
+    );
+    let color = visuals.fg_stroke.color;
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text.to_owned(), FontId::proportional(10.0), color);
+    let total = 12.0 + 4.0 + galley.size().x;
+    let start = rect.center().x - total / 2.0;
+    let icon = Rect::from_min_size(pos2(start, rect.center().y - 6.0), vec2(12.0, 12.0));
+    icons::paint(ui.painter(), icon, color, icons::Icon::StompBox);
+    ui.painter().galley(
+        pos2(icon.right() + 4.0, rect.center().y - galley.size().y / 2.0),
+        galley,
+        color,
     );
     response.on_hover_text(tip).clicked()
 }

@@ -5234,3 +5234,15 @@ from a sound's name to one of its tones, filled by the owner:
   step, a part's solo soloing its track (and the last part un-soloing it), Delete on a
   chord note vs. an empty string, and the input trim's new default. Snapshots updated for
   the five-knob drum strip, the two chain meters, the trim value and the Kit room button.
+
+## 2026-11-14 — The sound-chain entry on every mixer strip is a named bar
+
+- The tiny 14×14 stomp-box icons at the bottom of the mixer strips were hard to find. Every
+  strip now has a full-width, framed bar between its knobs and its fader, with the stomp
+  box and the words "Sound chain" (a track, a drum part or the master) or "Edit…" (a bus),
+  highlighting on hover and carrying the same accessible labels and tooltips as before.
+  The bar takes 21 points from the fader (which stays generous); the drum parts arrow
+  stays in the corner. A second row of send knobs was the other option, but it would have
+  cost every strip (buses too) 40 points of fader and still needed a label; the bar is a
+  larger target than the icon and says what it does. The chain is also still reachable from
+  the track panel. Mixer snapshots regenerated.
