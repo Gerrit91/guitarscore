@@ -5346,9 +5346,11 @@ live on a branch, `feature/design-mode`, in four steps:
   round-trip, `panic_hunt` and undo tests. The palette's design switch (a grid icon under
   the voices, as in Guitar Pro) shows dashed guides and drag handles; a barline drag sets
   the bar's width, a column drag moves the beat, both merged into one undo step; a yellow
-  guide snaps to a nearby bar line; `+`/`-` widen/narrow the line's bars by 10 % per press
-  (one fewer/one more bar on the line, reflowed), `x` clears the line's widths and
-  offsets as one batch. Handles take the pointer, so no beat is selected while designing.
+  guide snaps to a nearby bar line; `+` ends the line one bar earlier (its remaining bars
+  stretch into the room), `-` gives the next line's first bar back (or, when no break holds
+  it, narrows the line's bars by 10 % per press until one more fits), `x` clears the line's
+  widths and offsets as one batch. The buttons stack vertically inside the page's margin;
+  as a row they ran off the paper and out of egui's interaction area. Handles take the pointer, so no beat is selected while designing.
   Unit tests for the drag maths, the snap and the reset. 39 app snapshots changed by the
   new palette button only (checked by eye); `cargo xtask ci` green.
 

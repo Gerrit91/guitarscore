@@ -102,8 +102,9 @@ in AGENTS.md section 9.
     Guitar Pro 8 stores for a moved beat (checked only in alphaTab's GPIF reader, which
     reads no beat-level x offset; GuitarScore keeps its own `GuitarScoreSpacing` property
     until a real GP8 file shows the format's field), only horizontal moving (as in Guitar
-    Pro), and saving to GP3-5 reports the widths and offsets it cannot keep. The buttons
-    widen or narrow the line's bars by 10 % per press; Guitar Pro may use its own step.
+    Pro), and saving to GP3-5 reports the widths and offsets it cannot keep. `-` narrows a
+    full line's bars by 10 % per press until one more fits; Guitar Pro may use its own
+    step or its ruler dragging.
     Dragging a barline in a multi-track view edits the song's width, not one track's.
 
 ## Editing and the app
