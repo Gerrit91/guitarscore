@@ -5538,3 +5538,10 @@ changes), labelled "Filter the tone presets" or "Filter the programs".
   slot, in the track rows and the master row.
 - In the mixer view the header's delete-track trash can is gone (the row context menu still
   deletes); the grid view keeps it next to the zoom.
+
+## 2026-11-14 — Mute and solo have the same width
+
+The M and S toggle letters are drawn in the monospace font, so both buttons come out
+exactly as wide in every place (the grid's rows and master row, the mixer strips and the
+chain blocks' mutes). The selected fill and stroke do not change the layout. Snapshots
+regenerated.

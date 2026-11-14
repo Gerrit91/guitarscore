@@ -75,21 +75,23 @@ pub(crate) fn solo_button(on: bool) -> egui::Button<'static> {
 }
 
 /// A small toggle: no color of its own while off, the whole button filled `tint` with `ink`
-/// text while `on`, so the color alone says what it does.
+/// text while `on`, so the color alone says what it does. The letter is monospace, so the
+/// mute and solo buttons come out exactly as wide as each other.
 pub(crate) fn toggle_button(
     letter: &str,
     on: bool,
     tint: Color32,
     ink: Color32,
 ) -> egui::Button<'static> {
+    let text = RichText::new(letter).monospace();
     if on {
-        egui::Button::new(RichText::new(letter).color(ink))
+        egui::Button::new(text.color(ink))
             .selected(true)
             .fill(tint)
             .stroke(Stroke::new(1.0, tint))
             .small()
     } else {
-        egui::Button::new(letter).selected(false).small()
+        egui::Button::new(text).selected(false).small()
     }
 }
 
