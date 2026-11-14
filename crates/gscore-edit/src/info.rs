@@ -724,6 +724,61 @@ pub(crate) const SET_SCORE_LINE_BREAK: CommandInfo = CommandInfo {
     params: &[MEASURE, ON],
 };
 
+const SEMITONES: ParamInfo = ParamInfo {
+    name: "semitones",
+    required: true,
+    default: None,
+    help: "Semitones to transpose by: 1 to 12 up, or -1 to -12 down",
+};
+
+pub(crate) const TRANSPOSE_SONG: CommandInfo = CommandInfo {
+    id: "transpose_song",
+    aliases: &["transpose"],
+    label: "Transpose the song",
+    help: "Moves what every track sounds like by the given semitones (up to an octave) while \
+           the written notes and the tablature stay as they are, as Guitar Pro's track \
+           transpose does; drum kits stay as they are. Each press adds to the last.",
+    params: &[SEMITONES],
+};
+
+pub(crate) const SET_TRANSPOSITION: CommandInfo = CommandInfo {
+    id: "set_transposition",
+    aliases: &[],
+    label: "Set the transposition",
+    help: "Sets what every track sounds like relative to what is written, in semitones \
+           (0 to -12 or 1 to 12). The written notes, the tablature and the score stay as \
+           they are; drum kits stay as they are.",
+    params: &[SEMITONES],
+};
+
+pub(crate) const TRANSPOSE_TRACK: CommandInfo = CommandInfo {
+    id: "transpose_track",
+    aliases: &[],
+    label: "Transpose a track",
+    help: "Moves what one track sounds like by the given semitones (up to an octave) while \
+           its written notes stay as they are.",
+    params: &[TRACK, SEMITONES],
+};
+
+pub(crate) const TRANSPOSE_NOTES: CommandInfo = CommandInfo {
+    id: "transpose_notes",
+    aliases: &[],
+    label: "Transpose the notes",
+    help: "Moves the notes themselves on the fretboard by the given semitones, re-fingered \
+           onto the strings, so the tablature shows the new pitches. Without `track` it is \
+           the whole song. A note that would leave the strings makes the edit fail.",
+    params: &[TRACK, SEMITONES],
+};
+
+pub(crate) const SET_TRANSPOSE_ACTIVE: CommandInfo = CommandInfo {
+    id: "set_transpose_active",
+    aliases: &[],
+    label: "Switch the transposition on or off",
+    help: "Off, the song sounds as written; on, it sounds transposed. The transposition \
+           itself is kept (it is not a listening aid in the file).",
+    params: &[ON],
+};
+
 pub(crate) const SET_TEMPO: CommandInfo = CommandInfo {
     id: "set_tempo",
     aliases: &[],
@@ -1009,6 +1064,11 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_BARS_PER_SYSTEM,
     SET_SCORE_LINE_BREAK,
     SET_TEMPO,
+    TRANSPOSE_SONG,
+    TRANSPOSE_TRACK,
+    SET_TRANSPOSITION,
+    TRANSPOSE_NOTES,
+    SET_TRANSPOSE_ACTIVE,
     SET_BEAT_REST,
     SET_TIE,
     SET_BEAT_TIE,

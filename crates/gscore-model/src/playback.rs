@@ -220,14 +220,32 @@ impl TrackView<'_> {
             .ok_or_else(|| ModelError::Invalid(format!("capo at fret {offset}")))
     }
 
-    /// The pitch `note` sounds at: the open string's pitch plus fret and capo, or the
-    /// harmonic's pitch for natural, artificial, tapped and pinch harmonics. On drum tracks
-    /// the "fret" is the General MIDI drum sound itself.
+    /// How far the track sounds from what is written: Guitar Pro's track transpose, in
+    /// semitones (positive is higher), 0 when it is not transposed or when the song's
+    /// transposition is switched off ([`crate::Song::transpose_active`]). The written notes
+    /// (their fret numbers and the score) never change with it; playback sounds this much
+    /// above or below them. Drum kits are not transposed.
+    pub fn transpose(&self) -> i32 {
+        if self.transpose_active() {
+            self.transposition()
+        } else {
+            0
+        }
+    }
+
+    /// The pitch `note` sounds at: [`Self::written_pitch`] moved by [`Self::transpose`].
     pub fn sounding_pitch(&self, note: &NoteView<'_>) -> Result<Pitch, ModelError> {
+        self.transposed(self.written_pitch(note)?)
+    }
+
+    /// The pitch `note` is written at (what the score and the tab show): the open string's
+    /// pitch plus fret and capo, or the harmonic's pitch for natural, artificial, tapped and
+    /// pinch harmonics. On drum tracks the "fret" is the General MIDI drum sound itself.
+    pub fn written_pitch(&self, note: &NoteView<'_>) -> Result<Pitch, ModelError> {
         // Guitar Pro writes a voice or keyboard note below its stand-in string as a
         // negative fret: the pitch is still the open string's plus the fret.
         if note.inner.value < 0 && !self.is_percussion() {
-            let open = self.pitch_at(note.string()?, Fret::new(0)?)?;
+            let open = self.written_pitch_at(note.string()?, Fret::new(0)?)?;
             let pitch = i32::from(open.get()).saturating_add(i32::from(note.inner.value));
             let pitch = u8::try_from(pitch)
                 .map_err(|_| ModelError::Invalid(format!("pitch {pitch} is below MIDI's range")))?;
@@ -238,7 +256,7 @@ impl TrackView<'_> {
             return Pitch::new(fret);
         }
         let string = note.string()?;
-        let root = u16::from(self.pitch_at(string, Fret::new(0)?)?.get());
+        let root = u16::from(self.written_pitch_at(string, Fret::new(0)?)?.get());
         let fretted = root.saturating_add(u16::from(fret));
         let pitch = match note.harmonic() {
             // A natural harmonic is touched at the written fret over the open string.
@@ -264,9 +282,28 @@ impl TrackView<'_> {
         Pitch::new(pitch)
     }
 
-    /// The pitch of `fret` on `string`, without any harmonic (grace notes read their pitch
-    /// this way). On drum tracks the "fret" is the drum sound itself.
-    pub fn pitch_at(&self, string: StringNumber, fret: Fret) -> Result<Pitch, ModelError> {
+    /// The pitch `fret` on `string` sounds at: [`Self::written_pitch_at`] moved by
+    /// [`Self::transpose`].
+    pub fn sounding_pitch_at(&self, string: StringNumber, fret: Fret) -> Result<Pitch, ModelError> {
+        self.transposed(self.written_pitch_at(string, fret)?)
+    }
+
+    /// Moves a written pitch by the track's transposition, kept inside MIDI's range.
+    fn transposed(&self, written: Pitch) -> Result<Pitch, ModelError> {
+        let shift = self.transpose();
+        if shift == 0 {
+            return Ok(written);
+        }
+        let pitch = i32::from(written.get()).saturating_add(shift);
+        let pitch = u8::try_from(pitch)
+            .map_err(|_| ModelError::Invalid(format!("pitch {pitch} is outside MIDI's range")))?;
+        Pitch::new(pitch)
+    }
+
+    /// The pitch of `fret` on `string` as written, without any harmonic (grace notes read
+    /// their pitch this way) and without the track's transposition. On drum tracks the
+    /// "fret" is the drum sound itself.
+    pub fn written_pitch_at(&self, string: StringNumber, fret: Fret) -> Result<Pitch, ModelError> {
         if self.is_percussion() {
             return Pitch::new(fret.get());
         }

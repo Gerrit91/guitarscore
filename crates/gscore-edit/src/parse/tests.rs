@@ -856,6 +856,25 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
     ] {
         commands.push(Command::SetSongSound { state });
     }
+    // Transposing: the song, a track, the notes (whole song and one track) and the switch.
+    for semitones in [-12, -5, -1, 1, 7, 12] {
+        commands.push(Command::TransposeSong { semitones });
+        commands.push(Command::TransposeTrack { track, semitones });
+    }
+    commands.push(Command::TransposeNotes {
+        track: None,
+        semitones: 12,
+    });
+    commands.push(Command::TransposeNotes {
+        track: Some(track),
+        semitones: -7,
+    });
+    for active in [true, false] {
+        commands.push(Command::SetTransposeActive { active });
+    }
+    for semitones in [-12, -3, 0, 5, 12] {
+        commands.push(Command::SetTransposition { semitones });
+    }
     // Every command id is covered.
     for info in crate::COMMANDS {
         assert!(

@@ -366,6 +366,18 @@ enum ChangeKind {
         at: TrackIndex,
         previous: (bool, bool, bool),
     },
+    /// What the song sounds like was transposed; `previous` is each changed track's
+    /// transposition in semitones before the edit, `previous_active` the on/off switch.
+    SongTranspose {
+        previous: Vec<(TrackIndex, i32)>,
+        previous_active: bool,
+    },
+    /// The transposition was switched on or off (a listening aid, not part of the file).
+    TransposeActive { previous: bool },
+    /// Notes were moved on the fretboard; `previous` is the notes each changed beat had.
+    NotesTransposed {
+        previous: Vec<(BeatPosition, Vec<gscore_gp::Note>)>,
+    },
     /// The master volume and pan changed (`None`: the song had none).
     MasterMix { previous: Option<(f32, f32)> },
     /// Several changes made as one edit, undone in reverse order.
@@ -401,6 +413,10 @@ impl Change {
             ChangeKind::MeasureRemoved { measures, .. } => {
                 size_of::<GpMeasureHeader>().saturating_add(measures.iter().map(measure_size).sum())
             }
+            ChangeKind::NotesTransposed { previous } => previous
+                .iter()
+                .map(|(_, notes)| notes.len().saturating_mul(size_of::<gscore_gp::Note>()))
+                .sum(),
             ChangeKind::TrackRenamed { previous, .. } => previous.len(),
             ChangeKind::TrackSymbol { previous, .. } => previous.as_ref().map_or(0, String::len),
             ChangeKind::TrackSoundState { previous, .. }
@@ -503,6 +519,8 @@ impl Change {
             | ChangeKind::TrackColor { .. }
             | ChangeKind::TrackFlag { .. }
             | ChangeKind::TrackCapo { .. }
+            | ChangeKind::SongTranspose { .. }
+            | ChangeKind::TransposeActive { .. }
             | ChangeKind::SystemBreak { .. }
             | ChangeKind::BarsPerSystem { .. }
             | ChangeKind::TrackMix { .. } => 0,
@@ -760,10 +778,51 @@ impl Song {
                 }
                 Ok(())
             }),
+            ChangeKind::NotesTransposed { previous } => {
+                for (at, notes) in previous {
+                    let measure = self
+                        .inner_mut()
+                        .tracks
+                        .get_mut(at.track.get())
+                        .and_then(|track| {
+                            if at.staff.get() == 0 {
+                                track.measures.get_mut(at.measure.get())
+                            } else {
+                                track
+                                    .staves
+                                    .get_mut(at.staff.get().saturating_sub(1))
+                                    .and_then(|staff| staff.measures.get_mut(at.measure.get()))
+                            }
+                        })
+                        .and_then(|measure| measure.voices.get_mut(at.voice.get()))
+                        .and_then(|voice| voice.beats.get_mut(at.beat.get()));
+                    if let Some(beat) = measure {
+                        beat.notes.clone_from(notes);
+                    }
+                }
+                self.touch_all_measures();
+                Ok(())
+            }
+            ChangeKind::TransposeActive { previous } => {
+                self.transpose_active = *previous;
+                Ok(())
+            }
             ChangeKind::TrackCapo { at, previous } => self.edit_track_settings(|inner| {
                 track_mut(inner, *at)?.offset = *previous;
                 Ok(())
             }),
+            ChangeKind::SongTranspose {
+                previous,
+                previous_active,
+            } => {
+                self.transpose_active = *previous_active;
+                self.edit_track_settings(|inner| {
+                    for &(at, semitones) in previous {
+                        track_mut(inner, at)?.transpose_sound = semitones;
+                    }
+                    Ok(())
+                })
+            }
             ChangeKind::PageSetup { previous } => self.edit_metadata(|inner| {
                 inner.page_setup.clone_from(previous);
                 Ok(())
@@ -1176,5 +1235,10 @@ mod song_tests;
 mod staff_tests;
 #[cfg(test)]
 mod tests;
+mod transpose;
+
+pub use transpose::MAX_TRANSPOSE;
 #[cfg(test)]
 mod track_tests;
+#[cfg(test)]
+mod transpose_tests;

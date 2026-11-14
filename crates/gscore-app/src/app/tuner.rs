@@ -32,6 +32,78 @@ enum ToneRequest {
     Stop,
 }
 
+/// A reference tone (a sine wave) for tuning by ear: the tuner window's note, and the
+/// tuning dialog's play buttons (one per string).
+#[derive(Debug, Default)]
+pub(super) struct Tone {
+    /// The tone generator, once it was started.
+    player: Option<gscore_audio::TunerPlayer>,
+    /// Why the tone does not sound, if it does not.
+    error: Option<String>,
+}
+
+impl Tone {
+    /// Plays `note` (a MIDI note number), starting the output the first time and retuning
+    /// it afterwards. Returns the reason when it cannot sound.
+    pub(super) fn play(&mut self, note: u8) -> Option<String> {
+        // A device that failed (unplugged, busy) is opened again on the next Play.
+        if self
+            .player
+            .as_ref()
+            .is_some_and(|player| player.error().is_some())
+        {
+            self.player = None;
+        }
+        if self.player.is_none() {
+            match gscore_audio::TunerPlayer::start() {
+                Ok(player) => self.player = Some(player),
+                Err(error) => return Some(error.to_string()),
+            }
+        }
+        let Some(player) = &self.player else {
+            return Some("the tone did not start".to_owned());
+        };
+        match player.play(frequency(note)) {
+            Ok(()) => None,
+            Err(error) => Some(error.to_string()),
+        }
+    }
+
+    /// Silences the tone.
+    pub(super) fn stop(&mut self) {
+        if let Some(player) = &self.player {
+            player.stop();
+        }
+    }
+
+    /// Whether it is sounding.
+    pub(super) fn playing(&self) -> bool {
+        self.player
+            .as_ref()
+            .is_some_and(|player| player.is_playing())
+    }
+
+    /// Why it does not sound, if it does not.
+    pub(super) fn error(&self) -> Option<String> {
+        self.error
+            .clone()
+            .or_else(|| self.player.as_ref().and_then(|player| player.error()))
+    }
+
+    /// Plays `note` and keeps its error, if it could not sound.
+    pub(super) fn play_and_remember(&mut self, note: u8) {
+        let error = self.play(note);
+        self.error = error;
+    }
+
+    /// Takes a failure the player reports on its own (the device went away) into `error`.
+    pub(super) fn remember_error(&mut self) {
+        if let Some(error) = self.player.as_ref().and_then(|player| player.error()) {
+            self.error = Some(error);
+        }
+    }
+}
+
 /// The open tuner.
 #[derive(Debug)]
 pub(super) struct TunerState {
@@ -39,10 +111,8 @@ pub(super) struct TunerState {
     pos: Option<Pos2>,
     /// The note whose frequency is played (a MIDI note number).
     note: u8,
-    /// The tone generator, once it was started.
-    player: Option<gscore_audio::TunerPlayer>,
-    /// Why the tone does not sound, if it does not.
-    error: Option<String>,
+    /// The tone it plays.
+    tone: Tone,
 }
 
 impl Default for TunerState {
@@ -51,8 +121,7 @@ impl Default for TunerState {
             pos: None,
             // A4: the usual reference.
             note: CONCERT_A_NOTE,
-            player: None,
-            error: None,
+            tone: Tone::default(),
         }
     }
 }
@@ -104,11 +173,8 @@ impl GuitarScoreApp {
             .map(|string| (string.string.get(), string.pitch.get()))
             .collect();
         // A device that failed after it was opened.
-        if tuner.error.is_none()
-            && let Some(error) = tuner.player.as_ref().and_then(|player| player.error())
-        {
-            tuner.error = Some(error);
-        }
+        // A device that failed after it was opened.
+        tuner.tone.remember_error();
 
         let title = "Tuner";
         let size = vec2(WIDTH + 32.0, HEIGHT);
@@ -131,10 +197,7 @@ impl GuitarScoreApp {
                     .inner_margin(Margin::symmetric(16, 12))
                     .show(ui, |ui| {
                         ui.set_width(WIDTH);
-                        let playing = tuner
-                            .player
-                            .as_ref()
-                            .is_some_and(|player| player.is_playing());
+                        let playing = tuner.tone.playing();
                         picture(ui, tuner.note, playing);
                         ui.add_space(8.0);
                         ui.vertical_centered(|ui| {
@@ -222,7 +285,7 @@ impl GuitarScoreApp {
                                 }
                             });
                         }
-                        if let Some(error) = &tuner.error {
+                        if let Some(error) = tuner.tone.error() {
                             ui.add_space(4.0);
                             ui.colored_label(ui.visuals().error_fg_color, error);
                         }
@@ -271,50 +334,16 @@ impl GuitarScoreApp {
                     });
             });
         match request {
-            Some(ToneRequest::Play(note)) => start_or_retune(&mut tuner, note),
-            Some(ToneRequest::Stop) => {
-                if let Some(player) = &tuner.player {
-                    player.stop();
-                }
-            }
+            Some(ToneRequest::Play(note)) => tuner.tone.play_and_remember(note),
+            Some(ToneRequest::Stop) => tuner.tone.stop(),
             None => {}
         }
         match outcome {
             Outcome::Cancel | Outcome::Apply | Outcome::Remove | Outcome::Listen => {
-                if let Some(player) = &tuner.player {
-                    player.stop();
-                }
+                tuner.tone.stop();
             }
             Outcome::Open => self.tuner = Some(tuner),
         }
-    }
-}
-
-/// Plays `note`: starts the tone generator the first time, retunes it afterwards.
-fn start_or_retune(tuner: &mut TunerState, note: u8) {
-    // A device that failed (unplugged, busy) is opened again on the next Play.
-    if tuner
-        .player
-        .as_ref()
-        .is_some_and(|player| player.error().is_some())
-    {
-        tuner.player = None;
-    }
-    if tuner.player.is_none() {
-        match gscore_audio::TunerPlayer::start() {
-            Ok(player) => tuner.player = Some(player),
-            Err(error) => {
-                tuner.error = Some(error.to_string());
-                return;
-            }
-        }
-    }
-    let Some(player) = &tuner.player else {
-        return;
-    };
-    match player.play(frequency(note)) {
-        Ok(()) => tuner.error = player.error(),
-        Err(error) => tuner.error = Some(error.to_string()),
     }
 }
 

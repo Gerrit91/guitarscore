@@ -72,7 +72,9 @@ pub(crate) enum Icon {
     PanelRight,
     /// Rename (a pencil).
     Rename,
-    /// A tuner (a tuning fork).
+    /// The transposition (a tuning fork).
+    TuningFork,
+    /// A tuner (a sound wave).
     Tuner,
     /// The speed trainer (a speed gauge with its needle turned up).
     SpeedTrainer,
@@ -128,6 +130,96 @@ fn sized_button(
         visuals.fg_stroke.color,
         icon,
     );
+    response.on_hover_text(tip)
+}
+
+/// A very small text button (a glyph such as "−" or "+"), for the toolbar's split pair.
+pub(crate) fn tiny_button(
+    ui: &mut egui::Ui,
+    glyph: &str,
+    label: &str,
+    tip: &str,
+    enabled: bool,
+) -> Response {
+    const SIZE: Vec2 = vec2(18.0, 9.0);
+    let sense = if enabled {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let (rect, response) = ui.allocate_exact_size(SIZE, sense);
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label(label);
+        node.set_role(egui::Role::Button);
+    });
+    let visuals = ui.style().interact(&response);
+    if enabled && (response.hovered() || response.has_focus()) {
+        ui.painter().rect_filled(rect, 3.0, visuals.weak_bg_fill);
+    }
+    let color = if enabled {
+        visuals.text_color()
+    } else {
+        ui.visuals().weak_text_color()
+    };
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        glyph,
+        egui::FontId::proportional(10.0),
+        color,
+    );
+    response.on_hover_text(tip)
+}
+
+/// The small split pair for stepping a value: one button over the other (a step down over
+/// a step up). Each is `(accessibility label, tooltip, enabled)`; returns whether each was
+/// clicked.
+pub(crate) fn step_pair(
+    ui: &mut egui::Ui,
+    down: (&str, &str, bool),
+    up: (&str, &str, bool),
+) -> (bool, bool) {
+    let mut clicked = (false, false);
+    ui.allocate_ui_with_layout(
+        vec2(18.0, 18.0),
+        egui::Layout::top_down(egui::Align::Center),
+        |ui| {
+            clicked.0 = tiny_button(ui, "−", down.0, down.1, down.2).clicked();
+            clicked.1 = tiny_button(ui, "+", up.0, up.1, up.2).clicked();
+        },
+    );
+    clicked
+}
+
+/// An icon button that is filled with the accent color while it is active (something
+/// plays through it), as the tuner's Play button is, for the same look everywhere.
+pub(crate) fn accent_button(
+    ui: &mut egui::Ui,
+    icon: Icon,
+    label: &str,
+    tip: &str,
+    active: bool,
+) -> Response {
+    let (rect, response) = ui.allocate_exact_size(BUTTON, Sense::click());
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label(label);
+        node.set_role(egui::Role::Button);
+    });
+    let tokens = crate::app::style::tokens(ui);
+    if active || response.hovered() || response.has_focus() {
+        let fill = if active {
+            tokens.accent
+        } else {
+            ui.style().interact(&response).weak_bg_fill
+        };
+        ui.painter().rect_filled(rect, 4.0, fill);
+    }
+    let color = if active {
+        tokens.on_accent
+    } else {
+        ui.style().interact(&response).fg_stroke.color
+    };
+    paint(ui.painter(), rect.shrink(6.0), color, icon);
     response.on_hover_text(tip)
 }
 
@@ -602,7 +694,7 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 thin,
             );
         }
-        Icon::Tuner => {
+        Icon::TuningFork => {
             // A tuning fork: two prongs, the U where they meet, a stem and a base.
             let half = size * 0.24;
             let top = center.y - size * 0.44;
@@ -636,6 +728,23 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 ],
                 stroke,
             );
+        }
+        Icon::Tuner => {
+            // A sound wave: one sine period and a half across the icon, as the tuner draws
+            // the tone it plays.
+            let width = size * 0.42;
+            let amplitude = size * 0.3;
+            let wave: Vec<_> = (0..=24)
+                .map(|step| {
+                    let share = step as f32 / 24.0;
+                    let x = center.x - width + 2.0 * width * share;
+                    pos2(
+                        x,
+                        center.y - amplitude * (share * 3.0 * std::f32::consts::PI).sin(),
+                    )
+                })
+                .collect();
+            painter.add(Shape::line(wave, stroke));
         }
         Icon::SpeedTrainer => {
             // A speed gauge: an open arc, a few ticks and a needle pointing up-right.

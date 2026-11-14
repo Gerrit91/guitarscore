@@ -17,9 +17,13 @@ use crate::info::{
     SET_SONG_TEXT, SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE, SET_TRACK_CAPO, SET_TRACK_CHORUS,
     SET_TRACK_COLOR, SET_TRACK_DRUMS, SET_TRACK_MUTE, SET_TRACK_PAN, SET_TRACK_PROGRAM,
     SET_TRACK_REVERB, SET_TRACK_SOLO, SET_TRACK_SOUND, SET_TRACK_STAVES, SET_TRACK_STRING_PITCH,
-    SET_TRACK_STRINGS, SET_TRACK_SYMBOL, SET_TRACK_VOLUME, UNDO,
+    SET_TRACK_STRINGS, SET_TRACK_SYMBOL, SET_TRACK_VOLUME, TRANSPOSE_NOTES, TRANSPOSE_SONG,
+    TRANSPOSE_TRACK, UNDO,
 };
-use crate::info::{SET_BARS_PER_SYSTEM, SET_PAGE_SETUP, SET_SCORE_LINE_BREAK, SET_SYSTEM_BREAK};
+use crate::info::{
+    SET_BARS_PER_SYSTEM, SET_PAGE_SETUP, SET_SCORE_LINE_BREAK, SET_SYSTEM_BREAK,
+    SET_TRANSPOSE_ACTIVE, SET_TRANSPOSITION,
+};
 
 /// One edit, with every parameter already checked for syntax and range.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -264,6 +268,37 @@ pub enum Command {
     SetTempo {
         /// Quarter notes per minute.
         tempo: u32,
+    },
+    /// Transpose what the song sounds like by `semitones` (1 to 12 up or down), keeping the
+    /// written notes as they are.
+    TransposeSong {
+        /// Semitones, positive for higher.
+        semitones: i32,
+    },
+    /// Set the whole song's transposition (the number typed in the toolbar).
+    SetTransposition {
+        /// Semitones, positive for higher, 0 for none.
+        semitones: i32,
+    },
+    /// Transpose what one track sounds like, like [`Self::TransposeSong`].
+    TransposeTrack {
+        /// The track.
+        track: TrackIndex,
+        /// Semitones, positive for higher.
+        semitones: i32,
+    },
+    /// Move the notes of the whole song (`track` `None`) or of one track `semitones` up or
+    /// down on the fretboard, re-fingered so the tablature shows the new pitches.
+    TransposeNotes {
+        /// The one track, or `None` for every track.
+        track: Option<TrackIndex>,
+        /// Semitones, positive for higher.
+        semitones: i32,
+    },
+    /// Switch the song's transposition on or off (a listening aid; the value is kept).
+    SetTransposeActive {
+        /// Whether the transposition is applied.
+        active: bool,
     },
     /// Remove a beat's notes, leaving a rest.
     SetBeatRest {
@@ -597,6 +632,16 @@ impl Command {
                 bars.map_or_else(|| "auto".to_owned(), |bars| bars.to_string())
             ),
             Command::SetTempo { tempo } => format!("{id} tempo={tempo}"),
+            Command::SetTransposition { semitones } => format!("{id} semitones={semitones}"),
+            Command::TransposeSong { semitones } => format!("{id} semitones={semitones}"),
+            Command::TransposeTrack { track, semitones } => {
+                format!("{id} track={} semitones={semitones}", one(track.get()))
+            }
+            Command::TransposeNotes { track, semitones } => match track {
+                Some(track) => format!("{id} track={} semitones={semitones}", one(track.get())),
+                None => format!("{id} semitones={semitones}"),
+            },
+            Command::SetTransposeActive { active } => format!("{id} on={active}"),
             Command::SetBeatRest { at: p } => format!("{id} {}", at(p)),
             Command::SetTie { at: p, string, tie } => {
                 format!("{id} {} string={} tie={tie}", at(p), string.get())
@@ -807,6 +852,11 @@ impl Command {
             Command::SetBarsPerSystem { .. } => &SET_BARS_PER_SYSTEM,
             Command::SetScoreLineBreak { .. } => &SET_SCORE_LINE_BREAK,
             Command::SetTempo { .. } => &SET_TEMPO,
+            Command::TransposeSong { .. } => &TRANSPOSE_SONG,
+            Command::SetTransposition { .. } => &SET_TRANSPOSITION,
+            Command::TransposeTrack { .. } => &TRANSPOSE_TRACK,
+            Command::TransposeNotes { .. } => &TRANSPOSE_NOTES,
+            Command::SetTransposeActive { .. } => &SET_TRANSPOSE_ACTIVE,
             Command::SetBeatRest { .. } => &SET_BEAT_REST,
             Command::SetTie { .. } => &SET_TIE,
             Command::SetBeatTie { .. } => &SET_BEAT_TIE,
@@ -966,6 +1016,11 @@ impl Command {
             | Command::SetTrackStrings { .. }
             | Command::SetTrackStringPitch { .. }
             | Command::SetTempo { .. }
+            | Command::TransposeSong { .. }
+            | Command::SetTransposition { .. }
+            | Command::TransposeTrack { .. }
+            | Command::TransposeNotes { .. }
+            | Command::SetTransposeActive { .. }
             | Command::SetMeasureTempo { .. }
             | Command::SetTimeSignature { .. }
             | Command::SetNoteEffect { .. }
@@ -1176,6 +1231,24 @@ impl Command {
                     && bars.is_none_or(|bars| (1..=MAX_BARS_PER_SYSTEM).contains(&bars))
             }
             Command::SetTempo { tempo } => (1..=MAX_TEMPO).contains(tempo),
+            Command::TransposeSong { semitones } => {
+                song.can_transpose(*semitones)
+                    && (-gscore_model::MAX_TRANSPOSE..=gscore_model::MAX_TRANSPOSE)
+                        .contains(semitones)
+                    && *semitones != 0
+            }
+            Command::SetTransposition { semitones } => {
+                song.can_transpose_to(*semitones)
+                    && (-gscore_model::MAX_TRANSPOSE..=gscore_model::MAX_TRANSPOSE)
+                        .contains(semitones)
+            }
+            Command::TransposeTrack { track, semitones } => {
+                song.can_transpose_track(*track, *semitones)
+            }
+            Command::TransposeNotes { track, semitones } => {
+                song.can_transpose_notes(*track, *semitones)
+            }
+            Command::SetTransposeActive { active } => *active != song.transpose_active(),
             Command::SetBeatRest { at } => song.beat(*at).is_some(),
             Command::SetDynamic { at, .. } => song
                 .beat(*at)
@@ -1316,6 +1389,15 @@ impl Command {
             Command::SetBarsPerSystem { track, bars } => song.set_bars_per_system(*track, *bars),
             Command::SetScoreLineBreak { measure, on } => song.set_score_line_break(*measure, *on),
             Command::SetTempo { tempo } => song.set_tempo(*tempo),
+            Command::TransposeSong { semitones } => song.transpose_by(*semitones),
+            Command::SetTransposition { semitones } => song.transpose_to(*semitones),
+            Command::TransposeTrack { track, semitones } => {
+                song.transpose_track_by(*track, *semitones)
+            }
+            Command::TransposeNotes { track, semitones } => {
+                song.transpose_notes(*track, *semitones)
+            }
+            Command::SetTransposeActive { active } => song.set_transpose_active(*active),
             Command::SetBeatRest { at } => song.set_beat_rest(*at),
             Command::SetTie { at, string, tie } => song.set_note_tie(*at, *string, *tie),
             Command::SetBeatTie { at, tie } => song.set_beat_tie(*at, *tie),

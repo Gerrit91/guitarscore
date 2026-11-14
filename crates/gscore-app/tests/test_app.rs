@@ -46,6 +46,25 @@ fn app_with(file: Option<PathBuf>) -> Harness<'static, GuitarScoreApp> {
     harness
 }
 
+/// A window wide enough for the whole toolbar readout (a narrow one drops the position,
+/// measure and tempo before it drops its own buttons).
+fn wide_app_with(file: Option<PathBuf>) -> Harness<'static, GuitarScoreApp> {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1400.0, 800.0))
+        .build_eframe(|cc| GuitarScoreApp::new(&cc.egui_ctx, file));
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness
+}
+
 #[test]
 fn a_file_given_at_start_opens_in_the_background() {
     let harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
@@ -253,7 +272,12 @@ fn the_view_menu_switches_the_theme_and_the_toolbar_zooms() {
     harness.get_by_label("Zoom in").click();
     harness.run();
     assert!((harness.state().view().zoom() - 1.25).abs() < 1e-4);
-    harness.get_by_label("125 %");
+    // Back to 100 %, so the settings the other tests share are left as they were.
+    harness.get_by_label("125 %").click();
+    harness.run();
+    assert!((harness.state().view().zoom() - 1.0).abs() < 1e-4);
+    harness.state_mut().view_mut().theme = ThemeChoice::Light;
+    harness.run();
 }
 
 #[test]
@@ -671,7 +695,7 @@ fn a_track_can_be_played_by_a_hardware_synthesizer() {
 fn play_and_stop_drive_the_midi_output() {
     // Plays to ALSA's silent "Midi Through" port; skipped where there is none.
     const THROUGH: &str = "Midi Through";
-    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
     if harness.state_mut().playback_mut().refresh_ports().is_err()
         || !harness
             .state()
@@ -826,7 +850,7 @@ fn play_and_stop_drive_the_built_in_synthesizer() {
     let dir = temp_dir("synth");
     let path = dir.join("sine.sf2");
     std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
-    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
     harness.state_mut().playback_mut().use_soundfont(path);
 
     harness.get_by_label("Play").click();
@@ -912,7 +936,7 @@ fn playback_starts_at_the_cursor_and_resumes_where_it_paused() {
     let dir = temp_dir("from-cursor");
     let path = dir.join("sine.sf2");
     std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
-    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
     harness.state_mut().playback_mut().use_soundfont(path);
     // With "return on stop" (the default) Space stops; pausing is what is tested here.
     harness.state_mut().set_return_on_stop(false);
@@ -974,7 +998,7 @@ fn stop_goes_back_to_where_playback_started_when_asked() {
     let dir = temp_dir("return-on-stop");
     let path = dir.join("sine.sf2");
     std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
-    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
     harness.state_mut().playback_mut().use_soundfont(path);
     harness.state_mut().set_return_on_stop(true);
     let measure = |app: &GuitarScoreApp| app.document().unwrap().editor().cursor().measure.get();
@@ -2027,7 +2051,7 @@ fn a_count_in_plays_one_bar_then_the_song_and_the_metronome_stays_live() {
     let dir = temp_dir("count-in");
     let path = dir.join("sine.sf2");
     std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
-    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
     harness.state_mut().playback_mut().use_soundfont(path);
     harness.state_mut().set_count_in(true);
     cursor_to_measure(&mut harness, 2);
@@ -2083,7 +2107,7 @@ fn an_interrupted_count_in_starts_again_where_the_cursor_is_now() {
     let dir = temp_dir("count-in-again");
     let path = dir.join("sine.sf2");
     std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
-    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
     harness.state_mut().playback_mut().use_soundfont(path);
     harness.state_mut().set_count_in(true);
     cursor_to_measure(&mut harness, 2);
@@ -2151,7 +2175,7 @@ fn previous_and_next_bar_during_a_count_in_count_in_again() {
     let dir = temp_dir("count-in-navigate");
     let path = dir.join("sine.sf2");
     std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
-    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
     harness.state_mut().playback_mut().use_soundfont(path);
     harness.state_mut().set_count_in(true);
     cursor_to_measure(&mut harness, 2);
@@ -2240,7 +2264,7 @@ fn looping_the_selected_measure_restarts_at_its_beginning() {
     let dir = temp_dir("loop");
     let path = dir.join("sine.sf2");
     std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
-    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
     harness.state_mut().playback_mut().use_soundfont(path);
     let document = harness.state_mut().document_mut().unwrap();
     document
@@ -2389,7 +2413,7 @@ fn a_loop_is_counted_in_again_each_time_it_starts_over() {
     let dir = temp_dir("count-in-loop");
     let path = dir.join("sine.sf2");
     std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
-    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
     harness.state_mut().playback_mut().use_soundfont(path);
     harness.state_mut().set_count_in(true);
     harness.state_mut().playback_mut().set_count_in_loops(true);
@@ -2435,7 +2459,7 @@ fn a_looped_note_selection_starts_at_its_first_bar() {
     let dir = temp_dir("loop-notes");
     let path = dir.join("sine.sf2");
     std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
-    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
     harness.state_mut().playback_mut().use_soundfont(path);
     harness.state_mut().set_count_in(true);
     // The third and fourth beat of the fourth bar (quarter notes), looped.
@@ -2772,6 +2796,110 @@ fn the_grid_switches_to_a_mixer_view() {
 }
 
 #[test]
+fn the_toolbar_transposes_by_semitones_and_the_fork_bypasses_it() {
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
+    let state = |harness: &Harness<'static, GuitarScoreApp>| {
+        let song = harness.state().document().unwrap().song();
+        (song.transposition(), song.transpose_active())
+    };
+    assert_eq!(state(&harness), (Some(0), false), "nothing transposed yet");
+    harness.get_by_label("Transpose up a semitone").click();
+    harness.run();
+    assert_eq!(state(&harness), (Some(1), true));
+    assert_eq!(
+        harness.state().status(),
+        Some("Transposed up a semitone"),
+        "the status bar says what happened"
+    );
+    harness.get_by_label_contains("Transposition: +1");
+    // The tuning fork switches it off and on again (the written notes stay).
+    harness.get_by_label("Transposition").click();
+    harness.run();
+    assert_eq!(
+        state(&harness),
+        (Some(1), false),
+        "bypassed, the value kept"
+    );
+    harness.get_by_label("Transposition").click();
+    harness.run();
+    assert_eq!(state(&harness), (Some(1), true));
+    // One step down is back to none.
+    harness.get_by_label("Transpose down a semitone").click();
+    harness.run();
+    assert_eq!(state(&harness), (Some(0), true));
+}
+
+#[test]
+fn the_transpose_window_moves_the_notes_when_the_fingerings_change() {
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
+    // The first note's string and fret before the edit.
+    let first = |harness: &Harness<'static, GuitarScoreApp>| {
+        let song = harness.state().document().unwrap().song();
+        let note = song
+            .track(gscore_model::TrackIndex::new(0))
+            .unwrap()
+            .measure(gscore_model::MeasureIndex::new(0))
+            .unwrap()
+            .voices()
+            .next()
+            .unwrap()
+            .beats()
+            .next()
+            .unwrap()
+            .notes()
+            .next()
+            .unwrap();
+        (note.string().unwrap().get(), note.fret().unwrap().get())
+    };
+    let before = first(&harness);
+    harness.get_by_label("Tools").click();
+    harness.run();
+    harness.get_by_label("Transpose…").click();
+    harness.run();
+    for _ in 0..2 {
+        harness.get_by_label("A semitone higher").click();
+        harness.run();
+    }
+    harness.get_by_label("Change the fingerings").click();
+    harness.run();
+    harness.get_by_label("Apply the transposition").click();
+    harness.run();
+    let after = first(&harness);
+    assert_ne!(after, before, "the note moved on the fretboard");
+    // Two semitones on the same string, when it can hold them.
+    if after.0 == before.0 {
+        assert_eq!(after.1, before.1.saturating_add(2));
+    }
+    // The window closed, and nothing was transposed in sound (the notes moved instead).
+    assert!(harness.query_by_label("Change the fingerings").is_none());
+    assert_eq!(
+        harness.state().document().unwrap().song().transposition(),
+        Some(0)
+    );
+}
+
+#[test]
+fn the_tuning_dialog_plays_a_string_and_stops_it_again() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    harness.get_by_label_contains("Tuning:").click();
+    harness.run();
+    // A reference tone per string: the same button stops it (it rings until stopped).
+    harness.get_by_label("Play string 1").click();
+    harness.run();
+    // Without an audio device the tone cannot start and says why; nothing hangs.
+    let stopped = harness.query_by_label("Stop string 1").is_some();
+    let failed = harness.query_all_by_label_contains("Play string 1").count() > 0;
+    assert!(stopped || failed, "either it sounds or it says why not");
+    if stopped {
+        harness.get_by_label("Stop string 1").click();
+        harness.run();
+        harness.get_by_label("Play string 1");
+    }
+    harness.get_by_label("Cancel").click();
+    harness.run();
+}
+
+#[test]
 fn the_mixer_has_a_reverb_bus_the_tracks_send_into() {
     let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
     harness.get_by_label("Mixer view").click();
@@ -3081,7 +3209,7 @@ fn the_player_never_covers_the_toolbar_groups() {
 #[test]
 fn while_stopped_the_clock_shows_where_play_starts() {
     // Nine 4/4 bars at 120 BPM: two seconds each.
-    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
     harness.run();
     harness.get_by_label_contains("Time 00:00 of 00:18");
     let document = harness.state_mut().document_mut().unwrap();

@@ -342,6 +342,23 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
         "set_tempo" => Ok(Command::SetTempo {
             tempo: tempo_arg(args)?,
         }),
+        "transpose_song" | "transpose" => Ok(Command::TransposeSong {
+            semitones: semitones_arg(args)?,
+        }),
+        "set_transposition" => Ok(Command::SetTransposition {
+            semitones: semitones_arg(args)?,
+        }),
+        "transpose_track" => Ok(Command::TransposeTrack {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            semitones: semitones_arg(args)?,
+        }),
+        "transpose_notes" => Ok(Command::TransposeNotes {
+            track: optional_position(args, "track")?.map(TrackIndex::new),
+            semitones: semitones_arg(args)?,
+        }),
+        "set_transpose_active" => Ok(Command::SetTransposeActive {
+            active: bool_arg(args, "on")?,
+        }),
         "set_beat_rest" => Ok(Command::SetBeatRest {
             at: position(args)?,
         }),
@@ -920,6 +937,19 @@ fn key_arg(args: &mut Args) -> Result<i8, ParseError> {
         .map_err(|_| bad(args.command, "key", &text, expected))?;
     if !(-7..=7).contains(&value) {
         return Err(bad(args.command, "key", &text, expected));
+    }
+    Ok(value)
+}
+
+/// How far to transpose the song: 0 to none, -12 to -1 (down) or 1 to 12 (up).
+fn semitones_arg(args: &mut Args) -> Result<i32, ParseError> {
+    let text = args.required("semitones")?;
+    let expected = "a whole number from -12 to 12 (0 for none)";
+    let value: i32 = text
+        .parse()
+        .map_err(|_| bad(args.command, "semitones", &text, expected))?;
+    if !(-gscore_model::MAX_TRANSPOSE..=gscore_model::MAX_TRANSPOSE).contains(&value) {
+        return Err(bad(args.command, "semitones", &text, expected));
     }
     Ok(value)
 }

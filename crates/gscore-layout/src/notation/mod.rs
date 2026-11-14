@@ -406,7 +406,7 @@ fn beat_item(
                     continue;
                 }
                 // Unreadable notes are listed as issues by the model; leave them out here.
-                let Ok(pitch) = notation.track.sounding_pitch(&note) else {
+                let Ok(pitch) = notation.track.written_pitch(&note) else {
                     continue;
                 };
                 let tie = kind == NoteKind::Tie;

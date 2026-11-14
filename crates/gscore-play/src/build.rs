@@ -207,7 +207,8 @@ pub(crate) fn collect(
                             let trill = note.trill().and_then(|trill| {
                                 let fret = trill.fret?;
                                 let string = StringNumber::new(string).ok()?;
-                                let pitch = view.pitch_at(string, Fret::new(fret).ok()?).ok()?;
+                                let pitch =
+                                    view.sounding_pitch_at(string, Fret::new(fret).ok()?).ok()?;
                                 Some((pitch.get(), fret, trill.speed))
                             });
                             let pick_slide = note.slides().find_map(|slide| match slide {
@@ -276,7 +277,7 @@ pub(crate) fn collect(
                                 let Ok(string) = StringNumber::new(string_number) else {
                                     continue;
                                 };
-                                let Ok(pitch) = view.pitch_at(string, Fret::OPEN) else {
+                                let Ok(pitch) = view.sounding_pitch_at(string, Fret::OPEN) else {
                                     continue;
                                 };
                                 let mut hit = Sounding::new(

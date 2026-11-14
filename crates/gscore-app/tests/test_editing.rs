@@ -680,7 +680,14 @@ fn lyrics_show_in_the_score_while_typed_and_cancel_takes_them_back() {
 
 #[test]
 fn the_player_tells_whether_the_bar_is_full() {
-    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    // A window wide enough for the whole readout (a narrow one shows the time only, so the
+    // toolbar leaves the room to its own buttons).
+    let file = testdata("basic/note_lengths.gp");
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1400.0, 800.0))
+        .with_max_steps(64)
+        .build_eframe(|cc| GuitarScoreApp::new(&cc.egui_ctx, Some(file)));
+    settle(&mut harness);
     harness.run();
     harness.get_by_label("Bar full: 4 of 4 beats");
     // One more beat makes the bar too long.

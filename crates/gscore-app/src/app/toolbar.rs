@@ -4,7 +4,7 @@
 //! track in the song grid.
 
 use egui::{Align, FontFamily, FontId, Layout, Rect, RichText, Sense, UiBuilder, vec2};
-use gscore_edit::{Action, ActionId, Request};
+use gscore_edit::{Action, ActionId, Command, Request};
 use gscore_model::{BeatPosition, MeasureIndex};
 use gscore_play::Timeline;
 
@@ -16,6 +16,23 @@ use crate::state::MeasureSelection;
 
 /// The player's width before it was first measured.
 const PLAYER_WIDTH: f32 = 220.0;
+/// How much room each part of the position readout needs, in the order they are shown: the
+/// time, the measure number, how full the bar is, and the tempo. A narrow window shows the
+/// first parts only.
+const READOUT_TIME: f32 = 95.0;
+const READOUT_MEASURE: f32 = 65.0;
+const READOUT_FILL: f32 = 55.0;
+const READOUT_TEMPO: f32 = 90.0;
+/// Room kept for the speed trainer button and the speed control, right of the readout.
+const SPEED_WIDTH: f32 = 115.0;
+/// Fixed widths for the readout's parts, so the transport keeps its width (and its buttons
+/// keep their place) while the clock counts and the measure number grows.
+const TIME_WIDTH: f32 = 96.0;
+const MEASURE_WIDTH: f32 = 46.0;
+const TEMPO_WIDTH: f32 = 54.0;
+/// About the width of the transport's own buttons (navigation, play, metronome, count-in,
+/// loop), which come before the readout.
+const TRANSPORT_BUTTONS: f32 = 255.0;
 
 impl GuitarScoreApp {
     /// " (ctrl+z)": the keys bound to `action`, for a tooltip.
@@ -71,6 +88,7 @@ impl GuitarScoreApp {
                 {
                     self.open_tuner();
                 }
+                self.transpose_controls(ui);
                 if icons::toolbar_button(ui, Icon::History, "History", "Edit history…").clicked()
                 {
                     self.open_history();
@@ -83,29 +101,132 @@ impl GuitarScoreApp {
         // Middle: the player, centered on the whole bar. Its width comes from the last
         // frame (egui lays out in one pass).
         let id = ui.scope_id().with("player_width");
-        let width = ui
+        let stored = ui
             .data(|data| data.get_temp::<f32>(id))
             .unwrap_or(PLAYER_WIDTH);
+        let gap = 8.0;
+        // The room between the side groups: the player never draws (or takes clicks) over
+        // their buttons. What the position readout may use is what is left of it beside the
+        // transport's own buttons and the speed control; on a narrow window its parts are
+        // left out in order of importance.
+        let span = (right_start - 2.0 * gap - left_end).max(0.0);
+        let readout_room = (span - TRANSPORT_BUTTONS - SPEED_WIDTH).max(0.0);
+        let width = stored.min(span).max(0.0);
         // Centered on the whole bar where there is room; otherwise moved clear of the side
         // groups (the left one wins when even that does not fit).
-        let gap = 8.0;
         let centered = row.center().x - width / 2.0;
         let x = centered.min(right_start - gap - width).max(left_end + gap);
         let player = Rect::from_min_size(
             egui::pos2(x, row.center().y - height / 2.0),
-            vec2(width, height),
+            vec2(span, height),
         );
         let drawn = ui.scope_builder(
             UiBuilder::new()
                 .max_rect(player)
                 .layout(Layout::left_to_right(Align::Center)),
-            |ui| self.transport(ui),
+            |ui| self.transport(ui, readout_room),
         );
+        // The transport measures its own content once it settled (the parts of the
+        // readout that fit do not depend on this width, so it settles in a frame or two).
         let measured = drawn.inner;
-        if (measured - width).abs() > 0.5 {
+        if (measured - stored).abs() > 0.5 {
             ui.data_mut(|data| data.insert_temp(id, measured));
             ui.ctx().request_repaint();
         }
+    }
+
+    /// The transposition, beside the tuner: first the tuning-fork button that switches it
+    /// on and off (an A/B listen; it has nothing to switch while the value is 0), then the
+    /// value in semitones, then one small button for a semitone down over one for a semitone
+    /// up. The written notes and the tablature stay as they are.
+    fn transpose_controls(&mut self, ui: &mut egui::Ui) {
+        let (value, active, down, up) =
+            self.document().map_or((None, false, false, false), |doc| {
+                let song = doc.song();
+                (
+                    song.transposition(),
+                    song.transpose_active(),
+                    song.can_transpose(-1),
+                    song.can_transpose(1),
+                )
+            });
+        let has_song = self.document().is_some();
+        // The switch is only useful once there is a transposition to hear or bypass.
+        let switchable = has_song && value.is_some_and(|step| step != 0);
+        style::toolbar_group(ui, |ui| {
+            // A small split pair: a semitone down over a semitone up.
+            let spacing = ui.spacing().item_spacing;
+            ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+            let (down, up) = icons::step_pair(
+                ui,
+                (
+                    "Transpose down a semitone",
+                    "A semitone lower (the tablature stays)",
+                    has_song && down,
+                ),
+                (
+                    "Transpose up a semitone",
+                    "A semitone higher (the tablature stays)",
+                    has_song && up,
+                ),
+            );
+            if down {
+                self.perform_action(Action::Plain(ActionId::TransposeDownSemitone), ui.ctx());
+            }
+            if up {
+                self.perform_action(Action::Plain(ActionId::TransposeUpSemitone), ui.ctx());
+            }
+            let text = match value {
+                Some(0) | None => "0".to_owned(),
+                Some(step) => format!("{step:+}"),
+            };
+            // The value: click it to type one (drag also works), 0 to 12 semitones either
+            // way. The written notes stay as they are.
+            let mut typed = value.unwrap_or(0);
+            let shown = typed;
+            let field = ui.add_sized(
+                vec2(30.0, 22.0),
+                egui::DragValue::new(&mut typed)
+                    .range(-gscore_model::MAX_TRANSPOSE..=gscore_model::MAX_TRANSPOSE)
+                    .speed(1.0)
+                    .custom_formatter(|value, _| {
+                        let step = value.round() as i32;
+                        if step == 0 {
+                            "0".to_owned()
+                        } else {
+                            format!("{step:+}")
+                        }
+                    }),
+            );
+            ui.ctx().accesskit_node_builder(field.id, |node| {
+                node.set_label(format!("Transposition: {text} semitones"));
+            });
+            if typed != shown {
+                self.run_command_from_window(Command::SetTransposition { semitones: typed })
+                    .ok();
+                ui.ctx().request_repaint();
+            }
+            field.on_hover_text(match value {
+                Some(step) => format!("The song sounds {step:+} semitones from what is written"),
+                None => "The tracks are transposed differently".to_owned(),
+            });
+            let tip = if !switchable {
+                "Transposition on/off: set a transposition first (− and + beside this)"
+            } else if active {
+                "Transposition on: click to hear the song as written"
+            } else {
+                "Transposition off: click to hear it transposed"
+            };
+            let fork = ui
+                .add_enabled_ui(switchable, |ui| {
+                    icons::toggle_button(ui, Icon::TuningFork, "Transposition", tip, active)
+                })
+                .inner;
+            if fork.clicked() {
+                self.perform_action(Action::Plain(ActionId::ToggleTransposition), ui.ctx());
+            }
+            ui.spacing_mut().item_spacing = spacing;
+        });
     }
 
     /// Open, save, undo and redo.
@@ -198,7 +319,7 @@ impl GuitarScoreApp {
 
     /// The player: play/pause, stop, where playback (or the cursor) is, and the tempo
     /// there. Returns the width it took, for centering it next frame.
-    fn transport(&mut self, ui: &mut egui::Ui) -> f32 {
+    fn transport(&mut self, ui: &mut egui::Ui, readout_room: f32) -> f32 {
         let playing = self.playback.state() == gscore_play::PlayState::Playing;
         let has_song = self.document().is_some();
         let (metronome, count_in) = (self.playback.metronome(), self.playback.count_in());
@@ -311,7 +432,9 @@ impl GuitarScoreApp {
             {
                 toggle_loop = true;
             }
-            self.position_readout(ui);
+            // The position, measure and tempo are the first to go when the window is too
+            // narrow for them; the transport's own buttons always stay.
+            self.position_readout(ui, readout_room);
             ui.add_space(4.0);
             self.speed_trainer_button(ui);
             self.speed_control(ui);
@@ -337,31 +460,8 @@ impl GuitarScoreApp {
         if toggle_loop {
             self.set_loop_selection(!looping);
         }
-        if self.playback.is_loading() {
-            ui.label("Loading sounds…");
-            // A browser reports real bytes; the desktop's synthesizer has no byte count.
-            let (fraction, text) = match self.playback.load_progress() {
-                Some((done, total)) if total > 0 => {
-                    let percent =
-                        u16::try_from(done.saturating_mul(100).checked_div(total).unwrap_or(0))
-                            .unwrap_or(0)
-                            .min(100);
-                    (f32::from(percent) / 100.0, format!("{percent}%"))
-                }
-                _ => (0.0, String::new()),
-            };
-            ui.add(
-                egui::ProgressBar::new(fraction)
-                    .text(text)
-                    .animate(fraction <= 0.0)
-                    .desired_width(80.0),
-            );
-            if ui.small_button("Cancel").clicked() {
-                self.playback.cancel_loading();
-            }
-            ui.ctx()
-                .request_repaint_after(std::time::Duration::from_millis(100));
-        }
+        // The SoundFont loading progress shows in the status bar (the toolbar keeps its
+        // width steady, so its buttons do not move while it loads).
         if let Some(error) = self.playback.new_error() {
             self.notice = Some(error);
         }
@@ -465,7 +565,7 @@ impl GuitarScoreApp {
 
     /// The time (or the selection's time), the measure being played (or the cursor's), how
     /// full it is and its tempo.
-    fn position_readout(&mut self, ui: &mut egui::Ui) {
+    fn position_readout(&mut self, ui: &mut egui::Ui, room: f32) {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
@@ -505,27 +605,52 @@ impl GuitarScoreApp {
             .current_measure()
             .unwrap_or_else(|| document.editor().cursor().measure.get().saturating_add(1));
         let tokens = style::tokens(ui);
+        // The readout's parts go in order of importance, each only when `room` (what the
+        // toolbar has, beside the speed control) holds it: the time, the measure, how full
+        // the bar is, and the tempo.
+        let mut used = 0.0_f32;
+        let mut fits = |width: f32| {
+            let ok = used + width <= room;
+            if ok {
+                used += width;
+            }
+            ok
+        };
         ui.add_space(4.0);
+        if !fits(READOUT_TIME) {
+            return;
+        }
         time_readout(ui, elapsed, total);
         ui.add_space(10.0);
+        if !fits(READOUT_MEASURE) {
+            return;
+        }
         // Painted, not a Label, so screen readers get "Measure 3" rather than "3 / 12".
         let label = format!("Measure {measure}");
         let text = format!("{measure} / {}", song.measure_count());
         let font = FontId::new(13.0, FontFamily::Name(crate::fonts::BOLD.into()));
         let galley = ui.painter().layout_no_wrap(text, font, tokens.text);
-        let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::hover());
+        let (rect, response) =
+            ui.allocate_exact_size(vec2(MEASURE_WIDTH, galley.size().y), Sense::hover());
         ui.painter().galley(rect.min, galley, tokens.text);
         response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &label));
         response.on_hover_text("The measure being played, or the cursor's");
         // How full that bar is in the cursor's track and voice.
-        if let Some(fill) = bar_fill(
-            song,
-            cursor.track,
-            MeasureIndex::new(measure.saturating_sub(1)),
-            cursor.voice,
-        ) {
+        if fits(READOUT_FILL)
+            && let Some(fill) = bar_fill(
+                song,
+                cursor.track,
+                MeasureIndex::new(measure.saturating_sub(1)),
+                cursor.voice,
+            )
+        {
             ui.add_space(10.0);
             fill_readout(ui, &fill);
+        } else {
+            return;
+        }
+        if !fits(READOUT_TEMPO) {
+            return;
         }
         // The tempo in effect there, including changes on a beat (as playback has them).
         let tempo = match (timeline.as_deref(), tick) {
@@ -533,21 +658,28 @@ impl GuitarScoreApp {
             _ => song.tempo(),
         };
         ui.add_space(10.0);
-        let (rect, _) = ui.allocate_exact_size(vec2(10.0, 20.0), Sense::hover());
-        // A quarter note from the music font (SMuFL `metNoteQuarterUp`).
-        tiles::music_glyph(
-            ui.painter(),
-            egui::pos2(rect.center().x, rect.bottom() - 5.0),
-            "\u{ECA5}",
-            15.0,
-            tokens.text_weak,
+        ui.allocate_ui_with_layout(
+            vec2(TEMPO_WIDTH, 20.0),
+            Layout::left_to_right(Align::Center),
+            |ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                let (rect, _) = ui.allocate_exact_size(vec2(10.0, 20.0), Sense::hover());
+                // A quarter note from the music font (SMuFL `metNoteQuarterUp`).
+                tiles::music_glyph(
+                    ui.painter(),
+                    egui::pos2(rect.center().x, rect.bottom() - 5.0),
+                    "\u{ECA5}",
+                    15.0,
+                    tokens.text_weak,
+                );
+                ui.label(
+                    RichText::new(format!("= {tempo}"))
+                        .size(12.0)
+                        .color(tokens.text_weak),
+                )
+                .on_hover_text("Tempo at this point");
+            },
         );
-        ui.label(
-            RichText::new(format!("= {tempo}"))
-                .size(12.0)
-                .color(tokens.text_weak),
-        )
-        .on_hover_text("Tempo at this point");
         ui.add_space(6.0);
     }
 }
@@ -600,7 +732,9 @@ fn time_readout(ui: &mut egui::Ui, elapsed: u64, total: u64) {
     let label = format!("Time {elapsed_text} of {total_text}");
     let font = FontId::new(12.0, FontFamily::Name(crate::fonts::BOLD.into()));
     let galley = ui.painter().layout_no_wrap(text, font, tokens.text_weak);
-    let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::hover());
+    // A fixed width, so the transport does not shift while the clock counts.
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(TIME_WIDTH, galley.size().y), Sense::hover());
     ui.painter().galley(rect.min, galley, tokens.text_weak);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &label));
     response.on_hover_text("Position and total length; a measure selection sets the total");

@@ -331,6 +331,11 @@ impl TabEditor {
                 let measure = self.cursor.measure;
                 self.execute(Command::DeleteMeasure { measure }, self.cursor, false)
             }
+            ActionId::TransposeUpSemitone => self.transpose(1),
+            ActionId::TransposeDownSemitone => self.transpose(-1),
+            ActionId::TransposeUpOctave => self.transpose(12),
+            ActionId::TransposeDownOctave => self.transpose(-12),
+            ActionId::ToggleTransposition => self.toggle_transposition(),
             ActionId::Copy => self.copy_selection(),
             ActionId::Cut => self.cut_selection(),
             ActionId::Paste => self.paste_clipboard(),
@@ -578,6 +583,18 @@ impl TabEditor {
         }
         self.cursor.right(song);
         Ok(Outcome::Moved)
+    }
+
+    /// Transposes what the song sounds like by `semitones` (one undo step); the written
+    /// notes stay as they are.
+    fn transpose(&mut self, semitones: i32) -> Result<Outcome, EditError> {
+        self.execute(Command::TransposeSong { semitones }, self.cursor, false)
+    }
+
+    /// Switches the song's transposition on or off (one undo step; the value is kept).
+    fn toggle_transposition(&mut self) -> Result<Outcome, EditError> {
+        let active = !self.editor.song().transpose_active();
+        self.execute(Command::SetTransposeActive { active }, self.cursor, false)
     }
 
     /// What is missing from the cursor's voice to fill its measure, if anything.

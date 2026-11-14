@@ -71,6 +71,11 @@ pub struct Track {
     pub transpose_chromatic: i32,
     /// Octave transposition (GP6/GP7)
     pub transpose_octave: i32,
+    /// GuitarScore addition: what the track sounds like relative to what is written, in
+    /// semitones (positive is higher); 0 when it is not transposed. It changes playback
+    /// only: the fret numbers, the tablature and the notation stay as they are. Guitar Pro
+    /// has no field for it, so it is kept in the song's notes (`sound_state` in the app).
+    pub transpose_sound: i32,
     /// GuitarScore addition: false if the file stores no tuning for this track (e.g. GP7
     /// vocal or piano tracks). `strings` then holds placeholder E-standard strings, which
     /// are not written back.
@@ -224,6 +229,7 @@ impl Default for Track {
             midi_program_gpif: None,
             transpose_chromatic: 0,
             transpose_octave: 0,
+            transpose_sound: 0,
             has_tuning: true,
             instrument_type: None,
             instrument_name: None,

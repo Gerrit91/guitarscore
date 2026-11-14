@@ -5129,3 +5129,36 @@ from a sound's name to one of its tones, filled by the owner:
   the action needs no open song, like the other view actions. App test:
   `f3_and_the_view_menu_switch_between_the_song_grid_and_the_mixer` (key and menu, both
   ways, remembered in the settings). `docs/usage.md` lists F3.
+
+## 2026-11-14 — Transposition: sound or notes, from the toolbar or a window; the tuner in Tools
+
+- **Transposition** (owner's design, in steps): the toolbar's control is the tuning fork, the
+  value in semitones (0 by default, click it to type one) and a small split pair (− over +).
+  The fork switches the transposition on and off (A/B); it starts off and is only clickable
+  once there is a value. The value is GuitarScore's own (`Track::transpose_sound`), *not* the
+  format's `<Transpose>` block: Guitar Pro's own `<Octave>-1</Octave>` on a guitar is its
+  written-vs-sounding octave (our notation's `octave_up`), and the MIDI in every `testdata`
+  `.mid` shows it does not move the sounding pitch — so existing files play exactly as
+  before, and the value travels in the song's notes (`TrackSound::transpose`, applied on
+  open, collected on save). Playback adds it in `TrackView::sounding_pitch`; the layout uses
+  `written_pitch`, so the score and the tab stay.
+- **The transpose window** (Tools › Transpose…): whole song or the shown track, the sound
+  (`transpose_by`/`transpose_track_by`, clamped to an octave) or the notes themselves with
+  "Change the fingerings" (`transpose_notes`: each note is re-fingered by target pitch —
+  its own string first, then the nearest that can hold it; a note that cannot be placed
+  fails the whole edit unchanged). Drum kits are left alone. One undo step each.
+- **The tuner** moved to a Tools menu before Help, with the transpose window; its toolbar
+  button now draws a sound wave (the fork became the transposition's).
+- **The tuning dialog** has a play button per string (a reference tone of its open note,
+  filled with the accent color while it sounds, and the same button stops it); close and OK
+  silence it.
+- **Toolbar layout fix:** the transport could grow over the right group's buttons and take
+  their clicks (the width feedback oscillated with the position readout). The transport now
+  gets the room between the groups, its readout keeps fixed widths (so it does not shift
+  while the clock counts) and drops its parts in order of importance (time, measure, bar
+  fill, tempo) on a narrow window; the SoundFont loading progress moved to the status bar.
+  Tests that assert the readout use a wider window (`wide_app_with`).
+- Tests: model (`edit/transpose_tests.rs`: sound vs written, per-track, notes re-fingered,
+  a note that cannot move, the switch, undo), command round trips and `panic_hunt`, and app
+  tests for the toolbar control, the window and the tuning play/stop buttons. App snapshots
+  regenerated: the menu bar gained Tools, the toolbar gained the transposition control.

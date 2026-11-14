@@ -137,6 +137,11 @@ pub(crate) struct TrackSound {
     /// missing here plays this machine's kit setting (or the built-in tone) at unity.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub drum_parts: Vec<DrumPartSound>,
+    /// What the track sounds like relative to what is written, in semitones (0 when it is
+    /// not transposed). It changes playback only: the notes, the tablature and the score
+    /// stay as they are.
+    #[serde(default, skip_serializing_if = "is_zero_i32")]
+    pub transpose: i32,
 }
 
 /// One drum part's own tone in a song: its chain and its mixing level in the drum track.
@@ -218,6 +223,11 @@ impl DrumPartSound {
 }
 
 /// `true` for 0, so a default number is not written.
+/// Serde helper: `true` for 0, so a default setting is left out of the JSON.
+fn is_zero_i32(value: &i32) -> bool {
+    *value == 0
+}
+
 fn is_zero(value: &u8) -> bool {
     *value == 0
 }
@@ -270,11 +280,18 @@ impl TrackSound {
     /// One track's state, from the document (a payload that does not read counts as none,
     /// so a damaged file never stops a song from opening).
     pub(crate) fn of_song(song: &Song, track: usize) -> Self {
-        song.track(TrackIndex::new(track))
+        let mut state = song
+            .track(TrackIndex::new(track))
             .and_then(|view| view.sound_state())
             .and_then(|json| serde_json::from_str::<TrackSound>(json).ok())
             .map(TrackSound::sanitized)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        // The transposition itself lives in the document (playback reads it there); the
+        // payload keeps it so it travels with the file.
+        state.transpose = song
+            .track(TrackIndex::new(track))
+            .map_or(0, |view| view.transposition());
+        state
     }
 
     /// A copy with values the rest of the program can rely on (a broken file may hold
@@ -282,6 +299,9 @@ impl TrackSound {
     fn sanitized(mut self) -> Self {
         self.comp_send = self.comp_send.min(127);
         self.midi_out = self.midi_out.map(MidiOutRoute::sanitized);
+        self.transpose = self
+            .transpose
+            .clamp(-gscore_model::MAX_TRANSPOSE, gscore_model::MAX_TRANSPOSE);
         for part in &mut self.drum_parts {
             part.level = part.level.min(127);
         }
@@ -370,6 +390,14 @@ impl SongState {
             .collect();
         for (track, state) in resolved {
             let _ = song.set_track_sound_state(TrackIndex::new(track), state);
+        }
+        // The transposition travels in the block but is applied to the document, where
+        // playback reads it.
+        for (track, state) in self.resolve(song) {
+            if state.sound.transpose != 0 {
+                let at = TrackIndex::new(track);
+                let _ = song.transpose_track_to(at, state.sound.transpose);
+            }
         }
         if let Some(json) = self.buses.json() {
             let _ = song.set_sound_state(Some(json));

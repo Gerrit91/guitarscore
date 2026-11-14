@@ -17,6 +17,10 @@ pub struct Song {
     inner: gscore_gp::Song,
     /// One stamp per measure; see [`Song::measure_stamp`].
     stamps: Vec<u64>,
+    /// Whether the tracks' transposition is applied when the song plays: the toolbar's
+    /// on/off switch. A listening aid, not part of the Guitar Pro file: a loaded song
+    /// starts with it off, and saving does not write it.
+    pub(crate) transpose_active: bool,
     /// GuitarScore's own song-wide sound state (the mixer's buses, ...), opaque to the
     /// model. It has no field in the Guitar Pro format and is saved in the song's notes;
     /// `None` when the song brings none and follows the program's own settings.
@@ -38,6 +42,7 @@ impl Song {
         let song = Song {
             inner,
             stamps,
+            transpose_active: false,
             sound_state: None,
         };
         validate::check(&song)?;
@@ -300,7 +305,7 @@ impl Song {
             .tracks
             .iter()
             .enumerate()
-            .map(|(i, t)| TrackView::new(TrackIndex::new(i), t))
+            .map(|(i, t)| TrackView::new(TrackIndex::new(i), t, self.transpose_active))
     }
 
     /// One track, or `None` if the index is out of range.
@@ -308,7 +313,7 @@ impl Song {
         self.inner
             .tracks
             .get(index.get())
-            .map(|t| TrackView::new(index, t))
+            .map(|t| TrackView::new(index, t, self.transpose_active))
     }
 
     /// One staff of one track (the track seen through its staff: its measures, strings,

@@ -28,6 +28,27 @@ has the overview.
 | F11 | Full screen |
 | F3 | Mixer in the bottom panel (again for the measure grid) |
 
+## Transposing
+
+The toolbar's transposition (the tuning fork, the number and the small −/+ pair beside the
+tuner) moves what the song *sounds* like: 0 to 12 semitones either way, by ear, while the
+fret numbers, the tablature and the score stay exactly as they are (as Guitar Pro's track
+transpose does). Click the number to type one; the − and + buttons step a semitone; the
+tuning fork switches the transposition off and on again, so a part can be compared with the
+written pitch (it starts off, and it is only clickable once there is something to switch).
+It is kept in the song's notes, so it comes back with the file; Guitar Pro ignores it.
+
+**Tools › Transpose…** opens the window for more: transpose the whole song or only the shown
+track, and either the sound (as the toolbar does) or, with **Change the fingerings**, the
+notes themselves — they move on the fretboard and the tablature shows the new pitches. A
+note that would leave the strings (below the lowest open string, above the highest fret)
+stops that edit unchanged, with the reason in the window.
+
+**Tools** also holds the tuner (the tuning fork's old place in the toolbar is now the
+sound-wave button): a reference tone for tuning by ear. The tuning dialog (Track panel ›
+Tuning) has a small play button beside every string that sounds its open note, and the same
+button stops it again.
+
 Change any key in Settings → Editor. The keymap can also live in a text file
 (`~/.config/guitarscore/keymap.txt` on Linux): `gscore-cli keymap` prints the built-in one
 and every action id, and `gscore-cli keymap --check <file>` checks a file. A broken keymap
