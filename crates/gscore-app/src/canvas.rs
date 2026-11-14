@@ -133,6 +133,49 @@ pub(crate) enum Surface {
     Screen,
 }
 
+/// The box a horizontal or vertical line from `a` to `b` of `width` points fills on a
+/// screen with `pixels_per_point`, and how opaque it is; `None` for a slanted line.
+///
+/// Every edge is rounded to the pixel grid from where the layout puts it: the ends, and
+/// the side the line's thickness starts at. Two lines that share an edge in the layout
+/// (the staff lines and the line that starts their system) then share it on the screen;
+/// rounding each line's middle instead lets one stick out past the other by a pixel when
+/// the score is zoomed out. The thickness is a whole number of pixels, at least one; a
+/// line thinner than a pixel is drawn that much lighter instead.
+fn crisp_line(a: Pos2, b: Pos2, width: f32, pixels_per_point: f32) -> Option<(Rect, f32)> {
+    const ALIGNED: f32 = 1e-3;
+    if !(pixels_per_point.is_finite() && pixels_per_point > 0.0 && width.is_finite()) {
+        return None;
+    }
+    let pixel = 1.0 / pixels_per_point;
+    // Two edges that are the same in the layout reach here a rounding error apart; the
+    // small bias keeps them from parting at an exact half pixel, where pages often lie.
+    const TIE_BIAS: f32 = 1e-3;
+    let snap = |value: f32| (value * pixels_per_point + 0.5 + TIE_BIAS).floor() * pixel;
+    // Across the line: from its near edge, a whole number of pixels thick.
+    let across = |middle: f32| {
+        let near = snap(middle - width / 2.0);
+        (near, near + snap(width).max(pixel))
+    };
+    // Along the line: both ends on the grid; a short line keeps one pixel.
+    let along = |from: f32, to: f32| {
+        let (start, end) = (snap(from.min(to)), snap(from.max(to)));
+        (start, end.max(start + pixel))
+    };
+    let (x, y) = if (a.y - b.y).abs() < ALIGNED {
+        (along(a.x, b.x), across(a.y))
+    } else if (a.x - b.x).abs() < ALIGNED {
+        (across(a.x), along(a.y, b.y))
+    } else {
+        return None;
+    };
+    let opacity = (width * pixels_per_point).clamp(0.0, 1.0);
+    Some((
+        Rect::from_min_max(Pos2::new(x.0, y.0), Pos2::new(x.1, y.1)),
+        opacity,
+    ))
+}
+
 /// Paints the pages with the top-left corner at `origin`, arranged by `arrangement`,
 /// skipping what lies outside `visible`. On a [`Surface::Screen`] the caller fills the view
 /// with paper; no page edges are drawn.
@@ -148,6 +191,7 @@ pub(crate) fn paint(
     surface: Surface,
 ) {
     let scale = POINTS_PER_SPACE * zoom;
+    let pixels_per_point = painter.ctx().pixels_per_point();
     let to_screen = |p: Point| origin + arrangement.to_display(p) * scale;
     // Each page floats on the canvas: a soft shadow, the paper, and a hairline edge so it
     // stands out even when paper and canvas are both dark.
@@ -184,8 +228,18 @@ pub(crate) fn paint(
             } => {
                 let (a, b) = (to_screen(*from), to_screen(*to));
                 if visible.intersects(Rect::from_two_pos(a, b)) {
-                    let stroke = Stroke::new(thickness * scale, color(theme.color(*token)));
-                    painter.line_segment([a, b], stroke);
+                    let ink = color(theme.color(*token));
+                    let width = thickness * scale;
+                    // Staff lines, barlines and stems are snapped to the pixels as boxes,
+                    // so lines that meet in the layout meet on the screen too.
+                    match crisp_line(a, b, width, pixels_per_point) {
+                        Some((rect, opacity)) => {
+                            painter.rect_filled(rect, 0.0, ink.gamma_multiply(opacity));
+                        }
+                        None => {
+                            painter.line_segment([a, b], Stroke::new(width, ink));
+                        }
+                    }
                 }
             }
             DrawOp::Rect { rect, color: token } => {
@@ -415,6 +469,58 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    /// The staff lines start at the left edge of the line that starts their system, at
+    /// every zoom and wherever the page lies on the pixel grid.
+    #[test]
+    fn staff_lines_start_where_the_system_line_does() {
+        let (left, top, bottom, thin) = (12.0_f32, 30.0_f32, 37.5_f32, 0.16_f32);
+        for pixels_per_point in [1.0_f32, 1.25, 2.0] {
+            for zoom in [0.25_f32, 0.4, 0.5, 0.75, 1.0, 2.0] {
+                for step in 0..40_u8 {
+                    let scale = POINTS_PER_SPACE * zoom;
+                    let origin = Pos2::new(100.0 + f32::from(step) * 0.025, 50.3);
+                    let at = |x: f32, y: f32| origin + Vec2::new(x, y) * scale;
+                    let width = thin * scale;
+                    let (start, _) = crisp_line(
+                        at(left + thin / 2.0, top),
+                        at(left + thin / 2.0, bottom),
+                        width,
+                        pixels_per_point,
+                    )
+                    .unwrap();
+                    let (staff, _) =
+                        crisp_line(at(left, top), at(left + 80.0, top), width, pixels_per_point)
+                            .unwrap();
+                    let pixel = 1.0 / pixels_per_point;
+                    assert!(
+                        (staff.left() - start.left()).abs() < pixel / 4.0,
+                        "zoom {zoom}, step {step}: {staff:?} vs {start:?}"
+                    );
+                    // The start line touches the top staff line (no gap between them).
+                    assert!(start.top() <= staff.bottom() + pixel / 4.0);
+                    assert!(start.width() >= pixel - 1e-4 && staff.height() >= pixel - 1e-4);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn crisp_lines_are_whole_pixels_and_slanted_lines_are_left_alone() {
+        // A hairline keeps one pixel and is drawn lighter.
+        let (rect, opacity) =
+            crisp_line(Pos2::new(3.2, 7.4), Pos2::new(40.7, 7.4), 0.5, 1.0).unwrap();
+        assert_eq!((rect.left(), rect.right()), (3.0, 41.0));
+        assert_eq!(rect.height(), 1.0);
+        assert!((opacity - 0.5).abs() < 1e-6);
+        // A thick line is a whole number of pixels and fully opaque.
+        let (rect, opacity) =
+            crisp_line(Pos2::new(5.0, 2.0), Pos2::new(5.0, 20.0), 2.6, 1.0).unwrap();
+        assert_eq!(rect.width(), 3.0);
+        assert_eq!(opacity, 1.0);
+        assert!(crisp_line(Pos2::new(0.0, 0.0), Pos2::new(5.0, 3.0), 1.0, 1.0).is_none());
+        assert!(crisp_line(Pos2::new(0.0, 0.0), Pos2::new(5.0, 0.0), 1.0, 0.0).is_none());
+    }
 
     /// Three A4 pages, as the layout stacks them.
     fn layout() -> Layout {

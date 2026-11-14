@@ -5587,3 +5587,14 @@ regenerated.
   signature repeated at a system's start, and the clef. Design mode keeps its own handles.
 - Tests: the layout's marks and `mark_at`; in the app, the header's tempo, a time
   signature, a section name and a tuning each open their dialog.
+
+## 2026-11-14 — Staff lines start exactly at the system's start line
+
+Zoomed out, the staff lines could stick out a pixel to the left of the vertical line that
+starts their system. egui snaps each horizontal or vertical line to the pixel grid by its
+own middle, so two lines that share an edge in the layout could land a pixel apart. The
+canvas now paints such lines as boxes whose edges are rounded from where the layout puts
+them (`canvas::crisp_line`): the ends, and the side the thickness starts at. The thickness
+is a whole number of pixels, and a line thinner than a pixel is drawn lighter, as before.
+Slanted lines are unchanged. Snapshots that show a page were regenerated (line edges moved
+by under a pixel); unit tests cover the shared edge at several zooms and pixel densities.
