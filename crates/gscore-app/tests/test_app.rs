@@ -396,11 +396,51 @@ fn the_design_mode_overlay_matches_its_snapshot() {
 }
 
 #[test]
-fn the_design_mode_buttons_widen_and_reset_a_line() {
-    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+fn the_design_mode_buttons_take_and_give_back_a_bar() {
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
     harness.state_mut().view_mut().design_mode = true;
     harness.run();
-    let scale = |harness: &Harness<'_, GuitarScoreApp>| {
+    // The measures that start a line of their own.
+    let breaks = |harness: &Harness<'_, GuitarScoreApp>| -> Vec<usize> {
+        harness
+            .state()
+            .document()
+            .expect("a document")
+            .song()
+            .track(gscore_model::TrackIndex::new(0))
+            .expect("a track")
+            .measures()
+            .enumerate()
+            .filter(|(_, measure)| measure.system_break() != gscore_model::SystemBreak::None)
+            .map(|(index, _)| index)
+            .collect()
+    };
+    let before = breaks(&harness);
+    // One bar fewer on the first line: it ends one bar earlier.
+    harness
+        .get_all_by_label("Widen the line's bars")
+        .next()
+        .expect("a widen button")
+        .click();
+    harness.run();
+    let wider = breaks(&harness);
+    assert_ne!(wider, before, "the line ends earlier: {before:?} {wider:?}");
+    // And back: the next line gives its first bar again.
+    harness
+        .get_all_by_label("Narrow the line's bars")
+        .next()
+        .expect("a narrow button")
+        .click();
+    harness.run();
+    assert_eq!(breaks(&harness), before);
+}
+
+#[test]
+fn the_design_mode_reset_puts_a_lines_layout_back() {
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().view_mut().design_mode = true;
+    harness.run();
+    let scale = |harness: &Harness<'_, GuitarScoreApp>| -> f32 {
         harness
             .state()
             .document()
@@ -413,20 +453,39 @@ fn the_design_mode_buttons_widen_and_reset_a_line() {
             )
     };
     assert!((scale(&harness) - 1.0).abs() < 1e-6);
-    harness.get_by_label("Widen the line's bars").click();
+    // A barline drag sets a width; one undo puts it back (the Edit menu, as a user would).
+    let from = harness.get_by_label("Barline of measure 1").rect().center();
+    harness.drag_at(from);
+    harness.step();
+    let to = from + egui::vec2(50.0, 0.0);
+    harness.hover_at(to);
+    harness.step();
+    harness.hover_at(to);
+    harness.step();
+    harness.drop_at(to);
     harness.run();
     assert!(scale(&harness) > 1.0, "{}", scale(&harness));
-    // One undo puts the whole press back (the Edit menu, as a user would).
     harness.get_by_label("Edit").click();
     harness.run();
     harness.get_by_label_contains("Undo ctrl+z").click();
     harness.run();
     assert!((scale(&harness) - 1.0).abs() < 1e-6);
-    // The other way, then the reset button puts the line back.
-    harness.get_by_label("Narrow the line's bars").click();
+    // The reset button clears a line's widths and offsets in one step.
+    let from = harness.get_by_label("Barline of measure 1").rect().center();
+    harness.drag_at(from);
+    harness.step();
+    harness.hover_at(from + egui::vec2(50.0, 0.0));
+    harness.step();
+    harness.hover_at(from + egui::vec2(50.0, 0.0));
+    harness.step();
+    harness.drop_at(from + egui::vec2(50.0, 0.0));
     harness.run();
-    assert!(scale(&harness) < 1.0, "{}", scale(&harness));
-    harness.get_by_label("Reset the line's layout").click();
+    assert!(scale(&harness) > 1.0, "{}", scale(&harness));
+    harness
+        .get_all_by_label("Reset the line's layout")
+        .next()
+        .expect("a reset button")
+        .click();
     harness.run();
     assert!((scale(&harness) - 1.0).abs() < 1e-6, "{}", scale(&harness));
 }

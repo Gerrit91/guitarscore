@@ -360,7 +360,7 @@ impl GuitarScoreApp {
             // Guitar Pro's design mode: dashed guides, drag handles and the buttons that
             // set how many bars a line holds. Its handles take the pointer, so the page
             // does not select beats while one is dragged.
-            if design_mode && shown_selection.is_none() {
+            if design_mode {
                 let design = super::design::Overlay {
                     song: document.song(),
                     track: cursor.track,

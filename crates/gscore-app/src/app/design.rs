@@ -226,11 +226,13 @@ pub(super) fn overlay(
 
         // The buttons at the end of the line: wider (fewer bars), narrower (more bars), and
         // reset.
-        let end = Pos2::new(right + 16.0, top - HANDLE_RISE * scale);
+        // Stacked above the handles at the line's right end, inside the page's margin (a
+        // row of them would run off the paper and out of reach).
+        let end = Pos2::new(right + 9.0, top - HANDLE_RISE * scale - 20.0);
         for (index, label) in ["+", "-", "x"].iter().enumerate() {
             #[allow(clippy::cast_precision_loss)]
-            let offset = index as f32 * 18.0;
-            let rect = Rect::from_center_size(end + Vec2::new(offset, 0.0), Vec2::new(16.0, 16.0));
+            let offset = index as f32 * 17.0;
+            let rect = Rect::from_center_size(end - Vec2::new(0.0, offset), Vec2::new(16.0, 16.0));
             let id = ui.scope_id().with(("design_button", system_index, index));
             let response = ui.interact(rect, id, Sense::click());
             let description = match *label {
@@ -260,16 +262,46 @@ pub(super) fn overlay(
             }
             let list: Vec<MeasureIndex> = measures.iter().map(|measure| measure.measure).collect();
             match *label {
+                // One bar fewer: the line ends at its last bar (the rest flow on, and
+                // the line stretches its remaining bars). A one-bar line stays as it is.
                 "+" => {
-                    for measure in list {
-                        let percent = design.percent_of(measure) * (1.0 + WIDTH_STEP);
-                        commands.push(design.scale_command(measure, percent));
+                    if list.len() > 1
+                        && let Some(last) = list.last().copied()
+                    {
+                        commands.push(Command::SetSystemBreak {
+                            track: design.track,
+                            measure: last,
+                            kind: gscore_model::SystemBreak::Line,
+                        });
                     }
                 }
+                // One bar more: the next line gives its first bar back when a break holds
+                // it; otherwise the bars make room for it until it fits.
                 "-" => {
-                    for measure in list {
-                        let percent = design.percent_of(measure) * (1.0 - WIDTH_STEP);
-                        commands.push(design.scale_command(measure, percent));
+                    let next = list
+                        .last()
+                        .map(|last| MeasureIndex::new(last.get().saturating_add(1)));
+                    let forced = next.is_some_and(|measure| {
+                        design
+                            .song
+                            .track(design.track)
+                            .and_then(|track| track.measure(measure))
+                            .is_some_and(|measure| {
+                                measure.system_break() != gscore_model::SystemBreak::None
+                            })
+                    });
+                    match next {
+                        Some(measure) if forced => commands.push(Command::SetSystemBreak {
+                            track: design.track,
+                            measure,
+                            kind: gscore_model::SystemBreak::None,
+                        }),
+                        _ => {
+                            for measure in list {
+                                let percent = design.percent_of(measure) * (1.0 - WIDTH_STEP);
+                                commands.push(design.scale_command(measure, percent));
+                            }
+                        }
                     }
                 }
                 _ => commands.extend(reset_commands(design, &list)),
