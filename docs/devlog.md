@@ -5514,3 +5514,14 @@ has its own picker state (`TrackPanelState::tone_picker` beside `sound_picker`),
 program filter no longer hides or scrolls the tone table; the funnel and field ids include
 the table's name too (the two tables had clashed on the same id, which egui flags with its
 debug marker). Filter labels are now "Filter the tone presets" and "Filter the programs".
+
+## 2026-11-14 — The Tone presets table follows the source; Sound follows its chain
+
+Tone presets is the one preset table, and its contents follow the source: **PM** shows the
+built-in and saved tones; **MIDI** and **MIDI out** show the General MIDI programs (the
+percussion bank's kits for a drum track). The Sound section holds the source switch and,
+for PM and MIDI, the chain rows (empty at first, with "+ Add a block") and the stomp box;
+a drum kit's chain stays its parts. For **MIDI out** Sound holds only the port and channel:
+no chain rows, no add row, no stomp box, since the hardware synth's sound never returns
+through the chain. One picker state serves the table (its filter resets when the source
+changes), labelled "Filter the tone presets" or "Filter the programs".

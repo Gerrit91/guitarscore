@@ -30,10 +30,7 @@ pub(super) struct TrackPanelState {
     editing: bool,
     /// The tuning dialog, while it is open.
     tuning: Option<tuning::TuningDialog>,
-    /// The Sound section's program picker (its filter and scroll position).
-    pub(super) sound_picker: super::tone_picker::TonePickerState,
-    /// The Tone presets table's picker, apart from the program table's so both keep their
-    /// own filter and scroll position.
+    /// The Tone presets table's picker (its filter and scroll position).
     pub(super) tone_picker: super::tone_picker::TonePickerState,
 }
 
@@ -130,19 +127,15 @@ impl GuitarScoreApp {
         }
         // Taken out so the widgets (which borrow the app for their commands) do not hold
         // the tab; it goes back below.
-        let mut sound_picker = std::mem::take(&mut tab.track_panel.sound_picker);
         let mut tone_picker = std::mem::take(&mut tab.track_panel.tone_picker);
 
         let mut commands: Vec<(Command, bool)> = Vec::new();
         let mut open_tuning = false;
         let mut open_sound = false;
         let mut sound_actions = SoundActions::default();
-        // Every string track keeps the tone library, whichever source plays it: choosing
-        // a preset switches to modelled strings. Drums and other instruments have no use
-        // for a guitar or bass tone.
-        let tone_picker_section = sound_panel
-            .as_ref()
-            .is_some_and(|panel| panel.player.strings);
+        // Every track with sound settings has a Tone presets table: the modelled tones,
+        // or the General MIDI programs (or drum kits) the MIDI synth plays.
+        let tone_picker_section = sound_panel.is_some();
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -168,7 +161,9 @@ impl GuitarScoreApp {
                     style::section(ui, "track_tone_presets", "Tone presets", |ui| {
                         tone_presets_section(
                             ui,
+                            index,
                             sound_panel.as_ref(),
+                            &mut commands,
                             &mut tone_picker,
                             &mut sound_actions,
                         );
@@ -177,10 +172,7 @@ impl GuitarScoreApp {
                 style::section(ui, "track_sound", "Sound", |ui| {
                     sound(
                         ui,
-                        index,
                         sound_panel.as_ref(),
-                        &mut commands,
-                        &mut sound_picker,
                         &mut open_sound,
                         &mut sound_actions,
                     );
@@ -193,7 +185,6 @@ impl GuitarScoreApp {
             self.set_track_engine(index, engine);
             // Another table (programs or tones) is shown now: a filter typed for the old
             // one would hide everything.
-            sound_picker = super::tone_picker::TonePickerState::new();
             tone_picker = super::tone_picker::TonePickerState::new();
         }
         if let Some(route) = sound_actions.midi_out {
@@ -249,7 +240,6 @@ impl GuitarScoreApp {
             self.notice = Some(error);
         }
         if let Some(tab) = self.tabs.get_mut(self.active) {
-            tab.track_panel.sound_picker = sound_picker;
             tab.track_panel.tone_picker = tone_picker;
         }
         if open_sound {
@@ -556,19 +546,15 @@ struct SoundActions {
     load: Option<usize>,
 }
 
-/// The sound: what plays the track (one setting, shared with the Sound chain window), the
-/// blocks its chain passes the sound through (with a mute each, a click that opens the
-/// Sound chain at the block, and a trash can; a "+" row adds one), and the stomp box that
-/// opens the window. Below it, the matching picker for the sources that have one: the
-/// General MIDI programs or drum kits for the MIDI synth, and the General MIDI programs
-/// again for a hardware synthesizer (with its port and channel). The tone library has its
-/// own section (see [`tone_presets_section`]).
+/// The sound: what plays the track (one setting, shared with the Sound chain window) and,
+/// for the sources whose sound runs through the chain, the blocks it passes (with a mute
+/// each, a click that opens the Sound chain at the block, and a trash can; a "+" row adds
+/// one) and the stomp box that opens the window. A hardware synthesizer's track has only
+/// its port and channel here: its sound never runs through the chain. The presets are in
+/// their own section (see [`tone_presets_section`]).
 fn sound(
     ui: &mut egui::Ui,
-    index: usize,
     panel: Option<&super::track_engine::SoundPanel>,
-    commands: &mut Vec<(Command, bool)>,
-    picker: &mut super::tone_picker::TonePickerState,
     open: &mut bool,
     actions: &mut SoundActions,
 ) {
@@ -591,61 +577,41 @@ fn sound(
         {
             actions.engine = Some(engine);
         }
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let button = icons::large_button(
-                ui,
-                Icon::StompBox,
-                "Sound chain",
-                "Sound chain: what plays this track, the strings' sound and the effects after \
-                 them",
-            );
-            if button.clicked() {
-                *open = true;
-            }
-        });
+        // A hardware synthesizer's sound does not come back through the chain: there is
+        // nothing to open.
+        if player.engine != gscore_play::TrackEngine::MidiOut {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let button = icons::large_button(
+                    ui,
+                    Icon::StompBox,
+                    "Sound chain",
+                    "Sound chain: what plays this track, the strings' sound and the effects \
+                     after them",
+                );
+                if button.clicked() {
+                    *open = true;
+                }
+            });
+        }
     });
-    // The blocks the sound passes through, in the order the chain runs them. A MIDI-out
-    // track has no chain here (its hardware synth plays it), and a drum kit's own chain is
-    // its parts (in the Sound chain window, or on the mixer's part strips).
-    let modelled = matches!(player.engine, gscore_play::TrackEngine::Modelled(_));
-    let has_blocks = panel
-        .chain
-        .blocks
-        .iter()
-        .any(|block| block.choice != BlockChoice::Empty);
-    if !player.drums
-        && player.engine != gscore_play::TrackEngine::MidiOut
-        && (modelled || has_blocks)
-    {
-        chain_rows(ui, &panel.chain, actions);
-    }
     match player.engine {
-        gscore_play::TrackEngine::Modelled(_) => {
-            if !player.strings {
+        gscore_play::TrackEngine::MidiOut => {
+            if let Some(route) = super::sound_chain::midi_out_controls(ui, player, &panel.ports) {
+                actions.midi_out = Some(route);
+            }
+        }
+        gscore_play::TrackEngine::Modelled(_) | gscore_play::TrackEngine::SoundFont => {
+            if matches!(player.engine, gscore_play::TrackEngine::Modelled(_)) && !player.strings {
                 ui.label(
                     RichText::new("Only string instruments can be played by modelled strings.")
                         .weak(),
                 );
+                return;
             }
-        }
-        gscore_play::TrackEngine::SoundFont | gscore_play::TrackEngine::MidiOut => {
-            if player.engine == gscore_play::TrackEngine::MidiOut
-                && let Some(route) = super::sound_chain::midi_out_controls(ui, player, &panel.ports)
-            {
-                actions.midi_out = Some(route);
-            }
-            let rows = super::tone_picker::general_midi_rows(player.program, player.drums);
-            if let Some(choice) =
-                super::tone_picker::picker(ui, "track_program_picker", "programs", &rows, picker)
-                && let Some(program) = choice_program(&choice)
-            {
-                commands.push((
-                    Command::SetTrackProgram {
-                        track: TrackIndex::new(index),
-                        program,
-                    },
-                    false,
-                ));
+            // A drum kit's own chain is its parts (in the Sound chain window, or on the
+            // mixer's part strips); every other track shows its chain, empty at first.
+            if !player.drums {
+                chain_rows(ui, &panel.chain, actions);
             }
         }
     }
@@ -755,36 +721,51 @@ fn chain_row(ui: &mut egui::Ui, place: usize, block: &BlockSetting, actions: &mu
     });
 }
 
-/// The tone table: the built-in tones and the user's saved ones, for a string track.
-/// Choosing one gives this track that whole sound and switches it to modelled strings
-/// (the table stays while the MIDI synth or a hardware synthesizer plays the track).
+/// The presets of the source that plays the track: the modelled tones (the built-in
+/// library and the saved ones) for PM, or the General MIDI programs (the percussion bank's
+/// kits for a drum track) for the MIDI synth and a hardware synthesizer. Switching the
+/// source keeps the section and swaps the table.
 fn tone_presets_section(
     ui: &mut egui::Ui,
+    index: usize,
     panel: Option<&super::track_engine::SoundPanel>,
+    commands: &mut Vec<(Command, bool)>,
     picker: &mut super::tone_picker::TonePickerState,
     actions: &mut SoundActions,
 ) {
     let Some(panel) = panel else {
         return;
     };
-    if !matches!(panel.player.engine, gscore_play::TrackEngine::Modelled(_)) {
-        ui.label(
-            RichText::new("Choosing a preset plays this track with the modelled strings.")
-                .weak()
-                .small(),
-        );
-        ui.add_space(2.0);
-    }
-    let rows = super::tone_picker::tone_rows(
-        panel.current.as_ref(),
-        panel.default_tone.as_deref(),
-        &panel.saved,
-    );
-    if let Some(choice) =
-        super::tone_picker::picker(ui, "track_tone_picker", "tone presets", &rows, picker)
-        && let Some(tone) = tone_of_choice(choice, &panel.saved)
-    {
-        actions.tone = Some(tone);
+    let player = &panel.player;
+    match player.engine {
+        gscore_play::TrackEngine::Modelled(_) => {
+            let rows = super::tone_picker::tone_rows(
+                panel.current.as_ref(),
+                panel.default_tone.as_deref(),
+                &panel.saved,
+            );
+            if let Some(choice) =
+                super::tone_picker::picker(ui, "track_tone_picker", "tone presets", &rows, picker)
+                && let Some(tone) = tone_of_choice(choice, &panel.saved)
+            {
+                actions.tone = Some(tone);
+            }
+        }
+        gscore_play::TrackEngine::SoundFont | gscore_play::TrackEngine::MidiOut => {
+            let rows = super::tone_picker::general_midi_rows(player.program, player.drums);
+            if let Some(choice) =
+                super::tone_picker::picker(ui, "track_program_picker", "programs", &rows, picker)
+                && let Some(program) = choice_program(&choice)
+            {
+                commands.push((
+                    Command::SetTrackProgram {
+                        track: TrackIndex::new(index),
+                        program,
+                    },
+                    false,
+                ));
+            }
+        }
     }
 }
 

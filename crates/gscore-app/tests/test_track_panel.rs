@@ -1018,30 +1018,42 @@ fn escape_closes_the_sound_chain_window() {
 }
 
 #[test]
-fn the_tone_presets_stay_when_the_midi_synth_plays_the_track() {
+fn the_tone_presets_show_the_source_that_plays_the_track() {
     let mut harness = app_with("basic/note_lengths.gp");
+    // PM by default: the built-in and saved tones.
+    harness.get_by_label("Filter the tone presets");
+    assert!(harness.query_by_label("Filter the programs").is_none());
+
+    // The MIDI synth: the Tone presets table becomes the General MIDI programs, while the
+    // Sound section keeps the empty chain with its add row.
     harness.get_by_label("MIDI synth").scroll_to_me();
     harness.run();
     harness.get_by_label("MIDI synth").click();
     harness.run();
-    // Both tables are there, each with its own filter.
-    assert!(
-        harness
-            .query_all_by_label_contains("TONE PRESETS")
-            .next()
-            .is_some(),
-        "the tone table stays"
-    );
-    assert!(harness.query_by_label("Filter the tone presets").is_some());
     assert!(harness.query_by_label("Filter the programs").is_some());
-    // Filtering the programs does not filter the tone table.
-    pick_program_in_track_panel(&mut harness, "24: Nylon", "24: Nylon Str Guitar");
+    assert!(harness.query_by_label("Filter the tone presets").is_none());
     assert!(
         harness
             .query_all_by_label_contains("Warm Jazz")
             .next()
-            .is_some(),
-        "the tone table keeps its own filter"
+            .is_none(),
+        "the tone library is not shown for the MIDI synth"
+    );
+    assert!(harness.query_by_label("Add a sound chain block").is_some());
+
+    // A hardware synthesizer: the programs stay in Tone presets, the Sound section has
+    // only the port and channel (no chain, no add row, no stomp box).
+    harness.get_by_label("MIDI out").scroll_to_me();
+    harness.run();
+    harness.get_by_label("MIDI out").click();
+    harness.run();
+    assert!(harness.query_by_label("Filter the programs").is_some());
+    assert!(harness.query_by_label("Port").is_some());
+    assert!(harness.query_by_label("Channel").is_some());
+    assert!(harness.query_by_label("Add a sound chain block").is_none());
+    assert!(
+        harness.query_by_label("Sound chain").is_none(),
+        "no sound chain for a hardware synthesizer"
     );
 }
 
