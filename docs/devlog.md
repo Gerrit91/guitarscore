@@ -5691,3 +5691,16 @@ The player bar has a button for the gliding cursor after the loop button (a curs
 with motion lines, `Icon::GlidingCursor`): it switches the same setting as Settings ›
 "Cursor glides between the notes while playing", which stays. Snapshots that show the
 player bar were regenerated.
+
+## 2026-11-15 — Redrawn instrument symbols, filled from outlines
+
+egui's painter fills convex polygons only, so the guitars were built from ellipses and
+quadrilaterals and looked crude. `app/vector_icon.rs` rasterizes outlines (SVG-style `M`,
+`L`, `C`, `Z` paths, holes by the even-odd rule, round-ended strokes) into a white
+coverage mask, 4×4 samples per pixel, once per pixel size, kept as a texture and painted
+in the ink's color. No new dependency. The electric and acoustic guitar, the bass, the
+ukulele, the banjo, the drum and "other instrument" (two beamed eighth notes) are new
+outlines (`instrument::outline`); the string instruments share one diagonal and their
+widths are drawn to scale with one another, the ukulele the smallest. The other eight
+symbols are drawn as before. Tests: the rasterizer's holes, curves, lines and broken
+paths; the symbol snapshot and every snapshot that shows a symbol were regenerated.

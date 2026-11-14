@@ -70,6 +70,7 @@ mod tuner;
 mod tuplet_dialog;
 #[cfg(not(target_arch = "wasm32"))]
 mod updates;
+mod vector_icon;
 #[cfg(target_arch = "wasm32")]
 mod web_rescue;
 
